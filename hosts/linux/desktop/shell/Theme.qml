@@ -46,7 +46,12 @@ Singleton {
     readonly property color flame: c("flame", "#ffd166")       // its second, brighter highlight
     property string profileAccent: ""
     readonly property bool validAccent: /^#[0-9a-fA-F]{6}$/.test(Settings.accent || "")
-    readonly property color accent: validAccent ? Settings.accent : (look === "hearth" && profileAccent) ? profileAccent : ember
+    // New installs (desktop.json made with "defaults": 2, from /etc/skel) start Steam-style with the Sky accent; everyone
+    // else keeps the look's own. Only a default, filled in when read: the accent you see is never written for you.
+    readonly property bool skyDefault: steam && Settings.defaultsGen >= 2
+    readonly property color lookAccent: skyDefault ? "#66c0f4" : ember
+    readonly property string lookAccentName: skyDefault ? "Sky" : steam ? "Steam blue" : look === "hearth" && profileAccent ? "Your profile's" : "The look's own"
+    readonly property color accent: validAccent ? Settings.accent : (look === "hearth" && profileAccent) ? profileAccent : lookAccent
     // Text on an accent background: dark on light accents, white on dark ones.
     readonly property color accentInk: (accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722) > 0.45 ? ((lookDef.dark || {}).ink || "#2a1206") : "#ffffff"
     // Frosted panels over the wallpaper (Steam-style: nearly solid, flat).

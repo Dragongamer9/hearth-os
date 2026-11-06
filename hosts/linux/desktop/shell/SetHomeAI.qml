@@ -118,7 +118,7 @@ SetPage {
 
     // ---------------------------------------------------------------- pictures and voices (always shown; set up in Services)
     SetHeader { text: "Pictures and voices" }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.pic
         icon: "palette"; title: "AI pictures (ComfyUI)"
         sub: page.appLine(page.pic) + ". Pictures on the graphics card, from your devices through Tailscale"
@@ -132,7 +132,7 @@ SetPage {
         sub: page.pic && page.pic.url ? page.pic.url : (page.pic ? page.pic.local + " (on this PC)" : "")
         onActivated: Quickshell.execDetached(["xdg-open", page.pic.url || page.pic.local])
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.voi
         icon: "vol"; title: "AI voices (Kokoro)"
         sub: page.appLine(page.voi) + ". Natural voices for the Command Center, on the CPU"
@@ -178,7 +178,7 @@ SetPage {
         value: page.ai && page.ai.address ? "Copy" : ""
         onActivated: if (page.ai && page.ai.address) { Quickshell.execDetached(["wl-copy", page.ai.address]); page.say("Copied ✓"); }
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: page.ccShown
         icon: "vol"; title: "Voices for the Command Center"
         sub: page.voi && page.voi.installed ? (page.voi.url ? page.voi.url : page.voi.local) + " in Settings › Voice › Speech servers › Kokoro-FastAPI" + (page.voi.on ? "" : " (turn AI voices on in Services)")

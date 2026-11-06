@@ -34,10 +34,9 @@ def qml_strings(text):
 
 class Pages(unittest.TestCase):
     def test_settings_lists_the_moved_pages(self):
-        s = (SHELL / 'SettingsApp.qml').read_text()
+        s = (SHELL / 'settings-pages.js').read_text()   # Hearth Settings' page registry (the redesign)
         for page, f in NEW.items():
-            self.assertRegex(s, r'\{ id: "%s", icon: "[a-z-]+", label: "[^"]+" \}' % page)
-            self.assertIn('%s: "%s"' % (page, f), s)
+            self.assertRegex(s, r'\{ id: "%s", file: "%s", cat: "(system|gaming)", label: "[^"]+", icon: "[a-z-]+"' % (page, re.escape(f)))
             self.assertTrue((SHELL / f).exists(), f)
 
     def test_every_call_is_one_settings_may_make(self):

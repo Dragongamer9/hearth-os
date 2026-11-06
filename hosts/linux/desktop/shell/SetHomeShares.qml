@@ -120,7 +120,7 @@ SetPage {
         checked: !!page.share && page.share.recycle !== false
         onToggled: v => page.run(["share-set", page.sel, "recycle", v ? "on" : "off"])
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.share
         icon: "user"; title: "Who"
         value: page.share && page.share.people && Object.keys(page.share.people).length ? String(Object.keys(page.share.people).length + 1) + " people" : "Only you"

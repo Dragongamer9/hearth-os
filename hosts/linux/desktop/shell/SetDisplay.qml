@@ -181,13 +181,45 @@ SetPage {
     }
     onCountdownChanged: if (countdown === 15) keepBtn.forceActiveFocus()
 
-    // Two or more screens: which one these settings are for, where it is, and on or off.
+    // Two or more screens: which one these settings are for.
     SetChoice {
         visible: page.outs.length > 1
-        title: "Screen"; sub: "The settings below are for this one"
+        icon: "display"; title: "Screen"; sub: "The settings below are for this one"
         options: page.outs.slice(0, 4).map(o => ({ value: o.name, label: (o.model || o.description || o.name).split(" ").slice(0, 3).join(" ") + (o.enabled ? "" : " (off)") }))
         current: page.picked
         onChosen: v => { page.picked = v; page.countdown = 0; page.load(); }
+    }
+
+    SetHeader { text: "Brightness & colour" }
+    SetSlider {
+        visible: page.brightness >= 0
+        icon: "sun"; title: "Brightness"; sub: "Only for screens that let Hearth change it"; value: page.brightness / 100
+        onMoved: v => { page.brightness = Math.max(1, Math.round(v * 100)); Quickshell.execDetached(["brightnessctl", "-q", "-c", "backlight", "set", page.brightness + "%"]); }
+    }
+    // Night light lives here now (it was in Appearance): the same setting (Settings.nightLight), and Quick Access's tile.
+    SetSwitch { icon: "moon"; title: "Night light"; sub: "Warmer colours from sunset to sunrise, to help you sleep"; checked: Settings.nightLight; onToggled: v => Settings.nightLight = v }
+
+    SetHeader { text: "Scale & layout"; visible: !!page.out }
+    SetChoice {
+        visible: !!page.out && page.out.enabled
+        icon: "display"; title: "Scale"; sub: "Makes text, apps and the bar bigger or smaller"
+        options: [1, 1.25, 1.5, 1.75, 2].map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
+        current: page.out ? page.out.scale : 1
+        onChosen: v => page.apply(0, 0, 0, v)
+    }
+    SetChoice {
+        visible: page.rates.length > 1
+        icon: "bolt"; title: "Refresh rate"; sub: "Higher is smoother; lower saves battery"
+        options: page.rates.map(r => ({ value: r, label: r + " Hz" }))
+        current: page.cur ? Math.round(page.cur.refresh) : 0
+        onChosen: r => { const m = page.out.modes.find(x => x.width === page.cur.width && x.height === page.cur.height && Math.round(x.refresh) === r); if (m) page.apply(m.width, m.height, m.refresh, 0); }
+    }
+    SetChoice {
+        visible: page.others.length > 0 && !!page.out && page.out.enabled
+        icon: "desktops"; title: "Where this screen is"; sub: "Next to " + (page.others.length ? (page.others[0].model || page.others[0].name) : "the other screen") + ", so the pointer goes across where they meet"
+        options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "above", label: "Above" }, { value: "below", label: "Below" }]
+        current: page.side
+        onChosen: v => page.placeAt(v)
     }
     SetSwitch {
         visible: page.outs.length > 1 && !!page.out
@@ -196,42 +228,20 @@ SetPage {
         checked: !!page.out && page.out.enabled
         onToggled: v => page.setOn(v)
     }
-    SetChoice {
-        visible: page.others.length > 0 && !!page.out && page.out.enabled
-        title: "Where it is"; sub: "Next to " + (page.others.length ? (page.others[0].model || page.others[0].name) : "the other screen") + ", so the pointer goes across where they meet"
-        options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "above", label: "Above" }, { value: "below", label: "Below" }]
-        current: page.side
-        onChosen: v => page.placeAt(v)
-    }
-    SetSlider {
-        visible: page.brightness >= 0
-        icon: "sun"; title: "Brightness"; value: page.brightness / 100
-        onMoved: v => { page.brightness = Math.max(1, Math.round(v * 100)); Quickshell.execDetached(["brightnessctl", "-q", "-c", "backlight", "set", page.brightness + "%"]); }
-    }
-    SetChoice {
-        visible: !!page.out && page.out.enabled
-        title: "Scale"; sub: "Makes text and everything else bigger or smaller"
-        options: [1, 1.25, 1.5, 1.75, 2].map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
-        current: page.out ? page.out.scale : 1
-        onChosen: v => page.apply(0, 0, 0, v)
-    }
-    SetChoice {
-        visible: page.rates.length > 1
-        title: "Refresh rate"; sub: "Higher is smoother; lower saves battery"
-        options: page.rates.map(r => ({ value: r, label: r + " Hz" }))
-        current: page.cur ? Math.round(page.cur.refresh) : 0
-        onChosen: r => { const m = page.out.modes.find(x => x.width === page.cur.width && x.height === page.cur.height && Math.round(x.refresh) === r); if (m) page.apply(m.width, m.height, m.refresh, 0); }
-    }
-    SetHeader { text: "Resolution"; visible: page.resolutions.length > 0 }
-    Repeater {
-        model: page.resolutions.slice(0, 10)
-        delegate: SetRow {
-            required property var modelData
-            required property int index
-            icon: "display"; chevron: false
-            title: modelData.w + " × " + modelData.h + (index === 0 ? "  (native)" : "")
-            value: page.cur && page.cur.width === modelData.w && page.cur.height === modelData.h ? "In use" : ""
-            onActivated: { const m = page.out.modes.filter(x => x.width === modelData.w && x.height === modelData.h).sort((a, b) => b.refresh - a.refresh)[0]; page.apply(m.width, m.height, m.refresh, 0); }
+    SetExpander {
+        visible: page.resolutions.length > 0
+        icon: "window"; title: "Resolution"; sub: "Sharper with more pixels"
+        value: page.cur ? page.cur.width + " × " + page.cur.height : ""
+        Repeater {
+            model: page.resolutions.slice(0, 10)
+            delegate: SetRow {
+                required property var modelData
+                required property int index
+                icon: "display"; chevron: false
+                title: modelData.w + " × " + modelData.h + (index === 0 ? "  (native)" : "")
+                value: page.cur && page.cur.width === modelData.w && page.cur.height === modelData.h ? "In use" : ""
+                onActivated: { const m = page.out.modes.filter(x => x.width === modelData.w && x.height === modelData.h).sort((a, b) => b.refresh - a.refresh)[0]; page.apply(m.width, m.height, m.refresh, 0); }
+            }
         }
     }
     Text { visible: !page.out; text: "Display settings work in Desktop Mode (wlr-randr)."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
@@ -244,10 +254,10 @@ SetPage {
     FileView { id: nvRead; path: page.nvFile; onLoaded: page.nvDrawing = (text().trim() || "auto"); onLoadFailed: page.nvDrawing = "auto" }
     Process { id: nvProbe; command: ["test", "-d", "/sys/module/nvidia"]; running: true; onExited: code => page.hasNvidia = code === 0 }
     property bool hasNvidia: false
-    SetHeader { text: "Nvidia"; visible: page.hasNvidia }
+    SetHeader { text: "Advanced"; visible: page.hasNvidia }
     SetChoice {
         visible: page.hasNvidia
-        title: "How the Hearth app draws"; sub: "Fast is smooth on newer drivers. Compatible is slower but works everywhere: pick it if first-time setup or the Hearth app's window shows a black screen. Steam Game Mode isn't affected."
+        icon: "cpu"; title: "Graphics card (Nvidia): how the Hearth app draws"; sub: "Fast is smooth on newer drivers. Compatible is slower but works everywhere: pick it if first-time setup or the Hearth app's window shows a black screen. Steam Game Mode isn't affected."
         options: [{ value: "auto", label: "Automatic" }, { value: "fast", label: "Fast" }, { value: "compatible", label: "Compatible" }]
         current: page.nvDrawing
         onChosen: v => { page.nvDrawing = v; Quickshell.execDetached(["sh", "-c", v === "auto" ? "rm -f \"$1\"" : "mkdir -p \"$(dirname \"$1\")\" && printf %s \"$2\" > \"$1\"", "sh", page.nvFile, v]); }

@@ -33,6 +33,10 @@ Singleton {
     property string accentFrom: ""       // "wallpaper": the accent was worked out from your wallpaper (once, when you picked it)
     property var wallSwatches: []        // the colours "From wallpaper" found (shown as swatches)
     property bool loaded: false
+    // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
+    // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
+    // defaults they always had.
+    property int defaultsGen: 1
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
         "screenOffMinutes", "sleepMinutes", "look", "mode", "accent", "countMe"]
@@ -90,6 +94,7 @@ Singleton {
                 return;
             }
             root.applying = true;
+            root.defaultsGen = typeof o.defaults === "number" ? o.defaults : 1;
             for (const k of root.keys) if (o[k] !== undefined && typeof o[k] === typeof root[k] && Array.isArray(o[k]) === Array.isArray(root[k]) && !writer.owns(k)) root[k] = o[k];
             root.applying = false;
             root.loaded = true;

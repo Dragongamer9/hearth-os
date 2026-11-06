@@ -527,9 +527,8 @@ class MantelHandheldPage(unittest.TestCase):
             self.assertEqual(hh.page(), {'running': False})
 
     def test_page_is_in_settings_and_quick_access(self):
-        app = (SHELL / 'SettingsApp.qml').read_text()
-        self.assertIn('{ id: "handheld"', app)
-        self.assertIn('handheld: "SetHandheld.qml"', app)
+        app = (SHELL / 'settings-pages.js').read_text()   # Hearth Settings' page registry: Gaming › Handheld
+        self.assertIn('{ id: "handheld", file: "SetHandheld.qml", cat: "gaming"', app)
         qml = (SHELL / 'SetHandheld.qml').read_text()
         for w in ('helper: "hearth-hhd"', 'job.run(["page"]', '"apply", key, JSON.stringify(value)', "Handheld Daemon isn't running", 'steamNote'):
             self.assertIn(w, qml)

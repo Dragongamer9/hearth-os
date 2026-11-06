@@ -10,6 +10,9 @@ Singleton {
     property var navTarget: null
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
     function openPage(p) { if (settingsApp) settingsApp.open(p); }
+    // Settings opened at a part of a page ("keyboard:osk", "appearance:bar"): the page (or its SetExpander) goes there.
+    property string pageAnchor: ""
+    property var frame: null          // the frame, for Back (B / Esc): a subpage goes up to its category
     property var appsNav: null        // Apps' list (AppStore.qml)
     property var clipboard: null      // the clipboard history picker (Clipboard.qml), for Settings › Clipboard
     property var apps: null           // Apps (AppStore.qml): archived, always null now (Bazaar is the app store)
@@ -28,6 +31,13 @@ Singleton {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;
         if (t) t.forceActiveFocus();
+    }
+    // B / Esc on a page: up one level (a subpage to its category's page, a category's page to the list).
+    function back() {
+        if (debNav && debNav.Window.active) { debNav.back(); return; }
+        if (appsNav && appsNav.Window.active) { appsNav.forceActiveFocus(); return; }
+        if (frame && frame.isActive && frame.isActive()) { frame.back(); return; }
+        toNav();
     }
     function toast(t) { if (help) help.toast(t); }
 }

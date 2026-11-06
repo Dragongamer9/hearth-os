@@ -4,6 +4,8 @@
 // the video itself); only "Use this" / "Use as a set" there chooses. Both through /usr/libexec/nimbus/hearth-boot-look:
 // the splash is system-wide (hearth-admin boot-splash: the boot menu gets plymouth.splash=, nothing is rebuilt), the
 // animation is yours (copied into Steam's override folder as Steam Game Mode starts).
+// In the redesign the two parts have their own homes, one file still (page.part): "splash" in System › Startup,
+// "animation" in Gaming › Startup animation; opened on its own (part "") it shows both.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -56,9 +58,11 @@ SetPage {
     }
 
     // ------------------------------------------------ boot splash
-    SetHeader { text: "Boot splash" + (admin.what === "splash" ? " · saving…" : "") }
+    // @part splash
+    SetHeader { visible: page.inPart("splash"); text: "Boot splash" + (admin.what === "splash" ? " · saving…" : ""); Layout.topMargin: 0 }
     Text {
-        Layout.fillWidth: true; Layout.leftMargin: 4
+        visible: page.inPart("splash")
+        Layout.fillWidth: true; Layout.leftMargin: 4; Layout.bottomMargin: 8
         text: "What the screen shows while Hearth OS starts. Pick one to see it play; it changes only when you choose Use this, and takes effect from the next start. If a splash can't be shown, Hearth OS starts in text as before."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
@@ -67,6 +71,7 @@ SetPage {
         delegate: SetBootCard {
             id: splashCard
             required property var modelData
+            visible: page.inPart("splash")
             item: modelData
             geo: page.geo
             inUse: !!page.st && page.st.splash.current === modelData.id
@@ -76,14 +81,17 @@ SetPage {
     }
 
     // ------------------------------------------------ Steam Game Mode's startup animation
-    SetHeader { text: "Startup animation (Steam Game Mode)" + (look.what === "movie" ? " · saving…" : "") }
+    // @part animation
+    SetHeader { visible: page.inPart("animation"); text: "Startup animation (Steam Game Mode)" + (look.what === "movie" ? " · saving…" : ""); Layout.topMargin: page.part === "animation" ? 0 : 19 }
     Text {
-        Layout.fillWidth: true; Layout.leftMargin: 4
+        visible: page.inPart("animation")
+        Layout.fillWidth: true; Layout.leftMargin: 4; Layout.bottomMargin: 8
         text: "What Steam Game Mode plays when it starts. Pick one to see it play; it changes only when you choose Use this. Hearth's animations are also in Steam's own Settings › Customization › Startup Movie."
             + (page.st && !page.st.movie.steamReady ? " Steam hasn't been set up yet: your choice is used once it has." : "")
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
     SetRow {
+        visible: page.inPart("animation")
         icon: "motion"; chevron: false
         title: "Steam's own"; sub: "The animation Steam picks (or the one you chose in Steam). Choose to use it."
         value: page.st && page.st.movie.current === "steam" ? "In use" : ""
@@ -94,6 +102,7 @@ SetPage {
         delegate: SetBootCard {
             id: movieCard
             required property var modelData
+            visible: page.inPart("animation")
             item: modelData
             geo: page.geo
             inUse: !!page.st && page.st.movie.current === modelData.id

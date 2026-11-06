@@ -122,6 +122,9 @@ for _plain, _shifted in OSK_SHIFTED.items():
     CHARS[_shifted] = (CHARS[_plain][0], True)
 
 ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
+# Hearth Settings' own shortcuts (SettingsFrame.qml): Y search, LB / RB previous / next category, ☰ close.
+SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
+                 'menu': ('KEY_LEFTCTRL', 'KEY_W')}
 SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}  # with Super
 
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
@@ -637,6 +640,12 @@ class Pad:
             return self.hold_key(ARROWS[name], down)
         if not down:
             return
+        if self.settings_front() and name in SETTINGS_KEYS:
+            # Hearth Settings: Y searches, LB / RB go to the previous / next category, ☰ closes it (its own shortcuts).
+            self.tap(*SETTINGS_KEYS[name])
+            if name == 'y':
+                self.want_osk()               # the keyboard to type the search with
+            return
         if name == 'a':
             self.tap('KEY_ENTER')
         elif name == 'b':
@@ -647,6 +656,10 @@ class Pad:
             self.want_osk()
         elif name == 'menu':
             self.out.send({'t': 'launcher'})
+
+    def settings_front(self):
+        """Hearth Settings is the window with the keys (Pad.qml says "window: <app id> Hearth Settings")."""
+        return self.keys_ctx and self.keys_why.startswith('window: ') and self.keys_why.endswith('Hearth Settings')
 
     def hold_key(self, key, down):
         if down and key not in self.keys_down:

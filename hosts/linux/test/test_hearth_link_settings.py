@@ -78,8 +78,8 @@ class Requests(unittest.TestCase):
 
 class Wiring(unittest.TestCase):
     def test_mantel_lists_the_page(self):
-        s = (SHELL / 'SettingsApp.qml').read_text()
-        self.assertIn('link: "SetLink.qml"', s)
+        s = (SHELL / 'settings-pages.js').read_text()   # Hearth Settings' page registry (the redesign)
+        self.assertIn('{ id: "link", file: "SetLink.qml", cat: "link"', s)
         self.assertTrue((SHELL / 'SetLink.qml').exists())
 
     def test_game_mode_page_and_library_entry(self):

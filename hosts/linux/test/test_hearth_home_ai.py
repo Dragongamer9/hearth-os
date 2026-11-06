@@ -596,8 +596,11 @@ class OffByDefaultAI(unittest.TestCase):
                      '"pictures-remove", "models", "sure", "really-sure"', '"voices-install"', '"voices-remove"', '"voicesOn"', '"voicesPause"',
                      '"voices-takeover"', 'Models folder', 'Paste this into the Command Center', 'Speech servers › Kokoro-FastAPI', 'wl-copy'):
             self.assertIn(want, svc)
-        self.assertIn('SetHeader { text: "AI pictures (ComfyUI)" }', svc, 'always shown: no hide-until-seen on Services')
-        self.assertIn('SetHeader { text: "AI voices (Kokoro)" }', svc)
+        # Always shown, in the redesign's "AI on this PC" group: no hide-until-seen on Services.
+        self.assertIn('SetHeader { text: "AI on this PC" }', svc)
+        self.assertIn('// AI pictures and AI voices are always shown here.', svc)
+        for row in ('"Install AI pictures (ComfyUI)"', 'title: "Install AI voices (Kokoro)"'):
+            self.assertIn(row, svc)
         ai = (SHELL / 'SetHomeAI.qml').read_text()
         self.assertIn('SetHeader { text: "Pictures and voices" }', ai, 'next to the chat models, always shown')
         self.assertIn('"Pictures"', (SHELL / 'SetHomeServer.qml').read_text(), 'the Overview counts them')

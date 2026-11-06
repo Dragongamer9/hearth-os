@@ -32,7 +32,7 @@ SetPage {
         sub: "Home › Games, read only for your devices: put game installers (GOG, itch.io), mods and emulator files there and copy them to any Hearth device at home-network speed"
         onActivated: act.run(["folder-share", "games"], () => { page.say("Games folder shared ✓ (Shared folders has its settings)"); page.refresh(); }, e => page.say(e, true))
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.g && !!page.g.games
         icon: "folder"; title: "Games folder"
         sub: page.g && page.g.games ? "\\\\" + (page.g.tsName || "this PC") + "\\" + page.g.games.name + " · " + (page.g.games.write ? "read & write" : "read only") + " · " + page.g.games.path : ""
@@ -42,7 +42,7 @@ SetPage {
         icon: "store"; chevron: false; interactive: false; title: "Steam downloads at home"
         sub: "Steam copies games between your PCs and Steam Decks on the same network by itself (Steam › Settings › Downloads › Local Network Game Transfers, on each device). Hearth never signs in to Steam or changes its settings"
     }
-    SetRow {
+    SetRow { chevron: true;
         icon: "desktops"; title: "Game archive and saves"
         sub: "Hearth Storage keeps games for your Hearth devices (download once, copy at home speed) and lets saves follow you"
         value: page.g && page.g.storage ? "On" : ""
@@ -50,7 +50,7 @@ SetPage {
     }
 
     SetHeader { text: "Play from anywhere" }
-    SetRow {
+    SetRow { chevron: true;
         icon: "wired"; title: "Remote play"
         sub: "Sunshine on this PC, Moonlight on your laptop, phone or TV. Away from home, add this PC in Moonlight by its Tailscale name"
              + (page.g && page.g.tsName ? " (" + page.g.tsName + ")" : "") + ": nothing is opened to the internet"

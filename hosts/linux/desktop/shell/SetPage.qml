@@ -1,17 +1,26 @@
-// A scrolling settings page: title, then the page's rows.
+// A scrolling settings page: its titled groups of cards. In Hearth Settings' frame (SettingsFrame.qml) the frame draws
+// the breadcrumb title ("Home server › Services") and this page only its cards; on its own (the plain list
+// SettingsSimple.qml falls back to) it shows its title itself.
+//   part: one part of a page shown on its own (About's Privacy part in Privacy & security); "" shows every part.
+//   footerLinks: [page ids] the frame adds at the end as cards (a category's other pages, under a landing page).
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Window
+import "settings-pages.js" as Reg
 
 Flickable {
     id: page
     property string title
+    property string part: ""
+    property var footerLinks: []
+    property bool framed: false       // set by the frame on the page it loads
+    function inPart(p) { return part === "" || part === p; }
     default property alias rows: col.data
-    contentHeight: col.implicitHeight + 48
+    contentHeight: col.implicitHeight + (footer.visible ? footer.implicitHeight + 10 : 0) + 56
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     Behavior on contentY { NumberAnimation { duration: Theme.quick; easing.type: Easing.OutCubic } }
-    function focusFirst() { start.nextItemInFocusChain(true).forceActiveFocus(); }
+    function focusFirst() { const n = start.nextItemInFocusChain(true); if (n) n.forceActiveFocus(); }
 
     // Lists that refresh by themselves (Wi-Fi networks, Bluetooth devices) rebuild their rows. Without this
     // the selected row disappears with the old ones and nothing has focus any more: the controller and the
@@ -47,14 +56,45 @@ Flickable {
         }
         return null;
     }
+    // The search's "open this setting": the card with this title (an expander around it opens first).
+    function focusTitle(key) {
+        const found = page.findRow(col, key) || page.findHidden(col, key);
+        if (!found) return false;
+        for (let it = found.parent; it && it !== page; it = it.parent) if (it.open === false && it.anchor !== undefined) it.open = true;
+        Qt.callLater(() => found.forceActiveFocus());
+        return true;
+    }
+    function findHidden(item, key) {
+        const kids = item ? (item.children || []) : [];
+        for (let i = 0; i < kids.length; i++) {
+            if (kids[i].activeFocusOnTab && kids[i].title === key) return kids[i];
+            const deeper = page.findHidden(kids[i], key);
+            if (deeper) return deeper;
+        }
+        return null;
+    }
 
     ColumnLayout {
         id: col
-        width: Math.min(page.width - 48, 820)
-        x: 24
-        y: 20
-        spacing: 8
+        width: Math.min(page.width - SetStyle.pageMargin * 2, SetStyle.contentMax)
+        x: SetStyle.pageMargin
+        y: page.framed ? 4 : 24
+        spacing: 3
         Item { id: start; implicitHeight: 0 }
-        Text { text: page.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold; Layout.bottomMargin: 6 }
+        Text { visible: !page.framed; text: page.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 28; font.weight: Font.DemiBold; Layout.bottomMargin: 10 }
+    }
+    // A category's other pages, after the landing page's own cards.
+    ColumnLayout {
+        id: footer
+        visible: page.footerLinks.length > 0
+        width: col.width
+        x: col.x
+        y: col.y + col.height + 10
+        spacing: 3
+        SetHeader { text: "More in " + ((Reg.category((Reg.page(page.footerLinks[0] || "") || {}).cat || "") || {}).label || "this category") }
+        Repeater {
+            model: page.footerLinks
+            delegate: SetLinkCard { required property string modelData; target: modelData }
+        }
     }
 }

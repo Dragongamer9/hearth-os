@@ -661,10 +661,9 @@ class QuickAccess(unittest.TestCase):
 
 class Wiring2(unittest.TestCase):
     def test_pages_are_registered(self):
-        s = (SHELL / 'SettingsApp.qml').read_text()
+        s = (SHELL / 'settings-pages.js').read_text()   # Hearth Settings' page registry (the redesign)
         for pid, f in (('hs-backups', 'SetHomeBackups.qml'), ('hs-people', 'SetHomePeople.qml'), ('hs-alerts', 'SetHomeAlerts.qml')):
-            self.assertIn('"%s": "%s"' % (pid, f), s)
-            self.assertIn('"%s": "Home server"' % pid, s)
+            self.assertIn('{ id: "%s", file: "%s", cat: "hs"' % (pid, f), s)
             qml = (SHELL / f).read_text()
             self.assertIn('helper: "hearth-home-server"', qml)
             self.assertNotIn('FileView', qml)

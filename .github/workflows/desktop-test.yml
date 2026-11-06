@@ -173,12 +173,61 @@ jobs:
           ipc launcher toggle; grim shots/4-launcher.png || true; ipc launcher toggle
           ipc launcher section games; grim shots/4b-launcher-games.png || true; ipc launcher close
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
-          # Hearth Settings, every page
-          n=6
-          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps remote games storage steam; do
-            ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
+          # ---- Hearth Settings (the redesign, docs/MANTEL.md "Settings"): every page in settings-pages.js, Home first.
+          # Opening them writes nothing: every settings file is the same afterwards (settings never change by themselves).
+          mkdir -p shots/settings-redesign
+          snap() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/.config/mimeapps.list" -maxdepth 2 -type f \( -name '*.json' -o -name '*.conf' -o -name '*.list' -o -name 'nvidia-drawing' \) 2>/dev/null \
+            | grep -v -E 'cache|state|/log|recent|-seen' | sort | xargs -r sha256sum; }
+          snap > shots/settings-redesign/files-before.txt
+          n=6; opened=0
+          for p in $(sed -n 's/^    { id: "\([a-z0-9-]*\)", file:.*/\1/p' hosts/linux/desktop/shell/settings-pages.js); do
+            ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1)); opened=$((opened+1))
           done
+          ipc settings close; sleep 2
+          snap > shots/settings-redesign/files-after.txt
+          if ! diff -q shots/settings-redesign/files-before.txt shots/settings-redesign/files-after.txt >/dev/null; then
+            echo "::error title=Settings redesign::opening every Settings page changed: $(diff shots/settings-redesign/files-before.txt shots/settings-redesign/files-after.txt | grep '^[<>]' | awk '{print $NF}' | sort -u | tr '\n' ' ')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Settings redesign::opened all $opened Settings pages; no settings file changed ($(wc -l < shots/settings-redesign/files-before.txt) files checked)"
+          fi
+          grep -q "the new frame didn't load" "$LOG" && { echo "::error title=Settings redesign::Settings fell back to the plain list: $(grep -B4 "the new frame didn't load" "$LOG" | head -6 | cut -c1-200 | tr '\n' '|')"; touch shots/FAILED; }
+          if grep -E "(Set[A-Z][A-Za-z]*|Settings(Frame|Simple|App)|StartInChoice)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Settings redesign::$(grep -E "(Set[A-Z][A-Za-z]*|Settings(Frame|Simple|App)|StartInChoice)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          # The redesign's pictures: Home, every category's page, subpages, the controller, search, B / LB / RB.
+          rs() { ipc settings close; ipc settings page "$1"; sleep 3; grim "shots/settings-redesign/$2.png" || true; }
+          rs home 01-home
+          rs system 02-system; rs net 03-network-and-internet; rs bt 04-bluetooth-and-devices; rs link 05-hearth-link
+          rs appearance 06-personalization; rs apps-home 07-apps; rs gaming 08-gaming; rs accounts 09-accounts
+          rs hs-overview 10-home-server; rs privacy 11-privacy-and-security; rs accessibility 12-accessibility; rs updates 13-updates-and-recovery
+          rs display 20-system-display; rs hs-services 21-home-server-services; rs bar-dock 22-personalization-bar-and-dock
+          rs keyboard:osk 23-keyboard-osk-expander-open; rs startup-animation 24-gaming-startup-animation; rs player-count 25-privacy-player-count
+          rs backup 26-updates-backup-and-help; rs hs-ai 27-home-server-services-ai-chat; rs wifi 28-network-wifi
+          # The controller: into Home and down two cards (the focus ring); RB (Ctrl+PgDn) to the next category; B up.
+          rs home 30-home; wtype -k Right; sleep 1; wtype -k Down; wtype -k Down; sleep 1; grim shots/settings-redesign/30-home-focus-ring.png || true
+          wtype -M ctrl -k Page_Down -m ctrl; sleep 3; grim shots/settings-redesign/31-rb-next-category.png || true
+          rs hs-services 32-services; wtype -k Right; sleep 1; wtype -k Escape; sleep 3; grim shots/settings-redesign/32-b-up-to-home-server.png || true
+          # Search (Y = Ctrl+F): single settings with their path, then pages; old page names still match.
+          rs home 33-home; wtype -M ctrl -k f -m ctrl; sleep 1; wtype sleep 2>/dev/null || true; sleep 2; grim shots/settings-redesign/33-search-sleep.png || true
+          wtype -k Down; wtype -k Down; sleep 1; grim shots/settings-redesign/34-search-sleep-picked.png || true
+          wtype -k Return; sleep 3; grim shots/settings-redesign/35-search-opened-the-setting.png || true
+          rs home 36-home; wtype -M ctrl -k f -m ctrl; sleep 1; wtype appearance 2>/dev/null || true; sleep 2; grim shots/settings-redesign/36-search-old-name.png || true
+          wtype -k Escape; wtype -k Escape; ipc settings close
+          # The handheld layout (1280×800): the same labels, tighter.
+          wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; sleep 4
+          rs home 40-handheld-home; rs gaming 41-handheld-gaming; rs handheld 42-handheld-gaming-handheld; rs hs-services 43-handheld-services
+          wtype -M ctrl -k f -m ctrl; sleep 1; wtype wifi 2>/dev/null || true; sleep 2; grim shots/settings-redesign/44-handheld-search.png || true
           ipc settings close
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 3
+          # Two other looks (the test sets them in desktop.json, then puts the file back exactly as it was).
+          D="$HOME/.local/share/nimbus/desktop.json"; cp "$D" /tmp/desktop.json.before
+          for lk in glass hearth; do
+            python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["look"]=sys.argv[2]; open(p,"w").write(json.dumps(d))' "$D" "$lk"; sleep 4
+            rs home "50-look-$lk-home"; rs appearance "51-look-$lk-personalization"; rs hs-services "52-look-$lk-services"
+          done
+          ipc settings close; cp /tmp/desktop.json.before "$D"; sleep 3
           # ---- Moved from the old Game Mode (docs/SETTINGS-MOVE.md): each new or changed page, with the controller.
           mkdir -p shots/settings-move
           # (Closed first: a fresh window puts the controller on the page list, so Right goes into the page.)
@@ -844,6 +893,7 @@ jobs:
             ipc launcher close
             ipc calendar open; grim "$m/$1-$2-4-notifications-dashboard.png" || true; ipc calendar close
             ipc settings page appearance; sleep 2; grim "$m/$1-$2-5-settings-appearance.png" || true; ipc settings close
+            ipc settings page home; sleep 2; grim "$m/$1-$2-6-settings-home.png" || true; ipc settings close
           }
           (timeout 15 notify-send -a "Friends" "Mira" "Ready for co-op tonight?" || true) &
           sleep 2

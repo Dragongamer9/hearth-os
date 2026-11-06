@@ -109,7 +109,7 @@ SetPage {
         // Handheld Daemon's own settings (fan curve, power modes, lights, stick ranges...): Settings › Handheld
         // (SetHandheld.qml), Hearth's own app for them.
         SetHeader { visible: !!(page.ctl && page.ctl.backend === "hhd"); text: "Handheld Daemon" }
-        SetRow {
+        SetRow { chevron: true;
             visible: !!(page.ctl && page.ctl.backend === "hhd")
             icon: "gear"; title: "Handheld Daemon settings"; sub: "Everything for the built-in controller, power limit, fan and lights: Settings › Handheld"
             onActivated: SettingsNav.openPage("handheld")

@@ -24,12 +24,13 @@ launcher, the clock's panel and Settings, and adds six new looks next to Hearth 
 - **Notification centre + dashboard** (`ClockPanel.qml`, from the centre pill or the bell): notifications with Do not
   disturb and Clear all on the left; the month with Hearth Calendar's events, what's playing, the weather and the
   system (CPU, GPU, memory, temperature; read only while it's open) on the right.
-- **Settings** (`SettingsApp.qml`): a search field over the page list (type anywhere on the list to search), the
-  pages in groups (Connections, Look and sound, Devices, System). Every page is still there.
-- **Settings › Appearance** (`SetAppearance.qml`): the **Look** as eight picture cards; **Mode** Dark / Light /
-  **Sunset**; **Bar and dock** (the look's own, floating islands or a full-width bar; the dock always shown or
-  auto-hide); the **accent** (presets, **From wallpaper**, a hue, a typed colour); the wallpaper; **Desktop clock
-  and weather**; **Panel transparency**; a way to the on-screen keyboard's style; Night light and Reduce motion.
+- **Settings** (the redesign, approved from the mockups; see "Settings" below): 12 categories plus Home, setting
+  cards in titled groups, breadcrumbs, a search that finds single settings, and the controller's hints.
+- **Settings › Personalization** (was Appearance, `SetAppearance.qml`): the **Look** as eight picture cards; then
+  **Your style**: **Mode** Dark / Light / **Sunset**, the **accent** (presets on the card; From wallpaper, a hue and a
+  typed colour in "More accent colours"), the **wallpaper**; then **Desktop**: **Bar and dock** (its own page,
+  `SetBarDock.qml`), **Desktop clock and weather**, **Panel transparency**, a way to the on-screen keyboard's style.
+  Night light moved to System › Display, Reduce motion to Accessibility (the same settings).
 - **Handheld screens** (1440 px wide or less, like 1280×800): the bar keeps the essentials (the mark, desktops, clock,
   Wi-Fi, volume, battery, Game Mode); Friends is in Quick settings' header; the dock's icons are bigger. After you
   use the controller in Hearth's menus, a **button-hint strip** shows for a while (`HintStrip.qml`).
@@ -54,6 +55,47 @@ Tokens: `islandStyle` (floating | bar | shelf), `frame` (plain | chamfer | neon 
 `dockAutoHide`, `deskClock`, `perfIsland`, `edgeGlow`, `scanlines`, `hints`, `desc`, `order`, and the usual
 `font`, `corner`, `windowCorner`, `wallpaper`.
 
+## Settings (the redesign)
+
+Hearth Settings (`SettingsApp.qml`) opens on **Home** every time. On the left: your account, **search** (Y on the
+controller, Ctrl+F, or start typing on the list) and the categories: Home, System, Network & internet, Bluetooth &
+devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy & security, Accessibility,
+Updates & recovery. On the right the page under a **breadcrumb title** ("Home server › Services"; click a part to go
+back there). At the bottom what the controller does: **A** select, **B** back (a subpage goes up to its category, a
+category to the list, the list closes Settings), **Y** search, **LB / RB** previous / next category, **☰** close
+(hearth-pad sends Ctrl+F, Ctrl+PgUp / PgDn and Ctrl+W to the Settings window). A big ring shows the controller's place.
+
+- **The registry** (`settings-pages.js`): the categories and every page, each with its one home, label, icon, a
+  line for its card, search words and its old name. Adding a page is one entry. Every page id from before still
+  opens (deep links, notifications, the launcher, `hearth-settings <page>`); `page:part` opens at a part of a page
+  (`keyboard:osk` opens the on-screen keyboard's expander; `appearance:bar` opens Bar and dock).
+- **Home** (`SetHome.qml`): this PC (its wallpaper, name and **Rename**, the device name's home now), Wi-Fi /
+  Bluetooth / Updates / Hearth Link tiles, Recommended settings (Night light, Light mode while you play, Do not
+  disturb, Start in), Bluetooth devices, Storage, Home server, Your look. On the live USB, an Install Hearth banner.
+- **Category pages** (`SetCategory.qml`): their pages as cards with a live status where it's cheap to read, then link
+  cards to settings whose real home is elsewhere. Gaming (`SetGaming.qml`) and Home server (`SetHomeServer.qml`) have
+  their own landing pages; Hearth Link, Personalization, Accessibility and Updates & recovery open their page, with
+  the category's other pages as cards at the end.
+- **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,
+  `SetBanner`, `SetLinkCard`, `SetButton`, sizes and the good / warn colours in `SetStyle.qml`): icon, title, one
+  line, the control or a status chip on the right, a chevron only when it opens a page. Every colour is a Theme token,
+  so all eight looks and light mode work. A wide card puts its choices on the right; a narrow one under the title.
+- **Search** (`settings-index.js`, made by `tools/build-settings-index.py` from every page's cards): single settings
+  with their path ("Go to sleep after · System › Power & battery"), pages, and the pages' old names ("Appearance").
+  Opening a result puts the focus on that card (opening its expander if it's folded away).
+- **Where things went** (the IA table): Tailscale → Network & internet (a link card stays in Home server); Remote play
+  → Gaming (listed in Home server › Services too); Home server › AI → Home server › Services › AI chat; Boot &
+  startup → System › Startup (the splash) and Gaming › Startup animation; About's Privacy → Privacy & security ›
+  Player count, its Help and logs and Backup → Updates & recovery › Backup and help (one file, `page.part`); Start in
+  → Gaming (`StartInChoice.qml`, also on Home); Users → Accounts; Keyboard's on-screen keyboard is an expander.
+- **Always opens**: the frame (`SettingsFrame.qml`) is loaded by file name; if it can't load, Settings shows the plain
+  list of every page (`SettingsSimple.qml`). A page that can't load says so and the rest keeps working.
+- **New installs** start Steam-style with the **Sky** accent: `/etc/skel`'s `desktop.json` says `"defaults": 2`, and
+  Theme.qml and hearth-theme give Steam-style's own accent as Sky for such a file. Existing users (no `defaults` key)
+  keep Steam blue. Nothing is written for you: it's a default worked out when the file is read.
+- **The handheld layout** (a window under 1300 px wide, like 1280×800): a narrower list and tighter cards, the same
+  labels.
+
 ## Settings never change by themselves (red flag 9)
 
 - New options are new keys in `desktop.json`, saved one at a time through `SettingsWriter.qml` (merge on write,
@@ -68,6 +110,9 @@ Tokens: `islandStyle` (floating | bar | shelf), `frame` (plain | chamfer | neon 
   your accent; a wallpaper set from somewhere else doesn't recompute it.
 - Existing users keep their look, accent, mode, wallpaper, pinned apps and dock order: the pins are the same
   `desk.json`; nothing is migrated.
+- **Opening a Settings page writes nothing.** The Desktop Mode test opens every page in `settings-pages.js` and checks
+  that no settings file changed; the frame, the cards and the category pages never change a setting
+  (`test_settings_redesign.py`). Moved switches keep their keys (Night light is still `nightLight`).
 
 ## Desktop Mode always starts (red flag 2)
 
@@ -88,5 +133,7 @@ are loaded the same way, so one bad part only loses itself. Nothing here touches
 ## Checks
 
 `hosts/linux/test/test_mantel_2026.py` (the looks, settings, Sunset, Game Mode in every look, the fallback,
-hearth-stats) and the Desktop Mode test (`desktop-test.yml`), which renders every look with Quick settings, the
-launcher, the dashboard and Settings › Appearance into `looks/mantel/` on the `ci/desktop-shots-*` branch.
+hearth-stats), `test_settings_redesign.py` (Settings' categories, every old page's home, the search index, the
+frame's fallback, the controller, opening writes nothing, the Sky default) and the Desktop Mode test (`desktop-test.yml`), which renders every look with Quick settings, the
+launcher, the dashboard and Settings (Personalization and Home) into `looks/mantel/`, and the redesign's pages,
+search, controller and handheld layout into `settings-redesign/`, on the `ci/desktop-shots-*` branch.

@@ -144,13 +144,13 @@ SetPage {
             sub: modelData.every === "hourly" ? "Every hour" : (modelData.every === "weekly" ? "Weekly at " : "Daily at ") + modelData.at
         }
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: page.step === 3
         icon: "update"; title: page.st && page.st.backups && page.st.backups.length ? "Add another backup" : "Set up a backup"
         sub: page.st && page.st.shares.length ? "Backups & sync: pick where it goes, how often and a password" : "Share a folder first (the step before): backups are of your shared folders"
         onActivated: SettingsNav.openPage("hs-backups")
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: page.step === 3
         icon: "desktops"; title: "Hearth Storage's backups"
         sub: "Your Hearth devices back up their saves and screenshots to this PC (Hearth Link › Hearth Storage)"
@@ -169,7 +169,7 @@ SetPage {
         icon: "back"; title: "Back"; chevron: false
         onActivated: page.back()
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: page.step === 4
         icon: "check"; title: "Go to Home server"
         onActivated: act.run(["set", "setupDone", "on"], () => SettingsNav.openPage("hs-overview"), () => SettingsNav.openPage("hs-overview"))

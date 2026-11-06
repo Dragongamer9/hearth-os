@@ -1,5 +1,7 @@
 // Hearth Settings › About: what this device is, help and logs, and backing up Hearth (the last two moved from the
-// archived Game Mode's Settings › System: docs/SETTINGS-MOVE.md).
+// archived Game Mode's Settings › System: docs/SETTINGS-MOVE.md). In the redesign its parts have their own homes, one
+// file still (page.part): "about" in System › About, "privacy" (the player count) in Privacy & security, "backup" (Help
+// and logs, Backup) in Updates & recovery › Backup and help. Opened on its own (part ""), it shows them all.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -58,7 +60,9 @@ SetPage {
         ["System", info.os], ["Version", hearthVersion || info.ver], ["Kernel", info.kernel], ["Desktop", info.shell ? "Mantel · " + info.shell : ""]
     ].filter(r => r[1])
 
+    // @part about
     RowLayout {
+        visible: page.inPart("about")
         Layout.fillWidth: true; Layout.bottomMargin: 10
         spacing: 16
         Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 64; Layout.preferredHeight: 64; fillMode: Image.PreserveAspectFit; smooth: true }
@@ -72,6 +76,7 @@ SetPage {
         model: page.facts
         delegate: SetRow {
             required property var modelData
+            visible: page.inPart("about")
             interactive: false; chevron: false
             implicitHeight: 52
             title: modelData[0]; value: modelData[1]
@@ -80,8 +85,17 @@ SetPage {
 
     // ------------------------------------------------ Privacy: the player count (hearth-counter, sent by a systemd user
     // timer; the Hearth app sent it before). On unless turned off, as before.
-    SetHeader { text: "Privacy" }
+    SetRow {
+        visible: page.inPart("about") && !!page.info.host
+        chevron: true
+        icon: "edit"; title: "Rename this PC"; sub: "Its name on your network and your other devices · on Home"
+        onActivated: SettingsNav.openPage("home")
+    }
+
+    // @part privacy
+    SetHeader { text: "Privacy"; visible: page.inPart("privacy") }
     SetSwitch {
+        visible: page.inPart("privacy")
         icon: "user"; title: "Count me in the player count"
         sub: "Hearth OS tells its counter it's running about every 10 minutes: a number made from this device, the edition and the version. No names, games or accounts."
         checked: Settings.countMe
@@ -102,19 +116,22 @@ SetPage {
             page.logsMsg = code === 0 && m ? "Sent. Share this code with the developer: " + m[1] : "Couldn't send them: " + ((sendErr.text || "").trim().split("\n").pop() || "the Hearth app isn't on this system");
         }
     }
-    SetHeader { text: "Help and logs" }
+    // @part backup
+    SetHeader { text: "Help and logs"; visible: page.inPart("backup") }
     SetRow {
+        visible: page.inPart("backup")
         icon: "file"; title: "Logs"
         sub: "Read the system's and Hearth's logs, search them, and save or send them"
         onActivated: { Quickshell.execDetached(["hearth-tools", "--app", "logs"]); SettingsNav.toast("Opening Logs…"); }
     }
     SetRow {
+        visible: page.inPart("backup")
         icon: "update"; title: page.sending ? "Sending…" : "Send logs to the developer"
         sub: "Hearth's and the system's logs, personal details taken out, sent to Hearth OS's bug-report service. You get a short code to share; they're kept 14 days."
         onActivated: if (!page.sending) { page.sending = true; page.logsMsg = ""; sendLogs.running = true; }
     }
     Text {
-        visible: page.logsMsg !== ""
+        visible: page.logsMsg !== "" && page.inPart("backup")
         Layout.fillWidth: true
         text: page.logsMsg; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
@@ -125,11 +142,12 @@ SetPage {
     property bool backingUp: false
     HearthCall { id: core }
     Component.onCompleted: core.call("backup.status", {}, v => page.backup = v, e => page.backupMsg = e)
-    SetHeader { text: "Backup" }
+    SetHeader { text: "Backup"; visible: page.inPart("backup") }
     Repeater {
         model: page.backup ? (page.backup.destinations || []).slice(0, 4) : []
         delegate: SetRow {
             required property var modelData
+            visible: page.inPart("backup")
             icon: "folder"; title: "Back up Hearth to " + modelData.label
             sub: "Settings, profiles, favorites, collections, play time and your own games. Store sign-ins stay out."
             onActivated: {
@@ -141,13 +159,13 @@ SetPage {
             }
         }
     }
-    SetRow {
+    SetRow { chevron: true;
         icon: "restart"; title: "Restore from a backup"
         sub: (page.backup && (page.backup.backups || []).length ? page.backup.backups.length + " found. " : "") + "On a new device, or after a reinstall. Opens in the Hearth app's window for now."
         onActivated: core.openPage("system", "Opening Restore in the Hearth app…")
     }
     Text {
-        visible: page.backupMsg !== ""
+        visible: page.backupMsg !== "" && page.inPart("backup")
         Layout.fillWidth: true
         text: page.backupMsg; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }

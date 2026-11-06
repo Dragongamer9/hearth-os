@@ -671,15 +671,16 @@ class HiddenUntilSeen(unittest.TestCase):
 
 class Wiring(unittest.TestCase):
     def test_settings_pages_are_registered(self):
-        s = (SHELL / 'SettingsApp.qml').read_text()
+        s = (SHELL / 'settings-pages.js').read_text()   # Hearth Settings' page registry (the redesign)
         for pid, f in (('hs-overview', 'SetHomeServer.qml'), ('hs-shares', 'SetHomeShares.qml'), ('hs-drives', 'SetHomeDrives.qml'),
                        ('hs-tailscale', 'SetHomeTailscale.qml'), ('hs-setup', 'SetHomeSetup.qml')):
-            self.assertIn('"%s": "%s"' % (pid, f), s)
+            # Home server is its own category; Tailscale's one home is Network & internet, with a link card in Home server.
+            self.assertIn('{ id: "%s", file: "%s", cat: "%s"' % (pid, f, 'net' if pid == 'hs-tailscale' else 'hs'), s)
             self.assertTrue((SHELL / f).exists(), f)
-            self.assertIn('"%s": "Home server"' % pid, s)
             qml = (SHELL / f).read_text()
             self.assertIn('helper: "hearth-home-server"', qml)
             self.assertNotIn('FileView', qml, 'settings go through hearth-home-server only')
+        self.assertIn('hs: [{ page: "hs-tailscale"', s)
 
     def test_the_user_helper_never_logs_the_sign_in_link(self):
         src = (SHELL / 'hearth-home-server').read_text()
