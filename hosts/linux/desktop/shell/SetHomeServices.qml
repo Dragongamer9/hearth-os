@@ -269,7 +269,7 @@ SetPage {
         interactive: !!page.voi && page.voi.pinned && page.voi.podman
         sub: (page.voi && page.voi.error ? "Didn't install: " + page.voi.error + ". Try again. " : "")
              + (page.voi && !page.voi.pinned ? "Comes with the next Hearth OS update"
-                : "Natural voices for the Hearth AI Command Center. Kokoro-FastAPI " + (page.voi ? page.voi.tag : "") + " for the CPU (no graphics card needed), in Podman, by the exact image Hearth pins (Podman checks it): about 2 GB")
+                : "Natural voices for the Hearth AI Command Center. Kokoro-FastAPI " + (page.voi ? page.voi.tag : "") + " for the CPU (no graphics card needed), in Podman, by the exact image Hearth pins (Podman checks it): a few GB")
         onActivated: if (page.voi && page.voi.pinned && page.voi.podman) act.run(["voices-install"], () => { page.say("Downloading Kokoro…"); page.refresh(); }, e => page.say(e, true))
     }
     SetSwitch {

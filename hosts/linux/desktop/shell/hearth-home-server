@@ -1903,8 +1903,8 @@ COMFY_COMMIT = '423cbd20511becb1f16122ab518e92e58bfa03d9'      # what COMFY_TAG 
 TORCH_INDEX = 'https://download.pytorch.org/whl/cu128'         # PyTorch's own CUDA 12.8 builds (RTX 50 series needs them)
 COMFY_PORT = 8188
 KOKORO_IMAGE = 'ghcr.io/remsky/kokoro-fastapi-cpu'
-KOKORO_TAG = ''                                                # the release the digest below is (for the page)
-KOKORO_DIGEST = ''                                             # sha256:...: pulled and run only by this digest
+KOKORO_TAG = 'v0.9.2'                                          # the release the digest below is (for the page)
+KOKORO_DIGEST = 'sha256:cbcc28802fb5d1eaaba8b91e38b0e872a669e85831c513cf6a29c709cbe25405'   # v0.9.2: pulled and run only by this
 KOKORO_PORT = 8880
 KOKORO_NAME = 'hearth-kokoro'
 HOME_AI_STATE = os.path.join(STATE_HOME, 'nimbus', 'home-ai.json')
@@ -2271,7 +2271,7 @@ def kokoro_job():
             raise Fail('Kokoro\'s image isn\'t pinned in this Hearth version yet')
         if not podman_ok():
             raise Fail('Podman isn\'t on this PC')
-        ai_state_set(name, step='downloading Kokoro-FastAPI (about 2 GB)', progress=10)
+        ai_state_set(name, step='downloading Kokoro-FastAPI (a few GB)', progress=10)
         code, out = cmd(['podman', 'pull', ref], 3 * 3600)
         if code != 0 or cmd(['podman', 'image', 'exists', ref], 30)[0] != 0:
             raise Fail('Kokoro\'s image didn\'t download: ' + out.strip()[-200:])
