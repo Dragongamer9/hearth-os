@@ -82,6 +82,7 @@ MOONLIGHT = 'com.moonlight_stream.Moonlight'
 DEFAULT_W, DEFAULT_H = 420, 640
 MIN_W, MIN_H = 320, 400
 MARGIN = 8
+DECOR = 30          # labwc's title bar sits above the window Hearth places (X windows are placed by their inside)
 SECRET_MAX = 128
 
 # The window classes each client's window has (X11 WM_CLASS, which labwc also gives as the app id): Mantel finds the
@@ -420,16 +421,18 @@ def geometry(edge, screen, bar, anchor, size):
     h = min(max(MIN_H, size[1]), sh - 2 * MARGIN)
     bar = max(0, int(bar))
 
-    def along(length, total, a):
+    h = min(h, sh - 2 * MARGIN - DECOR)
+
+    def along(length, total, a, lead=0):
         if a is None or a < 0:
             return total - length - MARGIN
-        return min(max(MARGIN, int(a - length / 2)), total - length - MARGIN)
+        return min(max(MARGIN + lead, int(a - length / 2)), total - length - MARGIN)
     if edge == 'top':
-        x, y = along(w, sw, anchor), bar + MARGIN
+        x, y = along(w, sw, anchor), bar + MARGIN + DECOR
     elif edge == 'left':
-        x, y = bar + MARGIN, along(h, sh, anchor)
+        x, y = bar + MARGIN, along(h, sh, anchor, DECOR)
     elif edge == 'right':
-        x, y = sw - bar - w - MARGIN, along(h, sh, anchor)
+        x, y = sw - bar - w - MARGIN, along(h, sh, anchor, DECOR)
     else:
         x, y = along(w, sw, anchor), sh - bar - h - MARGIN
     return {'x': sx + max(0, x), 'y': sy + max(0, y), 'w': w, 'h': h}

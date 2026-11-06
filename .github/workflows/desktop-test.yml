@@ -636,7 +636,7 @@ jobs:
           ipc discord toggle; sleep 2; grim shots/discord-1-chooser.png || true
           wtype -k Right -k Right 2>/dev/null || true; sleep 1; grim shots/discord-2-chooser-dorion.png || true
           wtype -k Left -k Left -k Return 2>/dev/null || true; sleep 8; grim shots/discord-3-quick-window.png || true
-          echo "::notice title=discord window::$(xdotool search --onlyvisible --class '^discord$' getwindowgeometry %@ 2>&1 | tr '\n' ' ' | head -c 400)" 
+          echo "::notice title=discord window::$(DISPLAY=${DISPLAY:-:0} xdotool search --onlyvisible --class '^discord$' getwindowgeometry %@ 2>&1 | tr '\n' ' ' | head -c 400)" 
           ipc discord toggle; sleep 2; grim shots/discord-4-hidden.png || true
           if pgrep -f fake-discord-stand-in >/dev/null || pgrep -f /tmp/fakebin/discord >/dev/null; then echo "::notice title=discord::hidden, still running (notifications keep working)"; else echo "::error title=discord::hiding the quick window ended Discord"; fi
           ipc discord toggle; sleep 2; grim shots/discord-5-shown-again.png || true

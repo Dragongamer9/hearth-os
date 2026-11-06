@@ -201,15 +201,15 @@ class Windows(Base):
         b = hd.geometry('bottom', screen, 48, -1, (420, 640))
         self.assertEqual(b, {'x': 1920 - 420 - 8, 'y': 1080 - 48 - 640 - 8, 'w': 420, 'h': 640})
         t = hd.geometry('top', screen, 40, 1000, (420, 640))
-        self.assertEqual((t['x'], t['y']), (1000 - 210, 48))
+        self.assertEqual((t['x'], t['y']), (1000 - 210, 40 + 8 + hd.DECOR), 'below the bar and its title bar')
         l = hd.geometry('left', screen, 64, 300, (420, 640))
-        self.assertEqual((l['x'], l['y']), (72, 8), 'centred on the button but kept on the screen')
+        self.assertEqual((l['x'], l['y']), (72, 8 + hd.DECOR), 'centred on the button but kept on the screen, title bar included')
         r = hd.geometry('right', screen, 64, -1, (420, 640))
         self.assertEqual((r['x'], r['y']), (1920 - 64 - 420 - 8, 1080 - 640 - 8))
         # A second screen to the right, a small handheld screen, a size bigger than the screen.
         self.assertEqual(hd.geometry('bottom', (1280, 800, 1920, 0), 48, -1, (420, 640))['x'], 1920 + 1280 - 420 - 8)
         small = hd.geometry('bottom', (800, 600, 0, 0), 48, -1, (2000, 2000))
-        self.assertEqual((small['w'], small['h']), (784, 584))
+        self.assertEqual((small['w'], small['h']), (784, 584 - hd.DECOR))
         self.assertGreaterEqual(small['y'], 0)
         for edge in ('top', 'bottom', 'left', 'right'):
             g = hd.geometry(edge, screen, 48, 5000, (420, 640))
