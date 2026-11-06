@@ -134,8 +134,9 @@ example, is behind the home server's Tailscale-only rule).
   them): Ollama `GET /api/tags` (and `/api/ps`) on 11434; Kokoro-FastAPI `GET /v1/audio/voices` on 8880; ComfyUI `GET
   /system_stats` (models from `/models/checkpoints`, busy from `/queue`) on 8188; whisper on 8000 (an OpenAI-style
   `/v1/models` with a whisper model: speaches / faster-whisper-server) or 9000 (whisper-asr-webservice's
-  `/openapi.json`). A Hearth-installed app (`/var/lib/hearth/apps/<name>`) that isn't answering is listed as not
-  healthy. Whether a service can be reached from Tailscale comes from `/proc/net/tcp` (listening on every address or the
+  `/openapi.json`). A Hearth-installed app (`/var/lib/hearth/apps/<name>`), or the AI, AI pictures or AI voices that
+  Settings › Home server runs here (`home-server.json`, read only), that isn't answering (stopped while you play, still
+  starting) is listed as not healthy rather than missing. Whether a service can be reached from Tailscale comes from `/proc/net/tcp` (listening on every address or the
   Tailscale address, not only 127.0.0.1).
 - **The service** `hearth-ai-share.service` is your own user service (as you; Python), enabled by Settings only while
   "Share this device's AI" or "Let the Command Center find my devices here" is on, and disabled again when both are

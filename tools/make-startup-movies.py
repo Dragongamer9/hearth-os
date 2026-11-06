@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hearth OS's startup animations for Steam Game Mode (1.1): four original ~5 second animations, made here from the
+"""Hearth OS's startup animations for Steam Game Mode (1.1, three more in the next update): seven original ~5 second animations, made here from the
 Hearth mark with code (no Valve/Steam material), each for 16:9 (1920x1080) and 16:10 (1920x1200) screens, as VP9
 WebM, into os/system_files/usr/share/hearth/startup-movies/hearth-<id>-<16x9|16x10>.webm.
 
@@ -7,6 +7,12 @@ WebM, into os/system_files/usr/share/hearth/startup-movies/hearth-<id>-<16x9|16x
   sweep   Slate light sweep: a blue light sweeps across the slate and leaves the mark and the name behind it
   reveal  Logo reveal: the arch draws itself, the flame grows inside it, the name fades in letter by letter
   embers  Rising embers: embers drift up, gather into the flame, the mark settles
+  aurora     Aurora: northern lights ripple across a night sky, the mark rises under them with a teal halo
+  starlight  Starlight: stars come out, nine of them drift into the shape of the Hearth arch and join up like a
+             constellation, then the arch and the flame light up
+  orbit      Ember orbit: three embers spiral in and meet in the flame, which lights up; the embers keep circling
+
+The last three pair with the boot splashes of the same names (hearth-aurora, hearth-starlight, hearth-orbit).
 
 hearth-boot-look puts the chosen one in Steam's override folder (Settings › Boot & startup).
 
@@ -32,6 +38,9 @@ BLUE = np.array([0x1a, 0x9f, 0xff], float)
 SKY = np.array([0x66, 0xc0, 0xf4], float)
 WARM = np.array([0xff, 0x9a, 0x3d], float)
 TEXT = (0xdc, 0xe5, 0xed)
+TEAL = np.array([0x2f, 0xd6, 0xb5], float)
+VIOLET = np.array([0x8a, 0x7d, 0xff], float)
+STAR = np.array([0xe6, 0xf0, 0xff], float)
 
 
 def ease(t):
@@ -237,7 +246,159 @@ def rising_embers(sc, t):
     return sc.fade_out(img, t)
 
 
-ANIMS = {'flame': flame_ignition, 'sweep': light_sweep, 'reveal': logo_reveal, 'embers': rising_embers}
+def glow_spot(base, x, y, rad, color, strength):
+    """An additive soft dot (only the pixels near it: fast at full size)."""
+    h, w = base.shape[:2]
+    r = rad * 6
+    xa, xb = int(max(0, x - r)), int(min(w, x + r))
+    ya, yb = int(max(0, y - r)), int(min(h, y + r))
+    if xb <= xa or yb <= ya:
+        return
+    yy, xx = np.mgrid[ya:yb, xa:xb].astype(float)
+    d2 = ((xx - x) ** 2 + (yy - y) ** 2) / max(0.5, rad * rad)
+    base[ya:yb, xa:xb] += np.exp(-d2 * 0.5)[..., None] * color * strength
+
+
+def aurora(sc, t):
+    base = sc.bg * 0.72
+    # The lights, worked out at a quarter of the size (they're soft) and scaled up.
+    q = 4
+    hw, hh = sc.w // q, sc.h // q
+    y, x = np.mgrid[0:hh, 0:hw].astype(float)
+    u, v = x / hw, y / hh
+    light = np.zeros((hh, hw, 3))
+    on = ramp(t, 0.1, 1.8) * (1 - 0.35 * ramp(t, 3.0, 4.2))
+    for k, (col, top, amp, sp) in enumerate(((TEAL, 0.20, 0.07, 0.8), (BLUE * 0.6 + TEAL * 0.4, 0.27, 0.05, -0.6),
+                                             (VIOLET, 0.15, 0.04, 0.5))):
+        yc = top + amp * np.sin(u * 2 * np.pi * 1.1 + t * sp + k * 1.7) + 0.02 * np.sin(u * 2 * np.pi * 3.3 - t * 1.3 + k)
+        below = np.exp(-((v - yc) / 0.035) ** 2)
+        above = np.exp(-((v - yc) / 0.12) ** 2)
+        band = np.where(v < yc, above, below)
+        rays = 0.8 + 0.2 * np.sin(u * 2 * np.pi * 37 + t * 2.0 * (k + 1) + np.sin(u * 9 + t) * 2)
+        ends = np.clip(np.sin(np.clip(u * 1.1 - 0.05, 0, 1) * np.pi), 0, 1)
+        light += (band * rays * ends)[..., None] * col * (0.55 if k < 2 else 0.35)
+    light = Image.fromarray(np.clip(light * on, 0, 255).astype(np.uint8), 'RGB').filter(ImageFilter.GaussianBlur(1.2))
+    light = np.asarray(light.resize((sc.w, sc.h), Image.BILINEAR)).astype(float)
+    base += light
+    rise = ramp(t, 1.5, 2.7)
+    base += radial(sc.w, sc.h, sc.cx, sc.cy, sc.mark * 0.85, TEAL, 0.20 * rise * (0.9 + 0.1 * math.sin(t * 3)))
+    img = sc.frame(base)
+    sc.paste(img, sc.logo, sc.cx, sc.cy + sc.mark * 0.08 * (1 - rise), sc.mark, rise)
+    sc.put_word(img, ramp(t, 2.5, 3.3))
+    return sc.fade_out(img, t)
+
+
+# The Hearth arch as nine stars (where the arch's stroke runs, in the 0-1 square of the mark: the legs at 22% and
+# 78% across, the curve's centre 49% down with a radius of 28%).
+ARCH_STARS = [(0.22, 0.84), (0.22, 0.64), (0.22, 0.49), (0.302, 0.292), (0.5, 0.21), (0.698, 0.292), (0.78, 0.49),
+              (0.78, 0.64), (0.78, 0.84)]
+
+
+def starlight(sc, t):
+    base = sc.bg * 0.78
+    rng = np.random.default_rng(11)
+    n = 150
+    sx, sy = rng.uniform(0, 1, n) * sc.w, rng.uniform(0, 0.95, n) * sc.h
+    rad = rng.uniform(0.6, 1.8, n) * min(sc.w, sc.h) / 1080
+    sp, ph = rng.uniform(2, 6, n), rng.uniform(0, 6.28, n)
+    for i in range(n):
+        tw = 0.45 + 0.55 * (0.5 + 0.5 * math.sin(t * sp[i] + ph[i]))
+        glow_spot(base, sx[i], sy[i], rad[i], STAR, 0.8 * tw * ramp(t, i / n * 1.2, i / n * 1.2 + 0.3))
+    # Nine brighter stars drift from their places in the sky to the arch's.
+    move = ramp(t, 0.9, 2.2)
+    m0x, m0y = sc.cx - sc.mark / 2, sc.cy - sc.mark / 2
+    start = [(sc.w * (0.12 + 0.76 * ((k * 0.37) % 1)), sc.h * (0.1 + 0.6 * ((k * 0.61 + 0.2) % 1))) for k in range(9)]
+    pts = []
+    arch_in = ramp(t, 2.7, 3.3)
+    for k, (ax, ay) in enumerate(ARCH_STARS):
+        tx, ty = m0x + ax * sc.mark, m0y + ay * sc.mark
+        x = start[k][0] + (tx - start[k][0]) * move
+        y = start[k][1] + (ty - start[k][1]) * move
+        pts.append((x, y))
+        glow_spot(base, x, y, sc.mark * 0.016, STAR, 1.3 * ramp(t, 0.3, 0.8) * (1 - 0.8 * arch_in))
+    base += radial(sc.w, sc.h, sc.cx, sc.cy, sc.mark * 0.8, SKY, 0.14 * ramp(t, 2.2, 3.2))
+    flame = ramp(t, 3.0, 3.6)
+    base += radial(sc.w, sc.h, sc.cx, sc.cy + sc.mark * 0.1, sc.mark * 0.6, WARM, 0.45 * flame)
+    img = sc.frame(base)
+    # The lines joining them, one after another, with a soft glow.
+    lines = ramp(t, 2.0, 2.8) * 8
+    if lines > 0 and arch_in < 1:
+        pad = int(sc.mark * 0.2)
+        ox, oy = int(m0x) - pad, int(m0y) - pad
+        size = sc.mark + 2 * pad
+        layer = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(layer)
+        lw = max(2, int(sc.mark * 0.011))
+        for k in range(8):
+            f = min(1.0, max(0.0, lines - k))
+            if f <= 0:
+                break
+            (x1, y1), (x2, y2) = pts[k], pts[k + 1]
+            dr.line((x1 - ox, y1 - oy, x1 - ox + (x2 - x1) * f, y1 - oy + (y2 - y1) * f), fill=(0xcf, 0xe4, 0xff, 235), width=lw)
+        glow = layer.filter(ImageFilter.GaussianBlur(lw * 2))
+        a = 1 - arch_in
+        for L in (glow, layer):
+            if a < 1:
+                L = L.copy(); L.putalpha(L.split()[3].point(lambda v: int(v * a)))
+            img.alpha_composite(L, (ox, oy))
+    sc.paste(img, sc.arch, sc.cx, sc.cy, sc.mark, arch_in)
+    fs = int(sc.mark * (0.5 + 0.5 * flame))
+    sc.paste(img, sc.flame, sc.cx, sc.cy + (sc.mark - fs) * 0.12, fs, flame)
+    sc.put_word(img, ramp(t, 3.3, 4.0))
+    return sc.fade_out(img, t)
+
+
+def ember_orbit(sc, t):
+    base = sc.bg.copy()
+    fx, fy = sc.cx, sc.cy + sc.mark * 0.1          # the flame's middle
+    meet = 2.3
+    lit = ramp(t, meet, meet + 0.4)
+    flash = math.exp(-((t - meet - 0.05) / 0.18) ** 2) if t > meet - 0.3 else 0.0
+    base += radial(sc.w, sc.h, fx, fy, sc.mark * (0.5 + 0.5 * flash), WARM, 0.9 * flash + 0.5 * lit * (0.85 + 0.1 * math.sin(t * 8)))
+    er = sc.mark * 0.022
+    behind, front = [], []                                 # the embers after they lit the flame, by side
+
+    def spiral(tt, k):
+        p = ramp(tt, 0.2, meet)
+        r = sc.mark * (1.25 * (1 - p) + 0.02)
+        a = k * 2.0944 + 2 * math.pi * (tt * 0.45 + tt * tt * 0.22)
+        return fx + r * math.sin(a), fy + r * 0.45 * math.cos(a)
+
+    for k in range(3):
+        if t < meet + 0.05:
+            for j in range(28):                            # the ember and its trail
+                tt = t - j * 0.011
+                if tt < 0.2:
+                    break
+                x, y = spiral(tt, k)
+                glow_spot(base, x, y, er * (1 - j * 0.026), WARM, (0.8 - j * 0.027) * ramp(t, 0.2, 0.6))
+        # After lighting the flame, they come back out onto the flat orbit the splash uses, and keep circling.
+        out = ramp(t, meet + 0.3, meet + 1.2)
+        if out > 0:
+            for j in range(12):
+                a = (t - j * 0.012) * 2.1 + k * 2.0944
+                x = fx + sc.mark * 0.62 * out * math.sin(a)
+                y = fy + sc.mark * 0.17 * out * math.cos(a)
+                (front if math.cos(a) > 0 else behind).append((x, y, er * (1 - j * 0.05), (0.8 - j * 0.06) * out))
+    for x, y, r, s_ in behind:
+        glow_spot(base, x, y, r, WARM, 0.9 * s_)
+    img = sc.frame(base)
+    fs = int(sc.mark * (0.6 + 0.4 * lit))
+    sc.paste(img, sc.flame, sc.cx, sc.cy + (sc.mark - fs) * 0.1, fs, lit)
+    sc.paste(img, sc.arch, sc.cx, sc.cy, sc.mark, ramp(t, meet + 0.2, meet + 0.8))
+    if front:
+        over = np.zeros((sc.h, sc.w, 3))
+        for x, y, r, s_ in front:
+            glow_spot(over, x, y, r, WARM, 0.9 * s_)
+        arr = np.asarray(img).astype(float)
+        arr[..., :3] = np.clip(arr[..., :3] + over, 0, 255)
+        img = Image.fromarray(arr.astype(np.uint8), 'RGBA')
+    sc.put_word(img, ramp(t, meet + 0.7, meet + 1.4))
+    return sc.fade_out(img, t)
+
+
+ANIMS = {'flame': flame_ignition, 'sweep': light_sweep, 'reveal': logo_reveal, 'embers': rising_embers,
+         'aurora': aurora, 'starlight': starlight, 'orbit': ember_orbit}
 
 
 def render(aid, aspect, out_dir, frames_dir=None):

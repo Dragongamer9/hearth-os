@@ -6,7 +6,7 @@ name: Desktop Mode test
 on:
   push:
     branches: [main, linux-host]
-    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml', 'os/system_files/usr/libexec/nimbus/hearth-boot-look']
+    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml', 'os/system_files/usr/libexec/nimbus/hearth-boot-look', 'os/system_files/usr/share/hearth/boot-previews/**']
   pull_request:
     paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**']
   workflow_dispatch:
@@ -43,6 +43,8 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
+          # Bar layouts (the main bar on any edge, the floating dock on or off) and the five app menus.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -247,7 +249,8 @@ jobs:
                   f.write(b'h' * size)
           d.update({'media': {'on': True, 'reach': 'home', 'pause': False}, 'ai': {'on': True, 'unload': True, 'pause': False},
                     'web': {'on': True, 'reach': 'tailscale'}, 'dropoff': {'on': True, 'path': h + '/Drop-off'}, 'guard': {'on': True, 'limit': 1000},
-                    'links': [{'id': 'e1e2e3e4e5e6', 'path': h + '/Games/Installers', 'label': 'Installers', 'for': 'Sam', 'at': now, 'expires': now + 2 * 86400000, 'pw': True, 'max': 10, 'on': True}]})
+                    'links': [{'id': 'e1e2e3e4e5e6', 'path': h + '/Games/Installers', 'label': 'Installers', 'for': 'Sam', 'at': now, 'expires': now + 2 * 86400000, 'pw': True, 'max': 10, 'on': True}],
+                    'pictures': {'on': True}, 'voices': {'on': True}})
           open(p, 'w').write(json.dumps(d, indent=2) + '\n')
           st = h + '/.local/state/nimbus'
           os.makedirs(st, exist_ok=True)
@@ -260,11 +263,20 @@ jobs:
           for f in ('/var/lib/hearth/apps/ollama/bin/ollama', '/var/lib/hearth/apps/jellyfin/jellyfin/jellyfin'):
               os.makedirs(os.path.dirname(f), exist_ok=True)
               open(f, 'w').close()
+          # AI pictures (a stand-in ~/ComfyUI with two models) and AI voices (Kokoro's image "there" through a stand-in podman).
+          c = h + '/ComfyUI'
+          for sub in ('comfy', 'venv/bin', 'models/checkpoints', 'output'):
+              os.makedirs(c + '/' + sub, exist_ok=True)
+          for f in ('main.py', 'venv/bin/python', 'models/checkpoints/Illustrious-XL-v0.1.safetensors', 'models/checkpoints/NoobAI-XL-1.1.safetensors'):
+              open(c + '/' + f, 'w').close()
+          open(st + '/home-ai.json', 'w').write(json.dumps({'comfyui': {'version': 'v0.43.2', 'torch': '2.9.0+cu128', 'cuda': True, 'gpu': 'NVIDIA GeForce RTX 5070', 'hearthMade': True},
+                                                         'kokoro': {'version': 'v0.9.2', 'digest': 'sha256:' + '0' * 64}}))
           PY
           cat > /tmp/fakebin/systemctl <<'FAKE'
           #!/bin/sh
           case "$*" in
             *"is-active --quiet hearth-ollama.service"|*"is-active --quiet hearth-jellyfin.service"|*"is-active --quiet hearth-home-server-web.service") exit 0 ;;
+            *"is-active --quiet hearth-comfyui.service"|*"is-active --quiet hearth-kokoro.service") exit 0 ;;
           esac
           exec /usr/bin/systemctl "$@"
           FAKE
@@ -278,6 +290,19 @@ jobs:
                   b = json.dumps(v).encode(); self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
           http.server.HTTPServer(("127.0.0.1", 11434), H).serve_forever()' &
           FAKE_OLLAMA=$!
+          python3 -c '
+          import json, http.server, sys, threading
+          class H(http.server.BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def do_GET(self):
+                  v = {"/system_stats": {"system": {"comfyui_version": "0.43.2"}, "devices": [{"name": "cuda:0 NVIDIA GeForce RTX 5070 : cudaMallocAsync", "vram_total": 12 << 30}]},
+                       "/health": {"status": "healthy"}, "/v1/audio/voices": {"voices": ["af_heart", "af_bella", "am_adam", "bf_emma"]}}.get(self.path, {})
+                  b = json.dumps(v).encode(); self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+          for port in (8188, 8880):
+              threading.Thread(target=http.server.HTTPServer(("127.0.0.1", port), H).serve_forever, daemon=True).start()
+          threading.Event().wait()' &
+          FAKE_AI=$!
+          printf '#!/bin/sh\ncase "$*" in "image exists"*) exit 0 ;; ps*) exit 0 ;; esac\nexit 1\n' > /tmp/fakebin/podman; chmod +x /tmp/fakebin/podman
           python3 hosts/linux/desktop/shell/hearth-home-server files-scan-run > /dev/null 2>&1 || true
           cp os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper /usr/libexec/nimbus/
           chmod 755 /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper
@@ -287,6 +312,7 @@ jobs:
           case "$1" in
             status) echo '{"BackendState":"Running","Self":{"HostName":"nvidia-pc","DNSName":"nvidia-pc.tail4f2a.ts.net.","TailscaleIPs":["100.84.12.7"],"UserID":1},"User":{"1":{"LoginName":"you@example.com"}},"CurrentTailnet":{"Name":"tail4f2a.ts.net"},"Peer":{"a":{"HostName":"ROG-Ally","DNSName":"rog-ally.tail4f2a.ts.net.","OS":"linux","TailscaleIPs":["100.70.1.2"],"Online":true},"b":{"HostName":"Phone","DNSName":"phone.tail4f2a.ts.net.","OS":"android","TailscaleIPs":["100.70.1.3"],"Online":true},"c":{"HostName":"Work-PC","DNSName":"work-pc.tail4f2a.ts.net.","OS":"windows","TailscaleIPs":["100.70.1.4"],"Online":false}}}' ;;
             ping) echo "pong from peer via 192.168.1.20:41641 in 3ms" ;;
+            ip) echo "100.84.12.7" ;;
           esac
           FAKE
           chmod +x /tmp/fakebin/pkexec /tmp/fakebin/tailscale
@@ -325,6 +351,15 @@ jobs:
           wtype -k Right; sleep 1; for i in $(seq 1 10); do wtype -k Down; done; sleep 1; grim shots/home-server/29-safety-reach-and-ports.png || true
           hs hs-overview 30-overview-stage-3
           wtype -k Right; sleep 1; for i in $(seq 1 10); do wtype -k Down; done; sleep 1; grim shots/home-server/31-overview-stage-3-links.png || true
+          # AI pictures (ComfyUI) and AI voices (Kokoro) in Services and on the AI page.
+          hs hs-services 32-services-ai-pictures
+          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/home-server/32-services-ai-pictures.png || true
+          for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/home-server/33-services-ai-voices.png || true
+          hs hs-ai 34-ai-pictures-and-voices
+          wtype -k Right; sleep 1; for i in $(seq 1 7); do wtype -k Down; done; sleep 1; grim shots/home-server/34-ai-pictures-and-voices.png || true
+          python3 hosts/linux/desktop/shell/hearth-home-server home-ai > shots/home-server/home-ai.json 2>&1 || { echo "::error title=Home server::hearth-home-server home-ai failed: $(head -c 300 shots/home-server/home-ai.json)"; touch shots/FAILED; }
+          kill $FAKE_AI 2>/dev/null || true
+          rm -f /tmp/fakebin/podman
           for c in services ai files safety gaming family; do python3 hosts/linux/desktop/shell/hearth-home-server $c > shots/home-server/$c.json 2>&1 || { echo "::error title=Home server::hearth-home-server $c failed: $(head -c 300 shots/home-server/$c.json)"; touch shots/FAILED; }; done
           kill $FAKE_OLLAMA 2>/dev/null || true
           rm -f /tmp/fakebin/systemctl
@@ -411,6 +446,68 @@ jobs:
           kill $FAKE_AI 2>/dev/null || true
           rm -f /tmp/fakebin/tailscale /tmp/fakebin/systemctl /run/hearth/ai-share-firewall.json "$HOME/.config/nimbus/ai-share.json" "$HOME/.config/nimbus/ai-share.json.bak"
           # ---- end Share this device's AI
+          # ---- Use this PC from anywhere (docs/REMOTE-DESKTOP.md): the card on, a work PC streaming through a relay, over
+          # stand-ins for Sunshine's unit and local API (HTTPS, its own certificate), its log, Tailscale and the rule's mark.
+          mkdir -p shots/remote-desktop "$HOME/.config/sunshine" "$HOME/.local/share/nimbus" "$XDG_RUNTIME_DIR/hearth-remote-desktop" /run/hearth
+          rd_before=$(sha256sum "$HOME/.config/nimbus/remote-desktop.json" 2>/dev/null || echo none)
+          printf '{"on": true}\n' > "$HOME/.config/nimbus/remote-desktop.json"
+          printf '{"user": "hearth", "pass": "ci-only"}' > "$HOME/.local/share/nimbus/remote-play.json"; chmod 600 "$HOME/.local/share/nimbus/remote-play.json"
+          printf 'tailscale-only\n' > /run/hearth/remote-desktop-fw
+          t=$(date '+%Y-%m-%d %H:%M:%S' -d '-12 minutes')
+          printf '[%s.000]: Info: Creating encoder [h264_nvenc]\n[%s.000]: Info: Streaming bitrate is 5000000\n[%s.000]: Info: CLIENT CONNECTED\n' "$t" "$t" "$t" > "$HOME/.config/sunshine/sunshine.log"
+          printf '{"who": "Work laptop", "app": "Desktop", "width": 1280, "height": 720, "fps": 60, "hdr": false, "at": %s}\n' "$(date +%s)" > "$XDG_RUNTIME_DIR/hearth-remote-desktop/session.json"
+          cat > /tmp/fakebin/tailscale <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            status) echo '{"BackendState":"Running","Self":{"HostName":"chris-hearth","DNSName":"chris-hearth.tail4f2a.ts.net.","TailscaleIPs":["100.72.99.97"]},"Peer":{"a":{"HostName":"Work-PC","OS":"windows","TailscaleIPs":["100.70.1.4"],"Online":true,"Active":true,"CurAddr":"","Relay":"fra","TxBytes":900000000},"b":{"HostName":"Phone","OS":"android","TailscaleIPs":["100.70.1.3"],"Online":true,"Active":false,"Relay":"fra"}}}' ;;
+            ping) echo "pong from work-pc (100.70.1.4) via DERP(fra) in 84ms" ;;
+          esac
+          FAKE
+          cat > /tmp/fakebin/systemctl <<'FAKE'
+          #!/bin/sh
+          case "$*" in
+            "--user show -p LoadState -p Id --value app-dev.lizardbyte.app.Sunshine.service") printf 'app-dev.lizardbyte.app.Sunshine.service\nloaded\n'; exit 0 ;;
+            "--user is-active --quiet app-dev.lizardbyte.app.Sunshine.service"|"--user is-active --quiet hearth-remote-desktop-awake.service") exit 0 ;;
+            "--user show"*) echo not-found; exit 0 ;;
+          esac
+          exec /usr/bin/systemctl "$@"
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/tailscale /tmp/fakebin/systemctl; chmod +x /tmp/fakebin/tailscale /tmp/fakebin/systemctl
+          command -v openssl >/dev/null || dnf -y install openssl >/dev/null 2>&1 || true
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/sun.key -out /tmp/sun.crt -days 1 -subj /CN=sunshine >/dev/null 2>&1 || echo "::warning title=Remote desktop::no openssl for the Sunshine stand-in"
+          python3 -c '
+          import http.server, json, ssl
+          class H(http.server.BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def answer(self, v):
+                  b = json.dumps(v).encode(); self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+              def do_GET(self):
+                  self.answer({"/api/clients/list": {"named_certs": [{"name": "Work laptop", "uuid": "c1"}, {"name": "Pixel 8", "uuid": "c2"}]}, "/api/pin": {"pairings": []}}.get(self.path, {}))
+              def do_POST(self):
+                  self.answer({"status": True})
+          s = http.server.HTTPServer(("127.0.0.1", 47990), H)
+          c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); c.load_cert_chain("/tmp/sun.crt", "/tmp/sun.key")
+          s.socket = c.wrap_socket(s.socket, server_side=True)
+          s.serve_forever()' &
+          FAKE_SUN=$!
+          sleep 1
+          python3 hosts/linux/desktop/shell/hearth-remote-desktop status > shots/remote-desktop/status.json 2>&1 || { echo "::error title=Remote desktop::hearth-remote-desktop status failed: $(head -c 400 shots/remote-desktop/status.json)"; touch shots/FAILED; }
+          grep -q '"path": "relay"' shots/remote-desktop/status.json || echo "::warning title=Remote desktop::status didn't see the relayed stream: $(head -c 600 shots/remote-desktop/status.json)"
+          grep -q '"Work laptop"' shots/remote-desktop/status.json || echo "::warning title=Remote desktop::status listed no paired devices: $(head -c 600 shots/remote-desktop/status.json)"
+          ! grep -q 'ci-only' shots/remote-desktop/status.json || { echo "::error title=Remote desktop::status showed Sunshine's login"; touch shots/FAILED; }
+          rdshot() { ipc settings close; ipc settings page remote; sleep 4; grim "shots/remote-desktop/$1.png" || true; }
+          rdshot 70-use-this-pc-from-anywhere
+          wtype -k Right; sleep 1; for i in $(seq 1 7); do wtype -k Down; done; sleep 2; grim shots/remote-desktop/71-who-is-connected.png || true
+          for i in $(seq 1 7); do wtype -k Down; done; sleep 2; grim shots/remote-desktop/72-reach-and-stay-awake.png || true
+          ipc settings close
+          if grep -qE "SetRemote\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null; then
+            echo "::error title=Remote desktop::$(grep -E 'SetRemote\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          printf '{"on": true}\n' | cmp -s - "$HOME/.config/nimbus/remote-desktop.json" || { echo "::error title=Remote desktop::opening the page changed remote-desktop.json"; touch shots/FAILED; }
+          kill $FAKE_SUN 2>/dev/null || true
+          rm -f /tmp/fakebin/tailscale /tmp/fakebin/systemctl /run/hearth/remote-desktop-fw "$HOME/.config/nimbus/remote-desktop.json" "$HOME/.local/share/nimbus/remote-play.json"
+          rm -rf "$XDG_RUNTIME_DIR/hearth-remote-desktop" "$HOME/.config/sunshine"
+          # ---- end of Use this PC from anywhere
           # The launcher: no "Hearth" (the old Game Mode in a window), even with its menu entry installed.
           ipc launcher toggle; grim shots/settings-move/15-launcher-no-hearth.png || true; ipc launcher close
           quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call launcher listed > shots/settings-move/launcher-apps.txt 2>&1 || true
@@ -427,9 +524,31 @@ jobs:
           # ---- Settings › Boot & startup (1.1): its helper, the splash presets and the startup animations as the image has them
           mkdir -p /usr/libexec/nimbus /usr/share/hearth /usr/share/plymouth/themes
           cp os/system_files/usr/libexec/nimbus/hearth-boot-look /usr/libexec/nimbus/ && chmod 755 /usr/libexec/nimbus/hearth-boot-look
-          cp -r os/system_files/usr/share/hearth/startup-movies /usr/share/hearth/ && cp -r os/system_files/usr/share/plymouth/themes/hearth* /usr/share/plymouth/themes/
+          cp -r os/system_files/usr/share/hearth/startup-movies os/system_files/usr/share/hearth/boot-previews /usr/share/hearth/ && cp -r os/system_files/usr/share/plymouth/themes/hearth* /usr/share/plymouth/themes/
           printf '#!/bin/sh\necho hearth-bls-grub stand-in\n' > /usr/libexec/nimbus/hearth-bls-grub
-          ipc settings page boot; grim "shots/$n-settings-boot.png" || true; n=$((n+1))
+          ipc settings page boot; sleep 2; grim "shots/$n-settings-boot.png" || true; n=$((n+1))
+          # The previews (next update): into the page, down to the Aurora splash's card, open its preview, a frame
+          # later, close it (B / Esc), down to the Aurora startup animation's, open it. Looking changes nothing:
+          # the choices must be the same afterwards.
+          if command -v wtype >/dev/null; then
+            before=$(python3 /usr/libexec/nimbus/hearth-boot-look status | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["splash"]["current"], d["movie"]["current"])')
+            wtype -k Right; sleep 0.6
+            for i in 1 2 3; do wtype -k Down; sleep 0.3; done
+            sleep 1; grim "shots/$n-settings-boot-cards.png" || true; n=$((n+1))
+            wtype -k Return; sleep 1.5; grim "shots/$n-settings-boot-preview-splash.png" || true; n=$((n+1))
+            sleep 1.7; grim "shots/$n-settings-boot-preview-splash-later.png" || true; n=$((n+1))
+            wtype -k Escape; sleep 0.6
+            for i in 1 2 3 4 5 6 7 8; do wtype -k Down; sleep 0.3; done
+            wtype -k Return; sleep 2.5; grim "shots/$n-settings-boot-preview-movie.png" || true; n=$((n+1))
+            wtype -k Escape; sleep 0.6
+            after=$(python3 /usr/libexec/nimbus/hearth-boot-look status | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["splash"]["current"], d["movie"]["current"])')
+            if [ "$before" != "$after" ]; then echo "::error title=Boot & startup::looking at the previews changed a choice ($before -> $after)"; touch shots/FAILED; fi
+            echo "boot choices before: $before / after: $after" > shots/boot-preview-choices.txt
+          fi
+          if grep -E "SetBoot[A-Za-z]*\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null | grep -qv SetBootVideo; then
+            echo "::error title=Boot & startup::$(grep -E 'SetBoot[A-Za-z]*\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | grep -v SetBootVideo | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          grep -E "SetBoot" "$XDG_RUNTIME_DIR/nimbus-shell.log" > shots/boot-shell-log.txt 2>/dev/null || true
           python3 /usr/libexec/nimbus/hearth-boot-look status > shots/boot-look-status.json 2>&1 || { echo "::error title=Boot & startup::hearth-boot-look status failed"; touch shots/FAILED; }
           python3 hosts/linux/desktop/shell/hearth-access status > shots/accessibility-status.json 2>&1 || true
           ipc settings close
@@ -891,6 +1010,75 @@ jobs:
           open(p, 'w').write(json.dumps(d))
           PY
           sleep 2
+          # ---- Bar layouts and app menus (Settings › Appearance › Bar and dock), in shots/looks/mantel/bars/:
+          # the one main bar on each edge (with your apps in it: the floating app menu off), the dock off with the top
+          # bar, auto-hide, each app menu open, search in one, the picker, and another look. The keys are taken out
+          # again afterwards, and the check below makes sure nothing wrote one by itself.
+          b=$m/bars; mkdir -p $b
+          keys() {  # JSON of keys to set ("null" takes one out)
+            python3 - "$D" "$1" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          for k, v in json.loads(sys.argv[2]).items():
+              if v is None: d.pop(k, None)
+              else: d[k] = v
+          open(p, 'w').write(json.dumps(d, indent=2) + "\n")
+          PY
+            sleep 4
+          }
+          # (A key taken out of desktop.json keeps its last value in the running shell, which only reads the keys that are
+          # there, so these shots set every value they rely on, and take them all out of the file at the end.)
+          set_look hearth dark "" ""; keys '{"dockMode": "shown", "barStyle": "", "deskClock": "off", "appMenu": "hearth"}'
+          for e in bottom top left right; do
+            keys "{\"barLayout\": \"one\", \"barEdge\": \"$e\", \"dockFloat\": \"off\"}"
+            grim "$b/bar-$e-1-desktop.png" || true
+            ipc quick toggle; grim "$b/bar-$e-2-quick-settings.png" || true; ipc quick toggle
+            ipc calendar open; grim "$b/bar-$e-3-dashboard.png" || true; ipc calendar close
+          done
+          keys '{"barLayout": "one", "barEdge": "bottom", "dockFloat": "on"}'; grim "$b/bar-bottom-dock-on.png" || true
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "off"}'; grim "$b/dock-off-top-bar.png" || true
+          keys '{"barLayout": "one", "barEdge": "left", "dockFloat": "off", "dockMode": "autohide"}'; grim "$b/bar-left-autohide-hidden.png" || true
+          ipc dock show; sleep 2; grim "$b/bar-left-autohide-shown.png" || true; ipc dock hide
+          keys '{"dockMode": "shown"}'
+          menu_shot() {  # menu name
+            keys "{\"appMenu\": \"$1\"}"
+            ipc launcher toggle; sleep 2; grim "$b/menu-$1-$2.png" || true; ipc launcher close
+          }
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "on"}'
+          menu_shot hearth default-bar
+          menu_shot centred default-bar
+          ipc launcher toggle; sleep 2; wtype "st" 2>/dev/null || true; sleep 3; grim "$b/menu-search-centred.png" || true; ipc launcher close
+          keys '{"barLayout": "one", "barEdge": "bottom", "dockFloat": "off"}'
+          menu_shot tiles bottom-bar
+          ipc launcher toggle; sleep 2; wtype -k Right 2>/dev/null || true; sleep 1; grim "$b/menu-tiles-focus-on-tiles.png" || true; ipc launcher close
+          menu_shot classic bottom-bar
+          ipc launcher toggle; sleep 2; wtype -k Right 2>/dev/null || true; sleep 1; grim "$b/menu-classic-jump-or-places.png" || true; ipc launcher close
+          menu_shot start bottom-bar
+          ipc launcher toggle; sleep 2; wtype "se" 2>/dev/null || true; sleep 3; grim "$b/menu-search-start.png" || true; ipc launcher close
+          # The picker (Settings › Appearance › Bar and dock › App menu)
+          ipc settings close; ipc settings page appearance:bar; sleep 3; grim "$b/menu-picker.png" || true; ipc settings close
+          # Another look: Glass with the bar on the left and the Classic menu; Steam-style with Tiles on the bottom bar.
+          set_look glass dark "" ""; keys '{"barLayout": "one", "barEdge": "left", "dockFloat": "off", "appMenu": "classic"}'
+          grim "$b/glass-bar-left.png" || true
+          ipc launcher toggle; sleep 2; grim "$b/glass-menu-classic.png" || true; ipc launcher close
+          set_look steam dark "" ""; keys '{"barLayout": "one", "barEdge": "bottom", "appMenu": "tiles"}'
+          ipc launcher toggle; sleep 2; grim "$b/steam-menu-tiles.png" || true; ipc launcher close
+          # Handheld (1280×800): the Start screen and Centred.
+          wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; set_look hearth dark "" ""; keys '{"appMenu": "start", "barEdge": "bottom", "dockFloat": "off"}'
+          ipc launcher toggle; sleep 2; grim "$b/handheld-menu-start.png" || true; ipc launcher close
+          keys '{"appMenu": "centred", "barLayout": "split", "dockFloat": "on"}'
+          ipc launcher toggle; sleep 2; grim "$b/handheld-menu-centred.png" || true; ipc launcher close
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 2
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "on", "appMenu": "hearth"}'
+          keys '{"barLayout": null, "barEdge": null, "dockFloat": null, "appMenu": null, "menuTiles": null, "dockMode": null, "barStyle": null, "deskClock": null}'
+          grep -E "Islands.qml|TaskStrip.qml|Launcher.qml|Menu[A-Za-z]*\.qml|BarLayoutPicker|AppMenuPicker" "$LOG" > $b/shell-log.txt 2>/dev/null || true
+          if grep -qE "(Islands|TaskStrip|Launcher|Menu[A-Za-z]*|BarLayoutPicker|AppMenuPicker)\.qml.*(TypeError|ReferenceError|is not defined|Cannot|non-existent|is not a type)" "$LOG" 2>/dev/null; then
+            echo "::error title=bars and menus::$(grep -E '(Islands|TaskStrip|Launcher|Menu[A-Za-z]*|BarLayoutPicker|AppMenuPicker)\.qml' "$LOG" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          elif grep -q "app menu couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=bars and menus::$(grep "app menu couldn't load" "$LOG" | head -3 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=bars and menus::$(ls $b | wc -l) pictures in looks/mantel/bars"
+          fi
           # Nothing the looks did may have written a new option by itself (Mantel 2026's keys stay out of the file
           # until someone changes them; the ones this test set were taken out again above).
           cp "$D" $m/desktop.json 2>/dev/null || true
@@ -898,6 +1086,7 @@ jobs:
           import json, sys
           d = json.load(open(sys.argv[1]))
           new = {'barStyle', 'dockMode', 'deskClock', 'panelGlass', 'sunset', 'sunsetLight', 'sunsetDark', 'accentFrom', 'wallSwatches'}
+          new |= {'barLayout', 'barEdge', 'dockFloat', 'appMenu', 'menuTiles'}
           sys.exit(1 if new & set(d) else 0)
           PY
           if grep -q "using the classic taskbar" "$LOG" 2>/dev/null; then

@@ -6,10 +6,19 @@
                                                                    fonts are made from Inter at image build time)
   os/system_files/usr/share/plymouth/themes/hearth-steam/          boot splash preset: slate blue with a light sweep
   os/system_files/usr/share/plymouth/themes/hearth-minimal/        boot splash preset: plain, a small mark, no motion
+  os/system_files/usr/share/plymouth/themes/hearth-aurora/         boot splash preset: northern lights drifting over
+                                                                   the mark (pairs with the Aurora startup animation)
+  os/system_files/usr/share/plymouth/themes/hearth-starlight/      boot splash preset: stars twinkling around the mark
+                                                                   (pairs with the Starlight startup animation)
+  os/system_files/usr/share/plymouth/themes/hearth-orbit/          boot splash preset: three embers circling the flame
+                                                                   (pairs with the Ember orbit startup animation)
 
 The default splash (themes/hearth) keeps its own script and pictures; only its background colours moved to slate.
 
-  python3 tools/make-boot-art.py          (needs Pillow and numpy; writes the files above)
+  python3 tools/make-boot-art.py [PART ...]   (needs Pillow and numpy; writes the files above; PART: grub, steam,
+                                              minimal, aurora, starlight, orbit; all when none is named)
+
+The pictures only: each theme's .script is written by hand (and checked by hosts/linux/test/test_plymouth_themes.py).
 """
 import os
 import shutil
@@ -22,6 +31,10 @@ HEARTH = os.path.join(ROOT, 'os/system_files/usr/share/plymouth/themes/hearth')
 GRUB = os.path.join(ROOT, 'os-bases/peppermint/system_files/usr/share/hearth/grub-theme')
 STEAM = os.path.join(ROOT, 'os/system_files/usr/share/plymouth/themes/hearth-steam')
 MINIMAL = os.path.join(ROOT, 'os/system_files/usr/share/plymouth/themes/hearth-minimal')
+THEMES = os.path.join(ROOT, 'os/system_files/usr/share/plymouth/themes')
+TEAL = np.array([0x2f, 0xd6, 0xb5], float)
+VIOLET = np.array([0x8a, 0x7d, 0xff], float)
+WARM = np.array([0xff, 0x9a, 0x3d], float)
 
 SLATE_TOP = np.array([0x1b, 0x28, 0x38], float)
 SLATE_BOTTOM = np.array([0x0e, 0x13, 0x1a], float)
@@ -203,9 +216,81 @@ def minimal_splash():
         .save(os.path.join(MINIMAL, 'logo.png'), optimize=True)
 
 
+def mark_and_name(dst):
+    """What every Hearth splash has: the mark, the name, the password box and its bullets."""
+    os.makedirs(dst, exist_ok=True)
+    copy_common(dst)
+    Image.open(os.path.join(HEARTH, 'logo.png')).convert('RGBA').save(os.path.join(dst, 'logo.png'), optimize=True)
+    recolor(Image.open(os.path.join(HEARTH, 'wordmark.png')), TEXT).save(os.path.join(dst, 'wordmark.png'), optimize=True)
+
+
+def ribbon(rgb, seed, w=1024, h=256):
+    """A soft northern-lights curtain: a wavy band of light with faint vertical rays, fading out at both ends."""
+    rng = np.random.default_rng(seed)
+    y, x = np.mgrid[0:h, 0:w].astype(float)
+    u = x / w
+    centre = 0.55 + 0.16 * np.sin(u * 2 * np.pi * 1.1 + seed) + 0.06 * np.sin(u * 2 * np.pi * 2.7 + seed * 2)
+    v = y / h
+    band = np.exp(-((v - centre) / 0.11) ** 2)
+    # The curtain hangs: light above the band's middle reaches further up than below it.
+    band = np.where(v < centre, np.exp(-((v - centre) / 0.24) ** 2), band)
+    phases = rng.uniform(0, 2 * np.pi, 3)
+    rays = 0.82 + 0.18 * (np.sin(u * 2 * np.pi * 47 + phases[0]) * 0.4 + np.sin(u * 2 * np.pi * 73 + phases[1]) * 0.3
+                          + np.sin(u * 2 * np.pi * 7 + phases[2]) * 0.3)
+    ends = np.clip(np.sin(np.clip(u, 0, 1) * np.pi), 0, 1) ** 1.2
+    a = np.clip(band * rays * ends, 0, 1) * 0.85
+    arr = np.zeros((h, w, 4), np.uint8)
+    arr[..., :3] = rgb.astype(np.uint8)
+    arr[..., 3] = (a * 255).astype(np.uint8)
+    return Image.fromarray(arr, 'RGBA')
+
+
+def aurora_splash():
+    d = os.path.join(THEMES, 'hearth-aurora')
+    mark_and_name(d)
+    ribbon(TEAL, 3).save(os.path.join(d, 'ribbon-a.png'), optimize=True)
+    ribbon(VIOLET * 0.5 + BLUE * 0.5, 8).save(os.path.join(d, 'ribbon-b.png'), optimize=True)
+    glow_dot(512, tuple(TEAL.astype(int)), soft=0.5).save(os.path.join(d, 'halo.png'), optimize=True)
+
+
+def star(size=64):
+    """A small cool-white star: a bright core, a soft glow and a faint four-point sparkle."""
+    y, x = np.mgrid[0:size, 0:size].astype(float)
+    c = (size - 1) / 2
+    dx, dy = (x - c) / (size / 2), (y - c) / (size / 2)
+    r = np.sqrt(dx ** 2 + dy ** 2)
+    core = np.exp(-(r / 0.12) ** 2)
+    glow = np.exp(-(r / 0.38) ** 2) * 0.45
+    spark = (np.exp(-(dy / 0.04) ** 2) * np.exp(-(np.abs(dx) / 0.55)) + np.exp(-(dx / 0.04) ** 2) * np.exp(-(np.abs(dy) / 0.55))) * 0.5
+    a = np.clip(core + glow + spark, 0, 1) * np.clip(1 - r, 0, 1) ** 0.5
+    arr = np.zeros((size, size, 4), np.uint8)
+    arr[..., :3] = (0xe6, 0xf0, 0xff)
+    arr[..., 3] = (a * 255).astype(np.uint8)
+    return Image.fromarray(arr, 'RGBA')
+
+
+def starlight_splash():
+    d = os.path.join(THEMES, 'hearth-starlight')
+    mark_and_name(d)
+    star().save(os.path.join(d, 'star.png'), optimize=True)
+    glow_dot(512, tuple(SKY.astype(int)), soft=0.5).save(os.path.join(d, 'halo.png'), optimize=True)
+
+
+def orbit_splash():
+    d = os.path.join(THEMES, 'hearth-orbit')
+    mark_and_name(d)
+    shutil.copy(os.path.join(HEARTH, 'glow.png'), os.path.join(d, 'glow.png'))
+    glow_dot(64, tuple(WARM.astype(int)), soft=0.55).save(os.path.join(d, 'ember.png'), optimize=True)
+
+
+PARTS = {'grub': grub_theme, 'steam': steam_splash, 'minimal': minimal_splash, 'aurora': aurora_splash,
+         'starlight': starlight_splash, 'orbit': orbit_splash}
+
+
 if __name__ == '__main__':
-    grub_theme()
-    steam_splash()
-    minimal_splash()
-    for d in (GRUB, STEAM, MINIMAL):
-        print(d, sorted(os.listdir(d)))
+    import sys
+    for part in (sys.argv[1:] or list(PARTS)):
+        PARTS[part]()
+    for d in [GRUB, STEAM, MINIMAL] + [os.path.join(THEMES, 'hearth-' + t) for t in ('aurora', 'starlight', 'orbit')]:
+        if os.path.isdir(d):
+            print(d, sorted(os.listdir(d)))

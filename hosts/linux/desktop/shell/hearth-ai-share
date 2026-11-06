@@ -365,17 +365,27 @@ def probe(svc, get=local_get):
     return None
 
 
+def home_server_ai():
+    """The engines Settings › Home server runs on this device (AI, AI pictures, AI voices turned on there), read only: one
+    that isn't answering (stopped while you play, starting) is listed as not healthy instead of missing."""
+    d = sio.load_json(HOME_SERVER, {}, repair=False) if os.path.exists(HOME_SERVER) else {}
+    d = d if isinstance(d, dict) else {}
+    on = lambda k: isinstance(d.get(k), dict) and d[k].get('on') is True  # noqa: E731
+    return {e for e, k in (('ollama', 'ai'), ('comfyui', 'pictures'), ('kokoro-fastapi', 'voices')) if on(k)}
+
+
 def detect(ts_ips=(), get=local_get, table=None):
     """Every AI service found on this device: kind, engine, port, healthy, reachable, busy, models / voices. A Hearth app
     that's installed but not answering is listed as not healthy."""
     table = tcp_table() if table is None else table
+    hs_on = home_server_ai()
     found, kinds_done = [], set()
     for svc in SERVICES:
         if (svc['kind'], svc['engine']) in kinds_done:
             continue
         listening, reachable, remote = reach_of(svc['port'], table, ts_ips)
         r = probe(svc, get) if listening else None
-        installed = bool(svc['app']) and os.path.isdir(os.path.join(APPS_DIR, svc['app']))
+        installed = bool(svc['app']) and (os.path.isdir(os.path.join(APPS_DIR, svc['app'])) or svc['engine'] in hs_on)
         if r is None and not installed:
             continue
         s = {'kind': svc['kind'], 'engine': svc['engine'], 'port': svc['port'], 'label': svc['label'],

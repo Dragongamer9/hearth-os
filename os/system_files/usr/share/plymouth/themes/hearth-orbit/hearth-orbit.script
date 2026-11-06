@@ -1,0 +1,147 @@
+# Hearth boot splash preset "hearth-orbit" (Settings › Boot & startup): three embers circling the Hearth flame on a
+# flat orbit (passing behind the arch and in front of it), each with a short fading trail, while the fire's glow
+# breathes. Pairs with the Ember orbit startup animation. Chosen with plymouth.splash=hearth-orbit on the kernel
+# command line (hearth-bls-grub adds it). Asks for the disk password on encrypted installs, like the default. Uses
+# only what the first three presets use (Image, Scale, Sprite, SetPosition, SetOpacity, Math.Sin), nothing new.
+
+Window.SetBackgroundTopColor(0.106, 0.157, 0.220);
+Window.SetBackgroundBottomColor(0.055, 0.075, 0.102);
+
+W = Window.GetWidth();
+H = Window.GetHeight();
+X0 = Window.GetX();
+Y0 = Window.GetY();
+short = Math.Min(W, H);
+
+size = Math.Int(short * 0.24);
+logo.image = Image("logo.png").Scale(size, size);
+logo.sprite = Sprite(logo.image);
+logo.x = X0 + Math.Int(W / 2 - size / 2);
+logo.y = Y0 + Math.Int(H / 2 - size / 2 - short * 0.07);
+logo.sprite.SetPosition(logo.x, logo.y, 10);
+logo.sprite.SetOpacity(0);
+
+word.src = Image("wordmark.png");
+word.w = Math.Int(size * 0.9);
+word.h = Math.Int(word.src.GetHeight() * word.w / word.src.GetWidth());
+word.sprite = Sprite(word.src.Scale(word.w, word.h));
+word.y = logo.y + size + Math.Int(short * 0.045);
+word.sprite.SetPosition(X0 + Math.Int(W / 2 - word.w / 2), word.y, 10);
+word.sprite.SetOpacity(0);
+
+msg.sprite = Sprite();
+msg.y = Y0 + H - Math.Int(short * 0.08);
+dots_y = word.y + word.h + Math.Int(short * 0.07);
+
+frame = 0;
+status = "normal";
+
+fun clamp01(v) {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+# The fire's glow behind the flame (the flame sits at about 50% across, 60% down the mark).
+gsize = Math.Int(size * 1.25);
+glow.sprite = Sprite(Image("glow.png").Scale(gsize, gsize));
+glow.sprite.SetPosition(logo.x + Math.Int(size * 0.5 - gsize / 2), logo.y + Math.Int(size * 0.6 - gsize / 2), 5);
+glow.sprite.SetOpacity(0);
+
+# Three embers, each with two smaller ones trailing it: nine sprites, made once.
+ember.src = Image("ember.png");
+esize = Math.Max(8, Math.Int(short * 0.032));
+ember.img[0] = ember.src.Scale(esize, esize);
+ember.img[1] = ember.src.Scale(Math.Max(6, Math.Int(esize * 0.72)), Math.Max(6, Math.Int(esize * 0.72)));
+ember.img[2] = ember.src.Scale(Math.Max(4, Math.Int(esize * 0.5)), Math.Max(4, Math.Int(esize * 0.5)));
+ocx = logo.x + Math.Int(size * 0.5);
+ocy = logo.y + Math.Int(size * 0.6);
+orx = size * 0.62;
+ory = size * 0.17;
+for (i = 0; i < 9; i++) {
+  embers[i] = Sprite(ember.img[i - Math.Int(i / 3) * 3]);
+  embers[i].SetOpacity(0);
+}
+
+fun refresh_callback() {
+  global.frame++;
+  t = global.frame;
+  fade = clamp01(t / 40);
+  logo.sprite.SetOpacity(fade);
+  word.sprite.SetOpacity(fade * 0.92);
+  breath = 0.62 + 0.22 * Math.Sin(t * 0.045) + 0.07 * Math.Sin(t * 0.31);
+  glow.sprite.SetOpacity(fade * clamp01(breath));
+  # One turn in 3 s (150 frames at 50 fps); the embers a third of a turn apart, the trail a little behind each.
+  for (i = 0; i < 9; i++) {
+    e = Math.Int(i / 3);
+    k = i - e * 3;
+    a = t * 0.0419 + e * 2.0944 - k * 0.16;
+    front = Math.Sin(a + 1.5708);
+    sz = esize;
+    if (k == 1) sz = Math.Max(6, Math.Int(esize * 0.72));
+    if (k == 2) sz = Math.Max(4, Math.Int(esize * 0.5));
+    z = 6;
+    if (front > 0) z = 12;
+    global.embers[i].SetPosition(Math.Int(global.ocx + global.orx * Math.Sin(a) - sz / 2), Math.Int(global.ocy + global.ory * front - sz / 2), z);
+    global.embers[i].SetOpacity(fade * (1 - k * 0.32) * (0.55 + 0.45 * (front + 1) / 2));
+  }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# --- disk password
+entry.image = Image("entry.png");
+bullet.image = Image("bullet.png");
+entry.w = Math.Int(Math.Min(W * 0.8, short * 0.62));
+entry.h = Math.Int(entry.w * entry.image.GetHeight() / entry.image.GetWidth());
+entry.sprite = Sprite(entry.image.Scale(entry.w, entry.h));
+entry.x = X0 + Math.Int(W / 2 - entry.w / 2);
+entry.y = dots_y - Math.Int(entry.h / 2);
+entry.sprite.SetPosition(entry.x, entry.y, 20);
+entry.sprite.SetOpacity(0);
+prompt.sprite = Sprite();
+bsize = Math.Int(entry.h * 0.3);
+bullet.small = bullet.image.Scale(bsize, bsize);
+nbullets = 0;
+
+fun hide_bullets() {
+  for (i = 0; i < global.nbullets; i++) global.bullets[i].SetOpacity(0);
+}
+
+fun display_password_callback(text, count) {
+  global.status = "password";
+  entry.sprite.SetOpacity(1);
+  label = text;
+  if (label == "") label = "Password";
+  img = Image.Text(label, 0.863, 0.898, 0.929, 1, "Sans 16");
+  prompt.sprite.SetImage(img);
+  prompt.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), entry.y - img.GetHeight() - Math.Int(short * 0.02), 20);
+  prompt.sprite.SetOpacity(1);
+  hide_bullets();
+  maxb = Math.Int((entry.w - entry.h) / (bsize * 1.6));
+  shown = Math.Min(count, maxb);
+  start = X0 + Math.Int(W / 2 - (shown * bsize * 1.6) / 2);
+  for (i = 0; i < shown; i++) {
+    if (i >= global.nbullets) {
+      global.bullets[i] = Sprite(bullet.small);
+      global.nbullets = i + 1;
+    }
+    global.bullets[i].SetPosition(start + Math.Int(i * bsize * 1.6 + bsize * 0.3), entry.y + Math.Int(entry.h / 2 - bsize / 2), 21);
+    global.bullets[i].SetOpacity(1);
+  }
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+  global.status = "normal";
+  entry.sprite.SetOpacity(0);
+  prompt.sprite.SetOpacity(0);
+  hide_bullets();
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+fun message_callback(text) {
+  img = Image.Text(text, 0.863, 0.898, 0.929, 0.7, "Sans 12");
+  msg.sprite.SetImage(img);
+  msg.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), msg.y, 10);
+}
+Plymouth.SetMessageFunction(message_callback);

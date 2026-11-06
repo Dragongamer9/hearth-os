@@ -175,6 +175,12 @@ class Detect(Base):
         f = self.found({}, table=[])
         self.assertEqual([(s['engine'], s['healthy']) for s in f], [('ollama', False)])
 
+    def test_home_server_engine_stopped_for_a_game_is_listed_unhealthy(self):
+        self.write('config/nimbus/home-server.json', json.dumps({'lightMode': True, 'pictures': {'on': True}, 'voices': {'on': False}}))
+        f = self.found({}, table=[])
+        self.assertEqual([(s['engine'], s['healthy']) for s in f], [('comfyui', False)])
+        self.assertFalse(os.path.exists(ais.SETTINGS), 'reading the home server changed no setting')
+
     def test_on_this_device_only_and_busy(self):
         table = [('0A', '127.0.0.1', 11434, '0.0.0.0'), ('0A', '100.84.12.7', 8880, '0.0.0.0'), ('01', '100.84.12.7', 8880, '100.70.1.2'),
                  ('01', '127.0.0.1', 11434, '127.0.0.1')]
@@ -270,6 +276,20 @@ class Report(Base):
         self.cfg['notWhilePlaying'] = False
         doc = ais.document(self.cfg, TS, self.found())
         self.assertTrue(doc['gaming'] and doc['available'], 'still says it is playing so clients can route elsewhere')
+
+    def test_light_mode_playing_reports_gaming(self):
+        # Home server's Light mode on and a game running: the device says gaming:true (so the Command Center routes away),
+        # whatever "Not while I'm playing" says, and nothing is written.
+        self.write('config/nimbus/home-server.json', json.dumps({'lightMode': True, 'ai': {'on': True, 'unload': True}}))
+        before = open(ais.HOME_SERVER).read()
+        self.patch(ais, 'game_running', lambda: True)
+        for nwp in (True, False):
+            self.cfg['notWhilePlaying'] = nwp
+            doc = ais.document(self.cfg, TS, self.found())
+            self.assertIs(doc['gaming'], True)
+            self.assertEqual(doc['reason'], 'playing' if nwp else '')
+        self.assertEqual(open(ais.HOME_SERVER).read(), before)
+        self.assertFalse(os.path.exists(ais.SETTINGS))
 
     def test_handheld_on_battery(self):
         self.battery(64, 'Discharging', False)

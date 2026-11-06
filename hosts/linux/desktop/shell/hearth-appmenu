@@ -1,0 +1,220 @@
+#!/usr/bin/python3
+"""hearth-appmenu: what Mantel's app menus (Launcher.qml and its styles: Centred, Tiles, Start screen, Classic) show
+besides apps, games and Settings pages. Only reads; never changes a file.
+
+  hearth-appmenu recent [LIMIT]    recently used files (the freedesktop list GTK, KDE and most apps keep,
+                                   ~/.local/share/recently-used.xbel), newest first, with the apps that opened them:
+                                   for Recommended, the Classic menu's jump lists and the Tiles menu's
+  hearth-appmenu files QUERY       files and folders in your home folder whose names contain QUERY (hidden folders,
+                                   caches and build folders skipped; stops after a moment): for the search
+  hearth-appmenu tiles             the live tiles' data Hearth already has: the weather and the next events (Hearth
+                                   Weather / Calendar, hearth-time), the Home server in short (hearth-home-server
+                                   quick) and games with an update ready (Hearth's games list, when it says so)
+
+Each prints one JSON line. Anything missing is just left out (a tile with no data shows its plain icon).
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.parse
+import xml.etree.ElementTree as ET
+from datetime import date, datetime, timedelta
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SKIP_DIRS = {'node_modules', '__pycache__', 'venv', '.venv', 'target', 'build', 'dist', 'Steam', 'steamapps',
+             'compatdata', 'shadercache', 'proton', 'Trash'}
+NS = {'bookmark': 'http://www.freedesktop.org/standards/desktop-bookmarks',
+      'mime': 'http://www.freedesktop.org/standards/shared-mime-info'}
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def data_home():
+    return os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+
+
+def when(text):
+    """An ISO time from the xbel file ("2026-11-04T10:12:33.123456Z") as milliseconds; 0 if unreadable."""
+    if not text:
+        return 0
+    t = text.strip().replace('Z', '+00:00')
+    if '.' in t:
+        head, rest = t.split('.', 1)
+        tz = ''
+        for sign in ('+', '-'):
+            if sign in rest:
+                tz = sign + rest.split(sign, 1)[1]
+                break
+        t = head + tz
+    try:
+        return int(datetime.fromisoformat(t).timestamp() * 1000)
+    except ValueError:
+        return 0
+
+
+def recent(limit=40, path=None):
+    """[{path, name, folder, when, apps: [name], execs: [program]}], newest first; files that are gone are left out."""
+    path = path or os.path.join(data_home(), 'recently-used.xbel')
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return []
+    out = []
+    for b in root.findall('bookmark'):
+        href = b.get('href') or ''
+        if not href.startswith('file://'):
+            continue
+        p = urllib.parse.unquote(urllib.parse.urlparse(href).path)
+        if not os.path.exists(p):
+            continue
+        apps, execs = [], []
+        for a in b.iter('{%s}application' % NS['bookmark']):
+            name = a.get('name') or ''
+            if name and name not in apps:
+                apps.append(name)
+            ex = (a.get('exec') or '').strip().strip("'\"").split()
+            if ex:
+                prog = os.path.basename(ex[0].strip("'\""))
+                if prog and prog not in execs:
+                    execs.append(prog)
+        t = max(when(b.get('visited')), when(b.get('modified')), when(b.get('added')))
+        out.append({'path': p, 'name': os.path.basename(p) or p, 'folder': folder_label(os.path.dirname(p)),
+                    'when': t, 'apps': apps, 'execs': execs, 'dir': os.path.isdir(p)})
+    out.sort(key=lambda r: r['when'], reverse=True)
+    return out[:max(1, limit)]
+
+
+def folder_label(d):
+    """Documents › Reports for ~/Documents/Reports; the full path outside the home folder."""
+    h = home().rstrip('/')
+    if d == h:
+        return 'Home'
+    if d.startswith(h + '/'):
+        return ' › '.join(d[len(h) + 1:].split('/'))
+    return d
+
+
+def find_files(query, limit=24, budget=1.5, max_depth=5, base=None):
+    """Names containing QUERY (any case) under the home folder, folders first among equals; quick, never exhaustive."""
+    q = (query or '').strip().lower()
+    if len(q) < 2:
+        return []
+    base = base or home()
+    start = time.monotonic()
+    hits, seen = [], 0
+    for dirpath, dirnames, filenames in os.walk(base):
+        depth = dirpath[len(base):].count(os.sep)
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith('.') and d not in SKIP_DIRS and depth < max_depth)
+        for name in dirnames + sorted(filenames):
+            seen += 1
+            if name.startswith('.') or q not in name.lower():
+                continue
+            p = os.path.join(dirpath, name)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            hits.append({'path': p, 'name': name, 'folder': folder_label(dirpath), 'dir': os.path.isdir(p),
+                         'when': int(st.st_mtime * 1000), 'starts': name.lower().startswith(q)})
+        if len(hits) >= limit * 3 or seen > 60000 or time.monotonic() - start > budget:
+            break
+    hits.sort(key=lambda h: (not h['starts'], -h['when']))
+    for h in hits:
+        del h['starts']
+    return hits[:limit]
+
+
+def run_json(cmd, timeout):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = [l for l in (r.stdout or '').strip().splitlines() if l.strip()]
+    if r.returncode != 0 or not lines:
+        return None
+    try:
+        return json.loads(lines[-1])
+    except ValueError:
+        return None
+
+
+def next_events(events, now_ms, n=2):
+    today = date.fromtimestamp(now_ms / 1000).isoformat()
+    left = [e for e in events if isinstance(e, dict) and (e.get('lastDate') or e.get('date') or '') >= today
+            and (e.get('allDay') or (e.get('end') or 0) > now_ms)]
+    left.sort(key=lambda e: (e.get('date') or '', 0 if e.get('allDay') else e.get('start') or 0))
+    return [{'title': e.get('title') or e.get('summary') or 'Event', 'date': e.get('date') or '', 'allDay': bool(e.get('allDay')),
+             'start': e.get('start') or 0} for e in left[:n]]
+
+
+def game_updates(path=None):
+    """Games Hearth says have an update ready ("update": true or a size), from the games list kept for the launcher."""
+    path = path or os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'desktop-games.json')
+    try:
+        with open(path) as f:
+            games = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(games, list):
+        return None
+    ready = [g for g in games if isinstance(g, dict) and (g.get('update') or g.get('updateReady'))]
+    if not ready:
+        return None
+    return {'count': len(ready), 'titles': [g.get('title') or '' for g in ready[:3]]}
+
+
+def home_server():
+    q = run_json([sys.executable, os.path.join(HERE, 'hearth-home-server'), 'quick'], 8)
+    if not isinstance(q, dict) or not q.get('setupDone'):
+        return None
+    usage = q.get('usage') or {}
+    backups = q.get('backups') or {}
+    problems = list(q.get('alerts') or []) + ['Backup failed: ' + n for n in backups.get('failed') or []]
+    return {'ok': not problems, 'problems': problems[:3], 'shares': q.get('shares', 0), 'people': q.get('people', 0),
+            'used': usage.get('used', 0), 'total': usage.get('total', 0), 'lastBackup': backups.get('lastOk', 0),
+            'paused': q.get('paused') or [], 'host': q.get('host', '')}
+
+
+def tiles(now_ms=None):
+    now_ms = now_ms or int(time.time() * 1000)
+    out = {}
+    w = run_json(['hearth-time', '--weather-summary'], 5)
+    if isinstance(w, dict) and w.get('line'):
+        out['weather'] = w
+    today = date.fromtimestamp(now_ms / 1000)
+    ev = run_json(['hearth-time', '--events', today.isoformat(), (today + timedelta(days=3)).isoformat()], 5)
+    if isinstance(ev, dict):
+        out['events'] = next_events(ev.get('events') or [], now_ms)
+        out['calendar'] = True
+    hs = home_server()
+    if hs:
+        out['home'] = hs
+    up = game_updates()
+    if up:
+        out['updates'] = up
+    return out
+
+
+def main(argv):
+    if not argv:
+        print(__doc__.strip())
+        return 2
+    cmd, rest = argv[0], argv[1:]
+    if cmd == 'recent':
+        print(json.dumps(recent(int(rest[0]) if rest and rest[0].isdigit() else 40)))
+    elif cmd == 'files':
+        print(json.dumps(find_files(' '.join(rest))))
+    elif cmd == 'tiles':
+        print(json.dumps(tiles()))
+    else:
+        print('error: unknown command ' + cmd)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

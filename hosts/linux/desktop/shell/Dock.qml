@@ -22,7 +22,10 @@ PanelWindow {
     property bool keyboardOpen: false
     onPrimaryChanged: claim()
     Component.onCompleted: claim()
-    function claim() { if (!primary) return; DeskState.mainBar = dock; DeskState.bottomInset = reserved; }
+    function claim() { if (!primary) return; DeskState.mainBar = dock; DeskState.dockOwner = dock; DeskState.dockBottom = reserved; }
+    // Replaced (Settings › Appearance › Bar layout changed) or gone: its space is given back, unless a new dock
+    // already took over.
+    Component.onDestruction: { if (DeskState.dockOwner === dock) { DeskState.dockOwner = null; DeskState.dockBottom = 0; } if (DeskState.mainBar === dock) DeskState.mainBar = null; }
     onReservedChanged: { claim(); refit(); }
 
     readonly property bool shelf: Theme.islandStyle === "shelf"
@@ -253,11 +256,11 @@ PanelWindow {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: dock.shelf ? 20 : 8
 
-                DockButton {   // the launcher
+                DockButton {   // the app menu: always the Hearth flame
                     visible: !dock.shelf
                     tip: "Apps (Super)"
                     onClicked: dock.launcherRequested()
-                    Icon { anchors.centerIn: parent; name: "grid"; size: 24 }
+                    Image { anchors.centerIn: parent; width: 28; height: 28; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                 }
                 Rectangle { visible: !dock.shelf; implicitWidth: 1; implicitHeight: dock.tile * 0.6; color: Theme.line }
 

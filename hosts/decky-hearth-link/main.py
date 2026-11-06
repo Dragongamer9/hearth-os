@@ -551,13 +551,28 @@ def home_short(v):
             'backups': {'count': _num(b.get('count')) or 0, 'lastOk': _num(b.get('lastOk')) or 0, 'waiting': _strs(b.get('waiting')),
                         'failed': _strs(b.get('failed')), 'running': b.get('running') is True},
             'alerts': _strs(v.get('alerts'), 3, 200), 'setupDone': v.get('setupDone') is True,
-            'ai': ai_short(v.get('ai'))}
+            'ai': ai_short(v.get('ai')), 'pictures': app_short(v.get('pictures')), 'voices': app_short(v.get('voices')),
+            'remote': remote_short(v.get('remote'))}
+
+
+def remote_short(r):
+    """Use this PC from anywhere: whether a device is streaming this PC through Moonlight now, and its name."""
+    r = r if isinstance(r, dict) else {}
+    return {'on': r.get('on') is True, 'streaming': r.get('on') is True and r.get('streaming') is True,
+            'who': text(r.get('who'), 40), 'since': _num(r.get('since')) or 0}
 
 
 def ai_short(a):
     """The AI service in a word (stage 3): off, ready, unloaded or paused for your game."""
     a = a if isinstance(a, dict) else {}
     st = a.get('state') if a.get('state') in ('off', 'ready', 'unloaded', 'paused') else 'off'
+    return {'on': a.get('on') is True and st != 'off', 'state': st}
+
+
+def app_short(a):
+    """AI pictures or AI voices in a word: off, ready or paused for your game."""
+    a = a if isinstance(a, dict) else {}
+    st = a.get('state') if a.get('state') in ('off', 'ready', 'paused') else 'off'
     return {'on': a.get('on') is True and st != 'off', 'state': st}
 
 

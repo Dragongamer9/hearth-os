@@ -94,7 +94,7 @@ Scope {
     function groupOf(id) { return groups[id] || "System"; }
     // Other words people search for, per page.
     readonly property var keywords: ({ wifi: "wireless network internet hotspot", bluetooth: "headphones headset speaker pair devices",
-        link: "phone devices sync", remote: "moonlight sunshine stream",
+        link: "phone devices sync", remote: "moonlight sunshine stream anywhere remote desktop work tailscale",
         "hs-overview": "nas home server light mode", "hs-shares": "nas smb samba share network windows folder", "hs-drives": "nas disk smart health snapshot undo raid mirror format",
         "hs-tailscale": "vpn remote away taildrop exit node wake", "hs-backups": "nas backup restore restic cloud b2 s3 sync syncthing photos phone",
         "hs-people": "nas family users accounts guest quota", "hs-alerts": "nas alerts smart notifications sleep wake on lan spin down ups power schedule",
@@ -117,6 +117,9 @@ Scope {
 
     Component.onCompleted: SettingsNav.settingsApp = app
     function open(p) {
+        // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page scrolls there).
+        const m = /^([\w-]+):(\w+)$/.exec(p || "");
+        if (m && files[m[1]]) { SettingsNav.pageAnchor = m[2]; p = m[1]; }
         if (p && files[p]) page = p;
         shown = true;
     }

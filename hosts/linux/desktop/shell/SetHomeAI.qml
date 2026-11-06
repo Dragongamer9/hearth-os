@@ -3,7 +3,8 @@
 // models sized for an RTX 5070 (12 GB) with 32 GB RAM, downloaded only when you pick one; the address to paste into the
 // Command Center; Light mode (models unloaded, or the service stopped, while Game Mode or a game runs). Command Center
 // items are hidden until it was seen on one of your devices within your window (Overview › Show hidden items shows
-// them anyway; display only, nothing is turned on or off by hiding).
+// them anyway; display only, nothing is turned on or off by hiding). AI pictures (ComfyUI) and AI voices (Kokoro) sit
+// next to the chat models and are always shown (they're set up in Services).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -21,6 +22,16 @@ SetPage {
     readonly property bool ccShown: !!cc && cc.shown
     readonly property bool shown: ccShown || (!!svc && (svc.on || svc.installed))
     readonly property var have: ai ? ai.models.filter(m => m.have) : []
+    readonly property var pic: ai ? ai.pictures : null
+    readonly property var voi: ai ? ai.voices : null
+    function appLine(a, what) {
+        if (!a) return "";
+        if (a.installing) return "Installing… " + (a.progress || 0) + "%";
+        if (!a.installed) return "Not installed yet: install it in Services";
+        if (!a.on) return "Off";
+        if (a.paused) return "Stopped while you play; it starts again after";
+        return a.active ? (a.healthy ? "Running" : "Starting…") : "Starting…";
+    }
     function say(t, b) { msg = t; bad = !!b; }
     function refresh() { job.run(["ai"], r => { page.ai = r; if (!page.askModel && page.have.length) page.askModel = page.have[0].id; }, e => page.ai = { error: e, models: [] }); }
     function set(k, v, ok) { act.run(["set", k, v], () => { if (ok) page.say(ok); page.refresh(); }, e => { page.say(e, true); page.refresh(); }); }
@@ -113,6 +124,37 @@ SetPage {
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
 
+    // ---------------------------------------------------------------- pictures and voices (always shown; set up in Services)
+    SetHeader { text: "Pictures and voices" }
+    SetRow {
+        visible: !!page.pic
+        icon: "palette"; title: "AI pictures (ComfyUI)"
+        sub: page.appLine(page.pic) + ". Pictures on the graphics card, from your devices through Tailscale"
+             + (page.pic && page.pic.installed ? " · " + page.pic.modelFiles.length + (page.pic.modelFiles.length === 1 ? " model" : " models") : "")
+        value: page.pic && page.pic.on ? "On" : ""
+        onActivated: SettingsNav.openPage("hs-services")
+    }
+    SetRow {
+        visible: !!page.pic && page.pic.installed && page.pic.on
+        icon: "open"; title: "Open ComfyUI"
+        sub: page.pic && page.pic.url ? page.pic.url : (page.pic ? page.pic.local + " (on this PC)" : "")
+        onActivated: Quickshell.execDetached(["xdg-open", page.pic.url || page.pic.local])
+    }
+    SetRow {
+        visible: !!page.voi
+        icon: "vol"; title: "AI voices (Kokoro)"
+        sub: page.appLine(page.voi) + ". Natural voices for the Command Center, on the CPU"
+        value: page.voi && page.voi.on ? "On" : ""
+        onActivated: SettingsNav.openPage("hs-services")
+    }
+    SetRow {
+        visible: !!page.voi && page.voi.installed
+        icon: "clipboard"; title: "Voices address for the Command Center"
+        sub: page.voi && page.voi.url ? page.voi.url + " · Settings › Voice › Speech servers › Kokoro-FastAPI" : "Turn on Tailscale for the address; on this PC: " + (page.voi ? page.voi.local : "")
+        value: page.voi && page.voi.url ? "Copy" : ""
+        onActivated: if (page.voi && page.voi.url) { Quickshell.execDetached(["wl-copy", page.voi.url]); page.say("Copied ✓"); }
+    }
+
     // ---------------------------------------------------------------- ask it
     SetHeader { text: "Ask the server"; visible: page.shown && page.have.length > 0 && !!page.svc && page.svc.active }
     SetField {
@@ -146,8 +188,10 @@ SetPage {
     }
     SetRow {
         visible: page.ccShown
-        icon: "mic"; chevron: false; interactive: false; title: "Voices (optional, set up by hand for now)"
-        sub: "The Command Center's open voices (Kokoro, Chatterbox, Dia…) run as their own speech servers. Hearth doesn't install them yet: run one on this PC (for example Kokoro-FastAPI on port 8880) and add http://" + (page.ai && page.ai.address ? page.ai.address.split("/")[2].split(":")[0] : "this-pc") + ":8880 in the Command Center's voice settings"
+        icon: "vol"; title: "Voices for the Command Center"
+        sub: page.voi && page.voi.installed ? (page.voi.url ? page.voi.url : page.voi.local) + " in Settings › Voice › Speech servers › Kokoro-FastAPI" + (page.voi.on ? "" : " (turn AI voices on in Services)")
+             : "AI voices (Kokoro) in Services gives the Command Center natural voices from this PC"
+        onActivated: SettingsNav.openPage("hs-services")
     }
 
     // ---------------------------------------------------------------- Light mode

@@ -32,11 +32,19 @@ Singleton {
     property string sunsetDark: "19:30"  // Sunset: dark from
     property string accentFrom: ""       // "wallpaper": the accent was worked out from your wallpaper (once, when you picked it)
     property var wallSwatches: []        // the colours "From wallpaper" found (shown as swatches)
+    // ---- Bar layout and app menus (Settings › Appearance › Bar and dock). Missing = the default, never written by
+    // itself: "" is "Top bar + floating dock" / the bottom edge / the dock floating / the app menu's default.
+    property string barLayout: ""        // "" or "split" (top bar + floating dock) | "one" (one main bar on barEdge)
+    property string barEdge: ""          // the one main bar's edge: "" (bottom) | "bottom" | "top" | "left" | "right"
+    property string dockFloat: ""        // the floating dock (app menu button + apps): "" (on) | "on" | "off" (in the main bar)
+    property string appMenu: ""          // "" (the default: Hearth; Start screen on a handheld installed with this) | "hearth" | "centred" | "tiles" | "start" | "classic"
+    property var menuTiles: ({})         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     property bool loaded: false
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
         "screenOffMinutes", "sleepMinutes", "look", "mode", "accent", "countMe"]
         .concat(["barStyle", "dockMode", "deskClock", "panelGlass", "sunset", "sunsetLight", "sunsetDark", "accentFrom", "wallSwatches"])
+        .concat(["barLayout", "barEdge", "dockFloat", "appMenu", "menuTiles"])
     onNightLightChanged: save("nightLight")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
@@ -59,6 +67,11 @@ Singleton {
     onSunsetDarkChanged: save("sunsetDark")
     onAccentFromChanged: save("accentFrom")
     onWallSwatchesChanged: save("wallSwatches")
+    onBarLayoutChanged: save("barLayout")
+    onBarEdgeChanged: save("barEdge")
+    onDockFloatChanged: save("dockFloat")
+    onAppMenuChanged: save("appMenu")
+    onMenuTilesChanged: save("menuTiles")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

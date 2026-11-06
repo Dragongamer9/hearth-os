@@ -36,8 +36,9 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         // Mantel 2026: under the clock pill in the middle of the top (several stack); with the classic taskbar, the
         // top-right corner as before.
-        anchors { top: true; right: DeskState.classicBar }
-        margins { top: DeskState.topInset > 0 ? DeskState.topInset + 2 : 12; right: 12 }
+        // With the main bar on another edge (Settings › Appearance › Bar layout): the top-right corner, clear of it.
+        anchors { top: true; right: DeskState.classicBar || DeskState.barEdge !== "top" }
+        margins { top: DeskState.topInset > 0 ? DeskState.topInset + 2 : 12; right: 12 + DeskState.rightInset }
         implicitWidth: DeskState.classicBar ? 380 : 420
         implicitHeight: list.implicitHeight
         color: "transparent"
