@@ -739,12 +739,13 @@ class Splash:
         return self.callback('Message', text)
 
     def draw(self):
-        import numpy as np
         from PIL import Image as PImage
-        t = np.linspace(0, 1, self.h)[:, None, None]
-        top, bottom = np.array(self.top) * 255, np.array(self.bottom) * 255
-        bg = top * (1 - t) + bottom * t
-        canvas = PImage.fromarray(np.repeat(bg, self.w, axis=1).clip(0, 255).astype('uint8'), 'RGB').convert('RGBA')
+        # The background: Plymouth's vertical gradient from the top colour to the bottom one (Pillow only).
+        col = PImage.new('RGB', (1, self.h))
+        n = max(1, self.h - 1)
+        col.putdata([tuple(int(max(0, min(1, a + (b - a) * y / n)) * 255 + 0.5) for a, b in zip(self.top, self.bottom))
+                     for y in range(self.h)])
+        canvas = col.resize((self.w, self.h), PImage.NEAREST).convert('RGBA')
         for s in sorted(self.sprites, key=lambda s: (s.z, s.order)):
             if s.img is None or s.opacity <= 0.002:
                 continue
