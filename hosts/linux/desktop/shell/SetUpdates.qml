@@ -97,6 +97,7 @@ SetPage {
     readonly property string heroAction: !page.canAdmin || page.phase !== "idle" ? "" : page.staged ? "Restart now"
         : page.available ? "Download" : "Look for updates"
     function heroDo() {
+        if (page.heroAction === "") return;
         if (page.staged) Quickshell.execDetached(["systemctl", "reboot"]);
         else if (page.available) page.start("update");
         else page.start("update-check");
@@ -105,7 +106,8 @@ SetPage {
         id: hero
         Layout.fillWidth: true
         Layout.bottomMargin: 4
-        interactive: page.heroAction !== ""
+        // Focusable whenever updates are made here (never turned off while it has the focus: Qt refuses that)
+        interactive: page.canAdmin
         implicitHeight: Math.max(96, heroText.implicitHeight + 32)
         radius: SetStyle.bigRadius
         onActivated: page.heroDo()

@@ -259,7 +259,8 @@ jobs:
           printf '%s\n' '#!/bin/sh' 'case "$1" in update-status) echo "{\"booted\":{\"version\":\"1.0.0\",\"image\":\"ghcr.io/dragongamer9/hearth-peppermint:testing\"},\"staged\":null,\"available\":null,\"rollback\":{\"version\":\"0.6.63\"},\"rollbackQueued\":false}" ;; esac' > /usr/libexec/nimbus/hearth-admin
           printf '#!/bin/sh\nexec "$@"\n' > /tmp/fakebin/pkexec; chmod +x /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
           sm updates 13-updates-go-back
-          wtype -k Right; sleep 1; for i in 1 2 3 4; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
+          # (The status card, Update anyway, then Go back: two Downs.)
+          wtype -k Right; sleep 1; for i in 1 2; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
           rm -f /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
           # ---- Settings › Home server, stage 1 (docs/HOME-SERVER.md): its pages with two shares, a stand-in Tailscale, and
           # the root helper through a stand-in pkexec (the drives as this runner has them), for these shots only.
