@@ -81,9 +81,9 @@ device). **Not built**: left out on purpose, with the reason.
 
 | Hydra feature | Hearth |
 |---|---|
-| A profile that shows friends what you're playing | Already in Hearth: Hearth Friends (Matrix) shows "Playing …"; **built now**: Friends › Activity, your gaming profile (playing now, total play time, recently played, most played), and **Share my activity**, which sends titles and play time only to your friends, end-to-end encrypted in your chats with them (off until you turn it on) |
+| A profile that shows friends what you're playing | Since 1.6 Discord shows "Playing …" (Hearth Friends on Matrix is archived, and with it Share my activity); **built now**: Friends › Activity, your gaming profile (playing now, total play time, recently played, most played), and **Share my activity**, which sends titles and play time only to your friends, end-to-end encrypted in your chats with them (off until you turn it on) |
 | Friends' activity | **Built now**: Friends › Activity › Friends' activity |
-| Friend requests, codes, blocking, direct messages with pictures, friend notifications | Already in Hearth: Hearth Friends |
+| Friend requests, codes, blocking, direct messages with pictures, friend notifications | Discord's own (1.6; Hearth Friends is archived) |
 | Profile banner, badges, profile privacy | Partly: avatar and background in Settings › Profile; sharing is opt-in per item (Show what I'm playing, Share my activity). Badges need a central server: not built |
 | Screenshots: hotkey, gamepad capture, lightbox | Already in Hearth: Screenshots (capture from Quick Access, gallery, send to a friend) |
 | Uploading screenshots to a public profile, comments | Not built: needs a central server |
@@ -132,7 +132,7 @@ device). **Not built**: left out on purpose, with the reason.
 |---|---|
 | The core (`play.*` calls) | `hosts/hearth-core/src/play/` (`mod.rs`, `keys.rs`, `discover.rs`, `details.rs`, `achievements.rs`, `artwork.rs`, `downloads.rs`, `sources.rs`, `finder.rs`, `activity.rs`, `themes.rs`) |
 | Custom pictures in the library | `library.rs` (dto: `customArt` over the store's pictures) |
-| Activity over Hearth Friends | `hosts/hearth-friends/src/lib.rs` (`activity_content`), `service.rs` (`setActivity`, `activity`) |
+| Activity over Hearth Friends | `archive/hosts/hearth-friends/src/lib.rs` (`activity_content`), `service.rs` (`setActivity`, `activity`) |
 | Game Mode's screens | `ui/hearth-play.js` (hooked into `ui/index.html` with a few `hp…` lines) |
 | Tests | `cargo test` in hearth-core (mocked answers; a local web server for pause/resume) and hearth-friends; `tools/ui-check.js` (the "hydra features" step); `tools/friends-e2e.py` (Activity between two users) |
 

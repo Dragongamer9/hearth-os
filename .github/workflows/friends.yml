@@ -1,4 +1,4 @@
-# Hearth Friends (hosts/hearth-friends): friends, chat, presence and game invites on Matrix, end to end encrypted.
+# Hearth Friends (archive/hosts/hearth-friends): friends, chat, presence and game invites on Matrix, end to end encrypted.
 # - unit tests (friend links, invite cards, privacy buckets, settings, tokens kept out of logs)
 # - a real homeserver (Synapse, started here for this run with throwaway accounts on this machine only), two
 #   Hearth Friends services as two users: sign-up, friend request and accept, encrypted messages both ways, a
@@ -7,23 +7,20 @@
 #   (GNOME Keyring through the Secret Service) after a restart
 # - sign-in on the server's own page (OAuth 2.0): a second Synapse with the Matrix Authentication Service (both here,
 #   one throwaway account): phone QR code (device grant), browser (auth code + PKCE, loopback), token refresh,
-#   revoke on sign-out, turned down, prompt=create (tools/friends-oauth-e2e.py)
+#   revoke on sign-out, turned down, prompt=create (archive/tools/friends-oauth-e2e.py)
 # - then the same through two Hearth cores (hosts/hearth-rs --core-stdio), as Game Mode's page calls them
 # Release builds are made by base-anatase.yml and base-peppermint.yml (the Linux images).
-name: Hearth Friends
+name: Hearth Friends (archived)
 
+# Archived in 1.6 (Discord replaced Hearth Friends, docs/ARCHIVED.md): runs only by hand, with "archived" typed in. The
+# "through two Hearth cores" part no longer works (the core has no Matrix side any more) and is off.
 on:
-  push:
-    branches: [main, linux-host, friends-matrix]
-    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'tools/friends-oauth-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
-  pull_request:
-    paths: ['hosts/hearth-friends/**', 'hosts/hearth-core/src/matrix_friends.rs', 'tools/friends-e2e.py', 'tools/friends-oauth-e2e.py', 'ui/**', 'tools/ui-check.js', '.github/workflows/friends.yml']
   workflow_dispatch:
     inputs:
-      cores:
-        description: Also run the test through two Hearth cores (builds the Hearth app)
-        type: boolean
-        default: true
+      confirm:
+        description: 'Hearth Friends is archived. Type "archived" to test it anyway'
+        required: true
+        default: ''
       oauth:
         description: Fail the run when the Matrix Authentication Service can't be set up (sign-in on the server's page)
         type: boolean
@@ -36,6 +33,7 @@ jobs:
   # Hearth's page with Hearth Friends in it (tools/ui-check.js, every screen), and pictures of the Friends screens as
   # notices (title "SHOT friends-<screen> <n>": a JPEG in base64 pieces).
   ui:
+    if: inputs.confirm == 'archived'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +61,7 @@ jobs:
         run: f=tools/qa-shots/friends-qam.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT friends-qam $i::$part"; done || true
 
   friends:
+    if: inputs.confirm == 'archived'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -71,20 +70,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            hosts/hearth-friends
+            archive/hosts/hearth-friends
             hosts/hearth-rs
       - name: D-Bus, GNOME Keyring
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libdbus-1-dev gnome-keyring libsecret-tools dbus-x11 >/dev/null
       - name: Unit tests
-        working-directory: hosts/hearth-friends
+        working-directory: archive/hosts/hearth-friends
         run: |
           set -o pipefail
           cargo test 2>&1 | tee test.log || { echo "::error title=hearth-friends tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A10 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
           echo "::notice title=hearth-friends unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
       - name: Build the service
-        working-directory: hosts/hearth-friends
+        working-directory: archive/hosts/hearth-friends
         run: |
           set -o pipefail
           cargo build --release 2>&1 | tee build.log || { echo "::error title=Build failed::$(grep -E '^error' -A12 build.log | head -90 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
@@ -120,7 +119,7 @@ jobs:
       - name: Two users, two services, end to end
         run: |
           set -o pipefail
-          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-e2e.py --bin hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8008' 2>&1 | tee e2e.log \
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 archive/tools/friends-e2e.py --bin archive/hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8008' 2>&1 | tee e2e.log \
             || { echo "::error title=Friends end to end::$(grep -E 'FAIL|Traceback|Error' -A6 e2e.log | head -60 | tr '\n' '|' | cut -c1-3900) || synapse: $(tail -c 600 "$RUNNER_TEMP/synapse/synapse.log" | tr '\n' '|')"; exit 1; }
           echo "::notice title=Friends e2e summary::$(grep -c '^PASS' e2e.log) checks passed (two services, Synapse)"
           grep '^PASS' e2e.log | while read -r l; do echo "::notice title=Friends e2e::$l"; done
@@ -188,7 +187,7 @@ jobs:
         if: steps.mas.outcome == 'success'
         run: |
           set -o pipefail
-          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-oauth-e2e.py --bin hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8018 --user dave' 2>&1 | tee oauth.log \
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 archive/tools/friends-oauth-e2e.py --bin archive/hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8018 --user dave' 2>&1 | tee oauth.log \
             || { grep '^PASS' oauth.log | while read -r l; do echo "::notice title=Friends OAuth::$l"; done; grep '^AUTHLOG' oauth.log | cut -c1-3900 | while read -r l; do echo "::notice title=Friends OAuth log::$l"; done
                  echo "::error title=Friends OAuth end to end::$(grep -E 'FAIL|Traceback|Error' -A8 oauth.log | head -60 | tr '\n' '|' | cut -c1-3900) || mas: $(docker logs --tail 30 mas 2>&1 | tr '\n' '|' | cut -c1-1500)"; exit 1; }
           echo "::notice title=Friends OAuth summary::$(grep -c '^PASS' oauth.log) checks passed (Synapse with the Matrix Authentication Service)"
@@ -205,19 +204,19 @@ jobs:
           print("issuer", m.get("issuer"), "· device grant:", m.get("device_authorization_endpoint"), "· grants:", m.get("grant_types_supported"), "· prompt:", m.get("prompt_values_supported"), "· registration endpoint:", bool(m.get("registration_endpoint")), "· account:", m.get("account_management_uri"))')"
           echo "::notice title=matrix.org login flows::$(curl -sf --max-time 20 https://matrix-client.matrix.org/_matrix/client/v3/login | head -c 600)"
       - name: WebKit and GTK for the Hearth app
-        if: github.event_name != 'workflow_dispatch' || inputs.cores
+        if: false
         run: sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
       - name: Build the Hearth app
-        if: github.event_name != 'workflow_dispatch' || inputs.cores
+        if: false
         working-directory: hosts/hearth-rs
         run: |
           set -o pipefail
           cargo build --release 2>&1 | tee build.log || { echo "::error title=Hearth build failed::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
       - name: Two Hearth cores befriend each other
-        if: github.event_name != 'workflow_dispatch' || inputs.cores
+        if: false
         run: |
           set -o pipefail
-          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-e2e.py --cores --bin hosts/hearth-friends/target/release/hearth-friends --hearth hosts/hearth-rs/target/release/hearth --homeserver http://127.0.0.1:8008' 2>&1 | tee cores.log \
+          dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 archive/tools/friends-e2e.py --cores --bin archive/hosts/hearth-friends/target/release/hearth-friends --hearth hosts/hearth-rs/target/release/hearth --homeserver http://127.0.0.1:8008' 2>&1 | tee cores.log \
             || { echo "::error title=Friends through Hearth cores::$(grep -E 'FAIL|Traceback|Error' -A6 cores.log | head -60 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
           echo "::notice title=Friends via cores summary::$(grep -c '^PASS' cores.log) checks passed (two Hearth cores, Synapse)"
           grep '^PASS' cores.log | while read -r l; do echo "::notice title=Friends via cores::$l"; done
@@ -229,4 +228,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-friends-linux
-          path: hosts/hearth-friends/target/release/hearth-friends
+          path: archive/hosts/hearth-friends/target/release/hearth-friends

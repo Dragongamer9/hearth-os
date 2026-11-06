@@ -93,6 +93,12 @@ const handlers = {
   home_server: () => (st().startsWith("home-server") ? homeQuick() : { available: false }),
   home_server_light: (on) => { home.lightMode = on; return { available: true, ok: true }; },
   home_server_resume: (on) => { home.resumed = on; return { available: true, ok: true }; },
+  // Discord (main.py discord): only in the home-server states' stand-in.
+  discord: () => (st().startsWith("home-server") ? { available: true, client: "official", opens: "official", appId: true, enabled: true, askToJoin: true, running: true, invite: { pin: "4821", playTogether: true, title: "Hades II" } } : { available: false }),
+  discord_set: () => ({ available: true, ok: true }),
+  discord_open: () => ({ available: true, ok: true }),
+  discord_setup: () => ({ ok: true }),
+  discord_toasts: () => [],
   status: () => STATES[st()](),
   storage: () => storageInfo(),
   start_link: () => ({ ok: true }),
@@ -105,6 +111,7 @@ const handlers = {
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export function definePlugin(f) { return f; }
+export const toaster = { toast: () => {} };
 // Steam's restart, for the "Restart Steam to see it" button after a Steam game was copied.
 window.SteamClient = { User: { StartRestart: () => {} } };
 // Decky Loader's own install call (it would show its "Install …?" prompt).

@@ -231,7 +231,9 @@ ShellRoot {
     }
     DebInstaller { id: debInstaller }
     Clipboard { id: clipboardHistory }
-    Friends { id: friendsPanel }   // Hearth Friends on Matrix; IPC target "friends"
+    // Discord (Discord.qml): the bar's button, its small window and chooser; IPC targets "discord" and "friends". Loaded
+    // separately like MediaKeys, so a problem in it only loses Discord, never the shell.
+    Loader { source: "Discord.qml" }
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
     FileManager { id: files }

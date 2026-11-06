@@ -18,6 +18,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | The small online installer | 1.0: the offline Debian USB and the Recovery USB are offered | stays in place (`os/installer`); `installer-iso.yml` by hand | |
 | Hearth for Android and Hearth Linux on Android | 2026-10-21 | `archive/hosts/android`; `android.yml` (by hand, type "archived") | [ANDROID](archive/ANDROID.md), [ANDROID-LINUX](archive/ANDROID-LINUX.md) |
 | Hearth's app store (Apps) | 2026-10-24: Bazaar replaced it | `archive/app-store` | below |
+| Hearth Friends (Matrix) | 1.6: replaced by Discord, with the owner's okay | `archive/hosts/hearth-friends`, `archive/hosts/hearth-core/src/matrix_friends.rs`, `archive/hosts/linux/desktop/shell/Friends.qml`, `archive/tools/friends-*.py`; `friends.yml` (by hand, type "archived") | [FRIENDS](archive/FRIENDS.md), below |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 
@@ -53,3 +54,25 @@ The image builds no longer install `hearth-apps.desktop`, and nothing outside `a
 (and the launcher's Uninstall… to `appStore.open(entry.id)`), the `hearth-apps.desktop` entry back in
 `os-bases/anatase/build.sh` and `os-bases/peppermint/build.sh`, and the store check back in `base-anatase.yml` and
 `base-peppermint.yml` (see the git history of this change).
+
+## Hearth Friends (Matrix): archived in 1.6
+
+Discord replaced it, with the owner's okay ([DISCORD](DISCORD.md)): the bar's Friends button is Discord's, Quick
+Access and Settings point to Discord, and "Playing <game>", invites and Play together go through Discord's Rich
+Presence.
+
+**Where the code is:** `archive/hosts/hearth-friends` (the Matrix service), `archive/hosts/hearth-core/src/matrix_friends.rs`
+(the core's side as it was; its Play together part lives on in `hosts/hearth-core/src/play_together.rs`),
+`archive/hosts/linux/desktop/shell/Friends.qml` (Mantel's panel), `archive/tools/friends-e2e.py` and
+`friends-oauth-e2e.py` (the end-to-end tests); `.github/workflows/friends.yml` runs only by hand, with "archived" typed.
+Hearth's own Game Mode page (`ui/index.html`) keeps its Matrix screens, hidden: the core no longer offers `mfriends`,
+and the old `mfriends.*` calls answer that Discord replaced it.
+
+**What happens on devices:** the image no longer has `/usr/bin/hearth-friends` or its user service, and nothing starts
+it; a leftover enable link from an older image points at nothing and systemd skips it. People's Matrix data (keyring
+entries, `~/.local/share/hearth/friends/`) and settings are left untouched and aren't read.
+
+**To bring it back:** move the folders back, put `pub mod matrix_friends;` back in `hearth-core/src/lib.rs` and its
+calls in `bridge.rs`, `play/mod.rs` and `core_service.rs`, `Friends { }` in `shell.qml` and the buttons in `Bar.qml` /
+`Islands.qml`, and the build and service back in `base-*.yml` and `os-bases/*/build.sh` (see the git history of this
+change).

@@ -7,6 +7,15 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+<!-- Discord replaces Hearth Friends (feature/discord-friends) -->
+- [x] Discord replaces Hearth Friends (Matrix, archived with the owner's okay, docs/ARCHIVED.md): the bar's Friends button is now **Discord**; the first press asks which Discord you want (the official app, recommended; Discord in a web window, nothing to install; or Dorion, lighter but unofficial, with its risk said plainly) and installs only what you pick when you press Install (docs/DISCORD.md) (needs testing on a device)
+- [x] Discord's small window by the bar, on whichever edge the bar is: Discord's own window, so you reply to friends there; pressing the button again hides it without quitting (notifications keep coming); its size is remembered; Open full Discord makes it a normal window (needs testing on a device)
+- [x] Settings › Gaming › Discord: which Discord, "Playing <game>" on Discord with a one-step setup (paste the application ID) and an on/off switch, Let friends ask to join, and an invite link to paste in a chat (needs testing on a device)
+- [x] Ask to join / Join from Discord: a friend joining opens the game's page on their Hearth (Play / Install), or Play together (Sunshine to Moonlight, over Tailscale or the local network) with a one-time PIN shown on both screens that expires in 10 minutes (needs testing on a device)
+- [x] Steam Game Mode: Quick Access › Hearth Link › Discord (open Discord, the switches, the PIN, setup), and Discord's notifications as toasts (needs testing on a device)
+- [x] Hearth Friends' Matrix service is no longer built, shipped or started; your old Matrix data and settings are left where they were, untouched (needs testing on a device)
+<!-- end Discord -->
+
 ## 1.5 (released 2026-11-06)
 
 - [x] Hearth Settings redesign (the approved mockups): opens on a new **Home** page (this PC with Rename, Wi-Fi / Bluetooth / Updates / Hearth Link at a glance, recommended settings, Bluetooth devices, storage, the home server, your look); 12 categories instead of one long list of 42 pages (System, Network & internet, Bluetooth & devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy & security, Accessibility, Updates & recovery); setting cards in titled groups with the control or a status chip on the right and a chevron only where something opens; expander cards (the on-screen keyboard, resolution, more accent colours, the wallpapers, each home server service's details); breadcrumb titles ("Home server › Services"); warning banners (Home server's "1 thing needs a look") (needs testing on a device)

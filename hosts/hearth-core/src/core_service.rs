@@ -46,8 +46,8 @@
 //!                                         carry the game's number (procs::owners); never Steam's own. A game put aside
 //!                                         carries on by itself when it's back in front (Steam's Resume), and everything
 //!                                         still stopped carries on when the service ends
-//!   friends                               Hearth Friends (Matrix), read only: signed in, each friend's name, presence
-//!                                         and game. No chats, no account, no tokens
+//!   friends                               Hearth Friends (Matrix) was archived in 1.6: answers "not signed in" and
+//!                                         Discord's Rich Presence status (discord.rs)
 //!   link {op, peer, server}               Hearth Link and Hearth Storage: `status` (short: names, online, copies,
 //!                                         servers; never the device's link), `sync` with a paired device, `wake` a
 //!                                         storage server
@@ -617,10 +617,8 @@ fn aside_release(sh: &Shared) {
 
 /// Hearth Friends, read only: who's a friend, online, playing what. Never chats, accounts or tokens.
 fn friends() -> Result<Value, String> {
-    let st = crate::matrix_friends::call("status", &json!({}))?;
-    if st["signedIn"] != true { return Ok(json!({"signedIn": false, "friends": []})); }
-    let list = crate::matrix_friends::call("friends", &json!({}))?;
-    Ok(json!({"signedIn": true, "friends": friends_short(&list)}))
+    // Hearth Friends (Matrix) was archived in 1.6; Discord replaced it (docs/DISCORD.md). Older plugins still ask.
+    Ok(json!({"signedIn": false, "friends": [], "replacedBy": "discord", "discord": crate::discord::status()}))
 }
 
 /// Friends (not pending requests), online and playing first, only what the page shows.

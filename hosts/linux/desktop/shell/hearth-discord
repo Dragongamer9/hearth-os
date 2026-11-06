@@ -1,0 +1,802 @@
+#!/usr/bin/python3
+"""hearth-discord: Discord on Hearth OS (docs/DISCORD.md). Since 1.6 Discord is how Hearth does friends (Hearth Friends
+on Matrix is archived, docs/archive/FRIENDS.md).
+
+Hearth only starts, shows, places and hides Discord's own window. It never reads, scripts or injects into that window
+or its storage, never touches a Discord token, password or cookie, and never reads or sends messages or the friends
+list. "Playing <game>", Ask to join / Join and Play together go through the Discord app's own local IPC socket
+(hearth-core discord.rs while a game runs; `join` here when Discord starts Hearth for a friend's invite).
+
+Which Discord (the owner picks it once, in the bar's chooser or Settings › Discord; saved only on his pick):
+  official   the Discord app: Flathub's com.discordapp.Discord (installed when he presses Install) or a .deb's `discord`
+  web        Discord's own web app (https://discord.com/app) in a small Hearth Browser (Firefox) window with its own
+             profile, nothing to install; he signs in on Discord's own page
+  dorion     Dorion (github.com/SpikeHD/Dorion), a lighter unofficial app that loads Discord's web app. Its official
+             GitHub release, checked against the SHA-256 GitHub publishes for it, unpacked into ~/.local/opt/dorion
+
+  hearth-discord status                    JSON: client, chosen, clients{official,web,dorion: installed}, running,
+                                           appId, enabled, askToJoin, invite (while a game runs), size
+  hearth-discord choose CLIENT             save his pick (official | web | dorion)
+  hearth-discord set KEY VALUE             enabled / askToJoin (on|off), appId (digits, or "" to take it out)
+  hearth-discord install CLIENT            install it (progress lines, then JSON); web needs nothing
+  hearth-discord open [--full] [--quick EDGE SCREEN BAR ANCHOR]
+                                           start the picked Discord (or the next one there), full size or as the
+                                           small window by the bar, placed once its window is up
+  hearth-discord place EDGE SCREEN BAR ANCHOR
+                                           move and size the open Discord window by the bar (SCREEN is WxH+X+Y, BAR
+                                           the bar's thickness, ANCHOR the button's position along the bar or -1)
+  hearth-discord geometry EDGE SCREEN BAR ANCHOR   JSON {x, y, w, h}: where `place` puts it
+  hearth-discord remember                  keep the open window's size for next time (state, not a setting)
+  hearth-discord invite                    JSON: the invite for what you're playing (link, PIN), or null
+  hearth-discord join --stdin | --wait [URL] | --link hearth://join/...
+                                           a friend's invite: find the game (Play / Install) or start Play together
+  hearth-discord notify-bridge --while SOCKET
+                                           Steam Game Mode has no notification server: this one takes desktop
+                                           notifications (Discord's among them) only when nobody else does, and prints
+                                           one JSON line each ({id, app, title, body}) for the Hearth Link plugin to
+                                           show as a toast. It gives the name up to anyone who asks for it, and quits
+                                           within 3 seconds once SOCKET (Hearth's core in Steam Game Mode) stops
+                                           answering, so Desktop Mode's own notifications always get it back.
+                                           Nothing is logged or kept
+Failures print "error: ..." and exit 1.
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import urllib.request
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+STATE = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+RUNTIME = os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir()
+
+SETTINGS = os.environ.get('HEARTH_DISCORD_SETTINGS') or os.path.join(CONFIG, 'nimbus', 'discord.json')
+SIZE_STATE = os.path.join(STATE, 'nimbus', 'discord-window.json')
+INVITE = os.path.join(RUNTIME, 'hearth', 'discord-invite.json')
+
+FLATPAK = 'com.discordapp.Discord'
+CLIENTS = ('official', 'web', 'dorion')
+WEB_URL = 'https://discord.com/app'
+WEB_CLASS = 'HearthDiscordWeb'
+WEB_PROFILE = os.path.join(DATA, 'hearth', 'discord-web')
+FIREFOXES = ('/usr/lib/hearth-browser/firefox/firefox', '/usr/bin/firefox', '/usr/bin/firefox-esr')
+DORION_REPO = 'SpikeHD/Dorion'
+DORION_ROOT = os.path.join(HOME, '.local', 'opt', 'dorion')
+DORION_DESKTOP = os.path.join(DATA, 'applications', 'hearth-dorion.desktop')
+MOONLIGHT = 'com.moonlight_stream.Moonlight'
+
+DEFAULT_W, DEFAULT_H = 420, 640
+MIN_W, MIN_H = 320, 400
+MARGIN = 8
+SECRET_MAX = 128
+
+# The window classes each client's window has (X11 WM_CLASS, which labwc also gives as the app id): Mantel finds the
+# window by these to show, hide or make it full size. Every client is started under XWayland so it can be placed.
+WINDOW_CLASSES = {'official': ['discord', 'com.discordapp.discord'], 'web': [WEB_CLASS.lower()], 'dorion': ['dorion']}
+
+
+class Fail(Exception):
+    pass
+
+
+def out(obj):
+    print(json.dumps(obj), flush=True)
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (pct, what), flush=True)
+
+
+def which(name):
+    return shutil.which(name)
+
+
+def run(cmd, timeout=30, **kw):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+        return p.returncode, p.stdout, p.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+def spawn(cmd, env=None):
+    """Start CMD on its own (it outlives this helper)."""
+    e = dict(os.environ)
+    e.update(env or {})
+    subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, env=e)
+
+
+# ------------------------------------------------------------------ settings (shared with hearth-core discord.rs)
+
+def settings():
+    return sio.load_json(SETTINGS, {})
+
+
+def valid_app_id(s):
+    return isinstance(s, str) and 15 <= len(s) <= 21 and s.isdigit()
+
+
+def app_id():
+    v = (os.environ.get('HEARTH_DISCORD_APP_ID') or '').strip()
+    if valid_app_id(v):
+        return v
+    v = settings().get('appId')
+    if valid_app_id(v):
+        return v
+    try:
+        with open('/etc/hearth/discord.conf') as f:
+            for line in f:
+                line = line.split('#', 1)[0].strip()
+                if '=' in line:
+                    k, val = line.split('=', 1)
+                    val = val.strip().strip('"\'')
+                    if k.strip() == 'app_id' and valid_app_id(val):
+                        return val
+    except OSError:
+        pass
+    return None
+
+
+def choose(client):
+    if client not in CLIENTS:
+        raise Fail('Pick official, web or dorion')
+    sio.merge_json(SETTINGS, {'client': client})
+    return status()
+
+
+def set_key(key, value):
+    if key in ('enabled', 'askToJoin'):
+        if value not in ('on', 'off', 'true', 'false'):
+            raise Fail('on or off')
+        sio.merge_json(SETTINGS, {key: value in ('on', 'true')})
+    elif key == 'appId':
+        value = value.strip()
+        if value and not valid_app_id(value):
+            raise Fail("That isn't a Discord application ID (15 to 21 digits, from discord.com/developers/applications)")
+        sio.merge_json(SETTINGS, {'appId': value or None})
+        if value:
+            register_join_handler(value)
+    else:
+        raise Fail('Unknown setting: ' + key)
+    return status()
+
+
+def register_join_handler(aid, apps_dir=None, mimeapps=None):
+    """Discord starts a game for a friend's invite through discord-<app id>:// (what Discord's own Rich Presence
+    library registers): a hidden entry that hands it to `hearth-discord join --wait`, set as that link's app in
+    mimeapps.list (merged: every other line stays)."""
+    apps_dir = apps_dir or os.path.join(DATA, 'applications')
+    mimeapps = mimeapps or os.path.join(CONFIG, 'mimeapps.list')
+    name = 'hearth-discord-%s.desktop' % aid
+    os.makedirs(apps_dir, exist_ok=True)
+    sio.write_text(os.path.join(apps_dir, name), (
+        '[Desktop Entry]\nType=Application\nName=Hearth (Discord invites)\nNoDisplay=true\n'
+        'Exec=python3 %s join --wait %%u\nMimeType=x-scheme-handler/discord-%s;\n') % (os.path.join(HERE, 'hearth-discord'), aid))
+    key = 'x-scheme-handler/discord-%s' % aid
+
+    def change(text):
+        lines = text.splitlines()
+        lines = [l for l in lines if not l.startswith(key + '=')]
+        if '[Default Applications]' not in lines:
+            lines = lines + ['[Default Applications]']
+        i = lines.index('[Default Applications]')
+        lines.insert(i + 1, '%s=%s' % (key, name))
+        return '\n'.join(lines) + '\n'
+    sio.update_text(mimeapps, change)
+    return name
+
+
+# ------------------------------------------------------------------ which Discord, installed or not
+
+def flatpak_has(app):
+    return bool(which('flatpak')) and run(['flatpak', 'info', app], 10)[0] == 0
+
+
+def firefox():
+    for f in FIREFOXES:
+        if os.access(f, os.X_OK):
+            return f
+    return which('firefox')
+
+
+def dorion_bin():
+    p = os.path.join(DORION_ROOT, 'usr', 'bin', 'dorion')
+    if os.access(p, os.X_OK):
+        return p
+    return which('dorion')
+
+
+def installed():
+    return {
+        'official': flatpak_has(FLATPAK) or bool(which('discord')),
+        'web': bool(firefox()),
+        'dorion': bool(dorion_bin()),
+    }
+
+
+def pick_client(chosen, have):
+    """The Discord to open: his pick when it's there, else the app, else the web window."""
+    if chosen in CLIENTS and have.get(chosen):
+        return chosen
+    for c in ('official', 'web'):
+        if have.get(c):
+            return c
+    return None
+
+
+def read_invite(path=None, now=None):
+    try:
+        with open(path or INVITE) as f:
+            v = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(v, dict):
+        return None
+    if v.get('expires') and v['expires'] <= (now or time.time()):
+        v = dict(v, pin='', playTogether=False)
+    return v
+
+
+def status():
+    s = settings()
+    chosen = s.get('client') if s.get('client') in CLIENTS else None
+    have = installed()
+    return {
+        'client': chosen, 'chosen': chosen is not None, 'clients': have, 'opens': pick_client(chosen, have),
+        'running': running(), 'appId': app_id(), 'enabled': s.get('enabled') is not False,
+        'askToJoin': s.get('askToJoin') is not False, 'invite': read_invite(), 'size': saved_size(),
+        'windowClasses': WINDOW_CLASSES,
+    }
+
+
+def running():
+    code, o, _ = run(['pgrep', '-u', str(os.getuid()), '-f', r'(^|/)(Discord|discord|dorion)( |$)|class %s' % WEB_CLASS], 5)
+    return code == 0 and bool(o.strip())
+
+
+# ------------------------------------------------------------------ installing
+
+def install(client, fetch=None):
+    if client == 'web':
+        if not firefox():
+            raise Fail("Hearth Browser isn't on this system")
+        return {'installed': True}
+    if client == 'official':
+        if not which('flatpak'):
+            raise Fail('Flatpak is needed to install Discord')
+        progress(5, 'Installing Discord from Flathub')
+        code, _, err = run(['flatpak', 'install', '--user', '-y', '--noninteractive', 'flathub', FLATPAK], 1800)
+        if code != 0:
+            raise Fail("Discord didn't install: " + (err.strip().splitlines() or ['flatpak failed'])[-1])
+        progress(100, 'Discord is installed')
+        return {'installed': True}
+    if client == 'dorion':
+        return install_dorion(fetch)
+    raise Fail('Pick official, web or dorion')
+
+
+def _get(url, accept='application/json', limit=300 * 1024 * 1024):
+    req = urllib.request.Request(url, headers={'Accept': accept, 'User-Agent': 'Hearth-OS'})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = r.read(limit + 1)
+    if len(data) > limit:
+        raise Fail('That download is bigger than expected')
+    return data
+
+
+def deb_arch(machine=None):
+    m = machine or os.uname().machine
+    return {'x86_64': 'amd64', 'aarch64': 'arm64', 'armv7l': 'armhf'}.get(m)
+
+
+def pick_dorion_asset(release, arch):
+    """The release's .deb for this processor and the SHA-256 GitHub publishes for it (asset "digest")."""
+    for a in release.get('assets') or []:
+        name = a.get('name') or ''
+        if name.endswith('_%s.deb' % arch) or name.endswith('-%s.deb' % arch):
+            digest = a.get('digest') or ''
+            if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+                raise Fail("Dorion's release doesn't publish a checksum for %s, so Hearth won't install it" % name)
+            url = a.get('browser_download_url') or ''
+            if not url.startswith('https://github.com/%s/releases/download/' % DORION_REPO):
+                raise Fail("Dorion's download isn't on its GitHub release page")
+            return name, url, digest.split(':', 1)[1]
+    raise Fail('Dorion has no download for this processor (%s)' % arch)
+
+
+def install_dorion(fetch=None, root=None, desktop=None):
+    fetch = fetch or _get
+    root = root or DORION_ROOT
+    desktop = desktop or DORION_DESKTOP
+    arch = deb_arch()
+    if not arch:
+        raise Fail('Dorion has no download for this processor')
+    if not which('dpkg-deb'):
+        raise Fail('dpkg-deb is needed to unpack Dorion')
+    progress(5, 'Asking GitHub for Dorion\'s newest release')
+    rel = json.loads(fetch('https://api.github.com/repos/%s/releases/latest' % DORION_REPO).decode('utf-8'))
+    name, url, sha = pick_dorion_asset(rel, arch)
+    progress(15, 'Downloading ' + name)
+    data = fetch(url, 'application/octet-stream')
+    if hashlib.sha256(data).hexdigest() != sha:
+        raise Fail("Dorion's download didn't match its checksum, so it wasn't installed")
+    progress(80, 'Unpacking Dorion')
+    with tempfile.TemporaryDirectory() as tmp:
+        deb = os.path.join(tmp, name)
+        with open(deb, 'wb') as f:
+            f.write(data)
+        new = root + '.new'
+        shutil.rmtree(new, ignore_errors=True)
+        os.makedirs(new)
+        code, _, err = run(['dpkg-deb', '-x', deb, new], 300)
+        if code != 0 or not os.path.exists(os.path.join(new, 'usr', 'bin', 'dorion')):
+            shutil.rmtree(new, ignore_errors=True)
+            raise Fail("Dorion's package couldn't be unpacked")
+        shutil.rmtree(root, ignore_errors=True)
+        os.rename(new, root)
+    os.makedirs(os.path.dirname(desktop), exist_ok=True)
+    sio.write_text(desktop, '[Desktop Entry]\nType=Application\nName=Dorion\nComment=Discord, lighter (unofficial)\n'
+                   'Exec=env GDK_BACKEND=x11 %s %%U\nIcon=discord\nCategories=Network;Chat;\n' % os.path.join(root, 'usr', 'bin', 'dorion'))
+    progress(100, 'Dorion is installed')
+    return {'installed': True, 'version': rel.get('tag_name')}
+
+
+# ------------------------------------------------------------------ starting and placing the window
+
+def ensure_web_profile(profile=None):
+    """The web window's own Firefox profile: no tabs or address bar, so it looks like an app. Hearth's own files in
+    its own profile; nothing of Discord's page is touched."""
+    profile = profile or WEB_PROFILE
+    chrome = os.path.join(profile, 'chrome')
+    os.makedirs(chrome, exist_ok=True)
+    sio.write_text(os.path.join(profile, 'user.js'),
+                   'user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);\n'
+                   'user_pref("browser.shell.checkDefaultBrowser", false);\n'
+                   'user_pref("browser.startup.homepage_override.mstone", "ignore");\n'
+                   'user_pref("browser.tabs.inTitlebar", 0);\n')
+    sio.write_text(os.path.join(chrome, 'userChrome.css'),
+                   '#TabsToolbar, #nav-bar, #PersonalToolbar, #sidebar-box { visibility: collapse !important; }\n')
+    return profile
+
+
+def launch_command(client, size=None, have_flatpak=None):
+    """(command, extra environment) to start CLIENT under XWayland (so Hearth can place its window)."""
+    w, h = size or (DEFAULT_W, DEFAULT_H)
+    if client == 'official':
+        fp = flatpak_has(FLATPAK) if have_flatpak is None else have_flatpak
+        if fp:
+            return ['flatpak', 'run', FLATPAK], {}
+        return ['discord'], {}
+    if client == 'web':
+        ff = firefox() or 'firefox'
+        return [ff, '--new-instance', '--profile', WEB_PROFILE, '--class', WEB_CLASS, '--name', WEB_CLASS,
+                '--width', str(w), '--height', str(h), WEB_URL], {'MOZ_ENABLE_WAYLAND': '0'}
+    if client == 'dorion':
+        return [dorion_bin() or 'dorion'], {'GDK_BACKEND': 'x11'}
+    raise Fail('Pick official, web or dorion')
+
+
+def parse_screen(s):
+    m = re.fullmatch(r'(\d+)x(\d+)(?:\+(-?\d+)\+(-?\d+))?', s or '')
+    if not m:
+        raise Fail('SCREEN is WxH+X+Y')
+    return int(m.group(1)), int(m.group(2)), int(m.group(3) or 0), int(m.group(4) or 0)
+
+
+def saved_size(path=None):
+    v = sio.load_json(path or SIZE_STATE, {}, repair=False)
+    try:
+        return [max(MIN_W, int(v['w'])), max(MIN_H, int(v['h']))]
+    except (KeyError, TypeError, ValueError):
+        return [DEFAULT_W, DEFAULT_H]
+
+
+def save_size(w, h, path=None):
+    path = path or SIZE_STATE
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    sio.merge_json(path, {'w': max(MIN_W, int(w)), 'h': max(MIN_H, int(h))})
+
+
+def geometry(edge, screen, bar, anchor, size):
+    """Where the small window goes: next to the bar on its edge (above a bottom bar, below a top bar, beside a side
+    bar), centred on the button when its position is known, kept on the screen."""
+    sw, sh, sx, sy = screen
+    w = min(max(MIN_W, size[0]), sw - 2 * MARGIN)
+    h = min(max(MIN_H, size[1]), sh - 2 * MARGIN)
+    bar = max(0, int(bar))
+
+    def along(length, total, a):
+        if a is None or a < 0:
+            return total - length - MARGIN
+        return min(max(MARGIN, int(a - length / 2)), total - length - MARGIN)
+    if edge == 'top':
+        x, y = along(w, sw, anchor), bar + MARGIN
+    elif edge == 'left':
+        x, y = bar + MARGIN, along(h, sh, anchor)
+    elif edge == 'right':
+        x, y = sw - bar - w - MARGIN, along(h, sh, anchor)
+    else:
+        x, y = along(w, sw, anchor), sh - bar - h - MARGIN
+    return {'x': sx + max(0, x), 'y': sy + max(0, y), 'w': w, 'h': h}
+
+
+def find_windows(client, xdotool=None):
+    """The client's visible X windows (XWayland), newest last."""
+    xd = xdotool or which('xdotool')
+    if not xd:
+        return []
+    ids = []
+    for cls in WINDOW_CLASSES[client]:
+        code, o, _ = run([xd, 'search', '--onlyvisible', '--class', '^%s$' % re.escape(cls)], 5)
+        if code == 0:
+            ids += [i for i in o.split() if i.isdigit() and i not in ids]
+    return ids
+
+
+def place_window(client, g, xdotool=None):
+    """Move and size the client's window (XWayland: labwc honours the request). False when there's none to place."""
+    xd = xdotool or which('xdotool')
+    ids = find_windows(client, xd)
+    if not ids:
+        return False
+    wid = ids[-1]
+    run([xd, 'windowsize', wid, str(g['w']), str(g['h'])], 5)
+    run([xd, 'windowmove', wid, str(g['x']), str(g['y'])], 5)
+    return True
+
+
+def remember(client, xdotool=None):
+    xd = xdotool or which('xdotool')
+    ids = find_windows(client, xd)
+    if not ids:
+        return None
+    code, o, _ = run([xd, 'getwindowgeometry', '--shell', ids[-1]], 5)
+    vals = dict(l.split('=', 1) for l in o.splitlines() if '=' in l) if code == 0 else {}
+    try:
+        w, h = int(vals['WIDTH']), int(vals['HEIGHT'])
+    except (KeyError, ValueError):
+        return None
+    save_size(w, h)
+    return [w, h]
+
+
+def open_client(full=False, quick=None, wait=25):
+    s = settings()
+    have = installed()
+    client = pick_client(s.get('client'), have)
+    if not client:
+        raise Fail("Discord isn't installed. Pick one in the bar's Discord button")
+    if client == 'web':
+        ensure_web_profile()
+    already = bool(find_windows(client))
+    if not already:
+        cmd, env = launch_command(client, saved_size())
+        spawn(cmd, env)
+    if quick and not full:
+        g = geometry(quick[0], parse_screen(quick[1]), int(quick[2]), float(quick[3]), saved_size())
+        until = time.time() + (wait if not already else 1)
+        while True:
+            if place_window(client, g):
+                break
+            if time.time() > until:
+                break
+            time.sleep(0.5)
+    return {'client': client, 'started': not already}
+
+
+# ------------------------------------------------------------------ a friend's invite (the joining side)
+
+def parse_secret(s):
+    """`h1|<Hearth game id>|<host address>|<PIN>|<expires>|<title>` (hearth-core discord.rs make_secret)."""
+    if not isinstance(s, str) or len(s) > SECRET_MAX:
+        return None
+    p = s.split('|', 5)
+    if len(p) < 5 or p[0] != 'h1':
+        return None
+    gid, addr, pin, exp = p[1], p[2], p[3], p[4]
+    title = p[5] if len(p) > 5 else ''
+    if not gid or len(gid) > 200 or ':' not in gid or any(c in gid for c in '"\\') or any(ord(c) < 32 for c in gid):
+        return None
+    if pin and not re.fullmatch(r'\d{4}', pin):
+        return None
+    if addr and not re.fullmatch(r'[A-Za-z0-9.:\-\[\]]{1,100}', addr):
+        return None
+    if not exp.isdigit():
+        return None
+    return {'id': gid, 'addr': addr, 'pin': pin, 'expires': int(exp), 'title': title}
+
+
+def secret_from_link(link):
+    """hearth://join/<secret> or https://hearthos.fun/join#<secret> → the secret."""
+    if not isinstance(link, str):
+        return None
+    for pre in ('hearth://join/', 'https://hearthos.fun/join#'):
+        if link.startswith(pre):
+            return urllib.parse.unquote(link[len(pre):])
+    return None
+
+
+def library(games_helper=None):
+    helper = games_helper or os.path.join(HERE, 'hearth-games')
+    code, o, _ = run(['python3', helper, 'cached'], 30)
+    try:
+        v = json.loads(o.strip().splitlines()[-1]) if code == 0 and o.strip() else []
+    except ValueError:
+        v = []
+    return v if isinstance(v, list) else []
+
+
+def find_game(sec, games):
+    for g in games:
+        if g.get('id') == sec['id']:
+            return g
+    t = (sec.get('title') or '').strip().lower()
+    if t:
+        for g in games:
+            if (g.get('title') or '').strip().lower() == t:
+                return g
+    return None
+
+
+def plan_join(sec, games, moonlight, now=None):
+    """What to do for a friend's invite: ('stream', addr, pin) for Play together, ('page', id) for the game in your
+    library, ('steam', appid) for a Steam game you don't have here, ('missing', title)."""
+    now = now or time.time()
+    if sec['addr'] and sec['pin'] and sec['expires'] > now and moonlight:
+        return ('stream', sec['addr'], sec['pin'])
+    g = find_game(sec, games)
+    if g:
+        return ('page', g['id'])
+    if sec['id'].startswith('steam:') and sec['id'][6:].isdigit():
+        return ('steam', sec['id'][6:])
+    return ('missing', sec.get('title') or sec['id'])
+
+
+def notify(title, body):
+    if which('notify-send'):
+        spawn(['notify-send', '-a', 'Hearth', title, body])
+
+
+def do_join(secret, games=None, moonlight=None):
+    sec = parse_secret(secret)
+    if not sec:
+        raise Fail("That invite isn't one Hearth can use")
+    ml = flatpak_has(MOONLIGHT) if moonlight is None else moonlight
+    plan = plan_join(sec, library() if games is None else games, ml)
+    title = sec.get('title') or 'the game'
+    if plan[0] == 'stream':
+        _, addr, pin = plan
+        notify('Play together', 'Joining %s. PIN %s (the same PIN shows on your friend\'s screen).' % (title, pin))
+        code, o, _ = run(['flatpak', 'run', MOONLIGHT, 'pair', addr, '--pin', pin], 120)
+        if code != 0 and 'already paired' not in (o or '').lower():
+            notify('Play together', "Couldn't reach your friend's device. Is it shared with you in Tailscale, or on the same network?")
+            raise Fail('pairing failed')
+        spawn(['flatpak', 'run', MOONLIGHT, 'stream', addr, 'Desktop'])
+    elif plan[0] == 'page':
+        spawn(['nimbus', '--windowed', '--game-page', plan[1]])
+    elif plan[0] == 'steam':
+        spawn(['xdg-open', 'steam://store/%s' % plan[1]])
+    else:
+        if sec['addr'] and sec['pin'] and not ml:
+            notify('Play together', 'Install Moonlight (Settings › Remote play) to join %s.' % title)
+        else:
+            notify('Discord invite', "%s isn't in your library. Get it in the Store, then join again." % title)
+    return {'did': plan[0], 'title': title}
+
+
+def _frame(op, payload):
+    body = json.dumps(payload).encode('utf-8')
+    return struct.pack('<II', op, len(body)) + body
+
+
+def _read_frame(sock):
+    head = b''
+    while len(head) < 8:
+        c = sock.recv(8 - len(head))
+        if not c:
+            raise OSError('closed')
+        head += c
+    op, n = struct.unpack('<II', head)
+    if n > 64 * 1024:
+        raise OSError('frame too big')
+    body = b''
+    while len(body) < n:
+        c = sock.recv(n - len(body))
+        if not c:
+            raise OSError('closed')
+        body += c
+    try:
+        return op, json.loads(body.decode('utf-8'))
+    except ValueError:
+        return op, None
+
+
+def ipc_paths(runtime=RUNTIME):
+    subs = ['', 'app/com.discordapp.Discord', 'app/com.discordapp.DiscordCanary', 'app/dev.vencord.Vesktop', 'snap.discord',
+            '.flatpak/com.discordapp.Discord/xdg-run']
+    dirs = [runtime] + [d for d in (os.environ.get('TMPDIR'), '/tmp') if d]
+    return [os.path.join(d, s, 'discord-ipc-%d' % i) for d in dirs for s in subs for i in range(10)]
+
+
+def wait_for_join(aid, timeout=30, paths=None):
+    """Discord started Hearth for an invite: connect to it with the app ID, ask for ACTIVITY_JOIN, wait for the secret."""
+    end = time.time() + timeout
+    while time.time() < end:
+        for p in paths or ipc_paths():
+            if not os.path.exists(p):
+                continue
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(5)
+            try:
+                s.connect(p)
+                s.sendall(_frame(0, {'v': 1, 'client_id': aid}))
+                op, v = _read_frame(s)
+                if op != 1 or not isinstance(v, dict) or v.get('evt') != 'READY':
+                    continue
+                s.sendall(_frame(1, {'cmd': 'SUBSCRIBE', 'evt': 'ACTIVITY_JOIN', 'args': {}, 'nonce': os.urandom(8).hex()}))
+                while time.time() < end:
+                    s.settimeout(max(0.5, end - time.time()))
+                    op, v = _read_frame(s)
+                    if op == 3:
+                        s.sendall(_frame(4, v))
+                    elif isinstance(v, dict) and v.get('cmd') == 'DISPATCH' and v.get('evt') == 'ACTIVITY_JOIN':
+                        sec = (v.get('data') or {}).get('secret')
+                        if isinstance(sec, str):
+                            return sec
+            except (OSError, ValueError):
+                pass
+            finally:
+                s.close()
+        time.sleep(1)
+    return None
+
+
+# ------------------------------------------------------------------ notifications in Steam Game Mode
+
+NOTIFY_XML = """<node><interface name="org.freedesktop.Notifications">
+<method name="Notify"><arg type="s" direction="in"/><arg type="u" direction="in"/><arg type="s" direction="in"/>
+<arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="as" direction="in"/><arg type="a{sv}" direction="in"/>
+<arg type="i" direction="in"/><arg type="u" direction="out"/></method>
+<method name="CloseNotification"><arg type="u" direction="in"/></method>
+<method name="GetCapabilities"><arg type="as" direction="out"/></method>
+<method name="GetServerInformation"><arg type="s" direction="out"/><arg type="s" direction="out"/><arg type="s" direction="out"/><arg type="s" direction="out"/></method>
+<signal name="NotificationClosed"><arg type="u"/><arg type="u"/></signal>
+<signal name="ActionInvoked"><arg type="u"/><arg type="s"/></signal>
+</interface></node>"""
+
+
+def toast_line(nid, app, summary, body):
+    """One notification as the plugin's toast: short plain text (Discord's own words, no markup)."""
+    clean = re.sub(r'<[^>]*>', '', body or '')
+    clean = clean.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'")
+    one = lambda t, n: ' '.join((t or '').split())[:n]
+    return {'id': int(nid), 'app': one(app, 40), 'title': one(summary, 120), 'body': one(clean, 240)}
+
+
+def alive(sock_path):
+    """Whether something answers on that Unix socket (Hearth's core service while Steam Game Mode runs)."""
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(1)
+    try:
+        s.connect(sock_path)
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def notify_bridge(while_sock):
+    if not alive(while_sock):
+        raise Fail('Steam Game Mode isn\'t running')
+    try:
+        from gi.repository import Gio, GLib
+    except ImportError:
+        raise Fail('No GLib for Python here')
+    node = Gio.DBusNodeInfo.new_for_xml(NOTIFY_XML)
+    count = [0]
+
+    def call(conn, sender, path, iface, method, params, inv):
+        if method == 'Notify':
+            app, replaces, _icon, summary, body = params.unpack()[:5]
+            count[0] += 1
+            nid = replaces or count[0]
+            print(json.dumps(toast_line(nid, app, summary, body)), flush=True)
+            inv.return_value(GLib.Variant('(u)', (nid,)))
+        elif method == 'GetCapabilities':
+            inv.return_value(GLib.Variant('(as)', (['body'],)))
+        elif method == 'GetServerInformation':
+            inv.return_value(GLib.Variant('(ssss)', ('Hearth', 'Hearth OS', '1', '1.2')))
+        else:
+            inv.return_value(None)
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    bus.register_object('/org/freedesktop/Notifications', node.interfaces[0], call, None, None)
+    loop = GLib.MainLoop()
+    # Only when nobody serves notifications: never takes the name away, gives it up to anyone who asks, quits when it
+    # can't have it or loses it, and quits once Steam Game Mode has ended.
+    flags = Gio.BusNameOwnerFlags.DO_NOT_QUEUE | Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT
+    Gio.bus_own_name_on_connection(bus, 'org.freedesktop.Notifications', flags, None, lambda *a: loop.quit())
+    GLib.timeout_add_seconds(3, lambda: alive(while_sock) or loop.quit())
+    loop.run()
+    return {'stopped': True}
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    cmd, rest = argv[0], argv[1:]
+    try:
+        if cmd == 'status':
+            out(status())
+        elif cmd == 'choose' and len(rest) == 1:
+            out(choose(rest[0]))
+        elif cmd == 'set' and len(rest) == 2:
+            out(set_key(rest[0], rest[1]))
+        elif cmd == 'install' and len(rest) == 1:
+            out(install(rest[0]))
+        elif cmd == 'open':
+            full = '--full' in rest
+            quick = None
+            if '--quick' in rest:
+                i = rest.index('--quick')
+                quick = rest[i + 1:i + 5]
+                if len(quick) != 4:
+                    raise Fail('--quick EDGE SCREEN BAR ANCHOR')
+            out(open_client(full, quick))
+        elif cmd in ('place', 'geometry') and len(rest) == 4:
+            g = geometry(rest[0], parse_screen(rest[1]), int(rest[2]), float(rest[3]), saved_size())
+            if cmd == 'place':
+                client = pick_client(settings().get('client'), installed())
+                out({'placed': bool(client) and place_window(client, g), 'at': g})
+            else:
+                out(g)
+        elif cmd == 'remember':
+            client = pick_client(settings().get('client'), installed())
+            out({'size': remember(client) if client else None})
+        elif cmd == 'invite':
+            out(read_invite())
+        elif cmd == 'notify-bridge' and len(rest) == 2 and rest[0] == '--while':
+            out(notify_bridge(rest[1]))
+        elif cmd == 'join':
+            secret = None
+            if '--stdin' in rest:
+                secret = sys.stdin.read(SECRET_MAX + 1).strip()
+            elif '--link' in rest and len(rest) > rest.index('--link') + 1:
+                secret = secret_from_link(rest[rest.index('--link') + 1])
+            elif '--wait' in rest:
+                aid = app_id()
+                if not aid:
+                    raise Fail('No Discord application ID is set (Settings › Discord)')
+                secret = wait_for_join(aid)
+            if not secret:
+                raise Fail('No invite came from Discord')
+            out(do_join(secret))
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: %s' % e, flush=True)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

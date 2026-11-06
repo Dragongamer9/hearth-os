@@ -98,6 +98,9 @@ const shots = [
     ["Paused for your game: snapshots · backups", "Waiting for your game: Games to backup drive", "Let paused jobs run now", "Only for now: Light mode stays on"]],
   ["hearth-link-home-server-resumed", "home-server-playing", async () => { await show("Home server"); await btn("Let paused jobs run now"); await wait(500); await show("Home server"); },
     ["Paused jobs can run now", "Pause them again while I play"]],
+  // Discord (since 1.6, replacing Hearth Friends): shown here in the home-server states' stand-in.
+  ["hearth-link-discord", "home-server", async () => show("Discord"),
+    ["Open Discord", "Show what I'm playing on Discord", "Let friends ask to join", "Play together PIN 4821"]],
 ];
 for (const [name, st, act, wants] of shots) {
   const html = page0(st);

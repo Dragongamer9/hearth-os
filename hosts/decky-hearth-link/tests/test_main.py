@@ -263,5 +263,59 @@ class Backend(unittest.TestCase):
             loop.close()
 
 
+class DiscordQuickAccess(unittest.TestCase):
+    """Quick Access › Hearth Link › Discord (docs/DISCORD.md): only hearth-discord's own commands, a short answer,
+    and Discord's notifications kept for the panel's toasts."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hl-dc-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+        self.prog = os.path.join(self.tmp, 'hearth-discord')
+        open(self.prog, 'w').close()
+        self.old = os.environ.get('HEARTH_DISCORD')
+        os.environ['HEARTH_DISCORD'] = self.prog
+
+    def tearDown(self):
+        if self.old is None:
+            os.environ.pop('HEARTH_DISCORD', None)
+        else:
+            os.environ['HEARTH_DISCORD'] = self.old
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_only_its_commands(self):
+        seen = []
+        full = {'client': 'official', 'opens': 'official', 'appId': '123456789012345678', 'enabled': True, 'askToJoin': False, 'running': True,
+                'invite': {'pin': '4821', 'playTogether': True, 'title': 'Hades II', 'link': 'https://hearthos.fun/join#secret'}, 'windowClasses': {}}
+
+        def run(a, **k):
+            seen.append((a, k))
+            return types.SimpleNamespace(returncode=0, stdout=json.dumps(full) + '\n', stderr='')
+        r = self.m.discord(['status'], run=run)
+        self.assertEqual(r['appId'], True, 'the panel only learns that an ID is set')
+        self.assertNotIn('link', r['invite'], 'never the invite link (its secret) in Quick Access')
+        self.assertEqual(r['invite']['pin'], '4821')
+        self.assertEqual(seen[0][0][1:], [self.prog, 'status'])
+        self.assertEqual(seen[0][1]['timeout'], self.m.DISCORD_TIMEOUT)
+        self.assertTrue(self.m.discord(['set', 'enabled', 'off'], run=run)['available'])
+        for bad in (['set', 'appId', '1'], ['set', 'client', 'web'], ['install', 'dorion'], ['join', '--stdin'], ['notify-bridge'], 'status', []):
+            n = len(seen)
+            self.assertEqual(self.m.discord(bad, run=run)['error'], self.m.NOT_ALLOWED, bad)
+            self.assertEqual(len(seen), n, 'nothing run')
+        os.environ['HEARTH_DISCORD'] = os.path.join(self.tmp, 'missing')
+        self.assertEqual(self.m.discord(['status'], run=run), {'available': False})
+
+    def test_toasts(self):
+        self.m.TOASTS.clear()
+        self.assertIsNone(self.m.toast_take('not json'))
+        self.assertIsNone(self.m.toast_take(json.dumps({'title': '', 'body': ''})))
+        for i in range(25):
+            self.m.toast_take(json.dumps({'id': i, 'app': 'discord', 'title': 'Sam', 'body': 'msg %d' % i}))
+        self.assertEqual(len(self.m.TOASTS), 20)
+        last = self.m.TOASTS[-1]['seq']
+        self.assertEqual(self.m.toasts_since(last), [])
+        self.assertEqual([t['body'] for t in self.m.toasts_since(last - 2)], ['msg 23', 'msg 24'])
+        self.assertEqual(self.m.toasts_since('bad')[0]['body'], 'msg 5')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,7 +1,7 @@
 //! Your gaming profile (docs/HYDRA-FEATURES.md): what you're playing now, what you played lately, your most played
 //! games and your total play time, from Hearth's own play-time tracking (every game in the library, any store).
-//! Friends › Activity shows yours and, when you turn on "Share my activity", sends it to your Hearth friends over
-//! Hearth Friends (an encrypted message in each friend's chat, hosts/hearth-friends). Off until you turn it on.
+//! Friends › Activity shows yours. Sharing it with friends went with Hearth Friends (Matrix), archived in 1.6
+//! (Discord replaced it; `shared` stays for when sharing comes back).
 
 use serde_json::{json, Value};
 
@@ -26,6 +26,7 @@ pub fn mine(games: &[Value], running: Option<&str>, now: u64) -> Value {
     })
 }
 
+#[allow(dead_code)]
 /// What goes to friends: titles and times only (no store ids, folders or anything else), at most 5 recent games.
 pub fn shared(m: &Value) -> Value {
     let slim = |g: &Value| json!({"title": g["title"].as_str().unwrap_or("").chars().take(120).collect::<String>(), "minutes": g["minutes"], "lastPlayed": g["lastPlayed"]});

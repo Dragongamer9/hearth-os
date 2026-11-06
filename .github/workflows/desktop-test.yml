@@ -27,6 +27,8 @@ jobs:
           dnf -y install dbus-daemon libnotify wl-clipboard wtype slurp >/dev/null || true
           # A Wayland app whose app id can be set (a stand-in Flatpak window for the taskbar's icon check).
           dnf -y install foot hicolor-icon-theme >/dev/null || true
+          # Discord's quick window (Discord.qml, hearth-discord): xdotool places X windows, Tk draws a stand-in Discord.
+          dnf -y install xdotool python3-tkinter >/dev/null || true
           # Mantel's Steam-style look: its font (Inter, openly licensed) and a KDE app to see apps follow it.
           dnf -y install rsms-inter-fonts kcalc >/dev/null || true
           # Hearth Files as the file chooser: xdg-desktop-portal, GLib's D-Bus for Python (hearth-portal), a GTK 3 app.
@@ -45,6 +47,8 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
           # Bar layouts (the main bar on any edge, the floating dock on or off) and the five app menus.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
+          # Discord replacing Hearth Friends (1.6): the chooser, installs, each client's window by the bar, invites.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_discord.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -82,31 +86,17 @@ jobs:
             '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
           chmod +x /tmp/fakebin/hearth-time
           # ---- end of Hearth Time stand-in
-          # Hearth Friends (Friends.qml): a stand-in for the service with a signed-in account, a friend playing, a chat.
-          cat > /tmp/fakebin/hearth-friends <<'FAKE'
-          #!/bin/sh
-          # Signed out (with /tmp/friends-out): matrix.org's own sign-in page, by phone (a QR code) or in the browser.
-          if [ -f /tmp/friends-out ]; then
-            case "$1:$2" in
-              watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":false}}'; sleep 3600 ;;
-              call:status) echo '{"signedIn":false,"settings":{"homeserver":"matrix.org"}}' ;;
-              call:authMethods) echo '{"homeserver":"matrix.org","oauth":true,"qr":true,"browser":true,"create":true,"password":true,"register":"oauth"}' ;;
-              call:authStart) echo '{"mode":"qr","homeserver":"matrix.org","create":false,"url":"https://account.matrix.org/link?code=WDJB-MJHT","shortUrl":"account.matrix.org/link","userCode":"WDJB-MJHT","expiresIn":600,"qrRows":["1111111011010110101111111", "1000001011110110001000001", "1011101001010111101011101", "1011101001001011101011101", "1011101001101100101011101", "1000001000001011001000001", "1111111011100001001111111", "0000000000100101000000000", "0001101111101110110000111", "0011111011110000001000011", "1011111111111001111100111", "1110110010100001110001100", "0000101111100100011111000", "1001000011010011001110010", "0010110000100111101110110", "0100001111011001000101100", "0001000010100001000111111", "0000000000010010010110011", "1111111001110101110010001", "1000001011011100110001101", "1011101010001010110011011", "1011101011111010111110011", "1011101001011010001000111", "1000001011011100011111110", "1111111000101111101011111"]}' ;;
-              *) echo 'null' ;;
-            esac
-            exit 0
-          fi
-          case "$1:$2" in
-            watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":true}}'; sleep 3600 ;;
-            call:status) echo '{"signedIn":true,"userId":"@dragon:matrix.org","homeserver":"matrix.org","lives":"matrix.org (run by the Matrix.org Foundation)","synced":true}' ;;
-            call:friends) echo '[{"userId":"@sarah:matrix.org","name":"Sarah","roomId":"!s:m","state":"friend","presence":"online","game":"Dota 2","joinable":true,"unread":2},{"userId":"@mike:matrix.org","name":"Mike","roomId":"!m:m","state":"friend","presence":"unavailable","game":null,"unread":0}]' ;;
-            call:chats) echo '[{"roomId":"!s:m","name":"Sarah","direct":true,"members":2,"unread":2,"muted":false,"encrypted":true,"last":{"body":"Want to play?","mine":false}}]' ;;
-            call:requests) echo '{"requests":[{"roomId":"!r:m","from":"@new:example.org","name":"New person","direct":true}],"invites":[]}' ;;
-            call:messages) echo '{"roomId":"!s:m","messages":[{"id":"$1","sender":"@sarah:matrix.org","senderName":"Sarah","mine":false,"at":1790000000000,"kind":"text","body":"Hey! On tonight?"},{"id":"$2","sender":"@dragon:matrix.org","mine":true,"at":1790000060000,"kind":"text","body":"Yes, after dinner"},{"id":"$3","sender":"@sarah:matrix.org","senderName":"Sarah","mine":false,"at":1790000120000,"kind":"game","body":"Lets play","game":{"title":"Dota 2","store":"steam","id":"steam:570"}}],"atStart":true}' ;;
-            *) echo 'null' ;;
-          esac
+          # Discord (Discord.qml): a stand-in "discord" (an X window with Discord's window class, under Xwayland) for the
+          # bar's quick window. The real app can't run here; Hearth only places, shows and hides its window anyway.
+          cat > /tmp/fakebin/discord <<'FAKE'
+          #!/usr/bin/python3
+          # fake-discord-stand-in
+          import tkinter as tk
+          r = tk.Tk(className='discord'); r.title('Discord (stand-in)'); r.geometry('900x700+40+40'); r.configure(bg='#313338')
+          tk.Label(r, text='Discord (stand-in window)\nFriends and chats show here', fg='white', bg='#313338', font=('Sans', 16)).pack(expand=True)
+          r.mainloop()
           FAKE
-          sed -i 's/^          //' /tmp/fakebin/hearth-friends; chmod +x /tmp/fakebin/hearth-friends
+          sed -i 's/^          //' /tmp/fakebin/discord; chmod +x /tmp/fakebin/discord
           # The Hearth app (nimbus) stand-in for Mantel's Settings pages moved from the old Game Mode (docs/SETTINGS-MOVE.md):
           # `--settings-call <method>` answers like hearth-core settings_cli.rs; `--windowed --page <page>` notes the page.
           cat > /tmp/fakebin/nimbus <<'FAKE'
@@ -641,12 +631,18 @@ jobs:
           # Install Package: a small .deb (made without dpkg) opened in the installer window, and in Files' menu.
           mkdir -p "$HOME/Downloads" && python3 hosts/linux/test/make_test_deb.py "$HOME/Downloads/hearth-hello.deb" >/dev/null || true
           ipc debs open "$HOME/Downloads/hearth-hello.deb"; sleep 2; grim shots/deb-1-installer.png || true; ipc debs close
-          # Hearth Friends: the bar's Friends panel, then a chat in it.
-          ipc friends open; sleep 2; grim shots/friends-1-panel.png || true
-          wtype -k Down -k Down -k Return 2>/dev/null || true; sleep 2; grim shots/friends-2-chat.png || true; ipc friends close
-          # Signed out: the ways to sign in, then A: a QR code to sign in with a phone.
-          touch /tmp/friends-out; sleep 6; ipc friends open; sleep 3; grim shots/friends-3-signin.png || true
-          wtype -k Return 2>/dev/null || true; sleep 3; grim shots/friends-4-signin-qr.png || true; ipc friends close; rm -f /tmp/friends-out
+          # Discord: the first press asks which Discord (three cards); A picks the app (the stand-in is "installed"),
+          # which opens as the small window by the bar; pressing again hides it without quitting; "full" maximizes it.
+          ipc discord toggle; sleep 2; grim shots/discord-1-chooser.png || true
+          wtype -k Right -k Right 2>/dev/null || true; sleep 1; grim shots/discord-2-chooser-dorion.png || true
+          wtype -k Left -k Left -k Return 2>/dev/null || true; sleep 8; grim shots/discord-3-quick-window.png || true
+          echo "::notice title=discord window::$(xdotool search --onlyvisible --class '^discord$' getwindowgeometry %@ 2>&1 | tr '\n' ' ' | head -c 400)" 
+          ipc discord toggle; sleep 2; grim shots/discord-4-hidden.png || true
+          if pgrep -f fake-discord-stand-in >/dev/null || pgrep -f /tmp/fakebin/discord >/dev/null; then echo "::notice title=discord::hidden, still running (notifications keep working)"; else echo "::error title=discord::hiding the quick window ended Discord"; fi
+          ipc discord toggle; sleep 2; grim shots/discord-5-shown-again.png || true
+          ipc discord full; sleep 2; grim shots/discord-6-full.png || true
+          pkill -f /tmp/fakebin/discord || true
+          ipc friends open; sleep 4; grim shots/discord-7-old-friends-link.png || true; pkill -f /tmp/fakebin/discord || true; ipc discord close
           ipc files open "$HOME/Downloads"; ipc filemanager select hearth-hello.deb; ipc filemanager menu; grim shots/deb-2-files-menu.png || true
           ipc filemanager close; ipc files close
           n=$((n+3))
