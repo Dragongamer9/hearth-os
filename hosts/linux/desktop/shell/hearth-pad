@@ -7,6 +7,7 @@ It reads every connected controller from /dev/input and acts as a mouse and keyb
 
   Right stick   move the pointer (R3: precise)      Left stick   scroll
   A / RT        click (hold to drag)                X / LT       right-click
+                (the pointer holds still for a moment when a click goes down, so a tap clicks where it points)
   B             back (Esc)                          Y            on-screen keyboard
   D-pad         arrow keys                          LB / RB      switch windows
   Menu (☰)      apps                                Guide        Hearth menu (radial)
@@ -27,8 +28,10 @@ Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-s
      gave the pointer back); while the keyboard is open: oskpad {b, down} (every button but Guide and RT) and
      oskaxes {lx, ly, rx, ry} (the left stick; the right one too with split sticks).
 In:  focus {app, title} (the window in front: its Wayland app id), padmouse (the pointer in the controller app in
-     front, on / off), pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard focus is open:
-     A is Enter, B is Esc), osk {open, split} (the keyboard opened or closed: Hearth's shared keyboard,
+     front, on / off), pause {on} (a fullscreen app is in front), keys {on, why, ttl} (a menu or window with keyboard
+     focus is in front: A is Enter, B is Esc, the D-pad arrows; RT / LT still click, and A / X click once the right
+     stick has moved the pointer, until the D-pad is used again; ttl: it ends by itself unless said again in time;
+     focus {app, title, keys, why, ttl} says it too), osk {open, split} (the keyboard opened or closed: Hearth's shared keyboard,
      desktop/shell/Keyboard.qml, does the typing; split: both sticks are its), emit {text, mods} and key {key, n, mods}
      (typing through uinput when wtype isn't there; US layout, ASCII), rumble {strength, ms},
      mouse {on} (controller mouse on/off), radial {open}.
@@ -91,6 +94,10 @@ PRECISE = 0.3
 SCROLL_SPEED = 16.0         # wheel notches/s at full tilt
 ALT_HOLD = 0.9              # s the window switcher stays open after the last LB/RB
 HELP_TAP = 0.45             # View shorter than this (and not used with the D-pad) shows the controls
+CLICK_SETTLE = 0.2          # s the pointer holds still after a click goes down (a tap is a clean click; holding and
+                            # moving after that drags): a thumb still on the right stick (RT) used to move the pointer
+                            # off a title bar's close button between press and release, so labwc saw no click there
+KEYS_TTL_MAX = 120.0        # s: the longest a keys {on, ttl} from the shell is believed without being said again
 
 # Shifted characters on a US keyboard (typing through uinput when wtype is missing).
 OSK_SHIFTED = {'`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*',
@@ -323,6 +330,12 @@ class Pad:
         self.fs_pause = False      # a fullscreen app (a game) is in front
         self.user_off = False      # turned off from the menu
         self.keys_ctx = False
+        self.keys_why = ''         # what the shell said has the keys (pad.log)
+        self.keys_until = 0.0      # keys {on, ttl}: ends by itself unless the shell says it again (0: no time limit)
+        self.pointer_at = -1e9     # when the right stick last moved the pointer
+        self.nav_at = -1e9         # when the D-pad was last used in a menu with the keys (or the menu opened)
+        self.click_at = -1e9       # when a click (BTN_LEFT / BTN_RIGHT / BTN_MIDDLE) last went down
+        self.clicks = 0            # clicks sent (the 30 s line in pad.log)
         self.sticks = (0.0, 0.0, 0.0, 0.0)
         self.held = {}             # button → time pressed
         self.mouse_src = {'BTN_LEFT': set(), 'BTN_RIGHT': set(), 'BTN_MIDDLE': set()}
@@ -392,12 +405,46 @@ class Pad:
         for k in reversed(keys):
             self.out.press(k, False)
 
-    def mouse(self, btn, src, down):
+    def mouse(self, btn, src, down, now=None):
         s = self.mouse_src[btn]
         was = bool(s)
         (s.add if down else s.discard)(src)
         if bool(s) != was:
+            if s:
+                # The pointer holds still for a moment (tick: CLICK_SETTLE), so press and release land on the same
+                # spot: a close button, a title bar, a small button.
+                self.click_at = self.last_input if now is None else now
+                self.clicks += 1
+                self.acc[0] = self.acc[1] = 0.0
             self.out.press(btn, bool(s))
+
+    @property
+    def pointer_mode(self):
+        """The right stick moved the pointer since the D-pad was last used (or the menu with the keys opened): A and X
+        click where the pointer is, even in a window that takes the keys (Hearth Files, Settings, the title bar's
+        buttons over them)."""
+        return self.pointer_at > self.nav_at
+
+    def set_keys(self, on, why='', ttl=None, now=None):
+        """The shell: a menu or window that takes the keys (A Enter, B Esc, D-pad arrows) is in front, or not.
+        ttl: it ends by itself unless the shell says it again in time (Pad.qml repeats it while it's on), so a lost
+        "off" can never leave A stuck as Enter."""
+        now = time.monotonic() if now is None else now
+        on = bool(on)
+        try:
+            ttl = float(ttl) if ttl is not None else 0.0
+        except (TypeError, ValueError):
+            ttl = 0.0
+        self.keys_until = (now + min(ttl, KEYS_TTL_MAX)) if (on and ttl > 0) else 0.0
+        why = str(why or '')[:80]
+        if on != self.keys_ctx:
+            self.release_all()
+            self.keys_ctx = on
+            if on:
+                self.nav_at = now      # a menu just opened: A picks its highlighted item until the pointer moves
+            note('keys: %s%s' % ('on (A is Enter, B Esc; RT / LT click; A clicks after the pointer moves)' if on else 'off',
+                                 (' [%s]' % why) if why else ''))
+        self.keys_why = why if on else ''
 
     def release_all(self):
         for btn, s in self.mouse_src.items():
@@ -491,6 +538,8 @@ class Pad:
             return self.osk_chord()
         if name == 'r3' and down and 'guide' in self.held and self.owner:
             return self.pad_mouse_chord()
+        if down and name in ARROWS:
+            self.nav_at = now
         if self.osk_only and self.mode != 'osk':
             return
 
@@ -505,7 +554,7 @@ class Pad:
         if self.gnome:
             return self.gnome_button(name, down, now)
         if self.keys_ctx:
-            return self.keys_button(name, down)
+            return self.keys_button(name, down, now)
         return self.desk_button(name, down, now)
 
     def osk_chord(self):
@@ -537,11 +586,11 @@ class Pad:
         if self.paused:
             return
         if name in ('a', 'rt'):
-            return self.mouse('BTN_LEFT', name, down)
+            return self.mouse('BTN_LEFT', name, down, now)
         if name in ('x', 'lt'):
-            return self.mouse('BTN_RIGHT', name, down)
+            return self.mouse('BTN_RIGHT', name, down, now)
         if name == 'l3':
-            return self.mouse('BTN_MIDDLE', name, down)
+            return self.mouse('BTN_MIDDLE', name, down, now)
         if name in ARROWS:
             return self.hold_key(ARROWS[name], down)
         if not down:
@@ -565,11 +614,25 @@ class Pad:
 
     def osk_button(self, name, down, now):
         if name == 'rt' and not self.osk_split:   # click a field without closing the keyboard
-            return self.mouse('BTN_LEFT', 'rt', down)
+            return self.mouse('BTN_LEFT', 'rt', down, now)
         if name in OSK_BUTTONS or (name == 'rt' and self.osk_split):
             self.out.send({'t': 'oskpad', 'b': name, 'down': bool(down)})
 
-    def keys_button(self, name, down):
+    def keys_button(self, name, down, now=None):
+        if not self.plasma:
+            # The pointer still works in a menu or window that takes the keys (it used to move but never click, so the
+            # title bar's close button and dragging a window did nothing over Hearth Files, Settings, Task Manager...):
+            # RT / LT always click, L3 middle-clicks, and A / X click once the right stick has moved the pointer
+            # (the D-pad gives them back to Enter / the Menu key). A release goes where its press went.
+            now = self.last_input if now is None else now
+            if name in ('rt', 'lt', 'l3'):
+                return self.mouse({'rt': 'BTN_LEFT', 'lt': 'BTN_RIGHT', 'l3': 'BTN_MIDDLE'}[name], name, down, now)
+            if name in ('a', 'x'):
+                btn = 'BTN_LEFT' if name == 'a' else 'BTN_RIGHT'
+                if down and self.pointer_mode:
+                    return self.mouse(btn, name, True, now)
+                if not down and name in self.mouse_src[btn]:
+                    return self.mouse(btn, name, False, now)
         if name in ARROWS:
             return self.hold_key(ARROWS[name], down)
         if not down:
@@ -596,11 +659,11 @@ class Pad:
     def desk_button(self, name, down, now):
         view = 'view' in self.held
         if name in ('a', 'rt'):
-            return self.mouse('BTN_LEFT', name, down)
+            return self.mouse('BTN_LEFT', name, down, now)
         if name in ('x', 'lt'):
-            return self.mouse('BTN_RIGHT', name, down)
+            return self.mouse('BTN_RIGHT', name, down, now)
         if name == 'l3':
-            return self.mouse('BTN_MIDDLE', name, down)
+            return self.mouse('BTN_MIDDLE', name, down, now)
         if name in ARROWS:
             if view:
                 if down:
@@ -646,6 +709,12 @@ class Pad:
         if self.alt_until and now >= self.alt_until:
             self.alt_until = 0.0
             self.out.press('KEY_LEFTALT', False)
+        if self.keys_ctx and self.keys_until and now >= self.keys_until:
+            note('keys: off (the shell stopped saying a menu has the keys%s)' % ((' [%s]' % self.keys_why) if self.keys_why else ''))
+            self.release_all()
+            self.keys_ctx = False
+            self.keys_why = ''
+            self.keys_until = 0.0
 
         if self.mode == 'radial':
             # Point either stick at an item.
@@ -669,14 +738,20 @@ class Pad:
         elif self.paused or self.osk_only or self.owned:
             return
 
-        # Pointer (right stick), in every mode but the radial menu.
+        # Pointer (right stick), in every mode but the radial menu. Not just after a click went down (CLICK_SETTLE):
+        # press and release land on the same spot; held longer, the pointer moves again and the click drags.
         speed = POINTER_SPEED * self.speed * (PRECISE if self.precise else 1.0) * dt
-        self.acc[0] += curve(rx) * speed
-        self.acc[1] += curve(ry) * speed
+        settling = now - self.click_at < CLICK_SETTLE and any(self.mouse_src.values())
+        if settling:
+            self.acc[0] = self.acc[1] = 0.0
+        else:
+            self.acc[0] += curve(rx) * speed
+            self.acc[1] += curve(ry) * speed
         dx, dy = int(self.acc[0]), int(self.acc[1])
         self.acc[0] -= dx
         self.acc[1] -= dy
         if dx or dy:
+            self.pointer_at = now
             self.out.move(dx, dy)
 
         # Scroll (left stick), not while the keyboard uses it.
@@ -696,6 +771,8 @@ class Pad:
             return
         if c == 'focus':
             self.set_front(m.get('app', ''), str(m.get('title') or ''))
+            if 'keys' in m:            # Pad.qml says the keys again with every focus change (they can't drift apart)
+                self.set_keys(m.get('keys'), m.get('why', ''), m.get('ttl'), m.get('now'))
         elif c == 'padmouse':
             self.pad_mouse()
         elif c in ('claim', 'release') and self.owners is not None:
@@ -708,8 +785,7 @@ class Pad:
             if self.paused and self.mode == 'desk':
                 self.release_all()
         elif c == 'keys':
-            self.release_all()
-            self.keys_ctx = bool(m.get('on'))
+            self.set_keys(m.get('on'), m.get('why', ''), m.get('ttl'), m.get('now'))
         elif c == 'osk':
             self.open_osk(m.get('split')) if m.get('open') else (self.close_osk() if self.mode == 'osk' else None)
         elif c == 'emit':
@@ -975,10 +1051,10 @@ class CosmicPad(Pad):
             return self.tap('KEY_LEFTMETA', 'KEY_Q')
         super().command(m)
 
-    def keys_button(self, name, down):
+    def keys_button(self, name, down, now=None):
         """Hearth's menus are open: as in Hearth Classic, and B also tells the shell (back), which closes the menu
         itself if COSMIC didn't hand it the Esc (a menu that came up without the keyboard focus can't trap you)."""
-        super().keys_button(name, down)
+        super().keys_button(name, down, now)
         if name == 'b' and down:
             self.out.send({'t': 'back'})
 
@@ -1251,6 +1327,8 @@ class Controller:
         self.bmap = None    # this controller's button codes (button_map: Sony pads swap X and Y)
         self.ff_id = None   # its uploaded rumble effect (the on-screen keyboard)
         self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0}
+        self.fresh = set()  # buttons that went down since the main loop last looked
+        self.taps = set()   # ... and came up again before it looked (a quick tap: still a press and a release)
         self.info = {}
         for code, info in dev.capabilities(absinfo=True).get(e.EV_ABS, []):
             self.info[code] = info
@@ -1274,10 +1352,17 @@ class Controller:
             return max(-1.0, min(1.0, (value - mid) / ((i.max - i.min) / 2)))
         return max(0.0, min(1.0, (value - i.min) / (i.max - i.min)))
 
+    def set_btn(self, name, down):
+        if down and not self.btn.get(name):
+            self.fresh.add(name)
+        elif not down and self.btn.get(name) and name in self.fresh:
+            self.taps.add(name)
+        self.btn[name] = down
+
     def handle(self, ev, bmap):
         e = self.e
         if ev.type == e.EV_KEY and ev.code in bmap:
-            self.btn[bmap[ev.code]] = ev.value != 0
+            self.set_btn(bmap[ev.code], ev.value != 0)
         elif ev.type == e.EV_ABS:
             c = ev.code
             if c in self.sticks:
@@ -1286,11 +1371,38 @@ class Controller:
                 name = self.triggers[c]
                 v = self.norm(c, ev.value, centered=False)
                 was = self.btn.get(name + '_axis', False)
-                self.btn[name + '_axis'] = v > (0.4 if was else 0.55)
+                self.set_btn(name + '_axis', v > (0.4 if was else 0.55))
             elif c == e.ABS_HAT0X:
                 self.btn['left'], self.btn['right'] = ev.value < 0, ev.value > 0
             elif c == e.ABS_HAT0Y:
                 self.btn['up'], self.btn['down'] = ev.value < 0, ev.value > 0
+
+
+def button_state(sources, names):
+    """Which buttons are held now on any controller, and which were tapped (down and up again) since the last look,
+    so a tap that fell between two looks still clicks."""
+    state, taps = set(), set()
+    for c in sources:
+        for n in names:
+            if c.btn.get(n) or c.btn.get(n + '_axis'):
+                state.add(n)
+        for t in getattr(c, 'taps', ()):
+            taps.add(t[:-len('_axis')] if t.endswith('_axis') else t)
+        if hasattr(c, 'taps'):
+            c.taps.clear()
+            c.fresh.clear()
+    return state, taps & set(names)
+
+
+def deliver(pad, state, pressed, taps, names, now):
+    """Hands the changes to the Pad: presses and releases, and a tap as a press then a release."""
+    for n in names:
+        if (n in state) != (n in pressed):
+            pad.button(n, n in state, now)
+        elif n in taps and n not in state:
+            pad.button(n, True, now)
+            pad.button(n, False, now)
+    return state
 
 
 def gamepads(evdev, known):
@@ -1805,15 +1917,8 @@ def main():
                 except OSError:
                     pass
         now = time.monotonic()
-        state = set()
-        for c in list(pads.values()) + ([sim] if sim is not None else []):
-            for n in names:
-                if c.btn.get(n) or c.btn.get(n + '_axis'):
-                    state.add(n)
-        for n in names:
-            if (n in state) != (n in pressed):
-                pad.button(n, n in state, now)
-        pressed = state
+        state, taps = button_state(list(pads.values()) + ([sim] if sim is not None else []), names)
+        pressed = deliver(pad, state, pressed, taps, names, now)
         clip = lambda v: max(-1.0, min(1.0, v))
         sources = list(pads.values()) + ([sim] if sim is not None else [])
         pad.axes(*(clip(sum(c.ax[k] for c in sources)) for k in ('lx', 'ly', 'rx', 'ry')))
@@ -1822,9 +1927,12 @@ def main():
         # Every 30 s with input: what came in and what the pointer did (why "the mouse doesn't move" shows in logs).
         if now - stats['since'] >= 30:
             if stats['events']:
-                note('last 30 s: %d controller events, pointer moved %d px%s%s%s' % (stats['events'], stats['moved'],
-                     ', paused (a fullscreen window)' if pad.fs_pause else '', ', turned off' if pad.user_off else '',
-                     (', %r has the controller' % pad.owner) if pad.owned else ''))
+                note('last 30 s: %d controller events, pointer moved %d px, %d clicks%s%s%s%s%s' % (stats['events'], stats['moved'],
+                     pad.clicks, ', paused (a fullscreen window)' if pad.fs_pause else '', ', turned off' if pad.user_off else '',
+                     (', %r has the controller' % pad.owner) if pad.owned else '',
+                     (', keys (%s)' % (pad.keys_why or 'a menu')) if pad.keys_ctx else '',
+                     (', %s mode' % pad.mode) if pad.mode != 'desk' else ''))
+            pad.clicks = 0
             stats.update(events=0, moved=0, since=now)
         if pad.done:
             return 0
