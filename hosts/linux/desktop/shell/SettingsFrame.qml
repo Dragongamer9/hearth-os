@@ -42,6 +42,7 @@ Item {
         else if (e.landing && !e.ownList) {
             const subs = Reg.pagesIn(e.cat, frame.app.live).map(p => p.id).concat((Reg.LINKS[e.cat] || []).map(l => l.page));
             if (subs.length) o.footerLinks = subs;
+            if (Reg.MORE[e.cat]) o.footerTitle = Reg.MORE[e.cat];
         }
         return o;
     }

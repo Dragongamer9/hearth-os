@@ -13,6 +13,7 @@ Flickable {
     property string title
     property string part: ""
     property var footerLinks: []
+    property string footerTitle: ""   // the heading over footerLinks (settings-pages.js MORE); "More in <category>" if ""
     property bool framed: false       // set by the frame on the page it loads
     function inPart(p) { return part === "" || part === p; }
     default property alias rows: col.data
@@ -91,7 +92,7 @@ Flickable {
         x: col.x
         y: col.y + col.height + 10
         spacing: 3
-        SetHeader { text: "More in " + ((Reg.category((Reg.page(page.footerLinks[0] || "") || {}).cat || "") || {}).label || "this category") }
+        SetHeader { text: page.footerTitle !== "" ? page.footerTitle : "More in " + ((Reg.category((Reg.page(page.footerLinks[0] || "") || {}).cat || "") || {}).label || "this category") }
         Repeater {
             model: page.footerLinks
             delegate: SetLinkCard { required property string modelData; target: modelData }

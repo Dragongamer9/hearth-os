@@ -1935,25 +1935,16 @@ var ENTRIES = [
 "p": "storage"
 },
 {
-"t": "Restart now",
-"p": "updates",
-"i": "restart"
-},
-{
-"t": "Look for updates",
-"p": "updates",
-"i": "restart"
-},
-{
 "t": "Update anyway",
 "p": "updates",
-"d": "Downloads anything new for Hearth and its apps",
+"d": "Downloads anything new for Hearth and its apps, even small fixes",
 "i": "update"
 },
 {
-"t": "Yes, go back at the next restart",
+"t": "Decky plugins",
 "p": "updates",
-"i": "check"
+"d": "Hearth's plugins for Steam Game Mode, updated without a system update",
+"i": "box"
 },
 {
 "t": "Also install new Hearth plugins",
@@ -1977,6 +1968,17 @@ var ENTRIES = [
 "p": "updates",
 "d": "The plugins that came with this Hearth OS version come back (those downloads aren't fetched again by themselves)",
 "i": "restart"
+},
+{
+"t": "Yes, go back at the next restart",
+"p": "updates",
+"i": "check"
+},
+{
+"t": "The previous version always stays startable",
+"p": "updates",
+"d": "Every update keeps the version before it in the boot menu",
+"i": "shield"
 },
 {
 "t": "OK, hide this",

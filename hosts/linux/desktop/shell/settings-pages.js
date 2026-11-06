@@ -13,7 +13,7 @@
 var CATEGORIES = [
     { id: "home", icon: "home", label: "Home", landing: "home" },
     { id: "system", icon: "display", label: "System", landing: "system" },
-    { id: "net", icon: "wifi", label: "Network & internet", landing: "net" },
+    { id: "net", icon: "wifi", label: "Network & internet", landing: "wifi" },
     { id: "bt", icon: "bt", label: "Bluetooth & devices", landing: "bt" },
     { id: "link", icon: "desktops", label: "Hearth Link", landing: "link" },
     { id: "pers", icon: "palette", label: "Personalization", landing: "appearance" },
@@ -43,9 +43,8 @@ var PAGES = [
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
 
-    // ---- Network & internet
-    { id: "net", file: "SetCategory.qml", cat: "net", label: "Network & internet", icon: "wifi", landing: true },
-    { id: "wifi", file: "SetWifi.qml", cat: "net", label: "Wi-Fi", icon: "wifi", desc: "Connect to wireless networks", words: "wireless network internet hotspot", old: "Wi-Fi", status: "wifi" },
+    // ---- Network & internet (Wi-Fi is the landing, as in the mockup; Tailscale follows it under "Reach your devices from anywhere")
+    { id: "wifi", file: "SetWifi.qml", cat: "net", label: "Wi-Fi", icon: "wifi", desc: "Connect to wireless networks", words: "wireless network internet hotspot", old: "Wi-Fi", status: "wifi", landing: true },
     { id: "hs-tailscale", file: "SetHomeTailscale.qml", cat: "net", label: "Tailscale", icon: "tailscale", desc: "Reach your devices from anywhere, privately", words: "vpn remote away taildrop exit node wake", old: "Home server › Tailscale", status: "tailscale" },
 
     // ---- Bluetooth & devices
@@ -92,6 +91,13 @@ var PAGES = [
     { id: "hs-family", file: "SetHomeFamily.qml", cat: "hs", label: "Family & home", icon: "family", desc: "A Family folder, calendar and cameras", words: "nas family cameras onvif folder", old: "Home server › Family & home" },
     { id: "hs-services", file: "SetHomeServices.qml", cat: "hs", label: "Services", icon: "window", desc: "Media server, files on the web, AI chat, pictures and voices", words: "nas jellyfin media server photos web files apps comfyui kokoro", old: "Home server › Services" },
     { id: "hs-ai", file: "SetHomeAI.qml", cat: "hs", parent: "hs-services", label: "AI chat", icon: "chat", desc: "Ollama for the Hearth AI Command Center: models, address, Light mode", words: "nas ollama ai llm models command center gpu qwen", old: "Home server › AI" },
+    // Ready for the AI devices page (SetHomeAIDevices.qml, feature/ai-share; not on bughunt yet). When that branch is
+    // merged, add this entry here as a normal line (written out in full below without its braces so nothing reads it
+    // yet), drop that branch's edits to the old page lists in SettingsApp.qml (this registry replaces them), and add
+    // `SetLinkCard { target: "hs-aidevices" }` under "On this server" in SetHomeServer.qml:
+    //   id: "hs-aidevices", file: "SetHomeAIDevices.qml", cat: "hs", parent: "hs-services", label: "AI devices", icon: "desktops",
+    //   desc: "Share this PC's AI with your devices, and every Hearth device's AI in one list",
+    //   words: "ai share devices command center tailscale ollama kokoro comfyui whisper voices priority", old: "Home server › AI devices"
     { id: "hs-gaming", file: "SetHomeGaming.qml", cat: "hs", label: "Gaming", icon: "pad", desc: "A Games folder for your devices, Steam downloads at home", words: "nas games steam lan install remote play light mode", old: "Home server › Gaming" },
     { id: "hs-drives", file: "SetHomeDrives.qml", cat: "hs", label: "Drives & undo", icon: "drive", desc: "Health of every drive, snapshots to bring files back", words: "nas disk smart health snapshot undo raid mirror format", old: "Home server › Drives & undo" },
     { id: "hs-backups", file: "SetHomeBackups.qml", cat: "hs", label: "Backups & sync", icon: "cloud", desc: "To a drive, another Hearth device or the cloud", words: "nas backup restore restic cloud b2 s3 sync syncthing photos phone", old: "Home server › Backups & sync" },
@@ -120,6 +126,9 @@ var LINKS = {
               { page: "hs-safety", label: "Home server safety", desc: "Who can reach what, open ports, ransomware guard" }],
     accounts: [{ page: "home", label: "Device name", desc: "This PC's name on your network: rename it on Home" }]
 };
+
+// The heading over a landing page's other pages ("More in <category>" when there's none here).
+var MORE = { net: "Reach your devices from anywhere" };
 
 // Ids that aren't pages: old forms that open a page.
 var ALIASES = { "appearance:bar": "bar-dock", "personalization": "appearance", "hs": "hs-overview", "a11y": "accessibility", "hearth-link": "link" };

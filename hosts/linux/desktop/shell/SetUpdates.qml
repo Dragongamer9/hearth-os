@@ -91,26 +91,66 @@ SetPage {
         }
     }
 
-    SetRow {
-        visible: page.canAdmin
-        interactive: false; chevron: false
-        icon: "info"; title: "Hearth " + page.ver(page.status && page.status.booted)
-        sub: page.status && page.status.booted && page.status.booted.image ? page.status.booted.image : "Running now"
+    // ---- The status card (the redesign): where Hearth stands and the one thing to do next. A (or a click) does it.
+    readonly property bool staged: !!(page.status && page.status.staged)
+    readonly property bool available: !!(page.status && page.status.available) && !page.staged
+    readonly property string heroAction: !page.canAdmin || page.phase !== "idle" ? "" : page.staged ? "Restart now"
+        : page.available ? "Download" : "Look for updates"
+    function heroDo() {
+        if (page.staged) Quickshell.execDetached(["systemctl", "reboot"]);
+        else if (page.available) page.start("update");
+        else page.start("update-check");
     }
-    Rectangle {
-        visible: !!(page.status && page.status.staged)
+    SetBase {
+        id: hero
         Layout.fillWidth: true
-        implicitHeight: 64; radius: 12
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18); border.color: Theme.accent
-        Text {
-            anchors { fill: parent; margins: 16 } verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap
-            text: "Hearth " + page.ver(page.status ? page.status.staged : null) + " is ready. Restart to finish updating."
-            color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold
+        Layout.bottomMargin: 4
+        interactive: page.heroAction !== ""
+        implicitHeight: Math.max(96, heroText.implicitHeight + 32)
+        radius: SetStyle.bigRadius
+        onActivated: page.heroDo()
+        Accessible.name: heroTitle.text
+        Accessible.description: heroSub.text
+        RowLayout {
+            anchors { fill: parent; leftMargin: 20; rightMargin: 20 }
+            spacing: 18
+            Rectangle {
+                Layout.preferredWidth: 56; Layout.preferredHeight: 56; radius: Math.max(8, Theme.r(12))
+                color: SetStyle.tint(Theme.accent, 0.18)
+                Icon { anchors.centerIn: parent; name: page.staged || page.available || page.phase !== "idle" ? "update" : page.canAdmin ? "check" : "info"; size: 28; color: Theme.accent }
+            }
+            ColumnLayout {
+                id: heroText
+                Layout.fillWidth: true
+                spacing: 3
+                Text {
+                    id: heroTitle
+                    Layout.fillWidth: true; elide: Text.ElideRight
+                    text: !page.canAdmin ? "Updates come with Hearth OS"
+                        : page.phase === "updating" ? "Downloading the update…" : page.phase === "checking" ? "Looking for updates…"
+                        : page.staged ? "Hearth " + page.ver(page.status.staged) + " is ready. Restart to finish updating."
+                        : page.available ? "Hearth " + page.ver(page.status.available) + " is ready to download"
+                        : page.status ? "You're up to date" : "Hearth"
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 19; font.weight: Font.DemiBold
+                }
+                Text {
+                    id: heroSub
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    text: !page.canAdmin ? "System updates are made here on Hearth, the OS."
+                        : page.available && !page.staged && page.phase === "idle" ? "Keeps working while it downloads; finishes when you restart"
+                        : ["Hearth OS " + page.ver(page.status && page.status.booted),
+                           page.status && page.status.booted && page.status.booted.image ? page.status.booted.image : "Running now"].filter(x => x).join(" · ")
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                }
+            }
+            Rectangle {
+                visible: page.heroAction !== ""
+                implicitWidth: heroBtn.implicitWidth + 32; implicitHeight: 38
+                radius: Math.max(6, Theme.r(8))
+                color: Theme.accent
+                Text { id: heroBtn; anchors.centerIn: parent; text: page.heroAction; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+            }
         }
-    }
-    SetRow {
-        visible: !!(page.status && page.status.staged) && page.phase === "idle"
-        icon: "restart"; title: "Restart now"; onActivated: Quickshell.execDetached(["systemctl", "reboot"])
     }
 
     // progress
@@ -121,7 +161,7 @@ SetPage {
         RowLayout {
             Layout.fillWidth: true
             Text { Layout.fillWidth: true; text: page.line; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; elide: Text.ElideRight }
-            Text { visible: page.progress >= 0; text: Math.floor(page.progress * 100) + "%"; color: Theme.flame; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+            Text { visible: page.progress >= 0; text: Math.floor(page.progress * 100) + "%"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
         }
         Item {
             Layout.fillWidth: true; implicitHeight: 8
@@ -131,7 +171,7 @@ SetPage {
                 height: parent.height; radius: 4
                 width: page.progress >= 0 ? Math.max(8, parent.width * page.progress) : parent.width * 0.3
                 x: 0
-                gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: Theme.ember } GradientStop { position: 1; color: Theme.flame } }
+                color: Theme.accent
                 Behavior on width { NumberAnimation { duration: 300 } }
                 SequentialAnimation on x {
                     running: page.phase !== "idle" && page.progress < 0; loops: Animation.Infinite
@@ -141,55 +181,17 @@ SetPage {
             }
         }
     }
-
-    SetRow {
-        visible: page.canAdmin && page.phase === "idle" && !!(page.status && page.status.available) && !(page.status && page.status.staged)
-        icon: "update"; title: "Download Hearth " + page.ver(page.status ? page.status.available : null)
-        sub: "Keeps working while it downloads; finishes when you restart"
-        onActivated: page.start("update")
-    }
-    SetRow {
-        visible: page.canAdmin && page.phase === "idle"
-        icon: "restart"; title: "Look for updates"
-        sub: page.status && !page.status.available && !page.status.staged ? "Hearth is up to date" : ""
-        onActivated: page.start("update-check")
-    }
-    SetRow {
-        visible: page.canAdmin && page.phase === "idle" && !(page.status && page.status.available) && !(page.status && page.status.staged)
-        icon: "update"; title: "Update anyway"; sub: "Downloads anything new for Hearth and its apps"
-        onActivated: page.start("update")
-    }
-    // ---- Go back to the version before (shown only when the system reports one, and no update waits for a restart)
-    readonly property bool canGoBack: page.canAdmin && page.phase === "idle" && !!(page.status && page.status.rollback && page.ver(page.status.rollback)) && !(page.status && page.status.staged)
-    property bool askBack: false
-    SetHeader { visible: page.canGoBack; text: "If something broke" }
-    SetRow {
-        visible: page.canGoBack && !page.status.rollbackQueued
-        icon: "restart"; title: "Go back to " + page.ver(page.status ? page.status.rollback : null)
-        sub: "If something broke after the last update: the version before this one starts at the next restart. Your games and files stay."
-        onActivated: page.askBack = !page.askBack
-    }
-    SetRow {
-        visible: page.canGoBack && !page.status.rollbackQueued && page.askBack
-        icon: "check"; title: "Yes, go back at the next restart"
-        sub: "Hearth updates again by itself later. Changed your mind before restarting? Stay on " + page.ver(page.status ? page.status.booted : null) + " shows up here."
-        onActivated: { page.askBack = false; page.start("rollback"); }
-    }
-    SetRow {
-        visible: page.canGoBack && !!page.status.rollbackQueued
-        icon: "restart"; title: "Restart to go back to " + page.ver(page.status ? page.status.rollback : null)
-        sub: "It starts at the next restart. Your games and files stay."
-        onActivated: Quickshell.execDetached(["systemctl", "reboot"])
-    }
-    SetRow {
-        visible: page.canGoBack && !!page.status.rollbackQueued
-        icon: "close"; title: "Stay on " + page.ver(page.status ? page.status.booted : null); sub: "Don't go back after all"
-        onActivated: page.start("rollback")
-    }
     Text {
         visible: page.error !== ""
         Layout.fillWidth: true
         text: page.error; color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+
+    SetHeader { visible: (page.canAdmin && page.phase === "idle" && !page.available && !page.staged) || !!page.plugins; text: "Updates" }
+    SetRow {
+        visible: page.canAdmin && page.phase === "idle" && !page.available && !page.staged
+        icon: "update"; title: "Update anyway"; sub: "Downloads anything new for Hearth and its apps, even small fixes"
+        onActivated: page.start("update")
     }
     // ---- Decky plugins (docs/PLUGIN-UPDATES.md)
     readonly property string decky: "/usr/libexec/nimbus/hearth-decky"
@@ -227,7 +229,12 @@ SetPage {
     }
     SettingsWriter { id: pluginsWriter; path: Quickshell.env("HOME") + "/.config/nimbus/plugin-updates.json"; onSaved: page.pluginsRun("plugins-status") }
 
-    SetHeader { visible: !!page.plugins; text: "Decky plugins" }
+    SetExpander {
+        id: deckyX
+        visible: !!page.plugins
+        anchor: "decky"
+        icon: "box"; title: "Decky plugins"; sub: "Hearth's plugins for Steam Game Mode, updated without a system update"
+        value: page.pluginsAvailable() ? page.pluginsAvailable() + (page.pluginsAvailable() === 1 ? " update" : " updates") : page.plugins && page.plugins.lastCheck ? "Up to date" : ""
     Repeater {
         model: page.plugins ? Object.keys(page.plugins.plugins || {}) : []
         SetRow {
@@ -241,7 +248,7 @@ SetPage {
                 + (p.downloaded && p.downloaded !== p.installed ? " · " + p.downloaded + " ready for the next Steam Game Mode start" : "")
         }
     }
-    SetHeader { visible: page.pluginsNew().length > 0; text: "New from Hearth" }
+    SetHeader { visible: page.pluginsNew().length > 0; text: "New from Hearth"; Layout.leftMargin: 56 }
     Repeater {
         model: page.pluginsNew()
         SetRow {
@@ -290,6 +297,42 @@ SetPage {
         Layout.fillWidth: true
         text: page.plugins && page.plugins.lastError ? page.plugins.lastError : ""
         color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        Layout.leftMargin: 56; Layout.rightMargin: 16; Layout.bottomMargin: 10
+    }
+    }
+    // ---- Go back to the version before (shown only when the system reports one, and no update waits for a restart)
+    readonly property bool canGoBack: page.canAdmin && page.phase === "idle" && !!(page.status && page.status.rollback && page.ver(page.status.rollback)) && !(page.status && page.status.staged)
+    property bool askBack: false
+    SetHeader { visible: page.canAdmin; text: "If something broke" }
+    SetRow {
+        visible: page.canGoBack && !page.status.rollbackQueued
+        icon: "restart"; title: "Go back to " + page.ver(page.status ? page.status.rollback : null)
+        sub: "If something broke after the last update: the version before this one starts at the next restart. Your games and files stay."
+        onActivated: page.askBack = !page.askBack
+    }
+    SetRow {
+        visible: page.canGoBack && !page.status.rollbackQueued && page.askBack
+        icon: "check"; title: "Yes, go back at the next restart"
+        sub: "Hearth updates again by itself later. Changed your mind before restarting? Stay on " + page.ver(page.status ? page.status.booted : null) + " shows up here."
+        onActivated: { page.askBack = false; page.start("rollback"); }
+    }
+    SetRow {
+        visible: page.canGoBack && !!page.status.rollbackQueued
+        icon: "restart"; title: "Restart to go back to " + page.ver(page.status ? page.status.rollback : null)
+        sub: "It starts at the next restart. Your games and files stay."
+        onActivated: Quickshell.execDetached(["systemctl", "reboot"])
+    }
+    SetRow {
+        visible: page.canGoBack && !!page.status.rollbackQueued
+        icon: "close"; title: "Stay on " + page.ver(page.status ? page.status.booted : null); sub: "Don't go back after all"
+        onActivated: page.start("rollback")
+    }
+    SetRow {
+        visible: page.canAdmin
+        interactive: false
+        icon: "shield"; title: "The previous version always stays startable"
+        sub: "Every update keeps the version before it in the boot menu"
+        chip: "Kept"
     }
     SetHeader { visible: !!(page.unlock && page.unlock.available); text: "Writable system" }
     SetRow {
@@ -337,11 +380,5 @@ SetPage {
         Layout.fillWidth: true
         text: page.unlockError !== "" ? page.unlockError : "If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu keeps its own packages. Want a system that can't be changed at all? That's Hearth OS on Anatase."
         color: page.unlockError !== "" ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
-    }
-    Text {
-        visible: !page.canAdmin
-        Layout.fillWidth: true
-        text: "System updates are made here on Hearth, the OS."
-        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 }

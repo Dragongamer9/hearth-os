@@ -128,8 +128,15 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   disturb, Start in), Bluetooth devices, Storage, Home server, Your look. On the live USB, an Install Hearth banner.
 - **Category pages** (`SetCategory.qml`): their pages as cards with a live status where it's cheap to read, then link
   cards to settings whose real home is elsewhere. Gaming (`SetGaming.qml`) and Home server (`SetHomeServer.qml`) have
-  their own landing pages; Hearth Link, Personalization, Accessibility and Updates & recovery open their page, with
-  the category's other pages as cards at the end.
+  their own landing pages; Network & internet (Wi-Fi), Hearth Link, Personalization, Accessibility and Updates &
+  recovery open their page, with the category's other pages as cards at the end (under `MORE`'s heading when it has
+  one: "Reach your devices from anywhere" over Tailscale).
+- **Updates & recovery** (`SetUpdates.qml`): a status card (up to date / ready to download / ready, restart) whose
+  button is the one next step, Update anyway, **Decky plugins** as one expander (`updates:decky` opens it), "If
+  something broke" (Go back, and "The previous version always stays startable"), the writable system, then Backup and
+  help. The same hearth-admin, hearth-decky and hearth-unlock calls as before; only the layout changed.
+- **AI devices** (`SetHomeAIDevices.qml`, feature/ai-share): its registry entry is written out, ready, in
+  `settings-pages.js` (Home server › Services › AI devices); it goes live when that branch is merged.
 - **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,
   `SetBanner`, `SetLinkCard`, `SetButton`, sizes and the good / warn colours in `SetStyle.qml`): icon, title, one
   line, the control or a status chip on the right, a chevron only when it opens a page. Every colour is a Theme token,
@@ -138,7 +145,8 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   with their path ("Go to sleep after · System › Power & battery"), pages, and the pages' old names ("Appearance").
   Opening a result puts the focus on that card (opening its expander if it's folded away).
 - **Where things went** (the IA table): Tailscale → Network & internet (a link card stays in Home server); Remote play
-  → Gaming (listed in Home server › Services too); Home server › AI → Home server › Services › AI chat; Boot &
+  → Gaming (listed in Home server › Services too); Bar layouts and app menus → Personalization › Bar and dock
+  (`appearance:bar` opens it); ComfyUI and Kokoro → Home server › Services › AI on this PC; Home server › AI → Home server › Services › AI chat; Boot &
   startup → System › Startup (the splash) and Gaming › Startup animation; About's Privacy → Privacy & security ›
   Player count, its Help and logs and Backup → Updates & recovery › Backup and help (one file, `page.part`); Start in
   → Gaming (`StartInChoice.qml`, also on Home); Users → Accounts; Keyboard's on-screen keyboard is an expander.

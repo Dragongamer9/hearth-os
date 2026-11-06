@@ -178,12 +178,18 @@ jobs:
           # ---- Hearth Settings (the redesign, docs/MANTEL.md "Settings"): every page in settings-pages.js, Home first.
           # Opening them writes nothing: every settings file is the same afterwards (settings never change by themselves).
           mkdir -p shots/settings-redesign
-          snap() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/.config/mimeapps.list" -maxdepth 2 -type f \( -name '*.json' -o -name '*.conf' -o -name '*.list' -o -name 'nvidia-drawing' \) 2>/dev/null \
+          snap() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/.config/mimeapps.list" "$HOME/.config/labwc" -maxdepth 2 -type f \( -name '*.json' -o -name '*.conf' -o -name '*.list' -o -name 'nvidia-drawing' -o -name '*.xml' -o -name 'environment' \) 2>/dev/null \
             | grep -v -E 'cache|state|/log|recent|-seen' | sort | xargs -r sha256sum || true; }
           snap > shots/settings-redesign/files-before.txt
           n=6; opened=0
           for p in $(sed -n 's/^    { id: "\([a-z0-9-]*\)", file:.*/\1/p' hosts/linux/desktop/shell/settings-pages.js); do
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1)); opened=$((opened+1))
+          done
+          # ...and every other way in: the category ids, the old forms (aliases) and the parts of pages (page:part).
+          for p in $(sed -n 's/^    { id: "\([a-z0-9-]*\)", icon:.*/\1/p' hosts/linux/desktop/shell/settings-pages.js) \
+                   $(sed -n 's/^var ALIASES = {\(.*\)};/\1/p' hosts/linux/desktop/shell/settings-pages.js | grep -o '"[a-z0-9:-]*":' | tr -d '":' ; true) \
+                   appearance:bar keyboard:osk updates:decky; do
+            ipc settings page "$p"; sleep 1; opened=$((opened+1))
           done
           ipc settings close; sleep 2
           snap > shots/settings-redesign/files-after.txt
@@ -207,6 +213,7 @@ jobs:
           rs display 20-system-display; rs hs-services 21-home-server-services; rs bar-dock 22-personalization-bar-and-dock
           rs keyboard:osk 23-keyboard-osk-expander-open; rs startup-animation 24-gaming-startup-animation; rs player-count 25-privacy-player-count
           rs backup 26-updates-backup-and-help; rs hs-ai 27-home-server-services-ai-chat; rs wifi 28-network-wifi
+          rs remote 29-gaming-remote-play; rs appearance:bar 29b-deep-link-appearance-bar; rs hs-tailscale 29c-network-tailscale
           # The controller: into Home and down two cards (the focus ring); RB (Ctrl+PgDn) to the next category; B up.
           rs home 30-home; wtype -k Right; sleep 1; wtype -k Down; wtype -k Down; sleep 1; grim shots/settings-redesign/30-home-focus-ring.png || true
           wtype -M ctrl -k Page_Down -m ctrl; sleep 3; grim shots/settings-redesign/31-rb-next-category.png || true
