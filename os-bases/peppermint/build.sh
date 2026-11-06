@@ -1499,6 +1499,24 @@ else
   OPTIONAL_MISSING+=("sunshine")
 fi
 rm -f /tmp/sunshine.deb
+# Sunshine grabs the screen through KMS (Game Mode's gamescope too, and Desktop Mode before labwc is up): LizardByte's
+# postinst gives it cap_sys_admin (and cap_sys_nice) with setcap, which a container build can miss. Optional.
+if command -v sunshine >/dev/null 2>&1 && command -v setcap >/dev/null 2>&1; then
+  sun_bin="$(readlink -f "$(command -v sunshine)")"
+  getcap "$sun_bin" 2>/dev/null | grep -q cap_sys_admin || setcap cap_sys_admin,cap_sys_nice+p "$sun_bin" || echo "warning: couldn't give Sunshine its screen-capture capability"
+fi
+# Use this PC from anywhere (Settings › Remote play, docs/REMOTE-DESKTOP.md): its Mantel helper, and the boot unit that
+# loads its Tailscale-only rule. Off in the image: the owner's switch enables the unit; Sunshine stays off too.
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-remote-desktop 2>/dev/null || true
+systemctl disable hearth-remote-desktop-firewall.service 2>/dev/null || true
+if [ "$(systemctl is-enabled hearth-remote-desktop-firewall.service 2>/dev/null)" = enabled ] || ls /etc/systemd/system/*.wants/hearth-remote-desktop-firewall.service >/dev/null 2>&1; then
+  echo "::error::hearth-remote-desktop-firewall.service is on in the image: Use this PC from anywhere stays off until the owner turns it on"; exit 1
+fi
+for u in sunshine.service app-dev.lizardbyte.app.Sunshine.service; do
+  systemctl --global disable "$u" 2>/dev/null || true
+  if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (Sunshine) is on in the image: it stays off until the owner turns it on"; exit 1; fi
+done
+if [ -e /etc/hearth/remote-desktop.nft ]; then echo "::error::a remote desktop firewall rule is in the image"; exit 1; fi
 # The streamed players' address as a QR code in Settings (optional), and the udev helper that gives each streamed
 # player their own virtual controllers (copied in with system_files; executable to be sure).
 optional qrencode

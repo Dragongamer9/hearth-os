@@ -51,8 +51,8 @@ SetPage {
 
     SetHeader { text: "Play from anywhere" }
     SetRow {
-        icon: "wired"; title: "Remote play"
-        sub: "Sunshine on this PC, Moonlight on your laptop, phone or TV. Away from home, add this PC in Moonlight by its Tailscale name"
+        icon: "wired"; title: "Remote play and Use this PC from anywhere"
+        sub: "Sunshine on this PC, Moonlight on your laptop, work PC, phone or TV: your games, or your whole desktop. Away from home, add this PC in Moonlight by its Tailscale name"
              + (page.g && page.g.tsName ? " (" + page.g.tsName + ")" : "") + ": nothing is opened to the internet"
         value: page.g && page.g.remote ? "On" : ""
         onActivated: SettingsNav.openPage("remote")

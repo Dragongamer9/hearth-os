@@ -7,6 +7,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Use this PC from anywhere (docs/REMOTE-DESKTOP.md): one switch in Settings › Remote play for low-latency remote desktop to this PC from work or anywhere, with Moonlight through Tailscale (Sunshine with NVENC's fastest preset on Nvidia, VA-API elsewhere, audio, the Desktop app, never UPnP); only through Tailscale by Hearth's own firewall rule unless you choose your home network too, never the internet; off by default, nothing enabled in the image (needs testing on a device)
+- [x] Use this PC from anywhere: pairing made easy ("In Moonlight, add <name> or <address>", type Moonlight's PIN in Settings, paired devices with Remove; Sunshine's login made on the PC, 0600, used only on this PC; works with newer Sunshine's pairing too) (needs testing on a device)
+- [x] Use this PC from anywhere: who is connected, resolution, frame rate and bitrate, direct or through a relay (with a plain tip when your network blocks direct connections), a recommended Moonlight setting, Check the connection (one Tailscale ping); stay awake while connected; a link to waking the PC from away (needs testing on a device)
+- [x] Use this PC from anywhere: Game Mode keeps working while someone is connected (the stream shows Steam's Game Mode), and Game Mode's Quick Access says who is using the PC (needs testing on a device)
 - [x] Desktop Mode controller: clicks work everywhere again. RT / LT always click and right-click (also in Hearth Files, Settings, Task Manager, Open / Save dialogs and Hearth's menus, where they did nothing), A and X click once you've moved the pointer with the right stick (the D-pad gives them back to Enter / the Menu key), the pointer holds still for a moment when a click goes down so the title bar's close button and dragging a window by its title bar work, the menus' keys mode can no longer get stuck on, quick taps are never lost, and pad.log shows the clicks and the keys mode (docs/HEARTH-INPUT.md) (needs testing on a device)
 
 ## 1.4 (released 2026-11-05)

@@ -1,0 +1,945 @@
+#!/usr/bin/python3
+"""hearth-remote-desktop: Settings › Remote play › "Use this PC from anywhere" (docs/REMOTE-DESKTOP.md). This PC's
+desktop (or whatever is on its screen) on another computer or phone with Moonlight, through Tailscale: Sunshine (which
+comes with Hearth OS) with Hearth's low-latency settings, reachable only through Tailscale unless you choose your home
+network too, never the internet.
+
+Your choices live in ~/.config/nimbus/remote-desktop.json (on, reach, keepAwake), written only when you change one,
+through hearth_settings_io (atomic, .bak, merge under a lock; defaults filled in when read, never saved). Off by default.
+Not settings, never in that file:
+  - Sunshine's login for Hearth: ~/.local/share/nimbus/remote-play.json, 0600 (shared with Settings › Remote play's
+    pairing in hearth-core remote.rs); made on this PC the first time, used only on 127.0.0.1, never shown or logged;
+  - what Hearth changed in Sunshine's own config, to put it back when you turn this off:
+    ~/.local/state/nimbus/remote-desktop.json;
+  - who is streaming now and the traffic samples: $XDG_RUNTIME_DIR/hearth-remote-desktop/.
+
+  hearth-remote-desktop status                 JSON: on, reach, Sunshine, the firewall, Tailscale's name and address for
+                                               Moonlight, paired devices, who is streaming now (direct or relay), tips
+  hearth-remote-desktop set on on|off          turn it on (Sunshine tuned, Tailscale-only rule, starts with your session)
+                                               or off (all of that undone; Sunshine stays on if Remote play is on)
+  hearth-remote-desktop set reach tailscale|home
+  hearth-remote-desktop set keepAwake on|off   stay awake while a device is streaming
+  hearth-remote-desktop start                  turn it on again after Sunshine was stopped (what "on" does, saved as is)
+  hearth-remote-desktop pin PIN [NAME]         Moonlight's 4 numbers, sent to Sunshine on this PC
+  hearth-remote-desktop unpair UUID            that device can't stream anymore (it can pair again)
+  hearth-remote-desktop check [IP]             tailscale ping that device (the one streaming when not given)
+  hearth-remote-desktop session start|end      Sunshine's prep command (each stream's start and end); always exits 0
+  hearth-remote-desktop gate                   Sunshine's ExecStartPre while Tailscale only: waits for the rule
+  hearth-remote-desktop awake                  the transient unit that keeps the PC awake while a device streams
+  hearth-remote-desktop quick                  who's streaming, in short (Game Mode's Quick Access)
+Output: one JSON line; failures print "error: ..." and exit 1. No shell anywhere: every command is an argument list.
+"""
+import base64
+import ipaddress
+import json
+import os
+import re
+import shutil
+import socket
+import ssl
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+SELF = os.path.realpath(__file__)
+HOME = os.path.expanduser('~')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+DATA_HOME = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+RUNTIME = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-remote-desktop')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'remote-desktop.json')
+STATE = os.path.join(STATE_HOME, 'nimbus', 'remote-desktop.json')
+CREDS = os.path.join(DATA_HOME, 'nimbus', 'remote-play.json')
+SUN_DIR = os.path.join(CONFIG_HOME, 'sunshine')
+SUN_CONF = os.path.join(SUN_DIR, 'sunshine.conf')
+SUN_APPS = os.path.join(SUN_DIR, 'apps.json')
+USER_UNITS = os.path.join(CONFIG_HOME, 'systemd', 'user')
+ROOT_HELPER = os.environ.get('HEARTH_HOME_SERVER_ROOT', '/usr/libexec/nimbus/hearth-home-server-helper')
+FW_MARK = os.environ.get('HEARTH_REMOTE_FW_MARK', '/run/hearth/remote-desktop-fw')
+AWAKE_UNIT = 'hearth-remote-desktop-awake'
+DROPIN_NAME = 'hearth-remote-desktop.conf'
+UNITS = ('app-dev.lizardbyte.app.Sunshine.service', 'sunshine.service')
+SUNSHINE_PORT = 47989
+DEFAULTS = {'on': False, 'reach': 'tailscale', 'keepAwake': True}
+TS_NETS = [ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48')]
+NAME_RE = re.compile(r"^[\w .'()-]{1,40}$")
+RELAY_TIP = "Your work network is blocking direct connections; it will feel laggier"
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ small things (tests replace these)
+
+def run(cmd, timeout=15, env=None):
+    """(exit code, output). Never a shell."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL, env=env)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def which(name):
+    return shutil.which(name)
+
+
+def now():
+    return time.time()
+
+
+def read_text(path, limit=1 << 20):
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - limit))
+            return f.read().decode('utf-8', 'replace')
+    except OSError:
+        return ''
+
+
+# ------------------------------------------------------------------ settings (and state, which isn't settings)
+
+def load():
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def set_key(key, raw):
+    """Saves one setting, only when it differs from what you have now (a default counts as what you have)."""
+    if key in ('on', 'keepAwake'):
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        v = raw == 'on'
+    elif key == 'reach':
+        if raw not in ('tailscale', 'home'):
+            raise Fail('tailscale or home')
+        v = raw
+    else:
+        raise Fail('Unknown setting')
+    if load().get(key) == v:
+        return False
+    sio.merge_json(SETTINGS, {key: v})
+    return True
+
+
+def state():
+    st = sio.load_json(STATE, {}, repair=False) if os.path.exists(STATE) else {}
+    return st if isinstance(st, dict) else {}
+
+
+def state_write(st):
+    sio.write_json(STATE, st)
+
+
+def runtime_path(name):
+    os.makedirs(RUNTIME, mode=0o700, exist_ok=True)
+    return os.path.join(RUNTIME, name)
+
+
+def runtime_read(name):
+    p = os.path.join(RUNTIME, name)
+    try:
+        with open(p) as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def runtime_write(name, data):
+    sio._atomic_bytes(runtime_path(name), (json.dumps(data) + '\n').encode(), mode=0o600)
+
+
+# ------------------------------------------------------------------ Sunshine: its unit, config and API
+
+def sunshine_unit():
+    """Sunshine's user unit by its own name (sunshine.service is an alias of LizardByte's app-dev… unit), or None."""
+    for u in UNITS:
+        code, out = run(['systemctl', '--user', 'show', '-p', 'LoadState', '-p', 'Id', '--value', u], 5)
+        lines = [l.strip() for l in out.splitlines() if l.strip()]
+        if code == 0 and lines and 'not-found' not in lines and 'loaded' in lines:
+            ids = [l for l in lines if l.endswith('.service')]
+            return ids[0] if ids else u
+    return None
+
+
+def unit_active(unit):
+    return bool(unit) and run(['systemctl', '--user', 'is-active', '--quiet', unit], 5)[0] == 0
+
+
+def unit_enabled(unit):
+    """Enabled by Sunshine's own [Install] (Settings › Remote play's switch does that), not by our link."""
+    return bool(unit) and run(['systemctl', '--user', 'is-enabled', '--quiet', unit], 5)[0] == 0
+
+
+CONF_LINE = re.compile(r'^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$')
+
+
+def conf_get(text, key):
+    val = None
+    for l in text.splitlines():
+        m = CONF_LINE.match(l)
+        if m and m.group(1) == key:
+            val = m.group(2)
+    return val
+
+
+def conf_set(text, key, value):
+    """TEXT with KEY = VALUE (the last KEY line replaced, the others removed; added at the end when missing), or KEY
+    removed when VALUE is None. Every other line stays as it was."""
+    out, done = [], False
+    lines = text.splitlines()
+    idx = [i for i, l in enumerate(lines) if (CONF_LINE.match(l) or [None, None])[1] == key] if lines else []
+    for i, l in enumerate(lines):
+        if i in idx:
+            if i == idx[-1] and value is not None:
+                out.append('%s = %s' % (key, value))
+                done = True
+            continue
+        out.append(l)
+    if value is not None and not done:
+        out.append('%s = %s' % (key, value))
+    return '\n'.join(out) + ('\n' if out else '')
+
+
+def sunshine_port(text=None):
+    text = read_text(SUN_CONF) if text is None else text
+    v = conf_get(text, 'port')
+    if v and re.fullmatch(r'\d{4,5}', v) and 1029 <= int(v) <= 65514:
+        return int(v)
+    return SUNSHINE_PORT
+
+
+def gpu():
+    """nvidia (NVENC), vaapi (an AMD or Intel card), or '' (Sunshine picks by itself)."""
+    if os.path.exists('/proc/driver/nvidia/version') or os.path.isdir('/sys/module/nvidia'):
+        return 'nvidia'
+    try:
+        for c in sorted(os.listdir('/sys/class/drm')):
+            if re.fullmatch(r'renderD\d+', c):
+                with open('/sys/class/drm/%s/device/vendor' % c) as f:
+                    if f.read().strip() in ('0x1002', '0x8086'):
+                        return 'vaapi'
+    except OSError:
+        pass
+    return ''
+
+
+def prep_entry():
+    py = '/usr/bin/python3'
+    return {'do': '%s %s session start' % (py, SELF), 'undo': '%s %s session end' % (py, SELF)}
+
+
+def prep_list(raw):
+    try:
+        v = json.loads(raw) if raw else []
+    except ValueError:
+        return None
+    return v if isinstance(v, list) else None
+
+
+def ours(entry):
+    return isinstance(entry, dict) and 'hearth-remote-desktop session' in str(entry.get('do', ''))
+
+
+def tuned(text, kind):
+    """What Hearth sets in Sunshine's config for low-latency remote desktop: NVENC with its fastest preset on Nvidia
+    (VA-API elsewhere), never UPnP (nothing opened to the internet), its web page only on this PC, audio on, and the
+    prep command that tells Hearth who is streaming. Your own prep commands stay."""
+    want = {'upnp': 'disabled', 'origin_web_ui_allowed': 'pc', 'stream_audio': 'enabled'}
+    if kind == 'nvidia':
+        want.update({'encoder': 'nvenc', 'nvenc_preset': '1'})
+    elif kind == 'vaapi':
+        want['encoder'] = 'vaapi'
+    cur = prep_list(conf_get(text, 'global_prep_cmd'))
+    if cur is not None:
+        want['global_prep_cmd'] = json.dumps([e for e in cur if not ours(e)] + [prep_entry()])
+    return want
+
+
+def tune_apply(st, kind):
+    """Sets Hearth's values (merged into Sunshine's config, atomic, .bak), remembering what was there before (the first
+    time only) so turning this off can put it back. Returns whether anything changed."""
+    changed = {'v': False}
+    before = st.setdefault('before', {})
+    applied = st.setdefault('applied', {})
+
+    def change(text):
+        want = tuned(text, kind)
+        for k, v in want.items():
+            old = conf_get(text, k)
+            if k not in before:
+                before[k] = old
+            applied[k] = v
+            if old != v:
+                text = conf_set(text, k, v)
+                changed['v'] = True
+        return text
+    os.makedirs(SUN_DIR, exist_ok=True)
+    sio.update_text(SUN_CONF, change)
+    return changed['v']
+
+
+def tune_undo(st):
+    """Puts back what was there before, only for values still as Hearth set them (a change you made since stays). Hearth's
+    prep command is taken out of the list whatever else is in it."""
+    before = st.get('before') or {}
+    applied = st.get('applied') or {}
+    if not os.path.exists(SUN_CONF):
+        return False
+
+    def change(text):
+        for k, v in applied.items():
+            cur = conf_get(text, k)
+            if k == 'global_prep_cmd':
+                lst = prep_list(cur)
+                if lst is not None:
+                    rest = [e for e in lst if not ours(e)]
+                    text = conf_set(text, k, json.dumps(rest) if rest else before.get(k))
+                continue
+            if cur == v:
+                text = conf_set(text, k, before.get(k))
+        return text
+    sio.update_text(SUN_CONF, change)
+    return True
+
+
+def desktop_app(st):
+    """Sunshine's "Desktop" entry (the whole screen, no game): added to your apps.json when it's missing. A missing file
+    is left alone: Sunshine makes it with Desktop on its first start."""
+    if not os.path.exists(SUN_APPS):
+        return 'sunshine-default'
+    data = sio.load_json(SUN_APPS, None)
+    if not isinstance(data, dict) or not isinstance(data.get('apps', []), list):
+        return 'unreadable'
+    if any(isinstance(a, dict) and a.get('name') == 'Desktop' for a in data.get('apps', [])):
+        return 'present'
+
+    def change(d):
+        apps = d.get('apps') if isinstance(d.get('apps'), list) else []
+        if not any(isinstance(a, dict) and a.get('name') == 'Desktop' for a in apps):
+            d['apps'] = [{'name': 'Desktop', 'image-path': 'desktop.png'}] + apps
+    sio.update_json(SUN_APPS, change)
+    st['addedDesktop'] = True
+    return 'added'
+
+
+def desktop_app_present():
+    if not os.path.exists(SUN_APPS):
+        return True
+    data = sio.load_json(SUN_APPS, {}, repair=False)
+    return any(isinstance(a, dict) and a.get('name') == 'Desktop' for a in (data.get('apps') or []) if isinstance(data, dict))
+
+
+def creds():
+    try:
+        with open(CREDS) as f:
+            v = json.load(f)
+        if isinstance(v, dict) and isinstance(v.get('user'), str) and isinstance(v.get('pass'), str):
+            return v['user'], v['pass']
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def creds_save(user, pw):
+    sio.write_bytes(CREDS, json.dumps({'user': user, 'pass': pw}).encode(), mode=0o600)
+    os.chmod(CREDS, 0o600)
+
+
+def api(method, path, body=None, login=None, timeout=8):
+    """One call to Sunshine's own web API on this PC (its certificate is its own, so it isn't checked; nothing leaves
+    127.0.0.1). The login goes in a header, never on a command line. Fail('AUTH') when it wants a login."""
+    url = 'https://127.0.0.1:%d%s' % (sunshine_port() + 1, path)
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header('Content-Type', 'application/json')
+    if login:
+        req.add_header('Authorization', 'Basic ' + base64.b64encode(('%s:%s' % login).encode()).decode())
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            text = r.read(1 << 20).decode('utf-8', 'replace')
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise Fail('AUTH')
+        raise Fail('Sunshine said %d' % e.code)
+    except (OSError, ValueError):
+        raise Fail("Sunshine isn't running")
+    try:
+        v = json.loads(text) if text.strip() else {}
+    except ValueError:
+        v = {}
+    return v if isinstance(v, dict) else {}
+
+
+def ensure_login():
+    """A login only Hearth knows, set on Sunshine's first start (when Sunshine has none yet). False when Sunshine already
+    has a login of its own: Settings › Remote play asks for it once."""
+    if creds():
+        return True
+    pw = os.urandom(18).hex()
+    try:
+        v = api('POST', '/api/password', {'newUsername': 'hearth', 'newPassword': pw, 'confirmNewPassword': pw})
+    except Fail:
+        return False
+    if v.get('status') is False:
+        return False
+    creds_save('hearth', pw)
+    return True
+
+
+def clients():
+    """(paired devices, needs a login)."""
+    try:
+        v = api('GET', '/api/clients/list', login=creds())
+    except Fail as e:
+        return [], str(e) == 'AUTH'
+    out = []
+    for c in v.get('named_certs') or []:
+        if isinstance(c, dict) and isinstance(c.get('uuid'), str):
+            out.append({'name': str(c.get('name') or 'Device')[:64], 'uuid': c['uuid'][:64]})
+    return out, False
+
+
+def pin(code, name='Moonlight'):
+    if not re.fullmatch(r'\d{4}', code or ''):
+        raise Fail('The PIN is the 4 numbers Moonlight shows')
+    name = (name or '').strip() or 'Moonlight'
+    if not NAME_RE.fullmatch(name):
+        raise Fail('Use letters, numbers and spaces for the name (up to 40)')
+    ensure_login()
+    login = creds()
+    body = {'pin': code, 'name': name}
+    # Newer Sunshine lists the devices waiting for a PIN and wants which one; older ones take the PIN on its own.
+    try:
+        waiting = api('GET', '/api/pin', login=login)
+    except Fail as e:
+        if str(e) == 'AUTH':
+            raise Fail("Sunshine has its own login: type it once under Sunshine's username and password")
+        waiting = {}
+    pend = [p for p in (waiting.get('pairings') or []) if isinstance(p, dict) and re.fullmatch(r'[0-9a-fA-F]{32}', str(p.get('id', '')))]
+    if 'pairings' in waiting and not pend:
+        raise Fail('No device is waiting: in Moonlight, pick this PC (or add it) first, then type the 4 numbers it shows')
+    if pend:
+        body['pairing_id'] = pend[-1]['id']
+    try:
+        r = api('POST', '/api/pin', body, login=login, timeout=40)
+    except Fail as e:
+        raise Fail("Sunshine has its own login: type it once under Sunshine's username and password" if str(e) == 'AUTH' else str(e))
+    if r.get('status') is False:
+        raise Fail("That PIN didn't work. In Moonlight, pick this PC again for a new one.")
+    return {'ok': True, 'paired': name}
+
+
+def unpair(uuid):
+    if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', uuid or ''):
+        raise Fail('Not a device Sunshine knows')
+    api('POST', '/api/clients/unpair', {'uuid': uuid}, login=creds())
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ streaming now: Sunshine's log and the prep command
+
+LOG_TIME = re.compile(r'^\[(\d{4})[-:](\d\d)[-:](\d\d)[ :T](\d\d):(\d\d):(\d\d)')
+
+
+def log_path():
+    v = conf_get(read_text(SUN_CONF), 'log_path')
+    if v and not os.path.isabs(v):
+        v = os.path.join(SUN_DIR, v)
+    return v or os.path.join(SUN_DIR, 'sunshine.log')
+
+
+def log_state(text):
+    """From Sunshine's log (it starts a new one each time it starts): connected now, since when, the bitrate and the
+    encoder of the last stream."""
+    connected, since, bitrate, encoder = False, 0, 0, ''
+    for l in text.splitlines():
+        if 'CLIENT CONNECTED' in l:
+            connected = True
+            m = LOG_TIME.match(l)
+            since = int(time.mktime(tuple(int(x) for x in m.groups()) + (0, 0, -1))) if m else 0
+        elif 'CLIENT DISCONNECTED' in l:
+            connected = False
+        elif 'Streaming bitrate is ' in l:
+            m = re.search(r'Streaming bitrate is (\d+)', l)
+            bitrate = int(m.group(1)) if m else bitrate
+        elif 'Creating encoder ' in l:
+            m = re.search(r'Creating encoder \[?([\w.-]+)', l)
+            encoder = m.group(1) if m else encoder
+    return {'connected': connected, 'since': since, 'bitrate': bitrate, 'encoder': encoder}
+
+
+def clean_int(v, lo, hi):
+    return int(v) if re.fullmatch(r'\d{1,5}', str(v or '')) and lo <= int(v) <= hi else 0
+
+
+def session(what):
+    """Sunshine runs this when a stream starts and ends (its global prep command). Never fails: a failing prep command
+    would stop Sunshine from streaming at all."""
+    try:
+        if what == 'start':
+            e = os.environ
+            who = re.sub(r'[^\w .\'()-]', '', e.get('SUNSHINE_CLIENT_NAME', ''))[:40]
+            runtime_write('session.json', {'who': who, 'app': re.sub(r'[^\w .\'()-]', '', e.get('SUNSHINE_APP_NAME', ''))[:40],
+                                           'width': clean_int(e.get('SUNSHINE_CLIENT_WIDTH'), 1, 16384),
+                                           'height': clean_int(e.get('SUNSHINE_CLIENT_HEIGHT'), 1, 16384),
+                                           'fps': clean_int(e.get('SUNSHINE_CLIENT_FPS'), 1, 1000),
+                                           'hdr': e.get('SUNSHINE_CLIENT_HDR') == 'true', 'at': int(now())})
+            if load().get('keepAwake') and run(['systemctl', '--user', 'is-active', '--quiet', AWAKE_UNIT + '.service'], 5)[0] != 0:
+                run(['systemd-run', '--user', '--unit=' + AWAKE_UNIT, '--collect', '--property=RuntimeMaxSec=86400',
+                     '/usr/bin/python3', SELF, 'awake'], 10)
+            if which('notify-send'):
+                run(['notify-send', '-a', 'Hearth', 'Using this PC from anywhere',
+                     '%s is using this PC through Moonlight' % (who or 'A device')], 5)
+        else:
+            try:
+                os.remove(os.path.join(RUNTIME, 'session.json'))
+            except OSError:
+                pass
+            run(['systemctl', '--user', 'stop', AWAKE_UNIT + '.service'], 10)
+    except Exception as e:  # noqa: BLE001 - never stop Sunshine's stream
+        sio.log_event('hearth-remote-desktop session %s: %s' % (what, e))
+    return {'ok': True}
+
+
+def streaming_now(unit=None):
+    unit = unit or sunshine_unit()
+    if not unit_active(unit):
+        return {'connected': False}
+    ls = log_state(read_text(log_path(), 2 << 20))
+    return ls
+
+
+def awake(sleep=time.sleep, rounds=None):
+    """Keeps the PC from sleeping or going idle (a logind "block" inhibitor, which Mantel's own idle timer respects)
+    while a device streams, and lets go two minutes after it disconnects. Ends with the stream's session."""
+    holder, quiet = None, None
+    i = 0
+    try:
+        while rounds is None or i < rounds:
+            i += 1
+            on = streaming_now().get('connected')
+            if on:
+                quiet = None
+                if holder is None or holder.poll() is not None:
+                    holder = subprocess.Popen(['systemd-inhibit', '--what=idle:sleep', '--who=Hearth',
+                                               '--why=A device is using this PC through Moonlight', '--mode=block',
+                                               'sleep', 'infinity'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                              stderr=subprocess.DEVNULL)
+            else:
+                quiet = quiet or now()
+                if holder is not None and now() - quiet >= 120:
+                    holder.terminate()
+                    holder = None
+                if not os.path.exists(os.path.join(RUNTIME, 'session.json')) and holder is None:
+                    break
+            sleep(10)
+    finally:
+        if holder is not None:
+            holder.terminate()
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ Tailscale: the address, direct or relay
+
+def ts_json():
+    if not which('tailscale'):
+        return None
+    code, out = run(['tailscale', 'status', '--json'], 6)
+    try:
+        j = json.loads(out[out.find('{'):]) if '{' in out else None
+    except ValueError:
+        return None
+    return j if isinstance(j, dict) else None
+
+
+def path_of(p):
+    """direct, relay (Tailscale's DERP servers, or a peer relay) or idle (no traffic lately, so Tailscale hasn't picked)."""
+    if p.get('CurAddr'):
+        return 'direct'
+    if p.get('Active') or p.get('Relay') and p.get('Active') is None:
+        return 'relay'
+    return 'idle'
+
+
+def ts_info(j=None, t=None):
+    """This PC's Tailscale name and address, and your online devices with how each one reaches it. The device that
+    sends the most to this PC since the last look (a stream is megabytes a second) is the one streaming."""
+    j = ts_json() if j is None else j
+    if not j:
+        return {'installed': bool(which('tailscale')), 'running': False}
+    me = j.get('Self') or {}
+    t = now() if t is None else t
+    prev = runtime_read('peers.json')
+    sample, peers = {}, []
+    for key, p in (j.get('Peer') or {}).items():
+        if not isinstance(p, dict) or not p.get('Online'):
+            continue
+        tx = p.get('TxBytes') if isinstance(p.get('TxBytes'), int) else 0
+        sample[str(key)[:80]] = tx
+        rate = 0
+        if prev.get('at') and str(key) in (prev.get('tx') or {}) and t > prev['at']:
+            rate = max(0, tx - prev['tx'][str(key)]) / (t - prev['at'])
+        ip = next((x for x in (p.get('TailscaleIPs') or []) if '.' in x), '')
+        peers.append({'name': str(p.get('HostName') or '')[:64], 'os': str(p.get('OS') or '')[:16], 'ip': ip,
+                      'path': path_of(p), 'relay': str(p.get('Relay') or '')[:16], 'addr': str(p.get('CurAddr') or '')[:64],
+                      'active': bool(p.get('Active')), 'rate': int(rate)})
+    try:
+        runtime_write('peers.json', {'at': t, 'tx': sample})
+    except OSError:
+        pass
+    peers.sort(key=lambda p: (-p['rate'], not p['active'], p['name'].lower()))
+    ip = next((x for x in (me.get('TailscaleIPs') or []) if '.' in x), '')
+    return {'installed': True, 'running': j.get('BackendState') == 'Running', 'state': j.get('BackendState') or '',
+            'name': str(me.get('HostName') or '').lower()[:64], 'dns': str(me.get('DNSName') or '').rstrip('.')[:120],
+            'ip': ip, 'peers': peers}
+
+
+def hint(path, ms=0):
+    if path == 'direct':
+        if ms and ms > 40:
+            return 'Direct, but far: try 1080p at 60 fps and 10 to 15 Mbps in Moonlight (Settings › Video bitrate)'
+        return 'Direct connection: try 1080p at 60 fps and 20 Mbps in Moonlight (1440p and 30 to 40 Mbps if it stays smooth)'
+    if path == 'relay':
+        return 'Through a relay: use 720p at 60 fps and 5 Mbps in Moonlight (or 1080p at 30 fps); relays are shared and slower'
+    if path == 'home':
+        return 'On your home network: 1440p or 4K at 60 fps and 40 to 80 Mbps'
+    return ''
+
+
+def stream_view(ls, ts, sess):
+    if not ls.get('connected'):
+        return {'on': False}
+    peer = None
+    for p in ts.get('peers') or []:
+        if p['rate'] >= 100000:
+            peer = p
+            break
+    active = [p for p in ts.get('peers') or [] if p['active']]
+    if peer is None:
+        peer = active[0] if len(active) == 1 else None
+    # No Tailscale device sending: the home network. Several and none clearly streaming: not known yet (next look).
+    path = peer['path'] if peer else ('unknown' if active else 'home')
+    if path == 'idle':
+        path = 'relay'
+    out = {'on': True, 'since': ls.get('since') or sess.get('at') or 0, 'who': sess.get('who') or (peer or {}).get('name') or '',
+           'device': (peer or {}).get('name') or '', 'width': sess.get('width') or 0, 'height': sess.get('height') or 0,
+           'fps': sess.get('fps') or 0, 'mbps': round(ls.get('bitrate', 0) / 1e6, 1) if ls.get('bitrate') else 0,
+           'encoder': ls.get('encoder') or '', 'app': sess.get('app') or '', 'path': path,
+           'relay': (peer or {}).get('relay') or '', 'peerIp': (peer or {}).get('ip') or '', 'hint': hint(path)}
+    if path == 'relay':
+        out['tip'] = RELAY_TIP
+    return out
+
+
+PING_RE = re.compile(r'via (DERP\(([\w-]+)\)|peer-relay[^ ]*|[\[\]0-9a-fA-F.:]+) in ([\d.]+) ?ms')
+
+
+def check(ip=None):
+    """One tailscale ping to that device: direct or relay, and how long it took."""
+    ts = ts_info()
+    if not ts.get('running'):
+        raise Fail("Tailscale isn't connected on this PC")
+    if ip is None:
+        st = stream_view(streaming_now(), ts, runtime_read('session.json'))
+        ip = st.get('peerIp')
+        if not ip:
+            raise Fail('No device is streaming through Tailscale right now')
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        raise Fail('Not a Tailscale address')
+    if not any(a in n for n in TS_NETS) or ip not in [p['ip'] for p in ts.get('peers') or []]:
+        raise Fail('Not one of your online Tailscale devices')
+    code, out = run(['tailscale', 'ping', '--c', '1', '--timeout', '5s', ip], 10)
+    m = PING_RE.search(out)
+    if not m:
+        raise Fail("It didn't answer (it may be asleep, or its network blocks Tailscale)")
+    relay = m.group(1).startswith('DERP') or m.group(1).startswith('peer-relay')
+    ms = float(m.group(3))
+    path = 'relay' if relay else 'direct'
+    res = {'ok': True, 'ip': ip, 'path': path, 'relay': m.group(2) or '', 'ms': round(ms), 'hint': hint(path, ms)}
+    if relay:
+        res['tip'] = RELAY_TIP
+    return res
+
+
+# ------------------------------------------------------------------ on and off
+
+def root(args):
+    if not os.path.exists(ROOT_HELPER):
+        raise Fail('This comes with the next Hearth OS update')
+    cmd = ([ROOT_HELPER] if os.geteuid() == 0 else ['pkexec', ROOT_HELPER]) + list(args)
+    env = dict(os.environ, PKEXEC_UID=str(os.getuid())) if os.geteuid() == 0 else None
+    code, out = run(cmd, 120, env)
+    lines = [l for l in out.splitlines() if l.startswith('{')]
+    try:
+        v = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        v = None
+    if not isinstance(v, dict):
+        raise Fail("Not allowed (Hearth's polkit rule is missing, or it was cancelled)" if code in (126, 127) else "That didn't work")
+    if not v.get('ok'):
+        raise Fail(v.get('error') or "That didn't work")
+    return v
+
+
+def fw_state():
+    try:
+        with open(FW_MARK) as f:
+            return 'tailscale-only' if f.read().strip() == 'tailscale-only' else 'open'
+    except OSError:
+        return 'open'
+
+
+def dropin_path(unit):
+    return os.path.join(USER_UNITS, unit + '.d', DROPIN_NAME)
+
+
+def dropin_text():
+    return ('# Hearth: Use this PC from anywhere (Settings > Remote play). Sunshine starts only once Hearth\'s\n'
+            '# Tailscale-only rule is loaded (hearth-remote-desktop gate waits up to 30 s for it). Off: this file goes.\n'
+            '[Service]\nExecStartPre=/usr/bin/python3 %s gate\n' % SELF)
+
+
+def wants_link(unit):
+    return os.path.join(USER_UNITS, 'default.target.wants', unit)
+
+
+def unit_file(unit):
+    for d in ('/usr/lib/systemd/user', '/usr/local/lib/systemd/user', '/etc/systemd/user'):
+        p = os.path.join(d, unit)
+        if os.path.exists(p):
+            return os.path.realpath(p)
+    return None
+
+
+def gate(wait=30, sleep=time.sleep):
+    """Sunshine's ExecStartPre while it's Tailscale only: no rule, no start."""
+    for _ in range(int(wait)):
+        if fw_state() == 'tailscale-only':
+            return {'ok': True}
+        sleep(1)
+    raise Fail("Hearth's Tailscale-only rule isn't loaded, so Sunshine wasn't started")
+
+
+def wait_api(seconds=15, sleep=time.sleep):
+    for _ in range(int(seconds * 2)):
+        try:
+            api('GET', '/api/clients/list')
+            return True
+        except Fail as e:
+            if str(e) == 'AUTH':
+                return True
+        sleep(0.5)
+    return False
+
+
+def turn_on(cfg=None):
+    """Sunshine tuned and started with your session, reachable only through Tailscale (unless you chose your home
+    network too). The firewall comes first: if it can't be made Tailscale only, nothing else changes."""
+    cfg = cfg or load()
+    unit = sunshine_unit()
+    if not unit:
+        raise Fail("Sunshine isn't on this system. It comes with Hearth OS on PCs (x86).")
+    port = sunshine_port()
+    st = state()
+    if cfg['reach'] == 'tailscale':
+        root(['remote-fw', 'tailscale', str(port)])
+        sio.write_text(dropin_path(unit), dropin_text())
+    else:
+        if fw_state() == 'tailscale-only' or os.path.exists(dropin_path(unit)):
+            root(['remote-fw', 'off'])
+        try:
+            os.remove(dropin_path(unit))
+        except OSError:
+            pass
+    was_active = unit_active(unit)
+    if 'startedSunshine' not in st:
+        st['startedSunshine'] = not was_active
+    st['unit'] = unit
+    changed = tune_apply(st, gpu())
+    st['desktop'] = desktop_app(st)
+    link = wants_link(unit)
+    src = unit_file(unit)
+    if src and not os.path.lexists(link):
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        os.symlink(src, link)
+        st['linked'] = True
+    state_write(st)
+    run(['systemctl', '--user', 'daemon-reload'], 30)
+    if was_active and changed:
+        run(['systemctl', '--user', 'restart', unit], 30)
+    elif not was_active:
+        run(['systemctl', '--user', 'reset-failed', unit], 10)
+        run(['systemctl', '--user', 'start', unit], 30)
+    if wait_api():
+        ensure_login()
+    return True
+
+
+def turn_off():
+    """Everything "on" did, undone: our link and drop-in, Hearth's Sunshine values (where you haven't changed them),
+    the Desktop entry Hearth added, the Tailscale-only rule. Sunshine keeps running when Settings › Remote play's own
+    switch has it on; otherwise it stops if Hearth started it."""
+    st = state()
+    unit = st.get('unit') or sunshine_unit()
+    note = ''
+    had_gate = False
+    if unit:
+        link = wants_link(unit)
+        if st.get('linked') and os.path.islink(link):
+            os.remove(link)
+        try:
+            os.remove(dropin_path(unit))
+            had_gate = True
+        except OSError:
+            pass
+    tune_undo(st)
+    if st.get('addedDesktop') and os.path.exists(SUN_APPS):
+        def change(d):
+            apps = d.get('apps') if isinstance(d.get('apps'), list) else []
+            d['apps'] = [a for a in apps if a != {'name': 'Desktop', 'image-path': 'desktop.png'}]
+        sio.update_json(SUN_APPS, change)
+    run(['systemctl', '--user', 'stop', AWAKE_UNIT + '.service'], 10)
+    if unit:
+        run(['systemctl', '--user', 'daemon-reload'], 30)
+        if unit_enabled(unit):
+            if unit_active(unit):
+                run(['systemctl', '--user', 'restart', unit], 30)
+        elif st.get('startedSunshine') and unit_active(unit):
+            run(['systemctl', '--user', 'stop', unit], 30)
+    if fw_state() == 'tailscale-only' or had_gate:
+        try:
+            root(['remote-fw', 'off'])
+        except Fail as e:
+            note = 'Sunshine is still limited to Tailscale (%s). Turn this on and off again to try once more.' % e
+    for k in ('before', 'applied', 'startedSunshine', 'linked', 'addedDesktop', 'desktop', 'unit'):
+        st.pop(k, None)
+    state_write(st)
+    return note
+
+
+def set_cmd(key, raw):
+    cfg = load()
+    if key == 'on':
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        if raw == 'on':
+            turn_on(cfg)
+            set_key('on', 'on')
+            return {'ok': True, 'on': True}
+        note = turn_off()
+        set_key('on', 'off')
+        return {'ok': True, 'on': False, 'note': note}
+    if key == 'reach':
+        if raw not in ('tailscale', 'home'):
+            raise Fail('tailscale or home')
+        if cfg['on'] and raw != cfg['reach']:
+            turn_on(dict(cfg, reach=raw))
+        set_key('reach', raw)
+        return {'ok': True, 'reach': raw}
+    if key == 'keepAwake':
+        changed = set_key('keepAwake', raw)
+        if raw == 'off':
+            run(['systemctl', '--user', 'stop', AWAKE_UNIT + '.service'], 10)
+        return {'ok': True, 'changed': changed}
+    raise Fail('Unknown setting')
+
+
+def game_mode():
+    try:
+        for pid in os.listdir('/proc'):
+            if pid.isdigit():
+                try:
+                    with open('/proc/%s/comm' % pid) as f:
+                        if f.read().strip() in ('gamescope', 'gamescope-wl'):
+                            return True
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return False
+
+
+def status():
+    cfg = load()
+    unit = sunshine_unit()
+    running = unit_active(unit)
+    ts = ts_info()
+    cl, needs_login = clients() if running else ([], False)
+    ls = streaming_now(unit) if running else {'connected': False}
+    sess = runtime_read('session.json')
+    stream = stream_view(ls, ts, sess)
+    addr = {'name': ts.get('name') or '', 'dns': ts.get('dns') or '', 'ip': ts.get('ip') or ''}
+    return {'installed': bool(unit), 'unit': unit or '', 'on': cfg['on'], 'reach': cfg['reach'], 'keepAwake': cfg['keepAwake'],
+            'running': running, 'firewall': fw_state(), 'gpu': gpu(),
+            'port': sunshine_port(), 'desktopApp': desktop_app_present(),
+            'tailscale': {k: ts.get(k) for k in ('installed', 'running', 'state', 'name', 'dns', 'ip')},
+            'address': addr, 'clients': cl, 'needsLogin': needs_login, 'stream': stream,
+            'peers': [{k: p[k] for k in ('name', 'os', 'ip', 'path', 'relay')} for p in ts.get('peers') or []][:12],
+            'awake': run(['systemctl', '--user', 'is-active', '--quiet', AWAKE_UNIT + '.service'], 5)[0] == 0,
+            'gameMode': game_mode()}
+
+
+def quick():
+    """Who's streaming now, in short (no network, no root): for Game Mode's Quick Access."""
+    cfg = load()
+    if not cfg['on']:
+        return {'on': False, 'streaming': False}
+    ls = streaming_now()
+    sess = runtime_read('session.json')
+    return {'on': True, 'streaming': bool(ls.get('connected')), 'who': sess.get('who') or '', 'since': ls.get('since') or 0}
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        if a == ['status']:
+            res = status()
+        elif len(a) == 3 and a[0] == 'set':
+            res = set_cmd(a[1], a[2])
+        elif a == ['start']:
+            turn_on()
+            res = {'ok': True}
+        elif len(a) in (2, 3) and a[0] == 'pin':
+            res = pin(a[1], a[2] if len(a) == 3 else 'Moonlight')
+        elif len(a) == 2 and a[0] == 'unpair':
+            res = unpair(a[1])
+        elif len(a) in (1, 2) and a[0] == 'check':
+            res = check(a[1] if len(a) == 2 else None)
+        elif len(a) == 2 and a[0] == 'session' and a[1] in ('start', 'end'):
+            print(json.dumps(session(a[1])))
+            return 0
+        elif a == ['gate']:
+            res = gate()
+        elif a == ['awake']:
+            res = awake()
+        elif a == ['quick']:
+            res = quick()
+        else:
+            raise Fail('usage: hearth-remote-desktop status | set on|reach|keepAwake VALUE | start | pin PIN [NAME] | '
+                       'unpair UUID | check [IP] | session start|end | gate | awake | quick')
+    except Fail as e:
+        msg = str(e)
+        print('error: ' + ("Sunshine has its own login: type it once under Sunshine's username and password" if msg == 'AUTH' else msg))
+        return 1
+    print(json.dumps(res))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
