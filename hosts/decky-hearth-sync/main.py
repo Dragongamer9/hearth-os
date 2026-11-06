@@ -116,7 +116,13 @@ def valid_id(i):
 # only (desktop_games.rs steam_env_scrub). Which Steam is running is decided at every launch, not at sync time: inside
 # Flathub's Steam sandbox (/.flatpak-info) the program runs on the system through flatpak-spawn --host, which starts it
 # with the session's own environment.
+# When Steam is set to start the shortcut with a compatibility tool (Steam Linux Runtime or Proton, in its Properties ›
+# Compatibility), it runs inside Steam's container, where Hearth's program isn't: the start then ended without a word
+# in Hearth's log. Now it says so there (Send logs), and Hearth Sync's panel names those games (forced_compat).
 WRAPPER = ('if [ -e /.flatpak-info ]; then exec /usr/bin/flatpak-spawn --host /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"; fi; '
+           'if [ ! -x "$1" ]; then printf "%s000 [hearth-steam] play-now: %s: not started: %s is missing here, so Steam started this shortcut '
+           'inside its container (a compatibility tool is set in its Properties > Compatibility; Hearth starts the game with Proton itself)\\n" '
+           '"$(date +%s)" "$3" "$1" >> "$HOME/.local/share/nimbus/bridge.log" 2>/dev/null; exit 127; fi; '
            'exec /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH HEARTH_STEAM_LD_PRELOAD="${LD_PRELOAD:-}" "$@"')
 WRAPPER_NAME = 'hearth-steam'
 
@@ -891,6 +897,89 @@ def shortcuts_map():
     return mine
 
 
+# ---- Compatibility tools set on Hearth Sync's shortcuts. A shortcut runs /bin/sh (Hearth's wrapper), never a Windows
+# program: Hearth starts Windows games with Proton itself (umu). A compatibility tool set on the shortcut in Steam
+# (Properties › Compatibility › "Force the use of a specific Steam Play compatibility tool") makes Steam run /bin/sh
+# through Proton or inside its runtime container, and the game never starts. Steam keeps that choice in
+# config/config.vdf "CompatToolMapping" (app id -> tool). This only reads it: the choice is yours, so the panel names the
+# games and says how to turn it off; nothing is changed.
+STEAM_ROOTS = ('.local/share/Steam', '.steam/debian-installation', '.steam/steam',
+               '.var/app/com.valvesoftware.Steam/.local/share/Steam', '.var/app/com.valvesoftware.Steam/data/Steam')
+
+
+def parse_vdf(text):
+    """Steam's text VDF (quoted keys and values, nested { }) as nested dicts. Unknown shapes give what was read."""
+    import re
+    root, stack, key = {}, [], None
+    cur = root
+    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"|([{}])', text):
+        tok, brace = m.group(1), m.group(2)
+        if brace == '{':
+            d = {}
+            if key is not None:
+                cur[key] = d
+            stack.append(cur)
+            cur, key = d, None
+        elif brace == '}':
+            cur = stack.pop() if stack else root
+            key = None
+        elif key is None:
+            key = tok
+        else:
+            cur[key] = tok
+            key = None
+    return root
+
+
+def _find(d, name):
+    if not isinstance(d, dict):
+        return None
+    for k, v in d.items():
+        if k.lower() == name.lower() and isinstance(v, dict):
+            return v
+    for v in d.values():
+        r = _find(v, name)
+        if r is not None:
+            return r
+    return None
+
+
+def compat_mapping(text):
+    """CompatToolMapping from config.vdf: app id (int) -> tool name, only entries naming a tool."""
+    m = _find(parse_vdf(text), 'CompatToolMapping') or {}
+    out = {}
+    for k, v in m.items():
+        if isinstance(v, dict) and str(k).isdigit() and isinstance(v.get('name'), str) and v['name'].strip():
+            out[int(k)] = v['name'].strip()
+    return out
+
+
+def forced_compat(mapping, home_dir=None):
+    """Hearth Sync's shortcuts (id -> Steam app id) that Steam is set to start with a compatibility tool:
+    [{id, tool}]. Read only."""
+    h = home_dir or home()
+    tools = {}
+    seen = set()
+    for r in STEAM_ROOTS:
+        f = os.path.join(h, r, 'config', 'config.vdf')
+        try:
+            real = os.path.realpath(f)
+            if real in seen or os.path.getsize(f) > 16 * 1024 * 1024:
+                continue
+            seen.add(real)
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                tools.update(compat_mapping(fh.read()))
+        except OSError:
+            continue
+    out = []
+    for gid, appid in sorted(mapping.items()):
+        # Steam keys a shortcut by its 32-bit app id; some tools write it as a signed number.
+        tool = tools.get(appid) or tools.get(appid - (1 << 32) if appid >= (1 << 31) else appid)
+        if tool:
+            out.append({'id': gid, 'tool': tool[:60]})
+    return out
+
+
 # ---- Steam games from other Steam folders (docs/HEARTH-SYNC.md "Games from other Steam folders"): the scan and the
 # import are hearth-steam-import's (os/system_files/usr/bin/hearth-steam-import, shipped here as steam_import.py). The
 # import only runs while Steam is closed, so from Game Mode it's armed: a small helper waits for Steam to close (the
@@ -1035,6 +1124,14 @@ class Plugin:
         s['adopted'] = old['adopted'] or s['adopted']
         save_json('status.json', s)
         return s
+
+    async def compat_check(self):
+        """Hearth Sync's shortcuts that Steam starts with a compatibility tool (they can't start): [{id, tool}]."""
+        r = forced_compat(shortcuts_map())
+        if r:
+            log('compat: %d Hearth Sync shortcut%s set to start with a compatibility tool (%s): they don\'t start that way; '
+                'turn it off in the game\'s Properties > Compatibility' % (len(r), '' if len(r) == 1 else 's', ', '.join(sorted({x['tool'] for x in r}))))
+        return r
 
     async def report(self, line):
         """One line from the frontend for the log (counts and reasons only)."""

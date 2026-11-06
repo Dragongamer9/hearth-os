@@ -281,6 +281,135 @@ class Backend(unittest.TestCase):
         self.assertIn('RemoveShortcut', src)
         self.assertNotIn('Login', src)
 
+    # ---- What each shortcut really runs (the GOG-games-don't-start-in-Steam-Game-Mode report, Hearth 1.3/1.4).
+    def steam_start(self, item, env_extra=None):
+        """Starts a shortcut the way Steam does: its exe and launch options through a shell, in its start folder."""
+        env = {'HOME': os.path.join(self.tmp, 'home'), 'PATH': '/usr/bin:/bin', 'LD_LIBRARY_PATH': '/steam/runtime/lib',
+               'LD_PRELOAD': '/steam/ubuntu12_64/gameoverlayrenderer.so', 'SteamGameId': '10205416876054413312'}
+        env.update(env_extra or {})
+        return subprocess.run(['/bin/sh', '-c', '"%s" %s' % (item['exe'], item['options'])], cwd=item['startDir'], env=env,
+                              capture_output=True, text=True, timeout=20)
+
+    def recorder(self, name):
+        """A stand-in program (in a folder with a space and an apostrophe) that writes down how it was started."""
+        d = os.path.join(self.tmp, "Hero's Hour dir", 'bin')
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, name)
+        with open(p, 'w') as f:
+            f.write('#!/bin/sh\nout="$HOME/started.json"\npython3 -c \'import json,os,sys; json.dump({"argv": sys.argv[1:], "cwd": os.getcwd(), '
+                    '"ld": os.environ.get("LD_LIBRARY_PATH"), "pre": os.environ.get("LD_PRELOAD"), "aside": os.environ.get("HEARTH_STEAM_LD_PRELOAD")}, '
+                    'open(sys.argv[0] if False else os.environ["HOME"] + "/started.json", "w"))\' "$@"\n')
+        os.chmod(p, 0o755)
+        return p
+
+    def started(self):
+        with open(os.path.join(self.tmp, 'home', 'started.json')) as f:
+            return json.load(f)
+
+    def test_gog_windows_game_shortcut_runs_hearth_natively(self):
+        nimbus = self.recorder('nimbus')
+        g = {x['id']: x for x in self.m.clean_games([{'id': 'gog:1724969043', 'title': 'Tomb Raider', 'source': 'gog'}], nimbus)}
+        t = g['gog:1724969043']
+        # The shortcut is /bin/sh (no Windows program for Steam to give Proton to), started in your home folder.
+        self.assertEqual(t['exe'], '/bin/sh')
+        self.assertEqual(t['startDir'], os.path.join(self.tmp, 'home'))
+        r = self.steam_start(t)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        s = self.started()
+        self.assertEqual(s['argv'], ['--play-now', 'gog:1724969043'], 'Hearth gets the game id intact through a path with spaces and quotes')
+        self.assertIsNone(s['ld'], "Steam's runtime libraries are taken out")
+        self.assertIsNone(s['pre'])
+        self.assertEqual(s['aside'], '/steam/ubuntu12_64/gameoverlayrenderer.so', "Steam's overlay is set aside for the game")
+
+    def test_minigalaxy_linux_game_with_spaces_and_wine_game(self):
+        h = os.path.join(self.tmp, 'home')
+        self.w('.config/minigalaxy/config.json', {'install_dir': os.path.join(h, 'GOG Games')})
+        self.w("GOG Games/Hero's Hour/gameinfo", "Hero's Hour\n1.0\n\nen\n1547269859\n")
+        start = self.w("GOG Games/Hero's Hour/start.sh", '')
+        os.remove(start)
+        os.symlink(self.recorder('start.sh'), start)
+        self.w('GOG Games/Fallout 3/goggame-1454315831.info', {'gameId': '1454315831', 'name': 'Fallout 3', 'playTasks': [
+            {'isPrimary': True, 'path': 'FalloutLauncher.exe', 'workingDir': ''}]})
+        self.w('GOG Games/Fallout 3/unins000.exe', '')
+        wine = self.recorder('wine')
+        games = self.m.merge([], self.m.minigalaxy_games(which=lambda n: wine if n == 'wine' else None))
+        by = {x['id']: x for x in games}
+        lin, win = by['gog:1547269859'], by['gog:1454315831']
+        self.assertEqual(lin['startDir'], os.path.join(h, "GOG Games/Hero's Hour"))
+        r = self.steam_start(lin)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.started()['cwd'], os.path.join(h, "GOG Games/Hero's Hour"), 'started in its own folder, spaces and all')
+        self.assertEqual(self.started()['pre'], '/steam/ubuntu12_64/gameoverlayrenderer.so', "Steam's overlay stays for other launchers' games")
+        self.assertIsNone(self.started()['ld'])
+        # A Windows game Minigalaxy installed: its own prefix and wine, as Minigalaxy starts it (wine here is the stand-in).
+        argv = shlex.split(win['options'])[3:]
+        self.assertEqual(argv[:3], ['env', 'WINEPREFIX=' + os.path.join(h, 'GOG Games/Fallout 3/prefix'), 'wine'])
+        r = self.steam_start(win, {'PATH': os.path.dirname(wine) + ':/usr/bin:/bin'})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.started()['argv'], ['start', '/b', '/wait', '/d', 'c:\\game\\.', 'c:\\game\\FalloutLauncher.exe'])
+
+    def test_epic_game_through_heroic(self):
+        self.w('.config/heroic/legendaryConfig/legendary/installed.json', {'Fortnite': {'app_name': 'Fortnite', 'title': 'Fortnite', 'install_path': '/nope'}})
+        e = self.m.merge([], self.m.heroic_games())[0]
+        self.assertEqual(e['exe'], '/bin/sh')
+        self.assertEqual(shlex.split(e['options'])[3:], ['xdg-open', 'heroic://launch?appName=Fortnite&runner=legendary'])
+
+    def test_shortcut_started_inside_steams_container_says_why(self):
+        """Regression: Steam set to run a Hearth shortcut with a compatibility tool runs it inside its container, where
+        Hearth's program isn't. That start used to end with nothing in Hearth's log; now it says why."""
+        os.makedirs(os.path.join(self.tmp, 'home', '.local', 'share', 'nimbus'))
+        t = self.m.clean_games([{'id': 'gog:1097893768', 'title': 'Neverwinter Nights', 'source': 'gog'}], '/nonexistent/usr/bin/nimbus')[0]
+        r = self.steam_start(t)
+        self.assertEqual(r.returncode, 127)
+        with open(os.path.join(self.tmp, 'home', '.local', 'share', 'nimbus', 'bridge.log')) as f:
+            line = f.read()
+        self.assertIn('[hearth-steam] play-now: gog:1097893768: not started', line)
+        self.assertIn('Compatibility', line)
+
+    def test_compatibility_tool_on_a_hearth_shortcut_is_found_and_left_alone(self):
+        vdf = """"InstallConfigStore"
+{
+\t"Software"
+\t{
+\t\t"Valve"
+\t\t{
+\t\t\t"Steam"
+\t\t\t{
+\t\t\t\t"CompatToolMapping"
+\t\t\t\t{
+\t\t\t\t\t"2376133780"
+\t\t\t\t\t{
+\t\t\t\t\t\t"name"\t\t"proton_experimental"
+\t\t\t\t\t\t"config"\t\t""
+\t\t\t\t\t\t"priority"\t\t"250"
+\t\t\t\t\t}
+\t\t\t\t\t"3000000000"
+\t\t\t\t\t{
+\t\t\t\t\t\t"name"\t\t"proton_9"
+\t\t\t\t\t}
+\t\t\t\t\t"4241974495"
+\t\t\t\t\t{
+\t\t\t\t\t\t"name"\t\t""
+\t\t\t\t\t}
+\t\t\t\t}
+\t\t\t}
+\t\t}
+\t}
+}
+"""
+        p = self.w('.steam/debian-installation/config/config.vdf', vdf)
+        before = open(p).read()
+        mine = {'gog:1097893768': 2376133780, 'gog:1724969043': 4241974495, 'epic:fn': 123}
+        self.assertEqual(self.m.forced_compat(mine), [{'id': 'gog:1097893768', 'tool': 'proton_experimental'}],
+                         "only Hearth Sync's own shortcuts, only with a tool named; 3000000000 is someone else's")
+        self.assertEqual(open(p).read(), before, "Steam's settings are never changed")
+        self.m.save_json('shortcuts.json', mine)
+        self.m.save_json('status.json', {'adopted': True})
+        r = run(self.m.Plugin().compat_check())
+        self.assertEqual([x['id'] for x in r], ['gog:1097893768'])
+        self.assertTrue(any('compatibility tool' in str(l) for l in LOG))
+        self.assertEqual(self.m.forced_compat(mine, home_dir=os.path.join(self.tmp, 'nobody')), [])
+
 
 if __name__ == '__main__':
     unittest.main()

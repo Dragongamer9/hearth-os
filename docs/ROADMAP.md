@@ -25,6 +25,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Steam Game Mode: Quick Access › Hearth Link › Discord (open Discord, the switches, the PIN, setup), and Discord's notifications as toasts (needs testing on a device)
 - [x] Hearth Friends' Matrix service is no longer built, shipped or started; your old Matrix data and settings are left where they were, untouched (needs testing on a device)
 <!-- end Discord -->
+- [x] Fix: GOG games (and other games Hearth starts with Proton, like Epic's) didn't show up in Steam Game Mode: they started, but Steam Game Mode only shows windows carrying the number Steam gave the shortcut, and umu labelled the game's windows with its own. Hearth now gives the game's windows the shortcut's number, so the game comes to the front; existing shortcuts are fixed by themselves at the next sync. A game Steam is set to run with a compatibility tool (Properties › Compatibility) can't start either: Hearth Sync's panel now names those games and says how to turn it off (your setting, left as it is). Every failed start says why in Hearth's log ("GOG Tomb Raider: launch failed because …") and Send logs shows Proton's output of the last starts and Debian Steam's own logs (needs testing on a device)
 
 ## 1.5 (released 2026-11-06)
 

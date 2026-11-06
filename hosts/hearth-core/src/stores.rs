@@ -42,9 +42,26 @@ pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &
     e.push(("PROTON_VERB".into(), "waitforexitandrun".into()));
     if game_id != 0 { e.push(crate::appid::env(game_id)); }
     crate::bridge::log(&format!("proton: {store}:{id} {exe} (HEARTH_GAME_ID={game_id})"));
+    // umu's and Proton's own words go to the game's launch log (Send logs shows the newest; a start from Steam that
+    // fails quotes its last error lines in Hearth's log), never to nowhere as before.
+    let (out, err) = launch_log_files(store, id);
     std::process::Command::new(cmd).args(argv).envs(e).current_dir(cwd)
-        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null()).stdout(out).stderr(err)
         .spawn().map(crate::procs::detach).map_err(|err| format!("Couldn't start the game: {err}"))
+}
+
+/// Where a game's last start through Proton wrote umu's and Proton's output: data/launch-logs/<store>-<id>.log.
+pub fn launch_log(store: &str, id: &str) -> PathBuf {
+    let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect();
+    data().join("launch-logs").join(format!("{store}-{safe}.log"))
+}
+/// The launch log, emptied for this start (stdout, stderr); nowhere when it can't be made.
+fn launch_log_files(store: &str, id: &str) -> (std::process::Stdio, std::process::Stdio) {
+    let p = launch_log(store, id);
+    let none = || (std::process::Stdio::null(), std::process::Stdio::null());
+    if p.parent().map(std::fs::create_dir_all).map(|r| r.is_err()).unwrap_or(true) { return none(); }
+    let Ok(f) = std::fs::File::create(&p) else { return none() };
+    match f.try_clone() { Ok(g) => (std::process::Stdio::from(f), std::process::Stdio::from(g)), Err(_) => none() }
 }
 pub fn remove_prefix(store: &str, id: &str) { let p = prefix_of(store, id); if p.starts_with(data().join("prefixes")) { let _ = std::fs::remove_dir_all(p); } }
 

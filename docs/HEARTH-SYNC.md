@@ -76,6 +76,23 @@ Hearth's games start with `nimbus --play-now <id>` (Hearth's own launch logic; S
 so Steam tracks the play time. Minigalaxy games start directly. Heroic and Epic Games Launcher games start through
 their launcher, which returns right away, so Steam may not count their play time.
 
+Every shortcut runs `/bin/sh` (Hearth's small wrapper), never a Windows program: Hearth starts Windows games (GOG,
+Epic...) with Proton itself, through umu. So:
+
+- **Don't set a compatibility tool on a Hearth Sync shortcut** (Properties › Compatibility › "Force the use of a
+  specific Steam Play compatibility tool"): Steam then runs the wrapper through Proton or inside its runtime's
+  container and the game never starts. Hearth Sync's panel names such games and says how to turn it off (it reads
+  Steam's `config/config.vdf`, never changes it), and a start that ends up inside Steam's container writes
+  "play-now: <id>: not started: … inside its container" to Hearth's log.
+- **The game's window gets Steam's number.** Steam Game Mode only shows windows carrying the app id Steam gave the
+  shortcut. A game started through umu and Proton labelled its windows with umu's own number instead, so GOG and Epic
+  games ran with nothing on screen (1.3–1.5). `--play-now` now puts the shortcut's number (from `SteamGameId`) on every
+  window of the game's own processes (`STEAM_GAME`) and logs "window … gets Steam's id …".
+- **Why a start failed** is in Hearth's log: "GOG <game>: launch failed because …" (no game process, or it closed
+  within 30 seconds, with the last error lines of Proton's output). umu's and Proton's output of each game's last start
+  is kept in `~/.local/share/nimbus/launch-logs/` and Send logs shows the newest three (plus Steam's own logs from
+  `~/.steam/debian-installation`, Debian's Steam).
+
 ## Logs
 
 The plugin's log is in `~/homebrew/logs/Hearth Sync/` (counts and reasons only, never paths or addresses) and goes into
