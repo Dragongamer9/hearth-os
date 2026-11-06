@@ -42,7 +42,8 @@ Item {
 
     Item {
         id: panel
-        width: Math.min(st.width - DeskState.leftInset - DeskState.rightInset - 20, 1080)
+        // The rail, the list and two columns of tiles (no empty room on the right).
+        width: Math.min(st.width - DeskState.leftInset - DeskState.rightInset - 20, 56 + 300 + 2 * (4 * st.unit + 3 * st.gap) + 26 + 34)
         height: Math.min(st.height - DeskState.topInset - DeskState.bottomInset - 20, 780)
         readonly property point pos: st.menu ? st.menu.panelPos(width, height, "corner") : Qt.point(0, 0)
         x: pos.x; y: pos.y
