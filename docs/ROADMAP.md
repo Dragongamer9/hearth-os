@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+## 1.5 (released 2026-11-06)
+
 - [x] Hearth Settings redesign (the approved mockups): opens on a new **Home** page (this PC with Rename, Wi-Fi / Bluetooth / Updates / Hearth Link at a glance, recommended settings, Bluetooth devices, storage, the home server, your look); 12 categories instead of one long list of 42 pages (System, Network & internet, Bluetooth & devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy & security, Accessibility, Updates & recovery); setting cards in titled groups with the control or a status chip on the right and a chevron only where something opens; expander cards (the on-screen keyboard, resolution, more accent colours, the wallpapers, each home server service's details); breadcrumb titles ("Home server › Services"); warning banners (Home server's "1 thing needs a look") (needs testing on a device)
 - [x] Settings search finds single settings with where they are ("Go to sleep after · System › Power & battery"), pages, and the old page names ("Appearance" still finds Personalization); opening a result goes straight to that setting (needs testing on a device)
 - [x] Settings with the controller: A select, B back up one level, Y search, LB / RB previous / next category, ☰ close, shown at the bottom, and a big focus ring; a handheld layout for 1280×800 screens (needs testing on a device)
