@@ -194,7 +194,7 @@ SetPage {
     SetRow {
         visible: !!page.pic && page.pic.installed && page.pic.on
         icon: "lock"; chevron: false; interactive: false; title: "Who can reach it"
-        sub: "Your devices through Tailscale, and this PC. Never your home network: ComfyUI listens only on this PC" + (page.pic && page.pic.listen.length > 1 ? " and " + page.pic.listen[1] : " (Tailscale wasn't up when it started)") + ", and Hearth's firewall rule lets only Tailscale reach port 8188. ComfyUI has no password, so it stays this way"
+        sub: "Your devices through Tailscale, and this PC. Never your home network: ComfyUI listens only on this PC" + (page.pic && page.pic.listen.length > 1 ? " and " + page.pic.listen[1] : page.pic && page.pic.listen.length === 1 ? " (Tailscale wasn't up when it started: turn it off and on again once it is)" : " and its Tailscale address") + ", and Hearth's firewall rule lets only Tailscale reach port 8188. ComfyUI has no password, so it stays this way"
     }
     SetRow {
         visible: !!page.pic && page.pic.installed && page.pic.on
@@ -293,7 +293,7 @@ SetPage {
     SetRow {
         visible: !!page.voi && page.voi.installed && page.voi.on
         icon: "lock"; chevron: false; interactive: false; title: "Who can reach it"
-        sub: "Your devices through Tailscale, and this PC: it listens only on this PC" + (page.voi && page.voi.listen.length > 1 ? " and " + page.voi.listen[1] : " (Tailscale wasn't up when it started)") + ", and Hearth's firewall rule lets only Tailscale reach port 8880"
+        sub: "Your devices through Tailscale, and this PC: it listens only on this PC" + (page.voi && page.voi.listen.length > 1 ? " and " + page.voi.listen[1] : page.voi && page.voi.listen.length === 1 ? " (Tailscale wasn't up when it started: turn it off and on again once it is)" : " and its Tailscale address") + ", and Hearth's firewall rule lets only Tailscale reach port 8880"
     }
     SetSwitch {
         visible: !!page.voi && page.voi.installed
