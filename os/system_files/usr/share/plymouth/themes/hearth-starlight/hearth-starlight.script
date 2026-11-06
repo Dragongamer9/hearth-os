@@ -1,0 +1,154 @@
+# Hearth boot splash preset "hearth-starlight" (Settings › Boot & startup): a night sky of small stars twinkling
+# out of step around the Hearth mark, with a cool glow breathing behind it. Pairs with the Starlight startup
+# animation. Chosen with plymouth.splash=hearth-starlight on the kernel command line (hearth-bls-grub adds it). Asks
+# for the disk password on encrypted installs, like the default. Uses only what the first three presets use (Image,
+# Scale, Sprite, SetPosition, SetOpacity, Math.Sin, Math.Int), nothing new for Plymouth. The stars' places come from
+# a fixed formula (no random numbers), so every start looks the same.
+
+Window.SetBackgroundTopColor(0.059, 0.082, 0.125);
+Window.SetBackgroundBottomColor(0.027, 0.039, 0.059);
+
+W = Window.GetWidth();
+H = Window.GetHeight();
+X0 = Window.GetX();
+Y0 = Window.GetY();
+short = Math.Min(W, H);
+
+size = Math.Int(short * 0.24);
+logo.image = Image("logo.png").Scale(size, size);
+logo.sprite = Sprite(logo.image);
+logo.x = X0 + Math.Int(W / 2 - size / 2);
+logo.y = Y0 + Math.Int(H / 2 - size / 2 - short * 0.07);
+logo.sprite.SetPosition(logo.x, logo.y, 10);
+logo.sprite.SetOpacity(0);
+
+word.src = Image("wordmark.png");
+word.w = Math.Int(size * 0.9);
+word.h = Math.Int(word.src.GetHeight() * word.w / word.src.GetWidth());
+word.sprite = Sprite(word.src.Scale(word.w, word.h));
+word.y = logo.y + size + Math.Int(short * 0.045);
+word.sprite.SetPosition(X0 + Math.Int(W / 2 - word.w / 2), word.y, 10);
+word.sprite.SetOpacity(0);
+
+msg.sprite = Sprite();
+msg.y = Y0 + H - Math.Int(short * 0.08);
+dots_y = word.y + word.h + Math.Int(short * 0.07);
+
+frame = 0;
+status = "normal";
+
+fun clamp01(v) {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+hsize = Math.Int(size * 2.0);
+halo.sprite = Sprite(Image("halo.png").Scale(hsize, hsize));
+halo.sprite.SetPosition(logo.x + Math.Int(size / 2 - hsize / 2), logo.y + Math.Int(size / 2 - hsize / 2), 5);
+halo.sprite.SetOpacity(0);
+
+# Three star sizes, made once; 40 stars, each with its own place, size, speed and phase.
+star.src = Image("star.png");
+s0 = Math.Max(6, Math.Int(short * 0.013));
+s1 = Math.Max(8, Math.Int(short * 0.020));
+s2 = Math.Max(10, Math.Int(short * 0.032));
+star.img[0] = star.src.Scale(s0, s0);
+star.img[1] = star.src.Scale(s1, s1);
+star.img[2] = star.src.Scale(s2, s2);
+nstars = 40;
+
+# The part after the point, 0 to 1 (also for negative numbers, however Math.Int rounds them).
+fun frac(v) {
+  r = v - Math.Int(v);
+  if (r < 0) r = r + 1;
+  return r;
+}
+
+for (i = 0; i < nstars; i++) {
+  k = i - Math.Int(i / 3) * 3;
+  if (i - Math.Int(i / 7) * 7 == 0) k = 2;
+  sz = s0;
+  if (k == 1) sz = s1;
+  if (k == 2) sz = s2;
+  fx = frac(Math.Sin(i * 12.9898 + 1.7) * 43758.5453);
+  fy = frac(Math.Sin(i * 78.233 + 0.3) * 24634.6345);
+  stars[i] = Sprite(star.img[k]);
+  stars[i].SetPosition(X0 + Math.Int(fx * (W - sz)), Y0 + Math.Int(fy * (H * 0.9 - sz)), 2);
+  stars[i].SetOpacity(0);
+  speed[i] = 0.03 + 0.05 * frac(fx * 7.31 + fy * 3.17);
+  phase[i] = 6.28 * frac(fx * 5.13 + fy * 9.71);
+}
+
+fun refresh_callback() {
+  global.frame++;
+  t = global.frame;
+  fade = clamp01(t / 40);
+  logo.sprite.SetOpacity(fade);
+  word.sprite.SetOpacity(fade * 0.95);
+  halo.sprite.SetOpacity(fade * (0.16 + 0.08 * Math.Sin(t * 0.03)));
+  # Stars come out one after another over the first two seconds, then twinkle.
+  for (i = 0; i < global.nstars; i++) {
+    shown = clamp01((t - i * 2) / 25);
+    global.stars[i].SetOpacity(shown * (0.25 + 0.75 * clamp01(0.5 + 0.5 * Math.Sin(t * global.speed[i] + global.phase[i]))));
+  }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# --- disk password
+entry.image = Image("entry.png");
+bullet.image = Image("bullet.png");
+entry.w = Math.Int(Math.Min(W * 0.8, short * 0.62));
+entry.h = Math.Int(entry.w * entry.image.GetHeight() / entry.image.GetWidth());
+entry.sprite = Sprite(entry.image.Scale(entry.w, entry.h));
+entry.x = X0 + Math.Int(W / 2 - entry.w / 2);
+entry.y = dots_y - Math.Int(entry.h / 2);
+entry.sprite.SetPosition(entry.x, entry.y, 20);
+entry.sprite.SetOpacity(0);
+prompt.sprite = Sprite();
+bsize = Math.Int(entry.h * 0.3);
+bullet.small = bullet.image.Scale(bsize, bsize);
+nbullets = 0;
+
+fun hide_bullets() {
+  for (i = 0; i < global.nbullets; i++) global.bullets[i].SetOpacity(0);
+}
+
+fun display_password_callback(text, count) {
+  global.status = "password";
+  entry.sprite.SetOpacity(1);
+  label = text;
+  if (label == "") label = "Password";
+  img = Image.Text(label, 0.863, 0.898, 0.929, 1, "Sans 16");
+  prompt.sprite.SetImage(img);
+  prompt.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), entry.y - img.GetHeight() - Math.Int(short * 0.02), 20);
+  prompt.sprite.SetOpacity(1);
+  hide_bullets();
+  maxb = Math.Int((entry.w - entry.h) / (bsize * 1.6));
+  shown = Math.Min(count, maxb);
+  start = X0 + Math.Int(W / 2 - (shown * bsize * 1.6) / 2);
+  for (i = 0; i < shown; i++) {
+    if (i >= global.nbullets) {
+      global.bullets[i] = Sprite(bullet.small);
+      global.nbullets = i + 1;
+    }
+    global.bullets[i].SetPosition(start + Math.Int(i * bsize * 1.6 + bsize * 0.3), entry.y + Math.Int(entry.h / 2 - bsize / 2), 21);
+    global.bullets[i].SetOpacity(1);
+  }
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+  global.status = "normal";
+  entry.sprite.SetOpacity(0);
+  prompt.sprite.SetOpacity(0);
+  hide_bullets();
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+fun message_callback(text) {
+  img = Image.Text(text, 0.863, 0.898, 0.929, 0.7, "Sans 12");
+  msg.sprite.SetImage(img);
+  msg.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), msg.y, 10);
+}
+Plymouth.SetMessageFunction(message_callback);

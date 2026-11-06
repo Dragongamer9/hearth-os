@@ -1617,6 +1617,8 @@ ls -la /usr/lib/bootupd/updates/
 
 # ------------------------------------------------------------------ boot splash and initramfs
 plymouth-set-default-theme hearth
+# (The default stays hearth: the presets added later, hearth-aurora, hearth-starlight and hearth-orbit, are only used
+# when someone picks one in Settings.)
 # Boot splash presets (Settings › Boot & startup, hearth-boot-look): every preset goes into the initramfs, so choosing
 # one only adds plymouth.splash=<preset> to the boot menu's entries (hearth-bls-grub) and nothing is ever rebuilt on
 # the device. Plymouth's own dracut module brings only the default theme; this lists the others' files.
@@ -1624,7 +1626,9 @@ chmod 755 /usr/libexec/nimbus/hearth-boot-look
 mkdir -p /usr/lib/dracut/dracut.conf.d
 {
   echo "# Written by os-bases/peppermint/build.sh: Hearth's boot splash presets in the initramfs (hearth-boot-look)."
-  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal -type f | sort | tr '\n' ' ')"
+  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal \
+    /usr/share/plymouth/themes/hearth-aurora /usr/share/plymouth/themes/hearth-starlight /usr/share/plymouth/themes/hearth-orbit \
+    -type f 2>/dev/null | sort | tr '\n' ' ')"
 } > /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
 cat /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
 # GRUB's Hearth theme (hearth-bls-grub copies /usr/share/hearth/grub-theme to /boot): its fonts made from Inter, the
@@ -1651,7 +1655,7 @@ chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 lsinitrd "/usr/lib/modules/$KVER/initramfs.img" > /tmp/initramfs-files.txt
 grep -q ostree-prepare-root /tmp/initramfs-files.txt || { echo "the initramfs has no ostree-prepare-root"; exit 1; }
 grep -q plymouth /tmp/initramfs-files.txt || echo "warning: the initramfs has no boot splash"
-for t in hearth hearth-steam hearth-minimal; do
+for t in hearth hearth-steam hearth-minimal hearth-aurora hearth-starlight hearth-orbit; do
   grep -q "usr/share/plymouth/themes/$t/$t.script" /tmp/initramfs-files.txt || echo "warning: the initramfs has no $t splash preset"
 done
 
