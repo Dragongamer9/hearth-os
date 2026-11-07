@@ -65,8 +65,6 @@
     var tools = [head.querySelector('.looks'), head.querySelector('.theme'), head.querySelector('.dl')].filter(Boolean);
     if (tools.length) tools[0].parentNode.insertBefore(hint, tools[0]);
     var t = wrap(head, [hint].concat(tools), 'tools');
-    perfEl = el('div', 'lk-isl fr lk-perf'); clockEl = el('div', 'lk-isl fr lk-clock');
-    if (t) { head.insertBefore(perfEl, t); head.insertBefore(clockEl, t); }
   } else if (dnav) {
     wrap(dnav, [dnav.querySelector('.brand')], 'brandi');
     wrap(dnav, [dnav.querySelector('.links'), dnav.querySelector('.looks')], 'tools');
@@ -152,7 +150,7 @@
     raf = 0;
     frames++; if (now - fpsT > 1000) { if (perfEl && L && L.perf) perfEl.innerHTML = '<span>FPS <b>' + Math.round(frames * 1000 / (now - fpsT)) + '</b></span><span>Page <b>' + (document.documentElement.scrollHeight / 1000).toFixed(1) + 'k px</b></span>'; frames = 0; fpsT = now; }
     if (now - last > 33) { last = now; paint(false); }
-    if (moving() || (L && L.perf && !document.hidden)) raf = requestAnimationFrame(loop);
+    if (moving() || (perfEl && L && L.perf && !document.hidden)) raf = requestAnimationFrame(loop);
   }
   function tick(){ if (clockEl && L && L.clock) clockEl.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
   function apply(){
@@ -162,7 +160,7 @@
     scan.hidden = !L.scan; edge.hidden = !L.edge;
     if (perfEl) perfEl.hidden = !L.perf || L.bar !== 'floating'; if (clockEl) clockEl.hidden = !L.clock || L.bar !== 'floating';
     tick(); paint(true);
-    if (!raf && (moving() || L.perf)) raf = requestAnimationFrame(loop);
+    if (!raf && (moving() || (perfEl && L.perf))) raf = requestAnimationFrame(loop);
   }
   apply();
   setInterval(tick, 15000);
