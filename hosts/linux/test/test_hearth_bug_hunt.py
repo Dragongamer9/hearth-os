@@ -136,5 +136,14 @@ class BootServices(unittest.TestCase):
             self.assertEqual(lines, ['[Unit]', cond], unit)
 
 
+class NexusLinks(unittest.TestCase):
+    def test_hearth_browser_hands_nxm_links_to_hearth_mods_without_asking(self):
+        # Free Nexus accounts download with "Mod Manager Download" (an nxm:// link); in Game Mode Firefox's "open
+        # with" question was in the way of the controller.
+        import json
+        pol = json.loads(read('os', 'system_files', 'usr', 'share', 'hearth-browser', 'firefox', 'distribution', 'policies.json'))
+        self.assertEqual(pol['policies']['Handlers']['schemes']['nxm'], {'action': 'useSystemDefault', 'ask': False})
+
+
 if __name__ == '__main__':
     unittest.main()

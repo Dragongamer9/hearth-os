@@ -29,6 +29,9 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Start-up: systemd-networkd's network wait (2 minutes at every start, though NetworkManager runs the network), Nvidia's persistence daemon on PCs without an Nvidia card, and Debian's system-wide speech-dispatcher no longer run (and fail) at every start; each only runs where it can (needs testing on a device)
 - [x] Hearth's gaming apps (Mods, Saves, Controller Lab): a settings file that's damaged is kept aside as <name>.damaged-<time>, never written over (needs testing on a device)
 
+- [x] Nexus Mods (free accounts): Hearth Browser hands "Mod Manager Download" (nxm://) links straight to Hearth Mods, without Firefox's "open with" question, which was hard to answer with a controller in Game Mode (needs testing on a device)
+- [x] Send logs: "Hearth Input not running" outside Game Mode and InputPlumber missing on PCs without it are no longer listed as problems (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
