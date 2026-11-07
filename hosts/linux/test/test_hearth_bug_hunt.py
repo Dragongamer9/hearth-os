@@ -123,5 +123,18 @@ class Repair(unittest.TestCase):
         self.assertIn("j.repair === 'running'", js)
 
 
+class BootServices(unittest.TestCase):
+    def test_services_that_failed_at_every_start_only_run_where_they_can(self):
+        # Logs #78-#81: systemd-networkd-wait-online timing out after 2 minutes, nvidia-persistenced without an
+        # Nvidia card, Debian's system-wide speech-dispatcherd. Only conditions: nothing else changes.
+        d = ROOT / 'os-bases' / 'peppermint' / 'system_files' / 'usr' / 'lib' / 'systemd' / 'system'
+        for unit, cond in (('systemd-networkd-wait-online.service.d/10-hearth-networkmanager.conf', 'ConditionDirectoryNotEmpty=/etc/systemd/network'),
+                           ('nvidia-persistenced.service.d/10-hearth-only-nvidia.conf', 'ConditionPathExists=/proc/driver/nvidia'),
+                           ('speech-dispatcherd.service.d/10-hearth-per-user.conf', 'ConditionPathExists=/etc/hearth/speech-dispatcher-system')):
+            text = (d / unit).read_text()
+            lines = [l for l in text.splitlines() if l and not l.startswith('#')]
+            self.assertEqual(lines, ['[Unit]', cond], unit)
+
+
 if __name__ == '__main__':
     unittest.main()

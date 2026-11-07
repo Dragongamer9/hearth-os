@@ -25,6 +25,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Game Mode's Mods screens for a Wabbajack list show its mods (Hearth Mod Organizer's list) instead of an empty one, answered from a cache that's made again when the list changes, so big lists stay quick (needs testing on a device)
 - [x] Steam Game Mode: Steam's own session switch (steamos-session-select) is written to the session log with what asked, and only the desktop sessions SteamOS knows switch to Desktop Mode (before, any unknown or empty request did). Right after the PC starts, Steam waits up to 20 s for NetworkManager to bring Wi-Fi up (the laptop's Steam started offline at every start: "LogonFailure No Connection"), never longer, and Steam Game Mode always starts (needs testing on a device)
 
+- [x] Desktop Mode: an icon that's hidden loads nothing (hundreds of "Cannot open icons/<app>-light.svg" warnings in every log, from icons kept hidden next to each app's own picture) (needs testing on a device)
+- [x] Start-up: systemd-networkd's network wait (2 minutes at every start, though NetworkManager runs the network), Nvidia's persistence daemon on PCs without an Nvidia card, and Debian's system-wide speech-dispatcher no longer run (and fail) at every start; each only runs where it can (needs testing on a device)
+- [x] Hearth's gaming apps (Mods, Saves, Controller Lab): a settings file that's damaged is kept aside as <name>.damaged-<time>, never written over (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
