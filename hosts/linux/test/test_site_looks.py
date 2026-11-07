@@ -11,8 +11,8 @@ class SiteLooks(unittest.TestCase):
 
     def test_pages_load_the_picker(self):
         index = (ROOT / "site/index.html").read_text()
-        self.assertIn('href="looks.css"', index)
-        self.assertIn('src="looks.js"', index)
+        self.assertRegex(index, r'href="looks\.css(\?v=[0-9a-f]+)?"')
+        self.assertRegex(index, r'src="looks\.js(\?v=[0-9a-f]+)?"')
         self.assertIn('class="looks"', index)
         docs = (ROOT / "tools/build-docs.py").read_text()
         self.assertIn('../looks.css', docs)
