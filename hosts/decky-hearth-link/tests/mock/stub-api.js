@@ -96,6 +96,12 @@ const handlers = {
   // Discord (main.py discord): only in the home-server states' stand-in.
   discord: () => (st().startsWith("home-server") ? { available: true, client: "official", opens: "official", appId: true, enabled: true, askToJoin: true, running: true, invite: { pin: "4821", playTogether: true, title: "Hades II" } } : { available: false }),
   discord_set: () => ({ available: true, ok: true }),
+  // Your servers (main.py servers): a paired PC in Server mode, in the home-server states' stand-in.
+  servers: () => (st().startsWith("home-server") ? [{ name: "Tower", online: true, mode: "server", title: "All good", level: "ok", playing: false,
+    services: [{ title: "AI chat", chip: "Running", state: "running", big: "1", unit: "device asking now" },
+               { title: "Media", chip: "Running", state: "running", big: "2", unit: "watching now" },
+               { title: "Backups", chip: "Up to date", state: "running", big: "Done", unit: "at 3:00 AM" }],
+    alerts: [], apps: [{ name: "Minecraft", state: "active" }, { name: "Immich", state: "active" }] }] : []),
   discord_open: () => ({ available: true, ok: true }),
   discord_setup: () => ({ ok: true }),
   discord_toasts: () => [],

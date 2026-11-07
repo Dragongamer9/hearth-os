@@ -1,0 +1,872 @@
+#!/usr/bin/python3
+"""hearth-server-apps: Settings › Home server › Server apps and Phone notifications (docs/SERVER-APPS.md).
+
+The Server apps catalog: one-click game servers (Minecraft, Valheim, Terraria, Palworld) and self-hosted apps
+(Vaultwarden, Immich, Navidrome, ntfy). Every one is off and not installed until you ask. Each runs in your own
+rootless Podman as your own user service (hearth-app@<id>.service, systemd --user, no [Install]; its timer starts it
+a minute after you sign in and is enabled only while it's on). Nothing here is part of starting the PC, the session,
+Game Mode or Steam: a broken app only stops that app (it's tried 4 times in 15 minutes, then left stopped and you're
+told). Images are pulled only when you press Install, then run with --pull=never. Your data lives in
+~/Server apps/<name>, kept when an app is removed unless you confirm twice.
+
+Phone notifications: Home server alerts and server apps that stopped, sent to the ntfy app on your phone (ntfy.sh or
+your own ntfy server, also in the catalog), off until you turn it on. A user timer (hearth-server-ntfy.timer, only while
+it's on) checks every 5 minutes.
+
+Your choices: ~/.config/nimbus/server-apps.json through hearth_settings_io (atomic, .bak, merge under a lock; only the
+key you changed is written; defaults are filled in when it's read, never saved). Install state:
+~/.local/state/nimbus/server-apps.json. Passwords: ~/.local/state/nimbus/server-apps-secrets.json (0600), never in
+settings, handed to Podman in a 0600 env file in your runtime folder (never on a command line).
+
+  hearth-server-apps list                    JSON: the catalog with installed, on, running, reach, addresses, options
+  hearth-server-apps quick                   the apps that are on, in short (Server mode's dashboard, Hearth Link)
+  hearth-server-apps install ID | update ID  pull its images (in its own transient unit of yours, at low priority)
+  hearth-server-apps set ID on|off           on needs it installed (and Minecraft's EULA accepted)
+  hearth-server-apps set ID reach home|tailscale
+  hearth-server-apps set ID eula on|off      Minecraft only
+  hearth-server-apps opt ID KEY VALUE        its options (checked against the catalog's choices)
+  hearth-server-apps password ID             its password on stdin (HEARTH_INPUT); empty clears it
+  hearth-server-apps logs ID                 the last lines it printed
+  hearth-server-apps remove ID [data sure really-sure]   its images go; its data only with both confirmations
+  hearth-server-apps run ID | stop ID        what hearth-app@ID.service runs (ExecStart / ExecStop)
+  hearth-server-apps job ID                  the install itself (started by install/update)
+  hearth-server-apps ntfy                    phone notifications: settings and the last result
+  hearth-server-apps ntfy-set KEY VALUE      on|alerts|apps (on|off); server URL; topic TOPIC|new
+  hearth-server-apps ntfy-test               send a test notification now
+  hearth-server-apps ntfy-forward            what hearth-server-ntfy.service runs: send what's new
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'server-apps.json')
+STATE = os.path.join(STATE_HOME, 'nimbus', 'server-apps.json')
+SECRETS = os.path.join(STATE_HOME, 'nimbus', 'server-apps-secrets.json')
+UNIT_DIR = os.path.join(CONFIG_HOME, 'systemd', 'user')
+ALERT_STATE = os.environ.get('HEARTH_HOME_SERVER_ALERT_STATE', '/var/lib/hearth/home-server-alerts.json')
+DATA_ROOT = os.environ.get('HEARTH_SERVER_APPS_DATA') or os.path.join(HOME, 'Server apps')
+TS_IP_RE = re.compile(r'^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+TOPIC_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+URL_RE = re.compile(r'^https?://[A-Za-z0-9.-]+(:\d{1,5})?(/[A-Za-z0-9._~/-]*)?$')
+TEXT_RE = re.compile(r'^[A-Za-z0-9 _.\'-]{1,40}$')
+AGAIN = 24 * 3600
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ the catalog
+#
+# Each app: images (pulled at Install, run by that reference only), ports (host = container), volumes (a folder in
+# ~/Server apps/<name>, or an option holding a folder), env (fixed) and opts (your choices: allowed values or a text
+# check). 'reach' is where it listens by default: 'home' (your home network and Tailscale) or 'tailscale' (Tailscale
+# and this PC only). Game servers default to home (friends on your network join), apps holding your private data to
+# Tailscale.
+
+def _text(v):
+    return isinstance(v, str) and bool(TEXT_RE.fullmatch(v))
+
+
+CATALOG = {
+    'minecraft': {
+        'name': 'Minecraft', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 1 GB, plus your world',
+        'desc': 'A Minecraft: Java Edition server for you and your friends (itzg/minecraft-server). Join with this PC\'s address in Multiplayer.',
+        'images': ['docker.io/itzg/minecraft-server:stable'],
+        'ports': [(25565, 'tcp')], 'volumes': [('world', '/data')],
+        'env': {'EULA': 'TRUE', 'ENABLE_RCON': 'false'},
+        'opts': {'type': {'default': 'PAPER', 'choices': ['VANILLA', 'PAPER', 'FABRIC'], 'env': 'TYPE', 'label': 'Server type'},
+                 'memory': {'default': '4G', 'choices': ['2G', '4G', '6G', '8G'], 'env': 'MEMORY', 'label': 'Memory'},
+                 'players': {'default': '10', 'choices': ['5', '10', '20', '40'], 'env': 'MAX_PLAYERS', 'label': 'Players'}},
+        'password': None, 'eula': 'https://aka.ms/MinecraftEULA',
+    },
+    'valheim': {
+        'name': 'Valheim', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 2 GB (it downloads the server on first start)',
+        'desc': 'A dedicated Valheim server that keeps your world going (lloesche/valheim-server). Join from Valheim\'s Join game › Add server.',
+        'images': ['docker.io/lloesche/valheim-server:latest'],
+        'ports': [(2456, 'udp'), (2457, 'udp')], 'volumes': [('config', '/config'), ('server', '/opt/valheim')],
+        'env': {'SERVER_PUBLIC': 'false'},
+        'opts': {'serverName': {'default': 'Hearth', 'text': True, 'env': 'SERVER_NAME', 'label': 'Server name'},
+                 'worldName': {'default': 'Hearth', 'text': True, 'env': 'WORLD_NAME', 'label': 'World name'}},
+        'password': {'env': 'SERVER_PASS', 'min': 5, 'required': True},
+    },
+    'terraria': {
+        'name': 'Terraria', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 500 MB',
+        'desc': 'A Terraria server with TShock (ryshe/terraria). Join from Multiplayer › Join via IP.',
+        'images': ['docker.io/ryshe/terraria:latest'],
+        'ports': [(7777, 'tcp')], 'volumes': [('worlds', '/root/.local/share/Terraria/Worlds')],
+        'env': {},
+        'opts': {'worldName': {'default': 'Hearth', 'text': True, 'label': 'World name'},
+                 'worldSize': {'default': '2', 'choices': ['1', '2', '3'], 'label': 'World size (small, medium, large)'}},
+        'password': None,
+    },
+    'palworld': {
+        'name': 'Palworld', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 5 GB (it downloads the server on first start)',
+        'desc': 'A Palworld dedicated server (thijsvanloef/palworld-server-docker). Needs about 16 GB of memory free. Join with this PC\'s address.',
+        'images': ['docker.io/thijsvanloef/palworld-server-docker:latest'],
+        'ports': [(8211, 'udp'), (27015, 'udp')], 'volumes': [('server', '/palworld')],
+        'env': {'MULTITHREADING': 'true', 'COMMUNITY': 'false', 'UPDATE_ON_BOOT': 'true', 'RCON_ENABLED': 'false'},
+        'opts': {'serverName': {'default': 'Hearth', 'text': True, 'env': 'SERVER_NAME', 'label': 'Server name'},
+                 'players': {'default': '8', 'choices': ['4', '8', '16', '32'], 'env': 'PLAYERS', 'label': 'Players'}},
+        'password': {'env': 'SERVER_PASSWORD', 'min': 1, 'required': False},
+    },
+    'vaultwarden': {
+        'name': 'Vaultwarden', 'kind': 'app', 'icon': 'lock', 'reach': 'tailscale', 'size': 'about 300 MB',
+        'desc': 'Your own password manager server for the Bitwarden apps and browser extensions. Bitwarden\'s apps need https: use Tailscale\'s HTTPS address (tailscale serve) or a Bitwarden app set to this address.',
+        'images': ['docker.io/vaultwarden/server:latest'],
+        'ports': [(8222, 'tcp', 80)], 'volumes': [('data', '/data')],
+        'env': {},
+        'opts': {'signups': {'default': 'on', 'choices': ['on', 'off'], 'env': 'SIGNUPS_ALLOWED', 'map': {'on': 'true', 'off': 'false'},
+                             'label': 'New accounts can sign up (turn off once yours is made)'}},
+        'password': None, 'web': 'http',
+    },
+    'immich': {
+        'name': 'Immich', 'kind': 'app', 'icon': 'image', 'reach': 'tailscale', 'size': 'about 2 GB, plus your photos',
+        'desc': 'Your own Google Photos: back up your phone\'s photos and videos with the Immich app, and browse them on the web. Face and smart search are off (no machine learning container).',
+        'images': ['ghcr.io/immich-app/immich-server:release', 'ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0',
+                   'docker.io/valkey/valkey:8-bookworm'],
+        'ports': [(2283, 'tcp')], 'volumes': [('library', '/data'), ('database', '/var/lib/postgresql/data')],
+        'env': {'DB_HOSTNAME': '127.0.0.1', 'REDIS_HOSTNAME': '127.0.0.1', 'DB_USERNAME': 'immich', 'DB_DATABASE_NAME': 'immich',
+                'IMMICH_MACHINE_LEARNING_ENABLED': 'false'},
+        'opts': {}, 'password': None, 'web': 'http', 'pod': True,
+    },
+    'navidrome': {
+        'name': 'Navidrome', 'kind': 'app', 'icon': 'headphones', 'reach': 'tailscale', 'size': 'about 100 MB',
+        'desc': 'Your own Spotify for the music you own: stream your Music folder to any Subsonic app on your phone, or the web.',
+        'images': ['docker.io/deluan/navidrome:latest'],
+        'ports': [(4533, 'tcp')], 'volumes': [('data', '/data')],
+        'env': {},
+        'opts': {'music': {'default': '~/Music', 'folder': True, 'mount': '/music', 'label': 'Music folder (read only)'}},
+        'password': None, 'web': 'http',
+    },
+    'ntfy': {
+        'name': 'ntfy', 'kind': 'app', 'icon': 'bell', 'reach': 'tailscale', 'size': 'about 50 MB',
+        'desc': 'Your own notification server: Phone notifications can send through it instead of ntfy.sh, so nothing leaves your devices.',
+        'images': ['docker.io/binwiederhier/ntfy:latest'],
+        'ports': [(2586, 'tcp', 80)], 'volumes': [('cache', '/var/cache/ntfy')],
+        'env': {}, 'args': ['serve', '--cache-file', '/var/cache/ntfy/cache.db'],
+        'opts': {}, 'password': None, 'web': 'http',
+    },
+}
+
+APP_DEFAULT = {'on': False, 'reach': None, 'eula': False, 'opts': {}}
+NTFY_DEFAULT = {'on': False, 'server': 'https://ntfy.sh', 'topic': '', 'alerts': True, 'apps': True}
+DEFAULTS = {'apps': {}, 'ntfy': NTFY_DEFAULT}
+
+
+def cmd(args, timeout=60, env=None):
+    """(exit code, output) of a command as you; never a shell. Tests replace this."""
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def have(name):
+    """Whether a program is on this PC. Tests replace this."""
+    return bool(shutil.which(name))
+
+
+def out(obj):
+    print(json.dumps(obj))
+
+
+# ------------------------------------------------------------------ settings, state, secrets
+
+def settings():
+    """Your choices with the defaults filled in (never saved). A damaged file is put back from its .bak."""
+    raw = sio.load_json(SETTINGS, {})
+    s = sio.with_defaults(raw if isinstance(raw, dict) else {}, DEFAULTS)
+    apps = s.get('apps') if isinstance(s.get('apps'), dict) else {}
+    s['apps'] = {k: app_cfg(apps.get(k), k) for k in CATALOG}
+    s['ntfy'] = sio.with_defaults(s['ntfy'] if isinstance(s.get('ntfy'), dict) else {}, NTFY_DEFAULT)
+    return s
+
+
+def app_cfg(v, aid):
+    v = sio.with_defaults(v if isinstance(v, dict) else {}, APP_DEFAULT)
+    if v.get('reach') not in ('home', 'tailscale'):
+        v['reach'] = CATALOG[aid]['reach']
+    opts = v.get('opts') if isinstance(v.get('opts'), dict) else {}
+    v['opts'] = {k: (opts[k] if k in opts and opt_ok(CATALOG[aid]['opts'][k], opts[k]) else o['default'])
+                 for k, o in CATALOG[aid]['opts'].items()}
+    v['on'] = v.get('on') is True
+    v['eula'] = v.get('eula') is True
+    return v
+
+
+def save_app(aid, key, value):
+    """Only that key of that app is written, under the lock (and only when it's different from what you have)."""
+    def change(d):
+        apps = d.get('apps') if isinstance(d.get('apps'), dict) else {}
+        cur = dict(apps.get(aid)) if isinstance(apps.get(aid), dict) else {}
+        if key.startswith('opts.'):
+            o = dict(cur.get('opts')) if isinstance(cur.get('opts'), dict) else {}
+            o[key[5:]] = value
+            cur['opts'] = o
+        else:
+            cur[key] = value
+        apps[aid] = cur
+        d['apps'] = apps
+    sio.update_json(SETTINGS, change)
+
+
+def save_ntfy(key, value):
+    def change(d):
+        n = dict(d.get('ntfy')) if isinstance(d.get('ntfy'), dict) else {}
+        n[key] = value
+        d['ntfy'] = n
+    sio.update_json(SETTINGS, change)
+
+
+def state():
+    v = sio.load_json(STATE, {}, repair=False) if os.path.exists(STATE) else {}
+    return v if isinstance(v, dict) else {}
+
+
+def state_set(name, **kw):
+    def change(d):
+        cur = dict(d.get(name)) if isinstance(d.get(name), dict) else {}
+        cur.update(kw)
+        d[name] = cur
+    sio.update_json(STATE, change)
+
+
+def secrets_read():
+    try:
+        with open(SECRETS) as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def secret_set(aid, key, value):
+    os.makedirs(os.path.dirname(SECRETS), exist_ok=True)
+    with sio.locked(SECRETS):
+        d = secrets_read()
+        cur = dict(d.get(aid)) if isinstance(d.get(aid), dict) else {}
+        if value:
+            cur[key] = value
+        else:
+            cur.pop(key, None)
+        d[aid] = cur
+        sio.write_text(SECRETS, json.dumps(d, indent=2) + '\n', mode=0o600)
+
+
+def opt_ok(o, v):
+    if not isinstance(v, str):
+        return False
+    if 'choices' in o:
+        return v in o['choices']
+    if o.get('text'):
+        return _text(v)
+    if o.get('folder'):
+        p = os.path.expanduser(v)
+        return v.startswith(('~/', '/')) and '..' not in v.split('/') and len(v) < 300 and not p.startswith(('/proc', '/sys', '/dev', '/etc', '/boot'))
+    return False
+
+
+def app_or_fail(aid):
+    if aid not in CATALOG:
+        raise Fail('Not in the catalog: ' + str(aid)[:40])
+    return CATALOG[aid]
+
+
+# ------------------------------------------------------------------ units (your own, in ~/.config/systemd/user)
+
+def script():
+    return os.path.realpath(__file__)
+
+
+def unit_texts():
+    s = script()
+    return {
+        'hearth-app@.service': (
+            '# Settings › Home server › Server apps (docs/SERVER-APPS.md): one catalog app in your rootless Podman. Made by\n'
+            '# hearth-server-apps. No install section: started only by its timer (enabled only while the app is on) or by\n'
+            '# Settings. Never part of starting the PC, the session or Game Mode; 4 failed starts in 15 minutes and it stays stopped.\n'
+            '[Unit]\nDescription=Hearth server app: %i\nConditionPathExists=/usr/bin/podman\nAfter=network-online.target\n'
+            'StartLimitIntervalSec=900\nStartLimitBurst=4\n\n'
+            '[Service]\nExecStart=/usr/bin/python3 ' + s + ' run %i\nExecStop=-/usr/bin/python3 ' + s + ' stop %i\n'
+            'Restart=on-failure\nRestartSec=30\nNice=5\nTimeoutStartSec=300\nTimeoutStopSec=60\n'),
+        'hearth-app@.timer': (
+            '# Settings › Home server › Server apps: starts an app a minute after you sign in. Enabled per app only while it\'s on.\n'
+            '[Unit]\nDescription=Hearth server app %i, a minute after sign-in\n\n[Timer]\nOnStartupSec=1min\n\n'
+            '[Install]\nWantedBy=timers.target\n'),
+        'hearth-server-ntfy.service': (
+            '# Settings › Home server › Phone notifications: sends what\'s new to ntfy. Made by hearth-server-apps.\n'
+            '[Unit]\nDescription=Hearth home server: phone notifications\n\n'
+            '[Service]\nType=oneshot\nExecStart=-/usr/bin/python3 ' + s + ' ntfy-forward\nNice=10\nTimeoutStartSec=120\n'),
+        'hearth-server-ntfy.timer': (
+            '# Settings › Home server › Phone notifications: every 5 minutes, enabled only while they\'re on.\n'
+            '[Unit]\nDescription=Hearth home server: phone notifications, every 5 minutes\n\n'
+            '[Timer]\nOnStartupSec=2min\nOnUnitActiveSec=5min\n\n[Install]\nWantedBy=timers.target\n'),
+    }
+
+
+def ensure_units():
+    """Writes the unit files only when they're missing or different, then reloads systemd --user."""
+    changed = False
+    os.makedirs(UNIT_DIR, exist_ok=True)
+    for name, text in unit_texts().items():
+        p = os.path.join(UNIT_DIR, name)
+        try:
+            with open(p) as f:
+                if f.read() == text:
+                    continue
+        except OSError:
+            pass
+        sio.write_text(p, text)
+        changed = True
+    if changed:
+        cmd(['systemctl', '--user', 'daemon-reload'], 30)
+    return changed
+
+
+def unit(aid):
+    return 'hearth-app@%s.service' % aid
+
+
+def timer(aid):
+    return 'hearth-app@%s.timer' % aid
+
+
+def unit_state(aid):
+    """active, failed or inactive (systemctl --user is-active)."""
+    code, o = cmd(['systemctl', '--user', 'is-active', unit(aid)], 10)
+    st = o.strip().splitlines()[0] if o.strip() else ''
+    return st if st in ('active', 'activating', 'failed', 'deactivating') else 'inactive'
+
+
+# ------------------------------------------------------------------ podman
+
+def podman_ok():
+    return have('podman')
+
+
+def image_there(ref):
+    return cmd(['podman', 'image', 'exists', ref], 20)[0] == 0
+
+
+def installed(aid):
+    return podman_ok() and all(image_there(r) for r in CATALOG[aid]['images'])
+
+
+def ts_ip4():
+    if not have('tailscale'):
+        return ''
+    code, o = cmd(['tailscale', 'ip', '-4'], 8)
+    ip = o.strip().splitlines()[0].strip() if code == 0 and o.strip() else ''
+    return ip if TS_IP_RE.fullmatch(ip) else ''
+
+
+def lan_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('192.0.2.1', 9))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return ''
+
+
+def data_dir(aid, sub=''):
+    d = os.path.join(DATA_ROOT, CATALOG[aid]['name'])
+    return os.path.join(d, sub) if sub else d
+
+
+def name(aid):
+    return 'hearth-app-' + aid
+
+
+def port_args(aid, reach, ts_ip):
+    """-p for each port: everywhere for 'home', 127.0.0.1 and the Tailscale address only for 'tailscale'."""
+    args = []
+    for p in CATALOG[aid]['ports']:
+        host, proto = p[0], p[1]
+        inner = p[2] if len(p) > 2 else host
+        if reach == 'home':
+            args += ['-p', '%d:%d/%s' % (host, inner, proto)]
+        else:
+            for a in ['127.0.0.1'] + ([ts_ip] if ts_ip else []):
+                args += ['-p', '%s:%d:%d/%s' % (a, host, inner, proto)]
+    return args
+
+
+def env_for(aid, cfg, sec):
+    a = CATALOG[aid]
+    env = dict(a.get('env') or {})
+    for k, o in a['opts'].items():
+        if o.get('env'):
+            v = cfg['opts'][k]
+            env[o['env']] = (o.get('map') or {}).get(v, v)
+    pw = a.get('password')
+    if pw and pw.get('env') and sec.get('password'):
+        env[pw['env']] = sec['password']
+    if aid == 'immich':
+        env['DB_PASSWORD'] = sec.get('db', '')
+    if aid == 'vaultwarden':
+        env['ROCKET_PORT'] = '80'
+    if aid == 'palworld':
+        env['PORT'] = '8211'
+    return env
+
+
+def env_file(aid, env):
+    """A 0600 file in your runtime folder: passwords never go on a command line (anyone can read those)."""
+    rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-server-apps')
+    os.makedirs(rt, mode=0o700, exist_ok=True)
+    p = os.path.join(rt, aid + '.env')
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        for k, v in sorted(env.items()):
+            f.write('%s=%s\n' % (k, str(v).replace('\n', ' ')))
+    return p
+
+
+def run_argv(aid, cfg=None, sec=None, ts_ip=None):
+    """The podman run line for an app's main container (tests check it)."""
+    a = app_or_fail(aid)
+    cfg = cfg or settings()['apps'][aid]
+    sec = secrets_read().get(aid) or {} if sec is None else sec
+    ts_ip = ts_ip4() if ts_ip is None else ts_ip
+    argv = ['podman', 'run', '--rm', '--replace', '--name', name(aid), '--pull=never', '--label', 'hearth.app=' + aid,
+            '--security-opt', 'no-new-privileges', '--stop-timeout', '30']
+    if a.get('pod'):
+        argv += ['--pod', name(aid) + '-pod']
+    else:
+        argv += port_args(aid, cfg['reach'], ts_ip)
+    for sub, inner in a['volumes']:
+        if aid == 'immich' and sub == 'database':
+            continue
+        argv += ['-v', '%s:%s:Z' % (data_dir(aid, sub), inner)]
+    for k, o in a['opts'].items():
+        if o.get('folder'):
+            argv += ['-v', '%s:%s:ro' % (os.path.expanduser(cfg['opts'][k]), o['mount'])]
+    argv += ['--env-file', '@ENV@', a['images'][0]] + list(a.get('args') or [])
+    if aid == 'terraria':
+        w = '/root/.local/share/Terraria/Worlds/%s.wld' % cfg['opts']['worldName'].replace(' ', '_')
+        argv += ['-world', w, '-autocreate', cfg['opts']['worldSize'], '-worldname', cfg['opts']['worldName']]
+    return argv
+
+
+def run(aid):
+    """hearth-app@ID.service: the app in the foreground (exec), so systemd sees it stop."""
+    a = app_or_fail(aid)
+    s = settings()
+    cfg = s['apps'][aid]
+    if not cfg['on']:
+        raise Fail('%s is off (Settings › Home server › Server apps)' % a['name'])
+    if aid == 'minecraft' and not cfg['eula']:
+        raise Fail('Accept Minecraft\'s EULA first')
+    sec = secrets_read().get(aid) or {}
+    pw = a.get('password')
+    if pw and pw.get('required') and len(sec.get('password') or '') < pw['min']:
+        raise Fail('%s needs a password of at least %d characters' % (a['name'], pw['min']))
+    for sub, _ in a['volumes']:
+        os.makedirs(data_dir(aid, sub), exist_ok=True)
+    ts_ip = ts_ip4()
+    argv = run_argv(aid, cfg, sec, ts_ip)
+    argv[argv.index('@ENV@')] = env_file(aid, env_for(aid, cfg, sec))
+    state_set(aid, listen=['0.0.0.0'] if cfg['reach'] == 'home' else ['127.0.0.1'] + ([ts_ip] if ts_ip else []), started=int(time.time()))
+    if a.get('pod'):
+        pod = name(aid) + '-pod'
+        cmd(['podman', 'pod', 'rm', '-f', '--ignore', pod], 60)
+        code, o = cmd(['podman', 'pod', 'create', '--name', pod] + port_args(aid, cfg['reach'], ts_ip), 60)
+        if code != 0:
+            raise Fail('Couldn\'t make its pod: ' + o.strip()[-200:])
+        imgs = a['images']
+        code, o = cmd(['podman', 'run', '-d', '--rm', '--name', name(aid) + '-db', '--pod', pod, '--pull=never',
+                       '-e', 'POSTGRES_USER=immich', '-e', 'POSTGRES_DB=immich', '--env-file', db_env(sec),
+                       '-v', '%s:/var/lib/postgresql/data:Z' % data_dir(aid, 'database'), imgs[1]], 120)
+        if code != 0:
+            raise Fail('Its database didn\'t start: ' + o.strip()[-200:])
+        code, o = cmd(['podman', 'run', '-d', '--rm', '--name', name(aid) + '-redis', '--pod', pod, '--pull=never', imgs[2]], 60)
+        if code != 0:
+            raise Fail('Its cache didn\'t start: ' + o.strip()[-200:])
+    os.execvp('podman', argv)
+
+
+def db_env(sec):
+    rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-server-apps')
+    os.makedirs(rt, mode=0o700, exist_ok=True)
+    p = os.path.join(rt, 'immich-db.env')
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write('POSTGRES_PASSWORD=%s\n' % sec.get('db', ''))
+    return p
+
+
+def stop(aid):
+    app_or_fail(aid)
+    cmd(['podman', 'stop', '--ignore', '-t', '30', name(aid)], 60)
+    if CATALOG[aid].get('pod'):
+        cmd(['podman', 'pod', 'rm', '-f', '--ignore', name(aid) + '-pod'], 90)
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ install, switch, remove
+
+def install(aid, update=False):
+    a = app_or_fail(aid)
+    if not podman_ok():
+        raise Fail('Podman isn\'t on this PC')
+    st = state().get(aid) or {}
+    if st.get('installing') and time.time() - (st.get('begun') or 0) < 3 * 3600:
+        return {'started': False, 'note': 'already working on it'}
+    if aid == 'immich' and not (secrets_read().get('immich') or {}).get('db'):
+        secret_set('immich', 'db', secrets.token_urlsafe(24))     # its own database's password, made once, never shown
+    state_set(aid, installing=True, progress=0, step='starting', error='', begun=int(time.time()))
+    code, o = cmd(['systemd-run', '--user', '--unit=hearth-app-install-%s-%d' % (aid, int(time.time())), '--collect',
+                   '--property=Nice=10', '--property=IOSchedulingClass=idle', '--property=RuntimeMaxSec=3h',
+                   sys.executable, script(), 'job', aid] + (['update'] if update else []), 30)
+    if code != 0:
+        state_set(aid, installing=False, error='couldn\'t start: ' + o.strip()[-160:])
+        raise Fail('Couldn\'t start it: %s' % o.strip()[-200:])
+    return {'started': True, 'name': a['name']}
+
+
+def job(aid, update=False):
+    """The pull itself. Anything wrong: you're told why, and an installed app keeps its old images."""
+    a = app_or_fail(aid)
+    imgs = a['images']
+    try:
+        for i, ref in enumerate(imgs):
+            state_set(aid, step='downloading %s' % ref.split('/')[-1], progress=int(100 * i / len(imgs)))
+            code, o = cmd(['podman', 'pull', ref], 3 * 3600)
+            if code != 0 or not image_there(ref):
+                raise Fail('the download of %s didn\'t finish: %s' % (ref.split('/')[-1], o.strip()[-160:]))
+        state_set(aid, installing=False, progress=100, step='done', error='', installedAt=int(time.time()))
+        if update and settings()['apps'][aid]['on']:
+            cmd(['systemctl', '--user', 'restart', unit(aid)], 60)
+    except Fail as e:
+        state_set(aid, installing=False, error=str(e))
+        raise
+    return {'ok': True}
+
+
+def switch(aid, on):
+    a = app_or_fail(aid)
+    cfg = settings()['apps'][aid]
+    if on:
+        if not installed(aid):
+            raise Fail('Install %s first' % a['name'])
+        if aid == 'minecraft' and not cfg['eula']:
+            raise Fail('Accept Minecraft\'s EULA first (it\'s Mojang\'s, linked on this page)')
+        pw = a.get('password')
+        if pw and pw.get('required') and len((secrets_read().get(aid) or {}).get('password') or '') < pw['min']:
+            raise Fail('Set a password of at least %d characters first' % pw['min'])
+        clash = [CATALOG[o]['name'] for o, c in settings()['apps'].items() if o != aid and c['on']
+                 and {p[0] for p in CATALOG[o]['ports']} & {p[0] for p in a['ports']}]
+        if clash:
+            raise Fail('%s uses the same port: turn it off first' % clash[0])
+    if cfg['on'] != on:
+        save_app(aid, 'on', on)
+    ensure_units()
+    cmd(['systemctl', '--user', 'reset-failed', unit(aid)], 10)
+    if on:
+        cmd(['systemctl', '--user', 'enable', timer(aid)], 30)
+        cmd(['systemctl', '--user', 'restart', unit(aid)], 60)
+    else:
+        cmd(['systemctl', '--user', 'disable', timer(aid)], 30)
+        cmd(['systemctl', '--user', 'stop', unit(aid)], 90)
+    return {'ok': True, 'on': on}
+
+
+def set_key(aid, key, value):
+    a = app_or_fail(aid)
+    if key == 'on':
+        if value not in ('on', 'off'):
+            raise Fail('on or off')
+        return switch(aid, value == 'on')
+    if key == 'reach':
+        if value not in ('home', 'tailscale'):
+            raise Fail('home or tailscale')
+        save_app(aid, 'reach', value)
+    elif key == 'eula':
+        if aid != 'minecraft' or value not in ('on', 'off'):
+            raise Fail('Only Minecraft has an EULA (on|off)')
+        save_app(aid, 'eula', value == 'on')
+        if value == 'off' and settings()['apps'][aid]['on']:
+            switch(aid, False)
+    else:
+        raise Fail('on, reach or eula')
+    restart_if_on(aid)
+    return {'ok': True, 'name': a['name']}
+
+
+def set_opt(aid, key, value):
+    a = app_or_fail(aid)
+    o = a['opts'].get(key)
+    if not o:
+        raise Fail('%s has no option %s' % (a['name'], str(key)[:30]))
+    if not opt_ok(o, value):
+        raise Fail('Not a choice for %s' % o['label'])
+    save_app(aid, 'opts.' + key, value)
+    restart_if_on(aid)
+    return {'ok': True}
+
+
+def restart_if_on(aid):
+    if settings()['apps'][aid]['on']:
+        cmd(['systemctl', '--user', 'restart', unit(aid)], 60)
+
+
+def set_password(aid, text):
+    a = app_or_fail(aid)
+    pw = a.get('password')
+    if not pw:
+        raise Fail('%s has no password here (it has its own accounts)' % a['name'])
+    text = (text or '').strip()
+    if text and (len(text) < pw['min'] or len(text) > 64 or '\n' in text):
+        raise Fail('At least %d characters (64 at most)' % pw['min'])
+    if not text and pw.get('required'):
+        raise Fail('%s needs a password' % a['name'])
+    secret_set(aid, 'password', text)
+    restart_if_on(aid)
+    return {'ok': True, 'set': bool(text)}
+
+
+def remove(aid, args):
+    a = app_or_fail(aid)
+    if settings()['apps'][aid]['on']:
+        switch(aid, False)
+    for ref in a['images']:
+        cmd(['podman', 'rmi', '--ignore', ref], 120)
+    state_set(aid, installedAt=0, error='', installing=False)
+    gone = False
+    if args[:3] == ['data', 'sure', 'really-sure']:
+        d = data_dir(aid)
+        if os.path.isdir(d) and not os.path.islink(d) and os.path.realpath(d).startswith(os.path.realpath(DATA_ROOT) + os.sep):
+            code, _ = cmd(['podman', 'unshare', 'rm', '-rf', '--one-file-system', d], 600)
+            gone = code == 0 and not os.path.exists(d)
+    return {'ok': True, 'dataRemoved': gone, 'note': '%s removed%s' % (a['name'], ' with its data' if gone else '; its data is kept in ' + data_dir(aid))}
+
+
+def logs(aid):
+    app_or_fail(aid)
+    code, o = cmd(['podman', 'logs', '--tail', '40', name(aid)], 20)
+    return {'lines': o.splitlines()[-40:] if code == 0 else [], 'error': '' if code == 0 else 'It isn\'t running'}
+
+
+# ------------------------------------------------------------------ what the pages show
+
+def address(aid, cfg, ts_ip, lan, host):
+    a = CATALOG[aid]
+    port = a['ports'][0][0]
+    web = a.get('web')
+    fmt = (lambda h: '%s://%s:%d' % (web, h, port)) if web else (lambda h: '%s:%d' % (h, port))
+    addrs = []
+    if cfg['reach'] == 'home' and lan:
+        addrs.append({'where': 'Home network', 'url': fmt(lan)})
+    if ts_ip:
+        addrs.append({'where': 'Tailscale', 'url': fmt(host or ts_ip)})
+    addrs.append({'where': 'This PC', 'url': fmt('localhost')})
+    return addrs
+
+
+def list_apps():
+    s = settings()
+    st = state()
+    sec = secrets_read()
+    pod = podman_ok()
+    ts_ip, lan, host = ts_ip4(), lan_ip(), socket.gethostname().split('.')[0]
+    apps = []
+    for aid, a in CATALOG.items():
+        cfg = s['apps'][aid]
+        ist = st.get(aid) or {}
+        inst = pod and all(image_there(r) for r in a['images'])
+        us = unit_state(aid) if cfg['on'] else 'inactive'
+        pw = a.get('password')
+        apps.append({
+            'id': aid, 'name': a['name'], 'kind': a['kind'], 'icon': a['icon'], 'desc': a['desc'], 'size': a['size'],
+            'images': a['images'], 'ports': ['%d/%s' % (p[0], p[1]) for p in a['ports']],
+            'installed': inst, 'installing': ist.get('installing') is True, 'progress': ist.get('progress') or 0,
+            'step': ist.get('step') or '', 'error': ist.get('error') or '',
+            'on': cfg['on'], 'state': us, 'running': us == 'active', 'failed': us == 'failed', 'reach': cfg['reach'],
+            'defaultReach': a['reach'], 'eula': cfg['eula'] if aid == 'minecraft' else None, 'eulaUrl': a.get('eula', ''),
+            'opts': [{'key': k, 'label': o['label'], 'value': cfg['opts'][k], 'choices': o.get('choices') or [],
+                      'text': bool(o.get('text')), 'folder': bool(o.get('folder'))} for k, o in a['opts'].items()],
+            'password': None if not pw else {'set': bool((sec.get(aid) or {}).get('password')), 'min': pw['min'], 'required': bool(pw.get('required'))},
+            'data': data_dir(aid), 'addresses': address(aid, cfg, ts_ip, lan, host) if inst else [],
+        })
+    return {'podman': pod, 'tailscale': bool(ts_ip), 'apps': apps, 'on': sum(1 for x in apps if x['on'])}
+
+
+def quick():
+    """The apps that are on, in short: no podman calls (Server mode's dashboard asks every few seconds)."""
+    s = settings()
+    rows = []
+    for aid, a in CATALOG.items():
+        cfg = s['apps'][aid]
+        if cfg['on']:
+            us = unit_state(aid)
+            rows.append({'id': aid, 'name': a['name'], 'kind': a['kind'], 'state': us, 'reach': cfg['reach'],
+                         'port': a['ports'][0][0]})
+    return {'apps': rows, 'on': len(rows), 'running': sum(1 for r in rows if r['state'] == 'active'),
+            'failed': [r['name'] for r in rows if r['state'] == 'failed']}
+
+
+# ------------------------------------------------------------------ phone notifications (ntfy)
+
+def ntfy_view():
+    s = settings()['ntfy']
+    st = state().get('ntfy') or {}
+    url = '%s/%s' % (s['server'].rstrip('/'), s['topic']) if s['topic'] else ''
+    return {'settings': s, 'url': url, 'last': st.get('last') or None, 'timer': s['on']}
+
+
+def ntfy_set(key, value):
+    n = settings()['ntfy']
+    if key in ('on', 'alerts', 'apps'):
+        if value not in ('on', 'off'):
+            raise Fail('on or off')
+        v = value == 'on'
+        if key == 'on' and v and not n['topic']:
+            raise Fail('Make a topic first')
+        if n[key] != v:
+            save_ntfy(key, v)
+        if key == 'on':
+            ensure_units()
+            cmd(['systemctl', '--user', 'enable' if v else 'disable', 'hearth-server-ntfy.timer'], 30)
+            if v:
+                cmd(['systemctl', '--user', 'start', 'hearth-server-ntfy.timer'], 30)
+            else:
+                cmd(['systemctl', '--user', 'stop', 'hearth-server-ntfy.timer'], 30)
+    elif key == 'server':
+        v = (value or '').strip().rstrip('/')
+        if not URL_RE.fullmatch(v):
+            raise Fail('An address like https://ntfy.sh or http://this-pc:2586')
+        save_ntfy('server', v)
+    elif key == 'topic':
+        v = 'hearth-' + secrets.token_urlsafe(12).replace('_', 'x').replace('-', 'y') if value == 'new' else (value or '').strip()
+        if not TOPIC_RE.fullmatch(v):
+            raise Fail('Letters, numbers, - and _ only (64 at most)')
+        save_ntfy('topic', v)
+    else:
+        raise Fail('on, alerts, apps, server or topic')
+    return ntfy_view()
+
+
+def post(url, text, title, priority='default', tags=''):
+    """One message to ntfy (urllib, 10 seconds at most). Tests replace this."""
+    req = urllib.request.Request(url, data=text.encode('utf-8'), method='POST',
+                                 headers={'Title': title.encode('ascii', 'replace').decode(), 'Priority': priority, 'Tags': tags})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return 200 <= r.status < 300, ''
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return False, str(getattr(e, 'reason', e))[:160]
+
+
+def ntfy_send(text, title='Hearth home server', priority='default', tags='house'):
+    v = ntfy_view()
+    if not v['url']:
+        raise Fail('No topic yet')
+    ok, err = post(v['url'], text, title, priority, tags)
+    state_set('ntfy', last={'at': int(time.time()), 'ok': ok, 'error': err, 'text': text[:200]})
+    if not ok:
+        raise Fail('ntfy didn\'t take it: ' + (err or 'no answer'))
+    return {'ok': True}
+
+
+def ntfy_forward(now=None):
+    """What's new since last time: Home server alerts (and again after a day while they last), and apps that stopped."""
+    now = time.time() if now is None else now
+    n = settings()['ntfy']
+    if not n['on'] or not n['topic']:
+        return {'sent': 0, 'note': 'off'}
+    found = []
+    host = socket.gethostname().split('.')[0]
+    if n['alerts']:
+        a = sio.load_json(ALERT_STATE, {}, repair=False) if os.path.exists(ALERT_STATE) else {}
+        for f in (a.get('active') or []) if isinstance(a, dict) else []:
+            if isinstance(f, dict) and f.get('key') and f.get('text'):
+                found.append({'key': 'alert:' + str(f['key']), 'text': str(f['text']),
+                              'urgent': f.get('kind') in ('smart', 'mirror')})
+    if n['apps']:
+        for r in quick()['apps']:
+            if r['state'] == 'failed':
+                found.append({'key': 'app:' + r['id'], 'text': '%s stopped and couldn\'t start again. Settings › Home server › Server apps shows why.' % r['name'],
+                              'urgent': False})
+    told = (state().get('ntfy') or {}).get('told') or {}
+    keys = {f['key'] for f in found}
+    told = {k: t for k, t in told.items() if k in keys}
+    sent = 0
+    for f in found:
+        if f['key'] not in told or now - told[f['key']] >= AGAIN:
+            ok, _ = post(ntfy_view()['url'], f['text'], 'Hearth: ' + host, 'high' if f['urgent'] else 'default', 'warning')
+            if ok:
+                told[f['key']] = int(now)
+                sent += 1
+    state_set('ntfy', told=told, checked=int(now))
+    return {'sent': sent, 'active': len(found)}
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    a = argv[1:]
+    if not a:
+        raise Fail('list, quick, install, set, opt, password, logs, remove, ntfy …')
+    c = a[0]
+    if c == 'list':
+        return list_apps()
+    if c == 'quick':
+        return quick()
+    if c in ('install', 'update') and len(a) == 2:
+        return install(a[1], c == 'update')
+    if c == 'job' and len(a) >= 2:
+        return job(a[1], a[2:3] == ['update'])
+    if c == 'set' and len(a) == 4:
+        return set_key(a[1], a[2], a[3])
+    if c == 'opt' and len(a) == 4:
+        return set_opt(a[1], a[2], a[3])
+    if c == 'password' and len(a) == 2:
+        return set_password(a[1], os.environ.get('HEARTH_INPUT', ''))
+    if c == 'logs' and len(a) == 2:
+        return logs(a[1])
+    if c == 'remove' and len(a) >= 2:
+        return remove(a[1], a[2:])
+    if c == 'run' and len(a) == 2:
+        return run(a[1])
+    if c == 'stop' and len(a) == 2:
+        return stop(a[1])
+    if c == 'ntfy':
+        return ntfy_view()
+    if c == 'ntfy-set' and len(a) == 3:
+        return ntfy_set(a[1], a[2])
+    if c == 'ntfy-test':
+        return ntfy_send('This is a test from your Hearth home server: phone notifications reach you here.', tags='white_check_mark')
+    if c == 'ntfy-forward':
+        return ntfy_forward()
+    raise Fail('unknown command: ' + ' '.join(a)[:60])
+
+
+if __name__ == '__main__':
+    try:
+        out(main(sys.argv))
+    except Fail as e:
+        print('error: ' + str(e))
+        sys.exit(1)

@@ -98,6 +98,8 @@ const shots = [
     ["Paused for your game: snapshots · backups", "Waiting for your game: Games to backup drive", "Let paused jobs run now", "Only for now: Light mode stays on"]],
   ["hearth-link-home-server-resumed", "home-server-playing", async () => { await show("Home server"); await btn("Let paused jobs run now"); await wait(500); await show("Home server"); },
     ["Paused jobs can run now", "Pause them again while I play"]],
+  ["hearth-link-your-server", "home-server", async () => show("Your server: Tower"),
+    ["Your server: Tower", "In Server mode", "AI chat: Running", "Server apps: Minecraft (running), Immich (running)"]],
   // Discord (since 1.6, replacing Hearth Friends): shown here in the home-server states' stand-in.
   ["hearth-link-discord", "home-server", async () => show("Discord"),
     ["Open Discord", "Show what I'm playing on Discord", "Let friends ask to join", "Play together PIN 4821"]],
@@ -110,7 +112,8 @@ for (const [name, st, act, wants] of shots) {
   await act();
   await wait(400);
   const text = await page.evaluate(() => document.body.innerText);
-  for (const w of wants) if (!text.includes(w)) errors.push(`${name}: the panel doesn't show "${w}"`);
+  // Case doesn't matter: section titles are shown in capitals (text-transform), and innerText reads them that way.
+  for (const w of wants) if (!text.toLowerCase().includes(w.toLowerCase())) errors.push(`${name}: the panel doesn't show "${w}"`);
   if (name === "hearth-link-send-pick") {
     const dis = await page.evaluate(() => [...document.querySelectorAll(".qam-btn")].find((b) => b.textContent === "Send")?.disabled);
     if (dis !== false) errors.push(`${name}: Send isn't ready after picking a game and a device`);

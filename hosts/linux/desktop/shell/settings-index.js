@@ -427,6 +427,17 @@ var ENTRIES = [
 "i": "back"
 },
 {
+"t": "Server apps",
+"p": "devices",
+"i": "box"
+},
+{
+"t": "Open its dashboard",
+"p": "devices",
+"d": "Its Server mode web page over Tailscale (its PIN): pause, restart, switch modes",
+"i": "globe"
+},
+{
 "t": "Wake it",
 "p": "devices",
 "d": "Wake-on-LAN, as Hearth Storage does",
@@ -917,6 +928,31 @@ var ENTRIES = [
 "i": "batt"
 },
 {
+"t": "I accept Minecraft's EULA",
+"p": "hs-apps",
+"i": "doc"
+},
+{
+"t": "Who can reach it",
+"p": "hs-apps"
+},
+{
+"t": "Its data",
+"p": "hs-apps",
+"i": "folder"
+},
+{
+"t": "Logs",
+"p": "hs-apps",
+"i": "file"
+},
+{
+"t": "Phone notifications",
+"p": "hs-apps",
+"d": "Hear on your phone (the ntfy app) when an alert comes up or a server app stops",
+"i": "bell"
+},
+{
 "t": "How often",
 "p": "hs-backups"
 },
@@ -1177,6 +1213,39 @@ var ENTRIES = [
 "p": "hs-people",
 "d": "The same way as you (Shared folders › How to open them), with their name instead of yours. Hidden files are never shown, and nobody gets in without a password.",
 "i": "display"
+},
+{
+"t": "Make a new topic",
+"p": "hs-phone",
+"d": "If someone else got the old one. Subscribe to the new one on your phone afterwards",
+"i": "restart"
+},
+{
+"t": "Server",
+"p": "hs-phone",
+"i": "globe"
+},
+{
+"t": "Send notifications to my phone",
+"p": "hs-phone",
+"i": "bell"
+},
+{
+"t": "Home server alerts",
+"p": "hs-phone",
+"d": "What Alerts & power finds: a drive failing or very hot, a drive filling up, a backup failing or late, a mirror missing a drive (turn alerts on there too)",
+"i": "warn"
+},
+{
+"t": "Server apps that stop",
+"p": "hs-phone",
+"d": "A game server or app that stopped and couldn't start again",
+"i": "server"
+},
+{
+"t": "Send a test",
+"p": "hs-phone",
+"i": "check"
 },
 {
 "t": "Your shares are read only",

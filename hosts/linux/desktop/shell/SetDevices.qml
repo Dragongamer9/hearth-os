@@ -129,6 +129,40 @@ SetPage {
             }
         }
 
+        // Its server (a PC using Server mode, docs/SERVER-APPS.md): the dashboard in short, from its status over Hearth
+        // Link; the full dashboard is its web page (Tailscale, behind its PIN).
+        SetCardGroup {
+            id: srvGroup
+            readonly property var srv: page.cur && page.cur.status ? page.cur.status.server || null : null
+            title: srv ? "Its server · " + (srv.status.title || "") : "Its server"
+            visible: !!srv
+            Repeater {
+                model: srvGroup.srv ? srvGroup.srv.alerts : []
+                delegate: SetRow { required property var modelData; interactive: false; chevron: false; icon: "warn"; title: modelData }
+            }
+            Repeater {
+                model: srvGroup.srv ? srvGroup.srv.services : []
+                delegate: SetRow {
+                    required property var modelData
+                    interactive: false; chevron: false
+                    icon: "server"; title: modelData.title + (modelData.engine ? " · " + modelData.engine : "")
+                    sub: [modelData.big, modelData.unit].filter(x => x).join(" ")
+                    chip: modelData.chip; chipKind: modelData.state === "running" ? "ok" : modelData.state === "off" ? "off" : "warn"
+                }
+            }
+            SetRow {
+                visible: !!srvGroup.srv && srvGroup.srv.apps.length > 0
+                interactive: false; chevron: false
+                icon: "box"; title: "Server apps"
+                sub: srvGroup.srv ? srvGroup.srv.apps.map(a => a.name + (a.state === "active" ? "" : a.state === "failed" ? " (stopped)" : " (starting)")).join(" · ") : ""
+            }
+            SetRow {
+                visible: !!srvGroup.srv && page.cur.online
+                icon: "globe"; title: "Open its dashboard"; sub: "Its Server mode web page over Tailscale (its PIN): pause, restart, switch modes"; chevron: true
+                onActivated: Quickshell.execDetached(["xdg-open", "http://" + (page.cur.status.name || page.cur.name) + ":" + (srvGroup.srv.web || 8460)])
+            }
+        }
+
         SetCardGroup {
             title: page.cur && page.cur.stale ? "Last known (it's offline)" : "Now"
             visible: !!page.cur && !!page.cur.status
