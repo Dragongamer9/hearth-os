@@ -109,7 +109,10 @@ def ping(root='', send=None):
     body = payload(root)
     data = json.dumps(body).encode()
     if send is None:
-        req = urllib.request.Request(URL, data=data, method='POST', headers={'content-type': 'application/json'})
+        # A User-Agent of our own: Cloudflare turns away Python's default one ("error code: 1010"), which kept every
+        # Hearth OS device out of the count up to 1.6.
+        req = urllib.request.Request(URL, data=data, method='POST', headers={
+            'content-type': 'application/json', 'user-agent': 'Hearth-OS-counter/' + (body['v'] or 'unknown')})
         try:
             urllib.request.urlopen(req, timeout=15).read()
         except Exception:

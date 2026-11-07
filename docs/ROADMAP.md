@@ -26,6 +26,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] The controller works on Server mode's dashboard: 1.6 switched it off as it started, so only Guide did anything (A, B, X, Y, the D-pad and ☰ work again); and the controller helper starts again if it ever closes (needs testing on a device)
 - [x] Server mode's settings page can be found: a Server mode card on Settings › Home server, and the greyed-out Server mode in System › Startup opens it (1.6 only reached it through Settings' search) (needs testing on a device)
 - [x] Settings › Wi-Fi no longer says "Not connected" while you are connected: with a mesh (one network name on several access points) the page could keep the wrong one, and right after start-up it could miss the link; it now also asks NetworkManager which network is up (needs testing on a device)
+- [x] The website's live count works: every Hearth OS device's check-in was turned away by Cloudflare (it didn't like Python's default name for itself, "error code: 1010"), so only the Command Center was counted; the check-in now names itself Hearth OS
 
 ## 1.6 (released 2026-11-06)
 
