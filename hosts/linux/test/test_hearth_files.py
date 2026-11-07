@@ -773,5 +773,26 @@ class UndoAndRecent(Base):
         self.assertEqual(names, ['b.txt', 'a.txt'])
 
 
+class Redesign(unittest.TestCase):
+    """The Win 11-style window keeps what a file manager needs (the QML can't run here; CI takes screenshots)."""
+    qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/FileManager.qml').read_text()
+
+    def test_has_it_all(self):
+        for needle in ('homePage: "hearth:home"', 'function undo()', 'function redo()', 'case Qt.Key_Z:',
+                       'case Qt.Key_Y:', 'Qt.LinkAction', '"link"', '"untrash"', '"recent"',
+                       '["large", "grid", "small", "tiles", "compact", "details"]', 'function shownName(e)',
+                       'id: detailsBox', 'id: cmdRow', 'id: quick', 'function command(t, x, y)',
+                       'p.showExt = showExt', 'p.detailsPane = detailsPane', 'function dragdemo('):
+            self.assertIn(needle, self.qml)
+
+    def test_every_command_button_does_something(self):
+        import re
+        bar = re.findall(r'\{ t: "(\w+)"', self.qml.split('id: cmdRow', 1)[1].split('delegate:', 1)[0])
+        cmd = self.qml.split('function command(t, x, y)', 1)[1].split('\n    }\n', 1)[0]
+        self.assertGreater(len(bar), 10)
+        for t in bar:
+            self.assertIn('case "%s"' % t, cmd, t)
+
+
 if __name__ == '__main__':
     unittest.main()
