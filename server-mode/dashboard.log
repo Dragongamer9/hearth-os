@@ -1,0 +1,13 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml"
+[32m  INFO[0m: Shell ID: "8cf77242709dae84b05f417b909d0e4c" Path ID "8cf77242709dae84b05f417b909d0e4c"
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/gfb5an5ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @ServerDash.qml[56:5]: Read of /tmp/xdg/hearth-server/countdown.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("nimbus", "--settings-call", "steamMode.status", "{}")
