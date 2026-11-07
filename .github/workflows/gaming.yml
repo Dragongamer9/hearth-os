@@ -126,10 +126,13 @@ jobs:
           sleep 2; shot controller-lab-2
           pkill -f target/release/hearth-controller-lab || true
           # Hearth Games on an empty home (nothing signed in): its first screen, then the Stores tab.
+          # The virtual DualSense Controller Lab used is still pressing buttons: stopped first, so it can't press Sign in here.
+          sudo pkill -f "e2e.py hold" || true; sleep 1
           G="$RUNNER_TEMP/gamestore/home"; mkdir -p "$G" "$RUNNER_TEMP/gamestore/run"; chmod 700 "$RUNNER_TEMP/gamestore/run"
           HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" dbus-run-session -- ./target/release/hearth-gamestore > gamestore.log 2>&1 &
           sleep 10; front "Hearth Games"; shot gamestore-hello
           xdotool key Next; sleep 1; xdotool key Next; sleep 2; shot gamestore-stores
+          if grep -q "gamestore.*Sign in to" windows.txt; then echo "::error title=Hearth Games::a sign-in window opened by itself"; fi
           echo "::notice title=Hearth Games window::$(pgrep -af hearth-gamestore | head -2 | tr '\n' ' ') | $(tail -c 600 gamestore.log | tr '\n' '|')"
           pkill -f target/release/hearth-gamestore || true
           echo "::notice title=Windows open at each screenshot::$(tr '\n' '|' < windows.txt)"
