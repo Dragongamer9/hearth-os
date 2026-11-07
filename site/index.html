@@ -669,9 +669,9 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <p class="lede">Write the ISO to a USB stick of 16 GB or more (with Hearth Disks, Ventoy, Rufus or balenaEtcher), start your PC or handheld from it, and follow the screens. Installing needs a drive of 64 GB or more.</p>
     </div>
     <div class="stats" id="stats" role="status" aria-live="polite" hidden>
-      <div class="stat live"><b><i aria-hidden="true"></i><span id="sNow">0</span></b><span>playing right now</span></div>
-      <div class="stat"><b id="sToday">0</b><span>played today</span></div>
-      <div class="stat"><b id="sMonth">0</b><span>played this month</span></div>
+      <div class="stat live"><b><i aria-hidden="true"></i><span id="sNow">0</span></b><span>using Hearth OS right now</span></div>
+      <div class="stat"><b id="sToday">0</b><span>used it today</span></div>
+      <div class="stat"><b id="sTotal">0</b><span>installs in total</span></div>
     </div>
     <div class="get">
       <div class="box main">
@@ -789,8 +789,8 @@ requestAnimationFrame(function(){ requestAnimationFrame(function(){ document.get
   }); });
 })();
 
-// How many people are playing right now (installs check in with the Hearth OS counter about every 10 minutes).
-// Shows "N playing right now · M this month", or "M played this month" when nobody is on; refreshed every minute.
+// How many people are using Hearth OS right now (installs check in with the counter about every 10 minutes; only
+// Hearth OS itself counts, not Ember or the AppImage: the counter's "os" numbers). Refreshed every minute.
 (function(){
   var el = document.getElementById('live'), t = document.getElementById('liveText');
   if (!el || !t) return;
@@ -798,18 +798,16 @@ requestAnimationFrame(function(){ requestAnimationFrame(function(){ document.get
   function load(){
     fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats', {cache: 'no-store'}).then(function(r){ return r.json(); }).then(function(j){
       if (!j) return;
-      var now = n(j.now), today = n(j.today), month = n(j.month);
-      if (now === null && month === null) return;
+      var o = j.os || j;
+      var now = n(o.now), today = n(o.today), total = n(o.total);
+      if (now === null) return;
       // Beside the downloads: always shown once the counter answers, zeros included.
       var st = document.getElementById('stats');
       if (st) {
         var put = function(id, v){ var e = document.getElementById(id); if (e) e.textContent = (v || 0).toLocaleString(); };
-        put('sNow', now); put('sToday', today); put('sMonth', month); st.hidden = false;
+        put('sNow', now); put('sToday', today); put('sTotal', total); st.hidden = false;
       }
-      var parts = [];
-      parts.push((now || 0).toLocaleString() + ' playing right now');
-      if (month) parts.push(month.toLocaleString() + ' this month');
-      t.textContent = parts.join(' \u00b7 '); el.hidden = false;
+      t.textContent = (now || 0).toLocaleString() + ' using Hearth OS right now'; el.hidden = false;
     }).catch(function(){});
   }
   load(); setInterval(load, 60000);
