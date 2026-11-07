@@ -1,0 +1,3 @@
+0 errors, 2 warnings, 9 pages at 390/820/1440 px, 9 links to other sites; front page: 307 KB at first, 1176 KB once scrolled through (budgets 1200 / 4096 KB)
+warn  index.html phone light: low contrast: "Hearth OS" 1.20:1, "Out now" 3.07:1, "The Game Mode is Steam's Game " 1.20:1, "Hearth OS starts into Valve's " 1.76:1, "Starts by itself. Turn on the " 1.76:1, "Starts by itself." 1.20:1, "Mantel one press away. Switch " 1.76:1, "Mantel one press away." 1.20:1, "Hearth inside Steam. Hearth's " 1.76:1
+warn  index.html desktop light: low contrast: "Hearth OS" 1.20:1, "Steam Game Mode" 1.76:1, "Hearth Sync" 1.76:1, "Mantel" 1.76:1, "What's new" 1.76:1, "Home server" 1.76:1, "Updates" 1.76:1, "Docs" 1.76:1, "GitHub" 1.76:1
