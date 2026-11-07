@@ -2409,7 +2409,9 @@ Scope {
                                 radius: Theme.r(9)
                                 color: on ? Theme.bg : tabMouse.containsMouse ? Theme.panel2 : "transparent"
                                 // Square bottom corners: the open tab runs into the bar below it.
-                                Rectangle { visible: tabChip.on; anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: parent.radius; color: Theme.bg }
+                                Rectangle { visible: tabChip.on; anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                    height: parent.radius; color: Theme.bg
+                                }
                                 PlaceIcon {
                                     anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
                                     kind: (tabChip.on ? app.path : tabChip.modelData.path) === app.homePage ? "start" : "folder"
