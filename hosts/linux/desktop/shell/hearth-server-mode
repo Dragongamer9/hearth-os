@@ -61,6 +61,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.request
 
 sys.dont_write_bytecode = True
@@ -123,7 +124,7 @@ GO_MODES = MODES + ('logout',)
 SERVICES = ('ai', 'pictures', 'voices', 'media', 'aishare', 'remote')
 SERVICE_ACTIONS = ('restart', 'pause', 'resume')
 TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
-PIN_RE = re.compile(r'^\d{4,12}$')
+PIN_RE = re.compile(r'^[0-9]{4,12}$')   # ASCII digits only (Python's \d also takes other scripts' digits)
 
 
 class Fail(Exception):
@@ -270,12 +271,27 @@ def secret_read():
 
 
 def secret_write(data):
-    os.makedirs(os.path.dirname(WEB_STATE), exist_ok=True)
-    sio.write_json(WEB_STATE, data)
+    """The PIN's hash and the sign-ins, 0600 from the first byte (never world-readable, not even for a moment). A folder
+    or file that isn't yours (made by running this with sudo once) gets a plain message saying how to fix it."""
+    d = os.path.dirname(WEB_STATE)
     try:
-        os.chmod(WEB_STATE, 0o600)
-    except OSError:
-        pass
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        text = json.dumps(data, indent=2, ensure_ascii=False) + '\n'
+        sio.write_bytes(WEB_STATE, text.encode('utf-8'), lambda b: sio._valid_json_object(b), mode=0o600)
+    except OSError as e:
+        raise Fail('Couldn\'t save the PIN: %s isn\'t writable (%s). It should belong to you: in a terminal run '
+                   '"sudo chown -R $USER: %s", then set the PIN again'
+                   % (WEB_STATE.replace(os.path.expanduser('~'), '~', 1), e.strerror or e, d.replace(os.path.expanduser('~'), '~', 1)))
+
+
+def pin_clean(pin):
+    """What was typed, as the PIN: spaces around it dropped and other digit forms (full-width ０-９ from a phone's
+    keyboard, Arabic-Indic digits) read as 0-9. '' when it isn't 4 to 12 digits."""
+    if not isinstance(pin, (str, int)) or isinstance(pin, bool):
+        return ''
+    t = unicodedata.normalize('NFKC', str(pin)).strip()
+    t = ''.join(str(unicodedata.decimal(c)) if unicodedata.decimal(c, None) is not None else c for c in t)
+    return t if PIN_RE.match(t) else ''
 
 
 def pin_hash(pin, salt=None, n=200000):
@@ -286,7 +302,8 @@ def pin_hash(pin, salt=None, n=200000):
 def pin_check(pin, h):
     try:
         kind, n, salt, want = (h or '').split('$')
-        if kind != 'pbkdf2-sha256' or not PIN_RE.match(pin or ''):
+        pin = pin_clean(pin)
+        if kind != 'pbkdf2-sha256' or not pin:
             return False
         got = hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), int(n)).hex()
         return hmac.compare_digest(got, want)
@@ -294,10 +311,25 @@ def pin_check(pin, h):
         return False
 
 
+def pin_problem(typed):
+    """Why what was typed isn't a PIN, in words, with what to do."""
+    t = unicodedata.normalize('NFKC', str(typed or '')).strip()
+    if not t:
+        return 'Type a PIN first: 4 to 12 digits'
+    if re.search(r'\s', t):
+        return 'The PIN can\'t have spaces in it: type 4 to 12 digits in one go'
+    if not all(unicodedata.decimal(c, None) is not None for c in t):
+        return 'The PIN is numbers only (no letters or signs): type 4 to 12 digits'
+    if len(t) < 4:
+        return 'That PIN is too short (%d digit%s): use 4 to 12 digits' % (len(t), '' if len(t) == 1 else 's')
+    return 'That PIN is too long (%d digits): use 4 to 12 digits' % len(t)
+
+
 def pin_set(pin):
-    pin = (pin or '').strip()
-    if not PIN_RE.match(pin):
-        raise Fail('The PIN must be 4 to 12 digits')
+    typed = pin
+    pin = pin_clean(pin)
+    if not pin:
+        raise Fail(pin_problem(typed))
     st = secret_read()
     st['pin'] = pin_hash(pin)
     st['sessions'] = {}            # a new PIN signs every device out
@@ -626,7 +658,7 @@ def status():
     return {'settings': s, 'startIn': start_in(), 'pin': bool(secret_read().get('pin')), 'host': host,
             'url': 'http://%s:%d' % (host, PORT), 'port': PORT, 'pauses': pauses_view(hsd, s),
             'spinDown': (hsd.get('power') or {}).get('spinDown', 0), 'sleepIdle': (hsd.get('power') or {}).get('sleepIdle', 0),
-            'webActive': unit_active(WEB_UNIT, True), 'now': mode_now(), 'wlopm': bool(shutil.which('wlopm')),
+            'webActive': unit_active(WEB_UNIT, True), 'tsIp': ts_ip4(), 'now': mode_now(), 'wlopm': bool(shutil.which('wlopm')),
             'nvidia': bool(shutil.which('nvidia-smi'))}
 
 
@@ -1264,13 +1296,21 @@ def web_apply():
     home server's firewall rule for its port (Tailscale and this PC only) made again."""
     s = load()
     on = s['web']['on'] is True and bool(secret_read().get('pin'))
-    run(['systemctl', '--user', 'enable' if on else 'disable', '--now', WEB_UNIT], 30)
+    problem = ''
+    code, _, err = run(['systemctl', '--user', 'enable' if on else 'disable', '--now', WEB_UNIT], 30)
     if on:
-        run(['systemctl', '--user', 'restart', WEB_UNIT], 30)
+        if code == 0:
+            code, _, err = run(['systemctl', '--user', 'restart', WEB_UNIT], 30)
+        if code != 0:
+            first = next((l.strip() for l in (err or '').splitlines() if l.strip()), 'no reason given')
+            problem = ('The web page didn\'t start (%s). Turn "Dashboard web page" off and on again; if it still doesn\'t '
+                       'start, restart the PC and use Send logs' % first[:160])
     if os.path.exists(PLAN):
         run([sys.executable, os.path.join(HERE, 'hearth-home-server'), 'apply'], 120)
     if on or s['on'] is True:
         spawn(['agent'])
+    if problem:
+        raise Fail(problem)
     return {'web': 'on' if on else 'off'}
 
 
@@ -1279,6 +1319,30 @@ def web_apply():
 TS_NETS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
 FAILS = {}
 LOCK = threading.Lock()
+
+
+NO_PIN = 'No PIN is set yet. On the PC, open Settings › Home server › Server mode › PIN for the web page and set one (4 to 12 digits)'
+NOT_THIS_PAGE = ('Your browser didn\'t send this from the page itself, so the PC refused it. Reload the page and try again; '
+                 'if it keeps happening, open http://<your PC\'s name>:8460 directly (not through another app or a link preview)')
+
+
+def write_allowed(headers):
+    """A write (sign in, buttons) came from this page, not another site. Hearth's own X-Hearth header is the guard
+    another site can't get past (a form can't send it, and a script on another site would need CORS, which this server
+    never answers). On top: the browser's own Sec-Fetch-Site when it sends one (same-origin only), else the Origin
+    header when there is a real one. Origin "null" is accepted: browsers send it for same-page requests under some
+    referrer policies (1.6/1.7's no-referrer did it on every POST, so nobody could sign in), and any Host, Tailscale
+    name, full MagicDNS name or 100.x address works, as long as the browser says it's the same page."""
+    if headers.get('X-Hearth') != '1':
+        return False
+    site = (headers.get('Sec-Fetch-Site') or '').strip().lower()
+    if site:
+        return site == 'same-origin'
+    o = (headers.get('Origin') or '').strip().lower()
+    if o in ('', 'null'):
+        return True
+    host = (headers.get('Host') or '').strip().lower()
+    return bool(host) and o in ('http://' + host, 'https://' + host)
 
 
 def peer_allowed(ip):
@@ -1337,7 +1401,9 @@ def make_handler():
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Frame-Options', 'DENY')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Referrer-Policy', 'no-referrer')
+            # same-origin, not no-referrer: with no-referrer browsers send "Origin: null" on every POST from the page,
+            # and the PIN could never be typed in (1.6 and 1.7). Other sites still get no referrer.
+            self.send_header('Referrer-Policy', 'same-origin')
             self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'")
             for k, v in extra:
                 self.send_header(k, v)
@@ -1367,11 +1433,7 @@ def make_handler():
                 return None
 
         def same_origin(self):
-            # Writes need Hearth's own header (a form or another site can't send it) and, when the browser says, this page's origin.
-            if self.headers.get('X-Hearth') != '1':
-                return False
-            o = self.headers.get('Origin')
-            return o is None or o == 'http://' + (self.headers.get('Host') or '')
+            return write_allowed(self.headers)
 
         def guard(self):
             if not peer_allowed(self.ip()):
@@ -1392,7 +1454,7 @@ def make_handler():
                 return self.send(200, summary())
             if path == '/api/status':
                 if not self.authed():
-                    return self.send(401, {'error': 'Type the PIN', 'pin': bool(secret_read().get('pin'))})
+                    return self.send(401, {'error': 'Type the PIN' if secret_read().get('pin') else NO_PIN, 'pin': bool(secret_read().get('pin'))})
                 d = summary()
                 s = peek()
                 d['perms'] = s['web']['perms']
@@ -1406,25 +1468,33 @@ def make_handler():
             if not self.guard():
                 return
             if not self.same_origin():
-                return self.send(403, {'error': 'Not from this page'})
+                return self.send(403, {'error': NOT_THIS_PAGE})
             path = self.path.split('?', 1)[0]
             ip = self.ip()
             if path == '/api/login':
                 if too_many(ip):
-                    return self.send(429, {'error': 'Too many tries: wait 5 minutes'})
-                b = self.body() or {}
+                    return self.send(429, {'error': 'Five wrong PINs in a row: wait 5 minutes, then try again'})
+                b = self.body()
+                if not isinstance(b, dict):
+                    return self.send(400, {'error': 'The PC couldn\'t read that. Reload the page and type the PIN again'})
                 h = secret_read().get('pin')
                 if not h:
-                    return self.send(403, {'error': 'Set a PIN in Settings › Home server › Server mode first'})
-                if not pin_check(str(b.get('pin', '')), h):
+                    return self.send(403, {'error': NO_PIN, 'pin': False})
+                typed = b.get('pin', '')
+                if not pin_clean(typed):
+                    return self.send(400, {'error': pin_problem(typed)})      # not a PIN at all: not counted as a wrong one
+                if not pin_check(typed, h):
                     failed(ip)
-                    return self.send(401, {'error': 'That PIN isn\'t right'})
+                    return self.send(401, {'error': 'That PIN isn\'t right. It\'s the one set on the PC in Settings › Home server › Server mode (change it there if you\'ve forgotten it)'})
                 name = peer_name(ip)
-                tok = session_new(name)
+                try:
+                    tok = session_new(name)
+                except Fail as e:
+                    return self.send(500, {'error': str(e).replace('save the PIN', 'remember this device')})
                 event_add('%s opened the web page' % name)
                 return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hs=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (tok, SESSION_DAYS * 86400))])
             if not self.authed():
-                return self.send(401, {'error': 'Type the PIN'})
+                return self.send(401, {'error': 'Signed out (30 days passed, or the PIN was changed): type the PIN again', 'pin': bool(secret_read().get('pin'))})
             if path == '/api/logout':
                 session_end(self.token())
                 return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hs=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict')])

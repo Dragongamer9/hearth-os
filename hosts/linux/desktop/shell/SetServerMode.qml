@@ -17,11 +17,28 @@ SetPage {
     property bool pinOpen: false
     readonly property var s: st ? st.settings : null
     readonly property var p: st ? st.pauses : null
+    property string pinMsg: ""                 // the PIN's own message, shown right under it (the page's is at the bottom)
     function say(t, b) { msg = t; bad = !!b; }
+    function pinSay(t, b) { say(t, b); pinMsg = t; }
     function refresh() { job.run(["status"], r => page.st = r, e => page.say(e, true)); }
     function set(k, v, ok) { act.run(["set", k, v], () => { if (ok) page.say(ok); page.refresh(); }, e => { page.say(e, true); page.refresh(); }); }
     function hsSet(k, v, ok) { hs.run(["set", k, v], () => { if (ok) page.say(ok); page.refresh(); }, e => { page.say(e, true); page.refresh(); }); }
-    function web() { act.run(["web-apply"], () => page.refresh(), e => page.say(e, true)); }
+    function web(ok) { act.run(["web-apply"], () => { if (ok) page.pinSay(ok); page.refresh(); }, e => { page.pinSay(e, true); page.refresh(); }); }
+    function openPin() { page.pinOpen = true; pinPad.clear(); Qt.callLater(pinPad.focusPad); }
+    // The PIN: checked here first (the same rule as the helper: 4 to 12 digits), then saved by hearth-server-mode as a
+    // hash. Its error says what to do; on success the web page's service is started when the page is on.
+    function savePin(pin) {
+        if (!/^[0-9]{4,12}$/.test(pin)) { page.pinSay("Use 4 to 12 digits (numbers only)", true); return; }
+        page.pinSay("Saving the PIN…");
+        act.run(["pin-set"], () => {
+            pinPad.clear();
+            page.pinOpen = false;
+            pinRow.forceActiveFocus();
+            const on = !!page.s && page.s.web.on;
+            page.web(on ? "PIN set ✓ Type it on " + (page.st ? page.st.url : "the web page") + " on your phone or laptop (over Tailscale)"
+                        : "PIN set ✓ Turn on \"Dashboard web page\" above to use it");
+        }, e => { pinPad.clear(); page.pinSay(e, true); }, pin);
+    }
     Component.onCompleted: refresh()
     Timer { interval: 6000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy && !hs.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-server-mode" }
@@ -164,27 +181,37 @@ SetPage {
     SetSwitch {
         visible: !!page.s
         icon: "globe"; title: "Dashboard web page"
-        sub: page.st ? "Open " + page.st.url + " on your phone or laptop. Only over Tailscale, never the internet" + (page.st.pin ? "" : ". Set a PIN first") : ""
+        sub: !page.st ? ""
+            : !page.st.pin ? "Open " + page.st.url + " on your phone or laptop. Only over Tailscale, never the internet. Set a PIN first (below)"
+            : page.s.web.on && !page.st.webActive ? "Not running right now: turn this off and on again. If that doesn't help, restart the PC and use Send logs"
+            : page.s.web.on && !page.st.tsIp ? "Tailscale isn't connected on this PC, so only this PC can open it. Connect Tailscale in Settings › Home server › Tailscale"
+            : "Open " + page.st.url + " on your phone or laptop. Only over Tailscale, never the internet"
         checked: !!page.s && page.s.web.on
-        onToggled: v => act.run(["set", "webOn", v ? "on" : "off"], () => { page.web(); if (v && !page.st.pin) page.pinOpen = true; }, e => page.say(e, true))
+        onToggled: v => act.run(["set", "webOn", v ? "on" : "off"], () => {
+            page.web(v && page.st && page.st.pin ? "The web page is on ✓" : "");
+            if (v && !(page.st && page.st.pin)) { page.pinSay("Now set a PIN (4 to 12 digits): nobody can open the page without one"); page.openPin(); }
+        }, e => page.say(e, true))
     }
     SetRow {
+        id: pinRow
         visible: !!page.s
         icon: "lock"; title: "PIN for the web page"
         sub: page.st && page.st.pin ? "Asked once on each device, again after 30 days. Only its hash is kept; a new PIN signs every device out" : "4 to 12 digits. Nobody gets in until you set one"
         value: page.st && page.st.pin ? "●●●●●● · Change" : "Set"
-        onActivated: page.pinOpen = !page.pinOpen
+        onActivated: if (page.pinOpen) page.pinOpen = false; else page.openPin()
     }
-    SetField {
+    SetPinPad {
+        id: pinPad
         visible: page.pinOpen
-        secret: true
         Layout.leftMargin: 56; Layout.rightMargin: 18; Layout.topMargin: 6; Layout.bottomMargin: 6
-        placeholder: "A PIN of 4 to 12 digits, then Enter"
-        onSubmitted: t => {
-            if (!/^\d{4,12}$/.test(t)) { page.say("Use 4 to 12 digits", true); return; }
-            act.run(["pin-set"], () => { page.say("PIN set ✓"); page.pinOpen = false; page.web(); }, e => page.say(e, true), t);
-            text = "";
-        }
+        minLength: 4; maxLength: 12
+        hint: page.st && page.st.pin ? "Type a new PIN (4 to 12 digits): every device then types it again" : "Type a PIN of 4 to 12 digits"
+        onSubmitted: pin => page.savePin(pin)
+    }
+    Text {
+        visible: page.pinMsg !== "" && page.msg === page.pinMsg
+        Layout.fillWidth: true; Layout.leftMargin: 56; Layout.rightMargin: 18
+        text: page.pinMsg; color: page.bad ? Theme.danger : Theme.flame; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     SetSwitch {
         visible: !!page.s && page.s.web.on
@@ -214,7 +241,7 @@ SetPage {
     }
 
     Text {
-        visible: page.msg !== ""
+        visible: page.msg !== "" && page.msg !== page.pinMsg
         Layout.fillWidth: true
         text: page.msg; color: page.bad ? Theme.danger : Theme.flame; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
