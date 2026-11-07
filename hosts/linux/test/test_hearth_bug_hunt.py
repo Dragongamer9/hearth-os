@@ -103,5 +103,25 @@ class AiService(unittest.TestCase):
         self.assertLess(svc.index("'reset-failed'"), svc.index("['systemctl', action"))
 
 
+class HiddenIcons(unittest.TestCase):
+    def test_a_hidden_icon_loads_nothing(self):
+        # Logs #77-#81: hundreds of "Icon.qml: Cannot open .../icons/<app id>-light.svg" from Icons kept hidden
+        # next to an app's own picture.
+        icon = (SHELL / 'Icon.qml').read_text()
+        self.assertIn('source: !root.visible ? ""', icon)
+
+
+class Repair(unittest.TestCase):
+    def test_repair_is_not_a_call_that_waits(self):
+        wj = (GAMING / 'wabbajack.rs').read_text()
+        body = wj.split('pub fn repair(', 1)[1].split('\n}\n', 1)[0]
+        self.assertIn('std::thread::spawn', body)
+        self.assertIn('j.repair == "running"', body)
+        mods = (GAMING / 'apps' / 'mods.rs').read_text()
+        self.assertIn('j["repair"] == "running"', mods.split('fn busy()', 1)[1].split('\n}', 1)[0], 'the worker stays while it runs')
+        js = (ROOT / 'hosts' / 'hearth-gaming' / 'ui' / 'mods.js').read_text()
+        self.assertIn("j.repair === 'running'", js)
+
+
 if __name__ == '__main__':
     unittest.main()

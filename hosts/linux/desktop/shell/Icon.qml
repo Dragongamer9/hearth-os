@@ -35,7 +35,11 @@ Item {
         anchors.fill: parent
         // Drawn in exactly its colour (your accent, light mode's dark text) from icon-data.js; the tone files are
         // the fallback for an icon that isn't in it.
-        source: IconData.icons[root.file] ? "data:image/svg+xml;utf8," + encodeURIComponent(IconData.icons[root.file].split("{c}").join(root.hex))
+        // Nothing is loaded while it's hidden: menus keep an Icon next to each app's own picture and show one or the
+        // other, and the hidden one asked for "icons/<app id>-light.svg", which doesn't exist (hundreds of "Cannot
+        // open" warnings in every log).
+        source: !root.visible ? ""
+            : IconData.icons[root.file] ? "data:image/svg+xml;utf8," + encodeURIComponent(IconData.icons[root.file].split("{c}").join(root.hex))
             : Qt.resolvedUrl("icons/" + root.file + "-" + root.tone + ".svg")
         sourceSize: Qt.size(Math.ceil(root.size * 2), Math.ceil(root.size * 2))
         smooth: true
