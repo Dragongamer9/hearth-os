@@ -72,6 +72,10 @@ pub fn request_with(method: &str, path: &str, body: Option<&Value>, timeout: Dur
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
+/// Is Handheld Daemon's API there at all (a handheld it handles)? Laptops and desktops have hhd.service enabled but
+/// no API socket; Hearth then doesn't ask it for anything (gamemode.rs overlay keeper).
+pub fn socket_present() -> bool { std::path::Path::new(SOCKET).exists() }
+
 /// Is Handheld Daemon running here? Extra multi-seat players leave the shared service alone.
 pub fn available() -> bool {
     std::env::var_os("HEARTH_SEAT").is_none() && std::path::Path::new(SOCKET).exists() && request("GET", "/api/v1/version", None).is_ok()

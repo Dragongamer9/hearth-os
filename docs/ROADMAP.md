@@ -7,6 +7,19 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Bug hunt
+
+- [x] Mods: Play through Hearth Mod Organizer (a Wabbajack list, or your own instance) now ends when the game does. It used to wait forever for the overlay's own helper (fuse-overlayfs), so the mods stayed laid over the game and every later Play, from Game Mode too, said "The game is running through the organizer: close it first" (the owner's Tuxborn log). CI now runs the real overlay test (needs testing on a device)
+- [x] Mods: a deploy from before a restart is never taken as still running (the process number may belong to another Hearth Mods after a restart) (needs testing on a device)
+- [x] Wabbajack lists: their Proton folder is set up with Hearth's own umu-launcher (Hearth OS has none on the system, so the Windows parts these lists need were never installed) and with the Proton every later start uses: the GE-Proton built into Hearth OS for a new list, kept for that list; a list set up before keeps the Proton it was made with. Mod Organizer 2's fallback entry names umu and the Proton in full (needs testing on a device)
+- [x] Mods: modded starts pick their Proton the way Hearth Games does (the Proton detector: what worked, Hearth's table, the built-in GE-Proton), keep a Steam game's own Proton for its Steam folder, and log Proton without its two heaviest channels (they slowed games with many SKSE plugins down) (needs testing on a device)
+- [x] Desktop Mode: Alt+Tab's list no longer has the "icon" field the image's labwc rejects at every start ("bad windowSwitcher field 'icon'") (needs testing on a device)
+- [x] Send logs: "System version" no longer runs bootc without root or rpm-ostree on Debian (the two errors in every report); a new "Updates and the automatic fallback" section shows the fallback's count, whether it went back, and what the fallback, ostree's finalizing and the boot menu said this start and the one before (needs testing on a device)
+- [x] Automatic fallback: coming back from hibernation ("Turn off and keep games", "Restart and keep games") isn't counted as a start any more. GRUB counts the way back; two hibernations left the count at 2, so the next real start (the one applying an update) went to the previous version and made it the default: one way a downloaded update never starts (needs testing on a device)
+- [x] Hearth's Game Mode on PCs without Handheld Daemon (laptops, desktops): no more asking HHD for its overlay app every few seconds; Quick Access opens Hearth's own straight away (needs testing on a device)
+- [x] On-screen keyboard: no warnings for its settings files before anything is saved (real read errors still show) (needs testing on a device)
+- [x] Home server AI service: one that can't run on this PC stops after 5 tries in 10 minutes instead of restarting every 10 seconds forever; starting it from Settings is a fresh try (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

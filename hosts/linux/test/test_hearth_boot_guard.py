@@ -179,6 +179,49 @@ class Story(unittest.TestCase):
             G.cmd_good()
             self.assertEqual(G.read_env(f'{d}/grub2/grubenv')['hearth_tries'], '0')
 
+    def test_hibernations_never_send_the_update_to_the_previous_version(self):
+        # Bug hunt: GRUB runs on the way back from hibernation ("Turn off and keep games") and counts it as a start.
+        # Two hibernations after a good start left hearth_tries at 2, so the next real start (the one applying an
+        # update) went to the previous version and `good` made that the default. `resumed` (hearth-resumed's post
+        # hook after a hibernation) puts the count back.
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(f'{d}/grub2'); os.makedirs(f'{d}/loader/entries')
+            open(f'{d}/grub2/grub.cfg', 'w').close()
+            for n in (1, 2):
+                open(f'{d}/loader/entries/ostree-{n}.conf', 'w').close()
+            G.BOOT, G.OFF = d, f'{d}/no-guard'
+            G.fstype = lambda p: 'ext4'
+            G.cmd_write()
+            envf = f'{d}/grub2/grubenv'
+            env = G.read_env(envf)
+            _, env = grub_play(env)                      # a real start...
+            env.update({'hearth_tries': '0', 'hearth_fellback': '0'})   # ...that counted as good
+            for _ in range(2):                           # two hibernations: GRUB counts each way back
+                _, env = grub_play(env)
+                G.write_env(envf, env)
+                G.cmd_resumed()
+                env = G.read_env(envf)
+                self.assertEqual(env['hearth_tries'], '0')
+            d0, env = grub_play(env)                     # the update's start: still the new version
+            self.assertEqual(d0, 0)
+            # A start that was the fallback is left to `good`.
+            G.write_env(envf, {'hearth_tries': '0', 'hearth_fellback': '1'})
+            G.cmd_resumed()
+            self.assertEqual(G.read_env(envf)['hearth_fellback'], '1')
+            # Off switch: nothing touched.
+            G.write_env(envf, {'hearth_tries': '1', 'hearth_fellback': '0'})
+            open(G.OFF, 'w').close()
+            self.assertEqual(G.main(['x', 'resumed']), 0)
+            self.assertEqual(G.read_env(envf)['hearth_tries'], '1')
+
+    def test_the_sleep_hook_calls_resumed_only_after_hibernation(self):
+        hook = (PATH.parents[2] / 'lib' / 'systemd' / 'system-sleep' / 'hearth-resumed').read_text()
+        self.assertIn('hearth-boot-guard resumed', hook)
+        case = hook.split('case "$2" in', 1)[1].split('esac', 1)[0]
+        self.assertIn('hibernate|hybrid-sleep|suspend-then-hibernate)', case)
+        self.assertNotIn('suspend)', case.replace('suspend-then-hibernate)', ''))
+        self.assertTrue(os.access(PATH.parents[2] / 'lib' / 'systemd' / 'system-sleep' / 'hearth-resumed', os.X_OK))
+
 
 if __name__ == '__main__':
     unittest.main()

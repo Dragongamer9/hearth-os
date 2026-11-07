@@ -277,6 +277,18 @@ pub fn decky_plugin_updates() -> String {
 
 /// The report: about the device, Hearth's logs, and what the system says about the parts that usually go wrong
 /// (controller service, power, gamescope, memory).
+/// The deployments, without root and without asking for a password (logs.rs "System version").
+pub const SYSTEM_VERSION_SH: &str = "if [ \"$(id -u)\" = 0 ] && command -v bootc >/dev/null 2>&1; then bootc status --format humanreadable 2>&1 || bootc status 2>&1; \
+elif command -v rpm-ostree >/dev/null 2>&1; then rpm-ostree status 2>&1; \
+elif command -v ostree >/dev/null 2>&1; then ostree admin status 2>&1; \
+else echo 'no bootc, rpm-ostree or ostree here'; fi; ls /ostree/deploy/*/deploy 2>&1 | head -8";
+
+/// The automatic fallback's state (logs.rs "Updates and the automatic fallback"): all readable without root.
+pub const BOOT_FALLBACK_SH: &str = "grep -aE '^hearth_(tries|fellback)=' /boot/grub2/grubenv 2>&1; \
+for f in /var/lib/hearth/boot-fallback.json /var/lib/hearth/boot-good.json; do echo \"$f: $(cat \"$f\" 2>&1)\"; done; \
+ls /etc/hearth/no-boot-guard /etc/hearth/no-auto-update /run/ostree/staged-deployment 2>/dev/null; \
+for b in -1 0; do echo \"--- start $b\"; journalctl -b \"$b\" --no-pager -o short-iso -n 60 -u hearth-boot-guard -u hearth-boot-good -u ostree-finalize-staged -u hearth-bls-grub -u bootc-fetch-apply-updates -t hearth-boot-guard 2>&1 | tail -60; done";
+
 pub fn report(version: &str) -> String {
     let data = crate::paths::data_dir();
     let run = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
@@ -291,7 +303,14 @@ pub fn report(version: &str) -> String {
     // Decky plugin updates (hearth-decky plugins-*, docs/PLUGIN-UPDATES.md): installed versions, built-in or downloaded,
     // the last check, the last error and any plugin that was put back because it didn't load.
     section("Decky plugin updates", decky_plugin_updates());
-    section("System version (bootc)", sh("{ bootc status --format humanreadable || bootc status || rpm-ostree status; } 2>&1; ls /ostree/deploy/*/deploy 2>&1 | head -8"));
+    // bootc status needs root ("This command must be executed as the root user" in every report) and Hearth OS on
+    // Debian has no rpm-ostree ("rpm-ostree: not found"): as you, ostree's own status (read-only, no root needed);
+    // bootc only when the report runs as root, rpm-ostree only where it's installed.
+    section("System version (bootc)", sh(SYSTEM_VERSION_SH));
+    // Why an update didn't start (bug hunt: "downloads updates but doesn't boot into them"): the automatic fallback's
+    // count and whether it went back (hearth-boot-guard), and what the fallback, ostree's finalizing of a staged
+    // update and the boot menu said this start and the one before.
+    section("Updates and the automatic fallback", sh(BOOT_FALLBACK_SH));
     // Hearth's log: the controller input lines first (the jumping-selection reports), then the newest lines.
     // Thousands of identical "library.downloads ok" lines from the old Electron app are left out.
     if let Ok(t) = std::fs::read_to_string(data.join("bridge.log")) {

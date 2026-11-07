@@ -15,6 +15,13 @@ case "$1" in
       printf '%s\n' "$up" > /run/hearth-resumed.tmp 2>/dev/null && chmod 644 /run/hearth-resumed.tmp 2>/dev/null && mv -f /run/hearth-resumed.tmp /run/hearth-resumed 2>/dev/null
     fi
     logger -t hearth-sleep "woke up ($2)" 2>/dev/null || true
+    # Back from hibernation: GRUB counted the way back as a start; the automatic fallback (hearth-boot-guard) puts
+    # its count back to 0, so hibernations never send the next real start to the previous version.
+    case "$2" in
+      hibernate|hybrid-sleep|suspend-then-hibernate)
+        [ -x /usr/libexec/nimbus/hearth-boot-guard ] && timeout 20 /usr/libexec/nimbus/hearth-boot-guard resumed 2>&1 | logger -t hearth-boot-guard 2>/dev/null || true
+        ;;
+    esac
     ;;
 esac
 exit 0

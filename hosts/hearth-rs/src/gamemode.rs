@@ -1103,6 +1103,7 @@ impl GameMode {
             let mut limit = wait.min(APP_WAIT_MS.max(ask_at));
             let mut asked = false;
             let mut hhd_answered = false;
+            let mut hhd_missing = false;
             let mut seen = 0u64;
             loop {
                 if me.waiting.load(Ordering::SeqCst) != g { return; }   // pressed again, or a newer press waits
@@ -1119,7 +1120,13 @@ impl GameMode {
                         break;
                     }
                 } else { seen = 0; }
-                if !asked && t >= ask_at {
+                if !asked && t >= ask_at && !hearth_core::hhd::socket_present() {
+                    // No Handheld Daemon here (a laptop or desktop: hhd.service runs but has nothing to handle, so
+                    // its API isn't there): nothing to ask or wait for; Hearth's own Quick Access straight away.
+                    asked = true;
+                    limit = t;
+                    hhd_missing = true;
+                } else if !asked && t >= ask_at {
                     asked = true;
                     me.note_app_ask();
                     match hearth_core::hhd::start_overlay_app() {
@@ -1134,6 +1141,11 @@ impl GameMode {
                 std::thread::sleep(Duration::from_millis(100));
             }
             let secs = now().saturating_sub(start) as f64 / 1000.0;
+            if hhd_missing {
+                log(&format!("overlay: Handheld Daemon isn't running on this device; Hearth's own Quick Access ({what})"));
+                fallback(&me);
+                return;
+            }
             let why = if !hhd_answered { "Handheld Daemon couldn't be asked to start it".to_string() }
                 else if !hearth_core::overlay_link::desktop_mode_overlays().is_empty() { "HHD's overlay app is still running for Desktop Mode and didn't end".to_string() }
                 else { "HHD was asked to start it and it didn't connect".to_string() };
@@ -1186,6 +1198,13 @@ impl GameMode {
             let mut tick = 0u64;
             loop {
                 if !me.hhd() { return; }
+                // No Handheld Daemon API on this device (laptops and desktops): nothing to keep alive and nobody to
+                // ask, so no "couldn't be asked" lines every few seconds. Checked again in case HHD starts late.
+                if !hearth_core::overlay_link::connected() && !hearth_core::hhd::socket_present() {
+                    away_since = 0;
+                    std::thread::sleep(Duration::from_secs(5));
+                    continue;
+                }
                 if hearth_core::overlay_link::connected() {
                     away_since = 0; told_dead = false;
                     me.app_asks.store(0, Ordering::SeqCst);

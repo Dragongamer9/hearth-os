@@ -82,8 +82,10 @@ Singleton {
     FileView {
         path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/osk.json"
         watchChanges: true
+        // Not there yet is normal (nothing saved yet): only real read errors are printed.
+        printErrors: false
         onFileChanged: reload()
         onLoaded: { try { const o = JSON.parse(text()); root.chosen = o && typeof o.deskTheme === "string" ? o.deskTheme : ""; } catch (e) { root.chosen = ""; } }
-        onLoadFailed: root.chosen = ""
+        onLoadFailed: error => { if (typeof FileViewError === "undefined" || error !== FileViewError.FileNotFound) console.warn("OskThemes: couldn't read " + path + ": " + error); root.chosen = ""; }
     }
 }

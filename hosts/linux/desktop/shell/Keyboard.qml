@@ -180,15 +180,20 @@ PanelWindow {
         id: settingsFile
         path: root.cfgDir + "/nimbus/osk.json"
         watchChanges: true
+        // Not there yet is normal (nothing saved yet): only real read errors are printed.
+        printErrors: false
         onFileChanged: reload()
         onLoaded: { try { Osk.HearthOSK.configure({ settings: JSON.parse(text()) }); } catch (e) {} root.settingsLoaded = true; root.needWords(); }
-        onLoadFailed: { root.settingsLoaded = true; root.needWords(); }
+        onLoadFailed: error => { if (typeof FileViewError === "undefined" || error !== FileViewError.FileNotFound) console.warn("Keyboard: couldn't read " + path + ": " + error); root.settingsLoaded = true; root.needWords(); }
     }
     FileView {
         id: labwcEnv
         path: root.cfgDir + "/labwc/environment"
         watchChanges: true
+        // Not there yet is normal (nothing saved yet): only real read errors are printed.
+        printErrors: false
         onFileChanged: reload()
+        onLoadFailed: error => { if (typeof FileViewError === "undefined" || error !== FileViewError.FileNotFound) console.warn("Keyboard: couldn't read " + path + ": " + error); }
         onLoaded: {
             const m = /^\s*XKB_DEFAULT_LAYOUT=["']?([^"'\n]*)/m.exec(text());
             if (m && m[1].trim()) { Osk.HearthOSK.configure({ systemLayouts: m[1].split(",").map(x => x.trim()).filter(x => x) }); root.needWords(); }
@@ -200,6 +205,8 @@ PanelWindow {
         id: learnedFile
         path: root.dataDir + "/nimbus/osk-words.json"
         watchChanges: true
+        // Not there yet is normal (nothing saved yet): only real read errors are printed.
+        printErrors: false
         onFileChanged: reload()
         onLoaded: {
             if (saveLater.running) return;
@@ -207,7 +214,7 @@ PanelWindow {
             root.learnedLoaded = true;
         }
         // Gone (Game Mode's Clear learned words): forgotten here too.
-        onLoadFailed: { if (root.learnedLoaded) Osk.HearthOSK.importLearned({ learned: {}, next: {}, recentEmoji: [] }); root.learnedLoaded = true; }
+        onLoadFailed: error => { if (typeof FileViewError === "undefined" || error !== FileViewError.FileNotFound) console.warn("Keyboard: couldn't read " + path + ": " + error); if (root.learnedLoaded) Osk.HearthOSK.importLearned({ learned: {}, next: {}, recentEmoji: [] }); root.learnedLoaded = true; }
     }
     Timer {
         id: saveLater

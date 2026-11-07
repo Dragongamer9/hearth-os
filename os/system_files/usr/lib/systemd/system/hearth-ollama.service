@@ -9,6 +9,10 @@ Description=Hearth home server: the AI service (Ollama)
 ConditionPathExists=/var/lib/hearth/apps/ollama/bin/ollama
 ConditionPathExists=/etc/systemd/system/hearth-ollama.service.d/hearth.conf
 After=network.target tailscaled.service
+# A service that can't run on this PC (it ends with an error at every start) is tried 5 times in 10 minutes, then
+# left stopped (failed) until the PC restarts or Settings starts it again: before, it restarted every 10 s forever.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 ExecStart=/var/lib/hearth/apps/ollama/bin/ollama serve
@@ -19,7 +23,7 @@ Environment=HOME=/var/lib/hearth-ollama
 Environment=OLLAMA_MODELS=/var/lib/hearth-ollama/models
 Environment=OLLAMA_NOPRUNE=1
 Restart=on-failure
-RestartSec=10
+RestartSec=20
 Nice=5
 NoNewPrivileges=yes
 ProtectSystem=strict
