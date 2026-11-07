@@ -1022,6 +1022,33 @@ AccuracySec=30s
 WantedBy=timers.target
 UNIT
 ln -sf ../hearth-counter.timer /usr/lib/systemd/user/timers.target.wants/hearth-counter.timer
+# Hearth Files' "Connect automatically" (hearth_netshares.py, docs/HEARTH-LINK.md): the shared folders you picked are
+# opened in the background 30 seconds after signing in (Steam Game Mode and Desktop Mode alike) and every 3 minutes
+# after, so a device that was asleep is picked up when it wakes. With none picked it ends at once. It's a user timer of
+# its own: nothing in signing in, Game Mode or Steam waits for it, and its trouble stays its own.
+cat > /usr/lib/systemd/user/hearth-files-autoconnect.service <<'UNIT'
+[Unit]
+Description=Hearth Files: open the shared folders that connect by themselves
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files net-autoconnect
+TimeoutStartSec=90
+Nice=10
+UNIT
+cat > /usr/lib/systemd/user/hearth-files-autoconnect.timer <<'UNIT'
+[Unit]
+Description=Hearth Files: connect shared folders by themselves while you're signed in
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=3min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+ln -sf ../hearth-files-autoconnect.timer /usr/lib/systemd/user/timers.target.wants/hearth-files-autoconnect.timer
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*

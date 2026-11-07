@@ -18,8 +18,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] **Windows apps** with Proton built in, offline: the newest GE-Proton only in the image; older versions downloaded only when something needs them
 - [ ] **Proton detector**: picks the right Proton for each game or app by itself
 - [ ] **Server follow-ups**, the **Server apps catalog** and the other server ideas
-- [ ] **Connect network drives automatically**: a "Connect automatically" switch per share in Files; asleep or offline devices are skipped without holding up sign-in
-- [ ] **AI video** in Hearth's ComfyUI: Wan 2.2 sized to the PC's graphics memory (GGUF on 12 GB), one-click download
+- [x] **Connect network drives automatically**: a "Connect automatically" switch per share in Files (its menu: right-click, press and hold or the menu button); those shares open by themselves 30 seconds after signing in and every 3 minutes after, in Steam Game Mode and Desktop Mode, with the password the keyring remembers; asleep or offline devices are skipped quietly and picked up when they're back, one that needs signing in waits until you open it; nothing in signing in, Game Mode or Steam waits for it (docs/HEARTH-LINK.md) (needs testing on a device)
+- [x] **AI video** in Hearth's ComfyUI: Add video in AI pictures' settings gets the GGUF loader and Wan 2.2 14B sized to the graphics card (Q4_K_M from 12 GB, Q3_K_M from 8 GB), with its text encoder and VAE, each file checked by size and SHA-256 before it's used, resuming where it stopped; picture to video only (about 25 GB) or both (about 45 GB); Remove takes away only what Hearth downloaded (docs/HOME-SERVER.md) (needs testing on a device)
 
 - [x] The controller works on Server mode's dashboard: 1.6 switched it off as it started, so only Guide did anything (A, B, X, Y, the D-pad and ☰ work again); and the controller helper starts again if it ever closes (needs testing on a device)
 - [x] Server mode's settings page can be found: a Server mode card on Settings › Home server, and the greyed-out Server mode in System › Startup opens it (1.6 only reached it through Settings' search) (needs testing on a device)

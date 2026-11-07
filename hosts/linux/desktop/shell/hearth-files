@@ -62,6 +62,10 @@ the sidebar, found by themselves; opening one mounts it with gvfs.
   hearth-files net-open JSON [--user USER] [--remember]   mount one ({device, name, share, home, away, wake}; the
                                         password, if any, comes as {"password": ...} in HEARTH_INPUT, never on the
                                         command line): {ok, path} or {ok: false, need, error}
+  hearth-files net-auto JSON on|off     a shared folder connects by itself after signing in, or not (kept in
+                                        files.json "autoConnect": where to find it, never a password)
+  hearth-files net-autoconnect          open the ones that connect by themselves, in the background
+                                        (hearth-files-autoconnect.timer: 30 s after signing in, then every 3 minutes)
   hearth-files net-wake DEVICE          wake a paired device (Hearth Storage's Wake-on-LAN)
   hearth-files devices-refresh          look for them now (the sidebar asks for this by itself once a minute)
 
@@ -3027,7 +3031,8 @@ def device_places(now=None):
     # (Only in the desktop session: checks that call places() don't start looking.)
     if now - (st.get('at') or 0) > ns.STALE_S and os.environ.get('WAYLAND_DISPLAY') and not os.environ.get('HEARTH_FILES_NO_DISCOVERY'):
         start_refresh(ns)
-    return ns.sidebar(st, True)
+    auto = prefs_get().get('autoConnect')
+    return ns.sidebar(st, True, set(auto) if isinstance(auto, dict) else set())
 
 
 def start_refresh(ns):
@@ -3062,7 +3067,7 @@ def devices_refresh():
     return {'devices': len(new['devices']), 'servers': len(new['servers'])}
 
 
-def net_open(text, rest):
+def net_parse(text):
     try:
         net = json.loads(text)
     except ValueError:
@@ -3074,6 +3079,58 @@ def net_open(text, rest):
             raise Fail('Not a shared folder')
     if '/' in (net.get('share') or ''):
         raise Fail('Not a shared folder')
+    return net
+
+
+def net_auto(text, on):
+    """Connect automatically, for one shared folder: kept in files.json "autoConnect" (merged under the settings lock,
+    so nothing else in Hearth Files' settings changes)."""
+    net = net_parse(text)
+    if not net.get('share'):
+        raise Fail('Pick a shared folder (not a whole computer)')
+    ns = netshares()
+    key, entry = ns.share_key(net), ns.auto_entry(net)
+
+    def apply(cur):
+        auto = cur.get('autoConnect') if isinstance(cur.get('autoConnect'), dict) else {}
+        auto = dict(auto)
+        if on:
+            auto[key] = entry
+        else:
+            auto.pop(key, None)
+        cur['autoConnect'] = auto
+    if hsio:
+        hsio.update_json(prefs_file(), apply, None)
+    else:
+        cur = prefs_get()
+        apply(cur)
+        f = prefs_file()
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with open(f + '.tmp', 'w', encoding='utf-8') as fh:
+            json.dump(cur, fh)
+        os.replace(f + '.tmp', f)
+    if on:
+        ns.forget_gave_up(key)
+    return {'ok': True, 'key': key, 'on': bool(on)}
+
+
+def net_autoconnect():
+    """The shared folders that connect by themselves, opened now (never asks: one that needs signing in waits until
+    you open it yourself). Nothing to do without any, or with HEARTH_NO_AUTOCONNECT=1."""
+    if os.environ.get('HEARTH_NO_AUTOCONNECT') == '1':
+        return {'skipped': 'off'}
+    auto = prefs_get().get('autoConnect')
+    if not isinstance(auto, dict) or not auto:
+        return {'skipped': 'none'}
+    try:
+        ns = netshares()
+    except ImportError:
+        return {'skipped': 'no helper'}
+    return {'results': ns.autoconnect(auto)}
+
+
+def net_open(text, rest):
+    net = net_parse(text)
     user = rest[rest.index('--user') + 1] if '--user' in rest and rest.index('--user') + 1 < len(rest) else None
     pw = None
     raw = os.environ.get('HEARTH_INPUT', '')
@@ -3082,7 +3139,11 @@ def net_open(text, rest):
             pw = (json.loads(raw) or {}).get('password')
         except ValueError:
             pw = None
-    return netshares().net_open(net, user=user, password=pw if isinstance(pw, str) and pw else None, remember='--remember' in rest)
+    ns = netshares()
+    r = ns.net_open(net, user=user, password=pw if isinstance(pw, str) and pw else None, remember='--remember' in rest)
+    if r.get('ok') and net.get('share'):
+        ns.forget_gave_up(ns.share_key(net))      # opened by hand: connecting by itself tries it again
+    return r
 
 
 def storage_places():
@@ -3207,6 +3268,10 @@ def cmd(argv):
         out = places()
     elif c == 'net-open' and rest:
         out = net_open(rest[0], rest[1:])
+    elif c == 'net-auto' and len(rest) == 2 and rest[1] in ('on', 'off'):
+        out = net_auto(rest[0], rest[1] == 'on')
+    elif c == 'net-autoconnect':
+        out = net_autoconnect()
     elif c == 'net-wake' and len(rest) == 1:
         if not re.fullmatch(r'[0-9a-f]{16,128}', rest[0]):
             raise Fail('Not a device')

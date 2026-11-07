@@ -1097,6 +1097,8 @@ Scope {
         if (!p.path && p.device) items.push({ id: "p-mount", label: "Mount" });
         if (p.section === "drives" && p.path) items.push({ id: "p-unmount", label: "Unmount" }, { id: "p-eject", label: "Safely remove" });
         if (p.bookmark) items.push({ id: "p-unbookmark", label: "Remove bookmark", danger: true });
+        // A device's shared folder: open it now, or have it connect by itself after signing in (off until turned on).
+        if (p.net && p.net.share) items.push({ id: "p-open", label: "Open" }, { id: "p-auto", label: (p.auto ? "✓  " : "     ") + "Connect automatically" });
         if (p.kind === "trash") items.push({ id: "empty", label: "Empty Trash", danger: true });
         if (p.path) items.push(sep(), { id: "p-props", label: "Properties" });
         showMenu(p.label, items, -1, -1);
@@ -1276,6 +1278,20 @@ Scope {
         case "p-newtab": if (places[placeIndex]) newTab(places[placeIndex].path); break;
         case "p-props": if (places[placeIndex]) properties([places[placeIndex].path]); break;
         case "p-mount": if (places[placeIndex]) mountPlace(places[placeIndex], false); break;
+        case "p-auto": {
+            // Kept in Hearth Files' settings (files.json "autoConnect"), never a password: it uses what you signed in
+            // with (the keyring). Turned on: it's opened in the background right away too.
+            const p = places[placeIndex];
+            if (!p || !p.net) break;
+            const on = !p.auto;
+            call(["net-auto", JSON.stringify(p.net), on ? "on" : "off"], (r, err) => {
+                if (err) return say(err, true);
+                say(on ? "“" + p.label + "” connects by itself after you sign in. Open it once to sign in if it asks" : "“" + p.label + "” no longer connects by itself");
+                if (on) Quickshell.execDetached(["python3", helper, "net-autoconnect"]);
+                refreshPlaces();
+            });
+            break;
+        }
         case "p-unbookmark": {
             const p = places[placeIndex];
             if (p) call(["bookmark-remove", p.path], (r, err) => { if (err) say(err, true); refreshPlaces(); });

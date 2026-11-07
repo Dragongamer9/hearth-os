@@ -75,6 +75,9 @@ everything again.
   hearth-home-server pictures-install | pictures-update     ComfyUI into ~/ComfyUI (only when asked), in its own unit
   hearth-home-server pictures-remove [models sure really-sure]   the app goes; models (unless both confirmations), your
                                                 pictures and workflows stay
+  hearth-home-server video-install [i2v-only] | video-remove   Wan 2.2 video for that ComfyUI (the GGUF loader, the
+                                                14B models sized by the graphics card, checked by sha256); remove takes
+                                                away only what Hearth put there
   hearth-home-server pictures-takeover | pictures-giveback  your own comfyui.service (from your script) off, Hearth's on;
                                                 or back the way it was
   hearth-home-server voices-install | voices-remove         Kokoro-FastAPI's image (pinned digest) in your rootless Podman
@@ -2380,6 +2383,236 @@ def comfy_giveback():
     return {'givenBack': True}
 
 
+# ------------------------------------------------------------------ AI video (Wan 2.2 in ComfyUI)
+#
+# Settings › Home server › Services › AI pictures › Video: Wan 2.2 for the ComfyUI above, only when asked, in its own
+# unit like the install (start_job). What goes where (the same as a hand install):
+#   - the ComfyUI-GGUF node (city96, a pinned commit) into ~/ComfyUI/custom_nodes/ComfyUI-GGUF, with its requirements;
+#   - Wan 2.2 A14B image-to-video and text-to-video, high noise and low noise, as GGUF from QuantStack into models/unet,
+#     sized by the graphics card: 12 GB or more Q4_K_M (about 9.7 GB each), 8 to 11 GB Q3_K_M (about 7.2 GB each);
+#     under 8 GB it says it won't fit;
+#   - its text encoder (umt5_xxl_fp8_e4m3fn_scaled) and VAE (wan_2.1_vae) from Comfy-Org into models/text_encoders and
+#     models/vae.
+# Each file's size and sha256 come from Hugging Face's own listing when it's downloaded, and the file is checked
+# against them before it's put in place (a .part file beside it resumes an interrupted download). Files already
+# there (a hand install) are kept and counted. Nothing starts by itself: a running ComfyUI is restarted once, to see
+# the node. Other LoRAs or models can be added by hand into ~/ComfyUI/models (loras, unet...). "Remove" takes away only
+# what Hearth put there.
+
+VIDEO_NODE_REPO = 'https://github.com/city96/ComfyUI-GGUF.git'
+VIDEO_NODE_COMMIT = '6ea2651e7df66d7585f6ffee804b20e92fb38b8a'
+HF = 'https://huggingface.co'
+VIDEO_UNET = (('QuantStack/Wan2.2-I2V-A14B-GGUF', 'i2v'), ('QuantStack/Wan2.2-T2V-A14B-GGUF', 't2v'))
+VIDEO_SHARED = (('Comfy-Org/Wan_2.1_ComfyUI_repackaged', 'split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors', 'text_encoders'),
+                ('Comfy-Org/Wan_2.1_ComfyUI_repackaged', 'split_files/vae/wan_2.1_vae.safetensors', 'vae'))
+
+
+def video_quant(vram_gb):
+    """The Wan 2.2 14B size for this graphics card, or None when it won't fit."""
+    if vram_gb >= 11.5:
+        return 'Q4_K_M'
+    if vram_gb >= 7.5:
+        return 'Q3_K_M'
+    return None
+
+
+def gpu_vram_gb():
+    """The graphics card's memory in GB (nvidia-smi; else what ComfyUI said), 0 when unknown."""
+    if have('nvidia-smi'):
+        code, out = cmd(['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'], 15)
+        try:
+            return round(max(int(x.strip()) for x in out.splitlines() if x.strip()) / 1024, 1) if code == 0 else 0
+        except ValueError:
+            pass
+    stats = http_json('GET', 'http://127.0.0.1:%d/system_stats' % COMFY_PORT, timeout=3)
+    try:
+        return round(int(stats['devices'][0]['vram_total']) / (1 << 30), 1)
+    except (TypeError, KeyError, IndexError, ValueError):
+        return 0
+
+
+def hf_list(repo, folder):
+    """Hugging Face's listing of a folder: [{path, size, sha256}] (sha256 of the file itself, from its LFS pointer)."""
+    import urllib.request
+    url = '%s/api/models/%s/tree/main/%s' % (HF, repo, folder)
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'hearth-os'}), timeout=60) as r:
+        items = json.loads(r.read(4 << 20))
+    out = []
+    for it in items if isinstance(items, list) else []:
+        lfs = it.get('lfs') or {}
+        if it.get('type') == 'file':
+            out.append({'path': it.get('path', ''), 'size': int(lfs.get('size') or it.get('size') or 0), 'sha256': str(lfs.get('oid') or '')})
+    return out
+
+
+def video_files(quant, i2v_only=False, listing=hf_list):
+    """[{repo, path, folder, name, size, sha256}] for this size: the four 14B files (two with i2v_only) and the two
+    shared ones. Only these repositories and names; anything not listed the way Hearth expects stops it."""
+    want = []
+    for repo, kind in VIDEO_UNET:
+        if i2v_only and kind == 't2v':
+            continue
+        for noise in ('HighNoise', 'LowNoise'):
+            hits = [f for f in listing(repo, noise)
+                    if re.fullmatch(r'%s/Wan2\.2-(I2V|T2V)-A14B-%s-%s\.gguf' % (noise, noise, quant), f['path'])]
+            if len(hits) != 1:
+                raise Fail('Hugging Face doesn\'t list %s\'s %s %s file the way Hearth expects: nothing was downloaded' % (repo, noise, quant))
+            want.append(dict(hits[0], repo=repo, folder='unet'))
+    for repo, path, folder in VIDEO_SHARED:
+        hits = [f for f in listing(repo, path.rsplit('/', 1)[0]) if f['path'] == path]
+        if len(hits) != 1:
+            raise Fail('Hugging Face doesn\'t list %s the way Hearth expects: nothing was downloaded' % path)
+        want.append(dict(hits[0], repo=repo, folder=folder))
+    for f in want:
+        f['name'] = f['path'].rsplit('/', 1)[-1]
+        if not re.fullmatch(r'[0-9a-f]{64}', f['sha256']) or f['size'] <= 0:
+            raise Fail('Hugging Face gave no checksum for %s: nothing was downloaded' % f['name'])
+    return want
+
+
+def sha256_file(path, start=None):
+    import hashlib
+    h = start or hashlib.sha256()
+    with open(path, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(8 << 20), b''):
+            h.update(chunk)
+    return h
+
+
+def fetch_file(f, dest, progress=lambda done: None, opener=None):
+    """Downloads one file to DEST.part (resuming what's there), checks its size and sha256, then puts it in place."""
+    import urllib.request
+    part = dest + '.part'
+    have_b = os.path.getsize(part) if os.path.isfile(part) else 0
+    if have_b > f['size']:
+        os.remove(part)
+        have_b = 0
+    if have_b < f['size']:
+        url = '%s/%s/resolve/main/%s' % (HF, f['repo'], f['path'])
+        req = urllib.request.Request(url, headers={'User-Agent': 'hearth-os', **({'Range': 'bytes=%d-' % have_b} if have_b else {})})
+        with (opener or urllib.request.urlopen)(req, timeout=120) as r:
+            if have_b and getattr(r, 'status', 200) != 206:
+                have_b = 0           # the server sent it all again: start over
+            with open(part, 'ab' if have_b else 'wb') as out:
+                done = have_b
+                for chunk in iter(lambda: r.read(4 << 20), b''):
+                    out.write(chunk)
+                    done += len(chunk)
+                    progress(done)
+    if os.path.getsize(part) != f['size']:
+        raise Fail('%s didn\'t download completely: try again (it carries on where it stopped)' % f['name'])
+    if sha256_file(part).hexdigest() != f['sha256']:
+        os.remove(part)
+        raise Fail('%s didn\'t match its checksum: it was removed, try again' % f['name'])
+    os.replace(part, dest)
+
+
+def video_job(i2v_only=False, listing=hf_list, fetch=fetch_file):
+    """The download itself, in its own unit. Anything wrong: you're told why; what was already there stays."""
+    name = 'comfyvideo'
+    d = comfy_dir()
+    step = lambda s, pct: ai_state_set(name, step=s, progress=pct)
+    try:
+        if not comfy_installed(d):
+            raise Fail('Install AI pictures (ComfyUI) first')
+        vram = gpu_vram_gb()
+        quant = video_quant(vram)
+        if not quant:
+            raise Fail('Wan 2.2 video needs a graphics card with at least 8 GB of memory (this one has %s GB)' % (vram or 'an unknown amount of'))
+        step('looking up the files', 2)
+        files = video_files(quant, i2v_only, listing)
+        missing = [f for f in files if not os.path.isfile(os.path.join(d, 'models', f['folder'], f['name']))]
+        need = sum(f['size'] - (os.path.getsize(os.path.join(d, 'models', f['folder'], f['name'] + '.part'))
+                                if os.path.isfile(os.path.join(d, 'models', f['folder'], f['name'] + '.part')) else 0) for f in missing)
+        if free_gb(me()[1]) < need / (1 << 30) + 2:
+            raise Fail('Not enough free space in your Home: Wan 2.2 needs about %d GB more' % (need // (1 << 30) + 2))
+        node = os.path.join(d, 'custom_nodes', 'ComfyUI-GGUF')
+        st = ai_state().get(name) or {}
+        placed = list(st.get('files') or [])
+        if not os.path.isdir(node):
+            step('getting the GGUF loader for ComfyUI', 4)
+            new = node + '.hearth-new'
+            if os.path.isdir(new) and not os.path.islink(new):
+                shutil.rmtree(new)
+            os.makedirs(os.path.dirname(node), exist_ok=True)
+            code, out = cmd(['git', 'clone', '--filter=blob:none', '--no-checkout', VIDEO_NODE_REPO, new], 900)
+            if code == 0:
+                code, out = cmd(['git', '-C', new, 'checkout', '--detach', VIDEO_NODE_COMMIT], 300)
+            if code != 0:
+                shutil.rmtree(new, ignore_errors=True)
+                raise Fail('Couldn\'t get the GGUF loader: ' + out.strip()[-200:])
+            os.rename(new, node)
+            ai_state_set(name, hearthNode=True)
+        if os.path.isfile(os.path.join(node, 'requirements.txt')) and pip(d, ['show', 'gguf'], 120)[0] != 0:
+            step('installing what the GGUF loader needs', 6)
+            code, out = pip(d, ['install', '-r', os.path.join(node, 'requirements.txt')], 1800)
+            if code != 0:
+                raise Fail('The GGUF loader\'s requirements didn\'t install: ' + out.strip()[-200:])
+        total = sum(f['size'] for f in missing) or 1
+        base = [0]
+        for i, f in enumerate(missing):
+            folder = os.path.join(d, 'models', f['folder'])
+            os.makedirs(folder, exist_ok=True)
+            label = 'downloading %s (%d of %d)' % (f['name'], i + 1, len(missing))
+            last = [0.0]
+
+            def prog(done, f=f, label=label):
+                if time.time() - last[0] > 5:
+                    last[0] = time.time()
+                    step(label, 8 + int(90 * (base[0] + done) / total))
+            step(label, 8 + int(90 * base[0] / total))
+            fetch(f, os.path.join(folder, f['name']), prog)
+            base[0] += f['size']
+            placed.append(os.path.join('models', f['folder'], f['name']))
+            ai_state_set(name, files=sorted(set(placed)))
+        ai_state_set(name, installing=False, progress=100, step='', error='', quant=quant, vram=vram, i2vOnly=bool(i2v_only),
+                     files=sorted(set(placed)), expected=[os.path.join('models', f['folder'], f['name']) for f in files],
+                     at=int(time.time()))
+        if unit_active(AI_UNITS['comfyui'], user=True):
+            cmd(['systemctl', '--user', 'restart', AI_UNITS['comfyui']], 30)     # to load the GGUF loader
+        return {'installed': True, 'quant': quant}
+    except Fail as e:
+        ai_state_set(name, installing=False, error=str(e)[:300])
+        raise
+    except OSError as e:
+        ai_state_set(name, installing=False, error=('Download stopped: %s (try again: it carries on where it stopped)' % e)[:300])
+        raise Fail('Download stopped: %s' % e)
+
+
+def video_remove():
+    """Takes away only what Hearth put there: its model files and, if Hearth got it, the GGUF loader. Your own files,
+    LoRAs and pictures stay. Links are never followed."""
+    d = comfy_dir()
+    st = ai_state().get('comfyvideo') or {}
+    gone = 0
+    for rel in st.get('files') or []:
+        p = os.path.join(d, rel)
+        if '..' in rel.split('/') or not rel.startswith('models/'):
+            continue
+        for x in (p, p + '.part'):
+            if os.path.isfile(x) and not os.path.islink(x):
+                os.remove(x)
+                gone += 1
+    node = os.path.join(d, 'custom_nodes', 'ComfyUI-GGUF')
+    if st.get('hearthNode') and os.path.isdir(node) and not os.path.islink(node):
+        shutil.rmtree(node)
+    ai_state_set('comfyvideo', files=[], expected=[], hearthNode=None, quant=None, progress=0, step='', error='')
+    return {'removed': gone}
+
+
+def video_view(d=None, st=None):
+    """For the page: installed (all of this size's files there), working on it, the size, the card's memory."""
+    d = d or comfy_dir()
+    s = (st if st is not None else ai_state()).get('comfyvideo') or {}
+    expected = s.get('expected') or []
+    files = [f for f in expected if os.path.isfile(os.path.join(d, f))]
+    node = os.path.isdir(os.path.join(d, 'custom_nodes', 'ComfyUI-GGUF'))
+    return {'installed': bool(s.get('quant')) and node and bool(expected) and len(files) == len(expected),
+            'installing': bool(s.get('installing')) and time.time() - (s.get('started') or 0) < 4 * 3600,
+            'progress': s.get('progress', 0), 'step': s.get('step', ''), 'error': s.get('error', ''),
+            'quant': s.get('quant') or '', 'vram': s.get('vram') or 0, 'i2vOnly': bool(s.get('i2vOnly')), 'files': len(files)}
+
+
 def kokoro_job():
     """Kokoro-FastAPI's image pulled by its pinned digest (Podman checks the manifest and every layer against it)."""
     name = 'kokoro'
@@ -2490,6 +2723,7 @@ def home_ai_view(data=None, deep=True):
     k.update({'tag': KOKORO_TAG, 'pinned': bool(kokoro_ref()), 'podman': podman_ok(),
               'url': 'http://%s:%d' % (ts_dns, KOKORO_PORT) if ts_dns else '', 'local': 'http://localhost:%d' % KOKORO_PORT})
     if deep:
+        p['video'] = video_view(d, st)
         p['existing'] = is_comfy(d) and not (st.get('comfyui') or {}).get('hearthMade')
         p['owner'] = owner_comfy()
         p['git'] = have('git')
@@ -3470,6 +3704,16 @@ def main(argv):
             res = comfy_remove(models=False)
         elif a == ['pictures-remove', 'models', 'sure', 'really-sure']:
             res = comfy_remove(models=True)
+        elif a in (['video-install'], ['video-install', 'i2v-only']):
+            if not comfy_installed():
+                raise Fail('Install AI pictures (ComfyUI) first')
+            if not video_quant(gpu_vram_gb()):
+                raise Fail('Wan 2.2 video needs a graphics card with at least 8 GB of memory')
+            res = start_job('comfyvideo', ['video-job'] + a[1:])
+        elif a in (['video-job'], ['video-job', 'i2v-only']):
+            res = video_job(i2v_only=len(a) == 2)
+        elif a == ['video-remove']:
+            res = video_remove()
         elif a == ['pictures-takeover']:
             res = comfy_takeover()
         elif a == ['pictures-giveback']:

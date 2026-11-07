@@ -1343,6 +1343,23 @@ var ENTRIES = [
 "i": "folder"
 },
 {
+"t": "Add video (Wan 2.2)",
+"p": "hs-services",
+"i": "film"
+},
+{
+"t": "Add only picture to video (Wan 2.2)",
+"p": "hs-services",
+"d": "The same, without text to video: about 25 GB",
+"i": "image"
+},
+{
+"t": "Remove video (Wan 2.2)",
+"p": "hs-services",
+"d": "Only what Hearth downloaded for it goes (and the GGUF loader, if Hearth got it). Your own models, LoRAs and pictures stay",
+"i": "trash"
+},
+{
 "t": "Stop it while I play",
 "p": "hs-services",
 "d": "ComfyUI holds graphics memory: with Light mode on it stops when Game Mode or a game starts and starts again after. Off: it keeps the memory while you play",

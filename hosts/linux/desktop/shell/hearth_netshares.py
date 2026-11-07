@@ -13,6 +13,15 @@ Opening one mounts it with gvfs (`gio mount smb://host/share`), using the home n
 away, chosen by itself. The first time it asks for the user name and sharing password; "Remember" keeps the password
 in the system keyring (Secret Service, `secret-tool`, with gvfs's own network-password attributes, so gvfs finds it
 too), never in Hearth's files. The password reaches gio and secret-tool on their input, never a command line.
+
+Connect automatically (a shared folder's menu in Hearth Files; off for each until you turn it on): the shares you
+picked are kept in Hearth Files' own settings (files.json "autoConnect", written through hearth_settings_io: atomic,
+with .bak, merged), never a password. hearth-files-autoconnect.timer runs `hearth-files net-autoconnect` 30 seconds
+after signing in (Desktop Mode and Steam Game Mode alike) and every 3 minutes after: each picked share that isn't
+open yet is opened in the background with what you signed in with before (the keyring). A device that doesn't answer
+within a second or two is skipped quietly and tried again next time; one that needs a password or no longer has that
+share is left alone until you open it yourself (noted in $XDG_RUNTIME_DIR only). Nothing waits for it: it isn't
+part of signing in, Game Mode or Steam starting.
 """
 import json
 import os
@@ -247,7 +256,24 @@ def split_uri(uri):
 
 # ------------------------------------------------------------------ the sidebar
 
-def sidebar(state, show=True):
+def share_key(net):
+    """The name a shared folder is kept under in "autoConnect": dev:<device id>:<share> for a paired Hearth device's,
+    else smb:<computer>:<share>."""
+    share = (net or {}).get('share') or ''
+    if net.get('device'):
+        return 'dev:%s:%s' % (net['device'], share)
+    return 'smb:%s:%s' % ((net.get('home') or net.get('away') or '').lower(), share)
+
+
+AUTO_FIELDS = ('device', 'name', 'share', 'home', 'away', 'wake')
+
+
+def auto_entry(net):
+    """What's kept for a shared folder that connects by itself: where to find it, never a password."""
+    return {k: net[k] for k in AUTO_FIELDS if k in net and isinstance(net[k], (str, bool))}
+
+
+def sidebar(state, show=True, auto=()):
     """Places for Hearth Files' "Your devices" section: each device (online or not), its shares under it, other
     computers sharing, and "How to open from Windows or a phone". Nothing when it's turned off or nothing's found."""
     if not show:
@@ -260,10 +286,12 @@ def sidebar(state, show=True):
                     'device': d.get('id'), 'wake': bool(d.get('wake'))})
         for s in d.get('shares') or []:
             badge = {'home': 'Home', 'drive': 'Whole drive', 'system': 'System drive'}.get(s.get('badge'), '')
+            on = share_key({'device': d.get('id'), 'share': s['name']}) in auto
             out.append({'id': 'share:%s:%s' % (d.get('id'), s['name']), 'label': s['name'], 'kind': 'network', 'section': 'devices',
-                        'child': True, 'offline': not d.get('online'),
+                        'child': True, 'offline': not d.get('online'), 'auto': on,
                         'sub': ' · '.join(x for x in (badge, 'Read & write' if s.get('write') else 'Read only',
-                                                      'Through Tailscale' if s.get('reach') == 'tailscale' else '') if x),
+                                                      'Through Tailscale' if s.get('reach') == 'tailscale' else '',
+                                                      'Connects by itself' if on else '') if x),
                         'net': {'device': d.get('id'), 'name': d.get('name'), 'share': s['name'], 'home': d.get('home') or '',
                                 'away': d.get('away') or '', 'wake': bool(d.get('wake'))}})
     for s in state.get('servers') or []:
@@ -434,3 +462,96 @@ def net_open(net, user=None, password=None, remember=False, at_home=resolves, ts
             kept = False
             text = str(e)
     return {'ok': True, 'path': path_of(uri) or '', 'where': where, 'uri': uri, 'remembered': kept}
+
+
+# ------------------------------------------------------------------ connect automatically
+
+def runtime_path():
+    base = os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir()
+    return os.path.join(base, 'hearth-files-autoconnect.json')
+
+
+def _read_runtime(path):
+    try:
+        with open(path) as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def autoconnect(entries, at_home=resolves, probe=answers_smb, mount=None, lookup=keyring_lookup, path_of=local_path,
+                state=None, runtime=None, budget=60):
+    """Opens the shared folders picked to connect by themselves ({key: net}), in the background, never asking:
+    {key: "open" | "opened" | "asleep" | "password" | "off" | "skipped" | "error"}. A device that doesn't answer on
+    445 within 1.5 s is "asleep" (tried again next run); "password" and "off" are left alone until the owner opens
+    the share himself (kept in the runtime file, so they're tried again after the next sign-in)."""
+    st = state if state is not None else read_state()
+    rt_path = runtime or runtime_path()
+    rt = _read_runtime(rt_path)
+    gave_up = dict(rt.get('gaveUp') or {})
+    ts_running = bool((st.get('tailscale') or {}).get('running'))
+    mount = mount or (lambda uri, user, pw: gio_mount(uri, user, pw, timeout=20))
+    results, lock = {}, threading.Lock()
+
+    def one(key, net):
+        try:
+            if not isinstance(net, dict) or not net.get('share') or not (net.get('home') or net.get('away')):
+                res = 'skipped'
+            elif key in gave_up:
+                res = 'skipped'
+            else:
+                host, where = choose_address(net, at_home, ts_running)
+                if not host:
+                    res = 'asleep'
+                elif path_of(smb_uri(host, net['share'])):
+                    res = 'open'
+                elif not probe(host, SMB_PORT, 1.5):
+                    res = 'asleep'
+                else:
+                    r = net_open(net, at_home=lambda h: h == host and where == 'home', ts_running=ts_running, mount=mount,
+                                 lookup=lookup, store=lambda *a: None, path_of=path_of, state=st)
+                    if r.get('ok'):
+                        res = 'opened'
+                    else:
+                        res = {'password': 'password', 'off': 'off'}.get(r.get('need'), 'asleep' if r.get('need') == 'asleep' else 'error')
+        except Exception:      # one share's trouble never stops the others
+            res = 'error'
+        with lock:
+            results[key] = res
+            if res in ('password', 'off'):
+                gave_up[key] = res
+
+    threads = []
+    for key, net in (entries or {}).items():
+        t = threading.Thread(target=one, args=(key, net), daemon=True)
+        t.start()
+        threads.append(t)
+    end = time.time() + budget
+    for t in threads:
+        t.join(max(0.0, end - time.time()))
+    for key in entries or {}:
+        results.setdefault(key, 'error')
+    try:
+        os.makedirs(os.path.dirname(rt_path), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(rt_path), prefix='.hearth-files-autoconnect-')
+        with os.fdopen(fd, 'w') as f:
+            json.dump({'gaveUp': gave_up, 'last': results, 'at': int(time.time())}, f)
+        os.replace(tmp, rt_path)
+    except OSError:
+        pass
+    return results
+
+
+def forget_gave_up(key, runtime=None):
+    """The owner opened it himself (or turned the switch on again): try it again from the next run."""
+    path = runtime or runtime_path()
+    rt = _read_runtime(path)
+    if key in (rt.get('gaveUp') or {}):
+        rt['gaveUp'].pop(key, None)
+        try:
+            with open(path + '.tmp', 'w') as f:
+                json.dump(rt, f)
+            os.replace(path + '.tmp', path)
+        except OSError:
+            pass
