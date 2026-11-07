@@ -66,12 +66,17 @@ Restart, switch modes, sleep or restart the PC.
   Tailscale address, refuses any other address (only 127.0.0.0/8, ::1, 100.64.0.0/10 and fd7a:115c:a1e0::/48 get an
   answer), and the home server's nftables rule (table `inet hearth_home_server`) drops port 8460 on every interface but
   `lo` and `tailscale0` while the page is on.
-- **PIN protected**: 4 to 12 digits, set in Settings; only a PBKDF2-SHA256 hash is kept. A device that typed it stays signed
+- **PIN protected**: 4 to 12 digits, set in Settings with a PIN pad (D-pad and A, typed digits, or the mouse: Server mode's
+  Settings has no on-screen keyboard); only a PBKDF2-SHA256 hash is kept. Spaces around it and a phone's full-width digits
+  are fine; anything else gets a message saying what to type. A typo that isn't a PIN at all isn't counted as a wrong one. A device that typed it stays signed
   in for 30 days (an HttpOnly, SameSite=Strict cookie; only its hash is kept on the PC). Five wrong PINs in five minutes:
   wait. A new PIN signs every device out. No PIN, nobody gets in.
 - **It can do everything, and each permission can be turned off** in Settings: restart and pause services, switch modes,
   sleep or restart the PC, and "show it on my other Hearth devices" (the read-only summary below, without the PIN).
-- Writes need the page's own header (`X-Hearth: 1`) and its own origin, so another site can't press its buttons. The page
+- Writes need the page's own header (`X-Hearth: 1`) and its own origin (the browser's `Sec-Fetch-Site: same-origin`, or
+  an `Origin` that is this page or `null`), so another site can't press its buttons. The page is served with
+  `Referrer-Policy: same-origin`: 1.6 and 1.7 sent `no-referrer`, which makes browsers send `Origin: null` with every
+  POST, so the PIN was always refused ("Not from this page"). The page
   never runs anything itself: it leaves a request for the session's **agent** (`hearth-server-mode agent`, running in your
   sign-in at the PC), which checks it again. A switch or sleep from the web shows a **10-second countdown on the home
   screen** (cancel it there with B); nothing switches while a game is running, and the web can't switch away from Desktop
@@ -118,7 +123,7 @@ playing, e.g. from AI sharing's document.)
 - `hosts/linux/session/nimbus-session` (`run_server`, `server_start_mode`, `server_return`), `nimbus-mode server`
 - `hosts/linux/desktop/server/labwc/` (rc.xml, environment, autostart)
 - `hosts/linux/desktop/shell/server-mode.qml`, `ServerDash.qml`, `ServerTile.qml`, `ServerDetail.qml`, `ServerBack.qml`,
-  `ServerLine.qml`, `ServerButton.qml`; Settings: `SetServerMode.qml`, `SetStartup.qml`, `StartInChoice.qml`
+  `ServerLine.qml`, `ServerButton.qml`; Settings: `SetServerMode.qml`, `SetPinPad.qml`, `SetStartup.qml`, `StartInChoice.qml`
 - `hosts/linux/desktop/shell/hearth-server-mode` (the helper, the agent, the web server) and `server-mode-web.html`
 - `os/system_files/usr/lib/systemd/user/hearth-server-mode-web.service`
 - the root helper `hearth-home-server-helper`: `svc`, `gpu-limit`, the small model and ComfyUI's queue in `services run`,

@@ -80,7 +80,11 @@ const I = (n, s) => (ICON[n] || '').replace(/width="18" height="18"/, s ? `width
 let D = null, timer = null;
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',4000)}
 async function api(path, body){
-  const r = await fetch(path, body === undefined ? {credentials:'same-origin'} : {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Hearth':'1'},body:JSON.stringify(body)});
+  // referrerPolicy same-origin: the browser then sends this page's real Origin with each POST (no-referrer made it
+  // "null", and the PC refused the PIN in 1.6 and 1.7).
+  let r;
+  try { r = await fetch(path, body === undefined ? {credentials:'same-origin',referrerPolicy:'same-origin'} : {method:'POST',credentials:'same-origin',referrerPolicy:'same-origin',headers:{'Content-Type':'application/json','X-Hearth':'1'},body:JSON.stringify(body)}); }
+  catch (e) { return {status:0, j:{error:'Couldn\'t reach the PC. Check Tailscale is on, on this device and on the PC, and that the PC is awake'}}; }
   let j = {}; try { j = await r.json(); } catch (e) {}
   return {status:r.status, j};
 }
@@ -90,7 +94,7 @@ function login(msg){
   <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="PIN">
   <div class="err" id="err">${esc(msg||'')}</div><button class="btn pri" style="width:100%" id="go">Open</button>
   <div class="secure">${I('lock',14)} Only over Tailscale, never the internet</div></div>`;
-  const go = async () => { const r = await api('/api/login', {pin:$('#pin').value}); if (r.status === 200) load(); else $('#err').textContent = r.j.error || 'That didn\'t work'; };
+  const go = async () => { const r = await api('/api/login', {pin:$('#pin').value.trim()}); if (r.status === 200) load(); else { $('#err').textContent = r.j.error || ('The PC answered ' + r.status + '. Reload the page and try again'); if (r.status === 401) { $('#pin').value = ''; $('#pin').focus(); } } };
   $('#go').onclick = go; $('#pin').onkeydown = e => { if (e.key === 'Enter') go(); }; $('#pin').focus();
 }
 async function act(body, label){
@@ -141,7 +145,7 @@ function render(){
 async function load(){
   if (EMBED) { D = EMBED; return render(); }
   const r = await api('/api/status');
-  if (r.status === 401) { clearInterval(timer); timer = null; return login(r.j.pin === false ? 'No PIN is set on the PC yet' : ''); }
+  if (r.status === 401) { clearInterval(timer); timer = null; return login(r.j.pin === false ? (r.j.error || 'No PIN is set yet. On the PC, open Settings › Home server › Server mode › PIN for the web page and set one') : ''); }
   if (r.status !== 200) return toast(r.j.error || 'The PC didn\'t answer');
   D = r.j; render();
   if (!timer) timer = setInterval(load, 6000);
