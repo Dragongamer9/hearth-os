@@ -10,8 +10,9 @@
 <link rel="icon" href="../img/logo.svg" type="image/svg+xml">
 <link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
-<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;var k=localStorage.getItem('hearth.look');if(/^[a-z]{2,20}$/.test(k||''))document.documentElement.dataset.look=k;}catch(e){}</script>
 <link rel="stylesheet" href="docs.css">
+<link rel="stylesheet" href="../looks.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to the page</a>
@@ -27,6 +28,7 @@
       <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
       <a class="cta" href="../#download">Download</a>
     </div>
+    <div class="looks"></div>
   </div>
 </nav>
 <div class="wrap layout">
@@ -92,5 +94,6 @@ It gets no more updates: <a href="updates.html#switch">switch to Debian</a> and 
   </div>
 </footer>
 <script src="docs.js" defer></script>
+<script src="../looks.js" defer></script>
 </body>
 </html>

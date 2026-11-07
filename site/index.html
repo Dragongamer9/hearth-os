@@ -13,7 +13,7 @@
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
-<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}document.documentElement.classList.add('js');</script>
+<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;var k=localStorage.getItem('hearth.look');if(/^[a-z]{2,20}$/.test(k||''))document.documentElement.dataset.look=k;}catch(e){}document.documentElement.classList.add('js');</script>
 <style>
 /* Hearth OS website, in the spirit of a game client at night: deep blue-slate, cool grey text, one bright blue for
    what you can act on, and the Hearth flame as the only warm thing on the page.
@@ -285,6 +285,7 @@ footer a{color:var(--text);font-size:15px}
 footer .legal{flex-basis:100%;margin:18px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted);max-width:80em}
 footer .legal a{font-size:inherit;color:var(--muted)}
 </style>
+<link rel="stylesheet" href="looks.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -308,6 +309,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <a href="docs/">Docs</a>
       <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     </nav>
+    <div class="looks"></div>
     <button class="theme" id="theme" type="button" aria-label="Switch between light and dark"><svg class="ico moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ico sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
     <a class="dl" href="#download">Download</a>
   </div>
@@ -751,6 +753,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
 </footer>
 
 <script src="support-links.js"></script>
+<script src="looks.js" defer></script>
 <script>
 // Support: only the links the owner filled in (https only); with none, the section stays hidden.
 (function(){
