@@ -93,6 +93,9 @@ pub fn find_named(name: &str, builtin_dir: &Path, home: Option<&Path>) -> Option
     dirs.into_iter().map(|d| d.join(name)).find(|p| p.join("proton").is_file())
 }
 
+/// A Proton by its name on this device (Hearth Mods: the GE-Proton a prefix was made with, from its `version` note).
+pub fn named(name: &str) -> Option<PathBuf> { find_named(name, &system_dir(), home().as_deref()) }
+
 /// The detector's pick for a game, from its pieces (so the tests can give their own folders).
 pub fn detect(key: &str, builtin_dir: &Path, rules: &Path, home: Option<&Path>) -> Option<PathBuf> {
     // 1. What it last worked with here (and not since closed right away with).

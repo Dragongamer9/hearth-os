@@ -777,21 +777,31 @@ fn set_up(j: &Job) -> Result<Vec<String>, String> {
     // The Windows parts these lists need, once per prefix.
     let verbs: Vec<&str> = WT_BASE.iter().copied().chain(match info.map(|g| g.2) { Some("legacy") => WT_LEGACY.to_vec(), _ => WT_MODERN.to_vec() }).collect();
     let mark = prefix.join("hearth-winetricks.txt");
+    // umu-run: the system's, else Hearth's own copy (Hearth OS has no system umu-run: checking only the PATH meant
+    // these parts were never installed). The Proton: the one every later start of the list uses (launch.rs: the
+    // GE-Proton built into Hearth OS for a new prefix, noted in the prefix), so the prefix is never switched.
+    let umu = crate::launch::umu();
+    let app = info.map(|g| g.1);
+    let env = crate::launch::umu_env(&prefix.join("pfx"), app, None, &steam_libraries());
+    let proton = env.iter().find(|(k, _)| k == "PROTONPATH").map(|(_, v)| v.clone()).unwrap_or_else(|| "GE-Proton".into());
     if std::fs::read_to_string(&mark).map(|s| s.trim() != verbs.join(" ")).unwrap_or(true) {
-        if has("umu-run") {
-            let st = std::process::Command::new("umu-run").arg("winetricks").arg("-q").args(&verbs)
-                .env("WINEPREFIX", prefix.join("pfx")).env("GAMEID", &gameid).env("PROTONPATH", "GE-Proton")
-                .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-            if st.map(|s| s.success()).unwrap_or(false) { let _ = std::fs::write(&mark, verbs.join(" ")); }
-            else { notes.push(format!("Some Windows parts didn't install into its Proton folder ({}); if Mod Organizer won't start, run Hearth Mods' Repair on it.", verbs.join(", "))); }
-        } else { notes.push("umu-launcher isn't installed, so its Proton folder couldn't be set up.".into()); }
+        match &umu {
+            Ok(umu) => {
+                let st = std::process::Command::new(umu).arg("winetricks").arg("-q").args(&verbs)
+                    .env("WINEPREFIX", prefix.join("pfx")).env("STEAM_COMPAT_DATA_PATH", &prefix).env("GAMEID", &gameid).env("PROTONPATH", &proton)
+                    .env_remove("LD_LIBRARY_PATH")
+                    .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+                if st.map(|s| s.success()).unwrap_or(false) { let _ = std::fs::write(&mark, verbs.join(" ")); }
+                else { notes.push(format!("Some Windows parts didn't install into its Proton folder ({}); if Mod Organizer won't start, run Hearth Mods' Repair on it.", verbs.join(", "))); }
+            }
+            Err(e) => notes.push(format!("Its Proton folder couldn't be set up: {e}")),
+        }
     }
-    // The library entry: a .desktop file that starts MO2 with this prefix.
+    // The library entry: a .desktop file that starts MO2 with this prefix (every argument quoted whole, as the
+    // desktop-entry format wants; umu-run by its full path, since Hearth OS has none on the PATH).
     std::fs::create_dir_all(modlists_dir()).map_err(|e| e.to_string())?;
     let desktop = modlists_dir().join(format!("{}.desktop", j.id));
-    let q = |p: &Path| format!("\"{}\"", p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\""));
-    let text = format!("[Desktop Entry]\nType=Application\nName={}\nExec=env WINEPREFIX={} STEAM_COMPAT_DATA_PATH={} GAMEID={gameid} PROTONPATH=GE-Proton umu-run {}\nPath={}\n",
-        j.title.replace('\n', " "), q(&prefix.join("pfx")), q(&prefix), q(&mo2), j.install_dir.to_string_lossy());
+    let text = mo2_desktop(&j.title, &prefix, &gameid, &proton, umu.as_deref().unwrap_or("umu-run"), &mo2, &j.install_dir);
     util::write_atomic(&desktop, text.as_bytes()).map_err(|e| e.to_string())?;
     util::write_json(&modlists_dir().join(format!("{}.json", j.id)), &json!({"id": j.id, "title": j.title, "launch": desktop, "folder": j.install_dir, "game": j.game,
         "added": util::now_ms(), "note": "Wabbajack modlist (Mod Organizer 2)"}))?;
@@ -800,7 +810,20 @@ fn set_up(j: &Job) -> Result<Vec<String>, String> {
     Ok(notes)
 }
 
-fn has(cmd: &str) -> bool { std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file())).unwrap_or(false) }
+/// Steam's libraries (for the Proton choice).
+#[cfg(target_os = "linux")]
+fn steam_libraries() -> Vec<PathBuf> { hearth_core::steam::steam_path(&util::home()).as_deref().map(hearth_core::steam::libraries).unwrap_or_default() }
+#[cfg(not(target_os = "linux"))]
+fn steam_libraries() -> Vec<PathBuf> { Vec::new() }
+
+/// Mod Organizer 2's .desktop for a list (its "launcher mo2" fallback).
+pub fn mo2_desktop(title: &str, prefix: &Path, gameid: &str, proton: &str, umu: &str, mo2: &Path, dir: &Path) -> String {
+    let q = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('`', "\\`").replace('$', "\\$"));
+    format!("[Desktop Entry]\nType=Application\nName={}\nExec=env {} {} {} {} {} {}\nPath={}\n",
+        title.replace('\n', " "),
+        q(&format!("WINEPREFIX={}", prefix.join("pfx").to_string_lossy())), q(&format!("STEAM_COMPAT_DATA_PATH={}", prefix.to_string_lossy())),
+        q(&format!("GAMEID={gameid}")), q(&format!("PROTONPATH={proton}")), q(umu), q(&mo2.to_string_lossy()), dir.to_string_lossy())
+}
 
 /// Sets the list's Proton folder up again (after a failed winetricks run).
 pub fn repair(id: &str) -> Result<Vec<String>, String> {
@@ -950,5 +973,16 @@ mod tests {
         assert_eq!(game_info("falloutnewvegas").map(|g| g.1), Some(22380));
         assert_eq!(game_info("SkyrimSpecialEdition").map(|g| g.2), Some("modern"));
         assert!(game_info("Nope").is_none());
+    }
+
+    #[test]
+    fn mo2_entry_names_umu_and_the_proton_in_full() {
+        let d = mo2_desktop("Tuxborn", Path::new("/h/prefixes/wabbajack-w1"), "umu-489830", "/usr/share/steam/compatibilitytools.d/GE-Proton11-3",
+                            "/h/.local/share/nimbus/tools/umu/umu-run", Path::new("/h/Modlists/Tux born/ModOrganizer.exe"), Path::new("/h/Modlists/Tux born"));
+        let exec = d.lines().find_map(|l| l.strip_prefix("Exec=")).unwrap();
+        assert!(exec.starts_with("env \"WINEPREFIX=/h/prefixes/wabbajack-w1/pfx\" \"STEAM_COMPAT_DATA_PATH=/h/prefixes/wabbajack-w1\""), "{exec}");
+        assert!(exec.contains("\"PROTONPATH=/usr/share/steam/compatibilitytools.d/GE-Proton11-3\" \"/h/.local/share/nimbus/tools/umu/umu-run\" \"/h/Modlists/Tux born/ModOrganizer.exe\""), "{exec}");
+        let p = mo2_desktop("x", Path::new("/p"), "umu-default", "/Steam/steamapps/common/Proton - Experimental", "umu-run", Path::new("/m.exe"), Path::new("/"));
+        assert!(p.contains("\"PROTONPATH=/Steam/steamapps/common/Proton - Experimental\""), "a Proton with spaces stays one argument");
     }
 }

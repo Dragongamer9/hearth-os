@@ -357,6 +357,9 @@ fn overlay_end_to_end() {
     let v = cmd(ctx, &["skyrimse", "deploy"]);
     assert_eq!(v["deployed"]["mode"], "overlay", "the overlay didn't mount: {v}");
     assert_eq!(v["deployed"]["mounted"], true);
+    // The overlay's own fuse-overlayfs names the Data folder on its command line: it isn't the game, so Play's wait
+    // for the game ends (1.3-1.7 waited for it forever and the mods stayed on).
+    assert!(crate::launch::processes_in(&fx.game).is_empty(), "only fuse-overlayfs works in the game folder, and it isn't the game: {:?}", crate::launch::processes_in(&fx.game));
     let data = fx.game.join("Data");
     assert_eq!(read(&data.join("Textures/sky.dds")), "mod sky");
     assert_eq!(read(&data.join("meshes/new.nif")), "nif");

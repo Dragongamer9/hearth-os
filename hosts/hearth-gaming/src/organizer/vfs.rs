@@ -194,6 +194,9 @@ pub struct Active {
     pub ledger: Ledger,
     pub base: Vec<String>,
     pub notes: Vec<String>,
+    /// The start of the computer it was deployed in (/proc/sys/kernel/random/boot_id): after a restart the process
+    /// number in `pid` may belong to another hearth-mods, so a deploy from before is never taken as still running.
+    pub boot: String,
 }
 
 /// A file (or the saves folder) of the profile put in the game's place for the run.
@@ -219,6 +222,16 @@ fn write_active(inst: &Instance, a: &Active) -> Result<(), String> {
     util::write_atomic(&f, serde_json::to_string_pretty(a).unwrap_or_default().as_bytes()).map_err(|e| format!("Couldn't note what's deployed ({e})"))
 }
 
+/// This start of the computer (empty where it can't be read).
+pub fn boot_id() -> String { std::fs::read_to_string("/proc/sys/kernel/random/boot_id").map(|s| s.trim().to_string()).unwrap_or_default() }
+
+/// Is the game still running through the organizer (the hearth-mods that deployed it, in this start of the computer)?
+pub fn running(a: &Active) -> bool { running_in(a, &boot_id()) }
+pub fn running_in(a: &Active, boot: &str) -> bool {
+    if !a.boot.is_empty() && !boot.is_empty() && a.boot != boot { return false; }
+    alive(a.pid)
+}
+
 /// Is the hearth-mods that deployed it still running?
 pub fn alive(pid: u32) -> bool {
     if pid == 0 { return false; }
@@ -229,7 +242,7 @@ pub fn alive(pid: u32) -> bool {
 pub fn status(inst: &Instance) -> Value {
     match read_active(inst) {
         None => Value::Null,
-        Some(a) => json!({"mode": a.mode, "target": a.target, "since": a.since, "profile": a.profile, "running": alive(a.pid), "byHand": a.pid == 0,
+        Some(a) => json!({"mode": a.mode, "target": a.target, "since": a.since, "profile": a.profile, "running": running(&a), "byHand": a.pid == 0,
                           "mounted": a.mode == "overlay" && overlay::mounted(Some(&a.target)), "notes": a.notes}),
     }
 }
@@ -255,7 +268,7 @@ fn list_tree(dir: &Path) -> Vec<String> {
 /// fuse-overlayfs first.
 pub fn deploy(inst: &Instance, pid: u32, overlay_ok: bool) -> Result<Active, String> {
     if let Some(a) = read_active(inst) {
-        if alive(a.pid) { return Err("The game is running through the organizer: close it first.".into()); }
+        if running(&a) { return Err("The game is running through the organizer: close it first.".into()); }
         // Left from before (by hand, or a crash): taken out first.
         undeploy(inst, false)?;
     }
@@ -267,7 +280,7 @@ pub fn deploy(inst: &Instance, pid: u32, overlay_ok: bool) -> Result<Active, Str
     let view = resolve(Some(&target), &sources);
     let hd = inst.hearth_dir();
     std::fs::create_dir_all(&hd).map_err(|e| e.to_string())?;
-    let mut a = Active { target: target.clone(), pid, since: util::now_ms(), profile: inst.profile.clone(), ..Default::default() };
+    let mut a = Active { target: target.clone(), pid, since: util::now_ms(), profile: inst.profile.clone(), boot: boot_id(), ..Default::default() };
     if overlay_ok && overlay::available() {
         let layer = hd.join("layer");
         build_layer(&view, Some(ow), &layer)?;
@@ -544,7 +557,7 @@ pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
 /// At sign-in (hearth-mods --remount) and before a run: a view left by a crash or by hand is taken away.
 pub fn recover(inst: &Instance) -> Option<Result<Value, String>> {
     let a = read_active(inst)?;
-    if alive(a.pid) { return None; }
+    if running(&a) { return None; }
     Some(undeploy(inst, false))
 }
 
@@ -552,6 +565,16 @@ pub fn recover(inst: &Instance) -> Option<Result<Value, String>> {
 mod tests {
     use super::*;
     fn put(p: &Path, t: &str) { std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, t).unwrap(); }
+
+    #[test]
+    fn a_deploy_from_before_a_restart_is_not_running() {
+        // This test's own process stands in for the hearth-mods that runs the game.
+        let a = Active { pid: std::process::id(), boot: "boot-1".into(), ..Default::default() };
+        assert!(running_in(&a, "boot-1"));
+        assert!(!running_in(&a, "boot-2"), "after a restart the same process number is someone else");
+        assert!(running_in(&Active { boot: String::new(), ..a.clone() }, "boot-2"), "an older note (no boot) goes by the process alone");
+        assert!(!running_in(&Active { pid: 0, ..a }, "boot-1"), "deployed by hand");
+    }
 
     #[test]
     fn case_insensitive_paths() {

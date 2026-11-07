@@ -47,6 +47,20 @@ class LabwcRcTest(unittest.TestCase):
                 print('::error file=%s::labwc refuses a nested If/ForEach (%s)' % (os.path.relpath(path, ROOT), bad))
             self.assertEqual(bad, [], path)
 
+    def test_window_switcher_fields_are_ones_the_image_labwc_knows(self):
+        # Bug hunt (log #81, Hearth 1.6): "bad windowSwitcher field 'icon'" / "Invalid OSD field: no content set" at
+        # every Desktop Mode start. Only fields labwc 0.8 already had; widths add up to 100%.
+        known = {'type', 'type_short', 'identifier', 'trimmed_identifier', 'desktop_entry_name', 'title',
+                 'workspace', 'state', 'state_single', 'output', 'custom'}
+        for path in RC_FILES + [os.path.join(ROOT, 'hosts', 'linux', 'desktop', 'server', 'labwc', 'rc.xml')]:
+            if not os.path.exists(path):
+                continue
+            fields = ET.parse(path).getroot().findall('.//windowSwitcher/fields/field')
+            for f in fields:
+                self.assertIn(f.get('content'), known, '%s: %s' % (path, f.attrib))
+            if fields:
+                self.assertEqual(sum(int(f.get('width', '0').rstrip('%')) for f in fields), 100, path)
+
     def test_detects_nesting(self):
         root = ET.fromstring('<k><keybind key="x"><action name="If"><query tiled="left"/><else>'
                              '<action name="If"><query tiled="right"/></action></else></action></keybind></k>')

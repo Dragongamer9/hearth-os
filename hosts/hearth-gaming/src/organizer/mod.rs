@@ -374,12 +374,12 @@ impl Instance {
 
     /// Changes wait while the game runs through the organizer.
     pub fn guard(&self) -> Result<(), String> {
-        match vfs::read_active(self) { Some(a) if vfs::alive(a.pid) => Err("The game is running through the organizer: close it first.".into()), _ => Ok(()) }
+        match vfs::read_active(self) { Some(a) if vfs::running(&a) => Err("The game is running through the organizer: close it first.".into()), _ => Ok(()) }
     }
     /// After a change, a view deployed by hand is made again.
     pub fn refresh_deploy(&self) -> Result<(), String> {
         if let Some(a) = vfs::read_active(self) {
-            if !vfs::alive(a.pid) { let overlay = a.mode == "overlay"; vfs::undeploy(self, false)?; vfs::deploy(self, 0, overlay)?; }
+            if !vfs::running(&a) { let overlay = a.mode == "overlay"; vfs::undeploy(self, false)?; vfs::deploy(self, 0, overlay)?; }
         }
         Ok(())
     }

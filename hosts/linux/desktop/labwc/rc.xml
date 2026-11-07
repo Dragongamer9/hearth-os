@@ -51,13 +51,14 @@
   </desktops>
 
   <!-- Alt+Tab (LB/RB on the controller): window previews with their icons and names, Hearth colors (themerc).
-       Older labwc versions ignore the thumbnail style and show the list with icons. -->
+       Older labwc versions ignore the thumbnail style and show the list with the app's name and the window's title.
+       No "icon" field: the labwc in the Debian image doesn't know it ("bad windowSwitcher field 'icon'" at every
+       start, and the field was thrown away); the thumbnail style draws icons by itself where it's supported. -->
   <windowSwitcher show="yes" style="thumbnail" preview="yes" outlines="yes" allWorkspaces="no">
     <osd show="yes" style="thumbnail" output="all" thumbnailLabelFormat="%T" />
     <fields>
-      <field content="icon" width="8%" />
-      <field content="desktop_entry_name" width="27%" />
-      <field content="title" width="65%" />
+      <field content="desktop_entry_name" width="30%" />
+      <field content="title" width="70%" />
     </fields>
   </windowSwitcher>
 
