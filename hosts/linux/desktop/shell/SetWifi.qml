@@ -17,7 +17,12 @@ SetPage {
     property bool showProps: false
     property bool forgetAsk: false // Forget asks once more first
     property bool hiddenOpen: false
-    readonly property var current: nets.find(n => n.inUse) || null
+    // The network you're on. The scan's IN-USE mark is the first answer; NetworkManager's own active connection on the
+    // Wi-Fi device (activeSsid) backs it up, so the page never says "Not connected" while the bar says connected
+    // (a mesh lists one name under several access points, and right after start-up the scan can lag the link).
+    property string activeSsid: ""
+    readonly property var current: nets.find(n => n.inUse) || (activeSsid ? (nets.find(n => n.ssid === activeSsid)
+                                   || { ssid: activeSsid, signal: 0, secure: false, inUse: true, security: "", freq: 0 }) : null)
     property var saved: []         // the saved networks' SSIDs
     property var savedIds: ({})    // SSID: its saved connection's UUID
     property bool scanning: false
@@ -73,13 +78,16 @@ SetPage {
         command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY,FREQ", "device", "wifi", "list", "--rescan", "auto"]
         stdout: StdioCollector {
             onStreamFinished: {
+                // One row per name. A mesh lists the same name once per access point; the one you're on (IN-USE "*")
+                // can be any of them, so it wins over the others rather than the first row seen.
                 const seen = {}, out = [];
                 for (const l of text.split("\n")) {
                     const f = page.fields(l);
-                    if (f.length < 4 || !f[1] || seen[f[1]]) continue;
-                    seen[f[1]] = true;
-                    out.push({ ssid: f[1], signal: parseInt(f[2]) || 0, secure: f[3] !== "" && f[3] !== "--", inUse: f[0] === "*",
-                               security: f[3] !== "--" ? f[3] : "", freq: parseInt(f[4] || "") || 0 });
+                    if (f.length < 4 || !f[1]) continue;
+                    const n = { ssid: f[1], signal: parseInt(f[2]) || 0, secure: f[3] !== "" && f[3] !== "--", inUse: f[0] === "*",
+                                security: f[3] !== "--" ? f[3] : "", freq: parseInt(f[4] || "") || 0 };
+                    if (seen[n.ssid] === undefined) { seen[n.ssid] = out.length; out.push(n); }
+                    else if (n.inUse && !out[seen[n.ssid]].inUse) out[seen[n.ssid]] = n;
                 }
                 out.sort((a, b) => (b.inUse - a.inUse) || (b.signal - a.signal));
                 page.replaceList("nets", out);
@@ -90,12 +98,15 @@ SetPage {
     // The Wi-Fi device and its address (for the card at the top).
     Process {
         id: addr
-        command: ["sh", "-c", 'for d in $(nmcli -t -f DEVICE,TYPE device | awk -F: \'$2=="wifi"{print $1}\'); do a=$(nmcli -g IP4.ADDRESS device show "$d" 2>/dev/null | head -n1); printf "%s:%s\\n" "$d" "${a%%/*}"; [ -n "$a" ] && break; done']
+        // Also the SSID of the connection NetworkManager has up on it (empty when it isn't connected). Tab-separated:
+        // device, address, SSID.
+        command: ["sh", "-c", 'for d in $(nmcli -t -f DEVICE,TYPE device | awk -F: \'$2=="wifi"{print $1}\'); do a=$(nmcli -g IP4.ADDRESS device show "$d" 2>/dev/null | head -n1); s=""; if [ "$(nmcli -g GENERAL.STATE device show "$d" 2>/dev/null | cut -d" " -f1)" = 100 ]; then c=$(nmcli -g GENERAL.CONNECTION device show "$d" 2>/dev/null); [ -n "$c" ] && s=$(nmcli -g 802-11-wireless.ssid connection show id "$c" 2>/dev/null); s=${s:-$c}; fi; printf "%s\\t%s\\t%s\\n" "$d" "${a%%/*}" "$s"; [ -n "$a" ] && break; done']
         stdout: StdioCollector {
             onStreamFinished: {
-                const l = text.trim().split("\n").filter(x => x.indexOf(":") > 0).pop() || "";
-                page.device = l.split(":")[0] || "";
-                page.ip = l.split(":").slice(1).join(":");
+                const l = (text.trim().split("\n").filter(x => x.indexOf("\t") > 0).pop() || "").split("\t");
+                page.device = l[0] || "";
+                page.ip = l[1] || "";
+                page.activeSsid = l[2] || "";
             }
         }
     }
