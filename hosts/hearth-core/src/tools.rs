@@ -1,6 +1,7 @@
 //! The open-source tools Hearth uses for Epic, GOG and Windows games: legendary, gogdl, umu-launcher.
 //! Downloaded from their GitHub releases the first time, checked against a pinned SHA-256, kept in
-//! ~/.local/share/nimbus/tools (the same place the Electron host keeps them). Port of stores/tools.js.
+//! ~/.local/share/nimbus/tools (the same place the Electron host keeps them), unless Hearth OS's image carries them
+//! (IMAGE_DIR, legendary and gogdl since 1.7). Port of stores/tools.js.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -16,13 +17,23 @@ pub const UMU: Tool = Tool { name: "umu-launcher", file: "umu/umu-run", url: "ht
 
 pub fn dir() -> PathBuf { crate::paths::data_dir().join("tools") }
 fn path_of(t: &Tool) -> PathBuf { dir().join(t.file) }
-pub fn is_ready(t: &Tool) -> bool { t.system.map(crate::system::has).unwrap_or(false) || path_of(t).exists() }
+/// Where Hearth OS's image carries legendary and gogdl (1.7, Hearth Games): the same pinned releases, checked against
+/// the same SHA-256 when the image is built (os-bases/peppermint/build.sh), so the first install works offline and
+/// nothing is downloaded. Your own downloaded copy (an older image) is used when the image has none.
+pub const IMAGE_DIR: &str = "/usr/lib/hearth/tools";
+fn image_copy(t: &Tool) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let p = PathBuf::from(IMAGE_DIR).join(t.file);
+    std::fs::metadata(&p).ok().filter(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).map(|_| p)
+}
+pub fn is_ready(t: &Tool) -> bool { t.system.map(crate::system::has).unwrap_or(false) || image_copy(t).is_some() || path_of(t).exists() }
 
 static DOWNLOADING: Mutex<()> = Mutex::new(());
 
 /// The program to run, downloading it first if needed (one download at a time).
 pub fn ensure(t: &Tool) -> Result<String, String> {
     if let Some(s) = t.system { if crate::system::has(s) { return Ok(s.to_string()); } }
+    if let Some(p) = image_copy(t) { return Ok(p.to_string_lossy().into()); }
     let dst = path_of(t);
     if dst.exists() { return Ok(dst.to_string_lossy().into()); }
     crate::watchdog::long_task();

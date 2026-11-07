@@ -218,6 +218,10 @@ G['hearth-controller-lab'] = (  # controller test: a gamepad with a check pulse 
 G['hearth-saves'] = (  # game saves: a floppy disk
     fill('M156 116H318L396 194V356a40 40 0 0 1-40 40H156a40 40 0 0 1-40-40V156a40 40 0 0 1 40-40Z')
     + rect(180, 116, 124, 84, 12, INK) + rect(262, 132, 26, 52, 8, C) + rect(168, 254, 176, 112, 18, E))
+G['hearth-gamestore'] = (  # Hearth Games: a shopping bag with a play button on it
+    stroke('M206 196 V164 a50 50 0 0 1 100 0 V196', C, 30)
+    + fill('M150 196H362l18 172a32 32 0 0 1-32 36H164a32 32 0 0 1-32-36Z')
+    + fill('M226 250 L318 302 L226 354 Z', E))
 G['hearth-mods'] = (  # a puzzle piece
     f'<g fill="{E}">' '<rect x="128" y="180" width="208" height="208" rx="32"/>'
     '<circle cx="232" cy="176" r="46"/><circle cx="340" cy="284" r="46"/></g>'

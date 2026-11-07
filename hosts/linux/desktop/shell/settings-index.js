@@ -533,15 +533,27 @@ var ENTRIES = [
 "i": "cpu"
 },
 {
+"t": "Hearth Games",
+"p": "games",
+"d": "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall (docs/HEARTH-GAMES.md)",
+"i": "store"
+},
+{
 "t": "Epic Games",
 "p": "games",
-"d": "Sign in to see, install and play your Epic games",
+"d": "Sign in to see, install and play your Epic games (in Hearth Games)",
 "i": "lock"
 },
 {
 "t": "GOG",
 "p": "games",
-"d": "Sign in to see, install and play your GOG games",
+"d": "Sign in to see, install and play your GOG games (in Hearth Games)",
+"i": "lock"
+},
+{
+"t": "Battle.net",
+"p": "games",
+"d": "Blizzard's own app, set up through Faugus Launcher (in Hearth Games)",
 "i": "lock"
 },
 {
@@ -559,7 +571,7 @@ var ENTRIES = [
 {
 "t": "Downloads",
 "p": "games",
-"d": "Epic and GOG installs: pause, carry on, cancel",
+"d": "Epic and GOG installs: pause, carry on, cancel (in Hearth Games)",
 "i": "update"
 },
 {
