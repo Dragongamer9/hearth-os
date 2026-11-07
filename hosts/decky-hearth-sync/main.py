@@ -53,7 +53,7 @@ STORES = {'epic': ('epic', 'Epic'), 'gog': ('gog', 'GOG'), 'battlenet': ('battle
           'emu': ('emu', 'Emulators'), 'recomps': ('recomps', 'Recomps'), 'recomp': ('recomps', 'Recomps'),
           'beacon': ('beacon', 'Beacon'), 'manual': ('manual', 'Added by hand'), 'device': ('manual', 'Added by hand'),
           'ea': ('ea', 'EA'), 'ubisoft': ('ubisoft', 'Ubisoft'), 'amazon': ('amazon', 'Amazon'), 'itch': ('itch', 'itch.io'),
-          'heroic': ('heroic', 'Heroic'), 'lutris': ('lutris', 'Lutris'), 'mods': ('mods', 'Modded games')}
+          'heroic': ('heroic', 'Heroic'), 'lutris': ('lutris', 'Lutris'), 'mods': ('mods', 'Modded games'), 'winapps': ('winapps', 'Windows apps')}
 OTHER = ('other', 'Other games')
 # The old Hearth plugin's settings folder names (Decky names it after the plugin's folder or its name).
 OLD_PLUGIN_SETTINGS = ('decky-hearth', 'Hearth')
@@ -818,10 +818,44 @@ def mods_entries(home_dir=None, which=None):
     return out
 
 
+# ---- Windows apps' "Add to Steam" (hosts/linux/desktop/shell/hearth-winapps, docs/WINDOWS-APPS.md).
+# hearth-winapps writes ~/.local/share/nimbus/winapps/steam-shortcuts.json ({"apps": [{id, title, launch, cwd, icon,
+# added}]}); ids are hearth-winapps:<app id>. Only entries that run hearth-winapps itself are taken.
+def winapps_file(home_dir=None):
+    return os.path.join(home_dir or home(), '.local', 'share', 'nimbus', 'winapps', 'steam-shortcuts.json')
+
+
+def winapps_entries(home_dir=None, which=None):
+    h = home_dir or home()
+    raw = _json(winapps_file(h))
+    out = []
+    for e in raw.get('apps', []) if isinstance(raw, dict) and isinstance(raw.get('apps'), list) else []:
+        if not isinstance(e, dict) or not valid_id(e.get('id')) or not str(e.get('id')).startswith('hearth-winapps:'):
+            skipped('windows apps: odd entry')
+            continue
+        launch = e.get('launch')
+        if not isinstance(launch, list) or not launch or not all(isinstance(a, str) and a and len(a) < 4096 for a in launch):
+            skipped('windows apps: no program')
+            continue
+        prog = launch[-3] if len(launch) >= 3 else ''
+        if os.path.basename(prog) != 'hearth-winapps' or not os.path.isabs(prog) or not (which or os.path.isfile)(prog) \
+                or launch[-2] != 'run' or (len(launch) == 4 and launch[0] != '/usr/bin/python3') or len(launch) > 4:
+            skipped('windows apps: not hearth-winapps')
+            continue
+        title = e.get('title') if isinstance(e.get('title'), str) else ''
+        if not title.strip():
+            continue
+        cwd = e.get('cwd') if isinstance(e.get('cwd'), str) and e.get('cwd').startswith('/') else h
+        art = {'icon': e['icon']} if isinstance(e.get('icon'), str) and e.get('icon') else {}
+        added = e.get('added') if isinstance(e.get('added'), (int, float)) and not isinstance(e.get('added'), bool) else 0
+        out.append(_game(e['id'], title.strip()[:200], 'winapps', launch, cwd, int(added // 1000), 'hearth-winapps', art))
+    return out
+
+
 def other_launchers(home_dir=None):
     """Every other launcher's games; a launcher whose files can't be read is skipped (counted)."""
     out = []
-    for f in (minigalaxy_games, heroic_games, egl_games, mods_entries):
+    for f in (minigalaxy_games, heroic_games, egl_games, mods_entries, winapps_entries):
         try:
             out.extend(f(home_dir))
         except Exception as e:  # noqa: BLE001 - one launcher's odd files never stop the others

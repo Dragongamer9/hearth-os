@@ -255,6 +255,20 @@ class Backend(unittest.TestCase):
         self.assertEqual(out[0]['wide'], '/art/h.jpg')
         self.assertIn(self.m.mods_file(), [os.path.join(self.tmp, 'home', '.local/share/nimbus/mods/steam-shortcuts.json')])
 
+    def test_windows_apps_add_to_steam_entries(self):
+        exe = '/usr/bin/hearth-winapps'
+        good = {'id': 'hearth-winapps:notepad-plus-plus', 'title': 'Notepad++', 'launch': [exe, 'run', 'notepad-plus-plus'],
+                'cwd': '/home/you/Games/Windows apps/Notepad++', 'icon': '/home/you/.local/share/icons/hearth-winapps/notepad-plus-plus.png', 'added': 1700000000000}
+        self.w('.local/share/nimbus/winapps/steam-shortcuts.json', {'apps': [good,
+               dict(good, id='hearth-winapps:x', launch=['/bin/sh', '-c', 'evil']), dict(good, id='other:1'),
+               dict(good, id='hearth-winapps:y', launch=[exe, 'open', '/tmp/x.exe']), 'junk']})
+        g = self.m.winapps_entries(which=lambda p: p == exe)
+        self.assertEqual([x['id'] for x in g], [good['id']], 'only entries that run hearth-winapps run <id>')
+        self.assertEqual((g[0]['source'], g[0]['launch'], g[0]['icon'], g[0]['via']), ('winapps', good['launch'], good['icon'], 'hearth-winapps'))
+        out = self.m.merge([], g)
+        self.assertEqual(out[0]['storeName'], 'Windows apps')
+        self.assertEqual(shlex.split(out[0]['options'])[3:], [exe, 'run', 'notepad-plus-plus'])
+
     def test_same_game_twice_is_one_shortcut_newest_install_wins(self):
         hearth = self.m.clean_games([{'id': 'gog:1', 'title': 'Game', 'source': 'gog', 'cover': '/hearth-cover.png'}])
         old = self.m._game('gog:1', 'Game', 'gog', ['/g/start.sh'], '/g', 100, 'minigalaxy', {'wide': '/w.jpg'})

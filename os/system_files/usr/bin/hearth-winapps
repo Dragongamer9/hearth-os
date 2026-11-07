@@ -1,0 +1,12 @@
+#!/bin/sh
+# Windows apps (docs/WINDOWS-APPS.md): opens a .exe or .msi with the Proton built into Hearth OS, each app in its own
+# prefix under ~/Games/Windows apps. The handler for Windows programs (hearth-winapps.desktop) and what the apps' menu
+# entries run. The work is in desktop/shell/hearth-winapps.
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+if [ "${1:-}" = open ] && [ -n "${2:-}" ]; then
+  f="$2"
+  case "$f" in file://*) f=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1][7:]))' "$f") ;; esac
+  case "$f" in /*) ;; *) f="$PWD/$f" ;; esac
+  exec python3 "$SHELL_DIR/hearth-winapps" open "$f"
+fi
+exec python3 "$SHELL_DIR/hearth-winapps" "$@"

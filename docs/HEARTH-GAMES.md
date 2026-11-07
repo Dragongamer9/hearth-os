@@ -59,8 +59,9 @@ A Windows game whose options say **Default** starts with the GE-Proton built int
 (`/usr/share/steam/compatibilitytools.d/GE-Proton*`), so it starts offline. Otherwise umu-launcher picks UMU-Proton,
 downloaded when needed, as before. A Proton you pick in a game's options always wins.
 
-The code is `hosts/hearth-core/src/proton_pick.rs`. `auto_for` is where the Proton detector (planned for 1.7) will
-choose per game.
+The code is `hosts/hearth-core/src/proton_pick.rs`. `auto_for` asks the Proton detector (docs/WINDOWS-APPS.md): the
+Proton the game last worked with, then Hearth's bundled table (`"match": {"game": "gog:1"}`), the built-in GE-Proton,
+then Valve's newest Proton from Steam.
 
 ## The engines in the image
 

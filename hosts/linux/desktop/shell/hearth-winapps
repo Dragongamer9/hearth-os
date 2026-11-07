@@ -1,0 +1,555 @@
+#!/usr/bin/python3
+"""hearth-winapps: Windows apps on Hearth OS (docs/WINDOWS-APPS.md). A .exe or .msi opened from Hearth Files, "Open
+with Hearth" or the app launcher runs with Proton (the GE-Proton built into Hearth OS, offline), each app in its own
+Wine prefix, with a menu entry and the icon from the program.
+
+  hearth-winapps open PATH         open a .exe or .msi: an app you have already runs; a new one gets its own prefix and
+                                   a menu entry (an installer runs first and its program becomes the app)
+  hearth-winapps run ID [--proton NAME]
+                                   start an app (blocks until it closes; if it closes with an error within
+                                   CRASH_SECONDS, that Proton is noted and the next one is offered)
+  hearth-winapps list              your Windows apps, and the Protons on this device
+  hearth-winapps protons ID        the Protons to pick from for an app (the detector's order)
+  hearth-winapps set ID KEY VALUE  proton (a name, or "" for automatic), dxvk / vkd3d (on, off), winver (win11, win10,
+                                   win81, win7, winxp, or "" for Proton's own), exe (a program inside the app), name
+  hearth-winapps exes ID           the programs inside an app's prefix (to pick its main one)
+  hearth-winapps steam ID on|off   add to Steam (through Hearth Sync, at its next sync) or take it out
+  hearth-winapps remove ID         delete the app: its prefix (everything installed in it), menu entry and icon
+  hearth-winapps fetch NAME        download an older GE-Proton from Hearth's table (progress lines)
+
+Each app: ~/Games/Windows apps/<name>/ with prefix/ (the Wine prefix), hearth-app.json (its settings: written the safe
+way, hearth_settings_io) and state.json (the last start). Menu entries: ~/.local/share/applications/
+hearth-winapp-<id>.desktop. Prints one JSON line, "progress: N what" lines, or "error: ..." (exit 1).
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_proton as hp  # noqa: E402
+try:
+    import hearth_settings_io as hsio  # noqa: E402
+except ImportError:
+    hsio = None
+
+CRASH_SECONDS = hp.CRASH_SECONDS
+WINVERS = ('', 'win11', 'win10', 'win81', 'win7', 'winxp')
+INSTALLER_RE = re.compile(r'(setup|install|installer|_inst\b|^inst)', re.I)
+NOT_MAIN_RE = re.compile(r'(unins|uninstall|crash|report|update|updater|helper|redist|vcredist|dxsetup|dotnet|setup|'
+                         r'install|launcherpatcher|cefsharp|webhelper|7z|notification)', re.I)
+DEFAULTS = {'name': '', 'id': '', 'exe': '', 'args': [], 'proton': '', 'dxvk': True, 'vkd3d': True, 'winver': '',
+            'steam': False, 'source': '', 'installer': False}
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def apps_root():
+    return os.path.join(home(), 'Games', 'Windows apps')
+
+
+def menu_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'applications')
+
+
+def icon_dir():
+    return os.path.join(home(), '.local', 'share', 'icons', 'hearth-winapps')
+
+
+def steam_file():
+    return os.path.join(home(), '.local', 'share', 'nimbus', 'winapps', 'steam-shortcuts.json')
+
+
+def me():
+    """How menu entries start this helper: the image's /usr/bin/hearth-winapps, or this file."""
+    for c in (os.environ.get('HEARTH_WINAPPS_BIN'), '/usr/bin/hearth-winapps'):
+        if c and os.path.isfile(c):
+            return [c]
+    return ['/usr/bin/python3', os.path.realpath(__file__)]
+
+
+class Fail(Exception):
+    pass
+
+
+# ---- names
+def clean_name(stem):
+    s = re.sub(r'[_]+', ' ', stem)
+    s = re.sub(r'(?i)[-_ .]*(setup|installer|install|x64|x86|win64|win32|amd64|v?\d+(\.\d+){1,3})\b', ' ', s)
+    s = re.sub(r'[^\w .()+&-]', ' ', s, flags=re.UNICODE)
+    s = re.sub(r'\s+', ' ', s).strip(' .-')
+    return s[:60] or 'Windows app'
+
+
+def slug(name):
+    s = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+    return s[:50] or 'app'
+
+
+def valid_id(i):
+    return isinstance(i, str) and re.fullmatch(r'[a-z0-9][a-z0-9-]{0,59}', i) is not None
+
+
+def is_installer(path):
+    base = os.path.basename(path)
+    return base.lower().endswith('.msi') or bool(INSTALLER_RE.search(os.path.splitext(base)[0]))
+
+
+def is_windows_program(path):
+    return os.path.splitext(path)[1].lower() in ('.exe', '.msi', '.bat')
+
+
+# ---- apps on disk
+def app_dirs():
+    try:
+        names = sorted(os.listdir(apps_root()))
+    except OSError:
+        return []
+    return [os.path.join(apps_root(), n) for n in names if os.path.isfile(os.path.join(apps_root(), n, 'hearth-app.json'))]
+
+
+def load_app(d):
+    path = os.path.join(d, 'hearth-app.json')
+    data = hsio.load_json(path, {}) if hsio else json.load(open(path, encoding='utf-8'))
+    a = dict(DEFAULTS)
+    a.update({k: v for k, v in (data or {}).items() if k in DEFAULTS and isinstance(v, type(DEFAULTS[k]))})
+    a['dir'] = d
+    a['prefix'] = os.path.join(d, 'prefix')
+    return a
+
+
+def save_app(d, changes):
+    path = os.path.join(d, 'hearth-app.json')
+    if hsio:
+        hsio.merge_json(path, changes)
+    else:  # a copy run on its own: still atomic
+        cur = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else {}
+        cur.update(changes)
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(cur, f, indent=2)
+        os.replace(tmp, path)
+
+
+def apps():
+    out = []
+    for d in app_dirs():
+        try:
+            a = load_app(d)
+        except Exception:  # noqa: BLE001 - one damaged app never hides the others
+            continue
+        if valid_id(a['id']):
+            out.append(a)
+    return out
+
+
+def app(i):
+    for a in apps():
+        if a['id'] == i:
+            return a
+    raise Fail("There's no Windows app called %s" % i)
+
+
+def state(a):
+    try:
+        with open(os.path.join(a['dir'], 'state.json'), encoding='utf-8') as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(a, s):
+    p = os.path.join(a['dir'], 'state.json')
+    if hsio:
+        hsio.write_json(p, s)
+    else:
+        with open(p + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump(s, f)
+        os.replace(p + '.tmp', p)
+
+
+def key(a):
+    return 'winapp:' + a['id']
+
+
+def new_app(name, source, installer):
+    os.makedirs(apps_root(), exist_ok=True)
+    base = clean_name(name)
+    ids = {a['id'] for a in apps()}
+    i, n = slug(base), 2
+    while i in ids or os.path.exists(os.path.join(apps_root(), base)):
+        i, base = '%s-%d' % (slug(clean_name(name)), n), '%s (%d)' % (clean_name(name), n)
+        n += 1
+    d = os.path.join(apps_root(), base)
+    os.makedirs(os.path.join(d, 'prefix'))
+    save_app(d, {'name': base, 'id': i, 'source': source, 'installer': installer})
+    return load_app(d)
+
+
+# ---- Proton
+def ensure_prefix(prefix):
+    """Proton keeps its prefix in $STEAM_COMPAT_DATA_PATH/pfx; pointing pfx at the prefix itself (as umu-launcher
+    does) keeps everything in one folder you can see: ~/Games/Windows apps/<name>/prefix."""
+    os.makedirs(prefix, exist_ok=True)
+    pfx = os.path.join(prefix, 'pfx')
+    if not os.path.lexists(pfx):
+        os.symlink('.', pfx)
+
+
+def proton_env(a):
+    env = dict(os.environ)
+    roots = hp.steam_roots()
+    env.update({'STEAM_COMPAT_DATA_PATH': a['prefix'], 'WINEPREFIX': a['prefix'],
+                'STEAM_COMPAT_CLIENT_INSTALL_PATH': roots[0] if roots else a['dir'],
+                'SteamAppId': '0', 'SteamGameId': 'hearth-winapp-' + a['id'], 'PROTON_LOG': env.get('PROTON_LOG', '')})
+    if not env['PROTON_LOG']:
+        env.pop('PROTON_LOG')
+    if not a['dxvk']:
+        env['PROTON_USE_WINED3D'] = '1'
+    if not a['vkd3d']:
+        env['PROTON_NO_D3D12'] = '1'
+    return env
+
+
+def choose(a, wanted=None):
+    """(candidate, automatic?) for a start: your pick (the app's settings or --proton) or the detector's."""
+    name = wanted or a['proton']
+    if name:
+        p = hp.find(name)
+        if not p:
+            raise Fail('%s isn\'t on this device. Pick another Proton in Settings › Windows apps, or let Hearth choose.' % name)
+        return {'name': os.path.basename(p) if name in ('builtin', 'valve') else name, 'path': p}, False
+    c = hp.pick(key(a), a['exe'] or a['source'])
+    if not c:
+        raise Fail('There\'s no Proton on this device. Hearth OS normally has GE-Proton built in; Settings › Windows apps can download one.')
+    return c, True
+
+
+def proton_cmd(path, verb, args):
+    return ['python3', os.path.join(path, 'proton'), verb] + args
+
+
+def winver_needed(a):
+    if a['winver']:
+        return a['winver']
+    r = hp.rule_for(a['exe'] or a['source'])
+    return r.get('winver', '') if r and r.get('winver') in WINVERS else ''
+
+
+def apply_winver(a, c, env, runner):
+    want = winver_needed(a)
+    s = state(a)
+    if want and s.get('winver') != want:
+        runner(proton_cmd(c['path'], 'run', ['reg', 'add', r'HKCU\Software\Wine', '/v', 'Version', '/t', 'REG_SZ',
+                                             '/d', want, '/f']), env, a['prefix'])
+        s['winver'] = want
+        save_state(a, s)
+
+
+def _run(cmd, env, cwd):
+    return subprocess.run(cmd, env=env, cwd=cwd if os.path.isdir(cwd) else None).returncode
+
+
+def notify(title, body):
+    if shutil.which('notify-send'):
+        subprocess.run(['notify-send', '-a', 'Windows apps', '-i', 'hearth-winapps', title, body], check=False)
+
+
+def start(a, target, args, wanted=None, runner=_run, clock=time.monotonic):
+    """Runs TARGET (a .exe, msiexec, …) in the app's prefix; returns what happened."""
+    c, auto = choose(a, wanted)
+    ensure_prefix(a['prefix'])
+    env = proton_env(a)
+    apply_winver(a, c, env, runner)
+    cwd = os.path.dirname(target) if os.path.isabs(target) else a['prefix']
+    t0 = clock()
+    code = runner(proton_cmd(c['path'], 'waitforexitandrun', [target] + list(args)), env, cwd)
+    took = clock() - t0
+    crashed = code != 0 and took < CRASH_SECONDS
+    s = state(a)
+    s.update({'proton': c['name'], 'at': int(time.time()), 'code': code, 'seconds': round(took, 1), 'crashed': crashed})
+    s.pop('next', None)
+    if crashed:
+        hp.note_failed(key(a), c['name'])
+        nxt = hp.next_after(key(a), c['name'], a['exe'] or a['source'])
+        if nxt:
+            s['next'] = {'name': nxt['name'], 'download': not nxt['path']}
+        notify('%s closed right away' % a['name'],
+               'It stopped with %s. ' % c['name'] + ('Open Settings › Windows apps to try %s.' % nxt['name'] if nxt else 'Hearth has no other Proton to try.'))
+    elif auto or (wanted and not a['proton']):
+        hp.note_worked(key(a), c['name'])
+    save_state(a, s)
+    return {'id': a['id'], 'proton': c['name'], 'code': code, 'crashed': crashed, 'next': s.get('next')}
+
+
+# ---- icons and menu entries
+def extract_icon(exe, i):
+    """The biggest icon in a Windows program (icoutils' wrestool and icotool), as a PNG, or ''."""
+    if not exe or not os.path.isfile(exe) or not (shutil.which('wrestool') and shutil.which('icotool')):
+        return ''
+    work = tempfile.mkdtemp(prefix='hearth-winicon-')
+    try:
+        subprocess.run(['wrestool', '-x', '-t', '14', '-o', work, exe], check=False, timeout=30,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        icos = [os.path.join(work, f) for f in os.listdir(work) if f.lower().endswith('.ico')]
+        best, size = '', -1
+        for ico in icos:
+            out = os.path.join(work, 'png-' + os.path.basename(ico))
+            os.makedirs(out, exist_ok=True)
+            subprocess.run(['icotool', '-x', '-o', out, ico], check=False, timeout=30,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for f in os.listdir(out):
+                m = re.search(r'_(\d+)x(\d+)x(\d+)\.png$', f)
+                px = (int(m.group(1)) * 100 + int(m.group(3))) if m else 0
+                if px > size:
+                    best, size = os.path.join(out, f), px
+        if not best:
+            return ''
+        os.makedirs(icon_dir(), exist_ok=True)
+        dest = os.path.join(icon_dir(), i + '.png')
+        shutil.copyfile(best, dest + '.tmp')
+        os.replace(dest + '.tmp', dest)
+        return dest
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def desktop_path(i):
+    return os.path.join(menu_dir(), 'hearth-winapp-%s.desktop' % i)
+
+
+def desktop_text(a, icon):
+    name = a['name'].replace('\n', ' ')
+    exec_line = ' '.join(me() + ['run', a['id']])
+    return ('[Desktop Entry]\nType=Application\nName=%s\nComment=Windows app, runs with Proton through Hearth\n'
+            'Exec=%s\nIcon=%s\nCategories=Wine;\nStartupNotify=true\nX-Hearth-WinApp=%s\n'
+            % (name, exec_line, icon or 'hearth-winapps', a['id']))
+
+
+def write_entry(a):
+    icon = extract_icon(a['exe'], a['id'])
+    os.makedirs(menu_dir(), exist_ok=True)
+    p = desktop_path(a['id'])
+    with open(p + '.tmp', 'w', encoding='utf-8') as f:
+        f.write(desktop_text(a, icon))
+    os.replace(p + '.tmp', p)
+    return icon
+
+
+# ---- installers
+def programs_in(prefix):
+    """The .exe files a person would start in a prefix (installed programs, not uninstallers): [(path, size, mtime)]."""
+    out = []
+    dc = os.path.join(prefix, 'drive_c')
+    roots = [os.path.join(dc, 'Program Files'), os.path.join(dc, 'Program Files (x86)')]
+    users = os.path.join(dc, 'users')
+    try:
+        for u in os.listdir(users):
+            roots.append(os.path.join(users, u, 'AppData', 'Local', 'Programs'))
+            roots.append(os.path.join(users, u, 'AppData', 'Roaming'))
+    except OSError:
+        pass
+    for r in roots:
+        for d, dirs, files in os.walk(r):
+            dirs[:] = [x for x in dirs if x.lower() not in ('common files', 'windows nt', 'internet explorer', 'windows media player', 'microsoft.net')]
+            for f in files:
+                if f.lower().endswith('.exe') and not NOT_MAIN_RE.search(f):
+                    p = os.path.join(d, f)
+                    try:
+                        st = os.stat(p)
+                    except OSError:
+                        continue
+                    out.append((p, st.st_size, st.st_mtime))
+    return out
+
+
+def main_program(prefix, since=0):
+    found = [t for t in programs_in(prefix) if t[2] >= since - 2] or programs_in(prefix)
+    found.sort(key=lambda t: (-t[1], t[0]))
+    return found[0][0] if found else ''
+
+
+# ---- commands
+def cmd_open(path, runner=_run):
+    path = os.path.abspath(path)
+    if not os.path.isfile(path) or not is_windows_program(path):
+        raise Fail('%s isn\'t a Windows program (.exe or .msi)' % os.path.basename(path))
+    for a in apps():
+        if path in (a['exe'], a['source']) and not a['installer']:
+            return start(a, a['exe'], a['args'], runner=runner)
+    inst = is_installer(path)
+    a = new_app(os.path.splitext(os.path.basename(path))[0], path, inst)
+    if not inst:
+        save_app(a['dir'], {'exe': path})
+        a = load_app(a['dir'])
+        write_entry(a)
+        r = start(a, path, [], runner=runner)
+        r['new'] = True
+        return r
+    since = time.time()
+    target, args = (('msiexec', ['/i', path]) if path.lower().endswith('.msi') else (path, []))
+    r = start(a, target, args, runner=runner)
+    exe = main_program(a['prefix'], since)
+    if exe:
+        save_app(a['dir'], {'exe': exe, 'name': a['name'] if a['name'] != 'Windows app' else clean_name(os.path.splitext(os.path.basename(exe))[0])})
+        a = load_app(a['dir'])
+        write_entry(a)
+        notify('%s is in your apps' % a['name'], 'Installed in its own space. Settings › Windows apps has its options.')
+    r.update({'new': True, 'installed': exe})
+    return r
+
+
+def public(a):
+    s = state(a)
+    return {'id': a['id'], 'name': a['name'], 'exe': a['exe'], 'proton': a['proton'], 'dxvk': a['dxvk'],
+            'vkd3d': a['vkd3d'], 'winver': a['winver'], 'steam': a['steam'], 'dir': a['dir'],
+            'icon': os.path.join(icon_dir(), a['id'] + '.png') if os.path.isfile(os.path.join(icon_dir(), a['id'] + '.png')) else '',
+            'inMenu': os.path.isfile(desktop_path(a['id'])), 'last': s,
+            'candidates': [{'name': c['name'], 'download': not c['path'], 'why': c['why']}
+                           for c in hp.candidates(key(a), a['exe'] or a['source'])]}
+
+
+def cmd_list():
+    b, v = hp.builtin(), hp.valve()
+    return {'apps': [public(a) for a in apps()], 'builtin': b[0] if b else None, 'valve': v[0] if v else None,
+            'root': apps_root()}
+
+
+def cmd_protons(i):
+    a = app(i)
+    return {'candidates': hp.candidates(key(a), a['exe'] or a['source']), 'current': a['proton']}
+
+
+def cmd_set(i, k, v):
+    a = app(i)
+    if k == 'proton':
+        if v and not hp.find(v) and not hp.downloadable(v):
+            raise Fail('%s isn\'t a Proton Hearth knows' % v)
+        save_app(a['dir'], {'proton': v})
+    elif k in ('dxvk', 'vkd3d'):
+        if v not in ('on', 'off'):
+            raise Fail('%s is on or off' % k)
+        save_app(a['dir'], {k: v == 'on'})
+    elif k == 'winver':
+        if v not in WINVERS:
+            raise Fail('Windows version: one of %s' % ', '.join(w for w in WINVERS if w))
+        save_app(a['dir'], {'winver': v})
+    elif k == 'exe':
+        real = os.path.realpath(v)
+        if not (real.startswith(os.path.realpath(a['prefix']) + os.sep) and real.lower().endswith('.exe') and os.path.isfile(real)):
+            raise Fail('Pick a program inside this app')
+        save_app(a['dir'], {'exe': real})
+        write_entry(load_app(a['dir']))
+    elif k == 'name':
+        v = v.strip()[:60]
+        if not v:
+            raise Fail('The name can\'t be empty')
+        save_app(a['dir'], {'name': v})
+        write_entry(load_app(a['dir']))
+        if a['steam']:
+            steam_set(load_app(a['dir']), True)
+    else:
+        raise Fail('Unknown setting %s' % k)
+    return public(load_app(a['dir']))
+
+
+def cmd_exes(i):
+    a = app(i)
+    return {'exes': sorted(p for p, _, _ in programs_in(a['prefix'])), 'current': a['exe']}
+
+
+def steam_set(a, on):
+    def ch(d):
+        lst = [e for e in d.get('apps', []) if isinstance(e, dict) and e.get('id') != 'hearth-winapps:' + a['id']]
+        if on:
+            icon = os.path.join(icon_dir(), a['id'] + '.png')
+            lst.append({'id': 'hearth-winapps:' + a['id'], 'title': a['name'], 'launch': me() + ['run', a['id']],
+                        'cwd': a['dir'], 'icon': icon if os.path.isfile(icon) else '', 'added': int(time.time() * 1000)})
+        d['apps'] = lst
+    os.makedirs(os.path.dirname(steam_file()), exist_ok=True)
+    if hsio:
+        hsio.update_json(steam_file(), ch)
+    else:
+        d = json.load(open(steam_file())) if os.path.exists(steam_file()) else {}
+        ch(d)
+        with open(steam_file() + '.tmp', 'w') as f:
+            json.dump(d, f)
+        os.replace(steam_file() + '.tmp', steam_file())
+    save_app(a['dir'], {'steam': on})
+
+
+def cmd_steam(i, v):
+    if v not in ('on', 'off'):
+        raise Fail('steam ID on|off')
+    a = app(i)
+    steam_set(a, v == 'on')
+    return public(load_app(a['dir']))
+
+
+def cmd_remove(i):
+    a = app(i)
+    root = os.path.realpath(apps_root())
+    d = os.path.realpath(a['dir'])
+    if os.path.dirname(d) != root:
+        raise Fail('That app isn\'t in %s, so Hearth won\'t delete it' % apps_root())
+    if a['steam']:
+        steam_set(a, False)
+    for p in (desktop_path(i), os.path.join(icon_dir(), i + '.png')):
+        try:
+            os.remove(p)
+        except FileNotFoundError:
+            pass
+    shutil.rmtree(d)
+    return {'removed': i}
+
+
+def cmd_fetch(name):
+    p = hp.fetch(name, progress=lambda n, what: print('progress: %d %s' % (n, what), flush=True))
+    return {'name': name, 'path': p}
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        if a[:1] == ['open'] and len(a) == 2:
+            r = cmd_open(a[1])
+        elif a[:1] == ['run'] and len(a) in (2, 4) and (len(a) == 2 or a[2] == '--proton'):
+            x = app(a[1])
+            r = start(x, x['exe'], x['args'], a[3] if len(a) == 4 else None)
+        elif a == ['list']:
+            r = cmd_list()
+        elif a[:1] == ['protons'] and len(a) == 2:
+            r = cmd_protons(a[1])
+        elif a[:1] == ['set'] and len(a) == 4:
+            r = cmd_set(a[1], a[2], a[3])
+        elif a[:1] == ['exes'] and len(a) == 2:
+            r = cmd_exes(a[1])
+        elif a[:1] == ['steam'] and len(a) == 3:
+            r = cmd_steam(a[1], a[2])
+        elif a[:1] == ['remove'] and len(a) == 2:
+            r = cmd_remove(a[1])
+        elif a[:1] == ['fetch'] and len(a) == 2:
+            r = cmd_fetch(a[1])
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except (Fail, ValueError, OSError) as e:
+        print('error: %s' % e, flush=True)
+        if a[:1] == ['open']:
+            notify("Couldn't open that Windows program", str(e))
+        return 1
+    print(json.dumps(r), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
