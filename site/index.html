@@ -303,7 +303,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <a href="#steam">Steam Game Mode</a>
       <a href="#sync">Hearth Sync</a>
       <a href="#mantel">Mantel</a>
-      <a href="#v16">What's new</a>
+      <a href="#v17">What's new</a>
       <a href="#server">Home server</a>
       <a href="#updates">Updates</a>
       <a href="docs/">Docs</a>
@@ -321,13 +321,13 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   <div class="wrap">
     <div>
       <h1 class="h1">Steam Game Mode on the couch. Mantel on the desk.</h1>
-      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away. New in 1.6: Server mode, Discord in the bar, and every drive on every one of your devices, right in Files.</p>
+      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away. New in 1.7: a brand-new Files, Windows apps that just run, Hearth Games, and one-click game servers.</p>
       <div class="ctas">
         <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
-        <a class="btn line" href="#new">See what's new in 1.6</a>
+        <a class="btn line" href="#new">See what's new in 1.7</a>
       </div>
       <div class="status">
-        <span><span class="tag now">Out now</span>Hearth OS 1.6</span>
+        <span><span class="tag now">Out now</span>Hearth OS 1.7</span>
         <span><span class="tag next">Next update</span>in development</span>
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
@@ -480,10 +480,42 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   </div>
 </section>
 
+<section id="v17">
+  <div class="wrap">
+    <div class="head">
+      <span class="tag now">New in 1.7</span>
+      <h2 class="h2" style="margin-top:14px">A brand-new Files, and Windows apps that just run</h2>
+      <p class="lede">Hearth Files is rebuilt in the style of Windows 11's File Explorer and does everything a file manager should, Windows programs open with a double-click, and your games from GOG, Epic and Battle.net get Hearth's own store app.</p>
+    </div>
+    <div class="srv-hero">
+      <figure style="margin:0">
+        <div class="mantel-shot"><img src="img/s17-files.webp" width="1200" height="780" loading="lazy" alt="The new Hearth Files: tabs along the top, an address bar, a sidebar with Home, Favorites and this device, three files selected and a details pane on the right."></div>
+        <figcaption class="cap">The new Hearth Files, with tabs, multi-select and the details pane.</figcaption>
+      </figure>
+      <ul>
+        <li><b>Everything a file manager does</b>Tabs you can drop files onto, drag and drop, select many by dragging a box, rename in place, undo and redo, and type to jump to a file.</li>
+        <li><b>Windows apps that just run</b>Double-click a .exe or .msi. GE-Proton is built in, so it works offline, and each app gets its own space and menu icon.</li>
+        <li><b>The Proton detector</b>Picks the right Proton for each game and app. If one closes right away, Hearth offers the next and remembers what works.</li>
+        <li><b>Hearth Games</b>Hearth's own store app for GOG, Epic and Battle.net.</li>
+      </ul>
+    </div>
+    <div class="srv-shots">
+      <figure><img src="img/s17-rename.webp" width="1200" height="780" loading="lazy" alt="Hearth Files renaming a file in place, the name turned into a text box."><figcaption><b>Rename in place.</b> F2 or Rename, type, Enter. Undo brings the old name back.</figcaption></figure>
+      <figure><img src="img/s17-drag.webp" width="1200" height="780" loading="lazy" alt="Hearth Files with files being dragged onto another folder."><figcaption><b>Drag and drop.</b> Onto folders, the sidebar or another tab.</figcaption></figure>
+      <figure><img src="img/s17-files-home.webp" width="1200" height="780" loading="lazy" alt="Hearth Files' Home page with quick access folders and recent files."><figcaption><b>A Home page.</b> Your favourite folders and recent files in one place.</figcaption></figure>
+    </div>
+    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
+      <div><h3>Server apps</h3><p>One-click Minecraft, Valheim, Terraria and Palworld servers, and your own Vaultwarden, Immich and Navidrome, in Settings &rsaquo; Home server. Off until you turn them on.</p></div>
+      <div><h3>Shares connect by themselves</h3><p>A "Connect automatically" switch per share in Files. A device that's asleep is skipped, so signing in never waits.</p></div>
+      <div><h3>AI video</h3><p>Wan 2.2 in the home server's ComfyUI, sized to your graphics card, with a one-click download.</p></div>
+    </div>
+  </div>
+</section>
+
 <section id="v16">
   <div class="wrap">
     <div class="head">
-      <span class="tag now">New in 1.6</span>
+      <span class="tag now">Since 1.6</span>
       <h2 class="h2" style="margin-top:14px">Server mode, Discord, and all your devices in one place</h2>
       <p class="lede">Your gaming PC can now start as a quiet home server with one big dashboard and a Play button, Discord lives in the bar, and your other devices' drives and status show up by themselves.</p>
     </div>
@@ -606,8 +638,26 @@ footer .legal a{font-size:inherit;color:var(--muted)}
 <section id="new">
   <div class="wrap">
     <div class="head">
-      <h2 class="h2">New in Hearth OS 1.6</h2>
-      <p class="lede">A free update for everyone on 1.0 to 1.5: Settings &rsaquo; Updates.</p>
+      <h2 class="h2">New in Hearth OS 1.7</h2>
+      <p class="lede">A free update for everyone on 1.0 to 1.6: Settings &rsaquo; Updates.</p>
+    </div>
+    <div class="more">
+      <div><h3>The new Files</h3><p>Windows 11 style, with tabs, drag and drop, box select, rename in place, undo and a details pane. <a href="#v17">See it</a>.</p></div>
+      <div><h3>Windows apps</h3><p>Double-click a .exe or .msi and it runs, with GE-Proton built in and the Proton detector picking for you.</p></div>
+      <div><h3>Hearth Games</h3><p>Hearth's own store app for GOG, Epic and Battle.net.</p></div>
+      <div><h3>Server apps and phone alerts</h3><p>One-click game servers and self-hosted apps, and your home server's alerts on your phone.</p></div>
+      <div><h3>Internet that can't get stuck</h3><p>After a freeze, Hearth no longer says it's connected while nothing loads.</p></div>
+      <div><h3>Fixes</h3><p>Wi-Fi shows Connected on mesh networks, the controller works on Server mode's dashboard again, and its settings page can be found.</p></div>
+      <div><h3>Still off until you choose</h3><p>Server apps, notifications and every new service stay off until you turn them on, and Game Mode starts whatever they do.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="recent">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="h2">Recently, in Hearth OS 1.6</h2>
+      <p class="lede">Still new if you're coming from 1.5.</p>
     </div>
     <div class="more">
       <div><h3>Server mode</h3><p>A third mode with one dashboard for your home server, Play a press away, and a web page for your phone. <a href="#v16">See it</a>.</p></div>
@@ -617,25 +667,6 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <div><h3>GOG games fixed</h3><p>GOG and Epic games Hearth starts with Proton show up in Steam Game Mode again.</p></div>
       <div><h3>Desktop fixes</h3><p>Super+Up and Super+Down snap windows again, and Tiles menus let you move tiles.</p></div>
       <div><h3>Still off until you choose</h3><p>Server mode and every new service stay off until you turn them on, and Game Mode starts whatever they do.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="recent">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">Recently, in Hearth OS 1.5</h2>
-      <p class="lede">Still new if you're coming from 1.4.</p>
-    </div>
-    <div class="more">
-      <div><h3>The new Settings</h3><p>A Home page, twelve categories, setting cards, search that finds single settings, and a layout made for controllers and handhelds. <a href="#v15">See it</a>.</p></div>
-      <div><h3>Your bar, any edge</h3><p>One main bar at the bottom, top, left or right, or the top bar and floating dock. The floating app menu can go into the bar.</p></div>
-      <div><h3>Five app menus</h3><p>Hearth, Centred, Tiles, Start screen and Classic, with live tiles, jump lists and search. New handhelds start on the Start screen.</p></div>
-      <div><h3>Use this PC from anywhere</h3><p>A fast remote desktop with Moonlight over Tailscale, paired from Hearth, Tailscale only.</p></div>
-      <div><h3>AI pictures, voices and sharing</h3><p>ComfyUI and Kokoro in the home server, and AI shared across your Hearth devices for the Hearth AI Command Center.</p></div>
-      <div><h3>Boot previews and new animations</h3><p>Preview every boot splash and startup animation, and three new of each: Aurora, Starlight and Ember orbit.</p></div>
-      <div><h3>Clicks with a controller</h3><p>RT and LT click everywhere, and the title bar's close button and dragging windows work every time.</p></div>
-      <div><h3>Still off until you choose</h3><p>Every new server and service stays off until you turn it on, and Game Mode starts whatever they do.</p></div>
     </div>
   </div>
 </section>
