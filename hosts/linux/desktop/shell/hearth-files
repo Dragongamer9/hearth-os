@@ -7,6 +7,9 @@
   hearth-files rename PATH NEWNAME      rename in place
   hearth-files trash PATH...            move to the Trash (gio trash, or the freedesktop Trash spec)
   hearth-files restore PATH...          put files in the Trash back where they were
+  hearth-files untrash PATH...          undo Move to Trash: put back what was trashed from PATH
+  hearth-files link SRC... DEST         links to SRC in the folder DEST (drag with Alt)
+  hearth-files recent                   recently opened files (recently-used.xbel), newest first
   hearth-files empty-trash              delete everything in the Trash
   hearth-files delete PATH...           delete for good (symlinks are removed, never followed)
   hearth-files copy SRC... DEST         copy into the folder DEST     } print "progress: {json}" lines while
@@ -388,6 +391,108 @@ def restore(paths):
             pass
         back.append(dest)
     return {'ok': True, 'restored': back}
+
+
+def trash_dirs():
+    """Every Trash Hearth Files may have used: your home Trash, then each drive's .Trash-UID."""
+    out = [(home_trash(), None)]
+    seen = {os.path.realpath(home_trash())}
+    for base in media_bases():
+        try:
+            names = os.listdir(base)
+        except OSError:
+            continue
+        for n in names:
+            top = os.path.join(base, n)
+            t = os.path.join(top, '.Trash-%d' % os.getuid())
+            if os.path.isdir(t) and os.path.realpath(t) not in seen:
+                seen.add(os.path.realpath(t))
+                out.append((t, top))
+    return out
+
+
+def untrash(paths):
+    """Undo of "Move to Trash": puts each item back at the path it was trashed from (the newest one trashed
+    from there). Nothing is ever written over: a name that's taken now gets a new one (unique())."""
+    back = []
+    for path in paths:
+        want = norm(path)
+        best = None
+        for t, top in trash_dirs():
+            infos = os.path.join(t, 'info')
+            try:
+                names = os.listdir(infos)
+            except OSError:
+                continue
+            for n in names:
+                if not n.endswith('.trashinfo'):
+                    continue
+                orig, when = read_trash_info(os.path.join(infos, n), top)
+                if orig and norm(orig) == want:
+                    files = os.path.join(t, 'files', n[:-len('.trashinfo')])
+                    if lexists(files) and (best is None or (when or '') >= (best[1] or '')):
+                        best = (files, when)
+        if best is None:
+            raise Fail('“' + os.path.basename(want) + "” isn't in the Trash any more")
+        back += restore([best[0]])['restored']
+    return {'ok': True, 'restored': back}
+
+
+def make_links(srcs, dest):
+    """Drag with Alt (or Shift+Ctrl): a link to each item in the folder DEST (never writes over anything)."""
+    d = check_writable(dest)
+    if not os.path.isdir(d):
+        raise Fail('“' + os.path.basename(d) + "” isn't a folder")
+    made = []
+    for s in srcs:
+        src = norm(s)
+        if not lexists(src):
+            raise Fail('“' + os.path.basename(src) + "” isn't there any more")
+        target = unique(os.path.join(d, os.path.basename(src)))
+        try:
+            os.symlink(src, target)
+        except OSError as e:
+            raise Fail(friendly(e, target))
+        made.append(target)
+    return {'ok': True, 'items': made}
+
+
+def recent_files(limit=40):
+    """Recently opened files, newest first, from the freedesktop recently-used.xbel (GTK, Qt and Hearth apps
+    write it). Only files that are still there; folders and remote ones are left out."""
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+    f = os.path.join(base, 'recently-used.xbel')
+    try:
+        with open(f, encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+    except OSError:
+        return {'recent': []}
+    items = []
+    for m in re.finditer(r'<bookmark\b([^>]*)>', text):
+        attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
+        href = attrs.get('href', '')
+        if not href.startswith('file://'):
+            continue
+        p = urllib.parse.unquote(href[7:], errors='surrogateescape')
+        if not os.path.isfile(p):
+            continue
+        when = attrs.get('visited') or attrs.get('modified') or attrs.get('added') or ''
+        items.append((when, p))
+    items.sort(reverse=True)
+    out, seen = [], set()
+    for when, p in items:
+        if p in seen:
+            continue
+        seen.add(p)
+        e = entry(p, os.path.basename(p))
+        if e:
+            e['opened'] = when
+            d, h = os.path.dirname(p), os.path.expanduser('~')
+            e['where'] = '~' + d[len(h):] if h != '/' and (d == h or d.startswith(h + '/')) else d
+            out.append(e)
+        if len(out) >= limit:
+            break
+    return {'recent': out}
 
 
 def empty_trash():
@@ -2362,18 +2467,21 @@ def thumb_path(p):
 
 def thumbs(paths):
     """Makes the missing video thumbnails (with ffmpegthumbnailer or ffmpeg, if installed), at most 30 a call,
-    in the shared freedesktop cache, so other apps can use them too."""
+    in the shared freedesktop cache, so other apps can use them too. 'have' lists every path (videos and PDFs) whose
+    thumbnail is there and up to date, so Files only shows thumbnails that exist (no "Cannot open" in the log)."""
     tool = shutil.which('ffmpegthumbnailer') or shutil.which('ffmpeg')
-    made = []
-    if not tool:
-        return {'ok': False, 'made': made}
-    for path in paths[:30]:
+    made, have = [], []
+    for path in paths[:60]:
         p = os.path.abspath(path)
         out = thumb_path(p)
         try:
             if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(p):
+                have.append(p)
                 continue
         except OSError:
+            continue
+        mime = mimetypes.guess_type(p)[0] or ''
+        if not tool or not mime.startswith('video/') or len(made) >= 30:
             continue
         os.makedirs(os.path.dirname(out), mode=0o700, exist_ok=True)
         tmp = out + '.%d.tmp.png' % os.getpid()
@@ -2386,11 +2494,12 @@ def thumbs(paths):
             if r.returncode == 0 and os.path.exists(tmp):
                 os.replace(tmp, out)
                 made.append(p)
+                have.append(p)
         except (OSError, subprocess.TimeoutExpired):
             pass
         if os.path.exists(tmp):
             os.unlink(tmp)
-    return {'ok': True, 'made': made}
+    return {'ok': bool(tool), 'made': made, 'have': have}
 
 
 def terminal(path):
@@ -3231,7 +3340,7 @@ def remote_cmd(c, rest):
         return {'path': rest[0], 'name': rest[0].rstrip('/').rsplit('/', 1)[-1], 'kind': 'default', 'executable': False,
                 'text': False, 'editor': False, 'canChmod': False, 'remembered': None}
     if c == 'thumbs':
-        return thumbs([a for a in rest if not is_remote(a)]) if any(not is_remote(a) for a in rest) else {'ok': True, 'made': []}
+        return thumbs([a for a in rest if not is_remote(a)]) if any(not is_remote(a) for a in rest) else {'ok': True, 'made': [], 'have': []}
     if c == 'clip-set':
         return None
     raise Fail("Hearth Storage's shared folders can't be changed from here: copy what you need to this device")
@@ -3286,6 +3395,12 @@ def cmd(argv):
         out = trash(rest)
     elif c == 'restore' and rest:
         out = restore(rest)
+    elif c == 'untrash' and rest:
+        out = untrash(rest)
+    elif c == 'link' and len(rest) >= 2:
+        out = make_links(rest[:-1], rest[-1])
+    elif c == 'recent':
+        out = recent_files()
     elif c == 'empty-trash':
         out = empty_trash()
     elif c == 'delete' and rest:

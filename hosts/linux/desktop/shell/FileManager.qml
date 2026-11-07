@@ -56,6 +56,16 @@ Scope {
     property bool desc: false
     property string group: "none"              // none | type | date
     property bool hidden: false
+    property bool showExt: true                // View › File name extensions
+    property bool detailsPane: false           // the details pane on the right (the Details button, Alt+P)
+    readonly property string homePage: "hearth:home"   // the Home page: Quick access and recent files
+    readonly property bool onHome: path === homePage
+    property var recent: []                    // hearth-files recent (the Home page's list)
+    property var undoStack: []                 // file changes that can be undone (Ctrl+Z), newest last
+    property var redoStack: []
+    // The view as drawn: the Home page is always a list (Quick access tiles above it).
+    readonly property string shownView: onHome ? "details" : view
+    readonly property var views: ["large", "grid", "small", "tiles", "compact", "details"]
     property var prefs: ({})
     property bool prefsLoaded: false
     property string query: ""                  // filters this folder as you type
@@ -75,6 +85,8 @@ Scope {
     property var templates: []
     property bool mouseMode: true              // the last pointer was a mouse (rubber band and drag), not touch
     property string dragUris: ""
+    property string dragHint: ""               // a folder lit as where a drop goes (the CI screenshot's staged drag)
+    property bool dragDemo: false               // filemanager dragdemo: shows the drag picture in the window
 
     // ------------------------------------------------ focus: tabs | toolbar | places | main, plus an overlay on top
     property string zone: "main"
@@ -171,7 +183,21 @@ Scope {
         function select(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) app.cur = i; }
         function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
         function close(): void { app.closeOverlay(); }
+        function home(): void { app.open(""); app.navigate(app.homePage, ""); }
+        function details(on: string): void { app.detailsPane = on === "on"; app.rememberView(); }
+        function undo(): void { app.undo(); }
+        // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
+        function rename(name: string): void { const e = app.entries.find(x => x.name === name); app.renaming = e ? e.path : ""; }
+        function marks(names: string): void { const m = {}; for (const n of names.split("/")) { const e = app.entries.find(x => x.name === n); if (e) m[e.path] = true; } app.marked = m; }
         // For checks: the folder shown and the item under the cursor ("" while the window is closed).
+        // A staged drag for the screenshots (CI has no mouse): the picked items' drag picture over the folder `onto`.
+        function dragdemo(onto: string): void {
+            const e = app.entries.find(x => x.name === onto);
+            app.dragHint = e ? e.path : "";
+            app.dragDemo = onto !== "";
+        }
+        // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
+        function section(name: string): void { const i = app.places.findIndex(q => q.section === name); if (i >= 0) { app.zone = "places"; app.placeIndex = i; } }
         function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
     }
 
@@ -193,7 +219,7 @@ Scope {
             if (net) { if (!listing) navigate(home, ""); netOpen(net); return; }
             if (smb) { if (!listing) navigate(home, ""); netOpen({ name: smb[1].split(".")[0], share: decodeURIComponent(smb[2] || ""), home: smb[1].endsWith(".ts.net") ? "" : smb[1], away: smb[1].endsWith(".ts.net") ? smb[1] : "" }); return; }
             if (target) navigate(target, "");
-            else if (!listing) navigate(home, "");
+            else if (!listing) navigate(picking ? home : homePage, "");
             else reload();
         };
         if (!prefsLoaded) loadPrefs(go);
@@ -408,13 +434,15 @@ Scope {
             prefs = r || {};
             prefsLoaded = true;
             hidden = !!prefs.hidden;
+            showExt = prefs.showExt !== false;
+            detailsPane = !!prefs.detailsPane;
             applyFolderView("");
             if (then) then();
         });
     }
     function applyFolderView(p) {
         const f = (prefs.folders && p && prefs.folders[p]) || prefs;
-        view = ["grid", "compact", "details"].indexOf(f.view) >= 0 ? f.view : (f.view === "list" ? "details" : "grid");
+        view = views.indexOf(f.view) >= 0 ? f.view : (f.view === "list" ? "details" : "grid");
         sort = ["name", "date", "size", "type"].indexOf(f.sort) >= 0 ? f.sort : "name";
         desc = !!f.desc;
         group = ["none", "type", "date"].indexOf(f.group) >= 0 ? f.group : "none";
@@ -424,13 +452,15 @@ Scope {
         const p = Object.assign({}, prefs);
         const folders = Object.assign({}, p.folders || {});
         const v = { view: view, sort: sort, desc: desc, group: group };
-        if (path) {
+        if (path && !onHome) {
             delete folders[path];
             folders[path] = v;               // newest last: hearth-files keeps the newest 400
         }
         p.folders = folders;
         p.view = view; p.sort = sort; p.desc = desc; p.group = group;
         p.hidden = hidden;
+        p.showExt = showExt;
+        p.detailsPane = detailsPane;
         prefs = p;
         prefsTimer.restart();
     }
@@ -448,6 +478,7 @@ Scope {
         if (listing) load(listing.path, current ? current.name : "", "none");
     }
     function load(p, sel, hist) {
+        if (p === homePage) return loadHome(hist);
         const seq = ++loadSeq;
         loading = true;
         call(["list", p].concat(hidden ? ["--hidden"] : []), (r, err) => {
@@ -482,6 +513,29 @@ Scope {
             }
         });
     }
+    // The Home page (Win 11-style): Quick access tiles (the usual folders and your favorites) and recent files.
+    function loadHome(hist) {
+        loadSeq++;
+        loading = false;
+        const prev = listing ? listing.path : "";
+        if (prev !== homePage) {
+            if (hist === "push" && prev) {
+                back = back.concat([prev]).slice(-100);
+                fwd = [];
+            }
+            query = "";
+            stopSearch();
+            found = null;
+            marked = ({});
+            anchor = -1;
+        }
+        listing = { path: homePage, name: "Home", parent: "", entries: [], writable: false, trash: false, free: null, total: null };
+        path = homePage;
+        cur = 0;
+        call(["recent"], (r, err) => { if (r && path === homePage) { recent = r.recent || []; cur = Math.min(cur, Math.max(0, entries.length - 1)); } });
+    }
+    readonly property var quickAccess: places.filter(q => q.path && q.path !== homePage && !q.child
+        && (q.section === "places" || q.section === "bookmarks" || q.section === "games") && q.kind !== "trash").slice(0, 15)
     // The child of `to` that `from` is inside: picked when going back or up.
     function childOn(to, from) {
         if (!from || from === to || !under(from, to)) return "";
@@ -506,6 +560,7 @@ Scope {
     function goUp(closeAtTop) {
         if (found !== null) { clearSearch(); return; }
         if (!listing) return;
+        if (onHome) { if (closeAtTop) close(); return; }
         const p = listing.path;
         if (p === home) {
             if (closeAtTop) close();
@@ -519,7 +574,8 @@ Scope {
         call(["places"], (r, err) => {
             if (!r) return;
             const old = places;
-            places = r.places;
+            places = (picking ? [] : [{ id: "start", label: "Home", path: homePage, kind: "start", section: "start" }])
+                .concat(sortPlaces(r.places.map(q => q.kind === "home" && !picking ? Object.assign({}, q, { label: "Home folder" }) : q)));
             placeIndex = Math.min(placeIndex, places.length - 1);
             // A drive that was taken out while you were in it: back to Home.
             for (const o of old) {
@@ -532,6 +588,48 @@ Scope {
         });
     }
     Timer { interval: 4000; repeat: true; running: app.shown; onTriggered: app.refreshPlaces() }
+
+    // ------------------------------------------------ renaming in place
+    property string renaming: ""               // the path whose name is a text box right now
+    onPathChanged: renaming = ""
+    function finishRename(text) {
+        const e = entries.find(x => x.path === renaming);
+        renaming = "";
+        if (!e || text === null || text === "" || text === e.name) return;
+        call(["rename", e.path, text], (r, err) => {
+            if (err) return say(err, true);
+            if (r.path !== e.path) pushUndo({ kind: "rename", from: e.path, to: r.path });
+            load(listing.path, base(r.path), "none");
+        });
+    }
+
+    // ------------------------------------------------ type-ahead
+    property string typed: ""
+    property double typedAt: 0
+    function typeAhead(ch) {
+        const now = Date.now();
+        const buf = (now - typedAt < 1000 ? typed : "") + ch;
+        const list = entries || [];
+        const low = buf.toLowerCase();
+        // The same letter again steps through the names starting with it.
+        const same = buf.length > 1 && buf.split("").every(c => c.toLowerCase() === low[0]);
+        const want = same ? low[0] : low;
+        const start = same || buf.length === 1 ? cur + 1 : cur;
+        for (let k = 0; k < list.length; k++) {
+            const i = (start + k) % list.length;
+            if (shownName(list[i]).toLowerCase().startsWith(want)) {
+                typed = buf;
+                typedAt = now;
+                zone = "main";
+                cur = i;
+                anchor = i;
+                marked = ({});
+                return true;
+            }
+        }
+        if (typed && now - typedAt < 1000) { typedAt = now; return true; }   // a typo in the middle: stay put
+        return false;
+    }
 
     // ------------------------------------------------ tabs
     function saveTab() {
@@ -547,6 +645,17 @@ Scope {
         fwd = [];
         zone = "main";
         load(tabs[tabIndex].path, "", "none");
+    }
+    // Dragging a tab along the strip puts it somewhere else (the open tab stays open).
+    function moveTab(from, to) {
+        if (from === to || from < 0 || to < 0 || from >= tabs.length || to >= tabs.length) return;
+        saveTab();
+        const t = tabs.slice();
+        const open = t[tabIndex];
+        const m = t.splice(from, 1)[0];
+        t.splice(to, 0, m);
+        tabs = t;
+        tabIndex = t.indexOf(open);
     }
     function switchTab(i) {
         if (i === tabIndex || i < 0 || i >= tabs.length) return;
@@ -579,6 +688,10 @@ Scope {
 
     // ================================================ the folder's entries, filtered, grouped and sorted
     readonly property var entries: {
+        if (path === homePage) {
+            const hq = query.trim().toLowerCase();
+            return hq ? recent.filter(e => e.name.toLowerCase().indexOf(hq) >= 0) : recent;
+        }
         const all = found !== null ? found : (listing ? listing.entries : []);
         const q = found !== null ? "" : query.trim().toLowerCase();
         let out = q ? all.filter(e => e.name.toLowerCase().indexOf(q) >= 0) : all.slice();
@@ -648,6 +761,14 @@ Scope {
         const s = p.replace(/\/+$/, "");
         return s.slice(s.lastIndexOf("/") + 1) || "/";
     }
+    // The navigation pane's order (Win 11-style): Home, Favorites, This device, Games, Drives, Hearth Storage,
+    // Your devices, Trash. Within a group hearth-files' order stays.
+    function sortPlaces(list) {
+        const rank = { bookmarks: 1, places: 2, games: 3, drives: 4, network: 5, devices: 6, trash: 7 };
+        return list.map((q, i) => [q, i]).sort((a, b) => ((rank[a[0].section] || 5) - (rank[b[0].section] || 5)) || a[1] - b[1]).map(x => x[0]);
+    }
+    // A tab's or the window's name for a path: "Home" for the Home page.
+    function titleOf(p) { return !p || p === homePage ? "Home" : p === "/" ? "This device" : base(p); }
     function parentOf(p) {
         const s = p.replace(/\/+$/, "");
         const i = s.lastIndexOf("/");
@@ -669,6 +790,7 @@ Scope {
     }
     readonly property var crumbs: {
         if (!path) return [];
+        if (path === homePage) return [{ label: "Home", path: homePage }];
         const r = rootOf(path);
         const out = [{ label: r.label, path: r.path }];
         const rest = path.slice(r.path === "/" ? 1 : r.path.length + 1);
@@ -682,9 +804,13 @@ Scope {
     }
     // The toolbar, left to right (for the keyboard and the controller).
     readonly property var toolItems: {
-        const t = [{ t: "back" }, { t: "forward" }, { t: "up" }];
+        // Left to right: the navigation row, then the command bar (Left / Right walks through all of it).
+        const t = [{ t: "back" }, { t: "forward" }, { t: "up" }, { t: "refresh" }];
         for (const c of crumbs) t.push({ t: "crumb", path: c.path, label: c.label });
-        t.push({ t: "edit" }, { t: "search" }, { t: "view" }, { t: "sort" }, { t: "hidden" });
+        t.push({ t: "edit" }, { t: "search" });
+        if (!picking) for (const c of ["new", "cut", "copy", "paste", "rename", "copypath", "delete"]) t.push({ t: c });
+        t.push({ t: "sort" }, { t: "view" }, { t: "hidden" });
+        if (!picking) t.push({ t: "undo" }, { t: "redo" }, { t: "details" });
         return t;
     }
     function toolLit(name) { return zone === "toolbar" && !!toolItems[toolIndex] && toolItems[toolIndex].t === name; }
@@ -802,17 +928,24 @@ Scope {
         if (!e || e.dir) return "";
         const k = kindOf(e);
         if (k === "image" && e.size < 80 * 1024 * 1024 && !/heic|jxl|avif|x-raw|tiff|psd|xcf/.test(e.mime)) return fileUrl(e.path);
-        if (k === "video" || e.mime === "application/pdf") return "file://" + thumbDir + Qt.md5(fileUrl(e.path)) + ".png";
+        if ((k === "video" || e.mime === "application/pdf") && thumbHave[e.path]) return "file://" + thumbDir + Qt.md5(fileUrl(e.path)) + ".png";
         return "";
     }
-    // Video thumbnails nobody made yet: hearth-files makes them in the background (if ffmpeg is installed).
+    // Paths whose cached thumbnail hearth-files says is there: only those are shown (no "Cannot open" warnings).
+    property var thumbHave: ({})
+    // Video thumbnails nobody made yet: hearth-files makes them in the background (if ffmpeg is installed), and
+    // says which videos and PDFs already have one. The details pane uses them too, so this runs in every view.
     function makeThumbs() {
-        if (!listing || view === "details") return;
-        const vids = (listing.entries || []).filter(e => kindOf(e) === "video").slice(0, 30).map(e => e.path);
-        if (!vids.length) return;
+        if (!listing) return;
+        const want = (listing.entries || []).filter(e => !e.dir && (kindOf(e) === "video" || e.mime === "application/pdf"))
+            .slice(0, 60).map(e => e.path);
+        if (!want.length) return;
         const at = listing.path;
-        call(["thumbs"].concat(vids), (r, err) => {
-            if (r && r.made && r.made.length && listing && listing.path === at) reload();
+        call(["thumbs"].concat(want), (r, err) => {
+            if (!r || !r.have || !listing || listing.path !== at) return;
+            const h = {};
+            for (const p of r.have) h[p] = true;
+            thumbHave = h;
         });
     }
 
@@ -839,6 +972,7 @@ Scope {
         const p = places[i];
         if (!p) return;
         placeIndex = i;
+        if (p.path === homePage) return navigate(homePage, "");
         if (p.net) return netOpen(p.net);
         if (p.kind === "howto") return showHowto(p.howto || []);
         if (p.kind === "device") {
@@ -938,12 +1072,98 @@ Scope {
     }
     function setGroup(g) { group = g; rememberView(); }
     function setView(v) {
-        if (["grid", "compact", "details"].indexOf(v) < 0) return;
+        if (views.indexOf(v) < 0) return;
         view = v;
         rememberView();
         makeThumbs();
     }
-    function cycleView() { setView(({ grid: "compact", compact: "details", details: "grid" })[view]); }
+    function cycleView() { setView(({ large: "grid", grid: "small", small: "tiles", tiles: "compact", compact: "details", details: "large" })[view]); }
+    readonly property var viewNames: ({ large: "Large icons", grid: "Medium icons", small: "Small icons", tiles: "Tiles", compact: "List", details: "Details" })
+    function setShowExt(on) { showExt = on; rememberView(); say(on ? "Showing file name extensions" : "Hiding file name extensions"); }
+    function toggleDetails() { detailsPane = !detailsPane; rememberView(); }
+    // A file's name as shown: without its extension when View › File name extensions is off (never for folders
+    // or names that are only an extension, like .bashrc).
+    function shownName(e) {
+        if (!e) return "";
+        if (showExt || e.dir) return e.name;
+        const i = e.name.lastIndexOf(".");
+        return i > 0 ? e.name.slice(0, i) : e.name;
+    }
+
+    // The navigation row's and command bar's buttons (also reached with the controller: Up to the bar, A presses).
+    // x, y: where a menu opens (a click); none: the menu opens in the middle (the controller).
+    function command(t, x, y) {
+        viaPad = x === undefined;
+        switch (t) {
+        case "refresh": reload(); refreshPlaces(); break;
+        case "new":
+            if (!writable) return say("You can't make anything here");
+            menuOnFolder = true;
+            showMenu("New", [
+                { id: "newfolder", label: "Folder", key: "Ctrl+Shift+N" },
+                { id: "newfile", label: "Empty file", key: "Ctrl+Alt+N" }
+            ].concat(templates.length ? [{ sep: true }].concat(templates.map((tp, i) => ({ id: "tpl:" + i, label: tp.name }))) : []), x, y);
+            break;
+        case "cut": if (!targets().length) return say("Pick something first"); setClip("cut", targets()); break;
+        case "copy": if (!targets().length) return say("Pick something first"); setClip("copy", targets()); break;
+        case "paste": if (!writable) return say("You can't paste here"); paste(); break;
+        case "rename": if (!current) return say("Pick something to rename"); menuOnFolder = false; runMenu("rename"); break;
+        case "copypath": menuOnFolder = !current; runMenu("copypath"); break;
+        case "delete": if (!targets().length) return say("Pick something first"); menuOnFolder = false; runMenu(inTrash ? "delete" : "trash"); break;
+        case "sort": sortMenu(x, y); break;
+        case "view": viewMenu(x, y); break;
+        case "hidden": {
+            const ck = on => on ? "✓  " : "     ";
+            showMenu("Show", [
+                { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" },
+                { id: "exts", label: ck(showExt) + "File name extensions" }
+            ], x, y);
+            break;
+        }
+        case "undo": undo(); break;
+        case "redo": redo(); break;
+        case "details": toggleDetails(); break;
+        }
+    }
+
+    // ------------------------------------------------ undo / redo (Ctrl+Z, Ctrl+Y)
+    // Each change Hearth Files makes is kept as what undoes it: a rename, something new, Move to Trash, a copy,
+    // a move or links. Delete permanently can't be undone (it asks first). The last 50 are kept, for this session.
+    function pushUndo(op) { undoStack = undoStack.concat([op]).slice(-50); redoStack = []; }
+    function opName(op) {
+        const n = op.items || op.paths || [op.path || op.to];
+        const what = n.length === 1 ? "“" + base(n[0]) + "”" : n.length + " items";
+        return ({ rename: "Rename", create: "New " + what, trash: "Trash " + what, copy: "Copy " + what, move: "Move " + what, link: "Link " + what })[op.kind] || "";
+    }
+    function undo() { runUndo(true); }
+    function redo() { runUndo(false); }
+    function runUndo(isUndo) {
+        const stack = isUndo ? undoStack : redoStack;
+        if (!stack.length) return say(isUndo ? "Nothing to undo" : "Nothing to redo");
+        if (jobProc.running) return say("Wait for the copy or move to finish first");
+        const op = stack[stack.length - 1];
+        if (isUndo) undoStack = undoStack.slice(0, -1); else redoStack = redoStack.slice(0, -1);
+        const done = (next, msg) => {
+            if (isUndo) redoStack = redoStack.concat([next || op]); else undoStack = undoStack.concat([next || op]);
+            say((isUndo ? "Undone: " : "Redone: ") + (msg || opName(op)));
+            reload();
+            refreshPlaces();
+        };
+        const failed = err => { say(err, true); reload(); };
+        const k = op.kind;
+        if (k === "rename") {
+            const from = isUndo ? op.to : op.from, to = isUndo ? op.from : op.to;
+            call(["rename", from, base(to)], (r, err) => err ? failed(err) : done(null, "Rename “" + base(op.from) + "”"));
+        } else if (k === "trash") {
+            call([isUndo ? "untrash" : "trash"].concat(op.paths), (r, err) => err ? failed(err) : done());
+        } else if (k === "create" || k === "copy" || k === "link") {
+            const list = op.items || [op.path];
+            call([isUndo ? "trash" : "untrash"].concat(list), (r, err) => err ? failed(err) : done());
+        } else if (k === "move") {
+            if (isUndo) startJob({ verb: "move", paths: op.items, dest: op.back, decide: {}, undoOp: op, undoMode: "undo" });
+            else startJob({ verb: "move", paths: op.srcs, dest: op.dest, decide: {}, undoOp: op, undoMode: "redo" });
+        }
+    }
     function copyText(t) {
         Quickshell.execDetached(["wl-copy", "--", t]);
         say("Copied “" + t + "”");
@@ -1046,7 +1266,7 @@ Scope {
             if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
             if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
             if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
-            if (e && found !== null) items.push({ id: "showin", label: "Show in its folder" });
+            if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder" });
             if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
             items.push(sep());
             if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable) });
@@ -1080,10 +1300,10 @@ Scope {
             if (!e) items.push({ id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H" });
             if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T" });
             if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W" });
-            const bmPath = e ? (e.dir ? e.path : "") : (listing ? listing.path : "");
-            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to bookmarks", key: "Ctrl+D" });
-            if (!e || e.dir) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4" });
-            items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter" });
+            const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
+            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D" });
+            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4" });
+            if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
         showMenu(title, items.filter(i => !i.off), x === undefined ? -1 : x, y === undefined ? -1 : y);
@@ -1103,7 +1323,7 @@ Scope {
         if (p.path) items.push(sep(), { id: "p-props", label: "Properties" });
         showMenu(p.label, items, -1, -1);
     }
-    function sortMenu() {
+    function sortMenu(mx, my) {
         const ck = on => on ? "✓  " : "     ";
         showMenu("Sort and group", [
             { id: "sort:name", label: ck(sort === "name") + "Name" },
@@ -1116,17 +1336,22 @@ Scope {
             { id: "group:none", label: ck(group === "none") + "Don't group" },
             { id: "group:type", label: ck(group === "type") + "Group by type" },
             { id: "group:date", label: ck(group === "date") + "Group by date modified" }
-        ]);
+        ], mx, my);
     }
-    function viewMenu() {
+    function viewMenu(mx, my) {
         const ck = on => on ? "✓  " : "     ";
         showMenu("View", [
-            { id: "view:grid", label: ck(view === "grid") + "Icons", key: "Ctrl+1" },
-            { id: "view:compact", label: ck(view === "compact") + "Compact", key: "Ctrl+2" },
+            { id: "view:large", label: ck(view === "large") + "Large icons", key: "Ctrl+4" },
+            { id: "view:grid", label: ck(view === "grid") + "Medium icons", key: "Ctrl+1" },
+            { id: "view:small", label: ck(view === "small") + "Small icons", key: "Ctrl+5" },
+            { id: "view:tiles", label: ck(view === "tiles") + "Tiles", key: "Ctrl+6" },
+            { id: "view:compact", label: ck(view === "compact") + "List", key: "Ctrl+2" },
             { id: "view:details", label: ck(view === "details") + "Details", key: "Ctrl+3" },
             sep(),
-            { id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H" }
-        ]);
+            { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" },
+            { id: "exts", label: ck(showExt) + "File name extensions" },
+            { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" }
+        ], mx, my);
     }
     function runMenu(id) {
         const it = menuItems.find(i => i.id === id);
@@ -1174,9 +1399,13 @@ Scope {
         case "paste": paste(); break;
         case "copypath": copyText(t.length ? t.join("\n") : (listing ? listing.path : "")); break;
         case "rename":
+            // With a mouse or keyboard the name turns into a text box where it is (Enter keeps it, Esc cancels);
+            // from the controller it asks in a box with the on-screen keyboard.
+            if (e && !viaPad && overlay === "" && entries.some(x => x.path === e.path)) { renaming = e.path; break; }
             if (e) askText("Rename", e.name, "Rename", e.dir ? e.name.length : (e.name.lastIndexOf(".") > 0 ? e.name.lastIndexOf(".") : e.name.length),
                 text => app.call(["rename", e.path, text], (r, err) => {
                     if (err) return app.say(err, true);
+                    if (r.path !== e.path) app.pushUndo({ kind: "rename", from: e.path, to: r.path });
                     app.load(app.listing.path, app.base(r.path), "none");
                 }));
             break;
@@ -1261,19 +1490,25 @@ Scope {
             say("“" + e.name + "” is your wallpaper now");
             break;
         case "hidden": setHidden(!hidden); break;
+        case "exts": setShowExt(!showExt); break;
+        case "detailspane": toggleDetails(); break;
+        case "undo": undo(); break;
+        case "redo": redo(); break;
+        case "home": navigate(homePage, ""); break;
         case "bookmark": {
             const bp = e && e.dir ? e.path : listing.path;
+            if (bp === homePage) break;
             call(["bookmark-add", bp], (r, err) => {
                 if (err) return say(err, true);
-                say("Added “" + base(bp) + "” to your bookmarks");
+                say("Added “" + base(bp) + "” to Favorites");
                 refreshPlaces();
             });
             break;
         }
         case "terminal":
-            call(["terminal", e && e.dir ? e.path : listing.path], (r, err) => { if (err) say(err, true); });
+            call(["terminal", e && e.dir ? e.path : onHome ? home : listing.path], (r, err) => { if (err) say(err, true); });
             break;
-        case "props": properties(t.length ? t : [listing ? listing.path : home]); break;
+        case "props": properties(t.length ? t : [listing && !onHome ? listing.path : home]); break;
         case "p-open": openPlace(placeIndex); break;
         case "p-newtab": if (places[placeIndex]) newTab(places[placeIndex].path); break;
         case "p-props": if (places[placeIndex]) properties([places[placeIndex].path]); break;
@@ -1321,6 +1556,7 @@ Scope {
         askText("New folder", name, "Create", name.length, text => {
             app.call(["mkdir", dir + "/" + text], (r, err) => {
                 if (err) return app.say(err, true);
+                app.pushUndo({ kind: "create", path: r.path || dir + "/" + text });
                 app.load(dir, text, "none");
             });
         });
@@ -1334,6 +1570,7 @@ Scope {
         askText("New empty file", name, "Create", name.lastIndexOf("."), text => {
             app.call(["new-file", dir + "/" + text], (r, err) => {
                 if (err) return app.say(err, true);
+                app.pushUndo({ kind: "create", path: (r && r.path) || dir + "/" + text });
                 app.load(dir, text, "none");
             });
         });
@@ -1345,6 +1582,7 @@ Scope {
         askText("New " + tp.name, tp.file, "Create", dot > 0 ? dot : tp.file.length, text => {
             app.call(["from-template", tp.path, dir, text], (r, err) => {
                 if (err) return app.say(err, true);
+                if (r && r.path) app.pushUndo({ kind: "create", path: r.path });
                 app.load(dir, app.base(r.path), "none");
             });
         });
@@ -1353,6 +1591,7 @@ Scope {
         if (!t.length) return;
         call(["trash"].concat(t), (r, err) => {
             if (err) return say(err, true);
+            pushUndo({ kind: "trash", paths: (r && r.trashed && r.trashed.length) ? r.trashed : t });
             say(t.length === 1 ? "Moved “" + base(t[0]) + "” to the Trash" : "Moved " + t.length + " items to the Trash");
             marked = ({});
             reload();
@@ -1420,6 +1659,15 @@ Scope {
     function dropOn(drop, dest) {
         const paths = (drop.urls || []).map(u => urlToPath(u)).filter(p => p && p !== dest);
         if (!paths.length || !dest) return;
+        if (drop.proposedAction === Qt.LinkAction && dest !== trashPath) {
+            drop.accept(Qt.LinkAction);
+            return call(["link"].concat(paths).concat([dest]), (r, err) => {
+                if (err) return say(err, true);
+                pushUndo({ kind: "link", items: r.items });
+                say(paths.length === 1 ? "Made a link to “" + base(paths[0]) + "”" : "Made " + paths.length + " links");
+                reload();
+            });
+        }
         drop.accept(drop.proposedAction === Qt.CopyAction ? Qt.CopyAction : Qt.MoveAction);
         if (dest === trashPath) return trashPaths(paths);
         const copy = drop.proposedAction === Qt.CopyAction || rootOf(paths[0]).path !== rootOf(dest).path;
@@ -1718,6 +1966,7 @@ Scope {
     }
     function jobExited() {
         const j = job;
+        const jn = jobNow;
         const last = jobLast;
         job = null;
         jobNow = null;
@@ -1731,9 +1980,19 @@ Scope {
             if (!r || r.cancelled) say(j && j.cancelling ? "Stopped. Nothing half-done was left behind." : "It stopped before finishing", !(j && j.cancelling));
             else if (j.verb === "compress") { say("Made “" + j.destName + "”"); sel = j.destName; }
             else if (j.verb === "extract") { say("Unpacked " + what + (r.path ? " into “" + base(r.path) + "”" : "")); sel = r.path ? base(r.path) : ""; }
-            else {
+            else if (jn && jn.undoOp) {
+                // A move that undid (or redid) another one: the other list gets it, with where things are now.
+                const op = jn.undoMode === "redo" ? Object.assign({}, jn.undoOp, { items: r.items || [] }) : jn.undoOp;
+                if (jn.undoMode === "undo") redoStack = redoStack.concat([op]); else undoStack = undoStack.concat([op]);
+                say((jn.undoMode === "undo" ? "Undone: " : "Redone: ") + opName(op));
+            } else {
                 const skipped = r.skipped && r.skipped.length ? " (skipped " + r.skipped.length + ")" : "";
                 say((j.verb === "move" ? "Moved " : "Copied ") + what + " to “" + j.destName + "”" + skipped);
+                if (jn && r.items && r.items.length) {
+                    const parents = jn.paths.map(x => parentOf(x));
+                    if (j.verb === "copy") pushUndo({ kind: "copy", items: r.items });
+                    else if (parents.every(x => x === parents[0])) pushUndo({ kind: "move", items: r.items, srcs: jn.paths, dest: jn.dest, back: parents[0] });
+                }
             }
         }
         if (listing) load(listing.path, sel || (current ? current.name : ""), "none");
@@ -1756,7 +2015,7 @@ Scope {
         active: app.shown
         FloatingWindow {
             id: win
-            title: app.picking ? (app.pick.title || "Choose") + " – Files" : app.path ? app.base(app.path) + " – Files" : "Files"
+            title: app.picking ? (app.pick.title || "Choose") + " – Files" : app.path ? app.titleOf(app.path) + " – Files" : "Files"
             implicitWidth: 1180
             implicitHeight: 740
             color: Theme.bg
@@ -1809,13 +2068,13 @@ Scope {
                 if (!p.startsWith("/")) p = app.path + "/" + p;
                 app.navigate(p, "");
             }
-            readonly property int cols: app.view === "details" ? 1 : Math.max(1, Math.floor(grid.width / grid.cellWidth))
+            readonly property int cols: app.shownView === "details" ? 1 : Math.max(1, Math.floor(grid.width / grid.cellWidth))
             function showCurrent() {
-                if (app.view === "details") list.positionViewAtIndex(app.cur, ListView.Contain);
+                if (app.shownView === "details") list.positionViewAtIndex(app.cur, ListView.Contain);
                 else grid.positionViewAtIndex(app.cur, GridView.Contain);
             }
             function wheel(ev) {
-                const v = app.view === "details" ? list : grid;
+                const v = app.shownView === "details" ? list : grid;
                 const dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y : ev.angleDelta.y / 120 * 100;
                 const top = v.originY, bottom = v.originY + Math.max(0, v.contentHeight - v.height);
                 v.contentY = Math.max(top, Math.min(bottom, v.contentY - dy));
@@ -1834,10 +2093,108 @@ Scope {
                 width: 1
                 height: 1
                 Drag.dragType: Drag.Automatic
-                Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+                Drag.supportedActions: Qt.CopyAction | Qt.MoveAction | Qt.LinkAction
                 Drag.proposedAction: Qt.MoveAction
                 Drag.mimeData: ({ "text/uri-list": app.dragUris })
                 Drag.onDragFinished: dropAction => { dragProxy.x = 0; dragProxy.y = 0; }
+            }
+            // What a drag looks like under the pointer: the first item's picture and how many (Ctrl copies, Alt makes
+            // a link). Drawn off to the side and kept as the drag's image; shown in the window only for the staged
+            // drag (filemanager dragdemo), because CI has no mouse.
+            Rectangle {
+                id: dragGhost
+                readonly property var picked: app.targets()
+                readonly property var first: app.entries.find(e => e.path === picked[0]) || null
+                x: app.dragDemo ? Math.round(win.width * 0.52) : -4000
+                y: app.dragDemo ? Math.round(win.height * 0.5) : -4000
+                z: 40
+                width: ghostRow.implicitWidth + 28
+                height: 56
+                radius: Theme.r(12)
+                color: Theme.panel2
+                border.width: 2
+                border.color: Theme.accent
+                opacity: 0.94
+                Row {
+                    id: ghostRow
+                    anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    spacing: 10
+                    FileGlyph { anchors.verticalCenter: parent.verticalCenter; kind: app.kindOf(dragGhost.first); label: app.extLabel(dragGhost.first); size: 34 }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 1
+                        Text {
+                            text: dragGhost.picked.length > 1 ? app.plural(dragGhost.picked.length, "item") : app.shownName(dragGhost.first)
+                            color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold
+                        }
+                        Text {
+                            text: app.dragHint ? "Move to “" + app.base(app.dragHint) + "”" : "Ctrl copies · Alt makes a link"
+                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                        }
+                    }
+                }
+                Rectangle {
+                    visible: dragGhost.picked.length > 1
+                    anchors { right: parent.right; top: parent.top; margins: -8 }
+                    width: 24; height: 24; radius: 12
+                    color: Theme.accent
+                    Text { anchors.centerIn: parent; text: dragGhost.picked.length; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                }
+            }
+            // Renaming in place: a text box over the name (the extension isn't selected, like Windows).
+            Component {
+                id: inlineRename
+                Rectangle {
+                    color: Theme.bg
+                    radius: Theme.r(4)
+                    border.width: 2
+                    border.color: Theme.accent
+                    TextInput {
+                        id: renameEd
+                        anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: Theme.text
+                        selectionColor: Theme.accent
+                        selectedTextColor: Theme.accentInk
+                        selectByMouse: true
+                        clip: true
+                        font.family: Theme.font; font.pixelSize: 13
+                        property bool done: false
+                        Component.onCompleted: {
+                            const e = app.entries.find(x => x.path === app.renaming);
+                            text = e ? e.name : "";
+                            select(0, e && !e.dir && text.lastIndexOf(".") > 0 ? text.lastIndexOf(".") : text.length);
+                            forceActiveFocus();
+                        }
+                        function finish(ok) {
+                            if (done) return;
+                            done = true;
+                            const t = text.trim();
+                            keys.forceActiveFocus();
+                            app.finishRename(ok ? t : null);
+                        }
+                        Keys.onReturnPressed: finish(true)
+                        Keys.onEnterPressed: finish(true)
+                        Keys.onEscapePressed: finish(false)
+                        onActiveFocusChanged: if (!activeFocus) finish(true)
+                    }
+                }
+            }
+            // The drag picture: grabbed into a file (a grabToImage url makes Drag warn about sourceSize every time),
+            // with a counter on the url so the picture cache shows the newest one.
+            property int ghostN: 0
+            readonly property string ghostFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-files-drag.png"
+            Timer {
+                id: ghostTimer
+                interval: 250
+                onTriggered: if (app.mouseMode && dragGhost.picked.length) dragGhost.grabToImage(r => {
+                    if (r.saveToFile(win.ghostFile)) dragProxy.Drag.imageSource = "file://" + win.ghostFile + "?" + (++win.ghostN);
+                }, Qt.size(dragGhost.width, dragGhost.height))
+            }
+            Connections {
+                target: app
+                function onMarkedChanged() { ghostTimer.restart(); }
+                function onCurChanged() { ghostTimer.restart(); }
             }
             function itemDragged(index, active) {
                 if (active && app.startDrag(index)) dragProxy.Drag.active = true;
@@ -1867,6 +2224,7 @@ Scope {
                         case Qt.Key_Right: app.goForward(); break;
                         case Qt.Key_Up: app.goUp(false); break;
                         case Qt.Key_Home: app.navigate(app.home, ""); break;
+                        case Qt.Key_P: app.toggleDetails(); break;
                         case Qt.Key_Return: case Qt.Key_Enter: app.runMenu("props"); break;
                         default: return;
                         }
@@ -1885,7 +2243,7 @@ Scope {
                         case Qt.Key_L: win.editPath(); break;
                         case Qt.Key_R: app.reload(); break;
                         case Qt.Key_D: app.runMenu("bookmark"); break;
-                        case Qt.Key_T: app.newTab(app.path); break;
+                        case Qt.Key_T: app.newTab(app.picking ? app.path : app.homePage); break;
                         case Qt.Key_W: app.closeTab(app.tabIndex); break;
                         case Qt.Key_Tab: app.switchTab((app.tabIndex + 1) % app.tabs.length); break;
                         case Qt.Key_Backtab: app.switchTab((app.tabIndex - 1 + app.tabs.length) % app.tabs.length); break;
@@ -1896,6 +2254,12 @@ Scope {
                         case Qt.Key_1: app.setView("grid"); break;
                         case Qt.Key_2: app.setView("compact"); break;
                         case Qt.Key_3: app.setView("details"); break;
+                        case Qt.Key_4: app.setView("large"); break;
+                        case Qt.Key_5: app.setView("small"); break;
+                        case Qt.Key_6: app.setView("tiles"); break;
+                        case Qt.Key_Z: if (shift) app.redo(); else app.undo(); break;
+                        case Qt.Key_Y: app.redo(); break;
+                        case Qt.Key_E: win.focusSearch(); break;
                         case Qt.Key_Q: app.close(); break;
                         default: return;
                         }
@@ -1939,7 +2303,7 @@ Scope {
                 case Qt.Key_Right: case Qt.Key_Tab: app.tabFocus = Math.min(app.tabs.length, app.tabFocus + 1); break;
                 case Qt.Key_Down: case Qt.Key_Escape: app.zone = "toolbar"; break;
                 case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space:
-                    if (app.tabFocus >= app.tabs.length) app.newTab(app.path);
+                    if (app.tabFocus >= app.tabs.length) app.newTab(app.homePage);
                     else { app.switchTab(app.tabFocus); app.zone = "main"; }
                     break;
                 case Qt.Key_Delete: case Qt.Key_W: if (app.tabFocus < app.tabs.length) app.closeTab(app.tabFocus); break;
@@ -1954,7 +2318,7 @@ Scope {
                 case Qt.Key_Right: case Qt.Key_Tab: app.toolIndex = Math.min(app.toolItems.length - 1, app.toolIndex + 1); break;
                 case Qt.Key_Down: case Qt.Key_Escape: app.zone = "main"; break;
                 case Qt.Key_Up:
-                    if (app.tabs.length > 1) { app.tabFocus = app.tabIndex; app.zone = "tabs"; }
+                    if (!app.picking) { app.tabFocus = app.tabIndex; app.zone = "tabs"; }
                     break;
                 case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: {
                     if (!it) break;
@@ -1964,9 +2328,7 @@ Scope {
                     else if (it.t === "crumb") app.navigate(it.path, "");
                     else if (it.t === "edit") win.editPath();
                     else if (it.t === "search") win.focusSearch();
-                    else if (it.t === "view") app.cycleView();
-                    else if (it.t === "sort") app.sortMenu();
-                    else if (it.t === "hidden") app.setHidden(!app.hidden);
+                    else app.command(it.t);
                     break;
                 }
                 default: return;
@@ -1987,11 +2349,11 @@ Scope {
                 };
                 switch (e.key) {
                 case Qt.Key_Left:
-                    if (app.view === "details" || i % c === 0) { if (!shift) win.toPlaces(); }
+                    if (app.shownView === "details" || i % c === 0) { if (!shift) win.toPlaces(); }
                     else go(i - 1);
                     break;
                 case Qt.Key_Right:
-                    if (app.view !== "details" && i + 1 < count && (i + 1) % c !== 0) go(i + 1);
+                    if (app.shownView !== "details" && i + 1 < count && (i + 1) % c !== 0) go(i + 1);
                     break;
                 case Qt.Key_Up:
                     if (i - c >= 0) go(i - c);
@@ -2028,9 +2390,12 @@ Scope {
                     else app.goUp(false);
                     break;
                 default:
-                    // Typing filters this folder (with the on-screen keyboard too: Y, then type).
+                    // Typing jumps to the first name that starts with what was typed (type quickly to add letters,
+                    // like Windows); when no name starts with it, it filters this folder instead (the on-screen
+                    // keyboard too: Y, then type).
                     if (e.text && e.text.length === 1 && e.text >= " " && !(e.modifiers & (Qt.AltModifier | Qt.MetaModifier))) {
                         if (e.text === "/" || e.text === "~") { win.editPath(); pathField.text = e.text === "~" ? "~/" : "/"; break; }
+                        if (!app.query && app.typeAhead(e.text)) break;
                         win.focusSearch(app.query + e.text);
                         break;
                     }
@@ -2129,973 +2494,1268 @@ Scope {
                 e.accepted = true;
             }
 
-            RowLayout {
+            // Win 11-style: tabs on top, then back / forward / up / refresh, the address and search, then the command
+            // bar; below them the navigation pane, the folder and the details pane.
+            ColumnLayout {
                 anchors.fill: parent
                 spacing: 0
-
-                // ------------------------------------------------ places
+                // Tabs, along the top like a title bar (always there; + or Ctrl+T opens one, middle-click closes one).
                 Rectangle {
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: win.width < 900 ? 220 : 260
-                    color: Theme.panel
-                    ColumnLayout {
-                        anchors { fill: parent; margins: 14 }
-                        spacing: 6
-                        RowLayout {
-                            Layout.bottomMargin: 10; Layout.leftMargin: 6; Layout.topMargin: 6
-                            spacing: 10
-                            Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit; smooth: true }
-                            Text { text: "Files"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
-                        }
-                        ListView {
-                            id: placeList
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            model: app.places
-                            spacing: 4
-                            clip: true
-                            boundsBehavior: Flickable.StopAtBounds
-                            keyNavigationEnabled: false
-                            delegate: Item {
-                                id: placeItem
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: app.picking ? 0 : 46
+                    visible: !app.picking
+                    color: Theme.bg2
+                    Row {
+                        anchors { left: parent.left; leftMargin: 10; bottom: parent.bottom }
+                        spacing: 2
+                        id: tabRow
+                        Repeater {
+                            id: tabRep
+                            model: app.tabs
+                            delegate: Rectangle {
+                                id: tabChip
                                 required property var modelData
                                 required property int index
-                                // A heading where a new group starts (Bookmarks, Games, Drives and SD cards; a gap before Trash).
-                                readonly property bool starts: index > 0 && app.places[index - 1].section !== modelData.section
-                                readonly property real headH: !starts ? 0 : modelData.section === "trash" ? 12 : 32
-                                width: ListView.view.width
-                                height: headH + place.height
+                                readonly property bool on: index === app.tabIndex
+                                readonly property bool lit: app.zone === "tabs" && app.tabFocus === index
+                                width: Math.min(240, Math.max(150, tabLabel.implicitWidth + 82))
+                                height: 38
+                                radius: Theme.r(9)
+                                color: on ? Theme.bg : tabMouse.containsMouse ? Theme.panel2 : "transparent"
+                                // Square bottom corners: the open tab runs into the bar below it.
+                                Rectangle { visible: tabChip.on; anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                    height: parent.radius; color: Theme.bg
+                                }
+                                PlaceIcon {
+                                    anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                                    kind: (tabChip.on ? app.path : tabChip.modelData.path) === app.homePage ? "start" : "folder"
+                                    tint: tabChip.on ? Theme.accent : Theme.muted
+                                    size: 16
+                                }
+                                border.width: 2
+                                border.color: lit ? Theme.accent : "transparent"
                                 Text {
-                                    visible: placeItem.headH > 20
-                                    anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 }
-                                    text: ({ games: "Games", bookmarks: "Bookmarks", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || "Drives and SD cards"
-                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                                    id: tabLabel
+                                    anchors { left: parent.left; leftMargin: 38; right: tabX.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                                    text: app.titleOf(tabChip.on ? app.path : tabChip.modelData.path)
+                                    color: Theme.text
+                                    elide: Text.ElideMiddle
+                                    font.family: Theme.font; font.pixelSize: 13; font.weight: tabChip.on ? Font.DemiBold : Font.Normal
+                                }
+                                readonly property string folder: on ? app.path : modelData.path
+                                MouseArea {
+                                    id: tabMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                    property real pressX: 0
+                                    property bool moving: false
+                                    onPressed: mouse => { pressX = mouse.x; moving = false; }
+                                    // Drag a tab left or right to reorder the tabs.
+                                    onPositionChanged: mouse => {
+                                        if (!(mouse.buttons & Qt.LeftButton)) return;
+                                        if (!moving && Math.abs(mouse.x - pressX) < 12) return;
+                                        moving = true;
+                                        const rx = tabChip.mapToItem(tabRow, mouse.x, 0).x;
+                                        for (let k = 0; k < tabRep.count; k++) {
+                                            const it = tabRep.itemAt(k);
+                                            if (it && rx >= it.x && rx < it.x + it.width && k !== tabChip.index) {
+                                                app.moveTab(tabChip.index, k);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    onClicked: mouse => {
+                                        keys.forceActiveFocus();
+                                        if (moving) return;
+                                        if (mouse.button === Qt.MiddleButton) app.closeTab(tabChip.index); else app.switchTab(tabChip.index);
+                                    }
+                                }
+                                // Files dropped on a tab go into its folder; holding them over it opens the tab.
+                                DropArea {
+                                    id: tabDrop
+                                    anchors.fill: parent
+                                    keys: ["text/uri-list"]
+                                    readonly property bool real: tabChip.folder.startsWith("/") && tabChip.folder !== app.homePage
+                                    onEntered: drag => { if (!real) drag.accepted = false; else tabHold.restart(); }
+                                    onExited: tabHold.stop()
+                                    onDropped: drop => { tabHold.stop(); app.dropOn(drop, tabChip.folder); }
+                                    Timer { id: tabHold; interval: 800; onTriggered: app.switchTab(tabChip.index) }
                                 }
                                 Rectangle {
-                                    id: place
-                                    readonly property var modelData: placeItem.modelData
-                                    readonly property int index: placeItem.index
-                                    readonly property bool here: !!modelData.path && app.path === modelData.path
-                                    readonly property bool lit: app.zone === "places" && app.placeIndex === index
-                                    readonly property color ink: lit ? Theme.accentInk : here ? Theme.accent : Theme.text
-                                    y: placeItem.headH
-                                    width: parent.width
-                                    height: modelData.section === "drives" || (modelData.section === "devices" && !!modelData.sub) ? 56 : 44
-                                    radius: Theme.r(10)
-                                    color: lit ? Theme.accent : placeDrop.containsDrag ? Theme.panel3 : here ? Theme.panel3 : placeMouse.containsMouse ? Theme.panel2 : "transparent"
-                                    border.width: placeDrop.containsDrag ? 2 : 0
-                                    border.color: Theme.accent
-                                    opacity: modelData.mounted === false || modelData.offline === true ? 0.7 : 1
-                                    Behavior on color { ColorAnimation { duration: Theme.quick } }
-                                    RowLayout {
-                                        anchors { fill: parent; leftMargin: place.modelData.child ? 34 : 14; rightMargin: 12 }
-                                        spacing: 12
-                                        PlaceIcon { kind: place.modelData.kind; tint: place.ink; size: place.modelData.child ? 16 : 20 }
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 1
-                                            Text {
-                                                Layout.fillWidth: true
-                                                text: place.modelData.label
-                                                color: place.lit ? Theme.accentInk : Theme.text
-                                                elide: Text.ElideRight
-                                                font.family: Theme.font; font.pixelSize: place.modelData.child ? 13 : 15; font.weight: place.here || place.lit ? Font.DemiBold : Font.Normal
-                                            }
-                                            Text {
-                                                Layout.fillWidth: true
-                                                visible: place.modelData.section === "drives" || (place.modelData.section === "devices" && !!place.modelData.sub)
-                                                text: place.modelData.section === "devices" ? place.modelData.sub : place.modelData.mounted === false ? (place.modelData.sub || "Not mounted")
-                                                    : (place.modelData.sub || "") + (place.modelData.free !== undefined && place.modelData.free !== null ? " · " + app.fmtSize(place.modelData.free) + " free" : "")
-                                                color: place.lit ? Theme.accentInk : Theme.muted
-                                                elide: Text.ElideRight
-                                                font.family: Theme.font; font.pixelSize: 11
-                                            }
-                                            Rectangle {
-                                                Layout.fillWidth: true
-                                                Layout.preferredHeight: 3
-                                                visible: place.modelData.section === "drives" && !!place.modelData.total && place.modelData.free !== undefined && place.modelData.free !== null
-                                                radius: 2
-                                                color: place.lit ? Qt.rgba(0, 0, 0, 0.2) : Theme.panel3
-                                                Rectangle {
-                                                    width: place.modelData.total ? parent.width * Math.max(0, Math.min(1, 1 - (place.modelData.free || 0) / place.modelData.total)) : 0
-                                                    height: parent.height
-                                                    radius: 2
-                                                    color: place.lit ? Theme.accentInk : Theme.accent
-                                                }
-                                            }
-                                        }
+                                    anchors.fill: parent; radius: parent.radius
+                                    visible: tabDrop.containsDrag
+                                    color: "transparent"; border.width: 2; border.color: Theme.accent
+                                }
+                                Text {
+                                    id: tabX
+                                    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                    text: "✕"; color: Theme.muted; font.pixelSize: 12
+                                    MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: { keys.forceActiveFocus(); app.closeTab(tabChip.index); } }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            width: 34; height: 34; radius: Theme.r(9)
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: newTabMouse.containsMouse ? Theme.panel2 : "transparent"
+                            border.width: 2
+                            border.color: app.zone === "tabs" && app.tabFocus >= app.tabs.length ? Theme.accent : "transparent"
+                            Text { anchors.centerIn: parent; text: "+"; color: Theme.text; font.pixelSize: 18 }
+                            MouseArea { id: newTabMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { keys.forceActiveFocus(); app.newTab(app.homePage); } }
+                        }
+                    }
+                }
+
+                // Back, forward, up, the path (click the empty part, Ctrl+L or / to type one), search, view, sort, hidden.
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.margins: 14
+                    Layout.bottomMargin: 8
+                    spacing: 6
+                    Chip { icon: "back"; label: ""; flat: true; dim: !app.back.length; focused: app.toolLit("back"); onClicked: { keys.forceActiveFocus(); app.goBack(); } }
+                    Chip { icon: "forward"; label: ""; flat: true; dim: !app.fwd.length; focused: app.toolLit("forward"); onClicked: { keys.forceActiveFocus(); app.goForward(); } }
+                    Chip { icon: "chevu"; label: ""; flat: true; dim: app.path === "/" || app.onHome; focused: app.toolLit("up"); onClicked: { keys.forceActiveFocus(); app.goUp(false); } }
+                    Chip { icon: "sync"; label: ""; flat: true; focused: app.toolLit("refresh"); onClicked: { keys.forceActiveFocus(); app.command("refresh"); } }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 40
+                        radius: Theme.r(10)
+                        color: Theme.panel2
+                        border.width: 2
+                        border.color: app.editingPath || app.toolLit("edit") ? Theme.accent : "transparent"
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.IBeamCursor
+                            onClicked: win.editPath()
+                        }
+                        TextInput {
+                            id: pathField
+                            visible: app.editingPath
+                            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: Theme.text
+                            selectionColor: Theme.accent
+                            selectedTextColor: Theme.accentInk
+                            font.family: Theme.font
+                            font.pixelSize: 14
+                            selectByMouse: true
+                            clip: true
+                            onActiveFocusChanged: if (!activeFocus && app.editingPath) win.endEditPath(false)
+                            Keys.onPressed: e => {
+                                switch (e.key) {
+                                case Qt.Key_Return: case Qt.Key_Enter: win.endEditPath(true); break;
+                                case Qt.Key_Escape: case Qt.Key_Down: win.endEditPath(false); app.zone = "main"; break;
+                                case Qt.Key_Up: break;
+                                default: return;
+                                }
+                                e.accepted = true;
+                            }
+                        }
+                        Flickable {
+                            id: crumbFlick
+                            visible: !app.editingPath
+                            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                            width: Math.min(parent.width, crumbRow.implicitWidth)
+                            contentWidth: crumbRow.implicitWidth
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            flickableDirection: Flickable.HorizontalFlick
+                            onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
+                            onWidthChanged: contentX = Math.max(0, contentWidth - width)
+                            Row {
+                                id: crumbRow
+                                spacing: 2
+                                Repeater {
+                                    model: app.crumbs
+                                    delegate: Row {
+                                        id: crumb
+                                        required property var modelData
+                                        required property int index
+                                        spacing: 2
                                         Text {
-                                            visible: place.modelData.kind === "trash" && place.modelData.count > 0
-                                            text: place.modelData.count || ""
-                                            color: place.lit ? Theme.accentInk : Theme.muted
-                                            font.family: Theme.font; font.pixelSize: 12
+                                            visible: crumb.index > 0
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: "›"; color: Theme.muted; font.pixelSize: 18
                                         }
-                                    }
-                                    DropArea {
-                                        id: placeDrop
-                                        anchors.fill: parent
-                                        enabled: !!place.modelData.path
-                                        keys: ["text/uri-list"]
-                                        onDropped: drop => app.dropOn(drop, place.modelData.path)
-                                    }
-                                    MouseArea {
-                                        id: placeMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: mouse => {
-                                            keys.forceActiveFocus();
-                                            app.placeIndex = place.index;
-                                            if (mouse.button === Qt.RightButton) {
-                                                app.zone = "places";
-                                                app.viaPad = false;
-                                                app.openPlaceMenu();
-                                            } else if (mouse.button === Qt.MiddleButton) {
-                                                if (place.modelData.path) app.newTab(place.modelData.path);
-                                            } else {
-                                                app.openPlace(place.index);
+                                        Chip {
+                                            label: crumb.modelData.label
+                                            strong: crumb.index === app.crumbs.length - 1
+                                            focused: app.zone === "toolbar" && !!app.toolItems[app.toolIndex] && app.toolItems[app.toolIndex].t === "crumb" && app.toolItems[app.toolIndex].path === crumb.modelData.path
+                                            flat: true
+                                            onClicked: { keys.forceActiveFocus(); app.navigate(crumb.modelData.path, ""); }
+                                            DropArea {
+                                                anchors.fill: parent
+                                                keys: ["text/uri-list"]
+                                                onDropped: drop => app.dropOn(drop, crumb.modelData.path)
+                                            }
+                                            onFocusedChanged: if (focused) {
+                                                const x = mapToItem(crumbRow, 0, 0).x;
+                                                if (x < crumbFlick.contentX) crumbFlick.contentX = x;
+                                                else if (x + width > crumbFlick.contentX + crumbFlick.width) crumbFlick.contentX = x + width - crumbFlick.width;
                                             }
                                         }
-                                        onPressAndHold: { keys.forceActiveFocus(); app.placeIndex = place.index; app.zone = "places"; app.openPlaceMenu(); }
                                     }
                                 }
                             }
                         }
+                    }
+                    Rectangle {
+                        id: searchBox
+                        readonly property bool focused: app.toolLit("search")
+                        Layout.preferredWidth: win.width < 1000 ? 170 : 240
+                        Layout.preferredHeight: 40
+                        radius: Theme.r(10)
+                        color: Theme.panel2
+                        border.width: 2
+                        border.color: search.activeFocus || focused ? Theme.accent : "transparent"
+                        Behavior on border.color { ColorAnimation { duration: Theme.quick } }
+                        TextInput {
+                            id: search
+                            anchors { fill: parent; leftMargin: 14; rightMargin: 30 }
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: Theme.text
+                            selectionColor: Theme.accent
+                            selectedTextColor: Theme.accentInk
+                            font.family: Theme.font
+                            font.pixelSize: 14
+                            clip: true
+                            onTextChanged: { if (app.query !== text) { if (app.found !== null && text) app.clearSearch(); app.query = text; app.cur = 0; } }
+                            Keys.onPressed: e => {
+                                switch (e.key) {
+                                case Qt.Key_Return: case Qt.Key_Enter:
+                                    // Enter: look in the folders inside too.
+                                    if (search.text.trim()) app.runSearch(search.text);
+                                    app.zone = "main";
+                                    keys.forceActiveFocus();
+                                    break;
+                                case Qt.Key_Down: case Qt.Key_Escape:
+                                    app.zone = "main";
+                                    keys.forceActiveFocus();
+                                    break;
+                                case Qt.Key_Up: break;
+                                default: return;
+                                }
+                                e.accepted = true;
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !search.text
+                                text: app.found !== null ? "Found “" + app.foundQuery + "”" : app.onHome ? "Search recent files" : "Search " + app.titleOf(app.path)
+                                color: Theme.muted
+                                elide: Text.ElideRight
+                                width: parent.width
+                                font: search.font
+                            }
+                        }
                         Text {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 6
-                            text: "Ⓐ open  Ⓑ back  Ⓧ actions  Ⓨ type"
-                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
-                            elide: Text.ElideRight
+                            visible: search.text !== "" || app.found !== null
+                            anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                            text: "✕"; color: Theme.muted; font.pixelSize: 13
+                            MouseArea { anchors.fill: parent; anchors.margins: -8; onClicked: { app.clearSearch(); keys.forceActiveFocus(); } }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.rightMargin: 30
+                            cursorShape: Qt.IBeamCursor
+                            onClicked: win.focusSearch()
                         }
                     }
                 }
-                Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 1; color: Theme.line }
 
-                // ------------------------------------------------ folder
-                ColumnLayout {
+                // ------------------------------------------------ the command bar: New, Cut, Copy, Paste, Rename, Copy path,
+                // Delete | Sort, View, Show | Undo, Redo, Details. Up from the files reaches it with the controller.
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 52
+                    color: Theme.bg
+                    RowLayout {
+                        id: cmdRow
+                        anchors { fill: parent; leftMargin: 12; rightMargin: 12; bottomMargin: 8 }
+                        spacing: 2
+                        readonly property bool narrow: win.width < 1240
+                        Repeater {
+                            model: [
+                                { t: "new", icon: "plus", label: "New", more: true }, { sep: true },
+                                { t: "cut", icon: "", label: "Cut" }, { t: "copy", icon: "file", label: "Copy" },
+                                { t: "paste", icon: "clipboard", label: "Paste" }, { t: "rename", icon: "edit", label: "Rename" },
+                                { t: "copypath", icon: "link", label: "Copy path" }, { t: "delete", icon: "trash", label: "Delete" },
+                                { sep: true },
+                                { t: "sort", icon: "menu", label: "Sort", more: true }, { t: "view", icon: "grid", label: "View", more: true },
+                                { t: "hidden", icon: "eye", label: "Show", more: true },
+                                { fill: true },
+                                { t: "undo", icon: "undo", label: "Undo" }, { t: "redo", icon: "", label: "Redo" },
+                                { sep: true }, { t: "details", icon: "info", label: "Details" }
+                            ]
+                            delegate: Item {
+                                id: cmd
+                                required property var modelData
+                                readonly property bool on: {
+                                    const t = modelData.t;
+                                    if (t === "cut" || t === "copy" || t === "delete" || t === "copypath") return app.targets().length > 0 || (t === "copypath" && !app.onHome);
+                                    if (t === "rename") return !!app.current;
+                                    if (t === "new" || t === "paste") return app.writable;
+                                    if (t === "undo") return app.undoStack.length > 0;
+                                    if (t === "redo") return app.redoStack.length > 0;
+                                    return true;
+                                }
+                                // Choosing a file for an app: only Sort, View and Show.
+                                visible: !app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0
+                                Layout.fillWidth: !!modelData.fill
+                                implicitWidth: modelData.sep ? 13 : modelData.fill ? 0 : cmdChip.implicitWidth
+                                implicitHeight: 40
+                                Rectangle {
+                                    visible: !!cmd.modelData.sep
+                                    anchors.centerIn: parent
+                                    width: 1; height: 24
+                                    color: Theme.line
+                                }
+                                Chip {
+                                    id: cmdChip
+                                    visible: !!cmd.modelData.t
+                                    anchors.fill: parent
+                                    flat: true
+                                    icon: cmd.modelData.icon || ""
+                                    label: cmdRow.narrow && cmd.modelData.icon ? "" : (cmd.modelData.label || "") + (cmd.modelData.more && !cmdRow.narrow ? "  ⌄" : "")
+                                    dim: !cmd.on
+                                    dot: (cmd.modelData.t === "details" && app.detailsPane) || (cmd.modelData.t === "hidden" && app.hidden)
+                                    focused: !!cmd.modelData.t && app.toolLit(cmd.modelData.t)
+                                    onClicked: {
+                                        keys.forceActiveFocus();
+                                        const p = cmdChip.mapToItem(keys, 0, cmdChip.height + 4);
+                                        app.command(cmd.modelData.t, p.x, p.y);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
+
+                RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     spacing: 0
 
-                    // Tabs (when there's more than one).
+                    // ------------------------------------------------ places
                     Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: app.tabs.length > 1 ? 46 : 0
-                        visible: app.tabs.length > 1
-                        color: Theme.bg2
-                        Row {
-                            anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: win.width < 900 ? 220 : 260
+                        color: Theme.panel
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 14 }
                             spacing: 6
-                            Repeater {
-                                model: app.tabs
-                                delegate: Rectangle {
-                                    id: tabChip
-                                    required property var modelData
-                                    required property int index
-                                    readonly property bool on: index === app.tabIndex
-                                    readonly property bool lit: app.zone === "tabs" && app.tabFocus === index
-                                    width: Math.min(220, tabLabel.implicitWidth + 58)
-                                    height: 34
-                                    radius: Theme.r(9)
-                                    color: on ? Theme.panel3 : tabMouse.containsMouse ? Theme.panel2 : "transparent"
-                                    border.width: 2
-                                    border.color: lit ? Theme.accent : "transparent"
-                                    Text {
-                                        id: tabLabel
-                                        anchors { left: parent.left; leftMargin: 14; right: tabX.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                                        text: app.base(tabChip.on ? app.path : tabChip.modelData.path || app.home)
-                                        color: Theme.text
-                                        elide: Text.ElideMiddle
-                                        font.family: Theme.font; font.pixelSize: 13; font.weight: tabChip.on ? Font.DemiBold : Font.Normal
-                                    }
-                                    MouseArea {
-                                        id: tabMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                        onClicked: mouse => { keys.forceActiveFocus(); if (mouse.button === Qt.MiddleButton) app.closeTab(tabChip.index); else app.switchTab(tabChip.index); }
-                                    }
-                                    Text {
-                                        id: tabX
-                                        anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                                        text: "✕"; color: Theme.muted; font.pixelSize: 12
-                                        MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: { keys.forceActiveFocus(); app.closeTab(tabChip.index); } }
-                                    }
-                                }
+                            RowLayout {
+                                Layout.bottomMargin: 10; Layout.leftMargin: 6; Layout.topMargin: 6
+                                spacing: 10
+                                Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit; smooth: true }
+                                Text { text: "Files"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
                             }
-                            Rectangle {
-                                width: 34; height: 34; radius: Theme.r(9)
-                                color: newTabMouse.containsMouse ? Theme.panel2 : "transparent"
-                                border.width: 2
-                                border.color: app.zone === "tabs" && app.tabFocus >= app.tabs.length ? Theme.accent : "transparent"
-                                Text { anchors.centerIn: parent; text: "+"; color: Theme.text; font.pixelSize: 18 }
-                                MouseArea { id: newTabMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { keys.forceActiveFocus(); app.newTab(app.path); } }
-                            }
-                        }
-                    }
-
-                    // Back, forward, up, the path (click the empty part, Ctrl+L or / to type one), search, view, sort, hidden.
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.margins: 14
-                        Layout.bottomMargin: 8
-                        spacing: 6
-                        Chip { icon: "back"; label: ""; dim: !app.back.length; focused: app.toolLit("back"); onClicked: { keys.forceActiveFocus(); app.goBack(); } }
-                        Chip { icon: "forward"; label: ""; dim: !app.fwd.length; focused: app.toolLit("forward"); onClicked: { keys.forceActiveFocus(); app.goForward(); } }
-                        Chip { label: "↑"; dim: app.path === "/" ; focused: app.toolLit("up"); onClicked: { keys.forceActiveFocus(); app.goUp(false); } }
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 40
-                            radius: Theme.r(10)
-                            color: app.editingPath ? Theme.panel2 : "transparent"
-                            border.width: 2
-                            border.color: app.editingPath || app.toolLit("edit") ? Theme.accent : "transparent"
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.IBeamCursor
-                                onClicked: win.editPath()
-                            }
-                            TextInput {
-                                id: pathField
-                                visible: app.editingPath
-                                anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
-                                verticalAlignment: TextInput.AlignVCenter
-                                color: Theme.text
-                                selectionColor: Theme.accent
-                                selectedTextColor: Theme.accentInk
-                                font.family: Theme.font
-                                font.pixelSize: 14
-                                selectByMouse: true
-                                clip: true
-                                onActiveFocusChanged: if (!activeFocus && app.editingPath) win.endEditPath(false)
-                                Keys.onPressed: e => {
-                                    switch (e.key) {
-                                    case Qt.Key_Return: case Qt.Key_Enter: win.endEditPath(true); break;
-                                    case Qt.Key_Escape: case Qt.Key_Down: win.endEditPath(false); app.zone = "main"; break;
-                                    case Qt.Key_Up: break;
-                                    default: return;
-                                    }
-                                    e.accepted = true;
-                                }
-                            }
-                            Flickable {
-                                id: crumbFlick
-                                visible: !app.editingPath
-                                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-                                width: Math.min(parent.width, crumbRow.implicitWidth)
-                                contentWidth: crumbRow.implicitWidth
+                            ListView {
+                                id: placeList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                model: app.places
+                                spacing: 4
                                 clip: true
                                 boundsBehavior: Flickable.StopAtBounds
-                                flickableDirection: Flickable.HorizontalFlick
-                                onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
-                                onWidthChanged: contentX = Math.max(0, contentWidth - width)
-                                Row {
-                                    id: crumbRow
-                                    spacing: 2
-                                    Repeater {
-                                        model: app.crumbs
-                                        delegate: Row {
-                                            id: crumb
-                                            required property var modelData
-                                            required property int index
-                                            spacing: 2
-                                            Text {
-                                                visible: crumb.index > 0
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                text: "›"; color: Theme.muted; font.pixelSize: 18
+                                keyNavigationEnabled: false
+                                delegate: Item {
+                                    id: placeItem
+                                    required property var modelData
+                                    required property int index
+                                    // A heading where a new group starts (Bookmarks, Games, Drives and SD cards; a gap before Trash).
+                                    readonly property bool starts: index > 0 && app.places[index - 1].section !== modelData.section
+                                    readonly property real headH: !starts ? 0 : modelData.section === "trash" ? 12 : 32
+                                    width: ListView.view.width
+                                    height: headH + place.height
+                                    Text {
+                                        visible: placeItem.headH > 20
+                                        anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 }
+                                        text: ({ places: "This device", games: "Games", bookmarks: "Favorites", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || "Drives"
+                                        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                                    }
+                                    Rectangle {
+                                        id: place
+                                        readonly property var modelData: placeItem.modelData
+                                        readonly property int index: placeItem.index
+                                        readonly property bool here: !!modelData.path && app.path === modelData.path
+                                        readonly property bool lit: app.zone === "places" && app.placeIndex === index
+                                        readonly property color ink: lit ? Theme.accentInk : here ? Theme.accent : Theme.text
+                                        y: placeItem.headH
+                                        width: parent.width
+                                        height: modelData.section === "drives" || (modelData.section === "devices" && !!modelData.sub) ? 56 : 44
+                                        radius: Theme.r(10)
+                                        color: lit ? Theme.accent : placeDrop.containsDrag ? Theme.panel3 : here ? Theme.panel3 : placeMouse.containsMouse ? Theme.panel2 : "transparent"
+                                        border.width: placeDrop.containsDrag ? 2 : 0
+                                        border.color: Theme.accent
+                                        opacity: modelData.mounted === false || modelData.offline === true ? 0.7 : 1
+                                        Behavior on color { ColorAnimation { duration: Theme.quick } }
+                                        RowLayout {
+                                            anchors { fill: parent; leftMargin: place.modelData.child ? 34 : 14; rightMargin: 12 }
+                                            spacing: 12
+                                            PlaceIcon { kind: place.modelData.kind; tint: place.ink; size: place.modelData.child ? 16 : 20 }
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 1
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: place.modelData.label
+                                                    color: place.lit ? Theme.accentInk : Theme.text
+                                                    elide: Text.ElideRight
+                                                    font.family: Theme.font; font.pixelSize: place.modelData.child ? 13 : 15; font.weight: place.here || place.lit ? Font.DemiBold : Font.Normal
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    visible: place.modelData.section === "drives" || (place.modelData.section === "devices" && !!place.modelData.sub)
+                                                    text: place.modelData.section === "devices" ? place.modelData.sub : place.modelData.mounted === false ? (place.modelData.sub || "Not mounted")
+                                                        : (place.modelData.sub || "") + (place.modelData.free !== undefined && place.modelData.free !== null ? " · " + app.fmtSize(place.modelData.free) + " free" : "")
+                                                    color: place.lit ? Theme.accentInk : Theme.muted
+                                                    elide: Text.ElideRight
+                                                    font.family: Theme.font; font.pixelSize: 11
+                                                }
+                                                Rectangle {
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: 3
+                                                    visible: place.modelData.section === "drives" && !!place.modelData.total && place.modelData.free !== undefined && place.modelData.free !== null
+                                                    radius: 2
+                                                    color: place.lit ? Qt.rgba(0, 0, 0, 0.2) : Theme.panel3
+                                                    Rectangle {
+                                                        width: place.modelData.total ? parent.width * Math.max(0, Math.min(1, 1 - (place.modelData.free || 0) / place.modelData.total)) : 0
+                                                        height: parent.height
+                                                        radius: 2
+                                                        color: place.lit ? Theme.accentInk : Theme.accent
+                                                    }
+                                                }
                                             }
-                                            Chip {
-                                                label: crumb.modelData.label
-                                                strong: crumb.index === app.crumbs.length - 1
-                                                focused: app.zone === "toolbar" && app.toolIndex === 3 + crumb.index
-                                                flat: true
-                                                onClicked: { keys.forceActiveFocus(); app.navigate(crumb.modelData.path, ""); }
-                                                DropArea {
-                                                    anchors.fill: parent
-                                                    keys: ["text/uri-list"]
-                                                    onDropped: drop => app.dropOn(drop, crumb.modelData.path)
-                                                }
-                                                onFocusedChanged: if (focused) {
-                                                    const x = mapToItem(crumbRow, 0, 0).x;
-                                                    if (x < crumbFlick.contentX) crumbFlick.contentX = x;
-                                                    else if (x + width > crumbFlick.contentX + crumbFlick.width) crumbFlick.contentX = x + width - crumbFlick.width;
-                                                }
+                                            Text {
+                                                visible: place.modelData.kind === "trash" && place.modelData.count > 0
+                                                text: place.modelData.count || ""
+                                                color: place.lit ? Theme.accentInk : Theme.muted
+                                                font.family: Theme.font; font.pixelSize: 12
                                             }
                                         }
+                                        DropArea {
+                                            id: placeDrop
+                                            anchors.fill: parent
+                                            enabled: !!place.modelData.path
+                                            keys: ["text/uri-list"]
+                                            onDropped: drop => app.dropOn(drop, place.modelData.path)
+                                        }
+                                        MouseArea {
+                                            id: placeMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: mouse => {
+                                                keys.forceActiveFocus();
+                                                app.placeIndex = place.index;
+                                                if (mouse.button === Qt.RightButton) {
+                                                    app.zone = "places";
+                                                    app.viaPad = false;
+                                                    app.openPlaceMenu();
+                                                } else if (mouse.button === Qt.MiddleButton) {
+                                                    if (place.modelData.path) app.newTab(place.modelData.path);
+                                                } else {
+                                                    app.openPlace(place.index);
+                                                }
+                                            }
+                                            onPressAndHold: { keys.forceActiveFocus(); app.placeIndex = place.index; app.zone = "places"; app.openPlaceMenu(); }
+                                        }
                                     }
-                                }
-                            }
-                        }
-                        Rectangle {
-                            id: searchBox
-                            readonly property bool focused: app.toolLit("search")
-                            Layout.preferredWidth: win.width < 1000 ? 170 : 240
-                            Layout.preferredHeight: 40
-                            radius: Theme.r(10)
-                            color: Theme.panel2
-                            border.width: 2
-                            border.color: search.activeFocus || focused ? Theme.accent : "transparent"
-                            Behavior on border.color { ColorAnimation { duration: Theme.quick } }
-                            TextInput {
-                                id: search
-                                anchors { fill: parent; leftMargin: 14; rightMargin: 30 }
-                                verticalAlignment: TextInput.AlignVCenter
-                                color: Theme.text
-                                selectionColor: Theme.accent
-                                selectedTextColor: Theme.accentInk
-                                font.family: Theme.font
-                                font.pixelSize: 14
-                                clip: true
-                                onTextChanged: { if (app.query !== text) { if (app.found !== null && text) app.clearSearch(); app.query = text; app.cur = 0; } }
-                                Keys.onPressed: e => {
-                                    switch (e.key) {
-                                    case Qt.Key_Return: case Qt.Key_Enter:
-                                        // Enter: look in the folders inside too.
-                                        if (search.text.trim()) app.runSearch(search.text);
-                                        app.zone = "main";
-                                        keys.forceActiveFocus();
-                                        break;
-                                    case Qt.Key_Down: case Qt.Key_Escape:
-                                        app.zone = "main";
-                                        keys.forceActiveFocus();
-                                        break;
-                                    case Qt.Key_Up: break;
-                                    default: return;
-                                    }
-                                    e.accepted = true;
-                                }
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: !search.text
-                                    text: app.found !== null ? "Found “" + app.foundQuery + "”" : "Filter · Enter searches inside"
-                                    color: Theme.muted
-                                    elide: Text.ElideRight
-                                    width: parent.width
-                                    font: search.font
                                 }
                             }
                             Text {
-                                visible: search.text !== "" || app.found !== null
-                                anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                                text: "✕"; color: Theme.muted; font.pixelSize: 13
-                                MouseArea { anchors.fill: parent; anchors.margins: -8; onClicked: { app.clearSearch(); keys.forceActiveFocus(); } }
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 6
+                                text: "Ⓐ open  Ⓑ back  Ⓧ actions  Ⓨ type"
+                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                                elide: Text.ElideRight
                             }
-                            MouseArea {
-                                anchors.fill: parent
-                                anchors.rightMargin: 30
-                                cursorShape: Qt.IBeamCursor
-                                onClicked: win.focusSearch()
-                            }
-                        }
-                        Chip {
-                            icon: app.view === "details" ? "menu" : "grid"
-                            label: ({ grid: "Icons", compact: "Compact", details: "Details" })[app.view]
-                            focused: app.toolLit("view")
-                            onClicked: { keys.forceActiveFocus(); app.cycleView(); }
-                        }
-                        Chip {
-                            label: ({ name: "Name", date: "Modified", size: "Size", type: "Type" })[app.sort] + (app.desc ? " ↓" : " ↑")
-                            focused: app.toolLit("sort")
-                            onClicked: { keys.forceActiveFocus(); app.viaPad = false; app.sortMenu(); }
-                        }
-                        Chip {
-                            label: "Hidden"
-                            dot: app.hidden
-                            focused: app.toolLit("hidden")
-                            onClicked: { keys.forceActiveFocus(); app.setHidden(!app.hidden); }
                         }
                     }
+                    Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 1; color: Theme.line }
 
-                    // The folder itself.
-                    Item {
-                        id: folderArea
+                    // ------------------------------------------------ folder
+                    ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        spacing: 0
 
-                        WheelHandler {
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            enabled: app.mouseMode
-                            target: null
-                            onWheel: event => win.wheel(event)
-                        }
-                        // Dropped on the folder (not on a folder in it): into this folder.
-                        DropArea {
-                            anchors.fill: parent
-                            keys: ["text/uri-list"]
-                            enabled: app.writable
-                            onDropped: drop => app.dropOn(drop, app.listing.path)
-                        }
-                        MouseArea {
-                            // Empty space: click clears the selection, drag picks with a rubber band (mouse),
-                            // right-click / press-and-hold for the folder's actions.
-                            id: bgMouse
-                            anchors.fill: parent
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            property point start
-                            property var startMarks: ({})
-                            property bool banding: false
-                            function contentPoint(x, y) {
-                                const v = app.view === "details" ? list : grid;
-                                return v.contentItem.mapFromItem(bgMouse, x, y);
+                        // The folder itself.
+                        Item {
+                            id: folderArea
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            WheelHandler {
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                enabled: app.mouseMode
+                                target: null
+                                onWheel: event => win.wheel(event)
                             }
-                            onPressed: mouse => {
-                                keys.forceActiveFocus();
-                                app.zone = "main";
-                                if (mouse.button !== Qt.LeftButton || !app.mouseMode) return;
-                                start = contentPoint(mouse.x, mouse.y);
-                                startMarks = (mouse.modifiers & Qt.ControlModifier) ? Object.assign({}, app.marked) : ({});
-                                banding = false;
+                            // Dropped on the folder (not on a folder in it): into this folder.
+                            DropArea {
+                                anchors.fill: parent
+                                keys: ["text/uri-list"]
+                                enabled: app.writable
+                                onDropped: drop => app.dropOn(drop, app.listing.path)
                             }
-                            onPositionChanged: mouse => {
-                                if (!(mouse.buttons & Qt.LeftButton) || !app.mouseMode) return;
-                                const p = contentPoint(mouse.x, mouse.y);
-                                if (!banding && Math.abs(p.x - start.x) + Math.abs(p.y - start.y) < 8) return;
-                                banding = true;
-                                win.band(start, p, startMarks);
-                            }
-                            onReleased: mouse => {
-                                if (banding) {
-                                    banding = false;
-                                    bandRect.visible = false;
-                                    return;
+                            MouseArea {
+                                // Empty space: click clears the selection, drag picks with a rubber band (mouse),
+                                // right-click / press-and-hold for the folder's actions.
+                                id: bgMouse
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                property point start
+                                property var startMarks: ({})
+                                property bool banding: false
+                                function contentPoint(x, y) {
+                                    const v = app.shownView === "details" ? list : grid;
+                                    return v.contentItem.mapFromItem(bgMouse, x, y);
                                 }
-                                if (mouse.button === Qt.LeftButton && !(mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))) app.marked = ({});
-                            }
-                            onClicked: mouse => {
-                                if (mouse.button === Qt.RightButton) {
+                                onPressed: mouse => {
+                                    keys.forceActiveFocus();
+                                    app.zone = "main";
+                                    if (mouse.button !== Qt.LeftButton || !app.mouseMode) return;
+                                    start = contentPoint(mouse.x, mouse.y);
+                                    startMarks = (mouse.modifiers & Qt.ControlModifier) ? Object.assign({}, app.marked) : ({});
+                                    banding = false;
+                                }
+                                onPositionChanged: mouse => {
+                                    if (!(mouse.buttons & Qt.LeftButton) || !app.mouseMode) return;
+                                    const p = contentPoint(mouse.x, mouse.y);
+                                    if (!banding && Math.abs(p.x - start.x) + Math.abs(p.y - start.y) < 8) return;
+                                    banding = true;
+                                    win.band(start, p, startMarks);
+                                }
+                                onReleased: mouse => {
+                                    if (banding) {
+                                        banding = false;
+                                        bandRect.visible = false;
+                                        return;
+                                    }
+                                    if (mouse.button === Qt.LeftButton && !(mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))) app.marked = ({});
+                                }
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton) {
+                                        const p = mapToItem(keys, mouse.x, mouse.y);
+                                        app.viaPad = false;
+                                        app.marked = ({});
+                                        app.openMenu(true, p.x, p.y);
+                                    }
+                                }
+                                onPressAndHold: mouse => {
+                                    if (banding) return;
                                     const p = mapToItem(keys, mouse.x, mouse.y);
-                                    app.viaPad = false;
-                                    app.marked = ({});
+                                    keys.forceActiveFocus();
                                     app.openMenu(true, p.x, p.y);
                                 }
                             }
-                            onPressAndHold: mouse => {
-                                if (banding) return;
-                                const p = mapToItem(keys, mouse.x, mouse.y);
-                                keys.forceActiveFocus();
-                                app.openMenu(true, p.x, p.y);
-                            }
-                        }
 
-                        // Icons and Compact: a grid (Compact: small icons in columns).
-                        GridView {
-                            id: grid
-                            visible: app.view !== "details"
-                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                            model: app.entries
-                            clip: true
-                            interactive: !app.mouseMode
-                            boundsBehavior: Flickable.StopAtBounds
-                            cellWidth: app.view === "compact" ? Math.floor(width / Math.max(1, Math.floor(width / 250))) : Math.floor(width / Math.max(1, Math.floor(width / 136)))
-                            cellHeight: app.view === "compact" ? 44 : 156
-                            keyNavigationEnabled: false
-                            cacheBuffer: 600
-                            delegate: Item {
-                                id: cell
-                                required property var modelData
-                                required property int index
-                                readonly property bool lit: app.cur === index
-                                readonly property bool picked: !!app.marked[modelData.path]
-                                readonly property bool cut: app.clip.mode === "cut" && app.clip.paths.indexOf(modelData.path) >= 0
-                                readonly property bool compact: app.view === "compact"
-                                width: grid.cellWidth
-                                height: grid.cellHeight
-                                opacity: cut ? 0.45 : 1
-                                Rectangle {
-                                    anchors { fill: parent; margins: cell.compact ? 2 : 4 }
-                                    radius: cell.compact ? 8 : 12
-                                    color: cellDrop.containsDrag ? Theme.panel3 : cell.picked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                                         : cell.lit ? Theme.panel3 : cellMouse.containsMouse ? Theme.panel2 : "transparent"
-                                    border.width: 2
-                                    border.color: cellDrop.containsDrag || (cell.lit && app.zone === "main" && app.overlay === "") ? Theme.accent : "transparent"
-                                    Behavior on border.color { ColorAnimation { duration: Theme.quick } }
-                                }
-                                // Icons
-                                Item {
-                                    id: art
-                                    visible: !cell.compact
-                                    anchors { top: parent.top; topMargin: 14; horizontalCenter: parent.horizontalCenter }
-                                    width: 84; height: 76
-                                    FileGlyph {
-                                        anchors.centerIn: parent
-                                        visible: thumb.status !== Image.Ready
-                                        kind: app.kindOf(cell.modelData)
-                                        label: app.extLabel(cell.modelData)
-                                        link: cell.modelData.isLink
-                                        size: 64
-                                    }
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        visible: thumb.status === Image.Ready
-                                        radius: Theme.r(8)
-                                        color: Theme.panel3
-                                        Image {
-                                            id: thumb
-                                            anchors { fill: parent; margins: 3 }
-                                            source: cell.compact ? "" : app.thumbFor(cell.modelData)
-                                            sourceSize: Qt.size(192, 192)
-                                            asynchronous: true
-                                            cache: true
-                                            fillMode: Image.PreserveAspectCrop
-                                            smooth: true
-                                            clip: true
+                            // The Home page: Quick access (your usual folders, Favorites and Games) above the recent files.
+                            // Click opens, middle-click opens in a new tab, drop files on one to put them there.
+                            Column {
+                                id: quick
+                                visible: app.onHome
+                                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 14; rightMargin: 14 }
+                                height: visible ? implicitHeight : 0
+                                spacing: 10
+                                topPadding: 14
+                                bottomPadding: 6
+                                Text { text: "Quick access"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Flow {
+                                    width: parent.width
+                                    spacing: 8
+                                    Repeater {
+                                        model: app.quickAccess
+                                        delegate: Rectangle {
+                                            id: qa
+                                            required property var modelData
+                                            width: 196; height: 58
+                                            radius: Theme.r(10)
+                                            color: qaDrop.containsDrag ? Theme.panel3 : qaMouse.containsMouse ? Theme.panel3 : Theme.panel2
+                                            border.width: qaDrop.containsDrag ? 2 : 0
+                                            border.color: Theme.accent
+                                            RowLayout {
+                                                anchors { fill: parent; leftMargin: 14; rightMargin: 12 }
+                                                spacing: 12
+                                                PlaceIcon { kind: qa.modelData.kind; tint: Theme.accent; size: 24 }
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 1
+                                                    Text { Layout.fillWidth: true; text: qa.modelData.label; color: Theme.text; elide: Text.ElideRight; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: qa.modelData.section === "bookmarks" ? "Favorite" : qa.modelData.section === "games" ? "Games" : "On this device"
+                                                        color: Theme.muted; elide: Text.ElideRight; font.family: Theme.font; font.pixelSize: 11
+                                                    }
+                                                }
+                                            }
+                                            DropArea { id: qaDrop; anchors.fill: parent; keys: ["text/uri-list"]; onDropped: drop => app.dropOn(drop, qa.modelData.path) }
+                                            MouseArea {
+                                                id: qaMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: mouse => { keys.forceActiveFocus(); if (mouse.button === Qt.MiddleButton) app.newTab(qa.modelData.path); else app.navigate(qa.modelData.path, ""); }
+                                            }
                                         }
                                     }
                                 }
-                                Text {
-                                    visible: !cell.compact
-                                    anchors { top: art.bottom; topMargin: 8; left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10 }
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: cell.modelData.name
-                                    color: cell.modelData.hidden ? Theme.muted : Theme.text
-                                    wrapMode: Text.WrapAnywhere
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
-                                    font.family: Theme.font; font.pixelSize: 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
-                                }
-                                // Compact
-                                RowLayout {
-                                    visible: cell.compact
-                                    anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
-                                    spacing: 10
+                                Text { topPadding: 8; text: "Recent"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            }
+
+                            // Icons and Compact: a grid (Compact: small icons in columns).
+                            GridView {
+                                id: grid
+                                visible: app.shownView !== "details"
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                model: app.entries
+                                clip: true
+                                interactive: !app.mouseMode
+                                boundsBehavior: Flickable.StopAtBounds
+                                // Large, medium and small icons; List (small icons in columns); Tiles (an icon and two lines).
+                                readonly property int baseW: ({ large: 200, grid: 136, small: 100, compact: 250, tiles: 300 })[app.view] || 136
+                                cellWidth: Math.floor(width / Math.max(1, Math.floor(width / baseW)))
+                                cellHeight: ({ large: 224, grid: 156, small: 112, compact: 44, tiles: 78 })[app.view] || 156
+                                keyNavigationEnabled: false
+                                cacheBuffer: 600
+                                delegate: Item {
+                                    id: cell
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool lit: app.cur === index
+                                    readonly property bool picked: !!app.marked[modelData.path]
+                                    readonly property bool cut: app.clip.mode === "cut" && app.clip.paths.indexOf(modelData.path) >= 0
+                                    readonly property bool compact: app.view === "compact" || app.view === "tiles"
+                                    readonly property bool tiles: app.view === "tiles"
+                                    readonly property real artW: app.view === "large" ? 150 : app.view === "small" ? 54 : 84
+                                    readonly property real artH: app.view === "large" ? 134 : app.view === "small" ? 50 : 76
+                                    width: grid.cellWidth
+                                    height: grid.cellHeight
+                                    opacity: cut ? 0.45 : 1
+                                    Rectangle {
+                                        anchors { fill: parent; margins: cell.compact ? 2 : 4 }
+                                        radius: cell.compact ? 8 : 12
+                                        color: cellDrop.containsDrag ? Theme.panel3 : cell.picked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                                             : cell.lit ? Theme.panel3 : cellMouse.containsMouse ? Theme.panel2 : "transparent"
+                                        border.width: 2
+                                        border.color: cellDrop.containsDrag || app.dragHint === cell.modelData.path || (cell.lit && app.zone === "main" && app.overlay === "") ? Theme.accent : "transparent"
+                                        Behavior on border.color { ColorAnimation { duration: Theme.quick } }
+                                    }
+                                    // Icons
                                     Item {
-                                        Layout.preferredWidth: 26; Layout.preferredHeight: 26
+                                        id: art
+                                        visible: !cell.compact
+                                        anchors { top: parent.top; topMargin: app.view === "small" ? 10 : 14; horizontalCenter: parent.horizontalCenter }
+                                        width: cell.artW; height: cell.artH
                                         FileGlyph {
                                             anchors.centerIn: parent
-                                            visible: smallThumb.status !== Image.Ready
+                                            visible: thumb.status !== Image.Ready
                                             kind: app.kindOf(cell.modelData)
-                                            label: ""
+                                            label: app.extLabel(cell.modelData)
                                             link: cell.modelData.isLink
-                                            size: 24
+                                            size: app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
-                                        Image {
-                                            id: smallThumb
+                                        Rectangle {
                                             anchors.fill: parent
-                                            source: cell.compact && app.kindOf(cell.modelData) === "image" ? app.thumbFor(cell.modelData) : ""
-                                            sourceSize: Qt.size(52, 52)
-                                            asynchronous: true
-                                            fillMode: Image.PreserveAspectCrop
-                                            clip: true
+                                            visible: thumb.status === Image.Ready
+                                            radius: Theme.r(8)
+                                            color: Theme.panel3
+                                            Image {
+                                                id: thumb
+                                                anchors { fill: parent; margins: 3 }
+                                                source: cell.compact ? "" : app.thumbFor(cell.modelData)
+                                                sourceSize: app.view === "large" ? Qt.size(320, 320) : Qt.size(192, 192)
+                                                asynchronous: true
+                                                cache: true
+                                                fillMode: Image.PreserveAspectCrop
+                                                smooth: true
+                                                clip: true
+                                            }
                                         }
                                     }
                                     Text {
-                                        Layout.fillWidth: true
-                                        text: cell.modelData.name + (cell.modelData.where && cell.modelData.where !== "." ? "  ·  " + cell.modelData.where : "")
+                                        visible: !cell.compact
+                                        anchors { top: art.bottom; topMargin: 8; left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10 }
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: app.shownName(cell.modelData)
                                         color: cell.modelData.hidden ? Theme.muted : Theme.text
-                                        elide: Text.ElideMiddle
-                                        font.family: Theme.font; font.pixelSize: 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
+                                        wrapMode: Text.WrapAnywhere
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                        font.family: Theme.font; font.pixelSize: app.view === "small" ? 12 : 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
+                                        Loader {
+                                            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: -6; rightMargin: -6; topMargin: -3 }
+                                            height: 26
+                                            active: app.renaming !== "" && app.renaming === cell.modelData.path
+                                            sourceComponent: inlineRename
+                                        }
                                     }
-                                }
-                                Rectangle {
-                                    visible: cell.picked
-                                    anchors { top: parent.top; right: parent.right; margins: cell.compact ? 12 : 10 }
-                                    width: 22; height: 22; radius: 11
-                                    color: Theme.accent
-                                    Icon { anchors.centerIn: parent; name: "check"; size: 14; color: Theme.accentInk }
-                                }
-                                DropArea {
-                                    id: cellDrop
-                                    anchors.fill: parent
-                                    enabled: cell.modelData.dir && !app.inTrash
-                                    keys: ["text/uri-list"]
-                                    onDropped: drop => app.dropOn(drop, cell.modelData.path)
-                                }
-                                MouseArea {
-                                    id: cellMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-                                    drag.target: app.mouseMode ? dragProxy : null
-                                    drag.threshold: 10
-                                    drag.onActiveChanged: win.itemDragged(cell.index, drag.active)
-                                    onClicked: mouse => win.itemClicked(cell.index, mouse, cellMouse)
-                                    onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) app.activate(cell.modelData); }
-                                    onPressAndHold: mouse => win.itemMenu(cell.index, mouse, cellMouse)
-                                }
-                            }
-                        }
-
-                        // Details: sortable columns, groups with a heading.
-                        ListView {
-                            id: list
-                            visible: app.view === "details"
-                            anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
-                            model: app.entries
-                            clip: true
-                            interactive: !app.mouseMode
-                            spacing: 2
-                            boundsBehavior: Flickable.StopAtBounds
-                            keyNavigationEnabled: false
-                            headerPositioning: ListView.OverlayHeader
-                            readonly property bool wide: width > 760
-                            header: Rectangle {
-                                width: ListView.view.width
-                                height: 34
-                                z: 2
-                                color: Theme.bg
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 56; rightMargin: 16 }
-                                    spacing: 12
-                                    ColumnHead { Layout.fillWidth: true; label: app.found !== null ? "Name · where" : "Name"; key: "name"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
-                                    ColumnHead { Layout.preferredWidth: 100; label: "Size"; key: "size"; sortKey: app.sort; desc: app.desc; alignRight: true; onPicked: k => app.setSort(k) }
-                                    ColumnHead { Layout.preferredWidth: 150; visible: list.wide; label: "Type"; key: "type"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
-                                    ColumnHead { Layout.preferredWidth: 160; label: "Modified"; key: "date"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
-                                }
-                                Rectangle {
-                                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                    height: 1
-                                    color: Theme.line
-                                }
-                            }
-                            delegate: Item {
-                                id: rowItem
-                                required property var modelData
-                                required property int index
-                                readonly property string groupLabel: app.group === "none" ? "" : app.groupName(modelData)
-                                readonly property bool groupStarts: groupLabel !== "" && (index === 0 || app.groupName(app.entries[index - 1]) !== groupLabel)
-                                width: ListView.view.width
-                                height: (groupStarts ? 34 : 0) + 44
-                                Text {
-                                    visible: rowItem.groupStarts
-                                    anchors { left: parent.left; leftMargin: 12; top: parent.top; topMargin: 10 }
-                                    text: rowItem.groupLabel
-                                    color: Theme.accent; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
-                                }
-                                Rectangle {
-                                    id: row
-                                    readonly property bool lit: app.cur === rowItem.index
-                                    readonly property bool picked: !!app.marked[rowItem.modelData.path]
-                                    readonly property bool cut: app.clip.mode === "cut" && app.clip.paths.indexOf(rowItem.modelData.path) >= 0
-                                    y: rowItem.groupStarts ? 34 : 0
-                                    width: parent.width
-                                    height: 44
-                                    radius: Theme.r(10)
-                                    opacity: cut ? 0.45 : 1
-                                    color: rowDrop.containsDrag ? Theme.panel3 : picked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                                         : lit ? Theme.panel3 : rowMouse.containsMouse ? Theme.panel2 : "transparent"
-                                    border.width: 2
-                                    border.color: rowDrop.containsDrag || (lit && app.zone === "main" && app.overlay === "") ? Theme.accent : "transparent"
+                                    // Compact
                                     RowLayout {
-                                        anchors { fill: parent; leftMargin: 12; rightMargin: 16 }
-                                        spacing: 12
+                                        visible: cell.compact
+                                        anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                                        spacing: 10
                                         Item {
-                                            Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                                            Layout.preferredWidth: cell.tiles ? 54 : 26; Layout.preferredHeight: cell.tiles ? 54 : 26
                                             FileGlyph {
                                                 anchors.centerIn: parent
-                                                visible: rowThumb.status !== Image.Ready
-                                                kind: app.kindOf(rowItem.modelData)
-                                                label: ""
-                                                link: rowItem.modelData.isLink
-                                                size: 28
+                                                visible: smallThumb.status !== Image.Ready
+                                                kind: app.kindOf(cell.modelData)
+                                                label: cell.tiles ? app.extLabel(cell.modelData) : ""
+                                                link: cell.modelData.isLink
+                                                size: cell.tiles ? 48 : 24
                                             }
                                             Image {
-                                                id: rowThumb
+                                                id: smallThumb
                                                 anchors.fill: parent
-                                                source: app.kindOf(rowItem.modelData) === "image" ? app.thumbFor(rowItem.modelData) : ""
-                                                sourceSize: Qt.size(64, 64)
+                                                source: cell.compact && (cell.tiles || app.kindOf(cell.modelData) === "image") ? app.thumbFor(cell.modelData) : ""
+                                                sourceSize: cell.tiles ? Qt.size(108, 108) : Qt.size(52, 52)
                                                 asynchronous: true
                                                 fillMode: Image.PreserveAspectCrop
                                                 clip: true
                                             }
                                         }
-                                        Text {
+                                        ColumnLayout {
                                             Layout.fillWidth: true
-                                            text: rowItem.modelData.name + (rowItem.modelData.origPath ? "   ·   from " + app.parentOf(rowItem.modelData.origPath)
-                                                : rowItem.modelData.where && rowItem.modelData.where !== "." ? "   ·   " + rowItem.modelData.where : "")
-                                            color: rowItem.modelData.hidden ? Theme.muted : Theme.text
-                                            elide: Text.ElideMiddle
-                                            font.family: Theme.font; font.pixelSize: 14; font.weight: row.lit ? Font.DemiBold : Font.Normal
+                                            spacing: 2
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: app.shownName(cell.modelData) + (!cell.tiles && cell.modelData.where && cell.modelData.where !== "." ? "  ·  " + cell.modelData.where : "")
+                                                color: cell.modelData.hidden ? Theme.muted : Theme.text
+                                                elide: Text.ElideMiddle
+                                                font.family: Theme.font; font.pixelSize: cell.tiles ? 14 : 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
+                                                Loader {
+                                                    anchors { fill: parent; margins: -4 }
+                                                    active: app.renaming !== "" && app.renaming === cell.modelData.path
+                                                    sourceComponent: inlineRename
+                                                }
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                visible: cell.tiles
+                                                text: app.kindName(cell.modelData) + (cell.modelData.dir ? "" : "  ·  " + app.fmtSize(cell.modelData.size))
+                                                color: Theme.muted
+                                                elide: Text.ElideRight
+                                                font.family: Theme.font; font.pixelSize: 12
+                                            }
                                         }
-                                        Icon { visible: row.picked; name: "check"; size: 16; color: Theme.accent }
-                                        Text {
-                                            Layout.preferredWidth: 100
-                                            horizontalAlignment: Text.AlignRight
-                                            text: rowItem.modelData.dir ? "" : app.fmtSize(rowItem.modelData.size)
-                                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-                                        }
-                                        Text {
-                                            Layout.preferredWidth: 150
-                                            visible: list.wide
-                                            text: app.kindName(rowItem.modelData)
-                                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            Layout.preferredWidth: 160
-                                            text: app.fmtDate(rowItem.modelData.mtime)
-                                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-                                            elide: Text.ElideRight
-                                        }
+                                    }
+                                    Rectangle {
+                                        visible: cell.picked
+                                        anchors { top: parent.top; right: parent.right; margins: cell.compact ? 12 : 10 }
+                                        width: 22; height: 22; radius: 11
+                                        color: Theme.accent
+                                        Icon { anchors.centerIn: parent; name: "check"; size: 14; color: Theme.accentInk }
                                     }
                                     DropArea {
-                                        id: rowDrop
+                                        id: cellDrop
                                         anchors.fill: parent
-                                        enabled: rowItem.modelData.dir && !app.inTrash
+                                        enabled: cell.modelData.dir && !app.inTrash
                                         keys: ["text/uri-list"]
-                                        onDropped: drop => app.dropOn(drop, rowItem.modelData.path)
+                                        onDropped: drop => app.dropOn(drop, cell.modelData.path)
                                     }
                                     MouseArea {
-                                        id: rowMouse
+                                        id: cellMouse
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                                         drag.target: app.mouseMode ? dragProxy : null
                                         drag.threshold: 10
-                                        drag.onActiveChanged: win.itemDragged(rowItem.index, drag.active)
-                                        onClicked: mouse => win.itemClicked(rowItem.index, mouse, rowMouse)
-                                        onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) app.activate(rowItem.modelData); }
-                                        onPressAndHold: mouse => win.itemMenu(rowItem.index, mouse, rowMouse)
+                                        drag.onActiveChanged: win.itemDragged(cell.index, drag.active)
+                                        onClicked: mouse => win.itemClicked(cell.index, mouse, cellMouse)
+                                        onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) app.activate(cell.modelData); }
+                                        onPressAndHold: mouse => win.itemMenu(cell.index, mouse, cellMouse)
                                     }
+                                }
+                            }
+
+                            // Details: sortable columns, groups with a heading.
+                            ListView {
+                                id: list
+                                visible: app.shownView === "details"
+                                anchors { fill: parent; leftMargin: 14; rightMargin: 14; topMargin: app.onHome ? quick.height : 0 }
+                                model: app.entries
+                                clip: true
+                                interactive: !app.mouseMode
+                                spacing: 2
+                                boundsBehavior: Flickable.StopAtBounds
+                                keyNavigationEnabled: false
+                                headerPositioning: ListView.OverlayHeader
+                                readonly property bool wide: width > 760
+                                header: Rectangle {
+                                    width: ListView.view.width
+                                    height: 34
+                                    z: 2
+                                    color: Theme.bg
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 56; rightMargin: 16 }
+                                        spacing: 12
+                                        ColumnHead { Layout.fillWidth: true; label: app.found !== null ? "Name · where" : "Name"; key: "name"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
+                                        ColumnHead { Layout.preferredWidth: 100; label: "Size"; key: "size"; sortKey: app.sort; desc: app.desc; alignRight: true; onPicked: k => app.setSort(k) }
+                                        ColumnHead { Layout.preferredWidth: 150; visible: list.wide; label: "Type"; key: "type"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
+                                        ColumnHead { Layout.preferredWidth: 160; label: "Modified"; key: "date"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
+                                    }
+                                    Rectangle {
+                                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                        height: 1
+                                        color: Theme.line
+                                    }
+                                }
+                                delegate: Item {
+                                    id: rowItem
+                                    required property var modelData
+                                    required property int index
+                                    readonly property string groupLabel: app.group === "none" ? "" : app.groupName(modelData)
+                                    readonly property bool groupStarts: groupLabel !== "" && (index === 0 || app.groupName(app.entries[index - 1]) !== groupLabel)
+                                    width: ListView.view.width
+                                    height: (groupStarts ? 34 : 0) + 44
+                                    Text {
+                                        visible: rowItem.groupStarts
+                                        anchors { left: parent.left; leftMargin: 12; top: parent.top; topMargin: 10 }
+                                        text: rowItem.groupLabel
+                                        color: Theme.accent; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                                    }
+                                    Rectangle {
+                                        id: row
+                                        readonly property bool lit: app.cur === rowItem.index
+                                        readonly property bool picked: !!app.marked[rowItem.modelData.path]
+                                        readonly property bool cut: app.clip.mode === "cut" && app.clip.paths.indexOf(rowItem.modelData.path) >= 0
+                                        y: rowItem.groupStarts ? 34 : 0
+                                        width: parent.width
+                                        height: 44
+                                        radius: Theme.r(10)
+                                        opacity: cut ? 0.45 : 1
+                                        color: rowDrop.containsDrag ? Theme.panel3 : picked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                                             : lit ? Theme.panel3 : rowMouse.containsMouse ? Theme.panel2 : "transparent"
+                                        border.width: 2
+                                        border.color: rowDrop.containsDrag || (lit && app.zone === "main" && app.overlay === "") ? Theme.accent : "transparent"
+                                        RowLayout {
+                                            anchors { fill: parent; leftMargin: 12; rightMargin: 16 }
+                                            spacing: 12
+                                            Item {
+                                                Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                                                FileGlyph {
+                                                    anchors.centerIn: parent
+                                                    visible: rowThumb.status !== Image.Ready
+                                                    kind: app.kindOf(rowItem.modelData)
+                                                    label: ""
+                                                    link: rowItem.modelData.isLink
+                                                    size: 28
+                                                }
+                                                Image {
+                                                    id: rowThumb
+                                                    anchors.fill: parent
+                                                    source: app.kindOf(rowItem.modelData) === "image" ? app.thumbFor(rowItem.modelData) : ""
+                                                    sourceSize: Qt.size(64, 64)
+                                                    asynchronous: true
+                                                    fillMode: Image.PreserveAspectCrop
+                                                    clip: true
+                                                }
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: app.shownName(rowItem.modelData) + (rowItem.modelData.origPath ? "   ·   from " + app.parentOf(rowItem.modelData.origPath)
+                                                    : rowItem.modelData.where && rowItem.modelData.where !== "." ? "   ·   " + rowItem.modelData.where : "")
+                                                color: rowItem.modelData.hidden ? Theme.muted : Theme.text
+                                                elide: Text.ElideMiddle
+                                                font.family: Theme.font; font.pixelSize: 14; font.weight: row.lit ? Font.DemiBold : Font.Normal
+                                                Loader {
+                                                    anchors { fill: parent; margins: -4 }
+                                                    active: app.renaming !== "" && app.renaming === rowItem.modelData.path
+                                                    sourceComponent: inlineRename
+                                                }
+                                            }
+                                            Icon { visible: row.picked; name: "check"; size: 16; color: Theme.accent }
+                                            Text {
+                                                Layout.preferredWidth: 100
+                                                horizontalAlignment: Text.AlignRight
+                                                text: rowItem.modelData.dir ? "" : app.fmtSize(rowItem.modelData.size)
+                                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                            }
+                                            Text {
+                                                Layout.preferredWidth: 150
+                                                visible: list.wide
+                                                text: app.kindName(rowItem.modelData)
+                                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                Layout.preferredWidth: 160
+                                                text: app.fmtDate(rowItem.modelData.mtime)
+                                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                        DropArea {
+                                            id: rowDrop
+                                            anchors.fill: parent
+                                            enabled: rowItem.modelData.dir && !app.inTrash
+                                            keys: ["text/uri-list"]
+                                            onDropped: drop => app.dropOn(drop, rowItem.modelData.path)
+                                        }
+                                        MouseArea {
+                                            id: rowMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                            drag.target: app.mouseMode ? dragProxy : null
+                                            drag.threshold: 10
+                                            drag.onActiveChanged: win.itemDragged(rowItem.index, drag.active)
+                                            onClicked: mouse => win.itemClicked(rowItem.index, mouse, rowMouse)
+                                            onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) app.activate(rowItem.modelData); }
+                                            onPressAndHold: mouse => win.itemMenu(rowItem.index, mouse, rowMouse)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // The rubber band.
+                            Rectangle {
+                                id: bandRect
+                                visible: false
+                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                border.width: 1
+                                border.color: Theme.accent
+                                radius: 4
+                            }
+
+                            // Empty, loading, searching, or can't open.
+                            Column {
+                                anchors.centerIn: parent
+                                width: Math.min(parent.width - 80, 460)
+                                spacing: 8
+                                visible: app.entries.length === 0
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    text: app.listing && app.listing.error ? "Can't open this folder"
+                                        : app.loading && !app.listing ? "Opening…"
+                                        : app.found !== null ? (app.searching ? "Searching for “" + app.foundQuery + "”…" : "Nothing inside matches “" + app.foundQuery + "”")
+                                        : app.query ? "Nothing here matches “" + app.query + "”"
+                                        : app.onHome ? "No recent files yet" : app.inTrash ? "The Trash is empty" : "This folder is empty"
+                                    color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    text: app.listing && app.listing.error ? app.listing.error
+                                        : app.query ? "Press Enter to look in the folders inside too. Ⓑ clears it."
+                                        : app.writable && !app.inTrash && app.found === null ? "Ⓧ for actions: paste, new folder… or drop files here" : ""
+                                    visible: text !== ""
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                                 }
                             }
                         }
 
-                        // The rubber band.
+                        // ------------------------------------------------ picker bar: name, which files, the app's options, Cancel, Open/Save
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line; visible: app.picking }
                         Rectangle {
-                            id: bandRect
-                            visible: false
-                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
-                            border.width: 1
-                            border.color: Theme.accent
-                            radius: 4
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.max(40, pickFlow.height) + 24
+                            visible: app.picking
+                            color: Theme.bg2
+                            Flow {
+                                id: pickFlow
+                                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; topMargin: 12; rightMargin: pickButtons.width + 28 }
+                                spacing: 10
+                                // Saving: the file's name.
+                                Rectangle {
+                                    visible: !!app.pick && app.pick.kind === "save"
+                                    width: Math.max(200, Math.min(460, pickFlow.width - 200))
+                                    height: 40
+                                    radius: Theme.r(10)
+                                    color: Theme.panel3
+                                    border.width: 2
+                                    border.color: pickField.activeFocus || app.pickLit("name") ? Theme.accent : "transparent"
+                                    Text {
+                                        id: nameLabel
+                                        anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                                        text: "Name"
+                                        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                    }
+                                    TextInput {
+                                        id: pickField
+                                        anchors { left: nameLabel.right; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                        text: app.pickName
+                                        onTextEdited: app.pickName = text
+                                        color: Theme.text
+                                        selectionColor: Theme.accent
+                                        selectedTextColor: Theme.accentInk
+                                        font.family: Theme.font
+                                        font.pixelSize: 15
+                                        selectByMouse: true
+                                        clip: true
+                                        onActiveFocusChanged: if (activeFocus) { app.zone = "pick"; app.pickIndex = 0; }
+                                        Keys.onPressed: e => {
+                                            switch (e.key) {
+                                            case Qt.Key_Return: case Qt.Key_Enter: app.pickAccept(null); break;
+                                            case Qt.Key_Escape: app.close(); break;
+                                            case Qt.Key_Up: app.zone = "main"; keys.forceActiveFocus(); break;
+                                            case Qt.Key_Down: case Qt.Key_Tab: app.pickIndex = Math.min(1, app.pickItems.length - 1); keys.forceActiveFocus(); break;
+                                            default: return;
+                                            }
+                                            e.accepted = true;
+                                        }
+                                    }
+                                }
+                                Chip {
+                                    visible: !!app.pick && (app.pick.filters || []).length > 0
+                                    label: app.pickFilter >= 0 && app.pick ? app.pick.filters[app.pickFilter].name + ((app.pick.filters || []).length > 1 ? "  ▾" : "") : ""
+                                    focused: app.pickLit("filter")
+                                    onClicked: { keys.forceActiveFocus(); if ((app.pick.filters || []).length > 1) app.filterMenu(); }
+                                }
+                                Repeater {
+                                    model: app.pick ? app.pick.choices || [] : []
+                                    delegate: Chip {
+                                        required property var modelData
+                                        required property int index
+                                        label: app.choiceLabel(modelData)
+                                        focused: app.pickLit("choice", index)
+                                        onClicked: { keys.forceActiveFocus(); app.choiceRun(index); }
+                                    }
+                                }
+                                Text {
+                                    visible: !!app.pick && app.pick.kind === "savefiles"
+                                    height: 40
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: app.pick ? app.plural((app.pick.files || []).length, "file") + " go into “" + (app.listing ? app.listing.name || app.base(app.path) : "") + "”" : ""
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                }
+                            }
+                            Row {
+                                id: pickButtons
+                                anchors { right: parent.right; rightMargin: 14; bottom: parent.bottom; bottomMargin: 12 }
+                                spacing: 10
+                                Chip {
+                                    label: "Cancel"
+                                    focused: app.pickLit("cancel")
+                                    onClicked: app.close()
+                                }
+                                Chip {
+                                    primary: true
+                                    label: app.pickAcceptLabel
+                                    focused: app.pickLit("accept")
+                                    dim: !!app.pick && app.pick.kind === "open" && !app.pickTargets().length
+                                    onClicked: { keys.forceActiveFocus(); app.pickAccept(null); }
+                                }
+                            }
                         }
 
-                        // Empty, loading, searching, or can't open.
-                        Column {
-                            anchors.centerIn: parent
-                            width: Math.min(parent.width - 80, 460)
-                            spacing: 8
-                            visible: app.entries.length === 0
-                            Text {
-                                width: parent.width
-                                horizontalAlignment: Text.AlignHCenter
-                                wrapMode: Text.WordWrap
-                                text: app.listing && app.listing.error ? "Can't open this folder"
-                                    : app.loading && !app.listing ? "Opening…"
-                                    : app.found !== null ? (app.searching ? "Searching for “" + app.foundQuery + "”…" : "Nothing inside matches “" + app.foundQuery + "”")
-                                    : app.query ? "Nothing here matches “" + app.query + "”"
-                                    : app.inTrash ? "The Trash is empty" : "This folder is empty"
-                                color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+                        // ------------------------------------------------ bottom bar: status, search, or progress
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: app.job ? 66 : 44
+                            color: Theme.panel
+
+                            RowLayout {
+                                visible: !app.job
+                                anchors { fill: parent; leftMargin: 18; rightMargin: 12 }
+                                spacing: 12
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: {
+                                        if (app.note !== "") return app.note;
+                                        let s = app.found !== null ? (app.searching ? "Searching… " : "") + app.plural(app.entries.length, "match", "matches") + " for “" + app.foundQuery + "”"
+                                            : app.plural(app.entries.length, "item");
+                                        if (app.markCount) {
+                                            const sel = app.entries.filter(e => app.marked[e.path]);
+                                            const bytes = sel.reduce((n, e) => n + (e.dir ? 0 : e.size), 0);
+                                            s += " · " + app.markCount + " selected" + (bytes ? " (" + app.fmtSize(bytes) + ")" : "");
+                                        } else if (app.current && !app.current.dir && app.found === null) {
+                                            s += " · “" + app.current.name + "” " + app.fmtSize(app.current.size);
+                                        }
+                                        if (app.clip.paths.length) s += " · " + app.plural(app.clip.paths.length, "item") + (app.clip.mode === "cut" ? " to move" : " copied");
+                                        if (app.listing && !app.listing.writable && !app.listing.error) s += " · read-only";
+                                        return s;
+                                    }
+                                    color: app.note !== "" && app.noteError ? Theme.danger : app.note !== "" ? Theme.text : Theme.muted
+                                    elide: Text.ElideRight
+                                    font.family: Theme.font; font.pixelSize: 13
+                                }
+                                Chip {
+                                    visible: app.searching
+                                    label: "Stop searching"
+                                    onClicked: { keys.forceActiveFocus(); app.stopSearch(); }
+                                }
+                                Text {
+                                    visible: !!(app.listing && app.listing.free !== undefined && app.listing.free !== null)
+                                    text: app.listing ? app.fmtSize(app.listing.free) + " free" : ""
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                }
+                            }
+
+                            RowLayout {
+                                visible: !!app.job
+                                anchors { fill: parent; leftMargin: 18; rightMargin: 14 }
+                                spacing: 14
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    readonly property var j: app.job || ({ done: 0, total: 0, speed: 0 })
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const j = parent.j;
+                                            const verb = j.cancelling ? "Stopping" : app.jobVerbing(j.verb);
+                                            const what = j.name ? "“" + j.name + "”" : app.plural(j.count || 0, "item");
+                                            if (j.verb === "compress") return verb + " " + what + " into “" + (j.destName || "") + "”";
+                                            if (j.verb === "extract") return verb + " " + what;
+                                            return verb + " " + what + " to “" + (j.destName || "") + "”";
+                                        }
+                                        color: Theme.text; elide: Text.ElideRight
+                                        font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                                    }
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 6
+                                        radius: 3
+                                        color: Theme.panel3
+                                        Rectangle {
+                                            width: parent.width * (parent.parent.j.total > 0 ? Math.min(1, parent.parent.j.done / parent.parent.j.total) : 0)
+                                            height: parent.height
+                                            radius: 3
+                                            color: Theme.accent
+                                            Behavior on width { NumberAnimation { duration: 240 } }
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const j = parent.j;
+                                            if (!j.total) return "Getting ready…";
+                                            const left = j.speed > 0 ? app.fmtTime((j.total - j.done) / j.speed) : "";
+                                            return app.fmtSize(j.done) + " of " + app.fmtSize(j.total)
+                                                + (j.speed > 0 ? " · " + app.fmtSize(j.speed) + "/s" : "")
+                                                + (left ? " · about " + left + " left" : "")
+                                                + (app.jobQueue.length ? " · " + app.jobQueue.length + " more waiting" : "");
+                                        }
+                                        color: Theme.muted; elide: Text.ElideRight
+                                        font.family: Theme.font; font.pixelSize: 12
+                                    }
+                                }
+                                Chip {
+                                    label: "Cancel"
+                                    onClicked: app.cancelJob()
+                                }
+                            }
+                        }
+
+                        // ------------------------------------------------ on-screen keyboard inside the window (picker.qml in Game
+                        // Mode, where gamescope shows one window): Hearth's shared keyboard.
+                        OskBoard {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? Math.min(330, Math.max(240, win.height * 0.4)) : 0
+                            visible: app.oskOn
+                            vm: app.oskVm
+                            onTapped: (r, c) => { if (app.oskEngine) app.oskEngine.tap(r, c); }
+                            onLongPressed: (r, c) => { if (app.oskEngine) app.oskEngine.longPress(r, c); }
+                            onAltPicked: i => { if (app.oskEngine) app.oskEngine.pickAlt(i); }
+                        }
+                    }
+
+                    // ------------------------------------------------ the details pane (the Details button, Alt+P)
+                    Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 1; color: Theme.line; visible: detailsBox.visible }
+                    Rectangle {
+                        id: detailsBox
+                        visible: app.detailsPane && !app.picking
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: win.width < 1100 ? 250 : 300
+                        color: Theme.panel
+                        readonly property var sel: app.markCount > 1 ? app.entries.filter(x => app.marked[x.path]) : []
+                        readonly property var e: sel.length ? null : app.current
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 18 }
+                            spacing: 10
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.round(width * 0.72)
+                                radius: Theme.r(12)
+                                color: Theme.panel2
+                                FileGlyph {
+                                    anchors.centerIn: parent
+                                    visible: detailThumb.status !== Image.Ready
+                                    kind: detailsBox.e ? app.kindOf(detailsBox.e) : "folder"
+                                    label: detailsBox.e ? app.extLabel(detailsBox.e) : ""
+                                    link: !!detailsBox.e && !!detailsBox.e.isLink
+                                    size: 96
+                                }
+                                Image {
+                                    id: detailThumb
+                                    anchors { fill: parent; margins: 6 }
+                                    source: detailsBox.e && !detailsBox.e.dir ? app.thumbFor(detailsBox.e) : ""
+                                    sourceSize: Qt.size(480, 480)
+                                    asynchronous: true
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                }
+                                Rectangle {
+                                    visible: detailsBox.sel.length > 0
+                                    anchors { right: parent.right; bottom: parent.bottom; margins: 10 }
+                                    width: 34; height: 34; radius: 17
+                                    color: Theme.accent
+                                    Text { anchors.centerIn: parent; text: detailsBox.sel.length; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                }
                             }
                             Text {
-                                width: parent.width
-                                horizontalAlignment: Text.AlignHCenter
-                                wrapMode: Text.WordWrap
-                                text: app.listing && app.listing.error ? app.listing.error
-                                    : app.query ? "Press Enter to look in the folders inside too. Ⓑ clears it."
-                                    : app.writable && !app.inTrash && app.found === null ? "Ⓧ for actions: paste, new folder… or drop files here" : ""
+                                Layout.fillWidth: true
+                                text: detailsBox.sel.length ? detailsBox.sel.length + " items selected"
+                                    : detailsBox.e ? detailsBox.e.name : app.titleOf(app.path)
+                                color: Theme.text
+                                wrapMode: Text.WrapAnywhere
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                                font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: detailsBox.sel.length ? "" : detailsBox.e ? app.kindName(detailsBox.e) : app.plural(app.entries.length, "item")
                                 visible: text !== ""
                                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                             }
-                        }
-                    }
-
-                    // ------------------------------------------------ picker bar: name, which files, the app's options, Cancel, Open/Save
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line; visible: app.picking }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.max(40, pickFlow.height) + 24
-                        visible: app.picking
-                        color: Theme.bg2
-                        Flow {
-                            id: pickFlow
-                            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; topMargin: 12; rightMargin: pickButtons.width + 28 }
-                            spacing: 10
-                            // Saving: the file's name.
-                            Rectangle {
-                                visible: !!app.pick && app.pick.kind === "save"
-                                width: Math.max(200, Math.min(460, pickFlow.width - 200))
-                                height: 40
-                                radius: Theme.r(10)
-                                color: Theme.panel3
-                                border.width: 2
-                                border.color: pickField.activeFocus || app.pickLit("name") ? Theme.accent : "transparent"
-                                Text {
-                                    id: nameLabel
-                                    anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
-                                    text: "Name"
-                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-                                }
-                                TextInput {
-                                    id: pickField
-                                    anchors { left: nameLabel.right; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                                    text: app.pickName
-                                    onTextEdited: app.pickName = text
-                                    color: Theme.text
-                                    selectionColor: Theme.accent
-                                    selectedTextColor: Theme.accentInk
-                                    font.family: Theme.font
-                                    font.pixelSize: 15
-                                    selectByMouse: true
-                                    clip: true
-                                    onActiveFocusChanged: if (activeFocus) { app.zone = "pick"; app.pickIndex = 0; }
-                                    Keys.onPressed: e => {
-                                        switch (e.key) {
-                                        case Qt.Key_Return: case Qt.Key_Enter: app.pickAccept(null); break;
-                                        case Qt.Key_Escape: app.close(); break;
-                                        case Qt.Key_Up: app.zone = "main"; keys.forceActiveFocus(); break;
-                                        case Qt.Key_Down: case Qt.Key_Tab: app.pickIndex = Math.min(1, app.pickItems.length - 1); keys.forceActiveFocus(); break;
-                                        default: return;
-                                        }
-                                        e.accepted = true;
-                                    }
-                                }
-                            }
-                            Chip {
-                                visible: !!app.pick && (app.pick.filters || []).length > 0
-                                label: app.pickFilter >= 0 && app.pick ? app.pick.filters[app.pickFilter].name + ((app.pick.filters || []).length > 1 ? "  ▾" : "") : ""
-                                focused: app.pickLit("filter")
-                                onClicked: { keys.forceActiveFocus(); if ((app.pick.filters || []).length > 1) app.filterMenu(); }
-                            }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
                             Repeater {
-                                model: app.pick ? app.pick.choices || [] : []
-                                delegate: Chip {
+                                model: {
+                                    const e = detailsBox.e, sel = detailsBox.sel;
+                                    if (sel.length) {
+                                        const bytes = sel.reduce((n, x) => n + (x.dir ? 0 : (x.size || 0)), 0);
+                                        const dirs = sel.filter(x => x.dir).length;
+                                        return [["Size", app.fmtSize(bytes) + (dirs ? " (plus what's in " + app.plural(dirs, "folder") + ")" : "")],
+                                                ["Folders", String(dirs)], ["Files", String(sel.length - dirs)]];
+                                    }
+                                    if (!e) return app.listing && app.listing.free !== undefined && app.listing.free !== null ? [["Free", app.fmtSize(app.listing.free)]] : [];
+                                    const rows = [];
+                                    if (!e.dir) rows.push(["Size", app.fmtSize(e.size)]);
+                                    if (e.mtime) rows.push(["Modified", app.fmtDate(e.mtime)]);
+                                    if (e.opened) rows.push(["Opened", app.fmtDate(Date.parse(e.opened) / 1000)]);
+                                    rows.push(["Location", app.parentOf(e.path)]);
+                                    if (e.isLink) rows.push(["Link", "Points somewhere else"]);
+                                    return rows;
+                                }
+                                delegate: RowLayout {
                                     required property var modelData
-                                    required property int index
-                                    label: app.choiceLabel(modelData)
-                                    focused: app.pickLit("choice", index)
-                                    onClicked: { keys.forceActiveFocus(); app.choiceRun(index); }
+                                    Layout.fillWidth: true
+                                    spacing: 10
+                                    Text { Layout.preferredWidth: 76; Layout.alignment: Qt.AlignTop; text: modelData[0]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                                    Text { Layout.fillWidth: true; text: modelData[1]; color: Theme.text; wrapMode: Text.WrapAnywhere; font.family: Theme.font; font.pixelSize: 13 }
                                 }
                             }
-                            Text {
-                                visible: !!app.pick && app.pick.kind === "savefiles"
-                                height: 40
-                                verticalAlignment: Text.AlignVCenter
-                                text: app.pick ? app.plural((app.pick.files || []).length, "file") + " go into “" + (app.listing ? app.listing.name || app.base(app.path) : "") + "”" : ""
-                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-                            }
-                        }
-                        Row {
-                            id: pickButtons
-                            anchors { right: parent.right; rightMargin: 14; bottom: parent.bottom; bottomMargin: 12 }
-                            spacing: 10
-                            Chip {
-                                label: "Cancel"
-                                focused: app.pickLit("cancel")
-                                onClicked: app.close()
-                            }
-                            Chip {
-                                primary: true
-                                label: app.pickAcceptLabel
-                                focused: app.pickLit("accept")
-                                dim: !!app.pick && app.pick.kind === "open" && !app.pickTargets().length
-                                onClicked: { keys.forceActiveFocus(); app.pickAccept(null); }
-                            }
-                        }
-                    }
-
-                    // ------------------------------------------------ bottom bar: status, search, or progress
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: app.job ? 66 : 44
-                        color: Theme.panel
-
-                        RowLayout {
-                            visible: !app.job
-                            anchors { fill: parent; leftMargin: 18; rightMargin: 12 }
-                            spacing: 12
-                            Text {
+                            Item { Layout.fillHeight: true }
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: {
-                                    if (app.note !== "") return app.note;
-                                    let s = app.found !== null ? (app.searching ? "Searching… " : "") + app.plural(app.entries.length, "match", "matches") + " for “" + app.foundQuery + "”"
-                                        : app.plural(app.entries.length, "item");
-                                    if (app.markCount) {
-                                        const sel = app.entries.filter(e => app.marked[e.path]);
-                                        const bytes = sel.reduce((n, e) => n + (e.dir ? 0 : e.size), 0);
-                                        s += " · " + app.markCount + " selected" + (bytes ? " (" + app.fmtSize(bytes) + ")" : "");
-                                    } else if (app.current && !app.current.dir && app.found === null) {
-                                        s += " · “" + app.current.name + "” " + app.fmtSize(app.current.size);
-                                    }
-                                    if (app.clip.paths.length) s += " · " + app.plural(app.clip.paths.length, "item") + (app.clip.mode === "cut" ? " to move" : " copied");
-                                    if (app.listing && !app.listing.writable && !app.listing.error) s += " · read-only";
-                                    return s;
-                                }
-                                color: app.note !== "" && app.noteError ? Theme.danger : app.note !== "" ? Theme.text : Theme.muted
-                                elide: Text.ElideRight
-                                font.family: Theme.font; font.pixelSize: 13
-                            }
-                            Chip {
-                                visible: app.searching
-                                label: "Stop searching"
-                                onClicked: { keys.forceActiveFocus(); app.stopSearch(); }
-                            }
-                            Text {
-                                visible: !!(app.listing && app.listing.free !== undefined && app.listing.free !== null)
-                                text: app.listing ? app.fmtSize(app.listing.free) + " free" : ""
-                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                visible: !!detailsBox.e
+                                spacing: 8
+                                Chip { Layout.fillWidth: true; label: "Open"; primary: true; onClicked: { keys.forceActiveFocus(); app.activate(detailsBox.e); } }
+                                Chip { Layout.fillWidth: true; label: "Properties"; onClicked: { keys.forceActiveFocus(); app.menuOnFolder = false; app.runMenu("props"); } }
                             }
                         }
-
-                        RowLayout {
-                            visible: !!app.job
-                            anchors { fill: parent; leftMargin: 18; rightMargin: 14 }
-                            spacing: 14
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                readonly property var j: app.job || ({ done: 0, total: 0, speed: 0 })
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: {
-                                        const j = parent.j;
-                                        const verb = j.cancelling ? "Stopping" : app.jobVerbing(j.verb);
-                                        const what = j.name ? "“" + j.name + "”" : app.plural(j.count || 0, "item");
-                                        if (j.verb === "compress") return verb + " " + what + " into “" + (j.destName || "") + "”";
-                                        if (j.verb === "extract") return verb + " " + what;
-                                        return verb + " " + what + " to “" + (j.destName || "") + "”";
-                                    }
-                                    color: Theme.text; elide: Text.ElideRight
-                                    font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                                }
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 6
-                                    radius: 3
-                                    color: Theme.panel3
-                                    Rectangle {
-                                        width: parent.width * (parent.parent.j.total > 0 ? Math.min(1, parent.parent.j.done / parent.parent.j.total) : 0)
-                                        height: parent.height
-                                        radius: 3
-                                        color: Theme.accent
-                                        Behavior on width { NumberAnimation { duration: 240 } }
-                                    }
-                                }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: {
-                                        const j = parent.j;
-                                        if (!j.total) return "Getting ready…";
-                                        const left = j.speed > 0 ? app.fmtTime((j.total - j.done) / j.speed) : "";
-                                        return app.fmtSize(j.done) + " of " + app.fmtSize(j.total)
-                                            + (j.speed > 0 ? " · " + app.fmtSize(j.speed) + "/s" : "")
-                                            + (left ? " · about " + left + " left" : "")
-                                            + (app.jobQueue.length ? " · " + app.jobQueue.length + " more waiting" : "");
-                                    }
-                                    color: Theme.muted; elide: Text.ElideRight
-                                    font.family: Theme.font; font.pixelSize: 12
-                                }
-                            }
-                            Chip {
-                                label: "Cancel"
-                                onClicked: app.cancelJob()
-                            }
-                        }
-                    }
-
-                    // ------------------------------------------------ on-screen keyboard inside the window (picker.qml in Game
-                    // Mode, where gamescope shows one window): Hearth's shared keyboard.
-                    OskBoard {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: visible ? Math.min(330, Math.max(240, win.height * 0.4)) : 0
-                        visible: app.oskOn
-                        vm: app.oskVm
-                        onTapped: (r, c) => { if (app.oskEngine) app.oskEngine.tap(r, c); }
-                        onLongPressed: (r, c) => { if (app.oskEngine) app.oskEngine.longPress(r, c); }
-                        onAltPicked: i => { if (app.oskEngine) app.oskEngine.pickAlt(i); }
                     }
                 }
             }
@@ -3146,7 +3806,7 @@ Scope {
             }
             // The rubber band from a to b (content coordinates of the view): picks what it touches.
             function band(a, b, base) {
-                const v = app.view === "details" ? list : grid;
+                const v = app.shownView === "details" ? list : grid;
                 const l = Math.min(a.x, b.x), r = Math.max(a.x, b.x), t = Math.min(a.y, b.y), btm = Math.max(a.y, b.y);
                 const tl = folderArea.mapFromItem(v.contentItem, l, t);
                 bandRect.x = Math.max(0, tl.x);
@@ -3729,7 +4389,7 @@ Scope {
         property string kind
         property color tint: Theme.text
         property real size: 20
-        readonly property string hearthIcon: ({ home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad", device: "desktops", network: "server", howto: "help" })[kind] || ""
+        readonly property string hearthIcon: ({ start: "home", home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad", device: "desktops", network: "server", howto: "help" })[kind] || ""
         readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸" })[kind] || ""
         implicitWidth: size
         implicitHeight: size
