@@ -36,6 +36,8 @@ pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &
     let mut a = vec![exe.to_string()]; a.extend(args);
     let (cmd, argv, mut e) = crate::manual::apply(opts, &umu, a, true);
     e.extend(env);
+    // No Proton picked in the game's options: the one built into Hearth OS (offline), or umu's own choice.
+    crate::proton_pick::fill_in(&mut e, store, id);
     e.push(("WINEPREFIX".into(), prefix.to_string_lossy().into()));
     e.push(("GAMEID".into(), std::env::var("NIMBUS_GAMEID").unwrap_or_else(|_| "0".into())));
     e.push(("STORE".into(), match store { "epic" => "egs", "gog" => "gog", _ => "none" }.into()));

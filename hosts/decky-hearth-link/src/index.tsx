@@ -15,6 +15,7 @@ import { HearthOnly, hearthOs } from "./hearth-only";
 import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo,
   homeServer, homeServerLight, homeServerResume } from "./link";
 import { DiscordQuick, discordOpen, discordSet, discordSetup, discordStatus, discordToasts } from "./link";
+import { ServerShort, servers } from "./link";
 
 const warn = { color: "#ffb37a" };
 const dim = { fontSize: 12, color: "#8d99a8" };
@@ -399,6 +400,31 @@ function HomeServer() {
   );
 }
 
+// ---- Your server (docs/SERVER-APPS.md): a paired Hearth PC using Server mode, in short (its status over Hearth Link).
+// Read only here; its full dashboard is its web page or Desktop Mode's Settings › Hearth Link › Your devices.
+function YourServers() {
+  const [list, setList] = useState<ServerShort[]>([]);
+  const alive = useRef(true);
+  const load = () => servers().then((v) => { if (alive.current) setList(Array.isArray(v) ? v : []); }).catch(() => alive.current && setList([]));
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => { alive.current = false; clearInterval(t); }; }, []);
+  if (!list.length) return null;
+  const word: Record<string, string> = { active: "running", failed: "stopped", activating: "starting" };
+  return (
+    <>
+      {list.map((v, i) => (
+        <PanelSection key={i} title={`Your server: ${v.name}`}>
+          <Field label={v.online ? (v.title || "Online") : "Offline"} description={v.online ? (v.mode === "server" ? "In Server mode" : v.playing ? "Someone's playing on it" : "Not in Server mode now") : "Last known"} />
+          {v.alerts.map((a, j) => <Line key={`a${j}`} style={warn}>{a}</Line>)}
+          {v.services.filter((t) => t.state !== "off").map((t, j) => (
+            <Line key={`s${j}`} style={t.state === "running" ? dim : warn}>{`${t.title}: ${t.chip}${t.big && t.big !== "0" ? ` · ${t.big} ${t.unit}` : ""}`}</Line>
+          ))}
+          {v.apps.length > 0 && <Line style={dim}>{`Server apps: ${v.apps.map((a) => `${a.name} (${word[a.state] || "starting"})`).join(", ")}`}</Line>}
+        </PanelSection>
+      ))}
+    </>
+  );
+}
+
 // ---- Discord (docs/DISCORD.md): since 1.6 Hearth's friends are Discord's. Open Discord, its "Playing" status and
 // friends joining; the setup (the application ID, which Discord) is Hearth Settings › Discord in a window.
 function DiscordSection() {
@@ -460,7 +486,7 @@ export default definePlugin(() => {
   return {
     name: "Hearth Link",
     titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
+    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
     icon: <FaNetworkWired />,
     onDismount() { gone = true; if (stop) stop(); },
   };

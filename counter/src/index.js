@@ -2,8 +2,11 @@
 //
 //   POST /v1/ping   {"id": "<random install id>", "v": "0.0.20", "k": "amd|nvidia|windows|appimage|live"}
 //                   Each install sends this about every 10 minutes while Hearth (or Ember) is running.
-//   GET  /v1/stats  {"now": n, "today": n, "month": n, "kinds": {...}, "updated": ms}
+//   GET  /v1/stats  {"now": n, "today": n, "month": n, "kinds": {...}, "os": {...}, "updated": ms}
 //                   now = seen in the last 15 minutes, today = 24 hours, month = 30 days.
+//                   os = Hearth OS installs only (OS_KINDS: not Ember on Windows, the AppImage, Android or the
+//                   docs/requests forms): {now, today, month, total}; total = every Hearth OS install seen since
+//                   the counter was last reset (the seen table, never trimmed by age).
 //
 //   POST /v1/logs   (text) Settings › System › "Send logs": a bug report's logs (personal details already taken
 //                   out on the device). Answers {"code": "ABCD-EFGH-JK"}; kept 14 days. Also the "Still stuck?"
@@ -22,6 +25,8 @@
 // Stored per install: the random id, its kind, its version, when it was first and last seen. No IP
 // addresses, names or anything else. Rows not seen for 40 days are deleted every day.
 
+// Hearth OS itself (an installed or live Hearth OS image), for the website's "using Hearth OS" numbers.
+const OS_KINDS = new Set(['amd', 'nvidia', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'other']);
 const KINDS = new Set(['amd', 'nvidia', 'windows', 'appimage', 'live', 'anatase', 'ubuntu', 'cachyos', 'peppermint', 'android', 'docs', 'request', 'other']);  // docs: a problem sent from hearthos.fun/docs
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
@@ -63,6 +68,8 @@ async function ping(req, env) {
     `INSERT INTO pings (id, kind, version, first, last) VALUES (?1, ?2, ?3, ?4, ?4)
      ON CONFLICT(id) DO UPDATE SET kind = ?2, version = ?3, last = ?4 WHERE pings.last < ?4 - 240000`
   ).bind(id, kind, ver, now).run();
+  // Every install ever seen (since the last reset), for the total: one row per install, written once.
+  await env.DB.prepare('INSERT OR IGNORE INTO seen (id, kind, first) VALUES (?1, ?2, ?3)').bind(id, kind, now).run();
   return json({ ok: true });
 }
 
@@ -84,6 +91,10 @@ async function stats(req, env, ctx) {
     out.now += r.now || 0; out.today += r.today || 0; out.month += r.month || 0;
     out.kinds[r.kind] = { now: r.now || 0, today: r.today || 0, month: r.month || 0 };
   }
+  out.os = { now: 0, today: 0, month: 0, total: 0 };
+  for (const [k, c] of Object.entries(out.kinds)) if (OS_KINDS.has(k)) { out.os.now += c.now; out.os.today += c.today; out.os.month += c.month; }
+  const tot = await env.DB.prepare(`SELECT COUNT(*) AS n FROM seen WHERE kind IN (${[...OS_KINDS].map(() => '?').join(',')})`).bind(...OS_KINDS).first();
+  out.os.total = Math.max((tot && tot.n) || 0, out.os.month);
   // The same per version (how many have updated after each release), and per version and edition.
   const vrows = await env.DB.prepare(
     `SELECT version, kind,

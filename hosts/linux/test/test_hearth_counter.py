@@ -126,3 +126,30 @@ class Counter(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CounterUserAgent(unittest.TestCase):
+    """Cloudflare answers Python's default User-Agent with 403 "error code: 1010"; the ping must send its own."""
+
+    def test_ping_sends_its_own_user_agent(self):
+        import importlib.machinery, importlib.util, pathlib, urllib.request
+        path = pathlib.Path(__file__).resolve().parents[1] / "desktop/shell/hearth-counter"
+        spec = importlib.util.spec_from_loader("hearth_counter_ua", importlib.machinery.SourceFileLoader("hearth_counter_ua", str(path)))
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        seen = []
+
+        class Reply:
+            def read(self): return b'{"ok":true}'
+
+        orig = urllib.request.urlopen
+        urllib.request.urlopen = lambda req, timeout=None: seen.append(req) or Reply()
+        try:
+            mod.counting = lambda root='': True
+            mod.payload = lambda root='': {'id': 'a' * 32, 'v': '1.7.0', 'k': 'peppermint'}
+            mod.ping()
+        finally:
+            urllib.request.urlopen = orig
+        self.assertEqual(len(seen), 1)
+        ua = seen[0].get_header('User-agent') or ''
+        self.assertTrue(ua.startswith('Hearth-OS-counter/'), ua)
+        self.assertNotIn('Python-urllib', ua)

@@ -869,7 +869,7 @@ DESKTOP
 fi
 # ==================================================================== end of Hearth Recorder, Camera and Share
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
-# Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
+# Controller Lab, Saves, Mods and Hearth Games: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
 # with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
 # with Hearth's own apps (their ids start with "hearth"); Game Mode opens them from Settings › Controls and a
 # game's ⋯ menu (hearth-core gaming_apps.rs). Saves' hourly timer is on for everyone and does nothing until a
@@ -892,7 +892,7 @@ StartupWMClass=$1
 DESKTOP
 }
 install -d /usr/share/applications
-for app in hearth-controller-lab hearth-saves hearth-mods; do
+for app in hearth-controller-lab hearth-saves hearth-mods hearth-gamestore; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs the libraries above; left out"; rm -f "/usr/bin/$app"; continue; fi
@@ -900,6 +900,7 @@ done
 gaming_entry hearth-controller-lab "Controller Lab" "Controller Tester" "Test every button, stick, trigger, gyro and rumble; measure stick drift and calibrate" "controller;gamepad;joystick;test;tester;calibrate;drift;deadzone;rumble;gyro;battery;"
 gaming_entry hearth-saves "Saves" "Game Save Backup" "Back up and restore your games' saves, and move them to another PC" "save;saves;backup;restore;game;steam;proton;usb;"
 gaming_entry hearth-mods "Mods" "Mod Manager" "Install mods for your games, turn them on and off, and choose their order" "mod;mods;modding;manager;nexus;game;"
+gaming_entry hearth-gamestore "Hearth Games" "Game Store" "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall" "gog;epic;epic games;battle.net;battlenet;blizzard;store;games;library;install;heroic;"
 if [ -x /usr/bin/hearth-saves ]; then
   install -d /usr/lib/systemd/user/timers.target.wants
   cat > /usr/lib/systemd/user/hearth-saves-auto.service <<'UNIT'
@@ -986,7 +987,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
 rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
@@ -1021,6 +1022,33 @@ AccuracySec=30s
 WantedBy=timers.target
 UNIT
 ln -sf ../hearth-counter.timer /usr/lib/systemd/user/timers.target.wants/hearth-counter.timer
+# Hearth Files' "Connect automatically" (hearth_netshares.py, docs/HEARTH-LINK.md): the shared folders you picked are
+# opened in the background 30 seconds after signing in (Steam Game Mode and Desktop Mode alike) and every 3 minutes
+# after, so a device that was asleep is picked up when it wakes. With none picked it ends at once. It's a user timer of
+# its own: nothing in signing in, Game Mode or Steam waits for it, and its trouble stays its own.
+cat > /usr/lib/systemd/user/hearth-files-autoconnect.service <<'UNIT'
+[Unit]
+Description=Hearth Files: open the shared folders that connect by themselves
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files net-autoconnect
+TimeoutStartSec=90
+Nice=10
+UNIT
+cat > /usr/lib/systemd/user/hearth-files-autoconnect.timer <<'UNIT'
+[Unit]
+Description=Hearth Files: connect shared folders by themselves while you're signed in
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=3min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+ln -sf ../hearth-files-autoconnect.timer /usr/lib/systemd/user/timers.target.wants/hearth-files-autoconnect.timer
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*
@@ -1475,6 +1503,48 @@ else
   echo "warning: couldn't install Faugus Launcher from ${FAUGUS_DEB:-$FAUGUS_API}; Battle.net uses Hearth's own setup instead"
 fi
 rm -f /tmp/faugus-launcher_all.deb
+
+# ------------------------------------------------------------------ Hearth Games' engines: gogdl (GOG) and legendary (Epic)
+# Hearth Games (docs/HEARTH-GAMES.md) and Hearth's library install GOG games with gogdl and Epic games with legendary,
+# the open-source tools Heroic uses. The same pinned releases as hosts/hearth-core/src/tools.rs (GOGDL, LEGENDARY),
+# checked against the same SHA-256 (test_hearth_gamestore.py keeps them equal), in /usr/lib/hearth/tools: the first
+# install needs no download of the tool. Optional: without them Hearth downloads them on first use, as before.
+hearth_tool() {   # file, url, sha256
+  local tmp="/tmp/hearth-tool-$1"
+  if curl -fsSL --retry 3 -o "$tmp" "$2" && echo "$3  $tmp" | sha256sum -c - >/dev/null; then
+    install -Dm755 "$tmp" "/usr/lib/hearth/tools/$1" && echo "$1 put in the image ($2)"
+  else
+    echo "warning: couldn't get $1 ($2), or its checksum didn't match; Hearth downloads it on first use instead"
+  fi
+  rm -f "$tmp"
+}
+hearth_tool gogdl https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64 cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655
+hearth_tool legendary https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64 dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45
+
+# ------------------------------------------------------------------ GE-Proton, built in (docs/WINDOWS-APPS.md)
+# The newest GE-Proton we could check, in the image, so Windows apps and Hearth Games' Windows games start offline. Only
+# this one version: older ones are downloaded only when the Proton detector needs one, after you say yes. Pinned with
+# its SHA-256 (the same version as "builtin" in /usr/share/hearth/proton-rules.json; test_hearth_winapps.py keeps
+# them equal). Unpacked to /usr/share/hearth/proton and linked into Steam's system folder for compatibility tools, so
+# Steam lists it too; nothing in your Steam settings is changed. About 1.4 GB unpacked (about 530 MB to download).
+# A download or checksum failure stops the build: an image without it would quietly need the internet.
+GE_PROTON=GE-Proton11-3
+GE_PROTON_SHA256=861c2edc8d40d051fb1e7a692deb953be52bd339c46d90f2b7dde50ddad91266
+if ! curl -fsSL --retry 5 --retry-delay 10 -o /tmp/ge-proton.tar.gz \
+     "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$GE_PROTON/$GE_PROTON.tar.gz"; then
+  echo "::error title=GE-Proton::couldn't download $GE_PROTON"; exit 1
+fi
+if ! echo "$GE_PROTON_SHA256  /tmp/ge-proton.tar.gz" | sha256sum -c -; then
+  echo "::error title=GE-Proton::$GE_PROTON's checksum didn't match the pinned one"; exit 1
+fi
+mkdir -p /usr/share/hearth/proton /usr/share/steam/compatibilitytools.d
+tar -xzf /tmp/ge-proton.tar.gz -C /usr/share/hearth/proton
+rm -f /tmp/ge-proton.tar.gz
+test -f "/usr/share/hearth/proton/$GE_PROTON/proton" || { echo "::error title=GE-Proton::$GE_PROTON has no proton script"; exit 1; }
+ln -sfn "/usr/share/hearth/proton/$GE_PROTON" "/usr/share/steam/compatibilitytools.d/$GE_PROTON"
+echo "::notice title=GE-Proton::$GE_PROTON built in ($(du -sh "/usr/share/hearth/proton/$GE_PROTON" | cut -f1) unpacked)"
+# icoutils: Windows apps' menu entries get the program's own icon (wrestool, icotool). Optional.
+"${APT[@]}" icoutils || echo "warning: couldn't install icoutils; Windows apps get Hearth's icon instead of their own"
 
 # ------------------------------------------------------------------ Minigalaxy (GOG)
 # Minigalaxy (github.com/sharkwouter/minigalaxy, GPL), the simple open-source GOG client, from Debian's own repositories.

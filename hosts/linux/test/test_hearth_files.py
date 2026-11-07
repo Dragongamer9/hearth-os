@@ -717,5 +717,98 @@ class Extras(Base):
             self.hf.peek(b)
 
 
+class UndoAndRecent(Base):
+    """1.7 Hearth Files: undo of Move to Trash, links (drag with Alt) and recent files for the Home page."""
+    def test_untrash_puts_it_back_where_it_was(self):
+        f = os.path.join(self.home, 'Docs', 'plan.txt')
+        write(f, 'v1')
+        self.hf.trash([f])
+        self.assertFalse(os.path.exists(f))
+        r = self.hf.untrash([f])
+        self.assertEqual(r['restored'], [f])
+        with open(f) as fh:
+            self.assertEqual(fh.read(), 'v1')
+
+    def test_untrash_takes_the_newest_and_never_overwrites(self):
+        f = os.path.join(self.home, 'a.txt')
+        write(f, 'old')
+        self.hf.trash([f])
+        time.sleep(1.1)
+        write(f, 'new')
+        self.hf.trash([f])
+        write(f, 'here now')
+        r = self.hf.untrash([f])
+        self.assertNotEqual(r['restored'][0], f)          # a new name: what's there now stays
+        with open(f) as fh:
+            self.assertEqual(fh.read(), 'here now')
+        with open(r['restored'][0]) as fh:
+            self.assertEqual(fh.read(), 'new')
+
+    def test_untrash_missing(self):
+        with self.assertRaises(self.hf.Fail):
+            self.hf.untrash([os.path.join(self.home, 'never.txt')])
+
+    def test_links(self):
+        f = os.path.join(self.home, 'a', 'f.txt')
+        write(f)
+        d = os.path.join(self.home, 'b')
+        os.makedirs(d)
+        r = self.hf.make_links([f], d)
+        self.assertTrue(os.path.islink(r['items'][0]))
+        self.assertEqual(os.readlink(r['items'][0]), f)
+        r2 = self.hf.make_links([f], d)
+        self.assertNotEqual(r2['items'][0], r['items'][0])  # never replaces an existing name
+
+    def test_recent(self):
+        a = os.path.join(self.home, 'a.txt'); b = os.path.join(self.home, 'b.txt')
+        write(a); write(b)
+        gone = os.path.join(self.home, 'gone.txt')
+        xbel = os.path.join(self.home, '.local', 'share', 'recently-used.xbel')
+        write(xbel, '<?xml version="1.0"?>\n<xbel>'
+              '<bookmark href="file://%s" visited="2026-11-01T10:00:00Z"></bookmark>'
+              '<bookmark href="file://%s" visited="2026-11-06T10:00:00Z"></bookmark>'
+              '<bookmark href="file://%s" visited="2026-11-07T10:00:00Z"></bookmark>'
+              '<bookmark href="https://example.com/x" visited="2026-11-08T10:00:00Z"></bookmark></xbel>' % (a, b, gone))
+        names = [e['name'] for e in self.hf.recent_files()['recent']]
+        self.assertEqual(names, ['b.txt', 'a.txt'])
+
+    def test_thumbs_have(self):
+        # Only thumbnails that are there (and newer than the file) are listed, so Files never asks for a missing one.
+        os.environ.pop('XDG_CACHE_HOME', None)
+        pdf = os.path.join(self.home, 'doc.pdf'); old = os.path.join(self.home, 'old.pdf')
+        write(pdf); write(old)
+        for p in (pdf, old):
+            write(self.hf.thumb_path(p), b'png')
+        t = time.time()
+        os.utime(self.hf.thumb_path(old), (t - 100, t - 100))
+        os.utime(pdf, (t - 50, t - 50))
+        r = self.hf.thumbs([pdf, old, os.path.join(self.home, 'none.pdf')])
+        self.assertEqual(r['have'], [pdf])
+        self.assertEqual(r['made'], [])
+
+
+class Redesign(unittest.TestCase):
+    """The Win 11-style window keeps what a file manager needs (the QML can't run here; CI takes screenshots)."""
+    qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/FileManager.qml').read_text()
+
+    def test_has_it_all(self):
+        for needle in ('homePage: "hearth:home"', 'function undo()', 'function redo()', 'case Qt.Key_Z:',
+                       'case Qt.Key_Y:', 'Qt.LinkAction', '"link"', '"untrash"', '"recent"',
+                       '["large", "grid", "small", "tiles", "compact", "details"]', 'function shownName(e)',
+                       'id: detailsBox', 'id: cmdRow', 'id: quick', 'function command(t, x, y)',
+                       'p.showExt = showExt', 'p.detailsPane = detailsPane', 'function dragdemo(',
+                       'function typeAhead(ch)', 'function moveTab(from, to)', 'id: tabDrop', 'id: inlineRename',
+                       'function finishRename(text)', 'thumbHave[e.path]', 'r.saveToFile(win.ghostFile)'):
+            self.assertIn(needle, self.qml)
+
+    def test_every_command_button_does_something(self):
+        import re
+        bar = re.findall(r'\{ t: "(\w+)"', self.qml.split('id: cmdRow', 1)[1].split('delegate:', 1)[0])
+        cmd = self.qml.split('function command(t, x, y)', 1)[1].split('\n    }\n', 1)[0]
+        self.assertGreater(len(bar), 10)
+        for t in bar:
+            self.assertIn('case "%s"' % t, cmd, t)
+
+
 if __name__ == '__main__':
     unittest.main()

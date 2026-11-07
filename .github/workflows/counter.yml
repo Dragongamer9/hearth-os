@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       reset:
-        description: 'Reset the player counts (type "reset" to clear every device seen; logs and votes stay)'
+        description: 'Reset the player counts and the total (type "reset" to clear every device seen; logs and votes stay)'
         required: false
         default: ''
   push:
@@ -49,10 +49,11 @@ jobs:
           sed -i "s/FILLED_IN_BY_CI/$id/" wrangler.toml
           step "Create table" $W d1 execute hearth-counter --remote --yes --file schema.sql
           step "Deploy worker" $W deploy
+          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/out.log | head -1)
           if [ "${{ inputs.reset }}" = reset ]; then
-            step "Reset player counts" $W d1 execute hearth-counter --remote --yes --command "DELETE FROM pings"
+            step "Reset player counts" $W d1 execute hearth-counter --remote --yes --command "DELETE FROM pings; DELETE FROM seen"
             echo "::notice title=Reset::Player counts cleared (devices count again from their next check-in, about every 10 minutes)"
           fi
-          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/out.log | head -1)
           echo "::notice::Counter is at $url (stats: $url/v1/stats)"
           if [ -n "$url" ]; then sleep 5; echo "::notice::Stats: $(curl -fsS "$url/v1/stats" || echo unavailable)"; fi
+          exit 0

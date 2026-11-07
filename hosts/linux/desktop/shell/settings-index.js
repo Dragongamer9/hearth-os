@@ -427,6 +427,17 @@ var ENTRIES = [
 "i": "back"
 },
 {
+"t": "Server apps",
+"p": "devices",
+"i": "box"
+},
+{
+"t": "Open its dashboard",
+"p": "devices",
+"d": "Its Server mode web page over Tailscale (its PIN): pause, restart, switch modes",
+"i": "globe"
+},
+{
 "t": "Wake it",
 "p": "devices",
 "d": "Wake-on-LAN, as Hearth Storage does",
@@ -533,15 +544,27 @@ var ENTRIES = [
 "i": "cpu"
 },
 {
+"t": "Hearth Games",
+"p": "games",
+"d": "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall (docs/HEARTH-GAMES.md)",
+"i": "store"
+},
+{
 "t": "Epic Games",
 "p": "games",
-"d": "Sign in to see, install and play your Epic games",
+"d": "Sign in to see, install and play your Epic games (in Hearth Games)",
 "i": "lock"
 },
 {
 "t": "GOG",
 "p": "games",
-"d": "Sign in to see, install and play your GOG games",
+"d": "Sign in to see, install and play your GOG games (in Hearth Games)",
+"i": "lock"
+},
+{
+"t": "Battle.net",
+"p": "games",
+"d": "Blizzard's own app, set up through Faugus Launcher (in Hearth Games)",
 "i": "lock"
 },
 {
@@ -559,7 +582,7 @@ var ENTRIES = [
 {
 "t": "Downloads",
 "p": "games",
-"d": "Epic and GOG installs: pause, carry on, cancel",
+"d": "Epic and GOG installs: pause, carry on, cancel (in Hearth Games)",
 "i": "update"
 },
 {
@@ -905,6 +928,31 @@ var ENTRIES = [
 "i": "batt"
 },
 {
+"t": "I accept Minecraft's EULA",
+"p": "hs-apps",
+"i": "doc"
+},
+{
+"t": "Who can reach it",
+"p": "hs-apps"
+},
+{
+"t": "Its data",
+"p": "hs-apps",
+"i": "folder"
+},
+{
+"t": "Logs",
+"p": "hs-apps",
+"i": "file"
+},
+{
+"t": "Phone notifications",
+"p": "hs-apps",
+"d": "Hear on your phone (the ntfy app) when an alert comes up or a server app stops",
+"i": "bell"
+},
+{
 "t": "How often",
 "p": "hs-backups"
 },
@@ -1167,6 +1215,39 @@ var ENTRIES = [
 "i": "display"
 },
 {
+"t": "Make a new topic",
+"p": "hs-phone",
+"d": "If someone else got the old one. Subscribe to the new one on your phone afterwards",
+"i": "restart"
+},
+{
+"t": "Server",
+"p": "hs-phone",
+"i": "globe"
+},
+{
+"t": "Send notifications to my phone",
+"p": "hs-phone",
+"i": "bell"
+},
+{
+"t": "Home server alerts",
+"p": "hs-phone",
+"d": "What Alerts & power finds: a drive failing or very hot, a drive filling up, a backup failing or late, a mirror missing a drive (turn alerts on there too)",
+"i": "warn"
+},
+{
+"t": "Server apps that stop",
+"p": "hs-phone",
+"d": "A game server or app that stopped and couldn't start again",
+"i": "server"
+},
+{
+"t": "Send a test",
+"p": "hs-phone",
+"i": "check"
+},
+{
 "t": "Your shares are read only",
 "p": "hs-safety",
 "i": "lock"
@@ -1329,6 +1410,23 @@ var ENTRIES = [
 "t": "Models folder",
 "p": "hs-services",
 "i": "folder"
+},
+{
+"t": "Add video (Wan 2.2)",
+"p": "hs-services",
+"i": "film"
+},
+{
+"t": "Add only picture to video (Wan 2.2)",
+"p": "hs-services",
+"d": "The same, without text to video: about 25 GB",
+"i": "image"
+},
+{
+"t": "Remove video (Wan 2.2)",
+"p": "hs-services",
+"d": "Only what Hearth downloaded for it goes (and the GGUF loader, if Hearth got it). Your own models, LoRAs and pictures stay",
+"i": "trash"
 },
 {
 "t": "Stop it while I play",
@@ -2381,6 +2479,59 @@ var ENTRIES = [
 "t": "Look again",
 "p": "wifi",
 "i": "restart"
+},
+{
+"t": "Proton built into Hearth OS",
+"p": "winapps",
+"i": "window"
+},
+{
+"t": "Open a Windows program",
+"p": "winapps",
+"d": "Open a .exe or .msi in Files (or right-click it › Open with Hearth). An installer gets its own space and its app goes in your app menu.",
+"i": "folder"
+},
+{
+"t": "Open",
+"p": "winapps",
+"i": "play"
+},
+{
+"t": "Proton",
+"p": "winapps"
+},
+{
+"t": "DXVK",
+"p": "winapps",
+"d": "DirectX 9, 10 and 11 through Vulkan. Off: Wine's own, slower, for programs that draw wrongly."
+},
+{
+"t": "VKD3D",
+"p": "winapps",
+"d": "DirectX 12 through Vulkan. Off: the program falls back to DirectX 11 if it can."
+},
+{
+"t": "Windows version",
+"p": "winapps"
+},
+{
+"t": "In Steam",
+"p": "winapps",
+"d": "Hearth Sync adds it to Steam's library (Game Mode too) the next time it syncs"
+},
+{
+"t": "Remove…",
+"p": "winapps",
+"d": "Deletes the app, its menu entry and everything installed in its space",
+"i": "trash"
+},
+{
+"t": "Cancel",
+"p": "winapps"
+},
+{
+"t": "Not now",
+"p": "winapps"
 },
 {
 "t": "Clean up",

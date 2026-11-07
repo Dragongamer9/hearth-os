@@ -11,6 +11,9 @@
 //!   (organizer/): Hearth's own Mod Organizer 2-compatible organizer (instances, profiles, plugins, FOMOD, the game's
 //!   Data folder laid over with fuse-overlayfs while it runs).
 //!
+//! - Hearth Games (`hearth-gamestore`): Hearth's own store app for GOG, Epic and Battle.net, a window on hearth-core's
+//!   store engine (gogdl, legendary, Faugus). gamestore.rs, docs/HEARTH-GAMES.md.
+//!
 //! games.rs is the game list Saves and Mods share (Hearth's library through hearth-core). util.rs has the small
 //! things all three use. Windows (Ember) comes later: the parts that touch the system are Linux-only for now.
 
@@ -28,6 +31,7 @@ pub mod accounts;
 pub mod games;
 pub mod browse;
 pub mod launch;
+pub mod gamestore;
 #[cfg(unix)]
 pub mod service;
 #[cfg(target_os = "linux")]

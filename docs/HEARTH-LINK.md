@@ -386,13 +386,24 @@ home and away, with Copy). The Open / Save windows are Hearth Files too, so they
   input, never on a command line.
 - **When it can't:** a wrong password asks again; a share that's off, a device that's asleep (with **Wake it** when
   Hearth Storage knows its Wake-on-LAN address) and Tailscale not signed in each say so.
+- **Connect automatically** (Hearth OS 1.7; a shared folder's menu in the sidebar, right-click, press and hold or the
+  menu button; off for each until you turn it on): that share opens by itself after you sign in, in Steam Game Mode
+  and Desktop Mode alike, so it's already there in Files, the Open / Save windows and games. What's kept is where to
+  find it (Hearth Files' `autoConnect` in files.json, written through `hearth_settings_io`: atomic, `.bak`, merged
+  with the rest), never a password: it signs in with what the keyring remembers. `hearth-files-autoconnect.timer`
+  (a user timer) runs `hearth-files net-autoconnect` 30 seconds after signing in and every 3 minutes after, so a
+  device that was asleep or away is picked up when it's back. A device that doesn't answer within 1.5 seconds is
+  skipped quietly until the next run; one that needs signing in or no longer has the share is left alone until you
+  open it yourself (noted only in `$XDG_RUNTIME_DIR`). Nothing waits for it: it isn't part of signing in, Game Mode
+  or Steam starting. Turned on, it's also tried right away. Off for everything: `HEARTH_NO_AUTOCONNECT=1`.
 - **Show other devices in Files** (Settings › Hearth Link › Your devices; Hearth Files' `showDevices` in files.json):
   on unless you turn it off, only read when it's missing.
 - Settings › Hearth Link › Your devices › a device › **Open shared folder …** opens it in Hearth Files the same way
   (`hearth-filemanager hearthnet://…`).
 
 Tests: `hosts/linux/test/test_netshares.py` (avahi and Tailscale parsing, home vs away, the keyring with a stand-in
-secret-tool, signing in through a stand-in gio, the sidebar model, no password in files or command lines), and
+secret-tool, signing in through a stand-in gio, the sidebar model, no password in files or command lines,
+Connect automatically: kept merged in files.json, opened without asking, asleep skipped, signing in left alone), and
 desktop-test.yml's Hearth Files with stand-in devices.
 
 ## Local AI over Hearth Link

@@ -53,12 +53,14 @@ ShellRoot {
             id: proc
             command: ["python3", pad.helper]
             running: Quickshell.env("HEARTH_SERVER_NO_PAD") !== "1"
+            // 2 and 3 mean something is missing (see hearth-pad): don't keep retrying; anything else, start it again.
+            onExited: code => { if (code !== 2 && code !== 3 && Quickshell.env("HEARTH_SERVER_NO_PAD") !== "1") padRestart.start(); }
             stdinEnabled: true
             stdout: SplitParser {
                 onRead: line => {
                     let m;
                     try { m = JSON.parse(line); } catch (e) { return; }
-                    if (m.t === "ready") { pad.keys(); pad.send({ cmd: "mouse", on: false }); }
+                    if (m.t === "ready") { pad.keys(); pad.send({ cmd: "mouse", on: true }); }   // "mouse off" is hearth-pad's whole-controller off switch: never send it here (1.6 did, and only Guide worked)
                     else if (m.t === "radial" && m.open) {
                         // Guide: Play (the Hearth menu isn't here). The radial menu hearth-pad opened closes again at once.
                         pad.send({ cmd: "radial", open: false });
@@ -69,6 +71,7 @@ ShellRoot {
                 }
             }
         }
+        Timer { id: padRestart; interval: 3000; onTriggered: proc.running = true }
         Connections { target: settingsApp; function onShownChanged() { pad.keys(); } }
     }
 

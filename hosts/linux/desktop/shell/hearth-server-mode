@@ -801,6 +801,8 @@ def dash():
                   'unit': ('to ' + rq['who']) if rq.get('streaming') and rq.get('who') else 'no one connected' if rq.get('on') else '',
                   'sub': 'Connect with Moonlight or Hearth Link to use this PC from anywhere' if rq.get('on') else 'Settings › Gaming › Remote play',
                   'rows': [], 'actions': ['restart'] if rq.get('on') else []})
+    # ---- Server apps (docs/SERVER-APPS.md): a pill while one is on (the eight tiles fill the screen), and in the summary
+    sa = server_apps()
     # ---- the pills: every service in a word
     smb = bool(shares)
     for name, extra, st in (('Shared folders', ', '.join(shares[:2]), 'running' if smb else 'off'),
@@ -809,7 +811,8 @@ def dash():
                                                           unit_active('hearth-kokoro.service', True) if (hsd.get('voices') or {}).get('on') else False,
                                                           'kokoro' in sys_paused)),
                             ('Remote desktop', '', 'running' if rq.get('on') else 'off'),
-                            ('Backups', '', 'running' if b.get('count') else 'off')):
+                            ('Backups', '', 'running' if b.get('count') else 'off'),
+                            ('Server apps', '', ('stopped' if sa.get('failed') else 'running') if sa.get('on') else 'off')):
         if st != 'off':
             pills.append({'name': name, 'extra': extra, 'state': st})
     running = sum(1 for p in pills if p['state'] == 'running')
@@ -836,13 +839,25 @@ def dash():
                       ['Power', ('%d W' % g['power']) if g and g.get('power') else '—']],
             'vram': [{'who': a['who'], 'gb': round(a['mb'] / 1024, 1)} for a in (g or {}).get('apps', [])],
             'vramTotal': round(((g or {}).get('memTotal') or 0) / 1024, 1), 'vramUsed': round(((g or {}).get('memUsed') or 0) / 1024, 1),
-            'tiles': tiles, 'pills': pills, 'alerts': alerts[:3], 'who': who, 'pauses': pauses,
+            'tiles': tiles, 'pills': pills, 'apps': sa, 'alerts': alerts[:3], 'who': who, 'pauses': pauses,
             'playing': bool(q.get('playing')), 'paused': sys_paused, 'pausedByYou': mine,
             'busy': bool(loaded and asking) or bool(running_q or pending_q) or bool(b.get('running')) or bool(rq.get('streaming')),
             'web': {'on': srv['web']['on'] is True, 'url': 'http://%s:%d' % (socket.gethostname().split('.')[0], PORT)},
             'idle': {'dim': srv['dim'], 'off': srv['off'], 'idlePower': srv['idlePower'] is True, 'idleMinutes': srv['idleMinutes'],
                      'wlopm': bool(shutil.which('wlopm'))},
             'countdown': countdown_view(), 'now': int(now)}
+
+
+def server_apps():
+    """Server apps that are on, in short (hearth-server-apps quick); {} when there are none or it can't say."""
+    if not os.path.exists(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'nimbus', 'server-apps.json')):
+        return {}
+    code, o, _ = run([sys.executable, os.path.join(HERE, 'hearth-server-apps'), 'quick'], 8)
+    try:
+        v = json.loads(o) if code == 0 else {}
+    except ValueError:
+        v = {}
+    return v if isinstance(v, dict) and isinstance(v.get('apps'), list) else {}
 
 
 def speed(bps):
@@ -861,7 +876,8 @@ def summary(d=None):
                           'sub': t.get('sub', ''), 'actions': t.get('actions', [])} for t in d.get('tiles') or []],
             'alerts': d.get('alerts'), 'who': d.get('who'), 'pauses': d.get('pauses'), 'playing': d.get('playing'),
             'countdown': d.get('countdown'), 'uptime': d.get('uptime'), 'sinceText': d.get('sinceText'), 'gpuName': d.get('gpuName'),
-            'memTotalGb': d.get('memTotalGb')}
+            'memTotalGb': d.get('memTotalGb'),
+            'apps': [{'name': r.get('name'), 'state': r.get('state'), 'kind': r.get('kind')} for r in (d.get('apps') or {}).get('apps') or []]}
 
 
 def back():
