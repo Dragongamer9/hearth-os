@@ -392,8 +392,11 @@ def shared_folders(path=None, home_dir=None, is_mount=os.path.ismount):
     return out
 
 
-def smb_names():
-    """How your other devices reach this one's shares: its name at home (mDNS) and its Tailscale name (when on)."""
+def smb_names(path=None, run=subprocess.run):
+    """How your other devices reach this one's shares: its name at home (mDNS) and its Tailscale name (when on), and
+    what Hearth Files there needs to sign in and to say plainly why a share doesn't open: the account name to sign in
+    with (user), whether a sharing password was set here (password), and whether Samba is running (on). Never the
+    password itself. Only read."""
     host = socket.gethostname().split('.')[0][:63]
     away = ''
     try:
@@ -401,7 +404,34 @@ def smb_names():
         away = (ns.tailscale_state() or {}).get('self') or ''
     except (OSError, ImportError, SyntaxError):
         pass
-    return {'home': host + '.local' if host else '', 'away': away}
+    out = {'home': host + '.local' if host else '', 'away': away}
+    try:
+        import pwd
+        out['user'] = pwd.getpwuid(os.getuid()).pw_name[:64]
+    except (ImportError, KeyError):
+        pass
+    try:
+        with open(path or server_settings_path()) as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            out['password'] = bool(d.get('smbPasswordSet'))
+    except (OSError, ValueError):
+        pass
+    on = None
+    for unit in ('smbd', 'smb'):
+        try:
+            r = run(['systemctl', 'is-active', unit + '.service'], capture_output=True, text=True, timeout=3)
+        except (OSError, subprocess.SubprocessError):
+            break
+        state = (r.stdout or '').strip()
+        if state == 'active':
+            on = True
+            break
+        if state in ('inactive', 'failed', 'activating', 'deactivating'):
+            on = False
+    if on is not None:
+        out['on'] = on
+    return out
 
 
 # ------------------------------------------------------------------ the last hour

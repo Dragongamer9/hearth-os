@@ -167,6 +167,16 @@ systemctl enable hhd.service
   gnome-keyring libpam-gnome-keyring qt6-wayland \
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk foot fuse-overlayfs bubblewrap \
   libwebkit2gtk-4.1-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libnss3 libgbm1
+# Hearth Files' "Your devices" (hearth_netshares.py, docs/HEARTH-LINK.md): a shared folder is opened with `gio mount
+# smb://…` (libglib2.0-bin), through gvfs's SMB backend (gvfs-backends), shown as a folder under /run/user/UID/gvfs
+# (gvfs-fuse), and its sharing password kept in the keyring with secret-tool (libsecret-tools). Without these the
+# shares were listed but none would open. All D-Bus-activated on first use: nothing starts at sign-in or in Game Mode.
+"${APT[@]}" libglib2.0-bin gvfs gvfs-backends gvfs-fuse libsecret-tools
+# avahi-browse finds other computers sharing at home (a missing one only means they aren't listed).
+optional avahi-utils
+command -v gio secret-tool
+[ -x /usr/libexec/gvfsd-smb ] || [ -x /usr/lib/gvfs/gvfsd-smb ] || { echo "::error::gvfs's SMB backend (gvfsd-smb) isn't in the image: Hearth Files couldn't open shared folders"; exit 1; }
+[ -x /usr/libexec/gvfsd-fuse ] || [ -x /usr/lib/gvfs/gvfsd-fuse ] || { echo "::error::gvfsd-fuse isn't in the image: opened shared folders couldn't be shown as folders"; exit 1; }
 # The rest of what Desktop Mode, Couch Co-op and Hearth Browser (Electron) use; names that can differ.
 optional qt6-svg-plugins qt5ct breeze-icon-theme 7zip libarchive-tools gstreamer1.0-plugins-bad gstreamer1.0-pipewire \
   libasound2t64 libcups2t64 libgtk-3-0t64 libxss1 libatk-bridge2.0-0t64

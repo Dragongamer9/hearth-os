@@ -3188,6 +3188,11 @@ def net_parse(text):
             raise Fail('Not a shared folder')
     if '/' in (net.get('share') or ''):
         raise Fail('Not a shared folder')
+    # Hints from the sharing device: Tailscale only or not, and its account name (pre-filled when signing in).
+    if net.get('reach') not in (None, 'home', 'tailscale'):
+        net.pop('reach')
+    if 'user' in net and not (isinstance(net['user'], str) and re.fullmatch(r'[A-Za-z0-9._][A-Za-z0-9._-]{0,63}', net['user'])):
+        net.pop('user')
     return net
 
 

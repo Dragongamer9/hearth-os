@@ -14,7 +14,9 @@ on:
             'hosts/linux/desktop/shell/hearth-ai-share', 'os/system_files/usr/libexec/nimbus/hearth-ai-share-helper', 'hosts/linux/test/test_hearth_ai_share.py', 'docs/AI-SHARE.md',
             'hosts/linux/desktop/shell/hearth-server-mode', 'hosts/linux/desktop/shell/server-mode-web.html', 'hosts/linux/desktop/server/**',
             'hosts/linux/session/**', 'hosts/linux/test/test_hearth_server_mode.py', 'docs/SERVER-MODE.md',
-            'hosts/linux/desktop/shell/hearth-server-apps', 'hosts/linux/desktop/shell/hearth-device-status', 'hosts/linux/test/test_hearth_server_apps.py', 'docs/SERVER-APPS.md']
+            'hosts/linux/desktop/shell/hearth-server-apps', 'hosts/linux/desktop/shell/hearth-device-status', 'hosts/linux/test/test_hearth_server_apps.py', 'docs/SERVER-APPS.md',
+            'hosts/linux/desktop/shell/hearth_netshares.py', 'hosts/linux/desktop/shell/hearth-files', 'hosts/linux/desktop/shell/FileManager.qml',
+            'hosts/linux/desktop/shell/SetDevices.qml', 'hosts/linux/test/test_netshares*.py', 'hosts/linux/test/e2e_netshares.py', 'hosts/linux/test/devices_sample.py']
   workflow_dispatch:
 
 permissions:
@@ -28,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax
         run: |
-          for f in hosts/linux/desktop/shell/hearth-server-apps hosts/linux/desktop/shell/hearth-device-status hosts/linux/desktop/shell/hearth-server-mode hosts/linux/desktop/shell/hearth-home-server hosts/linux/desktop/shell/hearth-home-server-web hosts/linux/desktop/shell/hearth-remote-desktop hosts/linux/desktop/shell/hearth-ai-share os/system_files/usr/libexec/nimbus/hearth-ai-share-helper os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper; do
+          for f in hosts/linux/desktop/shell/hearth-server-apps hosts/linux/desktop/shell/hearth-device-status hosts/linux/desktop/shell/hearth-server-mode hosts/linux/desktop/shell/hearth-home-server hosts/linux/desktop/shell/hearth-home-server-web hosts/linux/desktop/shell/hearth-remote-desktop hosts/linux/desktop/shell/hearth-ai-share hosts/linux/desktop/shell/hearth_netshares.py hosts/linux/desktop/shell/hearth-files hosts/linux/test/e2e_netshares.py os/system_files/usr/libexec/nimbus/hearth-ai-share-helper os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper; do
             python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "::error file=$f::not valid Python"; exit 1; }
           done
           bash -n os-bases/peppermint/build.sh
@@ -36,7 +38,7 @@ jobs:
       - name: Tests
         run: |
           fail=0
-          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py test_hearth_ai_share.py test_hearth_server_mode.py test_hearth_server_apps.py test_device_status.py test_settings_redesign.py test_hearth_steam_mode.py test_hearth_mantel_only.py; do
+          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py test_hearth_ai_share.py test_hearth_server_mode.py test_hearth_server_apps.py test_device_status.py test_settings_redesign.py test_hearth_steam_mode.py test_hearth_mantel_only.py test_netshares.py test_netshares_mount.py; do
             if python3 -m unittest discover -s hosts/linux/test -p "$t" -v > "/tmp/$t.log" 2>&1; then
               echo "::notice title=$t::$(tail -3 "/tmp/$t.log" | tr '\n' ' ')"
             else
@@ -46,6 +48,26 @@ jobs:
             fi
           done
           exit $fail
+
+  # Your devices' shared folders, end to end: a real Samba with Hearth's own config (build.sh's smb.conf and the home
+  # server helper's shares) and a real gvfs (gio mount, gvfs-fuse). hearth_netshares.py opens them the way Hearth Files
+  # does; every failure must say why (hosts/linux/test/e2e_netshares.py posts what came back for each case).
+  smb-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Samba and gvfs
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends samba gvfs gvfs-backends gvfs-fuse fuse3 libglib2.0-bin dbus >/dev/null
+          ls -l /dev/fuse || true
+      - name: Hearth's Samba config and a sharing password
+        run: sudo python3 hosts/linux/test/e2e_netshares.py setup "$(id -un)"
+      - name: Open shares like Hearth Files
+        run: |
+          export XDG_RUNTIME_DIR=$(mktemp -d); chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-run-session -- python3 hosts/linux/test/e2e_netshares.py check
 
   # AI voices (Kokoro-FastAPI) run only by the image digest Hearth pins (hearth-home-server KOKORO_DIGEST): it must still
   # be on ghcr.io, and a release tag that moved to another digest is said. Read only; nothing is pulled.

@@ -55,6 +55,12 @@ def which(name):
     """Tests replace this."""
     return shutil.which(name)
 
+def smbpasswd_failed(said):
+    """Why smbpasswd didn't take a password, in its own last words (it never prints the password: -s reads stdin)."""
+    last = [l.strip() for l in (said or '').splitlines() if l.strip()]
+    return "Samba didn't take the password" + (': ' + last[-1][:200] if last else '')
+
+
 
 def caller():
     """(name, home) of the person who ran pkexec."""
@@ -220,9 +226,9 @@ def smb_password(line):
         raise Fail('Use at least 8 characters')
     if not which('smbpasswd'):
         raise Fail("Samba (Windows sharing) isn't installed on this device")
-    code, _ = run(['smbpasswd', '-a', '-s', user], stdin='%s\n%s\n' % (pw, pw))
+    code, said = run(['smbpasswd', '-a', '-s', user], stdin='%s\n%s\n' % (pw, pw))
     if code != 0:
-        raise Fail("Samba didn't take the password")
+        raise Fail(smbpasswd_failed(said))
     run(['smbpasswd', '-e', user])
     return {'ok': True}
 
