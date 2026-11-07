@@ -259,5 +259,123 @@ class Wiring(unittest.TestCase):
             self.assertEqual(hf.device_places(), [])
 
 
+def load_files():
+    loader = importlib.machinery.SourceFileLoader('hearth_files_auto', str(SHELL / 'hearth-files'))
+    spec = importlib.util.spec_from_loader('hearth_files_auto', loader)
+    hf = importlib.util.module_from_spec(spec)
+    loader.exec_module(hf)
+    return hf
+
+
+class ConnectAutomatically(unittest.TestCase):
+    """Hearth OS 1.7: a shared folder's "Connect automatically" (files.json autoConnect, the user timer)."""
+    NET = {'device': 'abc123', 'name': 'chris-hearth', 'share': 'Games', 'home': 'chris-hearth.local',
+           'away': 'chris-hearth.tail0e2082.ts.net', 'wake': True}
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.rt = os.path.join(self.tmp, 'run', 'auto.json')
+
+    def test_the_switch_is_kept_merged_with_the_other_settings_and_never_a_password(self):
+        hf = load_files()
+        env = {'HOME': self.tmp, 'XDG_CONFIG_HOME': os.path.join(self.tmp, 'cfg'), 'XDG_RUNTIME_DIR': os.path.join(self.tmp, 'run')}
+        with mock.patch.dict(os.environ, env):
+            hf.prefs_set(json.dumps({'view': 'list', 'showDevices': True}))
+            r = hf.net_auto(json.dumps(dict(self.NET, password='hunter2')), True)
+            self.assertTrue(r['on'])
+            p = hf.prefs_get()
+            self.assertEqual(p['view'], 'list')                              # the rest is untouched
+            self.assertEqual(p['autoConnect']['dev:abc123:Games']['share'], 'Games')
+            raw = open(hf.prefs_file()).read()
+            self.assertNotIn('hunter2', raw)
+            hf.prefs_set(json.dumps({'sort': 'date'}))                       # another save keeps it
+            self.assertIn('dev:abc123:Games', hf.prefs_get()['autoConnect'])
+            hf.net_auto(json.dumps(self.NET), False)
+            self.assertEqual(hf.prefs_get()['autoConnect'], {})
+            self.assertEqual(hf.prefs_get()['sort'], 'date')
+            with self.assertRaises(hf.Fail):
+                hf.net_auto(json.dumps(dict(self.NET, share='')), True)    # a whole computer isn't a share
+
+    def test_nothing_to_do_without_any(self):
+        hf = load_files()
+        env = {'HOME': self.tmp, 'XDG_CONFIG_HOME': os.path.join(self.tmp, 'cfg')}
+        with mock.patch.dict(os.environ, env):
+            self.assertEqual(hf.net_autoconnect(), {'skipped': 'none'})
+            with mock.patch.dict(os.environ, {'HEARTH_NO_AUTOCONNECT': '1'}):
+                self.assertEqual(hf.net_autoconnect(), {'skipped': 'off'})
+
+    def test_the_sidebar_marks_the_ones_that_connect_by_themselves(self):
+        st = {'devices': [{'id': 'abc123', 'name': 'chris-hearth', 'online': True, 'home': 'chris-hearth.local',
+                           'shares': [{'name': 'Games'}, {'name': 'Work', 'write': True}]}]}
+        items = {i['label']: i for i in ns.sidebar(st, True, {'dev:abc123:Games'}) if i.get('child') and i.get('net')}
+        self.assertTrue(items['Games']['auto'])
+        self.assertIn('Connects by itself', items['Games']['sub'])
+        self.assertFalse(items['Work']['auto'])
+
+    def run_auto(self, entries, probe=True, mounted=None, mount_result=(True, ''), password='pw', users=None):
+        calls = []
+
+        def mount(uri, user, pw):
+            calls.append((uri, user, pw))
+            return mount_result
+        st = {'users': users if users is not None else {'chris-hearth.local': 'chris'}, 'tailscale': {'running': True}}
+        r = ns.autoconnect(entries, at_home=lambda h: h.endswith('.local'), probe=lambda h, port, t: probe,
+                           mount=mount, lookup=lambda s, sh, u: password, path_of=lambda uri: mounted,
+                           state=st, runtime=self.rt, budget=5)
+        return r, calls
+
+    def test_opens_with_what_the_keyring_remembers_never_asking(self):
+        r, calls = self.run_auto({'k': self.NET})
+        self.assertEqual(r, {'k': 'opened'})
+        self.assertEqual(calls, [('smb://chris-hearth.local/Games', 'chris', 'pw')])
+
+    def test_already_open_is_left_alone(self):
+        r, calls = self.run_auto({'k': self.NET}, mounted='/run/user/1000/gvfs/x')
+        self.assertEqual(r, {'k': 'open'})
+        self.assertEqual(calls, [])
+
+    def test_asleep_is_skipped_quietly_and_tried_again_next_time(self):
+        r, calls = self.run_auto({'k': self.NET}, probe=False)
+        self.assertEqual(r, {'k': 'asleep'})
+        self.assertEqual(calls, [])
+        r, calls = self.run_auto({'k': self.NET})
+        self.assertEqual(r, {'k': 'opened'})
+
+    def test_needing_a_password_is_left_until_opened_by_hand(self):
+        r, _ = self.run_auto({'k': self.NET}, password=None, mount_result=(False, 'password needed'))
+        self.assertEqual(r, {'k': 'password'})
+        r, calls = self.run_auto({'k': self.NET})
+        self.assertEqual(r, {'k': 'skipped'})
+        self.assertEqual(calls, [])
+        ns.forget_gave_up('k', runtime=self.rt)
+        r, _ = self.run_auto({'k': self.NET})
+        self.assertEqual(r, {'k': 'opened'})
+
+    def test_one_shares_trouble_never_stops_the_others(self):
+        bad = dict(self.NET, share='Broken')
+
+        def path_of(uri):
+            if 'Broken' in uri:
+                raise RuntimeError('boom')
+            return None
+        st = {'users': {'chris-hearth.local': 'chris'}, 'tailscale': {'running': True}}
+        r = ns.autoconnect({'a': bad, 'b': self.NET}, at_home=lambda h: True, probe=lambda h, p, t: True,
+                           mount=lambda u, us, pw: (True, ''), lookup=lambda *a: 'pw', path_of=path_of,
+                           state=st, runtime=self.rt, budget=5)
+        self.assertEqual(r, {'a': 'error', 'b': 'opened'})
+
+    def test_wiring_menu_timer_and_nothing_waits_for_it(self):
+        fm = (SHELL / 'FileManager.qml').read_text()
+        self.assertIn('id: "p-auto", label: (p.auto ? "✓  " : "     ") + "Connect automatically"', fm)
+        self.assertIn('call(["net-auto", JSON.stringify(p.net), on ? "on" : "off"]', fm)
+        b = (ROOT / 'os-bases' / 'peppermint' / 'build.sh').read_text()
+        self.assertIn('ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files net-autoconnect', b)
+        self.assertIn('ln -sf ../hearth-files-autoconnect.timer /usr/lib/systemd/user/timers.target.wants/hearth-files-autoconnect.timer', b)
+        unit = b.split('hearth-files-autoconnect.service <<')[1].split('UNIT\n', 2)[1]
+        for word in ('Before=', 'RequiredBy=', 'WantedBy=graphical', 'gamescope', 'steam'):
+            self.assertNotIn(word, unit)          # it isn't part of signing in, Game Mode or Steam starting
+
+
 if __name__ == '__main__':
     unittest.main()

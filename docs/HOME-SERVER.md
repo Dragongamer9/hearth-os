@@ -347,6 +347,27 @@ on the **AI** page next to the chat models. Both are **your own user services** 
   were changed, never moves an install that's already past the release back, re-runs the requirements and restarts it.
   Hearth moves the pin with its updates. It needs git and python3-venv (now in the Debian image; Settings says so if
   they're missing) and about 15 GB free.
+- **AI video (Wan 2.2)** (Hearth OS 1.7; in AI pictures' settings once ComfyUI is installed: **Add video**, or **Add
+  only picture to video**; only when you press it): `hearth-home-server video-install [i2v-only]` starts the same kind
+  of transient unit, which
+  1. clones the ComfyUI-GGUF node (github.com/city96/ComfyUI-GGUF) at the commit Hearth pins into
+     `~/ComfyUI/custom_nodes/ComfyUI-GGUF` (an existing one is used as it is) and pip-installs its requirements;
+  2. picks the size from the graphics card's memory (`nvidia-smi`, else ComfyUI's own report): 12 GB or more gets Wan
+     2.2 14B **Q4_K_M** (about 9.7 GB a file), 8 to 11 GB **Q3_K_M** (about 7.2 GB a file); under 8 GB it says it won't
+     fit and downloads nothing;
+  3. downloads from Hugging Face only these: QuantStack's `Wan2.2-I2V-A14B-GGUF` and (without `i2v-only`)
+     `Wan2.2-T2V-A14B-GGUF`, HighNoise and LowNoise of that size, into `models/unet`; and Comfy-Org's
+     `Wan_2.1_ComfyUI_repackaged` text encoder (`umt5_xxl_fp8_e4m3fn_scaled.safetensors`, `models/text_encoders`) and
+     VAE (`wan_2.1_vae.safetensors`, `models/vae`). About 45 GB (25 GB for picture to video only); it checks the free
+     space first.
+  Each file's **size and SHA-256 come from Hugging Face's own listing** at download time (the LFS pointer), and the file
+  is checked against them before it's put in place; a wrong one is thrown away. An interrupted download carries on from
+  its `.part` file. Files already there (a hand install) are kept and not downloaded again. Nothing starts by itself: a
+  ComfyUI that's running is restarted once, to load the node. In ComfyUI: Workflow › Browse Templates › Video › Wan 2.2
+  14B, with the **Unet Loader (GGUF)** for the two models. Other LoRAs or models can be added by hand into
+  `~/ComfyUI/models` (`loras`, `unet`…). **Remove video** takes away only what Hearth downloaded (and the node if Hearth
+  got it); your own files stay. Progress and what was placed are state (`home-ai.json`, `comfyvideo`), never a setting.
+  Tests: `hosts/linux/test/test_hearth_home_ai_video.py`.
 - **What's verified, honestly**: ComfyUI's code is checked against the **commit Hearth pins** (git's own content
   hashes). PyTorch's wheels and the requirements are checked by pip against the **SHA-256 their index lists**
   (download.pytorch.org and pypi.org both publish one per file, over https): that catches a broken or swapped download

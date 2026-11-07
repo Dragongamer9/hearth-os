@@ -243,6 +243,41 @@ SetPage {
                   : "No models yet. ") + "Put checkpoints (.safetensors) in ~/ComfyUI/models/checkpoints and pick one in ComfyUI's Load Checkpoint box. Hearth never downloads models"
             onActivated: if (page.pic) page.showPath(page.pic.models)
         }
+        // AI video (Hearth OS 1.7): Wan 2.2 for this ComfyUI, sized by the graphics card, checked by sha256, only when asked.
+        SetRow {
+            visible: !!page.pic && page.pic.installed && !!page.pic.video && page.pic.video.installing
+            icon: "film"; chevron: false; interactive: false
+            title: "Getting Wan 2.2 video… " + (page.pic && page.pic.video ? page.pic.video.progress || 0 : 0) + "%"
+            sub: page.pic && page.pic.video ? (page.pic.video.step || "starting") + ". It carries on where it stopped if it's interrupted" : ""
+        }
+        SetRow {
+            visible: !!page.pic && page.pic.installed && !!page.pic.video && !page.pic.video.installing && !page.pic.video.installed
+            icon: "film"; badge: "New"
+            title: "Add video (Wan 2.2)"
+            sub: (page.pic && page.pic.video && page.pic.video.error ? "Didn't finish: " + page.pic.video.error + ". " : "")
+                 + "Text to video and picture to video in ComfyUI: the GGUF loader and Wan 2.2 14B, sized for this graphics card (12 GB or more: the bigger files, 8 to 11 GB: smaller ones; under 8 GB it won't fit). About 45 GB, each file checked before it's used. Nothing starts by itself"
+            onActivated: act.run(["video-install"], () => { page.say("Getting Wan 2.2… it's a big download"); page.refresh(); }, e => page.say(e, true))
+        }
+        SetRow {
+            visible: !!page.pic && page.pic.installed && !!page.pic.video && !page.pic.video.installing && !page.pic.video.installed
+            icon: "image"
+            title: "Add only picture to video (Wan 2.2)"
+            sub: "The same, without text to video: about 25 GB"
+            onActivated: act.run(["video-install", "i2v-only"], () => { page.say("Getting Wan 2.2 (picture to video)…"); page.refresh(); }, e => page.say(e, true))
+        }
+        SetRow {
+            visible: !!page.pic && page.pic.installed && !!page.pic.video && page.pic.video.installed
+            icon: "film"; chevron: false; interactive: false
+            title: "Video: Wan 2.2 14B (" + (page.pic && page.pic.video ? page.pic.video.quant : "") + ")"
+            sub: (page.pic && page.pic.video && page.pic.video.i2vOnly ? "Picture to video" : "Text to video and picture to video")
+                 + ". In ComfyUI: Workflow › Browse Templates › Video › Wan 2.2 14B, with the Unet Loader (GGUF) for the two models. Other LoRAs can be added by hand in ~/ComfyUI/models/loras"
+        }
+        SetRow {
+            visible: !!page.pic && page.pic.installed && !!page.pic.video && page.pic.video.installed && !page.pic.video.installing
+            icon: "trash"; title: "Remove video (Wan 2.2)"
+            sub: "Only what Hearth downloaded for it goes (and the GGUF loader, if Hearth got it). Your own models, LoRAs and pictures stay"
+            onActivated: act.run(["video-remove"], () => { page.say("Wan 2.2 removed"); page.refresh(); }, e => page.say(e, true))
+        }
         SetSwitch {
             visible: !!page.pic && page.pic.installed
             icon: "pad"; title: "Stop it while I play"
