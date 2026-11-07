@@ -131,8 +131,13 @@ html.has-wall .h1,html.has-wall .h2,html.has-wall main h1{font-stretch:var(--lst
 .lk-isl{display:flex;align-items:center;gap:6px;min-width:0}
 .lk-isl.tools{margin-left:auto}
 .lk-isl.brandi,.lk-isl.tools{flex:none}
-.lk-isl.navi{min-width:0;overflow:hidden}
-@media (max-width:1500px){html[data-bar="floating"] header nav a:nth-child(n+7){display:none}}
+.lk-isl.navi{min-width:0}
+/* Every link shows in every look: floating islands and Console's shelf use the whole width, as Mantel's bar does, and get
+   more compact (the brand becomes its flame) on narrower screens. */
+html[data-bar="floating"] header.top .wrap,html[data-bar="shelf"] header.top .wrap{max-width:none;padding:0 16px}
+@media (max-width:1240px){html[data-bar="floating"] header nav a{padding:7px 7px;font-size:14px}
+  html[data-bar="floating"] .lk-isl.brandi .brand,html[data-bar="shelf"] .lk-isl.brandi .brand{font-size:0;gap:0}}
+@media (max-width:1480px){html[data-bar="shelf"] .lk-hint{display:none!important}}
 @media (max-width:560px){.lk-isl.tools .looks,.lk-isl.tools .theme{width:auto}.lk-isl.brandi{flex:0 1 auto;min-width:0;overflow:hidden}.lk-isl.brandi .brand{min-width:0;overflow:hidden;text-overflow:ellipsis}html[data-bar] header .dl{padding:9px 11px}html[data-bar="floating"] header.top .lk-isl{padding:0 4px}}
 .lk-clock,.lk-perf{white-space:nowrap;font:600 14px/1 var(--body);color:var(--hi,var(--text));padding:0 10px}
 .lk-perf{font:600 12px/1.25 var(--mono);color:var(--acc,var(--ember));display:flex;gap:12px}
@@ -154,8 +159,8 @@ html[data-bar="floating"] nav.top .wrap,html[data-bar="shelf"] nav.top .wrap{gap
 html[data-bar="floating"] nav.top .lk-isl{height:52px;padding:0 10px}
 html[data-bar="shelf"] header.top .wrap{height:84px;gap:12px}
 html[data-bar="shelf"] header nav{gap:10px}
-html[data-bar="shelf"] header nav a:nth-child(n+6){display:none}
-html[data-bar="shelf"] header nav a{font-size:15px;font-weight:600;padding:12px 15px;border-radius:12px;white-space:nowrap;
+html[data-bar="shelf"] header nav{gap:8px}
+html[data-bar="shelf"] header nav a{font-size:14px;font-weight:600;padding:11px 12px;border-radius:12px;white-space:nowrap;
   background:color-mix(in srgb,var(--panel) 82%,transparent);border:1px solid var(--rule);backdrop-filter:blur(14px)}
 html[data-bar="shelf"] header nav a:hover,html[data-bar="shelf"] header nav a:focus-visible{outline:3px solid var(--acc);outline-offset:2px;background:var(--raise)}
 html[data-bar="shelf"] nav.top .links a{padding:12px 16px;border-radius:12px;background:color-mix(in srgb,var(--panel) 82%,transparent)}
@@ -270,8 +275,6 @@ WALL_JS = r"""
     var tools = [head.querySelector('.looks'), head.querySelector('.theme'), head.querySelector('.dl')].filter(Boolean);
     if (tools.length) tools[0].parentNode.insertBefore(hint, tools[0]);
     var t = wrap(head, [hint].concat(tools), 'tools');
-    perfEl = el('div', 'lk-isl fr lk-perf'); clockEl = el('div', 'lk-isl fr lk-clock');
-    if (t) { head.insertBefore(perfEl, t); head.insertBefore(clockEl, t); }
   } else if (dnav) {
     wrap(dnav, [dnav.querySelector('.brand')], 'brandi');
     wrap(dnav, [dnav.querySelector('.links'), dnav.querySelector('.looks')], 'tools');
@@ -357,7 +360,7 @@ WALL_JS = r"""
     raf = 0;
     frames++; if (now - fpsT > 1000) { if (perfEl && L && L.perf) perfEl.innerHTML = '<span>FPS <b>' + Math.round(frames * 1000 / (now - fpsT)) + '</b></span><span>Page <b>' + (document.documentElement.scrollHeight / 1000).toFixed(1) + 'k px</b></span>'; frames = 0; fpsT = now; }
     if (now - last > 33) { last = now; paint(false); }
-    if (moving() || (L && L.perf && !document.hidden)) raf = requestAnimationFrame(loop);
+    if (moving() || (perfEl && L && L.perf && !document.hidden)) raf = requestAnimationFrame(loop);
   }
   function tick(){ if (clockEl && L && L.clock) clockEl.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
   function apply(){
@@ -367,7 +370,7 @@ WALL_JS = r"""
     scan.hidden = !L.scan; edge.hidden = !L.edge;
     if (perfEl) perfEl.hidden = !L.perf || L.bar !== 'floating'; if (clockEl) clockEl.hidden = !L.clock || L.bar !== 'floating';
     tick(); paint(true);
-    if (!raf && (moving() || L.perf)) raf = requestAnimationFrame(loop);
+    if (!raf && (moving() || (perfEl && L.perf))) raf = requestAnimationFrame(loop);
   }
   apply();
   setInterval(tick, 15000);
@@ -378,8 +381,18 @@ WALL_JS = r"""
 """
 
 
+def versioned(want):
+    """site/index.html and the docs template ask for looks.css / looks.js?v=<hash of both>, so a browser never keeps an old copy."""
+    import hashlib, re
+    v = hashlib.sha1((want['site/looks.css'] + want['site/looks.js']).encode()).hexdigest()[:10]
+    for p in ('site/index.html', 'tools/build-docs.py'):
+        t = open(os.path.join(ROOT, p)).read()
+        want[p] = re.sub(r'(looks\.(?:css|js))(\?v=[0-9a-f]+)?"', lambda m: m.group(1) + '?v=' + v + '"', t)
+    return want
+
+
 def main():
-    want = {'site/looks.css': css(), 'site/looks.js': js()}
+    want = versioned({'site/looks.css': css(), 'site/looks.js': js()})
     if '--check' in sys.argv:
         stale = [p for p, t in want.items() if not os.path.exists(os.path.join(ROOT, p)) or open(os.path.join(ROOT, p)).read() != t]
         if stale:
