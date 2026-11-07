@@ -310,6 +310,15 @@ fn an_mo2_instance_is_imported_and_its_launcher_chosen() {
     let v = cmd(ctx, &["import", other.to_str().unwrap()]);
     assert!(command(ctx, &[v["imported"].as_str().unwrap().into(), "launcher".into(), "mo2".into()]).is_err());
     assert!(other.join("profiles/Default/modlist.txt").is_file(), "an instance without profiles gets Default");
+    // Taking the list out of Hearth (wabbajack.rs forget) takes its instance out too; the plain instance stays.
+    assert!(ml.join("w1-hearth.desktop").is_file());
+    forget_wabbajack(ctx, "w1").unwrap();
+    assert!(ctx.find("my-list").is_err(), "no instance left pointing at a list that's gone");
+    assert!(!ml.join("w1-hearth.desktop").exists());
+    assert_eq!(cmd(ctx, &["instances"])["instances"].as_array().unwrap().len(), 1);
+    forget_wabbajack(ctx, "w1").unwrap();
+    forget_wabbajack(ctx, "").unwrap();
+    assert_eq!(cmd(ctx, &["instances"])["instances"].as_array().unwrap().len(), 1, "an empty id never matches the plain instance");
 }
 
 /// A game Hearth doesn't know: mods go into its folder; a mod's folders join the game's own whatever their case.

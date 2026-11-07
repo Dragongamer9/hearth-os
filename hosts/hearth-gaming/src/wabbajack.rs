@@ -310,10 +310,14 @@ pub fn cancel(id: &str) {
 pub fn forget(id: &str, delete_files: bool, delete_downloads: bool) -> Result<(), String> {
     if RUN.lock().unwrap_or_else(|e| e.into_inner()).contains_key(id) { return Err("Stop the install first.".into()); }
     let j = job(id).ok_or("That install isn't in the list anymore.")?;
+    // Its Hearth Mod Organizer instance first (refused while its game runs; mods laid over by hand taken away).
+    crate::organizer::forget_wabbajack(&crate::organizer::Ctx::system(Vec::new()), id)?;
     if delete_files && j.install_dir.join("ModOrganizer.ini").is_file() { std::fs::remove_dir_all(&j.install_dir).map_err(|e| format!("Couldn't delete the modlist's folder ({e})"))?; }
     if delete_downloads && j.downloads_dir.is_dir() && j.downloads_dir != util::home() { let _ = std::fs::remove_dir_all(&j.downloads_dir); }
     let _ = std::fs::remove_file(modlists_dir().join(format!("{id}.json")));
     let _ = std::fs::remove_file(modlists_dir().join(format!("{id}.desktop")));
+    // Its Add to Steam entries (Hearth Sync then removes the shortcuts).
+    if crate::launch::shortcuts_file().is_file() { let _ = crate::launch::remove_from_steam(&crate::launch::shortcuts_file(), &format!("modlist:{id}")); }
     let _ = std::fs::remove_file(j.file());
     for d in downloads::for_job(id) { if d.state != "done" { downloads::remove(&d.id, false); } }
     JOBS.lock().unwrap_or_else(|e| e.into_inner()).remove(id);

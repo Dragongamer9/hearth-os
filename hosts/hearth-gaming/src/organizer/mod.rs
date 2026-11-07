@@ -754,6 +754,23 @@ pub fn adopt_wabbajack(job: &str, title: &str, install_dir: &Path, prefix_dir: &
     }
 }
 
+/// A Wabbajack list taken out of Hearth (wabbajack.rs forget): its organizer instance goes too, so no instance is left
+/// pointing at a folder that's gone. Refused while the game runs through it; a view deployed by hand is taken away
+/// first (the list's own "Game Root" is inside the folder that may be deleted next).
+pub fn forget_wabbajack(ctx: &Ctx, job: &str) -> Result<(), String> {
+    let all = ctx.recs();
+    let Some(rec) = all.iter().find(|r| !job.is_empty() && r.wabbajack == job).cloned() else { return Ok(()) };
+    if let Ok(inst) = Instance::load(rec.clone()) {
+        if let Some(a) = vfs::read_active(&inst) {
+            if vfs::running(&a) { return Err("The list's game is running through the organizer: close it first.".into()); }
+            vfs::undeploy(&inst, false)?;
+        }
+    }
+    ctx.save_recs(&all.into_iter().filter(|r| r.id != rec.id).collect::<Vec<_>>())?;
+    let _ = std::fs::remove_file(ctx.modlists().join(format!("{job}-hearth.desktop")));
+    Ok(())
+}
+
 /// Every instance's view left by a crash or by hand is taken away (hearth-mods --remount, at sign-in).
 pub fn recover_all(ctx: &Ctx) -> Vec<(String, Result<Value, String>)> {
     ctx.recs().into_iter().filter_map(|r| { let id = r.id.clone(); let inst = Instance::load(r).ok()?; vfs::recover(&inst).map(|res| (id, res)) }).collect()
