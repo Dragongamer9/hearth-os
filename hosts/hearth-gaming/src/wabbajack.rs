@@ -209,6 +209,12 @@ pub struct Job {
     /// Times Hearth started the engine again by itself after fetching files it couldn't (a guard against loops).
     #[serde(default)]
     pub auto_resumes: u32,
+    /// Repair (setting its Proton folder up again), which runs on its own: "" (never), running, done or failed, with
+    /// what it said. It takes many minutes (the .NET parts), longer than any call may wait, so it isn't a call.
+    #[serde(default)]
+    pub repair: String,
+    #[serde(default)]
+    pub repair_notes: Vec<String>,
 }
 impl Job {
     fn file(&self) -> PathBuf { jobs_dir().join(format!("{}.json", self.id)) }
@@ -237,6 +243,7 @@ fn load_jobs() {
                 if let Ok(mut job) = serde_json::from_value::<Job>(util::read_json(&e.path())) {
                     // An install stopped by closing the app can be started again (the engine skips what's done).
                     if matches!(job.state.as_str(), "installing" | "manual" | "setting-up") { job.state = "stopped".into(); job.status = "Stopped when Hearth Mods closed. Press Resume to carry on.".into(); }
+                    if job.repair == "running" { job.repair = "failed".into(); job.repair_notes = vec!["Setting up its Proton folder stopped when Hearth Mods closed: press Repair again.".into()]; }
                     j.insert(job.id.clone(), job);
                 }
             }
@@ -791,14 +798,24 @@ fn set_up(j: &Job) -> Result<Vec<String>, String> {
     if std::fs::read_to_string(&mark).map(|s| s.trim() != verbs.join(" ")).unwrap_or(true) {
         match &umu {
             Ok(umu) => {
+                // winetricks' own output goes to the list's log (Log on its card), so a failure can be read.
+                let log = std::fs::OpenOptions::new().create(true).append(true).open(j.log()).ok();
+                if let Some(mut f) = log.as_ref().and_then(|f| f.try_clone().ok()) { use std::io::Write; let _ = writeln!(f, "--- setting up its Proton folder: {umu} winetricks -q {} (PROTONPATH={proton})", verbs.join(" ")); }
+                let (out, err) = match log.as_ref().and_then(|f| Some((f.try_clone().ok()?, f.try_clone().ok()?))) {
+                    Some((a, b)) => (std::process::Stdio::from(a), std::process::Stdio::from(b)),
+                    None => (std::process::Stdio::null(), std::process::Stdio::null()),
+                };
                 let st = std::process::Command::new(umu).arg("winetricks").arg("-q").args(&verbs)
                     .env("WINEPREFIX", prefix.join("pfx")).env("STEAM_COMPAT_DATA_PATH", &prefix).env("GAMEID", &gameid).env("PROTONPATH", &proton)
                     .env_remove("LD_LIBRARY_PATH")
-                    .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-                if st.map(|s| s.success()).unwrap_or(false) { let _ = std::fs::write(&mark, verbs.join(" ")); }
-                else { notes.push(format!("Some Windows parts didn't install into its Proton folder ({}); if Mod Organizer won't start, run Hearth Mods' Repair on it.", verbs.join(", "))); }
+                    .stdin(std::process::Stdio::null()).stdout(out).stderr(err).status();
+                match st {
+                    Ok(s) if s.success() => { let _ = std::fs::write(&mark, verbs.join(" ")); }
+                    Ok(s) => notes.push(format!("{PROBLEM}some Windows parts didn't install into its Proton folder (winetricks ended with code {}). Check that this PC is online, then press Repair again; the list's Log says what went wrong.", s.code().map(|c| c.to_string()).unwrap_or_else(|| "none".into()))),
+                    Err(e) => notes.push(format!("{PROBLEM}umu-launcher ({umu}) couldn't be started ({e}). Restart Hearth Mods and press Repair again.")),
+                }
             }
-            Err(e) => notes.push(format!("Its Proton folder couldn't be set up: {e}")),
+            Err(e) => notes.push(format!("{PROBLEM}its Proton folder couldn't be set up: {e}. Check that this PC is online (Hearth fetches umu-launcher the first time), then press Repair again.")),
         }
     }
     // The library entry: a .desktop file that starts MO2 with this prefix (every argument quoted whole, as the
@@ -829,12 +846,30 @@ pub fn mo2_desktop(title: &str, prefix: &Path, gameid: &str, proton: &str, umu: 
         q(&format!("GAMEID={gameid}")), q(&format!("PROTONPATH={proton}")), q(umu), q(&mo2.to_string_lossy()), dir.to_string_lossy())
 }
 
-/// Sets the list's Proton folder up again (after a failed winetricks run).
+/// Sets the list's Proton folder up again (after a failed winetricks run, or one that never ran). It runs on its own
+/// thread and answers at once: installing the Windows parts takes many minutes, and the call used to fail with
+/// "Hearth Mods took too long to answer" while it went on (the owner's "Repair just errors out"). The list's card
+/// shows how it's going (`repair`, `repairNotes`); its log has winetricks' own output.
 pub fn repair(id: &str) -> Result<Vec<String>, String> {
-    let j = job(id).ok_or("That modlist isn't in the list anymore.")?;
-    let _ = std::fs::remove_file(prefix_of(id).join("hearth-winetricks.txt"));
-    set_up(&j)
+    let j = job(id).ok_or("That modlist isn't in Hearth Mods' list anymore: install it again from Modlists.")?;
+    if j.repair == "running" { return Ok(vec!["Its Proton folder is already being set up: this takes a while (up to half an hour the first time). The list shows when it's done.".into()]); }
+    if RUN.lock().unwrap_or_else(|e| e.into_inner()).contains_key(id) { return Err("The list is still installing: let it finish (or stop it) first.".into()); }
+    if !j.install_dir.join("ModOrganizer.exe").is_file() { return Err(format!("The list's folder ({}) has no ModOrganizer.exe anymore. Was it moved or deleted? Install it again from Modlists.", j.install_dir.display())); }
+    update(id, |j| { j.repair = "running".into(); j.repair_notes = vec!["Setting up its Proton folder: getting Proton and installing the Windows parts it needs (it takes a while)…".into()]; });
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        let _ = std::fs::remove_file(prefix_of(&id).join("hearth-winetricks.txt"));
+        let r = match self::job(&id) { Some(j) => set_up(&j), None => Err("That modlist isn't in Hearth Mods' list anymore.".into()) };
+        update(&id, |j| match r {
+            Ok(notes) => { j.repair = if notes.iter().any(|n| n.starts_with(PROBLEM)) { "failed".into() } else { "done".into() }; j.repair_notes = if notes.is_empty() { vec!["Its Proton folder is set up.".into()] } else { notes }; }
+            Err(e) => { j.repair = "failed".into(); j.repair_notes = vec![e]; }
+        });
+    });
+    Ok(vec!["Setting up its Proton folder now. It takes a while (up to half an hour the first time, while Proton and the .NET parts download); the list shows when it's done.".into()])
 }
+
+/// The start of a set_up note that's a problem (Repair shows it as failed).
+const PROBLEM: &str = "Problem: ";
 
 #[cfg(test)]
 mod tests {
@@ -988,5 +1023,22 @@ mod tests {
         assert!(exec.contains("\"PROTONPATH=/usr/share/steam/compatibilitytools.d/GE-Proton11-3\" \"/h/.local/share/nimbus/tools/umu/umu-run\" \"/h/Modlists/Tux born/ModOrganizer.exe\""), "{exec}");
         let p = mo2_desktop("x", Path::new("/p"), "umu-default", "/Steam/steamapps/common/Proton - Experimental", "umu-run", Path::new("/m.exe"), Path::new("/"));
         assert!(p.contains("\"PROTONPATH=/Steam/steamapps/common/Proton - Experimental\""), "a Proton with spaces stays one argument");
+    }
+
+    #[test]
+    fn repair_answers_at_once_and_says_what_to_do() {
+        let t = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", t.path());
+        std::env::set_var("XDG_DATA_HOME", t.path().join("data"));
+        assert!(repair("wnone").unwrap_err().contains("install it again from Modlists"));
+        let dir = t.path().join("List");
+        std::fs::create_dir_all(&dir).unwrap();
+        JOBS.lock().unwrap().insert("wrep".into(), Job { id: "wrep".into(), state: "done".into(), install_dir: dir.clone(), ..Default::default() });
+        let e = repair("wrep").unwrap_err();
+        assert!(e.contains("no ModOrganizer.exe") && e.contains("Install it again"), "{e}");
+        // Already running: no second one, and a plain answer.
+        JOBS.lock().unwrap().get_mut("wrep").unwrap().repair = "running".into();
+        assert!(repair("wrep").unwrap()[0].contains("already being set up"));
+        JOBS.lock().unwrap().remove("wrep");
     }
 }

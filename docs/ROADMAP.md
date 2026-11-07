@@ -21,6 +21,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] On-screen keyboard: no warnings for its settings files before anything is saved (real read errors still show) (needs testing on a device)
 - [x] Home server AI service: one that can't run on this PC stops after 5 tries in 10 minutes instead of restarting every 10 seconds forever; starting it from Settings is a fresh try (needs testing on a device)
 
+- [x] Mods: Repair (a Wabbajack list's Proton folder) runs on its own and the list's card shows how it goes: installing the Windows parts takes many minutes, so the call used to fail with "took too long to answer" while it went on (the owner's "Repair just errors out"). winetricks' output goes to the list's Log, and every problem says what to do (offline, umu-launcher not fetched yet, the list's folder gone) (needs testing on a device)
+- [x] Game Mode's Mods screens for a Wabbajack list show its mods (Hearth Mod Organizer's list) instead of an empty one, answered from a cache that's made again when the list changes, so big lists stay quick (needs testing on a device)
+- [x] Steam Game Mode: Steam's own session switch (steamos-session-select) is written to the session log with what asked, and only the desktop sessions SteamOS knows switch to Desktop Mode (before, any unknown or empty request did). Right after the PC starts, Steam waits up to 20 s for NetworkManager to bring Wi-Fi up (the laptop's Steam started offline at every start: "LogonFailure No Connection"), never longer, and Steam Game Mode always starts (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

@@ -399,6 +399,41 @@ impl Instance {
         }).collect())
     }
 
+    /// What the summary depends on, hashed: the profile's lists, the mod folders there are, the overwrite folder, the
+    /// game's Data folder and the instance's ini (a mod's own files change only by installing or removing it, which
+    /// changes the mods folder). Game Mode's screens use it so a big Wabbajack list isn't worked out at every call.
+    pub fn summary_key(&self) -> String {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.profile.hash(&mut h);
+        for f in ["modlist.txt", "plugins.txt", "loadorder.txt", "settings.ini"] { std::fs::read(self.profile_dir().join(f)).unwrap_or_default().hash(&mut h); }
+        std::fs::read(self.dir.join("ModOrganizer.ini")).unwrap_or_default().hash(&mut h);
+        self.mod_folders().hash(&mut h);
+        let stamp = |p: Option<&Path>| p.and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+        stamp(Some(&self.mods_dir)).hash(&mut h);
+        stamp(Some(&self.overwrite)).hash(&mut h);
+        stamp(self.data_target().as_deref()).hash(&mut h);
+        (self.prefix_user().is_some(), self.game_dir.as_ref().map(|g| g.is_dir())).hash(&mut h);
+        format!("{:016x}", h.finish())
+    }
+    /// summary(), kept in .hearth/summary-cache.json until what it depends on changes (summary_key); what's deployed
+    /// right now is always read fresh.
+    pub fn summary_cached(&self) -> Value {
+        let key = self.summary_key();
+        let file = self.hearth_dir().join("summary-cache.json");
+        let mut sum = match util::read_json(&file) {
+            v if v["key"] == json!(key) && v["summary"].is_object() => v["summary"].clone(),
+            _ => {
+                let s = self.summary();
+                let _ = std::fs::create_dir_all(self.hearth_dir());
+                let _ = util::write_json(&file, &json!({"key": key, "summary": s}));
+                s
+            }
+        };
+        sum["deployed"] = vfs::status(self);
+        sum
+    }
+
     /// Everything the mod screens show, in one answer.
     pub fn summary(&self) -> Value {
         let list = self.modlist();
