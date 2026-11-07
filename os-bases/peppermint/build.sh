@@ -987,7 +987,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
 rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
@@ -1520,6 +1520,31 @@ hearth_tool() {   # file, url, sha256
 }
 hearth_tool gogdl https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64 cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655
 hearth_tool legendary https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64 dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45
+
+# ------------------------------------------------------------------ GE-Proton, built in (docs/WINDOWS-APPS.md)
+# The newest GE-Proton we could check, in the image, so Windows apps and Hearth Games' Windows games start offline. Only
+# this one version: older ones are downloaded only when the Proton detector needs one, after you say yes. Pinned with
+# its SHA-256 (the same version as "builtin" in /usr/share/hearth/proton-rules.json; test_hearth_winapps.py keeps
+# them equal). Unpacked to /usr/share/hearth/proton and linked into Steam's system folder for compatibility tools, so
+# Steam lists it too; nothing in your Steam settings is changed. About 1.4 GB unpacked (about 530 MB to download).
+# A download or checksum failure stops the build: an image without it would quietly need the internet.
+GE_PROTON=GE-Proton11-3
+GE_PROTON_SHA256=861c2edc8d40d051fb1e7a692deb953be52bd339c46d90f2b7dde50ddad91266
+if ! curl -fsSL --retry 5 --retry-delay 10 -o /tmp/ge-proton.tar.gz \
+     "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$GE_PROTON/$GE_PROTON.tar.gz"; then
+  echo "::error title=GE-Proton::couldn't download $GE_PROTON"; exit 1
+fi
+if ! echo "$GE_PROTON_SHA256  /tmp/ge-proton.tar.gz" | sha256sum -c -; then
+  echo "::error title=GE-Proton::$GE_PROTON's checksum didn't match the pinned one"; exit 1
+fi
+mkdir -p /usr/share/hearth/proton /usr/share/steam/compatibilitytools.d
+tar -xzf /tmp/ge-proton.tar.gz -C /usr/share/hearth/proton
+rm -f /tmp/ge-proton.tar.gz
+test -f "/usr/share/hearth/proton/$GE_PROTON/proton" || { echo "::error title=GE-Proton::$GE_PROTON has no proton script"; exit 1; }
+ln -sfn "/usr/share/hearth/proton/$GE_PROTON" "/usr/share/steam/compatibilitytools.d/$GE_PROTON"
+echo "::notice title=GE-Proton::$GE_PROTON built in ($(du -sh "/usr/share/hearth/proton/$GE_PROTON" | cut -f1) unpacked)"
+# icoutils: Windows apps' menu entries get the program's own icon (wrestool, icotool). Optional.
+"${APT[@]}" icoutils || echo "warning: couldn't install icoutils; Windows apps get Hearth's icon instead of their own"
 
 # ------------------------------------------------------------------ Minigalaxy (GOG)
 # Minigalaxy (github.com/sharkwouter/minigalaxy, GPL), the simple open-source GOG client, from Debian's own repositories.

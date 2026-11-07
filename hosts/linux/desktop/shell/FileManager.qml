@@ -742,6 +742,9 @@ Scope {
     }
     function isAppImage(e) { return !!e && !e.dir && /\.appimage$/i.test(e.name); }
     function isDeb(e) { return !!e && !e.dir && /\.deb$/i.test(e.name); }
+    // A Windows program: opened with the Proton built into Hearth OS in its own space (hearth-winapps, docs/WINDOWS-APPS.md).
+    function isWinApp(e) { return !!e && !e.dir && /\.(exe|msi)$/i.test(e.name); }
+    function openWinApp(e) { say("Opening “" + e.name + "” with Proton…"); Quickshell.execDetached(["hearth-winapps", "open", e.path]); }
     // An AppImage: runs (made runnable first, after "Run this app?" the first time). hearth-files falls back to
     // running it unpacked when FUSE can't mount it.
     function runAppImage(e) {
@@ -833,6 +836,7 @@ Scope {
         }
         if (isAppImage(e)) return runAppImage(e);
         if (isDeb(e)) return installDeb(e);
+        if (isWinApp(e)) return openWinApp(e);
         openFile(e);
     }
     function openPlace(i) {
@@ -1046,6 +1050,7 @@ Scope {
             if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
             if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
             if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
+            if (n === 1 && isWinApp(e)) items.push({ id: "winapp", label: "Open with Hearth (Windows app)" });
             if (e && found !== null) items.push({ id: "showin", label: "Show in its folder" });
             if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
             items.push(sep());
@@ -1155,6 +1160,7 @@ Scope {
         case "stop": cancelJob(); break;
         case "open": activate(e); break;
         case "airun": if (e) runAppImage(e); break;
+        case "winapp": if (e) openWinApp(e); break;
         case "aimenu": if (e) addAppImage(e); break;
         case "aimenurm":
             if (e) call(["appimage-menu-remove", e.path], (r, err) => { if (err) return say(err, true); say("“" + e.name + "” is out of the app menu (the AppImage is still here)"); reload(); });

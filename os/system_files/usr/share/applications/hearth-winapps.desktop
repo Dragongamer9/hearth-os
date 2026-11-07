@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Windows App
+GenericName=Windows Program Runner
+Comment=Open Windows programs (.exe, .msi) with the Proton built into Hearth OS
+Exec=/usr/bin/hearth-winapps open %f
+TryExec=/usr/bin/hearth-winapps
+Icon=hearth-winapps
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/x-ms-installer;application/vnd.microsoft.portable-executable;application/x-dosexec;
+NoDisplay=true
+Categories=System;Emulator;
+Keywords=windows;exe;msi;proton;wine;

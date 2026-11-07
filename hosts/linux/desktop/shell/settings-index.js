@@ -2412,6 +2412,59 @@ var ENTRIES = [
 "i": "restart"
 },
 {
+"t": "Proton built into Hearth OS",
+"p": "winapps",
+"i": "window"
+},
+{
+"t": "Open a Windows program",
+"p": "winapps",
+"d": "Open a .exe or .msi in Files (or right-click it › Open with Hearth). An installer gets its own space and its app goes in your app menu.",
+"i": "folder"
+},
+{
+"t": "Open",
+"p": "winapps",
+"i": "play"
+},
+{
+"t": "Proton",
+"p": "winapps"
+},
+{
+"t": "DXVK",
+"p": "winapps",
+"d": "DirectX 9, 10 and 11 through Vulkan. Off: Wine's own, slower, for programs that draw wrongly."
+},
+{
+"t": "VKD3D",
+"p": "winapps",
+"d": "DirectX 12 through Vulkan. Off: the program falls back to DirectX 11 if it can."
+},
+{
+"t": "Windows version",
+"p": "winapps"
+},
+{
+"t": "In Steam",
+"p": "winapps",
+"d": "Hearth Sync adds it to Steam's library (Game Mode too) the next time it syncs"
+},
+{
+"t": "Remove…",
+"p": "winapps",
+"d": "Deletes the app, its menu entry and everything installed in its space",
+"i": "trash"
+},
+{
+"t": "Cancel",
+"p": "winapps"
+},
+{
+"t": "Not now",
+"p": "winapps"
+},
+{
 "t": "Clean up",
 "p": "home",
 "d": "Old shader caches and finished downloads",
