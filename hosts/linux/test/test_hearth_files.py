@@ -717,5 +717,61 @@ class Extras(Base):
             self.hf.peek(b)
 
 
+class UndoAndRecent(Base):
+    """1.7 Hearth Files: undo of Move to Trash, links (drag with Alt) and recent files for the Home page."""
+    def test_untrash_puts_it_back_where_it_was(self):
+        f = os.path.join(self.home, 'Docs', 'plan.txt')
+        write(f, 'v1')
+        self.hf.trash([f])
+        self.assertFalse(os.path.exists(f))
+        r = self.hf.untrash([f])
+        self.assertEqual(r['restored'], [f])
+        with open(f) as fh:
+            self.assertEqual(fh.read(), 'v1')
+
+    def test_untrash_takes_the_newest_and_never_overwrites(self):
+        f = os.path.join(self.home, 'a.txt')
+        write(f, 'old')
+        self.hf.trash([f])
+        time.sleep(1.1)
+        write(f, 'new')
+        self.hf.trash([f])
+        write(f, 'here now')
+        r = self.hf.untrash([f])
+        self.assertNotEqual(r['restored'][0], f)          # a new name: what's there now stays
+        with open(f) as fh:
+            self.assertEqual(fh.read(), 'here now')
+        with open(r['restored'][0]) as fh:
+            self.assertEqual(fh.read(), 'new')
+
+    def test_untrash_missing(self):
+        with self.assertRaises(self.hf.Fail):
+            self.hf.untrash([os.path.join(self.home, 'never.txt')])
+
+    def test_links(self):
+        f = os.path.join(self.home, 'a', 'f.txt')
+        write(f)
+        d = os.path.join(self.home, 'b')
+        os.makedirs(d)
+        r = self.hf.make_links([f], d)
+        self.assertTrue(os.path.islink(r['items'][0]))
+        self.assertEqual(os.readlink(r['items'][0]), f)
+        r2 = self.hf.make_links([f], d)
+        self.assertNotEqual(r2['items'][0], r['items'][0])  # never replaces an existing name
+
+    def test_recent(self):
+        a = os.path.join(self.home, 'a.txt'); b = os.path.join(self.home, 'b.txt')
+        write(a); write(b)
+        gone = os.path.join(self.home, 'gone.txt')
+        xbel = os.path.join(self.home, '.local', 'share', 'recently-used.xbel')
+        write(xbel, '<?xml version="1.0"?>\n<xbel>'
+              '<bookmark href="file://%s" visited="2026-11-01T10:00:00Z"></bookmark>'
+              '<bookmark href="file://%s" visited="2026-11-06T10:00:00Z"></bookmark>'
+              '<bookmark href="file://%s" visited="2026-11-07T10:00:00Z"></bookmark>'
+              '<bookmark href="https://example.com/x" visited="2026-11-08T10:00:00Z"></bookmark></xbel>' % (a, b, gone))
+        names = [e['name'] for e in self.hf.recent_files()['recent']]
+        self.assertEqual(names, ['b.txt', 'a.txt'])
+
+
 if __name__ == '__main__':
     unittest.main()
