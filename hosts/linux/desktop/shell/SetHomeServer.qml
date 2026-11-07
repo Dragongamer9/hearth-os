@@ -47,11 +47,13 @@ SetPage {
         const h = Math.round((Date.now() / 1000 - last) / 3600);
         return { big: h < 1 ? "Just now" : h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago", sub: jobs.length + (jobs.length === 1 ? " backup" : " backups"), good: h < 48, warn: false };
     }
-    Component.onCompleted: { refresh(); drives.run(["drives"], r => page.drv = r, () => page.drv = null); }
+    Component.onCompleted: { refresh(); drives.run(["drives"], r => page.drv = r, () => page.drv = null); appsJob.run(["quick"], r => page.appsOn = r.on || 0, () => {}); }
     Timer { interval: 5000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-home-server" }
     SetJob { id: act; helper: "hearth-home-server" }
     SetJob { id: drives; helper: "hearth-home-server" }
+    SetJob { id: appsJob; helper: "hearth-server-apps" }
+    property int appsOn: 0
 
     // The redesign's landing for Home server (always its own category): a banner when something needs a look, four
     // numbers, then its pages in four groups. Tailscale's home is Network & internet now (a link card here); AI chat is
@@ -170,6 +172,7 @@ SetPage {
                 title: "On this server"
                 SetLinkCard { target: "hs-services"; value: page.servicesBig().good ? page.servicesBig().big : ""
                     sub: "Media server, files on the web, AI pictures and voices" + (page.aiShown ? ", AI chat" : "") }
+                SetLinkCard { target: "hs-apps"; value: page.appsOn > 0 ? page.appsOn + " on" : "" }   // Server apps (docs/SERVER-APPS.md)
                 SetLinkCard { target: "hs-server" }   // Server mode (docs/SERVER-MODE.md)
                 SetLinkCard { target: "hs-gaming" }
                 SetLinkCard { target: "hs-aidevices" }     // AI devices (docs/AI-SHARE.md)
@@ -186,6 +189,7 @@ SetPage {
                     value: page.cfg && page.cfg.snapshots ? "Snapshots on" : "" }
                 SetLinkCard { target: "hs-backups"; chip: page.backupsChip.chip || ""; chipKind: page.backupsChip.kind || "ok"; value: page.backupsChip.value || "" }
                 SetLinkCard { target: "hs-safety"; chip: page.svc.guardTripped ? "Read only" : page.cfg && page.cfg.guard && page.cfg.guard.on ? "Watching" : ""; chipKind: page.svc.guardTripped ? "bad" : "ok" }
+                SetLinkCard { target: "hs-phone" }   // Phone notifications (ntfy)
                 SetLinkCard { target: "hs-alerts"; chip: page.alertList().length ? page.alertList().length + (page.alertList().length === 1 ? " alert" : " alerts") : ""; chipKind: "warn"
                     value: !page.alertList().length && page.cfg && page.cfg.alerts && page.cfg.alerts.on ? "All good" : "" }
             }

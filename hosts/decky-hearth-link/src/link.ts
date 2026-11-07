@@ -48,6 +48,9 @@ export function restartSteam(): boolean {
 
 // Home server (docs/HOME-SERVER.md): the Quick Access tile.
 export const homeServer = callable<[], HomeQuick>("home_server");
+export type ServerShort = { name: string; online: boolean; mode: string; title: string; level: string; playing: boolean;
+  services: { title: string; chip: string; state: string; big: string; unit: string }[]; alerts: string[]; apps: { name: string; state: string }[] };
+export const servers = callable<[], ServerShort[]>("servers");
 export const homeServerLight = callable<[on: boolean], HomeQuick>("home_server_light");
 export const homeServerResume = callable<[on: boolean], HomeQuick>("home_server_resume");
 

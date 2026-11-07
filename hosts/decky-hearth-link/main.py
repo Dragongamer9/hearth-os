@@ -601,6 +601,43 @@ def home_server(args, run=subprocess.run):
     if a[0] == 'quick':
         return home_short(v)
     return {'available': True, 'ok': True}
+
+
+# ---- Your servers (docs/SERVER-APPS.md): a paired Hearth PC in Server mode, in short, for the Ally's Quick Access.
+# Only `hearth-device-status devices` (what Hearth Link already has from your paired devices), trimmed again here.
+DEVICE_STATUS = '/usr/share/nimbus/desktop/shell/hearth-device-status'
+
+
+def server_short(dev):
+    st = (dev or {}).get('status') if isinstance(dev, dict) else None
+    srv = st.get('server') if isinstance(st, dict) else None
+    if not isinstance(srv, dict):
+        return None
+    status = srv.get('status') if isinstance(srv.get('status'), dict) else {}
+    return {'name': text(dev.get('name') or st.get('name'), 64), 'online': dev.get('online') is True, 'mode': text(st.get('mode'), 12),
+            'title': text(status.get('title'), 60), 'level': text(status.get('level'), 10),
+            'services': [{'title': text(t.get('title'), 40), 'chip': text(t.get('chip'), 40), 'state': text(t.get('state'), 12),
+                          'big': text(t.get('big'), 20), 'unit': text(t.get('unit'), 40)}
+                         for t in (srv.get('services') or [])[:10] if isinstance(t, dict)],
+            'alerts': [text(a, 120) for a in (srv.get('alerts') or [])[:3] if isinstance(a, str)],
+            'apps': [{'name': text(a.get('name'), 40), 'state': text(a.get('state'), 12)} for a in (srv.get('apps') or [])[:10] if isinstance(a, dict)],
+            'playing': srv.get('playing') is True}
+
+
+def servers(run=subprocess.run):
+    """Your paired devices that use Server mode: [] when there are none or the helper isn't there."""
+    prog = os.environ.get('HEARTH_DEVICE_STATUS') or DEVICE_STATUS
+    if not os.path.exists(prog):
+        return []
+    env = clean_env()
+    py = shutil.which('python3', path=env['PATH']) or '/usr/bin/python3'
+    try:
+        r = run([py, prog, 'devices'], capture_output=True, text=True, timeout=HOME_SERVER_TIMEOUT, env=env)
+        v = json.loads((r.stdout or '').strip().splitlines()[-1]) if r.returncode == 0 and (r.stdout or '').strip() else {}
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return []
+    out = [server_short(d) for d in (v.get('devices') or []) if isinstance(v, dict)]
+    return [x for x in out if x][:4]
 # ---- end Home server
 
 
@@ -741,6 +778,9 @@ class Plugin:
 
     async def home_server_resume(self, on):
         return await _bg(home_server, ['resume', 'on' if on is True else 'off'])
+
+    async def servers(self):
+        return await _bg(servers)
 
     # ---- Discord
     async def discord(self):

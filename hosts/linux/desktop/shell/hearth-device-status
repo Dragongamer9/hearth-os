@@ -21,7 +21,9 @@ The status (protocol 1; a reader ignores fields it doesn't know):
    "mode": "game"|"desktop"|"server", "playing": {"title", "appid"} | null, "battery": {"percent", "charging"} | null,
    "cpu": {"use", "temp"}, "gpu": {"vendor", "use", "temp", "vramUsed", "vramTotal"} | null (MB),
    "ram": {"used", "total"} (GB), "drives": [{"name", "used", "total"}] (GB), "uptime": seconds,
-   "history": [{"t": ms, "cpu", "gpu", "ram" (%), "cpuTemp", "gpuTemp", "battery"}] (the last hour), "updated": ms}
+   "history": [{"t": ms, "cpu", "gpu", "ram" (%), "cpuTemp", "gpuTemp", "battery"}] (the last hour), "updated": ms,
+   "server": {"status", "services": [{"title", "engine", "state", "chip", "big", "unit"}], "alerts", "apps", "playing",
+              "since", "web": 8460} (only on a PC that uses Server mode; docs/SERVER-APPS.md)}
 No secrets: no addresses, accounts, keys, file or folder names (drives are named "System", "Home" or their label).
 
 Stand-in devices (checks and screenshots only): HEARTH_DEVICES_SAMPLE=<file> makes `devices` print that file.
@@ -130,10 +132,17 @@ def procs(root='/proc'):
     return out
 
 
+def mode_now():
+    """What the session says is up ($XDG_RUNTIME_DIR/nimbus-mode-now), or ''."""
+    return (read(os.path.join(runtime_dir(), 'nimbus-mode-now'), 64) or '').strip()
+
+
 def mode(plist):
     """game (gamescope: Steam's or Hearth's Game Mode), desktop (labwc: Desktop Mode), or server (up, but neither runs:
     Server mode or nobody signed in)."""
     comms = {c for c, _ in plist}
+    if mode_now() == 'server':
+        return 'server'                      # Server mode's dashboard runs in its own small labwc
     if comms & {'gamescope', 'gamescope-wl'}:
         return 'game'
     if 'labwc' in comms:
@@ -305,7 +314,53 @@ def status(now_ms=None, settings=None):
     }
     if out['shares']:
         out['smb'] = smb_names()
+    srv = server_summary(out['mode'])
+    if srv:
+        out['server'] = srv
     return out
+
+
+SERVER_SUMMARY_KEYS = ('title', 'engine', 'state', 'chip', 'big', 'unit')
+
+
+def server_on(path=None):
+    p = path or os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'server-mode.json')
+    try:
+        with open(p) as f:
+            v = json.load(f)
+        return isinstance(v, dict) and v.get('on') is True
+    except (OSError, ValueError):
+        return False
+
+
+def trim_server(v):
+    """Server mode's summary for your other devices (Hearth Link › Your devices, the Ally's Quick Access): the status,
+    each service's tile in short, alerts' text, the server apps. No addresses, paths or who's connected."""
+    if not isinstance(v, dict):
+        return None
+    st = v.get('status') if isinstance(v.get('status'), dict) else {}
+    return {
+        'status': {'level': str(st.get('level') or '')[:10], 'title': str(st.get('title') or '')[:60]},
+        'services': [{k: str(t.get(k) or '')[:60] for k in SERVER_SUMMARY_KEYS}
+                     for t in (v.get('services') or [])[:10] if isinstance(t, dict) and t.get('id') != 'who'],
+        'alerts': [str(a.get('text') or '')[:120] for a in (v.get('alerts') or [])[:3] if isinstance(a, dict) and a.get('text')],
+        'apps': [{'name': str(a.get('name') or '')[:40], 'state': str(a.get('state') or '')[:12]}
+                 for a in (v.get('apps') or [])[:10] if isinstance(a, dict)],
+        'playing': v.get('playing') is True,
+        'since': str(v.get('sinceText') or '')[:20],
+        'web': 8460,
+    }
+
+
+def server_summary(m, run=subprocess.run):
+    """Only on a PC that uses Server mode (on in its settings, or up now): `hearth-server-mode summary`, trimmed."""
+    if m != 'server' and not server_on():
+        return None
+    try:
+        p = run([sys.executable, os.path.join(HERE, 'hearth-server-mode'), 'summary'], capture_output=True, text=True, timeout=6)
+        return trim_server(json.loads(p.stdout)) if p.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def server_settings_path():

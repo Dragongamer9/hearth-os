@@ -33,7 +33,12 @@ def sample(now=None):
           'drives': [{'name': 'System', 'used': 512.0, 'total': 2000.4}, {'name': 'Games', 'used': 3410.9, 'total': 4000.8}],
           'uptime': 3 * 86400 + 4 * 3600, 'history': history(now, 55, 20, 60), 'updated': now,
           'shares': [{'name': 'Media', 'write': False, 'reach': 'home', 'badge': 'drive'}],
-          'smb': {'home': 'chris-hearth.local', 'away': 'chris-hearth.tail4f2a.ts.net'}}
+          'smb': {'home': 'chris-hearth.local', 'away': 'chris-hearth.tail4f2a.ts.net'},
+          'server': {'status': {'level': 'ok', 'title': 'All good'}, 'playing': True, 'since': '7:02 AM', 'web': 8460,
+                     'services': [{'title': 'AI chat', 'engine': 'Ollama', 'state': 'paused', 'chip': 'Paused for your game', 'big': '0', 'unit': 'devices asking now'},
+                                  {'title': 'Media', 'engine': 'Jellyfin', 'state': 'running', 'chip': 'Running', 'big': '1', 'unit': 'watching now'},
+                                  {'title': 'Backups', 'engine': '2 set up', 'state': 'running', 'chip': 'Up to date', 'big': 'Done', 'unit': 'at 3:00 AM'}],
+                     'alerts': [], 'apps': [{'name': 'Minecraft', 'state': 'active'}, {'name': 'Immich', 'state': 'active'}]}}
     laptop = {'protocol': 1, 'shared': True, 'name': 'laptop', 'model': 'ThinkPad T14', 'kind': 'laptop', 'version': '1.5',
               'mode': 'desktop', 'playing': None, 'battery': {'percent': 82, 'charging': True, 'pluggedIn': True},
               'cpu': {'use': 6, 'temp': 44}, 'gpu': {'vendor': 'intel', 'use': 2}, 'ram': {'used': 5.2, 'total': 15.5},
