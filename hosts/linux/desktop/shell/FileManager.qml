@@ -593,6 +593,7 @@ Scope {
     property string renaming: ""               // the path whose name is a text box right now
     onPathChanged: renaming = ""
     function finishRename(text) {
+        if (renaming === "") return;
         const e = entries.find(x => x.path === renaming);
         renaming = "";
         if (!e || text === null || text === "" || text === e.name) return;
@@ -2167,7 +2168,9 @@ Scope {
                             forceActiveFocus();
                         }
                         function finish(ok) {
-                            if (done) return;
+                            // Closed from outside (Esc elsewhere, a new folder, filemanager rename ""): nothing to do,
+                            // and writing renaming again here would loop the Loader's binding.
+                            if (done || app.renaming === "") { done = true; return; }
                             done = true;
                             const t = text.trim();
                             keys.forceActiveFocus();
