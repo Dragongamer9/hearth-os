@@ -487,7 +487,8 @@ def recent_files(limit=40):
         e = entry(p, os.path.basename(p))
         if e:
             e['opened'] = when
-            e['where'] = os.path.dirname(p)
+            d, h = os.path.dirname(p), os.path.expanduser('~')
+            e['where'] = '~' + d[len(h):] if h != '/' and (d == h or d.startswith(h + '/')) else d
             out.append(e)
         if len(out) >= limit:
             break

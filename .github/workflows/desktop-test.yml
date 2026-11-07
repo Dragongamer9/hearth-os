@@ -994,6 +994,30 @@ jobs:
           mkdir -p "$HOME/.local/state/nimbus"
           python3 hosts/linux/test/devices_sample.py files > "$HOME/.local/state/nimbus/files-devices.json"
           ipc settings close; ipc files open "$HOME"; sleep 3; grim $o/steam-13b-files-your-devices.png || true; ipc files close
+          # ---- Hearth Files' Win 11-style window, dark then light (shots/files-redesign): the Home page (Quick access and
+          # recent files), a folder with three picked and the details pane, a drag in progress (staged over IPC: CI has
+          # no mouse), Your devices in the navigation pane, Large icons, Tiles and the View menu.
+          F=shots/files-redesign; mkdir -p $F
+          python3 hosts/linux/test/files_redesign_sample.py "$HOME"
+          python3 hosts/linux/desktop/shell/hearth-files bookmark-add "$HOME/Documents/Reports" >/dev/null 2>&1 || true
+          files_redesign() {  # dark | light
+            ipc files open "$HOME/Documents"; ipc filemanager home; sleep 3; grim $F/$1-01-home.png || true
+            ipc filemanager tab "$HOME/Documents"; ipc filemanager view details; ipc filemanager details on
+            ipc filemanager marks "notes.txt/budget.ods/photo-1.png"; ipc filemanager select photo-1.png; sleep 3
+            grim $F/$1-02-folder-multi-select-details-pane.png || true
+            ipc filemanager dragdemo Reports; sleep 2; grim $F/$1-03-drag-in-progress.png || true; ipc filemanager dragdemo ""
+            ipc filemanager section devices; sleep 2; grim $F/$1-04-your-devices.png || true
+            ipc filemanager marks ""; ipc filemanager view large; sleep 3; grim $F/$1-05-large-icons.png || true
+            ipc filemanager view tiles; sleep 3; grim $F/$1-06-tiles.png || true
+            ipc filemanager menu; sleep 1; grim $F/$1-07-actions-menu.png || true; ipc filemanager close
+            ipc filemanager view details; ipc filemanager details off; ipc files close
+          }
+          files_redesign dark
+          set_look steam light "" ""; files_redesign light; set_look steam dark "" ""
+          python3 -c "import json,os;print(json.dumps(json.load(open(os.path.expanduser('~/.config/nimbus/files.json'))), indent=1))" > $F/files-prefs.json 2>&1 || true
+          ls $F/*.png >/dev/null 2>&1 || { echo "::error title=Files redesign::no screenshots were taken"; touch shots/FAILED; }
+          grep -E "FileManager.qml" "$LOG" | head -40 > $F/qml-warnings.txt 2>/dev/null || true
+          [ -s $F/qml-warnings.txt ] && echo "::warning title=Files redesign QML::$(head -c 600 $F/qml-warnings.txt | tr '\n' ' ')"
           ipc settings page sound; grim $o/steam-12-settings-sound.png || true
           ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"

@@ -194,6 +194,8 @@ Scope {
             app.dragHint = e ? e.path : "";
             app.dragDemo = onto !== "";
         }
+        // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
+        function section(name: string): void { const i = app.places.findIndex(q => q.section === name); if (i >= 0) { app.zone = "places"; app.placeIndex = i; } }
         function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
     }
 
