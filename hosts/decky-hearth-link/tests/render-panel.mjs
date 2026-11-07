@@ -112,7 +112,8 @@ for (const [name, st, act, wants] of shots) {
   await act();
   await wait(400);
   const text = await page.evaluate(() => document.body.innerText);
-  for (const w of wants) if (!text.includes(w)) errors.push(`${name}: the panel doesn't show "${w}"`);
+  // Case doesn't matter: section titles are shown in capitals (text-transform), and innerText reads them that way.
+  for (const w of wants) if (!text.toLowerCase().includes(w.toLowerCase())) errors.push(`${name}: the panel doesn't show "${w}"`);
   if (name === "hearth-link-send-pick") {
     const dis = await page.evaluate(() => [...document.querySelectorAll(".qam-btn")].find((b) => b.textContent === "Send")?.disabled);
     if (dis !== false) errors.push(`${name}: Send isn't ready after picking a game and a device`);
