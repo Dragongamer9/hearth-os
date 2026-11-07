@@ -42,8 +42,19 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 pub fn read_json(path: &Path) -> serde_json::Value {
     std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(serde_json::Value::Null)
 }
+/// Saves a JSON file atomically. A file that's there but damaged (it doesn't read as JSON) is never written over:
+/// it's kept next to it as `<name>.damaged-<ms>` first (same owner and permissions), so a setting that couldn't be
+/// read is never silently replaced by defaults with nothing left to recover (docs/SETTINGS-PERSISTENCE.md).
 pub fn write_json(path: &Path, v: &serde_json::Value) -> Result<(), String> {
+    keep_damaged(path);
     write_atomic(path, serde_json::to_string_pretty(v).unwrap_or_default().as_bytes()).map_err(|e| format!("Couldn't save {} ({e})", path.display()))
+}
+/// A damaged JSON file moved aside (not empty and not JSON); true when it was.
+pub fn keep_damaged(path: &Path) -> bool {
+    let Ok(b) = std::fs::read(path) else { return false };
+    if b.iter().all(|c| c.is_ascii_whitespace()) || serde_json::from_slice::<serde_json::Value>(&b).is_ok() { return false; }
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    std::fs::rename(path, path.with_file_name(format!("{name}.damaged-{}", now_ms()))).is_ok()
 }
 
 /// A name for a file or folder made from a title: no slashes or characters Windows and FAT/exFAT drives refuse,
@@ -138,6 +149,21 @@ pub fn files_under(p: &Path, out: &mut Vec<PathBuf>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_damaged_file_is_kept_not_written_over() {
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("settings.json");
+        std::fs::write(&f, b"{\"adult\": tru").unwrap();
+        super::write_json(&f, &serde_json::json!({"adult": false})).unwrap();
+        let kept: Vec<_> = std::fs::read_dir(t.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with("settings.json.damaged-")).collect();
+        assert_eq!(kept.len(), 1, "the damaged copy is kept");
+        assert_eq!(std::fs::read(t.path().join(&kept[0])).unwrap(), b"{\"adult\": tru");
+        // A good file is simply replaced (no extra files).
+        super::write_json(&f, &serde_json::json!({"adult": true})).unwrap();
+        assert_eq!(std::fs::read_dir(t.path()).unwrap().count(), 2);
+        assert_eq!(super::read_json(&f)["adult"], true);
+    }
+
     use super::*;
     #[test]
     fn names() {
