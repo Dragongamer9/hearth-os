@@ -360,6 +360,8 @@ pub fn report(version: &str) -> String {
     {
         let log = std::fs::read_to_string(data.join("input.log")).map(|t| tail(&t, 300)).unwrap_or_else(|_| "(no input.log: Hearth Input hasn't run in Game Mode)".into());
         let status = sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-input").display()));
+        // Not running is normal outside Game Mode: said plainly, not as an error (it was listed under "Problems found").
+        let status = if status.contains("isn't running") { "not running right now (it runs in Game Mode)".to_string() } else { status };
         let layouts = std::fs::read_dir(crate::input_map::dir()).map(|d| d.filter_map(Result::ok).filter_map(|e| {
             let v: Value = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice(&b).ok())?;
             Some(format!("{}: {}", e.file_name().to_string_lossy().trim_end_matches(".json"), v["layout"].as_str().unwrap_or("?")))
