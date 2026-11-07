@@ -1,0 +1,36 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/picker.qml"
+[32m  INFO[0m: Shell ID: "38fe29446a37d8fb6ad18c48074aa780" Path ID "38fe29446a37d8fb6ad18c48074aa780"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/wh66hg4ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/picker.qml"
+[32m  INFO[0m: Shell ID: "38fe29446a37d8fb6ad18c48074aa780" Path ID "38fe29446a37d8fb6ad18c48074aa780"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/oi66hg4ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/picker.qml"
+[32m  INFO[0m: Shell ID: "38fe29446a37d8fb6ad18c48074aa780" Path ID "38fe29446a37d8fb6ad18c48074aa780"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/gj67hg4ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/picker.qml"
+[32m  INFO[0m: Shell ID: "38fe29446a37d8fb6ad18c48074aa780" Path ID "38fe29446a37d8fb6ad18c48074aa780"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/dk6ahg4ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/picker.qml"
+[32m  INFO[0m: Shell ID: "38fe29446a37d8fb6ad18c48074aa780" Path ID "38fe29446a37d8fb6ad18c48074aa780"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/3l6ahg4ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/picker.qml"
+[32m  INFO[0m: Shell ID: "38fe29446a37d8fb6ad18c48074aa780" Path ID "38fe29446a37d8fb6ad18c48074aa780"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/zn6chg4ot/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[162:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[116:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
