@@ -735,7 +735,11 @@ def roadmap_sections():
             cur[1].append(re.sub(r'^\s*- ', '', line).strip())
         elif cur is not None and cur[1] and line.startswith('      ') and line.strip():
             cur[1][-1] += ' ' + line.strip()
-    return out
+    # The owner's rule: uncensored / 18+ AI stays in the app and the roadmap, never on the website.
+    return [(h, [i for i in items if not OFF_SITE.search(i)]) for h, items in out]
+
+
+OFF_SITE = re.compile(r'uncensor|18\+|abliterat|nsfw', re.I)
 
 
 def nice_date(d):
