@@ -869,7 +869,7 @@ DESKTOP
 fi
 # ==================================================================== end of Hearth Recorder, Camera and Share
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
-# Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
+# Controller Lab, Saves, Mods and Hearth Games: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
 # with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
 # with Hearth's own apps (their ids start with "hearth"); Game Mode opens them from Settings › Controls and a
 # game's ⋯ menu (hearth-core gaming_apps.rs). Saves' hourly timer is on for everyone and does nothing until a
@@ -892,7 +892,7 @@ StartupWMClass=$1
 DESKTOP
 }
 install -d /usr/share/applications
-for app in hearth-controller-lab hearth-saves hearth-mods; do
+for app in hearth-controller-lab hearth-saves hearth-mods hearth-gamestore; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs the libraries above; left out"; rm -f "/usr/bin/$app"; continue; fi
@@ -900,6 +900,7 @@ done
 gaming_entry hearth-controller-lab "Controller Lab" "Controller Tester" "Test every button, stick, trigger, gyro and rumble; measure stick drift and calibrate" "controller;gamepad;joystick;test;tester;calibrate;drift;deadzone;rumble;gyro;battery;"
 gaming_entry hearth-saves "Saves" "Game Save Backup" "Back up and restore your games' saves, and move them to another PC" "save;saves;backup;restore;game;steam;proton;usb;"
 gaming_entry hearth-mods "Mods" "Mod Manager" "Install mods for your games, turn them on and off, and choose their order" "mod;mods;modding;manager;nexus;game;"
+gaming_entry hearth-gamestore "Hearth Games" "Game Store" "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall" "gog;epic;epic games;battle.net;battlenet;blizzard;store;games;library;install;heroic;"
 if [ -x /usr/bin/hearth-saves ]; then
   install -d /usr/lib/systemd/user/timers.target.wants
   cat > /usr/lib/systemd/user/hearth-saves-auto.service <<'UNIT'
@@ -1475,6 +1476,23 @@ else
   echo "warning: couldn't install Faugus Launcher from ${FAUGUS_DEB:-$FAUGUS_API}; Battle.net uses Hearth's own setup instead"
 fi
 rm -f /tmp/faugus-launcher_all.deb
+
+# ------------------------------------------------------------------ Hearth Games' engines: gogdl (GOG) and legendary (Epic)
+# Hearth Games (docs/HEARTH-GAMES.md) and Hearth's library install GOG games with gogdl and Epic games with legendary,
+# the open-source tools Heroic uses. The same pinned releases as hosts/hearth-core/src/tools.rs (GOGDL, LEGENDARY),
+# checked against the same SHA-256 (test_hearth_gamestore.py keeps them equal), in /usr/lib/hearth/tools: the first
+# install needs no download of the tool. Optional: without them Hearth downloads them on first use, as before.
+hearth_tool() {   # file, url, sha256
+  local tmp="/tmp/hearth-tool-$1"
+  if curl -fsSL --retry 3 -o "$tmp" "$2" && echo "$3  $tmp" | sha256sum -c - >/dev/null; then
+    install -Dm755 "$tmp" "/usr/lib/hearth/tools/$1" && echo "$1 put in the image ($2)"
+  else
+    echo "warning: couldn't get $1 ($2), or its checksum didn't match; Hearth downloads it on first use instead"
+  fi
+  rm -f "$tmp"
+}
+hearth_tool gogdl https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64 cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655
+hearth_tool legendary https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64 dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45
 
 # ------------------------------------------------------------------ Minigalaxy (GOG)
 # Minigalaxy (github.com/sharkwouter/minigalaxy, GPL), the simple open-source GOG client, from Debian's own repositories.

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Games</title>
+<link rel="stylesheet" href="kit.css">
+<link rel="stylesheet" href="osk/hearth-osk.css">
+<style>
+/* Hearth Games (docs/HEARTH-GAMES.md): your GOG, Epic and Battle.net games, big enough for a TV and a handheld. */
+main { grid-template-rows:auto 1fr; gap:.7em; }
+.bar { display:flex; gap:.5em; align-items:center; flex-wrap:wrap; }
+.bar .spacer { flex:1; }
+.bar .inp { width:min(22em, 100%); }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(clamp(130px, 11vw, 210px), 1fr)); gap:1em; align-content:start; }
+.tile { display:flex; flex-direction:column; gap:.4em; border-radius:var(--r); padding:.35em; background:transparent; }
+.tile .cover { position:relative; aspect-ratio:2/3; border-radius:min(12px, var(--corner, 12px)); overflow:hidden; background:linear-gradient(160deg, var(--panel3), var(--panel)); border:1px solid var(--line); display:grid; place-items:center; }
+.tile .cover img { width:100%; height:100%; object-fit:cover; display:block; }
+.tile .cover .letter { font-size:2.6em; font-weight:800; color:var(--muted); }
+.tile .cover .wide { position:absolute; inset:auto 0 0 0; height:100%; object-fit:cover; }
+.tile .t { font-weight:600; font-size:.9em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tile .s { display:flex; gap:.35em; align-items:center; font-size:.75em; color:var(--muted); min-height:1.4em; }
+.tile .flag { position:absolute; top:.45em; left:.45em; }
+.tile .pbar { position:absolute; left:.5em; right:.5em; bottom:.5em; height:.45em; border-radius:9px; background:rgba(0,0,0,.55); overflow:hidden; }
+.tile .pbar i { display:block; height:100%; background:linear-gradient(90deg, var(--ember), var(--flame)); }
+.tile.dim .cover img { filter:saturate(.55) brightness(.75); }
+.hero { height:9.5em; border-radius:min(14px, var(--corner, 14px)); background:var(--panel2) center/cover no-repeat; margin:-.2em 0 .8em; border:1px solid var(--line); }
+.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(19em, 1fr)); gap:1em; align-content:start; }
+.card { display:flex; flex-direction:column; gap:.55em; }
+.card .who { display:flex; align-items:center; gap:.7em; }
+.card .who .av { width:2.6em; height:2.6em; border-radius:50%; background:var(--panel3) center/cover; display:grid; place-items:center; font-weight:800; color:var(--ember); flex:none; }
+.card .who b { display:block; }
+.card .who small { color:var(--muted); }
+.storemark { width:2.6em; height:2.6em; border-radius:min(12px, var(--corner, 12px)); display:grid; place-items:center; font-weight:800; font-size:.8em; color:#fff; flex:none; }
+.mark-gog { background:#7c3fb0; } .mark-epic { background:#2a2a2a; border:1px solid #555; } .mark-battlenet { background:#148eff; }
+.dl { display:grid; grid-template-columns:auto 1fr auto; gap:.2em 1em; align-items:center; }
+.dl .thumb { width:4.2em; aspect-ratio:2/3; border-radius:8px; background:var(--panel3) center/cover; grid-row:span 3; }
+.dl .acts { grid-row:span 3; }
+.hello { max-width:44em; margin:2.5em auto; text-align:center; display:flex; flex-direction:column; gap:1em; align-items:center; }
+.hello h2 { margin:0; font-size:1.5em; }
+.hello .acts { justify-content:center; }
+.note { color:var(--muted); font-size:.85em; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9.5 8V6.5a2.5 2.5 0 0 1 5 0V8"/><path d="M6.5 8h11l1 11.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5Z"/><path d="M10.5 11.5v5l4-2.5Z" fill="currentColor"/></svg>Hearth Games</h1>
+    <span class="sub" id="sub"></span>
+    <span class="spacer"></span>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="library">Library</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="stores">Stores</button><span class="lbrb">RB</span></div>
+  </header>
+  <main id="main"></main>
+  <footer id="foot"></footer>
+</div>
+<script src="hearth-gamepad.js"></script>
+<script src="osk/hearth-osk.js"></script>
+<script src="kit.js"></script>
+<script src="games.js"></script>
+</body>
+</html>

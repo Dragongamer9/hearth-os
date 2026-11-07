@@ -2,7 +2,7 @@
 name = "hearth-gaming"
 version = "0.6.0"
 edition = "2021"
-description = "Hearth's own gaming utilities: Controller Lab (test and calibrate controllers), Saves (back up and restore game saves) and Mods (a mod manager)"
+description = "Hearth's own gaming utilities: Controller Lab (test and calibrate controllers), Saves (back up and restore game saves), Mods (a mod manager) and Hearth Games (GOG, Epic and Battle.net)"
 license = "GPL-3.0-or-later"
 
 # What doesn't need a window (reading controllers, finding and zipping saves, putting mods in place) is a library,
@@ -22,6 +22,10 @@ path = "src/apps/saves.rs"
 [[bin]]
 name = "hearth-mods"
 path = "src/apps/mods.rs"
+
+[[bin]]
+name = "hearth-gamestore"
+path = "src/apps/gamestore.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -66,7 +66,7 @@ pub fn set(store: &mut Store, id: &str, patch: &Value) -> Result<(), String> {
 
 /// Proton versions to pick from: umu's own, then any installed (Steam, ProtonUp, Bazzite's).
 pub fn proton_choices(home: &Path) -> Vec<Value> {
-    let mut out = vec![json!({"id": "", "label": "Default", "sub": "UMU-Proton, the newest, downloaded when needed"}),
+    let mut out = vec![json!({"id": "", "label": "Default", "sub": crate::proton_pick::default_label()}),
                        json!({"id": "GE-Proton", "label": "GE-Proton (newest)", "sub": "Community build with extra fixes, downloaded when needed"})];
     let roots = [home.join(".local/share/Steam/compatibilitytools.d"), home.join(".steam/root/compatibilitytools.d"),
         home.join(".var/app/com.valvesoftware.Steam/data/Steam/compatibilitytools.d"), "/usr/share/steam/compatibilitytools.d".into(),

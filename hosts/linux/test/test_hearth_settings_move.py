@@ -75,10 +75,12 @@ class Pages(unittest.TestCase):
 
     def test_store_sign_ins_and_apps(self):
         g = (SHELL / 'SetGames.qml').read_text()
-        for store in ('epic', 'gog', 'xbox'):
-            self.assertIn('page.signIn("%s"' % store, g)
+        # Xbox signs in through hearth-signin; GOG, Epic and Battle.net in Hearth Games (1.7, docs/HEARTH-GAMES.md).
+        self.assertIn('page.signIn("xbox"', g)
+        for store in ('epic', 'gog', 'battlenet'):
+            self.assertIn('["hearth-gamestore", "--store", "%s"]' % store, g)
         self.assertIn('"open", store]', g)
-        for app in ('hearth-mods', 'hearth-saves', 'hearth-controller-lab', 'hearth-theater'):
+        for app in ('hearth-mods', 'hearth-saves', 'hearth-controller-lab', 'hearth-theater', 'hearth-gamestore'):
             self.assertIn('["%s"]' % app, g)
 
     def test_going_back_a_version_is_in_updates(self):
