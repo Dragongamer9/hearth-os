@@ -7,6 +7,14 @@ CREATE TABLE IF NOT EXISTS pings (
 );
 CREATE INDEX IF NOT EXISTS pings_last ON pings (last);
 
+-- Every install seen since the counter was last reset (the website's total): one row per install, never trimmed
+-- by age (pings rows go after 40 days unseen). The same random id and kind as pings, and when it was first seen.
+CREATE TABLE IF NOT EXISTS seen (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  first INTEGER NOT NULL
+);
+
 -- Bug-report logs people send from Settings › System (kept 14 days, read with the code shown on their screen).
 CREATE TABLE IF NOT EXISTS logs (
   code TEXT PRIMARY KEY,
