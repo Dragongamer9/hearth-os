@@ -95,7 +95,7 @@ LOOKS_UI_CSS = """/* The look picker (a button by light/dark, and its menu). */
 .looks>button:hover{background:var(--accsoft,rgba(102,192,244,.14))}
 .looks>button:focus-visible,.looks-menu button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .looks>button svg{width:20px;height:20px}
-.looks-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:min(300px,calc(100vw - 32px));padding:6px;border-radius:10px;
+.looks-menu{position:fixed;z-index:1000;width:min(300px,calc(100vw - 32px));padding:6px;border-radius:10px;
   background:var(--panel);border:1px solid var(--rule,var(--line));box-shadow:0 18px 40px rgba(0,0,0,.35)}
 .looks-menu[hidden]{display:none}
 .looks-menu p{margin:6px 8px 8px;font-size:13px;color:var(--muted)}
@@ -222,11 +222,14 @@ LOOKS_JS = r"""  var root = document.documentElement;
       var sw = el('span', 'sw'); l.sw.forEach(function(c){ var i = el('i'); i.style.background = c; sw.appendChild(i); });
       var t = el('span'); t.appendChild(el('b', '', l.name)); if (l.desc) t.appendChild(el('small', '', l.desc));
       b.appendChild(sw); b.appendChild(t);
-      b.addEventListener('click', function(){ set(l.id); sync(); close(true); });
+      b.addEventListener('click', function(){ set(l.id); sync(); close(false); });
       menu.appendChild(b); return b;
     });
     function sync(){ items.forEach(function(b){ b.setAttribute('aria-checked', b.dataset.id === cur()); }); }
-    function open(){ sync(); menu.hidden = false; btn.setAttribute('aria-expanded', 'true');
+    // The menu lives at the end of the page, not inside the bar: a look's island can clip what's inside it (Gaming's cut
+    // corners) or blur it (frosted islands), which hid the menu and made the looks impossible to switch.
+    function place(){ var r = btn.getBoundingClientRect(); menu.style.top = Math.round(r.bottom + 8) + 'px'; menu.style.right = Math.max(8, Math.round(innerWidth - r.right)) + 'px'; }
+    function open(){ sync(); place(); menu.hidden = false; btn.setAttribute('aria-expanded', 'true');
       var c = items.filter(function(b){ return b.dataset.id === cur(); })[0] || items[0]; c.focus(); }
     function close(focus){ menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); if (focus) btn.focus(); }
     btn.addEventListener('click', function(){ menu.hidden ? open() : close(false); });
@@ -236,8 +239,10 @@ LOOKS_JS = r"""  var root = document.documentElement;
       else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
     });
-    document.addEventListener('click', function(e){ if (!menu.hidden && !box.contains(e.target)) close(false); });
-    box.appendChild(btn); box.appendChild(menu);
+    document.addEventListener('click', function(e){ if (!menu.hidden && !box.contains(e.target) && !menu.contains(e.target)) close(false); });
+    addEventListener('resize', function(){ if (!menu.hidden) place(); });
+    addEventListener('scroll', function(){ if (!menu.hidden) place(); }, { passive: true });
+    box.appendChild(btn); document.body.appendChild(menu);
   });
 """
 
