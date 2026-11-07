@@ -588,6 +588,23 @@ decky_ctl() {
   timeout 15 pkexec /usr/libexec/nimbus/hearth-admin "decky-$1" >/dev/null 2>&1 || log "steam game mode: decky-$1 didn't work (Steam Game Mode goes on without Decky)"
   return 0
 }
+# Right after the PC starts, Steam often came up before Wi-Fi had connected (bug hunt, the owner's laptop: "Download
+# failed: http error 0", "LogonFailure No Connection" at every start, then back to Desktop Mode). In the first minutes
+# after start only, and only when NetworkManager runs, Steam waits until NetworkManager has finished bringing up the
+# connections it knows (nm-online -s), at most HEARTH_STEAM_NET_WAIT seconds (20; 0 turns it off). A PC that's offline
+# just waits that long once; Steam Game Mode always starts.
+steam_wait_network() {
+  w="${HEARTH_STEAM_NET_WAIT:-20}"
+  case "$w" in ''|*[!0-9]*) w=20 ;; esac
+  [ "$w" -gt 0 ] && [ "$w" -le 60 ] || return 0
+  have nm-online || return 0
+  up=$(cut -d. -f1 "${HEARTH_UPTIME_FILE:-/proc/uptime}" 2>/dev/null)
+  case "$up" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$up" -lt "${HEARTH_STEAM_NET_WINDOW:-180}" ] || return 0
+  if timeout $((w + 2)) nm-online -s -q -t "$w" >/dev/null 2>&1; then log "steam game mode: network ready"
+  else log "steam game mode: no network after ${w}s; starting Steam offline"; fi
+  return 0
+}
 # Hearth's core without a window (nimbus --core-service, hearth-core core_service.rs): live answers for the Hearth
 # plugin (Hearth in Steam's main menu, Quick Access and in-game overlay) over a socket only this user can open. It
 # ends by itself when the running mark goes away, and is stopped with Steam. It never controls gamescope's focus,
@@ -648,7 +665,21 @@ run_steam_mode() {
   # Steam's "Switch to Desktop" (and Game Mode) runs steamos-session-select: Hearth's own comes first on Steam's PATH and
   # asks this session (nothing about the login screen or the next start changes).
   sbin="$RUN/hearth-steam-bin"; mkdir -p "$sbin"
-  printf '#!/bin/sh\n# Hearth (nimbus-session): Steam Game Mode'"'"'s Switch to Desktop / Game Mode\ncase "$1" in gamescope*|game*) exec nimbus-mode game ;; *) exec nimbus-mode desktop ;; esac\n' >"$sbin/steamos-session-select"
+  # Every call is written to the session log with what asked (bug hunt: Steam Game Mode went back to Desktop Mode
+  # ~30 s after starting on all three of the owner's devices, logged only as "desktop asked for"). Only the desktop
+  # sessions SteamOS's own script knows switch to Desktop Mode; anything else is logged and changes nothing (before,
+  # every unknown or empty argument meant Desktop Mode).
+  cat >"$sbin/steamos-session-select" <<SHIM
+#!/bin/sh
+# Hearth (nimbus-session): Steam Game Mode's Switch to Desktop / Game Mode
+parent=\$(ps -o comm= -p "\$PPID" 2>/dev/null)
+echo "\$(date '+%F %T') steam game mode: steamos-session-select \$* (from \${parent:-?})" >>"$LOG" 2>/dev/null
+case "\$1" in
+  gamescope*|game*) exec nimbus-mode game ;;
+  plasma*|desktop*|*wayland*|*x11*|kde*|gnome*|mantel*|labwc*) exec nimbus-mode desktop ;;
+  *) echo "\$(date '+%F %T') steam game mode: steamos-session-select: \"\$1\" isn't a session Hearth knows; nothing changed" >>"$LOG" 2>/dev/null; exit 0 ;;
+esac
+SHIM
   chmod 755 "$sbin/steamos-session-select"
   # Steam's Settings › System › Check for updates runs steamos-update: Hearth's (hearth-steamos-update) updates Hearth OS
   # the way Settings › Updates does, never restarts by itself. Only on Steam's PATH for this run, nothing system-wide.
@@ -681,6 +712,7 @@ run_steam_mode() {
   # Time-limited, never fatal: Steam starts the same way whatever happens here.
   bl=/usr/libexec/nimbus/hearth-boot-look
   if [ -f "$bl" ] && have python3; then timeout 10 python3 "$bl" movie-apply >/dev/null 2>&1 || log "steam game mode: startup animation not applied"; fi
+  steam_wait_network
   decky_ctl start
   echo $$ >"$RUN/hearth-steam-mode.pid"
   steam_core_start
