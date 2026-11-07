@@ -593,6 +593,7 @@ Scope {
     property string renaming: ""               // the path whose name is a text box right now
     onPathChanged: renaming = ""
     function finishRename(text) {
+        if (renaming === "") return;
         const e = entries.find(x => x.path === renaming);
         renaming = "";
         if (!e || text === null || text === "" || text === e.name) return;
@@ -2167,7 +2168,9 @@ Scope {
                             forceActiveFocus();
                         }
                         function finish(ok) {
-                            if (done) return;
+                            // Closed from outside (Esc elsewhere, a new folder, filemanager rename ""): nothing to do,
+                            // and writing renaming again here would loop the Loader's binding.
+                            if (done || app.renaming === "") { done = true; return; }
                             done = true;
                             const t = text.trim();
                             keys.forceActiveFocus();
@@ -2176,7 +2179,12 @@ Scope {
                         Keys.onReturnPressed: finish(true)
                         Keys.onEnterPressed: finish(true)
                         Keys.onEscapePressed: finish(false)
-                        onActiveFocusChanged: if (!activeFocus) finish(true)
+                        // Clicking elsewhere keeps the new name, after the current binding pass (no Loader loop).
+                        onActiveFocusChanged: if (!activeFocus && !done && app.renaming !== "") {
+                            done = true;
+                            const p = app.renaming, t = text.trim();
+                            Qt.callLater(() => { if (app.renaming === p) app.finishRename(t); });
+                        }
                     }
                 }
             }
@@ -2908,7 +2916,7 @@ Scope {
                                                 Text {
                                                     Layout.fillWidth: true
                                                     visible: place.modelData.section === "drives" || (place.modelData.section === "devices" && !!place.modelData.sub)
-                                                    text: place.modelData.section === "devices" ? place.modelData.sub : place.modelData.mounted === false ? (place.modelData.sub || "Not mounted")
+                                                    text: place.modelData.section === "devices" ? (place.modelData.sub || "") : place.modelData.mounted === false ? (place.modelData.sub || "Not mounted")
                                                         : (place.modelData.sub || "") + (place.modelData.free !== undefined && place.modelData.free !== null ? " · " + app.fmtSize(place.modelData.free) + " free" : "")
                                                     color: place.lit ? Theme.accentInk : Theme.muted
                                                     elide: Text.ElideRight
@@ -3191,7 +3199,7 @@ Scope {
                                         Loader {
                                             anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: -6; rightMargin: -6; topMargin: -3 }
                                             height: 26
-                                            active: app.renaming !== "" && app.renaming === cell.modelData.path
+                                            active: parent.visible && app.renaming !== "" && app.renaming === cell.modelData.path
                                             sourceComponent: inlineRename
                                         }
                                     }
@@ -3231,7 +3239,7 @@ Scope {
                                                 font.family: Theme.font; font.pixelSize: cell.tiles ? 14 : 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
                                                 Loader {
                                                     anchors { fill: parent; margins: -4 }
-                                                    active: app.renaming !== "" && app.renaming === cell.modelData.path
+                                                    active: parent.visible && app.renaming !== "" && app.renaming === cell.modelData.path
                                                     sourceComponent: inlineRename
                                                 }
                                             }
@@ -3366,7 +3374,7 @@ Scope {
                                                 font.family: Theme.font; font.pixelSize: 14; font.weight: row.lit ? Font.DemiBold : Font.Normal
                                                 Loader {
                                                     anchors { fill: parent; margins: -4 }
-                                                    active: app.renaming !== "" && app.renaming === rowItem.modelData.path
+                                                    active: parent.visible && app.renaming !== "" && app.renaming === rowItem.modelData.path
                                                     sourceComponent: inlineRename
                                                 }
                                             }
