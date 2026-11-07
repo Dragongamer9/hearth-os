@@ -1,0 +1,13 @@
+export localhost/hearth-peppermint:latest
+installed
+themed: started (login prompt) 
+steam: started (login prompt) 
+minimal: started (login prompt) 
+aurora: started (login prompt) 
+starlight: started (login prompt) 
+orbit: started (login prompt) 
+nopreset: started (login prompt) 
+notheme: started (login prompt) 
+badtheme: started (login prompt) 
+secureboot: started (login prompt) 
+done (failed=0)

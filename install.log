@@ -1,0 +1,256 @@
+Trying to pull quay.io/fedora/fedora-bootc:43...
+Getting image source signatures
+Copying blob sha256:b3257716cfa65856166f40eb5475b8b5b396160427410680da28f9e5882022ab
+Copying blob sha256:a3a73dfebf42c9b55cf310ca273f5c17f28f087cb25c768ebe97732f9eabe1b4
+Copying blob sha256:3512c8da9e960b5d3375f2b2593d8f9d020cba6a70be5095ece41e9a7e3d186c
+Copying blob sha256:25dea6a30fcda50d0a1759cfe20e8ce3fab78c905dc1a2142d124897dbcaabc2
+Copying blob sha256:b584d487b610e3a1a554834067b2a084e828ccf42becc6d16ed6e3a7049e2190
+Copying blob sha256:9fb47173d34787db9c31ed21d139fcdbf2e78093079c431c5c8d0a012dff690f
+Copying blob sha256:a886106e1486553d07201d3addbb10308aa3ec699e4b5092bf6d0535ea625a13
+Copying blob sha256:ad0d206fc5bec1f0c6d94a43ac79cc2c940f79656928ca760316c761508925fc
+Copying blob sha256:ef5e2d3b2f0b7f08e5ebcf99054761256861967ac2cbc245f441d7b2ba871d4c
+Copying blob sha256:1aa1285502169fb9cb73768614f3df2ae06d3f1e8fb5219564287601340c90a5
+Copying blob sha256:46e8dbf34d1febd8511fecad22151df3630b79d9bcdf88d2a879530f94714c39
+Copying blob sha256:d8d9a61a0338b7f4e4ba81271d25787944811e1f66deb3a6c43db52ee39e7796
+Copying blob sha256:9afce8b11786aec877a314e921589eccc6e5caa36f68bb86dabb6b751f930b2c
+Copying blob sha256:786170add51424521e7ac3930def4e6d9d61793fda45f9d02539ca09cafe7fae
+Copying blob sha256:ce437a4dbffce3cbba417fad7d697426c023b3b90995ec37015157caec3f5b64
+Copying blob sha256:ee9ef2f13b8834d905b87560d7587ac7e9f43338537b2c48ee412fbed29739ad
+Copying blob sha256:72f20d1fbe0dd7b4160c194d03f6e2af8a5c6c6da4a4c02e44e6b963085d0952
+Copying blob sha256:20428dfeff84873a60c32cc893c2ec80ab5d4f6df9ad9b5786e392935e18ef98
+Copying blob sha256:0e230f5b15b1dda9b35c20e707d14e6e447f800be37a40c8cfa0ca4cc97f8e5d
+Copying blob sha256:ee974c1c53f39a0040574e5a4032b878ff617ea3876f89cf8e12bd6dc1116386
+Copying blob sha256:782fa0034868a5fe34e873c69ad561aafc34ba5374c42dced76e1f19341c57d2
+Copying blob sha256:b31b84ce5bde9ba5145944ba3e975546fd50d29c980287eef3d287e5d732e8f0
+Copying blob sha256:7460dd7876b42132f091ab5b09ecf2968b8785b7d533bd5b831e11899b0d3f92
+Copying blob sha256:60ca0cd406d5216db3af58881bd52ebbbd92af68e357cfaeacbd68f39e409b5d
+Copying blob sha256:bd2b02481fb6c92ce04991f66004d1d2745ea3fff5f2fffebed910f6c1931388
+Copying blob sha256:67830ffcd32c0c1f01ebc554b17a4ecdd1e0c42496febf33e9c806192e815666
+Copying blob sha256:d9e39b518d3cd3538ce110c356be5041e817d112c9168942d503f01abdbf1368
+Copying blob sha256:9b6a43b6b30c848bff649625554e5e82f5759cce3230bac54a40e943dac6dc1b
+Copying blob sha256:f48d4b12bdcbca4ed61cd49cdc7793d0f4ee85e0907e7a4b6cdcd8d9e482f4be
+Copying blob sha256:4774f0baff8602c3ad94c73a844193ec57fe191d922504acaef7dd9b48cdc4aa
+Copying blob sha256:b51f148ce1faf370c13be777e7edd72f17e0b000f7093f2e8736e20a19abf327
+Copying blob sha256:56e78649dada662d6c315f497d5835308d1248fab6f9ea253c6fdafb7f7abb91
+Copying blob sha256:155cc8b03df31a6337bffcf04a436745177f329a9c567049a6ae7d2b9e486290
+Copying blob sha256:d1845954ac123f5e01332b892a6ecba6f40eef2443345d0ffc6aaef128c408bb
+Copying blob sha256:a41e56655734ebc1e537b39ea22b23cde7f21f804a14fa99de8560774df7eaaa
+Copying blob sha256:30e2763438255fa3cd86e98b16e008ed9da01107e1a21d538b55337725ab2a0e
+Copying blob sha256:fc69bf5ef4d4e556d648fc04678bf2f335e04a9c99fb70ca99f5cb7f2a4b6313
+Copying blob sha256:86fe3b582d0c578e4d4c002d6033e261f18eb828d63057f57027e48547ebe46f
+Copying blob sha256:e572ce4a460a5caf88ecdc17f2915bbe621d3e74d1ce9bdbb7978cd5dc880a9c
+Copying blob sha256:c851c93ad1d0d38e9e943e8b124dc012c863fd379739ccb8a040ae70c1f1a20a
+Copying blob sha256:0e0c11d55764fcb797847994a6f475fb59520203139fb2794ffb16e711c56857
+Copying blob sha256:3c6e84ea75e5a053fb96acaad1bf96fc2a27af2e38c42dd97ac3282c9b853d1c
+Copying blob sha256:6be2f67f8e23390a7833dd04adb58629c6b8ed83ebcb0d327870b33bd7ce14d2
+Copying blob sha256:4feb672edae29f91e8fb1f7bd166920ce5a2ab7f53f9312364dad4eb2b63933f
+Copying blob sha256:7b54d75c560f4a7953f9694b3c395a8f084b78cdf7739831b5ac773cc0b74271
+Copying blob sha256:0899926cac0f3c7a9b2c5f9e74a8731d5e76ac9e076029b30b6241bce0eafe00
+Copying blob sha256:888aab601ce271bca87003027ae79decec2bfe4c0bda83c17d6793e00e383200
+Copying blob sha256:5b956dec18a355e2d22bbbea9c044be5ce6116575987c524af915e6f04923bd8
+Copying blob sha256:bca14a778735e0f2fb61e895da88ca167461ce60b74fc7b12b3a3fd5afde686e
+Copying blob sha256:6384c3b235677a4b43a0543473dc31a81b0beaeea1015334f45c56b3ec824845
+Copying blob sha256:2386bba6618c8004fba04e0730f1aa5d59993df18ba556945b73540817f8cce9
+Copying blob sha256:4d1d0a40f36fbcc02ff8f18078f8e3b3aa49a8c952b1d9d9796e8427b256baac
+Copying blob sha256:43a5812d1f6b57f1bd7c321cd749818cd2067ce0e2207b041e9fec5f606de9ba
+Copying blob sha256:677b172c362d709ae939d6bffb1147e42e00fc5c93495f6a825ce7ba0020f936
+Copying blob sha256:24f8fa20df59ad258f02dcff2d0cdae1d5840af2e0be00b25c476bd23fd510d7
+Copying blob sha256:0728bfc4ace5e953ed7a39980ecbf56f2f0bb977decff7dd0b83e2a6418a1374
+Copying blob sha256:58aee669c27217a1130bcdca25e35430b31a78244ab8580be5fc89acd1a2b9bc
+Copying blob sha256:002840b5fc9aac2f5ffc81e92add6896ce5f1041c943c0aa62372b299f125135
+Copying blob sha256:bf5dca1eb0c8c566e8fc84178e175be526c32d76d1bf4970f0dcf87a9318f993
+Copying blob sha256:95c768e13d87fafcf79446fc7ad32c60dc09bf0bf1bbb8b76e5df7fdd7842671
+Copying blob sha256:a5a9f4959db578ea0ce099f3aecfd72bb3d158c2a53eebcaf6b746ec1c3066c0
+Copying blob sha256:9c58915c5f33458cf8661e63a5ef16ef7fc266e6304ad14b1e94afc61202437d
+Copying blob sha256:4ce8ee552e6886106e651cead01926f59ee2b2f41b1482b2c2325fb34006e66f
+Copying blob sha256:52009573b54a4683a48ff78c95af6b6d7086e557e1381ac987dec367d5d80097
+Copying blob sha256:9dad063a624b62064bf25dbbc2e802e472d636056f661f2a0be73efd8a4da98b
+Copying config sha256:ab5620da9a3e9ad5c6dd1aaa4e7d387ec575104ac93a5109f8402b0ddc4d4a41
+Writing manifest to image destination
+log: installing Debian (ghcr.io/dragongamer9/hearth-peppermint:testing)
+stage: {"stage": "disk", "pct": 1, "text": "Erasing the drive"}
+stage: {"stage": "format", "pct": 15, "text": "Preparing the drive"}
+stage: {"stage": "download", "pct": 18, "text": "Preparing"}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "boot", "pct": 84, "text": "Setting up starting up"}
+stage: {"stage": "download", "pct": 20, "text": "Copying Hearth OS from the USB stick", "done": 0, "of": 0, "bytes": 0, "got": 0, "speed": 0, "left": null, "percent": 0}
+stage: {"stage": "user", "pct": 90, "text": "Creating your account"}
+stage: {"stage": "finish", "pct": 97, "text": "Finishing up"}
+stage: {"stage": "done", "pct": 100, "text": "Hearth OS is installed"}
+result: {"ok": true, "disk": "/dev/loop0", "mode": "whole", "user": "tester", "edition": "peppermint", "image": "ghcr.io/dragongamer9/hearth-peppermint:testing", "warning": null}
