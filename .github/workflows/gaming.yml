@@ -1,4 +1,4 @@
-# Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, for Hearth OS (Linux; Ember on Windows
+# Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves, Mods and Hearth Games, for Hearth OS (Linux; Ember on Windows
 # comes later). Unit tests, the build, then each app driven for real: Saves against a fake home with a Steam game
 # (native and Proton saves) and a test copy of the save-location list, then the real list from GitHub; Mods against a
 # fake game folder; Controller Lab against virtual controllers made with /dev/uinput. Screenshots of each window.
@@ -44,6 +44,13 @@ jobs:
           set -o pipefail
           cargo test --lib hearth_mods 2>&1 | tee hm.log || { echo "::error title=hearth_mods tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 hm.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=hearth_mods tests::$(grep -E '^test result' hm.log | tr '\n' ' ')"
+      - name: Test Hearth Games' parts of hearth-core (the built-in Proton, the engines in the image)
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          cargo test --lib proton_pick 2>&1 | tee pp.log || { echo "::error title=proton_pick tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 pp.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          cargo test --lib game_options 2>&1 | tee -a pp.log || { echo "::error title=game_options tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 pp.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=proton_pick tests::$(grep -E '^test result' pp.log | tr '\n' ' ')"
       - name: Unit tests (manifest, finding saves, backup and restore, mods in and out, evdev numbers)
         working-directory: hosts/hearth-gaming
         run: |
@@ -55,8 +62,8 @@ jobs:
         run: |
           set -o pipefail
           cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
-          ls -l target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods
-          echo "::notice title=size::$(du -h target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods | tr '\n' ' ')"
+          ls -l target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods target/release/hearth-gamestore
+          echo "::notice title=size::$(du -h target/release/hearth-controller-lab target/release/hearth-saves target/release/hearth-mods target/release/hearth-gamestore | tr '\n' ' ')"
       - name: Saves end to end (fake home, Proton and native saves, backup, restore, another PC, schedule, the real list)
         run: |
           set -o pipefail
@@ -118,6 +125,16 @@ jobs:
           sleep 9; front "Controller Lab"; shot controller-lab
           sleep 2; shot controller-lab-2
           pkill -f target/release/hearth-controller-lab || true
+          # Hearth Games on an empty home (nothing signed in): its first screen, then the Stores tab.
+          # The virtual DualSense Controller Lab used is still pressing buttons: stopped first, so it can't press Sign in here.
+          sudo pkill -f "e2e.py hold" || true; sleep 1
+          G="$RUNNER_TEMP/gamestore/home"; mkdir -p "$G" "$RUNNER_TEMP/gamestore/run"; chmod 700 "$RUNNER_TEMP/gamestore/run"
+          HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" dbus-run-session -- ./target/release/hearth-gamestore > gamestore.log 2>&1 &
+          sleep 10; front "Hearth Games"; shot gamestore-hello
+          xdotool key Next; sleep 1; xdotool key Next; sleep 2; shot gamestore-stores
+          if grep -q "gamestore.*Sign in to" windows.txt; then echo "::error title=Hearth Games::a sign-in window opened by itself"; fi
+          echo "::notice title=Hearth Games window::$(pgrep -af hearth-gamestore | head -2 | tr '\n' ' ') | $(tail -c 600 gamestore.log | tr '\n' '|')"
+          pkill -f target/release/hearth-gamestore || true
           echo "::notice title=Windows open at each screenshot::$(tr '\n' '|' < windows.txt)"
           echo "::notice title=App output::$(tail -c 1200 saves.log mods.log lab.log | tr '\n' '|')"
       - name: What the screenshots show (size and how much is drawn, so a blank window shows up here)
@@ -135,5 +152,6 @@ jobs:
             hosts/hearth-gaming/target/release/hearth-controller-lab
             hosts/hearth-gaming/target/release/hearth-saves
             hosts/hearth-gaming/target/release/hearth-mods
+            hosts/hearth-gaming/target/release/hearth-gamestore
             hosts/hearth-gaming/shots
             hosts/hearth-gaming/e2e.log

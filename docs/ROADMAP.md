@@ -9,7 +9,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ### Planned for 1.7 (the owner's number; agreed 2026-11-06)
 
-- [ ] **Hearth Games**: Hearth's own store app for GOG, Epic and Battle.net (our own, not a Heroic fork), on the same engines Heroic uses (gogdl, legendary; nile for Amazon later) and Faugus for Battle.net; Hearth look, controller-first, games show in Steam Game Mode through Hearth Sync; first: sign in, library, install, launch; then cloud saves, DLC, Amazon
+- [x] **Hearth Games** (stage one, docs/HEARTH-GAMES.md): Hearth's own store app for GOG, Epic and Battle.net (our own, not a Heroic fork), on the same engines Heroic uses (gogdl, legendary) through Hearth's store engine, and Faugus for Battle.net: sign in on the store's own page, your library as covers (filter by store, installed, search), install on the drive you pick, downloads with pause / carry on / cancel, Play (the same start as the game's Steam Game Mode shortcut, so it shows there through Hearth Sync), uninstall; Hearth look, controller-first; Settings › Games & stores opens it (needs testing on a device)
+- [x] Hearth Games' engines in the image: gogdl and legendary in /usr/lib/hearth/tools, the same pinned releases and checksums as Hearth's (no download before the first install) (needs testing on a device)
+- [x] Windows games with no Proton picked start with the GE-Proton built into Hearth OS when the image has one (offline), else UMU-Proton as before; the Proton detector plugs in at proton_pick.rs auto_for (needs testing on a device)
+- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] **Windows apps** with Proton built in, offline: the newest GE-Proton only in the image; older versions downloaded only when something needs them
 - [ ] **Proton detector**: picks the right Proton for each game or app by itself
 - [ ] **Server follow-ups**, the **Server apps catalog** and the other server ideas

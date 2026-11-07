@@ -1,4 +1,4 @@
-// Hearth Settings › Games & stores: store sign-ins (Epic, GOG, Xbox), where your games come from, and Hearth's gaming
+// Hearth Settings › Games & stores: Hearth Games (GOG, Epic, Battle.net: hearth-gamestore), store sign-ins (Epic, GOG, Xbox), where your games come from, and Hearth's gaming
 // apps. Gathers what lived in the archived Game Mode's Settings › Games (Library sources, Import, Game stores &
 // accounts) and its Library, Downloads and Store screens. Apps that exist open themselves; the rest opens in the Hearth
 // app's window at that page until it has an app of its own (docs/SETTINGS-MOVE.md, "Interim").
@@ -17,9 +17,13 @@ SetPage {
     }
     function app(cmd, name) { Quickshell.execDetached(cmd); SettingsNav.toast("Opening " + name + "…"); }
 
+    SetHeader { text: "Hearth Games" }
+    SetRow { chevron: true; icon: "store"; title: "Hearth Games"; sub: "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall (docs/HEARTH-GAMES.md)"; onActivated: page.app(["hearth-gamestore"], "Hearth Games") }
+
     SetHeader { text: "Store accounts" }
-    SetRow { icon: "lock"; title: "Epic Games"; sub: "Sign in to see, install and play your Epic games"; onActivated: page.signIn("epic", "Epic Games") }
-    SetRow { icon: "lock"; title: "GOG"; sub: "Sign in to see, install and play your GOG games"; onActivated: page.signIn("gog", "GOG") }
+    SetRow { icon: "lock"; title: "Epic Games"; sub: "Sign in to see, install and play your Epic games (in Hearth Games)"; onActivated: page.app(["hearth-gamestore", "--store", "epic"], "Hearth Games") }
+    SetRow { icon: "lock"; title: "GOG"; sub: "Sign in to see, install and play your GOG games (in Hearth Games)"; onActivated: page.app(["hearth-gamestore", "--store", "gog"], "Hearth Games") }
+    SetRow { icon: "lock"; title: "Battle.net"; sub: "Blizzard's own app, set up through Faugus Launcher (in Hearth Games)"; onActivated: page.app(["hearth-gamestore", "--store", "battlenet"], "Hearth Games") }
     SetRow { icon: "lock"; title: "Xbox"; sub: "Sign in for Xbox Cloud Gaming and your Xbox PC games"; onActivated: page.signIn("xbox", "Xbox") }
     Text {
         Layout.fillWidth: true
@@ -29,7 +33,7 @@ SetPage {
 
     SetHeader { text: "Your games" }
     SetRow { chevron: true; icon: "grid"; title: "Library sources"; sub: "Steam, Epic, GOG and emulators: which ones Hearth lists, add a game by hand, look for games again"; onActivated: core.openPage("sources", "Opening Library sources in the Hearth app…") }
-    SetRow { chevron: true; icon: "update"; title: "Downloads"; sub: "Epic and GOG installs: pause, carry on, cancel"; onActivated: core.openPage("downloads", "Opening Downloads in the Hearth app…") }
+    SetRow { chevron: true; icon: "update"; title: "Downloads"; sub: "Epic and GOG installs: pause, carry on, cancel (in Hearth Games)"; onActivated: page.app(["hearth-gamestore"], "Hearth Games") }
     SetRow { chevron: true; icon: "store"; title: "Store"; sub: "Deals, new games and search for Steam, GOG, Epic and Xbox"; onActivated: core.openPage("shop", "Opening the Store in the Hearth app…") }
     SetRow { chevron: true; icon: "pad"; title: "Recomps"; sub: "Native PC versions of classic console games: install and update them"; onActivated: core.openPage("recomps", "Opening Recomps in the Hearth app…") }
     SetRow { chevron: true; icon: "folder"; title: "Import"; sub: "Games and files from other drives and systems"; onActivated: core.openPage("import", "Opening Import in the Hearth app…") }
