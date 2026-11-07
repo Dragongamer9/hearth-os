@@ -1005,6 +1005,7 @@ jobs:
             ipc filemanager tab "$HOME/Documents"; ipc filemanager view details; ipc filemanager details on
             ipc filemanager marks "notes.txt/budget.ods/photo-1.png"; ipc filemanager select photo-1.png; sleep 3
             grim $F/$1-02-folder-multi-select-details-pane.png || true
+            ipc filemanager rename budget.ods; sleep 1; grim $F/$1-02b-rename-in-place.png || true; ipc filemanager rename ""
             ipc filemanager dragdemo Reports; sleep 2; grim $F/$1-03-drag-in-progress.png || true; ipc filemanager dragdemo ""
             ipc filemanager section devices; sleep 2; grim $F/$1-04-your-devices.png || true
             ipc filemanager marks ""; ipc filemanager view large; sleep 3; grim $F/$1-05-large-icons.png || true

@@ -772,6 +772,20 @@ class UndoAndRecent(Base):
         names = [e['name'] for e in self.hf.recent_files()['recent']]
         self.assertEqual(names, ['b.txt', 'a.txt'])
 
+    def test_thumbs_have(self):
+        # Only thumbnails that are there (and newer than the file) are listed, so Files never asks for a missing one.
+        os.environ.pop('XDG_CACHE_HOME', None)
+        pdf = os.path.join(self.home, 'doc.pdf'); old = os.path.join(self.home, 'old.pdf')
+        write(pdf); write(old)
+        for p in (pdf, old):
+            write(self.hf.thumb_path(p), b'png')
+        t = time.time()
+        os.utime(self.hf.thumb_path(old), (t - 100, t - 100))
+        os.utime(pdf, (t - 50, t - 50))
+        r = self.hf.thumbs([pdf, old, os.path.join(self.home, 'none.pdf')])
+        self.assertEqual(r['have'], [pdf])
+        self.assertEqual(r['made'], [])
+
 
 class Redesign(unittest.TestCase):
     """The Win 11-style window keeps what a file manager needs (the QML can't run here; CI takes screenshots)."""
@@ -782,7 +796,9 @@ class Redesign(unittest.TestCase):
                        'case Qt.Key_Y:', 'Qt.LinkAction', '"link"', '"untrash"', '"recent"',
                        '["large", "grid", "small", "tiles", "compact", "details"]', 'function shownName(e)',
                        'id: detailsBox', 'id: cmdRow', 'id: quick', 'function command(t, x, y)',
-                       'p.showExt = showExt', 'p.detailsPane = detailsPane', 'function dragdemo('):
+                       'p.showExt = showExt', 'p.detailsPane = detailsPane', 'function dragdemo(',
+                       'function typeAhead(ch)', 'function moveTab(from, to)', 'id: tabDrop', 'id: inlineRename',
+                       'function finishRename(text)', 'thumbHave[e.path]', 'r.saveToFile(win.ghostFile)'):
             self.assertIn(needle, self.qml)
 
     def test_every_command_button_does_something(self):

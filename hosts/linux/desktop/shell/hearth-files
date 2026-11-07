@@ -2467,18 +2467,21 @@ def thumb_path(p):
 
 def thumbs(paths):
     """Makes the missing video thumbnails (with ffmpegthumbnailer or ffmpeg, if installed), at most 30 a call,
-    in the shared freedesktop cache, so other apps can use them too."""
+    in the shared freedesktop cache, so other apps can use them too. 'have' lists every path (videos and PDFs) whose
+    thumbnail is there and up to date, so Files only shows thumbnails that exist (no "Cannot open" in the log)."""
     tool = shutil.which('ffmpegthumbnailer') or shutil.which('ffmpeg')
-    made = []
-    if not tool:
-        return {'ok': False, 'made': made}
-    for path in paths[:30]:
+    made, have = [], []
+    for path in paths[:60]:
         p = os.path.abspath(path)
         out = thumb_path(p)
         try:
             if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(p):
+                have.append(p)
                 continue
         except OSError:
+            continue
+        mime = mimetypes.guess_type(p)[0] or ''
+        if not tool or not mime.startswith('video/') or len(made) >= 30:
             continue
         os.makedirs(os.path.dirname(out), mode=0o700, exist_ok=True)
         tmp = out + '.%d.tmp.png' % os.getpid()
@@ -2491,11 +2494,12 @@ def thumbs(paths):
             if r.returncode == 0 and os.path.exists(tmp):
                 os.replace(tmp, out)
                 made.append(p)
+                have.append(p)
         except (OSError, subprocess.TimeoutExpired):
             pass
         if os.path.exists(tmp):
             os.unlink(tmp)
-    return {'ok': True, 'made': made}
+    return {'ok': bool(tool), 'made': made, 'have': have}
 
 
 def terminal(path):
@@ -3336,7 +3340,7 @@ def remote_cmd(c, rest):
         return {'path': rest[0], 'name': rest[0].rstrip('/').rsplit('/', 1)[-1], 'kind': 'default', 'executable': False,
                 'text': False, 'editor': False, 'canChmod': False, 'remembered': None}
     if c == 'thumbs':
-        return thumbs([a for a in rest if not is_remote(a)]) if any(not is_remote(a) for a in rest) else {'ok': True, 'made': []}
+        return thumbs([a for a in rest if not is_remote(a)]) if any(not is_remote(a) for a in rest) else {'ok': True, 'made': [], 'have': []}
     if c == 'clip-set':
         return None
     raise Fail("Hearth Storage's shared folders can't be changed from here: copy what you need to this device")

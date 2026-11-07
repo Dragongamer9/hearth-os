@@ -186,6 +186,8 @@ Scope {
         function home(): void { app.open(""); app.navigate(app.homePage, ""); }
         function details(on: string): void { app.detailsPane = on === "on"; app.rememberView(); }
         function undo(): void { app.undo(); }
+        // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
+        function rename(name: string): void { const e = app.entries.find(x => x.name === name); app.renaming = e ? e.path : ""; }
         function marks(names: string): void { const m = {}; for (const n of names.split("/")) { const e = app.entries.find(x => x.name === n); if (e) m[e.path] = true; } app.marked = m; }
         // For checks: the folder shown and the item under the cursor ("" while the window is closed).
         // A staged drag for the screenshots (CI has no mouse): the picked items' drag picture over the folder `onto`.
@@ -587,6 +589,48 @@ Scope {
     }
     Timer { interval: 4000; repeat: true; running: app.shown; onTriggered: app.refreshPlaces() }
 
+    // ------------------------------------------------ renaming in place
+    property string renaming: ""               // the path whose name is a text box right now
+    onPathChanged: renaming = ""
+    function finishRename(text) {
+        const e = entries.find(x => x.path === renaming);
+        renaming = "";
+        if (!e || text === null || text === "" || text === e.name) return;
+        call(["rename", e.path, text], (r, err) => {
+            if (err) return say(err, true);
+            if (r.path !== e.path) pushUndo({ kind: "rename", from: e.path, to: r.path });
+            load(listing.path, base(r.path), "none");
+        });
+    }
+
+    // ------------------------------------------------ type-ahead
+    property string typed: ""
+    property double typedAt: 0
+    function typeAhead(ch) {
+        const now = Date.now();
+        const buf = (now - typedAt < 1000 ? typed : "") + ch;
+        const list = entries || [];
+        const low = buf.toLowerCase();
+        // The same letter again steps through the names starting with it.
+        const same = buf.length > 1 && buf.split("").every(c => c.toLowerCase() === low[0]);
+        const want = same ? low[0] : low;
+        const start = same || buf.length === 1 ? cur + 1 : cur;
+        for (let k = 0; k < list.length; k++) {
+            const i = (start + k) % list.length;
+            if (shownName(list[i]).toLowerCase().startsWith(want)) {
+                typed = buf;
+                typedAt = now;
+                zone = "main";
+                cur = i;
+                anchor = i;
+                marked = ({});
+                return true;
+            }
+        }
+        if (typed && now - typedAt < 1000) { typedAt = now; return true; }   // a typo in the middle: stay put
+        return false;
+    }
+
     // ------------------------------------------------ tabs
     function saveTab() {
         const t = tabs.slice();
@@ -601,6 +645,17 @@ Scope {
         fwd = [];
         zone = "main";
         load(tabs[tabIndex].path, "", "none");
+    }
+    // Dragging a tab along the strip puts it somewhere else (the open tab stays open).
+    function moveTab(from, to) {
+        if (from === to || from < 0 || to < 0 || from >= tabs.length || to >= tabs.length) return;
+        saveTab();
+        const t = tabs.slice();
+        const open = t[tabIndex];
+        const m = t.splice(from, 1)[0];
+        t.splice(to, 0, m);
+        tabs = t;
+        tabIndex = t.indexOf(open);
     }
     function switchTab(i) {
         if (i === tabIndex || i < 0 || i >= tabs.length) return;
@@ -873,17 +928,24 @@ Scope {
         if (!e || e.dir) return "";
         const k = kindOf(e);
         if (k === "image" && e.size < 80 * 1024 * 1024 && !/heic|jxl|avif|x-raw|tiff|psd|xcf/.test(e.mime)) return fileUrl(e.path);
-        if (k === "video" || e.mime === "application/pdf") return "file://" + thumbDir + Qt.md5(fileUrl(e.path)) + ".png";
+        if ((k === "video" || e.mime === "application/pdf") && thumbHave[e.path]) return "file://" + thumbDir + Qt.md5(fileUrl(e.path)) + ".png";
         return "";
     }
-    // Video thumbnails nobody made yet: hearth-files makes them in the background (if ffmpeg is installed).
+    // Paths whose cached thumbnail hearth-files says is there: only those are shown (no "Cannot open" warnings).
+    property var thumbHave: ({})
+    // Video thumbnails nobody made yet: hearth-files makes them in the background (if ffmpeg is installed), and
+    // says which videos and PDFs already have one. The details pane uses them too, so this runs in every view.
     function makeThumbs() {
-        if (!listing || view === "details") return;
-        const vids = (listing.entries || []).filter(e => kindOf(e) === "video").slice(0, 30).map(e => e.path);
-        if (!vids.length) return;
+        if (!listing) return;
+        const want = (listing.entries || []).filter(e => !e.dir && (kindOf(e) === "video" || e.mime === "application/pdf"))
+            .slice(0, 60).map(e => e.path);
+        if (!want.length) return;
         const at = listing.path;
-        call(["thumbs"].concat(vids), (r, err) => {
-            if (r && r.made && r.made.length && listing && listing.path === at) reload();
+        call(["thumbs"].concat(want), (r, err) => {
+            if (!r || !r.have || !listing || listing.path !== at) return;
+            const h = {};
+            for (const p of r.have) h[p] = true;
+            thumbHave = h;
         });
     }
 
@@ -1337,6 +1399,9 @@ Scope {
         case "paste": paste(); break;
         case "copypath": copyText(t.length ? t.join("\n") : (listing ? listing.path : "")); break;
         case "rename":
+            // With a mouse or keyboard the name turns into a text box where it is (Enter keeps it, Esc cancels);
+            // from the controller it asks in a box with the on-screen keyboard.
+            if (e && !viaPad && overlay === "" && entries.some(x => x.path === e.path)) { renaming = e.path; break; }
             if (e) askText("Rename", e.name, "Rename", e.dir ? e.name.length : (e.name.lastIndexOf(".") > 0 ? e.name.lastIndexOf(".") : e.name.length),
                 text => app.call(["rename", e.path, text], (r, err) => {
                     if (err) return app.say(err, true);
@@ -2076,11 +2141,55 @@ Scope {
                     Text { anchors.centerIn: parent; text: dragGhost.picked.length; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                 }
             }
-            property var ghostGrab: null
+            // Renaming in place: a text box over the name (the extension isn't selected, like Windows).
+            Component {
+                id: inlineRename
+                Rectangle {
+                    color: Theme.bg
+                    radius: Theme.r(4)
+                    border.width: 2
+                    border.color: Theme.accent
+                    TextInput {
+                        id: renameEd
+                        anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: Theme.text
+                        selectionColor: Theme.accent
+                        selectedTextColor: Theme.accentInk
+                        selectByMouse: true
+                        clip: true
+                        font.family: Theme.font; font.pixelSize: 13
+                        property bool done: false
+                        Component.onCompleted: {
+                            const e = app.entries.find(x => x.path === app.renaming);
+                            text = e ? e.name : "";
+                            select(0, e && !e.dir && text.lastIndexOf(".") > 0 ? text.lastIndexOf(".") : text.length);
+                            forceActiveFocus();
+                        }
+                        function finish(ok) {
+                            if (done) return;
+                            done = true;
+                            const t = text.trim();
+                            keys.forceActiveFocus();
+                            app.finishRename(ok ? t : null);
+                        }
+                        Keys.onReturnPressed: finish(true)
+                        Keys.onEnterPressed: finish(true)
+                        Keys.onEscapePressed: finish(false)
+                        onActiveFocusChanged: if (!activeFocus) finish(true)
+                    }
+                }
+            }
+            // The drag picture: grabbed into a file (a grabToImage url makes Drag warn about sourceSize every time),
+            // with a counter on the url so the picture cache shows the newest one.
+            property int ghostN: 0
+            readonly property string ghostFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-files-drag.png"
             Timer {
                 id: ghostTimer
                 interval: 250
-                onTriggered: if (app.mouseMode && dragGhost.picked.length) dragGhost.grabToImage(r => { win.ghostGrab = r; dragProxy.Drag.imageSource = r.url; })
+                onTriggered: if (app.mouseMode && dragGhost.picked.length) dragGhost.grabToImage(r => {
+                    if (r.saveToFile(win.ghostFile)) dragProxy.Drag.imageSource = "file://" + win.ghostFile + "?" + (++win.ghostN);
+                }, Qt.size(dragGhost.width, dragGhost.height))
             }
             Connections {
                 target: app
@@ -2281,9 +2390,12 @@ Scope {
                     else app.goUp(false);
                     break;
                 default:
-                    // Typing filters this folder (with the on-screen keyboard too: Y, then type).
+                    // Typing jumps to the first name that starts with what was typed (type quickly to add letters,
+                    // like Windows); when no name starts with it, it filters this folder instead (the on-screen
+                    // keyboard too: Y, then type).
                     if (e.text && e.text.length === 1 && e.text >= " " && !(e.modifiers & (Qt.AltModifier | Qt.MetaModifier))) {
                         if (e.text === "/" || e.text === "~") { win.editPath(); pathField.text = e.text === "~" ? "~/" : "/"; break; }
+                        if (!app.query && app.typeAhead(e.text)) break;
                         win.focusSearch(app.query + e.text);
                         break;
                     }
@@ -2396,7 +2508,9 @@ Scope {
                     Row {
                         anchors { left: parent.left; leftMargin: 10; bottom: parent.bottom }
                         spacing: 2
+                        id: tabRow
                         Repeater {
+                            id: tabRep
                             model: app.tabs
                             delegate: Rectangle {
                                 id: tabChip
@@ -2428,12 +2542,50 @@ Scope {
                                     elide: Text.ElideMiddle
                                     font.family: Theme.font; font.pixelSize: 13; font.weight: tabChip.on ? Font.DemiBold : Font.Normal
                                 }
+                                readonly property string folder: on ? app.path : modelData.path
                                 MouseArea {
                                     id: tabMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                    onClicked: mouse => { keys.forceActiveFocus(); if (mouse.button === Qt.MiddleButton) app.closeTab(tabChip.index); else app.switchTab(tabChip.index); }
+                                    property real pressX: 0
+                                    property bool moving: false
+                                    onPressed: mouse => { pressX = mouse.x; moving = false; }
+                                    // Drag a tab left or right to reorder the tabs.
+                                    onPositionChanged: mouse => {
+                                        if (!(mouse.buttons & Qt.LeftButton)) return;
+                                        if (!moving && Math.abs(mouse.x - pressX) < 12) return;
+                                        moving = true;
+                                        const rx = tabChip.mapToItem(tabRow, mouse.x, 0).x;
+                                        for (let k = 0; k < tabRep.count; k++) {
+                                            const it = tabRep.itemAt(k);
+                                            if (it && rx >= it.x && rx < it.x + it.width && k !== tabChip.index) {
+                                                app.moveTab(tabChip.index, k);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    onClicked: mouse => {
+                                        keys.forceActiveFocus();
+                                        if (moving) return;
+                                        if (mouse.button === Qt.MiddleButton) app.closeTab(tabChip.index); else app.switchTab(tabChip.index);
+                                    }
+                                }
+                                // Files dropped on a tab go into its folder; holding them over it opens the tab.
+                                DropArea {
+                                    id: tabDrop
+                                    anchors.fill: parent
+                                    keys: ["text/uri-list"]
+                                    readonly property bool real: tabChip.folder.startsWith("/") && tabChip.folder !== app.homePage
+                                    onEntered: drag => { if (!real) drag.accepted = false; else tabHold.restart(); }
+                                    onExited: tabHold.stop()
+                                    onDropped: drop => { tabHold.stop(); app.dropOn(drop, tabChip.folder); }
+                                    Timer { id: tabHold; interval: 800; onTriggered: app.switchTab(tabChip.index) }
+                                }
+                                Rectangle {
+                                    anchors.fill: parent; radius: parent.radius
+                                    visible: tabDrop.containsDrag
+                                    color: "transparent"; border.width: 2; border.color: Theme.accent
                                 }
                                 Text {
                                     id: tabX
@@ -3036,6 +3188,12 @@ Scope {
                                         maximumLineCount: 2
                                         elide: Text.ElideRight
                                         font.family: Theme.font; font.pixelSize: app.view === "small" ? 12 : 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
+                                        Loader {
+                                            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: -6; rightMargin: -6; topMargin: -3 }
+                                            height: 26
+                                            active: app.renaming !== "" && app.renaming === cell.modelData.path
+                                            sourceComponent: inlineRename
+                                        }
                                     }
                                     // Compact
                                     RowLayout {
@@ -3071,6 +3229,11 @@ Scope {
                                                 color: cell.modelData.hidden ? Theme.muted : Theme.text
                                                 elide: Text.ElideMiddle
                                                 font.family: Theme.font; font.pixelSize: cell.tiles ? 14 : 13; font.weight: cell.lit ? Font.DemiBold : Font.Normal
+                                                Loader {
+                                                    anchors { fill: parent; margins: -4 }
+                                                    active: app.renaming !== "" && app.renaming === cell.modelData.path
+                                                    sourceComponent: inlineRename
+                                                }
                                             }
                                             Text {
                                                 Layout.fillWidth: true
@@ -3201,6 +3364,11 @@ Scope {
                                                 color: rowItem.modelData.hidden ? Theme.muted : Theme.text
                                                 elide: Text.ElideMiddle
                                                 font.family: Theme.font; font.pixelSize: 14; font.weight: row.lit ? Font.DemiBold : Font.Normal
+                                                Loader {
+                                                    anchors { fill: parent; margins: -4 }
+                                                    active: app.renaming !== "" && app.renaming === rowItem.modelData.path
+                                                    sourceComponent: inlineRename
+                                                }
                                             }
                                             Icon { visible: row.picked; name: "check"; size: 16; color: Theme.accent }
                                             Text {
