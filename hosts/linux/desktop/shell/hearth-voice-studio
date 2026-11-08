@@ -1,0 +1,2313 @@
+#!/usr/bin/python3
+"""hearth-voice-studio: Voice Studio, Hearth's own voice studio on the home server (docs/HOME-SERVER.md, Voice Studio).
+Speak (text to speech), Clone (a voice from a short recording, with consent), Design (a voice from words), Transcribe
+(text, SRT, VTT, speaker labels), a voice library shared by everything, Audiobooks and Video dubbing (a queue on disk
+that carries on after a restart or a game), and an OpenAI-compatible speech API for the Hearth AI Command Center and
+other apps. Written for Hearth (no code from other voice studios).
+
+  hearth-voice-studio serve                the page and the API (hearth-voice-studio.service through hearth-home-server
+                                           ai-run voicestudio, in the engines' own venv), port 8890, on 127.0.0.1 and
+                                           this PC's Tailscale address only
+  hearth-voice-studio status               JSON for Settings: installed, engines, PIN, API key set, addresses
+  hearth-voice-studio set KEY VALUE        language (a code or auto), voice (a voice id or ''), translateModel (an
+                                           Ollama model or ''), speakerLabels (on|off)
+  hearth-voice-studio pin-set              the page's PIN on stdin (HEARTH_INPUT; 4-12 digits; only its hash is kept)
+  hearth-voice-studio pin-clear            no PIN of its own (Server mode's PIN then works, if one is set)
+  hearth-voice-studio key-show             the API key (made the first time; for the Command Center)
+  hearth-voice-studio key-new              a new API key (the old one stops working)
+  hearth-voice-studio install-job          the install itself (hearth-home-server studio-install runs it in its own unit)
+  hearth-voice-studio remove [voices sure] the engines and downloaded models go; your voices and finished work stay
+                                           unless you confirmed twice
+  hearth-voice-studio mock-serve [PORT]    the page with stand-in engines (tests and CI screenshots only)
+
+Your choices: ~/.config/nimbus/voice-studio.json through hearth_settings_io (only the key you change; atomic, .bak,
+merged under the lock; defaults filled in when read, never saved). State, never settings: the PIN's hash, the page's
+sign-ins and the API key (~/.local/state/nimbus/voice-studio-web.json, 0600). Your voices, the queue and finished work:
+~/.local/share/nimbus/voice-studio (voices/, jobs/), with the engines' venv and models beside them (venv/, models/).
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import hashlib
+import hmac
+import html
+import io
+import ipaddress
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unicodedata
+import urllib.parse
+import urllib.request
+import wave
+import zipfile
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+DATA_HOME = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'voice-studio.json')
+WEB_STATE = os.path.join(STATE_HOME, 'nimbus', 'voice-studio-web.json')          # PIN hash, sign-ins, API key (0600)
+SERVER_MODE_WEB = os.path.join(STATE_HOME, 'nimbus', 'server-mode-web.json')     # Server mode's PIN hash (read only)
+DATA = os.path.join(DATA_HOME, 'nimbus', 'voice-studio')
+VENV = os.path.join(DATA, 'venv')
+MODELS = os.path.join(DATA, 'models')
+INSTALLED = os.path.join(DATA, 'installed.json')
+PORT = int(os.environ.get('HEARTH_VOICE_STUDIO_PORT', '8890'))
+KOKORO = os.environ.get('HEARTH_VOICE_STUDIO_KOKORO', 'http://127.0.0.1:8880')
+OLLAMA = os.environ.get('HEARTH_VOICE_STUDIO_OLLAMA', 'http://127.0.0.1:11434')
+TORCH_INDEX = 'https://download.pytorch.org/whl/cu128'     # PyTorch's own CUDA 12.8 builds (RTX 50 series needs them)
+# What the install puts in the venv (all from PyPI over https; pip checks each file against the hash the index lists).
+# Licences (checked November 2026; docs/HOME-SERVER.md): OmniVoice's code Apache-2.0, its model CC BY-NC (personal,
+# non-commercial use) with a Boson/Llama 3 audio tokenizer; faster-whisper MIT (Whisper's models MIT); Demucs MIT;
+# SpeechBrain Apache-2.0 (its ECAPA speaker model Apache-2.0). Nothing AGPL. Nothing is in the Hearth image: all of it is
+# downloaded to your own folder only when you press Install, after Settings shows these licences.
+PIP_MAIN = ['omnivoice>=0.1.4', 'faster-whisper==1.1.1', 'soundfile']
+PIP_DEMUCS = ['demucs==4.0.1']               # installed without its old torchaudio pin (--no-deps), then its own needs:
+PIP_DEMUCS_DEPS = ['dora-search', 'einops', 'julius', 'openunmix', 'pyyaml', 'tqdm']
+PIP_LABELS = ['speechbrain==1.0.3']
+INSTALL_REV = 1
+OMNI_MODEL = 'k2-fsa/OmniVoice'
+WHISPER_MODEL = 'large-v3-turbo'
+LABEL_MODEL = 'speechbrain/spkrec-ecapa-voxceleb'
+SESSION_DAYS = 30
+PIN_RE = re.compile(r'^[0-9]{4,12}$')
+ID_RE = re.compile(r'^[a-f0-9]{12}$')
+TS_NETS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
+SR = 24000                     # the studio's own sample rate (OmniVoice speaks at 24 kHz)
+MAX_JSON = 2 << 20
+MAX_CLIP = 40 << 20            # a recording to learn a voice from
+MAX_AUDIO = 1 << 30            # audio or video to transcribe
+MAX_VIDEO = 6 << 30            # a video to dub
+MAX_BOOK = 64 << 20            # a .txt or .epub
+MAX_SPEAK = 20000              # characters spoken at once (longer: an audiobook)
+VIDEO_EXT = ('mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v')
+AUDIO_EXT = ('wav', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'webm', 'weba', 'mp4', 'mkv', 'mov', 'm4v', 'avi', '3gp', 'amr')
+FORMATS = {'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'opus': 'audio/ogg', 'flac': 'audio/flac', 'aac': 'audio/aac', 'pcm': 'audio/L16'}
+
+DEFAULTS = {'language': 'auto', 'voice': '', 'translateModel': '', 'speakerLabels': True}
+
+LANGS = [('auto', 'Detect'), ('en', 'English'), ('es', 'Spanish'), ('fr', 'French'), ('de', 'German'), ('it', 'Italian'),
+         ('pt', 'Portuguese'), ('nl', 'Dutch'), ('pl', 'Polish'), ('ru', 'Russian'), ('uk', 'Ukrainian'), ('tr', 'Turkish'),
+         ('ar', 'Arabic'), ('hi', 'Hindi'), ('bn', 'Bengali'), ('ja', 'Japanese'), ('ko', 'Korean'), ('zh', 'Chinese'),
+         ('th', 'Thai'), ('vi', 'Vietnamese'), ('id', 'Indonesian'), ('ms', 'Malay'), ('tl', 'Filipino'), ('sv', 'Swedish'),
+         ('no', 'Norwegian'), ('da', 'Danish'), ('fi', 'Finnish'), ('cs', 'Czech'), ('sk', 'Slovak'), ('el', 'Greek'),
+         ('he', 'Hebrew'), ('hu', 'Hungarian'), ('ro', 'Romanian'), ('bg', 'Bulgarian'), ('hr', 'Croatian'), ('sr', 'Serbian'),
+         ('fa', 'Persian'), ('ur', 'Urdu'), ('ta', 'Tamil'), ('sw', 'Swahili'), ('ca', 'Catalan'), ('cy', 'Welsh'), ('ga', 'Irish')]
+LANG_CODES = tuple(c for c, _ in LANGS)
+LANG_NAMES = dict(LANGS)
+
+# Ready-made voices: designed from words (OmniVoice's voice design), rendered once into a sample the first time they're
+# used, so every sentence after sounds like the same person. OpenAI's voice names map onto them for apps that send those.
+PRESETS = [
+    {'id': 'narrator', 'name': 'Narrator', 'note': 'deep, British, calm', 'instruct': 'male, middle-aged, low pitch, british accent'},
+    {'id': 'storyteller', 'name': 'Storyteller', 'note': 'warm, American', 'instruct': 'female, middle-aged, moderate pitch, american accent'},
+    {'id': 'bright', 'name': 'Bright', 'note': 'young, lively', 'instruct': 'female, young adult, high pitch, australian accent'},
+    {'id': 'calm', 'name': 'Calm', 'note': 'easy-going, American', 'instruct': 'male, young adult, moderate pitch, american accent'},
+    {'id': 'elder', 'name': 'Elder', 'note': 'old, very deep', 'instruct': 'male, elderly, very low pitch, american accent'},
+    {'id': 'clear', 'name': 'Clear', 'note': 'crisp, British', 'instruct': 'female, young adult, moderate pitch, british accent'},
+    {'id': 'kid', 'name': 'Kid', 'note': 'a child', 'instruct': 'child, high pitch'},
+    {'id': 'whisper', 'name': 'Whisper', 'note': 'soft, close', 'instruct': 'female, young adult, whisper'},
+]
+PRESET_IDS = tuple(p['id'] for p in PRESETS)
+OPENAI_VOICES = {'alloy': 'clear', 'ash': 'calm', 'ballad': 'storyteller', 'coral': 'bright', 'echo': 'calm', 'fable': 'narrator',
+                 'onyx': 'elder', 'nova': 'storyteller', 'sage': 'clear', 'shimmer': 'bright', 'verse': 'narrator'}
+SAMPLE_TEXT = 'Hello! This is how I sound. I can read your stories, your messages and your books out loud.'
+
+# Voice design: the words OmniVoice understands, one per kind (gender, age, pitch, style, accent).
+DESIGN = {
+    'gender': ['male', 'female'],
+    'age': ['child', 'teenager', 'young adult', 'middle-aged', 'elderly'],
+    'pitch': ['very low pitch', 'low pitch', 'moderate pitch', 'high pitch', 'very high pitch'],
+    'style': ['whisper'],
+    'accent': ['american accent', 'british accent', 'australian accent', 'canadian accent', 'indian accent', 'chinese accent',
+               'korean accent', 'japanese accent', 'portuguese accent', 'russian accent'],
+}
+DESIGN_WORDS = [  # (pattern in a description, kind, attribute)
+    (r'\b(man|male|guy|boy|gentleman|father|dad|grandfather|grandpa|king|wizard|pirate|he)\b', 'gender', 'male'),
+    (r'\b(woman|female|girl|lady|mother|mum|mom|grandmother|grandma|queen|witch|she)\b', 'gender', 'female'),
+    (r'\b(child|kid|little|toddler)\b', 'age', 'child'),
+    (r'\b(teen|teenager|teenage|adolescent)\b', 'age', 'teenager'),
+    (r'\b(young|youthful|twenties|student)\b', 'age', 'young adult'),
+    (r'\b(middle[- ]aged|forties|fifties|mature)\b', 'age', 'middle-aged'),
+    (r'\b(old|elderly|aged|ancient|grandfather|grandmother|grandpa|grandma|wizard)\b', 'age', 'elderly'),
+    (r'\b(very deep|booming|bass)\b', 'pitch', 'very low pitch'),
+    (r'\b(deep|low|gravelly|husky|rumbling)\b', 'pitch', 'low pitch'),
+    (r'\b(high|bright|light|chirpy)\b', 'pitch', 'high pitch'),
+    (r'\b(squeaky|very high|shrill)\b', 'pitch', 'very high pitch'),
+    (r'\b(whisper|whispering|whispery|hushed)\b', 'style', 'whisper'),
+    (r'\b(american|us|yankee|new york|texan)\b', 'accent', 'american accent'),
+    (r'\b(british|english|london|uk|posh|cockney|scottish)\b', 'accent', 'british accent'),
+    (r'\b(australian|aussie)\b', 'accent', 'australian accent'),
+    (r'\b(canadian)\b', 'accent', 'canadian accent'),
+    (r'\b(indian)\b', 'accent', 'indian accent'),
+    (r'\b(chinese)\b', 'accent', 'chinese accent'),
+    (r'\b(korean)\b', 'accent', 'korean accent'),
+    (r'\b(japanese)\b', 'accent', 'japanese accent'),
+    (r'\b(portuguese|brazilian)\b', 'accent', 'portuguese accent'),
+    (r'\b(russian)\b', 'accent', 'russian accent'),
+]
+
+
+class Fail(Exception):
+    pass
+
+
+class Cancelled(Exception):
+    pass
+
+
+class Paused(Exception):
+    pass
+
+
+def now():
+    return int(time.time())
+
+
+def run(cmd, timeout=600, inp=None, env=None, cwd=None):
+    """A command with no shell. (code, stdout bytes, stderr text)."""
+    try:
+        p = subprocess.run(cmd, input=inp, capture_output=True, timeout=timeout, env=env, cwd=cwd)
+        return p.returncode, p.stdout, p.stderr.decode('utf-8', 'replace')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, b'', str(e)
+
+
+def have(name):
+    return shutil.which(name) is not None
+
+
+# ------------------------------------------------------------------ settings (hearth_settings_io)
+
+def load():
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def set_key(key, raw):
+    """One setting, saved only when it's different from what you have now."""
+    if key == 'language':
+        if raw not in LANG_CODES:
+            raise Fail('a language code (or auto)')
+        v = raw
+    elif key == 'voice':
+        if raw and not re.fullmatch(r'[a-z0-9:_\-]{1,64}', raw):
+            raise Fail('a voice id')
+        v = raw
+    elif key == 'translateModel':
+        if raw and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:/\-]{0,120}', raw):
+            raise Fail('an Ollama model name')
+        v = raw
+    elif key == 'speakerLabels':
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        v = raw == 'on'
+    else:
+        raise Fail('Unknown setting')
+    if load().get(key) == v:
+        return False
+    sio.merge_json(SETTINGS, {key: v})
+    return True
+
+
+# ------------------------------------------------------------------ the PIN, sign-ins and the API key (state, 0600)
+
+def secret_read(path=None):
+    path = path or WEB_STATE
+    v = sio.load_json(path, {}, repair=False) if os.path.exists(path) else {}
+    return v if isinstance(v, dict) else {}
+
+
+def secret_write(data):
+    d = os.path.dirname(WEB_STATE)
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        text = json.dumps(data, indent=2, ensure_ascii=False) + '\n'
+        sio.write_bytes(WEB_STATE, text.encode('utf-8'), lambda b: sio._valid_json_object(b), mode=0o600)
+    except OSError as e:
+        raise Fail('Couldn\'t save it: %s isn\'t writable (%s). It should belong to you: in a terminal run '
+                   '"sudo chown -R $USER: %s", then try again' % (WEB_STATE.replace(HOME, '~', 1), e.strerror or e, d.replace(HOME, '~', 1)))
+
+
+def pin_clean(pin):
+    """What was typed, as a PIN (spaces dropped, other digit forms read as 0-9), or ''."""
+    if not isinstance(pin, (str, int)) or isinstance(pin, bool):
+        return ''
+    t = unicodedata.normalize('NFKC', str(pin)).strip()
+    t = ''.join(str(unicodedata.decimal(c)) if unicodedata.decimal(c, None) is not None else c for c in t)
+    return t if PIN_RE.match(t) else ''
+
+
+def pin_hash(pin, salt=None, n=200000):
+    salt = salt or secrets.token_hex(16)
+    return 'pbkdf2-sha256$%d$%s$%s' % (n, salt, hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), n).hex())
+
+
+def pin_check(pin, h):
+    try:
+        kind, n, salt, want = (h or '').split('$')
+        pin = pin_clean(pin)
+        if kind != 'pbkdf2-sha256' or not pin:
+            return False
+        return hmac.compare_digest(hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), int(n)).hex(), want)
+    except (ValueError, TypeError):
+        return False
+
+
+def pin_hashes():
+    """The PINs that open the page: Voice Studio's own, or (with none of its own) Server mode's. (hash, where)."""
+    own = secret_read().get('pin')
+    if own:
+        return [(own, 'own')]
+    sm = secret_read(SERVER_MODE_WEB).get('pin')
+    return [(sm, 'server')] if sm else []
+
+
+def pin_set(pin):
+    p = pin_clean(pin)
+    if not p:
+        raise Fail('The PIN is 4 to 12 digits (numbers only)')
+    st = secret_read()
+    st['pin'] = pin_hash(p)
+    st['sessions'] = {}           # a new PIN signs every device out
+    secret_write(st)
+    return {'pin': True}
+
+
+def pin_clear():
+    st = secret_read()
+    st.pop('pin', None)
+    st['sessions'] = {}
+    secret_write(st)
+    return {'pin': False, 'serverPin': bool(secret_read(SERVER_MODE_WEB).get('pin'))}
+
+
+def token_key(tok):
+    return hashlib.sha256(tok.encode()).hexdigest()
+
+
+def session_new(name):
+    st = secret_read()
+    tok = secrets.token_urlsafe(32)
+    t = now()
+    sess = {k: v for k, v in (st.get('sessions') or {}).items() if isinstance(v, dict) and v.get('exp', 0) > t}
+    sess[token_key(tok)] = {'exp': t + SESSION_DAYS * 86400, 'name': (name or '')[:60], 'pin': pin_hashes()[0][1] if pin_hashes() else ''}
+    for k in sorted(sess, key=lambda k: sess[k]['exp'])[:max(0, len(sess) - 20)]:
+        sess.pop(k)
+    st['sessions'] = sess
+    secret_write(st)
+    return tok
+
+
+def session_ok(tok):
+    if not tok or not re.fullmatch(r'[A-Za-z0-9_\-]{20,64}', tok):
+        return False
+    s = (secret_read().get('sessions') or {}).get(token_key(tok))
+    if not isinstance(s, dict) or s.get('exp', 0) <= time.time():
+        return False
+    # Signed in with Server mode's PIN: only while that's still the PIN that opens the page.
+    hs = pin_hashes()
+    return bool(hs) and s.get('pin', hs[0][1]) == hs[0][1]
+
+
+def session_end(tok):
+    st = secret_read()
+    if (st.get('sessions') or {}).pop(token_key(tok or 'x'), None) is not None:
+        secret_write(st)
+
+
+def api_key(make=True):
+    st = secret_read()
+    k = st.get('key')
+    if not k and make:
+        k = 'hvs-' + secrets.token_urlsafe(24)
+        st['key'] = k
+        secret_write(st)
+    return k or ''
+
+
+def api_key_new():
+    st = secret_read()
+    st['key'] = 'hvs-' + secrets.token_urlsafe(24)
+    secret_write(st)
+    return st['key']
+
+
+def key_ok(header):
+    k = secret_read().get('key')
+    m = re.fullmatch(r'Bearer\s+(\S{8,200})', (header or '').strip())
+    return bool(k and m and hmac.compare_digest(m.group(1).encode(), k.encode()))
+
+
+# ------------------------------------------------------------------ who may reach the page
+
+def peer_allowed(ip):
+    """Only this PC and Tailscale (the page also listens only on 127.0.0.1 and this PC's Tailscale address, and the home
+    server's nftables rule drops the port everywhere else)."""
+    try:
+        a = ipaddress.ip_address(ip.split('%')[0])
+    except ValueError:
+        return False
+    if a.version == 6 and a.ipv4_mapped:
+        a = a.ipv4_mapped
+    return a.is_loopback or any(a in n for n in TS_NETS)
+
+
+def write_allowed(headers):
+    """A write from this page, not another site: Hearth's X-Hearth header (a form can't send it; another site's script
+    would need CORS, which this server never answers), then Sec-Fetch-Site (same-origin only) or a real Origin."""
+    if headers.get('X-Hearth') != '1':
+        return False
+    site = (headers.get('Sec-Fetch-Site') or '').strip().lower()
+    if site:
+        return site == 'same-origin'
+    o = (headers.get('Origin') or '').strip().lower()
+    if o in ('', 'null'):
+        return True
+    host = (headers.get('Host') or '').strip().lower()
+    return bool(host) and o in ('http://' + host, 'https://' + host)
+
+
+def ts_ip4():
+    if not have('tailscale'):
+        return ''
+    code, out, _ = run(['tailscale', 'ip', '-4'], 8)
+    ip = out.decode().strip().splitlines()[0].strip() if code == 0 and out.strip() else ''
+    return ip if re.fullmatch(r'100\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip) else ''
+
+
+def ts_name():
+    if not have('tailscale'):
+        return ''
+    code, out, _ = run(['tailscale', 'status', '--json'], 8)
+    try:
+        return str((json.loads(out).get('Self') or {}).get('DNSName') or '').rstrip('.') if code == 0 else ''
+    except ValueError:
+        return ''
+
+
+def listen_addresses():
+    ip = ts_ip4()
+    return ['127.0.0.1'] + ([ip] if ip else [])
+
+
+# ------------------------------------------------------------------ audio helpers (standard library; ffmpeg when there)
+
+def wav_bytes(pcm, sr=SR, ch=1):
+    b = io.BytesIO()
+    with wave.open(b, 'wb') as w:
+        w.setnchannels(ch)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(pcm)
+    return b.getvalue()
+
+
+def write_wav(path, pcm, sr=SR, ch=1):
+    tmp = path + '.part'
+    with open(tmp, 'wb') as f:
+        f.write(wav_bytes(pcm, sr, ch))
+    os.replace(tmp, path)
+
+
+def read_wav(path):
+    """(pcm16 bytes, rate, channels) of a 16-bit WAV."""
+    with wave.open(path, 'rb') as w:
+        if w.getsampwidth() != 2:
+            raise Fail('not a 16-bit WAV')
+        return w.readframes(w.getnframes()), w.getframerate(), w.getnchannels()
+
+
+def secs(pcm, sr=SR, ch=1):
+    return len(pcm) / (2.0 * sr * ch)
+
+
+def silence(sec, sr=SR):
+    return b'\0\0' * max(0, int(sec * sr))
+
+
+def to_wav(src, dst, sr=SR, ch=1, start=None, dur=None):
+    """Any audio or video to a 16-bit WAV with ffmpeg (or a WAV copied as it is when there's no ffmpeg)."""
+    if not have('ffmpeg'):
+        try:
+            pcm, r, c = read_wav(src)
+        except (wave.Error, EOFError, Fail, OSError):
+            raise Fail('This PC needs ffmpeg to read that kind of file')
+        if (r, c) != (sr, ch):
+            raise Fail('This PC needs ffmpeg to convert that recording')
+        if start is not None or dur is not None:
+            a = int((start or 0) * sr) * 2 * ch
+            b = a + int(dur * sr) * 2 * ch if dur else len(pcm)
+            pcm = pcm[a:b]
+        write_wav(dst, pcm, sr, ch)
+        return dst
+    cmd = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-y']
+    if start is not None:
+        cmd += ['-ss', '%.3f' % start]
+    cmd += ['-i', src]
+    if dur is not None:
+        cmd += ['-t', '%.3f' % dur]
+    cmd += ['-vn', '-ac', str(ch), '-ar', str(sr), '-c:a', 'pcm_s16le', '-f', 'wav', dst + '.part']
+    code, _, err = run(cmd, 3600)
+    if code != 0:
+        raise Fail('That file couldn\'t be read as audio: %s' % (err.strip().splitlines() or ['no reason given'])[-1][:200])
+    os.replace(dst + '.part', dst)
+    return dst
+
+
+def encode(wav, fmt):
+    """WAV bytes as FMT (mp3, opus, flac, aac, pcm, wav). Without ffmpeg only wav and pcm."""
+    if fmt == 'wav':
+        return wav
+    if fmt == 'pcm':
+        with wave.open(io.BytesIO(wav), 'rb') as w:
+            return w.readframes(w.getnframes())
+    if not have('ffmpeg'):
+        raise Fail('This PC needs ffmpeg for %s: ask for wav instead' % fmt)
+    args = {'mp3': ['-c:a', 'libmp3lame', '-q:a', '3', '-f', 'mp3'], 'opus': ['-c:a', 'libopus', '-b:a', '64k', '-f', 'ogg'],
+            'flac': ['-c:a', 'flac', '-f', 'flac'], 'aac': ['-c:a', 'aac', '-b:a', '128k', '-f', 'adts']}[fmt]
+    code, out, err = run(['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-f', 'wav', '-i', 'pipe:0'] + args + ['pipe:1'], 900, inp=wav)
+    if code != 0 or not out:
+        raise Fail('Couldn\'t make %s: %s' % (fmt, err.strip()[-200:]))
+    return out
+
+
+def media_secs(path):
+    if have('ffprobe'):
+        code, out, _ = run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', path], 60)
+        try:
+            return float(out.decode().strip()) if code == 0 else 0.0
+        except ValueError:
+            pass
+    try:
+        pcm, r, c = read_wav(path)
+        return secs(pcm, r, c)
+    except Exception:  # noqa: BLE001 - not a WAV: unknown
+        return 0.0
+
+
+def fit(pcm, sr, slot, tmpdir):
+    """Speech made to fit SLOT seconds: sped up (up to 1.5x, ffmpeg's atempo keeps the pitch) when it runs over, then
+    cut with a short fade if it still does. Never slowed down (silence after it instead)."""
+    have_s = secs(pcm, sr)
+    if slot <= 0 or have_s <= slot + 0.02:
+        return pcm
+    rate = min(1.5, have_s / slot)
+    if have('ffmpeg') and rate > 1.02:
+        src = os.path.join(tmpdir, 'fit-in.wav')
+        dst = os.path.join(tmpdir, 'fit-out.wav')
+        write_wav(src, pcm, sr)
+        code, _, _ = run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-y', '-i', src, '-filter:a', 'atempo=%.3f' % rate,
+                          '-ar', str(sr), '-ac', '1', '-c:a', 'pcm_s16le', dst], 300)
+        if code == 0:
+            try:
+                pcm = read_wav(dst)[0]
+            except (wave.Error, EOFError, Fail, OSError):
+                pass
+    n = int(slot * sr) * 2
+    if len(pcm) > n:
+        pcm = fade_out(pcm[:n], sr)
+    return pcm
+
+
+def fade_out(pcm, sr, sec=0.08):
+    import array
+    a = array.array('h')
+    a.frombytes(pcm[:len(pcm) // 2 * 2])
+    n = min(len(a), int(sec * sr))
+    for i in range(n):
+        a[len(a) - n + i] = int(a[len(a) - n + i] * (n - i) / n)
+    return a.tobytes()
+
+
+def place(track, pcm, at, sr=SR):
+    """PCM put into TRACK (a bytearray of 16-bit mono) starting at AT seconds, growing it when needed."""
+    a = int(at * sr) * 2
+    if len(track) < a + len(pcm):
+        track.extend(b'\0' * (a + len(pcm) - len(track)))
+    track[a:a + len(pcm)] = pcm
+    return track
+
+
+# ------------------------------------------------------------------ text helpers
+
+SENT_RE = re.compile(r'(?<=[.!?…。！？])\s+|(?<=[。！？])|\n{2,}')
+
+
+def chunks(text, limit=280):
+    """Text in pieces the engine speaks well: whole sentences, at most LIMIT characters (long ones split at commas)."""
+    out, cur = [], ''
+    for s in (x.strip() for x in SENT_RE.split(text or '')):
+        if not s:
+            continue
+        s = re.sub(r'\s+', ' ', s)
+        parts = [s]
+        if len(s) > limit:
+            parts, piece = [], ''
+            for w in re.split(r'(?<=[,;:，、])\s*|\s+', s):
+                if not w:
+                    continue
+                if piece and len(piece) + len(w) + 1 > limit:
+                    parts.append(piece)
+                    piece = w
+                else:
+                    piece = (piece + ' ' + w).strip()
+            if piece:
+                parts.append(piece)
+        for p in parts:
+            if cur and len(cur) + len(p) + 1 > limit:
+                out.append(cur)
+                cur = p
+            else:
+                cur = (cur + ' ' + p).strip()
+    if cur:
+        out.append(cur)
+    return out
+
+
+HEAD_RE = re.compile(r'^[ \t]*(?:#{1,3}[ \t]+\S.{0,100}|(?:chapter|kapitel|chapitre|cap[ií]tulo|capitolo|hoofdstuk|rozdzia[łl]|глава|'
+                     r'part|book|prologue|epilogue|prolog|epilog)\b[^\n]{0,100})[ \t]*$', re.I | re.M)
+
+
+def split_chapters(text, title=''):
+    """Chapters from plain text: at headings ("Chapter 3", "# Title", "Prologue"...) when there are at least two, else
+    one chapter, or parts of about 15,000 characters at paragraph breaks for a long text with no headings."""
+    text = (text or '').replace('\r\n', '\n').replace('\r', '\n')
+    heads = list(HEAD_RE.finditer(text))
+    out = []
+    if len(heads) >= 2:
+        pre = text[:heads[0].start()].strip()
+        if len(pre) > 200:
+            out.append({'title': title or 'Opening', 'text': pre})
+        for i, m in enumerate(heads):
+            body = text[m.end():heads[i + 1].start() if i + 1 < len(heads) else len(text)].strip()
+            name = m.group(0).strip().lstrip('#').strip()[:100]
+            if body:
+                out.append({'title': name, 'text': body})
+    elif len(text) <= 20000:
+        if text.strip():
+            out.append({'title': title or 'Chapter 1', 'text': text.strip()})
+    else:
+        cur = ''
+        for para in re.split(r'\n\s*\n', text):
+            if cur and len(cur) + len(para) > 15000:
+                out.append({'title': 'Part %d' % (len(out) + 1), 'text': cur.strip()})
+                cur = ''
+            cur += para + '\n\n'
+        if cur.strip():
+            out.append({'title': 'Part %d' % (len(out) + 1), 'text': cur.strip()})
+    return [{'title': c['title'], 'text': c['text'][:400000]} for c in out[:400]]
+
+
+def epub_chapters(path):
+    """Chapters from an .epub: its reading order (the OPF spine), each document's text, its first heading as the title.
+    Covers, tables of contents and other tiny pages are left out. Sizes are capped (a zip can claim anything)."""
+    import xml.etree.ElementTree as ET
+    from html.parser import HTMLParser
+
+    class Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts, self.head, self.in_head, self.skip = [], '', False, 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ('script', 'style', 'head'):
+                self.skip += 1
+            if tag in ('h1', 'h2', 'h3') and not self.head:
+                self.in_head = True
+            if tag in ('p', 'div', 'br', 'h1', 'h2', 'h3', 'h4', 'li', 'section', 'blockquote'):
+                self.parts.append('\n\n')
+
+        def handle_endtag(self, tag):
+            if tag in ('script', 'style', 'head'):
+                self.skip = max(0, self.skip - 1)
+            if tag in ('h1', 'h2', 'h3'):
+                self.in_head = False
+
+        def handle_data(self, d):
+            if self.skip:
+                return
+            if self.in_head:
+                self.head = (self.head + ' ' + d).strip()[:100]
+            self.parts.append(d)
+
+    def read(z, name, limit=8 << 20):
+        info = z.getinfo(name)
+        if info.file_size > limit:
+            raise Fail('That book has a part bigger than Hearth reads (%s)' % name[:60])
+        return z.read(name)
+
+    try:
+        z = zipfile.ZipFile(path)
+    except (zipfile.BadZipFile, OSError):
+        raise Fail('That isn\'t an .epub book (it couldn\'t be opened)')
+    with z:
+        if sum(i.file_size for i in z.infolist()) > 400 << 20:
+            raise Fail('That book is too big for Hearth to read')
+        try:
+            cont = ET.fromstring(read(z, 'META-INF/container.xml'))
+            opf_path = next(e.get('full-path') for e in cont.iter() if e.tag.endswith('rootfile'))
+            opf = ET.fromstring(read(z, opf_path))
+        except (KeyError, StopIteration, ET.ParseError):
+            raise Fail('That .epub book has no table of contents Hearth can read')
+        base = os.path.dirname(opf_path)
+        items = {}
+        for e in opf.iter():
+            if e.tag.endswith('}item') or e.tag == 'item':
+                items[e.get('id')] = (e.get('href') or '', e.get('media-type') or '', e.get('properties') or '')
+        book_title = next((e.text for e in opf.iter() if e.tag.endswith('}title') and e.text), '') or ''
+        out = []
+        for e in opf.iter():
+            if not (e.tag.endswith('}itemref') or e.tag == 'itemref'):
+                continue
+            href, mt, props = items.get(e.get('idref'), ('', '', ''))
+            if not href or 'nav' in props.split() or 'html' not in mt:
+                continue
+            name = os.path.normpath(os.path.join(base, urllib.parse.unquote(href))).replace(os.sep, '/')
+            try:
+                raw = read(z, name).decode('utf-8', 'replace')
+            except KeyError:
+                continue
+            p = Text()
+            try:
+                p.feed(raw)
+            except Exception:  # noqa: BLE001 - a broken page is left out
+                continue
+            body = re.sub(r'[ \t]+', ' ', ''.join(p.parts))
+            body = re.sub(r'\n\s*\n\s*(\n\s*)+', '\n\n', body).strip()
+            if len(body) < 300:
+                continue
+            out.append({'title': p.head or 'Chapter %d' % (len(out) + 1), 'text': body[:400000]})
+            if len(out) >= 400:
+                break
+        if not out:
+            raise Fail('That book has no chapters with text in them')
+        return book_title.strip()[:120], out
+
+
+def srt_time(t, sep=','):
+    t = max(0.0, float(t))
+    h, rem = divmod(int(round(t * 1000)), 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
+    return '%02d:%02d:%02d%s%03d' % (h, m, s, sep, ms)
+
+
+def to_srt(segs):
+    lines = []
+    for i, s in enumerate(segs, 1):
+        who = ('[%s] ' % s['speaker']) if s.get('speaker') else ''
+        lines.append('%d\n%s --> %s\n%s%s\n' % (i, srt_time(s['start']), srt_time(s['end']), who, s['text'].strip()))
+    return '\n'.join(lines)
+
+
+def to_vtt(segs):
+    out = ['WEBVTT', '']
+    for s in segs:
+        who = ('<v %s>' % s['speaker']) if s.get('speaker') else ''
+        out.append('%s --> %s\n%s%s\n' % (srt_time(s['start'], '.'), srt_time(s['end'], '.'), who, s['text'].strip()))
+    return '\n'.join(out)
+
+
+def to_text(segs):
+    out, last = [], None
+    for s in segs:
+        if s.get('speaker') and s['speaker'] != last:
+            out.append('\n%s: %s' % (s['speaker'], s['text'].strip()))
+            last = s['speaker']
+        else:
+            out.append(s['text'].strip())
+    return ' '.join(out).strip() + '\n'
+
+
+def describe_to_instruct(text):
+    """A description in your own words ("a grumpy old pirate with a deep voice") as the attributes OmniVoice's voice
+    design understands ("male, elderly, low pitch"): at most one per kind, the first word that matches wins."""
+    t = (text or '').lower()
+    got = {}
+    for pat, kind, attr in DESIGN_WORDS:
+        if kind not in got and re.search(pat, t):
+            got[kind] = attr
+    # Attributes written as OmniVoice's own words are taken as they are.
+    for kind, words in DESIGN.items():
+        for w in words:
+            if kind not in got and re.search(r'(^|[ ,])%s($|[ ,])' % re.escape(w), t):
+                got[kind] = w
+    order = ('gender', 'age', 'pitch', 'style', 'accent')
+    return ', '.join(got[k] for k in order if k in got)
+
+
+def cluster(vectors, threshold=0.55, most=8):
+    """Speaker labels from voice fingerprints (unit vectors): each one joins the closest speaker so far when it's similar
+    enough, else becomes a new speaker (at most MOST). Returns a label index per vector."""
+    cents, counts, out = [], [], []
+    for v in vectors:
+        v = [float(x) for x in v]
+        best, bi = -2.0, -1
+        for i, c in enumerate(cents):
+            n = sum(x * x for x in c) ** 0.5 or 1.0
+            sim = sum(a * b for a, b in zip(v, c)) / n
+            if sim > best:
+                best, bi = sim, i
+        if bi >= 0 and (best >= threshold or len(cents) >= most):
+            k = counts[bi]
+            cents[bi] = [(c * k + x) / (k + 1) for c, x in zip(cents[bi], v)]
+            counts[bi] += 1
+            out.append(bi)
+        else:
+            cents.append(v)
+            counts.append(1)
+            out.append(len(cents) - 1)
+    return out
+
+
+# ------------------------------------------------------------------ Ollama (the home server's own AI service)
+
+def ollama(method, path, body=None, timeout=10):
+    req = urllib.request.Request(OLLAMA + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read(8 << 20).decode('utf-8', 'replace'))
+    except Exception:  # noqa: BLE001 - not answering is just that
+        return None
+
+
+def ollama_models():
+    tags = ollama('GET', '/api/tags', timeout=3)
+    return [m.get('name') for m in (tags or {}).get('models') or [] if isinstance(m, dict) and m.get('name')]
+
+
+def translate(lines, target, model='', ask=None):
+    """Lines translated into TARGET by the home server's AI service (Ollama), 25 at a time, kept in the same order and
+    count. A batch that comes back wrong is asked again line by line."""
+    ask = ask or ollama
+    if not model:
+        models = ollama_models() if ask is ollama else ['test']
+        if not models:
+            raise Fail('Translating needs the AI service (Settings › Home server › AI chat) with a model downloaded')
+        prefer = [m for m in models if m.split(':')[0] in ('qwen3', 'gpt-oss', 'llama3.1', 'llama3.2', 'gemma3', 'mistral')]
+        model = (prefer or models)[0]
+    lang = LANG_NAMES.get(target, target)
+    out = []
+
+    def one(batch):
+        prompt = ('Translate each line into %s. Keep the meaning, tone and names; keep each line about as long when spoken. '
+                  'Answer only with JSON: {"lines": [...]} with exactly %d strings, in the same order.\n\n%s'
+                  % (lang, len(batch), json.dumps(batch, ensure_ascii=False)))
+        r = ask('POST', '/api/chat', {'model': model, 'stream': False, 'think': False, 'format': 'json', 'options': {'temperature': 0.2},
+                                      'messages': [{'role': 'system', 'content': 'You are a careful subtitle translator.'},
+                                                   {'role': 'user', 'content': prompt}]}, timeout=600)
+        try:
+            got = json.loads(((r or {}).get('message') or {}).get('content') or '{}').get('lines')
+        except (ValueError, AttributeError):
+            got = None
+        if isinstance(got, list) and len(got) == len(batch) and all(isinstance(x, str) for x in got):
+            return [x.strip() for x in got]
+        return None
+
+    for i in range(0, len(lines), 25):
+        batch = lines[i:i + 25]
+        got = one(batch)
+        if got is None:
+            got = []
+            for line in batch:
+                g = one([line])
+                if g is None:
+                    raise Fail('The AI service (%s) didn\'t give a translation back. Try another model in Voice Studio\'s settings' % model)
+                got += g
+        out += got
+    return out, model
+
+
+# ------------------------------------------------------------------ engines
+
+class Engines:
+    """The voice engines, loaded the first time they're needed and let go after ten idle minutes (the graphics card is
+    shared with games, AI chat and AI pictures). One at a time on the card (self.lock)."""
+    IDLE = 600
+
+    def __init__(self, data=DATA):
+        self.data = data
+        self.lock = threading.RLock()
+        self.omni = self.whisper = self.labeler = self.demucs = None
+        self.used = time.time()
+        self.caps_cache = None
+
+    # ---- what's there
+    def caps(self):
+        if self.caps_cache is None:
+            import importlib.util as u
+            has = lambda m: u.find_spec(m) is not None  # noqa: E731
+            self.caps_cache = {'speak': has('omnivoice'), 'clone': has('omnivoice'), 'design': has('omnivoice'),
+                               'transcribe': has('faster_whisper'), 'labels': has('speechbrain'), 'separate': has('demucs'),
+                               'gpu': self._gpu()}
+        c = dict(self.caps_cache)
+        c['kokoro'] = bool(kokoro_voices())
+        c['ffmpeg'] = have('ffmpeg')
+        return c
+
+    def _gpu(self):
+        try:
+            import torch
+            return torch.cuda.get_device_name(0) if torch.cuda.is_available() else ''
+        except Exception:  # noqa: BLE001
+            return ''
+
+    def idle_check(self):
+        if time.time() - self.used > self.IDLE and (self.omni or self.whisper or self.labeler or self.demucs):
+            with self.lock:
+                self.omni = self.whisper = self.labeler = self.demucs = None
+                try:
+                    import gc
+                    import torch
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _device(self):
+        import torch
+        return 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+    # ---- speech
+    def _omnivoice(self):
+        if self.omni is None:
+            import torch
+            from omnivoice import OmniVoice
+            dev = self._device()
+            self.omni = OmniVoice.from_pretrained(OMNI_MODEL, device_map=dev, dtype=torch.float16 if dev != 'cpu' else torch.float32)
+        return self.omni
+
+    def speak(self, text, ref=None, ref_text=None, instruct=None, language=None, speed=1.0, duration=None):
+        """One piece of speech: (pcm16 bytes, rate)."""
+        import numpy as np
+        with self.lock:
+            self.used = time.time()
+            m = self._omnivoice()
+            kw = {'text': text}
+            if language and language != 'auto':
+                kw['language'] = language
+            if ref:
+                kw['ref_audio'] = ref
+                if ref_text:
+                    kw['ref_text'] = ref_text
+            elif instruct:
+                kw['instruct'] = instruct
+            if duration:
+                kw['duration'] = float(duration)
+            elif speed and abs(speed - 1.0) > 0.01:
+                kw['speed'] = float(speed)
+            out = m.generate(**kw)
+            a = out[0] if isinstance(out, (list, tuple)) else out
+            if hasattr(a, 'detach'):
+                a = a.detach().float().cpu().numpy()
+            a = np.clip(np.asarray(a, dtype=np.float32).reshape(-1), -1.0, 1.0)
+            sr = int(getattr(m, 'sampling_rate', None) or SR)
+            self.used = time.time()
+            return (a * 32767).astype('<i2').tobytes(), sr
+
+    # ---- transcription
+    def _whisper_model(self):
+        if self.whisper is None:
+            from faster_whisper import WhisperModel
+            try:
+                self.whisper = WhisperModel(WHISPER_MODEL, device='cuda', compute_type='float16', download_root=os.path.join(MODELS, 'whisper'))
+            except Exception:  # noqa: BLE001 - no CUDA libraries: the processor (slower)
+                self.whisper = WhisperModel(WHISPER_MODEL, device='cpu', compute_type='int8', download_root=os.path.join(MODELS, 'whisper'))
+        return self.whisper
+
+    def transcribe(self, path, language=None, task='transcribe', labels=False, progress=None):
+        with self.lock:
+            self.used = time.time()
+            m = self._whisper_model()
+            segs, info = m.transcribe(path, language=None if language in (None, '', 'auto') else language, task=task, vad_filter=True, beam_size=5)
+            out = []
+            total = float(getattr(info, 'duration', 0) or 0)
+            for s in segs:
+                t = (s.text or '').strip()
+                if t:
+                    out.append({'start': round(float(s.start), 2), 'end': round(float(s.end), 2), 'text': t})
+                if progress and total:
+                    progress(min(1.0, float(s.end) / total))
+            if labels and len(out) > 1 and self.caps().get('labels'):
+                try:
+                    self._label(path, out)
+                except Exception as e:  # noqa: BLE001 - labels are a bonus: the words stand without them
+                    print('hearth-voice-studio: speaker labels skipped (%s)' % e, file=sys.stderr, flush=True)
+            self.used = time.time()
+            return {'language': getattr(info, 'language', '') or '', 'duration': total, 'segments': out}
+
+    def _label(self, path, segs):
+        import numpy as np
+        import torch
+        try:
+            from speechbrain.inference.speaker import EncoderClassifier
+        except ImportError:
+            from speechbrain.pretrained import EncoderClassifier
+        if self.labeler is None:
+            self.labeler = EncoderClassifier.from_hparams(source=LABEL_MODEL, savedir=os.path.join(MODELS, 'speechbrain-ecapa'),
+                                                          run_opts={'device': self._device()})
+        code, raw, err = run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-i', path, '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', 'pipe:1'], 3600)
+        if code != 0:
+            raise Fail(err[-200:])
+        pcm = np.frombuffer(raw, dtype=np.float32)
+        vecs, idx = [], []
+        for i, s in enumerate(segs):
+            a = pcm[int(s['start'] * 16000):int(s['end'] * 16000)]
+            if len(a) < 12000:
+                continue
+            e = self.labeler.encode_batch(torch.from_numpy(a.copy())[None]).squeeze().detach().cpu().numpy()
+            vecs.append((e / (np.linalg.norm(e) or 1.0)).tolist())
+            idx.append(i)
+        labs = cluster(vecs)
+        names = {}
+        for i, lab in zip(idx, labs):
+            segs[i]['speaker'] = names.setdefault(lab, 'Speaker %d' % (len(names) + 1))
+        last = None
+        for s in segs:                      # pieces too short to tell: the speaker around them
+            if s.get('speaker'):
+                last = s['speaker']
+            elif last:
+                s['speaker'] = last
+        if len(names) < 2:
+            for s in segs:
+                s.pop('speaker', None)
+
+    # ---- vocals and background
+    def separate(self, wav, vocals, background):
+        """WAV (44.1 kHz stereo) split into the voices and everything else (Demucs htdemucs)."""
+        import numpy as np
+        import torch
+        from demucs.apply import apply_model
+        from demucs.pretrained import get_model
+        with self.lock:
+            self.used = time.time()
+            if self.demucs is None:
+                os.environ.setdefault('TORCH_HOME', os.path.join(MODELS, 'torch'))
+                self.demucs = get_model('htdemucs')
+                self.demucs.eval()
+            pcm, sr, ch = read_wav(wav)
+            a = np.frombuffer(pcm, dtype='<i2').astype(np.float32).reshape(-1, ch).T / 32768.0
+            x = torch.from_numpy(a.copy())
+            ref = x.mean(0)
+            mean, std = ref.mean(), ref.std() or 1.0
+            dev = self._device()
+            with torch.no_grad():
+                src = apply_model(self.demucs, ((x - mean) / std)[None], device=dev, split=True, overlap=0.25, progress=False)[0]
+            src = src * std + mean
+            vi = list(self.demucs.sources).index('vocals')
+            voc = src[vi]
+            bg = src.sum(0) - voc
+            for t, path in ((voc, vocals), (bg, background)):
+                arr = (np.clip(t.cpu().numpy().T, -1, 1) * 32767).astype('<i2')
+                write_wav(path, arr.tobytes(), sr, ch)
+            self.used = time.time()
+
+
+class MockEngines(Engines):
+    """Stand-in engines for tests and CI screenshots: tones instead of speech, made-up words instead of a transcript."""
+
+    def __init__(self, data=DATA):
+        super().__init__(data)
+        self.calls = []
+
+    def caps(self):
+        return {'speak': True, 'clone': True, 'design': True, 'transcribe': True, 'labels': True, 'separate': True,
+                'gpu': 'NVIDIA GeForce RTX 5070 (stand-in)', 'kokoro': bool(kokoro_voices()), 'ffmpeg': have('ffmpeg')}
+
+    def idle_check(self):
+        pass
+
+    def speak(self, text, ref=None, ref_text=None, instruct=None, language=None, speed=1.0, duration=None):
+        import array
+        import math
+        self.calls.append(('speak', text, ref, instruct, language, duration))
+        sec = duration or max(0.4, min(30.0, len(text) * 0.055 / (speed or 1.0)))
+        n = int(sec * SR)
+        f = 180 + (sum(map(ord, (ref or '') + (instruct or ''))) % 200)
+        a = array.array('h', (int(6000 * math.sin(2 * math.pi * f * i / SR) * (0.5 + 0.5 * math.sin(i / 2400.0))) for i in range(n)))
+        return a.tobytes(), SR
+
+    def transcribe(self, path, language=None, task='transcribe', labels=False, progress=None):
+        self.calls.append(('transcribe', path, language, task, labels))
+        total = media_secs(path) or 6.0
+        words = ['Welcome to the castle.', 'The gate opens at dawn.', 'Bring the map and the lantern.', 'We leave before the snow comes.']
+        segs, t, i = [], 0.0, 0
+        while t < total - 0.3 and i < 200:
+            end = min(total, t + 2.5)
+            segs.append({'start': round(t, 2), 'end': round(end, 2), 'text': words[i % len(words)]})
+            if labels:
+                segs[-1]['speaker'] = 'Speaker %d' % (i % 2 + 1)
+            t, i = end + 0.2, i + 1
+            if progress:
+                progress(min(1.0, t / total))
+        return {'language': language if language not in (None, '', 'auto') else 'en', 'duration': total, 'segments': segs}
+
+    def separate(self, wav, vocals, background):
+        self.calls.append(('separate', wav))
+        shutil.copyfile(wav, vocals)
+        shutil.copyfile(wav, background)
+
+
+# ------------------------------------------------------------------ Kokoro (Hearth's AI voices, when it's on)
+
+_KOKORO = {'at': 0, 'voices': []}
+
+
+def kokoro_voices():
+    """Kokoro's voices when Hearth's AI voices answers on this PC (looked up at most once a minute)."""
+    if time.time() - _KOKORO['at'] < 60:
+        return _KOKORO['voices']
+    v = []
+    try:
+        with urllib.request.urlopen(KOKORO + '/v1/audio/voices', timeout=2) as r:
+            j = json.loads(r.read(1 << 20))
+        v = [x if isinstance(x, str) else str((x or {}).get('id') or (x or {}).get('name') or '') for x in (j.get('voices') or [])]
+        v = [x for x in v if re.fullmatch(r'[A-Za-z0-9_\-]{1,40}', x)][:200]
+    except Exception:  # noqa: BLE001 - off or not installed
+        v = []
+    _KOKORO.update(at=time.time(), voices=v)
+    return v
+
+
+def kokoro_speak(voice, text, speed=1.0):
+    body = {'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav', 'speed': speed}
+    req = urllib.request.Request(KOKORO + '/v1/audio/speech', data=json.dumps(body).encode(), method='POST',
+                                 headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = r.read(200 << 20)
+    except Exception as e:  # noqa: BLE001
+        raise Fail('AI voices (Kokoro) didn\'t answer: %s' % e)
+    try:
+        with wave.open(io.BytesIO(data), 'rb') as w:
+            pcm, sr, ch = w.readframes(w.getnframes()), w.getframerate(), w.getnchannels()
+    except (wave.Error, EOFError):
+        raise Fail('AI voices (Kokoro) sent something that isn\'t audio')
+    if ch == 2:
+        import array
+        a = array.array('h')
+        a.frombytes(pcm[:len(pcm) // 4 * 4])
+        pcm = array.array('h', ((a[i] + a[i + 1]) // 2 for i in range(0, len(a), 2))).tobytes()
+    return pcm, sr
+
+
+# ------------------------------------------------------------------ the studio: voices, speech, jobs
+
+def new_id():
+    return secrets.token_hex(6)
+
+
+def clean_name(s, fallback='Voice'):
+    s = re.sub(r'[\x00-\x1f<>]', ' ', unicodedata.normalize('NFC', str(s or ''))).strip()
+    return re.sub(r'\s+', ' ', s)[:60] or fallback
+
+
+class Studio:
+    def __init__(self, data=DATA, engines=None):
+        self.data = data
+        self.engines = engines or Engines(data)
+        self.vdir = os.path.join(data, 'voices')
+        self.jdir = os.path.join(data, 'jobs')
+        self.pdir = os.path.join(data, 'presets')
+        self.updir = os.path.join(data, 'uploads')
+        for d in (self.vdir, self.jdir, self.pdir, self.updir):
+            os.makedirs(d, mode=0o700, exist_ok=True)
+        self.jlock = threading.RLock()
+        self.wake = threading.Event()
+        self.stop = threading.Event()
+        self.cancel = set()
+        self.current = None
+
+    # ---- voices
+    def voices(self):
+        out = []
+        for vid in sorted(os.listdir(self.vdir)):
+            v = self.voice(vid)
+            if v:
+                out.append(v)
+        return sorted(out, key=lambda v: -v.get('created', 0))
+
+    def voice(self, vid):
+        if not ID_RE.fullmatch(vid or ''):
+            return None
+        p = os.path.join(self.vdir, vid, 'voice.json')
+        v = sio.load_json(p, {}, repair=False) if os.path.exists(p) else {}
+        return v if isinstance(v, dict) and v.get('id') == vid else None
+
+    def voice_save(self, v):
+        d = os.path.join(self.vdir, v['id'])
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        sio.write_json(os.path.join(d, 'voice.json'), v)
+        return v
+
+    def clone(self, clip, name, language='auto', ref_text='', consent=False, by=''):
+        """A voice from a recording (any format ffmpeg reads): the clearest 3 to 20 seconds kept as its sample, the words
+        said in it written down (when transcription is installed and you didn't type them)."""
+        if not consent:
+            raise Fail('Tick the box to confirm this is your voice, or you have the person\'s permission to copy it')
+        vid = new_id()
+        d = os.path.join(self.vdir, vid)
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        try:
+            ref = os.path.join(d, 'ref.wav')
+            to_wav(clip, ref, SR, 1, dur=20.0)
+            pcm, sr, _ = read_wav(ref)
+            if secs(pcm, sr) < 2.5:
+                raise Fail('That recording is too short: 5 to 15 seconds of one person talking works best')
+            text = (ref_text or '').strip()[:500]
+            if not text and self.engines.caps().get('transcribe'):
+                try:
+                    text = ' '.join(s['text'] for s in self.engines.transcribe(ref, language)['segments'])[:500]
+                except Exception as e:  # noqa: BLE001 - the voice still works without the words
+                    print('hearth-voice-studio: no transcript for the clip (%s)' % e, file=sys.stderr, flush=True)
+            v = {'id': vid, 'name': clean_name(name), 'kind': 'clone', 'language': language if language in LANG_CODES else 'auto',
+                 'refText': text, 'secs': round(secs(pcm, sr), 1), 'created': now(),
+                 'consent': {'at': now(), 'by': (by or '')[:60], 'text': 'This is my voice, or I have permission to copy it'}}
+            return self.voice_save(v)
+        except BaseException:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
+
+    def design_preview(self, description, language='auto', text=''):
+        parts = [x.strip() for x in str(description or '').lower().split(',') if x.strip()]
+        known = [w for ws in DESIGN.values() for w in ws]
+        # OmniVoice's own words (from the chips) as they are; anything else read as a description.
+        instruct = ', '.join(parts) if parts and all(x in known for x in parts) else describe_to_instruct(description)
+        if not instruct:
+            raise Fail('Describe the voice with a few words: man or woman, how old, deep or high, an accent (for example "an old man with a deep British voice")')
+        pcm, sr = self.engines.speak(text.strip()[:500] or SAMPLE_TEXT, instruct=instruct, language=language)
+        return instruct, pcm, sr
+
+    def design_save(self, name, description, language='auto', text=''):
+        """A designed voice: one sample made from the description, kept so the voice stays the same person every time."""
+        instruct, pcm, sr = self.design_preview(description, language, text)
+        vid = new_id()
+        d = os.path.join(self.vdir, vid)
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        write_wav(os.path.join(d, 'ref.wav'), pcm, sr)
+        return self.voice_save({'id': vid, 'name': clean_name(name, 'Designed voice'), 'kind': 'design', 'instruct': instruct,
+                                'description': re.sub(r'[\x00-\x1f<>]', ' ', str(description or ''))[:200].strip(), 'language': language if language in LANG_CODES else 'auto',
+                                'refText': (text.strip()[:500] or SAMPLE_TEXT), 'secs': round(secs(pcm, sr), 1), 'created': now()})
+
+    def rename(self, vid, name):
+        v = self.voice(vid)
+        if not v:
+            raise Fail('That voice isn\'t in your library')
+        v['name'] = clean_name(name, v['name'])
+        return self.voice_save(v)
+
+    def delete_voice(self, vid):
+        if not self.voice(vid):
+            raise Fail('That voice isn\'t in your library')
+        shutil.rmtree(os.path.join(self.vdir, vid), ignore_errors=True)
+        # Your default voice is never changed here: if it was this one, speech uses the ready-made voice and the page says so.
+        return {'deleted': vid, 'wasDefault': load().get('voice') == vid}
+
+    def all_voices(self):
+        """Every voice the studio and the API can use: yours, the ready-made ones, Kokoro's when it's on."""
+        out = [{'id': v['id'], 'name': v['name'], 'kind': v['kind'], 'language': v.get('language', 'auto')} for v in self.voices()]
+        out += [{'id': p['id'], 'name': p['name'], 'kind': 'preset', 'note': p['note']} for p in PRESETS]
+        out += [{'id': 'kokoro:' + k, 'name': k + ' (Kokoro)', 'kind': 'kokoro'} for k in kokoro_voices()]
+        return out
+
+    def resolve(self, name, allow_auto=True):
+        """A voice by its id or name (yours first), a ready-made voice, an OpenAI voice name, or a Kokoro voice."""
+        n = str(name or '').strip()
+        if not n or n.lower() in ('auto', 'default'):
+            n = load().get('voice') or ''
+            try:
+                if n:
+                    return self.resolve(n, allow_auto)
+            except Fail:
+                pass                    # your default voice was deleted: the ready-made one (the page says so)
+            return {'kind': 'auto'} if allow_auto else self.resolve('narrator')
+        if ID_RE.fullmatch(n) and self.voice(n):
+            v = self.voice(n)
+            v['ref'] = os.path.join(self.vdir, n, 'ref.wav')
+            return v
+        for v in self.voices():
+            if v['name'].lower() == n.lower():
+                v['ref'] = os.path.join(self.vdir, v['id'], 'ref.wav')
+                return v
+        low = n.lower()
+        low = OPENAI_VOICES.get(low, low)
+        for p in PRESETS:
+            if p['id'] == low or p['name'].lower() == low:
+                return dict(p, kind='preset')
+        k = n[7:] if n.startswith('kokoro:') else n
+        if k in kokoro_voices():
+            return {'kind': 'kokoro', 'id': 'kokoro:' + k, 'voice': k}
+        raise Fail('There\'s no voice called "%s" (GET /v1/audio/voices lists them)' % n[:60])
+
+    def preset_ref(self, p, language='auto'):
+        """A ready-made voice's sample, made once the first time it's used."""
+        path = os.path.join(self.pdir, p['id'] + '.wav')
+        if not os.path.exists(path):
+            pcm, sr = self.engines.speak(SAMPLE_TEXT, instruct=p['instruct'], language='en')
+            write_wav(path, pcm, sr)
+        return path
+
+    def say(self, text, voice, language='auto', speed=1.0, duration=None, instruct=None):
+        """One piece of speech in VOICE (resolved): (pcm, rate)."""
+        lang = language if language in LANG_CODES else 'auto'
+        if voice['kind'] == 'kokoro':
+            return kokoro_speak(voice['voice'], text, speed)
+        if voice['kind'] == 'auto':
+            return self.engines.speak(text, instruct=instruct, language=lang, speed=speed, duration=duration)
+        if voice['kind'] == 'preset':
+            if instruct:
+                return self.engines.speak(text, instruct=instruct, language=lang, speed=speed, duration=duration)
+            return self.engines.speak(text, ref=self.preset_ref(voice), ref_text=SAMPLE_TEXT, language=lang, speed=speed, duration=duration)
+        if lang == 'auto' and voice.get('language') not in (None, 'auto'):
+            lang = voice['language']
+        return self.engines.speak(text, ref=voice['ref'], ref_text=voice.get('refText') or None, language=lang, speed=speed, duration=duration)
+
+    def speak(self, text, voice='', language='auto', speed=1.0, fmt='wav', instruct=None):
+        text = (text or '').strip()
+        if not text:
+            raise Fail('Type something to say first')
+        if len(text) > MAX_SPEAK:
+            raise Fail('That\'s a lot of text (%d characters): make it an audiobook instead, it narrates in the background' % len(text))
+        if fmt not in FORMATS:
+            raise Fail('response_format: one of ' + ', '.join(FORMATS))
+        try:
+            speed = min(2.0, max(0.5, float(speed or 1.0)))
+        except (TypeError, ValueError):
+            speed = 1.0
+        v = self.resolve(voice)
+        pcm, rate = bytearray(), SR
+        pieces = chunks(text, 400 if v['kind'] == 'kokoro' else 280)
+        for i, piece in enumerate(pieces):
+            p, rate = self.say(piece, v, language, speed, instruct=instruct)
+            pcm += p
+            if i + 1 < len(pieces):
+                pcm += silence(0.25, rate)
+        return encode(wav_bytes(bytes(pcm), rate), fmt), FORMATS[fmt]
+
+    def voice_preview(self, vid):
+        """A voice's own sample (yours: what it learned from; ready-made: made once)."""
+        if vid in PRESET_IDS:
+            p = next(x for x in PRESETS if x['id'] == vid)
+            return open(self.preset_ref(p), 'rb').read()
+        v = self.voice(vid)
+        if not v:
+            raise Fail('That voice isn\'t in your library')
+        return open(os.path.join(self.vdir, vid, 'ref.wav'), 'rb').read()
+
+    # ---- jobs (audiobooks, dubbing, transcripts): a queue on disk
+    def jpath(self, jid, *more):
+        return os.path.join(self.jdir, jid, *more)
+
+    def job(self, jid):
+        if not ID_RE.fullmatch(jid or ''):
+            return None
+        p = self.jpath(jid, 'job.json')
+        j = sio.load_json(p, {}, repair=False) if os.path.exists(p) else {}
+        return j if isinstance(j, dict) and j.get('id') == jid else None
+
+    def job_save(self, j):
+        with self.jlock:
+            j['updated'] = now()
+            sio.write_json(self.jpath(j['id'], 'job.json'), j)
+        return j
+
+    def job_update(self, jid, **kw):
+        with self.jlock:
+            j = self.job(jid)
+            if not j:
+                return None
+            j.update(kw)
+            return self.job_save(j)
+
+    def jobs(self):
+        out = []
+        for jid in os.listdir(self.jdir):
+            j = self.job(jid)
+            if j:
+                out.append(self.job_view(j))
+        return sorted(out, key=lambda j: -j.get('created', 0))
+
+    def job_view(self, j):
+        return {k: j.get(k) for k in ('id', 'kind', 'title', 'state', 'progress', 'step', 'created', 'updated', 'error', 'outputs', 'note',
+                                      'summary')}
+
+    def job_new(self, kind, title, params, prepare=None):
+        jid = new_id()
+        os.makedirs(self.jpath(jid), mode=0o700)
+        j = {'id': jid, 'kind': kind, 'title': clean_name(title, kind.title()), 'state': 'queued', 'progress': 0, 'step': 'waiting its turn',
+             'created': now(), 'params': params, 'outputs': [], 'error': ''}
+        try:
+            if prepare:
+                prepare(self.jpath(jid), j)
+            self.job_save(j)
+        except BaseException:
+            shutil.rmtree(self.jpath(jid), ignore_errors=True)
+            raise
+        self.wake.set()
+        return self.job_view(j)
+
+    def job_cancel(self, jid):
+        j = self.job(jid)
+        if not j:
+            raise Fail('That job isn\'t there')
+        if j['state'] in ('queued', 'running'):
+            self.cancel.add(jid)
+            if j['state'] == 'queued':
+                self.job_update(jid, state='cancelled', step='cancelled')
+        return {'cancelled': jid}
+
+    def job_delete(self, jid):
+        j = self.job(jid)
+        if not j:
+            raise Fail('That job isn\'t there')
+        if j['state'] == 'running':
+            raise Fail('Cancel it first (it\'s working right now)')
+        shutil.rmtree(self.jpath(jid), ignore_errors=True)
+        return {'deleted': jid}
+
+    def job_retry(self, jid):
+        j = self.job(jid)
+        if not j or j['state'] not in ('failed', 'cancelled'):
+            raise Fail('Only a job that failed or was cancelled can be tried again')
+        self.cancel.discard(jid)
+        self.job_update(jid, state='queued', step='waiting its turn', error='')
+        self.wake.set()
+        return {'queued': jid}
+
+    def recover(self):
+        """After a restart (Light mode stopped it for a game, the PC restarted): work that was running carries on."""
+        n = 0
+        for jid in os.listdir(self.jdir):
+            j = self.job(jid)
+            if j and j.get('state') == 'running':
+                self.job_update(jid, state='queued', step='carrying on where it stopped', note='Carried on after Voice Studio restarted')
+                n += 1
+        return n
+
+    def next_job(self):
+        q = [j for j in (self.job(x) for x in os.listdir(self.jdir)) if j and j.get('state') == 'queued']
+        return min(q, key=lambda j: j['created']) if q else None
+
+    def work_once(self):
+        """Run the oldest waiting job (one at a time). True when one ran."""
+        j = self.next_job()
+        if not j:
+            return False
+        jid = j['id']
+        self.current = jid
+        self.job_update(jid, state='running', step='starting', error='')
+
+        def progress(pct, step=None):
+            if self.stop.is_set():
+                raise Paused()
+            if jid in self.cancel:
+                raise Cancelled()
+            kw = {'progress': max(0, min(100, int(pct)))}
+            if step is not None:
+                kw['step'] = step
+            self.job_update(jid, **kw)
+        try:
+            handler = {'audiobook': self.run_audiobook, 'dub': self.run_dub, 'transcribe': self.run_transcribe}[j['kind']]
+            handler(self.job(jid), progress)
+            self.job_update(jid, state='done', progress=100, step='done')
+        except Cancelled:
+            self.job_update(jid, state='cancelled', step='cancelled')
+        except Paused:
+            self.job_update(jid, state='queued', step='paused: carries on when Voice Studio is back')
+        except Fail as e:
+            self.job_update(jid, state='failed', error=str(e)[:400], step='stopped')
+        except Exception as e:  # noqa: BLE001 - an engine's own error, in words
+            print('hearth-voice-studio: job %s failed: %r' % (jid, e), file=sys.stderr, flush=True)
+            self.job_update(jid, state='failed', error=('%s: %s' % (type(e).__name__, e))[:400], step='stopped')
+        finally:
+            self.cancel.discard(jid)
+            self.current = None
+        return True
+
+    def worker(self):
+        while not self.stop.is_set():
+            try:
+                ran = self.work_once()
+            except Exception as e:  # noqa: BLE001 - the worker itself never dies
+                print('hearth-voice-studio: worker: %r' % e, file=sys.stderr, flush=True)
+                ran = False
+            if not ran:
+                self.engines.idle_check()
+                self.wake.wait(5)
+                self.wake.clear()
+
+    def add_output(self, j, name, label, kind):
+        outs = [o for o in j.get('outputs') or [] if o.get('file') != name]
+        outs.append({'file': name, 'label': label, 'kind': kind, 'size': os.path.getsize(self.jpath(j['id'], name))})
+        j['outputs'] = outs
+        self.job_update(j['id'], outputs=outs)
+
+    # ---- transcribe
+    def new_transcribe(self, src, filename, language='auto', labels=None, task='transcribe'):
+        labels = load()['speakerLabels'] if labels is None else labels
+
+        def prep(d, j):
+            ext = (filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'bin')
+            ext = ext if ext in AUDIO_EXT else 'bin'
+            os.replace(src, os.path.join(d, 'input.' + ext))
+            j['params']['input'] = 'input.' + ext
+        return self.job_new('transcribe', filename.rsplit('.', 1)[0] or 'Recording', {'language': language, 'labels': bool(labels), 'task': task}, prep)
+
+    def run_transcribe(self, j, progress):
+        p = j['params']
+        d = self.jpath(j['id'])
+        if not self.engines.caps().get('transcribe'):
+            raise Fail('Transcribing isn\'t installed (Settings › Home server › Voice Studio › Install)')
+        progress(3, 'reading the audio')
+        wav = os.path.join(d, 'audio.wav')
+        if not os.path.exists(wav):
+            to_wav(os.path.join(d, p['input']), wav, 16000, 1)
+        progress(8, 'writing down what\'s said')
+        r = self.engines.transcribe(wav, p.get('language'), p.get('task', 'transcribe'), p.get('labels'),
+                                    lambda f: progress(8 + 88 * f, 'writing down what\'s said'))
+        segs = r['segments']
+        base = re.sub(r'[^\w\- ]+', '', j['title'])[:60].strip() or 'transcript'
+        for ext, text in (('txt', to_text(segs)), ('srt', to_srt(segs)), ('vtt', to_vtt(segs)),
+                          ('json', json.dumps(r, ensure_ascii=False, indent=1))):
+            name = '%s.%s' % (base, ext)
+            with open(os.path.join(d, name), 'w', encoding='utf-8') as f:
+                f.write(text)
+            self.add_output(self.job(j['id']), name, {'txt': 'Text', 'srt': 'Subtitles (SRT)', 'vtt': 'Subtitles (VTT)', 'json': 'Everything (JSON)'}[ext], ext)
+        speakers = sorted({s['speaker'] for s in segs if s.get('speaker')})
+        self.job_update(j['id'], summary={'language': r.get('language', ''), 'secs': round(r.get('duration') or 0), 'speakers': len(speakers),
+                                          'preview': to_text(segs)[:600]})
+        try:
+            os.remove(wav)
+        except OSError:
+            pass
+
+    # ---- audiobooks
+    def new_audiobook(self, title, chapters, voice, language='auto', speed=1.0):
+        if not chapters:
+            raise Fail('There\'s no text to narrate')
+        v = self.resolve(voice, allow_auto=False)
+        vid = v.get('id') or 'narrator'
+
+        def prep(d, j):
+            with open(os.path.join(d, 'chapters.json'), 'w', encoding='utf-8') as f:
+                json.dump(chapters, f, ensure_ascii=False)
+            j['chapters'] = [{'title': c['title'], 'done': False, 'secs': 0} for c in chapters]
+        words = sum(len(c['text'].split()) for c in chapters)
+        return self.job_new('audiobook', title or chapters[0]['title'],
+                            {'voice': vid, 'language': language, 'speed': speed, 'chapters': len(chapters), 'words': words}, prep)
+
+    def run_audiobook(self, j, progress):
+        p = j['params']
+        d = self.jpath(j['id'])
+        chapters = json.load(open(os.path.join(d, 'chapters.json'), encoding='utf-8'))
+        state = j.get('chapters') or [{'title': c['title'], 'done': False, 'secs': 0} for c in chapters]
+        voice = self.resolve(p['voice'], allow_auto=False)
+        total = sum(len(c['text']) for c in chapters) or 1
+        done_chars = sum(len(c['text']) for c, s in zip(chapters, state) if s.get('done'))
+        mp3 = have('ffmpeg')
+        tmp = os.path.join(d, 'tmp')
+        os.makedirs(tmp, exist_ok=True)
+        for i, (c, s) in enumerate(zip(chapters, state)):
+            name = 'ch%03d.%s' % (i + 1, 'mp3' if mp3 else 'wav')
+            if s.get('done') and os.path.exists(os.path.join(d, name)):
+                continue
+            pcm, rate = bytearray(), SR
+            pieces = chunks(c['text'])
+            for k, piece in enumerate(pieces):
+                progress(2 + 88 * (done_chars + sum(len(x) for x in pieces[:k])) / total, 'chapter %d of %d: %s' % (i + 1, len(chapters), c['title'][:40]))
+                part, rate = self.say(piece, voice, p.get('language', 'auto'), p.get('speed', 1.0))
+                pcm += part + silence(0.3, rate)
+            pcm = silence(0.6, rate) + bytes(pcm) + silence(1.2, rate)
+            wav = os.path.join(tmp, 'ch.wav')
+            write_wav(wav, pcm, rate)
+            if mp3:
+                code, _, err = run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-y', '-i', wav, '-c:a', 'libmp3lame', '-q:a', '4',
+                                    '-metadata', 'title=' + c['title'], '-metadata', 'album=' + j['title'], '-metadata', 'track=%d' % (i + 1),
+                                    os.path.join(d, name + '.part.mp3')], 1800)
+                if code != 0:
+                    raise Fail('Couldn\'t make chapter %d\'s MP3: %s' % (i + 1, err.strip()[-200:]))
+                os.replace(os.path.join(d, name + '.part.mp3'), os.path.join(d, name))
+            else:
+                os.replace(wav, os.path.join(d, name))
+            s.update(done=True, secs=round(secs(pcm, rate), 2), file=name)
+            done_chars += len(c['text'])
+            self.job_update(j['id'], chapters=state)
+            self.add_output(self.job(j['id']), name, '%d. %s' % (i + 1, c['title'][:60]), 'chapter')
+        progress(92, 'putting the book together')
+        base = re.sub(r'[^\w\- ]+', '', j['title'])[:60].strip() or 'audiobook'
+        files = [s['file'] for s in state]
+        zname = base + ' (chapters).zip'
+        with zipfile.ZipFile(os.path.join(d, zname + '.part'), 'w', zipfile.ZIP_STORED) as z:
+            for i, f in enumerate(files):
+                z.write(os.path.join(d, f), '%03d - %s.%s' % (i + 1, re.sub(r'[^\w\- ]+', '', state[i]['title'])[:50].strip() or 'Chapter', f.rsplit('.', 1)[1]))
+        os.replace(os.path.join(d, zname + '.part'), os.path.join(d, zname))
+        self.add_output(self.job(j['id']), zname, 'Every chapter (zip)', 'zip')
+        if mp3:
+            meta = [';FFMETADATA1', 'title=' + j['title'].replace('=', '\\=').replace(';', '\\;'), 'genre=Audiobook']
+            t = 0
+            for s in state:
+                ms = int(s['secs'] * 1000)
+                meta += ['[CHAPTER]', 'TIMEBASE=1/1000', 'START=%d' % t, 'END=%d' % (t + ms), 'title=' + s['title'].replace('=', '\\=').replace(';', '\\;')]
+                t += ms
+            with open(os.path.join(tmp, 'meta.txt'), 'w', encoding='utf-8') as f:
+                f.write('\n'.join(meta) + '\n')
+            with open(os.path.join(tmp, 'list.txt'), 'w', encoding='utf-8') as f:
+                f.write(''.join("file '%s'\n" % os.path.join(d, x).replace("'", "'\\''") for x in files))
+            bname = base + '.m4b'
+            code, _, err = run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', os.path.join(tmp, 'list.txt'),
+                                '-i', os.path.join(tmp, 'meta.txt'), '-map_metadata', '1', '-map', '0:a', '-c:a', 'aac', '-b:a', '64k',
+                                '-f', 'mp4', os.path.join(d, bname + '.part')], 7200)
+            if code == 0:
+                os.replace(os.path.join(d, bname + '.part'), os.path.join(d, bname))
+                self.add_output(self.job(j['id']), bname, 'The whole book (m4b, with chapters)', 'book')
+            else:
+                print('hearth-voice-studio: m4b: %s' % err[-300:], file=sys.stderr, flush=True)
+        shutil.rmtree(tmp, ignore_errors=True)
+        self.job_update(j['id'], summary={'chapters': len(state), 'secs': round(sum(s['secs'] for s in state))})
+
+    # ---- video dubbing
+    def new_dub(self, src, filename, target, voice='clone', source='auto', keep_background=True, model=''):
+        if target not in LANG_CODES or target == 'auto':
+            raise Fail('Pick the language to dub into')
+        if voice not in ('clone', ''):
+            self.resolve(voice, allow_auto=False)
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if ext not in VIDEO_EXT + AUDIO_EXT:
+            raise Fail('That isn\'t a video Hearth can dub (mp4, mkv, mov, webm, avi)')
+
+        def prep(d, j):
+            os.replace(src, os.path.join(d, 'input.' + ext))
+            j['params']['input'] = 'input.' + ext
+        return self.job_new('dub', '%s (%s)' % (filename.rsplit('.', 1)[0] or 'Video', LANG_NAMES.get(target, target)),
+                            {'target': target, 'source': source, 'voice': voice or 'clone', 'keepBackground': bool(keep_background),
+                             'model': model or load().get('translateModel') or '', 'video': ext in VIDEO_EXT}, prep)
+
+    def run_dub(self, j, progress):
+        p = j['params']
+        d = self.jpath(j['id'])
+        f = lambda n: os.path.join(d, n)  # noqa: E731
+        caps = self.engines.caps()
+        if not caps.get('ffmpeg'):
+            raise Fail('Dubbing needs ffmpeg on this PC')
+        if not caps.get('transcribe') or not caps.get('speak'):
+            raise Fail('Dubbing needs Voice Studio\'s engines (Settings › Home server › Voice Studio › Install)')
+        src = f(p['input'])
+        total = media_secs(src)
+        if not os.path.exists(f('audio.wav')):
+            progress(2, 'taking the sound out of the video')
+            to_wav(src, f('audio.wav'), 44100, 2)
+        bg = None
+        if p.get('keepBackground') and caps.get('separate'):
+            if not (os.path.exists(f('vocals.wav')) and os.path.exists(f('background.wav'))):
+                progress(5, 'separating the voices from the music and sounds')
+                self.engines.separate(f('audio.wav'), f('vocals.wav.tmp.wav'), f('background.wav.tmp.wav'))
+                os.replace(f('background.wav.tmp.wav'), f('background.wav'))
+                os.replace(f('vocals.wav.tmp.wav'), f('vocals.wav'))
+            bg = f('background.wav')
+        voices_src = f('vocals.wav') if os.path.exists(f('vocals.wav')) else f('audio.wav')
+        if not os.path.exists(f('speech16.wav')):
+            to_wav(voices_src, f('speech16.wav'), 16000, 1)
+        if not os.path.exists(f('segments.json')):
+            progress(15, 'writing down what\'s said')
+            r = self.engines.transcribe(f('speech16.wav'), p.get('source'), 'transcribe', True,
+                                        lambda x: progress(15 + 15 * x, 'writing down what\'s said'))
+            with open(f('segments.json'), 'w', encoding='utf-8') as fh:
+                json.dump(r, fh, ensure_ascii=False)
+        r = json.load(open(f('segments.json'), encoding='utf-8'))
+        segs = r['segments']
+        if not segs:
+            raise Fail('Nobody speaks in that video (no words were found to dub)')
+        with open(f('original.srt'), 'w', encoding='utf-8') as fh:
+            fh.write(to_srt(segs))
+        if not os.path.exists(f('lines.json')):
+            if (r.get('language') or '')[:2] == p['target']:
+                texts, model = [s['text'] for s in segs], ''
+            else:
+                progress(31, 'translating into %s' % LANG_NAMES.get(p['target'], p['target']))
+                texts, model = translate([s['text'] for s in segs], p['target'], p.get('model') or '')
+            lines = [dict(s, src=s['text'], text=t) for s, t in zip(segs, texts)]
+            with open(f('lines.json'), 'w', encoding='utf-8') as fh:
+                json.dump({'lines': lines, 'model': model}, fh, ensure_ascii=False)
+        lines = json.load(open(f('lines.json'), encoding='utf-8'))['lines']
+        base = re.sub(r'[^\w\- ]+', '', j['title'])[:60].strip() or 'dubbed'
+        with open(f(base + '.srt'), 'w', encoding='utf-8') as fh:
+            fh.write(to_srt(lines))
+        # The voice for each speaker: their own, learned from their clearest 6 to 14 seconds in the video, or the one you picked.
+        refs, voice = {}, None
+        if p.get('voice', 'clone') == 'clone':
+            progress(36, 'learning each speaker\'s voice')
+            by = {}
+            for s in segs:
+                by.setdefault(s.get('speaker') or 'Speaker 1', []).append(s)
+            for who, ss in by.items():
+                key = re.sub(r'\W+', '', who) or 'S1'
+                ref = f('ref-%s.wav' % key)
+                picked, got = [], 0.0
+                for s in sorted(ss, key=lambda s: -(s['end'] - s['start'])):
+                    if got >= 14:
+                        break
+                    picked.append(s)
+                    got += s['end'] - s['start']
+                picked.sort(key=lambda s: s['start'])
+                if not os.path.exists(ref):
+                    pcm = bytearray()
+                    for s in picked:
+                        piece = f('ref-piece.wav')
+                        to_wav(voices_src, piece, SR, 1, start=s['start'], dur=min(14.0, s['end'] - s['start']))
+                        pcm += read_wav(piece)[0] + silence(0.15)
+                    write_wav(ref, bytes(pcm)[:int(15 * SR) * 2])
+                refs[who] = {'kind': 'clone', 'ref': ref, 'refText': ' '.join(s['text'] for s in picked)[:500], 'language': r.get('language') or 'auto'}
+        else:
+            voice = self.resolve(p['voice'], allow_auto=False)
+        os.makedirs(f('lines'), exist_ok=True)
+        track = bytearray()
+        tmp = f('tmp')
+        os.makedirs(tmp, exist_ok=True)
+        for i, ln in enumerate(lines):
+            out = f('lines/%04d.wav' % i)
+            nxt = lines[i + 1]['start'] if i + 1 < len(lines) else (total or ln['end'] + 2)
+            slot = max(0.3, min(nxt - 0.05, ln['end'] + 0.6) - ln['start'])
+            if not os.path.exists(out):
+                progress(40 + 48 * i / len(lines), 'speaking line %d of %d' % (i + 1, len(lines)))
+                v = refs.get(ln.get('speaker') or 'Speaker 1') or (next(iter(refs.values())) if refs else voice)
+                pcm, rate = self.say(ln['text'], v, p['target'], duration=max(0.4, ln['end'] - ln['start']))
+                if rate != SR:
+                    write_wav(f('tmp/r.wav'), pcm, rate)
+                    to_wav(f('tmp/r.wav'), f('tmp/r2.wav'), SR, 1)
+                    pcm = read_wav(f('tmp/r2.wav'))[0]
+                write_wav(out, fit(pcm, SR, slot, tmp))
+            place(track, read_wav(out)[0], ln['start'])
+        if total:
+            n = int(total * SR) * 2
+            track = track[:n] + b'\0' * max(0, n - len(track))
+        write_wav(f('voice.wav'), bytes(track))
+        progress(90, 'putting the video back together')
+        video = p.get('video', True)
+        outname = base + ('.mp4' if video else '.m4a')
+        under = bg or f('audio.wav')
+        vol = '1.0' if bg else '0.12'          # no separated background: the original quietly underneath
+        cmd = ['ffmpeg', '-nostdin', '-loglevel', 'error', '-y', '-i', src, '-i', under, '-i', f('voice.wav'), '-filter_complex',
+               '[1:a]volume=%s[b];[2:a]aresample=44100,volume=1.0[v];[b][v]amix=inputs=2:duration=first:normalize=0[a]' % vol]
+        if video:
+            cmd += ['-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-metadata:s:a:0', 'language=' + p['target'],
+                    '-movflags', '+faststart', '-f', 'mp4', f(outname + '.part')]
+        else:
+            cmd += ['-map', '[a]', '-c:a', 'aac', '-b:a', '160k', '-f', 'mp4', f(outname + '.part')]
+        code, _, err = run(cmd, 7200)
+        if code != 0:
+            raise Fail('Couldn\'t put the dubbed video together: %s' % err.strip()[-240:])
+        os.replace(f(outname + '.part'), f(outname))
+        jj = self.job(j['id'])
+        self.add_output(jj, outname, 'Dubbed video' if video else 'Dubbed audio', 'video' if video else 'audio')
+        self.add_output(self.job(j['id']), base + '.srt', 'Subtitles in %s (SRT)' % LANG_NAMES.get(p['target'], p['target']), 'srt')
+        self.add_output(self.job(j['id']), 'original.srt', 'Original subtitles (SRT)', 'srt')
+        self.job_update(j['id'], summary={'lines': len(lines), 'speakers': len(refs) or 1, 'from': r.get('language', ''), 'to': p['target'],
+                                          'background': bool(bg)})
+        for n in ('audio.wav', 'speech16.wav', 'voice.wav', 'ref-piece.wav'):
+            try:
+                os.remove(f(n))
+            except OSError:
+                pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    def state(self):
+        s = load()
+        caps = self.engines.caps()
+        return {'caps': caps, 'voices': self.all_voices(), 'library': self.voices(), 'presets': PRESETS, 'languages': LANGS,
+                'design': DESIGN, 'jobs': self.jobs(), 'settings': s, 'host': socket.gethostname().split('.')[0],
+                'models': ollama_models(), 'port': PORT}
+
+
+# ------------------------------------------------------------------ the web page and the API
+
+FAILS = {}
+FAIL_LOCK = threading.Lock()
+
+
+def too_many(ip, t=None):
+    t = time.time() if t is None else t
+    with FAIL_LOCK:
+        f = [x for x in FAILS.get(ip, []) if t - x < 300]
+        FAILS[ip] = f
+        return len(f) >= 5
+
+
+def failed(ip):
+    with FAIL_LOCK:
+        FAILS.setdefault(ip, []).append(time.time())
+
+
+def multipart(body, ctype):
+    """multipart/form-data (what OpenAI's clients send for transcriptions): {name: (filename or None, bytes)}."""
+    from email.parser import BytesParser
+    from email.policy import HTTP
+    msg = BytesParser(policy=HTTP).parsebytes(b'Content-Type: ' + ctype.encode('latin-1') + b'\r\nMIME-Version: 1.0\r\n\r\n' + body)
+    out = {}
+    if not msg.is_multipart():
+        return out
+    for part in msg.iter_parts():
+        name = part.get_param('name', header='content-disposition')
+        if name:
+            out[name] = (part.get_filename(), part.get_payload(decode=True) or b'')
+    return out
+
+
+def page_html(embed=None):
+    p = os.path.join(HERE, 'voice-studio-web.html')
+    try:
+        text = open(p, encoding='utf-8').read()
+    except OSError:
+        text = '<!doctype html><title>Voice Studio</title><p>The page is missing.'
+    data = json.dumps(embed).replace('</', '<\\/') if embed is not None else 'null'
+    return text.replace('/*HEARTH_DATA*/null', data).replace('{{HOST}}', html.escape(socket.gethostname().split('.')[0]))
+
+
+def make_handler(studio, mock=False):
+    from http.server import BaseHTTPRequestHandler
+
+    class H(BaseHTTPRequestHandler):
+        server_version = 'Hearth'
+        sys_version = ''
+
+        def log_message(self, fmt, *args):  # noqa: D401
+            pass
+
+        def send(self, code, body, ctype='application/json', extra=()):
+            data = body if isinstance(body, bytes) else (json.dumps(body) if ctype == 'application/json' else body).encode()
+            self.send_response(code)
+            self.send_header('Content-Type', ctype + ('; charset=utf-8' if ctype.startswith(('text/', 'application/json')) else ''))
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Frame-Options', 'DENY')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            # same-origin, never no-referrer: with no-referrer browsers send "Origin: null" on every POST (Server mode 1.6).
+            self.send_header('Referrer-Policy', 'same-origin')
+            self.send_header('Permissions-Policy', 'microphone=(self), camera=()')
+            self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                             "img-src data:; media-src 'self' blob:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'")
+            for k, v in extra:
+                self.send_header(k, v)
+            self.end_headers()
+            if self.command != 'HEAD':
+                self.wfile.write(data)
+
+        def err(self, code, text, **more):
+            return self.send(code, dict({'error': {'message': text, 'type': 'hearth'}} if self.path.startswith('/v1/') else {'error': text}, **more))
+
+        def ip(self):
+            return self.client_address[0]
+
+        def cookie(self):
+            for part in (self.headers.get('Cookie') or '').split(';'):
+                k, _, v = part.strip().partition('=')
+                if k == 'hvs':
+                    return v
+            return ''
+
+        def length(self):
+            try:
+                return int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                return -1
+
+        def body_json(self):
+            n = self.length()
+            if n <= 0 or n > MAX_JSON:
+                return None
+            try:
+                v = json.loads(self.rfile.read(n).decode('utf-8'))
+                return v if isinstance(v, dict) else None
+            except (ValueError, UnicodeDecodeError):
+                return None
+
+        def body_bytes(self, limit):
+            n = self.length()
+            if n <= 0:
+                raise Fail('Nothing was sent')
+            if n > limit:
+                self.close_connection = True
+                raise Fail('That file is too big (up to %d MB)' % (limit >> 20))
+            return self.rfile.read(n)
+
+        def body_file(self, limit):
+            """The request's body streamed into a file of its own (videos can be gigabytes)."""
+            n = self.length()
+            if n <= 0:
+                raise Fail('Nothing was sent')
+            if n > limit:
+                self.close_connection = True
+                raise Fail('That file is too big (up to %d GB)' % max(1, limit >> 30))
+            fd, path = tempfile.mkstemp(dir=studio.updir)
+            try:
+                with os.fdopen(fd, 'wb') as fh:
+                    left = n
+                    while left > 0:
+                        b = self.rfile.read(min(1 << 20, left))
+                        if not b:
+                            raise Fail('The upload stopped part way')
+                        fh.write(b)
+                        left -= len(b)
+                return path
+            except BaseException:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                raise
+
+        def query(self):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            return {k: v[0] for k, v in q.items()}
+
+        def guard(self):
+            if not peer_allowed(self.ip()):
+                self.send(403, {'error': 'Only on this PC and over Tailscale'})
+                return False
+            return True
+
+        def access(self, write):
+            """Who's asking: the page (signed in with the PIN; writes only from the page itself) or an app (the API key)."""
+            if key_ok(self.headers.get('Authorization')):
+                return True
+            if session_ok(self.cookie()):
+                if write and not write_allowed(self.headers):
+                    self.err(403, 'Your browser didn\'t send this from the page itself, so the PC refused it. Reload the page and try again')
+                    return False
+                return True
+            if self.headers.get('Authorization'):
+                self.err(401, 'That API key isn\'t right: copy it again from Settings › Home server › Voice Studio')
+            else:
+                self.err(401, 'Type the PIN' if pin_hashes() else 'No PIN is set yet: set one in Settings › Home server › Voice Studio (or Server mode)',
+                         pin=bool(pin_hashes()))
+            return False
+
+        def do_HEAD(self):  # noqa: N802
+            self.do_GET()
+
+        def do_GET(self):  # noqa: N802
+            if not self.guard():
+                return
+            path = urllib.parse.urlsplit(self.path).path
+            try:
+                if path == '/':
+                    return self.send(200, page_html(), 'text/html')
+                if path in ('/health', '/v1/health'):
+                    return self.send(200, {'status': 'ok', 'engines': studio.engines.caps()})
+                if not self.access(False):
+                    return
+                if path == '/api/state':
+                    return self.send(200, studio.state())
+                if path == '/api/jobs':
+                    return self.send(200, {'jobs': studio.jobs()})
+                m = re.fullmatch(r'/api/jobs/([a-f0-9]{12})', path)
+                if m:
+                    j = studio.job(m.group(1))
+                    return self.send(200, studio.job_view(j)) if j else self.err(404, 'That job isn\'t there')
+                m = re.fullmatch(r'/api/jobs/([a-f0-9]{12})/files/([^/]{1,200})', path)
+                if m:
+                    j = studio.job(m.group(1))
+                    name = urllib.parse.unquote(m.group(2))
+                    if not j or name not in [o['file'] for o in j.get('outputs') or []]:
+                        return self.err(404, 'That file isn\'t there')
+                    data = open(studio.jpath(j['id'], name), 'rb').read()
+                    ext = name.rsplit('.', 1)[-1].lower()
+                    ctype = {'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'm4b': 'audio/mp4', 'm4a': 'audio/mp4', 'mp4': 'video/mp4', 'zip': 'application/zip',
+                             'srt': 'text/plain', 'vtt': 'text/vtt', 'txt': 'text/plain', 'json': 'application/octet-stream'}.get(ext, 'application/octet-stream')
+                    disp = 'inline' if self.query().get('play') == '1' else 'attachment'
+                    return self.send(200, data, ctype, [('Content-Disposition', "%s; filename*=UTF-8''%s" % (disp, urllib.parse.quote(name)))])
+                m = re.fullmatch(r'/api/voices/([a-z0-9]{1,16})/preview', path)
+                if m:
+                    return self.send(200, studio.voice_preview(m.group(1)), 'audio/wav')
+                if path == '/v1/models':
+                    ids = ['hearth-voice-studio', 'tts-1', 'tts-1-hd', 'gpt-4o-mini-tts', 'whisper-1', 'omnivoice']
+                    return self.send(200, {'object': 'list', 'data': [{'id': i, 'object': 'model', 'created': 0, 'owned_by': 'hearth'} for i in ids]})
+                if path in ('/v1/audio/voices', '/v1/voices'):
+                    return self.send(200, {'voices': [{'id': v['id'], 'name': v['name'], 'kind': v['kind'], 'language': v.get('language', '')}
+                                                      for v in studio.all_voices()]})
+                return self.err(404, 'Not here')
+            except Fail as e:
+                return self.err(400, str(e))
+
+        def do_POST(self):  # noqa: N802
+            if not self.guard():
+                return
+            path = urllib.parse.urlsplit(self.path).path
+            ip = self.ip()
+            try:
+                if path == '/api/login':
+                    if not write_allowed(self.headers):
+                        return self.err(403, 'Reload the page and type the PIN again')
+                    if too_many(ip):
+                        return self.err(429, 'Five wrong PINs in a row: wait 5 minutes, then try again')
+                    b = self.body_json()
+                    hs = pin_hashes()
+                    if not hs:
+                        return self.err(403, 'No PIN is set yet: set one in Settings › Home server › Voice Studio (or Server mode)', pin=False)
+                    if not isinstance(b, dict) or not pin_clean(b.get('pin')):
+                        return self.err(400, 'The PIN is 4 to 12 digits')
+                    if not pin_check(b.get('pin'), hs[0][0]):
+                        failed(ip)
+                        print('hearth-voice-studio: a wrong PIN from %s' % ip, file=sys.stderr, flush=True)
+                        return self.err(401, 'That PIN isn\'t right' + (' (it\'s Server mode\'s PIN)' if hs[0][1] == 'server' else ''))
+                    tok = session_new('This PC' if ip.startswith('127.') else ip)
+                    return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hvs=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (tok, SESSION_DAYS * 86400))])
+                if not self.access(True):
+                    return
+                if path == '/api/logout':
+                    session_end(self.cookie())
+                    return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hvs=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict')])
+                # ---- speak, design
+                if path in ('/api/speak', '/v1/audio/speech'):
+                    b = self.body_json()
+                    if b is None:
+                        return self.err(400, 'Send JSON: {"input": "...", "voice": "..."}')
+                    text = b.get('input') if 'input' in b else b.get('text')
+                    fmt = str(b.get('response_format') or b.get('format') or ('mp3' if path.startswith('/v1/') else 'wav')).lower()
+                    instruct = describe_to_instruct(b.get('instructions')) if b.get('instructions') else None
+                    data, ctype = studio.speak(text, b.get('voice') or '', b.get('language') or 'auto', b.get('speed') or 1.0, fmt, instruct or None)
+                    return self.send(200, data, ctype)
+                if path == '/api/design/preview':
+                    b = self.body_json() or {}
+                    instruct, pcm, sr = studio.design_preview(b.get('description'), b.get('language') or 'auto', b.get('text') or '')
+                    return self.send(200, wav_bytes(pcm, sr), 'audio/wav', [('X-Instruct', instruct)])
+                if path == '/api/voices/design':
+                    b = self.body_json() or {}
+                    return self.send(200, studio.design_save(b.get('name'), b.get('description'), b.get('language') or 'auto', b.get('text') or ''))
+                if path == '/api/voices/clone':
+                    q = self.query()
+                    clip = self.body_file(MAX_CLIP)
+                    try:
+                        v = studio.clone(clip, q.get('name'), q.get('language') or 'auto', q.get('text') or '', q.get('consent') == '1',
+                                         'This PC' if ip.startswith('127.') else ip)
+                    finally:
+                        try:
+                            os.remove(clip)
+                        except OSError:
+                            pass
+                    return self.send(200, v)
+                m = re.fullmatch(r'/api/voices/([a-f0-9]{12})/(rename|delete)', path)
+                if m:
+                    if m.group(2) == 'delete':
+                        return self.send(200, studio.delete_voice(m.group(1)))
+                    b = self.body_json() or {}
+                    return self.send(200, studio.rename(m.group(1), b.get('name')))
+                if path == '/api/settings':
+                    b = self.body_json() or {}
+                    changed = {}
+                    for k, v in b.items():
+                        raw = ('on' if v else 'off') if isinstance(v, bool) else str(v)
+                        changed[k] = set_key(k, raw)
+                    return self.send(200, {'changed': changed, 'settings': load()})
+                # ---- the queue
+                if path == '/api/jobs/transcribe':
+                    q = self.query()
+                    src = self.body_file(MAX_AUDIO)
+                    labels = None if 'labels' not in q else q.get('labels') == '1'
+                    return self.send(202, studio.new_transcribe(src, q.get('name') or 'recording', q.get('language') or 'auto', labels))
+                if path == '/api/jobs/audiobook':
+                    q = self.query()
+                    ctype = (self.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+                    if ctype == 'application/json':
+                        b = self.body_json() or {}
+                        title = clean_name(b.get('title'), '')
+                        chs = split_chapters(str(b.get('text') or ''), title)
+                        q = dict(q, **{k: str(b.get(k)) for k in ('voice', 'language', 'speed') if b.get(k) is not None})
+                    else:
+                        name = q.get('name') or 'book.txt'
+                        raw = self.body_bytes(MAX_BOOK)
+                        title = clean_name(q.get('title') or name.rsplit('.', 1)[0], 'Audiobook')
+                        if name.lower().endswith('.epub'):
+                            fd, tmpp = tempfile.mkstemp(dir=studio.updir)
+                            with os.fdopen(fd, 'wb') as fh:
+                                fh.write(raw)
+                            try:
+                                bt, chs = epub_chapters(tmpp)
+                            finally:
+                                os.remove(tmpp)
+                            title = clean_name(q.get('title') or bt or title, 'Audiobook')
+                        else:
+                            chs = split_chapters(raw.decode('utf-8', 'replace'), title)
+                    try:
+                        speed = min(2.0, max(0.5, float(q.get('speed') or 1.0)))
+                    except ValueError:
+                        speed = 1.0
+                    return self.send(202, studio.new_audiobook(title, chs, q.get('voice') or '', q.get('language') or 'auto', speed))
+                if path == '/api/jobs/dub':
+                    q = self.query()
+                    src = self.body_file(MAX_VIDEO)
+                    try:
+                        j = studio.new_dub(src, q.get('name') or 'video.mp4', q.get('target') or '', q.get('voice') or 'clone', q.get('source') or 'auto',
+                                           q.get('keepBackground', '1') == '1', q.get('model') or '')
+                    except BaseException:
+                        if os.path.exists(src):
+                            os.remove(src)
+                        raise
+                    return self.send(202, j)
+                m = re.fullmatch(r'/api/jobs/([a-f0-9]{12})/(cancel|delete|retry)', path)
+                if m:
+                    return self.send(200, {'cancel': studio.job_cancel, 'delete': studio.job_delete, 'retry': studio.job_retry}[m.group(2)](m.group(1)))
+                # ---- OpenAI-compatible transcription
+                if path in ('/v1/audio/transcriptions', '/v1/audio/translations'):
+                    ctype = self.headers.get('Content-Type') or ''
+                    if not ctype.lower().startswith('multipart/form-data'):
+                        return self.err(400, 'Send multipart/form-data with a "file"')
+                    form = multipart(self.body_bytes(200 << 20), ctype)
+                    fname, data = form.get('file', (None, b''))
+                    if not data:
+                        return self.err(400, 'No "file" in the form')
+                    if not studio.engines.caps().get('transcribe'):
+                        return self.err(503, 'Transcribing isn\'t installed (Settings › Home server › Voice Studio)')
+                    get = lambda k, d='': (form.get(k, (None, b''))[1] or d.encode()).decode('utf-8', 'replace').strip()  # noqa: E731
+                    rf = get('response_format', 'json')
+                    with tempfile.TemporaryDirectory(dir=studio.updir) as td:
+                        src = os.path.join(td, 'in.' + ((fname or 'a.bin').rsplit('.', 1)[-1].lower()[:5] or 'bin'))
+                        with open(src, 'wb') as fh:
+                            fh.write(data)
+                        wav = to_wav(src, os.path.join(td, 'a.wav'), 16000, 1)
+                        r = studio.engines.transcribe(wav, get('language') or None, 'translate' if path.endswith('translations') else 'transcribe',
+                                                      get('speaker_labels') in ('1', 'true'))
+                    segs = r['segments']
+                    text = ' '.join(s['text'] for s in segs).strip()
+                    if rf == 'text':
+                        return self.send(200, text + '\n', 'text/plain')
+                    if rf == 'srt':
+                        return self.send(200, to_srt(segs), 'text/plain')
+                    if rf == 'vtt':
+                        return self.send(200, to_vtt(segs), 'text/vtt')
+                    if rf == 'verbose_json':
+                        return self.send(200, {'task': 'translate' if path.endswith('translations') else 'transcribe', 'language': r['language'],
+                                               'duration': r['duration'], 'text': text,
+                                               'segments': [dict(s, id=i) for i, s in enumerate(segs)]})
+                    return self.send(200, {'text': text})
+                return self.err(404, 'Not here')
+            except Fail as e:
+                return self.err(400, str(e))
+
+    return H
+
+
+def make_servers(studio, addrs, port, mock=False):
+    from http.server import ThreadingHTTPServer
+    handler = make_handler(studio, mock)
+    servers = []
+    for a in addrs:
+        try:
+            srv = ThreadingHTTPServer((a, port), handler)
+        except OSError as e:
+            print('hearth-voice-studio: can\'t listen on %s:%d (%s)' % (a, port, e), file=sys.stderr, flush=True)
+            continue
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        servers.append(srv)
+    return servers
+
+
+def serve(mock=False, port=None, addrs=None):
+    studio = Studio(DATA, MockEngines(DATA) if mock else Engines(DATA))
+    n = studio.recover()
+    if n:
+        print('hearth-voice-studio: carrying on with %d job(s)' % n, file=sys.stderr, flush=True)
+    api_key()                       # made the first time, so Settings can show it
+    addrs = addrs or (['127.0.0.1'] if mock else listen_addresses())
+    servers = make_servers(studio, addrs, port or PORT, mock)
+    if not servers:
+        return 1
+    w = threading.Thread(target=studio.worker, daemon=True)
+    w.start()
+
+    def stop(signum, frame):
+        # Light mode (a game started) or Settings: the job running now is put back in the queue, carried on next time.
+        studio.stop.set()
+        studio.wake.set()
+        w.join(25)
+        for s in servers:
+            s.shutdown()
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    print('hearth-voice-studio: on %s, port %d' % (', '.join(addrs), port or PORT), file=sys.stderr, flush=True)
+    while True:
+        time.sleep(60)
+        if not mock and len(addrs) == 1 and len(listen_addresses()) > 1:
+            studio.stop.set()
+            w.join(25)
+            return 75           # Tailscale came up after we started: systemd starts us again, now on its address too
+
+
+# ------------------------------------------------------------------ install, status, remove (run as you, never root)
+
+def installed():
+    v = sio.load_json(INSTALLED, {}, repair=False) if os.path.exists(INSTALLED) else {}
+    return v if isinstance(v, dict) and os.path.isfile(os.path.join(VENV, 'bin', 'python')) and v.get('rev') else {}
+
+
+def venv_env():
+    """The engines' environment: models in Voice Studio's own folder, and the CUDA libraries pip put in the venv."""
+    env = dict(os.environ, HF_HOME=os.path.join(MODELS, 'hf'), TORCH_HOME=os.path.join(MODELS, 'torch'), HF_HUB_DISABLE_TELEMETRY='1',
+               PYTHONNOUSERSITE='1')
+    libs = []
+    for sp in sorted(__import__('glob').glob(os.path.join(VENV, 'lib', 'python3*', 'site-packages', 'nvidia', '*', 'lib'))):
+        libs.append(sp)
+    if libs:
+        env['LD_LIBRARY_PATH'] = ':'.join(libs + [x for x in (os.environ.get('LD_LIBRARY_PATH') or '').split(':') if x])
+    return env
+
+
+def free_gb(path):
+    try:
+        st = os.statvfs(path)
+        return st.f_bavail * st.f_frsize / (1 << 30)
+    except OSError:
+        return 0
+
+
+def install(step=lambda text, pct: None, runner=run):
+    """The engines into ~/.local/share/nimbus/voice-studio/venv (only when you ask; a few GB). PyTorch from its own CUDA
+    index, the rest from PyPI; then the main models downloaded so the first use doesn't wait. A part that fails to install
+    (Demucs, speaker labels) is noted and the rest still works. Your voices and finished work are never touched."""
+    os.makedirs(DATA, mode=0o700, exist_ok=True)
+    if free_gb(DATA) < 14:
+        raise Fail('Not enough free space in your Home: Voice Studio with PyTorch and its models needs about 14 GB')
+    py = os.path.join(VENV, 'bin', 'python')
+    pip = [py, '-m', 'pip', '--disable-pip-version-check', '--no-input', '--no-cache-dir', '--progress-bar', 'off']
+    env = venv_env()
+    if not os.path.isfile(py):
+        step('making its Python environment', 5)
+        code, _, err = runner(['/usr/bin/python3', '-m', 'venv', VENV], 600)
+        if code != 0:
+            raise Fail('Couldn\'t make its Python environment: ' + err.strip()[-200:])
+    step('downloading PyTorch for CUDA 12.8 (a few GB)', 10)
+    code, _, err = runner(pip + ['install', '--index-url', TORCH_INDEX, 'torch', 'torchaudio'], 3 * 3600, env=env)
+    if code != 0:
+        raise Fail('PyTorch didn\'t install: ' + err.strip()[-200:])
+    step('installing the voice engines (OmniVoice, faster-whisper)', 40)
+    code, _, err = runner(pip + ['install', '--extra-index-url', TORCH_INDEX] + PIP_MAIN, 3600, env=env)
+    if code != 0:
+        raise Fail('The voice engines didn\'t install: ' + err.strip()[-200:])
+    notes = []
+    step('installing vocal separation for dubbing (Demucs)', 55)
+    if runner(pip + ['install', '--no-deps'] + PIP_DEMUCS, 1800, env=env)[0] != 0 or runner(pip + ['install'] + PIP_DEMUCS_DEPS, 1800, env=env)[0] != 0:
+        notes.append('Vocal separation (Demucs) didn\'t install: dubbing keeps the original sound quietly underneath')
+    runner(pip + ['install', 'lameenc'], 600, env=env)          # Demucs's own MP3 writer; not needed by Hearth
+    step('installing speaker labels (SpeechBrain)', 62)
+    if runner(pip + ['install'] + PIP_LABELS, 1800, env=env)[0] != 0:
+        notes.append('Speaker labels (SpeechBrain) didn\'t install: transcripts come without "Speaker 1, Speaker 2"')
+    step('downloading the voice model (OmniVoice, about 3 GB)', 70)
+    code, _, err = runner([py, '-c', 'from huggingface_hub import snapshot_download; snapshot_download(%r)' % OMNI_MODEL], 3 * 3600, env=env)
+    if code != 0:
+        notes.append('The voice model will download the first time you use it (%s)' % err.strip()[-120:])
+    step('downloading the transcription model (Whisper large-v3 turbo)', 85)
+    code, _, err = runner([py, '-c', 'from faster_whisper import download_model; download_model(%r, cache_dir=%r)'
+                           % (WHISPER_MODEL, os.path.join(MODELS, 'whisper'))], 3 * 3600, env=env)
+    if code != 0:
+        notes.append('The transcription model will download the first time you use it')
+    step('checking PyTorch sees the graphics card', 95)
+    code, out, _ = runner([py, '-c', 'import json, torch; c = torch.cuda.is_available(); print(json.dumps({"torch": torch.__version__, '
+                           '"cuda": c, "gpu": torch.cuda.get_device_name(0) if c else ""}))'], 300, env=env)
+    info = {}
+    try:
+        info = json.loads(out.decode().strip().splitlines()[-1]) if code == 0 else {}
+    except (ValueError, IndexError):
+        pass
+    rec = {'rev': INSTALL_REV, 'at': now(), 'torch': str(info.get('torch', ''))[:40], 'cuda': info.get('cuda') is True,
+           'gpu': str(info.get('gpu', ''))[:80], 'notes': notes}
+    sio.write_json(INSTALLED, rec)
+    return rec
+
+
+def remove(voices=False):
+    """The engines and their models go. Your voices, your finished audiobooks, dubs and transcripts stay unless you
+    confirmed twice (voices sure). Nothing outside Voice Studio's folder is touched; links are never followed."""
+    gone = []
+    for name in ('venv', 'models', 'presets', 'uploads', 'installed.json'):
+        p = os.path.join(DATA, name)
+        if os.path.islink(p):
+            os.remove(p)
+        elif os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+        elif os.path.exists(p):
+            os.remove(p)
+        else:
+            continue
+        gone.append(name)
+    if voices:
+        for name in ('voices', 'jobs'):
+            p = os.path.join(DATA, name)
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p, ignore_errors=True)
+                gone.append(name)
+    left = [n for n in ('voices', 'jobs') if os.path.isdir(os.path.join(DATA, n))]
+    return {'removed': gone, 'kept': left}
+
+
+def status():
+    inst = installed()
+    st = secret_read()
+    ts = ts_name()
+    nvoices = len([d for d in os.listdir(os.path.join(DATA, 'voices'))]) if os.path.isdir(os.path.join(DATA, 'voices')) else 0
+    njobs = 0
+    if os.path.isdir(os.path.join(DATA, 'jobs')):
+        for jid in os.listdir(os.path.join(DATA, 'jobs')):
+            p = os.path.join(DATA, 'jobs', jid, 'job.json')
+            j = sio.load_json(p, {}, repair=False) if os.path.exists(p) else {}
+            njobs += isinstance(j, dict) and j.get('state') in ('queued', 'running')
+    return {'installed': bool(inst), 'install': inst, 'dir': DATA, 'pin': bool(st.get('pin')),
+            'serverPin': bool(secret_read(SERVER_MODE_WEB).get('pin')), 'keySet': bool(st.get('key')), 'settings': load(),
+            'port': PORT, 'url': 'http://%s:%d' % (ts, PORT) if ts else '', 'local': 'http://localhost:%d' % PORT,
+            'api': ('http://%s:%d/v1' % (ts, PORT)) if ts else 'http://localhost:%d/v1' % PORT, 'voices': nvoices, 'queue': njobs}
+
+
+def main(argv):
+    a = argv[1:]
+    stdin = os.environ.get('HEARTH_INPUT', '')
+    try:
+        if a == ['serve']:
+            return serve()
+        if a[:1] == ['mock-serve']:
+            return serve(mock=True, port=int(a[1]) if len(a) > 1 else PORT)
+        if a == ['status']:
+            res = status()
+        elif len(a) == 3 and a[0] == 'set':
+            res = {'changed': set_key(a[1], a[2])}
+        elif a == ['pin-set']:
+            res = pin_set(stdin.split('\n')[0])
+        elif a == ['pin-clear']:
+            res = pin_clear()
+        elif a == ['key-show']:
+            res = {'key': api_key()}
+        elif a == ['key-new']:
+            res = {'key': api_key_new()}
+        elif a == ['install-job']:
+            res = install(lambda t, p: print(json.dumps({'step': t, 'progress': p}), flush=True))
+        elif a == ['remove']:
+            res = remove(False)
+        elif a == ['remove', 'voices', 'sure']:
+            res = remove(True)
+        else:
+            raise Fail('Unknown command')
+        print(json.dumps(res))
+        return 0
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    except (OSError, ValueError) as e:
+        print('error: %s' % e)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
