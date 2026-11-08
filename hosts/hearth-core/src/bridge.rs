@@ -364,6 +364,8 @@ impl Bridge {
         let method = msg["method"].as_str().unwrap_or("");
         let args = if msg["args"].is_object() { msg["args"].clone() } else { json!({}) };
         self.cur_id = id.clone();
+        // What's saved now (another program may have changed library.json since Hearth read it).
+        self.library.store.refresh();
         // A request that panics (bad data somewhere) still gets an answer. Caught here, with the bridge still held,
         // its lock isn't poisoned: before, the page waited forever, the fail-safe saw "stuck" (killing helpers,
         // sending a report, restarting Hearth), and Game Mode's own uses of the bridge failed until then.
