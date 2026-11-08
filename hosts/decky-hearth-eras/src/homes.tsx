@@ -88,11 +88,11 @@ function Art(props: { card: Card; shape: Shape; className?: string }) {
   return src ? <img className={"era-art " + (props.className || "")} src={src} alt="" /> : <div className={"era-noart " + (props.className || "")}><span>{c.title}</span></div>;
 }
 
-/** One game: opens Steam's own page. data-hearth-appid lets Hearth Music play its theme when it's focused. */
+/** One game: opens Steam's own page. */
 function Game(props: { card: Card; shape: Shape; className?: string; style?: CSSProperties; onFocusCard?: (c: Card) => void; children?: ReactNode }) {
   const c = props.card;
   return (
-    <div className="era-wrap" data-hearth-appid={c.appid} style={{ display: "contents" }}>
+    <div className="era-wrap" style={{ display: "contents" }}>
       <DialogButton className={"era-game " + (props.className || "")} style={props.style}
         onClick={() => { play("ok"); openApp(c.appid); }} {...focusProps(() => props.onFocusCard?.(c))}>
         <Art card={c} shape={props.shape} />
@@ -314,7 +314,7 @@ const WAVES_B = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 300" 
 function XbGame(props: { card: Card }) {
   const c = props.card;
   return (
-    <div className="era-wrap" data-hearth-appid={c.appid} style={{ display: "contents" }}>
+    <div className="era-wrap" style={{ display: "contents" }}>
       <DialogButton className="era-game xb-item" onClick={() => { play("ok"); openApp(c.appid); }} {...focusProps()}>
         <Art card={c} shape="wide" />
         <div><div className="xb-t">{c.title}</div><div className="xb-s">{subtitle(c) || " "}</div></div>

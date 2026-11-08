@@ -9,7 +9,7 @@ on:
   push:
     branches: [bughunt, feature/hearth-eras]
     paths: ['hosts/decky-hearth-eras/**', 'hosts/decky-shared/**', 'hosts/decky-hearth-look/src/model.ts', 'hosts/decky-hearth-look/src/home.tsx',
-            'hosts/decky-hearth-look/defaults/**', 'hosts/decky-hearth-music/src/steam.ts', '.github/workflows/decky-hearth-eras.yml']
+            'hosts/decky-hearth-look/defaults/**', '.github/workflows/decky-hearth-eras.yml']
   workflow_dispatch:
 
 permissions:

@@ -128,8 +128,8 @@ for (const era of ["channels", "blades", "tiles", "crossbar", "pocket", "classic
     if (n < 3) errors.push(`home-${era}: only ${n} games`);
     const imgs = await page.evaluate((s) => [...document.querySelectorAll(s)].filter((b) => b.querySelector("img")).length, sel);
     if (imgs < Math.min(n, 3)) errors.push(`home-${era}: games without pictures (${imgs} of ${n})`);
-    const id = await page.evaluate((s) => window.HE_MUSIC_APPID(document.querySelector(s)), sel);
-    if (!(id > 0)) errors.push(`home-${era}: Hearth Music can't tell the focused game (${id})`);
+    // No game music from the home itself: ThemeDeck plays music on Steam's game pages (docs/THEMEDECK.md).
+    if (await page.locator("[data-hearth-appid]").count()) errors.push(`home-${era}: games still marked for Hearth Music`);
     await page.evaluate((s) => document.querySelector(s).click(), sel);
     const nav = await page.evaluate(() => window.HE_NAV || []);
     if (!nav.some((r) => /^\/library\/app\/\d+$/.test(r))) errors.push(`home-${era}: a game didn't open Steam's page (${nav})`);

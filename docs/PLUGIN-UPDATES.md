@@ -1,6 +1,6 @@
 # Decky plugin updates (without a system update)
 
-Hearth's Decky plugins, **Hearth Sync**, **Hearth Link**, **Hearth Music** and **Hearth Eras** (and any new Hearth plugin), can update
+Hearth's Decky plugins, **Hearth Sync**, **Hearth Link** and **Hearth Eras** (and any new Hearth plugin), can update
 by themselves between Hearth OS updates, and new Hearth plugins arrive the same way, without a system update. The
 plugins built into the system image are never changed: they're always there and always the fallback.
 
@@ -119,6 +119,25 @@ comes back). The newest release's list counts, so a plugin dropped from `retired
 Retired so far: **Hearth Classic** (`decky-hearth-look`, November 2026, the owner's call). It was never built into the
 image, so the next plugins release takes it off every device that downloaded it. Its home and skin live on as the
 "Hearth Classic" era of **Hearth Eras** (`decky-hearth-eras`, docs/HEARTH-ERAS.md), which reuses its code.
+
+**Hearth Music** (`decky-hearth-music`, November 2026, the owner's call: ThemeDeck replaced it, docs/THEMEDECK.md).
+It *was* built into the image, so it's retired on both paths, and both keep a device consistent:
+
+- **The Hearth OS update that ships ThemeDeck** retires the built-in copy by itself: `hearth-decky` lists it in
+  `RETIRED_BUILTIN` (it counts as retired whatever the newest plugins release says, and the image no longer ships it),
+  so at the first Decky start after the update your Hearth Music songs are carried over to ThemeDeck once, then Hearth's
+  copy in `~/homebrew/plugins/decky-hearth-music` goes (only a real folder whose `plugin.json` is by Dragongamer9, or a
+  plugins download) and a download of it is never put in place again. Its settings stay.
+- **The next plugins release** lists it under `retired` (`tools/decky_plugins.py` `RETIRED`): a device still on an
+  older image loses only a *downloaded* Hearth Music; its built-in one stays (the rule above) until its Hearth OS update
+  brings ThemeDeck, so no device is ever left with neither.
+
+**ThemeDeck isn't delivered through plugins releases.** It's a third-party plugin (BrenticusMaximus, BSD-3-Clause), not
+a Hearth plugin: its folder isn't a `decky-hearth-*` id, it has no Hearth OS check or load mark (adding them would mean
+changing its code, which Hearth doesn't), and the carry-over of your songs and Hearth Music's retirement live in the
+image's `hearth-decky`. So it's built into the image (pinned, SHA-256 checked) and updated with Hearth OS, arriving in
+the same update that retires Hearth Music: there's never a device with both or neither. It's never listed under
+Settings › Updates › Decky plugins. A ThemeDeck you installed from Decky's store yourself is left alone.
 
 ### Update plugins automatically
 

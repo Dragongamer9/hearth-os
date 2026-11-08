@@ -31,11 +31,14 @@ except ImportError:                           # Hearth OS's own copy
     sys.path.insert(0, '/usr/share/nimbus/desktop/shell')
     import hearth_settings_io as hio          # noqa: E402
 
-# Hearth's own plugins (hearth-decky's PLUGINS): on every device already, so only their settings are shared.
-HEARTH_PLUGINS = ('decky-hearth-sync', 'decky-hearth-link', 'decky-hearth-music', 'decky-hearth')
-# Not shared with the plugins switch: Hearth Link's plugin keeps its switches and state per device; Hearth Music's panel
-# settings travel with "Sync Hearth settings" instead (HEARTH below, each key checked), and its picks never (file paths).
-NOT_SHARED_SETTINGS = ('decky-hearth-link', 'decky-hearth-music')
+# Plugins every Hearth OS device has or had from Hearth itself (hearth-decky's PLUGINS and ThemeDeck, the older Hearth
+# plugin and the retired Hearth Music): never offered to install from another device, and only their settings.json
+# can be shared.
+HEARTH_PLUGINS = ('decky-hearth-sync', 'decky-hearth-link', 'decky-hearth-music', 'decky-hearth', 'ThemeDeck')
+# Not shared with the plugins switch: Hearth Link's plugin keeps its switches and state per device; Hearth Music is
+# retired (docs/THEMEDECK.md), so its settings no longer travel; ThemeDeck's files are songs on this device (paths to
+# your music, its own downloads and previews), which mean nothing on another device, so nothing of it travels.
+NOT_SHARED_SETTINGS = ('decky-hearth-link', 'decky-hearth-music', 'ThemeDeck')
 SECRET = re.compile(r'token|passw|secret|api[_-]?key|apikey|auth|cookie|credential|session|private|bearer|cert', re.I)
 MAX_VALUE = 32 * 1024
 MAX_PLUGIN = 40 << 20
@@ -64,7 +67,7 @@ def _between(lo, hi):
     return lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
 
 
-# What "Hearth settings" covers: (ns, file under home, {key: check}), Hearth Music's panel too. Everything else stays on its device: display
+# What "Hearth settings" covers: (ns, file under home, {key: check}). Everything else stays on its device: display
 # modes (session.conf, display.sh), audio devices, volume and louder-than-100%, HHD / TDP / power, network, pointer
 # speed, power timers, lock on wake, the on-screen keyboard's position.
 HEARTH = (
@@ -78,11 +81,6 @@ HEARTH = (
     ('hearth:gamemode', '.config/nimbus/game-mode-ui.json', {'nimbus.look': _scalar, 'nimbus.swapAB': _scalar, 'nimbus.swapXY': _scalar}),
     ('hearth:music', '.config/hearth-player/settings.json',
      {'shuffle': _scalar, 'repeat': _scalar, 'subsOff': _scalar, 'subLang': _scalar, 'cue': _scalar}),
-    # Hearth Music's panel (hosts/decky-hearth-music): on/off, volume, delay, in the library too, Apple's previews and the
-    # now-playing note. Not picks.json (per-game files: paths mean nothing on another device).
-    ('hearth:decky-music', 'homebrew/settings/decky-hearth-music/settings.json',
-     {'enabled': _bool, 'volume': _between(0, 1), 'delay': _between(0, 10), 'where': lambda v: v in ('pages', 'library'),
-      'online': _bool, 'toast': _bool}),
 )
 
 

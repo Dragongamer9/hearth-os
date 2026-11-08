@@ -632,7 +632,7 @@ export function startMenuBar(opts: { top: boolean; rail?: boolean; anchorClass?:
   };
 }
 
-/** Whether Steam is running a game now (Router.MainRunningApp, as Hearth Music reads it); null when unreadable. */
+/** Whether Steam is running a game now (Router.MainRunningApp); null when unreadable. */
 export function gameRunning(): boolean | null {
   try {
     const r = (DUI as any).Router ?? (window as any).SteamUIStore;

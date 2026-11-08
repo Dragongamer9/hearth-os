@@ -1,4 +1,4 @@
-"""Shared by Hearth's Decky plugins (Hearth Sync, Hearth Link, Hearth Music; docs/PLUGIN-UPDATES.md).
+"""Shared by Hearth's Decky plugins (Hearth Sync, Hearth Link, Hearth Eras and any new one; docs/PLUGIN-UPDATES.md).
 
 1. Hearth OS only. The plugins are part of Hearth OS: each backend asks `check()` when Decky loads it, and on any other
    system it starts none of its features; the frontend shows one panel about Hearth OS instead. This is a check, not

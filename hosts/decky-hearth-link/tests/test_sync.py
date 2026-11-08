@@ -138,36 +138,38 @@ class Sync(unittest.TestCase):
         ls.tick(b.p, B, now=T + 5_500_000)
         self.assertEqual((open(da).read(), open(db).read(), open(a.p.prefs).read()), before)
 
-    def test_hearth_music_panel_settings_follow_but_never_picks(self):
+    def test_neither_hearth_music_nor_themedeck_travels(self):
+        # Hearth Music is retired (docs/THEMEDECK.md): its settings no longer follow you. ThemeDeck's files are songs on
+        # this device (your music's paths, its downloads), so nothing of it travels, and neither is offered to install.
         a, b = self.a, self.b
         rel = 'homebrew/settings/decky-hearth-music/settings.json'
-        wr(a.f(rel), {'enabled': False, 'volume': 0.6, 'delay': 3.0, 'where': 'library', 'online': False, 'toast': False})
-        wr(b.f(rel), {'enabled': True, 'volume': 0.35, 'where': 'pages', 'unknownKey': 1})
-        wr(a.f('homebrew/settings/decky-hearth-music/picks.json'), {'game:570': '/home/ana/Music/dota.mp3'})
+        wr(a.f(rel), {'enabled': False, 'volume': 0.6})
+        wr(b.f(rel), {'enabled': True, 'volume': 0.35})
+        wr(a.f('homebrew/settings/decky-hearth-music/picks.json'), {'app:570': '/home/ana/Music/dota.mp3'})
         os.makedirs(a.f('homebrew/plugins/decky-hearth-music'))
         wr(a.f('homebrew/plugins/decky-hearth-music/plugin.json'), {'name': 'Hearth Music'})
+        os.makedirs(a.f('homebrew/plugins/ThemeDeck/downloads/570'))
+        wr(a.f('homebrew/plugins/ThemeDeck/plugin.json'), {'name': 'ThemeDeck'})
+        wr(a.f('homebrew/settings/ThemeDeck/tracks.json'), {'570': {'path': '/home/ana/Music/dota.mp3'}})
+        wr(a.f('homebrew/settings/ThemeDeck/settings.json'), {'x': 1})
+        wr(a.f('homebrew/settings/ThemeDeck/downloads/570/song.json'), {'y': 1})
         for d in (a, b):
             ls.set_switch(d.p, 'settings', True)
             ls.set_switch(d.p, 'plugins', True)
-        os.utime(b.f(rel), (1000, 1000))                          # the desk's are older
         ls.tick(a.p, A, now=T + 6_000_000)
         ls.tick(b.p, B, now=T + 6_000_000)
         carry(a, b)
         ls.tick(b.p, B, now=T + 6_100_000)
-        got = rd(b.f(rel))
-        self.assertEqual({k: got[k] for k in ('enabled', 'volume', 'delay', 'where', 'online', 'toast')},
-                         {'enabled': False, 'volume': 0.6, 'delay': 3.0, 'where': 'library', 'online': False, 'toast': False})
-        self.assertEqual(got['unknownKey'], 1, 'per key: the rest of the file stays')
-        self.assertTrue(os.path.exists(b.f(rel) + '.bak'), 'written the safe way')
-        self.assertFalse(os.path.exists(b.f('homebrew/settings/decky-hearth-music/picks.json')), 'picks (paths) never travel')
+        self.assertEqual(rd(b.f(rel)), {'enabled': True, 'volume': 0.35})
+        self.assertFalse(os.path.exists(b.f('homebrew/settings/decky-hearth-music/picks.json')))
+        self.assertFalse(os.path.exists(b.f('homebrew/settings/ThemeDeck')), 'nothing of ThemeDeck travels')
         local = ls.hio.load_json(a.p.prefs, {}).get('local', {})
-        self.assertIn('hearth:decky-music', local)
-        self.assertFalse(any(ns.startswith('decky:decky-hearth-music:') for ns in local), 'one path only: Sync Hearth settings')
-        self.assertNotIn('decky-hearth-music', local.get(ls.NS_PLUGINS, {}), "Hearth's own plugin isn't offered to install")
-        # A value that isn't one Hearth Music takes is never written.
-        wr(b.p.prefs, dict(ls.hio.load_json(b.p.prefs, {}), remote={'hearth:decky-music': {'volume': {'v': 7, 't': T + 9_000_000}}}))
-        ls.tick(b.p, B, now=T + 9_100_000)
-        self.assertEqual(rd(b.f(rel))['volume'], 0.6)
+        self.assertNotIn('hearth:decky-music', local)
+        self.assertFalse(any(ns.startswith(('decky:decky-hearth-music:', 'decky:ThemeDeck:')) for ns in local), local.keys())
+        for f in ('decky-hearth-music', 'ThemeDeck'):
+            self.assertNotIn(f, local.get(ls.NS_PLUGINS, {}), f + " isn't offered to install")
+        self.assertEqual([x['folder'] for x in ls.available(b.p)], [])
+        self.assertFalse(ls.pack_zip(b.p, 'ThemeDeck', {'folder': 'ThemeDeck', 'files': []})['ok'])
 
     def test_turning_it_off_stops_taking_changes(self):
         a = self.a

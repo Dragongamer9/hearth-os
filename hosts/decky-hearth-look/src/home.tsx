@@ -182,9 +182,7 @@ type FocusCard = (c: Card) => void;
 function Tile(props: { card: Card; big?: boolean; badge?: boolean; onFocusCard?: FocusCard }) {
   const w = props.big ? 330 : 137, h = 206;
   return (
-    // data-hearth-appid: the game this tile stands for, which Hearth Music reads when the tile is focused (its own
-    // focus watch, docs/HEARTH-LOOK.md "Hearth Music"), so the theme plays here like it does in Steam's library.
-    <div className="hc-tile-wrap" data-hearth-appid={props.card.appid} style={{ display: "contents" }}>
+    <div className="hc-tile-wrap" style={{ display: "contents" }}>
       <DialogButton className={"hc-tile" + (props.big ? " big" : "")} style={{ width: w, height: h }} onClick={() => { blip("ok"); openApp(props.card.appid); }}
         {...({ onGamepadFocus: (e: any) => { onFocus(e); props.onFocusCard?.(props.card); } } as any)}>
         <TileArt card={props.card} shape={props.big ? "wide" : "portrait"} badge={props.badge} />

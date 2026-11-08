@@ -30,6 +30,12 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 ### Server mode
 - [x] The web page never goes back to the PIN screen without a word: when the PIN was right but the browser didn't keep the sign-in, it says so and what to do; sign-ins, wrong PINs and unknown sign-ins go to the log for Send logs (needs testing on a device)
 
+### Game music: ThemeDeck
+- [x] ThemeDeck replaces Hearth Music: BrenticusMaximus's Decky plugin (BSD-3-Clause) plays your songs on Steam's game pages, with ambient and Store music and a Now Playing card. Built into the image unmodified at a pinned release (v4.0.0, checked against its SHA-256; a mismatch fails the build), its licence shipped with it; a ThemeDeck you installed yourself is left alone (docs/THEMEDECK.md; needs testing on a device)
+- [x] YouTube in ThemeDeck is its own opt-in: nothing for it (yt-dlp, Deno) is preinstalled; ThemeDeck sets it up only when you press its Install YouTube support (docs/THEMEDECK.md; needs testing on a device)
+- [x] Your Hearth Music songs move to ThemeDeck once: the music files you picked for a game become its ThemeDeck song, without touching songs you already gave games in ThemeDeck (kept as a .bak, never written over a damaged file); Apple Music and Deezer previews can't move (they were never stored). Hearth Music's own settings stay where they were (docs/THEMEDECK.md; needs testing on a device)
+- [x] Hearth Music is archived and retired: the update takes Hearth's copy out of Decky after carrying your songs over, the next plugins release removes downloaded copies, Hearth Classic and Hearth Eras no longer start a game's theme on their homes, and Hearth Link no longer syncs its settings (docs/ARCHIVED.md, docs/PLUGIN-UPDATES.md; needs testing on a device)
+
 ### Bug hunt
 
 - [x] Hearth Storage's Windows sharing: a folder whose name has a line break, a trailing backslash or % in it isn't shared any more (such a name could add Samba settings of its own, even a share of the whole system) (needs testing on a device)

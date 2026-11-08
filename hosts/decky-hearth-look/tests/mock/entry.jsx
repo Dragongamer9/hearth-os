@@ -1,14 +1,11 @@
 // CI only (render.mjs): Hearth Classic's real plugin (src/index.tsx) started the way Decky starts it, over a stand-in
 // of Steam's Game Mode (a Library page with tabs, a game page, Steam's Home, the main menu and Quick Access). Steam's
 // Home is drawn through the plugin's own route patch (what routerHook.addPatch("/library/home") got), so the home shot
-// is the real path. Hearth Music's own focus reader (hosts/decky-hearth-music/src/steam.ts appIdOf) is loaded too, to
-// check that it sees the game of a focused Hearth home tile.
+// is the real path.
 import { createRoot } from "react-dom/client";
 import { createElement as h, useEffect, useState } from "react";
 import plugin from "../../src/index.tsx";
-import { appIdOf } from "../../../decky-hearth-music/src/steam.ts";
 
-window.HC_MUSIC_APPID = appIdOf;
 const p = plugin();
 window.HC_PLUGIN = p;
 const scene = window.HC_SCENE || "home";

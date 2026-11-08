@@ -164,7 +164,7 @@ export function syncLines(sw: Switches, savesFollow: boolean, storage: boolean):
       : "Off: plugins and their settings stay as they are on this device",
     saves: `${savesFollow ? "On" : "Off"}: a game's newest save comes from Hearth Storage before it starts and goes back after.${storage ? "" : " Needs a Hearth Storage device."} Steam Cloud games already sync through Steam.`,
     settings: sw.settings
-      ? "On: look, theme and colours, the on-screen keyboard's look, Hearth Player's and Hearth Music's choices and button choices follow you. Screen modes, sound devices, power and network stay on each device"
+      ? "On: look, theme and colours, the on-screen keyboard's look, Hearth Player's choices and button choices follow you. Screen modes, sound devices, power and network stay on each device"
       : "Off: Hearth's settings stay as they are on this device",
   };
 }

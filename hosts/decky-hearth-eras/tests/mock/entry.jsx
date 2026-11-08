@@ -5,9 +5,6 @@
 import { createRoot } from "react-dom/client";
 import { createElement as h, useEffect, useState } from "react";
 import plugin from "../../src/index.tsx";
-import { appIdOf } from "../../../decky-hearth-music/src/steam.ts";
-
-window.HE_MUSIC_APPID = appIdOf;
 window.SteamClient = { Input: { RegisterForControllerStateChanges(cb) { window.HE_PAD = cb; return { unregister() { window.HE_PAD = null; } }; } } };
 const p = plugin();
 window.HE_PLUGIN = p;

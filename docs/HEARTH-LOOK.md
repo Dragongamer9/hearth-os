@@ -12,7 +12,7 @@
 (the archived `ui/index.html`) on top of Steam's Game Mode. It's **off until you turn it on**: Quick Access ›
 Hearth Classic › **Game Mode look**: **Hearth Classic** or **Steam**. The plugin never changes that choice by itself.
 
-It's a Hearth plugin like Hearth Sync, Hearth Link and Hearth Music: Hearth OS only (anywhere else its panel is the
+It's a Hearth plugin like Hearth Sync and Hearth Link: Hearth OS only (anywhere else its panel is the
 "Get Hearth OS" invitation and nothing is applied), and it arrives and updates through the plugins channel
 (docs/PLUGIN-UPDATES.md); `decky-plugins-release.yml` finds it by itself.
 
@@ -50,10 +50,9 @@ With **Hearth Classic** picked:
   game's card first (its picture, "Playing"). Where Steam lets its menu window grow, Hearth's bar at the top (in a
   game) or bottom (on the Store) instead.
 - **Hearth sounds** (off by default): Hearth's soft move and select sounds on the home screen.
-- **Hearth Music on the home**: focusing a game's tile on the Hearth home plays its Hearth Music theme, the same way
-  highlighting it in Steam's library does (Hearth Music's own player, settings and songs: with "Where" set to the
-  library, its volume, and nothing when Hearth Music isn't installed or is off). Each tile says which game it is
-  (`data-hearth-appid`), which Hearth Music's focus watch reads; nothing is matched or played by Hearth Classic itself.
+- **Game music**: nothing plays from the Hearth home itself any more. Hearth Music, which used to play a focused
+  tile's theme, was retired for **ThemeDeck** (docs/THEMEDECK.md), which plays a game's music on Steam's own game
+  pages; the tiles no longer carry `data-hearth-appid`.
 
 **Steam** puts everything back to Steam's own look at once.
 
@@ -257,6 +256,5 @@ CI never runs Steam, so these need a Hearth OS device:
 - the bottom bar and top bar: how Steam's real menu sits in them (the stand-in only approximates its layout), that its
   entries get their icons (English labels; other languages keep only their labels), and the controller: Steam's menu
   still moves with up and down (its own navigation), now along the bar;
-- Hearth Music on the home: that Steam's focus reaches the tiles as it does in the library;
 - the Play button (`SteamClient.Apps.RunGame`), the Store and Downloads places, and the sounds;
 - that the pause and Try again behave on a real Steam update.

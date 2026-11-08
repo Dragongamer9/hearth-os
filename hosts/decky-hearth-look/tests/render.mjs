@@ -124,9 +124,8 @@ await scene("home-hearth-classic", { settings: { look: "classic" }, qam: false, 
   await page.click(".hc-shelf .hc-tile");
   const nav = await page.evaluate(() => window.HC_NAV || []);
   if (!nav.includes("/library/app/3000000001")) errors.push(`home-hearth-classic: the first tile didn't open Steam's page (${nav})`);
-  // Hearth Music's own focus reader sees the game of a focused home tile.
-  const seen = await page.evaluate(() => window.HC_MUSIC_APPID(document.querySelectorAll(".hc-shelf .hc-tile")[1]));
-  if (seen !== 1001) errors.push(`music: Hearth Music's appIdOf read ${seen} for Ember Knights' tile, not 1001`);
+  // No game music from the home itself: ThemeDeck plays music on Steam's game pages (docs/THEMEDECK.md).
+  if (await page.locator("[data-hearth-appid]").count()) errors.push("home-hearth-classic: tiles still marked for Hearth Music");
   // Every place opens Steam's own page through its navigator.
   const want = { Library: "route:/library", Store: "navigator:SteamWeb", Downloads: "navigator:Downloads", Media: "navigator:Media.Grid", Friends: "navigator:Chat", Settings: "navigator:Settings" };
   const got = await places();
