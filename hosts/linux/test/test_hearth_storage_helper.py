@@ -83,6 +83,10 @@ class StorageHelper(unittest.TestCase):
         ok = os.path.join(self.home, 'Vidéos de l\'été (2026)')
         os.makedirs(ok)
         self.assertEqual(hsh.share_ok(ok, self.user, self.home), os.path.realpath(ok))
+        # A folder shared before isn't dropped for an & or a # in its name.
+        amp = os.path.join(self.home, 'Tom & Jerry #1')
+        os.makedirs(amp)
+        self.assertEqual(hsh.share_ok(amp, self.user, self.home), os.path.realpath(amp))
 
     def test_apply_and_off_keep_the_rest_of_smb_conf(self):
         with open(hsh.SMB_CONF, 'w') as f:
