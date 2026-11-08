@@ -19,6 +19,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Hearth for Android and Hearth Linux on Android | 2026-10-21 | `archive/hosts/android`; `android.yml` (by hand, type "archived") | [ANDROID](archive/ANDROID.md), [ANDROID-LINUX](archive/ANDROID-LINUX.md) |
 | Hearth's app store (Apps) | 2026-10-24: Bazaar replaced it | `archive/app-store` | below |
 | Hearth Friends (Matrix) | 1.6: replaced by Discord, with the owner's okay | `archive/hosts/hearth-friends`, `archive/hosts/hearth-core/src/matrix_friends.rs`, `archive/hosts/linux/desktop/shell/Friends.qml`, `archive/tools/friends-*.py`; `friends.yml` (by hand, type "archived") | [FRIENDS](archive/FRIENDS.md), below |
+| Hearth Music (Decky plugin) | November 2026: ThemeDeck replaced it, the owner's call | `archive/hosts/decky-hearth-music`; `decky-hearth-music.yml` (by hand, type "archived") | [HEARTH-MUSIC](archive/HEARTH-MUSIC.md), [THEMEDECK](THEMEDECK.md), below |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 
@@ -76,3 +77,24 @@ entries, `~/.local/share/hearth/friends/`) and settings are left untouched and a
 calls in `bridge.rs`, `play/mod.rs` and `core_service.rs`, `Friends { }` in `shell.qml` and the buttons in `Bar.qml` /
 `Islands.qml`, and the build and service back in `base-*.yml` and `os-bases/*/build.sh` (see the git history of this
 change).
+
+## Hearth Music (Decky plugin): archived November 2026
+
+**ThemeDeck** replaced it as the game music plugin in Steam Game Mode, the owner's call ([THEMEDECK](THEMEDECK.md)):
+BrenticusMaximus's Decky plugin (BSD-3-Clause), shipped unmodified at a pinned release.
+
+**Where the code is:** `archive/hosts/decky-hearth-music` (the plugin: backend, panel, tests), its doc
+[HEARTH-MUSIC](archive/HEARTH-MUSIC.md); `.github/workflows/decky-hearth-music.yml` runs only by hand, with "archived"
+typed (its backend tests that check hearth-decky shipping it no longer pass: the image doesn't ship it).
+
+**What happens on devices:** the image no longer ships it. At the first Steam Game Mode start after the update,
+`hearth-decky` copies your own Hearth Music songs (music files you picked for a game) into ThemeDeck once, then takes
+Hearth's copy of Hearth Music out of Decky's plugins folder (`RETIRED_BUILTIN`). It's also in `RETIRED` in
+`tools/decky_plugins.py`, so plugins releases never build it again and list it as retired: a downloaded copy is
+removed from devices still on an older image (their built-in copy stays until their Hearth OS update). Hearth Music's
+settings and picks in `~/homebrew/settings/decky-hearth-music` and its cache in `~/.cache/hearth-music` are left where
+they are. Hearth Look and Hearth Eras no longer mark their tiles for it, and Hearth Link no longer syncs its settings.
+
+**To bring it back:** move the folder and doc back, take it out of `RETIRED` and `RETIRED_BUILTIN`, put it back in
+`PLUGINS` (hearth-decky), the build step in `base-peppermint.yml` and the copy in `os-bases/peppermint/build.sh`, and
+the parts in Hearth Look, Hearth Eras and Hearth Link (see the git history of this change).

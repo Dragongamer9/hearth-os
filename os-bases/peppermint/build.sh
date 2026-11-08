@@ -350,15 +350,46 @@ echo "$DECKY_VERSION" > /usr/lib/hearth-decky/version
 rm -f /tmp/PluginLoader
 test -f /usr/lib/systemd/system/hearth-decky@.service
 echo "Decky Loader $DECKY_VERSION built in"
-# Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): theme songs in Steam's library, shipped and copied
-# into Decky's plugins folder the same way (hearth-decky PLUGINS). Only files. Not in this build: skipped.
-if [ -f /ctx/nimbus-app/decky-hearth-music/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-music/dist/index.js ]; then
-  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-music && cp -a /ctx/nimbus-app/decky-hearth-music /usr/share/hearth/decky-hearth-music \
-    && chmod -R a+rX /usr/share/hearth/decky-hearth-music && echo "Hearth Music (Decky plugin) added" \
-    || { echo "warning: Hearth Music didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-music; }
-else
-  echo "warning: Hearth Music isn't in this build; Steam Game Mode goes without it"
-fi
+# ThemeDeck (docs/THEMEDECK.md): BrenticusMaximus's game music plugin for Decky (github.com/BrenticusMaximus/ThemeDeck,
+# BSD-3-Clause), in Hearth Music's place (archived). Shipped unmodified: its pinned release ZIP, checked against its
+# SHA-256 (a mismatch or a failed download fails the build, like Decky Loader above), unpacked as it is (LICENSE
+# included) into /usr/share/hearth/decky-third-party/ThemeDeck. Only files: hearth-decky copies it into Decky's plugins
+# folder as ~/homebrew/plugins/ThemeDeck (the folder Decky's store uses) when it isn't there or is Hearth's older copy;
+# a ThemeDeck you installed yourself is left alone. Its YouTube support (yt-dlp, Deno) is never preinstalled here:
+# ThemeDeck sets that up itself, only when you press its own "Install YouTube support". Bump both lines together.
+THEMEDECK_VERSION=v4.0.0
+THEMEDECK_SHA256=9a2bd31bf4a9daeb2a2c3ba1e3b94fab4259dac27166a2098405580e3063b9c0
+curl -fsSL --retry 3 -o /tmp/ThemeDeck.zip "https://github.com/BrenticusMaximus/ThemeDeck/releases/download/$THEMEDECK_VERSION/ThemeDeck-$THEMEDECK_VERSION.zip"
+echo "$THEMEDECK_SHA256  /tmp/ThemeDeck.zip" | sha256sum -c -
+rm -rf /tmp/themedeck-unpack /usr/share/hearth/decky-third-party/ThemeDeck
+mkdir -p /tmp/themedeck-unpack /usr/share/hearth/decky-third-party
+# Only regular files under ThemeDeck/ (no links, absolute paths or ..), as the ZIP has them.
+python3 - /tmp/ThemeDeck.zip /tmp/themedeck-unpack <<'PY'
+import os, stat, sys, zipfile
+src, dst = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(src) as z:
+    for i in z.infolist():
+        n = i.filename
+        parts = n.split('/')
+        if n.startswith('/') or '..' in parts or parts[0] != 'ThemeDeck' or stat.S_ISLNK(i.external_attr >> 16):
+            sys.exit('ThemeDeck zip: unexpected entry %r' % n)
+        if n.endswith('/'):
+            continue
+        out = os.path.join(dst, *parts)
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with z.open(i) as f, open(out, 'wb') as g:
+            g.write(f.read())
+PY
+for f in plugin.json package.json main.py dist/index.js LICENSE; do test -s "/tmp/themedeck-unpack/ThemeDeck/$f"; done
+grep -q '"name": "ThemeDeck"' /tmp/themedeck-unpack/ThemeDeck/plugin.json
+grep -q "\"version\": \"${THEMEDECK_VERSION#v}\"" /tmp/themedeck-unpack/ThemeDeck/package.json
+grep -q 'BSD 3-Clause License' /tmp/themedeck-unpack/ThemeDeck/LICENSE
+mv /tmp/themedeck-unpack/ThemeDeck /usr/share/hearth/decky-third-party/ThemeDeck
+chmod -R a+rX,go-w /usr/share/hearth/decky-third-party
+# Its licence notice next to Hearth's other documentation too (the copy in the plugin's folder travels with it).
+install -Dm644 /usr/share/hearth/decky-third-party/ThemeDeck/LICENSE /usr/share/doc/themedeck/copyright
+rm -rf /tmp/ThemeDeck.zip /tmp/themedeck-unpack
+echo "ThemeDeck $THEMEDECK_VERSION (Decky plugin, unmodified) added"
 # Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): the second Decky plugin, copied and refreshed by
 # hearth-decky the same way. Only files; skipped when not in this build.
 if [ -f /ctx/nimbus-app/decky-hearth-link/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-link/dist/index.js ]; then

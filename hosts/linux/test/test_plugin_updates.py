@@ -21,7 +21,9 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 DECKY = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-decky'
 SHARED = ROOT / 'hosts/decky-shared'
-PLUGINS = ('decky-hearth-sync', 'decky-hearth-link', 'decky-hearth-music')
+PLUGINS = ('decky-hearth-sync', 'decky-hearth-link')
+# A third built-in plugin for these tests only (Hearth Music was the third until it was retired for ThemeDeck).
+THIRD = 'decky-hearth-third'
 DL = 'https://github.com/Dragongamer9/hearth-os/releases/download/plugins-v'
 
 HEARTH_OS_RELEASE = '''PRETTY_NAME="Hearth OS (Debian 13)"
@@ -97,7 +99,7 @@ class Base(unittest.TestCase):
         self.w('usr/lib/hearth-decky/PluginLoader', 'x')
         self.w('usr/lib/systemd/system/hearth-decky@.service', '[Service]\n')
         self.w('etc/os-release', HEARTH_OS_RELEASE)
-        for n in PLUGINS:
+        for n in PLUGINS + (THIRD,):
             self.ship(n, '1.1.0')
         self.fetched = []
 
@@ -172,10 +174,10 @@ class Base(unittest.TestCase):
 
 class Manifest(Base):
     def test_parses_a_good_manifest(self):
-        r = self.release('1.1.1', {'decky-hearth-sync': '1.1.1', 'decky-hearth-music': '1.1.1'})
+        r = self.release('1.1.1', {'decky-hearth-sync': '1.1.1', THIRD: '1.1.1'})
         data = self.served[[a['browser_download_url'] for a in r['assets'] if a['name'] == 'plugins.json'][0]]
         m = self.m.parse_manifest(data, '1.1.1')
-        self.assertEqual([p['id'] for p in m['plugins']], ['decky-hearth-sync', 'decky-hearth-music'])
+        self.assertEqual([p['id'] for p in m['plugins']], ['decky-hearth-sync', THIRD])
         self.assertEqual(m['plugins'][0]['min_decky'], '3.3.1')
 
     def test_refuses_bad_manifests(self):
@@ -215,11 +217,11 @@ class Manifest(Base):
 class Picking(Base):
     def test_only_newer_than_both_installed_and_builtin(self):
         self.prepare()   # the image's 1.1.0 copies in place
-        self.serve(self.release('1.1.1', {'decky-hearth-sync': '1.1.1', 'decky-hearth-link': '1.1.0', 'decky-hearth-music': '1.0.9'}))
+        self.serve(self.release('1.1.1', {'decky-hearth-sync': '1.1.1', 'decky-hearth-link': '1.1.0', THIRD: '1.0.9'}))
         out, got = self.m.plugins_check(self.home, self.get)
         self.assertEqual(out['available'], {'decky-hearth-sync': '1.1.1'})
         self.assertIn('not newer', out['skipped']['decky-hearth-link'])
-        self.assertIn('not newer', out['skipped']['decky-hearth-music'])
+        self.assertIn('not newer', out['skipped'][THIRD])
         # A built-in version newer than the installed one also counts: an image with 1.2.0 needs nothing from 1.1.1.
         self.ship('decky-hearth-sync', '1.2.0')
         out, _ = self.m.plugins_check(self.home, self.get)
@@ -562,10 +564,10 @@ class NewPlugins(Base):
         self.offer('1.2.0.0', {NEW: '1.0.0', 'decky-hearth-sync': '1.2.0.0'})
         self.m.plugins_update(None, self.home, self.get)
         self.prepare()
-        self.offer('1.2.0.1', {'decky-hearth-music': '1.2.0.1'})
+        self.offer('1.2.0.1', {THIRD: '1.2.0.1'})
         self.m.plugins_update(None, self.home, self.get)
         self.prepare()
-        self.assertEqual((self.installed(NEW), self.installed('decky-hearth-sync'), self.installed('decky-hearth-music')),
+        self.assertEqual((self.installed(NEW), self.installed('decky-hearth-sync'), self.installed(THIRD)),
                          ('1.0.0', '1.2.0.0', '1.2.0.1'))
 
     def test_retired_removes_only_downloaded_copies(self):
@@ -576,7 +578,7 @@ class NewPlugins(Base):
         self.prepare()
         # Retired: the new plugin (downloaded only) and Hearth Sync's download (the image still ships Hearth Sync) and
         # Hearth Link (only the built-in copy, still shipped).
-        self.offer('1.2.0.1', {'decky-hearth-music': '1.2.0.1'}, retired=[NEW, 'decky-hearth-sync', 'decky-hearth-link'])
+        self.offer('1.2.0.1', {THIRD: '1.2.0.1'}, retired=[NEW, 'decky-hearth-sync', 'decky-hearth-link'])
         out = self.m.plugins_update(None, self.home, self.get)
         self.assertEqual(sorted(out['retired']), [NEW, 'decky-hearth-sync'])
         self.prepare()
@@ -584,7 +586,7 @@ class NewPlugins(Base):
         self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0')   # the built-in one came back
         self.assertEqual(self.m.versions(self.home, 'decky-hearth-sync')['source'], 'built-in')
         self.assertEqual(self.installed('decky-hearth-link'), '1.1.0')   # built in and still shipped: stays
-        self.assertEqual(self.installed('decky-hearth-music'), '1.2.0.1')
+        self.assertEqual(self.installed(THIRD), '1.2.0.1')
         # An image that no longer ships a retired built-in plugin: then it goes.
         shutil.rmtree(os.path.join(self.root, 'usr/share/hearth/decky-hearth-link'))
         self.prepare()
@@ -627,7 +629,7 @@ class NewPlugins(Base):
             self.assertIsNone(self.m.downloaded_ok(self.home, bad))
         # A state file naming something else is ignored.
         self.w('.local/state/nimbus/plugin-updates.json', json.dumps({'extra': {'../evil': '1', 'decky-other': '1'}, 'retired': ['../x']}), self.home)
-        self.assertEqual(self.m.plugin_names(self.home), list(PLUGINS))
+        self.assertEqual(self.m.plugin_names(self.home), list(PLUGINS) + [THIRD])
         self.prepare()
         self.assertFalse(os.path.exists(os.path.join(self.home, 'homebrew/evil')))
         # A planted link for Decky's plugins folder is refused.
@@ -712,6 +714,18 @@ class RetiredPlugins(unittest.TestCase):
         for r in self.dp.RETIRED:
             self.assertTrue(self.dp.PLUGIN_ID.fullmatch(r), r)
 
+    def test_hearth_music_is_retired_archived_and_retired_by_the_image(self):
+        # Hearth Music (ThemeDeck replaced it, docs/THEMEDECK.md): code archived, never released, and the image's
+        # hearth-decky retires its built-in copy by itself (RETIRED_BUILTIN), never shipping it again.
+        self.assertIn('decky-hearth-music', self.dp.RETIRED)
+        self.assertFalse((ROOT / 'hosts/decky-hearth-music').exists())
+        self.assertTrue((ROOT / 'archive/hosts/decky-hearth-music/main.py').is_file())
+        self.assertNotIn('decky-hearth-music', [p['id'] for p in self.dp.discover(ROOT)])
+        self.assertIn('decky-hearth-music', self.hd.RETIRED_BUILTIN)
+        self.assertNotIn('decky-hearth-music', self.hd.PLUGINS)
+        self.assertIn('decky-hearth-music', self.hd.retired_ids({}))
+        self.assertIn('decky-hearth-music', (ROOT / 'docs/ARCHIVED.md').read_text())
+
     def test_manifest_lists_retired_and_devices_accept_it(self):
         tmp = pathlib.Path(tempfile.mkdtemp(prefix='retired-'))
         try:
@@ -720,10 +734,11 @@ class RetiredPlugins(unittest.TestCase):
                     z.writestr(p['id'] + '/package.json', json.dumps({'version': '9.9.9'}))
             self.assertFalse((tmp / 'decky-hearth-look.zip').exists())
             m = self.dp.manifest(tmp, '9.9.9', '1.2', '3.0', ROOT)
-            self.assertEqual(m['retired'], ['decky-hearth-look'])
+            self.assertEqual(m['retired'], ['decky-hearth-look', 'decky-hearth-music'])
             self.assertNotIn('decky-hearth-look', [e['id'] for e in m['plugins']])
+            self.assertNotIn('decky-hearth-music', [e['id'] for e in m['plugins']])
             parsed = self.hd.parse_manifest((tmp / 'plugins.json').read_bytes(), '9.9.9')
-            self.assertEqual(parsed['retired'], ['decky-hearth-look'])
+            self.assertEqual(parsed['retired'], ['decky-hearth-look', 'decky-hearth-music'])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         self.assertEqual(subprocess.run([sys.executable, str(ROOT / 'tools/decky_plugins.py'), 'retired'], capture_output=True,
@@ -813,7 +828,7 @@ class HearthOnly(unittest.TestCase):
 
     def test_each_plugin_starts_nothing_off_hearth_and_logs_once(self):
         self.system(STEAMOS_RELEASE)
-        for name, folder in (('Hearth Sync', 'decky-hearth-sync'), ('Hearth Link', 'decky-hearth-link'), ('Hearth Music', 'decky-hearth-music')):
+        for name, folder in (('Hearth Sync', 'decky-hearth-sync'), ('Hearth Link', 'decky-hearth-link')):
             logs = []
             fake = types.ModuleType('decky')
             fake.DECKY_USER_HOME = os.path.join(self.tmp, 'home')
@@ -839,43 +854,6 @@ class HearthOnly(unittest.TestCase):
             self.assertFalse(hasattr(p, '_sync') or hasattr(p, '_loaded'), name)   # nothing started
             self.assertEqual(len([l for l in logs if 'features stay off' in l]), 1, (name, logs))
         sys.modules.pop('decky', None)
-
-    def music(self):
-        fake = types.ModuleType('decky')
-        fake.DECKY_USER_HOME = os.path.join(self.tmp, 'home')
-        fake.DECKY_PLUGIN_SETTINGS_DIR = os.path.join(self.tmp, 'settings', 'decky-hearth-music')
-        fake.DECKY_PLUGIN_RUNTIME_DIR = os.path.join(self.tmp, 'data', 'decky-hearth-music')
-        fake.DECKY_PLUGIN_DIR = str(ROOT / 'hosts' / 'decky-hearth-music')
-        fake.logger = types.SimpleNamespace(info=lambda *a: None, error=lambda *a: None, warning=lambda *a: None)
-        sys.modules['decky'] = fake
-        self.addCleanup(sys.modules.pop, 'decky', None)
-        sys.modules.pop('hearth_only', None)
-        spec = importlib.util.spec_from_file_location('main_music_gate', ROOT / 'hosts' / 'decky-hearth-music' / 'main.py')
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return fake, mod
-
-    def test_hearth_music_library_scan_only_on_hearth_os(self):
-        self.system(STEAMOS_RELEASE)
-        fake, mod = self.music()
-        self.assertFalse(asyncio.run(mod.Plugin().scan_library([{'appid': 504230, 'title': 'Celeste'}], True)))
-        self.assertFalse(mod._scan['running'])
-        self.assertIsNone(mod._scan['thread'])   # the scan thread never started
-
-    def test_hearth_music_writes_the_load_mark(self):
-        self.system(HEARTH_OS_RELEASE)
-        fake, mod = self.music()
-        p = mod.Plugin()
-
-        async def go():
-            await p._main()
-            self.assertTrue(isinstance(p._loaded, asyncio.Task))   # hearth-loaded.json after LOADED_AFTER seconds
-            p._loaded.cancel()
-            await mod.hearth_only.mark_loaded_later(fake, delay=0)
-        asyncio.run(go())
-        want = json.load(open(ROOT / 'hosts' / 'decky-hearth-music' / 'package.json'))['version']
-        got = json.load(open(os.path.join(fake.DECKY_PLUGIN_RUNTIME_DIR, 'hearth-loaded.json')))
-        self.assertEqual(got['version'], want)
 
     def test_load_mark(self):
         self.system(HEARTH_OS_RELEASE)

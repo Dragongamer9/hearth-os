@@ -370,19 +370,6 @@ jobs:
           pnpm build
           ./package.sh /tmp/decky-out
           tar -C /tmp/decky-out/decky-hearth-sync -cf "$GITHUB_WORKSPACE/hearth-decky-sync.tar" .
-      # Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): shipped next to Hearth Sync the same way, into
-      # /usr/share/hearth/decky-hearth-music. Never fails the image.
-      - name: Build Hearth Music (Decky plugin)
-        continue-on-error: true
-        run: |
-          set -e
-          cd hosts/decky-hearth-music
-          npm install -g pnpm@9 >/dev/null
-          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
-          pnpm install --no-frozen-lockfile >/dev/null
-          pnpm build
-          ./package.sh /tmp/decky-out
-          tar -C /tmp/decky-out/decky-hearth-music -cf "$GITHUB_WORKSPACE/hearth-decky-music.tar" .
       # ---- Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): another Decky plugin, built the same way
       # into hearth-decky-link.tar for /usr/share/hearth/decky-hearth-link. Never fails the image.
       - name: Build Hearth Link (Decky plugin)
@@ -416,7 +403,6 @@ jobs:
             hearth-browser.tar
             hearth-electron.tar
             hearth-decky-sync.tar
-            hearth-decky-music.tar
             hearth-decky-link.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
@@ -531,7 +517,6 @@ jobs:
           python3 tools/hearth_version.py date "${{ needs.app.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
           echo "::notice title=version::${{ needs.app.outputs.version }} (shown as $(python3 tools/hearth_version.py show "${{ needs.app.outputs.version }}"), released: $(cat os/system_files/usr/share/nimbus/version-date))"
           if [ -f hearth-decky-sync.tar ]; then mkdir -p os/nimbus-app/decky-hearth-sync && tar -C os/nimbus-app/decky-hearth-sync -xf hearth-decky-sync.tar || rm -rf os/nimbus-app/decky-hearth-sync; fi
-          if [ -f hearth-decky-music.tar ]; then mkdir -p os/nimbus-app/decky-hearth-music && tar -C os/nimbus-app/decky-hearth-music -xf hearth-decky-music.tar || rm -rf os/nimbus-app/decky-hearth-music; fi
           if [ -f hearth-decky-link.tar ]; then mkdir -p os/nimbus-app/decky-hearth-link && tar -C os/nimbus-app/decky-hearth-link -xf hearth-decky-link.tar || rm -rf os/nimbus-app/decky-hearth-link; fi
 
       - name: Build
@@ -582,6 +567,8 @@ jobs:
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           check "Decky Loader is built in (the pinned PluginLoader, its version, the hearth-decky@ template, not enabled)" "test -x /usr/lib/hearth-decky/PluginLoader && head -c 4 /usr/lib/hearth-decky/PluginLoader | od -An -tx1 | tr -d ' \\n' | grep -qx 7f454c46 && grep -qx 'v[0-9.]*' /usr/lib/hearth-decky/version && grep -q 'ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky run %i' /usr/lib/systemd/system/hearth-decky@.service && grep -qx 'User=root' /usr/lib/systemd/system/hearth-decky@.service && ! grep -q '^\\[Install\\]' /usr/lib/systemd/system/hearth-decky@.service && ! ls /etc/systemd/system/*.wants/hearth-decky@* 2>/dev/null | grep -q ."
           check "nimbus-session can start your own Decky without a password (49-hearth-decky.rules: your instance, every account)" "grep -q 'hearth-decky@. + subject.user' /usr/share/polkit-1/rules.d/49-hearth-decky.rules && python3 /usr/libexec/nimbus/hearth-decky 2>&1 | grep -q 'run USER'"
+          check "ThemeDeck is built in, unmodified, with its BSD-3 licence (docs/THEMEDECK.md), and Hearth Music isn't" "test -s /usr/share/hearth/decky-third-party/ThemeDeck/dist/index.js && test -s /usr/share/hearth/decky-third-party/ThemeDeck/main.py && grep -q '\"name\": \"ThemeDeck\"' /usr/share/hearth/decky-third-party/ThemeDeck/plugin.json && grep -q 'BSD 3-Clause License' /usr/share/hearth/decky-third-party/ThemeDeck/LICENSE && test -s /usr/share/doc/themedeck/copyright && test ! -e /usr/share/hearth/decky-hearth-music"
+          check "no YouTube tooling is preinstalled for ThemeDeck (it sets that up itself, only when asked)" "! command -v yt-dlp && ! command -v deno"
           check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           echo "--- Make a bootable USB (Hearth Disks)"
           check "the USB maker's root helper (hearth-usb) is installed and hearth-admin hands it usb-* commands" "test -x /usr/libexec/nimbus/hearth-usb && python3 -m py_compile /usr/libexec/nimbus/hearth-usb && grep -q usb-raw /usr/libexec/nimbus/hearth-admin"

@@ -9,9 +9,11 @@ for administrators). The service runs:
 
   hearth-decky run USER       get ready, then become Decky Loader: ~USER/homebrew and Steam's CEF remote debugging for
                               USER (Decky needs it), Hearth Sync (/usr/share/hearth/decky-hearth-sync, docs/HEARTH-SYNC.md)
-                              and the image's other plugins in PLUGINS (Hearth Link, Hearth Music) brought up to date in
-                              Decky's plugins folder, the older Hearth plugin Hearth put there taken
-                              away, and an install from before (hearth-decky.service and /var/lib/hearth-decky) removed
+                              and the image's other plugins in PLUGINS (Hearth Link) and ThemeDeck (docs/THEMEDECK.md)
+                              brought up to date in Decky's plugins folder, the older Hearth plugin and the retired
+                              Hearth Music Hearth put there taken away (your Hearth Music songs carried over to
+                              ThemeDeck once), and an install from before (hearth-decky.service and /var/lib/hearth-decky)
+                              removed
 
 Older Hearth OS versions downloaded Decky when asked (hearth-admin decky-install, an administrator's password); those
 commands stay for images without the built-in one and for clean-up:
@@ -103,11 +105,28 @@ PLUGIN_DIR = 'decky-hearth-sync'
 OLD_PLUGIN_DIR = 'decky-hearth'
 OLD_PLUGIN = {'name': 'Hearth', 'author': 'Dragongamer9'}
 # Every plugin the image ships (/usr/share/hearth/<folder>): Hearth Sync first, then Hearth Link
-# (docs/HEARTH-LINK-PLUGIN.md) and Hearth Music (docs/HEARTH-MUSIC.md). Each is copied on install, brought up to date
-# on start and taken away on remove the same way (refresh_plugins); one the image doesn't have is skipped.
-PLUGINS = (PLUGIN_DIR, 'decky-hearth-link', 'decky-hearth-music')
+# (docs/HEARTH-LINK-PLUGIN.md). Each is copied on install, brought up to date on start and taken away on remove the same
+# way (refresh_plugins); one the image doesn't have is skipped.
+PLUGINS = (PLUGIN_DIR, 'decky-hearth-link')
+# Built-in plugins a Hearth OS release retired (docs/PLUGIN-UPDATES.md, "Retiring a plugin"): this image no longer
+# ships them, so Hearth's copy in Decky's folder goes at the next Decky start (retire_installed: only Hearth's own copy,
+# a real folder whose plugin.json is by Dragongamer9) and no download of them is ever put in place again. Their
+# settings in ~/homebrew/settings/<folder> stay where they are.
+#   decky-hearth-music: Hearth Music, retired by the owner (November 2026) for ThemeDeck (docs/THEMEDECK.md); its songs
+#   you picked yourself are carried over to ThemeDeck once (music_to_themedeck).
+RETIRED_BUILTIN = ('decky-hearth-music',)
+# ThemeDeck (docs/THEMEDECK.md): a third-party Decky plugin (BrenticusMaximus, BSD-3-Clause) the image ships unmodified
+# in /usr/share/hearth/decky-third-party/ThemeDeck (os-bases/peppermint/build.sh, a pinned release checked against its
+# SHA-256). It goes into ~/homebrew/plugins/ThemeDeck, the folder Decky's store uses, so its settings are the same
+# either way (~/homebrew/settings/ThemeDeck). Hearth's copy carries THIRD_PARTY_MARK; a ThemeDeck without it (one you
+# installed or updated from Decky's store) is yours and is never replaced or removed. It isn't one of the plugins a
+# plugins release updates (not Hearth's, no load mark): it's updated with Hearth OS.
+THIRD_PARTY_DIR = 'usr/share/hearth/decky-third-party'
+THEMEDECK = 'ThemeDeck'
+THIRD_PARTY_MARK = '.hearth-built-in.json'
 # Any Hearth plugin's folder name (docs/PLUGIN-UPDATES.md, "Adding a new plugin"): new ones arrive through a plugins
-# release without a system update. Nothing else is ever accepted, written or removed in Decky's plugins folder.
+# release without a system update. Nothing else is ever accepted, written or removed in Decky's plugins folder, apart
+# from Hearth's own copy of ThemeDeck (THEMEDECK below).
 PLUGIN_ID = re.compile(r'decky-hearth-[a-z0-9][a-z0-9-]{0,40}')
 
 
@@ -130,8 +149,208 @@ def shipped(name=PLUGIN_DIR):
 
 
 def copy_others(home):
-    """The other plugins in PLUGINS: {folder: copied} for the ones the image ships."""
-    return {n: copy_plugin(home, name=n) for n in PLUGINS[1:] if shipped(n)}
+    """The other plugins in PLUGINS (and ThemeDeck): {folder: copied} for the ones the image ships."""
+    out = {n: copy_plugin(home, name=n) for n in PLUGINS[1:] if shipped(n)}
+    if themedeck_shipped():
+        try:
+            out[THEMEDECK] = refresh_themedeck(home) in ('added', 'updated', 'up to date')
+        except (OSError, ValueError):
+            out[THEMEDECK] = False
+    return out
+
+
+def themedeck_src():
+    return path(THIRD_PARTY_DIR, THEMEDECK)
+
+
+def themedeck_shipped():
+    return os.path.isfile(os.path.join(themedeck_src(), 'plugin.json'))
+
+
+def themedeck_version(d):
+    v = read_json(os.path.join(d, 'package.json'), {}).get('version')
+    return v if safe_version(v) else None
+
+
+def refresh_themedeck(home):
+    """ThemeDeck into Decky's plugins folder when it isn't there, or is Hearth's copy of another version. One you
+    installed yourself (no THIRD_PARTY_MARK, or a link) is left alone. Returns what happened, or None when the image
+    doesn't ship it. Never raises for a problem with the person's folder: it's reported instead."""
+    if not themedeck_shipped():
+        return None
+    hb = os.path.join(home, 'homebrew')
+    plugins = os.path.join(hb, 'plugins')
+    if os.path.islink(hb) or os.path.islink(plugins):
+        return 'not copied (Decky\'s plugins folder is a link)'
+    dst = os.path.join(plugins, THEMEDECK)
+    if os.path.lexists(dst):
+        if os.path.islink(dst) or not os.path.isfile(os.path.join(dst, THIRD_PARTY_MARK)):
+            return 'yours, left alone'
+        if not themedeck_outdated(home):
+            return 'up to date'
+        verb = 'updated'
+    else:
+        verb = 'added'
+    mark = json.dumps({'from': 'Hearth OS', 'version': themedeck_version(themedeck_src())}) + '\n'
+    copy_plugin(home, name=THEMEDECK, src=themedeck_src(), mark=(THIRD_PARTY_MARK, mark))
+    return verb
+
+
+def themedeck_outdated(home):
+    src, dst = themedeck_src(), installed_dir(home, THEMEDECK)
+    for rel in ('plugin.json', 'package.json', 'main.py', 'dist/index.js', 'LICENSE'):
+        a, b = os.path.join(src, rel), os.path.join(dst, rel)
+        if not os.path.isfile(a):
+            continue
+        if not os.path.isfile(b) or not filecmp.cmp(a, b, shallow=False):
+            return True
+    return False
+
+
+# ---- Hearth Music's picks become ThemeDeck's (docs/THEMEDECK.md, "Your Hearth Music songs")
+# Hearth Music kept the songs you chose in ~/homebrew/settings/decky-hearth-music/picks.json: "app:<appid>" (or
+# "collection:<name>") -> a music file's path, {"source": "none"} ("No music for this game"), or an Apple Music/Deezer
+# preview ({"source": "apple"|"deezer", "id", ...}, streamed, never stored). ThemeDeck keeps its game songs in
+# ~/homebrew/settings/ThemeDeck/tracks.json: "<appid>" -> {app_id, assigned_at, path, filename, volume, start_offset,
+# loop} (its main.py set_track). Only your own music files for a game carry over: previews can't (there's no file),
+# collections and "No music" have no ThemeDeck equivalent (a game without a song is silent in ThemeDeck anyway), and
+# a file that's gone is skipped. Settings rules (docs/SETTINGS-PERSISTENCE.md): once (a record in MUSIC_RECORD),
+# merged into what ThemeDeck already has (a game you already gave a song in ThemeDeck keeps it), under the file's
+# lock, atomic with tracks.json.bak (hearth_settings_io), nothing written over a tracks.json that can't be read (tried
+# again at the next start instead), and Hearth Music's own files only ever read.
+MUSIC_AUDIO = ('.ogg', '.opus', '.mp3', '.flac', '.m4a', '.aac', '.wav')   # Hearth Music's AUDIO_EXTS
+
+
+def music_picks_path(home):
+    return os.path.join(home, 'homebrew', 'settings', 'decky-hearth-music', 'picks.json')
+
+
+def themedeck_tracks_path(home):
+    return os.path.join(home, 'homebrew', 'settings', THEMEDECK, 'tracks.json')
+
+
+def music_record_path(home):
+    """When the carry-over ran and what it did (prepare runs it for that home, so always under it)."""
+    return os.path.join(home, '.local/state', 'nimbus', 'themedeck-from-hearth-music.json')
+
+
+def _read_object(p):
+    """The JSON object in P without changing P (no repair: Hearth Music's files are only read). None when unreadable."""
+    try:
+        with open(p, 'rb') as f:
+            v = json.loads(f.read().decode('utf-8'))
+        return v if isinstance(v, dict) else None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def music_picks_to_tracks(picks, now):
+    """{appid: track} for ThemeDeck from Hearth Music's PICKS, and {reason: count} for the ones that can't carry over."""
+    out, skipped = {}, {}
+
+    def skip(why):
+        skipped[why] = skipped.get(why, 0) + 1
+    for k, v in sorted(picks.items()):
+        kind, _, name = str(k).partition(':')
+        if kind != 'app':
+            skip('collection' if kind == 'collection' else 'other')
+            continue
+        if not name.isdigit() or int(name) <= 0 or len(name) > 20:
+            skip('other')
+            continue
+        if isinstance(v, dict):
+            skip('no music' if v.get('source') == 'none' else 'streamed preview')
+            continue
+        if not isinstance(v, str) or not v.lower().endswith(MUSIC_AUDIO) or not os.path.isabs(v):
+            skip('other')
+            continue
+        real = os.path.realpath(v)
+        if not os.path.isfile(real) or not os.access(real, os.R_OK):
+            skip('file gone')
+            continue
+        appid = str(int(name))
+        out[appid] = {'app_id': int(appid), 'assigned_at': now, 'path': real, 'filename': os.path.basename(real),
+                      'volume': 1.0, 'start_offset': 0.0, 'loop': True}
+    return out, skipped
+
+
+def music_to_themedeck(home, now=None):
+    """The carry-over itself, as the person. Returns the record written (None when it already ran)."""
+    io = _settings_io()
+    rec_p = music_record_path(home)
+    if os.path.lexists(rec_p):
+        return None
+    now = float(now if now is not None else time.time())
+    rec = {'done': True, 'at': int(now), 'carried': 0, 'kept': 0, 'skipped': {}}
+    picks_p = music_picks_path(home)
+    if not os.path.lexists(picks_p):
+        rec['note'] = 'no Hearth Music picks'
+        io.write_json(rec_p, rec)
+        return rec
+    picks = _read_object(picks_p)
+    if picks is None:
+        picks = _read_object(picks_p + '.bak')   # Hearth Music's own last good copy, read only
+        if picks is not None:
+            rec['note'] = 'picks.json couldn\'t be read; its .bak was used'
+    if picks is None:
+        rec['note'] = 'Hearth Music\'s picks.json couldn\'t be read; nothing carried over (it was left as it is)'
+        io.write_json(rec_p, rec)
+        return rec
+    tracks, rec['skipped'] = music_picks_to_tracks(picks, now)
+    tracks_p = themedeck_tracks_path(home)
+    if tracks:
+        with io.locked(tracks_p):
+            try:
+                with open(tracks_p, 'rb') as f:
+                    raw = f.read()
+            except FileNotFoundError:
+                raw = None
+            if raw is None:
+                cur = {}
+            else:
+                try:
+                    cur = json.loads(raw.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    cur = None
+                if not isinstance(cur, dict):
+                    # Never written over: ThemeDeck's file stays as it is and this is tried again next time.
+                    return {'done': False, 'error': 'ThemeDeck\'s tracks.json couldn\'t be read; nothing written'}
+            new = dict(cur)
+            for appid, tr in tracks.items():
+                if appid in cur:
+                    rec['kept'] += 1      # already has a song in ThemeDeck: yours stays
+                else:
+                    new[appid] = tr
+                    rec['carried'] += 1
+            if rec['carried']:
+                io.write_json(tracks_p, new)   # atomic, the file before kept as tracks.json.bak
+    io.write_json(rec_p, rec)
+    return rec
+
+
+def carry_music_picks(pw, home):
+    """music_to_themedeck as the person (prepare runs as root), quietly: a short summary for the log line, or None
+    when there was nothing to do. Never raises out of the child; never stops Decky starting."""
+    rec_p = music_record_path(home)
+    if os.path.lexists(rec_p) or not os.path.lexists(os.path.dirname(music_picks_path(home))):
+        return None   # already done, or Hearth Music never kept anything here
+    ok = as_user(pw, lambda: music_to_themedeck(home))
+    rec = read_json(rec_p, None)
+    if not ok or not rec:
+        return 'not carried over (tried again next time)'
+    return 'carried %d, kept %d of yours, skipped %d' % (rec.get('carried', 0), rec.get('kept', 0),
+                                                          sum((rec.get('skipped') or {}).values()))
+
+
+def remove_themedeck(home):
+    """Hearth's copy of ThemeDeck (only one with THIRD_PARTY_MARK, never a link or one you installed)."""
+    dst = installed_dir(home, THEMEDECK)
+    if os.path.islink(os.path.join(home, 'homebrew')) or os.path.islink(os.path.dirname(dst)):
+        return False
+    if os.path.isdir(dst) and not os.path.islink(dst) and os.path.isfile(os.path.join(dst, THIRD_PARTY_MARK)):
+        shutil.rmtree(dst, ignore_errors=True)
+        return True
+    return False
 
 
 def refresh_plugins(home, out, say_missing=False):
@@ -178,6 +397,13 @@ def refresh_plugins(home, out, say_missing=False):
                 out[key] = 'not shipped'
         except OSError as e:
             out[key] = 'couldn\'t update (%s)' % e
+    # ThemeDeck (docs/THEMEDECK.md): the image's copy, never in the way of Decky starting.
+    try:
+        r = refresh_themedeck(home)
+        if r:
+            out[THEMEDECK] = r
+    except (OSError, ValueError) as e:
+        out[THEMEDECK] = 'couldn\'t copy (%s)' % e
     try:
         note_installed(home)
     except Exception:
@@ -301,9 +527,11 @@ def user_side(home):
             m.write('\n'.join(made) + '\n')
 
 
-def copy_plugin(home, owner_root=True, name=PLUGIN_DIR):
-    """One of the image's plugins (Hearth Sync unless named) into Decky's plugins folder (root's, as Decky keeps it). False when not shipped."""
-    src = shipped_plugin(name)
+def copy_plugin(home, owner_root=True, name=PLUGIN_DIR, src=None, mark=None):
+    """One of the image's plugins (Hearth Sync unless named; SRC for one outside /usr/share/hearth/<name>) into Decky's
+    plugins folder (root's, as Decky keeps it), with MARK ((file name, text)) written beside its files when given.
+    False when not shipped."""
+    src = src or shipped_plugin(name)
     if not os.path.isfile(os.path.join(src, 'plugin.json')):
         return False
     plugins = os.path.join(home, 'homebrew', 'plugins')
@@ -312,6 +540,9 @@ def copy_plugin(home, owner_root=True, name=PLUGIN_DIR):
     tmp = dst + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.copytree(src, tmp, symlinks=False)
+    if mark:
+        with open(os.path.join(tmp, mark[0]), 'w') as f:
+            f.write(mark[1])
     shutil.rmtree(dst, ignore_errors=True)
     os.rename(tmp, dst)
     if owner_root and os.geteuid() == 0:
@@ -410,9 +641,10 @@ def remove(user):
         systemctl('daemon-reload')
     shutil.rmtree(lib_dir(), ignore_errors=True)
     for n in plugin_names(home):
-        if n not in PLUGINS and not os.path.isfile(os.path.join(installed_dir(home, n), MARKER)):
+        if n not in PLUGINS and n not in RETIRED_BUILTIN and not os.path.isfile(os.path.join(installed_dir(home, n), MARKER)):
             continue
         shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', n), ignore_errors=True)
+    remove_themedeck(home)
     remove_old_plugin(home)
     mark = os.path.join(home, 'homebrew', MARK)
     try:
@@ -527,6 +759,14 @@ def prepare(user):
     except OSError as e:
         out['migrated'] = 'couldn\'t (%s)' % e
     as_user(pw, lambda: user_side(home))
+    # Hearth Music's songs you picked become ThemeDeck's (once, before Decky starts, as you; docs/THEMEDECK.md). Done
+    # before Hearth Music's copy is retired below; its settings stay. A failure only goes in this line of the log.
+    try:
+        r = carry_music_picks(pw, home)
+        if r:
+            out['musicPicks'] = r
+    except Exception as e:
+        out['musicPicks'] = 'couldn\'t (%s)' % e
     refresh_plugins(home, out, say_missing=True)
     try:
         if remove_old_plugin(home):
@@ -769,7 +1009,9 @@ def set_install_new(home, on):
 
 
 def retired_ids(st):
-    return [n for n in (st.get('retired') or []) if valid_id(n)]
+    """The newest plugins release's "retired" list, and the built-in plugins this image retired (RETIRED_BUILTIN)."""
+    ids = [n for n in (st.get('retired') or []) if valid_id(n)]
+    return ids + [n for n in RETIRED_BUILTIN if n not in ids]
 
 
 def plugin_names(home, st=None):
@@ -784,7 +1026,8 @@ def plugin_names(home, st=None):
     except OSError:
         pass
     for n in cand:
-        if valid_id(n) and n not in names and (n in extra or os.path.isfile(os.path.join(installed_dir(home, n), MARKER))):
+        if valid_id(n) and n not in names and (n in extra or os.path.isfile(os.path.join(installed_dir(home, n), MARKER))
+                                               or (n in RETIRED_BUILTIN and os.path.lexists(installed_dir(home, n)))):
             names.append(n)
     return names
 
@@ -1309,7 +1552,8 @@ def retire_installed(home, name, out, key):
     if not os.path.lexists(inst):
         return True
     if os.path.isfile(os.path.join(inst, MARKER)) or \
-            (name in PLUGINS and read_json(os.path.join(inst, 'plugin.json'), {}).get('author') == 'Dragongamer9'):
+            ((name in PLUGINS or name in RETIRED_BUILTIN) and not os.path.islink(inst)
+             and read_json(os.path.join(inst, 'plugin.json'), {}).get('author') == 'Dragongamer9'):
         remove_installed(home, name)
         out[key] = 'removed (retired)'
     return True

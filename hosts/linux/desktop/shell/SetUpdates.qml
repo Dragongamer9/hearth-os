@@ -200,7 +200,7 @@ SetPage {
     property var plugins: null       // hearth-decky plugins-status: {auto, installNew, plugins: {name: {name, installed, builtin, source}}, new: {id: {name, description, version}}, lastError, lastCheck, available}
     property string pluginsLine: ""
     property string pluginsCmd: ""
-    readonly property var pluginNames: ({ "decky-hearth-sync": "Hearth Sync", "decky-hearth-link": "Hearth Link", "decky-hearth-music": "Hearth Music" })
+    readonly property var pluginNames: ({ "decky-hearth-sync": "Hearth Sync", "decky-hearth-link": "Hearth Link" })
     function pluginsRun(cmd) {
         if (pluginsProc.running) return;
         pluginsCmd = cmd;

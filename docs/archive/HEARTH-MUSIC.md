@@ -1,6 +1,10 @@
 # Hearth Music
 
-Hearth Music is a small Decky plugin (`hosts/decky-hearth-music`) for Steam Game Mode. It plays the theme song of the
+> **Archived (November 2026, the owner's call):** ThemeDeck replaced Hearth Music as the game music plugin in Steam
+> Game Mode ([THEMEDECK](../THEMEDECK.md)). The code is in `archive/hosts/decky-hearth-music`; it's no longer built, shipped or
+> tested automatically. The rest of this page describes Hearth Music as it was.
+
+Hearth Music is a small Decky plugin (`archive/hosts/decky-hearth-music`) for Steam Game Mode. It plays the theme song of the
 game you're looking at while you browse Steam's library, crossfades when you move to another game, fades out the
 moment you press Play and stays silent while a game runs. It ships in the image next to Hearth Sync and goes into
 Decky's plugins folder with it (Settings › System › Steam Game Mode, Decky).

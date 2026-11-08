@@ -19,7 +19,7 @@ import unittest
 import urllib.error
 
 HERE = pathlib.Path(__file__).resolve().parents[1]
-ROOT = HERE.parents[1]
+ROOT = HERE.parents[2]   # archived: archive/hosts/decky-hearth-music
 
 
 def load(tmp):

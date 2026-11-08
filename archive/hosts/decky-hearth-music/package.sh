@@ -1,10 +1,10 @@
 #!/bin/sh
 # Packs Hearth Music the way Decky installs it (the decky-plugin-template's layout): OUT/decky-hearth-music/ with
 # dist/index.js, main.py, package.json, plugin.json and LICENSE. Then OUT/decky-hearth-music.zip.
-# Run after `pnpm build` (CI: .github/workflows/decky-hearth-music.yml, and the image's app job). Usage: package.sh OUT
+# Run after `pnpm build` (CI: .github/workflows/decky-hearth-music.yml, by hand only: archived). Usage: package.sh OUT
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
+ROOT="$(cd "$HERE/../../.." && pwd)"   # archived: archive/hosts/decky-hearth-music
 OUT="${1:?usage: package.sh OUT}"
 P="$OUT/decky-hearth-music"
 test -s "$HERE/dist/index.js"

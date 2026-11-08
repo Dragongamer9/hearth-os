@@ -26,7 +26,11 @@ PLUGIN_ID = re.compile(r'decky-hearth-[a-z0-9][a-z0-9-]{0,40}')   # the same rul
 # remove their downloaded copies and no longer offer them. Taking an id out of here offers the plugin again.
 #   decky-hearth-look: Hearth Classic, retired by the owner (November 2026); its home and skin live on as the
 #                      "Hearth Classic" era of Hearth Eras (hosts/decky-hearth-eras), which reuses its code.
-RETIRED = ('decky-hearth-look',)
+#   decky-hearth-music: Hearth Music, retired by the owner (November 2026) for ThemeDeck (docs/THEMEDECK.md); its code
+#                      is in archive/hosts/decky-hearth-music. It was built into the image: devices drop the built-in
+#                      copy with the Hearth OS update that ships ThemeDeck (hearth-decky's RETIRED_BUILTIN), and a
+#                      downloaded copy with the next plugins release.
+RETIRED = ('decky-hearth-look', 'decky-hearth-music')
 
 
 def _json(p):
