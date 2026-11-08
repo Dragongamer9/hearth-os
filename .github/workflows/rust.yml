@@ -65,10 +65,16 @@ jobs:
           node ui-check.js
       # The USB installer's page (ui/installer.html, tools/installer-check.py): the Welcome screen's Controllers card
       # with the pretend PC, leaving Welcome stops the search, no Bluetooth and Try again. Its picture: installer-welcome.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Check the installer's page
         run: |
-          pip install -q playwright==1.48.0 >/dev/null && python3 -m playwright install chromium >/dev/null
-          python3 tools/installer-check.py installer-welcome.png
+          if ! { python3 -m pip install -q playwright==1.48.0 && python3 -m playwright install chromium; } > /tmp/pw.log 2>&1; then
+            echo "::error title=Installer check setup::$(tail -15 /tmp/pw.log | tr '\n' '|' | cut -c1-3000)"; exit 1
+          fi
+          python3 tools/installer-check.py installer-welcome.png 2>&1 | tee /tmp/ic.log; rc=${PIPESTATUS[0]}
+          [ "$rc" = 0 ] || { grep -q '::error' /tmp/ic.log || echo "::error title=Installer check::$(tail -15 /tmp/ic.log | tr '\n' '|' | cut -c1-3000)"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
