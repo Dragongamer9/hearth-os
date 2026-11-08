@@ -1939,7 +1939,9 @@ function dlInfo(g){
   if(g.engine && g.engine.auto && g.state!=='paused') return {pct, label:'Automatic update'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   if(g.engine && g.engine.kind==='workshop' && g.state!=='paused') return {pct, label:'Workshop items'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   if(g.engine && g.engine.kind==='verify' && g.state!=='paused') return {pct, label:'Checking files'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
-  return {pct, label: (g.stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(g.stage||'') ? ` ${pct}%` : '')};
+  // g.stage can carry Steam's own words ("Stopped: <its reason>"), drawn as part of the page: no markup in it.
+  const stage = g.stage ? String(g.stage).replace(/[<>"]/g,'') : '';
+  return {pct, label: (stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(stage) ? ` ${pct}%` : '')};
 }
 function cover(g, opts={}){
   const kinds = opts.wide ? ['wide','hero','cover'] : ['cover','wide'];
