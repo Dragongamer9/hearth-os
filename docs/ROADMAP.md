@@ -29,20 +29,17 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Quick Resume: closing a game put aside no longer ends another game's processes that it shares a folder or Wine prefix with (needs testing on a device)
 - [x] The fail-safe: background work (Battle.net's setup, a tool downloaded for a game) no longer switches the fail-safe off for the next request, so a Hearth stuck on that request is still freed or restarted (needs testing on a device)
 - [x] Settings › Display: the renderer choice, Nvidia's drawing choice and Xodus Nexus's games folder are written whole with a last good copy, so a power cut can't empty them and turn them back to Automatic by themselves (needs testing on a device)
+- [x] Clock and Calendar: a power cut that damaged clock.json or calendar.json no longer lets the next save (or the background service after a missed alarm) wipe every alarm or event; they come back from a .bak (needs testing on a device)
+- [x] Calendar: events added while a subscribed calendar was downloading are no longer undone by the service saving its older copy (needs testing on a device)
+- [x] Calculator, Emoji, Documents, Maps, Player, Terminal, Text, Office, Contacts and Theater: a damaged settings or list file is put back from a .bak instead of the defaults being saved over it (history, saved places, podcasts, CardDAV accounts, sites...) (needs testing on a device)
+- [x] Terminal, Office and Calculator: two windows no longer undo each other's settings (each saves only what it changed) (needs testing on a device)
+- [x] Hearth Connect, Nearby Share and Recorder: a damaged paired-devices or settings file is put back from a .bak, so a power cut no longer means pairing every phone again or losing the recorder's choices (needs testing on a device)
 
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
 - [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
-
-### Bug hunt
-
-- [x] Clock and Calendar: a power cut that damaged clock.json or calendar.json no longer lets the next save (or the background service after a missed alarm) wipe every alarm or event; they come back from a .bak (needs testing on a device)
-- [x] Calendar: events added while a subscribed calendar was downloading are no longer undone by the service saving its older copy (needs testing on a device)
-- [x] Calculator, Emoji, Documents, Maps, Player, Terminal, Text, Office, Contacts and Theater: a damaged settings or list file is put back from a .bak instead of the defaults being saved over it (history, saved places, podcasts, CardDAV accounts, sites...) (needs testing on a device)
-- [x] Terminal, Office and Calculator: two windows no longer undo each other's settings (each saves only what it changed) (needs testing on a device)
-- [x] Hearth Connect, Nearby Share and Recorder: a damaged paired-devices or settings file is put back from a .bak, so a power cut no longer means pairing every phone again or losing the recorder's choices (needs testing on a device)
 
 ## 1.8 (released 2026-11-08)
 
