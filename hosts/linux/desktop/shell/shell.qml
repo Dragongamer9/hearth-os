@@ -148,8 +148,8 @@ ShellRoot {
             const acts = entry.actions ? Array.from(entry.actions).slice(0, 6) : [];
             for (const a of acts) list.push({ label: a.name, icon: "open", group: "Jump to", run: () => { a.execute(); launcher.shown = false; } });
             list.push({ separator: true });
-            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
-            list.push({ label: "Add to desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
+            list.push({ label: "Add to desktop", short: "To desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
             // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.

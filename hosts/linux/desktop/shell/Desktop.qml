@@ -320,7 +320,7 @@ PanelWindow {
         list.push({ label: "Copy", icon: "copy", shortcut: "Ctrl+C", quick: true, run: () => copy(many, false) });
         if (!multi) list.push({ label: "Rename", icon: "edit", shortcut: "F2", quick: true, run: () => rename(e) });
         list.push({ separator: true });
-        list.push({ label: "Move to Trash", icon: "trash", danger: true, shortcut: "Del", quick: true, run: () => trash(many) });
+        list.push({ label: "Move to Trash", short: "Trash", icon: "trash", danger: true, shortcut: "Del", quick: true, run: () => trash(many) });
         if (!multi) {
             list.push({ separator: true });
             list.push({ label: "Properties", icon: "info", shortcut: "Alt+Enter", run: () => properties(e) });
@@ -357,7 +357,7 @@ PanelWindow {
         }
         list.push({ label: "Show desktop icons", group: "View", checked: DeskState.desktopIcons, run: () => DeskState.setDesktopIcons(!DeskState.desktopIcons) });
         list.push({ separator: true });
-        list.push({ label: "Change wallpaper", icon: "palette", quick: true, run: () => { if (settingsApp) settingsApp.open("appearance"); } });
+        list.push({ label: "Change wallpaper", short: "Wallpaper", icon: "palette", quick: true, run: () => { if (settingsApp) settingsApp.open("appearance"); } });
         list.push({ label: "Display settings", icon: "display", group: "Settings", run: () => { if (settingsApp) settingsApp.open("display"); } });
         list.push({ label: "Open in Files", icon: "folder", group: "Open", run: () => { if (filesApp) filesApp.open(dir || home); } });
         list.push({ label: "Open a terminal here", icon: "kbd", group: "Open", run: () => Quickshell.execDetached(["sh", "-c", "cd \"$1\" && exec sh \"$2\" terminal", "sh", dir || home, Quickshell.env("NIMBUS_SHARE") + "/desktop/open.sh"]) });

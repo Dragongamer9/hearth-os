@@ -1265,8 +1265,8 @@ Scope {
             items.push({ id: "pick-cancel", label: "Cancel", key: "Esc" }, sep());
         }
         if (inTrash) {
-            if (n) items.push({ id: "restore", label: "Put back" + what, icon: "undo", quick: true });
-            if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del", icon: "trash", quick: true });
+            if (n) items.push({ id: "restore", label: "Put back" + what, short: "Put back", icon: "undo", quick: true });
+            if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del", icon: "trash", quick: true, short: "Delete" });
             items.push({ id: "empty", label: "Empty Trash", danger: true, icon: "trash" });
             if (e) items.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" });
         } else {
@@ -1299,7 +1299,7 @@ Scope {
                 if (templates.length) items.push({ id: "sub-new", label: "New document  ›", icon: "doc", group: "New" });
             }
             items.push(sep());
-            if (n && writable) items.push({ id: "trash", label: "Move to Trash" + what, key: "Del", icon: "trash", quick: true });
+            if (n && writable) items.push({ id: "trash", label: "Move to Trash" + what, short: "Trash", key: "Del", icon: "trash", quick: true });
             if (n && writable) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Shift+Del", icon: "close" });
             items.push(sep());
             if (e) items.push({ id: "mark", label: marked[e.path] ? "Unselect" : "Select", key: "Ctrl+Space", group: "Select" });

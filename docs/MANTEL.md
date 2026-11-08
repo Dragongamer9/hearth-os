@@ -122,7 +122,7 @@ one shared `PopMenu.qml`, and Hearth Files' actions menu (its own overlay, drawn
 The three new looks are `MenuStyles.qml`, loaded by file name by PopMenu and by Hearth Files; if it can't load (a
 warning in the shell's log), today's menu shows, so a problem never loses the menu. The API stays
 `menu.popup(screen, x, y, opts, items)`; items may add `quick: true` (the quick icons / tiles; a normal row in Today
-and Compact), `shortcut: "Ctrl+C"` (the old `hint` still works) and `group: "Open"` (Tiles and groups' headings;
+and Compact), `shortcut: "Ctrl+C"` (the old `hint` still works) and `group: "Open"` (Tiles and groups' headings; `short: "Trash"` names a tile;
 ungrouped items go under "More"). Files marks Cut, Copy, Rename and Move to Trash as quick (Files has no Share yet);
 the desktop, the bar's and dock's app menus and the launcher mark their main actions. Keys and controller: Up / Down,
 Left / Right in the quick row or the tiles, A / Enter chooses, Right opens a submenu, B / Esc / Left goes back. While

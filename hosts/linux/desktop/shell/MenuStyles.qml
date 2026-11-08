@@ -11,6 +11,7 @@
 //   quick: true      in the quick row (Windows 11 style) or the tiles (Tiles and groups); a normal row in the others
 //   shortcut: "Ctrl+C"
 //   group: "Open"    Tiles and groups' headings
+//   short: "Trash"   a shorter name for a tile (Tiles and groups)
 // Hearth Files' items ({id, label, key, sep, danger}) work too. The owner (PopMenu, Files) runs what's chosen.
 // Keyboard and controller: Up / Down, Left / Right in the quick row or the tiles, Enter (A) chooses, Right opens a
 // submenu, Left / Esc (B) goes back, then closes.
@@ -318,7 +319,7 @@ Item {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     width: tile.width - 6
                                     horizontalAlignment: Text.AlignHCenter
-                                    text: (tile.it.label || "").replace(/[….]+$/, "")
+                                    text: tile.it.short || (tile.it.label || "").replace(/[….]+$/, "")
                                     elide: Text.ElideRight
                                     color: tile.lit ? Theme.accentInk : Theme.text
                                     font.family: Theme.font; font.pixelSize: 10; font.weight: Font.Medium
@@ -373,7 +374,7 @@ Item {
         id: fly
         visible: mv.flying
         readonly property bool flip: mv.spaceRight < width + 8
-        width: 200
+        width: 236
         height: flyList.implicitHeight + 10
         x: flip ? -width + 4 : card.width - 4
         y: Math.max(mv.minTop, Math.min(mv.flyY - 5, mv.maxBottom - height))

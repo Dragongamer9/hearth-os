@@ -211,7 +211,7 @@ PanelWindow {
         if (it.entry && !it.own) list.push({ label: ws.length ? "New window" : "Open", icon: ws.length ? "plus" : "open", quick: true, run: () => it.entry.execute() });
         if (it.entry && !it.own) {
             const pinned = DeskState.isPinned(it.entry.id);
-            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(it.entry.id) });
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(it.entry.id) });
         }
         if (win) {
             const sets = desks.item ? desks.item.sets : [];
@@ -226,8 +226,8 @@ PanelWindow {
             if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
             else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });
-            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", icon: "close", danger: true, quick: true, run: () => ws.forEach(w => w.close()) });
-            else list.push({ label: "Close window", icon: "close", danger: true, quick: true, run: () => win.close() });
+            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", short: "Close all", icon: "close", danger: true, quick: true, run: () => ws.forEach(w => w.close()) });
+            else list.push({ label: "Close window", short: "Close", icon: "close", danger: true, quick: true, run: () => win.close() });
         }
         const p = menuPoint(btn);
         menu.popup(screen, p.x, p.y, { title: appName(it), above: !portrait }, list);
