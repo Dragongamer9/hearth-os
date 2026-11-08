@@ -34,15 +34,6 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Calculator, Emoji, Documents, Maps, Player, Terminal, Text, Office, Contacts and Theater: a damaged settings or list file is put back from a .bak instead of the defaults being saved over it (history, saved places, podcasts, CardDAV accounts, sites...) (needs testing on a device)
 - [x] Terminal, Office and Calculator: two windows no longer undo each other's settings (each saves only what it changed) (needs testing on a device)
 - [x] Hearth Connect, Nearby Share and Recorder: a damaged paired-devices or settings file is put back from a .bak, so a power cut no longer means pairing every phone again or losing the recorder's choices (needs testing on a device)
-
-### Planned next
-
-- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
-- [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
-- [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
-
-### Bug hunt
-
 - [x] First-time setup: "Sign in to your game stores" shows your stores once they're read (it said "Loading…" until something else redrew the page), and says why with Try again when they can't be read (needs testing on a device)
 - [x] First-time setup: B goes to the step before (and does nothing on the first). It used to leave setup for Hearth's Home half done, and a step passed by mistake (like Wi-Fi) couldn't be reached again with a controller (needs testing on a device)
 - [x] First-time setup on Hearth OS: "Look for games on other drives" no longer marks setup as done, so B comes back to setup and finishing it still hands over to Steam Game Mode (it stayed in Hearth's own Game Mode) (needs testing on a device)
@@ -51,6 +42,12 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Quick Access (top dock): left / right move from the tab that's selected, so no tab is skipped after the pointer selected another one (needs testing on a device)
 - [x] Hearth's page: long names fit. The clock no longer breaks onto two lines next to a long game title; long Bluetooth, sound device and profile names wrap inside their rows and cards instead of running over the next column; a title with no spaces wraps on the game page (needs testing on a device)
 - [x] Downloads: Steam's own words for a stopped download are shown as text, never as part of the page (needs testing on a device)
+
+### Planned next
+
+- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
+- [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
+- [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
 
 ## 1.8 (released 2026-11-08)
 
