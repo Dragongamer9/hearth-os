@@ -1807,7 +1807,7 @@ def services_status(data=None):
     web['urls'] = web_urls(data, ts_dns, ts_ip, lan)
     extra = home_ai_view(data)
     return {'media': media, 'ai': ai, 'web': web, 'host': host, 'tsName': ts_dns, 'syncs': len(data['syncs']),
-            'pictures': extra['pictures'], 'voices': extra['voices'], 'studio': extra['studio'],
+            'pictures': extra['pictures'], 'voices': extra['voices'], 'studio': extra.get('studio'),
             'remote': unit_active('sunshine.service', user=True) or unit_active('app-dev.lizardbyte.app.Sunshine.service', user=True),
             'storage': os.path.exists('/etc/samba/hearth-storage.conf'), 'playing': bool(sv.get('playing'))}
 
@@ -1941,7 +1941,7 @@ def ai_status():
             'loaded': loaded, 'reachable': bool(tags is not None),
             'address': 'http://%s:11434/v1' % ts_dns if ts_dns else '', 'local': 'http://localhost:11434/v1',
             'commandCenter': seen.get('commandCenter'), 'showHidden': data['showHidden'], 'ccDays': data['ccDays'],
-            'pictures': sv['pictures'], 'voices': sv['voices'],
+            'pictures': sv['pictures'], 'voices': sv['voices'], 'studio': sv.get('studio'),
             'playing': sv['playing'], 'unloadedAt': (sio.load_json(SERVICES_STATE, {}, repair=False) if os.path.exists(SERVICES_STATE) else {}).get('unloadedAt', 0)}
 
 
@@ -3353,7 +3353,7 @@ def gaming_view():
     return {'games': games, 'lightMode': data['lightMode'], 'playing': bool(mod and mod.game_running()), 'resumed': resumed(),
             'ai': {k: sv['ai'][k] for k in ('on', 'unload', 'pause', 'installed')}, 'media': {k: sv['media'][k] for k in ('on', 'pause')},
             'pictures': {k: sv['pictures'][k] for k in ('on', 'pause', 'installed')}, 'voices': {k: sv['voices'][k] for k in ('on', 'pause', 'installed')},
-            'studio': {k: sv['studio'][k] for k in ('on', 'pause', 'installed')},
+            'studio': {k: (sv.get('studio') or {}).get(k) for k in ('on', 'pause', 'installed')},
             'snapshots': data['snapshots'], 'backups': len(data['backups']), 'syncs': len(data['syncs']), 'tsName': ts_dns,
             'storage': sv['storage'], 'remote': sv['remote']}
 

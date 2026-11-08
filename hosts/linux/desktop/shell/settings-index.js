@@ -732,6 +732,16 @@ var ENTRIES = [
 "i": "open"
 },
 {
+"t": "Voice Studio",
+"p": "hs-ai",
+"i": "vol"
+},
+{
+"t": "Open Voice Studio",
+"p": "hs-ai",
+"i": "open"
+},
+{
 "t": "AI voices (Kokoro)",
 "p": "hs-ai",
 "i": "vol"
@@ -1455,6 +1465,55 @@ var ENTRIES = [
 "t": "Remove ComfyUI",
 "p": "hs-services",
 "d": "ComfyUI and its Python environment go. Your models, pictures (output) and workflows stay in ~/ComfyUI",
+"i": "trash"
+},
+{
+"t": "Install Voice Studio",
+"p": "hs-services",
+"i": "vol"
+},
+{
+"t": "Voice Studio",
+"p": "hs-services",
+"i": "vol"
+},
+{
+"t": "Open Voice Studio",
+"p": "hs-services",
+"i": "open"
+},
+{
+"t": "Voice Studio: PIN, apps, while you play",
+"p": "hs-services",
+"d": "The PIN for its page, the address and key for the Command Center, removing it",
+"i": "gear"
+},
+{
+"t": "PIN for Voice Studio",
+"p": "hs-services",
+"i": "lock"
+},
+{
+"t": "Address for the Command Center",
+"p": "hs-services",
+"i": "clipboard"
+},
+{
+"t": "API key for apps",
+"p": "hs-services",
+"d": "The Command Center and other apps send it with each request. Copy it into the speech server's key field",
+"i": "lock"
+},
+{
+"t": "Make a new key",
+"p": "hs-services",
+"d": "The old key stops working: apps using it need the new one",
+"i": "restart"
+},
+{
+"t": "Remove Voice Studio",
+"p": "hs-services",
+"d": "Its engines and downloaded models go (about 14 GB). Your voices, audiobooks, dubs and transcripts stay",
 "i": "trash"
 },
 {

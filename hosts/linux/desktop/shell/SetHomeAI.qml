@@ -24,6 +24,7 @@ SetPage {
     readonly property var have: ai ? ai.models.filter(m => m.have) : []
     readonly property var pic: ai ? ai.pictures : null
     readonly property var voi: ai ? ai.voices : null
+    readonly property var vs: ai ? ai.studio : null
     function appLine(a, what) {
         if (!a) return "";
         if (a.installing) return "Installing… " + (a.progress || 0) + "%";
@@ -193,6 +194,19 @@ SetPage {
         onActivated: Quickshell.execDetached(["xdg-open", page.pic.url || page.pic.local])
     }
     SetRow { chevron: true;
+        visible: !!page.vs
+        icon: "vol"; title: "Voice Studio"
+        sub: page.appLine(page.vs) + ". Speak, clone, design, transcribe, audiobooks and dubbing, and voices for the Command Center"
+        value: page.vs && page.vs.on ? "On" : ""
+        onActivated: SettingsNav.openPage("hs-services")
+    }
+    SetRow {
+        visible: !!page.vs && page.vs.installed && page.vs.on
+        icon: "open"; title: "Open Voice Studio"
+        sub: page.vs ? (page.vs.url || page.vs.local) : ""
+        onActivated: Quickshell.execDetached(["xdg-open", page.vs.local])
+    }
+    SetRow { chevron: true;
         visible: !!page.voi
         icon: "vol"; title: "AI voices (Kokoro)"
         sub: page.appLine(page.voi) + ". Natural voices for the Command Center, on the CPU"
@@ -241,8 +255,9 @@ SetPage {
     SetRow { chevron: true;
         visible: page.ccShown
         icon: "vol"; title: "Voices for the Command Center"
-        sub: page.voi && page.voi.installed ? (page.voi.url ? page.voi.url : page.voi.local) + " in Settings › Voice › Speech servers › Kokoro-FastAPI" + (page.voi.on ? "" : " (turn AI voices on in Services)")
-             : "AI voices (Kokoro) in Services gives the Command Center natural voices from this PC"
+        sub: page.vs && page.vs.installed ? (page.vs.url || page.vs.local) + " in Settings › Voice › Add a speech server › OpenAI-compatible speech API, with Voice Studio's key (Services › Voice Studio)" + (page.vs.on ? "" : " (turn Voice Studio on in Services)")
+             : page.voi && page.voi.installed ? (page.voi.url ? page.voi.url : page.voi.local) + " in Settings › Voice › Speech servers › Kokoro-FastAPI" + (page.voi.on ? "" : " (turn AI voices on in Services)")
+             : "Voice Studio (or AI voices, Kokoro) in Services gives the Command Center natural voices from this PC"
         onActivated: SettingsNav.openPage("hs-services")
     }
 

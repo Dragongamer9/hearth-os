@@ -15,6 +15,18 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 ### Hearth Mods
 - [x] Play with mods: a modded Steam game (Skyrim SE with a Wabbajack list like Tuxborn) starts on the regular Steam, which it can reach: Play starts that Steam hidden when it isn't running, uses its Proton, and when only the Flatpak Steam is open says to close it instead of SKSE quietly ending after 3 seconds. Send logs keeps Proton's errors instead of hundreds of trace lines (needs testing on a device)
 
+### Voice Studio
+- [x] Voice Studio, Hearth's own voice studio on the home server (Settings › Home server › Services › Voice Studio): install on demand (about 14 GB, in your Home), on/off, Open, a PIN for its page (or Server mode's), the address and an API key to copy for the Command Center, Stop it while I play, Remove (your voices stay unless you confirm twice). Only your devices on Tailscale and this PC can reach it (needs testing on a device)
+- [x] Speak: any voice, 40+ languages, speed, download as MP3, WAV, FLAC or Opus (needs testing on a device)
+- [x] Clone a voice from a short recording (upload, or record; on a phone the recorder opens), with a consent box; it goes into your voice library (needs testing on a device)
+- [x] Design a voice from words or chips, hear it, keep it: it stays the same person every time (needs testing on a device)
+- [x] Transcribe audio or video to text, SRT and VTT, with Speaker 1 / Speaker 2 labels (needs testing on a device)
+- [x] Your voices: one library for every feature and the API (hear, use, default, rename, delete), plus eight ready-made voices (needs testing on a device)
+- [x] Audiobooks from pasted text, .txt or .epub: chapters found by themselves, narrated in a queue that carries on after a restart or a game, with an MP3 per chapter, a zip and an .m4b with chapters (needs testing on a device)
+- [x] Video dubbing: transcribed, translated by your AI service, spoken again in each speaker's own cloned voice (or one you pick), each line timed to the original, music and sounds kept (Demucs), muxed back with subtitles in both languages; queued like audiobooks (needs testing on a device)
+- [x] OpenAI-compatible speech API: /v1/audio/speech, /v1/audio/transcriptions, /v1/audio/translations, /v1/audio/voices and /v1/models, with a key, for the Hearth AI Command Center and other apps (needs testing on a device)
+- [x] Kokoro (AI voices) keeps working as before for anyone who uses it, and Voice Studio lists its voices too (needs testing on a device)
+
 ### Server mode
 - [x] The web page never goes back to the PIN screen without a word: when the PIN was right but the browser didn't keep the sign-in, it says so and what to do; sign-ins, wrong PINs and unknown sign-ins go to the log for Send logs (needs testing on a device)
 

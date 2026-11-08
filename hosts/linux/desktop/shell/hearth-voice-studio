@@ -737,14 +737,14 @@ def describe_to_instruct(text):
     design understands ("male, elderly, low pitch"): at most one per kind, the first word that matches wins."""
     t = (text or '').lower()
     got = {}
+    # Attributes written as OmniVoice's own words are taken as they are (the longest first: "very high pitch").
+    for kind, words in DESIGN.items():
+        for w in sorted(words, key=len, reverse=True):
+            if kind not in got and re.search(r'(^|[ ,])%s($|[ ,])' % re.escape(w), t):
+                got[kind] = w
     for pat, kind, attr in DESIGN_WORDS:
         if kind not in got and re.search(pat, t):
             got[kind] = attr
-    # Attributes written as OmniVoice's own words are taken as they are.
-    for kind, words in DESIGN.items():
-        for w in words:
-            if kind not in got and re.search(r'(^|[ ,])%s($|[ ,])' % re.escape(w), t):
-                got[kind] = w
     order = ('gender', 'age', 'pitch', 'style', 'accent')
     return ', '.join(got[k] for k in order if k in got)
 
@@ -1717,12 +1717,14 @@ class Studio:
         self.add_output(self.job(j['id']), 'original.srt', 'Original subtitles (SRT)', 'srt')
         self.job_update(j['id'], summary={'lines': len(lines), 'speakers': len(refs) or 1, 'from': r.get('language', ''), 'to': p['target'],
                                           'background': bool(bg)})
-        for n in ('audio.wav', 'speech16.wav', 'voice.wav', 'ref-piece.wav'):
+        # Done: the big in-between files go (the video you sent, the results and the subtitles stay).
+        for n in ('audio.wav', 'speech16.wav', 'voice.wav', 'ref-piece.wav', 'vocals.wav', 'background.wav'):
             try:
                 os.remove(f(n))
             except OSError:
                 pass
         shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(f('lines'), ignore_errors=True)
 
     def state(self):
         s = load()
@@ -1890,6 +1892,8 @@ def make_handler(studio, mock=False):
                 return True
             if self.headers.get('Authorization'):
                 self.err(401, 'That API key isn\'t right: copy it again from Settings › Home server › Voice Studio')
+            elif self.path.startswith('/v1/'):
+                self.err(401, 'This needs Voice Studio\'s API key (Authorization: Bearer ...): it\'s in Settings › Home server › Voice Studio')
             else:
                 self.err(401, 'Type the PIN' if pin_hashes() else 'No PIN is set yet: set one in Settings › Home server › Voice Studio (or Server mode)',
                          pin=bool(pin_hashes()))
