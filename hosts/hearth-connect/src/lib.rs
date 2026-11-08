@@ -22,6 +22,9 @@
 //! the pairing on this PC (and checks the verification key matches the phone's); files from a paired phone wait in a
 //! hidden folder until accepted, unless the person chose "accept files without asking" for that phone.
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod daemon;
 pub mod desktop;
 pub mod identity;

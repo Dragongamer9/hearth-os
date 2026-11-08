@@ -2,6 +2,9 @@
 // goes out to the internet goes through here so the services' rules are kept in one place (services.rs): map
 // pieces and their offline copies (tiles.rs), search (search.rs), directions (route.rs). geo: links (geo.rs),
 // saved places (places.rs) and "Where am I" through GeoClue (locate.rs).
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod geo;
 pub mod locate;
 pub mod places;

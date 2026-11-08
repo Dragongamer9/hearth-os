@@ -116,12 +116,14 @@ impl Store {
 
     // ---------------------------------------------------------------- accounts
 
+    /// A file a power cut damaged is put back from accounts.json.bak: it used to read as no accounts, and adding
+    /// the next one saved just that one, dropping your other CardDAV accounts.
     pub fn accounts(&self) -> Vec<Account> {
-        fs::read_to_string(self.accounts_file()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        crate::appfile::read_json(&self.accounts_file()).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
     }
 
     pub fn save_accounts(&self, list: &[Account]) -> Result<(), String> {
-        write_atomic(&self.accounts_file(), serde_json::to_string_pretty(list).map_err(|e| e.to_string())?.as_bytes())
+        crate::appfile::write_json(&self.accounts_file(), &serde_json::to_value(list).map_err(|e| e.to_string())?).map_err(|e| format!("Couldn't save your accounts: {e}"))
     }
 
     pub fn put_account(&self, a: Account) -> Result<(), String> {
@@ -313,5 +315,18 @@ mod tests {
     fn rev_looks_right() {
         let r = now_rev();
         assert!(r.starts_with("20") && r.ends_with('Z') && r.chars().nth(8) == Some('T'), "{r}");
+    }
+
+    #[test]
+    fn damaged_accounts_file_doesnt_lose_accounts() {
+        let s = tmp();
+        let acct = |id: &str| Account { id: id.into(), name: id.into(), ..Default::default() };
+        s.put_account(acct("nextcloud")).unwrap();
+        s.put_account(acct("icloud")).unwrap();
+        // A power cut left accounts.json empty: the last good copy comes back, and adding an account keeps it.
+        std::fs::write(s.accounts_file(), b"").unwrap();
+        s.put_account(acct("fastmail")).unwrap();
+        let ids: Vec<String> = s.accounts().into_iter().map(|a| a.id).collect();
+        assert_eq!(ids, vec!["nextcloud", "fastmail"]);
     }
 }

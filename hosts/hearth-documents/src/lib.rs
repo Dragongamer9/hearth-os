@@ -3,6 +3,9 @@
 //! is downloaded while it runs). This library keeps the recent documents and where you were in each (state.rs) and
 //! reads comic book archives (cbz.rs).
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod cbz;
 pub mod state;
 

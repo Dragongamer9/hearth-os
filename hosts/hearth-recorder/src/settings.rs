@@ -41,13 +41,15 @@ impl Settings {
 
 fn file() -> std::path::PathBuf { hearth_media::dirs::config("hearth-recorder").join("settings.json") }
 
+/// A file a power cut damaged is put back from settings.json.bak (it used to read as the defaults, and the next
+/// change saved them over your folder, frame rate and sound choices).
 pub fn load() -> Settings {
-    std::fs::read(file()).ok().and_then(|b| serde_json::from_slice::<Settings>(&b).ok()).unwrap_or_default().clean()
+    crate::appfile::read_json(&file()).and_then(|v| serde_json::from_value::<Settings>(v).ok()).unwrap_or_default().clean()
 }
 
 pub fn save(s: &Settings) -> Result<Settings, String> {
     let s = s.clone().clean();
-    hearth_media::dirs::write_atomic(&file(), &serde_json::to_vec_pretty(&s).unwrap_or_default()).map_err(|e| format!("Couldn't save the settings: {e}"))?;
+    crate::appfile::write_json(&file(), &serde_json::to_value(&s).map_err(|e| e.to_string())?).map_err(|e| format!("Couldn't save the settings: {e}"))?;
     Ok(s)
 }
 

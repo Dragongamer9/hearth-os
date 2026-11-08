@@ -3,6 +3,10 @@
 //! side gives them what a page can't do on its own: read and write files, keep the recent-files list and the
 //! recovery copies, print and export PDFs. Everything here works without a window, so the tests can check it.
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
+
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -183,17 +187,26 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     }
 }
 
-fn read_json(path: &Path) -> Value {
-    std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
-}
+/// A file a power cut damaged is put back from its .bak (it used to read as nothing, and the next save replaced
+/// your settings or recent files with the defaults).
+fn read_json(path: &Path) -> Value { appfile::read_json(path).unwrap_or(Value::Null) }
+
+static SEEN: appfile::Seen = std::sync::Mutex::new(None);
 
 pub fn settings_load() -> Value {
-    let v = read_json(&config_dir().join("settings.json"));
+    let v = appfile::read_seen(&config_dir().join("settings.json"), &SEEN).unwrap_or(Value::Null);
     if v.is_object() { v } else { json!({}) }
 }
 
+/// Write, Sheets and Slides are separate windows sharing settings.json: only what this window changed is merged in
+/// (atomic, with .bak), so one app's older copy doesn't put back a setting another app just changed.
 pub fn settings_save(v: &Value) -> std::io::Result<()> {
-    write_atomic(&config_dir().join("settings.json"), &serde_json::to_vec_pretty(v)?)
+    appfile::save_changed(&config_dir().join("settings.json"), &SEEN, v)
+}
+
+/// Changes the latest recent.json under its lock (the three apps add to it).
+fn recent_update(change: impl FnOnce(Value) -> Value) -> std::io::Result<()> {
+    appfile::update(&recent_path(), |cur| (Some(change(cur.filter(Value::is_array).unwrap_or_else(|| json!([])))), ()))
 }
 
 // ------------------------------------------------------------------ recent files
@@ -237,14 +250,15 @@ pub fn recent_for(app: App) -> Value {
 }
 
 pub fn recent_add(app: App, path: &str) -> std::io::Result<()> {
-    let v = recent_with(&recent_load(), app, path, now());
-    write_atomic(&recent_path(), &serde_json::to_vec_pretty(&v)?)
+    recent_update(|v| recent_with(&v, app, path, now()))
 }
 
 pub fn recent_remove(path: &str) -> std::io::Result<()> {
-    let mut items: Vec<Value> = recent_load().as_array().cloned().unwrap_or_default();
-    items.retain(|i| i.get("path").and_then(Value::as_str) != Some(path));
-    write_atomic(&recent_path(), &serde_json::to_vec_pretty(&Value::Array(items))?)
+    recent_update(|v| {
+        let mut items: Vec<Value> = v.as_array().cloned().unwrap_or_default();
+        items.retain(|i| i.get("path").and_then(Value::as_str) != Some(path));
+        Value::Array(items)
+    })
 }
 
 pub fn now() -> u64 {
@@ -374,6 +388,13 @@ mod tests {
         assert_eq!(recent_for(App::Write).as_array().unwrap().len(), 0);
         settings_save(&json!({"theme": "light"})).unwrap();
         assert_eq!(settings_load()["theme"], "light");
+        // A power cut left recent.json empty: the last good list comes back and the next file is added to it.
+        recent_add(App::Sheets, "/d/a.xlsx").unwrap();
+        recent_add(App::Sheets, "/d/b.xlsx").unwrap();
+        std::fs::write(recent_path(), b"").unwrap();
+        recent_add(App::Sheets, "/d/c.xlsx").unwrap();
+        let names: Vec<String> = recent_for(App::Sheets).as_array().unwrap().iter().map(|i| i["name"].as_str().unwrap().to_string()).collect();
+        assert_eq!(names, vec!["c.xlsx", "a.xlsx"]);
         write_atomic(&dir.join("a/b.txt"), b"hello").unwrap();
         assert_eq!(std::fs::read(dir.join("a/b.txt")).unwrap(), b"hello");
         let _ = std::fs::remove_dir_all(&dir);
