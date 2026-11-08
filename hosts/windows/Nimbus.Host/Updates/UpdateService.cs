@@ -152,6 +152,9 @@ public sealed class UpdateService
         // Started without waiting (update.download), so a problem is shown through the state, never thrown.
         if (!RunningFromInstall) { Set("error", error: "This copy of Ember is a development build. Updates install to the copy set up by install-shell.cmd."); return; }
         var info = Latest;
+        // Every release carries Nimbus-win-x64.zip.sha256 (release.yml). One without it isn't installed unchecked: a
+        // damaged download would otherwise become the shell.
+        if (info.ShaUrl is null) { Set("error", error: "This update has no checksum to check the download against, so it wasn't installed."); return; }
         Set("downloading", 0);
         try
         {
@@ -178,8 +181,7 @@ public sealed class UpdateService
                 }
             }
 
-            // Integrity check against the published SHA-256.
-            if (info.ShaUrl is not null)
+            // Integrity check against the published SHA-256 (required: see above).
             {
                 var expected = (await Http.GetStringAsync(info.ShaUrl)).Trim().Split(' ', '\t', '\r', '\n')[0].ToLowerInvariant();
                 string actual;

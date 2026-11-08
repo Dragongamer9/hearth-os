@@ -605,6 +605,10 @@ def parse(args):
     """DEVICE then --key value options; unknown or repeated options are refused."""
     if not args or args[0].startswith('-'):
         raise Refuse('usage: hearth-admin usb-<command> DEVICE --expect-size BYTES ...')
+    # No line breaks or other control characters anywhere: polkit reads the whole command line to decide whether an
+    # internal drive (--allow-internal) needs an administrator's password.
+    if any(re.search(r'[\x00-\x1f\x7f]', a) for a in args):
+        raise Refuse('an argument has a line break or another control character in it')
     dev, opts, i = args[0], {}, 1
     flags = {'--allow-internal', '--gpt'}
     valued = {'--expect-size', '--expect-serial', '--size', '--scheme', '--label', '--tarball'}
