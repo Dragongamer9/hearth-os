@@ -370,7 +370,7 @@ jobs:
           npm test
           npm run dist:dir
           # electron-builder's folder: linux-unpacked on x64, linux-arm64-unpacked on arm64.
-          u=$(ls -d dist/linux-unpacked dist/linux-*-unpacked 2>/dev/null | head -1)
+          u=$(ls -d dist/linux-*unpacked 2>/dev/null | head -1 || true)
           test -x "$u/hearth-electron"
           mkdir -p /tmp/electron && cp -a "$u/." /tmp/electron/
       # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin the image ships, built and packed
@@ -424,7 +424,7 @@ jobs:
           npm version "${{ needs.app.outputs.version }}" --no-git-tag-version --allow-same-version
           npm run dist:dir
           # electron-builder's folder: linux-unpacked on x64, linux-arm64-unpacked on arm64.
-          u=$(ls -d dist/linux-unpacked dist/linux-*-unpacked 2>/dev/null | head -1)
+          u=$(ls -d dist/linux-*unpacked 2>/dev/null | head -1 || true)
           test -x "$u/nimbus"
           mkdir -p /tmp/browser && cp -a "$u/." /tmp/browser/
           tar -C /tmp/browser -cf ../../hearth-browser.tar .
