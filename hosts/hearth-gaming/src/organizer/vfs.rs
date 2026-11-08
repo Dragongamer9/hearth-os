@@ -486,7 +486,8 @@ pub fn command_for(inst: &Instance, ex: &Executable, umu: Result<String, String>
 }
 #[cfg(target_os = "linux")]
 fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) {
-    let s = hearth_core::steam::steam_path(&crate::util::home());
+    // The regular Steam's folder and Proton (launch.rs: a game started from here can't reach the Flatpak Steam).
+    let s = crate::launch::native_steam_dir(&crate::util::home()).or_else(|| hearth_core::steam::steam_path(&crate::util::home()));
     let libs = s.as_deref().map(hearth_core::steam::libraries).unwrap_or_default();
     (s, libs)
 }
@@ -526,6 +527,9 @@ pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
         log(&format!("{t}: {e}"));
         if app.is_none() || !has("steam") { return Err(e.clone()); }
     }
+    // A Steam game started with Proton needs the regular Steam running (Steam DRM), before the mods go on.
+    #[cfg(target_os = "linux")]
+    if planned.is_ok() && ex.windows() && app.is_some() { crate::launch::ensure_reachable_steam(&t)?; }
     let a = deploy(inst, std::process::id(), true).map_err(|e| { log(&format!("{t}: couldn't lay the mods over the game: {e}")); e })?;
     log(&format!("{t}: the mods are laid over the game ({})", a.mode));
     let game_dir = inst.game_dir.clone().unwrap_or_else(|| a.target.clone());
