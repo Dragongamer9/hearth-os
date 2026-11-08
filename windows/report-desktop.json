@@ -1,7 +1,7 @@
 {
   "mode": "desktop",
   "chrome": {
-    "version": "159.0",
+    "version": "159.0.1",
     "policies": true,
     "active": [
       "DisableTelemetry",
@@ -17,7 +17,8 @@
       "UserMessaging",
       "FirefoxHome",
       "FirefoxSuggest",
-      "ExtensionSettings"
+      "ExtensionSettings",
+      "Handlers"
     ],
     "hearth": {
       "start": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
@@ -26,7 +27,7 @@
       "scale": 0
     },
     "prefs": {
-      "hearth.started": 1793663562,
+      "hearth.started": 1794132419,
       "hearth.keyboard.ready": true,
       "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
       "media.eme.enabled": true,
@@ -73,14 +74,14 @@
     }
   ],
   "google": {
-    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S-83705991:1793663579682342",
+    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S-617923709:1794132433426588",
     "title": "Sign in - Google Accounts",
     "text": "Loading\nSign in\nUse your Google Account\nEmail or phone\nForgot email?\nNot your computer? Use a Private Window to sign in. Learn more about using Guest mode\nNext\nCreate account\nEnglish (United States)\nHelp\nPrivacy\nTerms"
   },
   "drm-before-download": "widevine available",
   "ublock": {
     "name": "uBlock Origin",
-    "version": "1.75.2",
+    "version": "1.75.4",
     "active": true
   },
   "widevine": {
