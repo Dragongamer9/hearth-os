@@ -1,0 +1,95 @@
+# Hearth for Droidian devices (arm64), step 1: the Hearth app and the helper apps Mantel calls, built for arm64
+# inside Debian trixie (Droidian's base, the same Debian the Hearth OS image uses) on GitHub's ARM runners.
+# The first device is the Oukitel RT8 (Dragongamer9/hearth-devices), which runs Mantel (labwc + Quickshell) on
+# Droidian; its image takes hearth-app-arm64.tar from here. Same layout as base-peppermint.yml's hearth-app.tar.
+# Nothing here is published or released, and the versions in Cargo.toml are set from the csproj exactly as the
+# image builds do (no version is chosen here).
+name: Hearth for Droidian (arm64 apps)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/arm64-droidian]
+    paths: ['.github/workflows/arm64-droidian.yml', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**',
+            'hosts/hearth-terminal/**', 'hosts/hearth-time/**', 'hosts/hearth-tools/**', 'hosts/hearth-apptheme/**', 'ui/**']
+
+concurrency:
+  group: arm64-droidian-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Build the Hearth app for arm64 (Rust, on Debian trixie)
+    runs-on: ubuntu-24.04-arm
+    container: docker.io/library/debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Build tools
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app (tools)::$msg"' ERR
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git curl ca-certificates build-essential pkg-config file zstd python3 \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libssl-dev libxdo-dev >/dev/null
+      - uses: actions/checkout@v4
+      - name: Version
+        id: ver
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+          key: debian-trixie-arm64
+      - name: Build the Hearth app, hearthfetch and Hearth Terminal
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app (arm64)::$msg"' ERR
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release
+          mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
+          (cd ../hearthfetch && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release && cp target/release/hearthfetch /tmp/app/hearthfetch)
+          if (cd ../hearth-terminal && cargo build --release); then cp ../hearth-terminal/target/release/hearth-terminal /tmp/app/hearth-terminal
+          else echo "::warning title=Hearth Terminal::didn't build for arm64"; fi
+          file /tmp/app/hearth
+          echo "::notice title=Hearth app (arm64)::$(file -b /tmp/app/hearth | cut -c1-120); newest glibc: $(objdump -T /tmp/app/hearth | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app-arm64.tar" .
+      - name: Build Hearth Time (Clock, Calendar, Notes, Weather)
+        continue-on-error: true
+        working-directory: hosts/hearth-time
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Time::didn't build for arm64"; exit 1; }
+          mkdir -p /tmp/app/hearth-time && cp "$CARGO_TARGET_DIR/release/hearth-time" /tmp/app/hearth-time/hearth-time
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app-arm64.tar" .
+      - name: Build Hearth Tools
+        continue-on-error: true
+        working-directory: hosts/hearth-tools
+        run: |
+          set -o pipefail
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          cargo build --release || { echo "::warning title=Hearth Tools::didn't build for arm64"; exit 1; }
+          mkdir -p /tmp/app/hearth-tools
+          cp "$CARGO_TARGET_DIR/release/hearth-tools" /tmp/app/hearth-tools/hearth-tools
+          cp desktop/hearth-*.desktop /tmp/app/hearth-tools/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app-arm64.tar" .
+      - name: What was built
+        run: |
+          tar -tvf hearth-app-arm64.tar | awk '{print $3, $6}'
+          echo "::notice title=hearth-app-arm64.tar::$(tar -tf hearth-app-arm64.tar | grep -v '/$' | tr '\n' ' ')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-app-arm64
+          path: hearth-app-arm64.tar
