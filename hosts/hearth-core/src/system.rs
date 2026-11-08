@@ -306,7 +306,12 @@ pub mod bt_scan {
 
     pub fn is_gamepad(d: &Value) -> bool {
         let name = d["name"].as_str().unwrap_or("").to_lowercase();
-        d["kind"] == "Input.Gamepad" || ["controller", "gamepad", "xbox", "dualsense", "dualshock", "pro controller", "joy-con", "joycon", "8bitdo", "stadia", "gamesir", "flydigi", "nimbus", "razer kishi", "backbone"].iter().any(|k| name.contains(k))
+        // Never a keyboard, mouse, headset, speaker, phone, PC or TV, even one named after a console
+        // ("Xbox Wireless Headset"): only controllers are paired without asking.
+        let kind = d["kind"].as_str().unwrap_or("");
+        if ["Input.Keyboard", "Input.Mouse", "Audio.Headphone", "Audio.Speaker", "Phone", "Computer", "Display.Television"].contains(&kind) { return false; }
+        if ["headset", "headphone", "earbud", "buds", "speaker", "keyboard", "mouse"].iter().any(|k| name.contains(k)) { return false; }
+        kind == "Input.Gamepad" || ["controller", "gamepad", "xbox", "dualsense", "dualshock", "pro controller", "joy-con", "joycon", "8bitdo", "stadia", "gamesir", "flydigi", "nimbus", "razer kishi", "backbone"].iter().any(|k| name.contains(k))
     }
 
     pub fn start(seconds: u64, emit: Emit) {
@@ -332,10 +337,16 @@ pub mod bt_scan {
     pub fn auto_pads(on: bool, emit: Emit) {
         let me = AUTO.fetch_add(1, Ordering::SeqCst) + 1;
         if !on { let _ = run("bluetoothctl", &["scan", "off"]); return; }
-        if !has("bluetoothctl") { return; }
+        // No Bluetooth (no adapter, the stack not running, or a radio that won't turn on): say so once and stop,
+        // so the page can say "plug in a controller with a cable" (the USB installer) instead of looking forever.
+        if !has("bluetoothctl") { emit(ev("bt.autoPadsOff", json!({"reason": "none"}))); return; }
         std::thread::spawn(move || {
             let _ = bt::set_power(true);
             let alive = move || AUTO.load(Ordering::SeqCst) == me;
+            match bt::powered() {
+                Some(true) => {}
+                p => { if alive() { emit(ev("bt.autoPadsOff", json!({"reason": if p.is_none() { "none" } else { "off" }}))); } return; }
+            }
             // The scan runs in its own bluetoothctl; it's stopped while a controller pairs (pairing while
             // scanning fails on many adapters) and starts again after.
             let scanner: Arc<std::sync::Mutex<Option<std::process::Child>>> = Arc::default();
@@ -584,6 +595,11 @@ mod tests {
         assert!(bt_scan::is_gamepad(&json!({"kind": "Input.Gamepad", "name": "Pad"})));
         for n in ["Xbox Wireless Controller", "DualSense Wireless Controller", "Pro Controller", "8BitDo Ultimate 2C", "Joy-Con (L)"] { assert!(bt_scan::is_gamepad(&json!({"kind": "Other", "name": n})), "{n}"); }
         for n in ["JBL Flip 5", "Logitech K380"] { assert!(!bt_scan::is_gamepad(&json!({"kind": "Other", "name": n})), "{n}"); }
+        // Only controllers: never a keyboard or headset, even one with a console's name.
+        assert!(!bt_scan::is_gamepad(&json!({"kind": "Audio.Headphone", "name": "Xbox Wireless Controller"})));
+        assert!(!bt_scan::is_gamepad(&json!({"kind": "Input.Keyboard", "name": "8BitDo Retro Keyboard"})));
+        for n in ["Xbox Wireless Headset", "PlayStation Pulse Elite headset", "8BitDo Retro Keyboard", "Bose QuietComfort Earbuds"] { assert!(!bt_scan::is_gamepad(&json!({"kind": "Other", "name": n})), "{n}"); }
+        assert!(bt_scan::is_gamepad(&json!({"kind": "Input.Gamepad", "name": "Xbox Wireless Controller"})));
     }
     #[test]
     fn reads_bluetoothctl() {

@@ -7,8 +7,14 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### New
+
+- [x] The USB installer looks for controllers again on its first screen: a Controllers card lists every controller it finds (wired and built-in ones show as Connected straight away), and a Bluetooth controller put in pairing mode pairs by itself (Pairing…, then Connected; Couldn't connect has Try again). Only controllers are paired, never keyboards or headsets. A PC without Bluetooth says to plug in a controller with a cable. It stops looking when you leave the first screen, and Let's go always works (needs testing on a device)
+- [x] The USB installer, redesigned to the approved mockups: "Your PC, ready to play." with a big flame and the controllers as tiles on Welcome, Internet (optional, with Skip), the drives as big cards you browse with ◀ ▶ showing what's on each, Hold Ⓐ to erase, About you, the time zone with quick picks (the full list one press away), a last look that also lists your controllers and look, a huge percentage with a checklist that follows the real install steps, and "Hearth OS is ready.". **Pick a look** on Welcome (the Look chip, or Ⓧ): the same eight looks as Mantel and the website, coloured from Mantel's own palettes, with Dark / Light / Auto; each one recolours every screen and brings its touches (Gaming's cut corners, Synthwave's grid and scanlines, Glass's aurora, Cabin's wood, Console's bigger type). The look you pick becomes your desktop's starting look on the installed system (merged into your settings once, with a backup copy); pick nothing and Hearth OS keeps its own defaults. A broken look never stops the install (needs testing on a device)
+
 ### Hearth Mods
 - [x] Play with mods: a modded Steam game (Skyrim SE with a Wabbajack list like Tuxborn) starts on the regular Steam, which it can reach: Play starts that Steam hidden when it isn't running, uses its Proton, and when only the Flatpak Steam is open says to close it instead of SKSE quietly ending after 3 seconds. Send logs keeps Proton's errors instead of hundreds of trace lines (needs testing on a device)
+
 ### Server mode
 - [x] The web page never goes back to the PIN screen without a word: when the PIN was right but the browser didn't keep the sign-in, it says so and what to do; sign-ins, wrong PINs and unknown sign-ins go to the log for Send logs (needs testing on a device)
 

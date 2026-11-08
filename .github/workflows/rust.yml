@@ -5,7 +5,8 @@ name: Rust host
 on:
   push:
     branches: [linux-host]
-    paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml', 'tools/app-bundle.py', 'hosts/linux/test/test_hearth_app_channel.py']
+    paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml', 'tools/app-bundle.py', 'hosts/linux/test/test_hearth_app_channel.py',
+            'tools/installer-check.py', 'tools/installer-looks.py', 'hosts/linux/desktop/theme/palettes.json', 'os/live/src/hearth-install', 'hosts/linux/test/test_hearth_install_look.py']
   workflow_dispatch:
 
 permissions:
@@ -63,6 +64,36 @@ jobs:
         run: |
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
           node ui-check.js
+      # The USB installer's page (ui/installer.html, tools/installer-check.py): the Welcome screen's Controllers card
+      # with the pretend PC, leaving Welcome stops the search, no Bluetooth and Try again; the look picker (every
+      # screen in every look, X / the Look chip, Synthwave and Light recolour, the look in the install request, a
+      # missing or broken looks file). Its pictures: installer-welcome (and every screen in installer-shots).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check the installer's page
+        run: |
+          if ! { python3 -m pip install -q playwright==1.48.0 && python3 -m playwright install chromium; } > /tmp/pw.log 2>&1; then
+            echo "::error title=Installer check setup::$(tail -15 /tmp/pw.log | tr '\n' '|' | cut -c1-3000)"; exit 1
+          fi
+          python3 tools/installer-check.py installer-welcome.png --shots installer-shots 2>&1 | tee /tmp/ic.log; rc=${PIPESTATUS[0]}
+          [ "$rc" = 0 ] || { grep -q '::error' /tmp/ic.log || echo "::error title=Installer check::$(tail -15 /tmp/ic.log | tr '\n' '|' | cut -c1-3000)"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-welcome
+          path: |
+            installer-welcome.png
+            installer-shots/
+          if-no-files-found: ignore
+      # The installer engine writes the look picked on the USB into the new user's settings (merged, only when
+      # picked, never over a damaged file, never a stop): hosts/linux/test/test_hearth_install_look.py.
+      - name: The installer's look reaches the new user
+        run: |
+          if ! python3 -m unittest -v hosts/linux/test/test_hearth_install_look.py > /tmp/il.txt 2>&1; then
+            echo "::error title=Installer look::$(grep -E 'FAIL|ERROR|Error|assert' /tmp/il.txt | head -20 | tr '\n' '|' | cut -c1-3000)"; tail -40 /tmp/il.txt; exit 1
+          fi
+          tail -3 /tmp/il.txt
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
