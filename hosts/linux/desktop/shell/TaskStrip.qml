@@ -106,10 +106,10 @@ Item {
         // The bar's window is at its edge, so window coordinates plus the edge give screen coordinates.
         const sx = strip.edge === "right" ? sw - strip.barW + p.x : p.x;
         const sy = strip.edge === "bottom" ? sh - strip.barH + p.y : p.y;
-        if (strip.edge === "bottom") menu.popup(screen, Math.max(8, sx + item.width / 2 - 134), sy - 4, { title: title, above: true }, list);
-        else if (strip.edge === "top") menu.popup(screen, Math.max(8, sx + item.width / 2 - 134), sy + item.height + 6, { title: title, above: false }, list);
+        if (strip.edge === "bottom") menu.popup(screen, Math.max(8, sx + item.width / 2 - menu.cardWidth / 2), sy - 4, { title: title, above: true }, list);
+        else if (strip.edge === "top") menu.popup(screen, Math.max(8, sx + item.width / 2 - menu.cardWidth / 2), sy + item.height + 6, { title: title, above: false }, list);
         else if (strip.edge === "left") menu.popup(screen, sx + item.width + 10, sy, { title: title, above: false }, list);
-        else menu.popup(screen, Math.max(8, sx - 290), sy, { title: title, above: false }, list);
+        else menu.popup(screen, Math.max(8, sx - menu.cardWidth - 22), sy, { title: title, above: false }, list);
     }
     function moveToDesktop(win, n) {
         win.activate();
@@ -126,23 +126,23 @@ Item {
         const win = ws.find(w => w.activated) || ws[0] || null;
         const list = [];
         const acts = it.entry && !it.own && it.entry.actions ? Array.from(it.entry.actions).slice(0, 6) : [];
-        for (const a of acts) list.push({ label: a.name, icon: "open", run: () => a.execute() });
+        for (const a of acts) list.push({ label: a.name, icon: "open", group: "Jump to", run: () => a.execute() });
         if (acts.length) list.push({ separator: true });
-        if (it.entry && !it.own) list.push({ label: ws.length ? "New window" : "Open", icon: "open", run: () => it.entry.execute() });
+        if (it.entry && !it.own) list.push({ label: ws.length ? "New window" : "Open", icon: ws.length ? "plus" : "open", quick: true, run: () => it.entry.execute() });
         if (it.entry && !it.own) {
             const pinned = DeskState.isPinned(it.entry.id);
-            list.push({ label: pinned ? "Unpin from the bar" : "Pin to the bar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(it.entry.id) });
+            list.push({ label: pinned ? "Unpin from the bar" : "Pin to the bar", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(it.entry.id) });
         }
         if (win) {
             const sub = [];
             for (let i = 0; i < 4; i++) sub.push({ label: "Desktop " + (i + 1), run: () => moveToDesktop(win, i + 1) });
             if (list.length) list.push({ separator: true });
-            list.push({ label: "Move to desktop", icon: "desktops", sub: sub });
-            if (!win.maximized) list.push({ label: "Maximize", icon: "window", run: () => { win.activate(); win.maximized = true; } });
-            else list.push({ label: "Restore size", icon: "window", run: () => { win.maximized = false; } });
+            list.push({ label: "Move to desktop", icon: "desktops", group: "Window", sub: sub });
+            if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
+            else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });
-            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", icon: "close", danger: true, run: () => ws.forEach(w => w.close()) });
-            else list.push({ label: "Close window", icon: "close", danger: true, run: () => win.close() });
+            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", icon: "close", danger: true, quick: true, run: () => ws.forEach(w => w.close()) });
+            else list.push({ label: "Close window", icon: "close", danger: true, quick: true, run: () => win.close() });
         }
         popupAt(btn, appName(it), list);
     }

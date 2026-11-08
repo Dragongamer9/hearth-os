@@ -183,6 +183,12 @@ var ENTRIES = [
 "i": "window"
 },
 {
+"t": "Right-click menu",
+"p": "bar-dock",
+"d": "How the menu looks on files, the desktop, the bar, the dock and the app menus",
+"i": "menu"
+},
+{
 "t": "Bluetooth",
 "p": "bluetooth",
 "i": "bt"

@@ -34,6 +34,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Nexus Mods (free accounts): Hearth Browser hands "Mod Manager Download" (nxm://) links straight to Hearth Mods, without Firefox's "open with" question, which was hard to answer with a controller in Game Mode (needs testing on a device)
 - [x] Send logs: "Hearth Input not running" outside Game Mode and InputPlumber missing on PCs without it are no longer listed as problems (needs testing on a device)
 
+### New
+
+- [x] Desktop Mode: four looks for the right-click menu, in Settings › Personalization › Bar and dock › Right-click menu (picture cards; it changes straight away; Today stays until you pick another): **Today**; **Windows 11 style** (quick icons for Cut, Copy, Rename and Trash on top, short rows with their shortcuts, submenus open to the side); **Compact list** (the smallest); **Tiles and groups** (big tiles for the main actions, then titled groups). One menu for Hearth Files, the desktop, the bar, the dock and the app menus; all follow your look and accent, light and dark, and work with the mouse, keyboard and controller (A choose, B back, with a small hint row while the controller is in use). If a new look can't load, today's menu shows (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

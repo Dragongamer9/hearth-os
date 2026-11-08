@@ -143,13 +143,13 @@ ShellRoot {
         onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {
             const pinned = DeskState.isPinned(entry.id);
-            const list = [{ label: "Open", icon: "open", run: () => launcher.launch(entry) }];
+            const list = [{ label: "Open", icon: "open", quick: true, run: () => launcher.launch(entry) }];
             // The app's own actions (New private window...), from its .desktop file.
             const acts = entry.actions ? Array.from(entry.actions).slice(0, 6) : [];
-            for (const a of acts) list.push({ label: a.name, icon: "open", run: () => { a.execute(); launcher.shown = false; } });
+            for (const a of acts) list.push({ label: a.name, icon: "open", group: "Jump to", run: () => { a.execute(); launcher.shown = false; } });
             list.push({ separator: true });
-            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) });
-            list.push({ label: "Add to desktop", icon: "plus", run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
+            list.push({ label: "Add to desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
             // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.
@@ -409,5 +409,7 @@ ShellRoot {
             if (e) { const c = d.cellCenter(e); d.itemMenu(e, c.x, c.y); }
         }
         function close(): void { popMenu.close(); deskDialog.cancel(); }
+        // Checks only (desktop-test.yml): as if the controller was just used, so menus show their A / B hint row.
+        function padseen(): void { DeskState.padSeen = Date.now(); }
     }
 }

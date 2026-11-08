@@ -310,19 +310,20 @@ PanelWindow {
         const many = pickedEntries.length > 1 ? pickedEntries : [e];
         const multi = many.length > 1;
         const list = [];
-        if (multi) list.push({ label: "Open " + many.length + " items", icon: "open", run: () => many.forEach(x => openEntry(x)) });
-        else list.push({ label: "Open", icon: "open", hint: "Enter", run: () => openEntry(e) });
-        if (!multi && !e.dir && !e.launcher) list.push({ label: "Open with", icon: "open", sub: [{ label: "Looking…", enabled: false }], loadWith: e });
-        if (!multi) list.push({ label: "Show in Files", icon: "folder", run: () => { if (filesApp) filesApp.open(e.path); } });
+        // quick: the quick icons / tiles in the Windows 11 and Tiles looks (Theme.menuStyle); group: Tiles' headings.
+        if (multi) list.push({ label: "Open " + many.length + " items", icon: "open", group: "Open", run: () => many.forEach(x => openEntry(x)) });
+        else list.push({ label: "Open", icon: "open", shortcut: "Enter", group: "Open", run: () => openEntry(e) });
+        if (!multi && !e.dir && !e.launcher) list.push({ label: "Open with", icon: "grid", group: "Open", sub: [{ label: "Looking…", enabled: false }], loadWith: e });
+        if (!multi) list.push({ label: "Show in Files", icon: "folder", group: "Open", run: () => { if (filesApp) filesApp.open(e.path); } });
         list.push({ separator: true });
-        list.push({ label: "Cut", icon: "file", hint: "Ctrl+X", run: () => copy(many, true) });
-        list.push({ label: "Copy", icon: "clipboard", hint: "Ctrl+C", run: () => copy(many, false) });
-        if (!multi) list.push({ label: "Rename", icon: "edit", hint: "F2", run: () => rename(e) });
+        list.push({ label: "Cut", icon: "cut", shortcut: "Ctrl+X", quick: true, run: () => copy(many, true) });
+        list.push({ label: "Copy", icon: "copy", shortcut: "Ctrl+C", quick: true, run: () => copy(many, false) });
+        if (!multi) list.push({ label: "Rename", icon: "edit", shortcut: "F2", quick: true, run: () => rename(e) });
         list.push({ separator: true });
-        list.push({ label: "Move to Trash", icon: "trash", danger: true, hint: "Del", run: () => trash(many) });
+        list.push({ label: "Move to Trash", icon: "trash", danger: true, shortcut: "Del", quick: true, run: () => trash(many) });
         if (!multi) {
             list.push({ separator: true });
-            list.push({ label: "Properties", icon: "info", run: () => properties(e) });
+            list.push({ label: "Properties", icon: "info", shortcut: "Alt+Enter", run: () => properties(e) });
         }
         menu.popup(screen, x, y, { title: multi ? many.length + " items" : (e.label || e.name) }, list);
         // "Open with": the apps that can open it (hearth-files apps), filled in once known.
@@ -344,22 +345,22 @@ PanelWindow {
             run: () => DeskState.call(["arrange", String(cols), String(rows), s[0]], (r, err) => { if (err) say(err); else DeskState.sortBy = s[0]; refresh(); })
         }));
         const list = [
-            { label: "New folder", icon: "plus", hint: "Ctrl+Shift+N", enabled: !noDir, run: () => newFolder() },
-            { label: "New document", icon: "file", enabled: !noDir, sub: docs },
-            { label: "Paste", icon: "clipboard", hint: "Ctrl+V", enabled: !noDir, run: () => paste() },
+            { label: "New folder", icon: "plus", shortcut: "Ctrl+Shift+N", quick: true, enabled: !noDir, run: () => newFolder() },
+            { label: "New document", icon: "file", group: "New", enabled: !noDir, sub: docs },
+            { label: "Paste", icon: "clipboard", shortcut: "Ctrl+V", quick: true, enabled: !noDir, run: () => paste() },
             { separator: true }
         ];
         if (iconsOn) {
-            list.push({ label: "Sort by", icon: "grid", sub: sorts });
-            list.push({ label: "Keep icons lined up", checked: DeskState.autoArrange, run: () => DeskState.setAutoArrange(!DeskState.autoArrange) });
-            list.push({ label: "Refresh", icon: "restart", hint: "F5", run: () => refresh() });
+            list.push({ label: "Sort by", icon: "grid", group: "View", sub: sorts });
+            list.push({ label: "Keep icons lined up", group: "View", checked: DeskState.autoArrange, run: () => DeskState.setAutoArrange(!DeskState.autoArrange) });
+            list.push({ label: "Refresh", icon: "restart", shortcut: "F5", quick: true, run: () => refresh() });
         }
-        list.push({ label: "Show desktop icons", checked: DeskState.desktopIcons, run: () => DeskState.setDesktopIcons(!DeskState.desktopIcons) });
+        list.push({ label: "Show desktop icons", group: "View", checked: DeskState.desktopIcons, run: () => DeskState.setDesktopIcons(!DeskState.desktopIcons) });
         list.push({ separator: true });
-        list.push({ label: "Change wallpaper", icon: "palette", run: () => { if (settingsApp) settingsApp.open("appearance"); } });
-        list.push({ label: "Display settings", icon: "display", run: () => { if (settingsApp) settingsApp.open("display"); } });
-        list.push({ label: "Open in Files", icon: "folder", run: () => { if (filesApp) filesApp.open(dir || home); } });
-        list.push({ label: "Open a terminal here", icon: "kbd", run: () => Quickshell.execDetached(["sh", "-c", "cd \"$1\" && exec sh \"$2\" terminal", "sh", dir || home, Quickshell.env("NIMBUS_SHARE") + "/desktop/open.sh"]) });
+        list.push({ label: "Change wallpaper", icon: "palette", quick: true, run: () => { if (settingsApp) settingsApp.open("appearance"); } });
+        list.push({ label: "Display settings", icon: "display", group: "Settings", run: () => { if (settingsApp) settingsApp.open("display"); } });
+        list.push({ label: "Open in Files", icon: "folder", group: "Open", run: () => { if (filesApp) filesApp.open(dir || home); } });
+        list.push({ label: "Open a terminal here", icon: "kbd", group: "Open", run: () => Quickshell.execDetached(["sh", "-c", "cd \"$1\" && exec sh \"$2\" terminal", "sh", dir || home, Quickshell.env("NIMBUS_SHARE") + "/desktop/open.sh"]) });
         menu.popup(screen, x, y, { title: "Desktop" }, list);
         // Your templates, for next time the menu opens (cheap: one small folder).
         DeskState.call(["templates"], (r, err) => { if (!err && r) templates = r.templates || []; });

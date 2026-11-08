@@ -101,6 +101,34 @@ the Hearth flame.
   had the five menus (`"appMenus": 1`); everyone else gets Hearth. It's worked out when read and never written, so
   existing devices keep what they have.
 
+## Right-click menu
+
+Settings › Personalization › Bar and dock › **Right-click menu** (`MenuStylePicker.qml`, picture cards; search finds
+"Right-click menu") picks how every right-click menu looks: the desktop and its icons, the bar and the dock (`Bar.qml`,
+`Islands.qml`, `TaskStrip.qml`, `Dock.qml`), the app menus and launcher (`Launcher.qml`, `shell.qml`), all through the
+one shared `PopMenu.qml`, and Hearth Files' actions menu (its own overlay, drawn the same way). `Settings.menuStyle`
+(`""` = Today, never written until you pick; `Theme.menuStyle`):
+
+- **Today** (`today`): `PopMenu.qml`'s own 268 px menu with 40 px rows, the accent filling the row; submenus replace
+  the list. Hearth Files keeps its own 320 px menu in this look.
+- **Windows 11 style** (`windows`): a row of quick icons on top, then 30 px rows with icons and shortcuts on the right;
+  a soft tint and a small accent bar show where you are; a submenu is a flyout beside the menu (on the left near the
+  screen's edge).
+- **Compact list** (`compact`): 212 px, 27 px rows, 14 px icons, a soft accent tint with an outline, dim shortcuts,
+  danger items in red, thin separators.
+- **Tiles and groups** (`tiles`): the quick items as a 4-tile grid (icon and name), then titled groups (small caps) of
+  29 px rows with the accent filling the row.
+
+The three new looks are `MenuStyles.qml`, loaded by file name by PopMenu and by Hearth Files; if it can't load (a
+warning in the shell's log), today's menu shows, so a problem never loses the menu. The API stays
+`menu.popup(screen, x, y, opts, items)`; items may add `quick: true` (the quick icons / tiles; a normal row in Today
+and Compact), `shortcut: "Ctrl+C"` (the old `hint` still works) and `group: "Open"` (Tiles and groups' headings;
+ungrouped items go under "More"). Files marks Cut, Copy, Rename and Move to Trash as quick (Files has no Share yet);
+the desktop, the bar's and dock's app menus and the launcher mark their main actions. Keys and controller: Up / Down,
+Left / Right in the quick row or the tiles, A / Enter chooses, Right opens a submenu, B / Esc / Left goes back. While
+a controller is in use (`DeskState.padSeen`, as the hint strip; in Files, a menu opened with X / the Menu key) a small
+**A Choose · B Back** row shows under every look. `PopMenu.cardWidth` gives the menu's width to callers that centre it.
+
 ## The looks
 
 All eight are entries in `theme/palettes.json` with the colour tokens hearth-theme already uses (so window frames
@@ -184,7 +212,8 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
 - New options are new keys in `desktop.json`, saved one at a time through `SettingsWriter.qml` (merge on write,
   atomic, `.bak`); a key you never changed is never written. `""` means "the look's own".
   `barStyle`, `dockMode`, `deskClock`, `panelGlass`, `sunset`, `sunsetLight`, `sunsetDark`, `accentFrom`, `wallSwatches`,
-  and for the bar layouts and app menus `barLayout`, `barEdge`, `dockFloat`, `appMenu`, `menuTiles`.
+  and for the bar layouts and app menus `barLayout`, `barEdge`, `dockFloat`, `appMenu`, `menuTiles`, and the right-click
+  menu's look `menuStyle`.
 - **Each control writes only its own key.** The one exception is **Match the menu** (after picking Tiles or Classic),
   which you click, and which sets `barLayout`, `barEdge` and `dockFloat` together.
 - **Choosing a look changes only `look`.** The look's wallpaper, bar, dock, clock and transparency are used only
@@ -235,8 +264,11 @@ are loaded the same way, so one bad part only loses itself. Nothing here touches
 hearth-stats), `test_settings_redesign.py` (Settings' categories, every old page's home, the search index, the
 frame's fallback, the controller, opening writes nothing, the Sky default), `hosts/linux/test/test_mantel_bars_menus.py`
 (bar edges, reserved space and auto-hide, the rebuild and fallback, the five menus, settings only written when you
-change them, the handheld default, hearth-appmenu) and the Desktop Mode test (`desktop-test.yml`), which renders every
+change them, the handheld default, hearth-appmenu), `test_mantel_menu_styles.py` (the right-click menu's looks: Today by
+default and never written by itself, the fallback, the item fields) and the Desktop Mode test (`desktop-test.yml`), which renders every
 look with Quick settings, the launcher, the dashboard and Settings (Personalization and Home) into `looks/mantel/`,
 each bar edge, the dock off, auto-hide, each app menu, search, the picker and other looks into `looks/mantel/bars/`,
-and the redesign's pages, search, controller and handheld layout into `settings-redesign/`, on the
+the redesign's pages, search, controller and handheld layout into `settings-redesign/`, and each right-click menu
+look (a file on the desktop, the desktop, Hearth Files, the flyout, the controller hints, light mode, the Hearth look
+and the picker) into `menu-styles/`, on the
 `ci/desktop-shots-*` branch.
