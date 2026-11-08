@@ -94,7 +94,7 @@ function login(msg){
   <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="PIN">
   <div class="err" id="err">${esc(msg||'')}</div><button class="btn pri" style="width:100%" id="go">Open</button>
   <div class="secure">${I('lock',14)} Only over Tailscale, never the internet</div></div>`;
-  const go = async () => { const r = await api('/api/login', {pin:$('#pin').value.trim()}); if (r.status === 200) load(); else { $('#err').textContent = r.j.error || ('The PC answered ' + r.status + '. Reload the page and try again'); if (r.status === 401) { $('#pin').value = ''; $('#pin').focus(); } } };
+  const go = async () => { const r = await api('/api/login', {pin:$('#pin').value.trim()}); if (r.status === 200) { justIn = true; load(); } else { $('#err').textContent = r.j.error || ('The PC answered ' + r.status + '. Reload the page and try again'); if (r.status === 401) { $('#pin').value = ''; $('#pin').focus(); } } };
   $('#go').onclick = go; $('#pin').onkeydown = e => { if (e.key === 'Enter') go(); }; $('#pin').focus();
 }
 async function act(body, label){
@@ -142,9 +142,14 @@ function render(){
   const sl = $('#sl'); if (sl) sl.onclick = () => confirm('Put the PC to sleep?') && act({kind:'power', what:'sleep'}, 'Sleep sent');
   const out = $('#out'); if (out) out.onclick = async () => { await api('/api/logout', {}); login(); };
 }
+let justIn = false;
 async function load(){
   if (EMBED) { D = EMBED; return render(); }
   const r = await api('/api/status');
+  // The PIN was right but the next request came without the sign-in: the browser didn't keep its cookie. Said, never
+  // a silent trip back to the PIN screen ("the password isn't working", 1.8).
+  if (r.status === 401 && justIn) { justIn = false; clearInterval(timer); timer = null; return login('The PIN was right, but this browser didn\'t keep the sign-in. It may block cookies for this address or be a private window: allow cookies for this page, or open it in another browser.'); }
+  justIn = false;
   if (r.status === 401) { clearInterval(timer); timer = null; return login(r.j.pin === false ? (r.j.error || 'No PIN is set yet. On the PC, open Settings › Home server › Server mode › PIN for the web page and set one') : ''); }
   if (r.status !== 200) return toast(r.j.error || 'The PC didn\'t answer');
   D = r.j; render();

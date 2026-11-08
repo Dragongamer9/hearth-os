@@ -1454,6 +1454,9 @@ def make_handler():
                 return self.send(200, summary())
             if path == '/api/status':
                 if not self.authed():
+                    if self.token():
+                        # For Send logs: a sign-in the PC doesn't know (expired, PIN changed, or the browser sent an old one).
+                        print('hearth-server-mode: web page: %s sent a sign-in this PC doesn\'t know' % peer_name(self.ip()), file=sys.stderr, flush=True)
                     return self.send(401, {'error': 'Type the PIN' if secret_read().get('pin') else NO_PIN, 'pin': bool(secret_read().get('pin'))})
                 d = summary()
                 s = peek()
@@ -1485,6 +1488,7 @@ def make_handler():
                     return self.send(400, {'error': pin_problem(typed)})      # not a PIN at all: not counted as a wrong one
                 if not pin_check(typed, h):
                     failed(ip)
+                    print('hearth-server-mode: web page: a wrong PIN from %s' % peer_name(ip), file=sys.stderr, flush=True)
                     return self.send(401, {'error': 'That PIN isn\'t right. It\'s the one set on the PC in Settings › Home server › Server mode (change it there if you\'ve forgotten it)'})
                 name = peer_name(ip)
                 try:
@@ -1492,6 +1496,7 @@ def make_handler():
                 except Fail as e:
                     return self.send(500, {'error': str(e).replace('save the PIN', 'remember this device')})
                 event_add('%s opened the web page' % name)
+                print('hearth-server-mode: web page: %s signed in with the PIN' % name, file=sys.stderr, flush=True)
                 return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hs=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (tok, SESSION_DAYS * 86400))])
             if not self.authed():
                 return self.send(401, {'error': 'Signed out (30 days passed, or the PIN was changed): type the PIN again', 'pin': bool(secret_read().get('pin'))})
