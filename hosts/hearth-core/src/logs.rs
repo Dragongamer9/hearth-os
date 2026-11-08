@@ -440,7 +440,7 @@ pub fn report(version: &str) -> String {
             .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p))).collect();
         protons.sort();
         if let Some((_, p)) = protons.last() {
-            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- Proton's log of the last modded start ({})\n{}\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&tail(&t, 300), 60_000))); }
+            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- Proton's log of the last modded start ({}; its errors and what it loaded, without trace and fixme lines)\n{}\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&proton_summary(&t), 60_000))); }
         }
         if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
     }
@@ -717,5 +717,33 @@ mod tests {
         let out = fit(&text, 100_000);
         assert!(out.len() <= 100_000 + 200, "{}", out.len());
         assert!(out.contains("newest hearth line") && out.contains("===== System journal: errors") && out.contains("===== Your session's journal"));
+    }
+}
+
+/// Proton's log for Send logs: its first lines (the command, Proton's version) and then the last 300 lines without
+/// trace and fixme lines. With only its tail kept, a modded Skyrim's log was hundreds of "trace:unwind" lines and
+/// none of the errors that said why the game stopped (Nvidia PC, Tuxborn, 1.6).
+pub fn proton_summary(t: &str) -> String {
+    let noise = |l: &str| l.contains(":trace:") || l.contains("fixme:") || l.contains(":fixme:");
+    let head: Vec<&str> = t.lines().filter(|l| !noise(l)).take(40).collect();
+    let rest: Vec<&str> = t.lines().filter(|l| !noise(l)).skip(40).collect();
+    let tail_n = rest.len().saturating_sub(300);
+    let mut out = head.join("\n");
+    if tail_n > 0 { out.push_str(&format!("\n[… {tail_n} lines left out …]")); }
+    if !rest.is_empty() { out.push('\n'); out.push_str(&rest[tail_n..].join("\n")); }
+    out
+}
+
+#[cfg(test)]
+mod proton_summary_tests {
+    #[test]
+    fn errors_stay_noise_goes() {
+        let mut t = String::from("Proton: skse64_loader.exe\n");
+        for i in 0..2000 { t.push_str(&format!("54479.914:0128:012c:trace:unwind:RtlGrowFunctionTable 00000000039A1FB0, {i}\n")); }
+        t.push_str("0128:fixme:ntdll:NtQuerySystemInformation info_class\n");
+        t.push_str("0130:err:module:import_dll Library steam_api64.dll not found\n");
+        let s = super::proton_summary(&t);
+        assert!(s.contains("Proton: skse64_loader.exe") && s.contains("err:module:import_dll"), "{s}");
+        assert!(!s.contains("trace:unwind") && !s.contains("fixme:"), "{s}");
     }
 }

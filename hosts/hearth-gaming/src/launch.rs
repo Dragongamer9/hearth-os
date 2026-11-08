@@ -61,12 +61,97 @@ fn own_umu() -> Result<String, String> { Err("Windows programs can't be started 
 /// Steam's folder and its libraries.
 #[cfg(target_os = "linux")]
 fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) {
-    let s = hearth_core::steam::steam_path(&util::home());
+    let s = native_steam_dir(&util::home()).or_else(|| hearth_core::steam::steam_path(&util::home()));
     let libs = s.as_deref().map(hearth_core::steam::libraries).unwrap_or_default();
     (s, libs)
 }
 #[cfg(not(target_os = "linux"))]
 fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) { (None, Vec::new()) }
+
+// ------------------------------------------------------------------ the Steam a modded game can reach
+//
+// A Steam game (Skyrim SE...) started with Proton from here only starts when it can reach a running Steam client
+// (Steam DRM): the regular Steam, never the Flathub one, whose sandbox a program started outside it can't reach.
+// Hearth used the most recently used Steam folder, so on a PC with both (Nvidia PC, Tuxborn, 1.6) the Proton and
+// the Steam it looked at were the Flatpak's, Steam often wasn't running at all, and SKSE was gone 3 s after Play,
+// with nothing said. Now: the regular Steam's folder and Proton, that Steam started hidden when it isn't running,
+// and when only the Flatpak's is open, Play says what to do instead of failing silently.
+
+/// The regular (not Flatpak) Steam's folder, when it's on this PC.
+pub fn native_steam_dir(home: &Path) -> Option<PathBuf> {
+    for d in [home.join(".local/share/Steam"), home.join(".steam/steam"), home.join(".steam/debian-installation")] {
+        let real = std::fs::canonicalize(&d).unwrap_or(d.clone());
+        if real.to_string_lossy().contains("/.var/app/") { continue; }
+        if real.join("steamapps").is_dir() || real.join("ubuntu12_32").is_dir() { return Some(real); }
+    }
+    None
+}
+
+/// Which Steam a process is: "native" (the regular Steam client), "flatpak" (the Flathub one) or neither. From its
+/// /proc cgroup, argv[0] and comm (pure, for the tests).
+pub fn steam_process_kind(cgroup: &str, argv0: &str, comm: &str) -> Option<&'static str> {
+    let is_client = comm.trim() == "steam" || argv0.ends_with("ubuntu12_32/steam");
+    if !is_client { return None; }
+    if cgroup.contains("flatpak") || argv0.starts_with("/app/") || argv0.contains("/.var/app/") { return Some("flatpak"); }
+    Some("native")
+}
+
+/// The Steam clients running now: (regular, Flatpak).
+pub fn steam_clients() -> (bool, bool) {
+    let (mut native, mut flatpak) = (false, false);
+    let Ok(rd) = std::fs::read_dir("/proc") else { return (false, false) };
+    for e in rd.flatten() {
+        if !e.file_name().to_string_lossy().chars().all(|c| c.is_ascii_digit()) { continue; }
+        let comm = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default();
+        let cmd = std::fs::read(e.path().join("cmdline")).unwrap_or_default();
+        let argv0 = String::from_utf8_lossy(cmd.split(|c| *c == 0).next().unwrap_or(&[])).to_string();
+        let cg = std::fs::read_to_string(e.path().join("cgroup")).unwrap_or_default();
+        match steam_process_kind(&cg, &argv0, &comm) { Some("native") => native = true, Some("flatpak") => flatpak = true, _ => {} }
+    }
+    (native, flatpak)
+}
+
+/// What to do before a Steam game starts with Proton (pure, for the tests): "go" (the regular Steam is running),
+/// "start" (start it hidden), or why it can't start.
+pub fn steam_plan(native_running: bool, flatpak_running: bool, native_installed: bool) -> Result<&'static str, String> {
+    if native_running { return Ok("go"); }
+    if flatpak_running {
+        return Err("Steam is open as its Flatpak version, which a modded game can't reach. Close Steam (Steam › Exit), then press Play again: Hearth opens the regular Steam for you.".into());
+    }
+    if native_installed { return Ok("start"); }
+    Err("This game needs Steam running, and only the Flatpak Steam is on this PC, which a modded game can't reach. Open the regular Steam once (it's part of Hearth OS) and sign in, then press Play again.".into())
+}
+
+/// Makes sure the regular Steam is running before a Steam game starts with Proton: starts it hidden (-silent) and
+/// waits for it (up to 90 s). Err says what to do.
+pub fn ensure_reachable_steam(title: &str) -> Result<(), String> {
+    let home = util::home();
+    let (native, flatpak) = steam_clients();
+    let installed = native_steam_dir(&home).is_some() && on_path("steam").is_some();
+    match steam_plan(native, flatpak, installed) {
+        Ok("go") => { log(&format!("{title}: Steam is running (the regular Steam, which the game can reach)")); Ok(()) }
+        Ok(_) => {
+            log(&format!("{title}: Steam isn't running: starting the regular Steam hidden (steam -silent) and waiting for it"));
+            let steam = on_path("steam").unwrap_or_else(|| PathBuf::from("steam"));
+            std::process::Command::new(steam).arg("-silent").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+                .env_remove("LD_LIBRARY_PATH").spawn().map_err(|e| { let m = format!("Couldn't start Steam ({e})."); log(&format!("{title}: {m}")); m })?;
+            let t0 = std::time::Instant::now();
+            while t0.elapsed().as_secs() < 90 {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if steam_clients().0 {
+                    // Signed in and ready to answer the game (its first seconds are updates and the sign-in).
+                    std::thread::sleep(std::time::Duration::from_secs(8));
+                    log(&format!("{title}: Steam is up after {}s", t0.elapsed().as_secs()));
+                    return Ok(());
+                }
+            }
+            let m = "Steam didn't start within 90 seconds. Open Steam, check it's signed in, then press Play again.".to_string();
+            log(&format!("{title}: {m}"));
+            Err(m)
+        }
+        Err(m) => { log(&format!("{title}: {m}")); Err(m) }
+    }
+}
 
 /// Proton's version from a prefix's own note ("10.0-100" in compatdata/<app>/version) → "10.0"; a GE-Proton's
 /// note is its whole name ("GE-Proton11-3").
@@ -253,7 +338,7 @@ pub fn play_modded(g: &GameEntry) -> Result<Value, String> {
             let prefix = g.prefix.clone().ok_or_else(|| { let m = "The game's Proton folder isn't there yet: start the game once without mods, then Play modded again.".to_string(); log(&format!("play modded: {m}")); m })?;
             let (steam, libs) = steam_dirs();
             #[cfg(target_os = "linux")]
-            if g.store == "steam" && !hearth_core::steam::client_running() { log("play modded: Steam isn't running; a Steam game may need it (Steam DRM)"); }
+            if g.store == "steam" { ensure_reachable_steam(&format!("play modded {}", g.title))?; }
             let umu = umu().map_err(|e| { log(&format!("play modded: {e}")); e })?;
             let env = umu_env(&prefix, g.steam_app, steam.as_deref(), &libs);
             let code = run_logged(&format!("play modded {}", g.title), &umu, &[loader.to_string_lossy().to_string()], &env, &install, Some(&install))?;
@@ -360,6 +445,38 @@ pub fn in_steam(file: &Path, game_id: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn which_steam_a_process_is() {
+        assert_eq!(steam_process_kind("0::/user.slice/app.slice/app-steam.scope", "/home/s/.local/share/Steam/ubuntu12_32/steam", "steam"), Some("native"));
+        assert_eq!(steam_process_kind("0::/user.slice/app.slice/app-flatpak-com.valvesoftware.Steam-123.scope", "/home/s/.var/app/com.valvesoftware.Steam/.local/share/Steam/ubuntu12_32/steam", "steam"), Some("flatpak"));
+        assert_eq!(steam_process_kind("0::/x", "/app/bin/steam", "steam"), Some("flatpak"));
+        assert_eq!(steam_process_kind("0::/x", "/usr/bin/bash", "bash"), None);
+        assert_eq!(steam_process_kind("0::/x", "/s/ubuntu12_64/steamwebhelper", "steamwebhelper"), None, "only the client itself");
+    }
+
+    #[test]
+    fn a_modded_steam_game_needs_the_regular_steam() {
+        assert_eq!(steam_plan(true, true, true), Ok("go"));
+        assert_eq!(steam_plan(false, false, true), Ok("start"));
+        let flat = steam_plan(false, true, true).unwrap_err();
+        assert!(flat.contains("Flatpak") && flat.contains("Close Steam"), "{flat}");
+        assert!(steam_plan(false, false, false).unwrap_err().contains("only the Flatpak Steam"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_regular_steam_folder_never_the_flatpaks() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        assert_eq!(native_steam_dir(home), None);
+        std::fs::create_dir_all(home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps")).unwrap();
+        std::fs::create_dir_all(home.join(".steam")).unwrap();
+        std::os::unix::fs::symlink(home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"), home.join(".steam/steam")).unwrap();
+        assert_eq!(native_steam_dir(home), None, "a link into the Flatpak's folder isn't the regular Steam");
+        std::fs::create_dir_all(home.join(".local/share/Steam/steamapps")).unwrap();
+        assert_eq!(native_steam_dir(home), Some(std::fs::canonicalize(home.join(".local/share/Steam")).unwrap()));
+    }
+
     use super::*;
 
     /// Runs `f` with HOME and the built-in Proton folder pointed at empty test folders (no Steam, no GE-Proton).

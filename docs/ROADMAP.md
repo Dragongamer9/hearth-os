@@ -7,6 +7,9 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Hearth Mods
+- [x] Play with mods: a modded Steam game (Skyrim SE with a Wabbajack list like Tuxborn) starts on the regular Steam, which it can reach: Play starts that Steam hidden when it isn't running, uses its Proton, and when only the Flatpak Steam is open says to close it instead of SKSE quietly ending after 3 seconds. Send logs keeps Proton's errors instead of hundreds of trace lines (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
