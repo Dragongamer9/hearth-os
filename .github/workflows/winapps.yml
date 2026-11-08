@@ -1,0 +1,39 @@
+# Windows apps (docs/WINDOWS-APPS.md): hearth-winapps and the Proton detector. The unit tests, then the real thing in a
+# Debian 13 container set up like Hearth OS's image for it (the pinned GE-Proton from os-bases/peppermint/build.sh,
+# Mesa's 64- and 32-bit Vulkan drivers, Steam's package, no Steam folder): small Windows programs built here with
+# MinGW run through hearth-winapps as a normal user, offline from Proton's point of view (nothing is downloaded at
+# run time). tools/winapps-e2e/e2e.sh says what each check does; results are annotations on the run.
+name: Windows apps
+
+on:
+  push:
+    paths: ['hosts/linux/desktop/shell/hearth-winapps', 'hosts/linux/desktop/shell/hearth_proton.py',
+            'hosts/linux/test/test_hearth_winapps.py', 'os/system_files/usr/share/hearth/proton-rules.json',
+            'tools/winapps-e2e/**', '.github/workflows/winapps.yml']
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (test_hearth_winapps.py)
+        run: |
+          set -o pipefail
+          python3 -W ignore -m unittest discover -s hosts/linux/test -p 'test_hearth_winapps.py' -v 2>&1 | tee wa.log || {
+            echo "::error title=Windows apps tests::$(grep -E '^(FAIL|ERROR|AssertionError|\w+Error)' -A3 wa.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Windows apps tests::$(tail -3 wa.log | tr '\n' ' ')"
+
+  end-to-end:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up like the image (GE-Proton, Vulkan, Steam's package) and build the test programs
+        run: bash tools/winapps-e2e/e2e.sh setup
+      - name: Run Windows programs through hearth-winapps
+        run: |
+          chmod -R a+rX "$GITHUB_WORKSPACE"
+          su tester -c "cd /home/tester && REPO='$GITHUB_WORKSPACE' bash '$GITHUB_WORKSPACE/tools/winapps-e2e/e2e.sh' run"

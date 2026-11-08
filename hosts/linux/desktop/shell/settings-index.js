@@ -2503,6 +2503,20 @@ var ENTRIES = [
 "i": "play"
 },
 {
+"t": "Show log",
+"p": "winapps",
+"i": "info"
+},
+{
+"t": "Detailed Proton log for the next start",
+"p": "winapps"
+},
+{
+"t": "Show the detailed Proton log",
+"p": "winapps",
+"i": "info"
+},
+{
 "t": "Proton",
 "p": "winapps"
 },

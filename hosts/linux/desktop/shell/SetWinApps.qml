@@ -63,6 +63,19 @@ SetPage {
         if (l.proton) return "Last started with " + l.proton + (a.proton ? " (your pick)" : " (picked by Hearth)");
         return a.proton ? "Starts with " + a.proton + " (your pick)" : "Hearth picks the Proton when it starts";
     }
+    function took(sec) { return sec < 120 ? Number(sec || 0).toFixed(1) + " s" : Math.round(sec / 60) + " min"; }
+    // The last start's result, from its log (hearth-winapps keeps the last 5 starts in the app's logs folder).
+    function lastResult(a) {
+        const l = a.last || {};
+        if (!l.at) return "Not started yet";
+        const when = new Date(l.at * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat);
+        return (l.what && l.what !== "started" ? l.what.charAt(0).toUpperCase() + l.what.slice(1) : "Started") + " " + when + " with " + l.proton
+            + ", closed after " + took(l.seconds) + (l.code === 0 ? " (no error)" : " with code " + l.code);
+    }
+    function showLog(path) {
+        if (!path) return say("There's no log yet: it's written the first time the app starts.");
+        Quickshell.execDetached(["xdg-open", path]);
+    }
 
     SetRow {
         interactive: false; icon: "window"
@@ -100,7 +113,25 @@ SetPage {
             chip: xp.last.crashed ? "Closed right away" : a.steam ? "In Steam" : ""
             chipKind: xp.last.crashed ? "warn" : "ok"
 
-            SetRow { icon: "play"; title: "Open"; sub: a.exe; onActivated: page.launch(xp.a, "") }
+            SetRow { icon: "play"; title: "Open"; sub: a.exe + (a.args && a.args.length ? " " + a.args.join(" ") : ""); onActivated: page.launch(xp.a, "") }
+            SetRow {
+                icon: "info"; title: "Show log"; chevron: true
+                sub: page.lastResult(xp.a) + ". " + (xp.a.log ? "Everything Proton and the program said: " + xp.a.log : "The log is written at its first start.")
+                onActivated: page.showLog(xp.a.log)
+            }
+            SetSwitch {
+                title: "Detailed Proton log for the next start"
+                sub: xp.a.detailedNext ? "On for the next start only (PROTON_LOG=1), then off again. It's written to " + xp.a.dir + "/logs/steam-hearth-winapp-" + xp.a.id + ".log and Send logs includes it."
+                     : xp.a.detailedLog ? "Off. The last detailed log: " + xp.a.detailedLog
+                     : "For one start, Proton writes everything it does (big, slower) to the app's logs folder, and Send logs includes it."
+                checked: xp.a.detailedNext
+                onToggled: v => job.run(["detailed", xp.a.id, v ? "on" : "off"], () => page.reload(), e => page.say(e, true))
+            }
+            SetRow {
+                visible: !!xp.a.detailedLog
+                icon: "info"; title: "Show the detailed Proton log"; chevron: true; sub: xp.a.detailedLog
+                onActivated: page.showLog(xp.a.detailedLog)
+            }
             SetRow {
                 visible: !!xp.last.crashed && !!xp.last.next
                 icon: "restart"; title: "Try with " + (xp.last.next ? xp.last.next.name : "")
