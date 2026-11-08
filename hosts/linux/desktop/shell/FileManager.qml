@@ -1492,57 +1492,57 @@ Scope {
             items.push({ id: "pick-cancel", label: "Cancel", key: "Esc" }, sep());
         }
         if (inTrash) {
-            if (n) items.push({ id: "restore", label: "Put back" + what });
-            if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del" });
-            items.push({ id: "empty", label: "Empty Trash", danger: true });
-            if (e) items.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter" });
+            if (n) items.push({ id: "restore", label: "Put back" + what, short: "Put back", icon: "undo", quick: true });
+            if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del", icon: "trash", quick: true, short: "Delete" });
+            items.push({ id: "empty", label: "Empty Trash", danger: true, icon: "trash" });
+            if (e) items.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" });
         } else {
-            if (e) items.push({ id: "open", label: "Open", key: "Enter" });
-            if (e && !e.dir) items.push({ id: "openwith", label: "Open with…" });
-            if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(it);
-            if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
+            if (e) items.push({ id: "open", label: "Open", key: "Enter", icon: "open", group: "Open" });
+            if (e && !e.dir) items.push({ id: "openwith", label: "Open with…", icon: "grid", group: "Open" });
+            if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(Object.assign({ group: "Open" }, it));
+            if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab", icon: "plus", group: "Open" });
             if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
             if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
             if (n === 1 && isWinApp(e)) items.push({ id: "winapp", label: "Open with Hearth (Windows app)" });
-            if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder" });
-            if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
+            if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder", icon: "folder", group: "Open" });
+            if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space", icon: "eye", group: "Open" });
             items.push(sep());
-            if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable) });
-            if (n) items.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C" });
-            if (writable) items.push({ id: "paste", label: (clip.mode === "cut" ? "Move here" : "Paste") + (clip.paths.length > 1 ? " (" + clip.paths.length + ")" : ""), key: "Ctrl+V" });
+            if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable), icon: "cut", quick: true });
+            if (n) items.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C", icon: "copy", quick: true });
+            if (writable) items.push({ id: "paste", label: (clip.mode === "cut" ? "Move here" : "Paste") + (clip.paths.length > 1 ? " (" + clip.paths.length + ")" : ""), key: "Ctrl+V", icon: "clipboard", quick: !n });
             // Copy path: the Windows way, with drive letters (D:\Games); Copy Linux path: the real one.
-            items.push({ id: "copywin", label: n > 1 ? "Copy paths" : "Copy path" }, { id: "copypath", label: n > 1 ? "Copy Linux paths" : "Copy Linux path", key: "Ctrl+Alt+C" });
+            items.push({ id: "copywin", label: n > 1 ? "Copy paths" : "Copy path", icon: "link" }, { id: "copypath", label: n > 1 ? "Copy Linux paths" : "Copy Linux path", key: "Ctrl+Alt+C", icon: "link" });
             items.push(sep());
-            if (n === 1 && writable) items.push({ id: "rename", label: "Rename…", key: "F2" });
-            if (n > 1 && writable) items.push({ id: "batchrename", label: "Rename " + n + " items…", key: "F2" });
-            if (n && writable && !(n === 1 && isArchive(e))) items.push({ id: "compress", label: "Compress…" });
-            if (n === 1 && isArchive(e) && writable) items.push({ id: "extracthere", label: "Extract here" });
-            if (n === 1 && isArchive(e)) items.push({ id: "extractto", label: "Extract to…" });
+            if (n === 1 && writable) items.push({ id: "rename", label: "Rename…", key: "F2", icon: "edit", quick: true });
+            if (n > 1 && writable) items.push({ id: "batchrename", label: "Rename " + n + " items…", key: "F2", icon: "edit", quick: true });
+            if (n && writable && !(n === 1 && isArchive(e))) items.push({ id: "compress", label: "Compress…", icon: "archive" });
+            if (n === 1 && isArchive(e) && writable) items.push({ id: "extracthere", label: "Extract here", icon: "archive" });
+            if (n === 1 && isArchive(e)) items.push({ id: "extractto", label: "Extract to…", icon: "archive" });
             if (n > 1 && writable && t.every(p => isArchive(entries.find(x => x.path === p)))) items.push({ id: "extracteach", label: "Extract " + n + " archives here" });
-            if (n === 1 && isArchive(e) && writable) items.push({ id: "compress", label: "Compress…" });
-            if (e && kindOf(e) === "image") items.push({ id: "wallpaper", label: "Set as wallpaper" });
+            if (n === 1 && isArchive(e) && writable) items.push({ id: "compress", label: "Compress…", icon: "archive" });
+            if (e && kindOf(e) === "image") items.push({ id: "wallpaper", label: "Set as wallpaper", icon: "image" });
             if (!e && writable) {
-                items.push({ id: "newfolder", label: "New folder…", key: "Ctrl+Shift+N" });
-                items.push({ id: "newfile", label: "New empty file…" });
-                if (templates.length) items.push({ id: "sub-new", label: "New document  ›" });
+                items.push({ id: "newfolder", label: "New folder…", key: "Ctrl+Shift+N", icon: "folder", quick: true });
+                items.push({ id: "newfile", label: "New empty file…", icon: "file", group: "New" });
+                if (templates.length) items.push({ id: "sub-new", label: "New document  ›", icon: "doc", group: "New" });
             }
             items.push(sep());
-            if (n && writable) items.push({ id: "trash", label: "Move to Trash" + what, key: "Del" });
-            if (n && writable) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Shift+Del" });
+            if (n && writable) items.push({ id: "trash", label: "Move to Trash" + what, short: "Trash", key: "Del", icon: "trash", quick: true });
+            if (n && writable) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Shift+Del", icon: "close" });
             items.push(sep());
-            if (e) items.push({ id: "mark", label: marked[e.path] ? "Unselect" : "Select", key: "Ctrl+Space" });
-            if (markCount) items.push({ id: "unmarkall", label: "Clear selection", key: "Esc" });
-            if (entries.length) items.push({ id: "markall", label: "Select all", key: "Ctrl+A" });
-            if (markCount) items.push({ id: "invert", label: "Invert selection", key: "Ctrl+I" });
+            if (e) items.push({ id: "mark", label: marked[e.path] ? "Unselect" : "Select", key: "Ctrl+Space", group: "Select" });
+            if (markCount) items.push({ id: "unmarkall", label: "Clear selection", key: "Esc", group: "Select" });
+            if (entries.length) items.push({ id: "markall", label: "Select all", key: "Ctrl+A", group: "Select" });
+            if (markCount) items.push({ id: "invert", label: "Invert selection", key: "Ctrl+I", group: "Select" });
             items.push(sep());
-            if (!e) items.push({ id: "sub-view", label: "View  ›" }, { id: "sub-sort", label: "Sort and group  ›" });
-            if (!e) items.push({ id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H" });
-            if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T" });
-            if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W" });
+            if (!e) items.push({ id: "sub-view", label: "View  ›", icon: "grid", group: "View" }, { id: "sub-sort", label: "Sort and group  ›", icon: "menu", group: "View" });
+            if (!e) items.push({ id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H", icon: "eye", group: "View" });
+            if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T", icon: "plus", group: "View" });
+            if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W", icon: "close", group: "View" });
             const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
-            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D" });
-            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4" });
-            if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter" });
+            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D", icon: "pin" });
+            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4", icon: "kbd", group: "Open" });
+            if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
         showMenu(title, items.filter(i => !i.off), x === undefined ? -1 : x, y === undefined ? -1 : y);
@@ -1563,13 +1563,13 @@ Scope {
         ], x, y);
         const d = e.item || {};
         const real = e.path.indexOf("/") === 0;
-        const items = [{ id: "open", label: d.mounted === false && e.pc === "drive" ? "Mount and open" : "Open", key: "Enter" }];
-        if (real) items.push({ id: "tp-newtab", label: "Open in new tab" });
+        const items = [{ id: "open", label: d.mounted === false && e.pc === "drive" ? "Mount and open" : "Open", key: "Enter", icon: "open" }];
+        if (real) items.push({ id: "tp-newtab", label: "Open in new tab", icon: "plus" });
         if (e.pc === "drive" && d.removable && d.mounted !== false) items.push(sep(), { id: "tp-unmount", label: "Unmount" }, { id: "tp-eject", label: "Safely remove" });
         if (e.pc === "net" && d.net) items.push(sep(), { id: "tp-auto", label: ck(d.sub === "Connects by itself") + "Connect automatically" });
-        if (e.pc !== "folder" && d.key) items.push(sep(), { id: "tp-letter", label: "Change drive letter…" });
-        if (real) items.push(sep(), { id: "copywin", label: "Copy path" }, { id: "copypath", label: "Copy Linux path", key: "Ctrl+Alt+C" });
-        if (real) items.push(sep(), { id: "tp-props", label: "Properties", key: "Alt+Enter" });
+        if (e.pc !== "folder" && d.key) items.push(sep(), { id: "tp-letter", label: "Change drive letter…", icon: "edit" });
+        if (real) items.push(sep(), { id: "copywin", label: "Copy path", icon: "link" }, { id: "copypath", label: "Copy Linux path", key: "Ctrl+Alt+C", icon: "link" });
+        if (real) items.push(sep(), { id: "tp-props", label: "Properties", key: "Alt+Enter", icon: "info" });
         showMenu(e.name, items, x, y);
     }
     // Change drive letter… (like Windows' Disk Management): the free letters, D: to Y:. C: is always Hearth.
@@ -1593,11 +1593,11 @@ Scope {
         ], x, y);
         const a = e.app;
         const game = ["steam", "recomp", "games"].indexOf(a.kind) >= 0;
-        const items = [{ id: "ia-open", label: game ? "Play" : "Open" }];
-        if (appModifiable(a)) items.push({ id: "ia-modify", label: "Modify" });
-        if (a.canMove) items.push({ id: "ia-move", label: "Move to another drive" });
-        if (a.part) items.push(sep(), { id: "ia-part", label: "Part of Hearth" });
-        else if (appUninstallable(a)) items.push(sep(), { id: "ia-uninstall", label: "Uninstall", danger: true });
+        const items = [{ id: "ia-open", label: game ? "Play" : "Open", icon: "open" }];
+        if (appModifiable(a)) items.push({ id: "ia-modify", label: "Modify", icon: "edit" });
+        if (a.canMove) items.push({ id: "ia-move", label: "Move to another drive", icon: "folder" });
+        if (a.part) items.push(sep(), { id: "ia-part", label: "Part of Hearth", icon: "info" });
+        else if (appUninstallable(a)) items.push(sep(), { id: "ia-uninstall", label: "Uninstall", danger: true, icon: "trash" });
         showMenu(a.name, items, x, y);
     }
     function appsSortMenu(x, y) {
@@ -2936,7 +2936,10 @@ Scope {
                 const down = e.key === Qt.Key_Down || e.key === Qt.Key_Tab;
                 const ok = e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space;
                 const back = e.key === Qt.Key_Escape || e.key === Qt.Key_Backspace || e.key === Qt.Key_Menu;
-                if (app.overlay === "menu") {
+                if (app.overlay === "menu" && styledMenu.styled) {
+                    // Another right-click menu look (Theme.menuStyle, MenuStyles.qml): it moves and chooses itself.
+                    if (!styledMenu.item.key(e)) return;
+                } else if (app.overlay === "menu") {
                     const n = app.menuItems.length;
                     const step = d => {
                         let i = app.menuIndex;
@@ -4427,12 +4430,46 @@ Scope {
                     onClicked: app.closeOverlay()
                 }
 
+                // Actions menu in another look (Settings › Personalization › Bar and dock › Right-click menu,
+                // Theme.menuStyle): MenuStyles.qml, shared with the desktop's menus (PopMenu.qml), loaded by file name;
+                // if it can't load, the menu below (today's) shows.
+                Loader {
+                    id: styledMenu
+                    readonly property bool styled: Theme.menuStyle !== "today" && status === Loader.Ready && item !== null
+                    active: Theme.menuStyle !== "today"
+                    source: "MenuStyles.qml"
+                    visible: styled && app.overlay === "menu"
+                    width: item ? item.implicitWidth : 0
+                    height: item ? item.implicitHeight : 0
+                    x: app.menuX < 0 ? (parent.width - width) / 2 : Math.max(8, Math.min(parent.width - width - 8, app.menuX))
+                    y: app.menuY < 0 ? (parent.height - height) / 2 : Math.max(8, Math.min(parent.height - height - 8, app.menuY))
+                    function reopen() { if (styled && app.overlay === "menu") item.open(app.menuTitle, app.menuItems); }
+                    onLoaded: reopen()
+                    onStatusChanged: if (status === Loader.Error) console.warn("Files: the right-click menu's look (MenuStyles.qml) couldn't load; using today's menu")
+                    Connections {
+                        target: app
+                        function onMenuItemsChanged() { styledMenu.reopen(); }
+                        function onOverlayChanged() { if (app.overlay === "menu") styledMenu.reopen(); }
+                    }
+                    Connections {
+                        target: styledMenu.item
+                        function onChosen(it) { app.runMenu(it.id); }
+                        function onClosed() { app.closeOverlay(); }
+                    }
+                }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "look"; value: Theme.menuStyle }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "padHint"; value: app.viaPad }   // opened with the controller (X) or the Menu key
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "spaceRight"; value: styledMenu.parent.width - styledMenu.x - styledMenu.width - 8 }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "maxHeight"; value: styledMenu.parent.height - 16 }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "maxBottom"; value: styledMenu.parent.height - 8 - styledMenu.y }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "minTop"; value: 8 - styledMenu.y }
+
                 // Actions menu.
                 Rectangle {
                     id: menuCard
-                    visible: app.overlay === "menu"
+                    visible: app.overlay === "menu" && !styledMenu.styled
                     width: 320
-                    height: Math.min(parent.height - 16, menuHead.height + menuList.contentHeight + 20)
+                    height: Math.min(parent.height - 16, menuHead.height + menuList.contentHeight + 20 + (menuPadHint.visible ? menuPadHint.height : 0))
                     x: app.menuX < 0 ? (parent.width - width) / 2 : Math.max(8, Math.min(parent.width - width - 8, app.menuX))
                     y: app.menuY < 0 ? (parent.height - height) / 2 : Math.max(8, Math.min(parent.height - height - 8, app.menuY))
                     radius: Theme.radius
@@ -4450,7 +4487,7 @@ Scope {
                     }
                     ListView {
                         id: menuList
-                        anchors { left: parent.left; right: parent.right; top: menuHead.bottom; bottom: parent.bottom; margins: 8; topMargin: 0 }
+                        anchors { left: parent.left; right: parent.right; top: menuHead.bottom; bottom: menuPadHint.visible ? menuPadHint.top : parent.bottom; margins: 8; topMargin: 0 }
                         model: app.overlay === "menu" ? app.menuItems : []
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
@@ -4497,6 +4534,19 @@ Scope {
                                     onClicked: app.runMenu(mi.modelData.id)
                                 }
                             }
+                        }
+                    }
+                    // Opened with the controller: what A and B do.
+                    Item {
+                        id: menuPadHint
+                        visible: app.viaPad
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: 34
+                        Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 10 } height: 1; color: Theme.line }
+                        MenuHints {
+                            anchors.centerIn: parent
+                            k: 0.72
+                            model: [{ b: "A", t: "Choose" }, { b: "B", t: "Back" }]
                         }
                     }
                 }

@@ -456,6 +456,17 @@ pub fn report(version: &str) -> String {
         }
         if !body.is_empty() { section("Game starts (Proton's output, newest first)", body); }
     }
+    // Windows apps (docs/WINDOWS-APPS.md, hearth-winapps report): each app (installed or not, its Proton, program, last
+    // start and the end of its last log), the Protons on the device, the built-in GE-Proton and Vulkan for DXVK.
+    // A Windows app that "isn't working" left nothing here before (Unigine Heaven on a laptop, Hearth 1.7.0).
+    {
+        let helper = crate::paths::desktop_dir().join("shell/hearth-winapps");
+        if helper.is_file() {
+            let h = helper.display().to_string();
+            section("Windows apps", crate::system::run_timeout("python3", &[h.as_str(), "report"], Duration::from_secs(25))
+                .unwrap_or_else(|e| format!("({e})")));
+        }
+    }
     section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.steam/debian-installation/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
         for f in console_log.txt console-linux.txt compat_log.txt; do [ -s \"$d/$f\" ] || continue; echo \"--- $d/$f\" | sed \"s|$HOME|~|\"; \
         grep -aiE 'gameaction|launch|appid|compat|pressure|xwayland|display|exited|error|fail|proton|reaper' \"$d/$f\" | grep -aivE 'account|login|password|token|steamid|persona' | tail -120; done; done"));

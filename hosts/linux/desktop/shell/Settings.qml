@@ -41,6 +41,9 @@ Singleton {
     // Settings › Hearth Link: your paired devices may see this device's status (Your devices). On is only the default
     // read when the key is missing (it only reaches devices paired with this one); never written by itself.
     property bool shareStatus: true
+    // Settings › Personalization › Bar and dock › Right-click menu: "" (today's menu, the default; never written by
+    // itself) | "today" | "windows" (Windows 11 style) | "compact" (Compact list) | "tiles" (Tiles and groups). Theme.menuStyle.
+    property string menuStyle: ""
     property var menuTiles: ({})         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
@@ -53,6 +56,7 @@ Singleton {
         .concat(["barStyle", "dockMode", "deskClock", "panelGlass", "sunset", "sunsetLight", "sunsetDark", "accentFrom", "wallSwatches"])
         .concat(["barLayout", "barEdge", "dockFloat", "appMenu", "menuTiles"])
         .concat(["shareStatus"])
+        .concat(["menuStyle"])
     onNightLightChanged: save("nightLight")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
@@ -81,6 +85,7 @@ Singleton {
     onAppMenuChanged: save("appMenu")
     onMenuTilesChanged: save("menuTiles")
     onShareStatusChanged: save("shareStatus")
+    onMenuStyleChanged: save("menuStyle")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until
