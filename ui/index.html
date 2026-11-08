@@ -2023,7 +2023,8 @@ try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}'));
 // source of truth on Hearth OS: WebKit's localStorage can lose its last changes in a power cut, or everything when its
 // folder is reset (docs/SETTINGS-PERSISTENCE.md). Older versions kept them only here: copied to the file once.
 const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY'];
-function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(()=>{}); }
+// Not saved to the file: say so (the file wins at the next start, so the change would have gone back by itself).
+function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(e=>{ if(LINUX && !ANDROID) toast("Couldn't save this setting: "+((e&&e.message)||'no answer')); }); }
 function uiPrefsLoad(){
   if(!host) return;
   call('uiprefs.get').then(f=>{
