@@ -9416,7 +9416,10 @@ function qdFirst(){ const p=$('#qam .qd-panel'); return p && (p.querySelector('[
 function qdTabMove(dir){
   if(dir==='down'){ const el=qdFirst(); if(el){ setFocus(el); blip(); } return; }
   if(dir!=='left' && dir!=='right') return;
-  const T=qdTabs(), i=T.findIndex(x=>x[0]===S.qtab), j=i+(dir==='left'?-1:1);
+  // From the tab that's selected (the pointer can put it on another tab than the open one; moving went from the open
+  // one, so a tab next to the selection could be skipped).
+  const on=focused && focused.classList.contains('qd-tab') && focused.dataset.tab;
+  const T=qdTabs(), i=T.findIndex(x=>x[0]===(on||S.qtab)), j=i+(dir==='left'?-1:1);
   if(j<0 || j>=T.length) return;
   qdGo(T[j][0]);
 }
