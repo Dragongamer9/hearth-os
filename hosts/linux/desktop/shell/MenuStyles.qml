@@ -37,7 +37,7 @@ Item {
     readonly property real pad: win ? 5 : compact ? 4 : 6
     readonly property real rowH: win ? 30 : compact ? 27 : 29
     readonly property real iconSize: compact ? 14 : 16
-    readonly property real fontSize: compact ? 13 : 13.5
+    readonly property int fontSize: compact ? 13 : 14
     // Windows 11 style: a submenu is a flyout beside the first level; the others replace the list.
     readonly property bool flying: win && stack.length > 1
     readonly property var level: stack.length ? stack[stack.length - 1] : ({ title: "", items: [] })
@@ -321,7 +321,7 @@ Item {
                                     text: (tile.it.label || "").replace(/[….]+$/, "")
                                     elide: Text.ElideRight
                                     color: tile.lit ? Theme.accentInk : Theme.text
-                                    font.family: Theme.font; font.pixelSize: 10.5; font.weight: Font.Medium
+                                    font.family: Theme.font; font.pixelSize: 10; font.weight: Font.Medium
                                 }
                             }
                             Accessible.role: Accessible.MenuItem
@@ -436,7 +436,7 @@ Item {
                             leftPadding: 9; topPadding: 5
                             text: grp.modelData.title.toUpperCase()
                             color: Theme.muted
-                            font.family: Theme.font; font.pixelSize: 10.5; font.weight: Font.DemiBold; font.letterSpacing: 1.2
+                            font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1.2
                             elide: Text.ElideRight
                         }
                         Repeater {
