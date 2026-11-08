@@ -28,6 +28,7 @@ Scope {
     // A key still on its way to the file: a reload of the file (from an earlier write) mustn't put its old value back.
     function owns(k) { return pending[k] !== undefined || inflight[k] !== undefined; }
     function flush() {
+        if (retry.running) return;   // waiting to try a failed save again: everything goes together then
         const keys = Object.keys(pending);
         if (keys.length === 0 || path === "") return;
         proc.command = ["python3", helper, "merge", path, JSON.stringify(pending)];
@@ -41,15 +42,31 @@ Scope {
         fixer.running = true;
     }
 
+    // A save that failed (the file was locked too long, the disk was briefly full) is tried again, a few times, rather
+    // than dropped: dropped, the page kept showing your choice while the file kept the old value, which came back by
+    // itself at the next reload or sign-in. Newer changes to the same key win.
+    property int failures: 0
     Process {
         id: proc
         onExited: code => {
-            if (code !== 0) console.warn("settings: couldn't save " + w.path + " (code " + code + ")");
+            if (code !== 0) {
+                console.warn("settings: couldn't save " + w.path + " (code " + code + ")" + (w.failures < 5 ? "; trying again" : ""));
+                if (w.failures < 5) {
+                    w.failures++;
+                    w.pending = Object.assign({}, w.inflight, w.pending);
+                    w.inflight = {};
+                    retry.interval = 1000 * w.failures;
+                    retry.restart();
+                    return;
+                }
+            }
+            w.failures = 0;
             w.inflight = {};
             w.saved();
             w.flush();
         }
     }
+    Timer { id: retry; repeat: false; onTriggered: if (!proc.running) w.flush() }
     Process {
         id: fixer
         onExited: code => console.info("settings: checked " + w.path + " (code " + code + ")")

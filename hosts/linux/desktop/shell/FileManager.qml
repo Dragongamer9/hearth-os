@@ -432,8 +432,10 @@ Scope {
             id: procIn
             property var cb: null
             property string input: ""
-            // a binding, not an assignment (see SetJob.qml: assigning an object to environment threw on Hearth 1.0)
-            environment: ({ HEARTH_INPUT: procIn.input })
+            // On stdin, then stdin closes (see SetJob.qml: Process.environment can't take a JavaScript object on
+            // Hearth's Debian, so the password never arrived and opening a shared folder with one failed).
+            stdinEnabled: procIn.input !== ""
+            onStarted: { if (procIn.input !== "") { procIn.write(procIn.input); procIn.input = ""; } }
             stdout: StdioCollector {
                 onStreamFinished: {
                     const lines = text.trim().split("\n");
@@ -452,10 +454,11 @@ Scope {
         const p = callComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null });
         p.running = true;
     }
-    // The same with text for the helper on HEARTH_INPUT (a sharing password): the environment, which only you can
-    // read, never the command line.
+    // The same with text for the helper (a sharing password): written on its stdin, and put in HEARTH_INPUT (the
+    // environment, which only you can read) by the sh wrapper (SetJob.qml's feed), never on the command line.
+    readonly property string inputFeed: 'if [ "$1" = 1 ]; then HEARTH_INPUT=$(cat; printf x); HEARTH_INPUT=${HEARTH_INPUT%x}; else HEARTH_INPUT=; fi; export HEARTH_INPUT; shift; printf "%s" "$HEARTH_INPUT" | exec '
     function callIn(args, input, cb) {
-        const p = callInComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null, input: input || "" });
+        const p = callInComp.createObject(app, { command: ["sh", "-c", inputFeed + 'python3 "$@"', "sh", input ? "1" : "0", helper].concat(args), cb: cb || null, input: input || "" });
         p.running = true;
     }
 
@@ -479,14 +482,26 @@ Scope {
         desc = !!f.desc;
         group = ["none", "type", "date"].indexOf(f.group) >= 0 ? f.group : "none";
     }
-    Timer { id: prefsTimer; interval: 700; onTriggered: app.call(["prefs-set", JSON.stringify(app.prefs)]) }
+    // Only what you changed goes to the file (hearth-files merges it, one folder's view at a time): it used to send the
+    // whole settings object this window had read when it opened, so a setting changed since (Settings › Devices'
+    // "Show in Files", another Files window's folder views) was put back by itself the next time you changed a view.
+    property var prefsPending: ({})
+    Timer {
+        id: prefsTimer; interval: 700
+        onTriggered: { const ch = app.prefsPending; app.prefsPending = {}; if (Object.keys(ch).length) app.call(["prefs-set", JSON.stringify(ch)]); }
+    }
     function rememberView() {
         const p = Object.assign({}, prefs);
         const folders = Object.assign({}, p.folders || {});
         const v = { view: view, sort: sort, desc: desc, group: group };
+        const ch = Object.assign({}, prefsPending);
         if (path && !onHome && !onSpecial) {
             delete folders[path];
             folders[path] = v;               // newest last: hearth-files keeps the newest 400
+            const cf = Object.assign({}, ch.folders || {});
+            delete cf[path];
+            cf[path] = v;
+            ch.folders = cf;
         }
         p.folders = folders;
         p.view = view; p.sort = sort; p.desc = desc; p.group = group;
@@ -494,6 +509,9 @@ Scope {
         p.showExt = showExt;
         p.detailsPane = detailsPane;
         prefs = p;
+        ch.view = view; ch.sort = sort; ch.desc = desc; ch.group = group;
+        ch.hidden = hidden; ch.showExt = showExt; ch.detailsPane = detailsPane;
+        prefsPending = ch;
         prefsTimer.restart();
     }
     function loadTemplates() {
