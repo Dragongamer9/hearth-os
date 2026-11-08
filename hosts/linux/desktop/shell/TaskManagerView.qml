@@ -1060,7 +1060,7 @@ FocusScope {
                                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
                             }
                             Item { Layout.fillWidth: true }
-                            Text { text: !pf.dev ? "" : pf.dev.max > 0 ? "100%" : v.kbps(big.top); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
+                            Text { text: !pf.dev ? "" : pf.dev.max > 0 ? "100%" : v.kbps(big.scaleTop); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
                         }
                         Graph {
                             id: big
@@ -2221,7 +2221,7 @@ FocusScope {
         property color lineColor: Theme.accent
         property bool grid: true
         property bool framed: true
-        property real top: 1
+        property real scaleTop: 1
         onValuesChanged: requestPaint()
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
@@ -2247,7 +2247,7 @@ FocusScope {
                 let s = 1;
                 while (s < mx) s *= 2;
                 mx = s;
-                top = mx;
+                scaleTop = mx;
             }
             if (vals.length >= 2) {
                 const stepX = w / Math.max(1, capacity - 1);
