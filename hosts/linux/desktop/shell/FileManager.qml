@@ -1001,14 +1001,19 @@ Scope {
                 else say("“" + (net.share || net.name) + "” is open" + (r.where === "away" ? " (through Tailscale)" : ""));
                 return navigate(r.path, "");
             }
-            if (r.need === "password") return netSignIn(net, r.user || user || "", !!password);
+            if (r.need === "password") return netSignIn(net, r.user || user || "", !!password, password ? r.error : "");
+            // A whole computer with several shared folders: which one (typed, the first one filled in).
+            if (r.need === "pick" && r.shares && r.shares.length)
+                return askText("Which shared folder on " + (net.name || "it") + "? " + r.shares.join(", "), r.shares[0], "Open", r.shares[0].length,
+                               s => netOpen(Object.assign({}, net, { share: s }), r.user || user, password, false));
             if (r.need === "asleep" && (r.wake || net.wake) && net.device)
-                return ask((net.name || "It") + " isn't answering", "It may be off or asleep. Hearth can wake it over the network (Wake-on-LAN), then try again.", "Wake it", () => netWake(net.device, net.name));
-            say(r.error || "Couldn't open it", true);
+                return ask((net.name || "It") + " isn't answering", (r.error || "It may be off or asleep") + ". Hearth can wake it over the network (Wake-on-LAN), then try again.", "Wake it", () => netWake(net.device, net.name));
+            // Everything else says plainly what went wrong and what to do (hearth_netshares.classify).
+            ask("Couldn't open “" + (net.share || net.name || "it") + "”", (r.error || "Couldn't open it") + (r.detail && r.detail !== r.error ? "\n\n(" + r.detail + ")" : ""), "OK", () => {});
         });
     }
-    function netSignIn(net, user, wrong) {
-        askText((wrong ? "Wrong user name or password. " : "") + "Sign in to " + (net.name || "the device") + ": user name", user, "Next", user.length, u => {
+    function netSignIn(net, user, wrong, why) {
+        askText((wrong ? (why || "Wrong user name or password") + ". " : "") + "Sign in to " + (net.name || "the device") + ": user name", user, "Next", user.length, u => {
             askText("Sharing password for " + u + " on " + (net.name || "the device"), "", "Sign in", 0, pw => {
                 ask("Remember this password?", "Kept in this device's keyring (the system's password store), never in Hearth's files. Then it's one click next time.", "Remember", () => netOpen(net, u, pw, true));
                 dlgAlt = "Just this time";

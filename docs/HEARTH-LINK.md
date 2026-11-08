@@ -378,14 +378,31 @@ home and away, with Copy). The Open / Save windows are Hearth Files too, so they
   the background when it's a minute old (one at a time, only in the desktop session).
 - **One click:** mounted with gvfs (`gio mount smb://host/share`) and opened at its folder under
   `/run/user/<uid>/gvfs` (Hearth Files can change files there, as on a USB drive, when the share is read & write).
-  The address is chosen by itself: the home name when it answers here, the Tailscale name away.
+  The address is chosen by itself: the home name when it answers here, the Tailscale name away. A share that's
+  **Only through Tailscale** on the sharing device always goes through Tailscale, even at home (its Samba lets only
+  Tailscale addresses in, so the home name was refused as if the password were wrong). A Tailscale name this device
+  can't look up (MagicDNS off here) is opened by its Tailscale IP. A whole computer (not a Hearth device) asks which of
+  its shared folders to open. The image has what this needs: `gio` (libglib2.0-bin), gvfs's SMB backend
+  (gvfs-backends), gvfs-fuse (the folder under `/run/user/<uid>/gvfs`) and `secret-tool` (libsecret-tools); before
+  that, shares were listed but none would open. gio is given the session's D-Bus (`$XDG_RUNTIME_DIR/bus`) when it's
+  started without it, so Connect automatically from the user timer reaches the same gvfs.
 - **Sign in once:** the first time it asks for the user name and the sharing password (the box hides it), then
   **Remember** or **Just this time**. Remember keeps the password in the system keyring (Secret Service through
   `secret-tool`, with gvfs's network-password attributes: protocol smb, server, object = the share, user, domain), never
   in Hearth's files. The password goes to Hearth Files' helper in `HEARTH_INPUT` and to gio and secret-tool on their
   input, never on a command line.
-- **When it can't:** a wrong password asks again; a share that's off, a device that's asleep (with **Wake it** when
-  Hearth Storage knows its Wake-on-LAN address) and Tailscale not signed in each say so.
+- **When it can't**, it says why and what to do (`classify`, with gio's own words underneath): a wrong password asks
+  again at once (gvfs asking for the password a second time is taken as "wrong", not answered again and again), with
+  the sharing device's account name filled in and "no sharing password yet" when that device says none was set; a
+  share that's off; a device that's asleep (with **Wake it** when Hearth Storage knows its Wake-on-LAN address); a
+  device that's online but whose shares don't answer (firewall, or Samba not running there); Samba turning this device
+  away; Tailscale not signed in here or not on there; the SMB version; this device missing gvfs or gvfs-fuse; no
+  desktop session. A paired Hearth device's status says, besides its names, the account to sign in with (`smb.user`),
+  whether a sharing password was set there (`smb.password`) and whether its Samba runs (`smb.on`): never the password.
+- **The sharing side** (Settings › Home server › Shared folders): when a firewall runs there (ufw or firewalld: not
+  in the image, but one can be installed), port 445 is opened for the home network while home-network shares are on
+  (`hearth-link-firewall open smb`), and closed again when they're off unless Hearth Storage's Windows sharing still
+  uses it. When setting the sharing password fails, smbpasswd's own reason is shown.
 - **Connect automatically** (Hearth OS 1.7; a shared folder's menu in the sidebar, right-click, press and hold or the
   menu button; off for each until you turn it on): that share opens by itself after you sign in, in Steam Game Mode
   and Desktop Mode alike, so it's already there in Files, the Open / Save windows and games. What's kept is where to
@@ -403,8 +420,12 @@ home and away, with Copy). The Open / Save windows are Hearth Files too, so they
 
 Tests: `hosts/linux/test/test_netshares.py` (avahi and Tailscale parsing, home vs away, the keyring with a stand-in
 secret-tool, signing in through a stand-in gio, the sidebar model, no password in files or command lines,
-Connect automatically: kept merged in files.json, opened without asking, asleep skipped, signing in left alone), and
-desktop-test.yml's Hearth Files with stand-in devices.
+Connect automatically: kept merged in files.json, opened without asking, asleep skipped, signing in left alone),
+`test_netshares_mount.py` (every reason a share didn't open: Tailscale only, the Tailscale IP, each error told apart,
+a wrong password stopping at once, the session bus, no gvfs-fuse, picking a computer's share, the sharing device's
+hints, smbpasswd's reason, the firewall, the image's packages), home-server.yml's `smb-e2e` (a real Samba with
+Hearth's own config and a real gvfs: `hosts/linux/test/e2e_netshares.py`), and desktop-test.yml's Hearth Files with
+stand-in devices.
 
 ## Local AI over Hearth Link
 

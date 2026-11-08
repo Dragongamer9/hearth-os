@@ -63,6 +63,7 @@ if sys.argv[1] == 'mount':
     sys.stdout.write('Domain [WORKGROUP]: '); sys.stdout.flush(); sys.stdin.readline()
     sys.stdout.write('Password: '); sys.stdout.flush(); pw = sys.stdin.readline().rstrip('\n')
     if (user, pw) == ('chris', 'hunter 2'):
+        open(os.environ['FAKE_MOUNTED'], 'w').close()
         sys.exit(0)
     sys.stdout.write('\ngio: smb://host/Media/: Failed to mount Windows share: Permission denied\n')
     sys.exit(2)
@@ -140,7 +141,7 @@ class Sidebar(unittest.TestCase):
         self.assertEqual(media['sub'], 'Whole drive · Read only')
         self.assertEqual(side[2]['sub'], 'Home · Read & write')
         self.assertEqual(media['net'], {'device': 'a1' * 16, 'name': 'chris-hearth', 'share': 'Media', 'home': 'chris-hearth.local',
-                                        'away': 'chris-hearth.tail4f2a.ts.net', 'wake': True})
+                                        'away': 'chris-hearth.tail4f2a.ts.net', 'wake': True, 'reach': 'home', 'user': ''})
         self.assertTrue(side[3]['offline'])
         self.assertEqual(side[3]['sub'], 'Offline or asleep')
         how = side[-1]['howto']
@@ -171,7 +172,8 @@ class SignIn(unittest.TestCase):
         self.args = os.path.join(self.tmp, 'args.log')
         self.env = mock.patch.dict(os.environ, {'PATH': bin_ + os.pathsep + os.environ.get('PATH', ''), 'HOME': self.tmp,
                                                 'XDG_STATE_HOME': os.path.join(self.tmp, 'state'), 'FAKE_SECRETS': os.path.join(self.tmp, 'secrets.json'),
-                                                'FAKE_ARGS': self.args, 'HEARTH_SECRET_TOOL': os.path.join(bin_, 'secret-tool')})
+                                                'FAKE_ARGS': self.args, 'HEARTH_SECRET_TOOL': os.path.join(bin_, 'secret-tool'),
+                                                'FAKE_MOUNTED': os.path.join(self.tmp, 'mounted')})
         self.env.start()
         self.net = {'device': 'a', 'name': 'chris-hearth', 'share': 'Media', 'home': 'host', 'away': ''}
 
@@ -179,8 +181,12 @@ class SignIn(unittest.TestCase):
         self.env.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def path_of(self, uri):
+        # gvfs-fuse's folder, once the stand-in gio has mounted it.
+        return self.tmp if os.path.exists(os.environ['FAKE_MOUNTED']) else None
+
     def open(self, **kw):
-        return ns.net_open(self.net, at_home=lambda h: True, ts_running=False, path_of=lambda uri: None, state={}, **kw)
+        return ns.net_open(self.net, at_home=lambda h: True, ts_running=False, path_of=self.path_of, state={}, **kw)
 
     def test_keyring_store_and_lookup(self):
         ns.keyring_store('PC.local', 'Media', 'chris', 'hunter 2')
@@ -202,7 +208,8 @@ class SignIn(unittest.TestCase):
         # Next time: one click (the user name from Hearth's state, the password from the keyring).
         st = ns.read_state()
         self.assertEqual(st['users'], {'host': 'chris'})
-        r = ns.net_open(self.net, at_home=lambda h: True, ts_running=False, path_of=lambda uri: None)
+        os.remove(os.environ['FAKE_MOUNTED'])                                 # unmounted since
+        r = ns.net_open(self.net, at_home=lambda h: True, ts_running=False, path_of=self.path_of)
         self.assertTrue(r['ok'])
         # No password anywhere in Hearth's files, nor on any command line.
         for root, _, files in os.walk(os.path.join(self.tmp, 'state')):
@@ -321,7 +328,8 @@ class ConnectAutomatically(unittest.TestCase):
             return mount_result
         st = {'users': users if users is not None else {'chris-hearth.local': 'chris'}, 'tailscale': {'running': True}}
         r = ns.autoconnect(entries, at_home=lambda h: h.endswith('.local'), probe=lambda h, port, t: probe,
-                           mount=mount, lookup=lambda s, sh, u: password, path_of=lambda uri: mounted,
+                           mount=mount, lookup=lambda s, sh, u: password,
+                           path_of=lambda uri: mounted or ('/run/user/1000/gvfs/x' if calls and mount_result[0] else None),
                            state=st, runtime=self.rt, budget=5)
         return r, calls
 
@@ -355,13 +363,19 @@ class ConnectAutomatically(unittest.TestCase):
     def test_one_shares_trouble_never_stops_the_others(self):
         bad = dict(self.NET, share='Broken')
 
+        done = []
+
         def path_of(uri):
             if 'Broken' in uri:
                 raise RuntimeError('boom')
-            return None
+            return '/run/user/1000/gvfs/x' if done else None
+
+        def mount(u, us, pw):
+            done.append(u)
+            return True, ''
         st = {'users': {'chris-hearth.local': 'chris'}, 'tailscale': {'running': True}}
         r = ns.autoconnect({'a': bad, 'b': self.NET}, at_home=lambda h: True, probe=lambda h, p, t: True,
-                           mount=lambda u, us, pw: (True, ''), lookup=lambda *a: 'pw', path_of=path_of,
+                           mount=mount, lookup=lambda *a: 'pw', path_of=path_of,
                            state=st, runtime=self.rt, budget=5)
         self.assertEqual(r, {'a': 'error', 'b': 'opened'})
 
