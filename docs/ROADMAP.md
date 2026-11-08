@@ -41,6 +41,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ### Planned next
 
+- [ ] **This PC in Hearth Files, the Windows 11 way** (the owner approved the mockups, 2026-11-07): a This PC page with Folders, Devices and drives (each with a drive letter that stays the same, C: for Hearth, D:, E: … for other drives, and the thin space bar) and Network locations; the navigation pane with This PC opened out; the address bar in letters (This PC › Games (D:) › …) with the Linux path in the details pane and Copy path; Installed apps like Windows Settings (Hearth, Flatpak, Windows apps, Steam games, Recomps, with size, Modify, Move to another drive, Uninstall); Windows apps see the same drive letters. Nothing moves on disk
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
 - [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
