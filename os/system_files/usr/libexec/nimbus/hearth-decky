@@ -214,7 +214,7 @@ def themedeck_outdated(home):
 # ~/homebrew/settings/ThemeDeck/tracks.json: "<appid>" -> {app_id, assigned_at, path, filename, volume, start_offset,
 # loop} (its main.py set_track). Only your own music files for a game carry over: previews can't (there's no file),
 # collections and "No music" have no ThemeDeck equivalent (a game without a song is silent in ThemeDeck anyway), and
-# a file that's gone is skipped. Settings rules (docs/SETTINGS-PERSISTENCE.md): once (a record in MUSIC_RECORD),
+# a file that's gone is skipped. Settings rules (docs/SETTINGS-PERSISTENCE.md): once (a record, music_record_path),
 # merged into what ThemeDeck already has (a game you already gave a song in ThemeDeck keeps it), under the file's
 # lock, atomic with tracks.json.bak (hearth_settings_io), nothing written over a tracks.json that can't be read (tried
 # again at the next start instead), and Hearth Music's own files only ever read.
@@ -539,10 +539,14 @@ def copy_plugin(home, owner_root=True, name=PLUGIN_DIR, src=None, mark=None):
     dst = os.path.join(plugins, name)
     tmp = dst + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
-    shutil.copytree(src, tmp, symlinks=False)
-    if mark:
-        with open(os.path.join(tmp, mark[0]), 'w') as f:
-            f.write(mark[1])
+    try:
+        shutil.copytree(src, tmp, symlinks=False)
+        if mark:
+            with open(os.path.join(tmp, mark[0]), 'w') as f:
+                f.write(mark[1])
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)   # never a half copy Decky would load as a second plugin
+        raise
     shutil.rmtree(dst, ignore_errors=True)
     os.rename(tmp, dst)
     if owner_root and os.geteuid() == 0:
