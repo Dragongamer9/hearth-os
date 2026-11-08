@@ -3413,7 +3413,7 @@ Scope {
                                     Text {
                                         visible: placeItem.headH > 20
                                         anchors { left: parent.left; leftMargin: 14 + (placeItem.modelData.depth ? 20 : 0); top: parent.top; topMargin: 12 }
-                                        text: ({ places: "This device", games: "Games", bookmarks: "Favorites", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || ""
+                                        text: ({ places: "This device", briefcases: "Briefcases", games: "Games", bookmarks: "Favorites", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || ""
                                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
                                     }
                                     Rectangle {

@@ -276,6 +276,20 @@ class Updating(Base):
         self.assertEqual(read(src), 'first draft\n')
         self.assertIn('changed since', res['skipped'][0]['why'])
 
+    def test_rows_survive_a_trip_through_javascript(self):
+        # Files (QML) sends the plan's rows back: every number must fit in a JavaScript double.
+        src, cp = self.add_file()
+        write(cp, 'new\n')
+        rows = bc.plan(self.b)['rows']
+
+        def js(v):
+            if isinstance(v, bool) or not isinstance(v, int):
+                return {k: js(x) for k, x in v.items()} if isinstance(v, dict) else [js(x) for x in v] if isinstance(v, list) else v
+            return v if abs(v) <= 2 ** 53 else float(v)
+        res = bc.apply(self.b, json.dumps({'rows': js(rows)}))
+        self.assertEqual(len(res['done']), 1, res)
+        self.assertEqual(read(src), 'new\n')
+
     def test_choice_not_offered_is_refused(self):
         src, cp = self.add_file()
         write(cp, 'new\n')

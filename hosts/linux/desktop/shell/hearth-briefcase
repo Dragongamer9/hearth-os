@@ -639,7 +639,8 @@ def sig_of(p, st=None, known_hash=None, force_hash=False):
 
 
 def short_sig(st):
-    return None if st is None else {'size': st.st_size, 'mtime': st.st_mtime_ns}
+    # The time as text: nanoseconds don't fit in a JavaScript number, and Files sends the rows back from QML.
+    return None if st is None else {'size': st.st_size, 'mtime': str(st.st_mtime_ns)}
 
 
 def differs(p, st, base):
