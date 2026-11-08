@@ -149,6 +149,38 @@ class WriteLook(unittest.TestCase):
         self.assertEqual(self.sys.read(), before)
 
 
+class SigninAlways(unittest.TestCase):
+    """Sign-in "always" (the password after sleep) used to write the new user's desktop.json over, dropping
+    /etc/skel's "defaults": 2. Now it's merged like the look."""
+    def setUp(self):
+        self.sys = FakeSystem()
+
+    def tearDown(self):
+        self.sys.close()
+
+    def test_merged_never_written_over(self):
+        H.signin_choice(self.sys.dep, 'sam', 'always', HIO)
+        self.assertEqual(json.loads(self.sys.read()), {'defaults': 2, 'lockOnWake': True})
+        self.assertTrue(os.path.exists(f'{self.sys.dep}/etc/nimbus/no-autologin'))
+
+    def test_with_a_picked_look_both_stay(self):
+        H.signin_choice(self.sys.dep, 'sam', 'always', HIO)
+        self.assertTrue(H.apply_look(self.sys.dep, 'sam', {'name': 'zen', 'mode': 'dark'}, HIO))
+        self.assertEqual(json.loads(self.sys.read()), {'defaults': 2, 'lockOnWake': True, 'look': 'zen', 'mode': 'dark'})
+
+    def test_auto_and_start_leave_the_file_alone(self):
+        before = self.sys.read()
+        for choice in ('auto', 'start'):
+            H.signin_choice(self.sys.dep, 'sam', choice, HIO)
+        self.assertEqual(self.sys.read(), before)
+
+    def test_never_over_a_file_that_cant_be_read(self):
+        with open(self.sys.path, 'w') as f:
+            f.write('{"defaults": 2')
+        H.signin_choice(self.sys.dep, 'sam', 'always', HIO)
+        self.assertEqual(self.sys.read(), '{"defaults": 2')
+
+
 class NoSkelFile(unittest.TestCase):
     def test_made_with_only_the_picked_keys(self):
         s = FakeSystem(skel=None)

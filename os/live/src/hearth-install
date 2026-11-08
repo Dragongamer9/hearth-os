@@ -1284,21 +1284,16 @@ def setup_system(dep, root, plan):
         sh(['umount', f'{dep}/var'], check=False)
 
 
-def signin_choice(dep, name, signin):
+def signin_choice(dep, name, signin, hio=None):
     """auto: straight in at start, no lock after sleep. start: the login screen at start. always: the login
     screen at start and the password after sleep (Game Mode and Mantel). Changeable in Settings › Sign-in."""
     if signin in ('start', 'always'):
         os.makedirs(f'{dep}/etc/nimbus', exist_ok=True)
         open(f'{dep}/etc/nimbus/no-autologin', 'w').close()
     if signin == 'always':
-        ent = next(l.split(':') for l in open(f'{dep}/etc/passwd') if l.split(':')[0] == name)
-        uid, gid, home = int(ent[2]), int(ent[3]), dep + ent[5]
-        d = f'{home}/.local/share/nimbus'
-        os.makedirs(d, exist_ok=True)
-        with open(f'{d}/desktop.json', 'w') as f:
-            json.dump({'lockOnWake': True}, f)
-        for path in (f'{home}/.local', f'{home}/.local/share', d, f'{d}/desktop.json'):
-            os.chown(path, uid, gid)
+        # Merged into the new user's desktop.json (from /etc/skel, with its "defaults": 2), never written over it.
+        if not merge_desktop(dep, name, {'lockOnWake': True}, 'the password after sleep', hio):
+            print('log: the password after sleep was not set; Settings › Sign-in can set it', flush=True)
 
 
 # ------------------------------------------------------------------ the look picked in the installer
@@ -1351,20 +1346,29 @@ def settings_io(dep):
 
 
 def write_look(dep, name, look, hio=None):
-    """The picked look as the new user's starting look: merged into their desktop.json (from /etc/skel) through
-    hearth_settings_io, so every other key stays, the file before is kept as desktop.json.bak and the write is atomic.
-    Writes nothing when no look was picked, and never writes over a desktop.json that can't be read. Returns whether
-    it wrote."""
+    """The picked look as the new user's starting look: merged into their desktop.json (merge_desktop). Writes
+    nothing when no look was picked. Returns whether it wrote."""
     ch = look_changes(look)
     if not ch:
         return False
+    if not merge_desktop(dep, name, ch, 'the look', hio):
+        return False
+    print(f"log: the look picked in the installer: {json.dumps(ch)}", flush=True)
+    return True
+
+
+def merge_desktop(dep, name, ch, what, hio=None):
+    """CH merged into the new user's desktop.json (from /etc/skel) through hearth_settings_io, so every other key
+    stays (the look and sign-in "always" both write here; sign-in used to write the file over, dropping skel's
+    "defaults": 2), the file before is kept as desktop.json.bak and the write is atomic. Never writes over a
+    desktop.json that can't be read. WHAT names it in the log. Returns whether it wrote."""
     hio = hio or settings_io(dep)
     if hio is None:
-        print('log: the look was not written: no settings helper', flush=True)
+        print(f'log: {what} was not written: no settings helper', flush=True)
         return False
     ent = next((l.split(':') for l in (read_lines(f'{dep}/etc/passwd') or []) if l.split(':')[0] == name), None)
     if not ent or len(ent) < 6:
-        print('log: the look was not written: no such user', flush=True)
+        print(f'log: {what} was not written: no such user', flush=True)
         return False
     uid, gid, home = int(ent[2]), int(ent[3]), dep + ent[5]
     d = f'{home}/.local/share/nimbus'
@@ -1376,7 +1380,7 @@ def write_look(dep, name, look, hio=None):
         except (OSError, ValueError, UnicodeDecodeError):
             ok = False
         if not ok or os.path.islink(path):
-            print('log: the look was not written: the new desktop.json could not be read (left as it is)', flush=True)
+            print(f'log: {what} was not written: the new desktop.json could not be read (left as it is)', flush=True)
             return False
     made = []
     for p in (f'{home}/.local', f'{home}/.local/share', d):
@@ -1387,7 +1391,6 @@ def write_look(dep, name, look, hio=None):
     for p in made + [path, path + '.bak', f'{d}/.desktop.json.lock']:
         if os.path.lexists(p):
             os.lchown(p, uid, gid)
-    print(f"log: the look picked in the installer: {json.dumps(ch)}", flush=True)
     return True
 
 
