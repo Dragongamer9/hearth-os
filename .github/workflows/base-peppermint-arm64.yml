@@ -1,0 +1,34 @@
+# Hearth OS (Debian) for arm64: the same Peppermint recipe as base-peppermint.yml (os-bases/peppermint, with its
+# x86-only parts guarded), built natively on GitHub's ARM runners and published (only from main, only when asked) as
+# ghcr.io/dragongamer9/hearth-peppermint-arm64. Never pushes to hearth-peppermint: PCs, the Ally and laptops update from
+# that. Device parts (the Oukitel RT8's kernel, boot images, drivers, flashing) go on top in Dragongamer9/hearth-devices.
+name: Hearth OS (Peppermint base, arm64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to hearth-peppermint-arm64 (only ever from main; off: build and check only)'
+        type: boolean
+        default: false
+  push:
+    branches: [feature/arm64]
+    paths: ['.github/workflows/base-peppermint-arm64.yml', '.github/workflows/base-peppermint.yml', '.github/scripts/**',
+            'os-bases/peppermint/**', 'os/system_files/**', 'hosts/**', 'ui/**', 'branding/icons/**', 'tools/app-bundle.py', 'os/app-abi']
+
+concurrency:
+  group: hearth-peppermint-arm64-caller-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  arm64:
+    uses: ./.github/workflows/base-peppermint.yml
+    with:
+      arch: arm64
+      image: ghcr.io/dragongamer9/hearth-peppermint-arm64
+      # Never from a branch, whatever was ticked.
+      publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}

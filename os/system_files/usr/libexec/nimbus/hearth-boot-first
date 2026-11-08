@@ -32,7 +32,8 @@ def efi_loader(esp_root):
     names = os.listdir(efi) if os.path.isdir(efi) else []
     for d in ('fedora', 'debian', 'ubuntu', 'anatase', 'cachyos', 'arch'):
         real = next((n for n in names if n.lower() == d), None)
-        for f in ('shimx64.efi', 'grubx64.efi'):
+        # x64 first (PCs: unchanged), then the arm64 names (Hearth OS for arm64).
+        for f in ('shimx64.efi', 'grubx64.efi', 'shimaa64.efi', 'grubaa64.efi'):
             if real and os.path.isfile(os.path.join(efi, real, f)):
                 return f'\\EFI\\{real}\\{f}'
     return '\\EFI\\fedora\\grubx64.efi'

@@ -9,6 +9,7 @@
 #   Quickshell  not in trixie (Desktop Mode's taskbar, launcher, settings)
 #   RyzenAdj    not in Debian (power limit on AMD handhelds without ASUS firmware attributes; hearth-admin)
 #   Handheld Daemon  not in Debian: built from its tagged source into its own venv at /usr/lib/hhd
+#   FEX         arm64 only: not in Debian (runs Valve's x86 Steam client on arm64)
 #
 # It also writes:
 #   /debs/*.deb   placeholder packages telling dpkg that libostree-1-1, ostree and ostree-boot are provided by
@@ -25,6 +26,8 @@ BOOTUPD_REF="${BOOTUPD_REF:-v0.3.2}"
 QUICKSHELL_REF="${QUICKSHELL_REF:-v0.3.2}"
 RYZENADJ_REF="${RYZENADJ_REF:-v0.19.0}"
 HHD_REF="${HHD_REF:-v4.1.12}"
+FEX_REF="${FEX_REF:-FEX-2611}"
+ARCH=$(dpkg --print-architecture)
 MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)
 
 export DEBIAN_FRONTEND=noninteractive
@@ -161,11 +164,31 @@ cmake --build /src/quickshell/build
 DESTDIR=/output cmake --install /src/quickshell/build
 test -x /output/usr/bin/quickshell
 
-# ------------------------------------------------------------------ RyzenAdj
+# ------------------------------------------------------------------ RyzenAdj (AMD x86 only)
+if [ "$ARCH" = amd64 ]; then
 fetch FlyGoat/RyzenAdj "$RYZENADJ_REF" ryzenadj
 cmake -S /src/ryzenadj -B /src/ryzenadj/build -DCMAKE_BUILD_TYPE=Release
 cmake --build /src/ryzenadj/build
 install -Dm755 /src/ryzenadj/build/ryzenadj /output/usr/bin/ryzenadj
+fi
+
+# ------------------------------------------------------------------ FEX (arm64 only): runs x86 programs, for Steam
+# Valve's Linux Steam client is x86, so the arm64 image runs it through FEX, the way Ubuntu's arm64 Steam does.
+# FEX's own build (clang/lld), without its test binaries; its binfmt_misc entries make x86 programs start through it.
+if [ "$ARCH" = arm64 ]; then
+apt-get install -y --no-install-recommends clang lld llvm python3-setuptools libssl-dev libepoxy-dev libsdl2-dev >/dev/null
+git clone --depth 1 --branch "$FEX_REF" https://github.com/FEX-Emu/FEX.git /src/fex
+git -C /src/fex submodule update --init --depth 1 External/vixl Source/Common/cpp-optparse External/fmt \
+  External/drm-headers External/xxhash External/Vulkan-Headers External/jemalloc_glibc External/range-v3 \
+  External/unordered_dense External/rpmalloc External/tracy External/Catch2
+cmake -S /src/fex -B /src/fex/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DUSE_LINKER=lld -DENABLE_LTO=TRUE \
+  -DBUILD_TESTING=OFF -DBUILD_FEX_LINUX_TESTS=OFF -DBUILD_THUNKS=OFF -DBUILD_FEXCONFIG=OFF -DENABLE_CCACHE=OFF
+cmake --build /src/fex/build
+DESTDIR=/output cmake --install /src/fex/build
+test -x /output/usr/bin/FEXInterpreter
+echo "${FEX_REF}" > /output/usr/share/hearth-fex-version 2>/dev/null || { mkdir -p /output/usr/share && echo "${FEX_REF}" > /output/usr/share/hearth-fex-version; }
+fi
 
 # ------------------------------------------------------------------ Handheld Daemon
 # Its own venv (--system-site-packages: its Python dependencies come from Debian's packages, which build.sh

@@ -1,0 +1,37 @@
+#!/bin/sh
+# Hearth OS on arm64: Steam through FEX. /usr/bin/steam (written by os-bases/peppermint/build.sh on arm64 only) runs
+#   hearth-fex-steam <Valve's steam launcher> [steam's arguments]
+# Valve's Linux Steam client is x86: FEX runs it (its binfmt_misc entries, /usr/lib/binfmt.d/FEX-x86*.conf, start x86
+# programs through it), with an x86 base of libraries (FEX's RootFS) kept per account in ~/.fex-emu. The first time,
+# that base is fetched (about 1 GB) with a progress window; after that Steam starts straight away. If it can't be
+# fetched (offline), this says so and exits, and the session falls back as it does when Steam can't start.
+real="${1:?Valve's steam launcher}"
+shift
+
+fex_ready() {
+  cfg="${FEX_APP_CONFIG_LOCATION:-$HOME/.fex-emu}/Config.json"
+  [ -f "$cfg" ] && grep -q '"RootFS"' "$cfg" 2>/dev/null && return 0
+  return 1
+}
+
+say() {
+  if command -v notify-send >/dev/null 2>&1; then notify-send -a Hearth "Steam" "$1" 2>/dev/null; fi
+  echo "hearth-fex-steam: $1" >&2
+}
+
+if ! command -v FEXInterpreter >/dev/null 2>&1; then
+  say "Steam needs FEX on this device, and it isn't installed."
+  exit 1
+fi
+
+if ! fex_ready; then
+  ui=tty
+  if { [ -n "$WAYLAND_DISPLAY" ] || [ -n "$DISPLAY" ]; } && command -v zenity >/dev/null 2>&1; then ui=zenity; fi
+  say "Getting Steam ready for the first time (downloading about 1 GB)..."
+  if ! FEXRootFSFetcher --assume-yes --extract --distro-list-first --force-ui="$ui"; then
+    say "Steam couldn't be set up: its x86 files didn't download. Check the connection and try again."
+    exit 1
+  fi
+fi
+
+exec "$real" "$@"

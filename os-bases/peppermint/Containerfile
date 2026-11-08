@@ -25,7 +25,7 @@ COPY hosts/hearth-kde /hearth-kde
 
 # ------------------------------------------------------------------ Debian trixie, set up the way Peppermint has it
 # All of Debian's components (games need contrib and non-free: Steam, gamescope, firmware, Nvidia), trixie-backports
-# (the newer kernel, Mesa and gamescope handhelds need) and 32-bit packages (Steam).
+# (the newer kernel, Mesa and gamescope handhelds need) and, on amd64, 32-bit packages (Steam; arm64 runs Steam through FEX).
 FROM ${BASE_IMAGE} AS base
 RUN set -eux; \
     f=/etc/apt/sources.list.d/debian.sources; \
@@ -34,7 +34,7 @@ RUN set -eux; \
       > /etc/apt/sources.list.d/debian-backports.sources; \
     cat "$f" /etc/apt/sources.list.d/debian-backports.sources; \
     grep -q 'non-free-firmware' "$f"; \
-    dpkg --add-architecture i386; \
+    if [ "$(dpkg --print-architecture)" = amd64 ]; then dpkg --add-architecture i386; fi; \
     rm -f /etc/apt/apt.conf.d/docker-gzip-indexes /etc/apt/apt.conf.d/docker-no-languages; \
     printf 'APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n' > /etc/apt/apt.conf.d/90-hearth-no-recommends
 

@@ -11,15 +11,31 @@ on:
         description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
         type: boolean
         default: true
+  # base-peppermint-arm64.yml calls this same build for arm64 (ARM runners, its own image name). Run on its own,
+  # nothing here changes: amd64, ubuntu-latest, ghcr.io/dragongamer9/hearth-peppermint.
+  workflow_call:
+    inputs:
+      arch:
+        description: 'amd64 or arm64'
+        type: string
+        default: amd64
+      image:
+        description: 'The image to publish to (arm64: ghcr.io/dragongamer9/hearth-peppermint-arm64)'
+        type: string
+        default: ghcr.io/dragongamer9/hearth-peppermint
+      publish:
+        type: boolean
+        default: false
   push:
     branches: [linux-host, main]
     paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-apptheme/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
 
 env:
-  IMAGE: ghcr.io/dragongamer9/hearth-peppermint
+  IMAGE: ${{ inputs.image || 'ghcr.io/dragongamer9/hearth-peppermint' }}
+  HEARTH_ARCH: ${{ inputs.arch || 'amd64' }}
 
 concurrency:
-  group: hearth-peppermint-${{ github.ref }}
+  group: hearth-peppermint-${{ inputs.arch || 'amd64' }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +44,7 @@ jobs:
   # (ubuntu-latest moves to newer Ubuntu releases, whose glibc trixie doesn't have).
   app:
     name: Build the Hearth app (Rust, on Debian trixie)
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     container: docker.io/library/debian:trixie
     outputs:
       version: ${{ steps.ver.outputs.version }}
@@ -336,7 +352,7 @@ jobs:
   # little of glibc, so it's built on the runner as in os.yml.
   browser:
     name: Build Hearth Browser (Electron)
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: [app]
     steps:
       - uses: actions/checkout@v4
@@ -424,7 +440,7 @@ jobs:
   # build, the image is made without it and Hearth always uses the normal Steam client.
   hearth-steam:
     name: Build hearth-steam (lightweight Steam engine)
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -434,6 +450,7 @@ jobs:
       - name: Build
         continue-on-error: true
         run: |
+          [ "$HEARTH_ARCH" = arm64 ] && export HEARTH_RID=linux-arm64
           if bash hosts/hearth-steam/publish.sh /tmp/hearth-steam; then tar -C /tmp/hearth-steam -cf hearth-steam.tar .
           else echo "::warning title=hearth-steam::it didn't build, so this image is made without the lightweight Steam engine"; fi
       - uses: actions/upload-artifact@v4
@@ -449,7 +466,7 @@ jobs:
   # and without the tar the image keeps the old Hearth Files (the KDE apps from the base's packages are still renamed).
   kde:
     name: Build Hearth's KDE apps (inside Debian trixie (Peppermint))
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -472,7 +489,7 @@ jobs:
     needs: [app, browser, hearth-steam, kde]
     # The KDE apps never hold the image back (if they failed, it's made without them).
     if: ${{ !cancelled() && needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 240
     permissions:
       contents: write   # the boot look screenshots (ci/boot-look)
@@ -540,7 +557,8 @@ jobs:
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" -e "^Get:" -e "^Unpacking " -e "^Setting up " -e "^Selecting previously" -e "^Preparing to unpack" -e "^(Reading database" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
-          sudo podman build --pull=newer -f os-bases/peppermint/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth-peppermint:latest .
+          nv=1; [ "$HEARTH_ARCH" = arm64 ] && nv=0
+          sudo podman build --pull=newer -f os-bases/peppermint/Containerfile --build-arg NIMBUS_VERSION="$v" --build-arg NVIDIA="$nv" -t hearth-peppermint:latest .
           # What build.sh couldn't find in the repositories (optional packages): a warning, not a failure.
           missing=$(grep -o 'Not installed (not in the repositories): .*' /tmp/step.log | tail -1 || true)
           if [ -n "$missing" ]; then echo "::warning title=optional packages::$missing"; fi
@@ -573,6 +591,16 @@ jobs:
           mkdir -p /var/lib && ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg
           check() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
           warn() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warning title=check::$1"; fi; }
+          # x86 check|warn ...: only on amd64 images (Nvidia, 32-bit, Debian's Steam package, AMD/ROG kernel bits, x86-only tools).
+          ARCH=$(dpkg --print-architecture 2>/dev/null || echo amd64)
+          x86() { if [ "$ARCH" = amd64 ]; then "$@"; else echo "skip on $ARCH: $2"; fi; }
+          # soft check ...: a check on amd64, a warning on arm64 (things still being brought up there, like gamescope).
+          soft() { if [ "$ARCH" = amd64 ]; then "$@"; else shift; warn "$@"; fi; }
+          # arm64 only: Steam through FEX (os-bases/peppermint/builder.sh and build.sh).
+          if [ "$ARCH" = arm64 ]; then
+            check "FEX is installed, with its binfmt_misc entries for x86 programs" "test -x /usr/bin/FEXInterpreter && ls /usr/lib/binfmt.d/FEX-x86_64.conf /usr/lib/binfmt.d/FEX-x86.conf"
+            warn "Steam (Valve's launcher) starts through FEX (hearth-fex-steam)" "test -x /usr/bin/steam && grep -q hearth-fex-steam /usr/bin/steam && test -x /usr/libexec/nimbus/hearth-fex-steam"
+          fi
           echo "--- update path (same as os.yml)"
           check "bootc is installed" "command -v bootc"
           check "pkexec is installed" "command -v pkexec"
@@ -580,7 +608,7 @@ jobs:
           check "hearth-import is installed" "test -x /usr/libexec/nimbus/hearth-import && command -v rsync"
           check "hearth-takeover and its tools are installed" "test -x /usr/libexec/nimbus/hearth-takeover && command -v sfdisk && command -v partx && command -v efibootmgr && command -v btrfs"
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
-          check "Decky Loader is built in (the pinned PluginLoader, its version, the hearth-decky@ template, not enabled)" "test -x /usr/lib/hearth-decky/PluginLoader && head -c 4 /usr/lib/hearth-decky/PluginLoader | od -An -tx1 | tr -d ' \\n' | grep -qx 7f454c46 && grep -qx 'v[0-9.]*' /usr/lib/hearth-decky/version && grep -q 'ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky run %i' /usr/lib/systemd/system/hearth-decky@.service && grep -qx 'User=root' /usr/lib/systemd/system/hearth-decky@.service && ! grep -q '^\\[Install\\]' /usr/lib/systemd/system/hearth-decky@.service && ! ls /etc/systemd/system/*.wants/hearth-decky@* 2>/dev/null | grep -q ."
+          x86 check "Decky Loader is built in (the pinned PluginLoader, its version, the hearth-decky@ template, not enabled)" "test -x /usr/lib/hearth-decky/PluginLoader && head -c 4 /usr/lib/hearth-decky/PluginLoader | od -An -tx1 | tr -d ' \\n' | grep -qx 7f454c46 && grep -qx 'v[0-9.]*' /usr/lib/hearth-decky/version && grep -q 'ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky run %i' /usr/lib/systemd/system/hearth-decky@.service && grep -qx 'User=root' /usr/lib/systemd/system/hearth-decky@.service && ! grep -q '^\\[Install\\]' /usr/lib/systemd/system/hearth-decky@.service && ! ls /etc/systemd/system/*.wants/hearth-decky@* 2>/dev/null | grep -q ."
           check "nimbus-session can start your own Decky without a password (49-hearth-decky.rules: your instance, every account)" "grep -q 'hearth-decky@. + subject.user' /usr/share/polkit-1/rules.d/49-hearth-decky.rules && python3 /usr/libexec/nimbus/hearth-decky 2>&1 | grep -q 'run USER'"
           check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           echo "--- Make a bootable USB (Hearth Disks)"
@@ -679,10 +707,10 @@ jobs:
           check "ostree has SELinux support (moving to Hearth OS on Anatase labels its files)" "ostree --version | grep -q -- '- selinux'"
           check "Peppermint's own deployments keep composefs off (booting unchanged)" "grep -Eq '^enabled *= *no' /usr/lib/ostree/prepare-root.conf"
           check "ostree is new enough for bootc (2025.3 or newer)" "ostree --version | grep -Eq \"Version: '?(2025\\.([3-9]|[1-9][0-9])|20(2[6-9]|[3-9][0-9])\\.)\""
-          check "the boot loader for Hearth's installer (signed shim + GRUB for bootupd)" "test -f /usr/lib/bootupd/updates/EFI.json && ls /usr/lib/efi/shim/*/EFI/debian/shimx64.efi && ls /usr/lib/efi/grub2/*/EFI/debian/grubx64.efi"
+          check "the boot loader for Hearth's installer (signed shim + GRUB for bootupd)" "test -f /usr/lib/bootupd/updates/EFI.json && ls /usr/lib/efi/shim/*/EFI/debian/shim*.efi && ls /usr/lib/efi/grub2/*/EFI/debian/grub*.efi"
           check "GRUB's boot menu comes from ostree's entries (hearth-bls-grub)" "test -x /usr/libexec/nimbus/hearth-bls-grub && grep -q hearth-bls.cfg /usr/lib/bootupd/grub2-static/configs.d/10_blscfg.cfg && test -L /etc/systemd/system/multi-user.target.wants/hearth-bls-grub.service"
-          check "Nvidia's open kernel module" "find /usr/lib/modules -name 'nvidia.ko*' | grep -q ."
-          warn "Nvidia's 32-bit libraries, the same release as the 64-bit ones (Steam and 32-bit games on Nvidia)" "dpkg -l 'nvidia-driver-libs:i386' | grep -q '^ii' && ls /usr/lib/i386-linux-gnu/libGLX_nvidia.so.0 && test \"\$(dpkg-query -W -f='\${Version}' nvidia-driver-libs:i386)\" = \"\$(dpkg-query -W -f='\${Version}' nvidia-driver-libs:amd64)\""
+          x86 check "Nvidia's open kernel module" "find /usr/lib/modules -name 'nvidia.ko*' | grep -q ."
+          x86 warn "Nvidia's 32-bit libraries, the same release as the 64-bit ones (Steam and 32-bit games on Nvidia)" "dpkg -l 'nvidia-driver-libs:i386' | grep -q '^ii' && ls /usr/lib/i386-linux-gnu/libGLX_nvidia.so.0 && test \"\$(dpkg-query -W -f='\${Version}' nvidia-driver-libs:i386)\" = \"\$(dpkg-query -W -f='\${Version}' nvidia-driver-libs:amd64)\""
           check "dpkg's database is in the image (/usr/lib/sysimage)" "test -f /usr/lib/sysimage/dpkg/status && grep -q 'L+ /var/lib/dpkg' /usr/lib/tmpfiles.d/hearth-var.conf"
           check "system accounts are recreated by sysusers (sddm, ...)" "grep -q '^u sddm ' /usr/lib/sysusers.d/hearth-image.conf"
           check "the bootc layout (/ostree, /var/home)" "test -L /ostree && test \"\$(readlink /home)\" = var/home"
@@ -703,19 +731,19 @@ jobs:
           warn "the app icons are in the icon theme" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-paint.svg"
           # ---- end Hearth Paint, Emoji, Fonts and Accessibility
           echo "--- Game Mode and Desktop Mode"
-          check "gamescope is installed" "command -v gamescope"
-          check "gamescope is Valve's (Hearth's Game Mode atoms are in it)" "grep -aq GAMESCOPECTRL_BASELAYER_APPID \$(command -v gamescope) && grep -aq GAMESCOPECTRL_BASELAYER_WINDOW \$(command -v gamescope) && grep -aq GAMESCOPE_FPS_LIMIT \$(command -v gamescope) && grep -aq GAMESCOPECTRL_REQUEST_SCREENSHOT \$(command -v gamescope) && grep -aq mangoapp \$(command -v gamescope)"
+          soft check "gamescope is installed" "command -v gamescope"
+          soft check "gamescope is Valve's (Hearth's Game Mode atoms are in it)" "grep -aq GAMESCOPECTRL_BASELAYER_APPID \$(command -v gamescope) && grep -aq GAMESCOPECTRL_BASELAYER_WINDOW \$(command -v gamescope) && grep -aq GAMESCOPE_FPS_LIMIT \$(command -v gamescope) && grep -aq GAMESCOPECTRL_REQUEST_SCREENSHOT \$(command -v gamescope) && grep -aq mangoapp \$(command -v gamescope)"
           check "mangoapp is installed (performance overlay)" "command -v mangoapp"
           check "labwc is installed" "command -v labwc"
           check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
-          check "Steam is installed" "command -v steam && dpkg -l steam-installer | grep -q '^ii'"
-          check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
+          x86 check "Steam is installed" "command -v steam && dpkg -l steam-installer | grep -q '^ii'"
+          x86 check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
           check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/nimbus.desktop"
           # ---- Mantel is the only desktop (Hearth Plasma, GNOME and COSMIC are gone)
           check "Mantel only: the login screen offers Hearth and Hearth Classic, no Plasma / GNOME / COSMIC entries of Hearth's" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && ! ls /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop 2>/dev/null | grep -q ."
           check "Mantel only: Plasma's and GNOME's sessions aren't installed" "! command -v startplasma-wayland && ! command -v plasmashell && ! command -v gnome-shell && ! command -v gnome-session"
           check "Mantel only: an old HEARTH_DESKTOP=plasma|gnome|cosmic still means Mantel" "grep -q 'Mantel is the only desktop now' /usr/bin/nimbus-session && grep -q '^desktop_choice() { echo classic; }' /usr/bin/nimbus-session"
-          check "Mantel only: the KDE pieces Mantel and Hearth's KDE apps use stay (polkit-kde agent, Breeze)" "ls /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/polkit-kde-authentication-agent-1 2>/dev/null | grep -q . || ls /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 /usr/bin/lxpolkit /usr/bin/lxqt-policykit-agent 2>/dev/null | grep -q ."
+          check "Mantel only: the KDE pieces Mantel and Hearth's KDE apps use stay (polkit-kde agent, Breeze)" "ls /usr/lib/*-linux-gnu/libexec/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/polkit-kde-authentication-agent-1 2>/dev/null | grep -q . || ls /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 /usr/bin/lxpolkit /usr/bin/lxqt-policykit-agent 2>/dev/null | grep -q ."
           warn "Mantel only: the Breeze Qt style is there (Hearth's look for Qt apps)" "ls -d /usr/lib/*/qt6/plugins/styles/breeze6.so /usr/lib/*/qt6/plugins/styles/breeze*.so 2>/dev/null | grep -q ."
           check "the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
           # ---- end Mantel only
@@ -724,11 +752,11 @@ jobs:
           check "the Hearth session takes the power button while it runs (logind's handle-power-key inhibitor: one handler)" "grep -q 'systemd-inhibit --what=handle-power-key' /usr/bin/nimbus-session"
           check "the ROG Ally X / Xbox Ally controller isn't a wake source (udev rule)" "grep -q 'ATTR{idProduct}==\"1b4c\".*ATTR{power/wakeup}=\"disabled\"' /usr/lib/udev/rules.d/50-hearth-handheld-wakeup.rules"
           warn "the handheld wakeup rule is valid (udevadm verify)" "! udevadm verify --help >/dev/null 2>&1 || udevadm verify --no-style /usr/lib/udev/rules.d/50-hearth-handheld-wakeup.rules"
-          check "the kernel has AMD's sleep driver (amd_pmc: deep sleep, s0i3, on AMD handhelds and laptops)" "grep -qsE 'amd[-_]pmc' /usr/lib/modules/*/modules.dep /usr/lib/modules/*/modules.builtin"
-          warn "the kernel knows the ROG Xbox Ally's sleep (Van Gogh in amd_pmc: Linux 6.18 or newer)" "python3 -c 'import os, sys; v = sorted(os.listdir(\"/usr/lib/modules\"))[-1]; n = tuple(int(x) for x in v.split(\"-\")[0].split(\"+\")[0].split(\".\")[:2]); print(v); sys.exit(0 if n >= (6, 18) else 1)'"
+          x86 check "the kernel has AMD's sleep driver (amd_pmc: deep sleep, s0i3, on AMD handhelds and laptops)" "grep -qsE 'amd[-_]pmc' /usr/lib/modules/*/modules.dep /usr/lib/modules/*/modules.builtin"
+          x86 warn "the kernel knows the ROG Xbox Ally's sleep (Van Gogh in amd_pmc: Linux 6.18 or newer)" "python3 -c 'import os, sys; v = sorted(os.listdir(\"/usr/lib/modules\"))[-1]; n = tuple(int(x) for x in v.split(\"-\")[0].split(\"+\")[0].split(\".\")[:2]); print(v); sys.exit(0 if n >= (6, 18) else 1)'"
           check "the login screen boots into Hearth (sddm + nimbus-autologin)" "test -L /etc/systemd/system/display-manager.service && readlink /etc/systemd/system/display-manager.service | grep -q sddm && test -L /etc/systemd/system/multi-user.target.wants/nimbus-autologin.service"
           check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && command -v gnome-keyring-daemon && python3 -c 'import evdev'"
-          check "WebKitGTK 4.1, PipeWire, Bluetooth, NetworkManager, Flatpak" "ls /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0 && command -v pipewire && command -v bluetoothctl && command -v nmcli && command -v flatpak"
+          check "WebKitGTK 4.1, PipeWire, Bluetooth, NetworkManager, Flatpak" "ls /usr/lib/*-linux-gnu/libwebkit2gtk-4.1.so.0 && command -v pipewire && command -v bluetoothctl && command -v nmcli && command -v flatpak"
           check "the boot splash is Hearth's" "plymouth-set-default-theme | grep -qx hearth"
           # ---- Hearth OS 1.1's boot look (GRUB theme, splash presets, Steam Game Mode startup animations)
           check "the splash presets are in the image (hearth, hearth-steam, hearth-minimal, hearth-aurora, hearth-starlight, hearth-orbit)" "for t in hearth hearth-steam hearth-minimal hearth-aurora hearth-starlight hearth-orbit; do test -f /usr/share/plymouth/themes/\$t/\$t.plymouth && test -f /usr/share/plymouth/themes/\$t/\$t.script || exit 1; done"
@@ -821,10 +849,10 @@ jobs:
           check "Bazaar is where the store was: Mantel's taskbar pin, Settings › Default apps › App store, the apps IPC target" "grep -q io.github.kolunmi.Bazaar /usr/share/nimbus/desktop/shell/hearth-desk && grep -q io.github.kolunmi.Bazaar.desktop /usr/share/nimbus/desktop/shell/hearth-system && grep -q 'target: \"apps\"' /usr/share/nimbus/desktop/shell/shell.qml && grep -q hearth-flatpak /usr/share/nimbus/desktop/shell/shell.qml"
           check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
           echo "--- nice to have"
-          warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
-          warn "RyzenAdj is installed" "command -v ryzenadj"
-          warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
-          warn "Xodus Nexus is installed (Xbox PC games; preinstalled like Beacon)" "test -x /usr/lib/xodus-nexus/Xodus-Nexus.AppImage && test -x /usr/bin/xodus-nexus && test -s /usr/lib/xodus-nexus/version && test -f /usr/share/applications/xodus-nexus.desktop"
+          x86 warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
+          x86 warn "RyzenAdj is installed" "command -v ryzenadj"
+          x86 warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          x86 warn "Xodus Nexus is installed (Xbox PC games; preinstalled like Beacon)" "test -x /usr/lib/xodus-nexus/Xodus-Nexus.AppImage && test -x /usr/bin/xodus-nexus && test -s /usr/lib/xodus-nexus/version && test -f /usr/share/applications/xodus-nexus.desktop"
           warn "Faugus Launcher is installed (Battle.net is set up through it; without it Hearth's own setup is used)" "command -v faugus-launcher && grep -q -- '--run)' \"\$(command -v faugus-launcher)\" && python3 -c 'import faugus.path_manager'"
           # ==== Hearth Recorder, Camera and Share (capture-apps.yml tests them for real): installed, with what they run.
           echo "--- Hearth Recorder, Camera and Share"
@@ -939,7 +967,9 @@ jobs:
       # reach the login prompt), and with Secure Boot (report only). Screenshots: the ci/boot-look branch.
       - name: Boot look in a virtual PC (GRUB theme, splash presets, broken-theme fallbacks)
         timeout-minutes: 100
-        run: bash .github/scripts/boot-look-vm.sh localhost/hearth-peppermint:latest "$PWD/boot-look"
+        run: |
+          if [ "$HEARTH_ARCH" != amd64 ]; then echo "::notice title=boot look::skipped on $HEARTH_ARCH (the virtual PC is x86: OVMF and KVM)"; exit 0; fi
+          bash .github/scripts/boot-look-vm.sh localhost/hearth-peppermint:latest "$PWD/boot-look"
       - name: Publish the boot look screenshots (ci/boot-look)
         if: always()
         run: |
@@ -992,6 +1022,9 @@ jobs:
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
+          # Never an arm64 image into an x86 name: PCs, the Ally and laptops update from hearth-peppermint.
+          if [ "$HEARTH_ARCH" != amd64 ] && [ "${IMAGE%-$HEARTH_ARCH}" = "$IMAGE" ]; then
+            echo "::error title=publish::refusing to push a $HEARTH_ARCH image to $IMAGE (its name must end in -$HEARTH_ARCH)"; exit 1; fi
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do

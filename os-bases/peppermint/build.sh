@@ -12,6 +12,8 @@ BPO=trixie-backports
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 OPTIONAL_MISSING=()
+# amd64 (PCs, handhelds) or arm64 (base-peppermint-arm64.yml): one recipe, the x86-only parts guarded on this.
+ARCH=$(dpkg --print-architecture)
 
 have_pkg() { apt-cache show "$1" >/dev/null 2>&1; }
 # Something nice to have that may not be in the repositories (or not under this name): install it if it's there,
@@ -51,14 +53,19 @@ echo 'hostonly="no"' > /etc/dracut.conf.d/00-hearth-build.conf
 # The kernel from trixie-backports: newer than trixie's 6.12, which handhelds need (ROG Ally / Ally X, Legion Go,
 # Legion Go S, Steam Deck OLED, MSI Claw: input, audio and power fixes land in every release). Signed by Debian,
 # so it boots with Secure Boot on. Headers: only for building Nvidia's module below.
-"${APT[@]}" -t "$BPO" linux-image-amd64 linux-headers-amd64
+# arm64: Debian's generic arm64 kernel (devices with their own kernel, like the Oukitel RT8, replace it in
+# Dragongamer9/hearth-devices). No headers: there's no Nvidia module to build there.
+if [ "$ARCH" = amd64 ]; then "${APT[@]}" -t "$BPO" linux-image-amd64 linux-headers-amd64
+else "${APT[@]}" -t "$BPO" "linux-image-$ARCH"; fi
 # Firmware (non-free-firmware): graphics (AMD, Intel, Nvidia GSP), Wi-Fi/Bluetooth chips handhelds and PCs use,
 # Intel/AMD sound (SOF: the Steam Deck, Legion Go, MSI Claw), Cirrus amplifiers (ROG Ally speakers), microcode.
+# The CPU microcode packages are x86 only.
+MICROCODE=(); [ "$ARCH" = amd64 ] && MICROCODE=(amd64-microcode intel-microcode)
 "${APT[@]}" -t "$BPO" firmware-linux-free firmware-misc-nonfree firmware-amd-graphics firmware-intel-graphics \
   firmware-iwlwifi firmware-realtek firmware-atheros firmware-mediatek firmware-brcm80211 \
-  firmware-intel-sound firmware-sof-signed firmware-cirrus amd64-microcode intel-microcode wireless-regdb || \
+  firmware-intel-sound firmware-sof-signed firmware-cirrus "${MICROCODE[@]}" wireless-regdb || \
   "${APT[@]}" -t "$BPO" firmware-linux firmware-iwlwifi firmware-realtek firmware-atheros firmware-sof-signed \
-    amd64-microcode intel-microcode wireless-regdb
+    "${MICROCODE[@]}" wireless-regdb
 optional firmware-nvidia-graphics firmware-libertas
 KDIRS=(/usr/lib/modules/*/)
 [ "${#KDIRS[@]}" -eq 1 ] || { echo "expected exactly one kernel, found: ${KDIRS[*]}"; exit 1; }
@@ -77,7 +84,7 @@ KVER=$(basename "${KDIRS[0]}")
   plymouth plymouth-themes \
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
   python3-pyroute2 libusb-1.0-0 \
-  shim-signed grub-efi-amd64-signed
+  shim-signed "grub-efi-$ARCH-signed"
 optional power-profiles-daemon fonts-inter fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
 
 # ------------------------------------------------------------------ graphics and Steam (AMD, Intel; Nvidia below)
@@ -87,16 +94,26 @@ echo 'steam steam/question select I AGREE' | debconf-set-selections
 echo 'steam steam/license note ' | debconf-set-selections
 echo 'steam-installer steam/question select I AGREE' | debconf-set-selections
 echo 'steam-installer steam/license note ' | debconf-set-selections
+if [ "$ARCH" = amd64 ]; then
 "${APT[@]}" -t "$BPO" \
   mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri libgl1-mesa-dri:i386 libglx-mesa0 libglx-mesa0:i386 \
   libegl-mesa0 libgbm1 mesa-va-drivers libvulkan1 libvulkan1:i386 vulkan-tools mesa-utils \
   intel-media-va-driver xwayland \
   steam-installer steam-devices
 "${APT[@]}" -t "$BPO" gamescope mangohud mangoapp
+else
+# arm64: no 32-bit half (Steam's x86 parts run through FEX, which brings its own x86 libraries), and Valve's Steam
+# launcher (below) instead of Debian's steam-installer (i386/amd64 only).
+"${APT[@]}" -t "$BPO" \
+  mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgbm1 mesa-va-drivers libvulkan1 vulkan-tools mesa-utils \
+  xwayland steam-devices
+optional gamescope mangohud mangoapp
+fi
 # Debian puts games' programs in /usr/games, which isn't on every PATH (the session, the checks): link them.
 for b in gamescope gamescopereaper gamescopestream gamescopectl mangoapp mangohud; do
   if [ -e "/usr/games/$b" ] && [ ! -e "/usr/bin/$b" ]; then ln -s "../games/$b" "/usr/bin/$b"; fi
 done
+if [ "$ARCH" = amd64 ]; then
 command -v gamescope
 optional gamemode libgamemode0:i386 zenity
 # Windows apps and Proton outside Steam's runtime (docs/WINDOWS-APPS.md): Wine draws text with the system's FreeType,
@@ -106,6 +123,34 @@ optional libfreetype6 libfreetype6:i386 libfontconfig1:i386
 STEAM_BIN=$(command -v steam || ls /usr/games/steam 2>/dev/null || true)
 [ -n "$STEAM_BIN" ] || { echo "Steam's launcher wasn't installed"; exit 1; }
 [ -e /usr/bin/steam ] || ln -s "$STEAM_BIN" /usr/bin/steam
+else
+command -v gamescope || OPTIONAL_MISSING+=("gamescope(arm64)")
+optional gamemode zenity libfreetype6
+# ---- Steam through FEX (arm64): Valve's Linux Steam client is x86, so it runs through FEX (built by builder.sh,
+# with binfmt_misc entries so x86 programs start through it), as Ubuntu's arm64 Steam does. Valve's launcher package
+# (the `steam` script and its bootstrap) from Valve's own repository; FEX's x86 base (its RootFS) is fetched for each
+# account the first time Steam starts (hearth-fex-steam). Not fatal: without it the image is made without Steam.
+test -x /usr/bin/FEXInterpreter
+if curl -fsSL --retry 3 -o /tmp/steam-launcher.deb https://repo.steampowered.com/steam/archive/stable/steam_latest.deb \
+   && "${APT[@]}" /tmp/steam-launcher.deb; then
+  STEAM_BIN=$(ls /usr/games/steam /usr/bin/steam 2>/dev/null | head -1)
+  [ -n "$STEAM_BIN" ] || { echo "Valve's package has no steam launcher"; exit 1; }
+  mv "$STEAM_BIN" "$STEAM_BIN.valve"
+  install -Dm755 /ctx/system_files/usr/libexec/nimbus/hearth-fex-steam /usr/libexec/nimbus/hearth-fex-steam 2>/dev/null || true
+  cat > /usr/bin/steam <<STEAMWRAP
+#!/bin/sh
+# Hearth (arm64): Steam through FEX. hearth-fex-steam makes sure FEX's x86 base is there, then starts Valve's launcher.
+exec /usr/libexec/nimbus/hearth-fex-steam "$STEAM_BIN.valve" "\$@"
+STEAMWRAP
+  chmod 755 /usr/bin/steam
+  [ "$STEAM_BIN" = /usr/bin/steam ] || ln -sf /usr/bin/steam "$STEAM_BIN"
+  echo "Steam (through FEX) installed"
+else
+  echo "warning: Valve's Steam launcher didn't install; this arm64 image goes without Steam"
+  OPTIONAL_MISSING+=("steam-launcher(arm64)")
+fi
+rm -f /tmp/steam-launcher.deb
+fi
 
 # ------------------------------------------------------------------ Nvidia: the open kernel module, in the same image
 # Debian's own Nvidia packages (550) don't build against trixie-backports' newer kernels, so the driver comes from
@@ -225,7 +270,7 @@ done
 optional passt slirp4netns
 if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
 touch /etc/subuid /etc/subgid
-command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
+command -v distrobox && command -v newuidmap && ls /usr/lib/*-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
 # Mantel (labwc + Quickshell) is Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone, and
@@ -338,6 +383,8 @@ fi
 # its SHA-256 (and that it's a program of the expected size), in /usr/lib/hearth-decky with its version. It runs only
 # while Steam Game Mode does: nimbus-session starts hearth-decky@<you>.service (os/system_files, User=root as Decky needs,
 # not enabled) without a password (49-hearth-decky.rules). Decky is updated with Hearth OS: bump all three lines together.
+# Decky's PluginLoader is an x86 program (and runs as root): amd64 only for now; arm64 goes without Decky.
+if [ "$ARCH" = amd64 ]; then
 DECKY_VERSION=v3.3.1
 DECKY_SHA256=7bb73b0502c49e7194f34f9ce4ddb6777764e9277d7a5e54665f66460d50c315
 DECKY_SIZE=35277600
@@ -350,6 +397,9 @@ echo "$DECKY_VERSION" > /usr/lib/hearth-decky/version
 rm -f /tmp/PluginLoader
 test -f /usr/lib/systemd/system/hearth-decky@.service
 echo "Decky Loader $DECKY_VERSION built in"
+else
+  echo "warning: no Decky Loader on $ARCH (its PluginLoader is x86 only)"
+fi
 # Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): theme songs in Steam's library, shipped and copied
 # into Decky's plugins folder the same way (hearth-decky PLUGINS). Only files. Not in this build: skipped.
 if [ -f /ctx/nimbus-app/decky-hearth-music/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-music/dist/index.js ]; then
@@ -1672,7 +1722,7 @@ systemctl enable hearth-flatpak-setup.service
 # myhostname module answers for the name too, whatever /etc/hosts says.
 systemctl enable hearth-hosts.service hearth-hosts.path
 optional libnss-myhostname
-if [ -f /etc/nsswitch.conf ] && ! grep -Eq '^hosts:.*myhostname' /etc/nsswitch.conf && [ -e /usr/lib/x86_64-linux-gnu/libnss_myhostname.so.2 ]; then
+if [ -f /etc/nsswitch.conf ] && ! grep -Eq '^hosts:.*myhostname' /etc/nsswitch.conf && ls /usr/lib/*-linux-gnu/libnss_myhostname.so.2 >/dev/null 2>&1; then
   sed -i -E 's/^(hosts:[[:space:]]+files)/\1 myhostname/' /etc/nsswitch.conf
 fi
 grep '^hosts:' /etc/nsswitch.conf || true
@@ -1695,25 +1745,27 @@ grep -q '^ID_LIKE=' /usr/lib/os-release || echo 'ID_LIKE=debian' >> /usr/lib/os-
 # the EFI partition. Debian's signed shim and GRUB (Microsoft → Debian → Debian's kernel: Secure Boot works) go
 # in EFI/debian: Debian's signed GRUB has that folder built in as where it finds grub.cfg.
 SHIM_VER=$(dpkg-query -W -f '${Version}' shim-signed | tr ':~' '._')
-GRUB_VER=$(dpkg-query -W -f '${Version}' grub-efi-amd64-signed | tr ':~' '._')
+GRUB_VER=$(dpkg-query -W -f '${Version}' "grub-efi-$ARCH-signed" | tr ':~' '._')
+# UEFI's names for this architecture: x64 / X64 / x86_64-efi on amd64, aa64 / AA64 / arm64-efi on arm64.
+if [ "$ARCH" = arm64 ]; then EFIA=aa64; EFIAU=AA64; GRUBD=arm64-efi; else EFIA=x64; EFIAU=X64; GRUBD=x86_64-efi; fi
 pick() { local f; for f in "$@"; do [ -f "$f" ] && { echo "$f"; return 0; }; done; return 1; }
-SHIM=$(pick /usr/lib/shim/shimx64.efi.signed /usr/lib/shim/shimx64.efi.signed.latest) || { echo "no signed shim"; exit 1; }
-MOK=$(pick /usr/lib/shim/mmx64.efi.signed /usr/lib/shim/mmx64.efi) || MOK=
-FB=$(pick /usr/lib/shim/fbx64.efi.signed /usr/lib/shim/fbx64.efi) || FB=
-GRUBEFI=$(pick /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed) || { echo "no signed GRUB"; exit 1; }
+SHIM=$(pick /usr/lib/shim/shim$EFIA.efi.signed /usr/lib/shim/shim$EFIA.efi.signed.latest) || { echo "no signed shim"; exit 1; }
+MOK=$(pick /usr/lib/shim/mm$EFIA.efi.signed /usr/lib/shim/mm$EFIA.efi) || MOK=
+FB=$(pick /usr/lib/shim/fb$EFIA.efi.signed /usr/lib/shim/fb$EFIA.efi) || FB=
+GRUBEFI=$(pick /usr/lib/grub/$GRUBD-signed/grub$EFIA.efi.signed) || { echo "no signed GRUB"; exit 1; }
 S="/usr/lib/efi/shim/$SHIM_VER/EFI"
 G="/usr/lib/efi/grub2/$GRUB_VER/EFI"
-install -Dm644 "$SHIM" "$S/debian/shimx64.efi"
-install -Dm644 "$SHIM" "$S/BOOT/BOOTX64.EFI"
-if [ -n "$MOK" ]; then install -Dm644 "$MOK" "$S/debian/mmx64.efi"; install -Dm644 "$MOK" "$S/BOOT/mmx64.efi"; fi
-if [ -n "$FB" ]; then install -Dm644 "$FB" "$S/BOOT/fbx64.efi"; fi
-if [ -f /usr/lib/shim/BOOTX64.CSV ]; then
-  install -Dm644 /usr/lib/shim/BOOTX64.CSV "$S/debian/BOOTX64.CSV"
+install -Dm644 "$SHIM" "$S/debian/shim$EFIA.efi"
+install -Dm644 "$SHIM" "$S/BOOT/BOOT$EFIAU.EFI"
+if [ -n "$MOK" ]; then install -Dm644 "$MOK" "$S/debian/mm$EFIA.efi"; install -Dm644 "$MOK" "$S/BOOT/mm$EFIA.efi"; fi
+if [ -n "$FB" ]; then install -Dm644 "$FB" "$S/BOOT/fb$EFIA.efi"; fi
+if [ -f "/usr/lib/shim/BOOT$EFIAU.CSV" ]; then
+  install -Dm644 "/usr/lib/shim/BOOT$EFIAU.CSV" "$S/debian/BOOT$EFIAU.CSV"
 else
   # The fallback loader's list of what to start: "shimx64.efi,<label>,,<comment>" in UTF-16.
-  printf 'shimx64.efi,Hearth OS,,Hearth OS\n' | iconv -t UTF-16 > "$S/debian/BOOTX64.CSV"
+  printf 'shim%s.efi,Hearth OS,,Hearth OS\n' "$EFIA" | iconv -t UTF-16 > "$S/debian/BOOT$EFIAU.CSV"
 fi
-install -Dm644 "$GRUBEFI" "$G/debian/grubx64.efi"
+install -Dm644 "$GRUBEFI" "$G/debian/grub$EFIA.efi"
 find /usr/lib/efi -type f | sort
 bootupctl backend generate-update-metadata /
 ls -la /usr/lib/bootupd/updates/
