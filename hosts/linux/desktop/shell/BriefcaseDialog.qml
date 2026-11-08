@@ -435,14 +435,24 @@ Item {
         border.width: 2
         border.color: ctl.lit(rowId) ? Theme.accent : "transparent"
         opacity: dim ? 0.5 : 1
-        Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }; text: "‹"; color: Theme.muted; font.pixelSize: 16 }
+        Text {
+            anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+            text: "‹"
+            color: Theme.muted
+            font.pixelSize: 16
+        }
         Row {
             anchors.centerIn: parent
             spacing: 8
             Rectangle { visible: pk.swatch.a > 0; width: 14; height: 14; radius: 7; color: pk.swatch; anchors.verticalCenter: parent.verticalCenter }
             Text { text: pk.text; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
         }
-        Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }; text: "›"; color: Theme.muted; font.pixelSize: 16 }
+        Text {
+            anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            text: "›"
+            color: Theme.muted
+            font.pixelSize: 16
+        }
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
@@ -497,6 +507,11 @@ Item {
             text: bi.look ? bi.look.badge || "" : ""
             color: Theme.text; font.pixelSize: Math.max(9, bi.size * 0.3); font.weight: Font.Bold
         }
-        Icon { visible: bi.locked; anchors { right: parent.right; bottom: parent.bottom; margins: -2 }; name: "lock"; size: Math.max(10, bi.size * 0.4); color: Theme.text }
+        Icon {
+            visible: bi.locked; anchors { right: parent.right; bottom: parent.bottom; margins: -2 }
+            name: "lock"
+            size: Math.max(10, bi.size * 0.4)
+            color: Theme.text
+        }
     }
 }
