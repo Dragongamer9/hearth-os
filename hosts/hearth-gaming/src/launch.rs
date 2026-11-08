@@ -68,20 +68,40 @@ fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) {
 #[cfg(not(target_os = "linux"))]
 fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) { (None, Vec::new()) }
 
-/// Proton's version from a prefix's own note ("10.0-100" in compatdata/<app>/version) → "10.0".
+/// Proton's version from a prefix's own note ("10.0-100" in compatdata/<app>/version) → "10.0"; a GE-Proton's
+/// note is its whole name ("GE-Proton11-3").
 pub fn prefix_proton(compat: &Path) -> Option<String> {
     let v = std::fs::read_to_string(compat.join("version")).ok()?;
     let v = v.trim();
     if v.is_empty() { return None; }
     if v.starts_with("experimental") { return Some("Experimental".into()); }
+    if v.starts_with("GE-Proton") { return Some(v.split_whitespace().next().unwrap_or(v).to_string()); }
     Some(v.split(['-', ' ']).next().unwrap_or(v).to_string())
 }
 
-/// The Proton to use (PROTONPATH): $HEARTH_PROTON; the Steam Proton the prefix was made with (so the prefix isn't
-/// changed under the game); else Proton - Experimental or the newest Proton in Steam's libraries; else GE-Proton
-/// (umu downloads it).
-pub fn proton_for(compat: Option<&Path>, libraries: &[PathBuf]) -> String {
+/// Hearth's note of the Proton it starts one of its own prefixes with (a Wabbajack list's, an organizer instance's).
+const PROTON_NOTE: &str = "hearth-proton.txt";
+
+/// A prefix Hearth made (not one of Steam's compatdata folders, whose Proton Steam chooses).
+pub fn hearths_own_prefix(compat: &Path) -> bool { !compat.to_string_lossy().replace('\\', "/").contains("/steamapps/compatdata/") }
+
+/// The Proton to use (PROTONPATH), first that applies:
+/// 1. $HEARTH_PROTON;
+/// 2. for Hearth's own prefixes, the Proton Hearth used last for it (hearth-proton.txt), so it's never switched;
+/// 3. the Proton the prefix was made with (compatdata/<app>/version): the same Steam Proton, the same GE-Proton, or
+///    Proton - Experimental for a Valve-made prefix with no matching numbered Proton (as before 1.7);
+/// 4. the Proton detector (hearth-core proton_pick, the same as Hearth Games and Windows apps): the Proton the game
+///    last worked with, Hearth's table, the GE-Proton built into Hearth OS (offline), Valve's newest;
+/// 5. the newest Valve Proton in Steam's libraries; else GE-Proton (umu downloads it).
+pub fn proton_for(compat: Option<&Path>, libraries: &[PathBuf]) -> String { proton_for_game(compat, libraries, None) }
+
+pub fn proton_for_game(compat: Option<&Path>, libraries: &[PathBuf], app: Option<u64>) -> String {
     if let Some(p) = std::env::var("HEARTH_PROTON").ok().filter(|p| !p.is_empty()) { return p; }
+    if let Some(c) = compat.filter(|c| hearths_own_prefix(c)) {
+        if let Some(p) = std::fs::read_to_string(c.join(PROTON_NOTE)).ok().map(|s| PathBuf::from(s.trim())).filter(|p| p.is_absolute() && p.join("proton").is_file()) {
+            return p.to_string_lossy().to_string();
+        }
+    }
     let mut found: Vec<(String, PathBuf)> = Vec::new();
     for l in libraries {
         let Ok(rd) = std::fs::read_dir(l.join("steamapps/common")) else { continue };
@@ -90,28 +110,53 @@ pub fn proton_for(compat: Option<&Path>, libraries: &[PathBuf]) -> String {
             if n.starts_with("Proton") && e.path().join("proton").is_file() { found.push((n, e.path())); }
         }
     }
-    let want = compat.and_then(prefix_proton);
-    if let Some(w) = want {
-        if let Some((_, p)) = found.iter().find(|(n, _)| n.trim_start_matches("Proton").trim_start_matches(" - ").trim() == w) { return p.to_string_lossy().to_string(); }
+    let experimental = found.iter().find(|(n, _)| n == "Proton - Experimental").map(|(_, p)| p.to_string_lossy().to_string());
+    if let Some(w) = compat.and_then(prefix_proton) {
+        if w.starts_with("GE-Proton") {
+            if let Some(p) = named_proton(&w) { return p.to_string_lossy().to_string(); }
+        } else {
+            if let Some((_, p)) = found.iter().find(|(n, _)| n.trim_start_matches("Proton").trim_start_matches(" - ").trim() == w) { return p.to_string_lossy().to_string(); }
+            if let Some(p) = &experimental { return p.clone(); }
+        }
     }
-    if let Some((_, p)) = found.iter().find(|(n, _)| n == "Proton - Experimental") { return p.to_string_lossy().to_string(); }
+    if let Some(p) = detected_proton(app) { return p.to_string_lossy().to_string(); }
+    if let Some(p) = experimental { return p; }
     let ver = |n: &str| -> Vec<u32> { n.trim_start_matches("Proton").trim().split('.').map(|x| x.parse().unwrap_or(0)).collect() };
     found.sort_by_key(|(n, _)| ver(n));
     found.last().map(|(_, p)| p.to_string_lossy().to_string()).unwrap_or_else(|| "GE-Proton".into())
 }
+#[cfg(target_os = "linux")]
+fn named_proton(name: &str) -> Option<PathBuf> { hearth_core::proton_pick::named(name) }
+#[cfg(not(target_os = "linux"))]
+fn named_proton(_: &str) -> Option<PathBuf> { None }
+#[cfg(target_os = "linux")]
+fn detected_proton(app: Option<u64>) -> Option<PathBuf> { hearth_core::proton_pick::auto_for("steam", &app.map(|a| a.to_string()).unwrap_or_default()) }
+#[cfg(not(target_os = "linux"))]
+fn detected_proton(_: Option<u64>) -> Option<PathBuf> { None }
+
+/// Proton's log for a modded start without its heaviest channels (+unwind, +debugstr): those slow a game with many
+/// script-extender plugins down and fill the disk over a long session. Your own WINEDEBUG wins.
+pub const PROTON_LOG_CHANNELS: &str = "+timestamp,+pid,+tid,+seh,+loaddll,+mscoree,+threadname";
 
 /// The environment for a Windows program under umu: its prefix, Steam's app id (Steam DRM games ask the running Steam
 /// client through Proton's bridge), Steam's folder for that bridge, the Proton, and Proton's log for the last start.
+/// For Hearth's own prefixes the Proton used is noted in the prefix, so the next start uses the same one.
 pub fn umu_env(prefix: &Path, app: Option<u64>, steam: Option<&Path>, libraries: &[PathBuf]) -> Vec<(String, String)> {
     let compat = if prefix.file_name().map(|n| n == "pfx").unwrap_or(false) { prefix.parent().map(Path::to_path_buf).unwrap_or_else(|| prefix.to_path_buf()) } else { prefix.to_path_buf() };
+    let proton = proton_for_game(Some(&compat), libraries, app);
+    if hearths_own_prefix(&compat) && Path::new(&proton).is_absolute() && std::env::var("HEARTH_PROTON").map(|p| p.is_empty()).unwrap_or(true) {
+        let _ = std::fs::create_dir_all(&compat);
+        let _ = util::write_atomic(&compat.join(PROTON_NOTE), proton.as_bytes());
+    }
     let mut env = vec![
         ("WINEPREFIX".to_string(), prefix.to_string_lossy().to_string()),
         ("STEAM_COMPAT_DATA_PATH".to_string(), compat.to_string_lossy().to_string()),
         ("GAMEID".to_string(), app.map(|a| format!("umu-{a}")).unwrap_or_else(|| "umu-default".into())),
-        ("PROTONPATH".to_string(), proton_for(Some(&compat), libraries)),
+        ("PROTONPATH".to_string(), proton),
         ("PROTON_LOG".to_string(), "1".to_string()),
         ("PROTON_LOG_DIR".to_string(), logs_dir().to_string_lossy().to_string()),
     ];
+    if std::env::var_os("WINEDEBUG").is_none() { env.push(("WINEDEBUG".into(), PROTON_LOG_CHANNELS.into())); }
     if let Some(a) = app {
         env.push(("STORE".into(), "steam".into()));
         env.push(("SteamAppId".into(), a.to_string()));
@@ -121,14 +166,27 @@ pub fn umu_env(prefix: &Path, app: Option<u64>, steam: Option<&Path>, libraries:
     env
 }
 
+/// Helpers that work in a game's folder without being the game: the overlay's own fuse-overlayfs (its command line
+/// names the game's Data folder for as long as the mods are laid over it, so waiting for it never ended and the
+/// mods stayed on: "The game is running through the organizer" at every later Play) and Hearth Mods itself.
+pub fn not_the_game(comm: &str, cmdline: &str) -> bool {
+    let argv0 = cmdline.split('\0').next().unwrap_or("");
+    let exe = Path::new(argv0).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let c = comm.trim();
+    ["fuse-overlayfs", "fusermount", "fusermount3"].iter().any(|h| c == *h || exe == *h) || c == "hearth-mods" || exe == "hearth-mods"
+}
+
 /// Processes (other than this one) working in a folder: their working folder or command line is in it.
 pub fn processes_in(dir: &Path) -> Vec<u32> {
     let me = std::process::id();
     let want = dir.to_string_lossy().to_string();
     let Ok(rd) = std::fs::read_dir("/proc") else { return Vec::new() };
     rd.flatten().filter_map(|e| e.file_name().to_string_lossy().parse::<u32>().ok()).filter(|&p| p != me).filter(|p| {
+        let cmdline = std::fs::read(format!("/proc/{p}/cmdline")).map(|c| String::from_utf8_lossy(&c).to_string()).unwrap_or_default();
+        let comm = std::fs::read_to_string(format!("/proc/{p}/comm")).unwrap_or_default();
+        if not_the_game(&comm, &cmdline) { return false; }
         let cwd = std::fs::read_link(format!("/proc/{p}/cwd")).map(|c| c.starts_with(dir)).unwrap_or(false);
-        cwd || std::fs::read(format!("/proc/{p}/cmdline")).map(|c| String::from_utf8_lossy(&c).replace('\\', "/").contains(&want)).unwrap_or(false)
+        cwd || cmdline.replace('\\', "/").contains(&want)
     }).collect()
 }
 
@@ -304,23 +362,84 @@ pub fn in_steam(file: &Path, game_id: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// Runs `f` with HOME and the built-in Proton folder pointed at empty test folders (no Steam, no GE-Proton).
+    fn bare<T>(t: &Path, f: impl FnOnce() -> T) -> T {
+        let (home, builtin) = (std::env::var_os("HOME"), std::env::var_os("HEARTH_BUILTIN_PROTON_DIR"));
+        std::fs::create_dir_all(t.join("home")).unwrap();
+        std::fs::create_dir_all(t.join("builtin")).unwrap();
+        std::env::set_var("HOME", t.join("home"));
+        std::env::set_var("HEARTH_BUILTIN_PROTON_DIR", t.join("builtin"));
+        std::env::remove_var("HEARTH_PROTON");
+        std::env::remove_var("WINEDEBUG");
+        let r = f();
+        match home { Some(h) => std::env::set_var("HOME", h), None => std::env::remove_var("HOME") }
+        match builtin { Some(b) => std::env::set_var("HEARTH_BUILTIN_PROTON_DIR", b), None => std::env::remove_var("HEARTH_BUILTIN_PROTON_DIR") }
+        r
+    }
+
     #[test]
     fn the_proton_the_prefix_was_made_with() {
         let t = tempfile::tempdir().unwrap();
-        let lib = t.path().join("lib");
-        for n in ["Proton 9.0 (Beta)", "Proton 10.0", "Proton - Experimental"] { std::fs::create_dir_all(lib.join("steamapps/common").join(n)).unwrap(); std::fs::write(lib.join("steamapps/common").join(n).join("proton"), "").unwrap(); }
-        let compat = t.path().join("compatdata/489830");
-        std::fs::create_dir_all(&compat).unwrap();
-        std::fs::write(compat.join("version"), "10.0-100\n").unwrap();
-        std::env::remove_var("HEARTH_PROTON");
-        assert_eq!(proton_for(Some(&compat), &[lib.clone()]), lib.join("steamapps/common/Proton 10.0").to_string_lossy());
-        std::fs::write(compat.join("version"), "8.0-5\n").unwrap();
-        assert_eq!(proton_for(Some(&compat), &[lib.clone()]), lib.join("steamapps/common/Proton - Experimental").to_string_lossy(), "no matching one: Experimental");
-        assert_eq!(proton_for(None, &[]), "GE-Proton");
-        let env = umu_env(&compat.join("pfx"), Some(489830), Some(Path::new("/s")), &[lib]);
-        let get = |k: &str| env.iter().find(|(a, _)| a == k).map(|(_, v)| v.clone()).unwrap_or_default();
-        assert_eq!((get("STEAM_COMPAT_DATA_PATH"), get("SteamAppId"), get("GAMEID"), get("STEAM_COMPAT_CLIENT_INSTALL_PATH")), (compat.to_string_lossy().to_string(), "489830".into(), "umu-489830".into(), "/s".into()));
-        assert_eq!(get("PROTON_LOG"), "1");
+        bare(t.path(), || {
+            let lib = t.path().join("lib");
+            for n in ["Proton 9.0 (Beta)", "Proton 10.0", "Proton - Experimental"] { std::fs::create_dir_all(lib.join("steamapps/common").join(n)).unwrap(); std::fs::write(lib.join("steamapps/common").join(n).join("proton"), "").unwrap(); }
+            let compat = lib.join("steamapps/compatdata/489830");
+            std::fs::create_dir_all(&compat).unwrap();
+            std::fs::write(compat.join("version"), "10.0-100\n").unwrap();
+            assert_eq!(proton_for(Some(&compat), &[lib.clone()]), lib.join("steamapps/common/Proton 10.0").to_string_lossy());
+            std::fs::write(compat.join("version"), "8.0-5\n").unwrap();
+            assert_eq!(proton_for(Some(&compat), &[lib.clone()]), lib.join("steamapps/common/Proton - Experimental").to_string_lossy(), "no matching one: Experimental");
+            assert_eq!(proton_for(None, &[]), "GE-Proton");
+            let env = umu_env(&compat.join("pfx"), Some(489830), Some(Path::new("/s")), &[lib.clone()]);
+            let get = |k: &str| env.iter().find(|(a, _)| a == k).map(|(_, v)| v.clone()).unwrap_or_default();
+            assert_eq!((get("STEAM_COMPAT_DATA_PATH"), get("SteamAppId"), get("GAMEID"), get("STEAM_COMPAT_CLIENT_INSTALL_PATH")), (compat.to_string_lossy().to_string(), "489830".into(), "umu-489830".into(), "/s".into()));
+            assert_eq!(get("PROTON_LOG"), "1");
+            assert_eq!(get("WINEDEBUG"), PROTON_LOG_CHANNELS);
+            assert!(!PROTON_LOG_CHANNELS.contains("unwind"), "the heaviest log channel stays off");
+            assert!(!compat.join(PROTON_NOTE).exists(), "Steam's own prefixes get no note of Hearth's");
+        });
+    }
+
+    #[test]
+    fn hearths_own_prefixes_use_the_builtin_ge_proton_and_keep_it() {
+        let t = tempfile::tempdir().unwrap();
+        bare(t.path(), || {
+            let ge = t.path().join("builtin/GE-Proton11-3");
+            std::fs::create_dir_all(&ge).unwrap();
+            std::fs::write(ge.join("proton"), "").unwrap();
+            let lib = t.path().join("lib");
+            std::fs::create_dir_all(lib.join("steamapps/common/Proton - Experimental")).unwrap();
+            std::fs::write(lib.join("steamapps/common/Proton - Experimental/proton"), "").unwrap();
+            // A new Wabbajack list's prefix: the GE-Proton built into Hearth OS, noted for next time.
+            let fresh = t.path().join("data/prefixes/wabbajack-w1");
+            let env = umu_env(&fresh.join("pfx"), Some(489830), None, &[lib.clone()]);
+            assert_eq!(env.iter().find(|(k, _)| k == "PROTONPATH").unwrap().1, ge.to_string_lossy());
+            assert_eq!(std::fs::read_to_string(fresh.join(PROTON_NOTE)).unwrap(), ge.to_string_lossy());
+            // Experimental is installed later: the noted one stays.
+            assert_eq!(proton_for(Some(&fresh), &[lib.clone()]), ge.to_string_lossy());
+            // A prefix made before 1.7 by Proton - Experimental keeps Experimental.
+            let old = t.path().join("data/prefixes/wabbajack-w0");
+            std::fs::create_dir_all(&old).unwrap();
+            std::fs::write(old.join("version"), "11.0-100\n").unwrap();
+            assert_eq!(proton_for(Some(&old), &[lib.clone()]), lib.join("steamapps/common/Proton - Experimental").to_string_lossy());
+            // A prefix GE-Proton made is started with that GE-Proton, by its name.
+            let by_ge = t.path().join("data/prefixes/wabbajack-w2");
+            std::fs::create_dir_all(&by_ge).unwrap();
+            std::fs::write(by_ge.join("version"), "GE-Proton11-3\n").unwrap();
+            assert_eq!(prefix_proton(&by_ge).as_deref(), Some("GE-Proton11-3"));
+            assert_eq!(proton_for(Some(&by_ge), &[]), ge.to_string_lossy());
+            assert!(hearths_own_prefix(&fresh) && !hearths_own_prefix(Path::new("/h/.local/share/Steam/steamapps/compatdata/489830")));
+        });
+    }
+
+    #[test]
+    fn the_overlay_and_hearth_mods_are_not_the_game() {
+        let data = "/home/me/Modlists/Tuxborn/Game Root/Data";
+        assert!(not_the_game("fuse-overlayfs\n", &format!("fuse-overlayfs\0-o\0lowerdir=/x/.hearth/layer:{data},upperdir=/x/overwrite,workdir=/x/.hearth/work\0{data}\0")));
+        assert!(not_the_game("fusermount3", "fusermount3\0-u\0/g\0"));
+        assert!(not_the_game("hearth-mods", "/usr/bin/hearth-mods\0--organizer\0tuxborn\0run\0"));
+        assert!(!not_the_game("SkyrimSE.exe", "Z:\\home\\me\\Modlists\\Tuxborn\\Game Root\\SkyrimSE.exe\0"));
+        assert!(!not_the_game("umu-run", "/usr/bin/python3\0/usr/bin/umu-run\0/g/skse64_loader.exe\0"));
     }
 
     #[test]

@@ -14,6 +14,10 @@ How (Hearth OS on Anatase and Peppermint, both started by bootupd's GRUB menu):
   - `good` also notes which image this start was (/var/lib/hearth/boot-good.json, after the count is reset): Hearth
     Storage's hold-back lets the other devices update once one device has started a new version well
     (hearth-update-mirror, hearth-link's cache.rs).
+  - GRUB also runs when the PC comes back from hibernation ("Turn off and keep games", "Restart and keep games"),
+    and counts that as a start although Hearth was up the whole time: `resumed` (the system-sleep hook hearth-resumed,
+    after a hibernation) puts the count back to 0. Without it two hibernations in a row left the count at 2, and the
+    next real start (the one that applies an update) went to the previous version and made it the default.
   - The entry that's started first also gets `fallback=1`: a version GRUB can't even load (its kernel missing:
     the ROG Ally after 0.6.53) goes straight to the previous version.
 
@@ -277,6 +281,25 @@ def good_start():
     return 0
 
 
+def cmd_resumed():
+    """Back from hibernation: GRUB ran on the way back and counted a start, but Hearth was up all along (it was running
+    when it went to sleep, and it's running now). The count goes back to 0. A start that was the automatic fallback
+    is left to `good` (it makes the previous version the default only after a real start)."""
+    g = grub_dir()
+    if not g:
+        return 0
+    env_path = os.path.join(g, 'grubenv')
+    if not os.path.isfile(env_path):
+        return 0
+    env = read_env(env_path)
+    if env.get('hearth_fellback') == '1' or env.get('hearth_tries', '0') in ('0', ''):
+        return 0
+    with Writable(g):
+        write_env(env_path, {'hearth_tries': '0'})
+    log('back from hibernation: GRUB\'s start count put back to 0 (Hearth was up all along)')
+    return 0
+
+
 def up_now():
     return any(subprocess.run(['pgrep', '-x', p], capture_output=True).returncode == 0 for p in UP_PROCS)
 
@@ -312,15 +335,15 @@ def cmd_may_update():
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
-    if cmd in ('write', 'good', 'watch', 'may-update'):
-        if os.path.exists(OFF) and cmd in ('good', 'watch'):
+    if cmd in ('write', 'good', 'watch', 'may-update', 'resumed'):
+        if os.path.exists(OFF) and cmd in ('good', 'watch', 'resumed'):
             return 0
         try:
-            return {'write': cmd_write, 'good': cmd_good, 'watch': cmd_watch, 'may-update': cmd_may_update}[cmd]()
+            return {'write': cmd_write, 'good': cmd_good, 'watch': cmd_watch, 'may-update': cmd_may_update, 'resumed': cmd_resumed}[cmd]()
         except Exception as e:  # never in the way of starting or stopping
             log(f'{cmd}: {e}')
             return 0
-    print('usage: hearth-boot-guard write|good|watch|may-update', file=sys.stderr)
+    print('usage: hearth-boot-guard write|good|watch|may-update|resumed', file=sys.stderr)
     return 2
 
 

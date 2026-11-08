@@ -222,7 +222,7 @@ fn status() -> Value {
 
 /// Something going on that a worker without a window must stay for: downloads, installs.
 fn busy() -> bool {
-    downloads::list()["active"].as_u64().unwrap_or(0) > 0 || wabbajack::jobs().as_array().map(|a| a.iter().any(|j| j["running"] == true)).unwrap_or(false)
+    downloads::list()["active"].as_u64().unwrap_or(0) > 0 || wabbajack::jobs().as_array().map(|a| a.iter().any(|j| j["running"] == true || j["repair"] == "running")).unwrap_or(false)
 }
 
 fn dispatch(name: &str, a: &Value) -> Result<Value, String> {

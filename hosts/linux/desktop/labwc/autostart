@@ -116,6 +116,10 @@ fi
 # A store sign-in asked for in Game Mode (Library › Stores): Hearth opens here in a window and starts it.
 [ -f "$SHARE/desktop/shell/hearth-signin" ] && command -v python3 >/dev/null 2>&1 && python3 "$SHARE/desktop/shell/hearth-signin" desktop-start >/dev/null 2>&1 &
 
+# Briefcase auto-sync (hearth-briefcase-sync.service): asked for without waiting; it skips itself when no Briefcase has
+# auto-sync on, and nothing here waits for it or fails with it. Not for a second player's seat.
+[ -z "$HEARTH_SEAT" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user start --no-block hearth-briefcase-sync.service >/dev/null 2>&1 &
+
 # ---- Welcome & Tips (hosts/hearth-tools): the first-run tour, the first time Desktop Mode starts on this account.
 # hearth-tools remembers it was shown (~/.local/share/nimbus/welcome-done) and does nothing after that. Not on a live
 # USB (the installer has its own welcome) or a second player's seat.

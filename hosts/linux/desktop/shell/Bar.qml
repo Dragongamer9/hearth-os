@@ -55,7 +55,7 @@ PanelWindow {
     // Hearth's own windows (Settings, Files, Task Manager...) are part of this shell: Quickshell's app id.
     function ownWindow(t) {
         const a = t.appId || "";
-        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Files)$/.test(t.title || ""));
+        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Task Manager \(always on top\)|Files)$/.test(t.title || ""));
     }
     // Pinned apps first (in pin order), then the other open apps; each app's windows share one button.
     readonly property var taskItems: {
@@ -165,7 +165,7 @@ PanelWindow {
     function menuPoint(item) {
         const p = item.mapToItem(null, item.width / 2, item.height / 2);
         if (portrait) return Qt.point(bar.width + 4, p.y - 20);
-        return Qt.point(p.x - 134, (screen ? screen.height : 1080) - bar.height + 2);
+        return Qt.point(p.x - (menu ? menu.cardWidth / 2 : 134), (screen ? screen.height : 1080) - bar.height + 2);
     }
     // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window.
     function moveToDesktop(win, n) {
@@ -206,12 +206,12 @@ PanelWindow {
         const list = [];
         // The app's own actions from its .desktop file (New private window, Compose message...), like a jump list.
         const acts = it.entry && !it.own && it.entry.actions ? Array.from(it.entry.actions).slice(0, 6) : [];
-        for (const a of acts) list.push({ label: a.name, icon: "open", run: () => a.execute() });
+        for (const a of acts) list.push({ label: a.name, icon: "open", group: "Jump to", run: () => a.execute() });
         if (acts.length) list.push({ separator: true });
-        if (it.entry && !it.own) list.push({ label: ws.length ? "New window" : "Open", icon: "open", run: () => it.entry.execute() });
+        if (it.entry && !it.own) list.push({ label: ws.length ? "New window" : "Open", icon: ws.length ? "plus" : "open", quick: true, run: () => it.entry.execute() });
         if (it.entry && !it.own) {
             const pinned = DeskState.isPinned(it.entry.id);
-            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(it.entry.id) });
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(it.entry.id) });
         }
         if (win) {
             const sets = desks.item ? desks.item.sets : [];
@@ -222,12 +222,12 @@ PanelWindow {
                 sub.push({ label: (sets.length > 1 && sets[i].name ? sets[i].name : "Desktop " + (i + 1)) + (here ? " (this one)" : ""), enabled: !here, run: () => moveToDesktop(win, i + 1) });
             }
             if (list.length) list.push({ separator: true });
-            list.push({ label: "Move to desktop", icon: "desktops", sub: sub });
-            if (!win.maximized) list.push({ label: "Maximize", icon: "window", run: () => { win.activate(); win.maximized = true; } });
-            else list.push({ label: "Restore size", icon: "window", run: () => { win.maximized = false; } });
+            list.push({ label: "Move to desktop", icon: "desktops", group: "Window", sub: sub });
+            if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
+            else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });
-            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", icon: "close", danger: true, run: () => ws.forEach(w => w.close()) });
-            else list.push({ label: "Close window", icon: "close", danger: true, run: () => win.close() });
+            if (ws.length > 1) list.push({ label: "Close all " + ws.length + " windows", short: "Close all", icon: "close", danger: true, quick: true, run: () => ws.forEach(w => w.close()) });
+            else list.push({ label: "Close window", short: "Close", icon: "close", danger: true, quick: true, run: () => win.close() });
         }
         const p = menuPoint(btn);
         menu.popup(screen, p.x, p.y, { title: appName(it), above: !portrait }, list);

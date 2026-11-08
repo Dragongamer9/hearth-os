@@ -226,6 +226,44 @@ class SteamModeSession(unittest.TestCase):
         shim = open(os.path.join(self.run_dir, 'hearth-steam-bin', 'steamos-session-select')).read()
         self.assertIn('exec nimbus-mode desktop', shim)
         self.assertIn('gamescope*|game*) exec nimbus-mode game', shim)
+        # Bug hunt: each call is logged; only desktop sessions switch; an unknown or empty one changes nothing.
+        asked = os.path.join(self.tmp, 'asked')
+        self.fake('nimbus-mode', 'echo "$1" >>%s' % asked)
+        path = os.path.join(self.run_dir, 'hearth-steam-bin', 'steamos-session-select')
+        for arg in ('plasma', 'plasma-wayland-persistent', '', 'something-new', 'gamescope'):
+            subprocess.run([path] + ([arg] if arg else []), env={'PATH': self.bin}, capture_output=True, timeout=10)
+        self.assertEqual(open(asked).read().split(), ['desktop', 'desktop', 'game'])
+        log = open(os.path.join(self.tmp, 'session.log')).read()
+        self.assertIn('steamos-session-select plasma-wayland-persistent', log)
+        self.assertIn('"something-new" isn\'t a session Hearth knows; nothing changed', log)
+
+    def test_steam_waits_for_the_network_only_right_after_start(self):
+        # Bug hunt: Steam came up before Wi-Fi at every start on the owner's laptop.
+        os.symlink(shutil.which('cut'), os.path.join(self.bin, 'cut'))
+        called = os.path.join(self.tmp, 'nm-called')
+        self.fake('nm-online', 'echo "$@" >>%s; exit 0' % called)
+        self.fake('gamescope', 'exit 0')
+        self.fake('steam', 'exit 0')
+        up = os.path.join(self.tmp, 'uptime')
+        with open(up, 'w') as f:
+            f.write('35.20 100.00\n')
+        self.run_mode({'HEARTH_UPTIME_FILE': up})
+        self.assertEqual(open(called).read().split(), ['-s', '-q', '-t', '20'])
+        self.assertIn('steam game mode: network ready', open(os.path.join(self.tmp, 'session.log')).read())
+        # Long after start (switching from Desktop Mode): no wait.
+        with open(up, 'w') as f:
+            f.write('5000.00 100.00\n')
+        os.remove(called)
+        self.run_mode({'HEARTH_UPTIME_FILE': up})
+        self.assertFalse(os.path.exists(called))
+        # Off switch, and no network: Steam still starts.
+        with open(up, 'w') as f:
+            f.write('10.00 1.00\n')
+        self.run_mode({'HEARTH_UPTIME_FILE': up, 'HEARTH_STEAM_NET_WAIT': '0'})
+        self.assertFalse(os.path.exists(called))
+        self.fake('nm-online', 'exit 1')
+        self.run_mode({'HEARTH_UPTIME_FILE': up})
+        self.assertIn('no network after 20s; starting Steam offline', open(os.path.join(self.tmp, 'session.log')).read())
 
     def test_steams_os_update_runs_hearths_updater(self):
         self.fake('gamescope', 'exit 0')

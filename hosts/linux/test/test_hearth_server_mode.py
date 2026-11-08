@@ -606,6 +606,160 @@ class WebPage(unittest.TestCase):
         self.assertTrue(callable(getattr(h, 'guard')))
 
 
+class SettingAPin(WebPage):
+    """"Server mode's web page won't let me set a PIN" (1.6 and 1.7): every way setting or typing the PIN could fail, and
+    that each failure says what to do. The real cause: the page sent Referrer-Policy: no-referrer, so browsers sent
+    "Origin: null" with every POST and the PC refused the PIN as "Not from this page"."""
+
+    def browser_login(self, pin='2468', **headers):
+        h = {'X-Hearth': '1'}
+        h.update({k.replace('_', '-'): v for k, v in headers.items()})
+        return self.req('POST', '/api/login', {'pin': pin}, h)
+
+    def test_the_page_no_longer_makes_browsers_send_origin_null(self):
+        st, _, page = self.req('GET', '/')
+        c = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
+        c.request('GET', '/')
+        r = c.getresponse()
+        r.read()
+        c.close()
+        self.assertEqual(r.getheader('Referrer-Policy'), 'same-origin', 'no-referrer makes every POST say Origin: null')
+        self.assertIn(b"referrerPolicy:'same-origin'", page, 'the page asks for its real Origin on each request too')
+
+    def test_a_browser_signing_in_the_way_1_6_and_1_7_pages_did(self):
+        # What Chrome and Firefox send for a POST from a page under Referrer-Policy: no-referrer.
+        self.assertEqual(self.browser_login(Origin='null')[0], 200)
+        self.assertEqual(self.browser_login(Origin='null', Sec_Fetch_Site='same-origin')[0], 200)
+
+    def test_any_tailscale_name_or_address_works(self):
+        for host in ('chris-hearth:8460', 'chris-hearth.tail1234.ts.net:8460', '100.101.102.103:8460', 'CHRIS-HEARTH:8460'):
+            st = self.browser_login(Host=host, Origin='http://' + host.lower(), Sec_Fetch_Site='same-origin')[0]
+            self.assertEqual(st, 200, host)
+            st = self.browser_login(Host=host, Origin='http://' + host.lower())[0]
+            self.assertEqual(st, 200, host + ' (a browser without Sec-Fetch-Site)')
+        # Through tailscale serve (https, Host rewritten): the browser still says it's the same page.
+        self.assertEqual(self.browser_login(Host='127.0.0.1:8460', Origin='https://chris-hearth.tail1234.ts.net',
+                                            Sec_Fetch_Site='same-origin')[0], 200)
+
+    def test_other_sites_still_cant_press_its_buttons(self):
+        self.assertEqual(self.req('POST', '/api/login', {'pin': '2468'}, {'Origin': 'null'})[0], 403, 'no X-Hearth: refused')
+        self.assertEqual(self.browser_login(Origin='http://evil.example', Sec_Fetch_Site='cross-site')[0], 403)
+        self.assertEqual(self.browser_login(Origin='null', Sec_Fetch_Site='cross-site')[0], 403)
+        self.assertEqual(self.browser_login(Sec_Fetch_Site='same-site')[0], 403)
+        st, _, data = self.browser_login(Origin='http://evil.example')
+        self.assertEqual(st, 403)
+        self.assertIn('Reload the page', json.loads(data)['error'], 'says what to do')
+
+    def test_typing_mistakes_say_what_to_do_and_dont_count_as_wrong_pins(self):
+        for typed in ('24', '24a8', '', '1234567890123'):
+            st, _, data = self.browser_login(typed)
+            self.assertEqual(st, 400, typed)
+            self.assertIn('4 to 12 digits', json.loads(data)['error'])
+        self.assertEqual(self.browser_login(' 2468 ')[0], 200, 'spaces around it are fine')
+        self.assertEqual(self.browser_login('２４６８')[0], 200, "a phone keyboard's full-width digits are fine")
+        st, _, data = self.browser_login('1357')
+        self.assertEqual(st, 401)
+        self.assertIn('Settings › Home server › Server mode', json.loads(data)['error'])
+
+    def test_no_pin_yet_says_where_to_set_it(self):
+        self.m.pin_clear()
+        st, _, data = self.browser_login()
+        self.assertEqual(st, 403)
+        self.assertIn('PIN for the web page', json.loads(data)['error'])
+        st, _, data = self.req('GET', '/api/status')
+        self.assertEqual(st, 401)
+        self.assertIs(json.loads(data)['pin'], False)
+        self.assertIn('PIN for the web page', json.loads(data)['error'])
+
+
+class SettingAPinOnThePc(unittest.TestCase):
+    """Settings › Home server › Server mode › PIN for the web page: the helper's side, as Settings runs it."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix='hearth-server-pin-')
+        self.addCleanup(shutil.rmtree, self.d, True)
+        os.chmod(self.d, 0o700)
+        run_dir = os.path.join(self.d, 'run')
+        os.makedirs(run_dir, mode=0o700)
+        self.env = {'XDG_CONFIG_HOME': os.path.join(self.d, 'config'), 'XDG_STATE_HOME': os.path.join(self.d, 'state'),
+                    'XDG_RUNTIME_DIR': run_dir, 'HEARTH_HOME_SERVER_PLAN': os.path.join(self.d, 'plan.json'),
+                    'HEARTH_NIMBUS_MODE': '/bin/true'}
+        self.m = load_helper(self.env)
+
+    def cli(self, *args, inp=None):
+        env = dict(os.environ, **self.env)
+        env.pop('HEARTH_INPUT', None)
+        if inp is not None:
+            env['HEARTH_INPUT'] = inp
+        p = subprocess.run([sys.executable, str(HELPER)] + list(args), capture_output=True, text=True, env=env,
+                           input=inp or '', timeout=60)
+        return p.returncode, p.stdout.strip()
+
+    def test_settings_way_of_setting_it(self):
+        # SetJob: the PIN in HEARTH_INPUT (and on stdin), "error: ..." on failure.
+        self.assertEqual(self.cli('pin-set', inp='482916'), (0, '{"pin": true}'))
+        self.assertEqual(self.cli('status')[0], 0)
+        self.assertEqual(oct(os.stat(self.m.WEB_STATE).st_mode & 0o777), '0o600')
+        code, o = self.cli('pin-set', inp='48a9')
+        self.assertEqual(code, 1)
+        self.assertTrue(o.startswith('error: ') and '4 to 12 digits' in o, o)
+        self.assertTrue(self.m.pin_check('482916', json.load(open(self.m.WEB_STATE))['pin']), 'a bad PIN changes nothing')
+
+    def test_what_settings_and_phones_type(self):
+        for typed in ('482916\n', ' 482916 ', '４８２９１６'):
+            self.m.pin_set(typed)
+            self.assertTrue(self.m.pin_check('482916', json.load(open(self.m.WEB_STATE))['pin']), repr(typed))
+        msgs = {}
+        for typed in ('', '123', '12 34', 'abcd', '1234567890123', '१२३'):
+            with self.assertRaises(self.m.Fail) as c:
+                self.m.pin_set(typed)
+            msgs[typed] = str(c.exception)
+            self.assertIn('4 to 12 digits', msgs[typed], typed)
+        self.assertIn('too short (3 digits)', msgs['123'])
+        self.assertIn('spaces', msgs['12 34'])
+        self.assertIn('numbers only', msgs['abcd'])
+        self.assertIn('too long', msgs['1234567890123'])
+
+    def test_the_settings_page_and_the_helper_agree(self):
+        qml = (SHELL / 'SetServerMode.qml').read_text()
+        self.assertIn('SetPinPad', qml, 'a PIN pad a controller can type on (no on-screen keyboard in Server mode)')
+        self.assertNotIn('\\d{4,12}', qml)
+        self.assertIn('/^[0-9]{4,12}$/', qml)
+        self.assertEqual(self.m.PIN_RE.pattern, '^[0-9]{4,12}$')
+        pad = (SHELL / 'SetPinPad.qml').read_text()
+        self.assertIn('maxLength: 12', qml)
+        for k in ('Qt.Key_Left', 'Qt.Key_Right', 'Qt.Key_Up', 'Qt.Key_Down', 'Qt.Key_Backspace', 'Qt.Key_Return'):
+            self.assertIn(k, pad)
+
+    @unittest.skipIf(os.geteuid() == 0, 'root can write anywhere')
+    def test_a_folder_that_isnt_yours_says_how_to_fix_it(self):
+        d = os.path.dirname(self.m.WEB_STATE)
+        os.makedirs(d)
+        os.chmod(d, 0o500)
+        self.addCleanup(os.chmod, d, 0o700)
+        with self.assertRaises(self.m.Fail) as c:
+            self.m.pin_set('482916')
+        self.assertIn('chown', str(c.exception))
+        self.assertIn('set the PIN again', str(c.exception))
+
+    def test_the_web_page_not_starting_is_reported(self):
+        self.m.set_key('webOn', 'on')
+        self.m.pin_set('482916')
+        calls = []
+
+        def run(cmd, timeout=10, env=None, inp=None):
+            calls.append(cmd)
+            return (1, '', 'Failed to restart hearth-server-mode-web.service: Unit not found.') if 'restart' in cmd or 'enable' in cmd else (0, '', '')
+        self.m.run = run
+        self.m.spawn = lambda args: None
+        with self.assertRaises(self.m.Fail) as c:
+            self.m.web_apply()
+        self.assertIn('Unit not found', str(c.exception))
+        self.assertIn('off and on again', str(c.exception))
+        self.m.run = lambda cmd, timeout=10, env=None, inp=None: (0, '', '')
+        self.assertEqual(self.m.web_apply(), {'web': 'on'})
+
+
 # ------------------------------------------------------------------ the root helper's part
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

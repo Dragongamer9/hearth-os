@@ -33,6 +33,14 @@
         "install_url": "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
         "default_area": "menupanel"
       }
+    },
+    "Handlers": {
+      "schemes": {
+        "nxm": {
+          "action": "useSystemDefault",
+          "ask": false
+        }
+      }
     }
   }
 }

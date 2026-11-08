@@ -26,6 +26,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import "osk/hearth-osk.js" as Osk
+import "drive-paths.js" as DrivePaths
 
 Scope {
     id: app
@@ -45,6 +46,11 @@ Scope {
     }
     function properties(paths) { propsWin.show(paths); }
 
+    // The Briefcase (Briefcase.qml, hearth-briefcase; docs/HEARTH-FILES.md › Briefcase): statuses, Update All, locks,
+    // Customize, auto-sync. Its dialogs are BriefcaseDialog.qml, inside the window.
+    readonly property var filesApp: app        // (inside Briefcase { }, "app" would mean its own property)
+    Briefcase { id: briefcase; app: filesApp }
+
     // ------------------------------------------------ what's shown
     property string path: ""
     property var listing: null                 // hearth-files list: {path, entries, writable, trash, free, total, error?}
@@ -60,6 +66,22 @@ Scope {
     property bool detailsPane: false           // the details pane on the right (the Details button, Alt+P)
     readonly property string homePage: "hearth:home"   // the Home page: Quick access and recent files
     readonly property bool onHome: path === homePage
+    // This PC (FilesThisPc.qml) and Installed apps (FilesApps.qml): Hearth's own pages, like the Home page.
+    readonly property string thisPcPage: "hearth:thispc"
+    readonly property string appsPage: "hearth:apps"
+    readonly property bool onThisPc: path === thisPcPage
+    readonly property bool onApps: path === appsPage
+    readonly property bool onSpecial: onThisPc || onApps
+    // Where Files opens (View › Open Files to): Home unless you picked This PC (files.json "startPage").
+    readonly property string startPage: prefs.startPage === "thispc" && !picking ? thisPcPage : homePage
+    property var pc: ({ folders: [], drives: [], network: [] })   // hearth-files this-pc
+    property string pcView: "grid"             // This PC: grid | details (files.json "thisPcView", only when you change it)
+    property int pcCols: 3                     // This PC's tiles per row (FilesThisPc.qml says)
+    property var appList: []                   // hearth-files installed-apps
+    property bool appsLoading: false
+    property string appsSort: "name"           // name | size | date
+    property string appsFilter: "all"          // all | hearth | flatpak | winapp | steam | recomp | games
+    property var navOpen: ({ thispc: true, network: true })   // the navigation pane's tree (this session only)
     property var recent: []                    // hearth-files recent (the Home page's list)
     property var undoStack: []                 // file changes that can be undone (Ctrl+Z), newest last
     property var redoStack: []
@@ -184,6 +206,10 @@ Scope {
         function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
         function close(): void { app.closeOverlay(); }
         function home(): void { app.open(""); app.navigate(app.homePage, ""); }
+        // This PC and Installed apps (the Desktop Mode test's pictures); letter: the drive with that letter.
+        function thispc(): void { app.open(""); app.navigate(app.thisPcPage, ""); }
+        function installed(): void { app.open(""); app.navigate(app.appsPage, ""); }
+        function letter(l: string): void { const r = app.fromLetters(l + ":\\"); if (r && r.path) { app.open(""); app.navigate(r.path, ""); } }
         function details(on: string): void { app.detailsPane = on === "on"; app.rememberView(); }
         function undo(): void { app.undo(); }
         // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
@@ -199,6 +225,11 @@ Scope {
         // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
         function section(name: string): void { const i = app.places.findIndex(q => q.section === name); if (i >= 0) { app.zone = "places"; app.placeIndex = i; } }
         function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
+        // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.
+        function bcUpdate(): void { app.open(""); briefcase.run("bc-update-all", [], null); }
+        function bcApply(): void { if (briefcase.mode === "update") briefcase.runUpdate(); }
+        function bcCustomize(): void { app.open(""); briefcase.run("bc-customize", [], null); }
+        function bcState(): string { return JSON.stringify({ mode: briefcase.mode, st: briefcase.st ? { name: briefcase.st.name, counts: briefcase.st.counts || {}, locked: briefcase.st.locked } : null, rows: briefcase.plan ? briefcase.plan.rows.length : 0 }); }
     }
 
     // ================================================ open / close
@@ -219,7 +250,7 @@ Scope {
             if (net) { if (!listing) navigate(home, ""); netOpen(net); return; }
             if (smb) { if (!listing) navigate(home, ""); netOpen({ name: smb[1].split(".")[0], share: decodeURIComponent(smb[2] || ""), home: smb[1].endsWith(".ts.net") ? "" : smb[1], away: smb[1].endsWith(".ts.net") ? smb[1] : "" }); return; }
             if (target) navigate(target, "");
-            else if (!listing) navigate(picking ? home : homePage, "");
+            else if (!listing) navigate(picking ? home : startPage, "");
             else reload();
         };
         if (!prefsLoaded) loadPrefs(go);
@@ -436,6 +467,7 @@ Scope {
             hidden = !!prefs.hidden;
             showExt = prefs.showExt !== false;
             detailsPane = !!prefs.detailsPane;
+            pcView = prefs.thisPcView === "details" ? "details" : "grid";
             applyFolderView("");
             if (then) then();
         });
@@ -452,7 +484,7 @@ Scope {
         const p = Object.assign({}, prefs);
         const folders = Object.assign({}, p.folders || {});
         const v = { view: view, sort: sort, desc: desc, group: group };
-        if (path && !onHome) {
+        if (path && !onHome && !onSpecial) {
             delete folders[path];
             folders[path] = v;               // newest last: hearth-files keeps the newest 400
         }
@@ -479,6 +511,7 @@ Scope {
     }
     function load(p, sel, hist) {
         if (p === homePage) return loadHome(hist);
+        if (p === thisPcPage || p === appsPage) return loadPage(p, hist);
         const seq = ++loadSeq;
         loading = true;
         call(["list", p].concat(hidden ? ["--hidden"] : []), (r, err) => {
@@ -497,9 +530,15 @@ Scope {
                 marked = ({});
                 anchor = -1;
                 applyFolderView(r.path);
+                // A Briefcase's own default view and sort (Customize), unless you chose one for this folder.
+                if (r.briefcase && !(prefs.folders && prefs.folders[r.path])) {
+                    if (views.indexOf(r.briefcase.view) >= 0) view = r.briefcase.view;
+                    if (["name", "date", "size", "type"].indexOf(r.briefcase.sort) >= 0) sort = r.briefcase.sort;
+                }
             }
             listing = r;
             path = r.path;
+            briefcase.opened(r);
             const want = r.select || sel || "";
             const i = want ? entries.findIndex(e => e.name === want) : -1;
             cur = Math.max(0, i >= 0 ? i : (r.path === prev ? Math.min(cur, entries.length - 1) : 0));
@@ -534,6 +573,129 @@ Scope {
         cur = 0;
         call(["recent"], (r, err) => { if (r && path === homePage) { recent = r.recent || []; cur = Math.min(cur, Math.max(0, entries.length - 1)); } });
     }
+    // This PC and Installed apps: Hearth's own pages (the address bar says "This PC" / "This PC › Installed apps").
+    function loadPage(p, hist) {
+        loadSeq++;
+        loading = false;
+        const prev = listing ? listing.path : "";
+        if (prev !== p) {
+            if (hist === "push" && prev) {
+                back = back.concat([prev]).slice(-100);
+                fwd = [];
+            }
+            query = "";
+            stopSearch();
+            found = null;
+            marked = ({});
+            anchor = -1;
+            cur = 0;
+        }
+        listing = { path: p, name: p === thisPcPage ? "This PC" : "Installed apps", parent: p === appsPage ? thisPcPage : "",
+                    entries: [], writable: false, trash: false, free: null, total: null };
+        path = p;
+        if (p === thisPcPage) loadThisPc();
+        else loadApps();
+    }
+    function loadThisPc() {
+        call(["this-pc"], (r, err) => {
+            if (err) return say(err, true);
+            if (r) pc = r;
+            if (onThisPc) cur = Math.min(cur, Math.max(0, entries.length - 1));
+        });
+    }
+    function loadApps() {
+        appsLoading = true;
+        call(["installed-apps"], (r, err) => {
+            appsLoading = false;
+            if (err) return say(err, true);
+            appList = (r && r.apps) || [];
+            if (onApps) cur = Math.min(cur, Math.max(0, entries.length - 1));
+            // Sizes that need adding up (Windows apps' spaces), in the background, then shown.
+            const need = appList.filter(a => a.sizePath && !a.size).map(a => a.sizePath);
+            if (need.length) call(["app-sizes"].concat(need), (z, e2) => {
+                if (!z || !z.sizes) return;
+                appList = appList.map(a => a.sizePath && z.sizes[a.sizePath] !== undefined ? Object.assign({}, a, { size: z.sizes[a.sizePath] }) : a);
+            });
+        });
+    }
+    // This PC's items as entries (Folders, then Devices and drives, then Network locations).
+    readonly property var pcEntries: {
+        const out = [];
+        for (const f of pc.folders || []) out.push({ name: f.label, path: f.path, dir: true, pc: "folder", item: f, size: 0, mtime: 0 });
+        for (const d of pc.drives || []) out.push({ name: d.label, path: d.path || d.id, dir: true, pc: "drive", item: d, size: 0, mtime: 0 });
+        for (const n of pc.network || []) out.push({ name: n.label, path: n.path || n.id, dir: true, pc: "net", item: n, size: 0, mtime: 0 });
+        return out;
+    }
+    readonly property var appKinds: ["all", "hearth", "flatpak", "winapp", "steam", "recomp", "games"]
+    function appKindName(k) {
+        return ({ all: "All", hearth: "Hearth", flatpak: "Flatpak", winapp: "Windows app", steam: "Steam", recomp: "Recomp", games: "Hearth Games" })[k] || k;
+    }
+    readonly property var appEntries: {
+        const f = appsFilter;
+        let out = appList.filter(a => f === "all" || a.kind === f).map(a => ({ name: a.name, path: "app:" + a.id, dir: false, app: a, size: a.size || 0, mtime: a.date || 0 }));
+        const by = appsSort;
+        out.sort((a, b) => {
+            let r = 0;
+            if (by === "size") r = (b.size || 0) - (a.size || 0);
+            else if (by === "date") r = (b.mtime || 0) - (a.mtime || 0);
+            return r || natural(a.name, b.name);
+        });
+        return out;
+    }
+    // Walks This PC's groups the way Windows does: rows within a group, then on to the group above or below.
+    // Returns the new index, -1 for "left of the first column" (the navigation pane), -2 for "above the first row".
+    function pcStep(i, dx, dy) {
+        const c = Math.max(1, pcView === "details" ? 1 : pcCols);
+        const groups = [];
+        for (let k = 0; k < entries.length; k++) {
+            if (!groups.length || entries[k].pc !== entries[k - 1].pc) groups.push({ start: k, len: 0 });
+            groups[groups.length - 1].len++;
+        }
+        const gi = groups.findIndex(g => i >= g.start && i < g.start + g.len);
+        if (gi < 0) return 0;
+        const g = groups[gi], col = (i - g.start) % c, row = Math.floor((i - g.start) / c);
+        if (dx < 0) return col === 0 ? -1 : i - 1;
+        if (dx > 0) return col < c - 1 && i + 1 < g.start + g.len ? i + 1 : i;
+        if (dy < 0) {
+            if (row > 0) return i - c;
+            if (gi === 0) return -2;
+            const p = groups[gi - 1];
+            return Math.min(p.start + Math.floor((p.len - 1) / c) * c + col, p.start + p.len - 1);
+        }
+        if ((row + 1) * c < g.len) return Math.min(i + c, g.start + g.len - 1);
+        if (gi === groups.length - 1) return i;
+        const n = groups[gi + 1];
+        return Math.min(n.start + col, n.start + n.len - 1);
+    }
+    function openPcItem(e) {
+        const d = e.item || {};
+        if (e.pc === "folder") return navigate(e.path, "");
+        if (e.pc === "net") {
+            if (d.path) return navigate(d.path, "");
+            return netOpen(d.net);
+        }
+        if (d.mounted === false && d.device) return mountPlace({ label: d.name || d.label, device: d.device }, true);
+        if (d.path) navigate(d.path, "");
+    }
+    // ---- drive letters in the address bar (drive-paths.js)
+    readonly property var pathCtx: {
+        const drives = rawPlaces.filter(p => p.letter && p.path && p.mounted !== false).map(p => ({ letter: p.letter, path: p.path, label: p.label }));
+        for (const n of pc.network || []) if (n.letter && n.path) drives.push({ letter: n.letter, path: n.path, label: n.label });
+        const kinds = ["desktop", "documents", "downloads", "pictures", "music", "videos"];
+        const folders = rawPlaces.filter(p => p.section === "places" && !p.child && kinds.indexOf(p.kind) >= 0).map(p => ({ label: p.label, path: p.path }));
+        return { home: home, user: pc.user || base(home), drives: drives, folders: folders };
+    }
+    function winPath(p) { return DrivePaths.toWindows(p, pathCtx); }
+    function fromLetters(t) { return DrivePaths.fromWindows(t, pathCtx); }
+    // "This PC › Games (D:) › SteamLibrary" for the details pane ("" when Files' own words fit better).
+    function letterLocation(p) {
+        const c = DrivePaths.crumbsFor(p, pathCtx, thisPcPage);
+        return c ? c.map(x => x.label).join(" › ") : "";
+    }
+    function driveLabelFor(mount) {
+        const d = rawPlaces.find(p => p.letter && p.path === mount);
+        return d ? d.label : base(mount);
+    }
     readonly property var quickAccess: places.filter(q => q.path && q.path !== homePage && !q.child
         && (q.section === "places" || q.section === "bookmarks" || q.section === "games") && q.kind !== "trash").slice(0, 15)
     // The child of `to` that `from` is inside: picked when going back or up.
@@ -560,8 +722,11 @@ Scope {
     function goUp(closeAtTop) {
         if (found !== null) { clearSearch(); return; }
         if (!listing) return;
-        if (onHome) { if (closeAtTop) close(); return; }
+        if (onHome || onThisPc) { if (closeAtTop) close(); return; }
+        if (onApps) return navigate(thisPcPage, "");
         const p = listing.path;
+        // Up from a drive (or the system's top): This PC, as in Windows.
+        if (p === "/" || rawPlaces.some(q => q.letter && q.path === p)) return navigate(thisPcPage, "");
         if (p === home) {
             if (closeAtTop) close();
             return;
@@ -573,13 +738,16 @@ Scope {
     function refreshPlaces() {
         call(["places"], (r, err) => {
             if (!r) return;
-            const old = places;
-            places = (picking ? [] : [{ id: "start", label: "Home", path: homePage, kind: "start", section: "start" }])
-                .concat(sortPlaces(r.places.map(q => q.kind === "home" && !picking ? Object.assign({}, q, { label: "Home folder" }) : q)));
+            const old = rawPlaces;
+            rawPlaces = r.places.map(q => q.kind === "home" && !picking ? Object.assign({}, q, { label: "Home folder" }) : q);
+            places = buildNav(rawPlaces);
             placeIndex = Math.min(placeIndex, places.length - 1);
+            // A drive plugged in, taken out, mounted or unmounted while This PC is open: shown at once.
+            const sig = l => l.filter(q => q.section === "drives").map(q => q.id + (q.mounted === false ? "-" : "+")).join("|");
+            if (onThisPc && sig(old) !== sig(rawPlaces)) loadThisPc();
             // A drive that was taken out while you were in it: back to Home.
             for (const o of old) {
-                if (o.section !== "drives" || !o.path || places.some(n => n.path === o.path)) continue;
+                if (o.section !== "drives" || !o.path || rawPlaces.some(n => n.path === o.path)) continue;
                 if (path === o.path || path.startsWith(o.path + "/")) {
                     say("“" + o.label + "” was removed");
                     navigate(home, "");
@@ -588,6 +756,32 @@ Scope {
         });
     }
     Timer { interval: 4000; repeat: true; running: app.shown; onTriggered: app.refreshPlaces() }
+    // The navigation pane, Windows 11-style: Home, Favorites, your folders, Games, then This PC opened out with
+    // Hearth (C:) and every lettered drive under it, Network (Hearth Storage and Your devices under it), Installed
+    // apps and Trash. This PC's and Network's arrows fold them (for this session).
+    property var rawPlaces: []
+    function buildNav(list) {
+        const out = picking ? [] : [{ id: "start", label: "Home", path: homePage, kind: "start", section: "start" }];
+        const sorted = sortPlaces(list);
+        for (const q of sorted) if (q.section === "bookmarks" || q.section === "places" || q.section === "briefcases" || q.section === "games") out.push(q);
+        const drives = sorted.filter(q => q.section === "drives");
+        out.push({ id: "thispc", label: "This PC", path: thisPcPage, kind: "thispc", section: "pc", tree: "thispc", open: !!navOpen.thispc });
+        if (navOpen.thispc) for (const d of drives) out.push(Object.assign({}, d, { child: true, depth: 1, kind: d.kind === "games" ? "drive" : d.kind }));
+        const nets = sorted.filter(q => q.section === "network" || q.section === "devices");
+        out.push({ id: "netroot", label: "Network", path: "", kind: "netroot", section: "netroot", tree: "network", open: !!navOpen.network, empty: !nets.length });
+        if (navOpen.network) for (const q of nets) out.push(Object.assign({}, q, { depth: q.child ? 2 : 1 }));
+        if (!picking) out.push({ id: "apps", label: "Installed apps", path: appsPage, kind: "apps", section: "apps" });
+        for (const q of sorted) if (q.section === "trash") out.push(q);
+        return out;
+    }
+    function toggleNav(k) {
+        const o = Object.assign({}, navOpen);
+        o[k] = !o[k];
+        navOpen = o;
+        const at = places[placeIndex] ? places[placeIndex].id : "";
+        places = buildNav(rawPlaces);
+        placeIndex = Math.max(0, places.findIndex(q => q.id === at));
+    }
 
     // ------------------------------------------------ renaming in place
     property string renaming: ""               // the path whose name is a text box right now
@@ -689,6 +883,11 @@ Scope {
 
     // ================================================ the folder's entries, filtered, grouped and sorted
     readonly property var entries: {
+        if (path === thisPcPage || path === appsPage) {
+            const pq = query.trim().toLowerCase();
+            const all = path === thisPcPage ? pcEntries : appEntries;
+            return pq ? all.filter(e => e.name.toLowerCase().indexOf(pq) >= 0) : all;
+        }
         if (path === homePage) {
             const hq = query.trim().toLowerCase();
             return hq ? recent.filter(e => e.name.toLowerCase().indexOf(hq) >= 0) : recent;
@@ -765,11 +964,18 @@ Scope {
     // The navigation pane's order (Win 11-style): Home, Favorites, This device, Games, Drives, Hearth Storage,
     // Your devices, Trash. Within a group hearth-files' order stays.
     function sortPlaces(list) {
-        const rank = { bookmarks: 1, places: 2, games: 3, drives: 4, network: 5, devices: 6, trash: 7 };
+        const rank = { bookmarks: 1, places: 2, briefcases: 2.5, games: 3, drives: 4, network: 5, devices: 6, trash: 7 };
         return list.map((q, i) => [q, i]).sort((a, b) => ((rank[a[0].section] || 5) - (rank[b[0].section] || 5)) || a[1] - b[1]).map(x => x[0]);
     }
     // A tab's or the window's name for a path: "Home" for the Home page.
-    function titleOf(p) { return !p || p === homePage ? "Home" : p === "/" ? "This device" : base(p); }
+    function titleOf(p) {
+        if (!p || p === homePage) return "Home";
+        if (p === thisPcPage) return "This PC";
+        if (p === appsPage) return "Installed apps";
+        const d = rawPlaces.find(q => q.letter && q.path === p);
+        if (d) return d.label;
+        return p === "/" ? "This device" : base(p);
+    }
     function parentOf(p) {
         const s = p.replace(/\/+$/, "");
         const i = s.lastIndexOf("/");
@@ -779,7 +985,7 @@ Scope {
     // Where a path starts from, for the path bar and for B: the Trash, a drive, Home, or the whole computer.
     readonly property var roots: {
         const r = [{ path: trashPath, label: "Trash" }];
-        for (const p of places) if (p.section === "drives" && p.path) r.push({ path: p.path, label: p.label });
+        for (const p of rawPlaces) if (p.section === "drives" && p.path && p.path !== "/") r.push({ path: p.path, label: p.label });
         r.push({ path: home, label: "Home" });
         r.push({ path: "/", label: "Computer" });
         return r;
@@ -792,6 +998,13 @@ Scope {
     readonly property var crumbs: {
         if (!path) return [];
         if (path === homePage) return [{ label: "Home", path: homePage }];
+        if (path === thisPcPage) return [{ label: "This PC", path: thisPcPage }];
+        if (path === appsPage) return [{ label: "This PC", path: thisPcPage }, { label: "Installed apps", path: appsPage }];
+        // On a lettered drive, in your folders or elsewhere on the system: This PC › Games (D:) › … (drive-paths.js).
+        if (!inTrash) {
+            const lc = DrivePaths.crumbsFor(path, pathCtx, thisPcPage);
+            if (lc) return lc;
+        }
         const r = rootOf(path);
         const out = [{ label: r.label, path: r.path }];
         const rest = path.slice(r.path === "/" ? 1 : r.path.length + 1);
@@ -811,6 +1024,7 @@ Scope {
         t.push({ t: "edit" }, { t: "search" });
         if (!picking) for (const c of ["new", "cut", "copy", "paste", "rename", "copypath", "delete"]) t.push({ t: c });
         t.push({ t: "sort" }, { t: "view" }, { t: "hidden" });
+        if (!picking) for (const c of ["bc-update-all", "bc-unlock", "bc-lock", "bc-customize"]) if (briefcase.toolShown(c)) t.push({ t: c });
         if (!picking) t.push({ t: "undo" }, { t: "redo" }, { t: "details" });
         return t;
     }
@@ -956,6 +1170,8 @@ Scope {
     // ================================================ picking things
     function activate(e) {
         if (!e) return;
+        if (e.pc) return openPcItem(e);
+        if (e.app) return openMenu(false, -1, -1);     // Installed apps: A / Enter is the "···" menu
         // Picking: folders go in; a file is the answer (opening), or the name to save as.
         if (picking && !e.dir) {
             if (pick.directory) return;
@@ -977,9 +1193,11 @@ Scope {
         const p = places[i];
         if (!p) return;
         placeIndex = i;
-        if (p.path === homePage) return navigate(homePage, "");
+        if (p.path === homePage || p.path === thisPcPage || p.path === appsPage) return navigate(p.path, "");
+        if (p.kind === "netroot") return toggleNav("network");
         if (p.net) return netOpen(p.net);
         if (p.kind === "howto") return showHowto(p.howto || []);
+        if (p.kind === "briefcase") return briefcase.openPlace(p);
         if (p.kind === "device") {
             if (p.offline && p.wake) ask("Wake “" + p.label + "”?", "It's off or asleep. Hearth can wake it over the network (Wake-on-LAN).", "Wake it", () => netWake(p.device, p.label));
             else say(p.label + ": " + (p.sub || ""));
@@ -1001,14 +1219,19 @@ Scope {
                 else say("“" + (net.share || net.name) + "” is open" + (r.where === "away" ? " (through Tailscale)" : ""));
                 return navigate(r.path, "");
             }
-            if (r.need === "password") return netSignIn(net, r.user || user || "", !!password);
+            if (r.need === "password") return netSignIn(net, r.user || user || "", !!password, password ? r.error : "");
+            // A whole computer with several shared folders: which one (typed, the first one filled in).
+            if (r.need === "pick" && r.shares && r.shares.length)
+                return askText("Which shared folder on " + (net.name || "it") + "? " + r.shares.join(", "), r.shares[0], "Open", r.shares[0].length,
+                               s => netOpen(Object.assign({}, net, { share: s }), r.user || user, password, false));
             if (r.need === "asleep" && (r.wake || net.wake) && net.device)
-                return ask((net.name || "It") + " isn't answering", "It may be off or asleep. Hearth can wake it over the network (Wake-on-LAN), then try again.", "Wake it", () => netWake(net.device, net.name));
-            say(r.error || "Couldn't open it", true);
+                return ask((net.name || "It") + " isn't answering", (r.error || "It may be off or asleep") + ". Hearth can wake it over the network (Wake-on-LAN), then try again.", "Wake it", () => netWake(net.device, net.name));
+            // Everything else says plainly what went wrong and what to do (hearth_netshares.classify).
+            ask("Couldn't open “" + (net.share || net.name || "it") + "”", (r.error || "Couldn't open it") + (r.detail && r.detail !== r.error ? "\n\n(" + r.detail + ")" : ""), "OK", () => {});
         });
     }
-    function netSignIn(net, user, wrong) {
-        askText((wrong ? "Wrong user name or password. " : "") + "Sign in to " + (net.name || "the device") + ": user name", user, "Next", user.length, u => {
+    function netSignIn(net, user, wrong, why) {
+        askText((wrong ? (why || "Wrong user name or password") + ". " : "") + "Sign in to " + (net.name || "the device") + ": user name", user, "Next", user.length, u => {
             askText("Sharing password for " + u + " on " + (net.name || "the device"), "", "Sign in", 0, pw => {
                 ask("Remember this password?", "Kept in this device's keyring (the system's password store), never in Hearth's files. Then it's one click next time.", "Remember", () => netOpen(net, u, pw, true));
                 dlgAlt = "Just this time";
@@ -1058,6 +1281,7 @@ Scope {
         marked = m;
     }
     function targets() {
+        if (onSpecial) return [];             // This PC's folders and drives are opened, not cut, copied or deleted
         if (markCount) return entries.filter(e => marked[e.path]).map(e => e.path);
         return current ? [current.path] : [];
     }
@@ -1078,6 +1302,8 @@ Scope {
     function setGroup(g) { group = g; rememberView(); }
     function setView(v) {
         if (views.indexOf(v) < 0) return;
+        if (onThisPc) return setPcView(v === "details" ? "details" : "grid");
+        if (onApps) return;
         view = v;
         rememberView();
         makeThumbs();
@@ -1099,6 +1325,7 @@ Scope {
     // x, y: where a menu opens (a click); none: the menu opens in the middle (the controller).
     function command(t, x, y) {
         viaPad = x === undefined;
+        if (t.startsWith("bc-")) return briefcase.command(t, x, y);
         switch (t) {
         case "refresh": reload(); refreshPlaces(); break;
         case "new":
@@ -1106,18 +1333,35 @@ Scope {
             menuOnFolder = true;
             showMenu("New", [
                 { id: "newfolder", label: "Folder", key: "Ctrl+Shift+N" },
-                { id: "newfile", label: "Empty file", key: "Ctrl+Alt+N" }
+                { id: "newfile", label: "Empty file", key: "Ctrl+Alt+N" },
+                { id: "bc-new", label: "Briefcase" }
             ].concat(templates.length ? [{ sep: true }].concat(templates.map((tp, i) => ({ id: "tpl:" + i, label: tp.name }))) : []), x, y);
             break;
         case "cut": if (!targets().length) return say("Pick something first"); setClip("cut", targets()); break;
         case "copy": if (!targets().length) return say("Pick something first"); setClip("copy", targets()); break;
         case "paste": if (!writable) return say("You can't paste here"); paste(); break;
-        case "rename": if (!current) return say("Pick something to rename"); menuOnFolder = false; runMenu("rename"); break;
-        case "copypath": menuOnFolder = !current; runMenu("copypath"); break;
+        case "rename": if (!current || onSpecial) return say("Pick something to rename"); menuOnFolder = false; runMenu("rename"); break;
+        case "copypath": {
+            menuOnFolder = !current || onThisPc;
+            const cps = copyTargets(!current, targets());
+            if (!cps.length) return say(onApps ? "Apps have no path to copy" : "Pick something first");
+            const w = cps.map(p => winPath(p) || p).join(", ");
+            menuOnFolder = !current;
+            showMenu("Copy path", [
+                { id: "copywin", label: "Copy path" + (w.length <= 44 ? "  (" + w + ")" : "") },
+                { id: "copypath", label: "Copy Linux path", key: "Ctrl+Alt+C" }
+            ], x, y);
+            break;
+        }
         case "delete": if (!targets().length) return say("Pick something first"); menuOnFolder = false; runMenu(inTrash ? "delete" : "trash"); break;
-        case "sort": sortMenu(x, y); break;
+        case "sort":
+            if (onApps) appsSortMenu(x, y);
+            else if (onThisPc) say("This PC keeps Windows' order: your folders, then drives, then network locations");
+            else sortMenu(x, y);
+            break;
         case "view": viewMenu(x, y); break;
         case "hidden": {
+            if (onApps) { appsFilterMenu(x, y); break; }
             const ck = on => on ? "✓  " : "     ";
             showMenu("Show", [
                 { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" },
@@ -1168,6 +1412,13 @@ Scope {
             if (isUndo) startJob({ verb: "move", paths: op.items, dest: op.back, decide: {}, undoOp: op, undoMode: "undo" });
             else startJob({ verb: "move", paths: op.srcs, dest: op.dest, decide: {}, undoOp: op, undoMode: "redo" });
         }
+    }
+    // What Copy path copies: what's picked, else the folder; on This PC the folder or drive under the cursor.
+    function copyTargets(onFolder, t) {
+        if (onApps) return [];
+        if (onThisPc) return current && current.path.indexOf("/") === 0 ? [current.path] : [];
+        if (t && t.length && !onFolder) return t;
+        return listing && !onHome ? [listing.path] : [];
     }
     function copyText(t) {
         Quickshell.execDetached(["wl-copy", "--", t]);
@@ -1246,6 +1497,7 @@ Scope {
     }
     property bool menuOnFolder: false          // the menu is about the folder itself, not what's picked in it
     function openMenu(forFolder, x, y) {
+        if (onSpecial && !picking) return onThisPc ? openPcMenu(forFolder ? null : current, x, y) : openAppMenu(forFolder ? null : current, x, y);
         menuOnFolder = !!forFolder || !current;
         const e = forFolder ? null : current;
         const t = forFolder ? [] : targets();
@@ -1260,59 +1512,241 @@ Scope {
             items.push({ id: "pick-cancel", label: "Cancel", key: "Esc" }, sep());
         }
         if (inTrash) {
-            if (n) items.push({ id: "restore", label: "Put back" + what });
-            if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del" });
-            items.push({ id: "empty", label: "Empty Trash", danger: true });
-            if (e) items.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter" });
+            if (n) items.push({ id: "restore", label: "Put back" + what, short: "Put back", icon: "undo", quick: true });
+            if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del", icon: "trash", quick: true, short: "Delete" });
+            items.push({ id: "empty", label: "Empty Trash", danger: true, icon: "trash" });
+            if (e) items.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" });
         } else {
-            if (e) items.push({ id: "open", label: "Open", key: "Enter" });
-            if (e && !e.dir) items.push({ id: "openwith", label: "Open with…" });
-            if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(it);
-            if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
+            if (e) items.push({ id: "open", label: "Open", key: "Enter", icon: "open", group: "Open" });
+            if (e && !e.dir) items.push({ id: "openwith", label: "Open with…", icon: "grid", group: "Open" });
+            if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(Object.assign({ group: "Open" }, it));
+            if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab", icon: "plus", group: "Open" });
             if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
             if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
             if (n === 1 && isWinApp(e)) items.push({ id: "winapp", label: "Open with Hearth (Windows app)" });
-            if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder" });
-            if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
+            if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder", icon: "folder", group: "Open" });
+            if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space", icon: "eye", group: "Open" });
+            for (const it of briefcase.menuItems(e, n, t)) items.push(it);
             items.push(sep());
-            if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable) });
-            if (n) items.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C" });
-            if (writable) items.push({ id: "paste", label: (clip.mode === "cut" ? "Move here" : "Paste") + (clip.paths.length > 1 ? " (" + clip.paths.length + ")" : ""), key: "Ctrl+V" });
-            items.push({ id: "copypath", label: n > 1 ? "Copy paths" : "Copy path", key: "Ctrl+Alt+C" });
+            if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable), icon: "cut", quick: true });
+            if (n) items.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C", icon: "copy", quick: true });
+            if (writable) items.push({ id: "paste", label: (clip.mode === "cut" ? "Move here" : "Paste") + (clip.paths.length > 1 ? " (" + clip.paths.length + ")" : ""), key: "Ctrl+V", icon: "clipboard", quick: !n });
+            // Copy path: the Windows way, with drive letters (D:\Games); Copy Linux path: the real one.
+            items.push({ id: "copywin", label: n > 1 ? "Copy paths" : "Copy path", icon: "link" }, { id: "copypath", label: n > 1 ? "Copy Linux paths" : "Copy Linux path", key: "Ctrl+Alt+C", icon: "link" });
             items.push(sep());
-            if (n === 1 && writable) items.push({ id: "rename", label: "Rename…", key: "F2" });
-            if (n > 1 && writable) items.push({ id: "batchrename", label: "Rename " + n + " items…", key: "F2" });
-            if (n && writable && !(n === 1 && isArchive(e))) items.push({ id: "compress", label: "Compress…" });
-            if (n === 1 && isArchive(e) && writable) items.push({ id: "extracthere", label: "Extract here" });
-            if (n === 1 && isArchive(e)) items.push({ id: "extractto", label: "Extract to…" });
+            if (n === 1 && writable) items.push({ id: "rename", label: "Rename…", key: "F2", icon: "edit", quick: true });
+            if (n > 1 && writable) items.push({ id: "batchrename", label: "Rename " + n + " items…", key: "F2", icon: "edit", quick: true });
+            if (n && writable && !(n === 1 && isArchive(e))) items.push({ id: "compress", label: "Compress…", icon: "archive" });
+            if (n === 1 && isArchive(e) && writable) items.push({ id: "extracthere", label: "Extract here", icon: "archive" });
+            if (n === 1 && isArchive(e)) items.push({ id: "extractto", label: "Extract to…", icon: "archive" });
             if (n > 1 && writable && t.every(p => isArchive(entries.find(x => x.path === p)))) items.push({ id: "extracteach", label: "Extract " + n + " archives here" });
-            if (n === 1 && isArchive(e) && writable) items.push({ id: "compress", label: "Compress…" });
-            if (e && kindOf(e) === "image") items.push({ id: "wallpaper", label: "Set as wallpaper" });
+            if (n === 1 && isArchive(e) && writable) items.push({ id: "compress", label: "Compress…", icon: "archive" });
+            if (e && kindOf(e) === "image") items.push({ id: "wallpaper", label: "Set as wallpaper", icon: "image" });
             if (!e && writable) {
-                items.push({ id: "newfolder", label: "New folder…", key: "Ctrl+Shift+N" });
-                items.push({ id: "newfile", label: "New empty file…" });
-                if (templates.length) items.push({ id: "sub-new", label: "New document  ›" });
+                items.push({ id: "newfolder", label: "New folder…", key: "Ctrl+Shift+N", icon: "folder", quick: true });
+                items.push({ id: "newfile", label: "New empty file…", icon: "file", group: "New" });
+                if (templates.length) items.push({ id: "sub-new", label: "New document  ›", icon: "doc", group: "New" });
             }
             items.push(sep());
-            if (n && writable) items.push({ id: "trash", label: "Move to Trash" + what, key: "Del" });
-            if (n && writable) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Shift+Del" });
+            if (n && writable) items.push({ id: "trash", label: "Move to Trash" + what, short: "Trash", key: "Del", icon: "trash", quick: true });
+            if (n && writable) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Shift+Del", icon: "close" });
             items.push(sep());
-            if (e) items.push({ id: "mark", label: marked[e.path] ? "Unselect" : "Select", key: "Ctrl+Space" });
-            if (markCount) items.push({ id: "unmarkall", label: "Clear selection", key: "Esc" });
-            if (entries.length) items.push({ id: "markall", label: "Select all", key: "Ctrl+A" });
-            if (markCount) items.push({ id: "invert", label: "Invert selection", key: "Ctrl+I" });
+            if (e) items.push({ id: "mark", label: marked[e.path] ? "Unselect" : "Select", key: "Ctrl+Space", group: "Select" });
+            if (markCount) items.push({ id: "unmarkall", label: "Clear selection", key: "Esc", group: "Select" });
+            if (entries.length) items.push({ id: "markall", label: "Select all", key: "Ctrl+A", group: "Select" });
+            if (markCount) items.push({ id: "invert", label: "Invert selection", key: "Ctrl+I", group: "Select" });
             items.push(sep());
-            if (!e) items.push({ id: "sub-view", label: "View  ›" }, { id: "sub-sort", label: "Sort and group  ›" });
-            if (!e) items.push({ id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H" });
-            if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T" });
-            if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W" });
+            if (!e) items.push({ id: "sub-view", label: "View  ›", icon: "grid", group: "View" }, { id: "sub-sort", label: "Sort and group  ›", icon: "menu", group: "View" });
+            if (!e) items.push({ id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H", icon: "eye", group: "View" });
+            if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T", icon: "plus", group: "View" });
+            if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W", icon: "close", group: "View" });
             const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
-            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D" });
-            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4" });
-            if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter" });
+            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D", icon: "pin" });
+            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4", icon: "kbd", group: "Open" });
+            if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
         showMenu(title, items.filter(i => !i.off), x === undefined ? -1 : x, y === undefined ? -1 : y);
+    }
+    // ================================================ This PC and Installed apps: their menus
+    readonly property string shellDir: helper.slice(0, helper.lastIndexOf("/"))
+    function callCmd(cmd, cb) {
+        const p = callComp.createObject(app, { command: cmd, cb: cb || null });
+        p.running = true;
+    }
+    function openSettingsPage(page) { Quickshell.execDetached(["quickshell", "ipc", "-p", shellDir, "call", "settings", "page", page]); }
+    function openPcMenu(e, x, y) {
+        const ck = on => on ? "✓  " : "     ";
+        menuOnFolder = !e;
+        if (!e) return showMenu("This PC", [
+            { id: "tp-view:grid", label: ck(pcView === "grid") + "Tiles" }, { id: "tp-view:details", label: ck(pcView === "details") + "Details" },
+            sep(), { id: "tp-apps", label: "Installed apps" }, { id: "tp-refresh", label: "Refresh", key: "F5" }
+        ], x, y);
+        const d = e.item || {};
+        const real = e.path.indexOf("/") === 0;
+        const items = [{ id: "open", label: d.mounted === false && e.pc === "drive" ? "Mount and open" : "Open", key: "Enter", icon: "open" }];
+        if (real) items.push({ id: "tp-newtab", label: "Open in new tab", icon: "plus" });
+        if (e.pc === "drive" && d.removable && d.mounted !== false) items.push(sep(), { id: "tp-unmount", label: "Unmount" }, { id: "tp-eject", label: "Safely remove" });
+        if (e.pc === "net" && d.net) items.push(sep(), { id: "tp-auto", label: ck(d.sub === "Connects by itself") + "Connect automatically" });
+        if (e.pc !== "folder" && d.key) items.push(sep(), { id: "tp-letter", label: "Change drive letter…", icon: "edit" });
+        if (real) items.push(sep(), { id: "copywin", label: "Copy path", icon: "link" }, { id: "copypath", label: "Copy Linux path", key: "Ctrl+Alt+C", icon: "link" });
+        if (real) items.push(sep(), { id: "tp-props", label: "Properties", key: "Alt+Enter", icon: "info" });
+        showMenu(e.name, items, x, y);
+    }
+    // Change drive letter… (like Windows' Disk Management): the free letters, D: to Y:. C: is always Hearth.
+    property var letterFor: null
+    function letterMenu(d) {
+        if (!d || !d.key) return;
+        if (d.system || d.key === "system") return say("C: is always Hearth, the drive Hearth runs from");
+        const taken = {};
+        for (const k in (pc.taken || {})) taken[k] = pc.taken[k];
+        for (const q of (pc.drives || []).concat(pc.network || [])) if (q.letter && q.key !== d.key) taken[q.letter] = q.name;
+        const free = "DEFGHIJKLMNOPQRSTUVWXY".split("").filter(l => l === d.letter || !taken[l]);
+        letterFor = d;
+        const at = Math.max(0, free.indexOf(d.letter));
+        const shown = free.slice(Math.max(0, at - 5), Math.max(0, at - 5) + 12);
+        showMenu("Drive letter for " + d.name, shown.map(l => ({ id: "letter:" + l, label: (l === d.letter ? "✓  " : "     ") + l + ":" })), -1, -1);
+    }
+    function openAppMenu(e, x, y) {
+        menuOnFolder = !e;
+        if (!e) return showMenu("Installed apps", [
+            { id: "ia-sortmenu", label: "Sort by  ›" }, { id: "ia-filtermenu", label: "Filter by  ›" }, sep(), { id: "tp-refresh", label: "Refresh", key: "F5" }
+        ], x, y);
+        const a = e.app;
+        const game = ["steam", "recomp", "games"].indexOf(a.kind) >= 0;
+        const items = [{ id: "ia-open", label: game ? "Play" : "Open", icon: "open" }];
+        if (appModifiable(a)) items.push({ id: "ia-modify", label: "Modify", icon: "edit" });
+        if (a.canMove) items.push({ id: "ia-move", label: "Move to another drive", icon: "folder" });
+        if (a.part) items.push(sep(), { id: "ia-part", label: "Part of Hearth", icon: "info" });
+        else if (appUninstallable(a)) items.push(sep(), { id: "ia-uninstall", label: "Uninstall", danger: true, icon: "trash" });
+        showMenu(a.name, items, x, y);
+    }
+    function appsSortMenu(x, y) {
+        const ck = on => on ? "✓  " : "     ";
+        showMenu("Sort by", [{ id: "ia-sort:name", label: ck(appsSort === "name") + "Name" }, { id: "ia-sort:size", label: ck(appsSort === "size") + "Size" },
+                             { id: "ia-sort:date", label: ck(appsSort === "date") + "Install date" }], x, y);
+    }
+    function appsFilterMenu(x, y) {
+        showMenu("Filter by", appKinds.map(k => ({ id: "ia-filter:" + k, label: (appsFilter === k ? "✓  " : "     ") + appKindName(k) })), x, y);
+    }
+    function appModifiable(a) {
+        return a.kind === "winapp" || (a.kind === "steam" && !!a.steamId) || (a.kind === "flatpak" && !!a.flatseal);
+    }
+    function appUninstallable(a) {
+        if (a.part) return false;
+        if (a.kind === "flatpak" || a.kind === "winapp") return true;
+        if (a.kind === "steam") return !!a.steamId;
+        return !!a.uninstall;
+    }
+    function appOpen(a) {
+        if (!a) return;
+        say("Starting “" + a.name + "”…");
+        if (a.kind === "winapp") return Quickshell.execDetached(["hearth-winapps", "run", a.appId]);
+        if (["steam", "recomp", "games"].indexOf(a.kind) >= 0) return Quickshell.execDetached(["python3", shellDir + "/hearth-games", "play", a.id]);
+        if (a.kind === "flatpak" && !a.desktop) return Quickshell.execDetached(["flatpak", "run", a.appId]);
+        if (a.desktop) call(["desktop-launch", a.desktop], (r, err) => { if (err) say(err, true); });
+    }
+    function appModify(a) {
+        if (a.kind === "winapp") { openSettingsPage("winapps"); return say("Settings › Windows apps has “" + a.name + "”'s Proton, Windows version and more"); }
+        if (a.kind === "steam") { Quickshell.execDetached(["steam", "steam://gameproperties/" + a.steamId]); return say("Opening “" + a.name + "”'s properties in Steam…"); }
+        if (a.kind === "flatpak") { Quickshell.execDetached(["flatpak", "run", "com.github.tchx84.Flatseal"]); return say("Flatseal opens: pick “" + a.name + "” there to change what it may use"); }
+    }
+    function appMove(a) {
+        Quickshell.execDetached(["nimbus", "--windowed", "--page", "diskspace"]);
+        say("Storage opens in the Hearth app: pick “" + a.name + "” and the drive to move it to");
+    }
+    function appUninstall(a) {
+        if (a.kind === "steam") {
+            Quickshell.execDetached(["steam", "steam://uninstall/" + a.steamId]);
+            return say("Steam asks to uninstall “" + a.name + "”");
+        }
+        if (a.kind !== "flatpak" && a.kind !== "winapp") {
+            Quickshell.execDetached(["nimbus", "--windowed", "--page", "diskspace"]);
+            return say("Storage opens in the Hearth app: uninstall “" + a.name + "” there");
+        }
+        const what = a.kind === "flatpak" ? "The app is removed (your settings and files in it stay, as Flatpak keeps them)."
+                                          : "Its space (everything installed in it), menu entry and icon are deleted. Files you saved in your own folders stay.";
+        confirm("Uninstall “" + a.name + "”?", what, "Uninstall", () => {
+            app.say("Uninstalling “" + a.name + "”…");
+            const cmd = a.kind === "flatpak" ? ["python3", app.shellDir + "/hearth-flatpak", "remove", a.appId]
+                                             : ["python3", app.shellDir + "/hearth-winapps", "remove", a.appId];
+            app.callCmd(cmd, (r, err) => {
+                if (err) return app.say(err, true);
+                app.say("“" + a.name + "” is uninstalled");
+                if (app.onApps) app.loadApps();
+            });
+        });
+    }
+    function runPageMenu(id, e) {
+        const d = e && e.item ? e.item : {};
+        if (id.startsWith("tp-view:")) return setPcView(id.slice(8));
+        if (id.startsWith("tp-start:")) return setStartPage(id.slice(9));
+        if (id.startsWith("ia-sort:")) { appsSort = id.slice(8); cur = 0; return; }
+        if (id.startsWith("ia-filter:")) { appsFilter = id.slice(10); cur = 0; return; }
+        if (id.startsWith("letter:")) {
+            const L = id.slice(7), dd = letterFor;
+            letterFor = null;
+            if (!dd || L === dd.letter) return;
+            call(["letter-set", dd.key, L], (r, err) => {
+                if (err) return say(err, true);
+                say("“" + dd.name + "” is " + L + ": now (Windows apps see it there from their next start)");
+                refreshPlaces();
+                loadThisPc();
+            });
+            return;
+        }
+        switch (id) {
+        case "tp-refresh": reload(); refreshPlaces(); break;
+        case "tp-apps": navigate(appsPage, ""); break;
+        case "tp-newtab": if (e && e.path.indexOf("/") === 0) newTab(e.path); break;
+        case "tp-props": if (e && e.path.indexOf("/") === 0) properties([e.path]); break;
+        case "tp-letter": letterMenu(d); break;
+        case "tp-unmount": case "tp-eject": {
+            if (!d.path) break;
+            const ej = id === "tp-eject";
+            say((ej ? "Removing" : "Unmounting") + " “" + d.label + "”…");
+            call([ej ? "eject" : "unmount", d.path], (r, err) => {
+                if (err) return say(err, true);
+                say(ej ? "You can take out “" + d.label + "” now" : "“" + d.label + "” is unmounted");
+                refreshPlaces();
+                loadThisPc();
+            });
+            break;
+        }
+        case "tp-auto": {
+            if (!d.net) break;
+            const on = d.sub !== "Connects by itself";
+            call(["net-auto", JSON.stringify(d.net), on ? "on" : "off"], (r, err) => {
+                if (err) return say(err, true);
+                say(on ? "“" + d.name + "” connects by itself after you sign in" : "“" + d.name + "” no longer connects by itself");
+                if (on) Quickshell.execDetached(["python3", helper, "net-autoconnect"]);
+                loadThisPc();
+            });
+            break;
+        }
+        case "ia-sortmenu": appsSortMenu(-1, -1); break;
+        case "ia-filtermenu": appsFilterMenu(-1, -1); break;
+        case "ia-open": if (e && e.app) appOpen(e.app); break;
+        case "ia-modify": if (e && e.app) appModify(e.app); break;
+        case "ia-move": if (e && e.app) appMove(e.app); break;
+        case "ia-uninstall": if (e && e.app) appUninstall(e.app); break;
+        case "ia-part": say("“" + (e && e.app ? e.app.name : "It") + "” is part of Hearth OS, so it can't be uninstalled"); break;
+        }
+    }
+    // This PC's Tiles / Details and where Files opens: saved only when you pick them (merged into files.json).
+    function setPcView(v) {
+        if (v !== "grid" && v !== "details") return;
+        pcView = v;
+        prefs = Object.assign({}, prefs, { thisPcView: v });
+        call(["prefs-set", JSON.stringify({ thisPcView: v })]);
+    }
+    function setStartPage(k) {
+        if (k !== "home" && k !== "thispc") return;
+        prefs = Object.assign({}, prefs, { startPage: k });
+        call(["prefs-set", JSON.stringify({ startPage: k })], (r, err) => {
+            if (err) return say(err, true);
+            say(k === "thispc" ? "Files opens to This PC from now on" : "Files opens to Home from now on");
+        });
     }
     function openPlaceMenu() {
         const p = places[placeIndex];
@@ -1321,12 +1755,13 @@ Scope {
         const items = [];
         if (p.path) items.push({ id: "p-open", label: "Open" }, { id: "p-newtab", label: "Open in new tab" });
         if (!p.path && p.device) items.push({ id: "p-mount", label: "Mount" });
-        if (p.section === "drives" && p.path) items.push({ id: "p-unmount", label: "Unmount" }, { id: "p-eject", label: "Safely remove" });
+        if (p.section === "drives" && p.path && p.removable) items.push({ id: "p-unmount", label: "Unmount" }, { id: "p-eject", label: "Safely remove" });
+        if (p.section === "drives" && p.key) items.push({ id: "p-letter", label: "Change drive letter…" });
         if (p.bookmark) items.push({ id: "p-unbookmark", label: "Remove bookmark", danger: true });
         // A device's shared folder: open it now, or have it connect by itself after signing in (off until turned on).
         if (p.net && p.net.share) items.push({ id: "p-open", label: "Open" }, { id: "p-auto", label: (p.auto ? "✓  " : "     ") + "Connect automatically" });
         if (p.kind === "trash") items.push({ id: "empty", label: "Empty Trash", danger: true });
-        if (p.path) items.push(sep(), { id: "p-props", label: "Properties" });
+        if (p.path && p.path !== thisPcPage && p.path !== appsPage) items.push(sep(), { id: "p-props", label: "Properties" });
         showMenu(p.label, items, -1, -1);
     }
     function sortMenu(mx, my) {
@@ -1346,6 +1781,15 @@ Scope {
     }
     function viewMenu(mx, my) {
         const ck = on => on ? "✓  " : "     ";
+        // Where Files opens, like File Explorer's "Open File Explorer to" (kept only when you pick one).
+        const start = picking ? [] : [sep(), { id: "tp-start:home", label: ck(startPage === homePage) + "Open Files to: Home" },
+                                      { id: "tp-start:thispc", label: ck(startPage === thisPcPage) + "Open Files to: This PC" }];
+        if (onThisPc) return showMenu("View", [
+            { id: "tp-view:grid", label: ck(pcView === "grid") + "Tiles", key: "Ctrl+1" },
+            { id: "tp-view:details", label: ck(pcView === "details") + "Details", key: "Ctrl+3" },
+            sep(), { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }
+        ].concat(start), mx, my);
+        if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
         showMenu("View", [
             { id: "view:large", label: ck(view === "large") + "Large icons", key: "Ctrl+4" },
             { id: "view:grid", label: ck(view === "grid") + "Medium icons", key: "Ctrl+1" },
@@ -1357,7 +1801,7 @@ Scope {
             { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" },
             { id: "exts", label: ck(showExt) + "File name extensions" },
             { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" }
-        ], mx, my);
+        ].concat(start), mx, my);
     }
     function runMenu(id) {
         const it = menuItems.find(i => i.id === id);
@@ -1367,6 +1811,8 @@ Scope {
         menuOnFolder = false;
         const t = onFolder ? [] : targets();
         const e = onFolder ? null : current;
+        if (id.startsWith("bc-")) return briefcase.run(id, t, e);
+        if (id.startsWith("tp-") || id.startsWith("ia-") || id.startsWith("letter:")) return runPageMenu(id, e);
         if (id.startsWith("sort:")) return setSort(id.slice(5));
         if (id.startsWith("group:")) return setGroup(id.slice(6));
         if (id.startsWith("view:")) return setView(id.slice(5));
@@ -1404,7 +1850,8 @@ Scope {
         case "copy": setClip("copy", t); break;
         case "cut": setClip("cut", t); break;
         case "paste": paste(); break;
-        case "copypath": copyText(t.length ? t.join("\n") : (listing ? listing.path : "")); break;
+        case "copypath": { const cps = copyTargets(onFolder, t); if (cps.length) copyText(cps.join("\n")); break; }
+        case "copywin": { const cps = copyTargets(onFolder, t); if (cps.length) copyText(cps.map(p => winPath(p) || p).join("\n")); break; }
         case "rename":
             // With a mouse or keyboard the name turns into a text box where it is (Enter keeps it, Esc cancels);
             // from the controller it asks in a box with the on-screen keyboard.
@@ -1515,8 +1962,23 @@ Scope {
         case "terminal":
             call(["terminal", e && e.dir ? e.path : onHome ? home : listing.path], (r, err) => { if (err) say(err, true); });
             break;
-        case "props": properties(t.length ? t : [listing && !onHome ? listing.path : home]); break;
+        case "props":
+            if (onSpecial) { if (onThisPc && current && current.path.indexOf("/") === 0) properties([current.path]); break; }
+            properties(t.length ? t : [listing && !onHome ? listing.path : home]);
+            break;
         case "p-open": openPlace(placeIndex); break;
+        case "p-letter": {
+            const pl = places[placeIndex];
+            if (!pl) break;
+            if (pl.key === "system") { say("C: is always Hearth, the drive Hearth runs from"); break; }
+            // The letters unplugged drives keep too: from This PC's list, then the menu.
+            call(["this-pc"], (r, err) => {
+                if (err) return say(err, true);
+                pc = r;
+                letterMenu((r.drives || []).find(d => d.key === pl.key) || pl);
+            });
+            break;
+        }
         case "p-newtab": if (places[placeIndex]) newTab(places[placeIndex].path); break;
         case "p-props": if (places[placeIndex]) properties([places[placeIndex].path]); break;
         case "p-mount": if (places[placeIndex]) mountPlace(places[placeIndex], false); break;
@@ -1666,6 +2128,7 @@ Scope {
     function dropOn(drop, dest) {
         const paths = (drop.urls || []).map(u => urlToPath(u)).filter(p => p && p !== dest);
         if (!paths.length || !dest) return;
+        if (briefcase.drop(paths, dest, drop)) return;      // into a Briefcase: added (or moved from another one)
         if (drop.proposedAction === Qt.LinkAction && dest !== trashPath) {
             drop.accept(Qt.LinkAction);
             return call(["link"].concat(paths).concat([dest]), (r, err) => {
@@ -1907,6 +2370,7 @@ Scope {
         }
     }
     function closeOverlay() {
+        if (briefcase.mode !== "" && briefcase.mode !== "job") briefcase.close();
         overlay = "";
         dlgSecret = false;
         menuOnFolder = false;
@@ -2061,7 +2525,9 @@ Scope {
                 app.editingPath = true;
                 app.zone = "toolbar";
                 app.toolIndex = app.toolItems.findIndex(t => t.t === "edit");
-                pathField.text = app.path;
+                // On a lettered drive the Windows form (D:\Games); This PC and Installed apps by name; else the Linux path.
+                pathField.text = app.onThisPc ? "This PC" : app.onApps ? "This PC\\Installed apps"
+                    : DrivePaths.driveFor(app.path, app.pathCtx) ? app.winPath(app.path) : app.path;
                 pathField.forceActiveFocus();
                 pathField.selectAll();
             }
@@ -2070,6 +2536,15 @@ Scope {
                 app.editingPath = false;
                 keys.forceActiveFocus();
                 if (!go || !t) return;
+                const lt = t.toLowerCase().replace(/[\\/]+$/, "");
+                if (lt === "this pc") return app.navigate(app.thisPcPage, "");
+                if (lt === "this pc\\installed apps" || lt === "this pc/installed apps" || lt === "installed apps") return app.navigate(app.appsPage, "");
+                // D:\Games, d:/Games, C:\Users\<you>\Documents: the drive letters (drive-paths.js).
+                const wl = app.fromLetters(t);
+                if (wl) {
+                    if (wl.error) return app.say(wl.error, true);
+                    return app.navigate(wl.path, "");
+                }
                 let p = t.startsWith("file://") ? decodeURIComponent(t.slice(7)) : t;
                 if (p.startsWith("~")) p = app.home + p.slice(1);
                 if (!p.startsWith("/")) p = app.path + "/" + p;
@@ -2077,10 +2552,12 @@ Scope {
             }
             readonly property int cols: app.shownView === "details" ? 1 : Math.max(1, Math.floor(grid.width / grid.cellWidth))
             function showCurrent() {
+                if (app.onSpecial) return;           // FilesThisPc.qml / FilesApps.qml keep their own item in view
                 if (app.shownView === "details") list.positionViewAtIndex(app.cur, ListView.Contain);
                 else grid.positionViewAtIndex(app.cur, GridView.Contain);
             }
             function wheel(ev) {
+                if (app.onSpecial) return;
                 const v = app.shownView === "details" ? list : grid;
                 const dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y : ev.angleDelta.y / 120 * 100;
                 const top = v.originY, bottom = v.originY + Math.max(0, v.contentHeight - v.height);
@@ -2257,7 +2734,7 @@ Scope {
                         case Qt.Key_L: win.editPath(); break;
                         case Qt.Key_R: app.reload(); break;
                         case Qt.Key_D: app.runMenu("bookmark"); break;
-                        case Qt.Key_T: app.newTab(app.picking ? app.path : app.homePage); break;
+                        case Qt.Key_T: app.newTab(app.picking ? app.path : app.startPage); break;
                         case Qt.Key_W: app.closeTab(app.tabIndex); break;
                         case Qt.Key_Tab: app.switchTab((app.tabIndex + 1) % app.tabs.length); break;
                         case Qt.Key_Backtab: app.switchTab((app.tabIndex - 1 + app.tabs.length) % app.tabs.length); break;
@@ -2317,7 +2794,7 @@ Scope {
                 case Qt.Key_Right: case Qt.Key_Tab: app.tabFocus = Math.min(app.tabs.length, app.tabFocus + 1); break;
                 case Qt.Key_Down: case Qt.Key_Escape: app.zone = "toolbar"; break;
                 case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space:
-                    if (app.tabFocus >= app.tabs.length) app.newTab(app.homePage);
+                    if (app.tabFocus >= app.tabs.length) app.newTab(app.startPage);
                     else { app.switchTab(app.tabFocus); app.zone = "main"; }
                     break;
                 case Qt.Key_Delete: case Qt.Key_W: if (app.tabFocus < app.tabs.length) app.closeTab(app.tabFocus); break;
@@ -2349,7 +2826,44 @@ Scope {
                 }
                 e.accepted = true;
             }
+            // This PC (its groups, like Windows) and Installed apps (a list): arrows move, A / Enter opens (an app: its
+            // "···" menu), B / Esc goes up; typing filters (the on-screen keyboard too).
+            function pageKey(e) {
+                const n = app.entries.length, i = app.cur;
+                const step = (dx, dy) => {
+                    if (app.onApps) {
+                        if (dx < 0) win.toPlaces();
+                        else if (dy < 0) { if (i > 0) app.cur = i - 1; else win.toToolbar(); }
+                        else if (dy > 0 && i < n - 1) app.cur = i + 1;
+                        return;
+                    }
+                    if (!n) { if (dx < 0) win.toPlaces(); else if (dy < 0) win.toToolbar(); return; }
+                    const r = app.pcStep(i, dx, dy);
+                    if (r === -1) win.toPlaces();
+                    else if (r === -2) win.toToolbar();
+                    else app.cur = r;
+                };
+                switch (e.key) {
+                case Qt.Key_Left: step(-1, 0); break;
+                case Qt.Key_Right: step(1, 0); break;
+                case Qt.Key_Up: step(0, -1); break;
+                case Qt.Key_Down: step(0, 1); break;
+                case Qt.Key_Tab: app.cur = Math.min(Math.max(0, n - 1), i + 1); break;
+                case Qt.Key_Backtab: app.cur = Math.max(0, i - 1); break;
+                case Qt.Key_Home: app.cur = 0; break;
+                case Qt.Key_End: app.cur = Math.max(0, n - 1); break;
+                case Qt.Key_PageDown: app.cur = Math.min(Math.max(0, n - 1), i + 6); break;
+                case Qt.Key_PageUp: app.cur = Math.max(0, i - 6); break;
+                case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: app.activate(app.current); break;
+                case Qt.Key_Escape: if (app.query) app.query = ""; else app.goUp(true); break;
+                case Qt.Key_Backspace: if (app.query) app.query = app.query.slice(0, -1); else app.goUp(false); break;
+                case Qt.Key_F2: case Qt.Key_Delete: break;
+                default: return false;
+                }
+                return true;
+            }
             function mainKey(e, shift) {
+                if (app.onSpecial && win.pageKey(e)) { e.accepted = true; return; }
                 const count = app.entries.length;
                 const c = win.cols;
                 const i = app.cur;
@@ -2446,7 +2960,12 @@ Scope {
                 const down = e.key === Qt.Key_Down || e.key === Qt.Key_Tab;
                 const ok = e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space;
                 const back = e.key === Qt.Key_Escape || e.key === Qt.Key_Backspace || e.key === Qt.Key_Menu;
-                if (app.overlay === "menu") {
+                if (app.overlay === "briefcase") {
+                    if (!bcDialog.key(e)) return;
+                } else if (app.overlay === "menu" && styledMenu.styled) {
+                    // Another right-click menu look (Theme.menuStyle, MenuStyles.qml): it moves and chooses itself.
+                    if (!styledMenu.item.key(e)) return;
+                } else if (app.overlay === "menu") {
                     const n = app.menuItems.length;
                     const step = d => {
                         let i = app.menuIndex;
@@ -2542,7 +3061,7 @@ Scope {
                                 }
                                 PlaceIcon {
                                     anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
-                                    kind: (tabChip.on ? app.path : tabChip.modelData.path) === app.homePage ? "start" : "folder"
+                                    kind: ({ "hearth:home": "start", "hearth:thispc": "thispc", "hearth:apps": "apps" })[tabChip.on ? app.path : tabChip.modelData.path] || "folder"
                                     tint: tabChip.on ? Theme.accent : Theme.muted
                                     size: 16
                                 }
@@ -2616,7 +3135,7 @@ Scope {
                             border.width: 2
                             border.color: app.zone === "tabs" && app.tabFocus >= app.tabs.length ? Theme.accent : "transparent"
                             Text { anchors.centerIn: parent; text: "+"; color: Theme.text; font.pixelSize: 18 }
-                            MouseArea { id: newTabMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { keys.forceActiveFocus(); app.newTab(app.homePage); } }
+                            MouseArea { id: newTabMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { keys.forceActiveFocus(); app.newTab(app.startPage); } }
                         }
                     }
                 }
@@ -2797,6 +3316,9 @@ Scope {
                                 { sep: true },
                                 { t: "sort", icon: "menu", label: "Sort", more: true }, { t: "view", icon: "grid", label: "View", more: true },
                                 { t: "hidden", icon: "eye", label: "Show", more: true },
+                                { sep: true, bc: true },
+                                { t: "bc-update-all", icon: "sync", label: "Update All", bc: true }, { t: "bc-unlock", icon: "lock", label: "Unlock", bc: true },
+                                { t: "bc-lock", icon: "lock", label: "Lock", bc: true }, { t: "bc-customize", icon: "bc-briefcase", label: "Customize", bc: true },
                                 { fill: true },
                                 { t: "undo", icon: "undo", label: "Undo" }, { t: "redo", icon: "", label: "Redo" },
                                 { sep: true }, { t: "details", icon: "info", label: "Details" }
@@ -2806,15 +3328,16 @@ Scope {
                                 required property var modelData
                                 readonly property bool on: {
                                     const t = modelData.t;
-                                    if (t === "cut" || t === "copy" || t === "delete" || t === "copypath") return app.targets().length > 0 || (t === "copypath" && !app.onHome);
-                                    if (t === "rename") return !!app.current;
+                                    if (t === "cut" || t === "copy" || t === "delete" || t === "copypath") return app.targets().length > 0 || (t === "copypath" && !app.onHome && !app.onApps);
+                                    if (t === "rename") return !!app.current && !app.onSpecial;
                                     if (t === "new" || t === "paste") return app.writable;
                                     if (t === "undo") return app.undoStack.length > 0;
                                     if (t === "redo") return app.redoStack.length > 0;
                                     return true;
                                 }
                                 // Choosing a file for an app: only Sort, View and Show.
-                                visible: !app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0
+                                visible: (!app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0)
+                                    && (!modelData.bc || (modelData.t ? briefcase.toolShown(modelData.t) : briefcase.inBriefcase))
                                 Layout.fillWidth: !!modelData.fill
                                 implicitWidth: modelData.sep ? 13 : modelData.fill ? 0 : cmdChip.implicitWidth
                                 implicitHeight: 40
@@ -2880,13 +3403,17 @@ Scope {
                                     required property int index
                                     // A heading where a new group starts (Bookmarks, Games, Drives and SD cards; a gap before Trash).
                                     readonly property bool starts: index > 0 && app.places[index - 1].section !== modelData.section
-                                    readonly property real headH: !starts ? 0 : modelData.section === "trash" ? 12 : 32
+                                    readonly property string sec: modelData.section
+                                    // A heading for your folders, Games, Favorites and Network's groups; a gap before This PC and Trash;
+                                    // nothing between This PC's drives, Network and Installed apps (a tree, as in Windows).
+                                    readonly property real headH: !starts ? 0 : (sec === "trash" || sec === "pc") ? 12
+                                        : (sec === "drives" || sec === "netroot" || sec === "apps") ? 0 : 32
                                     width: ListView.view.width
                                     height: headH + place.height
                                     Text {
                                         visible: placeItem.headH > 20
-                                        anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 }
-                                        text: ({ places: "This device", games: "Games", bookmarks: "Favorites", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || "Drives"
+                                        anchors { left: parent.left; leftMargin: 14 + (placeItem.modelData.depth ? 20 : 0); top: parent.top; topMargin: 12 }
+                                        text: ({ places: "This device", briefcases: "Briefcases", games: "Games", bookmarks: "Favorites", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || ""
                                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
                                     }
                                     Rectangle {
@@ -2905,10 +3432,28 @@ Scope {
                                         border.color: Theme.accent
                                         opacity: modelData.mounted === false || modelData.offline === true ? 0.7 : 1
                                         Behavior on color { ColorAnimation { duration: Theme.quick } }
+                                        // The blue bar on the item you're in (Windows 11's navigation pane).
+                                        Rectangle {
+                                            visible: place.here && !place.lit
+                                            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                                            width: 3; height: 18; radius: 2
+                                            color: Theme.accent
+                                        }
+                                        // This PC's and Network's arrow: folds the tree.
+                                        Text {
+                                            z: 2
+                                            visible: !!place.modelData.tree && !place.modelData.empty
+                                            anchors { left: parent.left; leftMargin: 4; verticalCenter: parent.verticalCenter }
+                                            text: place.modelData.open ? "⌄" : "›"
+                                            color: place.lit ? Theme.accentInk : Theme.muted
+                                            font.pixelSize: 12
+                                            MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: { keys.forceActiveFocus(); app.toggleNav(place.modelData.tree); } }
+                                        }
                                         RowLayout {
-                                            anchors { fill: parent; leftMargin: place.modelData.child ? 34 : 14; rightMargin: 12 }
+                                            anchors { fill: parent; leftMargin: 14 + (place.modelData.depth !== undefined ? place.modelData.depth : (place.modelData.child ? 1 : 0)) * 20; rightMargin: 12 }
                                             spacing: 12
-                                            PlaceIcon { kind: place.modelData.kind; tint: place.ink; size: place.modelData.child ? 16 : 20 }
+                                            PlaceIcon { kind: place.modelData.kind === "briefcase" ? "bc:" + ((place.modelData.look || {}).icon || "briefcase") : place.modelData.kind
+                                                        tint: place.modelData.kind === "briefcase" ? briefcase.colorOf(place.modelData.look) : place.ink; size: place.modelData.child ? 16 : 20 }
                                             ColumnLayout {
                                                 Layout.fillWidth: true
                                                 spacing: 1
@@ -3032,7 +3577,7 @@ Scope {
                                 onPressed: mouse => {
                                     keys.forceActiveFocus();
                                     app.zone = "main";
-                                    if (mouse.button !== Qt.LeftButton || !app.mouseMode) return;
+                                    if (mouse.button !== Qt.LeftButton || !app.mouseMode || app.onSpecial) return;
                                     start = contentPoint(mouse.x, mouse.y);
                                     startMarks = (mouse.modifiers & Qt.ControlModifier) ? Object.assign({}, app.marked) : ({});
                                     banding = false;
@@ -3125,7 +3670,7 @@ Scope {
                             // Icons and Compact: a grid (Compact: small icons in columns).
                             GridView {
                                 id: grid
-                                visible: app.shownView !== "details"
+                                visible: app.shownView !== "details" && !app.onSpecial
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                 model: app.entries
                                 clip: true
@@ -3172,6 +3717,9 @@ Scope {
                                             kind: app.kindOf(cell.modelData)
                                             label: app.extLabel(cell.modelData)
                                             link: cell.modelData.isLink
+                                            bc: cell.modelData.briefcase || null
+                                            bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                            badge: briefcase.badgeFor(cell.modelData)
                                             size: app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
                                         Rectangle {
@@ -3222,6 +3770,9 @@ Scope {
                                                 kind: app.kindOf(cell.modelData)
                                                 label: cell.tiles ? app.extLabel(cell.modelData) : ""
                                                 link: cell.modelData.isLink
+                                                bc: cell.modelData.briefcase || null
+                                                bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                                badge: briefcase.badgeFor(cell.modelData)
                                                 size: cell.tiles ? 48 : 24
                                             }
                                             Image {
@@ -3291,7 +3842,7 @@ Scope {
                             // Details: sortable columns, groups with a heading.
                             ListView {
                                 id: list
-                                visible: app.shownView === "details"
+                                visible: app.shownView === "details" && !app.onSpecial
                                 anchors { fill: parent; leftMargin: 14; rightMargin: 14; topMargin: app.onHome ? quick.height : 0 }
                                 model: app.entries
                                 clip: true
@@ -3310,6 +3861,7 @@ Scope {
                                         anchors { fill: parent; leftMargin: 56; rightMargin: 16 }
                                         spacing: 12
                                         ColumnHead { Layout.fillWidth: true; label: app.found !== null ? "Name · where" : "Name"; key: "name"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
+                                        ColumnHead { Layout.preferredWidth: 190; visible: briefcase.inBriefcase; label: "Status"; key: "status"; sortKey: app.sort; desc: app.desc }
                                         ColumnHead { Layout.preferredWidth: 100; label: "Size"; key: "size"; sortKey: app.sort; desc: app.desc; alignRight: true; onPicked: k => app.setSort(k) }
                                         ColumnHead { Layout.preferredWidth: 150; visible: list.wide; label: "Type"; key: "type"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
                                         ColumnHead { Layout.preferredWidth: 160; label: "Modified"; key: "date"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
@@ -3359,6 +3911,8 @@ Scope {
                                                     kind: app.kindOf(rowItem.modelData)
                                                     label: ""
                                                     link: rowItem.modelData.isLink
+                                                    bc: rowItem.modelData.briefcase || null
+                                                    bcColor: briefcase.colorOf(rowItem.modelData.briefcase)
                                                     size: 28
                                                 }
                                                 Image {
@@ -3385,6 +3939,19 @@ Scope {
                                                 }
                                             }
                                             Icon { visible: row.picked; name: "check"; size: 16; color: Theme.accent }
+                                            Row {
+                                                Layout.preferredWidth: 190
+                                                visible: briefcase.inBriefcase
+                                                spacing: 6
+                                                readonly property var bdg: briefcase.badgeFor(rowItem.modelData)
+                                                Rectangle { visible: !!parent.bdg; width: 10; height: 10; radius: 5; color: parent.bdg ? parent.bdg.color : "transparent"; anchors.verticalCenter: parent.verticalCenter }
+                                                Text {
+                                                    width: 174
+                                                    text: briefcase.statusLabel(rowItem.modelData)
+                                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
                                             Text {
                                                 Layout.preferredWidth: 100
                                                 horizontalAlignment: Text.AlignRight
@@ -3438,12 +4005,35 @@ Scope {
                                 radius: 4
                             }
 
+                            // This PC and Installed apps, each in its own file behind a Loader: if one can't load, Files
+                            // (and Desktop Mode) still open, and only that page stays empty.
+                            Loader {
+                                id: thisPcLoader
+                                anchors.fill: parent
+                                visible: app.onThisPc
+                                Component.onCompleted: setSource("FilesThisPc.qml", { fm: app, keysItem: keys })
+                                onStatusChanged: if (status === Loader.Error) console.warn("Files: This PC couldn't load (FilesThisPc.qml)")
+                            }
+                            Loader {
+                                id: appsLoader
+                                anchors.fill: parent
+                                visible: app.onApps
+                                Component.onCompleted: setSource("FilesApps.qml", { fm: app, keysItem: keys })
+                                onStatusChanged: if (status === Loader.Error) console.warn("Files: Installed apps couldn't load (FilesApps.qml)")
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: (app.onThisPc && thisPcLoader.status === Loader.Error) || (app.onApps && appsLoader.status === Loader.Error)
+                                text: "This page couldn't be shown. Your folders and drives are still in the navigation pane."
+                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 14
+                            }
+
                             // Empty, loading, searching, or can't open.
                             Column {
                                 anchors.centerIn: parent
                                 width: Math.min(parent.width - 80, 460)
                                 spacing: 8
-                                visible: app.entries.length === 0
+                                visible: app.entries.length === 0 && !app.onSpecial
                                 Text {
                                     width: parent.width
                                     horizontalAlignment: Text.AlignHCenter
@@ -3578,12 +4168,12 @@ Scope {
                                     text: {
                                         if (app.note !== "") return app.note;
                                         let s = app.found !== null ? (app.searching ? "Searching… " : "") + app.plural(app.entries.length, "match", "matches") + " for “" + app.foundQuery + "”"
-                                            : app.plural(app.entries.length, "item");
+                                            : app.plural(app.entries.length, app.onApps ? "app" : "item");
                                         if (app.markCount) {
                                             const sel = app.entries.filter(e => app.marked[e.path]);
                                             const bytes = sel.reduce((n, e) => n + (e.dir ? 0 : e.size), 0);
                                             s += " · " + app.markCount + " selected" + (bytes ? " (" + app.fmtSize(bytes) + ")" : "");
-                                        } else if (app.current && !app.current.dir && app.found === null) {
+                                        } else if (app.current && !app.current.dir && app.found === null && !app.onSpecial) {
                                             s += " · “" + app.current.name + "” " + app.fmtSize(app.current.size);
                                         }
                                         if (app.clip.paths.length) s += " · " + app.plural(app.clip.paths.length, "item") + (app.clip.mode === "cut" ? " to move" : " copied");
@@ -3598,6 +4188,11 @@ Scope {
                                     visible: app.searching
                                     label: "Stop searching"
                                     onClicked: { keys.forceActiveFocus(); app.stopSearch(); }
+                                }
+                                Text {
+                                    visible: briefcase.inBriefcase && (briefcase.syncLine !== "" || briefcase.lockLine !== "")
+                                    text: [briefcase.lockLine, briefcase.syncLine].filter(x => x).join(" · ")
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                                 }
                                 Text {
                                     visible: !!(app.listing && app.listing.free !== undefined && app.listing.free !== null)
@@ -3730,7 +4325,8 @@ Scope {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: detailsBox.sel.length ? "" : detailsBox.e ? app.kindName(detailsBox.e) : app.plural(app.entries.length, "item")
+                                text: detailsBox.sel.length ? "" : detailsBox.e ? (detailsBox.e.app ? app.appKindName(detailsBox.e.app.kind) + " app"
+                                    : detailsBox.e.pc === "drive" ? "Drive" : detailsBox.e.pc === "net" ? "Network location" : app.kindName(detailsBox.e)) : app.plural(app.entries.length, "item")
                                 visible: text !== ""
                                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                             }
@@ -3744,14 +4340,46 @@ Scope {
                                         return [["Size", app.fmtSize(bytes) + (dirs ? " (plus what's in " + app.plural(dirs, "folder") + ")" : "")],
                                                 ["Folders", String(dirs)], ["Files", String(sel.length - dirs)]];
                                     }
-                                    if (!e) return app.listing && app.listing.free !== undefined && app.listing.free !== null ? [["Free", app.fmtSize(app.listing.free)]] : [];
+                                    if (!e) {
+                                        const lr = [];
+                                        const ll = app.listing && !app.onSpecial && !app.onHome ? app.letterLocation(app.listing.path) : "";
+                                        if (ll) lr.push(["Location", ll], ["On Linux", app.listing.path]);
+                                        if (app.listing && app.listing.free !== undefined && app.listing.free !== null) lr.push(["Free", app.fmtSize(app.listing.free)]);
+                                        return briefcase.detailRows(null).concat(lr);
+                                    }
+                                    // This PC: a drive's space and where it really is; Installed apps: what the row says.
+                                    if (e.pc) {
+                                        const d = e.item || {};
+                                        const pr = [];
+                                        if (d.total) pr.push(["Size", app.fmtSize(d.total)]);
+                                        if (d.free !== undefined && d.free !== null && d.total) pr.push(["Free", app.fmtSize(d.free)]);
+                                        if (d.fs) pr.push(["File system", d.fs]);
+                                        if (e.pc !== "folder" && d.letter) pr.push(["Letter", d.letter + ":" + (d.letter === "C" ? " (always Hearth)" : "")]);
+                                        if (d.sub && e.pc !== "folder") pr.push(["Kind", d.sub]);
+                                        if (e.path.indexOf("/") === 0) pr.push(["On Linux", e.path]);
+                                        return pr;
+                                    }
+                                    if (e.app) {
+                                        const a = e.app;
+                                        const ar = [["Kind", app.appKindName(a.kind)]];
+                                        if (a.part) ar.push(["Part of", "Hearth OS"]);
+                                        else if (a.publisher) ar.push(["Publisher", a.publisher]);
+                                        if (a.version) ar.push(["Version", a.version]);
+                                        if (a.size) ar.push(["Size", app.fmtSize(a.size)]);
+                                        if (a.date) ar.push(["Installed", app.fmtDate(a.date)]);
+                                        if (a.drive && a.drive !== "/") ar.push(["Drive", app.driveLabelFor(a.drive)]);
+                                        return ar;
+                                    }
                                     const rows = [];
                                     if (!e.dir) rows.push(["Size", app.fmtSize(e.size)]);
                                     if (e.mtime) rows.push(["Modified", app.fmtDate(e.mtime)]);
                                     if (e.opened) rows.push(["Opened", app.fmtDate(Date.parse(e.opened) / 1000)]);
-                                    rows.push(["Location", app.parentOf(e.path)]);
+                                    // Where it is in drive letters (This PC › Games (D:) › …), and the Linux path for when you need it.
+                                    const loc = e.path.indexOf("/") === 0 ? app.letterLocation(app.parentOf(e.path)) : "";
+                                    rows.push(["Location", loc || app.parentOf(e.path)]);
+                                    if (loc) rows.push(["On Linux", e.path]);
                                     if (e.isLink) rows.push(["Link", "Points somewhere else"]);
-                                    return rows;
+                                    return rows.concat(briefcase.detailRows(e));
                                 }
                                 delegate: RowLayout {
                                     required property var modelData
@@ -3860,12 +4488,49 @@ Scope {
                     onClicked: app.closeOverlay()
                 }
 
+                // The Briefcase's dialogs (Update All, passwords, Customize, choosing a Briefcase, progress).
+                BriefcaseDialog { id: bcDialog; bc: briefcase }
+
+                // Actions menu in another look (Settings › Personalization › Bar and dock › Right-click menu,
+                // Theme.menuStyle): MenuStyles.qml, shared with the desktop's menus (PopMenu.qml), loaded by file name;
+                // if it can't load, the menu below (today's) shows.
+                Loader {
+                    id: styledMenu
+                    readonly property bool styled: Theme.menuStyle !== "today" && status === Loader.Ready && item !== null
+                    active: Theme.menuStyle !== "today"
+                    source: "MenuStyles.qml"
+                    visible: styled && app.overlay === "menu"
+                    width: item ? item.implicitWidth : 0
+                    height: item ? item.implicitHeight : 0
+                    x: app.menuX < 0 ? (parent.width - width) / 2 : Math.max(8, Math.min(parent.width - width - 8, app.menuX))
+                    y: app.menuY < 0 ? (parent.height - height) / 2 : Math.max(8, Math.min(parent.height - height - 8, app.menuY))
+                    function reopen() { if (styled && app.overlay === "menu") item.open(app.menuTitle, app.menuItems); }
+                    onLoaded: reopen()
+                    onStatusChanged: if (status === Loader.Error) console.warn("Files: the right-click menu's look (MenuStyles.qml) couldn't load; using today's menu")
+                    Connections {
+                        target: app
+                        function onMenuItemsChanged() { styledMenu.reopen(); }
+                        function onOverlayChanged() { if (app.overlay === "menu") styledMenu.reopen(); }
+                    }
+                    Connections {
+                        target: styledMenu.item
+                        function onChosen(it) { app.runMenu(it.id); }
+                        function onClosed() { app.closeOverlay(); }
+                    }
+                }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "look"; value: Theme.menuStyle }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "padHint"; value: app.viaPad }   // opened with the controller (X) or the Menu key
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "spaceRight"; value: styledMenu.parent.width - styledMenu.x - styledMenu.width - 8 }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "maxHeight"; value: styledMenu.parent.height - 16 }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "maxBottom"; value: styledMenu.parent.height - 8 - styledMenu.y }
+                Binding { target: styledMenu.item; when: styledMenu.item !== null; property: "minTop"; value: 8 - styledMenu.y }
+
                 // Actions menu.
                 Rectangle {
                     id: menuCard
-                    visible: app.overlay === "menu"
+                    visible: app.overlay === "menu" && !styledMenu.styled
                     width: 320
-                    height: Math.min(parent.height - 16, menuHead.height + menuList.contentHeight + 20)
+                    height: Math.min(parent.height - 16, menuHead.height + menuList.contentHeight + 20 + (menuPadHint.visible ? menuPadHint.height : 0))
                     x: app.menuX < 0 ? (parent.width - width) / 2 : Math.max(8, Math.min(parent.width - width - 8, app.menuX))
                     y: app.menuY < 0 ? (parent.height - height) / 2 : Math.max(8, Math.min(parent.height - height - 8, app.menuY))
                     radius: Theme.radius
@@ -3883,7 +4548,7 @@ Scope {
                     }
                     ListView {
                         id: menuList
-                        anchors { left: parent.left; right: parent.right; top: menuHead.bottom; bottom: parent.bottom; margins: 8; topMargin: 0 }
+                        anchors { left: parent.left; right: parent.right; top: menuHead.bottom; bottom: menuPadHint.visible ? menuPadHint.top : parent.bottom; margins: 8; topMargin: 0 }
                         model: app.overlay === "menu" ? app.menuItems : []
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
@@ -3932,12 +4597,25 @@ Scope {
                             }
                         }
                     }
+                    // Opened with the controller: what A and B do.
+                    Item {
+                        id: menuPadHint
+                        visible: app.viaPad
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: 34
+                        Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 10 } height: 1; color: Theme.line }
+                        MenuHints {
+                            anchors.centerIn: parent
+                            k: 0.72
+                            model: [{ b: "A", t: "Choose" }, { b: "B", t: "Back" }]
+                        }
+                    }
                 }
 
                 // Dialogs: text box, confirm, open with, name clash, preview.
                 Rectangle {
                     id: card
-                    visible: app.overlay !== "" && app.overlay !== "menu"
+                    visible: app.overlay !== "" && app.overlay !== "menu" && app.overlay !== "briefcase"
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 48, app.overlay === "preview" ? 760 : 560)
                     height: Math.min(parent.height - 48, cardCol.implicitHeight + 44)
@@ -4330,20 +5008,40 @@ Scope {
         property string label: ""
         property bool link: false
         property real size: 64
+        property var bc: null                   // a Briefcase folder: {icon, color, badge, locked} (hearth-files list)
+        property var badge: null                // an item in a Briefcase: its status {color, glyph}
+        property color bcColor: Theme.accent
+        readonly property bool isBc: !!bc
         readonly property color band: ({ image: "#5fb98f", video: "#b36ad9", audio: "#4f9dde", archive: "#b98a5a", disc: "#8c7ae6",
             app: Theme.ember, doc: "#e06666", text: "#a69484", file: "#7d6a5c" })[kind] || "#7d6a5c"
         width: size
         height: size
+        // A Briefcase: its icon style in its colour, its badge, a padlock when locked.
+        Icon { anchors.fill: parent; visible: g.isBc; name: "bc-" + (g.bc && g.bc.icon ? g.bc.icon : "briefcase"); size: g.size; color: g.bcColor }
+        Text {
+            visible: g.isBc && !!g.bc.badge && g.size >= 24
+            anchors { right: parent.right; top: parent.top }
+            text: g.bc ? g.bc.badge || "" : ""
+            color: Theme.text; font.family: Theme.font; font.pixelSize: Math.max(9, g.size * 0.24); font.weight: Font.Bold
+        }
+        Rectangle {
+            visible: g.isBc && !!g.bc.locked
+            anchors { right: parent.right; bottom: parent.bottom }
+            width: g.size * 0.38; height: width; radius: width / 2
+            color: Theme.panel
+            border.color: Theme.line
+            Icon { anchors.centerIn: parent; name: "lock"; size: parent.width * 0.66; color: Theme.text }
+        }
         // Folder: a tab behind, the body in front.
         Rectangle {
-            visible: g.kind === "folder"
+            visible: g.kind === "folder" && !g.isBc
             x: g.size * 0.06; y: g.size * 0.14
             width: g.size * 0.42; height: g.size * 0.2
             radius: g.size * 0.06
             color: Qt.darker(Theme.accent, 1.35)
         }
         Rectangle {
-            visible: g.kind === "folder"
+            visible: g.kind === "folder" && !g.isBc
             x: g.size * 0.06; y: g.size * 0.24
             width: g.size * 0.88; height: g.size * 0.62
             radius: g.size * 0.08
@@ -4386,6 +5084,16 @@ Scope {
                 }
             }
         }
+        // Status in a Briefcase (Up-to-date, newer, changed in both…).
+        Rectangle {
+            visible: !!g.badge && g.size >= 20
+            anchors { right: parent.right; top: parent.top }
+            width: Math.max(12, g.size * 0.3); height: width; radius: width / 2
+            color: g.badge ? g.badge.color : "transparent"
+            border.color: Theme.bg
+            border.width: 1
+            Text { anchors.centerIn: parent; text: g.badge ? g.badge.glyph : ""; color: "#ffffff"; font.pixelSize: parent.width * 0.62; font.weight: Font.Bold }
+        }
         // Shortcut (symlink) badge.
         Rectangle {
             visible: g.link
@@ -4403,15 +5111,58 @@ Scope {
         property string kind
         property color tint: Theme.text
         property real size: 20
-        readonly property string hearthIcon: ({ start: "home", home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad", device: "desktops", network: "server", howto: "help" })[kind] || ""
-        readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸" })[kind] || ""
+        readonly property string hearthIcon: kind.startsWith("bc:") ? "bc-" + kind.slice(3)
+            : ({ start: "home", home: "user", games: "pad", device: "desktops", network: "server", netroot: "server", howto: "help", apps: "grid" })[kind] || ""
+        readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸", pictures: "▲", music: "♪", desktop: "▭" })[kind] || ""
+        // Windows 11-style: your folders in yellow, drives as drive glyphs (WinGlyph.qml draws the big ones).
+        readonly property bool yellow: ["documents", "downloads", "videos", "pictures", "music", "desktop", "folder"].indexOf(kind) >= 0
+        readonly property bool driveGlyph: ["usb", "sd", "drive", "system", "thispc"].indexOf(kind) >= 0
         implicitWidth: size
         implicitHeight: size
         Icon { anchors.fill: parent; visible: pi.hearthIcon !== ""; name: pi.hearthIcon; size: pi.size; color: pi.tint }
-        // Folder outline.
+        // Yellow folder.
         Item {
             anchors.fill: parent
-            visible: pi.hearthIcon === "" && (pi.kind === "documents" || pi.kind === "downloads" || pi.kind === "videos" || pi.kind === "folder")
+            visible: pi.yellow
+            Rectangle { x: pi.size * 0.06; y: pi.size * 0.16; width: pi.size * 0.4; height: pi.size * 0.2; radius: Math.max(1, pi.size * 0.06); color: "#e8b23a" }
+            Rectangle {
+                x: pi.size * 0.06; y: pi.size * 0.26
+                width: pi.size * 0.88; height: pi.size * 0.62
+                radius: Math.max(1.5, pi.size * 0.1)
+                gradient: Gradient {
+                    GradientStop { position: 0; color: "#ffd76a" }
+                    GradientStop { position: 1; color: "#e8b23a" }
+                }
+                Text { anchors.centerIn: parent; visible: pi.size >= 22; text: pi.mark; color: Qt.rgba(0.45, 0.28, 0.02, 0.75); font.pixelSize: pi.size * 0.42; font.weight: Font.Bold }
+            }
+        }
+        // Drive glyph (This PC: a drive with the accent light; Hearth (C:) with Hearth's orange square).
+        Rectangle {
+            visible: pi.driveGlyph
+            anchors.centerIn: parent
+            width: pi.size * 0.92; height: pi.size * 0.66
+            radius: Math.max(1.5, pi.size * 0.1)
+            gradient: Gradient {
+                GradientStop { position: 0; color: pi.kind === "usb" || pi.kind === "sd" ? "#cfcfcf" : "#d9d9d9" }
+                GradientStop { position: 1; color: pi.kind === "usb" || pi.kind === "sd" ? "#7a7a7a" : "#9a9a9a" }
+            }
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: parent.width * 0.2; rightMargin: parent.width * 0.2; bottomMargin: parent.height * 0.18 }
+                height: Math.max(1.5, pi.size * 0.08)
+                radius: height / 2
+                color: Theme.accent
+            }
+            Rectangle {
+                visible: pi.kind === "system"
+                anchors { right: parent.right; top: parent.top; rightMargin: parent.width * 0.12; topMargin: parent.height * 0.14 }
+                width: parent.width * 0.3; height: width; radius: Math.max(1, width * 0.2)
+                color: "#e05a2b"
+            }
+        }
+        // Folder outline (other kinds that had one).
+        Item {
+            anchors.fill: parent
+            visible: false
             Rectangle { x: pi.size * 0.08; y: pi.size * 0.14; width: pi.size * 0.36; height: pi.size * 0.2; radius: 2; color: pi.tint }
             Rectangle {
                 x: pi.size * 0.08; y: pi.size * 0.26
@@ -4423,9 +5174,9 @@ Scope {
                 Text { anchors.centerIn: parent; text: pi.mark; color: pi.tint; font.pixelSize: pi.size * 0.5; font.weight: Font.Bold }
             }
         }
-        // Drive / SD card.
+        // Drive / SD card (outline; kept for anything that asks for it without the glyph).
         Rectangle {
-            visible: pi.kind === "usb" || pi.kind === "sd" || pi.kind === "drive"
+            visible: false
             anchors.centerIn: parent
             width: pi.kind === "sd" ? pi.size * 0.64 : pi.size * 0.9
             height: pi.kind === "sd" ? pi.size * 0.84 : pi.size * 0.56

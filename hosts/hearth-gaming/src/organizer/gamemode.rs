@@ -17,9 +17,13 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 /// The game's organizer instance, if it has one.
+/// A Wabbajack list's own library entry ("modlist:<job>") is its instance's game too (its instance has no library game
+/// of its own), so Game Mode's Mods screens show the list's mods instead of an empty list.
 pub fn for_game(ctx: &Ctx, game_id: &str) -> Option<Instance> {
     if game_id.is_empty() { return None; }
-    let r = ctx.recs().into_iter().find(|r| r.library_id == game_id)?;
+    let recs = ctx.recs();
+    let job = game_id.strip_prefix("modlist:").filter(|j| !j.is_empty());
+    let r = recs.iter().find(|r| r.library_id == game_id).or_else(|| job.and_then(|j| recs.iter().find(|r| r.wabbajack == j)))?.clone();
     Instance::load(r).ok()
 }
 
@@ -27,7 +31,7 @@ fn s(a: &Value, k: &str) -> String { a[k].as_str().unwrap_or("").to_string() }
 
 /// The instance's mods in Hearth Mods' summary shape (GameMods::summary), for the Installed tab.
 pub fn simple_summary(inst: &Instance, game_id: &str) -> Value {
-    let sum = inst.summary();
+    let sum = inst.summary_cached();
     let mods: Vec<Value> = sum["mods"].as_array().cloned().unwrap_or_default().into_iter().filter(|m| m["kind"] == "mod").enumerate().map(|(i, m)| {
         let c = &m["conflicts"];
         json!({"id": m["id"], "name": m["name"], "enabled": m["enabled"], "order": i, "target": "game", "sub": inst.kind.data, "root": inst.data_target(),
@@ -110,7 +114,7 @@ pub fn call(ctx: &Ctx, name: &str, a: &Value) -> Result<Value, String> {
     match name {
         "organizer_game" => {
             let Some(inst) = for_game(ctx, &s(a, "id")) else { return Ok(Value::Null) };
-            let sum = inst.summary();
+            let sum = inst.summary_cached();
             let plugins = if inst.kind.has_plugins() {
                 json!(sum["plugins"].as_array().cloned().unwrap_or_default().iter().map(|p| json!({"name": p["name"], "enabled": p["active"], "master": p["master"], "light": p["light"], "implicit": p["implicit"],
                     "mod": p["mod"], "loadIndex": p["loadIndex"], "missing": p["missing"]})).collect::<Vec<_>>())
@@ -190,5 +194,30 @@ mod tests {
         let r = call(&ctx, "organizer_fomod_finish", &json!({"token": f["token"], "choices": [[[1], []], [[0]]]})).unwrap();
         assert!(r["summary"]["mods"].as_array().unwrap().iter().any(|m| m["name"] == "Test Weathers"));
         assert_eq!(std::fs::read_to_string(ctx.base().join("skyrimse/mods/Test Weathers/TestWeathers.esp")).unwrap(), "dark");
+        // Game Mode's answers come from the cache until something they depend on changes.
+        let inst = for_game(&ctx, "steam:489830").unwrap();
+        let k1 = inst.summary_key();
+        assert_eq!(inst.summary_cached()["mods"], inst.summary()["mods"]);
+        assert!(inst.hearth_dir().join("summary-cache.json").is_file());
+        simple_call(&ctx, "toggle", &json!({"id": "steam:489830", "m": "Mod A", "on": true})).unwrap().unwrap();
+        let inst = for_game(&ctx, "steam:489830").unwrap();
+        assert_ne!(inst.summary_key(), k1, "a change makes a new key");
+        assert_eq!(inst.summary_cached()["mods"].as_array().unwrap().iter().find(|m| m["name"] == "Mod A").unwrap()["enabled"], true);
+    }
+
+    /// A Wabbajack list's library entry ("modlist:<job>") finds its instance, which has no library game of its own.
+    #[test]
+    fn a_wabbajack_lists_entry_finds_its_instance() {
+        let t = tempfile::tempdir().unwrap();
+        let game = t.path().join("List/Game Root");
+        std::fs::create_dir_all(game.join("Data")).unwrap();
+        let list = t.path().join("List");
+        std::fs::write(list.join("ModOrganizer.ini"), format!("[General]\r\ngameName=Skyrim Special Edition\r\ngamePath={}\r\n", super::super::mo2::qt_bytearray(&super::super::mo2::linux_to_win(&game)))).unwrap();
+        let ctx = Ctx { data: t.path().join("data"), games: vec![], exe: PathBuf::from("hearth-mods") };
+        super::super::import(&ctx, &list, Some("Tux"), "w9", None).unwrap();
+        assert_eq!(for_game(&ctx, "modlist:w9").map(|i| i.rec.title), Some("Tux".to_string()));
+        assert!(for_game(&ctx, "modlist:").is_none());
+        assert!(for_game(&ctx, "modlist:w8").is_none());
+        assert_eq!(simple_call(&ctx, "mods_of", &json!({"id": "modlist:w9"})).unwrap().unwrap()["deploy"], "organizer");
     }
 }

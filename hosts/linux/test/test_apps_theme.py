@@ -111,6 +111,25 @@ class AppsTheme(unittest.TestCase):
                        'window.__hearthTheme', ':root:root'):
             self.assertIn(needle, s)
 
+    def test_desktop_windows_get_the_bars_text_size(self):
+        """In a desktop window the apps' text is the bar's size (desktop.css), not sized by the window's width as
+        for Game Mode and TVs; Game Mode (gamescope, --fullscreen) never gets it. desktop-test.yml measures it."""
+        s = APPTHEME.read_text()
+        css = (HOSTS / 'hearth-apptheme' / 'desktop.css').read_text()
+        self.assertIn('include_str!("desktop.css")', s)
+        # Every place the look goes into a page carries the size too (the start, a page opened later, a new look).
+        self.assertNotRegex(s, r'(js_init_script\(script|apply_js)\(&css\(\)\)')
+        self.assertEqual(s.count('&page_css()'), 3)
+        for needle in ('"--fullscreen"', 'GAMESCOPE_WAYLAND_DISPLAY', 'LABWC_PID', 'HEARTH_APP_SIZE'):
+            self.assertIn(needle, s)
+        bar = (HOSTS / 'linux' / 'desktop' / 'shell' / 'Bar.qml').read_text()
+        bar_px = int(re.search(r'font\.pixelSize: bar\.portrait \? \d+ : (\d+)', bar).group(1))
+        m = re.search(r':root:root body\{font-size:(\d+)px\}', css)
+        self.assertTrue(m, 'desktop.css sets the text size on body, above the apps\' own body rules')
+        self.assertEqual(int(m.group(1)), bar_px)
+        rules = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+        self.assertNotRegex(rules, r'vw|vh|zoom|!important')
+
     def test_apps_use_the_tokens_not_the_old_palette(self):
         for app in APPS:
             files = list(ui_files(app))

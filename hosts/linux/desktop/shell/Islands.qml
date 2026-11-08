@@ -114,10 +114,11 @@ PanelWindow {
     function menuPoint(item) {
         const sw = screen ? screen.width : 1920, sh = screen ? screen.height : 1080;
         const p = item.mapToItem(null, item.width / 2, item.height / 2);
-        if (edge === "bottom") return Qt.point(Math.max(8, Math.min(sw - 300, p.x - 134)), sh - isl.band - 2);
+        const half = menu ? menu.cardWidth / 2 : 134;   // the right-click menu's look sets its width (Theme.menuStyle)
+        if (edge === "bottom") return Qt.point(Math.max(8, Math.min(sw - 300, p.x - half)), sh - isl.band - 2);
         if (edge === "left") return Qt.point(isl.band + 2, Math.max(8, p.y - 20));
         if (edge === "right") return Qt.point(sw - isl.band - 290, Math.max(8, p.y - 20));
-        return Qt.point(Math.max(8, Math.min(sw - 300, p.x - 134)), isl.band + 2);
+        return Qt.point(Math.max(8, Math.min(sw - 300, p.x - half)), isl.band + 2);
     }
     function statusMenu(btn, title, list) {
         if (!menu) return;

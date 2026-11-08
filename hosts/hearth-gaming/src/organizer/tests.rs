@@ -310,6 +310,15 @@ fn an_mo2_instance_is_imported_and_its_launcher_chosen() {
     let v = cmd(ctx, &["import", other.to_str().unwrap()]);
     assert!(command(ctx, &[v["imported"].as_str().unwrap().into(), "launcher".into(), "mo2".into()]).is_err());
     assert!(other.join("profiles/Default/modlist.txt").is_file(), "an instance without profiles gets Default");
+    // Taking the list out of Hearth (wabbajack.rs forget) takes its instance out too; the plain instance stays.
+    assert!(ml.join("w1-hearth.desktop").is_file());
+    forget_wabbajack(ctx, "w1").unwrap();
+    assert!(ctx.find("my-list").is_err(), "no instance left pointing at a list that's gone");
+    assert!(!ml.join("w1-hearth.desktop").exists());
+    assert_eq!(cmd(ctx, &["instances"])["instances"].as_array().unwrap().len(), 1);
+    forget_wabbajack(ctx, "w1").unwrap();
+    forget_wabbajack(ctx, "").unwrap();
+    assert_eq!(cmd(ctx, &["instances"])["instances"].as_array().unwrap().len(), 1, "an empty id never matches the plain instance");
 }
 
 /// A game Hearth doesn't know: mods go into its folder; a mod's folders join the game's own whatever their case.
@@ -357,6 +366,9 @@ fn overlay_end_to_end() {
     let v = cmd(ctx, &["skyrimse", "deploy"]);
     assert_eq!(v["deployed"]["mode"], "overlay", "the overlay didn't mount: {v}");
     assert_eq!(v["deployed"]["mounted"], true);
+    // The overlay's own fuse-overlayfs names the Data folder on its command line: it isn't the game, so Play's wait
+    // for the game ends (1.3-1.7 waited for it forever and the mods stayed on).
+    assert!(crate::launch::processes_in(&fx.game).is_empty(), "only fuse-overlayfs works in the game folder, and it isn't the game: {:?}", crate::launch::processes_in(&fx.game));
     let data = fx.game.join("Data");
     assert_eq!(read(&data.join("Textures/sky.dds")), "mod sky");
     assert_eq!(read(&data.join("meshes/new.nif")), "nif");

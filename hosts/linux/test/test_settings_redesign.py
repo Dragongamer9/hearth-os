@@ -76,7 +76,7 @@ class Registry(unittest.TestCase):
         # Every Set*.qml page file is in the registry (nothing gets lost), except the parts other pages use.
         parts = {'SetBase.qml', 'SetRow.qml', 'SetSwitch.qml', 'SetChoice.qml', 'SetSlider.qml', 'SetField.qml', 'SetHeader.qml',
                  'SetPage.qml', 'SetJob.qml', 'SetBootCard.qml', 'SetBootFrames.qml', 'SetBootPreview.qml', 'SetBootVideo.qml',
-                 'SetCard.qml', 'SetCardGroup.qml', 'SetExpander.qml', 'SetChip.qml', 'SetBanner.qml', 'SetLinkCard.qml', 'SetButton.qml',
+                 'SetCard.qml', 'SetCardGroup.qml', 'SetExpander.qml', 'SetChip.qml', 'SetBanner.qml', 'SetLinkCard.qml', 'SetButton.qml', 'SetPinPad.qml',
                  'SetStyle.qml'}
         files = {p['file'] for p in ps.values()}
         for f in SHELL.glob('Set*.qml'):

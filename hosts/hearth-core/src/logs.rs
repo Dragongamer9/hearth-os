@@ -277,6 +277,18 @@ pub fn decky_plugin_updates() -> String {
 
 /// The report: about the device, Hearth's logs, and what the system says about the parts that usually go wrong
 /// (controller service, power, gamescope, memory).
+/// The deployments, without root and without asking for a password (logs.rs "System version").
+pub const SYSTEM_VERSION_SH: &str = "if [ \"$(id -u)\" = 0 ] && command -v bootc >/dev/null 2>&1; then bootc status --format humanreadable 2>&1 || bootc status 2>&1; \
+elif command -v rpm-ostree >/dev/null 2>&1; then rpm-ostree status 2>&1; \
+elif command -v ostree >/dev/null 2>&1; then ostree admin status 2>&1; \
+else echo 'no bootc, rpm-ostree or ostree here'; fi; ls /ostree/deploy/*/deploy 2>&1 | head -8";
+
+/// The automatic fallback's state (logs.rs "Updates and the automatic fallback"): all readable without root.
+pub const BOOT_FALLBACK_SH: &str = "grep -aE '^hearth_(tries|fellback)=' /boot/grub2/grubenv 2>&1; \
+for f in /var/lib/hearth/boot-fallback.json /var/lib/hearth/boot-good.json; do echo \"$f: $(cat \"$f\" 2>&1)\"; done; \
+ls /etc/hearth/no-boot-guard /etc/hearth/no-auto-update /run/ostree/staged-deployment 2>/dev/null; \
+for b in -1 0; do echo \"--- start $b\"; journalctl -b \"$b\" --no-pager -o short-iso -n 60 -u hearth-boot-guard -u hearth-boot-good -u ostree-finalize-staged -u hearth-bls-grub -u bootc-fetch-apply-updates -t hearth-boot-guard 2>&1 | tail -60; done";
+
 pub fn report(version: &str) -> String {
     let data = crate::paths::data_dir();
     let run = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
@@ -291,7 +303,14 @@ pub fn report(version: &str) -> String {
     // Decky plugin updates (hearth-decky plugins-*, docs/PLUGIN-UPDATES.md): installed versions, built-in or downloaded,
     // the last check, the last error and any plugin that was put back because it didn't load.
     section("Decky plugin updates", decky_plugin_updates());
-    section("System version (bootc)", sh("{ bootc status --format humanreadable || bootc status || rpm-ostree status; } 2>&1; ls /ostree/deploy/*/deploy 2>&1 | head -8"));
+    // bootc status needs root ("This command must be executed as the root user" in every report) and Hearth OS on
+    // Debian has no rpm-ostree ("rpm-ostree: not found"): as you, ostree's own status (read-only, no root needed);
+    // bootc only when the report runs as root, rpm-ostree only where it's installed.
+    section("System version (bootc)", sh(SYSTEM_VERSION_SH));
+    // Why an update didn't start (bug hunt: "downloads updates but doesn't boot into them"): the automatic fallback's
+    // count and whether it went back (hearth-boot-guard), and what the fallback, ostree's finalizing of a staged
+    // update and the boot menu said this start and the one before.
+    section("Updates and the automatic fallback", sh(BOOT_FALLBACK_SH));
     // Hearth's log: the controller input lines first (the jumping-selection reports), then the newest lines.
     // Thousands of identical "library.downloads ok" lines from the old Electron app are left out.
     if let Ok(t) = std::fs::read_to_string(data.join("bridge.log")) {
@@ -304,6 +323,7 @@ pub fn report(version: &str) -> String {
     }
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
+                      (data.join("briefcase.log"), "Hearth Files: Briefcase auto-sync"),
                       (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
                        "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
@@ -341,6 +361,8 @@ pub fn report(version: &str) -> String {
     {
         let log = std::fs::read_to_string(data.join("input.log")).map(|t| tail(&t, 300)).unwrap_or_else(|_| "(no input.log: Hearth Input hasn't run in Game Mode)".into());
         let status = sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-input").display()));
+        // Not running is normal outside Game Mode: said plainly, not as an error (it was listed under "Problems found").
+        let status = if status.contains("isn't running") { "not running right now (it runs in Game Mode)".to_string() } else { status };
         let layouts = std::fs::read_dir(crate::input_map::dir()).map(|d| d.filter_map(Result::ok).filter_map(|e| {
             let v: Value = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice(&b).ok())?;
             Some(format!("{}: {}", e.file_name().to_string_lossy().trim_end_matches(".json"), v["layout"].as_str().unwrap_or("?")))
@@ -435,6 +457,17 @@ pub fn report(version: &str) -> String {
         }
         if !body.is_empty() { section("Game starts (Proton's output, newest first)", body); }
     }
+    // Windows apps (docs/WINDOWS-APPS.md, hearth-winapps report): each app (installed or not, its Proton, program, last
+    // start and the end of its last log), the Protons on the device, the built-in GE-Proton and Vulkan for DXVK.
+    // A Windows app that "isn't working" left nothing here before (Unigine Heaven on a laptop, Hearth 1.7.0).
+    {
+        let helper = crate::paths::desktop_dir().join("shell/hearth-winapps");
+        if helper.is_file() {
+            let h = helper.display().to_string();
+            section("Windows apps", crate::system::run_timeout("python3", &[h.as_str(), "report"], Duration::from_secs(25))
+                .unwrap_or_else(|e| format!("({e})")));
+        }
+    }
     section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.steam/debian-installation/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
         for f in console_log.txt console-linux.txt compat_log.txt; do [ -s \"$d/$f\" ] || continue; echo \"--- $d/$f\" | sed \"s|$HOME|~|\"; \
         grep -aiE 'gameaction|launch|appid|compat|pressure|xwayland|display|exited|error|fail|proton|reaper' \"$d/$f\" | grep -aivE 'account|login|password|token|steamid|persona' | tail -120; done; done"));
@@ -466,7 +499,7 @@ pub fn report(version: &str) -> String {
             systemctl is-enabled nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>&1 | paste -sd' '; \
             journalctl -b -1 --no-pager -n 30 -u systemd-hibernate.service -u nvidia-hibernate.service 2>/dev/null | tail -30; \
             journalctl -b --no-pager -n 40 -u systemd-hibernate.service -u nvidia-hibernate.service -u nvidia-resume.service -u systemd-hibernate-resume.service 2>/dev/null | tail -40")));
-    section("Controllers (InputPlumber)", sh("busctl --system --list tree org.shadowblip.InputPlumber | head -40; for d in $(busctl --system --list tree org.shadowblip.InputPlumber | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do echo \"$d\"; busctl --system get-property org.shadowblip.InputPlumber $d org.shadowblip.Input.CompositeDevice Name InterceptMode ProfileName 2>&1 | sed 's/^/  /'; done"));
+    section("Controllers (InputPlumber)", sh("busctl --system list --no-legend 2>/dev/null | grep -q '^org.shadowblip.InputPlumber ' || { echo 'InputPlumber isn'\\''t running on this device'; exit 0; }; busctl --system --list tree org.shadowblip.InputPlumber | head -40; for d in $(busctl --system --list tree org.shadowblip.InputPlumber | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do echo \"$d\"; busctl --system get-property org.shadowblip.InputPlumber $d org.shadowblip.Input.CompositeDevice Name InterceptMode ProfileName 2>&1 | sed 's/^/  /'; done"));
     section("Controllers and power (Handheld Daemon)", crate::hhd::report());
     // Quick Access over games (Handheld Daemon's overlay app, hearth-overlay): its own log (the fonts it was given,
     // which page it loaded and whether that page's text shows), and fontconfig as the system sees it. Quick Access

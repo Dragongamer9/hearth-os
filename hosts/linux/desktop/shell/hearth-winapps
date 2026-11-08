@@ -16,18 +16,26 @@ Wine prefix, with a menu entry and the icon from the program.
   hearth-winapps steam ID on|off   add to Steam (through Hearth Sync, at its next sync) or take it out
   hearth-winapps remove ID         delete the app: its prefix (everything installed in it), menu entry and icon
   hearth-winapps fetch NAME        download an older GE-Proton from Hearth's table (progress lines)
+  hearth-winapps detailed ID on|off
+                                   a detailed Proton log (PROTON_LOG=1) for the app's next start only
+  hearth-winapps log ID            the app's last log: its path and its newest lines
+  hearth-winapps report            the "Windows apps" section of Send logs (plain text)
 
 Each app: ~/Games/Windows apps/<name>/ with prefix/ (the Wine prefix), hearth-app.json (its settings: written the safe
-way, hearth_settings_io) and state.json (the last start). Menu entries: ~/.local/share/applications/
-hearth-winapp-<id>.desktop. Prints one JSON line, "progress: N what" lines, or "error: ..." (exit 1).
+way, hearth_settings_io), state.json (the last start) and logs/ (last.log: the last start's command, Proton, exit code,
+time and everything Proton and the program printed; last.1.log … the starts before). Menu entries:
+~/.local/share/applications/hearth-winapp-<id>.desktop. Each start also leaves one line in Hearth's log
+(~/.local/share/nimbus/bridge.log). Prints one JSON line, "progress: N what" lines, or "error: ..." (exit 1).
 """
 import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -42,8 +50,21 @@ WINVERS = ('', 'win11', 'win10', 'win81', 'win7', 'winxp')
 INSTALLER_RE = re.compile(r'(setup|install|installer|_inst\b|^inst)', re.I)
 NOT_MAIN_RE = re.compile(r'(unins|uninstall|crash|report|update|updater|helper|redist|vcredist|dxsetup|dotnet|setup|'
                          r'install|launcherpatcher|cefsharp|webhelper|7z|notification)', re.I)
-DEFAULTS = {'name': '', 'id': '', 'exe': '', 'args': [], 'proton': '', 'dxvk': True, 'vkd3d': True, 'winver': '',
-            'steam': False, 'source': '', 'installer': False}
+# What installer makers leave inside their .exe files: an installer is recognised by what it is, not only by its name
+# (Unigine_Heaven-4.0.exe is an Inno Setup installer; it was taken for the program itself and every start of the
+# app ran the installer again).
+INSTALLER_MARKS = (b'Inno Setup Setup Data', b'InnoSetupLdrWindow', b'Nullsoft Install System', b'NullsoftInst',
+                   b'Nullsoft.NSIS.exehead', b'InstallShield', b'.wixburn', b'WixBundleOriginalSource',
+                   b'Setup Factory', b'InstallAware', b'Smart Install Maker', b'Clickteam Install Creator')
+# Start menu and desktop shortcuts that aren't the program: uninstallers, read-me files, web pages, help.
+NOT_MAIN_LINK_RE = re.compile(r'(unins|uninstall|remove|readme|read me|manual|help|documentation|license|licence|'
+                              r'website|web site|homepage|home page|support|changelog|release notes|faq|register|'
+                              r'update|repair|configure)', re.I)
+PROGRAM_EXTS = ('.exe', '.bat', '.cmd')
+LOG_KEEP = 5                 # last.log and the 4 starts before it
+LOG_MAX = 8 * 1024 * 1024    # per start: more than this of the program's output is counted, not kept
+DEFAULTS = {'name': '', 'id': '', 'exe': '', 'args': [], 'cwd': '', 'icon_from': '', 'proton': '', 'dxvk': True,
+            'vkd3d': True, 'winver': '', 'steam': False, 'source': '', 'installer': False}
 
 
 def home():
@@ -96,13 +117,32 @@ def valid_id(i):
     return isinstance(i, str) and re.fullmatch(r'[a-z0-9][a-z0-9-]{0,59}', i) is not None
 
 
+def installer_kind(path):
+    """The installer maker a .exe was made with ("Inno Setup", "NSIS", …) from what it carries inside, or ''."""
+    if not path.lower().endswith('.exe'):
+        return ''
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(4 * 1024 * 1024)
+    except OSError:
+        return ''
+    if not head.startswith(b'MZ'):
+        return ''
+    for mark, kind in ((b'Inno Setup', 'Inno Setup'), (b'Nullsoft', 'NSIS'), (b'InstallShield', 'InstallShield'),
+                       (b'.wixburn', 'WiX'), (b'WixBundle', 'WiX')):
+        if mark in head and any(m in head for m in INSTALLER_MARKS):
+            return kind
+    return 'installer' if any(m in head for m in INSTALLER_MARKS) else ''
+
+
 def is_installer(path):
     base = os.path.basename(path)
-    return base.lower().endswith('.msi') or bool(INSTALLER_RE.search(os.path.splitext(base)[0]))
+    return (base.lower().endswith('.msi') or bool(INSTALLER_RE.search(os.path.splitext(base)[0]))
+            or bool(installer_kind(path)))
 
 
 def is_windows_program(path):
-    return os.path.splitext(path)[1].lower() in ('.exe', '.msi', '.bat')
+    return os.path.splitext(path)[1].lower() in ('.exe', '.msi', '.bat', '.cmd')
 
 
 # ---- apps on disk
@@ -201,16 +241,34 @@ def ensure_prefix(prefix):
     pfx = os.path.join(prefix, 'pfx')
     if not os.path.lexists(pfx):
         os.symlink('.', pfx)
+    # The same drive letters as Hearth Files' This PC (D:, E: …) and your own Documents, Desktop… in the prefix
+    # (hearth_drive_letters.map_prefix: only Hearth's own links and empty folders change). Never stops an app starting.
+    try:
+        import hearth_drive_letters as hdl
+        hdl.map_prefix(prefix)
+    except Exception as e:  # noqa: BLE001
+        print('hearth-winapps: drive letters not set up: %s' % e, file=sys.stderr)
 
 
-def proton_env(a):
+def proton_env(a, target=''):
+    """Proton's environment for a Windows app, the way umu-launcher starts Proton outside Steam: UMU_ID makes
+    GE-Proton start the program itself (through its umu.exe) instead of through its steam.exe, which wants the Steam
+    client (lsteamclient) and is for Steam games. No Steam folder is used or needed, so it's the same on a device
+    without Steam (Lenovo laptop, Hearth 1.7.0: "no Steam folder") and works offline."""
     env = dict(os.environ)
-    roots = hp.steam_roots()
     env.update({'STEAM_COMPAT_DATA_PATH': a['prefix'], 'WINEPREFIX': a['prefix'],
-                'STEAM_COMPAT_CLIENT_INSTALL_PATH': roots[0] if roots else a['dir'],
+                'STEAM_COMPAT_CLIENT_INSTALL_PATH': '', 'STEAM_COMPAT_APP_ID': '0', 'UMU_ID': '0',
                 'SteamAppId': '0', 'SteamGameId': 'hearth-winapp-' + a['id'], 'PROTON_LOG': env.get('PROTON_LOG', '')})
+    env.pop('UMU_USE_STEAM', None)
+    # GE-Proton's protonfixes downloads AMD's FSR4 files at every start of a new prefix ("Downloading upscaler file
+    # amdxcffx64.dll"): Windows apps start offline and don't need them.
+    env.setdefault('PROTONFIXES_DISABLE_UPSCALERS', '1')
+    if target and os.path.isabs(target):
+        env['STEAM_COMPAT_INSTALL_PATH'] = os.path.dirname(target)
     if not env['PROTON_LOG']:
         env.pop('PROTON_LOG')
+    else:
+        env.setdefault('PROTON_LOG_DIR', logs_dir(a))
     if not a['dxvk']:
         env['PROTON_USE_WINED3D'] = '1'
     if not a['vkd3d']:
@@ -236,6 +294,23 @@ def proton_cmd(path, verb, args):
     return ['python3', os.path.join(path, 'proton'), verb] + args
 
 
+def win_path(path, prefix):
+    """A Linux path as Windows sees it in the prefix: C:\\… inside drive_c, Z:\\… (the whole drive) otherwise."""
+    dc = os.path.join(os.path.realpath(prefix), 'drive_c')
+    real = os.path.realpath(path)
+    if real == dc or real.startswith(dc + os.sep):
+        return 'C:\\' + os.path.relpath(real, dc).replace('/', '\\').lstrip('.\\')
+    return 'Z:' + os.path.abspath(path).replace('/', '\\')
+
+
+def launch_target(target, args, prefix):
+    """(program, arguments) for Proton: a .bat or .cmd runs through Windows' command prompt (cmd /c), which is what
+    double-clicking one does on Windows; a .exe or msiexec as it is."""
+    if os.path.isabs(target) and target.lower().endswith(('.bat', '.cmd')):
+        return 'cmd', ['/c', win_path(target, prefix)] + list(args)
+    return target, list(args)
+
+
 def winver_needed(a):
     if a['winver']:
         return a['winver']
@@ -243,18 +318,124 @@ def winver_needed(a):
     return r.get('winver', '') if r and r.get('winver') in WINVERS else ''
 
 
-def apply_winver(a, c, env, runner):
+def apply_winver(a, c, env, runner, log=None):
     want = winver_needed(a)
     s = state(a)
     if want and s.get('winver') != want:
         runner(proton_cmd(c['path'], 'run', ['reg', 'add', r'HKCU\Software\Wine', '/v', 'Version', '/t', 'REG_SZ',
-                                             '/d', want, '/f']), env, a['prefix'])
+                                             '/d', want, '/f']), env, a['prefix'], log=log)
         s['winver'] = want
         save_state(a, s)
 
 
-def _run(cmd, env, cwd):
-    return subprocess.run(cmd, env=env, cwd=cwd if os.path.isdir(cwd) else None).returncode
+# ---- logs
+def logs_dir(a):
+    return os.path.join(a['dir'], 'logs')
+
+
+def last_log(a):
+    return os.path.join(logs_dir(a), 'last.log')
+
+
+def detailed_flag(a):
+    """"Detailed Proton log for the next start": a request for one start, not a setting. It's used up by that start."""
+    return os.path.join(logs_dir(a), 'detailed-next')
+
+
+def detailed_log(a):
+    """Where Proton writes its detailed log (PROTON_LOG=1, PROTON_LOG_DIR is the app's logs folder)."""
+    return os.path.join(logs_dir(a), 'steam-hearth-winapp-%s.log' % a['id'])
+
+
+def rotate_logs(a):
+    """last.log becomes last.1.log, and so on: the newest LOG_KEEP starts are kept."""
+    d = logs_dir(a)
+    os.makedirs(d, exist_ok=True)
+    names = ['last.log'] + ['last.%d.log' % i for i in range(1, LOG_KEEP)]
+    try:
+        os.remove(os.path.join(d, names[-1]))
+    except OSError:
+        pass
+    for i in range(len(names) - 2, -1, -1):
+        src = os.path.join(d, names[i])
+        if os.path.exists(src):
+            os.replace(src, os.path.join(d, names[i + 1]))
+
+
+def hearth_log(text):
+    """One line in Hearth's own log (~/.local/share/nimbus/bridge.log, the file hearth-core writes and Send logs
+    shows), the way the other parts of Hearth write it: "<ms> [winapps] windows apps: …"."""
+    d = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'nimbus')
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'bridge.log'), 'a', encoding='utf-8') as f:
+            f.write('%d [winapps] windows apps: %s\n' % (int(time.time() * 1000), text.replace('\n', ' ')))
+    except OSError:
+        pass
+
+
+class RunLog:
+    """One start's log file: what ran and everything Proton and the program printed (stdout and stderr, in the order
+    they came). Shown in the terminal too when hearth-winapps runs in one."""
+
+    def __init__(self, path, tee=None):
+        self.f = open(path, 'w', encoding='utf-8', errors='replace')
+        self.path = path
+        self.kept = 0
+        self.dropped = 0
+        self.tee = tee
+        self.lock = threading.Lock()
+
+    def line(self, text):
+        with self.lock:
+            if self.f:
+                self.f.write(text.rstrip('\n') + '\n')
+                self.f.flush()
+
+    def output(self, data):
+        text = data.decode('utf-8', 'replace')
+        with self.lock:
+            if self.tee:
+                try:
+                    self.tee.write(text)
+                    self.tee.flush()
+                except (OSError, ValueError):
+                    self.tee = None
+            if not self.f:
+                return
+            if self.kept + len(data) > LOG_MAX:
+                self.dropped += len(data)
+                return
+            self.kept += len(data)
+            self.f.write(text)
+            self.f.flush()
+
+    def close(self):
+        with self.lock:
+            if self.f:
+                if self.dropped:
+                    self.f.write('[… %d more bytes of output weren\'t kept (more than %d MB) …]\n' % (self.dropped, LOG_MAX // 1048576))
+                self.f.close()
+                self.f = None
+
+
+def _run(cmd, env, cwd, log=None):
+    """Runs a Proton command; returns its exit code. With a log, Proton's and the program's output go into it (and to
+    the terminal, if there is one), and it waits until everything the start left running has closed (a launcher
+    that starts the real program and exits, wineserver), up to the end of their output."""
+    if log is None:
+        return subprocess.run(cmd, env=env, cwd=cwd if os.path.isdir(cwd) else None).returncode
+    p = subprocess.Popen(cmd, env=env, cwd=cwd if os.path.isdir(cwd) else None, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    def pump():
+        for chunk in iter(lambda: p.stdout.readline(), b''):
+            log.output(chunk)
+    t = threading.Thread(target=pump, daemon=True)
+    t.start()
+    code = p.wait()
+    t.join()
+    return code
 
 
 def notify(title, body):
@@ -262,20 +443,69 @@ def notify(title, body):
         subprocess.run(['notify-send', '-a', 'Windows apps', '-i', 'hearth-winapps', title, body], check=False)
 
 
-def start(a, target, args, wanted=None, runner=_run, clock=time.monotonic):
-    """Runs TARGET (a .exe, msiexec, …) in the app's prefix; returns what happened."""
+def describe(seconds):
+    return '%.1f s' % seconds if seconds < 120 else '%d min' % round(seconds / 60)
+
+
+def start(a, target, args, wanted=None, runner=_run, clock=time.monotonic, what='started', cwd=None):
+    """Runs TARGET (a .exe, a .bat, msiexec, …) in the app's prefix, logged (logs/last.log, one line in Hearth's log);
+    returns what happened."""
     c, auto = choose(a, wanted)
     ensure_prefix(a['prefix'])
-    env = proton_env(a)
-    apply_winver(a, c, env, runner)
-    cwd = os.path.dirname(target) if os.path.isabs(target) else a['prefix']
-    t0 = clock()
-    code = runner(proton_cmd(c['path'], 'waitforexitandrun', [target] + list(args)), env, cwd)
-    took = clock() - t0
+    rotate_logs(a)
+    detailed = os.path.exists(detailed_flag(a))
+    if detailed:  # used up by this start, whatever happens next
+        try:
+            os.remove(detailed_flag(a))
+        except OSError:
+            pass
+        os.environ['PROTON_LOG'] = '1'
+    try:
+        env = proton_env(a, target)
+    finally:
+        if detailed:
+            os.environ.pop('PROTON_LOG', None)
+    prog, pargs = launch_target(target, args, a['prefix'])
+    if cwd is None:
+        cwd = a['cwd'] if a['cwd'] and os.path.isdir(a['cwd']) else ''
+    cwd = cwd or (os.path.dirname(target) if os.path.isabs(target) else a['prefix'])
+    cmd = proton_cmd(c['path'], 'waitforexitandrun', [prog] + pargs)
+    log = RunLog(last_log(a), tee=sys.stderr if sys.stderr and sys.stderr.isatty() else None)
+    try:
+        log.line('Hearth Windows apps · %s (%s) · %s' % (a['name'], a['id'], time.strftime('%Y-%m-%d %H:%M:%S')))
+        log.line('What: %s %s' % (what, target))
+        log.line('Proton: %s (%s), %s' % (c['name'], c['path'], 'picked by Hearth' if auto else 'your pick'))
+        log.line('Command: %s' % ' '.join(cmd))
+        log.line('Folder: %s' % cwd)
+        log.line('Prefix: %s' % a['prefix'])
+        log.line('Settings: DXVK %s, VKD3D %s, Windows version %s' % ('on' if a['dxvk'] else 'off', 'on' if a['vkd3d'] else 'off',
+                                                                     winver_needed(a) or "Proton's own"))
+        log.line('Environment: ' + ' '.join('%s=%s' % (k, env[k]) for k in (
+            'UMU_ID', 'STEAM_COMPAT_CLIENT_INSTALL_PATH', 'STEAM_COMPAT_INSTALL_PATH', 'SteamGameId', 'PROTON_LOG',
+            'PROTON_LOG_DIR', 'PROTON_USE_WINED3D', 'PROTON_NO_D3D12', 'WINEDLLOVERRIDES', 'WINEDEBUG',
+            'DISPLAY', 'WAYLAND_DISPLAY') if k in env))
+        if detailed:
+            log.line('Detailed Proton log (asked for this start): %s' % detailed_log(a))
+        log.line('----- output (stdout and stderr) -----')
+        apply_winver(a, c, env, runner, log=log)
+        t0 = clock()
+        try:
+            code = runner(cmd, env, cwd, log=log)
+        except OSError as e:
+            log.line('Couldn\'t start Proton: %s' % e)
+            code = 127
+        took = clock() - t0
+        log.line('----- closed after %s with code %s -----' % (describe(took), code))
+    finally:
+        log.close()
     crashed = code != 0 and took < CRASH_SECONDS
     s = state(a)
-    s.update({'proton': c['name'], 'at': int(time.time()), 'code': code, 'seconds': round(took, 1), 'crashed': crashed})
+    s.update({'proton': c['name'], 'at': int(time.time()), 'code': code, 'seconds': round(took, 1), 'crashed': crashed,
+              'what': what, 'target': target, 'log': last_log(a), 'detailed': detailed_log(a) if detailed else ''})
     s.pop('next', None)
+    hearth_log('%s %s with %s, closed after %s with code %s%s (log: %s)' % (
+        a['name'], what, c['name'], describe(took), code, ', closed right away' if crashed else '',
+        last_log(a).replace(home(), '~', 1)))
     if crashed:
         hp.note_failed(key(a), c['name'])
         nxt = hp.next_after(key(a), c['name'], a['exe'] or a['source'])
@@ -286,7 +516,8 @@ def start(a, target, args, wanted=None, runner=_run, clock=time.monotonic):
     elif auto or (wanted and not a['proton']):
         hp.note_worked(key(a), c['name'])
     save_state(a, s)
-    return {'id': a['id'], 'proton': c['name'], 'code': code, 'crashed': crashed, 'next': s.get('next')}
+    return {'id': a['id'], 'proton': c['name'], 'code': code, 'crashed': crashed, 'next': s.get('next'),
+            'seconds': round(took, 1), 'log': last_log(a)}
 
 
 # ---- icons and menu entries
@@ -335,8 +566,29 @@ def desktop_text(a, icon):
             % (name, exec_line, icon or 'hearth-winapps', a['id']))
 
 
+def icon_source(a):
+    """The .exe whose icon the app gets: the program itself; for a .bat, its shortcut's icon or the biggest .exe next
+    to it (Heaven's heaven.bat starts bin/browser_x86.exe)."""
+    exe = a['exe']
+    if exe.lower().endswith('.exe'):
+        return exe
+    if a['icon_from'] and os.path.isfile(a['icon_from']):
+        return a['icon_from']
+    best, size = '', -1
+    for d, _dirs, files in os.walk(os.path.dirname(exe) or '.'):
+        for f in files:
+            if f.lower().endswith('.exe') and not NOT_MAIN_RE.search(f):
+                try:
+                    n = os.path.getsize(os.path.join(d, f))
+                except OSError:
+                    continue
+                if n > size:
+                    best, size = os.path.join(d, f), n
+    return best
+
+
 def write_entry(a):
-    icon = extract_icon(a['exe'], a['id'])
+    icon = extract_icon(icon_source(a), a['id'])
     os.makedirs(menu_dir(), exist_ok=True)
     p = desktop_path(a['id'])
     with open(p + '.tmp', 'w', encoding='utf-8') as f:
@@ -347,7 +599,8 @@ def write_entry(a):
 
 # ---- installers
 def programs_in(prefix):
-    """The .exe files a person would start in a prefix (installed programs, not uninstallers): [(path, size, mtime)]."""
+    """The programs a person would start in a prefix (installed .exe, .bat and .cmd files, not uninstallers):
+    [(path, size, mtime)]."""
     out = []
     dc = os.path.join(prefix, 'drive_c')
     roots = [os.path.join(dc, 'Program Files'), os.path.join(dc, 'Program Files (x86)')]
@@ -362,7 +615,7 @@ def programs_in(prefix):
         for d, dirs, files in os.walk(r):
             dirs[:] = [x for x in dirs if x.lower() not in ('common files', 'windows nt', 'internet explorer', 'windows media player', 'microsoft.net')]
             for f in files:
-                if f.lower().endswith('.exe') and not NOT_MAIN_RE.search(f):
+                if f.lower().endswith(PROGRAM_EXTS) and not NOT_MAIN_RE.search(f):
                     p = os.path.join(d, f)
                     try:
                         st = os.stat(p)
@@ -373,19 +626,248 @@ def programs_in(prefix):
 
 
 def main_program(prefix, since=0):
-    found = [t for t in programs_in(prefix) if t[2] >= since - 2] or programs_in(prefix)
+    """The biggest installed .exe (newest first); installers that keep their files' own dates (Inno Setup does)
+    leave nothing newer than the start, and then every installed program counts."""
+    found = [t for t in programs_in(prefix) if t[0].lower().endswith('.exe')]
+    found = [t for t in found if t[2] >= since - 2] or found
     found.sort(key=lambda t: (-t[1], t[0]))
     return found[0][0] if found else ''
 
 
+def read_lnk(path):
+    """A Windows shortcut (.lnk, the Shell Link format): {target, args, cwd, icon, name} with Windows paths, or None."""
+    try:
+        with open(path, 'rb') as f:
+            data = f.read(1 << 20)
+    except OSError:
+        return None
+    if len(data) < 76 or struct.unpack_from('<I', data, 0)[0] != 0x4C:
+        return None
+    flags = struct.unpack_from('<I', data, 0x14)[0]
+    unicode = bool(flags & 0x80)
+    pos = 76
+    target = ''
+    try:
+        if flags & 0x01:  # LinkTargetIDList: skipped (the path is in LinkInfo)
+            pos += 2 + struct.unpack_from('<H', data, pos)[0]
+        if flags & 0x02:  # LinkInfo
+            size, hsize, lflags, _vol, base_off, _net, suffix_off = struct.unpack_from('<7I', data, pos)
+            info = data[pos:pos + size]
+
+            def cstr(off, wide):
+                if wide:
+                    end = off
+                    while end + 1 < len(info) and info[end:end + 2] != b'\0\0':
+                        end += 2
+                    return info[off:end].decode('utf-16-le', 'replace')
+                end = info.find(b'\0', off)
+                return info[off:end if end >= 0 else len(info)].decode('mbcs' if os.name == 'nt' else 'cp1252', 'replace')
+            if lflags & 0x01:
+                if hsize >= 0x24:
+                    ubase, usuffix = struct.unpack_from('<2I', info, 28)
+                    target = cstr(ubase, True) + (cstr(usuffix, True) if usuffix else '')
+                if not target:
+                    target = cstr(base_off, False) + (cstr(suffix_off, False) if suffix_off else '')
+            pos += size
+        strings = {}
+        for bit, name in ((0x04, 'name'), (0x08, 'relative'), (0x10, 'cwd'), (0x20, 'args'), (0x40, 'icon')):
+            if flags & bit:
+                n = struct.unpack_from('<H', data, pos)[0]
+                pos += 2
+                raw = data[pos:pos + (n * 2 if unicode else n)]
+                pos += n * 2 if unicode else n
+                # Wine counts the closing NUL in some of them ("embedded null byte" when started).
+                strings[name] = raw.decode('utf-16-le' if unicode else 'cp1252', 'replace').split('\0')[0]
+    except struct.error:
+        return None
+    if not target and strings.get('relative'):
+        target = strings['relative']
+    if not target:
+        return None
+    return {'target': target, 'args': strings.get('args', ''), 'cwd': strings.get('cwd', ''),
+            'icon': strings.get('icon', ''), 'name': strings.get('name', '')}
+
+
+def split_args(s):
+    """A Windows command line's arguments as a list (double quotes group, backslashes stay)."""
+    out, cur, quoted, had = [], '', False, False
+    for ch in s or '':
+        if ch == '"':
+            quoted, had = not quoted, True
+        elif ch in ' \t' and not quoted:
+            if cur or had:
+                out.append(cur)
+            cur, had = '', False
+        else:
+            cur += ch
+    if cur or had:
+        out.append(cur)
+    return out
+
+
+def unix_path(prefix, wpath, base=None):
+    """A Windows path in the prefix (C:\\…, Z:\\…, or relative to BASE) as a Linux path, matched without caring
+    about upper and lower case the way Windows does; '' when it isn't there."""
+    w = (wpath or '').strip().strip('"').replace('\\', '/')
+    if not w:
+        return ''
+    m = re.match(r'^([A-Za-z]):/?(.*)$', w)
+    if m:
+        root = os.path.realpath(os.path.join(prefix, 'dosdevices', m.group(1).lower() + ':'))
+        if m.group(1).lower() == 'c' and not os.path.isdir(root):
+            root = os.path.join(prefix, 'drive_c')
+        rest = m.group(2)
+    elif base:
+        root, rest = base, w
+    else:
+        return ''
+    cur = root
+    for part in [p for p in rest.split('/') if p and p != '.']:
+        if part == '..':
+            cur = os.path.dirname(cur)
+            continue
+        nxt = os.path.join(cur, part)
+        if not os.path.exists(nxt):
+            try:
+                hit = [n for n in os.listdir(cur) if n.lower() == part.lower()]
+            except OSError:
+                return ''
+            if not hit:
+                return ''
+            nxt = os.path.join(cur, hit[0])
+        cur = nxt
+    return cur
+
+
+def shortcut_dirs(prefix):
+    dc = os.path.join(prefix, 'drive_c')
+    out = [os.path.join(dc, 'ProgramData', 'Microsoft', 'Windows', 'Start Menu', 'Programs')]
+    try:
+        for u in os.listdir(os.path.join(dc, 'users')):
+            out.append(os.path.join(dc, 'users', u, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs'))
+            out.append(os.path.join(dc, 'users', u, 'Desktop'))
+    except OSError:
+        pass
+    return out
+
+
+def shortcuts(prefix, since=0):
+    """The program shortcuts an installer left in the Start menu or on the desktop (newer than SINCE), best first:
+    [{path, args, cwd, icon, name, desktop}]. Uninstallers, read-me files and web pages are left out."""
+    found = []
+    real_prefix = os.path.realpath(prefix)
+    for root in shortcut_dirs(prefix):
+        for d, _dirs, files in os.walk(root):
+            for f in files:
+                if not f.lower().endswith('.lnk'):
+                    continue
+                lp = os.path.join(d, f)
+                try:
+                    if os.stat(lp).st_mtime < since - 2:
+                        continue
+                except OSError:
+                    continue
+                name = f[:-4]
+                if NOT_MAIN_LINK_RE.search(name):
+                    continue
+                link = read_lnk(lp)
+                if not link:
+                    continue
+                target = unix_path(prefix, link['target'])
+                if not target or not os.path.isfile(target) or not target.lower().endswith(PROGRAM_EXTS):
+                    continue
+                if NOT_MAIN_RE.search(os.path.basename(target)) or not os.path.realpath(target).startswith(real_prefix + os.sep):
+                    continue
+                icon = unix_path(prefix, re.sub(r',\s*-?\d+$', '', link['icon'])) if link['icon'] else ''
+                found.append({'path': target, 'args': split_args(link['args']), 'name': name,
+                              'cwd': unix_path(prefix, link['cwd']) if link['cwd'] else '',
+                              'icon': icon if icon and icon.lower().endswith('.exe') and os.path.isfile(icon) else '',
+                              'desktop': os.path.basename(root) == 'Desktop'})
+    seen, out = set(), []
+    # A start menu entry before a desktop one, a .exe before a .bat, then by name.
+    for s in sorted(found, key=lambda s: (s['desktop'], not s['path'].lower().endswith('.exe'), s['name'].lower())):
+        k = (s['path'], tuple(s['args']))
+        if k not in seen:
+            seen.add(k)
+            out.append(s)
+    return out
+
+
+def installed_program(prefix, since=0):
+    """What an installer installed, as {path, args, cwd, icon, how}: the program its Start menu (or desktop) shortcut
+    starts, with that shortcut's arguments and folder (a benchmark's launcher often needs both); or else the biggest
+    program it installed. None when there's nothing."""
+    s = shortcuts(prefix, since) or shortcuts(prefix)
+    if s:
+        return {'path': s[0]['path'], 'args': s[0]['args'], 'cwd': s[0]['cwd'], 'icon': s[0]['icon'],
+                'how': 'its shortcut "%s"' % s[0]['name']}
+    exe = main_program(prefix, since)
+    return {'path': exe, 'args': [], 'cwd': '', 'icon': '', 'how': 'the biggest program it installed'} if exe else None
+
+
+def adopt_program(a, found):
+    """The app becomes the program an installer installed: exe, arguments, folder, name, menu entry and icon."""
+    exe = found['path']
+    name = a['name'] if a['name'] != 'Windows app' else clean_name(os.path.splitext(os.path.basename(exe))[0])
+    save_app(a['dir'], {'exe': exe, 'args': found['args'], 'cwd': found['cwd'], 'icon_from': found['icon'],
+                        'installer': True, 'name': name})
+    a = load_app(a['dir'])
+    write_entry(a)
+    return a
+
+
+def repair(a):
+    """An app that is an installer kept as its own program (Hearth 1.7.0 took installers whose name doesn't say
+    "setup" for the program, so every start ran the installer again): when the installer has already installed
+    something in the app's space, the app becomes that program. -> the app, changed or not."""
+    if a['installer'] or not a['exe'] or not os.path.isfile(a['exe']):
+        return a
+    if os.path.realpath(a['exe']).startswith(os.path.realpath(a['prefix']) + os.sep) or not is_installer(a['exe']):
+        return a
+    found = installed_program(a['prefix'])
+    if not found:
+        return a
+    hearth_log('%s: was its installer (%s); it becomes %s, found by %s' % (
+        a['name'], os.path.basename(a['exe']), found['path'].replace(home(), '~', 1), found['how']))
+    return adopt_program(a, found)
+
+
 # ---- commands
+def install(a, path, runner=_run):
+    """Runs an installer in the app's space; the program it installed becomes the app."""
+    since = time.time()
+    kind = installer_kind(path)
+    target, args = (('msiexec', ['/i', path]) if path.lower().endswith('.msi') else (path, []))
+    r = start(a, target, args, runner=runner, what='installer%s ran' % (' (%s)' % kind if kind else ''),
+              cwd=os.path.dirname(path))
+    found = installed_program(a['prefix'], since)
+    if found:
+        a = adopt_program(a, found)
+        hearth_log('%s: the installer installed %s (found by %s)' % (a['name'], found['path'].replace(home(), '~', 1), found['how']))
+        notify('%s is in your apps' % a['name'], 'Installed in its own space. Settings › Windows apps has its options.')
+    else:
+        hearth_log('%s: the installer closed with code %s and Hearth found no program it installed' % (a['name'], r['code']))
+        notify("Couldn't find what %s installed" % a['name'],
+               'Settings › Windows apps › %s shows its log. Opening the installer again tries again.' % a['name'])
+    r.update({'new': True, 'installed': found['path'] if found else ''})
+    return r
+
+
 def cmd_open(path, runner=_run):
     path = os.path.abspath(path)
     if not os.path.isfile(path) or not is_windows_program(path):
-        raise Fail('%s isn\'t a Windows program (.exe or .msi)' % os.path.basename(path))
+        raise Fail('%s isn\'t a Windows program (.exe, .msi or .bat)' % os.path.basename(path))
     for a in apps():
         if path in (a['exe'], a['source']) and not a['installer']:
+            a = repair(a)
+            if a['installer']:
+                return start(a, a['exe'], a['args'], runner=runner)
+            if is_installer(path):  # an installer kept as the program that hasn't installed anything yet
+                save_app(a['dir'], {'installer': True, 'exe': ''})
+                return install(load_app(a['dir']), path, runner)
             return start(a, a['exe'], a['args'], runner=runner)
+        if path == a['source'] and a['installer'] and not a['exe']:  # its installer didn't install anything: again
+            return install(a, path, runner)
     inst = is_installer(path)
     a = new_app(os.path.splitext(os.path.basename(path))[0], path, inst)
     if not inst:
@@ -395,17 +877,7 @@ def cmd_open(path, runner=_run):
         r = start(a, path, [], runner=runner)
         r['new'] = True
         return r
-    since = time.time()
-    target, args = (('msiexec', ['/i', path]) if path.lower().endswith('.msi') else (path, []))
-    r = start(a, target, args, runner=runner)
-    exe = main_program(a['prefix'], since)
-    if exe:
-        save_app(a['dir'], {'exe': exe, 'name': a['name'] if a['name'] != 'Windows app' else clean_name(os.path.splitext(os.path.basename(exe))[0])})
-        a = load_app(a['dir'])
-        write_entry(a)
-        notify('%s is in your apps' % a['name'], 'Installed in its own space. Settings › Windows apps has its options.')
-    r.update({'new': True, 'installed': exe})
-    return r
+    return install(a, path, runner)
 
 
 def public(a):
@@ -413,7 +885,10 @@ def public(a):
     return {'id': a['id'], 'name': a['name'], 'exe': a['exe'], 'proton': a['proton'], 'dxvk': a['dxvk'],
             'vkd3d': a['vkd3d'], 'winver': a['winver'], 'steam': a['steam'], 'dir': a['dir'],
             'icon': os.path.join(icon_dir(), a['id'] + '.png') if os.path.isfile(os.path.join(icon_dir(), a['id'] + '.png')) else '',
-            'inMenu': os.path.isfile(desktop_path(a['id'])), 'last': s,
+            'inMenu': os.path.isfile(desktop_path(a['id'])), 'last': s, 'args': a['args'],
+            'log': last_log(a) if os.path.isfile(last_log(a)) else '',
+            'detailedNext': os.path.exists(detailed_flag(a)),
+            'detailedLog': detailed_log(a) if os.path.isfile(detailed_log(a)) else '',
             'candidates': [{'name': c['name'], 'download': not c['path'], 'why': c['why']}
                            for c in hp.candidates(key(a), a['exe'] or a['source'])]}
 
@@ -445,9 +920,9 @@ def cmd_set(i, k, v):
         save_app(a['dir'], {'winver': v})
     elif k == 'exe':
         real = os.path.realpath(v)
-        if not (real.startswith(os.path.realpath(a['prefix']) + os.sep) and real.lower().endswith('.exe') and os.path.isfile(real)):
+        if not (real.startswith(os.path.realpath(a['prefix']) + os.sep) and real.lower().endswith(PROGRAM_EXTS) and os.path.isfile(real)):
             raise Fail('Pick a program inside this app')
-        save_app(a['dir'], {'exe': real})
+        save_app(a['dir'], {'exe': real, 'args': [], 'cwd': '', 'icon_from': '', 'installer': True})
         write_entry(load_app(a['dir']))
     elif k == 'name':
         v = v.strip()[:60]
@@ -517,14 +992,169 @@ def cmd_fetch(name):
     return {'name': name, 'path': p}
 
 
+def cmd_run(i, wanted=None):
+    a = repair(app(i))
+    if not a['exe']:
+        if a['installer'] and a['source'] and os.path.isfile(a['source']):
+            return install(a, a['source'])
+        raise Fail('%s has no program to start yet. Open its installer again from Files.' % a['name'])
+    return start(a, a['exe'], a['args'], wanted)
+
+
+def cmd_detailed(i, v):
+    """Detailed Proton log for the app's next start only (PROTON_LOG=1, in the app's logs folder)."""
+    if v not in ('on', 'off'):
+        raise Fail('detailed ID on|off')
+    a = app(i)
+    f = detailed_flag(a)
+    if v == 'on':
+        os.makedirs(logs_dir(a), exist_ok=True)
+        with open(f, 'w', encoding='utf-8') as fh:
+            fh.write('PROTON_LOG=1 for the next start, asked for at %s\n' % time.strftime('%Y-%m-%d %H:%M:%S'))
+    else:
+        try:
+            os.remove(f)
+        except FileNotFoundError:
+            pass
+    return public(a)
+
+
+def tail_text(path, n):
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 256 * 1024))
+            lines = f.read().decode('utf-8', 'replace').splitlines()
+    except OSError:
+        return ''
+    skip = max(0, len(lines) - n)
+    return ('[… %d older lines left out …]\n' % skip if skip else '') + '\n'.join(lines[skip:])
+
+
+def cmd_log(i):
+    a = app(i)
+    return {'id': a['id'], 'log': last_log(a) if os.path.isfile(last_log(a)) else '', 'tail': tail_text(last_log(a), 80),
+            'detailedLog': detailed_log(a) if os.path.isfile(detailed_log(a)) else ''}
+
+
+def vulkan_report():
+    """What DXVK and VKD3D need: the Vulkan drivers this device has (64- and 32-bit) and what vulkaninfo says."""
+    out = []
+    for arch in ('x86_64-linux-gnu', 'i386-linux-gnu'):
+        libs = []
+        for d in ('/usr/lib/%s' % arch, '/usr/lib/%s/vulkan' % arch):
+            try:
+                libs += sorted(n for n in os.listdir(d) if n.startswith(('libvulkan_', 'libvulkan.so')))
+            except OSError:
+                pass
+        out.append('Vulkan libraries (%s): %s' % (arch, ', '.join(sorted(set(libs))) or 'none'))
+    try:
+        icds = sorted(os.listdir('/usr/share/vulkan/icd.d'))
+    except OSError:
+        icds = []
+    out.append('Vulkan drivers (icd.d): %s' % (', '.join(icds) or 'none'))
+    if shutil.which('vulkaninfo'):
+        try:
+            p = subprocess.run(['vulkaninfo', '--summary'], capture_output=True, text=True, timeout=8)
+            text = (p.stdout or '') + (p.stderr or '')
+            keep = [l for l in text.splitlines() if re.search(
+                r'(Vulkan Instance Version|GPU\d|apiVersion|driverVersion|vendorID|deviceType|deviceName|driverID|driverName|'
+                r'driverInfo|conformanceVersion|ERROR|error|WARNING)', l)]
+            out.append('--- vulkaninfo --summary (code %s)' % p.returncode)
+            out += keep[:60] or text.splitlines()[:40]
+        except (OSError, subprocess.SubprocessError) as e:
+            out.append('vulkaninfo: %s' % e)
+    else:
+        out.append('vulkaninfo: not installed')
+        if shutil.which('glxinfo'):
+            try:
+                p = subprocess.run(['glxinfo', '-B'], capture_output=True, text=True, timeout=15)
+                out += [l for l in p.stdout.splitlines() if re.search(r'(Device|renderer|version)', l)][:12]
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return '\n'.join(out)
+
+
+def cmd_report():
+    """Send logs' "Windows apps" section: each app (install state, Proton, program, last result and the end of its
+    last log), the Protons on this device, the built-in GE-Proton and Vulkan. The home folder is taken out by Send
+    logs (logs.rs redact)."""
+    out = []
+    b, v = hp.builtin(), hp.valve()
+    rules = hp.load_rules()
+    want = rules.get('builtin', '')
+    out.append('Built-in GE-Proton: %s%s' % ('%s at %s' % b if b else 'MISSING',
+                                             '' if not want or (b and b[0] == want) else ' (Hearth\'s table expects %s)' % want))
+    try:
+        sysd = sorted(os.listdir(hp.system_dir()))
+    except OSError:
+        sysd = []
+    out.append('In %s: %s' % (hp.system_dir(), ', '.join(sysd) or 'nothing'))
+    out.append("Valve's Proton from Steam: %s" % ('%s at %s' % v if v else 'none'))
+    d = hp.downloaded()
+    out.append('Downloaded GE-Protons: %s' % (', '.join('%s (%s)' % kv for kv in sorted(d.items())) or 'none'))
+    out.append('Steam folders: %s' % (', '.join(hp.steam_roots()) or 'none (Windows apps don\'t need one)'))
+    ft = ['%s %s' % (b, 'yes' if os.path.exists('/usr/lib/%s/libfreetype.so.6' % d) else 'MISSING')
+          for b, d in (('64-bit', 'x86_64-linux-gnu'), ('32-bit', 'i386-linux-gnu'))]
+    out.append('FreeType (Wine draws text with it): %s' % ', '.join(ft))
+    out.append('icoutils (programs\' own icons): %s' % ('yes' if shutil.which('wrestool') and shutil.which('icotool') else 'no'))
+    lst = apps()
+    out.append('Windows apps: %d (in %s)' % (len(lst), apps_root()))
+    for a in lst:
+        s = state(a)
+        out.append('')
+        out.append('--- %s (%s)' % (a['name'], a['id']))
+        if a['installer']:
+            inst = 'installed by %s' % (os.path.basename(a['source']) or 'an installer') if a['exe'] else \
+                'its installer (%s) has installed nothing Hearth could find' % os.path.basename(a['source'])
+        else:
+            inst = 'a program opened directly' + (' (but it looks like an installer)' if a['exe'] and is_installer(a['exe']) else '')
+        out.append('state: %s' % inst)
+        out.append('program: %s%s' % (a['exe'] or '(none)', (' ' + ' '.join(a['args'])) if a['args'] else ''))
+        if a['cwd']:
+            out.append('folder: %s' % a['cwd'])
+        out.append('Proton: %s; DXVK %s, VKD3D %s, Windows version %s; in Steam: %s' % (
+            a['proton'] or 'automatic', 'on' if a['dxvk'] else 'off', 'on' if a['vkd3d'] else 'off',
+            winver_needed(a) or "Proton's own", 'yes' if a['steam'] else 'no'))
+        try:
+            pick = hp.pick(key(a), a['exe'] or a['source'])
+        except Exception:  # noqa: BLE001 - a report never fails on one app
+            pick = None
+        out.append('the detector would start it with: %s' % (pick['name'] if pick else 'nothing (no Proton)'))
+        if s.get('at'):
+            out.append('last start: %s, %s with %s, closed after %s with code %s%s' % (
+                time.strftime('%Y-%m-%d %H:%M', time.localtime(s['at'])), s.get('what', 'started'), s.get('proton'),
+                describe(float(s.get('seconds') or 0)), s.get('code'), ' (closed right away)' if s.get('crashed') else ''))
+        else:
+            out.append('last start: never')
+        out.append('menu entry: %s' % ('yes' if os.path.isfile(desktop_path(a['id'])) else 'no'))
+        if os.path.isfile(last_log(a)):
+            out.append('--- end of its last log (%s)' % last_log(a))
+            out.append(tail_text(last_log(a), 80))
+        if os.path.isfile(detailed_log(a)):
+            out.append('--- end of its detailed Proton log (%s)' % detailed_log(a))
+            out.append(tail_text(detailed_log(a), 120))
+    out.append('')
+    out.append('--- Vulkan (DXVK and VKD3D draw through it)')
+    out.append(vulkan_report())
+    return '\n'.join(out)
+
+
 def main(argv):
     a = argv[1:]
     try:
         if a[:1] == ['open'] and len(a) == 2:
             r = cmd_open(a[1])
         elif a[:1] == ['run'] and len(a) in (2, 4) and (len(a) == 2 or a[2] == '--proton'):
-            x = app(a[1])
-            r = start(x, x['exe'], x['args'], a[3] if len(a) == 4 else None)
+            r = cmd_run(a[1], a[3] if len(a) == 4 else None)
+        elif a[:1] == ['detailed'] and len(a) == 3:
+            r = cmd_detailed(a[1], a[2])
+        elif a[:1] == ['log'] and len(a) == 2:
+            r = cmd_log(a[1])
+        elif a == ['report']:
+            print(cmd_report(), flush=True)
+            return 0
         elif a == ['list']:
             r = cmd_list()
         elif a[:1] == ['protons'] and len(a) == 2:

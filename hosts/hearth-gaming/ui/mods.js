@@ -741,6 +741,7 @@ function jobView(j) {
   return `<div class="job2"><div class="jl"><h3>${esc(j.title)}<span class="pill ${j.state === 'done' ? 'good' : j.state === 'failed' ? 'bad' : j.state === 'manual' ? 'warn' : ''}">${esc(JOB_STATE[j.state] || j.state)}</span>${j.step ? `<span class="msg small">Step ${j.step[0]} of ${j.step[1]}</span>` : ''}</h3>
     ${live || j.state === 'manual' ? `<div class="msg small">${esc(j.phase || '')}${j.count ? `: ${j.count[0]} of ${j.count[1]}` : ''}</div><div class="prog ${pct == null ? 'spin' : ''}"><i ${pct != null ? `style="width:${pct.toFixed(1)}%"` : ''}></i></div><div class="status">${esc(j.status || '')}</div>` : ''}
     ${j.error ? `<p class="warn small" style="margin:0">${esc(j.error)}</p>` : ''}${(j.notes || []).map(n => `<p class="msg small" style="margin:0">${esc(n)}</p>`).join('')}
+    ${j.repair ? `<div class="need-row"><span class="${j.repair === 'failed' ? 'warn' : 'msg'} small">${j.repair === 'running' ? 'Repair: setting up its Proton folder…' : j.repair === 'done' ? 'Repair: done.' : 'Repair didn\'t finish.'} ${(j.repairNotes || []).map(esc).join(' ')}</span></div>` : ''}
     ${j.state !== 'done' ? signRow(j) : ''}
     ${j.guide && j.guide.item ? `<div class="need-row"><span>${esc(j.guide.label)} to fetch in Hearth Browser</span><button class="btn primary f" data-key="gs:${esc(j.id)}" data-act="guideStart" data-job="${esc(j.id)}">Fetch them</button></div>` : ''}
     <div class="acts" style="margin-top:.3em">${live ? `<button class="btn f" data-key="jc:${esc(j.id)}" data-act="jobCancel" data-job="${esc(j.id)}">${I.pause}Stop</button>` : ''}${!live && j.state !== 'done' ? `<button class="btn primary f" data-key="jr:${esc(j.id)}" data-act="jobResume" data-job="${esc(j.id)}">Resume</button>` : ''}${j.state === 'done' ? `<button class="btn f" data-key="jp:${esc(j.id)}" data-act="jobRepair" data-job="${esc(j.id)}">Repair its Proton folder</button><button class="btn f" data-key="jf:${esc(j.id)}" data-act="jobFolder" data-job="${esc(j.id)}">${I.folder}Open its folder</button>` : ''}<button class="btn f" data-key="jl:${esc(j.id)}" data-act="jobLog" data-job="${esc(j.id)}">Log</button>${!live ? `<button class="btn danger f" data-key="jx:${esc(j.id)}" data-act="jobForget" data-job="${esc(j.id)}">Remove…</button>` : ''}</div></div>
@@ -1057,7 +1058,7 @@ async function loadModlists(refresh = false) {
 async function refreshJobs() {
   clearTimeout(jobTimer);
   try { S.jobs = await KIT.invoke('wj_jobs'); } catch (e) {}
-  const live = S.jobs.some(j => j.running);
+  const live = S.jobs.some(j => j.running || j.repair === 'running');
   if (S.section === 'modlists' && !KIT.dialogOpen() && document.activeElement?.id !== 'wjq') render(); else railCounts();
   if (live || S.section === 'modlists') jobTimer = setTimeout(refreshJobs, live ? 1000 : 5000);
 }
@@ -1165,7 +1166,8 @@ async function act(a, b) {
     if (a === 'jobCancel') { await KIT.invoke('wj_cancel', { id: job }); return refreshJobs(); }
     if (a === 'jobResume') { await KIT.invoke('wj_resume', { id: job }); return refreshJobs(); }
     if (a === 'jobFolder') { const j = S.jobs.find(x => x.id === job); return KIT.invoke('open_folder', { path: j.installDir }); }
-    if (a === 'jobRepair') { KIT.progress('Setting up its Proton folder', 'Installing the Windows parts it needs'); const n = await KIT.invoke('wj_repair', { id: job }); KIT.close(); return KIT.alert('Done', n.length ? n.map(esc).join('<br>') : 'Its Proton folder is set up.'); }
+    // Repair runs on its own (it takes many minutes): the call only starts it; the list's card shows how it goes.
+    if (a === 'jobRepair') { let n; try { n = await KIT.invoke('wj_repair', { id: job }); } catch (e) { return KIT.alert('Repair', esc(String(e))); } refreshJobs(); return KIT.alert('Repair', (n || []).map(esc).join('<br>') || 'Started.'); }
     if (a === 'jobLog') { const t = await KIT.invoke('wj_log', { id: job }); return KIT.alert('Log', `<pre class="status" style="white-space:pre-wrap;max-height:55vh;overflow:auto">${esc(t || 'Nothing yet.')}</pre>`); }
     if (a === 'jobForget') {
       const c = await KIT.choose('Remove this modlist?', [{ id: 'keep', label: 'Take it out of Hearth only', sub: 'Its folder and downloads stay' }, { id: 'files', label: 'Delete the modlist\'s folder', sub: 'The downloads stay, for installing it again' }, { id: 'all', label: 'Delete its folder and its downloads' }]);

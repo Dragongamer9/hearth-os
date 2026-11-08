@@ -7,8 +7,14 @@
 //! game installed here is in Hearth's library, Hearth Sync puts it in Steam Game Mode, and it starts there and here
 //! the same way (`nimbus --play-now <id>`, desktop_games::play_now).
 //!
+//! Recomps (native PC ports of console games, docs/RECOMPS.md) are a tab of their own. Their engine is hearth-core's
+//! recomps.rs, reached through the same Bridge (its `recomps.*` calls): the catalogue, installs from each project's
+//! GitHub releases, checking your copy of the game, updates, uninstall. Installed ports are Hearth library entries
+//! (`recomp:<id>`), so Hearth Sync keeps putting them in Steam Game Mode, and Play starts them the same way.
+//!
 //! This module is what doesn't need a window: which of Hearth's calls the page may make and with which arguments
-//! (check), the drives new games can go to (drives) and choosing one (use_drive). apps/gamestore.rs is the window.
+//! (check), the drives new games can go to (drives) and choosing one (use_drive), which tab or store the window opens
+//! on (start_view). apps/gamestore.rs is the window.
 
 use serde_json::{json, Value};
 
@@ -26,7 +32,42 @@ pub const CALLS: &[(&str, &[&str])] = &[
     ("game.installFirst", &["id"]), ("game.uninstall", &["id"]), ("game.info", &["id"]),
     ("downloads.pauseAll", &[]), ("downloads.resumeAll", &[]),
     ("battlenet.status", &[]), ("battlenet.install", &[]), ("battlenet.signInDesktop", &[]),
+    // Recomps (hearth-core recomps.rs): ids are the catalogue's (zelda64, custom-owner-name), not library ids.
+    ("recomps.list", &[]), ("recomps.details", &["id", "fresh"]), ("recomps.places", &[]), ("recomps.checkUpdates", &[]),
+    ("recomps.install", &["id", "place"]), ("recomps.cancel", &["id"]), ("recomps.uninstall", &["id", "keep"]),
+    ("recomps.pickGame", &["id"]), ("recomps.useGame", &["id", "path", "anyway"]), ("recomps.skip", &["id", "tag"]),
 ];
+
+/// The tabs the window has (`--tab <name>` opens on one).
+pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps"];
+
+/// A port's id in Hearth Recomps' catalogue: the same rule as hearth-core recomps.rs (lowercase letters, digits, '-').
+pub fn recomp_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// What Play may start: one of this app's store games, or an installed port's library entry (recomp:<id>), which is
+/// what the port's Steam Game Mode shortcut starts too.
+pub fn playable(id: &str) -> bool {
+    game_id_ok(id) || id.strip_prefix("recomp:").map(recomp_id_ok).unwrap_or(false)
+}
+
+/// "Use it anyway" only for the file Hearth itself just checked for that port (the engine's job for it says which),
+/// never a path the page made up.
+pub fn use_game_ok(job: &Value, path: &str) -> bool {
+    !path.is_empty() && job["busy"] != true && job["file"].as_str() == Some(path)
+}
+
+/// Which tab and store the window opens on: `--tab recomps` / `--recomps`, `--store gog|epic|battlenet` (the library on
+/// that store). Unknown values are ignored.
+pub fn start_view(args: &[String]) -> (Option<String>, Option<String>) {
+    let after = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
+    let store = after("--store").filter(|s| SOURCES.contains(&s.as_str()));
+    let tab = after("--tab").filter(|t| TABS.contains(&t.as_str()))
+        .or_else(|| args.iter().any(|a| a == "--recomps").then(|| "recomps".to_string()))
+        .or_else(|| store.as_ref().map(|_| "library".to_string()));
+    (tab, store)
+}
 
 /// A game id Hearth Games works on: one of its stores' (gog:1207658924, epic:Fortnite, battlenet:wow), nothing else.
 pub fn game_id_ok(id: &str) -> bool {
@@ -43,10 +84,11 @@ pub fn check(method: &str, args: &Value) -> Result<(String, Value), String> {
     let mut out = serde_json::Map::new();
     for k in keys.iter() {
         let v = &args[*k];
+        let max = if *k == "path" { 4096 } else { 200 };
         let ok = match v {
             Value::Null => continue,
             Value::Bool(_) => true,
-            Value::String(s) => s.len() <= 200 && !s.chars().any(|c| c.is_control()),
+            Value::String(s) => s.len() <= max && !s.chars().any(|c| c.is_control()),
             _ => false,
         };
         if !ok { return Err(format!("That isn't something Hearth Games sends ({k})")); }
@@ -56,9 +98,20 @@ pub fn check(method: &str, args: &Value) -> Result<(String, Value), String> {
         let s = out.get("store").and_then(Value::as_str).unwrap_or("");
         if !STORES.contains(&s) { return Err("Hearth Games signs in to GOG and Epic Games".into()); }
     }
+    let recomp = m.starts_with("recomps.");
     if keys.contains(&"id") {
         let id = out.get("id").and_then(Value::as_str).unwrap_or("");
-        if !game_id_ok(id) { return Err("That isn't a GOG, Epic or Battle.net game".into()); }
+        if recomp { if !recomp_id_ok(id) { return Err("That isn't one of Hearth Recomps' ports".into()); } }
+        else if !game_id_ok(id) { return Err("That isn't a GOG, Epic or Battle.net game".into()); }
+    }
+    // An install goes to this device ("" or none) or a drive Hearth Recomps offers (recomps.places: /run/media, /media).
+    if let Some(p) = out.get("place").and_then(Value::as_str) {
+        if !p.is_empty() && (p.contains("..") || !(p.starts_with("/run/media/") || p.starts_with("/media/"))) {
+            return Err("Pick one of the places offered".into());
+        }
+    }
+    if let Some(p) = out.get("path") {
+        if !p.as_str().map(|p| p.starts_with('/')).unwrap_or(false) { return Err("That isn't a file on this device".into()); }
     }
     Ok((m.to_string(), Value::Object(out)))
 }
@@ -166,6 +219,61 @@ mod tests {
         assert!(check("accounts.signIn", &json!({})).is_err());
         assert!(check("game.install", &json!({"id": 5})).is_err());
         assert!(check("game.install", &json!({"id": "gog:1\n2"})).is_err());
+    }
+
+    #[test]
+    fn recomps_calls_go_to_the_engine_with_their_own_ids() {
+        assert!(check("recomps.list", &json!({})).is_ok());
+        assert!(check("recomps.details", &json!({"id": "zelda64", "fresh": true})).is_ok());
+        assert!(check("recomps.install", &json!({"id": "zelda64"})).is_ok());
+        assert!(check("recomps.install", &json!({"id": "custom-zelda64recomp-zelda64recomp"})).is_ok());
+        assert!(check("recomps.install", &json!({"id": "zelda64", "place": ""})).is_ok());
+        assert!(check("recomps.install", &json!({"id": "zelda64", "place": "/run/media/you/SD/Hearth Recomps"})).is_ok());
+        assert!(check("recomps.install", &json!({"id": "zelda64", "place": "/etc"})).is_err());
+        assert!(check("recomps.install", &json!({"id": "zelda64", "place": "/run/media/../../etc"})).is_err());
+        // The engine's own ids, not library ids or store ids; nothing that walks out of its folder.
+        assert!(check("recomps.install", &json!({"id": "recomp:zelda64"})).is_err());
+        assert!(check("recomps.install", &json!({"id": "gog:1"})).is_err());
+        assert!(check("recomps.install", &json!({"id": "../x"})).is_err());
+        assert!(check("recomps.uninstall", &json!({"id": "zelda64", "keep": true})).unwrap().1["keep"] == true);
+        assert!(check("recomps.uninstall", &json!({"id": "zelda64", "keep": "rm -rf"})).is_ok(), "a string keep is just not true");
+        assert!(check("recomps.pickGame", &json!({"id": "zelda64"})).is_ok());
+        let long = format!("/home/you/{}/Majora.z64", "a".repeat(300));
+        assert!(check("recomps.useGame", &json!({"id": "zelda64", "path": long, "anyway": true})).is_ok(), "long paths are fine");
+        assert!(check("recomps.useGame", &json!({"id": "zelda64", "path": "relative.z64", "anyway": true})).is_err());
+        // What the old page could do beyond what this app offers stays out (adding projects, hiding, picking folders).
+        for m in ["recomps.addCustom", "recomps.removeCustom", "recomps.adopt", "recomps.setExe", "recomps.hide", "recomps.backup"] {
+            assert!(check(m, &json!({"id": "zelda64"})).is_err(), "{m}");
+        }
+        // And store calls still only take store ids.
+        assert!(check("game.install", &json!({"id": "zelda64"})).is_err());
+    }
+
+    #[test]
+    fn use_it_anyway_only_for_the_file_just_checked() {
+        let job = json!({"busy": false, "mismatch": true, "error": "It doesn't match", "file": "/home/you/mm.z64"});
+        assert!(use_game_ok(&job, "/home/you/mm.z64"));
+        assert!(!use_game_ok(&job, "/etc/shadow"));
+        assert!(!use_game_ok(&json!(null), "/home/you/mm.z64"));
+        assert!(!use_game_ok(&json!({"busy": true, "file": "/home/you/mm.z64"}), "/home/you/mm.z64"));
+        assert!(!use_game_ok(&job, ""));
+    }
+
+    #[test]
+    fn play_starts_store_games_and_installed_ports() {
+        assert!(playable("gog:1") && playable("recomp:zelda64") && playable("recomp:custom-a-b"));
+        assert!(!playable("steam:620") && !playable("recomp:") && !playable("recomp:../x") && !playable("manual:x") && !playable("zelda64"));
+    }
+
+    #[test]
+    fn opens_on_the_tab_asked_for() {
+        let a = |v: &[&str]| start_view(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(a(&["hearth-gamestore"]), (None, None));
+        assert_eq!(a(&["hearth-gamestore", "--tab", "recomps"]), (Some("recomps".into()), None));
+        assert_eq!(a(&["hearth-gamestore", "--recomps"]), (Some("recomps".into()), None));
+        assert_eq!(a(&["hearth-gamestore", "--store", "epic"]), (Some("library".into()), Some("epic".into())));
+        assert_eq!(a(&["hearth-gamestore", "--tab", "nope", "--store", "steam"]), (None, None));
+        assert_eq!(a(&["hearth-gamestore", "--fullscreen", "--tab", "downloads"]), (Some("downloads".into()), None));
     }
 
     #[test]

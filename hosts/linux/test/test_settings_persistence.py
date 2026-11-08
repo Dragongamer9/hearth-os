@@ -148,7 +148,7 @@ class ConfFiles(unittest.TestCase):
 # SettingsWriter.qml, settings-file.js), never a truncate-then-write, a shared .tmp name or a whole-object rewrite.
 KNOWN = ('desktop.json', 'session.conf', 'library.json', 'osk.json', 'buttons.json', 'profiles.json', 'controller.json',
          'accessibility.json', 'keyboard.json', 'pointer.json', 'desk.json', 'files.json', 'picker.json', 'game-mode-ui.json',
-         'home-server.json', 'ai-share.json')
+         'home-server.json', 'ai-share.json', 'taskmgr.json')
 SKIP_DIRS = {'archive', 'node_modules', 'target', '.git', 'vendor', 'site', 'docs'}
 SKIP_PARTS = ('os-bases/ubuntu', 'os-bases/cachyos', '/test/', '/tests/', 'hosts/android/')
 # Places that still do it, each with its reason (fix them and take them off; never add to this list lightly).

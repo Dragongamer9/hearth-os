@@ -595,7 +595,7 @@ PanelWindow {
                                 implicitWidth: 44; implicitHeight: 44; radius: Theme.r(12)
                                 color: chip.isPage || chip.isGame ? Theme.panel3 : "transparent"
                                 AppIcon { anchors.centerIn: parent; visible: !chip.isPage && !chip.isGame; size: 40; icon: chip.modelData.icon || ""; appId: chip.modelData.id || "" }
-                                Icon { anchors.centerIn: parent; visible: chip.isPage || chip.isGame; name: chip.isGame ? "pad" : (chip.modelData.icon || "gear"); size: 22 }
+                                Icon { anchors.centerIn: parent; visible: chip.isPage || chip.isGame; name: chip.isGame ? "pad" : chip.isPage ? (chip.modelData.icon || "gear") : "gear"; size: 22 }
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true

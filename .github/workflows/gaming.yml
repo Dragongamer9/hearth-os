@@ -32,7 +32,7 @@ jobs:
           for i in 1 2 3; do sudo timeout 240 apt-get -o DPkg::Lock::Timeout=120 update -qq && break; echo "apt update try $i failed"; sleep 10; done
           for i in 1 2 3; do
             sudo DEBIAN_FRONTEND=noninteractive timeout 600 apt-get -o DPkg::Lock::Timeout=120 install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-              xvfb imagemagick dbus-x11 xdotool x11-utils python3-evdev libarchive-tools >/dev/null && break
+              xvfb imagemagick dbus-x11 xdotool x11-utils python3-evdev libarchive-tools fuse3 fuse-overlayfs >/dev/null && break
             echo "apt install try $i failed"; sleep 10
           done
       - name: Test the part of Hearth that opens them from Game Mode (hearth-core gaming_apps.rs)
@@ -51,6 +51,11 @@ jobs:
           cargo test --lib proton_pick 2>&1 | tee pp.log || { echo "::error title=proton_pick tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 pp.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           cargo test --lib game_options 2>&1 | tee -a pp.log || { echo "::error title=game_options tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 pp.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=proton_pick tests::$(grep -E '^test result' pp.log | tr '\n' ' ')"
+      - name: Hearth Games' page and its Recomps tab (calls the app allows, Recomps through hearth-core's engine, Settings' row)
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_gamestore.py' -v 2>&1 | tee hg.log || { echo "::error title=Hearth Games page tests::$(grep -E '^(FAIL|ERROR|AssertionError)' -A3 hg.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Games page tests::$(tail -3 hg.log | tr '\n' ' ')"
       - name: Unit tests (manifest, finding saves, backup and restore, mods in and out, evdev numbers)
         working-directory: hosts/hearth-gaming
         run: |
@@ -132,8 +137,19 @@ jobs:
           HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" dbus-run-session -- ./target/release/hearth-gamestore > gamestore.log 2>&1 &
           sleep 10; front "Hearth Games"; shot gamestore-hello
           xdotool key Next; sleep 1; xdotool key Next; sleep 2; shot gamestore-stores
+          # Recomps (RB once more): Hearth Recomps' catalogue through hearth-core, then a port's page.
+          xdotool key Next; sleep 4; shot gamestore-recomps
+          xdotool key Down; sleep 1; xdotool key Return; sleep 4; shot gamestore-recomps-port
           if grep -q "gamestore.*Sign in to" windows.txt; then echo "::error title=Hearth Games::a sign-in window opened by itself"; fi
           echo "::notice title=Hearth Games window::$(pgrep -af hearth-gamestore | head -2 | tr '\n' ' ') | $(tail -c 600 gamestore.log | tr '\n' '|')"
+          # A second start with --tab (Settings › Games & stores › Recomps) hands over to the open window.
+          HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" timeout 20 ./target/release/hearth-gamestore --tab library; sleep 2
+          [ "$(pgrep -c -f '^\./target/release/hearth-gamestore')" -le 1 ] || echo "::error title=Hearth Games::a second start opened a second window"
+          pkill -f target/release/hearth-gamestore || true
+          # Opened straight on Recomps, as Settings does.
+          sleep 1
+          HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" dbus-run-session -- ./target/release/hearth-gamestore --tab recomps >> gamestore.log 2>&1 &
+          sleep 10; front "Hearth Games"; shot gamestore-recomps-opened
           pkill -f target/release/hearth-gamestore || true
           echo "::notice title=Windows open at each screenshot::$(tr '\n' '|' < windows.txt)"
           echo "::notice title=App output::$(tail -c 1200 saves.log mods.log lab.log | tr '\n' '|')"

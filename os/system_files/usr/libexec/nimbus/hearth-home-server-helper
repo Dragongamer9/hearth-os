@@ -110,6 +110,7 @@ MARK = '# Hearth home server (hearth-home-server-helper): its shared folders'
 STARTED = '/etc/samba/.hearth-home-server-started'
 PLAN = '/etc/hearth/home-server.json'
 NFT_FILE = '/etc/hearth/home-server.nft'
+LINK_FW = '/usr/libexec/nimbus/hearth-link-firewall'
 NFT_TABLE = 'hearth_home_server'
 SMBD_DROPIN = '/etc/systemd/system/smbd.service.d/hearth-home-server.conf'
 EXIT_SYSCTL = '/etc/sysctl.d/99-hearth-exit-node.conf'
@@ -164,6 +165,12 @@ def run(cmd, stdin=None, timeout=60):
 def which(name):
     """Tests replace this."""
     return shutil.which(name)
+
+def smbpasswd_failed(said):
+    """Why smbpasswd didn't take a password, in its own last words (it never prints the password: -s reads stdin)."""
+    last = [l.strip() for l in (said or '').splitlines() if l.strip()]
+    return "Samba didn't take the password" + (': ' + last[-1][:200] if last else '')
+
 
 
 def caller():
@@ -582,6 +589,26 @@ def firewall_apply(block, extra=None):
     return {'firewall': 'open'}
 
 
+def lan_firewall(open_):
+    """Where a firewall runs (ufw or firewalld: not in Hearth's own image, but one can be installed), port 445 opened
+    for this network while home-network shares are on, and closed again when they're off (unless Hearth Storage's
+    Windows sharing still needs it). Without this the shares were listed on your other devices but never answered.
+    hearth-link-firewall does it (only local addresses); no firewall running: nothing to do."""
+    if not os.path.exists(LINK_FW):
+        return {}
+    if not open_ and os.path.exists(STORAGE_CONF):
+        return {}
+    code, out = run([LINK_FW, 'open' if open_ else 'close', 'smb'])
+    try:
+        v = json.loads((out or '').strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        v = {}
+    fw = v.get('firewall') if isinstance(v, dict) else None
+    if not fw or fw == 'none':
+        return {}
+    return {'lanFirewall': fw if code == 0 and v.get('ok', True) else 'failed'}
+
+
 def clean_keep(keep):
     out = {}
     keep = keep if isinstance(keep, dict) else {}
@@ -629,7 +656,9 @@ def apply(data):
                 raise Fail("Samba didn't accept the settings (nothing changed)")
         if hsh:
             hsh.selinux_allow(shares + folders)
-        res.update(firewall_apply(lan_blocked(shares + [dict(f, reach='home') for f in folders], ts_only, os.path.exists(STORAGE_CONF)), svc['ports']))
+        blocked = lan_blocked(shares + [dict(f, reach='home') for f in folders], ts_only, os.path.exists(STORAGE_CONF))
+        res.update(firewall_apply(blocked, svc['ports']))
+        res.update(lan_firewall(not blocked))
         if unit:
             if run(['systemctl', 'is-enabled', unit])[0] != 0:
                 open(STARTED, 'w').close()
@@ -664,6 +693,7 @@ def smb_off(unit, extra=None):
         pass
     remove(OUR_CONF)
     out = firewall_apply(False, extra)
+    out.update(lan_firewall(False))
     storage_started = hsh.STARTED if hsh else '/etc/samba/.hearth-storage-started'
     if unit:
         if (os.path.exists(STARTED) or os.path.exists(storage_started)) and not os.path.exists(STORAGE_CONF):
@@ -1267,11 +1297,11 @@ def person_add(req):
         if code != 0:
             raise Fail('Couldn\'t add %s: %s' % (name, out.strip()[:200]))
         made = True
-    code, _ = run(['smbpasswd', '-a', '-s', name], stdin='%s\n%s\n' % (pw, pw))
+    code, said = run(['smbpasswd', '-a', '-s', name], stdin='%s\n%s\n' % (pw, pw))
     if code != 0:
         if made:
             run(['userdel', name])
-        raise Fail("Samba didn't take the password")
+        raise Fail(smbpasswd_failed(said))
     run(['smbpasswd', '-e', name])
     return {'ok': True, 'person': name, 'made': made}
 
@@ -1282,9 +1312,9 @@ def person_password(req):
     if not isinstance(name, str) or not PERSON_RE.fullmatch(name) or not is_person(name):
         raise Fail('That isn\'t one of the people you added')
     pw = password_ok(req.get('password'))
-    code, _ = run(['smbpasswd', '-a', '-s', name], stdin='%s\n%s\n' % (pw, pw))
+    code, said = run(['smbpasswd', '-a', '-s', name], stdin='%s\n%s\n' % (pw, pw))
     if code != 0:
-        raise Fail("Samba didn't take the password")
+        raise Fail(smbpasswd_failed(said))
     run(['smbpasswd', '-e', name])
     return {'ok': True}
 
@@ -2780,6 +2810,7 @@ def services_switch(svc, res):
         if want and out.get(name) == 'on':
             unit = APP_UNITS[name]
             unit_switch(unit + '.timer', True)
+            run(['systemctl', 'reset-failed', unit + '.service'])
             run(['systemctl', 'restart' if changed else 'start', unit + '.service'])
     return {'apps': out}
 
@@ -3067,6 +3098,10 @@ def svc(action, name):
     unit = APP_UNITS[name] + '.service'
     if not os.path.exists(APP_DROPIN % APP_UNITS[name]):
         raise Fail('%s isn\'t set up on this PC' % APPS[name]['label'])
+    if action in ('start', 'restart'):
+        # After 5 failed starts in 10 minutes systemd keeps it stopped (hearth-ollama.service's start limit); asking
+        # for it by hand is a fresh try.
+        run(['systemctl', 'reset-failed', unit], timeout=30)
     code, _ = run(['systemctl', action, '--no-block', unit], timeout=30)
     if code != 0:
         raise Fail('systemctl %s %s didn\'t work' % (action, unit))

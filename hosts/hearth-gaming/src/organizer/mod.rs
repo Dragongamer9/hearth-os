@@ -374,12 +374,12 @@ impl Instance {
 
     /// Changes wait while the game runs through the organizer.
     pub fn guard(&self) -> Result<(), String> {
-        match vfs::read_active(self) { Some(a) if vfs::alive(a.pid) => Err("The game is running through the organizer: close it first.".into()), _ => Ok(()) }
+        match vfs::read_active(self) { Some(a) if vfs::running(&a) => Err("The game is running through the organizer: close it first.".into()), _ => Ok(()) }
     }
     /// After a change, a view deployed by hand is made again.
     pub fn refresh_deploy(&self) -> Result<(), String> {
         if let Some(a) = vfs::read_active(self) {
-            if !vfs::alive(a.pid) { let overlay = a.mode == "overlay"; vfs::undeploy(self, false)?; vfs::deploy(self, 0, overlay)?; }
+            if !vfs::running(&a) { let overlay = a.mode == "overlay"; vfs::undeploy(self, false)?; vfs::deploy(self, 0, overlay)?; }
         }
         Ok(())
     }
@@ -397,6 +397,41 @@ impl Instance {
             let i = Ini::read(&self.profiles_dir.join(&p).join("settings.ini"));
             json!({"name": p, "active": p == self.profile, "localSaves": i.get_bool("General", "LocalSaves").unwrap_or(false), "localInis": i.get_bool("General", "LocalSettings").unwrap_or(false)})
         }).collect())
+    }
+
+    /// What the summary depends on, hashed: the profile's lists, the mod folders there are, the overwrite folder, the
+    /// game's Data folder and the instance's ini (a mod's own files change only by installing or removing it, which
+    /// changes the mods folder). Game Mode's screens use it so a big Wabbajack list isn't worked out at every call.
+    pub fn summary_key(&self) -> String {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.profile.hash(&mut h);
+        for f in ["modlist.txt", "plugins.txt", "loadorder.txt", "settings.ini"] { std::fs::read(self.profile_dir().join(f)).unwrap_or_default().hash(&mut h); }
+        std::fs::read(self.dir.join("ModOrganizer.ini")).unwrap_or_default().hash(&mut h);
+        self.mod_folders().hash(&mut h);
+        let stamp = |p: Option<&Path>| p.and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+        stamp(Some(&self.mods_dir)).hash(&mut h);
+        stamp(Some(&self.overwrite)).hash(&mut h);
+        stamp(self.data_target().as_deref()).hash(&mut h);
+        (self.prefix_user().is_some(), self.game_dir.as_ref().map(|g| g.is_dir())).hash(&mut h);
+        format!("{:016x}", h.finish())
+    }
+    /// summary(), kept in .hearth/summary-cache.json until what it depends on changes (summary_key); what's deployed
+    /// right now is always read fresh.
+    pub fn summary_cached(&self) -> Value {
+        let key = self.summary_key();
+        let file = self.hearth_dir().join("summary-cache.json");
+        let mut sum = match util::read_json(&file) {
+            v if v["key"] == json!(key) && v["summary"].is_object() => v["summary"].clone(),
+            _ => {
+                let s = self.summary();
+                let _ = std::fs::create_dir_all(self.hearth_dir());
+                let _ = util::write_json(&file, &json!({"key": key, "summary": s}));
+                s
+            }
+        };
+        sum["deployed"] = vfs::status(self);
+        sum
     }
 
     /// Everything the mod screens show, in one answer.
@@ -752,6 +787,23 @@ pub fn adopt_wabbajack(job: &str, title: &str, install_dir: &Path, prefix_dir: &
         },
         Err(e) => format!("Play starts Mod Organizer 2 (Hearth's organizer couldn't read the list: {e})."),
     }
+}
+
+/// A Wabbajack list taken out of Hearth (wabbajack.rs forget): its organizer instance goes too, so no instance is left
+/// pointing at a folder that's gone. Refused while the game runs through it; a view deployed by hand is taken away
+/// first (the list's own "Game Root" is inside the folder that may be deleted next).
+pub fn forget_wabbajack(ctx: &Ctx, job: &str) -> Result<(), String> {
+    let all = ctx.recs();
+    let Some(rec) = all.iter().find(|r| !job.is_empty() && r.wabbajack == job).cloned() else { return Ok(()) };
+    if let Ok(inst) = Instance::load(rec.clone()) {
+        if let Some(a) = vfs::read_active(&inst) {
+            if vfs::running(&a) { return Err("The list's game is running through the organizer: close it first.".into()); }
+            vfs::undeploy(&inst, false)?;
+        }
+    }
+    ctx.save_recs(&all.into_iter().filter(|r| r.id != rec.id).collect::<Vec<_>>())?;
+    let _ = std::fs::remove_file(ctx.modlists().join(format!("{job}-hearth.desktop")));
+    Ok(())
 }
 
 /// Every instance's view left by a crash or by hand is taken away (hearth-mods --remount, at sign-in).

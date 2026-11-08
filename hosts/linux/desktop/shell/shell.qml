@@ -6,7 +6,7 @@
 // Started by labwc's autostart: quickshell -p <share>/desktop/shell
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
-//   tasks open|tab <apps|perf|startup>|close|toggle   files open <path>|home|toggle|close
+//   tasks open|tab <processes|performance[:cpu|memory|disk|net|gpu]|startup|details|services|settings>|close|toggle   files open <path>|home|toggle|close
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
 import QtQuick
@@ -143,13 +143,13 @@ ShellRoot {
         onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {
             const pinned = DeskState.isPinned(entry.id);
-            const list = [{ label: "Open", icon: "open", run: () => launcher.launch(entry) }];
+            const list = [{ label: "Open", icon: "open", quick: true, run: () => launcher.launch(entry) }];
             // The app's own actions (New private window...), from its .desktop file.
             const acts = entry.actions ? Array.from(entry.actions).slice(0, 6) : [];
-            for (const a of acts) list.push({ label: a.name, icon: "open", run: () => { a.execute(); launcher.shown = false; } });
+            for (const a of acts) list.push({ label: a.name, icon: "open", group: "Jump to", run: () => { a.execute(); launcher.shown = false; } });
             list.push({ separator: true });
-            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) });
-            list.push({ label: "Add to desktop", icon: "plus", run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
+            list.push({ label: "Add to desktop", short: "To desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
             // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.
@@ -327,6 +327,8 @@ ShellRoot {
         function tab(name: string): void { tasks.open(name); }
         function close(): void { tasks.close(); }
         function toggle(): void { tasks.toggle(); }
+        function menu(): void { tasks.menu(); }
+        function search(q: string): void { tasks.search(q); }
     }
     IpcHandler {
         target: "files"
@@ -409,5 +411,7 @@ ShellRoot {
             if (e) { const c = d.cellCenter(e); d.itemMenu(e, c.x, c.y); }
         }
         function close(): void { popMenu.close(); deskDialog.cancel(); }
+        // Checks only (desktop-test.yml): as if the controller was just used, so menus show their A / B hint row.
+        function padseen(): void { DeskState.padSeen = Date.now(); }
     }
 }

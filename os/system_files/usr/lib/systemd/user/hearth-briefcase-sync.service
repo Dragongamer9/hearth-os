@@ -1,0 +1,20 @@
+# Hearth Files' Briefcase auto-sync (hearth-briefcase autosync; docs/HEARTH-FILES.md): copies one-sided changes
+# between Briefcases and their originals a few seconds after they're saved (or every few minutes), the way each
+# Briefcase's Customize › Auto-sync says. Never part of sign-in or Game Mode starting: nothing wants it (no [Install]);
+# Desktop Mode's autostart and Hearth Files start it with --no-block after sign-in, and ExecCondition skips it (not a
+# failure) when no Briefcase has auto-sync on. It stops by itself when the last one is turned off.
+# Log: ~/.local/share/nimbus/briefcase.log (Send logs includes it).
+[Unit]
+Description=Hearth Files: Briefcase auto-sync
+After=graphical-session.target
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+ExecCondition=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-briefcase autosync-needed
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-briefcase autosync
+Restart=on-failure
+RestartSec=30
+Nice=10
+IOSchedulingClass=idle
+TimeoutStopSec=10

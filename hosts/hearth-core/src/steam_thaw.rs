@@ -148,7 +148,9 @@ mod tests {
         let root = Path::new("/proc");
         let stat = |p: u32| std::fs::read_to_string(format!("/proc/{p}/stat")).unwrap_or_default();
         let wait_for = |want: bool| (0..100).any(|_| { if is_stopped(&stat(pid)) == want { true } else { std::thread::sleep(std::time::Duration::from_millis(20)); false } });
-        assert!(steam_processes(root, uid()).contains(&pid), "HHD's kind of Steam process not found: {pid}");
+        // Right after spawn the child may not have exec'd yet (its /proc entry still shows the test): give it a moment.
+        let seen = (0..100).any(|_| { if steam_processes(root, uid()).contains(&pid) { true } else { std::thread::sleep(std::time::Duration::from_millis(20)); false } });
+        assert!(seen, "HHD's kind of Steam process not found: {pid}");
         assert!(std::process::Command::new("kill").args(["-STOP", &pid.to_string()]).status().unwrap().success());
         assert!(wait_for(true), "didn't stop: {}", stat(pid));
         assert_eq!(stopped(root, &[pid]), vec![pid]);

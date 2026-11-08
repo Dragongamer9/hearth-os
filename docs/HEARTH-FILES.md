@@ -17,8 +17,10 @@ design, "Hearth Files redesign".
   Delete (Move to Trash; in the Trash, delete for good) | Sort (and group), View, Show (hidden files, file name
   extensions) | Undo, Redo, Details (the details pane). Buttons that can't do anything right now are dimmed.
 - **The navigation pane**: Home, Favorites (your bookmarks: Ctrl+D or "Add to Favorites"), This device (Home folder,
-  Desktop, Documents…), Games, Drives (with free space; mount, unmount, safely remove), Hearth Storage, Your devices
-  (shared folders on your other devices, at home and over Tailscale) and Trash.
+  Desktop, Documents…, in yellow), Games, then **This PC** opened out like a tree with Hearth (C:) and every drive
+  under it by its letter (with free space; mount, unmount, safely remove, Change drive letter…), **Network** (Hearth
+  Storage and Your devices: shared folders on your other devices, at home and over Tailscale), **Installed apps** and
+  Trash. The item you're in has the blue bar; This PC's and Network's arrows fold them (for this session).
 - **The Home page**: Quick access tiles (your usual folders, Favorites and Games) and Recent, the files you opened
   lately in any app (from `recently-used.xbel`; ones that were deleted or moved don't show). "Show in its folder" in
   a recent file's menu opens where it is.
@@ -26,6 +28,87 @@ design, "Hearth Files redesign".
   Open and Properties; with several picked, how many and their total size.
 - **The status bar**: how many items, how many picked and their size, what's on the clipboard, free space; copies and
   moves show their progress, speed and time left there with Cancel.
+
+## This PC
+
+Like Windows 11's This PC (the owner's approved mockup, "This PC in Hearth Files, the Windows 11 way"). Open it from
+the navigation pane, the address bar (type "This PC"), or make it where Files opens: **View › Open Files to: Home /
+This PC** (Home unless you pick This PC; kept in files.json `startPage`, only when you pick it). Code:
+`FilesThisPc.qml` (the page, loaded with a Loader so a problem there never stops Files or Desktop Mode from opening),
+`WinGlyph.qml` (yellow folders and drive glyphs), `hearth-files this-pc`.
+
+- **Folders (6)**: Desktop, Documents, Downloads, Pictures, Music and Videos, wherever your XDG folders are
+  (`~/.config/user-dirs.dirs`), with their real names.
+- **Devices and drives**: **Hearth (C:)** (the drive Hearth runs from; its space is your home's), then internal data
+  drives, Hearth Disks' games drives (`/var/mnt/games-*`), drives with a Steam library, USB sticks and SD cards
+  (plugged in but not mounted ones too: open mounts them). Each tile: the drive glyph, "Name (X:)", the thin space bar
+  (red above 90% full) and "x free of y".
+- **Network locations**: your devices' shared folders that are connected now, connect by themselves, or already have a
+  letter, named like "Games (\\Gaming PC) (G:)". Opening one connects it (and asks to sign in the first time).
+- **Tiles** or **Details** (Name, Type, Total size, Free space) from View (Ctrl+1 / Ctrl+3); kept in files.json
+  `thisPcView`, only when you change it.
+- Right-click or X: Open, Open in new tab, Unmount / Safely remove (USB and SD), Connect automatically (network),
+  **Change drive letter…**, Copy path / Copy Linux path, Properties.
+- The controller and keyboard move through the groups like Windows (Down from the last row of Folders goes to the
+  drives below); A opens, B goes back, Y types to filter.
+
+## Drive letters
+
+`hearth_drive_letters.py` (used by hearth-files and hearth-winapps):
+
+- **C: is always Hearth.** It's never stored and can't be given to another drive.
+- Every other drive gets the **next free letter, D: to Y:,** the first time it's seen, keyed by its file system UUID
+  (or where it's mounted when it has none); network locations by their address. Z: is left alone: it's how Windows
+  apps see the whole system.
+- **A letter never changes by itself and never moves to another drive.** Unplugged drives keep theirs (so a new drive
+  gets the next letter, not theirs). Only **Change drive letter…** (This PC's or the navigation pane's right-click
+  menu) changes one, to a free letter, and that choice is kept.
+- Kept in `~/.config/hearth/drive-letters.json` (state, through hearth_settings_io: atomic, a .bak, under its lock).
+  It's written only when a drive is seen for the first time, when a drive's mount place changes, or when you change a
+  letter: opening Files with only C: writes nothing. A damaged file is put back from its .bak, or kept aside once as
+  `.broken-<time>` (never written over), and letters start again from what's seen next.
+- **The address bar in letters**: "This PC › Games (D:) › SteamLibrary" on a lettered drive, "This PC › Documents"
+  in your folders, "This PC › Hearth (C:) › usr" elsewhere on the system (the rest of your home folder keeps
+  "Home › …"). Typing `D:\Games`, `d:/Games` or `C:\Users\<you>\Documents` goes there; clicking the address bar on
+  a lettered drive shows the `D:\…` form. Code: `drive-paths.js`.
+- **The details pane** shows where something is in letters and, under "On Linux", its real path.
+- **Copy path** copies the letter form (`D:\SteamLibrary\steamapps`), **Copy Linux path** (Ctrl+Alt+C, as before)
+  the real one; the command bar's Copy path offers both.
+
+### Windows apps see the same letters
+
+Each time a Windows app starts (hearth-winapps, `ensure_prefix` → `hearth_drive_letters.map_prefix`):
+
+- `dosdevices/d:`, `e:` … in its prefix point at the same drives as in Files (network locations at their mounted
+  folder). C: stays the prefix's own C:, Z: stays the whole system. A letter Wine or you set up yourself is left as it
+  is; links Hearth made are remembered in `prefix/.hearth-drives.json`, so a changed letter moves its link and nothing
+  else is touched.
+- Documents, Desktop, Downloads, Pictures, Music and Videos of the prefix's user (Proton's `steamuser`) point at your
+  own folders, when the folder there is missing or empty (or Hearth linked it before). One that already has files in
+  it is left alone: nothing is moved.
+- A brand-new prefix gets its letters at its second start (Proton makes the prefix on the first).
+
+## Installed apps
+
+Like Windows Settings › Apps › Installed apps (`FilesApps.qml`, loaded with a Loader; `hearth-files installed-apps`):
+every app with its icon, a kind tag (**Hearth, Flatpak, Windows app, Steam, Recomp, Hearth Games**), publisher if
+known, install date if known, and size. Sort by name, size or install date and filter by kind (the "Sort by" /
+"Filter by" buttons, or the command bar's Sort and Show). The data comes from what Hearth already keeps: Hearth's own
+apps' menu entries, `hearth-flatpak installed` (sizes, publisher from the app's metainfo), `hearth-winapps list`
+(sizes added up lazily and cached in `~/.cache/hearth/app-sizes.json`) and Storage's games list
+(`nimbus --settings-call diskspace.status`: Steam, Hearth Games' stores and Recomps, with the sizes the Hearth app keeps;
+pictures from the launcher's cache). Nothing scans the disk.
+
+The **"···"** menu (or A / X on a row):
+
+- **Open** / **Play** (games start through Hearth, like its Play button).
+- **Modify**: Windows apps → Settings › Windows apps; Steam games → Steam's Properties; Flatpak apps → Flatseal (only
+  when it's installed). Not shown where there's nothing to open.
+- **Move to another drive**: only for games Hearth's Storage can move (Steam, Epic, GOG, Recomps): opens Storage in the
+  Hearth app.
+- **Uninstall**, through each kind's own way: Flatpak (`hearth-flatpak remove`) and Windows apps (`hearth-winapps
+  remove`) after "Uninstall …?"; Steam games through Steam's own uninstall dialog; other games in Hearth's Storage
+  page. Hearth's built-in apps say **Part of Hearth** and have no Uninstall.
 
 ## Everything else it does
 
@@ -48,6 +131,82 @@ design, "Hearth Files redesign".
   Up again the tabs, A opens or presses, B goes back, X opens the actions menu, Y types (the on-screen keyboard),
   press and hold for the menu on touch.
 
+## Briefcase
+
+Windows 95–XP's Briefcase, made new. Code: `hosts/linux/desktop/shell/hearth-briefcase` (every file change; a CLI with
+a JSON answer, like `hearth-files`), `Briefcase.qml` (what Files shows) and `BriefcaseDialog.qml` (its dialogs).
+
+- **A Briefcase is a folder** with a small hidden list inside (`.briefcase.json`), so it travels with the folder: on a USB
+  stick, a shared folder or another Hearth device. `~/Briefcase` is in the navigation pane (made the first time you open
+  it); **New › Briefcase** makes another anywhere. Its icon is a briefcase (or a satchel, suitcase, backpack or box) in
+  its colour, with its badge and a padlock when it's locked.
+- **Adding**: drag files or folders onto it (its folder, its icon, its place in the navigation pane), or **Add to
+  Briefcase ›** in the right-click menu. Each item is copied in and remembers its original: a path on this PC, a USB
+  drive (its filesystem ID and the path on it, so it's found again under any mount point) or a shared folder from Your
+  devices (`smb://`, opened through gio), with the size, time and a hash (SHA-256; big files only when needed) of both
+  copies at the last update.
+- **Status** (the Status column in Details, a badge on each icon, worked out again when it's opened and every few
+  seconds while it's shown): Up-to-date · Newer in Briefcase · Newer at original · Changes on both sides (a folder) ·
+  Changed in both · **Original unavailable** ("Plug in “STICK”", "Desk is offline", "The original is on Laptop":
+  never called an orphan because it's away) · **Orphan** (the original was deleted, or you split it).
+- **Update All** (command bar or menu) / **Update** (the picked items) first shows a list of what it will do, one row
+  per file: **Replace →** original, **← Replace** in the Briefcase, **Skip**, **Keep both** (for a file changed in both
+  places: the other copy is saved beside it as `name (from <device> <date>).ext`), and for a file deleted on one side
+  **"Deleted at original: keep or delete?"** (Delete here too / put it back; Skip by default, never automatic). Change any
+  row (click it, or Left / Right), then **Update**. Copies go to a temporary file that's renamed over (a crash or power
+  cut leaves the old file or the new one), with progress and Stop. A replaced or deleted version goes to the **Trash on
+  its own side**: your Trash, or the USB stick's own `.Trash-<uid>` (the freedesktop spec); on a shared folder, where
+  there's no Trash, into `.briefcase-replaced/<date>` inside the Briefcase (the message says so). A row whose file
+  changed after the list was made is skipped. Folders sync file by file; new files on either side are added.
+- **Split from original** (the copy stays, no longer updated: Orphan) and **Find original** (opens its folder).
+- **Send Briefcase to…** a USB drive (or your home folder) copies the whole Briefcase with its list, the old floppy
+  way. A Briefcase found on a USB stick or another device's share works the same, because originals are kept as drive-ID
+  or share references with the device's name.
+- **Between Briefcases**: drag an item from one Briefcase to another (Ctrl copies), or **Move to Briefcase ›** /
+  **Copy to Briefcase ›** / **Swap with…**. The item keeps its link to its original. Copies are checked by their hash
+  before the source's copy goes to the Trash; a crash in between leaves two copies, never none.
+- **Customize…** (menu or command bar): name, colour (presets or your accent), icon, a badge (an emoji or up to four
+  letters), a note (shown in its details pane), its own view and sort, Auto-sync, Auto-lock, Lock when the PC sleeps,
+  Lock when the USB stick is ejected, Show in navigation pane. Kept in the Briefcase's own list (through
+  `hearth_settings_io`: atomic, a `.bak`), so it travels with it; only what you change is saved, and the files inside
+  aren't touched.
+
+### Locked Briefcases
+
+- **Lock this Briefcase…** asks for a password twice and says plainly: "If you forget this password, the files inside
+  can't be recovered. Hearth can't reset it." The files are encrypted with **gocryptfs** into `.briefcase-vault` inside
+  the folder (so it unlocks with the same password on a USB stick or another Hearth device), the encrypted copy is
+  closed, opened again and compared file by file, and only then does the unlocked copy go to the Trash (empty the
+  Trash, and on a USB stick its own Trash, to remove it). **Remove lock** does the reverse with the same checks.
+  **Change password** re-wraps gocryptfs's key (nothing is encrypted again).
+- **Unlock** asks for the password (the on-screen keyboard and the controller work in the box); "Remember on this
+  device" (off unless you tick it) keeps it in the system keyring with `secret-tool`. The password goes to the helper on
+  stdin, never on a command line, in the environment, a file, a log or Send logs. Unlocked, its files are shown from
+  `$XDG_RUNTIME_DIR/hearth-briefcase/…`; locked, Files shows its name and Locked, with Unlock (Update All and
+  moving items ask for the password first).
+- **Locks by itself**: after the time in Customize › Auto-lock (Never, 1, 5, 15, 30 minutes, 1 hour, 4 hours or your
+  own; 15 minutes when a lock is added), counted from the last time something in it was opened (in Files) or changed;
+  a file open in an app keeps it unlocked until the app closes it. A minute before, a notification says
+  "Briefcase “School” will lock in 1 minute" with **Keep unlocked**. Also when the PC goes to sleep and when its USB
+  stick is ejected (each a switch, both on), and when you sign out. The details pane shows "Locks in 12 min". A small
+  watcher (`hearth-briefcase guard`) runs only while a Briefcase is unlocked.
+
+### Auto-sync
+
+- Customize › Auto-sync: **Right away** (every new Briefcase starts with it; one already made keeps whatever it has),
+  Every 5 / 15 / 30 minutes or your own, **When I lock it** (just before it locks), or **Off** (only Update All).
+- Only **one-sided** changes and new files are copied by themselves, once the file has been left alone for about three
+  seconds and no app has it open for writing. **Changed in both** and **deletions** always wait for you: the badge shows
+  it, and a notification says "2 files in “School” need you" (with Open). Replaced versions go to the Trash as with
+  Update All. An original on an unplugged drive or an offline device waits quietly and syncs when it's back (a drive
+  plugged in or a shared folder opened is noticed). A locked Briefcase waits until it's unlocked. Syncs to a shared
+  folder are throttled; it pauses while a game runs.
+- "Synced 2 min ago" / "Syncing…" / "2 files need you" in the details pane and the status bar.
+- It's the user service `hearth-briefcase-sync.service` (os/system_files/usr/lib/systemd/user): asked for with
+  `--no-block` from Desktop Mode's autostart and by Files, skipped by systemd (`ExecCondition`) when no Briefcase has
+  auto-sync on, stopping by itself when the last one is turned off, `Restart=on-failure` with a limit, never part of
+  sign-in or Game Mode. Log: `~/.local/share/nimbus/briefcase.log` (Send logs includes it).
+
 ## Settings
 
 View, sort, groups, hidden files, file name extensions and the details pane are kept in `~/.config/nimbus/files.json`
@@ -56,6 +215,18 @@ written over a file it couldn't read; docs/SETTINGS-PERSISTENCE.md). Nothing cha
 
 ## Checks
 
+- `hosts/linux/test/test_hearth_this_pc.py`: drive letters (C: is Hearth, first seen gets the next free letter,
+  stable across unplugging and order, nothing written for known drives or C: alone, your change kept and never
+  moved, a bad file kept aside once or put back from .bak), paths in letters and back (`drive-paths.js` with node),
+  This PC's drives from pretend mounts and lsblk, Windows apps' prefixes (letters, user folders, Wine's own links
+  kept, a changed letter), and that the pages load through Loaders.
+- The Desktop Mode test's `shots/files-this-pc/` (dark and light): This PC, inside the games drive, Installed apps,
+  its "···" menu, the details pane with the Linux path, This PC's Details view. Opening them may only create or change
+  `~/.config/hearth/drive-letters.json`; any other changed file under `~/.config` or Hearth's settings fails the test.
+- `hosts/linux/test/test_hearth_briefcase.py`: the Briefcase: statuses (unplugged versus deleted), every Update action,
+  conflicts keeping both, the Trash (home, a USB stick's, `.briefcase-replaced`), a crash mid-copy (the helper killed),
+  folders, a bad list kept aside, carrying, swapping, Customize, locks (gocryptfs where FUSE works, else a stand-in, with a
+  `::notice` saying which), auto-lock and auto-sync. The Desktop Mode test's pictures are in `shots/briefcase/`.
 - `hosts/linux/test/test_hearth_files.py`: untrash (undo of Move to Trash), links, recent files, and that the window
   keeps its buttons and features (`Redesign`).
 - The Desktop Mode test takes pictures in `shots/files-redesign/` (dark and light: Home, a folder with three picked
