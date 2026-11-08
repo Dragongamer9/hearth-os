@@ -1239,7 +1239,7 @@ impl Bridge {
                 if let Some(v) = a["set"].as_str() {
                     if !["fast", "compatible", "auto"].contains(&v) { return Err("Unknown choice".into()); }
                     let _ = std::fs::create_dir_all(crate::paths::config_dir());
-                    if v == "auto" { let _ = std::fs::remove_file(&f); } else { std::fs::write(&f, v).map_err(|e| e.to_string())?; }
+                    if v == "auto" { let _ = std::fs::remove_file(&f); } else { crate::settings_file::write_text(&f, v).map_err(|e| e.to_string())?; }
                 }
                 let pick = std::fs::read_to_string(&f).unwrap_or_default().trim().to_string();
                 Ok(json!({"pick": if pick.is_empty() { "auto".to_string() } else { pick }, "fast": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()}))
