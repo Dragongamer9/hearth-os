@@ -1,7 +1,8 @@
 // Hearth Games' page (ui/games.html): your GOG, Epic and Battle.net games. The window's calls go to the Rust side
 // (src/apps/gamestore.rs), which makes them on Hearth's own store engine (hearth-core: gogdl, legendary, Faugus), so
 // what's installed here is in Hearth's library and in Steam Game Mode (Hearth Sync). Moving around is kit.js's:
-// D-pad / stick / arrows, A chooses, B back, X refreshes, Y searches, LB/RB switch Library, Downloads and Stores.
+// D-pad / stick / arrows, A chooses, B back, X refreshes, Y searches, LB/RB switch Library, Downloads, Stores and
+// Recomps (ui/recomps.js: Hearth Recomps, native PC ports of console games).
 'use strict';
 const { $, esc, human, when } = KIT;
 const call = (method, args = {}) => KIT.invoke('call', { method, args });
@@ -10,7 +11,7 @@ const S = {
   tab: 'library', loading: true, info: {}, games: [], acc: {}, bn: {}, dl: { active: [], recent: [] }, drives: null,
   filt: 'all', installedOnly: false, q: '', busy: {}, error: '',
 };
-const TABS = ['library', 'downloads', 'stores'];
+const TABS = ['library', 'downloads', 'stores', 'recomps'];
 const STORE = { gog: 'GOG', epic: 'Epic Games', battlenet: 'Battle.net' };
 const MARK = { gog: 'GOG', epic: 'EPIC', battlenet: 'B.net' };
 const game = id => S.games.find(g => g.id === id);
@@ -33,6 +34,7 @@ async function loadAll(rescan = false) {
     S.error = '';
   } catch (e) { S.error = KIT.err(e); }
   if (S.loading && S.info.store) S.filt = S.info.store;
+  if (S.loading && TABS.includes(S.info.tab)) S.tab = S.info.tab;
   S.loading = false;
   render();
 }
@@ -51,10 +53,18 @@ function poll() {
 KIT.listen('games://event', ev => {
   const e = ev.payload || {};
   if (e.name === 'battlenet') { S.bn = Object.assign({}, S.bn, e.data || {}); render(); return; }
+  if (e.name === 'recomps') { rcEvent(e.data); return; }
   if (['library.changed', 'accounts.changed', 'install.done'].includes(e.name)) {
     if (e.name === 'install.done' && e.data?.title) KIT.toast(e.data.error ? `${e.data.title}: ${e.data.error}` : `${e.data.title} is installed`);
     loadAll(); loadDownloads();
   }
+});
+// Another start asked for a tab (Settings › Games & stores › Recomps: hearth-gamestore --tab recomps) or a store.
+KIT.listen('games://open', ev => {
+  const o = ev.payload || {};
+  if (KIT.dialogOpen()) { RC.page = null; KIT.close(); }
+  if (o.store) S.filt = o.store;
+  if (TABS.includes(o.tab)) setTab(o.tab);
 });
 KIT.listen('games://closing', async () => {
   const n = (S.dl.active || []).length;
@@ -248,16 +258,21 @@ function storesHtml() {
 function render() {
   document.querySelectorAll('#tabs .tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
   const n = S.games.length, inst = S.games.filter(g => g.installed).length;
-  $('#sub').textContent = S.loading ? 'Reading your library…' : n ? `${plural(n, 'game')} · ${inst} installed` : '';
-  const had = document.activeElement?.closest('#main') ? (document.activeElement.dataset.id || document.activeElement.dataset.act || document.activeElement.dataset.filt || document.activeElement.id) : null;
+  const ports = S.tab === 'recomps' && RC.data ? rcAll().filter(e => !e.hidden) : null;
+  $('#sub').textContent = ports ? `${plural(ports.length, 'port')} · ${ports.filter(e => e.installed).length} installed`
+    : S.loading ? 'Reading your library…' : n ? `${plural(n, 'game')} · ${inst} installed` : '';
+  const ae = document.activeElement;
+  const had = ae?.closest('#main') ? (ae.dataset.id || ae.dataset.act || ae.dataset.filt || ae.dataset.rc || ae.dataset.rcs || ae.dataset.rca || ae.id) : null;
   const main = $('#main');
   if (S.loading) main.innerHTML = '<div class="empty"><div class="prog spin"><i></i></div>Reading your library…</div>';
-  else main.innerHTML = (S.error ? `<p class="bad">${esc(S.error)}</p>` : '') + (S.tab === 'library' ? libraryHtml() : S.tab === 'downloads' ? downloadsHtml() : storesHtml());
-  $('#foot').innerHTML = '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Refresh</span>' + (S.tab === 'library' ? '<span><b>Y</b>Search</span>' : '') + '<span><b class="wide">LB</b><b class="wide">RB</b>Library, Downloads, Stores</span>';
+  else main.innerHTML = (S.error ? `<p class="bad">${esc(S.error)}</p>` : '') + (S.tab === 'library' ? libraryHtml() : S.tab === 'downloads' ? downloadsHtml() : S.tab === 'recomps' ? recompsHtml() : storesHtml());
+  $('#foot').innerHTML = '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Refresh</span>' + (S.tab === 'library' || S.tab === 'recomps' ? '<span><b>Y</b>Search</span>' : '') + '<span><b class="wide">LB</b><b class="wide">RB</b>Library, Downloads, Stores, Recomps</span>';
   if (had && !KIT.dialogOpen()) {
-    const el = document.querySelector(`#main [data-id="${CSS.escape(had)}"], #main [data-act="${CSS.escape(had)}"], #main [data-filt="${CSS.escape(had)}"], #main #${CSS.escape(had)}`);
+    const h = CSS.escape(had);
+    const el = document.querySelector(`#main [data-id="${h}"], #main [data-act="${h}"], #main [data-filt="${h}"], #main [data-rc="${h}"], #main [data-rcs="${h}"], #main [data-rca="${h}"], #main #${h}`);
     if (el) el.focus();
   }
+  if (S.tab === 'recomps') rcAfterRender();
   const q = $('#q'); if (q) q.oninput = () => { S.q = q.value; const g = $('.grid'); if (g) g.innerHTML = shown().map(tileHtml).join('') || '<div class="empty" style="grid-column:1/-1">No game by that name.</div>'; };
 }
 function setTab(t) { S.tab = t; render(); KIT.focusFirst('#main .f'); poll(); }
@@ -265,6 +280,7 @@ function setTab(t) { S.tab = t; render(); KIT.focusFirst('#main .f'); poll(); }
 document.addEventListener('click', e => {
   if (KIT.dialogOpen()) return;
   const t = e.target.closest('.tab'); if (t) return setTab(t.dataset.tab);
+  if (S.tab === 'recomps' && rcClick(e)) return;
   const tile = e.target.closest('.tile'); if (tile) { const g = game(tile.dataset.id); if (g) openGame(g); return; }
   const f = e.target.closest('[data-filt]'); if (f) { S.filt = f.dataset.filt; render(); return; }
   const dv = e.target.closest('[data-drive]'); if (dv) { KIT.invoke('use_drive', { mount: dv.dataset.drive }).then(r => { S.drives = r; KIT.toast('New games go there now'); render(); }).catch(err => KIT.toast(KIT.err(err))); return; }
@@ -283,9 +299,12 @@ document.addEventListener('click', e => {
   }
 });
 KIT.onTab = d => setTab(TABS[(TABS.indexOf(S.tab) + d + TABS.length) % TABS.length]);
-KIT.onX = () => refreshAll();
-KIT.onY = () => { if (S.tab !== 'library') return; const q = $('#q'); if (q) { q.focus(); if (KIT.usingPad()) KIT.openOsk(q); } };
-KIT.onBack = () => { if (S.tab !== 'library') setTab('library'); else if (S.q) { S.q = ''; render(); } };
+KIT.onX = () => { if (S.tab === 'recomps') { rcLoad(); KIT.toast('Recomps: looking again…'); } else refreshAll(); };
+KIT.onY = () => { const q = S.tab === 'library' ? $('#q') : S.tab === 'recomps' ? $('#rq') : null; if (q) { q.focus(); if (KIT.usingPad()) KIT.openOsk(q); } };
+KIT.onBack = () => {
+  if (S.tab === 'recomps' && RC.q) { RC.q = ''; render(); }
+  else if (S.tab !== 'library') setTab('library'); else if (S.q) { S.q = ''; render(); }
+};
 
 // ---------------------------------------------------------------- preview without the app (a plain browser)
 if (!KIT.live) {
@@ -304,6 +323,7 @@ if (!KIT.live) {
     if (cmd === 'drives') return { installRoot: '/home/you/Games', drives: [{ name: 'This device', kind: 'home', mount: '/', free: 212e9, current: true }, { name: 'Games SSD', kind: 'disk', mount: '/var/mnt/games-1', free: 1.4e12 }] };
     if (cmd === 'call') {
       const m = a.method;
+      if (m.startsWith('recomps.')) return rcDemo(m, a.args || {});
       if (m === 'accounts.status') return { accounts: [{ store: 'gog', signedIn: true, name: 'dragon', owned: 6, installed: 2, fetched: Date.now() - 36e5 }, { store: 'epic', signedIn: true, name: 'dragon', owned: 4, installed: 0, fetched: Date.now() - 72e5 }], battlenet: { installed: true, via: 'faugus', faugus: true, games: 1 } };
       if (m === 'library.get') return { games };
       if (m === 'library.downloads') return { active: [games[1]], recent: [{ id: 'gog:2' }] };

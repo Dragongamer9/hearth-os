@@ -40,6 +40,16 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
 .hello h2 { margin:0; font-size:1.5em; }
 .hello .acts { justify-content:center; }
 .note { color:var(--muted); font-size:.85em; }
+/* Recomps (recomps.js): square project icons, and a port's page. */
+.tile.rc .cover { aspect-ratio:1; }
+.tile.rc .cover img { object-fit:contain; padding:14%; background:rgba(8,6,5,.3); }
+.rc-head { display:flex; gap:1em; align-items:center; margin-bottom:.6em; }
+.rc-head img, .rc-head .letter { width:4.5em; height:4.5em; border-radius:min(14px, var(--corner, 14px)); object-fit:contain; background:var(--panel2); border:1px solid var(--line); flex:none; display:grid; place-items:center; font-size:1.6em; font-weight:800; color:var(--muted); }
+.rc-head .letter { width:2.8em; height:2.8em; }
+.rc-head h2 { margin:0 0 .3em; }
+.rc-job { margin:.6em 0; }
+.rc-notes { white-space:pre-wrap; color:var(--muted); font-size:.88em; line-height:1.5; }
+.dlg h3 { margin:1.1em 0 .4em; font-size:1em; }
 </style>
 </head>
 <body>
@@ -48,7 +58,7 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
     <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9.5 8V6.5a2.5 2.5 0 0 1 5 0V8"/><path d="M6.5 8h11l1 11.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5Z"/><path d="M10.5 11.5v5l4-2.5Z" fill="currentColor"/></svg>Hearth Games</h1>
     <span class="sub" id="sub"></span>
     <span class="spacer"></span>
-    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="library">Library</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="stores">Stores</button><span class="lbrb">RB</span></div>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="library">Library</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="stores">Stores</button><button class="tab f" data-tab="recomps">Recomps</button><span class="lbrb">RB</span></div>
   </header>
   <main id="main"></main>
   <footer id="foot"></footer>
@@ -56,6 +66,7 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
 <script src="hearth-gamepad.js"></script>
 <script src="osk/hearth-osk.js"></script>
 <script src="kit.js"></script>
+<script src="recomps.js"></script>
 <script src="games.js"></script>
 </body>
 </html>

@@ -34,6 +34,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Nexus Mods (free accounts): Hearth Browser hands "Mod Manager Download" (nxm://) links straight to Hearth Mods, without Firefox's "open with" question, which was hard to answer with a controller in Game Mode (needs testing on a device)
 - [x] Send logs: "Hearth Input not running" outside Game Mode and InputPlumber missing on PCs without it are no longer listed as problems (needs testing on a device)
 
+### New
+
+- [x] Hearth Games › Recomps: native PC ports of console games (Zelda 64: Recompiled, Ship of Harkinian, Unleashed Recompiled…) get their own tab next to GOG, Epic and Battle.net: browse by console, search, Installed and Updates; each port's page says which build this PC gets, its version and patch notes; Install (with a drive choice), "Needs your copy of …" with the file chooser and the copy check (and Use it anyway), progress and Cancel, Update, Uninstall (your copy of the game stays) and Play. Settings › Games & stores › Recomps opens it; installed ports still show up in Steam Game Mode (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

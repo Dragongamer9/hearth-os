@@ -1,4 +1,4 @@
-// Hearth Settings › Games & stores: Hearth Games (GOG, Epic, Battle.net: hearth-gamestore), store sign-ins (Epic, GOG, Xbox), where your games come from, and Hearth's gaming
+// Hearth Settings › Games & stores: Hearth Games (GOG, Epic, Battle.net and Recomps: hearth-gamestore), store sign-ins (Epic, GOG, Xbox), where your games come from, and Hearth's gaming
 // apps. Gathers what lived in the archived Game Mode's Settings › Games (Library sources, Import, Game stores &
 // accounts) and its Library, Downloads and Store screens. Apps that exist open themselves; the rest opens in the Hearth
 // app's window at that page until it has an app of its own (docs/SETTINGS-MOVE.md, "Interim").
@@ -35,7 +35,7 @@ SetPage {
     SetRow { chevron: true; icon: "grid"; title: "Library sources"; sub: "Steam, Epic, GOG and emulators: which ones Hearth lists, add a game by hand, look for games again"; onActivated: core.openPage("sources", "Opening Library sources in the Hearth app…") }
     SetRow { chevron: true; icon: "update"; title: "Downloads"; sub: "Epic and GOG installs: pause, carry on, cancel (in Hearth Games)"; onActivated: page.app(["hearth-gamestore"], "Hearth Games") }
     SetRow { chevron: true; icon: "store"; title: "Store"; sub: "Deals, new games and search for Steam, GOG, Epic and Xbox"; onActivated: core.openPage("shop", "Opening the Store in the Hearth app…") }
-    SetRow { chevron: true; icon: "pad"; title: "Recomps"; sub: "Native PC versions of classic console games: install and update them"; onActivated: core.openPage("recomps", "Opening Recomps in the Hearth app…") }
+    SetRow { chevron: true; icon: "pad"; title: "Recomps"; sub: "Native PC versions of classic console games: install, update and play them (in Hearth Games)"; onActivated: page.app(["hearth-gamestore", "--tab", "recomps"], "Recomps in Hearth Games") }
     SetRow { chevron: true; icon: "folder"; title: "Import"; sub: "Games and files from other drives and systems"; onActivated: core.openPage("import", "Opening Import in the Hearth app…") }
     SetRow { chevron: true; icon: "desktops"; title: "Get a game from another Hearth"; sub: "Copy an installed game from one of your Hearth devices (Settings › Hearth Link pairs them)"; onActivated: core.openPage("library", "Opening your library in the Hearth app: Get from another Hearth…") }
 
