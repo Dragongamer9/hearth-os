@@ -1,10 +1,13 @@
 // Hearth Games' window (Tauri: WebKitGTK on Linux), docs/HEARTH-GAMES.md. The page (ui/games.html) shows your GOG,
-// Epic and Battle.net games: sign in, the library, install (on the drive you choose), downloads, play, uninstall.
+// Epic and Battle.net games: sign in, the library, install (on the drive you choose), downloads, play, uninstall. Its
+// Recomps tab (ui/recomps.js) is Hearth Recomps (hearth-core recomps.rs, docs/RECOMPS.md) through the same Bridge.
 // The work is Hearth's own store engine (hearth-core): this process keeps one Bridge and only makes the calls in
 // hearth_gaming::gamestore::CALLS. Games start the way their Steam Game Mode shortcuts start them (`nimbus
 // --play-now <id>`, hearth-core desktop_games::play_now), so a game that starts here starts there.
 //
 //   hearth-gamestore [--fullscreen] [--store gog|epic|battlenet]   the window, opened on one store
+//   hearth-gamestore --tab recomps                                  the window, opened on a tab (library, downloads,
+//                                                                    stores, recomps); an open window switches to it
 //
 // One window at a time: a second start shows the open one (a socket in $XDG_RUNTIME_DIR/hearth). Closing it while
 // games download asks first; "Keep downloading" hides the window, and the app ends by itself once they're done.
@@ -78,6 +81,8 @@ mod linux {
             let mut b = Bridge::with(lib, hearth_core::profiles::Profiles::open(&data), env!("CARGO_PKG_VERSION"));
             b.emit = Arc::new(|v: Value| to_page(&v));
             b.sign_in = Arc::new(|page: &hearth_core::stores::SignIn| sign_in(page));
+            // Recomps' "Needs your copy of …": the desktop's file chooser (Hearth Files through the portal), as Mods uses.
+            b.pick_file = Arc::new(|title: &str| pick_file(title));
             b.cur_label = "games".into();
             hearth_core::bridge::log("hearth games: opened (GOG, Epic, Battle.net)");
             *g = Some(b);
@@ -135,6 +140,16 @@ mod linux {
         code
     }
 
+    /// A file from the standard file chooser (None: closed). Runs on hearth-core's picker thread (picker.rs), so the
+    /// window and the Bridge keep answering while it's open.
+    fn pick_file(title: &str) -> Option<String> {
+        use tauri_plugin_dialog::DialogExt;
+        let app = APP.get()?;
+        let home = hearth_core::paths::home();
+        app.dialog().file().set_title(title).set_directory(home).blocking_pick_file()
+            .and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
+    }
+
     fn art(uri: &str) -> tauri::http::Response<Vec<u8>> {
         match gamestore::art_file(uri).and_then(|(p, m)| std::fs::read(&p).ok().map(|b| (b, m))) {
             None => tauri::http::Response::builder().status(404).body(Vec::new()).unwrap(),
@@ -147,6 +162,11 @@ mod linux {
     async fn call(method: String, args: Value) -> Result<Value, String> {
         tauri::async_runtime::spawn_blocking(move || {
             let (m, a) = gamestore::check(&method, &args)?;
+            if m == "recomps.useGame" {
+                let id = a["id"].as_str().unwrap_or("");
+                let job = with_bridge(|b| b.recomps.jobs.lock().map(|j| j.get(id).cloned()).ok().flatten()).unwrap_or(Value::Null);
+                if !gamestore::use_game_ok(&job, a["path"].as_str().unwrap_or("")) { return Err("Choose your copy again first.".into()); }
+            }
             let v = bridge_call(&m, &a)?;
             Ok(match m.as_str() {
                 "library.get" => gamestore::only_ours(v),
@@ -180,7 +200,7 @@ mod linux {
     /// closing this window doesn't end the game.
     #[tauri::command]
     fn play(id: String) -> Result<Value, String> {
-        if !gamestore::game_id_ok(&id) { return Err("That isn't a GOG, Epic or Battle.net game".into()); }
+        if !gamestore::playable(&id) { return Err("That isn't a GOG, Epic or Battle.net game or an installed recomp".into()); }
         let app = nimbus().ok_or("Hearth isn't installed here, so it can't start games.")?;
         use std::os::unix::process::CommandExt;
         let mut c = std::process::Command::new(app);
@@ -206,10 +226,11 @@ mod linux {
     #[tauri::command]
     fn info() -> Value {
         let args: Vec<String> = std::env::args().collect();
-        let store = args.iter().position(|a| a == "--store").and_then(|i| args.get(i + 1)).filter(|s| gamestore::SOURCES.contains(&s.as_str())).cloned();
+        let (tab, store) = gamestore::start_view(&args);
         json!({
             "version": env!("CARGO_PKG_VERSION"),
             "store": store,
+            "tab": tab,
             "proton": hearth_core::proton_pick::builtin_ge().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
             "canPlay": nimbus().is_some(),
         })
@@ -233,10 +254,14 @@ mod linux {
         if let Some(w) = app.get_webview_window("main") { let _ = w.show(); let _ = w.unminimize(); let _ = w.set_focus(); }
     }
 
-    /// Another start of Hearth Games while this one is open: show this one. Ok(true) when it was handed over.
+    /// Another start of Hearth Games while this one is open: show this one, on the tab or store that start asked for
+    /// ("show recomps", "show library epic"). Ok(true) when it was handed over.
     pub fn hand_over() -> bool {
+        let args: Vec<String> = std::env::args().collect();
+        let (tab, store) = gamestore::start_view(&args);
+        let line = ["show".to_string(), tab.unwrap_or_default(), store.unwrap_or_default()].join(" ");
         match UnixStream::connect(socket()) {
-            Ok(mut s) => { let _ = s.write_all(b"show\n"); true }
+            Ok(mut s) => { let _ = s.write_all(format!("{}\n", line.trim_end()).as_bytes()); true }
             Err(_) => false,
         }
     }
@@ -254,7 +279,13 @@ mod linux {
             for s in l.incoming().flatten() {
                 let mut line = String::new();
                 let _ = BufReader::new(s).read_line(&mut line);
-                if line.trim() == "show" { let a = app.clone(); let _ = app.run_on_main_thread(move || show(&a)); }
+                let mut w = line.split_whitespace();
+                if w.next() != Some("show") { continue; }
+                // Only the names start_view allows get to the page.
+                let tab = w.next().filter(|t| gamestore::TABS.contains(t)).map(str::to_string);
+                let store = w.next().filter(|s| gamestore::SOURCES.contains(s)).map(str::to_string);
+                if tab.is_some() { let _ = app.emit("games://open", json!({"tab": tab, "store": store})); }
+                let a = app.clone(); let _ = app.run_on_main_thread(move || show(&a));
             }
         });
     }
@@ -279,6 +310,7 @@ mod linux {
         let fullscreen = hearth_gaming::util::has_arg(&args, "--fullscreen");
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
         tauri::Builder::default().plugin(apptheme::plugin())
+            .plugin(tauri_plugin_dialog::init())
             // The library's pictures, as Hearth's own window serves them (nimbus-art://cache/…, nimbus-art://file/…).
             .register_asynchronous_uri_scheme_protocol("nimbus-art", |_ctx, req, responder| {
                 let uri = req.uri().to_string();

@@ -16,6 +16,11 @@
 //! event fires on window when they change (for colours an app draws itself, on a canvas or in a terminal).
 //! The app's own :root colours stay as the fallback (Ember on Windows has no theme file). Without the file on
 //! Linux (hearth-theme hasn't run yet) the default look, Steam-style dark, is used.
+//!
+//! Size: in a desktop window (Desktop Mode, or any desktop that isn't gamescope) desktop.css is added after the
+//! look, so the apps' text is the size of Mantel's bar instead of growing with the window's width (their style
+//! sheets are made big for Game Mode and TVs). Game Mode (gamescope, `--fullscreen`) keeps the big sizes.
+//! `HEARTH_APP_SIZE=desktop|big` overrides the guess (tests, and anyone who wants the big sizes on a desktop).
 #![allow(dead_code)]
 
 use std::path::PathBuf;
@@ -28,6 +33,44 @@ use tauri::{Manager, Runtime};
 const DEFAULT_CSS: &str = r##"/* Written by hearth-theme (steam, dark, accent #1a9fff): the look for Hearth's apps. */
 :root:root{color-scheme:dark;--bg:#171a21;--bg2:#1b2838;--panel:#1e2633;--panel2:#24303f;--panel3:#2a475e;--line:#32404f;--text:#dce5ed;--muted:#8f98a0;--faint:#646b72;--danger:#e5484d;--ember:#1a9fff;--accent:#1a9fff;--flame:#66c0f4;--ink:#06121d;--focus:#1a9fff;--glow:#172737;--chrome:#1b2838;--accentInk:#06121d;--r:4px;--corner:4px;--font:"Inter", system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif}
 "##;
+
+/// Desktop Mode's size for the apps (the bar's text size; see desktop.css).
+const DESKTOP_CSS: &str = include_str!("desktop.css");
+
+/// Is this app in a desktop window? Not in gamescope (Steam Game Mode and Hearth's own Game Mode), not opened
+/// `--fullscreen` (how Game Mode opens Hearth's apps), not in Steam's Big Picture, and only on Linux (Ember on
+/// Windows is a gamepad shell). `HEARTH_APP_SIZE=desktop` or `big` decides it instead.
+pub fn desktop_size() -> bool {
+    desktop_size_for(
+        cfg!(target_os = "linux"),
+        std::env::var("HEARTH_APP_SIZE").ok().as_deref(),
+        std::env::args().skip(1).any(|a| a == "--fullscreen"),
+        // Desktop Mode's labwc first (as nimbus-mode decides), in case gamescope's variables were left behind.
+        std::env::var_os("LABWC_PID").is_none()
+            && (std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some()
+                || std::env::var("XDG_CURRENT_DESKTOP").map(|d| d.to_ascii_lowercase().contains("gamescope")).unwrap_or(false)
+                || std::env::var("SteamGamepadUI").map(|v| v == "1").unwrap_or(false)),
+    )
+}
+
+fn desktop_size_for(linux: bool, forced: Option<&str>, fullscreen: bool, gamescope: bool) -> bool {
+    match forced {
+        Some("desktop") => return true,
+        Some("big") => return false,
+        _ => {}
+    }
+    linux && !fullscreen && !gamescope
+}
+
+/// What goes in the page: the look, and Desktop Mode's size when on a desktop.
+pub fn page_css() -> String {
+    let mut c = css();
+    if desktop_size() {
+        c.push('\n');
+        c.push_str(DESKTOP_CSS);
+    }
+    c
+}
 
 /// ~/.config/hearth/theme.css ($HEARTH_THEME_CSS for tests).
 pub fn css_path() -> Option<PathBuf> {
@@ -152,7 +195,7 @@ fn watch<R: Runtime>(app: tauri::AppHandle<R>) {
         let now = stamp();
         if now != last {
             last = now;
-            let js = apply_js(&css());
+            let js = apply_js(&page_css());
             for w in app.webview_windows().values() {
                 let _ = w.eval(js.as_str());
             }
@@ -163,11 +206,11 @@ fn watch<R: Runtime>(app: tauri::AppHandle<R>) {
 /// The plugin: the look in every page, and changes followed while the app is open.
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("hearth-apptheme")
-        .js_init_script(script(&css()))
+        .js_init_script(script(&page_css()))
         .on_page_load(|webview, payload| {
             // A page opened after the look changed (the script above carries the look from the app's start).
             if matches!(payload.event(), PageLoadEvent::Finished) {
-                let _ = webview.eval(apply_js(&css()).as_str());
+                let _ = webview.eval(apply_js(&page_css()).as_str());
             }
         })
         .setup(|app, _api| {
@@ -176,4 +219,19 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             Ok(())
         })
         .build()
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::desktop_size_for;
+
+    #[test]
+    fn desktop_window_gets_the_bars_size_game_mode_stays_big() {
+        assert!(desktop_size_for(true, None, false, false));          // Desktop Mode (labwc), GNOME, KDE
+        assert!(!desktop_size_for(true, None, true, false));          // opened --fullscreen from Game Mode
+        assert!(!desktop_size_for(true, None, false, true));          // in gamescope
+        assert!(!desktop_size_for(false, None, false, false));        // Ember on Windows
+        assert!(desktop_size_for(true, Some("desktop"), true, true));
+        assert!(!desktop_size_for(true, Some("big"), false, false));
+    }
 }
