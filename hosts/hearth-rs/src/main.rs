@@ -47,8 +47,14 @@ fn desktop_window() -> bool { hearth_core::signin_handoff::windowed() || !in_ses
 pub(crate) fn signin_pad_wanted() -> bool { !desktop_window() }
 
 /// Where a sign-in window's answer goes (one sign-in at a time): the code, or None when it was closed.
-static SIGNIN: Mutex<Option<std::sync::mpsc::Sender<Option<String>>>> = Mutex::new(None);
-fn signin_answer(v: Option<String>) { if let Some(tx) = SIGNIN.lock().unwrap().take() { let _ = tx.send(v); } }
+/// Each sign-in has its own turn (winhost::SignInTurns): only its own window answers it, so the older window's
+/// "destroyed", which can come after the newer sign-in started, never ends the newer one.
+static SIGNIN: Mutex<Option<(u64, std::sync::mpsc::Sender<Option<String>>)>> = Mutex::new(None);
+static SIGNIN_TURNS: winhost::SignInTurns = winhost::SignInTurns::new();
+fn signin_answer(turn: u64, v: Option<String>) {
+    let mut s = SIGNIN.lock().unwrap_or_else(|p| p.into_inner());
+    if s.as_ref().map(|(t, _)| *t == turn).unwrap_or(false) { if let Some((_, tx)) = s.take() { let _ = tx.send(v); } }
+}
 
 /// Xbox Cloud Gaming serves its best quality to Edge on Windows, so the stream window says it is one.
 const EDGE_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0";
@@ -56,8 +62,14 @@ const EDGE_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537
 /// A store's sign-in page in its own window. Blocks until it ends with a code, or is closed.
 fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
-    signin_answer(None);   // a sign-in window left over from before: that one's done
-    *SIGNIN.lock().unwrap() = Some(tx);
+    let turn;
+    {
+        // A sign-in window left over from before: that one's done (answered "closed").
+        let mut s = SIGNIN.lock().unwrap_or_else(|p| p.into_inner());
+        turn = SIGNIN_TURNS.take();
+        if let Some((_, old)) = s.take() { let _ = old.send(None); }
+        *s = Some((turn, tx));
+    }
     if let Some(old) = app.get_webview_window("signin") { let _ = old.destroy(); }
     let done = page.done;
     // In Game Mode it works with just a controller: a pointer, an on-screen keyboard, B to cancel. In Desktop Mode
@@ -76,14 +88,17 @@ fn sign_in(app: &tauri::AppHandle, page: &hearth_core::stores::SignIn) -> Option
         .data_directory(hearth_core::storefront::web_profile(page.store, "webkit"))
         .initialization_script(&script)
         .on_navigation(move |url| {
-            if url.as_str().starts_with("hearth-signin://cancel") { signin_answer(None); return false; }
-            match done(url.as_str()) { Some(code) => { signin_answer(Some(code)); false } None => true }
+            if url.as_str().starts_with("hearth-signin://cancel") { signin_answer(turn, None); return false; }
+            match done(url.as_str()) { Some(code) => { signin_answer(turn, Some(code)); false } None => true }
         });
-    let w = match b.build() { Ok(w) => w, Err(e) => { hearth_core::bridge::log(&format!("sign-in window: {e}")); return None; } };
-    w.on_window_event(|e| if let tauri::WindowEvent::Destroyed = e { signin_answer(None); });
+    let w = match b.build() { Ok(w) => w, Err(e) => { hearth_core::bridge::log(&format!("sign-in window: {e}")); signin_answer(turn, None); return None; } };
+    w.on_window_event(move |e| if let tauri::WindowEvent::Destroyed = e { signin_answer(turn, None); });
     // gamescope keeps showing whichever window Hearth last put in front: put this one there.
     if let Some(gm) = GM.get() { gm.to_front(page.title); }
     let answer = rx.recv().ok().flatten();
+    // A newer sign-in took over (it destroyed this window already): the window labelled "signin" and the place in
+    // front are the newer one's now.
+    if !SIGNIN_TURNS.is_current(turn) { return answer; }
     let _ = w.destroy();
     if let Some(gm) = GM.get() { gm.come_back(); }
     answer
@@ -899,7 +914,7 @@ fn main() {
         .register_uri_scheme_protocol("hearth-signin", |_ctx, req| {
             let u = req.uri().to_string();
             if u.contains("stream-exit") { if let Some(gm) = GM.get() { gm.host.destroy("stream"); } }
-            else { signin_answer(hearth_core::http::query_param(&u, "code")); }
+            else { signin_answer(SIGNIN_TURNS.current(), hearth_core::http::query_param(&u, "code")); }
             Response::builder().status(StatusCode::OK).body(Vec::new()).unwrap()
         })
         .invoke_handler(tauri::generate_handler![nimbus_msg])
