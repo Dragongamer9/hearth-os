@@ -139,7 +139,14 @@ if curl -fsSL --retry 3 -o /tmp/steam-launcher.deb https://repo.steampowered.com
     # Its dependencies name x86 packages (steam-libs, :i386/:amd64) that arm64 can't have. FEX brings the x86 side,
     # so unpack the launcher (the steam script and its bootstrap) and install only what the script itself runs.
     echo "::warning title=Steam (arm64)::apt couldn't install Valve's package as is: $(tail -3 /tmp/steam-apt.log | tr '\n' ' ' | cut -c1-300). Depends: $(dpkg-deb -f /tmp/steam-launcher.deb Depends | cut -c1-300). Unpacking it instead."
-    "${APT[@]}" python3 curl xz-utils file zenity >/dev/null && dpkg-deb -x /tmp/steam-launcher.deb / && steam_ok=1
+    # Unpacked into a folder first, never straight onto /: the package has lib/udev, and extracting a real lib/
+    # over Debian's /lib -> usr/lib link cuts every program off from the system loader. Only usr/ and etc/ are
+    # copied (its udev rules are steam-devices', installed above).
+    "${APT[@]}" python3 curl xz-utils file zenity >/dev/null && rm -rf /tmp/steam-unpack && mkdir -p /tmp/steam-unpack \
+      && dpkg-deb -x /tmp/steam-launcher.deb /tmp/steam-unpack \
+      && { [ ! -d /tmp/steam-unpack/usr ] || cp -a --no-preserve=ownership /tmp/steam-unpack/usr/. /usr/; } \
+      && { [ ! -d /tmp/steam-unpack/etc ] || cp -a --no-preserve=ownership /tmp/steam-unpack/etc/. /etc/; } \
+      && rm -rf /tmp/steam-unpack && test -L /lib && steam_ok=1
   fi
 else
   echo "::warning title=Steam (arm64)::Valve's launcher package didn't download"
