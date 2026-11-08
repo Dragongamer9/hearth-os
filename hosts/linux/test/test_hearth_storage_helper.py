@@ -63,6 +63,27 @@ class StorageHelper(unittest.TestCase):
         self.assertIn('read only = no', text)
         self.assertIn('veto files = /.*/', text)
 
+    def test_a_folder_name_cant_add_samba_settings(self):
+        """A line break in a folder's name would start a setting (or a share) of its own in Samba's config, a backslash
+        at the end joins the next line onto the path, % is expanded: such folders aren't shared (bug hunt)."""
+        evil = os.path.join(self.home, 'a\n[root]\n   path = ', '\n   force user = root\n   read only = no')
+        os.makedirs(evil)
+        back = os.path.join(self.home, 'films\\')
+        os.makedirs(back)
+        pct = os.path.join(self.home, '100%u')
+        os.makedirs(pct)
+        for p in (evil, back, pct):
+            self.assertIsNone(hsh.share_ok(p, self.user, self.home), repr(p))
+        text = hsh.conf_text([{'name': 'x', 'path': evil, 'write': True}, {'name': 'y', 'path': back},
+                              {'name': 'z', 'path': pct}], self.user, self.home)
+        self.assertNotIn('[root]', text)
+        self.assertNotIn('force user = root', text)
+        self.assertNotIn('path =', text)
+        # Letters of any language, spaces and ordinary marks still are.
+        ok = os.path.join(self.home, 'Vidéos de l\'été (2026)')
+        os.makedirs(ok)
+        self.assertEqual(hsh.share_ok(ok, self.user, self.home), os.path.realpath(ok))
+
     def test_apply_and_off_keep_the_rest_of_smb_conf(self):
         with open(hsh.SMB_CONF, 'w') as f:
             f.write('[global]\n   workgroup = HOME\n')
