@@ -118,6 +118,11 @@ Singleton {
         blockLoading: true
         onLoaded: { try { root.installedWithMenus = (JSON.parse(text()).appMenus || 0) >= 1; } catch (e) { root.installedWithMenus = false; } }
     }
+    // ---- Right-click menu (Settings › Personalization › Bar and dock › Right-click menu; PopMenu.qml, Hearth Files):
+    // "today" (the 268 px menu, the default), "windows" (Windows 11 style), "compact" (Compact list) or "tiles" (Tiles
+    // and groups). Not chosen = today's; only read here, never written for you.
+    readonly property var menuStyles: ["today", "windows", "compact", "tiles"]
+    readonly property string menuStyle: menuStyles.indexOf(Settings.menuStyle) >= 0 ? Settings.menuStyle : "today"
     // The wallpaper on show: yours, or the look's own ("" = Hearth's fireside).
     readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : (lookDef.wallpaper || "")
     // A controller focus ring: crisp, in the accent.

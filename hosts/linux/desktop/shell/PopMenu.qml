@@ -6,8 +6,14 @@
 //       { label: "Move to desktop", icon: "desktops", sub: [ { label: "Desktop 2", run: ... }, ... ] },
 //       { label: "Show desktop icons", checked: true, run: ... },
 //       { label: "Close window", icon: "close", danger: true, enabled: false, run: ... } ])
+//       { label: "Copy", icon: "copy", shortcut: "Ctrl+C", quick: true, group: "Edit", run: ... }
 // Mouse: hover and click, click outside closes. Keyboard and controller: Up/Down, Enter (A) chooses,
-// Right opens a submenu, Left / Esc (B) goes back, then closes.
+// Right opens a submenu, Left / Esc (B) goes back, then closes. While a controller is in use (DeskState.padSeen, as
+// the hint strip) a small A Choose · B Back row shows at the bottom.
+// Its look is Settings › Personalization › Bar and dock › Right-click menu (Theme.menuStyle): today's menu is drawn
+// here; Windows 11 style, Compact list and Tiles and groups are MenuStyles.qml, loaded by file name, so if it can't
+// load this menu shows instead. Items may say quick: true (the quick icons / tiles in those looks; a normal row in
+// today's), shortcut: "Ctrl+C" (hint: works too) and group: "Open" (Tiles and groups' headings).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -23,6 +29,11 @@ PanelWindow {
     property bool above: false             // open upwards from (px, py), e.g. from the taskbar
     readonly property var level: stack.length ? stack[stack.length - 1] : ({ title: "", items: [] })
     readonly property var items: level.items || []
+    property bool padHint: false           // a controller is in use: the A Choose · B Back row
+    // Another look (MenuStyles.qml), when chosen and loaded; otherwise today's menu below.
+    readonly property bool styled: Theme.menuStyle !== "today" && styledView.status === Loader.Ready && styledView.item !== null
+    // How wide the menu is, for callers that centre it on a button.
+    readonly property real cardWidth: styled ? styledView.item.cardWidth : 268
 
     function popup(scr, x, y, opts, list) {
         if (scr) screen = scr;
@@ -30,6 +41,8 @@ PanelWindow {
         above = !!(opts && opts.above);
         stack = [{ title: (opts && opts.title) || "", items: list || [] }];
         sel = -1;
+        padHint = !!(opts && opts.pad) || (DeskState.padSeen > 0 && Date.now() - DeskState.padSeen < 12000);
+        if (styled) styledView.item.open((opts && opts.title) || "", list || []);
         shown = true;
         keys.forceActiveFocus();
     }
@@ -79,6 +92,10 @@ PanelWindow {
         anchors.fill: parent
         focus: true
         Keys.onPressed: event => {
+            if (root.styled) {
+                if (styledView.item.key(event)) event.accepted = true;
+                return;
+            }
             switch (event.key) {
             case Qt.Key_Up: root.move(-1); break;
             case Qt.Key_Down: case Qt.Key_Tab: root.move(1); break;
@@ -94,8 +111,41 @@ PanelWindow {
         }
     }
 
+    // Windows 11 style, Compact list, Tiles and groups (MenuStyles.qml). Loaded by file name: if it can't load, the
+    // menu stays today's (a warning goes to the shell's log).
+    Loader {
+        id: styledView
+        active: Theme.menuStyle !== "today"
+        source: "MenuStyles.qml"
+        visible: root.styled
+        width: item ? item.implicitWidth : 0
+        height: item ? item.implicitHeight : 0
+        x: Math.max(8, Math.min(root.width - width - 8, root.px))
+        y: Math.max(8, Math.min(root.height - height - 8, root.above ? root.py - height - 8 : root.py))
+        opacity: root.shown ? 1 : 0
+        scale: root.shown ? 1 : 0.96
+        transformOrigin: root.above ? Item.Bottom : Item.Top
+        Behavior on opacity { NumberAnimation { duration: Theme.quick } }
+        Behavior on scale { NumberAnimation { duration: Theme.quick; easing.type: Easing.OutCubic } }
+        onStatusChanged: if (status === Loader.Error) console.warn("PopMenu: the right-click menu's look (MenuStyles.qml) couldn't load; using today's menu")
+        onLoaded: if (root.shown) item.open(root.stack.length ? root.stack[0].title : "", root.stack.length ? root.stack[0].items : [])
+    }
+
+    Binding { target: styledView.item; when: styledView.item !== null; property: "look"; value: Theme.menuStyle }
+    Binding { target: styledView.item; when: styledView.item !== null; property: "padHint"; value: root.padHint }
+    Binding { target: styledView.item; when: styledView.item !== null; property: "spaceRight"; value: root.width - styledView.x - styledView.width - 8 }
+    Binding { target: styledView.item; when: styledView.item !== null; property: "maxHeight"; value: root.height - 16 }
+    Binding { target: styledView.item; when: styledView.item !== null; property: "maxBottom"; value: root.height - 8 - styledView.y }
+    Binding { target: styledView.item; when: styledView.item !== null; property: "minTop"; value: 8 - styledView.y }
+    Connections {
+        target: styledView.item
+        function onChosen(it) { root.close(); if (it.run) Qt.callLater(it.run); }
+        function onClosed() { root.close(); }
+    }
+
     Rectangle {
         id: card
+        visible: !root.styled
         width: 268
         height: col.implicitHeight + 12
         x: Math.max(8, Math.min(root.width - width - 8, root.px))
@@ -192,8 +242,8 @@ PanelWindow {
                             elide: Text.ElideRight
                         }
                         Text {                   // the keyboard shortcut for it (Ctrl+C...)
-                            visible: !!row.modelData.hint && !row.modelData.sub
-                            text: row.modelData.hint || ""
+                            visible: text !== "" && !row.modelData.sub
+                            text: row.modelData.shortcut || row.modelData.hint || ""
                             color: row.lit ? Theme.accentInk : Theme.muted
                             font.family: Theme.font
                             font.pixelSize: 12
@@ -213,6 +263,19 @@ PanelWindow {
                         onEntered: root.sel = row.index
                         onClicked: root.pick(row.index)
                     }
+                }
+            }
+
+            // A controller is in use: what A and B do.
+            Item {
+                visible: root.padHint
+                Layout.fillWidth: true
+                implicitHeight: 30
+                Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 3 } height: 1; color: Theme.line }
+                MenuHints {
+                    anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter; verticalCenterOffset: 2 }
+                    k: 0.72
+                    model: [{ b: "A", t: "Choose" }, { b: "B", t: "Back" }]
                 }
             }
         }
