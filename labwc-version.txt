@@ -1,0 +1,1 @@
+labwc 0.9.6 (+xwayland +nls +rsvg +libsfdo)
