@@ -30,9 +30,9 @@ Open it from Quick Access (the **…** button) › Decky › ThemeDeck. How to u
 ## YouTube support is ThemeDeck's own, and off until you ask
 
 Hearth OS **doesn't preinstall** `yt-dlp`, Deno or any YouTube tooling (the image check makes sure neither is
-there). ThemeDeck sets these up itself, in its own settings folder, only when you press its **Install YouTube
-support** button; its "Use Firefox cookies for YouTube" stays off unless you turn it on. Hearth has no YouTube code of
-its own. Using YouTube's audio is between you, ThemeDeck and YouTube's terms.
+there). ThemeDeck sets these up itself, in its own settings folder, only when you press its own
+**Install YouTube support** button; its "Use Firefox cookies for YouTube" stays off unless you turn it on. Hearth has
+no YouTube code of its own. Using YouTube's audio is between you, ThemeDeck and YouTube's terms.
 
 ## Your Hearth Music songs
 
