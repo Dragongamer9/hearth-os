@@ -42,19 +42,16 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Quick Access (top dock): left / right move from the tab that's selected, so no tab is skipped after the pointer selected another one (needs testing on a device)
 - [x] Hearth's page: long names fit. The clock no longer breaks onto two lines next to a long game title; long Bluetooth, sound device and profile names wrap inside their rows and cards instead of running over the next column; a title with no spaces wraps on the game page (needs testing on a device)
 - [x] Downloads: Steam's own words for a stopped download are shown as text, never as part of the page (needs testing on a device)
+- [x] Desktop Mode: saving a keyboard layout or the mouse settings, changing your password, a Startup schedule, joining a Wi-Fi network with a password and opening a shared folder with a password no longer fail. Hearth handed them the text through a way Debian's Quickshell refuses ("Unable to assign QJSValue to QVariantHash" in every log), so they got nothing; it goes on the helper's input now (needs testing on a device)
+- [x] Hearth Files only saves the view settings you changed: it wrote back everything it had read when it opened, so "Show in Files" (Settings › Devices) or another Files window's folder views could switch back by themselves (needs testing on a device)
+- [x] A Desktop Mode setting whose save failed is tried again instead of being dropped, and the taskbar's switches (Do Not Disturb, desktop icons, auto-arrange, unpinning) say when they couldn't be saved instead of quietly coming back at the next sign-in (needs testing on a device)
+- [x] The right-click menu scrolls when it's taller than the screen (a handheld with app scaling): rows ran off the bottom and Up/Down picked ones you couldn't see (needs testing on a device)
 
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
 - [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
-
-### Bug hunt
-
-- [x] Desktop Mode: saving a keyboard layout or the mouse settings, changing your password, a Startup schedule, joining a Wi-Fi network with a password and opening a shared folder with a password no longer fail. Hearth handed them the text through a way Debian's Quickshell refuses ("Unable to assign QJSValue to QVariantHash" in every log), so they got nothing; it goes on the helper's input now (needs testing on a device)
-- [x] Hearth Files only saves the view settings you changed: it wrote back everything it had read when it opened, so "Show in Files" (Settings › Devices) or another Files window's folder views could switch back by themselves (needs testing on a device)
-- [x] A Desktop Mode setting whose save failed is tried again instead of being dropped, and the taskbar's switches (Do Not Disturb, desktop icons, auto-arrange, unpinning) say when they couldn't be saved instead of quietly coming back at the next sign-in (needs testing on a device)
-- [x] The right-click menu scrolls when it's taller than the screen (a handheld with app scaling): rows ran off the bottom and Up/Down picked ones you couldn't see (needs testing on a device)
 
 ## 1.8 (released 2026-11-08)
 
