@@ -9,20 +9,20 @@ pub fn path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("hearth-terminal").join("settings.json"))
 }
 
-/// The saved settings, or an empty object when there are none yet (or the file is damaged).
+static SEEN: crate::appfile::Seen = std::sync::Mutex::new(None);
+
+/// The saved settings, or an empty object when there are none yet. A file a power cut damaged is put back from
+/// settings.json.bak (it used to read as empty, and the next change saved the defaults over all your settings).
 pub fn load() -> Value {
     path()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|p| crate::appfile::read_seen(&p, &SEEN))
         .filter(Value::is_object)
         .unwrap_or_else(|| Value::Object(Default::default()))
 }
 
-/// Saves the settings: written to a temporary file first, so a crash never leaves half a file.
+/// Saves the settings the page changed since this window read them (atomic, with .bak): another window that changed
+/// a different setting meanwhile keeps its change instead of getting this window's older copy.
 pub fn save(v: &Value) -> std::io::Result<()> {
     let p = path().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no config folder"))?;
-    if let Some(dir) = p.parent() { std::fs::create_dir_all(dir)?; }
-    let tmp = p.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(v)?)?;
-    std::fs::rename(&tmp, &p)
+    crate::appfile::save_changed(&p, &SEEN, v)
 }
