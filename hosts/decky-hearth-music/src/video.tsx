@@ -104,22 +104,31 @@ class VideoControl {
 
 export const video = new VideoControl();
 
-/** Steam's page origin (https://steamloopback.host in Game Mode), told to YouTube's embed. */
-function pageOrigin(): string {
-  try { return window.location.origin.startsWith("https://") ? window.location.origin : ""; } catch { return ""; }
+/** The window the mini player is drawn in. Decky's code runs in Steam's SharedJSContext, but global components are
+ *  drawn in Steam's main window: YouTube's player talks to that window, so that's the one listened to. */
+function hostWindow(el: Element | null): Window {
+  return (el?.ownerDocument?.defaultView as Window) || window;
+}
+
+/** That page's origin (https://steamloopback.host in Game Mode), told to YouTube's embed. */
+function pageOrigin(el: Element | null): string {
+  try { const o = hostWindow(el).location.origin; return o.startsWith("https://") ? o : ""; } catch { return ""; }
 }
 
 /** The mini player itself, added to Steam's pages with Decky's routerHook.addGlobalComponent (index.tsx). */
 export function MiniPlayer() {
   const [, redraw] = useState(0);
   const frame = useRef<HTMLIFrameElement | null>(null);
+  const anchor = useRef<HTMLDivElement | null>(null);
+  const [origin, setOrigin] = useState<string | null>(null);
   useEffect(() => {
+    setOrigin(pageOrigin(anchor.current));
     video.mounted++;
     const off = video.on(() => redraw((n) => n + 1));
     return () => { video.mounted--; off(); video.send = null; };
   }, []);
-  const s = video.shown;
-  const src = s ? youtubeEmbedUrl(s.id, pageOrigin()) : "";
+  const s = origin === null ? null : video.shown;
+  const src = s ? youtubeEmbedUrl(s.id, origin || "") : "";
   useEffect(() => {
     if (!s || !src) return;
     const seq = s.seq;
@@ -135,18 +144,23 @@ export function MiniPlayer() {
       if ((m.event === "onReady" || m.event === "initialDelivery") && !isReady) { isReady = true; clearInterval(hello); video.ready(seq); }
       else if (m.event === "onError") video.failed(seq, ytErrorLine(m.info));
     };
-    window.addEventListener("message", onMsg);
+    const win = hostWindow(anchor.current);
+    win.addEventListener("message", onMsg);
+    if (win !== window) window.addEventListener("message", onMsg);
     // Never part of Steam's controller navigation: a focus that lands in the player goes back to Steam at once.
     const guard = () => setTimeout(() => {
-      if (document.activeElement === frame.current) { try { frame.current?.blur(); window.focus(); } catch { /* gone */ } }
+      if (win.document.activeElement === frame.current) { try { frame.current?.blur(); win.focus(); } catch { /* gone */ } }
     }, 0);
-    window.addEventListener("blur", guard);
+    win.addEventListener("blur", guard);
     const iv = setInterval(guard, 1000);
-    return () => { clearInterval(hello); clearInterval(iv); window.removeEventListener("message", onMsg); window.removeEventListener("blur", guard); };
+    return () => {
+      clearInterval(hello); clearInterval(iv); win.removeEventListener("message", onMsg); window.removeEventListener("message", onMsg);
+      win.removeEventListener("blur", guard);
+    };
   }, [s?.seq, src]);
-  if (!s || !src) return null;
+  if (!s || !src) return <div ref={anchor} style={{ display: "none" }} />;
   return (
-    <div className="hearth-music-mini" aria-hidden={false} tabIndex={-1}
+    <div ref={anchor} className="hearth-music-mini" aria-hidden={false} tabIndex={-1}
       style={{ position: "fixed", left: 24, bottom: 24, width: MINI.width, height: MINI.height, zIndex: 7000, borderRadius: 8,
         overflow: "hidden", background: "#000", boxShadow: "0 6px 24px rgba(0,0,0,.6)", opacity: s.closing ? 0 : 1,
         transition: `opacity ${s.closing ? CROSSFADE : 600}ms ease` }}>
