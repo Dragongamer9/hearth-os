@@ -28,7 +28,10 @@ RYZENADJ_REF="${RYZENADJ_REF:-v0.19.0}"
 HHD_REF="${HHD_REF:-v4.1.12}"
 FEX_REF="${FEX_REF:-FEX-2611}"
 ARCH=$(dpkg --print-architecture)
-MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)
+# The multiarch library folder. dpkg-architecture (dpkg-dev) may not be installed yet here, so the fallback follows
+# the architecture: x86_64-linux-gnu on amd64 (unchanged), aarch64-linux-gnu on arm64.
+case "$(dpkg --print-architecture)" in arm64) MA_FALLBACK=aarch64-linux-gnu ;; *) MA_FALLBACK=x86_64-linux-gnu ;; esac
+MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "$MA_FALLBACK")
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
