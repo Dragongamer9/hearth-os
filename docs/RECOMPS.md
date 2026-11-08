@@ -1,6 +1,6 @@
 # Hearth Recomps
 
-**Game Mode › Store › Recomps** is Hearth's own store for native PC versions of console games: recompilations
+**Hearth Games › Recomps** is Hearth's own store for native PC versions of console games: recompilations
 (like Zelda 64: Recompiled, Banjo: Recompiled or Unleashed Recompiled), decompilation ports (like Ship of Harkinian,
 Starship or SpaghettiKart) and other fan ports. They run as normal PC programs, not in an emulator.
 
@@ -10,9 +10,12 @@ downloads, hosts or links to games, ROMs or disc images.
 
 ## Using it
 
-1. Open **Store**, press **RB** until **Recomps**. Browse with the controller; filter by console, show only
-   installed ports, ports with updates or ports with a Linux build, sort them, or search (by the port's or the game's
-   name).
+Recomps is a tab of **Hearth Games** (docs/HEARTH-GAMES.md). Settings › Games & stores › Recomps opens it, or open
+Hearth Games and press **RB** until **Recomps**. The archived Game Mode's Store › Recomps page still works the same
+way and has a few extras (the **⋯** button below).
+
+1. Browse with the controller. Filter by console, show only installed ports or ports with updates, or search (by the
+   port's or the game's name).
 2. Open a port. Its page shows what it is, which build this PC gets (a Linux build, or the Windows build through
    Proton when there's no Linux one), the newest version and its **patch notes** from GitHub.
 3. **Install**. If a USB drive or SD card is plugged in, Hearth asks where to install it.
@@ -20,9 +23,12 @@ downloads, hosts or links to games, ROMs or disc images.
    Hearth checks it (see below) and sets it up. If it doesn't match, Hearth says so; **Use it anyway** is there for
    versions the project may accept but doesn't list.
 5. **Play** (on its page, or in **Library › Recomps**). Playtime, favourites, collections, per-game settings
-   (Proton version, launch options, controller layout) work as for any game in the library.
+   (Proton version, launch options, controller layout) work as for any game in the library. Installed ports show up
+   in **Steam Game Mode** through Hearth Sync too.
 
-The **⋯** button on a port's page has the rest: choose a version (older releases too), choose a download (any file
+A port's page in Hearth Games also has **Update to …**, **Skip this update**, **Change your copy** and **Uninstall**.
+
+In the archived Game Mode's page, the **⋯** button on a port's page has the rest: choose a version (older releases too), choose a download (any file
 of the release), choose the program to start, skip an update, keep a version (no updates), add it to the Desktop
 Mode menu, back up saves and mods, **I have it already** (point Hearth at a folder where you installed it yourself),
 refresh from GitHub, hide it, and uninstall.
@@ -55,7 +61,7 @@ are checked as .z64, which is what the projects' hashes are for.
 - **Updates keep your things.** A new version is copied over the old one: files that came with the old version are
   replaced, and nothing else is touched. Saves, mods, texture packs, settings, DLC folders and your game file stay,
   even when they're inside the port's folder. Nothing in folders like `saves/`, `mods/`, `dlc/` or `config/` is ever
-  replaced. Hearth looks for updates to installed ports at most every 6 hours; Store › Recomps shows **Update**.
+  replaced. Hearth looks for updates to installed ports at most every 6 hours; Hearth Games › Recomps shows **Update**.
 - **Uninstall** asks first. It offers to back up your saves and mods first. A folder Hearth made is deleted; a folder
   you pointed Hearth at (**I have it already**) is only forgotten. N64Recomp ports keep their saves in `~/.config`,
   which uninstalling never touches.
@@ -96,7 +102,7 @@ ports, its source code) was read for what it needs. Fields:
 | `assets` | Optional patterns for a project whose release files Hearth can't tell apart by name |
 | `experimental`, `featured`, `arm64` | Early ports, featured ports, ports with Arm builds too |
 
-**Add a GitHub project** (Store › Recomps) adds any project with releases. It's marked "Added by you: not checked by
+**Add a GitHub project** (the archived Game Mode's Store › Recomps) adds any project with releases. It's marked "Added by you: not checked by
 Hearth" and kept in `~/.local/share/nimbus/recomps/custom.json`.
 
 ## Everything RecompLauncher, RecompStore and GithubLauncher do, and how Hearth does it
@@ -361,7 +367,11 @@ ports.
   left out), its headers (ETag, the rate limit), checking a copy (SHA-1, MD5, SHA-256, and XXH3 on a byte-swapped
   N64 ROM), updates keeping saves, mods and settings, finding the program to start, putting your file where the port
   looks, projects you add, and menu entries.
-- `tools/ui-check.js`: Store › Recomps with the preview's data: the tab and RB, filters, search, an installed port's
+- Hearth Games › Recomps: `hosts/hearth-gaming/src/gamestore.rs` unit tests (the calls and ids the tab may use, Use
+  it anyway only for the file just checked, Play, `--tab recomps`), `hosts/linux/test/test_hearth_gamestore.py`
+  (every call is one hearth-core answers, the engine isn't copied, no links, Steam Game Mode unchanged, Settings' row),
+  and gaming.yml's screenshots of the tab and a port's page.
+- `tools/ui-check.js`: the archived Game Mode's Store › Recomps with the preview's data: the tab and RB, filters, search, an installed port's
   page (Play, Update, patch notes, the copy check, the ⋯ sheet), one that isn't installed (Install, Needs your copy,
   Windows build through Proton), and B back.
 - Not yet tried on a device: a real install, update and uninstall.
