@@ -33,6 +33,8 @@ jobs:
           dnf -y install rsms-inter-fonts kcalc >/dev/null || true
           # Hearth Files as the file chooser: xdg-desktop-portal, GLib's D-Bus for Python (hearth-portal), a GTK 3 app.
           dnf -y install xdg-desktop-portal python3-gobject gtk3 dbus-tools shared-mime-info >/dev/null || true
+          # Hearth's own apps' size next to the bar: WebKitGTK, the engine their Tauri windows draw with.
+          dnf -y install webkit2gtk4.1 >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -907,6 +909,17 @@ jobs:
           { python3 hosts/linux/desktop/shell/hearth-tasks autostart-plan; echo; ls "$HOME"; } > shots/autostart.txt 2>&1
           if [ ! -e "$HOME/autostarted" ]; then echo "::error title=autostart::The autostart app didn't start"; touch shots/FAILED; fi
           if [ -e "$HOME/steam-started" ]; then echo "::error title=autostart::Steam's autostart entry was started"; touch shots/FAILED; fi
+          # ---- Hearth's own apps next to the bar (hosts/hearth-apptheme/desktop.css): Saves, Mods, Disks and Contacts in
+          # WebKitGTK at 1920x1080, their text measured against the bar's, as Game Mode sizes them and as a desktop
+          # window does; screenshots in shots/app-size/.
+          if python3 -c 'import gi; gi.require_version("WebKit2", "4.1")' 2>/dev/null; then
+            WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=wayland \
+              timeout 400 python3 hosts/linux/test/app_size_probe.py shots/app-size > shots/app-size.txt 2>&1 || touch shots/FAILED
+            grep -E '^::(notice|error)' shots/app-size.txt || tail -20 shots/app-size.txt
+          else
+            echo "::error title=App size::WebKitGTK (webkit2gtk4.1) isn't installed here: the apps' size wasn't checked"; touch shots/FAILED
+          fi
+          # ---- end of the apps' size
           # ---- Hearth Files as every app's file chooser (xdg-desktop-portal → hearth-portal → picker.qml) and as the file
           # manager "Show in folder" opens (org.freedesktop.FileManager1): hosts/linux/test/portal_e2e.py calls them like
           # apps do, drives the picker over quickshell ipc and checks what the app gets back.

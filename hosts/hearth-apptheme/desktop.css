@@ -1,0 +1,9 @@
+/* Desktop Mode size for Hearth's own apps (hosts/hearth-apptheme/apptheme.rs adds this after the look's CSS).
+   The apps' style sheets size their text by the window's width (clamp(15px, .9vw + 7px, 24px) and the like) so
+   they read from a sofa in Game Mode and on a TV. In a desktop window that made them far bigger than Mantel's
+   bar: about 19 px text in a 1280-wide window and 24-26 px maximized, next to the bar's 13-14 px. On a desktop
+   the text is the bar's size instead; Settings › Display › Scale (the screen's scale, which the bar and every app
+   follow) is the one place to make everything bigger or smaller. Game Mode (gamescope, --fullscreen) never gets
+   this file, so it stays big there. desktop-test.yml measures it next to the bar. */
+:root:root{--hearth-size:desktop}
+:root:root body{font-size:14px}
