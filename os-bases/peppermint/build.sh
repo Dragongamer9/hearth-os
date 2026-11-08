@@ -131,8 +131,20 @@ optional gamemode zenity libfreetype6
 # (the `steam` script and its bootstrap) from Valve's own repository; FEX's x86 base (its RootFS) is fetched for each
 # account the first time Steam starts (hearth-fex-steam). Not fatal: without it the image is made without Steam.
 test -x /usr/bin/FEX
-if curl -fsSL --retry 3 -o /tmp/steam-launcher.deb https://repo.steampowered.com/steam/archive/stable/steam_latest.deb \
-   && "${APT[@]}" /tmp/steam-launcher.deb; then
+steam_ok=0
+if curl -fsSL --retry 3 -o /tmp/steam-launcher.deb https://repo.steampowered.com/steam/archive/stable/steam_latest.deb; then
+  echo "::notice title=Steam (arm64)::Valve's launcher package: $(dpkg-deb -f /tmp/steam-launcher.deb Package Version Architecture | tr '\n' ' ')"
+  if "${APT[@]}" /tmp/steam-launcher.deb > /tmp/steam-apt.log 2>&1; then steam_ok=1
+  else
+    # Its dependencies name x86 packages (steam-libs, :i386/:amd64) that arm64 can't have. FEX brings the x86 side,
+    # so unpack the launcher (the steam script and its bootstrap) and install only what the script itself runs.
+    echo "::warning title=Steam (arm64)::apt couldn't install Valve's package as is: $(tail -3 /tmp/steam-apt.log | tr '\n' ' ' | cut -c1-300). Depends: $(dpkg-deb -f /tmp/steam-launcher.deb Depends | cut -c1-300). Unpacking it instead."
+    "${APT[@]}" python3 curl xz-utils file zenity >/dev/null && dpkg-deb -x /tmp/steam-launcher.deb / && steam_ok=1
+  fi
+else
+  echo "::warning title=Steam (arm64)::Valve's launcher package didn't download"
+fi
+if [ "$steam_ok" = 1 ]; then
   STEAM_BIN=$(ls /usr/games/steam /usr/bin/steam 2>/dev/null | head -1)
   [ -n "$STEAM_BIN" ] || { echo "Valve's package has no steam launcher"; exit 1; }
   mv "$STEAM_BIN" "$STEAM_BIN.valve"
