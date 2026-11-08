@@ -1365,7 +1365,7 @@ SKIP_DISKS = ('loop', 'ram', 'zram', 'dm-', 'md', 'sr', 'fd', 'nbd')
 
 def disk_layout(sys_root=SYS, mounts_text=None, letters=None):
     """[{name, label, letters, model, type, size, system}] for the physical disks, in Windows' order.
-    letters: This PC's drive letters ({key: {letter, path}}), or None when there's no letters file."""
+    letters: This PC's drive letters ({key: {letter, path}}), or None when there's no letters file (then only C:)."""
     names = []
     try:
         names = sorted(n for n in os.listdir(os.path.join(sys_root, 'block')) if not n.startswith(SKIP_DISKS))
@@ -1407,10 +1407,10 @@ def disk_layout(sys_root=SYS, mounts_text=None, letters=None):
         model = (read(os.path.join(sys_root, 'block', d, 'device', 'model')) or '').strip()
         mp = mounts.get(d, [])
         system = any(m in ('/', '/sysroot', '/var', '/usr') for m in mp)
-        lets = []
+        # This PC's letters (hearth_drive_letters.py): C: is always the drive Hearth runs from (never stored); the
+        # others come from ~/.config/hearth/drive-letters.json, only read here (Task Manager never assigns or writes one).
+        lets = ['C'] if system else []
         if letters is not None:
-            if system:
-                lets.append('C')
             for v in letters.values():
                 if isinstance(v, dict) and v.get('path') and v.get('path') in mp and v.get('letter'):
                     lets.append(v['letter'])

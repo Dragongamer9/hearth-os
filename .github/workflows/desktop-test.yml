@@ -35,6 +35,8 @@ jobs:
           dnf -y install xdg-desktop-portal python3-gobject gtk3 dbus-tools shared-mime-info >/dev/null || true
           # Hearth's own apps' size next to the bar: WebKitGTK, the engine their Tauri windows draw with.
           dnf -y install webkit2gtk4.1 >/dev/null || true
+          # node runs drive-paths.js (Hearth Files' drive letters) in test_hearth_this_pc.py.
+          dnf -y install nodejs >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -49,11 +51,16 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
           # Bar layouts (the main bar on any edge, the floating dock on or off) and the five app menus.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
+          # The right-click menu's four looks (Today by default, never written by itself, today's menu if a look can't load).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_menu_styles.py' -v
           # Discord replacing Hearth Friends (1.6): the chooser, installs, each client's window by the bar, invites.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_discord.py' -v
           # Task Manager (Windows 11 style): the helper's parsing, heat map, startup writes, settings and the sampler.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_tasks.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_task_manager.py' -v
+          # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
+          # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -688,6 +695,80 @@ jobs:
           else
             echo "::notice title=Task Manager::$(ls $T/*.png 2>/dev/null | wc -l) pictures in task-manager/"
           fi
+          # ---- Right-click menu looks (Settings › Personalization › Bar and dock › Right-click menu, MenuStyles.qml), in
+          # shots/menu-styles/: a file's menu and the desktop's menu on the desktop, and Hearth Files' menu, in each look
+          # (Today first: the "before"), Windows 11 style's submenu flyout, the controller hint row, light mode and the
+          # Hearth look, and the picker. Nothing set = Today; the key is taken out again and opening Settings writes nothing.
+          ms=shots/menu-styles; mkdir -p $ms; DJ="$HOME/.local/share/nimbus/desktop.json"
+          cp "$DJ" $ms/desktop-before.json
+          mkeys() {  # JSON of keys to set in desktop.json ("null" takes one out)
+            python3 - "$DJ" "$1" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          for k, v in json.loads(sys.argv[2]).items():
+              if v is None: d.pop(k, None)
+              else: d[k] = v
+          open(p, 'w').write(json.dumps(d, indent=2) + "\n")
+          PY
+            sleep 4
+          }
+          python3 -c 'import json,sys; sys.exit(1 if "menuStyle" in json.load(open(sys.argv[1])) else 0)' "$DJ" \
+            || { echo "::error title=Right-click menu::menuStyle was in desktop.json before anyone picked one"; touch shots/FAILED; }
+          for st in today windows compact tiles; do
+            mkeys "{\"menuStyle\": \"$st\"}"
+            ipc desktop itemMenu notes.txt; sleep 1; grim "$ms/$st-1-file-on-desktop.png" || true; ipc desktop close
+            ipc desktop menu; sleep 1; grim "$ms/$st-2-desktop.png" || true; ipc desktop close
+            ipc files open "$HOME/Documents"; ipc filemanager select data.csv; ipc filemanager menu; sleep 1
+            grim "$ms/$st-3-files.png" || true; ipc filemanager close; ipc files close
+          done
+          # Windows 11 style: Open with as a flyout (Down to Cut in the quick row, Down to Open, Down to Open with, Right).
+          mkeys '{"menuStyle": "windows"}'
+          ipc desktop itemMenu notes.txt; sleep 3; wtype -k Down -k Down -k Down 2>/dev/null || true; sleep 1
+          grim "$ms/windows-4-keyboard-in-list.png" || true
+          wtype -k Right 2>/dev/null || true; sleep 2; grim "$ms/windows-5-open-with-flyout.png" || true; ipc desktop close
+          # Tiles: Left / Right in the tiles (Down to the first tile, Right to the second).
+          mkeys '{"menuStyle": "tiles"}'
+          ipc desktop itemMenu notes.txt; sleep 1; wtype -k Down -k Right 2>/dev/null || true; sleep 1
+          grim "$ms/tiles-4-keyboard-in-tiles.png" || true; ipc desktop close
+          # The controller in use: A Choose · B Back under the menu (each look).
+          for st in today windows compact tiles; do
+            mkeys "{\"menuStyle\": \"$st\"}"
+            ipc desktop padseen; ipc desktop itemMenu notes.txt; sleep 1; grim "$ms/$st-6-controller-hints.png" || true; ipc desktop close
+          done
+          # Light mode and the Hearth look (the menus follow the look and accent).
+          for st in windows compact tiles; do
+            mkeys "{\"menuStyle\": \"$st\", \"mode\": \"light\"}"
+            ipc desktop itemMenu notes.txt; sleep 1; grim "$ms/$st-7-light.png" || true; ipc desktop close
+            mkeys "{\"look\": \"hearth\", \"mode\": \"dark\"}"
+            ipc desktop itemMenu notes.txt; sleep 1; grim "$ms/$st-8-hearth-look.png" || true; ipc desktop close
+            mkeys "{\"look\": \"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("look", "steam"))' $ms/desktop-before.json)\"}"
+          done
+          # Back to how it was: Today in the running shell, the look and mode as before, then the file exactly as before.
+          python3 - "$DJ" $ms/desktop-before.json <<'PY'
+          import json, sys
+          o = json.load(open(sys.argv[2]))
+          d = dict(o, menuStyle="today", look=o.get("look", "steam"), mode=o.get("mode", "dark"))
+          open(sys.argv[1], "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          sleep 4; cp $ms/desktop-before.json "$DJ"; sleep 4
+          # The picker; opening Settings there writes nothing (menuStyle stays out of the file).
+          before=$(sha256sum "$DJ" | cut -c1-64)
+          ipc settings close; ipc settings page bar-dock; sleep 3; grim "$ms/picker-0-page-top.png" || true
+          ipc settings close; ipc settings page bar-dock:rightclick; sleep 3; grim "$ms/picker.png" || true; ipc settings close; sleep 2
+          after=$(sha256sum "$DJ" | cut -c1-64)
+          if [ "$before" != "$after" ] || python3 -c 'import json,sys; sys.exit(0 if "menuStyle" in json.load(open(sys.argv[1])) else 1)' "$DJ"; then
+            echo "::error title=Right-click menu::opening Settings › Bar and dock changed desktop.json: $(tr -d '\n' < "$DJ" | cut -c1-300)"; touch shots/FAILED
+          else
+            echo "::notice title=Right-click menu::no settings file changed by opening the picker; menuStyle not written (Today by default)"
+          fi
+          if grep -qE "(MenuStyles|MenuStylePicker|PopMenu)\.qml.*(TypeError|ReferenceError|is not defined|Cannot|non-existent|is not a type|Unable to assign)" "$LOG" 2>/dev/null; then
+            echo "::error title=Right-click menu::$(grep -E '(MenuStyles|MenuStylePicker|PopMenu)\.qml' "$LOG" | sort -u | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          elif grep -q "right-click menu's look (MenuStyles.qml) couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=Right-click menu::$(grep "couldn't load; using today's menu" "$LOG" | head -2 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Right-click menu::$(ls $ms | grep -c png) pictures in menu-styles"
+          fi
+          grep -E "MenuStyles|MenuStylePicker|PopMenu" "$LOG" > $ms/shell-log.txt 2>/dev/null || true
           # Install Package: a small .deb (made without dpkg) opened in the installer window, and in Files' menu.
           mkdir -p "$HOME/Downloads" && python3 hosts/linux/test/make_test_deb.py "$HOME/Downloads/hearth-hello.deb" >/dev/null || true
           ipc debs open "$HOME/Downloads/hearth-hello.deb"; sleep 2; grim shots/deb-1-installer.png || true; ipc debs close
@@ -1091,6 +1172,62 @@ jobs:
           ls $F/*.png >/dev/null 2>&1 || { echo "::error title=Files redesign::no screenshots were taken"; touch shots/FAILED; }
           grep -E "FileManager.qml" "$LOG" | head -40 > $F/qml-warnings.txt 2>/dev/null || true
           [ -s $F/qml-warnings.txt ] && echo "::warning title=Files redesign QML::$(head -c 600 $F/qml-warnings.txt | tr '\n' ' ')"
+          # ---- This PC in Hearth Files (shots/files-this-pc, docs/HEARTH-FILES.md "This PC"): This PC with a lettered games
+          # drive, a second drive and a network location (one of Your devices' shares set to connect by itself), inside the
+          # drive (the address bar in letters, the details pane with the Linux path), Installed apps and its "···" menu.
+          # Opening them changes no settings: the only file allowed to appear or change is the drive letters' state
+          # (~/.config/hearth/drive-letters.json, written when a drive is first seen), never files.json or anything else.
+          P=shots/files-this-pc; mkdir -p $P
+          MB=/run/media/$(id -un)
+          mkdir -p "$MB/Games/SteamLibrary/steamapps/common" "$MB/Games/SteamLibrary/Windows apps" "$MB/Games/SteamLibrary/Hearth Games" \
+            "$MB/Games/SteamLibrary/Recomps" "$MB/Games/SteamLibrary/Mods" "$MB/Backup/Photos"
+          printf '"libraryfolders"\n{\n}\n' > "$MB/Games/SteamLibrary/libraryfolder.vdf"
+          head -c 3000000 /dev/zero > "$MB/Games/SteamLibrary/Cyberpunk 2077 backup.zip"
+          python3 hosts/linux/desktop/shell/hearth-files net-auto "{\"device\":\"$(printf 'a1%.0s' $(seq 16))\",\"name\":\"chris-hearth\",\"share\":\"Media\",\"home\":\"chris-hearth.local\"}" on > $P/net-auto.txt 2>&1 || true
+          # A Windows app and two of Hearth's own apps for Installed apps (Storage's games come from the nimbus stand-in).
+          mkdir -p "$HOME/Games/Windows apps/Notepad++/prefix"
+          printf '{"name":"Notepad++","id":"notepad-plus-plus","exe":"","source":""}' > "$HOME/Games/Windows apps/Notepad++/hearth-app.json"
+          head -c 18000000 /dev/zero > "$HOME/Games/Windows apps/Notepad++/prefix/notepad.bin"
+          printf '[Desktop Entry]\nType=Application\nName=Hearth Paint\nExec=true\nIcon=hearth-paint\n' > "$HOME/.local/share/applications/hearth-paint.desktop"
+          printf '[Desktop Entry]\nType=Application\nName=Hearth Maps\nExec=true\nIcon=hearth-maps\n' > "$HOME/.local/share/applications/hearth-maps.desktop"
+          snap_cfg() { find "$HOME/.config" "$HOME/.local/share/nimbus" -type f 2>/dev/null | grep -v -E '/\.[^/]*\.lock$' | grep -v -E '/\.local/share/nimbus/.*\.(log|txt)$' | sort | xargs -r -d '\n' sha256sum || true; }
+          snap_cfg > $P/files-before.txt
+          # (Views and the details pane are left as they are inside the check: changing them is a choice that's saved.)
+          this_pc_shots() {  # dark | light
+            ipc filemanager thispc; sleep 5; grim $P/$1-01-this-pc.png || true
+            wtype -k End 2>/dev/null; sleep 2; grim $P/$1-01b-network-locations.png || true
+            ipc filemanager section pc; sleep 2; grim $P/$1-01c-navigation-pane-this-pc.png || true
+            ipc files open "$MB/Games/SteamLibrary"; ipc filemanager select steamapps; sleep 3; grim $P/$1-02-inside-games-drive.png || true
+            ipc filemanager installed; sleep 8; grim $P/$1-03-installed-apps.png || true
+            ipc filemanager select "Notepad++"; ipc filemanager menu; sleep 1; grim $P/$1-04-app-menu.png || true; ipc filemanager close
+            ipc files close
+          }
+          more_shots() {  # dark | light: the details pane (with the Linux path) and This PC's Details view
+            ipc files open "$MB/Games/SteamLibrary"; ipc filemanager details on; ipc filemanager select steamapps; sleep 3
+            grim $P/$1-05-inside-drive-details-pane.png || true; ipc filemanager details off
+            ipc filemanager thispc; ipc filemanager view details; sleep 3; grim $P/$1-06-this-pc-details-view.png || true
+            ipc filemanager view grid; ipc files close
+          }
+          this_pc_shots dark
+          snap_cfg > $P/files-after.txt
+          changed=$(diff $P/files-before.txt $P/files-after.txt | grep '^[<>]' | awk '{print $NF}' | sort -u | grep -v -E '/\.config/hearth/drive-letters\.json(\.bak)?$' | tr '\n' ' ' || true)
+          if [ -n "$changed" ]; then
+            echo "::error title=This PC::opening This PC, a drive and Installed apps changed: $changed"; touch shots/FAILED
+          else
+            echo "::notice title=This PC::no settings file changed ($(wc -l < $P/files-before.txt) files checked); drive letters: $(tr -d '\n' < "$HOME/.config/hearth/drive-letters.json" 2>/dev/null | head -c 600)"
+          fi
+          grep -q '"Games"' "$HOME/.config/hearth/drive-letters.json" 2>/dev/null || { echo "::error title=This PC::the games drive got no letter ($(cat "$HOME/.config/hearth/drive-letters.json" 2>&1 | head -c 400))"; touch shots/FAILED; }
+          cp "$HOME/.config/hearth/drive-letters.json" $P/drive-letters.json 2>/dev/null || true
+          python3 hosts/linux/desktop/shell/hearth-files this-pc > $P/this-pc.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-files installed-apps > $P/installed-apps.json 2>&1 || true
+          more_shots dark
+          set_look steam light "" ""; this_pc_shots light; more_shots light; set_look steam dark "" ""
+          grep -E "(FilesThisPc|FilesApps|WinGlyph)\.qml|drive-paths\.js" "$LOG" | head -40 > $P/qml-warnings.txt 2>/dev/null || true
+          if grep -q -E "TypeError|ReferenceError|is not a type|non-existent|Cannot assign|is not defined" $P/qml-warnings.txt; then
+            echo "::error title=This PC QML::$(head -c 900 $P/qml-warnings.txt | tr '\n' ' ')"; touch shots/FAILED
+          fi
+          grep -q "couldn't load (Files" "$LOG" && { echo "::error title=This PC::$(grep "couldn't load (Files" "$LOG" | head -3 | tr '\n' ' ')"; touch shots/FAILED; }
+          ls $P/*.png >/dev/null 2>&1 || { echo "::error title=This PC::no screenshots were taken"; touch shots/FAILED; }
           ipc settings page sound; grim $o/steam-12-settings-sound.png || true
           ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"
@@ -1251,6 +1388,7 @@ jobs:
           d = json.load(open(sys.argv[1]))
           new = {'barStyle', 'dockMode', 'deskClock', 'panelGlass', 'sunset', 'sunsetLight', 'sunsetDark', 'accentFrom', 'wallSwatches'}
           new |= {'barLayout', 'barEdge', 'dockFloat', 'appMenu', 'menuTiles'}
+          new |= {'menuStyle'}
           sys.exit(1 if new & set(d) else 0)
           PY
           if grep -q "using the classic taskbar" "$LOG" 2>/dev/null; then

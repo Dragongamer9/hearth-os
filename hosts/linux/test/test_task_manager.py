@@ -230,7 +230,7 @@ class Sampling(unittest.TestCase):
         write(os.path.join(self.w.sys, 'block/sdb/queue/rotational'), '1\n')
         os.makedirs(os.path.join(self.w.sys, 'block/sdb/sdb1'))
         plain = ht.disk_layout(self.w.sys, mounts, None)
-        self.assertEqual([x['label'] for x in plain], ['Disk 0', 'Disk 1'])
+        self.assertEqual([x['label'] for x in plain], ['Disk 0 (C:)', 'Disk 1'])
         lettered = ht.disk_layout(self.w.sys, mounts, {'u1': {'letter': 'D', 'path': '/run/media/me/Games'}})
         self.assertEqual([x['label'] for x in lettered], ['Disk 0 (C:)', 'Disk 1 (D:)'])
         self.assertTrue(lettered[0]['system'])

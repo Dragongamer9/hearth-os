@@ -17,8 +17,10 @@ design, "Hearth Files redesign".
   Delete (Move to Trash; in the Trash, delete for good) | Sort (and group), View, Show (hidden files, file name
   extensions) | Undo, Redo, Details (the details pane). Buttons that can't do anything right now are dimmed.
 - **The navigation pane**: Home, Favorites (your bookmarks: Ctrl+D or "Add to Favorites"), This device (Home folder,
-  Desktop, Documents…), Games, Drives (with free space; mount, unmount, safely remove), Hearth Storage, Your devices
-  (shared folders on your other devices, at home and over Tailscale) and Trash.
+  Desktop, Documents…, in yellow), Games, then **This PC** opened out like a tree with Hearth (C:) and every drive
+  under it by its letter (with free space; mount, unmount, safely remove, Change drive letter…), **Network** (Hearth
+  Storage and Your devices: shared folders on your other devices, at home and over Tailscale), **Installed apps** and
+  Trash. The item you're in has the blue bar; This PC's and Network's arrows fold them (for this session).
 - **The Home page**: Quick access tiles (your usual folders, Favorites and Games) and Recent, the files you opened
   lately in any app (from `recently-used.xbel`; ones that were deleted or moved don't show). "Show in its folder" in
   a recent file's menu opens where it is.
@@ -26,6 +28,87 @@ design, "Hearth Files redesign".
   Open and Properties; with several picked, how many and their total size.
 - **The status bar**: how many items, how many picked and their size, what's on the clipboard, free space; copies and
   moves show their progress, speed and time left there with Cancel.
+
+## This PC
+
+Like Windows 11's This PC (the owner's approved mockup, "This PC in Hearth Files, the Windows 11 way"). Open it from
+the navigation pane, the address bar (type "This PC"), or make it where Files opens: **View › Open Files to: Home /
+This PC** (Home unless you pick This PC; kept in files.json `startPage`, only when you pick it). Code:
+`FilesThisPc.qml` (the page, loaded with a Loader so a problem there never stops Files or Desktop Mode from opening),
+`WinGlyph.qml` (yellow folders and drive glyphs), `hearth-files this-pc`.
+
+- **Folders (6)**: Desktop, Documents, Downloads, Pictures, Music and Videos, wherever your XDG folders are
+  (`~/.config/user-dirs.dirs`), with their real names.
+- **Devices and drives**: **Hearth (C:)** (the drive Hearth runs from; its space is your home's), then internal data
+  drives, Hearth Disks' games drives (`/var/mnt/games-*`), drives with a Steam library, USB sticks and SD cards
+  (plugged in but not mounted ones too: open mounts them). Each tile: the drive glyph, "Name (X:)", the thin space bar
+  (red above 90% full) and "x free of y".
+- **Network locations**: your devices' shared folders that are connected now, connect by themselves, or already have a
+  letter, named like "Games (\\Gaming PC) (G:)". Opening one connects it (and asks to sign in the first time).
+- **Tiles** or **Details** (Name, Type, Total size, Free space) from View (Ctrl+1 / Ctrl+3); kept in files.json
+  `thisPcView`, only when you change it.
+- Right-click or X: Open, Open in new tab, Unmount / Safely remove (USB and SD), Connect automatically (network),
+  **Change drive letter…**, Copy path / Copy Linux path, Properties.
+- The controller and keyboard move through the groups like Windows (Down from the last row of Folders goes to the
+  drives below); A opens, B goes back, Y types to filter.
+
+## Drive letters
+
+`hearth_drive_letters.py` (used by hearth-files and hearth-winapps):
+
+- **C: is always Hearth.** It's never stored and can't be given to another drive.
+- Every other drive gets the **next free letter, D: to Y:,** the first time it's seen, keyed by its file system UUID
+  (or where it's mounted when it has none); network locations by their address. Z: is left alone: it's how Windows
+  apps see the whole system.
+- **A letter never changes by itself and never moves to another drive.** Unplugged drives keep theirs (so a new drive
+  gets the next letter, not theirs). Only **Change drive letter…** (This PC's or the navigation pane's right-click
+  menu) changes one, to a free letter, and that choice is kept.
+- Kept in `~/.config/hearth/drive-letters.json` (state, through hearth_settings_io: atomic, a .bak, under its lock).
+  It's written only when a drive is seen for the first time, when a drive's mount place changes, or when you change a
+  letter: opening Files with only C: writes nothing. A damaged file is put back from its .bak, or kept aside once as
+  `.broken-<time>` (never written over), and letters start again from what's seen next.
+- **The address bar in letters**: "This PC › Games (D:) › SteamLibrary" on a lettered drive, "This PC › Documents"
+  in your folders, "This PC › Hearth (C:) › usr" elsewhere on the system (the rest of your home folder keeps
+  "Home › …"). Typing `D:\Games`, `d:/Games` or `C:\Users\<you>\Documents` goes there; clicking the address bar on
+  a lettered drive shows the `D:\…` form. Code: `drive-paths.js`.
+- **The details pane** shows where something is in letters and, under "On Linux", its real path.
+- **Copy path** copies the letter form (`D:\SteamLibrary\steamapps`), **Copy Linux path** (Ctrl+Alt+C, as before)
+  the real one; the command bar's Copy path offers both.
+
+### Windows apps see the same letters
+
+Each time a Windows app starts (hearth-winapps, `ensure_prefix` → `hearth_drive_letters.map_prefix`):
+
+- `dosdevices/d:`, `e:` … in its prefix point at the same drives as in Files (network locations at their mounted
+  folder). C: stays the prefix's own C:, Z: stays the whole system. A letter Wine or you set up yourself is left as it
+  is; links Hearth made are remembered in `prefix/.hearth-drives.json`, so a changed letter moves its link and nothing
+  else is touched.
+- Documents, Desktop, Downloads, Pictures, Music and Videos of the prefix's user (Proton's `steamuser`) point at your
+  own folders, when the folder there is missing or empty (or Hearth linked it before). One that already has files in
+  it is left alone: nothing is moved.
+- A brand-new prefix gets its letters at its second start (Proton makes the prefix on the first).
+
+## Installed apps
+
+Like Windows Settings › Apps › Installed apps (`FilesApps.qml`, loaded with a Loader; `hearth-files installed-apps`):
+every app with its icon, a kind tag (**Hearth, Flatpak, Windows app, Steam, Recomp, Hearth Games**), publisher if
+known, install date if known, and size. Sort by name, size or install date and filter by kind (the "Sort by" /
+"Filter by" buttons, or the command bar's Sort and Show). The data comes from what Hearth already keeps: Hearth's own
+apps' menu entries, `hearth-flatpak installed` (sizes, publisher from the app's metainfo), `hearth-winapps list`
+(sizes added up lazily and cached in `~/.cache/hearth/app-sizes.json`) and Storage's games list
+(`nimbus --settings-call diskspace.status`: Steam, Hearth Games' stores and Recomps, with the sizes the Hearth app keeps;
+pictures from the launcher's cache). Nothing scans the disk.
+
+The **"···"** menu (or A / X on a row):
+
+- **Open** / **Play** (games start through Hearth, like its Play button).
+- **Modify**: Windows apps → Settings › Windows apps; Steam games → Steam's Properties; Flatpak apps → Flatseal (only
+  when it's installed). Not shown where there's nothing to open.
+- **Move to another drive**: only for games Hearth's Storage can move (Steam, Epic, GOG, Recomps): opens Storage in the
+  Hearth app.
+- **Uninstall**, through each kind's own way: Flatpak (`hearth-flatpak remove`) and Windows apps (`hearth-winapps
+  remove`) after "Uninstall …?"; Steam games through Steam's own uninstall dialog; other games in Hearth's Storage
+  page. Hearth's built-in apps say **Part of Hearth** and have no Uninstall.
 
 ## Everything else it does
 
@@ -55,6 +138,15 @@ through `hearth-files prefs-set`, which merges under a lock with `hearth_setting
 written over a file it couldn't read; docs/SETTINGS-PERSISTENCE.md). Nothing changes them except you.
 
 ## Checks
+
+- `hosts/linux/test/test_hearth_this_pc.py`: drive letters (C: is Hearth, first seen gets the next free letter,
+  stable across unplugging and order, nothing written for known drives or C: alone, your change kept and never
+  moved, a bad file kept aside once or put back from .bak), paths in letters and back (`drive-paths.js` with node),
+  This PC's drives from pretend mounts and lsblk, Windows apps' prefixes (letters, user folders, Wine's own links
+  kept, a changed letter), and that the pages load through Loaders.
+- The Desktop Mode test's `shots/files-this-pc/` (dark and light): This PC, inside the games drive, Installed apps,
+  its "···" menu, the details pane with the Linux path, This PC's Details view. Opening them may only create or change
+  `~/.config/hearth/drive-letters.json`; any other changed file under `~/.config` or Hearth's settings fails the test.
 
 - `hosts/linux/test/test_hearth_files.py`: untrash (undo of Move to Trash), links, recent files, and that the window
   keeps its buttons and features (`Redesign`).
