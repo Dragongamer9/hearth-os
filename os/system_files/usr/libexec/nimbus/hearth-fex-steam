@@ -19,7 +19,7 @@ say() {
   echo "hearth-fex-steam: $1" >&2
 }
 
-if ! command -v FEXInterpreter >/dev/null 2>&1; then
+if ! command -v FEX >/dev/null 2>&1 && ! command -v FEXInterpreter >/dev/null 2>&1; then
   say "Steam needs FEX on this device, and it isn't installed."
   exit 1
 fi

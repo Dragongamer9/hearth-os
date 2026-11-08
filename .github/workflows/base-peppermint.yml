@@ -602,7 +602,7 @@ jobs:
           soft() { if [ "$ARCH" = amd64 ]; then "$@"; else shift; warn "$@"; fi; }
           # arm64 only: Steam through FEX (os-bases/peppermint/builder.sh and build.sh).
           if [ "$ARCH" = arm64 ]; then
-            check "FEX is installed, with its binfmt_misc entries for x86 programs" "test -x /usr/bin/FEXInterpreter && ls /usr/lib/binfmt.d/FEX-x86_64.conf /usr/lib/binfmt.d/FEX-x86.conf"
+            check "FEX is installed, with its binfmt_misc entries for x86 programs" "test -x /usr/bin/FEX && ls /usr/lib/binfmt.d/FEX-x86_64.conf /usr/lib/binfmt.d/FEX-x86.conf"
             warn "Steam (Valve's launcher) starts through FEX (hearth-fex-steam)" "test -x /usr/bin/steam && grep -q hearth-fex-steam /usr/bin/steam && test -x /usr/libexec/nimbus/hearth-fex-steam"
           fi
           echo "--- update path (same as os.yml)"

@@ -130,7 +130,7 @@ optional gamemode zenity libfreetype6
 # with binfmt_misc entries so x86 programs start through it), as Ubuntu's arm64 Steam does. Valve's launcher package
 # (the `steam` script and its bootstrap) from Valve's own repository; FEX's x86 base (its RootFS) is fetched for each
 # account the first time Steam starts (hearth-fex-steam). Not fatal: without it the image is made without Steam.
-test -x /usr/bin/FEXInterpreter
+test -x /usr/bin/FEX
 if curl -fsSL --retry 3 -o /tmp/steam-launcher.deb https://repo.steampowered.com/steam/archive/stable/steam_latest.deb \
    && "${APT[@]}" /tmp/steam-launcher.deb; then
   STEAM_BIN=$(ls /usr/games/steam /usr/bin/steam 2>/dev/null | head -1)

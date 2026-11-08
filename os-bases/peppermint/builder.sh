@@ -190,7 +190,9 @@ cmake -S /src/fex -B /src/fex/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_
   -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
 cmake --build /src/fex/build
 DESTDIR=/output cmake --install /src/fex/build
-test -x /output/usr/bin/FEXInterpreter
+# FEX-2611 calls the program FEX (it used to be FEXInterpreter): keep the old name as a link for anything that asks for it.
+test -x /output/usr/bin/FEX
+[ -e /output/usr/bin/FEXInterpreter ] || ln -s FEX /output/usr/bin/FEXInterpreter
 echo "${FEX_REF}" > /output/usr/share/hearth-fex-version 2>/dev/null || { mkdir -p /output/usr/share && echo "${FEX_REF}" > /output/usr/share/hearth-fex-version; }
 fi
 
