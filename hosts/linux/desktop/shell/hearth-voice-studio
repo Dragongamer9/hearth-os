@@ -446,7 +446,7 @@ def to_wav(src, dst, sr=SR, ch=1, start=None, dur=None):
         except (wave.Error, EOFError, Fail, OSError):
             raise Fail('This PC needs ffmpeg to read that kind of file')
         if (r, c) != (sr, ch):
-            raise Fail('This PC needs ffmpeg to convert that recording')
+            pcm = convert_pcm(pcm, r, c, sr, ch)
         if start is not None or dur is not None:
             a = int((start or 0) * sr) * 2 * ch
             b = a + int(dur * sr) * 2 * ch if dur else len(pcm)
@@ -465,6 +465,29 @@ def to_wav(src, dst, sr=SR, ch=1, start=None, dur=None):
         raise Fail('That file couldn\'t be read as audio: %s' % (err.strip().splitlines() or ['no reason given'])[-1][:200])
     os.replace(dst + '.part', dst)
     return dst
+
+
+def convert_pcm(pcm, rate, ch, to_rate, to_ch):
+    """16-bit PCM to another rate and channel count without ffmpeg (channels averaged, linear resampling). Only used
+    when ffmpeg isn't there (Hearth OS has it); slow for long files but always right."""
+    import array
+    a = array.array('h')
+    a.frombytes(pcm[:len(pcm) // (2 * ch) * 2 * ch])
+    mono = [sum(a[i:i + ch]) // ch for i in range(0, len(a), ch)] if ch > 1 else list(a)
+    if rate != to_rate and mono:
+        n = int(len(mono) * to_rate / rate)
+        step = rate / to_rate
+        last = len(mono) - 1
+        out = []
+        for i in range(n):
+            x = i * step
+            k = int(x)
+            f = x - k
+            out.append(int(mono[k] * (1 - f) + mono[min(k + 1, last)] * f))
+        mono = out
+    if to_ch > 1:
+        mono = [v for v in mono for _ in range(to_ch)]
+    return array.array('h', mono).tobytes()
 
 
 def encode(wav, fmt):
