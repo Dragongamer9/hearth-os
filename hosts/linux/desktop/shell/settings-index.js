@@ -594,7 +594,7 @@ var ENTRIES = [
 {
 "t": "Recomps",
 "p": "games",
-"d": "Native PC versions of classic console games: install and update them",
+"d": "Native PC versions of classic console games: install, update and play them (in Hearth Games)",
 "i": "pad"
 },
 {
@@ -2495,6 +2495,20 @@ var ENTRIES = [
 "t": "Open",
 "p": "winapps",
 "i": "play"
+},
+{
+"t": "Show log",
+"p": "winapps",
+"i": "info"
+},
+{
+"t": "Detailed Proton log for the next start",
+"p": "winapps"
+},
+{
+"t": "Show the detailed Proton log",
+"p": "winapps",
+"i": "info"
 },
 {
 "t": "Proton",

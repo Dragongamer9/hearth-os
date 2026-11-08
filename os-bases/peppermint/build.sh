@@ -99,6 +99,9 @@ for b in gamescope gamescopereaper gamescopestream gamescopectl mangoapp mangohu
 done
 command -v gamescope
 optional gamemode libgamemode0:i386 zenity
+# Windows apps and Proton outside Steam's runtime (docs/WINDOWS-APPS.md): Wine draws text with the system's FreeType,
+# and 32-bit programs need its 32-bit half ("Wine cannot find the FreeType font library": no text). Optional.
+optional libfreetype6 libfreetype6:i386 libfontconfig1:i386
 # Steam's launcher lives in /usr/games on Debian; Hearth's session calls `steam` from the usual PATH.
 STEAM_BIN=$(command -v steam || ls /usr/games/steam 2>/dev/null || true)
 [ -n "$STEAM_BIN" ] || { echo "Steam's launcher wasn't installed"; exit 1; }
