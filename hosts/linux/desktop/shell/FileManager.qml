@@ -482,14 +482,26 @@ Scope {
         desc = !!f.desc;
         group = ["none", "type", "date"].indexOf(f.group) >= 0 ? f.group : "none";
     }
-    Timer { id: prefsTimer; interval: 700; onTriggered: app.call(["prefs-set", JSON.stringify(app.prefs)]) }
+    // Only what you changed goes to the file (hearth-files merges it, one folder's view at a time): it used to send the
+    // whole settings object this window had read when it opened, so a setting changed since (Settings › Devices'
+    // "Show in Files", another Files window's folder views) was put back by itself the next time you changed a view.
+    property var prefsPending: ({})
+    Timer {
+        id: prefsTimer; interval: 700
+        onTriggered: { const ch = app.prefsPending; app.prefsPending = {}; if (Object.keys(ch).length) app.call(["prefs-set", JSON.stringify(ch)]); }
+    }
     function rememberView() {
         const p = Object.assign({}, prefs);
         const folders = Object.assign({}, p.folders || {});
         const v = { view: view, sort: sort, desc: desc, group: group };
+        const ch = Object.assign({}, prefsPending);
         if (path && !onHome && !onSpecial) {
             delete folders[path];
             folders[path] = v;               // newest last: hearth-files keeps the newest 400
+            const cf = Object.assign({}, ch.folders || {});
+            delete cf[path];
+            cf[path] = v;
+            ch.folders = cf;
         }
         p.folders = folders;
         p.view = view; p.sort = sort; p.desc = desc; p.group = group;
@@ -497,6 +509,9 @@ Scope {
         p.showExt = showExt;
         p.detailsPane = detailsPane;
         prefs = p;
+        ch.view = view; ch.sort = sort; ch.desc = desc; ch.group = group;
+        ch.hidden = hidden; ch.showExt = showExt; ch.detailsPane = detailsPane;
+        prefsPending = ch;
         prefsTimer.restart();
     }
     function loadTemplates() {

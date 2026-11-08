@@ -2445,20 +2445,26 @@ def prefs_set(text):
         raise Fail('Settings have to be JSON')
     if not isinstance(new, dict):
         raise Fail('Settings have to be a JSON object')
+    def apply(cur):
+        # "folders" (each folder's view) merges one folder at a time, newest last: a window sends only the folder it
+        # changed, so another window's folder views (and every other key it didn't send) stay as they are.
+        add = new.pop('folders', None)
+        cur.update(new)
+        if isinstance(add, dict):
+            folders = cur.get('folders') if isinstance(cur.get('folders'), dict) else {}
+            for k, v in add.items():
+                folders.pop(k, None)
+                folders[k] = v
+            cur['folders'] = folders
+        folders = cur.get('folders')
+        if isinstance(folders, dict) and len(folders) > 400:     # keep the newest 400 folders' views
+            cur['folders'] = dict(list(folders.items())[-400:])
     if hsio:
         # Read, merged and written under one lock: two Files windows saving at once both keep their change.
-        def apply(cur):
-            cur.update(new)
-            folders = cur.get('folders')
-            if isinstance(folders, dict) and len(folders) > 400:
-                cur['folders'] = dict(list(folders.items())[-400:])
         hsio.update_json(prefs_file(), apply, None)
         return {'ok': True}
     cur = prefs_get()
-    cur.update(new)
-    folders = cur.get('folders')
-    if isinstance(folders, dict) and len(folders) > 400:     # keep the newest 400 folders' views
-        cur['folders'] = dict(list(folders.items())[-400:])
+    apply(cur)
     f = prefs_file()
     os.makedirs(os.path.dirname(f), exist_ok=True)
     with open(f + '.tmp', 'w', encoding='utf-8') as fh:
