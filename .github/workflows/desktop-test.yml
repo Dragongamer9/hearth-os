@@ -66,6 +66,10 @@ jobs:
           # The Briefcase in Hearth Files (hearth-briefcase): statuses, updates, Trash, crashes, locks, auto-lock, auto-sync.
           # Locking runs with the real gocryptfs where FUSE can be mounted, else with the stand-in (a ::notice says which).
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_briefcase.py' -v
+          # Bug hunt after 1.8: text for the helpers on stdin (never Process.environment), saves that failed tried again,
+          # the right-click menu scrolling on a small screen, Files saving only what changed.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_bug_hunt_2.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_files.py' 2>&1 | tail -3
 
       - name: Start Desktop Mode
         shell: bash
