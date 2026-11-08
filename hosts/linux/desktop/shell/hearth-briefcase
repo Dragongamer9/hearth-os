@@ -1,0 +1,2360 @@
+#!/usr/bin/python3
+"""hearth-briefcase: the Briefcase in Hearth Files (FileManager.qml, Briefcase.qml), the Windows 95-XP way, made new.
+
+A Briefcase is a folder with a small hidden list inside (.briefcase.json), so it travels with the folder: to a USB
+stick, a shared folder or another Hearth device. Each item in it remembers where it came from (its original): a path on
+this PC, a removable drive (its filesystem UUID and the path on it, so it's found under any mount point) or a shared
+folder (smb://, opened through gio/gvfs), with the size, time and content hash of both copies at the last update.
+
+  hearth-briefcase new PARENT [NAME] [--ensure]   make a Briefcase (--ensure: ~/Briefcase, made once)
+  hearth-briefcase list                           the Briefcases this device knows (for the navigation pane and menus)
+  hearth-briefcase status BC                      each item's status (and the lock's), recomputed now
+  hearth-briefcase add BC SRC...                  copy SRC in and remember it as the original      } "progress: {json}"
+  hearth-briefcase plan BC [NAME...]              what Update All / Update would do, row by row     } lines while
+  hearth-briefcase apply BC PLAN_JSON             do the rows (each row's action as chosen)          } copying, then
+  hearth-briefcase send BC DEST_FOLDER            copy the whole Briefcase (its list too) to DEST    } the final JSON
+  hearth-briefcase transfer SRC_BC DEST_BC NAME... --copy|--move    an item to another Briefcase, keeping its link
+  hearth-briefcase swap BC_A NAME_A BC_B NAME_B   exchange two items between two Briefcases
+  hearth-briefcase split BC NAME...               make the copies independent (Split from original)
+  hearth-briefcase find BC NAME                   where the original is (Find original)
+  hearth-briefcase customize BC JSON              name, colour, icon, badge, note, view, sort, auto-lock, navigation pane
+  hearth-briefcase reset-list BC                  start a damaged list again (the damaged one is kept aside)
+  hearth-briefcase touch PATH                     Files opened something in an unlocked Briefcase (auto-lock timer)
+Locking (gocryptfs; the password is read from stdin, never from the command line, and never written anywhere):
+  hearth-briefcase lock-setup BC [--remember]     stdin: the password. Encrypt, verify, then the plain copy to Trash
+  hearth-briefcase unlock BC [--remember|--keyring]   stdin: the password (--keyring: the one remembered)
+  hearth-briefcase lock BC                        close it again
+  hearth-briefcase lock-remove BC                 stdin: nothing (it must be unlocked). Decrypt, verify, then the
+                                                  encrypted copy to Trash
+  hearth-briefcase passwd BC                      stdin: old password, new password (one line each)
+  hearth-briefcase forget BC                      forget the remembered password
+  hearth-briefcase lock-all [--under PATH] [--reason sleep|eject|signout]
+  hearth-briefcase guard                          (started by unlock) locks on sleep, sign-out and when idle
+Auto-sync (hearth-briefcase-sync.service, a user service started after sign-in only when a Briefcase wants it):
+  hearth-briefcase autosync                       the service: one-sided changes copied a few seconds after saving
+  hearth-briefcase autosync-needed                exit 0 when at least one Briefcase has auto-sync on (ExecCondition)
+  hearth-briefcase sync-now BC                    one automatic sync now (what the service does)
+
+Rules: never lose a file. Copies go to a temporary file and are renamed over (atomic); a version that's replaced or
+deleted goes to the Trash on its own side (the freedesktop Trash spec: your Trash, or the drive's .Trash-UID), or, on a
+shared folder where there's no Trash, to .briefcase-replaced/<date> in the Briefcase. A file changed in both places is
+never decided for you. The list is written with hearth_settings_io (atomic, .bak, a damaged one kept aside).
+Python standard library only.
+"""
+import contextlib
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.parse
+import uuid
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+STATE = '.briefcase.json'
+VAULT = '.briefcase-vault'
+VAULT_NEW = '.briefcase-vault.new'
+STAGING = '.briefcase-unlocking'
+REPLACED = '.briefcase-replaced'
+BUSY = '.briefcase-busy'
+TMP_MARK = '.briefcase-tmp-'
+HASH_NOW = 64 * 1024 * 1024          # bigger files are hashed only when their time changed but not their size
+CHUNK = 1024 * 1024
+ICONS = ('briefcase', 'satchel', 'suitcase', 'backpack', 'box')
+COLORS = ('accent', 'ember', 'red', 'green', 'blue', 'purple', 'gold', 'slate')
+VIEWS = ('', 'large', 'grid', 'small', 'tiles', 'compact', 'details')
+SORTS = ('', 'name', 'date', 'size', 'type', 'status')
+AUTOLOCK_DEFAULT = {'minutes': 15, 'onSleep': True, 'onEject': True}
+LOOK_DEFAULT = {'name': '', 'color': 'accent', 'icon': 'briefcase', 'badge': '', 'note': '', 'view': '', 'sort': '',
+                'showInNav': True, 'autosync': {'mode': 'instant', 'minutes': 15}}
+AUTOSYNC_MODES = ('instant', 'interval', 'onlock', 'off')
+AUTO_KINDS = ('new-b', 'newer-b', 'new-o', 'newer-o')
+SETTLE = 3                           # seconds a changed file must be left alone before auto-sync copies it
+NET_RATE = 4 * 1024 * 1024           # auto-sync to a shared folder: at most this many bytes a second
+
+
+class Fail(Exception):
+    def __init__(self, msg, code='error', **extra):
+        super().__init__(msg)
+        self.code = code
+        self.extra = extra
+
+
+class Cancelled(Exception):
+    pass
+
+
+CANCEL = threading.Event()
+
+
+def check_cancel():
+    if CANCEL.is_set():
+        raise Cancelled()
+
+
+def progress(obj):
+    print('progress: ' + json.dumps(obj), flush=True)
+
+
+# ---------------------------------------------------------------------- where things are
+def home():
+    return os.path.abspath(os.path.expanduser('~'))
+
+
+def runtime_dir():
+    return os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+
+
+def our_runtime():
+    d = os.path.join(runtime_dir(), 'hearth-briefcase')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return d
+
+
+def state_home():
+    return os.environ.get('XDG_STATE_HOME') or os.path.join(home(), '.local', 'state')
+
+
+def registry_file():
+    return os.path.join(state_home(), 'nimbus', 'briefcases.json')
+
+
+def mounts_file():
+    return os.path.join(our_runtime(), 'mounts.json')
+
+
+def gvfs_root():
+    return os.path.join(runtime_dir(), 'gvfs')
+
+
+def media_bases():
+    import pwd
+    try:
+        u = pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        u = os.environ.get('USER', '')
+    return ['/run/media/' + u, '/media/' + u, '/media']
+
+
+def device_name():
+    return os.environ.get('HEARTH_BRIEFCASE_DEVICE') or socket.gethostname() or 'this PC'
+
+
+def machine_id():
+    v = os.environ.get('HEARTH_BRIEFCASE_MACHINE')
+    if v:
+        return v
+    for f in ('/etc/machine-id', '/var/lib/dbus/machine-id'):
+        with contextlib.suppress(OSError):
+            with open(f) as fh:
+                t = fh.read().strip()
+                if t:
+                    return t
+    return device_name()
+
+
+def under(path, root):
+    root = root.rstrip('/') or '/'
+    return path == root or path.startswith(root + '/') or root == '/'
+
+
+def lexists(p):
+    try:
+        os.lstat(p)
+        return True
+    except OSError:
+        return False
+
+
+def mount_point(path):
+    p = os.path.realpath(path)
+    while not os.path.ismount(p) and p != '/':
+        p = os.path.dirname(p)
+    return p
+
+
+def same_device(a, b):
+    try:
+        return os.lstat(a).st_dev == os.stat(b).st_dev
+    except OSError:
+        return False
+
+
+def tilde(p):
+    h = home()
+    return '~' + p[len(h):] if p and under(p, h) and p != '/' else p
+
+
+def now():
+    return time.time()
+
+
+def nice_date(t=None):
+    return time.strftime('%Y-%m-%d %H.%M', time.localtime(t or now()))
+
+
+# ---------------------------------------------------------------------- the list (.briefcase.json)
+def _broken_copies(path):
+    d, b = os.path.split(path)
+    try:
+        return [os.path.join(d, n) for n in os.listdir(d) if n.startswith(b + '.broken-')]
+    except OSError:
+        return []
+
+
+def read_state(folder):
+    """(the list, damaged?) of a Briefcase folder. A damaged list is put back from its .bak; with no good .bak it is
+    kept aside once as .briefcase.json.broken-<time> and reported as damaged, and never written over."""
+    p = os.path.join(folder, STATE)
+    try:
+        with open(p, 'rb') as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return None, False
+    except OSError:
+        return None, True
+    try:
+        data = json.loads(raw.decode('utf-8'))
+        if isinstance(data, dict):
+            return data, False
+    except (ValueError, UnicodeDecodeError):
+        pass
+    # Damaged. Kept aside only once for the same bytes (status runs often).
+    for b in _broken_copies(p):
+        with contextlib.suppress(OSError):
+            with open(b, 'rb') as f:
+                if f.read() == raw:
+                    bak = p + '.bak'
+                    if not (os.path.exists(bak) and sio._valid_json_object(open(bak, 'rb').read())):
+                        return None, True
+    data = sio.load_json(p, default=None)
+    if isinstance(data, dict):
+        return data, False
+    return None, True
+
+
+def write_state(folder, data):
+    sio.write_json(os.path.join(folder, STATE), data)
+
+
+def update_state(folder, change):
+    """Change the list under its lock (merge on write). Refuses a damaged list."""
+    p = os.path.join(folder, STATE)
+    data, damaged = read_state(folder)
+    if damaged:
+        raise Fail("This Briefcase's list couldn't be read, so nothing was changed. It's kept aside; use "
+                   "“Start the list again” to make a new one.", 'damaged')
+    if data is None:
+        raise Fail("This folder isn't a Briefcase", 'notbc')
+    return sio.update_json(p, change)
+
+
+def look_of(data):
+    look = sio.with_defaults((data or {}).get('look') or {}, LOOK_DEFAULT)
+    look['autolock'] = sio.with_defaults(look.get('autolock') or {}, AUTOLOCK_DEFAULT)
+    return look
+
+
+def registry():
+    data = sio.load_json(registry_file(), default={})
+    known = data.get('known') if isinstance(data.get('known'), list) else []
+    return [k for k in known if isinstance(k, str)]
+
+
+def register(path):
+    p = os.path.realpath(path)
+
+    def ch(d):
+        known = d.get('known') if isinstance(d.get('known'), list) else []
+        if p not in known:
+            d['known'] = known + [p]
+    with contextlib.suppress(OSError):
+        if p not in registry():
+            sio.update_json(registry_file(), ch)
+
+
+def unregister(path):
+    p = os.path.realpath(path)
+
+    def ch(d):
+        d['known'] = [k for k in (d.get('known') or []) if k != p]
+    with contextlib.suppress(OSError):
+        sio.update_json(registry_file(), ch)
+
+
+def mounts():
+    data = sio.load_json(mounts_file(), default={})
+    return data if isinstance(data, dict) else {}
+
+
+def set_mount(mp, entry):
+    def ch(d):
+        if entry is None:
+            d.pop(mp, None)
+        else:
+            d[mp] = dict(d.get(mp) or {}, **entry)
+    sio.update_json(mounts_file(), ch)
+
+
+# ---------------------------------------------------------------------- mounts (gocryptfs)
+def fake_mounts():
+    return os.environ.get('HEARTH_BRIEFCASE_FAKE_MOUNTS') == '1'
+
+
+def is_mounted(mp):
+    if fake_mounts():
+        return os.path.islink(mp)
+    return os.path.ismount(mp)
+
+
+def gocryptfs_bin():
+    b = os.environ.get('HEARTH_BRIEFCASE_GOCRYPTFS') or shutil.which('gocryptfs')
+    if not b:
+        raise Fail("Locking needs gocryptfs, which isn't on this system", 'nogocryptfs')
+    return b
+
+
+def fusermount_bin():
+    return (os.environ.get('HEARTH_BRIEFCASE_FUSERMOUNT') or shutil.which('fusermount3')
+            or shutil.which('fusermount') or 'fusermount')
+
+
+def run_secret(argv, lines, timeout=300):
+    """Run with the password on stdin (never in argv or the environment). stdout/stderr go to a temporary file
+    (gocryptfs keeps running in the background after mounting)."""
+    data = b''.join(l.encode('utf-8') + b'\n' for l in lines)
+    with tempfile.TemporaryFile() as err:
+        r = subprocess.run(argv, input=data, stdout=subprocess.DEVNULL, stderr=err, timeout=timeout)
+        err.seek(0)
+        return r.returncode, err.read().decode('utf-8', 'replace').strip()
+
+
+def mountpoint_for(outer, bid):
+    h = hashlib.sha1(os.path.realpath(outer).encode('utf-8', 'surrogateescape')).hexdigest()[:6]
+    return os.path.join(our_runtime(), '%s-%s' % (re.sub(r'[^A-Za-z0-9]', '', bid or 'bc')[:10], h))
+
+
+def g_mount(cipher, mp, password):
+    os.makedirs(mp, exist_ok=True)
+    if is_mounted(mp):
+        return
+    rc, err = run_secret([gocryptfs_bin(), '-q', '--', cipher, mp], [password])
+    if rc == 12:
+        raise Fail("That password isn't right", 'badpass')
+    if rc != 0 or not is_mounted(mp):
+        raise Fail("Couldn't unlock the Briefcase" + (': ' + err.splitlines()[-1] if err else ''), 'mountfail')
+
+
+def g_unmount(mp):
+    if not is_mounted(mp):
+        return
+    r = subprocess.run([fusermount_bin(), '-u', mp], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0 or is_mounted(mp):
+        msg = (r.stderr or r.stdout or '').lower()
+        if 'busy' in msg or is_mounted(mp):
+            raise Fail('Something is still using a file in this Briefcase. Close it and try again', 'busy')
+        raise Fail("Couldn't lock the Briefcase: " + (r.stderr or r.stdout).strip(), 'unmountfail')
+    with contextlib.suppress(OSError):
+        if os.path.islink(mp):
+            os.unlink(mp)
+        else:
+            os.rmdir(mp)
+
+
+def g_init(cipher, password):
+    rc, err = run_secret([gocryptfs_bin(), '-init', '-q', '--', cipher], [password])
+    if rc != 0:
+        raise Fail("Couldn't set up the lock" + (': ' + err.splitlines()[-1] if err else ''), 'initfail')
+
+
+# ---------------------------------------------------------------------- keyring (secret-tool), only when asked
+def secret_tool():
+    st = os.environ.get('HEARTH_BRIEFCASE_SECRET_TOOL') or shutil.which('secret-tool')
+    return st if st and os.access(st, os.X_OK) else None
+
+
+def keyring_store(bid, name, password):
+    st = secret_tool()
+    if not st:
+        return False
+    r = subprocess.run([st, 'store', '--label', 'Hearth Briefcase “%s”' % name, 'hearth-briefcase', bid],
+                       input=password.encode('utf-8'), capture_output=True, timeout=30)
+    return r.returncode == 0
+
+
+def keyring_lookup(bid):
+    st = secret_tool()
+    if not st:
+        return None
+    r = subprocess.run([st, 'lookup', 'hearth-briefcase', bid], capture_output=True, timeout=30)
+    if r.returncode != 0 or not r.stdout:
+        return None
+    return r.stdout.decode('utf-8', 'replace').rstrip('\n')
+
+
+def keyring_clear(bid):
+    st = secret_tool()
+    if st:
+        subprocess.run([st, 'clear', 'hearth-briefcase', bid], capture_output=True, timeout=30)
+
+
+def read_password_lines(n):
+    data = sys.stdin.buffer.read() if not sys.stdin.isatty() else b''
+    lines = data.decode('utf-8', 'surrogateescape').split('\n')
+    out = [l.rstrip('\r') for l in lines[:n]]
+    while len(out) < n:
+        out.append('')
+    return out
+
+
+# ---------------------------------------------------------------------- opening a Briefcase
+class BC:
+    def __init__(self, outer, data, damaged):
+        self.outer = outer
+        self.data = data or {}
+        self.damaged = damaged
+        self.id = self.data.get('id') or ''
+        self.locked = bool(self.data.get('locked'))
+        self.mp = mountpoint_for(outer, self.id) if self.locked else None
+        self.unlocked = bool(self.mp and is_mounted(self.mp))
+        self.content = (self.mp if self.unlocked else None) if self.locked else outer
+        self.look = look_of(self.data)
+        self.name = self.look.get('name') or os.path.basename(outer)
+
+    def items_state(self):
+        """(inner list, damaged?) where the items are kept."""
+        if not self.content:
+            return None, False
+        if not self.locked:
+            return self.data, self.damaged
+        return read_state(self.content)
+
+    def items(self):
+        data, damaged = self.items_state()
+        items = (data or {}).get('items')
+        return items if isinstance(items, dict) else {}
+
+    def need_open(self):
+        if self.locked and not self.unlocked:
+            raise Fail('“%s” is locked. Unlock it first' % self.name, 'locked', path=self.outer, name=self.name)
+        if self.damaged:
+            raise Fail("This Briefcase's list couldn't be read, so nothing was changed. It's kept aside; use "
+                       "“Start the list again” to make a new one.", 'damaged')
+        return self.content
+
+    def update_items(self, fn):
+        self.need_open()
+
+        def ch(d):
+            items = d.get('items') if isinstance(d.get('items'), dict) else {}
+            fn(items)
+            d['items'] = items
+        return update_state(self.content, ch)
+
+
+def resolve_bc_path(path):
+    p = os.path.realpath(os.path.expanduser(path))
+    m = mounts()
+    for mp, e in m.items():
+        if under(p, os.path.realpath(mp)) or under(p, mp):
+            return e.get('outer') or p
+    return p
+
+
+def open_bc(path, recover_ok=True):
+    outer = resolve_bc_path(path)
+    data, damaged = read_state(outer)
+    if data is None and not damaged:
+        raise Fail("This folder isn't a Briefcase", 'notbc')
+    if recover_ok and data is not None:
+        if recover(outer, data):
+            data, damaged = read_state(outer)
+    return BC(outer, data, damaged)
+
+
+def is_briefcase(path):
+    return os.path.isfile(os.path.join(path, STATE))
+
+
+def special(name):
+    return (name in (STATE, STATE + '.bak', '.' + STATE + '.lock', VAULT, VAULT_NEW, STAGING, REPLACED, BUSY,
+                     '.Trash') or name.startswith(TMP_MARK) or name.startswith('.Trash-')
+            or name.startswith(STATE + '.broken-') or name.startswith('.' + STATE + '.'))
+
+
+# ---------------------------------------------------------------------- originals
+def drives():
+    """{uuid: {path, label}} of mounted drives. HEARTH_BRIEFCASE_DRIVES (JSON) stands in for tests."""
+    env = os.environ.get('HEARTH_BRIEFCASE_DRIVES')
+    if env:
+        try:
+            return json.loads(env)
+        except ValueError:
+            return {}
+    mounted = {}
+    with contextlib.suppress(OSError):
+        with open('/proc/mounts') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[0].startswith('/dev/'):
+                    mounted[os.path.realpath(parts[0])] = parts[1].replace('\\040', ' ')
+    labels = {}
+    with contextlib.suppress(OSError):
+        for n in os.listdir('/dev/disk/by-label'):
+            labels[os.path.realpath(os.path.join('/dev/disk/by-label', n))] = n.replace('\\x20', ' ')
+    out = {}
+    with contextlib.suppress(OSError):
+        for u in os.listdir('/dev/disk/by-uuid'):
+            dev = os.path.realpath(os.path.join('/dev/disk/by-uuid', u))
+            if dev in mounted:
+                mp = mounted[dev]
+                if any(under(mp, b) and mp != b for b in media_bases()):
+                    out[u] = {'path': mp, 'label': labels.get(dev) or os.path.basename(mp)}
+    return out
+
+
+def parse_gvfs(rp):
+    g = os.path.realpath(gvfs_root())
+    if not under(rp, g) or rp == g:
+        return None
+    rel = os.path.relpath(rp, g)
+    first, _, rest = rel.partition('/')
+    if not first.startswith('smb-share:'):
+        return None
+    kv = {}
+    for part in first.split(':', 1)[1].split(','):
+        k, _, v = part.partition('=')
+        kv[k] = urllib.parse.unquote(v)
+    if 'server' not in kv or 'share' not in kv:
+        return None
+    return kv['server'], kv['share'], rest
+
+
+def origin_for(path):
+    rp = os.path.realpath(path)
+    g = parse_gvfs(rp)
+    if g:
+        server, share, rel = g
+        return {'kind': 'share', 'server': server, 'share': share, 'rel': rel,
+                'url': 'smb://%s/%s/%s' % (server, share, urllib.parse.quote(rel)),
+                'device': server.split('.')[0]}
+    for u, d in drives().items():
+        base = os.path.realpath(d.get('path') or '')
+        if base and base != '/' and under(rp, base):
+            return {'kind': 'drive', 'uuid': u, 'label': d.get('label') or u, 'rel': os.path.relpath(rp, base)
+                    if rp != base else ''}
+    return {'kind': 'local', 'path': rp, 'device': device_name(), 'machine': machine_id()}
+
+
+def find_gvfs(server, share):
+    g = gvfs_root()
+    try:
+        names = os.listdir(g)
+    except OSError:
+        return None
+    for n in names:
+        if not n.startswith('smb-share:'):
+            continue
+        kv = dict(p.partition('=')[::2] for p in n.split(':', 1)[1].split(','))
+        if kv.get('server', '').lower() == server.lower() and urllib.parse.unquote(kv.get('share', '')).lower() == share.lower():
+            return os.path.join(g, n)
+    return None
+
+
+def resolve(origin, connect=False):
+    """(path or None, why it's away). Away means unplugged, offline or on another device: never an orphan."""
+    k = origin.get('kind')
+    if k == 'local':
+        if origin.get('machine') and origin.get('machine') != machine_id():
+            return None, 'The original is on %s' % (origin.get('device') or 'another device')
+        return origin.get('path'), ''
+    if k == 'drive':
+        d = drives().get(origin.get('uuid'))
+        if not d:
+            return None, 'Plug in “%s”' % (origin.get('label') or 'the drive')
+        return os.path.join(d['path'], origin.get('rel') or ''), ''
+    if k == 'share':
+        top = find_gvfs(origin.get('server', ''), origin.get('share', ''))
+        if not top and connect and shutil.which('gio'):
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                subprocess.run(['gio', 'mount', 'smb://%s/%s' % (origin['server'], origin['share'])],
+                               capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+            top = find_gvfs(origin.get('server', ''), origin.get('share', ''))
+        if not top:
+            return None, '%s is offline' % (origin.get('device') or origin.get('server') or 'The device')
+        return os.path.join(top, origin.get('rel') or ''), ''
+    return None, "Hearth doesn't know where this came from"
+
+
+def origin_label(origin):
+    k = origin.get('kind')
+    if k == 'local':
+        here = origin.get('machine') == machine_id()
+        return (tilde(origin.get('path', '')) if here else '%s: %s' % (origin.get('device'), origin.get('path')))
+    if k == 'drive':
+        return '%s: /%s' % (origin.get('label'), origin.get('rel') or '')
+    if k == 'share':
+        return '%s › %s/%s' % (origin.get('device'), origin.get('share'), origin.get('rel') or '')
+    return '?'
+
+
+def is_remote_path(p):
+    return parse_gvfs(os.path.realpath(p)) is not None
+
+
+# ---------------------------------------------------------------------- files: signatures, copies, Trash
+def hash_file(p):
+    h = hashlib.sha256()
+    with open(p, 'rb') as f:
+        while True:
+            check_cancel()
+            b = f.read(CHUNK)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
+
+
+def sig_of(p, st=None, known_hash=None, force_hash=False):
+    st = st or os.stat(p)
+    s = {'size': st.st_size, 'mtime': st.st_mtime_ns}
+    if known_hash:
+        s['hash'] = known_hash
+    elif force_hash or st.st_size <= HASH_NOW:
+        s['hash'] = hash_file(p)
+    return s
+
+
+def short_sig(st):
+    return None if st is None else {'size': st.st_size, 'mtime': st.st_mtime_ns}
+
+
+def differs(p, st, base):
+    """Has the file changed since BASE (its signature at the last update)? Size, then time; same size but a new time
+    is checked by content."""
+    if base is None:
+        return True
+    if st.st_size != base.get('size'):
+        return True
+    if st.st_mtime_ns == base.get('mtime'):
+        return False
+    if not base.get('hash'):
+        return True
+    return hash_file(p) != base['hash']
+
+
+def _write_chunk(f, b, state):
+    f.write(b)
+    # HEARTH_BRIEFCASE_CRASH_AFTER (tests): the process dies here, after so many bytes of a copy, like a power cut.
+    lim = os.environ.get('HEARTH_BRIEFCASE_CRASH_AFTER')
+    if lim:
+        state['n'] = state.get('n', 0) + len(b)
+        if state['n'] >= int(lim):
+            f.flush()
+            os._exit(9)
+
+
+def fsync_dir(d):
+    with contextlib.suppress(OSError):
+        fd = os.open(d, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+def copy_to_temp(src, dst, prog=None):
+    """Copy SRC to a temporary file beside DST (fsynced, same times). Returns (temp path, sha256)."""
+    d = os.path.dirname(dst)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=TMP_MARK, suffix='-' + os.path.basename(dst)[-60:], dir=d)
+    h = hashlib.sha256()
+    state = {}
+    try:
+        with open(src, 'rb') as fi, os.fdopen(fd, 'wb') as fo:
+            while True:
+                check_cancel()
+                b = fi.read(CHUNK)
+                if not b:
+                    break
+                _write_chunk(fo, b, state)
+                h.update(b)
+                if prog:
+                    prog(len(b))
+            fo.flush()
+            with contextlib.suppress(OSError):
+                os.fsync(fo.fileno())
+        st = os.stat(src)
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, stat.S_IMODE(st.st_mode))
+        with contextlib.suppress(OSError):
+            os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+    return tmp, h.hexdigest()
+
+
+def clean_temps(folder):
+    """Temporary files a crash left behind (ours only, by name)."""
+    with contextlib.suppress(OSError):
+        for n in os.listdir(folder):
+            if n.startswith(TMP_MARK):
+                with contextlib.suppress(OSError):
+                    os.unlink(os.path.join(folder, n))
+
+
+def home_trash():
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+    return os.path.join(base, 'Trash')
+
+
+def trash_dir_for(p):
+    """The freedesktop Trash for P: your home Trash when it's on the same drive, else the drive's $topdir/.Trash/$uid
+    (when an admin made one) or $topdir/.Trash-$uid."""
+    ht = home_trash()
+    with contextlib.suppress(OSError):
+        os.makedirs(os.path.join(ht, 'files'), exist_ok=True)
+        os.makedirs(os.path.join(ht, 'info'), exist_ok=True)
+    if same_device(p, ht):
+        return ht, None
+    top = mount_point(os.path.dirname(os.path.abspath(p)))
+    admin = os.path.join(top, '.Trash')
+    with contextlib.suppress(OSError):
+        st = os.lstat(admin)
+        if stat.S_ISDIR(st.st_mode) and st.st_mode & stat.S_ISVTX:
+            t = os.path.join(admin, str(os.getuid()))
+            os.makedirs(os.path.join(t, 'files'), mode=0o700, exist_ok=True)
+            os.makedirs(os.path.join(t, 'info'), mode=0o700, exist_ok=True)
+            return t, top
+    t = os.path.join(top, '.Trash-%d' % os.getuid())
+    try:
+        os.makedirs(os.path.join(t, 'files'), mode=0o700, exist_ok=True)
+        os.makedirs(os.path.join(t, 'info'), mode=0o700, exist_ok=True)
+    except OSError:
+        raise Fail('There is no Trash on this drive', 'notrash')
+    return t, top
+
+
+def _trash_slot(p):
+    t, top = trash_dir_for(p)
+    base = os.path.basename(p)
+    name, n = base, 1
+    while True:
+        info = os.path.join(t, 'info', name + '.trashinfo')
+        try:
+            fd = os.open(info, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            n += 1
+            stem, ext = os.path.splitext(base)
+            name = '%s.%d%s' % (stem, n, ext)
+    rel = os.path.relpath(os.path.abspath(p), top) if top else os.path.abspath(p)
+    with os.fdopen(fd, 'w') as f:
+        f.write('[Trash Info]\nPath=%s\nDeletionDate=%s\n' % (
+            urllib.parse.quote(rel, errors='surrogateescape'), time.strftime('%Y-%m-%dT%H:%M:%S')))
+    return info, os.path.join(t, 'files', name)
+
+
+def trash(p):
+    """Move P to the Trash (spec). Returns where it went."""
+    info, dest = _trash_slot(p)
+    try:
+        os.rename(p, dest)
+    except OSError:
+        os.unlink(info)
+        raise
+    return dest
+
+
+def trash_copy(p):
+    """Put a copy of P in the Trash while P stays (a hard link where the drive has them, else a copy), so the new
+    version can then be renamed over P with no moment where neither is there."""
+    info, dest = _trash_slot(p)
+    try:
+        try:
+            os.link(p, dest)
+        except OSError:
+            shutil.copy2(p, dest)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(info)
+        raise
+    return dest
+
+
+def keep_replaced(bc, p, rel_label):
+    """No Trash (a shared folder): a copy in .briefcase-replaced/<date>/ inside the Briefcase."""
+    d = os.path.join(bc.content, REPLACED, time.strftime('%Y-%m-%d'))
+    dest = os.path.join(d, rel_label)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    dest = unique_path(dest)
+    tmp, _ = copy_to_temp(p, dest)
+    os.rename(tmp, dest)
+    return dest
+
+
+def unique_path(p):
+    if not lexists(p):
+        return p
+    d, b = os.path.split(p)
+    stem, ext = os.path.splitext(b)
+    n = 2
+    while lexists(os.path.join(d, '%s (%d)%s' % (stem, n, ext))):
+        n += 1
+    return os.path.join(d, '%s (%d)%s' % (stem, n, ext))
+
+
+class Notes:
+    def __init__(self):
+        self.trashed = []
+        self.replaced = []
+        self.skipped = []
+
+    def as_dict(self):
+        return {'trashed': self.trashed, 'replaced': self.replaced, 'skipped': self.skipped}
+
+
+def put_over(bc, tmp, dst, label, notes):
+    """Rename TMP over DST, the old DST first going to the Trash on its side (or .briefcase-replaced)."""
+    if lexists(dst):
+        if is_remote_path(dst):
+            notes.replaced.append(keep_replaced(bc, dst, label))
+        else:
+            try:
+                notes.trashed.append(trash_copy(dst))
+            except (OSError, Fail):
+                notes.replaced.append(keep_replaced(bc, dst, label))
+    os.replace(tmp, dst)
+    fsync_dir(os.path.dirname(dst))
+
+
+def remove_to_trash(bc, p, label, notes):
+    if is_remote_path(p) and not os.path.isdir(p):
+        notes.replaced.append(keep_replaced(bc, p, label))
+        os.unlink(p)
+        return
+    try:
+        notes.trashed.append(trash(p))
+    except (OSError, Fail):
+        if os.path.isdir(p):
+            raise Fail("“%s” couldn't be moved to the Trash, so it was left where it is" % os.path.basename(p))
+        notes.replaced.append(keep_replaced(bc, p, label))
+        os.unlink(p)
+
+
+# ---------------------------------------------------------------------- comparing an item
+def walk(root):
+    out = {}
+    if not os.path.isdir(root):
+        return out
+    for dp, dns, fns in os.walk(root):
+        dns[:] = sorted(d for d in dns if not special(d) and not os.path.islink(os.path.join(dp, d)))
+        for f in fns:
+            if special(f):
+                continue
+            full = os.path.join(dp, f)
+            with contextlib.suppress(OSError):
+                st = os.lstat(full)
+                if stat.S_ISREG(st.st_mode):
+                    out[os.path.relpath(full, root)] = st
+    return out
+
+
+def stat_or_none(p):
+    try:
+        st = os.stat(p)
+        return st if stat.S_ISREG(st.st_mode) else None
+    except OSError:
+        return None
+
+
+def classify(rel, bp, bst, op, ost, base):
+    """One file's row, or None when nothing needs doing. Changes are measured against the last update."""
+    bb = (base or {}).get('b')
+    ob = (base or {}).get('o')
+    b_new = bst is not None and bb is None
+    o_new = ost is not None and ob is None
+    b_del = bst is None and bb is not None
+    o_del = ost is None and ob is not None
+    b_ch = bst is not None and bb is not None and differs(bp, bst, bb)
+    o_ch = ost is not None and ob is not None and differs(op, ost, ob)
+    b_any = b_new or b_ch
+    o_any = o_new or o_ch
+    row = {'rel': rel, 'bsig': short_sig(bst), 'osig': short_sig(ost),
+           'size': max(bst.st_size if bst else 0, ost.st_size if ost else 0)}
+    if bst is None and ost is None:
+        return dict(row, kind='gone', action='forget', choices=['forget'], quiet=True) if base else None
+    if b_any and o_any:
+        if bst and ost and bst.st_size == ost.st_size and hash_file(bp) == hash_file(op):
+            return dict(row, kind='same', action='adopt', choices=['adopt'], quiet=True)
+        return dict(row, kind='conflict', action='keep-both', choices=['keep-both', 'to-original', 'to-briefcase', 'skip'])
+    if b_any and o_del:
+        return dict(row, kind='changed-b-deleted-o', action='skip', choices=['skip', 'to-original', 'delete-briefcase'])
+    if o_any and b_del:
+        return dict(row, kind='changed-o-deleted-b', action='skip', choices=['skip', 'to-briefcase', 'delete-original'])
+    if b_any:
+        return dict(row, kind='new-b' if b_new else 'newer-b', action='to-original', choices=['to-original', 'skip'])
+    if o_any:
+        return dict(row, kind='new-o' if o_new else 'newer-o', action='to-briefcase', choices=['to-briefcase', 'skip'])
+    if b_del and o_del:
+        return dict(row, kind='gone', action='forget', choices=['forget'], quiet=True)
+    if o_del:
+        return dict(row, kind='deleted-o', action='skip', choices=['skip', 'delete-briefcase', 'to-original'])
+    if b_del:
+        return dict(row, kind='deleted-b', action='skip', choices=['skip', 'delete-original', 'to-briefcase'])
+    return None
+
+
+STATUS_LABEL = {
+    'ok': 'Up-to-date',
+    'newer-b': 'Needs updating: newer in Briefcase',
+    'newer-o': 'Needs updating: newer at original',
+    'both': 'Needs updating: changes on both sides',
+    'conflict': 'Changed in both',
+    'orphan-deleted': 'Orphan: the original was deleted',
+    'orphan-split': 'Orphan: split from its original',
+}
+
+
+def evaluate(bc, name, rec, connect=False):
+    bpath = os.path.join(bc.content, name)
+    ev = {'name': name, 'path': bpath, 'type': rec.get('type', 'file'), 'origin': origin_label(rec.get('origin') or {}),
+          'originKind': (rec.get('origin') or {}).get('kind', ''), 'rows': [], 'originPath': None}
+    if rec.get('split'):
+        return dict(ev, status='orphan', reason='split', label=STATUS_LABEL['orphan-split'])
+    if not lexists(bpath):
+        return dict(ev, status='gone', label='Removed from the Briefcase')
+    opath, away = resolve(rec.get('origin') or {}, connect)
+    if opath is None:
+        return dict(ev, status='away', label=away, detail='Original unavailable')
+    ev['originPath'] = opath
+    files = rec.get('files') or {}
+    rows = []
+    if ev['type'] == 'file':
+        if not lexists(opath):
+            return dict(ev, status='orphan', reason='deleted', label=STATUS_LABEL['orphan-deleted'])
+        r = classify('', bpath, stat_or_none(bpath), opath, stat_or_none(opath), files.get(''))
+        if r:
+            rows.append(r)
+    else:
+        if not os.path.isdir(opath):
+            return dict(ev, status='orphan', reason='deleted', label=STATUS_LABEL['orphan-deleted'])
+        bw, ow = walk(bpath), walk(opath)
+        for rel in sorted(set(bw) | set(ow) | set(files)):
+            check_cancel()
+            r = classify(rel, os.path.join(bpath, rel), bw.get(rel), os.path.join(opath, rel), ow.get(rel), files.get(rel))
+            if r:
+                rows.append(r)
+    for r in rows:
+        r['id'] = name + '\x1f' + r['rel']
+        r['item'] = name
+    ev['rows'] = rows
+    shown = [r for r in rows if not r.get('quiet')]
+    kinds = {r['kind'] for r in shown}
+    if any(k.startswith('conflict') or k.startswith('changed-') for k in kinds):
+        st = 'conflict'
+    else:
+        bside = any(k in ('new-b', 'newer-b', 'deleted-b') for k in kinds)
+        oside = any(k in ('new-o', 'newer-o', 'deleted-o') for k in kinds)
+        st = 'both' if bside and oside else 'newer-b' if bside else 'newer-o' if oside else 'ok'
+    ev['status'] = st
+    ev['label'] = STATUS_LABEL[st]
+    ev['changes'] = len(shown)
+    return ev
+
+
+# ---------------------------------------------------------------------- commands
+def new(parent, name=None, ensure=False):
+    parent = os.path.realpath(os.path.expanduser(parent))
+    name = (name or 'Briefcase').strip()
+    if not name or '/' in name or name in ('.', '..'):
+        raise Fail("That name can't be used")
+    p = os.path.join(parent, name)
+    if ensure and is_briefcase(p):
+        register(p)
+        return {'ok': True, 'path': p, 'made': False}
+    if ensure and os.path.isdir(p) and not os.listdir(p):
+        pass                                 # an empty folder called Briefcase: becomes the Briefcase
+    else:
+        p = unique_path(p)
+        os.makedirs(p)
+    # Auto-sync "Right away" is written into a new Briefcase's own list (on by default for new ones only).
+    write_state(p, {'version': 1, 'briefcase': True, 'id': uuid.uuid4().hex,
+                    'look': {'name': os.path.basename(p), 'autosync': {'mode': 'instant'}}, 'items': {}})
+    register(p)
+    kick_service()
+    return {'ok': True, 'path': p, 'made': True}
+
+
+def summary_of(bc):
+    return {'path': bc.outer, 'name': bc.name, 'look': bc.look, 'locked': bc.locked, 'unlocked': bc.unlocked,
+            'content': bc.content, 'damaged': bc.damaged, 'id': bc.id}
+
+
+def list_known():
+    seen, out = set(), []
+    default = os.path.join(home(), 'Briefcase')
+    cands = [default] + registry()
+    for p in cands:
+        rp = os.path.realpath(p)
+        if rp in seen:
+            continue
+        seen.add(rp)
+        if not is_briefcase(rp):
+            if rp == os.path.realpath(default):
+                out.append({'path': rp, 'name': 'Briefcase', 'missing': True, 'default': True,
+                            'look': look_of({}), 'locked': False, 'unlocked': False})
+            continue
+        try:
+            bc = open_bc(rp, recover_ok=False)
+        except Fail:
+            continue
+        s = summary_of(bc)
+        s['default'] = rp == os.path.realpath(default)
+        out.append(s)
+    return {'ok': True, 'briefcases': out}
+
+
+def lock_info(bc):
+    if not bc.locked:
+        return {}
+    info = {'autolock': bc.look['autolock']}
+    if bc.unlocked:
+        e = mounts().get(bc.mp) or {}
+        minutes = int(bc.look['autolock'].get('minutes') or 0)
+        open_now = bool(open_files(bc.mp))
+        last = max(e.get('at', 0), e.get('active', 0), newest_mtime(bc.mp))
+        d, rem = autolock_decision(now(), last, minutes, open_now, e.get('warned'))
+        info.update({'mount': bc.mp, 'lockIn': rem, 'lockState': d})
+    return info
+
+
+def status(path):
+    bc = open_bc(path)
+    out = summary_of(bc)
+    out['ok'] = True
+    out.update(lock_info(bc))
+    if not bc.damaged and not (bc.locked and not bc.unlocked):
+        register(bc.outer)
+    if bc.locked and not bc.unlocked:
+        out.update({'items': [], 'status': 'locked', 'label': 'Locked',
+                    'sync': dict(sync_state().get(bc.outer) or {}, settings=autosync_of(bc.look))})
+        return out
+    inner, damaged = bc.items_state()
+    out['damaged'] = damaged
+    items = (inner or {}).get('items') or {}
+    evs, gone = [], []
+    for name in sorted(items):
+        ev = evaluate(bc, name, items[name])
+        if ev['status'] == 'gone':
+            gone.append(name)
+            continue
+        ev.pop('rows', None)
+        evs.append(ev)
+    if gone and not damaged:
+        with contextlib.suppress(Fail):
+            bc.update_items(lambda it: [it.pop(n, None) for n in gone])
+    out['items'] = evs
+    out['sync'] = dict(sync_state().get(bc.outer) or {}, settings=autosync_of(bc.look))
+    counts = {}
+    for ev in evs:
+        counts[ev['status']] = counts.get(ev['status'], 0) + 1
+    out['counts'] = counts
+    return out
+
+
+def add(path, srcs):
+    bc = open_bc(path)
+    content = bc.need_open()
+    srcs = [os.path.realpath(os.path.expanduser(s)) for s in srcs]
+    for s in srcs:
+        if not lexists(s):
+            raise Fail('“%s” isn\'t there any more' % os.path.basename(s))
+        if under(os.path.realpath(content), s) or under(s, os.path.realpath(content)) or under(s, bc.outer):
+            raise Fail("A Briefcase can't hold itself or something already in it")
+    total = sum(os.path.getsize(f) for s in srcs for f in ([s] if os.path.isfile(s) else
+                [os.path.join(s, r) for r in walk(s)]))
+    done = [0]
+    t0 = now()
+
+    def prog(n, name):
+        done[0] += n
+        progress({'verb': 'add', 'done': done[0], 'total': total, 'file': name, 'speed': done[0] / max(0.001, now() - t0)})
+    added = []
+    for s in srcs:
+        name = os.path.basename(unique_path(os.path.join(content, os.path.basename(s))))
+        dst = os.path.join(content, name)
+        origin = origin_for(s)
+        files = {}
+        if os.path.isdir(s):
+            os.makedirs(dst)
+            for rel, st in walk(s).items():
+                tmp, h = copy_to_temp(os.path.join(s, rel), os.path.join(dst, rel), lambda n, r=rel: prog(n, r))
+                os.rename(tmp, os.path.join(dst, rel))
+                ost = os.stat(os.path.join(s, rel))
+                files[rel] = {'b': sig_of(os.path.join(dst, rel), known_hash=h),
+                              'o': sig_of(os.path.join(s, rel), ost, known_hash=h if short_sig(ost) == short_sig(st) else None)}
+            kind = 'folder'
+        else:
+            st = os.stat(s)
+            tmp, h = copy_to_temp(s, dst, lambda n: prog(n, name))
+            os.rename(tmp, dst)
+            ost = os.stat(s)
+            files[''] = {'b': sig_of(dst, known_hash=h),
+                         'o': sig_of(s, ost, known_hash=h if short_sig(ost) == short_sig(st) else None)}
+            kind = 'file'
+        rec = {'origin': origin, 'type': kind, 'added': int(now()), 'device': device_name(), 'files': files}
+        bc.update_items(lambda it, n=name, r=rec: it.__setitem__(n, r))
+        kick_service()
+        added.append({'name': name, 'path': dst, 'origin': origin_label(origin)})
+    return {'ok': True, 'added': added}
+
+
+def plan(path, names=None):
+    bc = open_bc(path)
+    bc.need_open()
+    items = bc.items()
+    rows, info = [], []
+    for name in sorted(items):
+        if names and name not in names:
+            continue
+        ev = evaluate(bc, name, items[name], connect=True)
+        if ev['status'] in ('away', 'orphan'):
+            info.append({'item': name, 'status': ev['status'], 'label': ev['label']})
+            continue
+        for r in ev['rows']:
+            if not r.get('quiet'):
+                rows.append(r)
+    return {'ok': True, 'path': bc.outer, 'name': bc.name, 'rows': rows, 'info': info}
+
+
+def from_name(name, device, t=None):
+    stem, ext = os.path.splitext(name)
+    return '%s (from %s %s)%s' % (stem, device, time.strftime('%Y-%m-%d', time.localtime(t or now())), ext)
+
+
+def apply(path, plan_json, rate=None, connect=True):
+    try:
+        req = json.loads(plan_json)
+    except ValueError:
+        raise Fail("The update list couldn't be read")
+    want = {r['id']: r for r in (req.get('rows') or []) if isinstance(r, dict) and r.get('id')}
+    bc = open_bc(path)
+    bc.need_open()
+    items = bc.items()
+    notes = Notes()
+    done_rows = []
+    by_item = {}
+    for rid in want:
+        by_item.setdefault(rid.split('\x1f', 1)[0], []).append(rid)
+    total = sum(int(r.get('size') or 0) for r in want.values() if r.get('action') not in ('skip',))
+    done = [0]
+    t0 = now()
+
+    def prog(n, label):
+        done[0] += n
+        if rate:                                 # auto-sync over the network: don't flood the Wi-Fi
+            ahead = done[0] / rate - (now() - t0)
+            if ahead > 0:
+                time.sleep(min(ahead, 5))
+        progress({'verb': 'update', 'done': done[0], 'total': total, 'file': label,
+                  'speed': done[0] / max(0.001, now() - t0)})
+    cancelled = False
+    try:
+        for name in sorted(by_item):
+            rec = items.get(name)
+            if not rec:
+                notes.skipped.append({'id': name, 'why': 'not in this Briefcase any more'})
+                continue
+            ev = evaluate(bc, name, rec, connect=connect)
+            if ev['status'] in ('away', 'orphan', 'gone'):
+                for rid in by_item[name]:
+                    notes.skipped.append({'id': rid, 'why': ev['label']})
+                continue
+            cur = {r['id']: r for r in ev['rows']}
+            broot, oroot = ev['path'], ev['originPath']
+            device = (rec.get('origin') or {}).get('device') or device_name()
+            quiet = {r['id']: r for r in ev['rows'] if r.get('quiet')}
+            for rid in sorted(set(by_item[name]) | set(quiet)):
+                check_cancel()
+                row = cur.get(rid)
+                ask = want.get(rid) or {'action': row['action'], 'bsig': row['bsig'], 'osig': row['osig']}
+                act = ask.get('action')
+                if not row:
+                    notes.skipped.append({'id': rid, 'why': 'already up-to-date'})
+                    continue
+                if act not in row['choices']:
+                    notes.skipped.append({'id': rid, 'why': 'that choice isn\'t possible now'})
+                    continue
+                if ask.get('bsig', row['bsig']) != row['bsig'] or ask.get('osig', row['osig']) != row['osig']:
+                    notes.skipped.append({'id': rid, 'why': 'it changed since the list was made'})
+                    continue
+                if act == 'skip':
+                    continue
+                rel = row['rel']
+                bp = os.path.join(broot, rel) if rel else broot
+                op = os.path.join(oroot, rel) if rel else oroot
+                label = os.path.join(name, rel) if rel else name
+                clean_temps(os.path.dirname(bp))
+                with contextlib.suppress(OSError):
+                    clean_temps(os.path.dirname(op))
+                newbase = None
+                drop = False
+                if act == 'to-original':
+                    tmp, h = copy_to_temp(bp, op, lambda n: prog(n, label))
+                    put_over(bc, tmp, op, label, notes)
+                    newbase = {'b': sig_of(bp, known_hash=h), 'o': sig_of(op, known_hash=h)}
+                elif act == 'to-briefcase':
+                    tmp, h = copy_to_temp(op, bp, lambda n: prog(n, label))
+                    put_over(bc, tmp, bp, label, notes)
+                    newbase = {'b': sig_of(bp, known_hash=h), 'o': sig_of(op, known_hash=h)}
+                elif act == 'keep-both':
+                    other = unique_path(os.path.join(os.path.dirname(bp), from_name(os.path.basename(bp), device)))
+                    tmp, h = copy_to_temp(op, other, lambda n: prog(n, label))
+                    os.rename(tmp, other)
+                    notes.skipped.append({'id': rid, 'why': 'kept both', 'kept': other})
+                    newbase = {'b': sig_of(bp, force_hash=True), 'o': sig_of(op, known_hash=h)}
+                elif act == 'forget':
+                    drop = True
+                elif act == 'adopt':
+                    newbase = {'b': sig_of(bp, force_hash=True), 'o': sig_of(op, force_hash=True)}
+                elif act == 'delete-briefcase':
+                    remove_to_trash(bc, bp, label, notes)
+                    drop = True
+                elif act == 'delete-original':
+                    remove_to_trash(bc, op, label, notes)
+                    drop = True
+
+                def ch(it, n=name, rl=rel, nb=newbase, dr=drop):
+                    r = it.get(n)
+                    if not r:
+                        return
+                    files = r.setdefault('files', {})
+                    if dr:
+                        files.pop(rl, None)
+                    elif nb:
+                        files[rl] = nb
+                    r['synced'] = int(now())
+                bc.update_items(ch)
+                done_rows.append(rid)
+    except Cancelled:
+        cancelled = True
+    # Rows that vanished (deleted on both sides) are forgotten.
+    with contextlib.suppress(Fail):
+        bc.update_items(lambda it: None)
+    return dict({'ok': True, 'done': done_rows, 'cancelled': cancelled}, **notes.as_dict())
+
+
+def split(path, names):
+    bc = open_bc(path)
+
+    def ch(it):
+        for n in names:
+            if n in it:
+                it[n]['split'] = True
+                it[n]['splitAt'] = int(now())
+    bc.update_items(ch)
+    return {'ok': True}
+
+
+def find(path, name):
+    bc = open_bc(path)
+    bc.need_open()
+    rec = bc.items().get(name)
+    if not rec:
+        raise Fail('“%s” has no original in this Briefcase' % name)
+    if rec.get('split'):
+        raise Fail('“%s” was split from its original' % name)
+    p, away = resolve(rec.get('origin') or {}, connect=True)
+    if p is None:
+        raise Fail(away, 'away')
+    if not lexists(p):
+        raise Fail('The original was deleted', 'orphan')
+    return {'ok': True, 'path': p, 'folder': os.path.dirname(p), 'select': os.path.basename(p)}
+
+
+def copy_tree_verified(src, dst, prog=None):
+    """Copy SRC (file or folder) to DST, every file through a temporary file and checked by its hash afterwards.
+    Returns {rel: sha256}. Times are kept, so the items' signatures stay true."""
+    hashes = {}
+    if os.path.isdir(src):
+        os.makedirs(dst, exist_ok=True)
+        for rel in sorted(walk(src)):
+            tmp, h = copy_to_temp(os.path.join(src, rel), os.path.join(dst, rel), prog)
+            os.rename(tmp, os.path.join(dst, rel))
+            hashes[rel] = h
+    else:
+        tmp, h = copy_to_temp(src, dst, prog)
+        os.rename(tmp, dst)
+        hashes[''] = h
+    for rel, h in hashes.items():
+        if hash_file(os.path.join(dst, rel) if rel else dst) != h:
+            raise Fail("The copy of “%s” didn't match, so nothing was removed" % os.path.basename(src))
+    return hashes
+
+
+def send(path, dest):
+    bc = open_bc(path)
+    dest = os.path.realpath(os.path.expanduser(dest))
+    if under(dest, bc.outer):
+        raise Fail("A Briefcase can't be sent into itself")
+    target = unique_path(os.path.join(dest, os.path.basename(bc.outer)))
+    files = []
+    for dp, dns, fns in os.walk(bc.outer):
+        dns[:] = [d for d in dns if d not in (STAGING, VAULT_NEW) and not d.startswith('.Trash')]
+        for f in fns:
+            if f.startswith(TMP_MARK) or (f.startswith('.' + STATE) and f.endswith('.lock')):
+                continue
+            files.append(os.path.relpath(os.path.join(dp, f), bc.outer))
+    total = sum(os.path.getsize(os.path.join(bc.outer, f)) for f in files)
+    done = [0]
+
+    def prog(n):
+        done[0] += n
+        progress({'verb': 'send', 'done': done[0], 'total': total, 'file': bc.name})
+    os.makedirs(target)
+    for rel in files:
+        tmp, h = copy_to_temp(os.path.join(bc.outer, rel), os.path.join(target, rel), prog)
+        os.rename(tmp, os.path.join(target, rel))
+    for rel in files:
+        if os.path.getsize(os.path.join(target, rel)) != os.path.getsize(os.path.join(bc.outer, rel)):
+            raise Fail('The copy on the drive is incomplete; the drive may be full')
+    register(target)
+    return {'ok': True, 'path': target}
+
+
+def transfer(src_path, dest_path, names, move):
+    a = open_bc(src_path)
+    b = open_bc(dest_path)
+    if a.outer == b.outer:
+        raise Fail("That's the same Briefcase")
+    a.need_open()
+    b.need_open()
+    out = []
+    for name in names:
+        out.append(_transfer_one(a, b, name, move))
+    return {'ok': True, 'moved' if move else 'copied': out}
+
+
+def _transfer_one(a, b, name, move, final=True):
+    rec = a.items().get(name)
+    src = os.path.join(a.content, name)
+    if not lexists(src):
+        raise Fail('“%s” isn\'t in “%s” any more' % (name, a.name))
+    newname = os.path.basename(unique_path(os.path.join(b.content, name)))
+    dst = os.path.join(b.content, newname)
+    copy_tree_verified(src, dst)
+    if rec:
+        newrec = json.loads(json.dumps(rec))
+        # The copy has the same content and times; its signatures are taken again from the new place.
+        for rel, base in (newrec.get('files') or {}).items():
+            p = os.path.join(dst, rel) if rel else dst
+            st = stat_or_none(p)
+            if st is not None and base.get('b'):
+                base['b'] = dict(base['b'], size=st.st_size, mtime=st.st_mtime_ns)
+        b.update_items(lambda it: it.__setitem__(newname, newrec))
+    if move and final:
+        a.update_items(lambda it: it.pop(name, None))
+        notes = Notes()
+        remove_to_trash(a, src, name, notes)
+    return {'name': name, 'as': newname, 'path': dst}
+
+
+def swap(pa, na, pb, nb):
+    a, b = open_bc(pa), open_bc(pb)
+    a.need_open()
+    b.need_open()
+    if a.outer == b.outer:
+        raise Fail("That's the same Briefcase")
+    # Both copies first (verified), then the originals are removed (to the Trash): a crash leaves extra copies only.
+    one = _transfer_one(a, b, na, True, final=False)
+    two = _transfer_one(b, a, nb, True, final=False)
+    notes = Notes()
+    a.update_items(lambda it: it.pop(na, None))
+    remove_to_trash(a, os.path.join(a.content, na), na, notes)
+    b.update_items(lambda it: it.pop(nb, None))
+    remove_to_trash(b, os.path.join(b.content, nb), nb, notes)
+    return {'ok': True, 'swapped': [one, two]}
+
+
+def customize(path, changes_json):
+    try:
+        ch = json.loads(changes_json)
+    except ValueError:
+        raise Fail("The changes couldn't be read")
+    if not isinstance(ch, dict):
+        raise Fail("The changes couldn't be read")
+    bc = open_bc(path)
+    if bc.damaged:
+        bc.need_open()
+    clean = {}
+    for k, v in ch.items():
+        if k == 'name':
+            v = str(v).strip()
+            if not v or '/' in v or v in ('.', '..') or len(v) > 80:
+                raise Fail("That name can't be used")
+        elif k == 'color':
+            if not (v in COLORS or (isinstance(v, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', v))):
+                raise Fail('Unknown colour')
+        elif k == 'icon':
+            if v not in ICONS:
+                raise Fail('Unknown icon')
+        elif k == 'badge':
+            v = str(v).strip()
+            if len(v) > 4:
+                raise Fail('A badge is up to 4 characters (or one emoji)')
+        elif k == 'note':
+            v = str(v)[:1000]
+        elif k == 'view':
+            if v not in VIEWS:
+                raise Fail('Unknown view')
+        elif k == 'sort':
+            if v not in SORTS:
+                raise Fail('Unknown sort')
+        elif k == 'showInNav':
+            v = bool(v)
+        elif k == 'autosync':
+            if not isinstance(v, dict):
+                raise Fail('Unknown auto-sync setting')
+            asy = {}
+            if 'mode' in v:
+                if v['mode'] not in AUTOSYNC_MODES:
+                    raise Fail('Unknown auto-sync setting')
+                asy['mode'] = v['mode']
+            if 'minutes' in v:
+                try:
+                    asy['minutes'] = int(v['minutes'])
+                except (TypeError, ValueError):
+                    raise Fail('Minutes must be a number')
+                if not 1 <= asy['minutes'] <= 60 * 24:
+                    raise Fail('Pick between 1 minute and a day')
+            v = asy
+        elif k == 'autolock':
+            if not isinstance(v, dict):
+                raise Fail('Unknown auto-lock setting')
+            al = {}
+            for kk, vv in v.items():
+                if kk == 'minutes':
+                    try:
+                        vv = int(vv)
+                    except (TypeError, ValueError):
+                        raise Fail('Minutes must be a number')
+                    if vv < 0 or vv > 60 * 24 * 7:
+                        raise Fail('Pick between 1 minute and a week, or Never')
+                elif kk in ('onSleep', 'onEject'):
+                    vv = bool(vv)
+                else:
+                    continue
+                al[kk] = vv
+            v = al
+        else:
+            continue
+        clean[k] = v
+    new_outer = bc.outer
+    if 'name' in clean and clean['name'] != os.path.basename(bc.outer):
+        target = os.path.join(os.path.dirname(bc.outer), clean['name'])
+        if bc.unlocked:
+            raise Fail('Lock it first to rename it (it is open right now)', 'busy')
+        if lexists(target):
+            raise Fail('There is already something called “%s” there' % clean['name'])
+        os.rename(bc.outer, target)
+        unregister(bc.outer)
+        new_outer = target
+        register(target)
+
+    def apply_look(d):
+        look = d.get('look') if isinstance(d.get('look'), dict) else {}
+        for k, v in clean.items():
+            if k in ('autolock', 'autosync'):
+                look[k] = dict(look.get(k) or {}, **v)
+            else:
+                look[k] = v
+        d['look'] = look
+    data = update_state(new_outer, apply_look)
+    if 'autosync' in clean:
+        kick_service()
+    return {'ok': True, 'path': new_outer, 'look': look_of(data)}
+
+
+def reset_list(path):
+    outer = resolve_bc_path(path)
+    p = os.path.join(outer, STATE)
+    data, damaged = read_state(outer)
+    if not damaged:
+        return {'ok': True, 'reset': False}
+    kept = '%s.broken-%s' % (p, time.strftime('%Y%m%d-%H%M%S'))
+    os.rename(p, kept)
+    fresh = {'version': 1, 'briefcase': True, 'id': uuid.uuid4().hex, 'look': {'name': os.path.basename(outer)},
+             'items': {}}
+    if os.path.isdir(os.path.join(outer, VAULT)):
+        fresh = {'version': 1, 'briefcase': True, 'id': uuid.uuid4().hex, 'locked': True, 'vault': VAULT,
+                 'look': {'name': os.path.basename(outer)}}
+    write_state(outer, fresh)
+    return {'ok': True, 'reset': True, 'kept': kept}
+
+
+# ---------------------------------------------------------------------- locking
+@contextlib.contextmanager
+def busy(outer, wait=True):
+    fd = os.open(os.path.join(outer, BUSY), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            raise Fail('This Briefcase is busy (being locked or unlocked)', 'busy')
+        yield
+    finally:
+        os.close(fd)
+
+
+def plain_names(outer):
+    return sorted(n for n in os.listdir(outer) if not special(n))
+
+
+def recover(outer, data):
+    """Finish or undo a lock / remove-lock that was cut off (a crash or power cut). Never deletes: what's set aside
+    goes to the Trash. Returns True when it changed something."""
+    has = lambda n: lexists(os.path.join(outer, n))  # noqa: E731
+    if not (has(VAULT_NEW) or has(STAGING) or data.get('plainLeft') is not None or data.get('unlocking')
+            or (has(VAULT) and not data.get('locked'))):
+        return False
+    try:
+        with busy(outer, wait=False):
+            changed = False
+            if has(VAULT_NEW):
+                # Locking stopped before the encrypted copy was checked: the plain files are all still there.
+                trash(os.path.join(outer, VAULT_NEW))
+                changed = True
+            if has(VAULT) and not data.get('locked') and not data.get('unlocking'):
+                # Checked and in place, but the list wasn't switched yet: finish locking.
+                stub = _stub_from(data, plain_names(outer))
+                write_state(outer, stub)
+                data = stub
+                changed = True
+            if data.get('locked') and data.get('plainLeft') is not None:
+                _finish_lock(outer, data)
+                changed = True
+            if has(STAGING):
+                if data.get('unlocking'):
+                    _finish_unlock(outer, data)
+                else:
+                    trash(os.path.join(outer, STAGING))   # an unchecked plain copy; the encrypted one is untouched
+                changed = True
+            return changed
+    except (Fail, OSError):
+        return False
+
+
+def _stub_from(data, plain):
+    look = dict(data.get('look') or {})
+    if 'autolock' not in look:
+        look['autolock'] = dict(AUTOLOCK_DEFAULT)
+    return {'version': 1, 'briefcase': True, 'id': data.get('id') or uuid.uuid4().hex, 'locked': True,
+            'vault': VAULT, 'look': look, 'plainLeft': plain}
+
+
+def _finish_lock(outer, stub):
+    for n in stub.get('plainLeft') or []:
+        p = os.path.join(outer, n)
+        if n and not special(n) and lexists(p):
+            trash(p)
+    stub = dict(stub)
+    stub.pop('plainLeft', None)
+    write_state(outer, stub)
+    with contextlib.suppress(OSError):
+        os.unlink(os.path.join(outer, STATE + '.bak'))   # the plain list (where things came from) isn't left beside it
+
+
+def _verify_same(a, b):
+    wa, wb = walk(a), walk(b)
+    if set(wa) != set(wb):
+        missing = sorted(set(wa) ^ set(wb))[:3]
+        raise Fail("The encrypted copy didn't match (%s), so nothing was changed" % ', '.join(missing), 'verify')
+    for rel in wa:
+        check_cancel()
+        if wa[rel].st_size != wb[rel].st_size or hash_file(os.path.join(a, rel)) != hash_file(os.path.join(b, rel)):
+            raise Fail("The copy of “%s” didn't match, so nothing was changed" % rel, 'verify')
+
+
+def lock_setup(path, remember=False):
+    bc = open_bc(path)
+    if bc.locked:
+        raise Fail('This Briefcase already has a lock')
+    bc.need_open()
+    (password,) = read_password_lines(1)
+    if not password:
+        raise Fail('Type a password')
+    outer = bc.outer
+    with busy(outer):
+        new = os.path.join(outer, VAULT_NEW)
+        if lexists(new):
+            trash(new)
+        os.mkdir(new, 0o700)
+        bid = bc.id or uuid.uuid4().hex
+        mp = mountpoint_for(outer, bid + 'new')
+        try:
+            g_init(new, password)
+            g_mount(new, mp, password)
+            plain = plain_names(outer)
+            total = sum(os.path.getsize(os.path.join(outer, n, r) if r else os.path.join(outer, n))
+                        for n in plain for r in (walk(os.path.join(outer, n)) if os.path.isdir(os.path.join(outer, n)) else ['']))
+            done = [0]
+
+            def prog(k):
+                done[0] += k
+                progress({'verb': 'lock', 'done': done[0], 'total': total, 'file': bc.name})
+            for n in plain:
+                copy_tree_verified(os.path.join(outer, n), os.path.join(mp, n), prog)
+            sio.write_json(os.path.join(mp, STATE), {'version': 1, 'briefcase': True, 'inner': True,
+                                                     'items': bc.items()})
+            # Close and open again: proves the password opens what's on the disk, then compare every file.
+            g_unmount(mp)
+            g_mount(new, mp, password)
+            _verify_same(outer, mp)
+            inner, dmg = read_state(mp)
+            if dmg or (inner or {}).get('items') != bc.items():
+                raise Fail("The encrypted list didn't match, so nothing was changed", 'verify')
+            g_unmount(mp)
+        except BaseException:
+            with contextlib.suppress(Exception):
+                g_unmount(mp)
+            with contextlib.suppress(Exception):
+                trash(new)
+            raise
+        # Checked: put it in place, switch the list, then (only now) the plain copies go to the Trash.
+        os.rename(new, os.path.join(outer, VAULT))
+        stub = _stub_from(dict(bc.data, id=bid), plain)
+        write_state(outer, stub)
+        _finish_lock(outer, stub)
+    if remember:
+        keyring_store(bid, bc.name, password)
+    return {'ok': True, 'path': outer, 'trashedPlain': plain}
+
+
+def start_guard():
+    if os.environ.get('HEARTH_BRIEFCASE_NO_GUARD') == '1':
+        return
+    with contextlib.suppress(OSError):
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), 'guard'], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def unlock(path, remember=False, use_keyring=False):
+    bc = open_bc(path)
+    if not bc.locked:
+        return {'ok': True, 'path': bc.outer, 'content': bc.content, 'already': True}
+    if bc.unlocked:
+        return {'ok': True, 'path': bc.outer, 'content': bc.mp, 'already': True}
+    if use_keyring:
+        password = keyring_lookup(bc.id)
+        if not password:
+            raise Fail('No password is remembered for “%s” on this device' % bc.name, 'nokey')
+    else:
+        (password,) = read_password_lines(1)
+    if not password:
+        raise Fail('Type the password')
+    g_mount(os.path.join(bc.outer, bc.data.get('vault') or VAULT), bc.mp, password)
+    t = now()
+    set_mount(bc.mp, {'outer': bc.outer, 'at': t, 'active': t, 'warned': 0})
+    if remember:
+        keyring_store(bc.id, bc.name, password)
+    register(bc.outer)
+    start_guard()
+    kick_service()
+    return {'ok': True, 'path': bc.outer, 'content': bc.mp}
+
+
+def lock(path):
+    bc = open_bc(path)
+    if not bc.locked:
+        raise Fail("This Briefcase has no lock. Use “Lock this Briefcase…” to add one")
+    synced = None
+    if bc.unlocked:
+        if autosync_of(bc.look)['mode'] == 'onlock':
+            synced = autosync_one(bc, wait_settle=False)   # "When I lock it": sync just before locking
+        g_unmount(bc.mp)
+    set_mount(bc.mp, None)
+    return {'ok': True, 'path': bc.outer, 'synced': synced}
+
+
+def lock_remove(path):
+    bc = open_bc(path)
+    if not bc.locked:
+        raise Fail('This Briefcase has no lock')
+    if not bc.unlocked:
+        raise Fail('Unlock it first', 'locked', path=bc.outer, name=bc.name)
+    outer, mp = bc.outer, bc.mp
+    with busy(outer):
+        staging = os.path.join(outer, STAGING)
+        if lexists(staging):
+            trash(staging)
+        os.mkdir(staging, 0o700)
+        try:
+            for n in plain_names(mp):
+                copy_tree_verified(os.path.join(mp, n), os.path.join(staging, n))
+            _verify_same(mp, staging)
+        except BaseException:
+            with contextlib.suppress(Exception):
+                trash(staging)
+            raise
+        inner, dmg = read_state(mp)
+        stub = dict(bc.data, unlocking=True, items=(inner or {}).get('items') or {})
+        write_state(outer, stub)
+        g_unmount(mp)
+        set_mount(mp, None)
+        _finish_unlock(outer, stub)
+    keyring_clear(bc.id)
+    return {'ok': True, 'path': outer}
+
+
+def _finish_unlock(outer, stub):
+    staging = os.path.join(outer, STAGING)
+    if os.path.isdir(staging):
+        for n in sorted(os.listdir(staging)):
+            if special(n):
+                continue
+            dest = os.path.join(outer, n)
+            if lexists(dest):
+                dest = unique_path(dest)
+            os.rename(os.path.join(staging, n), dest)
+        trash(staging) if os.listdir(staging) else os.rmdir(staging)
+    final = {'version': 1, 'briefcase': True, 'id': stub.get('id') or uuid.uuid4().hex,
+             'look': stub.get('look') or {}, 'items': stub.get('items') or {}}
+    write_state(outer, final)
+    v = os.path.join(outer, stub.get('vault') or VAULT)
+    if lexists(v):
+        trash(v)
+
+
+def passwd(path):
+    bc = open_bc(path)
+    if not bc.locked:
+        raise Fail('This Briefcase has no lock')
+    old, new_pw = read_password_lines(2)
+    if not old or not new_pw:
+        raise Fail('Type the old and the new password')
+    rc, err = run_secret([gocryptfs_bin(), '-passwd', '-q', '--', os.path.join(bc.outer, bc.data.get('vault') or VAULT)],
+                         [old, new_pw])
+    if rc == 12:
+        raise Fail("The old password isn't right", 'badpass')
+    if rc != 0:
+        raise Fail("Couldn't change the password" + (': ' + err.splitlines()[-1] if err else ''))
+    if keyring_lookup(bc.id):
+        keyring_store(bc.id, bc.name, new_pw)
+    return {'ok': True}
+
+
+def forget(path):
+    bc = open_bc(path)
+    keyring_clear(bc.id)
+    return {'ok': True}
+
+
+def lock_all(under_path=None, reason=''):
+    locked, failed = [], []
+    root = os.path.realpath(under_path) if under_path else None
+    for mp, e in list(mounts().items()):
+        outer = e.get('outer') or ''
+        if root and not (under(os.path.realpath(outer), root) or under(outer, root)):
+            continue
+        if not is_mounted(mp):
+            set_mount(mp, None)
+            continue
+        data, _ = read_state(outer)
+        al = look_of(data)['autolock']
+        if reason == 'sleep' and not al.get('onSleep', True):
+            continue
+        if reason == 'eject' and not al.get('onEject', True):
+            continue
+        try:
+            g_unmount(mp)
+            set_mount(mp, None)
+            locked.append(outer)
+        except Fail as ex:
+            failed.append({'path': outer, 'error': str(ex)})
+    return {'ok': not failed, 'locked': locked, 'failed': failed}
+
+
+def touch(path):
+    p = os.path.realpath(path)
+    for mp, e in mounts().items():
+        if under(p, os.path.realpath(mp)) or under(p, e.get('outer') or '\0'):
+            set_mount(mp, {'active': now(), 'warned': 0})
+            return {'ok': True, 'touched': mp}
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------- auto-lock
+def open_files(mp):
+    """Processes with a file (or their working folder) inside MP: those keep it unlocked."""
+    root = os.path.realpath(mp)
+    out = []
+    try:
+        pids = [p for p in os.listdir('/proc') if p.isdigit()]
+    except OSError:
+        return out
+    me = str(os.getpid())
+    for pid in pids:
+        if pid == me:
+            continue
+        d = '/proc/' + pid
+        with contextlib.suppress(OSError):
+            cwd = os.readlink(d + '/cwd')
+            if under(cwd, root) or under(cwd, mp):
+                out.append(pid)
+                continue
+        try:
+            fds = os.listdir(d + '/fd')
+        except OSError:
+            continue
+        for fd in fds:
+            with contextlib.suppress(OSError):
+                t = os.readlink('%s/fd/%s' % (d, fd))
+                if under(t, root) or under(t, mp):
+                    out.append(pid)
+                    break
+    return out
+
+
+def newest_mtime(mp, limit=5000):
+    best, n = 0, 0
+    with contextlib.suppress(OSError):
+        for dp, dns, fns in os.walk(mp):
+            for x in dns + fns:
+                n += 1
+                if n > limit:
+                    return best
+                with contextlib.suppress(OSError):
+                    best = max(best, os.lstat(os.path.join(dp, x)).st_mtime)
+    return best
+
+
+def autolock_decision(t, last, minutes, files_open, warned=None):
+    """('never' | 'open' | 'wait' | 'warn' | 'lock', seconds left). Counted from the last time anything in it was
+    opened, read or written; a file open in an app keeps it unlocked (the count starts when it's closed)."""
+    if not minutes:
+        return 'never', None
+    if files_open:
+        return 'open', minutes * 60
+    left = last + minutes * 60 - t
+    if left <= 0:
+        return 'lock', 0
+    if left <= 60 and not (warned and warned >= last):
+        return 'warn', left
+    return 'wait', left
+
+
+def notify_lock_soon(mp, name):
+    def run():
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            r = subprocess.run(['notify-send', '-a', 'Hearth Files', '-i', 'dialog-password',
+                                '--action=keep=Keep unlocked', 'Briefcase “%s” will lock in 1 minute' % name],
+                               capture_output=True, text=True, timeout=75)
+            if r.stdout.strip() == 'keep':
+                set_mount(mp, {'active': now(), 'warned': 0})
+    threading.Thread(target=run, daemon=True).start()
+
+
+def guard_tick(t=None):
+    """One look at each unlocked Briefcase: lock the ones idle for their time. Returns what it did."""
+    t = t or now()
+    did = []
+    for mp, e in list(mounts().items()):
+        if not is_mounted(mp):
+            set_mount(mp, None)
+            continue
+        data, _ = read_state(e.get('outer') or '')
+        look = look_of(data)
+        minutes = int(look['autolock'].get('minutes') or 0)
+        files = open_files(mp)
+        if files:
+            set_mount(mp, {'active': t, 'warned': 0})
+        last = max(e.get('at', 0), t if files else e.get('active', 0), newest_mtime(mp))
+        d, left = autolock_decision(t, last, minutes, bool(files), e.get('warned'))
+        if d == 'warn':
+            notify_lock_soon(mp, look.get('name') or os.path.basename(e.get('outer') or mp))
+            set_mount(mp, {'warned': t})
+        elif d == 'lock':
+            try:
+                with contextlib.suppress(Fail, OSError):
+                    if autosync_of(look)['mode'] == 'onlock':
+                        autosync_one(open_bc(e.get('outer') or mp), wait_settle=False)
+                g_unmount(mp)
+                set_mount(mp, None)
+            except Fail:
+                set_mount(mp, {'active': t})
+        did.append((mp, d, left))
+    return did
+
+
+def sleep_line(line):
+    return 'PrepareForSleep (true' in line
+
+
+def guard():
+    lf = os.open(os.path.join(our_runtime(), 'guard.lock'), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return {'ok': True, 'running': True}
+    wl = os.environ.get('WAYLAND_DISPLAY')
+    wsock = os.path.join(runtime_dir(), wl) if wl and not wl.startswith('/') else wl
+    stop = threading.Event()
+
+    def watch_sleep():
+        with contextlib.suppress(OSError):
+            p = subprocess.Popen(['gdbus', 'monitor', '--system', '--dest', 'org.freedesktop.login1', '--object-path',
+                                  '/org/freedesktop/login1'], stdout=subprocess.PIPE, text=True)
+            for line in p.stdout:
+                if stop.is_set():
+                    break
+                if sleep_line(line):
+                    lock_all(reason='sleep')
+            p.kill()
+    threading.Thread(target=watch_sleep, daemon=True).start()
+    while True:
+        if wsock and not os.path.exists(wsock):
+            lock_all(reason='signout')
+            break
+        guard_tick()
+        if not mounts():
+            break
+        time.sleep(15)
+    stop.set()
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------- auto-sync
+def log(text):
+    """Hearth's log for the Briefcase (Send logs includes it). Never holds a password: none is ever passed here."""
+    with contextlib.suppress(OSError):
+        d = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'nimbus')
+        os.makedirs(d, exist_ok=True)
+        f = os.path.join(d, 'briefcase.log')
+        if os.path.exists(f) and os.path.getsize(f) > 512 * 1024:
+            os.replace(f, f + '.1')
+        with open(f, 'a') as fh:
+            fh.write('%s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), text))
+
+
+def kick_service():
+    """Start the auto-sync service (it checks for itself whether any Briefcase wants it, and never blocks)."""
+    if os.environ.get('HEARTH_BRIEFCASE_NO_SERVICE') == '1' or not shutil.which('systemctl'):
+        return
+    with contextlib.suppress(OSError):
+        subprocess.Popen(['systemctl', '--user', 'start', '--no-block', 'hearth-briefcase-sync.service'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+
+def autosync_of(look):
+    a = sio.with_defaults((look or {}).get('autosync') or {}, LOOK_DEFAULT['autosync'])
+    if a.get('mode') not in AUTOSYNC_MODES:
+        a['mode'] = 'off'
+    return a
+
+
+def sync_file():
+    return os.path.join(our_runtime(), 'sync.json')
+
+
+def sync_state():
+    d = sio.load_json(sync_file(), default={})
+    return d if isinstance(d, dict) else {}
+
+
+def set_sync(outer, **kv):
+    def ch(d):
+        d[outer] = dict(d.get(outer) or {}, **kv)
+    with contextlib.suppress(OSError):
+        sio.update_json(sync_file(), ch)
+
+
+def open_for_writing(path):
+    """Is PATH open for writing in some app (an editor still saving)? /proc/PID/fdinfo's flags."""
+    rp = os.path.realpath(path)
+    with contextlib.suppress(OSError):
+        for pid in os.listdir('/proc'):
+            if not pid.isdigit() or pid == str(os.getpid()):
+                continue
+            try:
+                fds = os.listdir('/proc/%s/fd' % pid)
+            except OSError:
+                continue
+            for fd in fds:
+                try:
+                    if os.readlink('/proc/%s/fd/%s' % (pid, fd)) != rp:
+                        continue
+                    with open('/proc/%s/fdinfo/%s' % (pid, fd)) as f:
+                        m = re.search(r'flags:\s*([0-7]+)', f.read())
+                    if m and int(m.group(1), 8) & (os.O_WRONLY | os.O_RDWR):
+                        return True
+                except OSError:
+                    continue
+    return False
+
+
+def settled(p, t, settle=SETTLE):
+    """Left alone long enough to copy: unchanged for SETTLE seconds and not open for writing."""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return True
+    return t - st.st_mtime >= settle and not open_for_writing(p)
+
+
+def needs_text(n, name):
+    return '%d file%s in “%s” need%s you' % (n, '' if n == 1 else 's', name, 's' if n == 1 else '')
+
+
+def notify_needs(bc, n):
+    if os.environ.get('HEARTH_BRIEFCASE_NO_NOTIFY') == '1' or not shutil.which('notify-send'):
+        return
+
+    def run():
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            r = subprocess.run(['notify-send', '-a', 'Hearth Files', '-i', 'folder', '--action=open=Open',
+                                needs_text(n, bc.name), 'Changed in both places or deleted on one side: '
+                                'Hearth Files waits for you to choose.'], capture_output=True, text=True, timeout=600)
+            if r.stdout.strip() == 'open':
+                subprocess.Popen(['xdg-open', bc.content or bc.outer], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
+    threading.Thread(target=run, daemon=True).start()
+
+
+def autosync_one(bc, t=None, wait_settle=True):
+    """One automatic sync of a Briefcase. Only one-sided changes and new files are copied; a file changed in both
+    places or deleted on one side waits for you (and you're told once); an original that's away waits quietly; a
+    locked Briefcase waits until it's unlocked. Replaced versions go to the Trash as with Update All."""
+    t = t or now()
+    res = {'synced': 0, 'needs': 0, 'away': 0, 'waiting': 0, 'locked': False}
+    if bc.locked and not bc.unlocked:
+        res['locked'] = True
+        return res
+    if bc.damaged:
+        return res
+    items = bc.items()
+    inner, damaged = bc.items_state()
+    if damaged:
+        return res
+    for name in sorted(items):
+        ev = evaluate(bc, name, items[name], connect=False)
+        if ev['status'] == 'away':
+            res['away'] += 1
+            continue
+        if ev['status'] in ('orphan', 'gone'):
+            continue
+        rows = []
+        for r in ev['rows']:
+            if r['kind'] in ('same', 'gone'):
+                rows.append(r)
+            elif r['kind'] in AUTO_KINDS:
+                changed = os.path.join(ev['path'] if r['kind'].endswith('-b') else ev['originPath'], r['rel']) \
+                    if r['rel'] else (ev['path'] if r['kind'].endswith('-b') else ev['originPath'])
+                if wait_settle and not settled(changed, t):
+                    res['waiting'] += 1
+                    continue
+                rows.append(r)
+            elif not r.get('quiet'):
+                res['needs'] += 1
+        if not rows:
+            continue
+        set_sync(bc.outer, syncing=True)
+        rate = NET_RATE if ev.get('originKind') == 'share' else None
+        out = apply(bc.outer, json.dumps({'rows': [{'id': r['id'], 'action': r['action'], 'bsig': r['bsig'],
+                                                    'osig': r['osig'], 'size': r['size']} for r in rows]}),
+                    rate=rate, connect=False)
+        res['synced'] += len([d for d in out.get('done', [])])
+        if out.get('done'):
+            log('auto-sync “%s”: %d file(s) of %s' % (bc.name, len(out['done']), name))
+    prev = sync_state().get(bc.outer) or {}
+    kv = {'syncing': False, 'needs': res['needs'], 'away': res['away'], 'waiting': res['waiting'], 'checked': t}
+    if res['synced'] or not (res['waiting'] or res['needs'] or res['away']):
+        kv['last'] = t
+    if res['needs'] and res['needs'] != prev.get('notified'):
+        notify_needs(bc, res['needs'])
+        kv['notified'] = res['needs']
+    elif not res['needs']:
+        kv['notified'] = 0
+    set_sync(bc.outer, **kv)
+    return res
+
+
+def autosync_briefcases():
+    out = []
+    for b in list_known()['briefcases']:
+        if b.get('missing'):
+            continue
+        if autosync_of(b.get('look'))['mode'] != 'off':
+            with contextlib.suppress(Fail, OSError):
+                out.append(open_bc(b['path'], recover_ok=False))
+    return out
+
+
+def autosync_needed():
+    return bool(autosync_briefcases())
+
+
+def game_running():
+    """Pause auto-sync while a game runs (gamescope, or Hearth's hearth-playing file, as the home server uses)."""
+    if os.path.exists(os.path.join(runtime_dir(), 'hearth-playing')):
+        return True
+    with contextlib.suppress(OSError):
+        for pid in os.listdir('/proc'):
+            if pid.isdigit():
+                with contextlib.suppress(OSError):
+                    with open('/proc/%s/comm' % pid) as f:
+                        if f.read().strip() in ('gamescope', 'gamescope-wl'):
+                            return True
+    return False
+
+
+def autosync_due(bc, t, st):
+    """Should this Briefcase be checked now? Right away: when something changed (or every minute, for shared
+    folders gvfs can't watch); Every N minutes: when N minutes passed; When I lock it / Off: never here."""
+    a = autosync_of(bc.look)
+    last = (st or {}).get('checked', 0)
+    if a['mode'] == 'instant':
+        return True
+    if a['mode'] == 'interval':
+        return t - last >= int(a.get('minutes') or 15) * 60
+    return False
+
+
+class Watcher:
+    """inotify (through libc) on the Briefcases and their originals on this PC: a change wakes auto-sync at once.
+    Without it (or for shared folders), auto-sync looks every minute."""
+    MASK = 0x2 | 0x8 | 0x40 | 0x80 | 0x100 | 0x200
+
+    def __init__(self):
+        import ctypes
+        self.ok = False
+        self.wds = 0
+        try:
+            self.libc = ctypes.CDLL(None, use_errno=True)
+            self.fd = self.libc.inotify_init1(os.O_NONBLOCK | 0o2000000)
+            self.ok = self.fd >= 0
+        except (OSError, AttributeError):
+            self.ok = False
+
+    def watch(self, roots):
+        if not self.ok:
+            return
+        for r in roots:
+            for dp, dns, _ in os.walk(r):
+                dns[:] = [d for d in dns if not special(d)]
+                if self.wds > 4000:
+                    return
+                if self.libc.inotify_add_watch(self.fd, dp.encode('utf-8', 'surrogateescape'), self.MASK) >= 0:
+                    self.wds += 1
+
+    def wait(self, timeout):
+        import select
+        if not self.ok:
+            time.sleep(timeout)
+            return False
+        r, _, _ = select.select([self.fd], [], [], timeout)
+        if not r:
+            return False
+        with contextlib.suppress(OSError):
+            while os.read(self.fd, 65536):
+                pass
+        return True
+
+    def close(self):
+        if self.ok:
+            os.close(self.fd)
+
+
+def watch_roots(bcs):
+    roots = []
+    for bc in bcs:
+        if not bc.content:
+            continue
+        roots.append(bc.content)
+        for rec in bc.items().values():
+            o = rec.get('origin') or {}
+            if o.get('kind') == 'share' or rec.get('split'):
+                continue
+            p, _ = resolve(o)
+            if p:
+                roots.append(p if rec.get('type') == 'folder' else os.path.dirname(p))
+    return [r for r in roots if os.path.isdir(r)]
+
+
+def world_signature():
+    """Drives plugged in and shared folders open: when this changes, originals that were away may be back."""
+    g = []
+    with contextlib.suppress(OSError):
+        g = sorted(os.listdir(gvfs_root()))
+    return json.dumps([sorted(drives()), g])
+
+
+def autosync_daemon(max_loops=None):
+    lf = os.open(os.path.join(our_runtime(), 'autosync.lock'), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return {'ok': True, 'running': True}
+    log('auto-sync started')
+    watcher, roots_key, world, loops, last_full = None, None, None, 0, 0
+    try:
+        while max_loops is None or loops < max_loops:
+            loops += 1
+            bcs = autosync_briefcases()
+            if not bcs:
+                log('auto-sync stopped: no Briefcase has auto-sync on')
+                break
+            if game_running():
+                time.sleep(30)
+                continue
+            t = now()
+            roots = watch_roots(bcs)
+            key = json.dumps(sorted(roots))
+            if key != roots_key:
+                if watcher:
+                    watcher.close()
+                watcher = Watcher()
+                watcher.watch(roots)
+                roots_key = key
+            w = world_signature()
+            force = w != world or t - last_full >= 60
+            world = w
+            if force:
+                last_full = t
+            st = sync_state()
+            pending = False
+            for bc in bcs:
+                s = st.get(bc.outer) or {}
+                mode = autosync_of(bc.look)['mode']
+                if mode == 'instant' and not (force or s.get('waiting') or s.get('dirty')):
+                    continue
+                if not autosync_due(bc, t, s):
+                    continue
+                try:
+                    r = autosync_one(bc, t)
+                    set_sync(bc.outer, dirty=False)
+                    pending = pending or bool(r['waiting'])
+                except (Fail, OSError) as ex:
+                    log('auto-sync “%s” failed: %s' % (bc.name, ex))
+                    set_sync(bc.outer, syncing=False, error=str(ex))
+            changed = watcher.wait(SETTLE if pending else 20) if watcher else time.sleep(20)
+            if changed:
+                time.sleep(SETTLE)
+                for bc in bcs:
+                    if autosync_of(bc.look)['mode'] == 'instant':
+                        set_sync(bc.outer, dirty=True)
+    finally:
+        if watcher:
+            watcher.close()
+        os.close(lf)
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------- main
+def main(argv):
+    a = argv[1:]
+    if not a:
+        print(__doc__)
+        return 2
+    c, rest = a[0], a[1:]
+    flags = [x for x in rest if x.startswith('--')]
+    args = [x for x in rest if not x.startswith('--')]
+    if c == 'new' and 1 <= len(args) <= 2:
+        out = new(args[0], args[1] if len(args) > 1 else None, '--ensure' in flags)
+    elif c == 'list':
+        out = list_known()
+    elif c == 'status' and len(args) == 1:
+        out = status(args[0])
+    elif c == 'add' and len(args) >= 2:
+        out = add(args[0], args[1:])
+    elif c == 'plan' and args:
+        out = plan(args[0], args[1:] or None)
+    elif c == 'apply' and len(args) == 2:
+        out = apply(args[0], args[1])
+    elif c == 'send' and len(args) == 2:
+        out = send(args[0], args[1])
+    elif c == 'transfer' and len(args) >= 3 and ('--copy' in flags) != ('--move' in flags):
+        out = transfer(args[0], args[1], args[2:], '--move' in flags)
+    elif c == 'swap' and len(args) == 4:
+        out = swap(*args)
+    elif c == 'split' and len(args) >= 2:
+        out = split(args[0], args[1:])
+    elif c == 'find' and len(args) == 2:
+        out = find(args[0], args[1])
+    elif c == 'customize' and len(args) == 2:
+        out = customize(args[0], args[1])
+    elif c == 'reset-list' and len(args) == 1:
+        out = reset_list(args[0])
+    elif c == 'touch' and len(args) == 1:
+        out = touch(args[0])
+    elif c == 'lock-setup' and len(args) == 1:
+        out = lock_setup(args[0], '--remember' in flags)
+    elif c == 'unlock' and len(args) == 1:
+        out = unlock(args[0], '--remember' in flags, '--keyring' in flags)
+    elif c == 'lock' and len(args) == 1:
+        out = lock(args[0])
+    elif c == 'lock-remove' and len(args) == 1:
+        out = lock_remove(args[0])
+    elif c == 'passwd' and len(args) == 1:
+        out = passwd(args[0])
+    elif c == 'forget' and len(args) == 1:
+        out = forget(args[0])
+    elif c == 'lock-all':
+        under_p, reason = None, ''
+        for i, x in enumerate(rest):
+            if x == '--under' and i + 1 < len(rest):
+                under_p = rest[i + 1]
+            if x == '--reason' and i + 1 < len(rest):
+                reason = rest[i + 1]
+        out = lock_all(under_p, reason)
+    elif c == 'guard':
+        out = guard()
+    elif c == 'autosync':
+        out = autosync_daemon()
+    elif c == 'autosync-needed':
+        # systemd's ExecCondition: 0 = start the service, 1 = no Briefcase wants auto-sync (not an error)
+        return 0 if autosync_needed() else 1
+    elif c == 'sync-now' and len(args) == 1:
+        out = dict(autosync_one(open_bc(args[0]), wait_settle=False), ok=True)
+    else:
+        print(__doc__)
+        return 2
+    print(json.dumps(out), flush=True)
+    return 0
+
+
+def run(argv):
+    signal.signal(signal.SIGTERM, lambda *_: CANCEL.set())
+    with contextlib.suppress(AttributeError, ValueError):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        return main(argv)
+    except Fail as e:
+        print(json.dumps(dict({'ok': False, 'error': str(e), 'code': e.code}, **e.extra)), flush=True)
+        return 1
+    except Cancelled:
+        print(json.dumps({'ok': False, 'error': 'Stopped', 'code': 'cancelled'}), flush=True)
+        return 1
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        print(json.dumps({'ok': False, 'error': str(e), 'code': 'error'}), flush=True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(run(sys.argv))

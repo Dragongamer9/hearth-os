@@ -175,6 +175,10 @@ systemctl enable hhd.service
 # avahi-browse finds other computers sharing at home (a missing one only means they aren't listed).
 optional avahi-utils
 command -v gio secret-tool
+# Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
+# (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.
+"${APT[@]}" gocryptfs
+command -v gocryptfs || { echo "::error::gocryptfs isn't in the image: Briefcases couldn't be locked or unlocked"; exit 1; }
 [ -x /usr/libexec/gvfsd-smb ] || [ -x /usr/lib/gvfs/gvfsd-smb ] || { echo "::error::gvfs's SMB backend (gvfsd-smb) isn't in the image: Hearth Files couldn't open shared folders"; exit 1; }
 [ -x /usr/libexec/gvfsd-fuse ] || [ -x /usr/lib/gvfs/gvfsd-fuse ] || { echo "::error::gvfsd-fuse isn't in the image: opened shared folders couldn't be shown as folders"; exit 1; }
 # The rest of what Desktop Mode, Couch Co-op and Hearth Browser (Electron) use; names that can differ.

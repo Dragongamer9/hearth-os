@@ -45,6 +45,11 @@ Scope {
     }
     function properties(paths) { propsWin.show(paths); }
 
+    // The Briefcase (Briefcase.qml, hearth-briefcase; docs/HEARTH-FILES.md › Briefcase): statuses, Update All, locks,
+    // Customize, auto-sync. Its dialogs are BriefcaseDialog.qml, inside the window.
+    readonly property var filesApp: app        // (inside Briefcase { }, "app" would mean its own property)
+    Briefcase { id: briefcase; app: filesApp }
+
     // ------------------------------------------------ what's shown
     property string path: ""
     property var listing: null                 // hearth-files list: {path, entries, writable, trash, free, total, error?}
@@ -199,6 +204,11 @@ Scope {
         // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
         function section(name: string): void { const i = app.places.findIndex(q => q.section === name); if (i >= 0) { app.zone = "places"; app.placeIndex = i; } }
         function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
+        // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.
+        function bcUpdate(): void { app.open(""); briefcase.run("bc-update-all", [], null); }
+        function bcApply(): void { if (briefcase.mode === "update") briefcase.runUpdate(); }
+        function bcCustomize(): void { app.open(""); briefcase.run("bc-customize", [], null); }
+        function bcState(): string { return JSON.stringify({ mode: briefcase.mode, st: briefcase.st ? { name: briefcase.st.name, counts: briefcase.st.counts || {}, locked: briefcase.st.locked } : null, rows: briefcase.plan ? briefcase.plan.rows.length : 0 }); }
     }
 
     // ================================================ open / close
@@ -497,9 +507,15 @@ Scope {
                 marked = ({});
                 anchor = -1;
                 applyFolderView(r.path);
+                // A Briefcase's own default view and sort (Customize), unless you chose one for this folder.
+                if (r.briefcase && !(prefs.folders && prefs.folders[r.path])) {
+                    if (views.indexOf(r.briefcase.view) >= 0) view = r.briefcase.view;
+                    if (["name", "date", "size", "type"].indexOf(r.briefcase.sort) >= 0) sort = r.briefcase.sort;
+                }
             }
             listing = r;
             path = r.path;
+            briefcase.opened(r);
             const want = r.select || sel || "";
             const i = want ? entries.findIndex(e => e.name === want) : -1;
             cur = Math.max(0, i >= 0 ? i : (r.path === prev ? Math.min(cur, entries.length - 1) : 0));
@@ -765,7 +781,7 @@ Scope {
     // The navigation pane's order (Win 11-style): Home, Favorites, This device, Games, Drives, Hearth Storage,
     // Your devices, Trash. Within a group hearth-files' order stays.
     function sortPlaces(list) {
-        const rank = { bookmarks: 1, places: 2, games: 3, drives: 4, network: 5, devices: 6, trash: 7 };
+        const rank = { bookmarks: 1, places: 2, briefcases: 2.5, games: 3, drives: 4, network: 5, devices: 6, trash: 7 };
         return list.map((q, i) => [q, i]).sort((a, b) => ((rank[a[0].section] || 5) - (rank[b[0].section] || 5)) || a[1] - b[1]).map(x => x[0]);
     }
     // A tab's or the window's name for a path: "Home" for the Home page.
@@ -811,6 +827,7 @@ Scope {
         t.push({ t: "edit" }, { t: "search" });
         if (!picking) for (const c of ["new", "cut", "copy", "paste", "rename", "copypath", "delete"]) t.push({ t: c });
         t.push({ t: "sort" }, { t: "view" }, { t: "hidden" });
+        if (!picking) for (const c of ["bc-update-all", "bc-unlock", "bc-lock", "bc-customize"]) if (briefcase.toolShown(c)) t.push({ t: c });
         if (!picking) t.push({ t: "undo" }, { t: "redo" }, { t: "details" });
         return t;
     }
@@ -980,6 +997,7 @@ Scope {
         if (p.path === homePage) return navigate(homePage, "");
         if (p.net) return netOpen(p.net);
         if (p.kind === "howto") return showHowto(p.howto || []);
+        if (p.kind === "briefcase") return briefcase.openPlace(p);
         if (p.kind === "device") {
             if (p.offline && p.wake) ask("Wake “" + p.label + "”?", "It's off or asleep. Hearth can wake it over the network (Wake-on-LAN).", "Wake it", () => netWake(p.device, p.label));
             else say(p.label + ": " + (p.sub || ""));
@@ -1104,6 +1122,7 @@ Scope {
     // x, y: where a menu opens (a click); none: the menu opens in the middle (the controller).
     function command(t, x, y) {
         viaPad = x === undefined;
+        if (t.startsWith("bc-")) return briefcase.command(t, x, y);
         switch (t) {
         case "refresh": reload(); refreshPlaces(); break;
         case "new":
@@ -1111,7 +1130,8 @@ Scope {
             menuOnFolder = true;
             showMenu("New", [
                 { id: "newfolder", label: "Folder", key: "Ctrl+Shift+N" },
-                { id: "newfile", label: "Empty file", key: "Ctrl+Alt+N" }
+                { id: "newfile", label: "Empty file", key: "Ctrl+Alt+N" },
+                { id: "bc-new", label: "Briefcase" }
             ].concat(templates.length ? [{ sep: true }].concat(templates.map((tp, i) => ({ id: "tpl:" + i, label: tp.name }))) : []), x, y);
             break;
         case "cut": if (!targets().length) return say("Pick something first"); setClip("cut", targets()); break;
@@ -1279,6 +1299,7 @@ Scope {
             if (n === 1 && isWinApp(e)) items.push({ id: "winapp", label: "Open with Hearth (Windows app)" });
             if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder" });
             if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
+            for (const it of briefcase.menuItems(e, n, t)) items.push(it);
             items.push(sep());
             if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable) });
             if (n) items.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C" });
@@ -1372,6 +1393,7 @@ Scope {
         menuOnFolder = false;
         const t = onFolder ? [] : targets();
         const e = onFolder ? null : current;
+        if (id.startsWith("bc-")) return briefcase.run(id, t, e);
         if (id.startsWith("sort:")) return setSort(id.slice(5));
         if (id.startsWith("group:")) return setGroup(id.slice(6));
         if (id.startsWith("view:")) return setView(id.slice(5));
@@ -1671,6 +1693,7 @@ Scope {
     function dropOn(drop, dest) {
         const paths = (drop.urls || []).map(u => urlToPath(u)).filter(p => p && p !== dest);
         if (!paths.length || !dest) return;
+        if (briefcase.drop(paths, dest, drop)) return;      // into a Briefcase: added (or moved from another one)
         if (drop.proposedAction === Qt.LinkAction && dest !== trashPath) {
             drop.accept(Qt.LinkAction);
             return call(["link"].concat(paths).concat([dest]), (r, err) => {
@@ -1912,6 +1935,7 @@ Scope {
         }
     }
     function closeOverlay() {
+        if (briefcase.mode !== "" && briefcase.mode !== "job") briefcase.close();
         overlay = "";
         dlgSecret = false;
         menuOnFolder = false;
@@ -2451,7 +2475,9 @@ Scope {
                 const down = e.key === Qt.Key_Down || e.key === Qt.Key_Tab;
                 const ok = e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space;
                 const back = e.key === Qt.Key_Escape || e.key === Qt.Key_Backspace || e.key === Qt.Key_Menu;
-                if (app.overlay === "menu") {
+                if (app.overlay === "briefcase") {
+                    if (!bcDialog.key(e)) return;
+                } else if (app.overlay === "menu") {
                     const n = app.menuItems.length;
                     const step = d => {
                         let i = app.menuIndex;
@@ -2802,6 +2828,9 @@ Scope {
                                 { sep: true },
                                 { t: "sort", icon: "menu", label: "Sort", more: true }, { t: "view", icon: "grid", label: "View", more: true },
                                 { t: "hidden", icon: "eye", label: "Show", more: true },
+                                { sep: true, bc: true },
+                                { t: "bc-update-all", icon: "sync", label: "Update All", bc: true }, { t: "bc-unlock", icon: "lock", label: "Unlock", bc: true },
+                                { t: "bc-lock", icon: "lock", label: "Lock", bc: true }, { t: "bc-customize", icon: "bc-briefcase", label: "Customize", bc: true },
                                 { fill: true },
                                 { t: "undo", icon: "undo", label: "Undo" }, { t: "redo", icon: "", label: "Redo" },
                                 { sep: true }, { t: "details", icon: "info", label: "Details" }
@@ -2819,7 +2848,8 @@ Scope {
                                     return true;
                                 }
                                 // Choosing a file for an app: only Sort, View and Show.
-                                visible: !app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0
+                                visible: (!app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0)
+                                    && (!modelData.bc || (modelData.t ? briefcase.toolShown(modelData.t) : briefcase.inBriefcase))
                                 Layout.fillWidth: !!modelData.fill
                                 implicitWidth: modelData.sep ? 13 : modelData.fill ? 0 : cmdChip.implicitWidth
                                 implicitHeight: 40
@@ -2913,7 +2943,8 @@ Scope {
                                         RowLayout {
                                             anchors { fill: parent; leftMargin: place.modelData.child ? 34 : 14; rightMargin: 12 }
                                             spacing: 12
-                                            PlaceIcon { kind: place.modelData.kind; tint: place.ink; size: place.modelData.child ? 16 : 20 }
+                                            PlaceIcon { kind: place.modelData.kind === "briefcase" ? "bc:" + ((place.modelData.look || {}).icon || "briefcase") : place.modelData.kind
+                                                        tint: place.modelData.kind === "briefcase" ? briefcase.colorOf(place.modelData.look) : place.ink; size: place.modelData.child ? 16 : 20 }
                                             ColumnLayout {
                                                 Layout.fillWidth: true
                                                 spacing: 1
@@ -3177,6 +3208,9 @@ Scope {
                                             kind: app.kindOf(cell.modelData)
                                             label: app.extLabel(cell.modelData)
                                             link: cell.modelData.isLink
+                                            bc: cell.modelData.briefcase || null
+                                            bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                            badge: briefcase.badgeFor(cell.modelData)
                                             size: app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
                                         Rectangle {
@@ -3227,6 +3261,9 @@ Scope {
                                                 kind: app.kindOf(cell.modelData)
                                                 label: cell.tiles ? app.extLabel(cell.modelData) : ""
                                                 link: cell.modelData.isLink
+                                                bc: cell.modelData.briefcase || null
+                                                bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                                badge: briefcase.badgeFor(cell.modelData)
                                                 size: cell.tiles ? 48 : 24
                                             }
                                             Image {
@@ -3315,6 +3352,7 @@ Scope {
                                         anchors { fill: parent; leftMargin: 56; rightMargin: 16 }
                                         spacing: 12
                                         ColumnHead { Layout.fillWidth: true; label: app.found !== null ? "Name · where" : "Name"; key: "name"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
+                                        ColumnHead { Layout.preferredWidth: 190; visible: briefcase.inBriefcase; label: "Status"; key: "status"; sortKey: app.sort; desc: app.desc }
                                         ColumnHead { Layout.preferredWidth: 100; label: "Size"; key: "size"; sortKey: app.sort; desc: app.desc; alignRight: true; onPicked: k => app.setSort(k) }
                                         ColumnHead { Layout.preferredWidth: 150; visible: list.wide; label: "Type"; key: "type"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
                                         ColumnHead { Layout.preferredWidth: 160; label: "Modified"; key: "date"; sortKey: app.sort; desc: app.desc; onPicked: k => app.setSort(k) }
@@ -3364,6 +3402,8 @@ Scope {
                                                     kind: app.kindOf(rowItem.modelData)
                                                     label: ""
                                                     link: rowItem.modelData.isLink
+                                                    bc: rowItem.modelData.briefcase || null
+                                                    bcColor: briefcase.colorOf(rowItem.modelData.briefcase)
                                                     size: 28
                                                 }
                                                 Image {
@@ -3390,6 +3430,19 @@ Scope {
                                                 }
                                             }
                                             Icon { visible: row.picked; name: "check"; size: 16; color: Theme.accent }
+                                            Row {
+                                                Layout.preferredWidth: 190
+                                                visible: briefcase.inBriefcase
+                                                spacing: 6
+                                                readonly property var bdg: briefcase.badgeFor(rowItem.modelData)
+                                                Rectangle { visible: !!parent.bdg; width: 10; height: 10; radius: 5; color: parent.bdg ? parent.bdg.color : "transparent"; anchors.verticalCenter: parent.verticalCenter }
+                                                Text {
+                                                    width: 174
+                                                    text: briefcase.statusLabel(rowItem.modelData)
+                                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
                                             Text {
                                                 Layout.preferredWidth: 100
                                                 horizontalAlignment: Text.AlignRight
@@ -3605,6 +3658,11 @@ Scope {
                                     onClicked: { keys.forceActiveFocus(); app.stopSearch(); }
                                 }
                                 Text {
+                                    visible: briefcase.inBriefcase && (briefcase.syncLine !== "" || briefcase.lockLine !== "")
+                                    text: [briefcase.lockLine, briefcase.syncLine].filter(x => x).join(" · ")
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                }
+                                Text {
                                     visible: !!(app.listing && app.listing.free !== undefined && app.listing.free !== null)
                                     text: app.listing ? app.fmtSize(app.listing.free) + " free" : ""
                                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
@@ -3749,14 +3807,14 @@ Scope {
                                         return [["Size", app.fmtSize(bytes) + (dirs ? " (plus what's in " + app.plural(dirs, "folder") + ")" : "")],
                                                 ["Folders", String(dirs)], ["Files", String(sel.length - dirs)]];
                                     }
-                                    if (!e) return app.listing && app.listing.free !== undefined && app.listing.free !== null ? [["Free", app.fmtSize(app.listing.free)]] : [];
+                                    if (!e) return briefcase.detailRows(null).concat(app.listing && app.listing.free !== undefined && app.listing.free !== null ? [["Free", app.fmtSize(app.listing.free)]] : []);
                                     const rows = [];
                                     if (!e.dir) rows.push(["Size", app.fmtSize(e.size)]);
                                     if (e.mtime) rows.push(["Modified", app.fmtDate(e.mtime)]);
                                     if (e.opened) rows.push(["Opened", app.fmtDate(Date.parse(e.opened) / 1000)]);
                                     rows.push(["Location", app.parentOf(e.path)]);
                                     if (e.isLink) rows.push(["Link", "Points somewhere else"]);
-                                    return rows;
+                                    return rows.concat(briefcase.detailRows(e));
                                 }
                                 delegate: RowLayout {
                                     required property var modelData
@@ -3865,6 +3923,9 @@ Scope {
                     onClicked: app.closeOverlay()
                 }
 
+                // The Briefcase's dialogs (Update All, passwords, Customize, choosing a Briefcase, progress).
+                BriefcaseDialog { id: bcDialog; bc: briefcase }
+
                 // Actions menu.
                 Rectangle {
                     id: menuCard
@@ -3942,7 +4003,7 @@ Scope {
                 // Dialogs: text box, confirm, open with, name clash, preview.
                 Rectangle {
                     id: card
-                    visible: app.overlay !== "" && app.overlay !== "menu"
+                    visible: app.overlay !== "" && app.overlay !== "menu" && app.overlay !== "briefcase"
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 48, app.overlay === "preview" ? 760 : 560)
                     height: Math.min(parent.height - 48, cardCol.implicitHeight + 44)
@@ -4335,20 +4396,40 @@ Scope {
         property string label: ""
         property bool link: false
         property real size: 64
+        property var bc: null                   // a Briefcase folder: {icon, color, badge, locked} (hearth-files list)
+        property var badge: null                // an item in a Briefcase: its status {color, glyph}
+        property color bcColor: Theme.accent
+        readonly property bool isBc: !!bc
         readonly property color band: ({ image: "#5fb98f", video: "#b36ad9", audio: "#4f9dde", archive: "#b98a5a", disc: "#8c7ae6",
             app: Theme.ember, doc: "#e06666", text: "#a69484", file: "#7d6a5c" })[kind] || "#7d6a5c"
         width: size
         height: size
+        // A Briefcase: its icon style in its colour, its badge, a padlock when locked.
+        Icon { anchors.fill: parent; visible: g.isBc; name: "bc-" + (g.bc && g.bc.icon ? g.bc.icon : "briefcase"); size: g.size; color: g.bcColor }
+        Text {
+            visible: g.isBc && !!g.bc.badge && g.size >= 24
+            anchors { right: parent.right; top: parent.top }
+            text: g.bc ? g.bc.badge || "" : ""
+            color: Theme.text; font.family: Theme.font; font.pixelSize: Math.max(9, g.size * 0.24); font.weight: Font.Bold
+        }
+        Rectangle {
+            visible: g.isBc && !!g.bc.locked
+            anchors { right: parent.right; bottom: parent.bottom }
+            width: g.size * 0.38; height: width; radius: width / 2
+            color: Theme.panel
+            border.color: Theme.line
+            Icon { anchors.centerIn: parent; name: "lock"; size: parent.width * 0.66; color: Theme.text }
+        }
         // Folder: a tab behind, the body in front.
         Rectangle {
-            visible: g.kind === "folder"
+            visible: g.kind === "folder" && !g.isBc
             x: g.size * 0.06; y: g.size * 0.14
             width: g.size * 0.42; height: g.size * 0.2
             radius: g.size * 0.06
             color: Qt.darker(Theme.accent, 1.35)
         }
         Rectangle {
-            visible: g.kind === "folder"
+            visible: g.kind === "folder" && !g.isBc
             x: g.size * 0.06; y: g.size * 0.24
             width: g.size * 0.88; height: g.size * 0.62
             radius: g.size * 0.08
@@ -4391,6 +4472,16 @@ Scope {
                 }
             }
         }
+        // Status in a Briefcase (Up-to-date, newer, changed in both…).
+        Rectangle {
+            visible: !!g.badge && g.size >= 20
+            anchors { right: parent.right; top: parent.top }
+            width: Math.max(12, g.size * 0.3); height: width; radius: width / 2
+            color: g.badge ? g.badge.color : "transparent"
+            border.color: Theme.bg
+            border.width: 1
+            Text { anchors.centerIn: parent; text: g.badge ? g.badge.glyph : ""; color: "#ffffff"; font.pixelSize: parent.width * 0.62; font.weight: Font.Bold }
+        }
         // Shortcut (symlink) badge.
         Rectangle {
             visible: g.link
@@ -4408,7 +4499,8 @@ Scope {
         property string kind
         property color tint: Theme.text
         property real size: 20
-        readonly property string hearthIcon: ({ start: "home", home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad", device: "desktops", network: "server", howto: "help" })[kind] || ""
+        readonly property string hearthIcon: kind.startsWith("bc:") ? "bc-" + kind.slice(3)
+            : ({ start: "home", home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad", device: "desktops", network: "server", howto: "help" })[kind] || ""
         readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸" })[kind] || ""
         implicitWidth: size
         implicitHeight: size

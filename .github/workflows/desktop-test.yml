@@ -35,6 +35,8 @@ jobs:
           dnf -y install xdg-desktop-portal python3-gobject gtk3 dbus-tools shared-mime-info >/dev/null || true
           # Hearth's own apps' size next to the bar: WebKitGTK, the engine their Tauri windows draw with.
           dnf -y install webkit2gtk4.1 >/dev/null || true
+          # The Briefcase's locks (hearth-briefcase): gocryptfs and FUSE (the real round trip runs only if /dev/fuse works).
+          dnf -y install gocryptfs fuse3 >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -51,6 +53,9 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
           # Discord replacing Hearth Friends (1.6): the chooser, installs, each client's window by the bar, invites.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_discord.py' -v
+          # The Briefcase in Hearth Files (hearth-briefcase): statuses, updates, Trash, crashes, locks, auto-lock, auto-sync.
+          # Locking runs with the real gocryptfs where FUSE can be mounted, else with the stand-in (a ::notice says which).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_briefcase.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -1051,6 +1056,42 @@ jobs:
           ls $F/*.png >/dev/null 2>&1 || { echo "::error title=Files redesign::no screenshots were taken"; touch shots/FAILED; }
           grep -E "FileManager.qml" "$LOG" | head -40 > $F/qml-warnings.txt 2>/dev/null || true
           [ -s $F/qml-warnings.txt ] && echo "::warning title=Files redesign QML::$(head -c 600 $F/qml-warnings.txt | tr '\n' ' ')"
+          # ---- The Briefcase (shots/briefcase, docs/HEARTH-FILES.md › Briefcase): two Briefcases customized differently,
+          # files added, one changed on each side and one changed in both, Update All's list of actions, after it ran,
+          # and the Customize dialog. hearth-briefcase does the work; Files shows it.
+          B=shots/briefcase; mkdir -p $B
+          HB=hosts/linux/desktop/shell/hearth-briefcase
+          export HEARTH_BRIEFCASE_NO_SERVICE=1 HEARTH_BRIEFCASE_NO_NOTIFY=1
+          mkdir -p "$HOME/Documents/School"
+          printf 'Essay, first draft\n' > "$HOME/Documents/School/essay.txt"; printf 'Class notes\n' > "$HOME/Documents/School/notes.md"
+          printf 'Trip plan\n' > "$HOME/Documents/plan.txt"
+          touch -d '-2 hours' "$HOME/Documents/School/essay.txt" "$HOME/Documents/School/notes.md" "$HOME/Documents/plan.txt"
+          { python3 $HB new "$HOME" Briefcase --ensure; python3 $HB new "$HOME" School
+            python3 $HB add "$HOME/Briefcase" "$HOME/Documents/School" "$HOME/Documents/plan.txt"
+            python3 $HB customize "$HOME/Briefcase" '{"color":"gold","note":"Carried between the desk and the laptop","autosync":{"mode":"off"}}'
+            python3 $HB customize "$HOME/School" '{"color":"green","icon":"backpack","badge":"A+","note":"Homework and class notes"}'
+          } > $B/setup.json 2>&1
+          sleep 2
+          printf 'Essay, edited in the Briefcase\n' > "$HOME/Briefcase/School/essay.txt"
+          printf 'Trip plan, edited at home\n' > "$HOME/Documents/plan.txt"
+          printf 'Notes, Briefcase side\n' > "$HOME/Briefcase/School/notes.md"; printf 'Notes, home side\n' > "$HOME/Documents/School/notes.md"
+          python3 $HB status "$HOME/Briefcase" > $B/status-before.json 2>&1
+          ipc files open "$HOME"; ipc filemanager view large; sleep 3; grim $B/01-two-briefcases.png || true
+          ipc files open "$HOME/Briefcase"; ipc filemanager view details; ipc filemanager details on; sleep 5; grim $B/02-briefcase-statuses.png || true
+          ipc filemanager bcUpdate; sleep 3; grim $B/03-update-all-dialog.png || true
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call filemanager bcState > $B/state.json 2>&1 || true
+          ipc filemanager bcApply; sleep 8; grim $B/04-after-update.png || true
+          python3 $HB status "$HOME/Briefcase" > $B/status-after.json 2>&1
+          grep -q 'edited in the Briefcase' "$HOME/Documents/School/essay.txt" || { echo "::error title=Briefcase::Update All didn't replace the original essay ($(cat $B/state.json | head -c 300))"; touch shots/FAILED; }
+          grep -q 'edited at home' "$HOME/Briefcase/plan.txt" || { echo "::error title=Briefcase::Update All didn't bring the newer plan into the Briefcase"; touch shots/FAILED; }
+          ls "$HOME/Briefcase/School/" | grep -q 'notes (from ' || { echo "::error title=Briefcase::the file changed in both places wasn't kept both ways: $(ls "$HOME/Briefcase/School/" | tr '\n' ' ')"; touch shots/FAILED; }
+          grep -q 'Class notes\|home side' "$HOME/Documents/School/notes.md" || { echo "::error title=Briefcase::the original of a file changed in both places was overwritten"; touch shots/FAILED; }
+          ipc files open "$HOME/School"; ipc filemanager bcCustomize; sleep 3; grim $B/05-customize-dialog.png || true; ipc filemanager close
+          ipc files open "$HOME"; ipc filemanager section briefcases; sleep 2; grim $B/06-navigation-pane.png || true
+          ipc filemanager view details; ipc filemanager details off; ipc files close
+          ls $B/*.png >/dev/null 2>&1 || { echo "::error title=Briefcase::no screenshots were taken"; touch shots/FAILED; }
+          grep -E "Briefcase(Dialog)?\.qml" "$LOG" | head -40 > $B/qml-warnings.txt 2>/dev/null || true
+          [ -s $B/qml-warnings.txt ] && { echo "::error title=Briefcase QML::$(head -c 800 $B/qml-warnings.txt | tr '\n' ' ')"; touch shots/FAILED; }
           ipc settings page sound; grim $o/steam-12-settings-sound.png || true
           ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"
