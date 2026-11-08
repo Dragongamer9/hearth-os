@@ -311,7 +311,7 @@ Scope {
                     : r.needs ? plural(r.needs, "file") + " need you: use Update All" : "Everything is up-to-date");
         });
         case "bc-send": {
-            const drives = app.places.filter(p => p.section === "drives" && p.path).map(p => ({ name: p.label, path: p.path, sub: p.path }));
+            const drives = (app.rawPlaces || app.places).filter(p => p.section === "drives" && p.path).map(p => ({ name: p.label, path: p.path, sub: p.path }));
             drives.push({ name: "Home folder", path: app.home, sub: app.home });
             return choose("Send “" + (arg ? app.base(arg) : bcName) + "” to…", drives, d => runJob("send", ["send", target, d.path], r => {
                 if (done(r, "Sent to " + d.name + ": it keeps its list and works there too")) refreshKnown();
