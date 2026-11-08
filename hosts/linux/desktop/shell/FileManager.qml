@@ -432,8 +432,10 @@ Scope {
             id: procIn
             property var cb: null
             property string input: ""
-            // a binding, not an assignment (see SetJob.qml: assigning an object to environment threw on Hearth 1.0)
-            environment: ({ HEARTH_INPUT: procIn.input })
+            // On stdin, then stdin closes (see SetJob.qml: Process.environment can't take a JavaScript object on
+            // Hearth's Debian, so the password never arrived and opening a shared folder with one failed).
+            stdinEnabled: procIn.input !== ""
+            onStarted: { if (procIn.input !== "") { procIn.write(procIn.input); procIn.input = ""; } }
             stdout: StdioCollector {
                 onStreamFinished: {
                     const lines = text.trim().split("\n");
@@ -452,10 +454,11 @@ Scope {
         const p = callComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null });
         p.running = true;
     }
-    // The same with text for the helper on HEARTH_INPUT (a sharing password): the environment, which only you can
-    // read, never the command line.
+    // The same with text for the helper (a sharing password): written on its stdin, and put in HEARTH_INPUT (the
+    // environment, which only you can read) by the sh wrapper (SetJob.qml's feed), never on the command line.
+    readonly property string inputFeed: 'if [ "$1" = 1 ]; then HEARTH_INPUT=$(cat; printf x); HEARTH_INPUT=${HEARTH_INPUT%x}; else HEARTH_INPUT=; fi; export HEARTH_INPUT; shift; printf "%s" "$HEARTH_INPUT" | exec '
     function callIn(args, input, cb) {
-        const p = callInComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null, input: input || "" });
+        const p = callInComp.createObject(app, { command: ["sh", "-c", inputFeed + 'python3 "$@"', "sh", input ? "1" : "0", helper].concat(args), cb: cb || null, input: input || "" });
         p.running = true;
     }
 

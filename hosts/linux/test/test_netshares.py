@@ -239,7 +239,8 @@ class Wiring(unittest.TestCase):
         fm = (SHELL / 'FileManager.qml').read_text()
         self.assertIn('devices: "Your devices"', fm)
         self.assertIn('if (p.net) return netOpen(p.net);', fm)
-        self.assertIn('environment: ({ HEARTH_INPUT: procIn.input })', fm)
+        self.assertIn('onStarted: { if (procIn.input !== "") { procIn.write(procIn.input); procIn.input = ""; } }', fm)   # stdin, never argv
+        self.assertNotIn('environment:', fm)
         self.assertIn('echoMode: app.dlgSecret ? TextInput.Password : TextInput.Normal', fm)
         self.assertIn('"How to open from Windows or a phone"', fm)
         self.assertIn('hearthnet://', (SHELL / 'SetDevices.qml').read_text())

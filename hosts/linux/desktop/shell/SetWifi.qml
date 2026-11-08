@@ -141,7 +141,7 @@ SetPage {
         const name = ssid.trim();
         if (!name) return;
         busy = name; message = ""; hiddenOpen = false;
-        if (pw) run(["sh", "-c", 'printf "%s\\n" "$HEARTH_WIFI_PSK" | exec nmcli --ask device wifi connect "$1" hidden yes', "sh", name], "Connected to " + name, { HEARTH_WIFI_PSK: pw });
+        if (pw) run(["nmcli", "--ask", "device", "wifi", "connect", name, "hidden", "yes"], "Connected to " + name, pw);
         else run(["nmcli", "device", "wifi", "connect", name, "hidden", "yes"], "Connected to " + name);
     }
 
@@ -149,18 +149,21 @@ SetPage {
         id: action
         property string okText
         property string psk: ""
-        // a binding, not an assignment in run(): assigning a JS object to environment threw on Hearth 1.0's Quickshell
-        environment: ({ HEARTH_WIFI_PSK: action.psk })
+        // The password goes to nmcli --ask on its stdin, then stdin closes. It used to go through Process.environment,
+        // which can't take a JavaScript object on Hearth's Debian (Qt 6.8): nmcli got an empty password and joining a
+        // network with one failed.
+        stdinEnabled: action.psk !== ""
+        onStarted: { if (action.psk !== "") { action.write(action.psk + "\n"); action.psk = ""; } }
         stdout: StdioCollector {}
         stderr: StdioCollector { id: actErr }
         onExited: code => { action.psk = ""; page.busy = ""; page.message = code === 0 ? action.okText : (actErr.text.trim().split("\n").pop() || "That didn't work"); page.refresh(); }
     }
-    function run(cmd, okText, env) { action.okText = okText; action.psk = (env && env.HEARTH_WIFI_PSK) || ""; action.command = cmd; action.running = true; }
+    function run(cmd, okText, psk) { if (action.running) return; action.okText = okText; action.psk = psk || ""; action.command = cmd; action.running = true; }
     function connect(n, pw) {
         busy = n.ssid; asking = ""; message = "";
-        // The password goes to nmcli on its input (it asks for it with --ask), through the environment, which only
-        // you can read: on its command line every account on the device could see it (ps, /proc).
-        if (pw) run(["sh", "-c", 'printf "%s\\n" "$HEARTH_WIFI_PSK" | exec nmcli --ask device wifi connect "$1"', "sh", n.ssid], "Connected to " + n.ssid, { HEARTH_WIFI_PSK: pw });
+        // The password goes to nmcli on its input (it asks for it with --ask): on its command line every account on
+        // the device could see it (ps, /proc).
+        if (pw) run(["nmcli", "--ask", "device", "wifi", "connect", n.ssid], "Connected to " + n.ssid, pw);
         else if (savedIds[n.ssid]) run(["nmcli", "connection", "up", "uuid", savedIds[n.ssid]], "Connected to " + n.ssid);
         else run(["nmcli", "device", "wifi", "connect", n.ssid], "Connected to " + n.ssid);
     }
