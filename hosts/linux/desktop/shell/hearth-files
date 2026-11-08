@@ -2,7 +2,12 @@
 """hearth-files: the file work behind Hearth Files (FileManager.qml), Desktop Mode's file manager.
 
   hearth-files list PATH [--hidden]     the folder's entries (PATH may be a file: its folder, with "select")
-  hearth-files places                   Home, the usual folders, games, drives and SD cards, Trash
+  hearth-files places                   Home, the usual folders, games, drives and SD cards (with their letters), Trash
+  hearth-files this-pc                  This PC: Folders, Devices and drives (Hearth (C:), then each drive with the
+                                        letter it keeps: hearth_drive_letters.py) and Network locations
+  hearth-files letter-set KEY LETTER    Change drive letter… (D to Y; the choice is kept)
+  hearth-files installed-apps           Installed apps: Hearth's own, Flatpak, Windows apps, Steam, Hearth Games, Recomps
+  hearth-files app-sizes PATH...        add up folders' sizes for Installed apps (cached in ~/.cache/hearth/app-sizes.json)
   hearth-files mkdir PATH               a new folder
   hearth-files rename PATH NEWNAME      rename in place
   hearth-files trash PATH...            move to the Trash (gio trash, or the freedesktop Trash spec)
@@ -675,12 +680,12 @@ def places():
     games = os.path.join(h, 'Games')
     if os.path.isdir(games):
         out.append({'id': 'games', 'label': 'Games', 'path': games, 'kind': 'games', 'section': 'games'})
-    dl = drives()
+    dl = [system_drive()] + pc_drives()
     for i, lib in enumerate(steam_libraries()):
         label = 'Steam games'
-        on = next((d for d in dl if under(os.path.realpath(lib), os.path.realpath(d['path']))), None)
+        on = next((d for d in dl if d.get('path') and d['path'] != '/' and under(os.path.realpath(lib), os.path.realpath(d['path']))), None)
         if on:
-            label = 'Steam games (' + on['label'] + ')'
+            label = 'Steam games (' + on['name'] + ')'
         elif not under(os.path.realpath(lib), os.path.realpath(h)):
             label = 'Steam games (' + (os.path.basename(lib.rstrip('/')) or lib) + ')'
         out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
@@ -688,8 +693,7 @@ def places():
     out += bookmark_places()
     out += storage_places()
     out += device_places()
-    out += dl
-    out += unmounted_drives()
+    out += dl                       # Hearth (C:), then the lettered drives, mounted or not (pc_drives)
     tf = os.path.join(home_trash(), 'files')
     try:
         count = len(os.listdir(tf))
@@ -2223,32 +2227,20 @@ def search(path, query, hidden=False, limit=5000):
 
 
 # ---------------------------------------------------------------------- drives, bookmarks, settings
-def unmounted_drives():
-    """USB drives and SD cards that are plugged in but not mounted (lsblk), for the sidebar."""
-    if not shutil.which('lsblk'):
-        return []
-    try:
-        r = subprocess.run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,LABEL,MOUNTPOINT,RM,HOTPLUG,FSTYPE,SIZE,TYPE'],
-                           capture_output=True, text=True, timeout=4)
-        tree = json.loads(r.stdout or '{}').get('blockdevices', [])
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return []
+def unmounted_drives(flat=None):
+    """USB drives and SD cards that are plugged in but not mounted (lsblk), for the sidebar and This PC."""
+    flat = lsblk_flat() if flat is None else flat
     out = []
-
-    def walk(devs, removable):
-        for d in devs:
-            rm = removable or d.get('rm') in (True, '1', 1) or d.get('hotplug') in (True, '1', 1)
-            fs = d.get('fstype') or ''
-            if rm and fs and fs not in ('swap', 'crypto_LUKS', 'LVM2_member') and not d.get('mountpoint') \
-                    and d.get('type') in ('part', 'disk'):
-                path = d.get('path') or '/dev/' + d.get('name', '')
-                kind, sub = drive_kind(path)
-                size = int(d.get('size') or 0)
-                out.append({'id': 'dev:' + path, 'label': d.get('label') or (human(size) + ' ' + sub.lower()),
-                            'path': '', 'device': path, 'kind': kind, 'sub': sub + ' · not mounted',
-                            'section': 'drives', 'mounted': False, 'removable': True, 'total': size or None})
-            walk(d.get('children') or [], rm)
-    walk(tree, False)
+    for d in flat:
+        fs = d.get('fstype') or ''
+        if d.get('rm') and fs and fs not in ('swap', 'crypto_LUKS', 'LVM2_member') and not d.get('mountpoint') \
+                and d.get('type') in ('part', 'disk'):
+            path = d.get('path') or '/dev/' + d.get('name', '')
+            kind, sub = drive_kind(path)
+            size = int(d.get('size') or 0)
+            out.append({'id': 'dev:' + path, 'label': d.get('label') or (human(size) + ' ' + sub.lower()),
+                        'path': '', 'device': path, 'kind': kind, 'sub': sub + ' · not mounted',
+                        'section': 'drives', 'mounted': False, 'removable': True, 'total': size or None})
     return out
 
 
@@ -3351,8 +3343,469 @@ def remote_cmd(c, rest):
     raise Fail("Hearth Storage's shared folders can't be changed from here: copy what you need to this device")
 
 
+# ---------------------------------------------------------------------- This PC: drives with letters, network
+# locations, installed apps (docs/HEARTH-FILES.md "This PC"). Letters: hearth_drive_letters.py.
+try:
+    import hearth_drive_letters as hdl
+except ImportError:
+    hdl = None
+
+# Mount places that are the system drive itself (never a lettered drive of their own).
+SYSTEM_MOUNTS = ('/', '/sysroot', '/var', '/home', '/var/home', '/usr', '/etc', '/boot', '/boot/efi', '/efi', '/root')
+SYSTEM_TOP = {'', 'proc', 'sys', 'dev', 'run', 'tmp', 'boot', 'sysroot', 'usr', 'etc', 'var', 'home', 'root', 'opt',
+              'srv', 'snap', 'efi', 'ostree', 'nix', 'gnu', 'lib', 'lib64', 'bin', 'sbin', 'composefs'}
+DRIVE_BASES = ('/run/media/', '/media/', '/mnt/', '/var/mnt/')
+REAL_FS = {'ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'ntfs', 'ntfs3', 'exfat', 'vfat', 'fuseblk', 'jfs', 'reiserfs',
+           'bcachefs', 'hfsplus', 'udf', 'iso9660', 'zfs'}
+# Category order on This PC (Windows-like): internal data drives, Hearth Disks games drives, Steam library drives,
+# USB sticks and SD cards.
+DRIVE_RANK = {'drive': 1, 'games': 2, 'steam': 3, 'usb': 4, 'sd': 5}
+DRIVE_NAMES = {'drive': 'Local Disk', 'games': 'Games', 'steam': 'Games', 'usb': 'USB drive', 'sd': 'SD card'}
+
+
+def lsblk_flat():
+    """Every block device (lsblk), flat, each with its disk's transport (usb…) and removable flags carried down."""
+    if not shutil.which('lsblk'):
+        return []
+    try:
+        r = subprocess.run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,LABEL,UUID,MOUNTPOINT,RM,HOTPLUG,TRAN,FSTYPE,SIZE,TYPE'],
+                           capture_output=True, text=True, timeout=4)
+        tree = json.loads(r.stdout or '{}').get('blockdevices', [])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+    out = []
+
+    def walk(devs, rm, tran):
+        for d in devs:
+            rm2 = rm or d.get('rm') in (True, '1', 1) or d.get('hotplug') in (True, '1', 1)
+            tran2 = d.get('tran') or tran
+            out.append(dict(d, rm=rm2, tran=tran2))
+            walk(d.get('children') or [], rm2, tran2)
+    walk(tree, False, '')
+    return out
+
+
+def fs_types():
+    out = {}
+    try:
+        with open('/proc/mounts') as f:
+            for line in f:
+                p = line.split()
+                if len(p) >= 3:
+                    out[re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), p[1])] = p[2]
+    except OSError:
+        pass
+    return out
+
+
+def drive_candidate(mp, dev, fs, sys_devs):
+    if mp in SYSTEM_MOUNTS or not dev.startswith('/dev/') or dev.startswith(('/dev/loop', '/dev/zram', '/dev/ram')):
+        return False
+    if dev in sys_devs or (fs and fs not in REAL_FS):
+        return False
+    if any(mp.startswith(b) for b in DRIVE_BASES):
+        return True
+    return mp.split('/')[1] not in SYSTEM_TOP if mp.count('/') >= 1 else False
+
+
+def system_drive():
+    free, total = free_space(home())
+    return {'id': 'drive:system', 'key': 'system', 'name': 'Hearth', 'letter': 'C', 'label': 'Hearth (C:)', 'path': '/',
+            'kind': 'system', 'cat': 'system', 'sub': 'Hearth OS', 'section': 'drives', 'free': free, 'total': total,
+            'removable': False, 'mounted': True, 'system': True}
+
+
+def pc_drives(flat=None, letters=True):
+    """Hearth (C:) is separate (system_drive). Every other drive: internal data drives, Hearth Disks' games drives
+    (/var/mnt/games-*), drives with a Steam library, USB drives and SD cards (mounted ones, and plugged-in ones that
+    aren't mounted), each with its letter (handed out here the first time a drive is seen)."""
+    flat = lsblk_flat() if flat is None else flat
+    by_dev = {d.get('path'): d for d in flat if d.get('path')}
+    m = mounts()
+    fst = fs_types()
+    sys_devs = {m[p] for p in SYSTEM_MOUNTS if m.get(p, '').startswith('/dev/')}
+    found, seen_dev = [], set()
+
+    def add(mp, dev):
+        if any(f['path'] == mp for f in found):
+            return
+        if dev and dev.startswith('/dev/'):
+            if dev in seen_dev:
+                return
+            seen_dev.add(dev)
+        found.append({'path': mp, 'dev': dev or ''})
+    for mp, dev in sorted(m.items(), key=lambda x: len(x[0])):
+        if drive_candidate(mp, dev, fst.get(mp, ''), sys_devs):
+            add(mp, dev)
+    for base in media_bases():                     # what the desktop mounted (and folders there, as before)
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            names = []
+        for name in names:
+            p = os.path.join(base, name)
+            if os.path.isdir(p):
+                add(p, m.get(p, ''))
+    libs = steam_libraries()
+    for lib in libs:
+        mp = mount_point(lib)
+        if mp not in ('/',) and mp not in SYSTEM_MOUNTS and m.get(mp) not in sys_devs:
+            add(mp, m.get(mp, ''))
+    out = []
+    for f in found:
+        mp, dev = f['path'], f['dev']
+        d = by_dev.get(dev) or {}
+        removable = any(under(mp, os.path.realpath(b)) or under(mp, b) for b in media_bases())
+        if 'mmcblk' in dev:
+            cat = 'sd'
+        elif d.get('tran') == 'usb' or (d.get('rm') and removable):
+            cat = 'usb'
+        elif re.match(r'^/(var/)?mnt/games-', mp):
+            cat = 'games'
+        elif any(under(os.path.realpath(l), os.path.realpath(mp)) for l in libs) or os.path.isdir(os.path.join(mp, 'SteamLibrary', 'steamapps')):
+            cat = 'steam'
+        else:
+            cat = 'drive'
+        name = (d.get('label') or '').strip() or (os.path.basename(mp) if removable else '') or DRIVE_NAMES[cat]
+        free, total = free_space(mp)
+        key = ('uuid:' + d['uuid']) if d.get('uuid') else ('mount:' + mp)
+        sub = {'sd': 'SD card', 'usb': 'USB drive', 'games': 'Games drive', 'steam': 'Steam library', 'drive': 'Drive'}[cat]
+        out.append({'id': 'drive:' + mp, 'key': key, 'name': name, 'path': mp, 'device': dev,
+                    'kind': {'sd': 'sd', 'usb': 'usb', 'games': 'games', 'steam': 'games', 'drive': 'drive'}[cat],
+                    'cat': cat, 'sub': sub, 'section': 'drives', 'free': free, 'total': total, 'removable': removable,
+                    'mounted': True, 'fs': fst.get(mp, d.get('fstype') or '')})
+    for u in unmounted_drives(flat):
+        d = by_dev.get(u.get('device')) or {}
+        cat = 'sd' if 'mmcblk' in (u.get('device') or '') else 'usb'
+        out.append(dict(u, key=('uuid:' + d['uuid']) if d.get('uuid') else 'dev:' + u.get('device', ''), name=u['label'],
+                        cat=cat))
+    out.sort(key=lambda x: (DRIVE_RANK.get(x['cat'], 9), not x.get('mounted', True)))
+    if letters and hdl:
+        got = hdl.assign([{'key': x['key'], 'name': x['name'], 'path': x['path'] if x.get('mounted', True) else '',
+                           'kind': x['cat']} for x in out])
+    else:
+        got = {}
+    for x in out:
+        x['letter'] = got.get(x['key'])
+        x['label'] = '%s (%s:)' % (x['name'], x['letter']) if x['letter'] else x['name']
+    return out
+
+
+def gvfs_shares():
+    """[(host, share, local path)] for the network folders gvfs has mounted (smb-share:server=…,share=…)."""
+    out = []
+    root = gvfs_root()
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return out
+    for n in names:
+        mm = re.match(r'^smb-share:(.*)$', n)
+        if not mm:
+            continue
+        kv = dict(x.split('=', 1) for x in mm.group(1).split(',') if '=' in x)
+        if kv.get('server') and kv.get('share'):
+            out.append((urllib.parse.unquote(kv['server']).lower(), urllib.parse.unquote(kv['share']).lower(), os.path.join(root, n)))
+    return out
+
+
+def free_space_soon(path, timeout=2.0):
+    """free_space for a network folder, given up after TIMEOUT seconds (a server that went away can hang statvfs)."""
+    try:
+        p = subprocess.Popen(['stat', '-f', '-c', '%a %S %b', '--', path], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, text=True)
+    except OSError:
+        return None, None
+    try:
+        out, _ = p.communicate(timeout=timeout)
+        a, s, b = (int(x) for x in out.split())
+        return a * s, b * s
+    except (subprocess.TimeoutExpired, ValueError):
+        try:
+            p.kill()
+        except OSError:
+            pass
+        return None, None
+
+
+def net_locations(dev_places=None, letters=True):
+    """Your devices' shared folders that are mounted now, connect by themselves, or already have a letter (remembered),
+    as This PC's network locations: "Games (\\\\Gaming PC) (G:)"."""
+    try:
+        ns = netshares()
+    except ImportError:
+        return []
+    items = device_places() if dev_places is None else dev_places
+    known = hdl.load() if hdl else {}
+    gv = gvfs_shares()
+    out = []
+    for p in items:
+        net = p.get('net') or {}
+        if not net.get('share'):
+            continue
+        key = 'net:' + ns.share_key(net)
+        hosts = {h.lower() for h in (net.get('home'), net.get('away')) if h}
+        where = next((g[2] for g in gv if g[0] in hosts and g[1] == net['share'].lower()), None)
+        if not (p.get('auto') or where or key in known):
+            continue
+        name = '%s (\\\\%s)' % (net['share'], net.get('name') or next(iter(hosts), 'network'))
+        free, total = free_space_soon(where) if where else (None, None)
+        out.append({'id': 'net:' + key, 'key': key, 'name': name, 'path': where or '', 'net': net, 'kind': 'network',
+                    'cat': 'network', 'sub': 'Connected' if where else ('Connects by itself' if p.get('auto') else 'Not connected'),
+                    'free': free, 'total': total, 'mounted': bool(where), 'offline': bool(p.get('offline'))})
+    got = hdl.assign([{'key': x['key'], 'name': x['name'], 'path': x['path'], 'kind': 'network'} for x in out]) \
+        if letters and hdl and out else {}
+    for x in out:
+        x['letter'] = got.get(x['key'])
+        x['label'] = '%s (%s:)' % (x['name'], x['letter']) if x['letter'] else x['name']
+    return out
+
+
+def pc_folders():
+    """This PC's Folders: Desktop, Documents, Downloads, Pictures, Music, Videos, where your XDG folders are."""
+    h = home()
+    xdg = user_dirs()
+    out = []
+    for key, kind, fallback in (('DESKTOP', 'desktop', 'Desktop'), ('DOCUMENTS', 'documents', 'Documents'),
+                                ('DOWNLOAD', 'downloads', 'Downloads'), ('PICTURES', 'pictures', 'Pictures'),
+                                ('MUSIC', 'music', 'Music'), ('VIDEOS', 'videos', 'Videos')):
+        p = xdg.get(key) or os.path.join(h, fallback)
+        if os.path.isdir(p) and os.path.realpath(p) != os.path.realpath(h):
+            out.append({'id': kind, 'label': os.path.basename(p.rstrip('/')) or fallback, 'path': p, 'kind': kind})
+    return out
+
+
+def this_pc():
+    flat = lsblk_flat()
+    out = {'folders': pc_folders(), 'drives': [system_drive()] + pc_drives(flat), 'network': net_locations(),
+           'home': home(), 'user': user()}
+    # Every letter that's spoken for, unplugged drives' too (Change drive letter… offers only the others).
+    out['taken'] = {v['letter']: v.get('name') or '' for v in (hdl.load() if hdl else {}).values()}
+    return out
+
+
+def letter_set(key, letter):
+    if not hdl:
+        raise Fail("Drive letters aren't available here")
+    try:
+        v = hdl.set_letter(key, letter)
+    except hdl.Fail as e:
+        raise Fail(str(e))
+    return {'ok': True, 'key': key, 'letter': v['letter']}
+
+
+# -------------------------------------------- Installed apps (like Windows Settings › Apps › Installed apps)
+def size_from_text(t):
+    m = re.match(r'^\s*([\d.,]+)\s*([kMGT]?B|bytes?)\s*$', t or '', re.I)
+    if not m:
+        return None
+    n = float(m.group(1).replace(',', '.'))
+    mult = {'b': 1, 'byte': 1, 'bytes': 1, 'kb': 1e3, 'mb': 1e6, 'gb': 1e9, 'tb': 1e12}.get(m.group(2).lower(), 1)
+    return int(n * mult)
+
+
+def icon_file(name):
+    """An icon theme name (or a path) as a file: hicolor in every data folder, then pixmaps. '' if none."""
+    if not name:
+        return ''
+    if name.startswith('/'):
+        return name if os.path.isfile(name) else ''
+    for d in data_dirs():
+        for sz in ('scalable', '256x256', '128x128', '96x96', '64x64', '48x48'):
+            for ext in ('.svg', '.png'):
+                p = os.path.join(d, 'icons', 'hicolor', sz, 'apps', name + ext)
+                if os.path.isfile(p):
+                    return p
+    for ext in ('.png', '.svg', ''):
+        p = os.path.join('/usr/share/pixmaps', name + ext)
+        if os.path.isfile(p):
+            return p
+    return ''
+
+
+def helper_json(argv, timeout=30, env=None):
+    """The last JSON line a helper prints, or None."""
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in reversed((r.stdout or '').splitlines()):
+        line = line.strip()
+        if line.startswith('{') or line.startswith('['):
+            try:
+                return json.loads(line)
+            except ValueError:
+                return None
+    return None
+
+
+def here(name):
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), name)
+
+
+def flatpak_publisher(inst_dir, app_id):
+    for p in (os.path.join(inst_dir, 'app', app_id, 'current', 'active', 'files', 'share', 'metainfo', app_id + '.metainfo.xml'),
+              os.path.join(inst_dir, 'app', app_id, 'current', 'active', 'files', 'share', 'appdata', app_id + '.appdata.xml')):
+        try:
+            with open(p, encoding='utf-8', errors='replace') as f:
+                text = f.read(200000)
+        except OSError:
+            continue
+        mm = re.search(r'<developer_name>([^<]+)</developer_name>', text) or \
+            re.search(r'<developer[^>]*>\s*<name>([^<]+)</name>', text)
+        if mm:
+            return mm.group(1).strip()
+    return ''
+
+
+def installed_apps():
+    """Every app on this PC, from what Hearth already keeps: Hearth's own apps (their menu entries), Flatpak apps
+    (hearth-flatpak installed), Windows apps (hearth-winapps list) and games (Storage's list: nimbus --settings-call
+    diskspace.status: Steam, Hearth Games' stores, Recomps). Sizes that need adding up come from app-sizes."""
+    out = []
+    ents = desktop_entries()
+    # Hearth's own apps (part of Hearth OS: no Uninstall).
+    for did, (path, f) in sorted(ents.items()):
+        if not (did.startswith('hearth-') or did == 'nimbus.desktop') or did.startswith('hearth-winapp-') \
+                or not usable(f) or not shown_here(f) or '/flatpak/' in path:
+            continue
+        out.append({'id': 'hearth:' + did, 'name': f.get('Name') or did, 'kind': 'hearth', 'publisher': 'Hearth OS',
+                    'part': True, 'desktop': path, 'icon': icon_file(f.get('Icon', '')), 'size': None, 'date': None})
+    # Flatpak apps.
+    fl = helper_json(['python3', here('hearth-flatpak'), 'installed'], timeout=30)
+    rows = fl if isinstance(fl, list) else (fl or {}).get('apps') or (fl or {}).get('installed') or []
+    user_inst = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'flatpak')
+    have = set()
+    for r in rows:
+        if not isinstance(r, dict) or not r.get('id'):
+            continue
+        aid = r['id']
+        have.add(aid)
+        inst = user_inst if (r.get('installation') or 'user') == 'user' else '/var/lib/flatpak'
+        try:
+            date = int(os.lstat(os.path.join(inst, 'app', aid, 'current')).st_mtime)
+        except OSError:
+            date = None
+        d = ents.get(aid + '.desktop')
+        icon = ''
+        for sz in ('scalable', '256x256', '128x128', '64x64'):
+            for ext in ('.svg', '.png'):
+                p = os.path.join(inst, 'exports', 'share', 'icons', 'hicolor', sz, 'apps', aid + ext)
+                if not icon and os.path.isfile(p):
+                    icon = p
+        out.append({'id': 'flatpak:' + aid, 'appId': aid, 'name': r.get('name') or aid, 'kind': 'flatpak',
+                    'publisher': flatpak_publisher(inst, aid), 'version': r.get('version') or '',
+                    'size': size_from_text(r.get('size')), 'date': date, 'icon': icon, 'desktop': d[0] if d else '',
+                    'installation': r.get('installation') or 'user'})
+    flatseal = 'com.github.tchx84.Flatseal' in have
+    for a in out:
+        if a['kind'] == 'flatpak':
+            a['flatseal'] = flatseal
+    # Windows apps.
+    wa = helper_json(['python3', here('hearth-winapps'), 'list'], timeout=30) or {}
+    for a in wa.get('apps') or []:
+        if not isinstance(a, dict) or not a.get('id'):
+            continue
+        dpath = a.get('dir') or ''
+        date = birth_time(os.path.join(dpath, 'hearth-app.json')) if dpath else None
+        if not date and dpath:
+            try:
+                date = int(os.stat(dpath).st_mtime)
+            except OSError:
+                date = None
+        out.append({'id': 'winapp:' + a['id'], 'appId': a['id'], 'name': a.get('name') or a['id'], 'kind': 'winapp',
+                    'publisher': '', 'size': None, 'sizePath': dpath, 'date': date, 'icon': a.get('icon') or '',
+                    'dir': dpath})
+    # Games: Storage's list (the Hearth app keeps their sizes) with the launcher's pictures.
+    gm = helper_json(['nimbus', '--settings-call', 'diskspace.status', '{}'], timeout=25) or {}
+    games = (gm.get('value') or {}).get('games') or [] if gm.get('ok') else []
+    pics = {}
+    try:
+        with open(os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'desktop-games.json'),
+                  encoding='utf-8') as fh:
+            for g in json.load(fh) or []:
+                if isinstance(g, dict) and g.get('id'):
+                    pics[g['id']] = g.get('icon') or ''
+    except (OSError, ValueError, TypeError):
+        pass
+    for g in games:
+        if not isinstance(g, dict) or not g.get('title'):
+            continue
+        store = g.get('store') or ''
+        src = (g.get('source') or '').lower()
+        gid = g.get('id') or ('game:' + g['title'])
+        kind = 'steam' if src == 'steam' or store.lower() == 'steam' or gid.startswith('steam:') else \
+            'recomp' if src == 'recomp' or 'recomp' in store.lower() or gid.startswith('recomp:') else 'games'
+        date = None
+        if g.get('path'):
+            try:
+                date = int(os.stat(g['path']).st_mtime)
+            except OSError:
+                date = None
+        icon = pics.get(gid, '')
+        if icon.startswith('file://'):
+            icon = urllib.parse.unquote(icon[7:])
+        out.append({'id': gid, 'name': g['title'], 'kind': kind, 'publisher': store, 'size': g.get('size') or None,
+                    'date': date, 'icon': icon if icon.startswith('/') else '', 'drive': g.get('drive') or '',
+                    'canMove': bool(g.get('canMove')) and kind in ('steam', 'recomp', 'games') and store.lower() in ('steam', 'epic', 'gog', 'recomp', 'recomps', '') ,
+                    'moveWhy': g.get('moveWhy') or '', 'uninstall': g.get('uninstall') or (kind == 'steam' and 'steam') or None,
+                    'steamId': gid.split(':', 1)[1] if gid.startswith('steam:') else ''})
+    cached = app_sizes_cache()
+    for a in out:
+        if a.get('sizePath') and a['size'] is None:
+            c = cached.get(a['sizePath'])
+            if c:
+                a['size'] = c.get('size')
+    return {'apps': out, 'flatseal': flatseal, 'core': bool(gm.get('ok'))}
+
+
+def app_sizes_file():
+    return os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'app-sizes.json')
+
+
+def app_sizes_cache():
+    try:
+        with open(app_sizes_file(), encoding='utf-8') as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def app_sizes(paths):
+    """Adds up the folders' sizes (Windows apps' spaces), kept in the cache with the folder's time so they're shown at
+    once next time and only added up again after it changed. Only folders in your home or on a drive."""
+    cache = app_sizes_cache()
+    out = {}
+    changed = False
+    for p in paths:
+        p = os.path.abspath(p)
+        if not (under(p, home()) or any(under(p, b) for b in media_bases())) or not os.path.isdir(p):
+            continue
+        try:
+            mt = int(os.stat(p).st_mtime)
+        except OSError:
+            continue
+        c = cache.get(p)
+        if c and c.get('mtime') == mt and time.time() - c.get('at', 0) < 86400:
+            out[p] = c['size']
+            continue
+        size = tree_size(p)[0]
+        cache[p] = {'size': size, 'mtime': mt, 'at': int(time.time())}
+        out[p] = size
+        changed = True
+    if changed:
+        f = app_sizes_file()
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        tmp = f + '.%d.tmp' % os.getpid()
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump(dict(list(cache.items())[-300:]), fh)
+        os.replace(tmp, f)
+    return {'sizes': out}
+
+
 # ---------------------------------------------------------------------- command line
-USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
+USAGE = ('usage: hearth-files list PATH [--hidden] | places | this-pc | letter-set KEY LETTER | installed-apps | app-sizes PATH... | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
          'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
          'apps PATH | open PATH [APP_ID] | eject PATH | mount DEVICE | unmount PATH | props PATH... | count PATH... | '
          'checksum ALGO PATH | chmod PATH MODE | set-default PATH APP_ID | conflicts SRC... DEST | new-file PATH | '
@@ -3380,6 +3833,14 @@ def cmd(argv):
         out = list_dir('', False)
     elif c == 'places':
         out = places()
+    elif c == 'this-pc':
+        out = this_pc()
+    elif c == 'letter-set' and len(rest) == 2:
+        out = letter_set(rest[0], rest[1])
+    elif c == 'installed-apps':
+        out = installed_apps()
+    elif c == 'app-sizes':
+        out = app_sizes(rest)
     elif c == 'net-open' and rest:
         out = net_open(rest[0], rest[1:])
     elif c == 'net-auto' and len(rest) == 2 and rest[1] in ('on', 'off'):

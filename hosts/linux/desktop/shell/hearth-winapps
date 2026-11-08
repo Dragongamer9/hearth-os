@@ -201,6 +201,13 @@ def ensure_prefix(prefix):
     pfx = os.path.join(prefix, 'pfx')
     if not os.path.lexists(pfx):
         os.symlink('.', pfx)
+    # The same drive letters as Hearth Files' This PC (D:, E: …) and your own Documents, Desktop… in the prefix
+    # (hearth_drive_letters.map_prefix: only Hearth's own links and empty folders change). Never stops an app starting.
+    try:
+        import hearth_drive_letters as hdl
+        hdl.map_prefix(prefix)
+    except Exception as e:  # noqa: BLE001
+        print('hearth-winapps: drive letters not set up: %s' % e, file=sys.stderr)
 
 
 def proton_env(a):
