@@ -215,5 +215,9 @@
 
   <windowRules>
     <!-- Hearth Settings and the Hearth app open as normal windows with title bars (fullscreen ones have none anyway). -->
+    <!-- Task Manager › Settings › Always on top: the window takes this title when that's on (TaskManager.qml). -->
+    <windowRule title="Task Manager (always on top)">
+      <action name="ToggleAlwaysOnTop" />
+    </windowRule>
   </windowRules>
 </labwc_config>

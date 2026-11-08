@@ -57,6 +57,9 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_menu_styles.py' -v
           # Discord replacing Hearth Friends (1.6): the chooser, installs, each client's window by the bar, invites.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_discord.py' -v
+          # Task Manager (Windows 11 style): the helper's parsing, heat map, startup writes, settings and the sampler.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_tasks.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_task_manager.py' -v
           # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
           # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
@@ -660,6 +663,43 @@ jobs:
           ipc fileprops tab checksums; grim shots/files-8-checksums.png || true
           ipc fileprops open "$HOME/Documents"; grim shots/files-9-folder-properties.png || true
           ipc fileprops close; ipc files close
+          # ---- Task Manager, the Windows 11 way: Processes (and its menu, a search), Performance
+          # (CPU, Memory, a disk, the graphics card when there is one), Startup apps, Details, Services, Settings. Opening it
+          # writes nothing (taskmgr.json only holds what the person changes); its sampler stays light.
+          mkdir -p shots/task-manager; T=shots/task-manager
+          tmcfg="$HOME/.config/nimbus/taskmgr.json"; tm_before=$(sha256sum "$tmcfg" 2>/dev/null || echo none)
+          ipc tasks tab processes; sleep 4; grim $T/01-processes.png || true
+          ipc tasks menu; sleep 1; grim $T/02-processes-menu.png || true; wtype -k Escape 2>/dev/null || true; sleep 1
+          ipc tasks search python; sleep 3; grim $T/03-processes-search.png || true; ipc tasks search ""
+          ipc tasks tab performance:cpu; sleep 6; grim $T/04-performance-cpu.png || true
+          ipc tasks tab performance:memory; sleep 3; grim $T/05-performance-memory.png || true
+          ipc tasks tab performance:disk; sleep 3; grim $T/06-performance-disk.png || true
+          ipc tasks tab performance:gpu; sleep 3; grim $T/07-performance-gpu.png || true
+          ipc tasks tab startup; sleep 5; grim $T/08-startup-apps.png || true
+          ipc tasks tab details; sleep 4; grim $T/09-details.png || true
+          ipc tasks tab services; sleep 6; grim $T/10-services.png || true
+          ipc tasks tab settings; sleep 2; grim $T/11-settings.png || true
+          ipc tasks tab processes; sleep 2
+          # its own CPU use over 10 s on Processes at Normal (the owner's target: under ~2 % on an i3-N305)
+          sp=$(pgrep -f "hearth-tasks serve" 2>/dev/null | head -1 || true)
+          if [ -n "$sp" ]; then
+            a=$(awk '{print $14+$15}' /proc/$sp/stat); sleep 10; b=$(awk '{print $14+$15}' /proc/$sp/stat)
+            echo "::notice title=Task Manager::its sampler used $(( (b - a) * 100 / (10 * $(getconf CLK_TCK)) ))% of one core over 10 s on Processes at Normal ($(nproc) cores here)"
+          else
+            echo "::error title=Task Manager::the shared sampler (hearth-tasks serve) isn't running while Task Manager is open"; touch shots/FAILED
+          fi
+          ipc tasks close
+          python3 hosts/linux/desktop/shell/hearth-tasks sample procs details temps gpu > $T/sample.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-tasks services > $T/services.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-tasks startup > $T/startup.json 2>&1 || true
+          [ "$(sha256sum "$tmcfg" 2>/dev/null || echo none)" = "$tm_before" ] || { echo "::error title=Task Manager::opening its pages changed taskmgr.json: $(cat "$tmcfg" 2>&1 | head -c 300)"; touch shots/FAILED; }
+          grep -E "TaskManager(View)?\.qml" "$LOG" > $T/shell-log.txt 2>/dev/null || true
+          if grep -qE "TaskManager(View)?\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" 2>/dev/null \
+             || grep -q "Task Manager: its page (TaskManagerView.qml) couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=Task Manager::$(grep -E 'TaskManager(View)?\.qml|Task Manager: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Task Manager::$(ls $T/*.png 2>/dev/null | wc -l) pictures in task-manager/"
+          fi
           # ---- Right-click menu looks (Settings › Personalization › Bar and dock › Right-click menu, MenuStyles.qml), in
           # shots/menu-styles/: a file's menu and the desktop's menu on the desktop, and Hearth Files' menu, in each look
           # (Today first: the "before"), Windows 11 style's submenu flyout, the controller hint row, light mode and the

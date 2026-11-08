@@ -76,7 +76,7 @@ PanelWindow {
     // ------------------------------------------------------------------ apps (as the classic taskbar, Bar.qml)
     function ownWindow(t) {
         const a = t.appId || "";
-        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Files)$/.test(t.title || ""));
+        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Task Manager \(always on top\)|Files)$/.test(t.title || ""));
     }
     readonly property var taskItems: {
         const out = [], byKey = {};

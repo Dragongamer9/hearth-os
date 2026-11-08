@@ -55,7 +55,7 @@ PanelWindow {
     // Hearth's own windows (Settings, Files, Task Manager...) are part of this shell: Quickshell's app id.
     function ownWindow(t) {
         const a = t.appId || "";
-        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Files)$/.test(t.title || ""));
+        return /quickshell/i.test(a) || (a === "" && /^(Hearth Settings|Task Manager|Task Manager \(always on top\)|Files)$/.test(t.title || ""));
     }
     // Pinned apps first (in pin order), then the other open apps; each app's windows share one button.
     readonly property var taskItems: {
