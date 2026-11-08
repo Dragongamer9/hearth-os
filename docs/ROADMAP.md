@@ -7,6 +7,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### New
+
+- [x] The USB installer looks for controllers again on its first screen: a Controllers card lists every controller it finds (wired and built-in ones show as Connected straight away), and a Bluetooth controller put in pairing mode pairs by itself (Pairing…, then Connected; Couldn't connect has Try again). Only controllers are paired, never keyboards or headsets. A PC without Bluetooth says to plug in a controller with a cable. It stops looking when you leave the first screen, and Let's go always works (needs testing on a device)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

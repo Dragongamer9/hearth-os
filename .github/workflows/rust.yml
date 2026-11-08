@@ -63,6 +63,18 @@ jobs:
         run: |
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
           node ui-check.js
+      # The USB installer's page (ui/installer.html, tools/installer-check.py): the Welcome screen's Controllers card
+      # with the pretend PC, leaving Welcome stops the search, no Bluetooth and Try again. Its picture: installer-welcome.
+      - name: Check the installer's page
+        run: |
+          pip install -q playwright==1.48.0 >/dev/null && python3 -m playwright install chromium >/dev/null
+          python3 tools/installer-check.py installer-welcome.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-welcome
+          path: installer-welcome.png
+          if-no-files-found: ignore
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
