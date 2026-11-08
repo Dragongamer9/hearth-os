@@ -669,7 +669,7 @@ jobs:
           ipc tasks tab settings; sleep 2; grim $T/11-settings.png || true
           ipc tasks tab processes; sleep 2
           # its own CPU use over 10 s on Processes at Normal (the owner's target: under ~2 % on an i3-N305)
-          sp=$(pgrep -f "hearth-tasks serve" | head -1)
+          sp=$(pgrep -f "hearth-tasks serve" 2>/dev/null | head -1 || true)
           if [ -n "$sp" ]; then
             a=$(awk '{print $14+$15}' /proc/$sp/stat); sleep 10; b=$(awk '{print $14+$15}' /proc/$sp/stat)
             echo "::notice title=Task Manager::its sampler used $(( (b - a) * 100 / (10 * $(getconf CLK_TCK)) ))% of one core over 10 s on Processes at Normal ($(nproc) cores here)"

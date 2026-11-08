@@ -695,7 +695,7 @@ FocusScope {
                 color: search.activeFocus ? Theme.bg2 : Theme.panel2
                 border.width: search.activeFocus ? 2 : 1
                 border.color: search.activeFocus ? Theme.accent : Theme.line
-                Icon { id: searchIcon; anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }; name: "search"; size: 15; color: Theme.muted }
+                Icon { id: searchIcon; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; color: Theme.muted }
                 TextInput {
                     id: search
                     anchors { left: searchIcon.right; right: clearSearch.left; leftMargin: 8; rightMargin: 6; verticalCenter: parent.verticalCenter }
@@ -1670,7 +1670,7 @@ FocusScope {
         border.width: focusRing ? 2 : 0
         border.color: Theme.accent
         Rectangle { visible: ri.lit; width: 3; height: 16; radius: 1.5; color: Theme.accent; anchors { left: parent.left; leftMargin: 1; verticalCenter: parent.verticalCenter } }
-        Icon { id: riIcon; anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }; name: ri.icon; size: 17; color: ri.lit ? Theme.accent : Theme.text }
+        Icon { id: riIcon; anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter; name: ri.icon; size: 17; color: ri.lit ? Theme.accent : Theme.text }
         Text {
             anchors { left: riIcon.right; leftMargin: 14; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
             visible: !ri.folded && ri.label !== ""
@@ -1894,7 +1894,7 @@ FocusScope {
                                 elide: Text.ElideRight
                             }
                         }
-                        Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: 8; bottomMargin: 8 }; width: 1; color: Theme.line; visible: hc.index > 0 }
+                        Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 8; anchors.bottomMargin: 8; width: 1; color: Theme.line; visible: hc.index > 0 }
                         MouseArea { id: hcMouse; anchors.fill: parent; hoverEnabled: true; onClicked: dt.sortClicked(hc.modelData.key) }
                         // dragging a column's left edge makes it wider or narrower (remembered)
                         MouseArea {
@@ -1921,7 +1921,7 @@ FocusScope {
                     }
                 }
             }
-            Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }; height: 1; color: Theme.line }
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: Theme.line }
         }
 
         ListView {
@@ -2076,7 +2076,7 @@ FocusScope {
                         }
                     }
                 }
-                Rectangle { visible: !row.section; anchors { left: parent.left; right: parent.right; bottom: parent.bottom }; height: 1; color: Qt.rgba(Theme.line.r, Theme.line.g, Theme.line.b, 0.5) }
+                Rectangle { visible: !row.section; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: Qt.rgba(Theme.line.r, Theme.line.g, Theme.line.b, 0.5) }
                 MouseArea {
                     id: rowMouse
                     anchors.fill: parent
