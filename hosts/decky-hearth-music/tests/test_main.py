@@ -17,6 +17,7 @@ import time
 import types
 import unittest
 import urllib.error
+import urllib.parse
 
 HERE = pathlib.Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[1]
@@ -605,10 +606,30 @@ class Backend(unittest.TestCase):
         self.assertEqual(json.load(open(path)).get('deezer'), False)
         self.assertTrue(run(p.set_settings({'deezer': True}))['deezer'])
 
-    def test_never_youtube(self):
-        src = open(HERE / 'main.py').read().lower() + ''.join(open(f).read().lower() for f in (HERE / 'src').glob('*.ts*'))
-        for bad in ('youtube.com', 'ytimg', 'youtubei', 'youtu.be', 'googlevideo', 'yt-dlp', 'youtube-dl', 'ytdl', 'pytube', 'invidious', 'piped.video', 'pipedapi'):
+    def test_youtube_only_through_the_official_embed_and_api(self):
+        """YouTube only through its official embed (the mini player) and the Data API's search: never a downloader,
+        Invidious/Piped, YouTube's internal API, its media servers, or anything that saves or extracts media."""
+        import re
+        files = [HERE / 'main.py'] + sorted((HERE / 'src').glob('*.ts*'))
+        src = ''.join(open(f).read().lower() for f in files)
+        for bad in ('yt-dlp', 'yt_dlp', 'youtube-dl', 'youtube_dl', 'ytdl', 'pytube', 'pafy', 'youtubei', 'googlevideo',
+                    'videoplayback', 'get_video_info', 'ytinitialplayerresponse', 'player_response', 'invidious',
+                    'piped.video', 'pipedapi', 'piped.kavin', 'newpipe', 'ytmusicapi', 'iframe_api', 'adblock'):
             self.assertNotIn(bad, src, bad)
+        hosts = set()
+        for f in files:
+            for h in re.findall(r'https?://([a-z0-9.-]+)', open(f).read().lower()):
+                if 'youtu' in h or 'google' in h:
+                    hosts.add(h)
+        self.assertLessEqual(hosts, {'www.youtube-nocookie.com', 'www.youtube.com', 'www.googleapis.com'}, hosts)
+        # The only YouTube address the backend ever asks is the Data API; the embed is the frontend's.
+        main = open(HERE / 'main.py').read()
+        self.assertIn("YT_API = 'https://www.googleapis.com/youtube/v3'", main)
+        self.assertNotIn('youtube-nocookie.com/embed', main.replace('www.youtube-nocookie.com/embed/<id>', ''))
+        video = open(HERE / 'src/video.tsx').read()
+        self.assertIn('https://www.youtube-nocookie.com', open(HERE / 'src/model.ts').read())
+        for bad in ('fetch(', 'XMLHttpRequest', 'new Audio', 'MediaRecorder', 'captureStream', 'createMediaElementSource', 'localStorage', 'caches.'):
+            self.assertNotIn(bad, video, bad)
 
     def test_plugin_json_and_version(self):
         with open(HERE / 'plugin.json') as f:
@@ -886,6 +907,315 @@ class Review(unittest.TestCase):
         st = self.m.scan_status()
         self.assertTrue(st['cancelled'])
         self.assertEqual(st['done'], 12, 'how far it got')
+
+
+FAKE_KEY = 'AIzaTESTfakeKEY0000000000000000000000'   # a made-up key: tests never see a real one
+VID = 'dQw4w9WgXcQ'
+
+
+def yv(vid, title, channel='Some Channel', desc=''):
+    """A video as the backend keeps search results ({'id', 'title', 'channel', 'description'})."""
+    return {'id': vid, 'title': title, 'channel': channel, 'description': desc}
+
+
+def yt_item(vid, title, channel='Some Channel', desc=''):
+    """A search.list item in the Data API's own shape (HTML entities as YouTube sends them)."""
+    return {'kind': 'youtube#searchResult', 'id': {'kind': 'youtube#video', 'videoId': vid},
+            'snippet': {'title': title, 'channelTitle': channel, 'description': desc}}
+
+
+def http_error(url, code, reason=''):
+    import io
+    body = json.dumps({'error': {'code': code, 'message': reason, 'errors': [{'reason': reason}]}}).encode()
+    return urllib.error.HTTPError(url, code, reason, {}, io.BytesIO(body))
+
+
+class YouTube(unittest.TestCase):
+    """The YouTube mini player's backend: the person's key, link parsing, the official search with made-up answers,
+    scoring by the plugin's own rules, quota, the cache, the order of sources and the settings."""
+    setUp = Backend.setUp
+    tearDown = Backend.tearDown
+
+    def api(self, answers):
+        """Stands in for googleapis.com: each request is recorded; ANSWERS (a function of the request's address) gives a
+        dict to answer or an exception to raise. Anything not to www.googleapis.com/youtube/v3 fails the test."""
+        self.asked = []
+
+        def fake(req, timeout=None):
+            url = req.full_url
+            self.asked.append(url)
+            u = urllib.parse.urlparse(url)
+            assert u.scheme == 'https' and u.hostname == 'www.googleapis.com' and u.path.startswith('/youtube/v3/'), url
+            a = answers(url)
+            if isinstance(a, Exception):
+                raise a
+            return Resp(a)
+        self.m._urlopen = fake
+        self.m._yt_calls.clear()
+
+    def test_links_are_parsed(self):
+        ok = ['https://www.youtube.com/watch?v=%s' % VID, 'youtube.com/watch?feature=share&v=%s&t=42' % VID,
+              'https://youtu.be/%s?si=abc' % VID, 'https://m.youtube.com/watch?v=%s' % VID,
+              'https://www.youtube.com/shorts/%s' % VID, 'https://music.youtube.com/watch?v=%s&list=x' % VID,
+              'https://www.youtube-nocookie.com/embed/%s' % VID, '  https://youtube.com/live/%s  ' % VID]
+        for link in ok:
+            self.assertEqual(self.m.youtube_id(link), VID, link)
+        for bad in ('', 'hello', 'https://www.youtube.com/watch?v=short', 'https://evil.example/watch?v=%s' % VID,
+                    'https://youtube.com.evil.example/watch?v=%s' % VID, 'https://www.youtube.com/channel/UC123',
+                    'javascript:alert(1)//youtu.be/%s' % VID):
+            self.assertIsNone(self.m.youtube_id(bad), bad)
+        self.assertEqual(self.m.youtube_watch(VID), 'https://www.youtube.com/watch?v=%s' % VID)
+        self.assertEqual(self.m.youtube_watch('bad'), '')
+
+    def test_key_is_kept_0600_never_logged_never_handed_out(self):
+        lines = []
+        self.m.decky.logger = types.SimpleNamespace(info=lambda msg: lines.append(msg))
+        p = self.m.Plugin()
+        run = lambda c: asyncio.new_event_loop().run_until_complete(c)
+        self.assertFalse(run(p.youtube_status())['key'])
+        st = run(p.set_youtube_key(FAKE_KEY))
+        self.assertTrue(st['saved'] and st['key'])
+        path = self.m.youtube_key_file()
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        self.assertEqual(os.path.dirname(path), self.m.settings_dir(), "only the plugin's own settings folder")
+        run(p.set_youtube_key(FAKE_KEY[:-1] + 'X'))
+        self.assertEqual(os.stat(path + '.bak').st_mode & 0o777, 0o600, 'the .bak too')
+        self.assertEqual(self.m.youtube_key(), FAKE_KEY[:-1] + 'X')
+        self.assertFalse(run(p.set_youtube_key('not a key!'))['saved'], 'not shaped like a key: nothing changes')
+        self.assertEqual(self.m.youtube_key(), FAKE_KEY[:-1] + 'X')
+        # Never in settings.json (Hearth Link syncs keys of that file), never in what the frontend gets.
+        run(p.set_settings({'volume': 0.5}))
+        everything = json.dumps([run(p.get_settings()), run(p.youtube_status()), run(p.set_youtube_key(FAKE_KEY))])
+        self.assertNotIn('AIza', everything)
+        self.assertNotIn('AIza', open(os.path.join(self.m.settings_dir(), 'settings.json')).read())
+        # Never in the log, whatever reaches it.
+        self.api(lambda url: http_error(url, 500, 'backendError'))
+        with self.assertRaises(ValueError):
+            self.m._youtube_get('Hades main theme OST', budget=self.m.YT_DAILY)
+        run(p.report('play failed: https://www.googleapis.com/youtube/v3/search?q=x&key=%s' % FAKE_KEY))
+        self.m.log('oops %s' % FAKE_KEY)
+        self.assertTrue(lines)
+        self.assertFalse([ln for ln in lines if FAKE_KEY in ln or 'AIza' in ln], lines)
+        self.assertTrue(self.asked and all('key=' in u for u in self.asked), 'the key goes only to googleapis.com')
+        # Forgotten: the file and its .bak are gone.
+        self.assertTrue(run(p.set_youtube_key(''))['saved'])
+        self.assertFalse(os.path.exists(path) or os.path.exists(path + '.bak'))
+        self.assertFalse(run(p.youtube_status())['key'])
+
+    def test_search_asks_only_the_official_api_for_embeddable_videos(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        self.api(lambda url: {'items': [yt_item(VID, 'Hades - Main Theme &amp; Title &#39;OST&#39;', 'Supergiant Games')]})
+        res = self.m._youtube_get('Hades main theme OST', now=1_800_000_000)
+        self.assertEqual(res[0], {'id': VID, 'title': "Hades - Main Theme & Title 'OST'", 'channel': 'Supergiant Games', 'description': ''})
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.asked[0]).query)
+        self.assertEqual(urllib.parse.urlparse(self.asked[0]).path, '/youtube/v3/search')
+        self.assertEqual((q['part'], q['type'], q['videoEmbeddable'], q['q'], q['key']),
+                         (['snippet'], ['video'], ['true'], ['Hades main theme OST'], [FAKE_KEY]))
+        self.assertEqual(self.m.youtube_status(now=1_800_000_000)['used'], 100, 'a search costs 100 units')
+
+    def test_scoring_uses_the_plugins_own_rules(self):
+        f = self.m.match_forms
+        sc = lambda title, v: self.m.youtube_score(v, f(title))
+        ok = [('Hades', yv(VID, 'Hades OST - Main Theme', 'Supergiant Games')),
+              ('Hades', yv(VID, 'Hades - Main Theme', 'Darren Korb - Topic')),
+              ('Hollow Knight', yv(VID, 'Hollow Knight - Main Theme')),
+              ('Hollow Knight', yv(VID, 'Hollow Knight OST - Main Theme')),
+              ('Hollow Knight', yv(VID, 'Hollow Knight (Original Soundtrack) - Dirtmouth', 'Christopher Larkin')),
+              ('The Witcher® 3: Wild Hunt - Game of the Year Edition', yv(VID, 'The Witcher 3: Wild Hunt OST - Main Theme')),
+              ('Hades', yv(VID, 'No Escape', 'Darren Korb - Topic', 'Provided to YouTube by Supergiant Games No Escape · Darren Korb Hades (Original Soundtrack) ℗ 2020')),
+              ('Celeste', yv(VID, 'Celeste Original Soundtrack - First Steps', 'Lena Raine'))]
+        for title, v in ok:
+            self.assertGreaterEqual(sc(title, v), self.m.YT_MIN, (title, v['title']))
+        bad = [('Hades', yv(VID, 'Hades II - Main Theme')),                                  # the sequel
+               ('Hollow Knight', yv(VID, 'Hollow Knight Silksong OST - Main Theme')),       # another game
+               ('Control Ultimate Edition', yv(VID, 'Halsey - Control')),                   # a pop song
+               ('Control Ultimate Edition', yv(VID, 'Control - Main Theme')),               # one word, no soundtrack word
+               ('Hades', yv(VID, 'Hades Main Theme (Piano Cover)')),                        # BAD
+               ('Hades', yv(VID, 'Hades - Main Theme | Epic Version')),
+               ('Hades', yv(VID, 'Hades OST Main Theme - 10 Hours')),                       # YT_BAD
+               ('Hades', yv(VID, 'Hades - Official Launch Trailer')),
+               ('Hades', yv(VID, 'Hades Gameplay Walkthrough Part 1')),
+               ('Hades', yv(VID, 'Hades')),                                                 # only the title
+               ('Hades', yv(VID, 'Top 10 Video Game Themes - Hades Main Theme')),          # COMPILATION
+               ('Inside', yv(VID, 'Inside Out (Original Motion Picture Soundtrack) - Bundle of Joy')),   # FILM
+               ('Hades', yv(VID, 'Hades Theme', 'The Piano Guys')),
+               ('Hades', yv(VID, 'No Escape', 'Darren Korb - Topic', 'Provided to YouTube by X No Escape · Darren Korb Hades II (Original Soundtrack)')),
+               ('Hades', yv('bad id', 'Hades - Main Theme'))]
+        for title, v in bad:
+            self.assertEqual(sc(title, v), 0, (title, v['title'], v['channel']))
+        # Official channels win over others of the same video title.
+        best = self.m.youtube_best([yv('aaaaaaaaaaa', 'Hades OST - Main Theme', 'GameMusicFan'),
+                                    yv('bbbbbbbbbbb', 'Hades OST - Main Theme', 'Supergiant Games - Topic')], f('Hades'))
+        self.assertEqual(best['id'], 'bbbbbbbbbbb')
+        self.assertIsNone(self.m.youtube_best([yv(VID, 'Hades II - Main Theme')], f('Hades')))
+
+    def test_order_of_sources_youtube_last(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        calls = []
+
+        def yt(term):
+            calls.append(term)
+            return [yv(VID, 'Hades OST - Main Theme', 'Supergiant Games')]
+        apple_hit = lambda t: [it('Hades', 'Hades (Original Soundtrack)', 'Darren Korb')]
+        nothing = lambda t: []
+        s = self.m.find_song('1145360', 'Hades', [], get=apple_hit, deezer_get=nothing, youtube=True, yt_get=yt)
+        self.assertEqual((s['source'], calls), ('apple', []), 'Apple first: YouTube never asked')
+        os.remove(os.path.join(self.m.cache_dir(), 'lookups.json'))
+        s = self.m.find_song('1145360', 'Hades', [], get=nothing, deezer_get=lambda t: dzr(dz('Hades', 'Hades (Original Soundtrack)'))(self.m),
+                             youtube=True, yt_get=yt, deezer_track=lambda tid: {'preview': DZ_URL % 2000000000})
+        self.assertEqual((s['source'], calls), ('deezer', []), 'then Deezer')
+        os.remove(os.path.join(self.m.cache_dir(), 'lookups.json'))
+        s = self.m.find_song('1145360', 'Hades', [], get=nothing, deezer_get=nothing, youtube=True, yt_get=yt)
+        self.assertEqual((s['source'], s['youtube'], s['key'], s['from']), ('youtube', VID, 'yt:' + VID, 'youtube'))
+        self.assertEqual(calls, ['Hades main theme OST'], 'one search when it found the theme')
+        self.assertNotIn('url', s, 'no media address: YouTube\'s own player plays it')
+        self.assertEqual(s['link'], 'https://www.youtube.com/watch?v=%s' % VID)
+        # The game's soundtrack and a pick win over it.
+        write(os.path.join(self.steam, 'steamapps/music/Hades Soundtrack/01 Main Theme.ogg'), b'o' * 10)
+        self.assertEqual(self.m.find_song('1145360', 'Hades', [], youtube=True, yt_get=yt)['source'], 'soundtrack')
+        shutil.rmtree(os.path.join(self.steam, 'steamapps/music'))
+        mine = os.path.join(self.home, 'Music/mine.mp3')
+        write(mine, b'm')
+        self.m.set_pick('app', '1145360', mine)
+        self.assertEqual(self.m.find_song('1145360', 'Hades', [], youtube=True, yt_get=yt)['source'], 'pick')
+        self.m.set_pick('app', '1145360', '')
+        # The switch off: the kept video isn't played, and nothing is searched.
+        n = len(calls)
+        s = self.m.find_song('1145360', 'Hades', [], online=False, deezer=False, youtube=False, yt_get=yt)
+        self.assertIsNone(s['source'])
+        self.assertEqual(len(calls), n)
+
+    def test_video_ids_are_cached_and_no_media_is_ever_written(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        self.api(lambda url: {'items': [yt_item(VID, 'Hades OST - Main Theme', 'Supergiant Games')]})
+        nothing = lambda t: []
+        s = self.m.find_song('1145360', 'Hades', [], get=nothing, deezer_get=nothing, youtube=True)
+        self.assertEqual(s['youtube'], VID)
+        self.assertEqual(len(self.asked), 1)
+        kept = json.load(open(os.path.join(self.m.cache_dir(), 'lookups.json')))['hades']
+        self.assertEqual((kept['match']['source'], kept['match']['id'], kept['tried']), ('youtube', VID, ['apple', 'deezer', 'youtube']))
+        again = self.m.find_song('1145360', 'Hades', [], get=None, deezer_get=None, youtube=True)
+        self.assertEqual((again['youtube'], len(self.asked)), (VID, 1), 'from lookups.json: no second search')
+        self.assertIsNone(self.m.audio('yt:' + VID), 'nothing of YouTube passes through the backend')
+        made = files_under(self.tmp)
+        self.assertFalse([f for f in made if not f.endswith(('.json', '.bak', '.lock')) and '/home/' not in f.replace(self.home, '/home/')], made)
+        self.assertFalse([f for f in made if f.endswith(('.mp4', '.webm', '.m4a', '.ogg', '.opus', '.mp3'))])
+        # Without a key the kept video still plays (an id is not media), and nothing is searched.
+        self.m.set_youtube_key('')
+        self.assertEqual(self.m.find_song('1145360', 'Hades', [], youtube=True)['youtube'], VID)
+        self.assertEqual(len(self.asked), 1)
+
+    def test_quota_stops_youtube_for_the_day_and_the_scan_goes_on(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        self.api(lambda url: http_error(url, 403, 'quotaExceeded'))
+        apple = []
+        nothing = lambda t: (apple.append(t), [])[1]
+        r = self.m.lookup('Hades', get=nothing, deezer=nothing, youtube=self.m.youtube_search_now(), youtube_on=True)
+        self.assertEqual(r, {'match': None})
+        self.assertEqual(self.m.youtube_ready(), 'quota', 'stopped until midnight Pacific time')
+        self.assertIsNone(self.m.youtube_search_now())
+        st = self.m._yt_state()
+        self.assertGreater(st['until'], time.time())
+        self.assertLess(st['until'], time.time() + 86400 + 3600)
+        kept = json.load(open(os.path.join(self.m.cache_dir(), 'lookups.json')))['hades']
+        self.assertEqual(kept['tried'], ['apple', 'deezer'], 'YouTube not counted as asked: asked another day')
+        # The scan meanwhile: it doesn't wait for YouTube, it goes on through the library.
+        n = len(self.asked)
+        done = self.m.scan_library([{'appid': '1145360', 'title': 'Hades'}, {'appid': '504230', 'title': 'Celeste'}],
+                                   settings={'youtube': True}, get=nothing, deezer=nothing, sleep=lambda s: None)
+        self.assertEqual((done['done'], len(self.asked)), (2, n))
+        # The next day: YouTube only, Apple and Deezer aren't asked again for their recent "no match".
+        self.m._yt_state_update(lambda s: s.update(until=0))
+        self.api(lambda url: {'items': [yt_item(VID, 'Hades OST - Main Theme', 'Supergiant Games')]})
+        before = len(apple)
+        done = self.m.scan_library([{'appid': '1145360', 'title': 'Hades'}], settings={'youtube': True}, get=nothing,
+                                   deezer=nothing, sleep=lambda s: None)
+        self.assertEqual((done['matched'], len(apple)), (1, before))
+        self.assertEqual(len(self.asked), 1)
+
+    def test_automatic_searches_leave_quota_for_the_panel(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        now = time.time()
+        day, _ = self.m._pacific_day(now)
+        self.m._yt_state_update(lambda s: s.update(day=day, units=self.m.YT_AUTO_BUDGET - 50))
+        self.assertEqual(self.m.youtube_ready(now=now), 'quota', 'the scan and highlighted games stop at 8,000')
+        self.assertEqual(self.m.youtube_ready(self.m.YT_DAILY, now=now), '', '"Choose music..." still can')
+        self.m._yt_state_update(lambda s: s.update(day='2000-01-01'))
+        self.assertEqual(self.m.youtube_ready(now=now), '', 'a new day starts at 0')
+
+    def test_a_refused_key_stops_until_a_new_one(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        self.api(lambda url: http_error(url, 400, 'keyInvalid'))
+        self.assertIsNone(self.m._youtube_get('x'))
+        self.assertEqual(self.m.youtube_status()['state'], 'bad_key')
+        self.assertIsNone(self.m.youtube_search_now())
+        self.m.set_youtube_key(FAKE_KEY[:-1] + 'Y')
+        self.assertEqual(self.m.youtube_status()['state'], 'ok')
+        self.api(lambda url: http_error(url, 429, 'rateLimitExceeded'))
+        self.assertIsNone(self.m._youtube_get('x'))
+        self.assertEqual(self.m.youtube_ready(), 'slow', 'asked to slow down: backs off like Apple and Deezer')
+
+    def test_a_pasted_link_works_without_a_key_and_stays_the_pick(self):
+        r = self.m.search_music('https://youtu.be/%s' % VID, youtube=True)
+        self.assertEqual([(c['choice'], c['from']) for c in r['results']], [('youtube:' + VID, 'youtube')])
+        self.assertEqual(self.net, [], 'no key: nothing asked')
+        self.assertEqual(self.m.choice_preview('youtube:' + VID), {'key': 'yt:' + VID, 'youtube': VID})
+        self.assertTrue(self.m.choose_music('1145360', 'youtube:' + VID))
+        pick = json.load(open(os.path.join(self.m.settings_dir(), 'picks.json')))['app:1145360']
+        self.assertEqual((pick['source'], pick['id'], pick['link']), ('youtube', VID, 'https://www.youtube.com/watch?v=%s' % VID))
+        apple = lambda t: [it('Hades', 'Hades (Original Soundtrack)', 'Darren Korb')]
+        s = self.m.find_song('1145360', 'Hades', [], get=apple, youtube=True)
+        self.assertEqual((s['source'], s['youtube'], s['from']), ('pick', VID, 'youtube'), 'picks always win')
+        self.m.scan_library([{'appid': '1145360', 'title': 'Hades'}], settings={}, get=apple, deezer=lambda t: [], sleep=lambda s: None, recheck=True)
+        self.assertEqual(json.load(open(os.path.join(self.m.settings_dir(), 'picks.json')))['app:1145360']['id'], VID, 'no scan changes it')
+        s = self.m.find_song('1145360', 'Hades', [], get=apple, youtube=False)
+        self.assertEqual((s['source'], s['why']), (None, 'your pick: the YouTube mini player is off'))
+        self.assertEqual(self.m.review([{'appid': '1145360', 'title': 'Hades', 'shortcut': True}])[0]['song']['from'], 'youtube')
+        # The mini player off: a link isn't taken.
+        self.assertEqual(self.m.search_music('https://youtu.be/%s' % VID, youtube=False)['results'], [])
+        # With a key: its names asked for (1 unit), and a video its owner keeps on YouTube is refused.
+        self.m.set_youtube_key(FAKE_KEY)
+        self.api(lambda url: {'items': [{'id': VID, 'snippet': {'title': 'Hades OST', 'channelTitle': 'X'}, 'status': {'embeddable': False}}]})
+        r = self.m.search_music('youtube.com/watch?v=%s' % VID, youtube=True)
+        self.assertEqual(r['results'], [])
+        self.assertIn('outside YouTube', r['note'])
+        self.assertEqual(urllib.parse.urlparse(self.asked[0]).path, '/youtube/v3/videos')
+
+    def test_choose_music_searches_youtube_with_a_key(self):
+        self.m.set_youtube_key(FAKE_KEY)
+        self.api(lambda url: {'items': [yt_item('aaaaaaaaaaa', 'Hades II - Main Theme'), yt_item('bbbbbbbbbbb', 'Hades OST - Main Theme', 'Supergiant Games')]})
+        r = self.m.search_music('Hades', apple=False, deezer=False, youtube=True)
+        self.assertEqual([c['choice'] for c in r['results']], ['youtube:bbbbbbbbbbb', 'youtube:aaaaaaaaaaa'], 'the surest first')
+        self.api(lambda url: http_error(url, 403, 'quotaExceeded'))
+        self.m._yt_state_update(lambda s: s.pop('until', None))
+        self.assertEqual(self.m.search_music('Celeste', apple=False, deezer=False, youtube=True)['later'], ['youtube'])
+
+    def test_kept_videos_must_still_fit_and_old_answers_stay(self):
+        good = {'source': 'youtube', 'id': VID, 'track': 'Hades OST - Main Theme', 'artist': 'Supergiant Games', 'album': ''}
+        self.assertTrue(self.m.still_fits(good, 'Hades'))
+        self.assertFalse(self.m.still_fits(dict(good, track='Hades II OST - Main Theme'), 'Hades'))
+        # Apple's and Deezer's kept answers are untouched by the mini player (the matcher's version is the same).
+        self.assertEqual(self.m.MATCHER, 2)
+
+    def test_the_new_setting_never_changes_existing_ones(self):
+        p = self.m.Plugin()
+        run = lambda c: asyncio.new_event_loop().run_until_complete(c)
+        path = os.path.join(self.m.settings_dir(), 'settings.json')
+        write(path, json.dumps({'enabled': False, 'online': False, 'volume': 0.8, 'someday': 1}))
+        before = open(path).read()
+        got = run(p.get_settings())
+        self.assertTrue(got['youtube'], 'on by default')
+        self.assertEqual((got['enabled'], got['online'], got['deezer'], got['volume']), (False, False, False, 0.8))
+        self.assertEqual(open(path).read(), before, 'reading never writes')
+        run(p.set_settings({'youtube': False}))
+        self.assertEqual(json.load(open(path)), {'enabled': False, 'online': False, 'volume': 0.8, 'someday': 1, 'youtube': False},
+                         'merge-on-write: only the key changed')
+        run(p.set_settings({'volume': 0.5}))
+        self.assertFalse(run(p.get_settings())['youtube'], 'remembered')
+        self.assertTrue(os.path.isfile(path + '.bak'))
+        with open(path, 'w') as f:
+            f.write('{broken')
+        self.assertFalse(run(p.get_settings())['youtube'], 'a damaged file comes back from the .bak')
 
 
 class Shipping(unittest.TestCase):

@@ -1,15 +1,18 @@
 // Hearth Music (docs/HEARTH-MUSIC.md): plays the theme song of the game you're looking at in Steam Game Mode's
 // library, crossfades between games, fades out when you press Play and stays silent while a game runs. The song is
 // one you picked (a file, or one found with "Choose music…"), the game's own soundtrack, or Apple Music's or
-// Deezer's official 30-second preview (credited here). Never YouTube. Nothing of Steam's screens is changed.
+// Deezer's official 30-second preview (credited here), or else a YouTube video in YouTube's own small visible player
+// (video.tsx: the official embed, streamed, never downloaded). Nothing of Steam's screens is changed; the mini player
+// is drawn over them in a corner while that game's song plays.
 import { ButtonItem, DialogButton, Focusable, Navigation, PanelSection, PanelSectionRow, SliderField, TextField, ToggleField, staticClasses } from "@decky/ui";
-import { FileSelectionType, callable, definePlugin, openFilePicker } from "@decky/api";
+import { FileSelectionType, callable, definePlugin, openFilePicker, routerHook } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaMusic } from "react-icons/fa";
-import { Choice, ReviewRow, Scan, choiceLine, credit, grouped, nowLine, openLabel, reviewLine, scanLines, silentWhy } from "./model";
+import { Choice, ReviewRow, Scan, YouTubeStatus, choiceLine, credit, grouped, nowLine, openLabel, reviewLine, scanLines, silentWhy, youtubeLine } from "./model";
+import { MiniPlayer } from "./video";
 import { HearthOnly, hearthOs } from "./hearth-only";
 import { State, begin, chooseMusic, cleanTitle, forgetSongs, noMusic, onChange, preview, refresh, reviewList, scanAll, scanCancel, scanStatus,
-  searchMusic, setPick, state, stopPreview, updateSettings } from "./music";
+  scan, searchMusic, setPick, setYoutubeKey, state, stopPreview, updateSettings, youtubeStatus } from "./music";
 
 const getHome = callable<[], string>("get_home");
 const EXTS = ["mp3", "ogg", "opus", "flac", "m4a", "aac", "wav"];
@@ -53,8 +56,8 @@ function Chooser({ appid, title, query, done }: { appid: number; title: string; 
     setNote("Searching…");
     const r = await searchMusic(query).catch(() => null);
     setRes(r?.results || []);
-    const later = (r?.later || []).map((x) => (x === "apple" ? "Apple Music" : "Deezer")).join(" and ");
-    setNote(!r ? "Couldn't search right now." : later ? `${later} couldn't be asked right now; try again in a minute.` : r.results.length ? "" : "Nothing found: try other words.");
+    const later = (r?.later || []).map((x) => (x === "apple" ? "Apple Music" : x === "youtube" ? "YouTube" : "Deezer")).join(" and ");
+    setNote(!r ? "Couldn't search right now." : r.note ? r.note : later ? `${later} couldn't be asked right now; try again later.` : r.results.length ? "" : "Nothing found: try other words.");
   };
   useEffect(() => {
     if (query !== undefined) { if (query) go(query); return; }
@@ -69,7 +72,7 @@ function Chooser({ appid, title, query, done }: { appid: number; title: string; 
   return (
     <>
       <PanelSectionRow>
-        <TextField label="Search" value={q} onChange={(e: any) => setQ(String(e?.target?.value ?? ""))} />
+        <TextField label="Search" {...({ description: "Words to search for, or a YouTube link to use that video" } as any)} value={q} onChange={(e: any) => setQ(String(e?.target?.value ?? ""))} />
       </PanelSectionRow>
       <PanelSectionRow><ButtonItem layout="below" onClick={() => go(q)}>Search</ButtonItem></PanelSectionRow>
       {note && <PanelSectionRow><div className={staticClasses.Text} style={{ fontSize: 12 }}>{note}</div></PanelSectionRow>}
@@ -116,7 +119,7 @@ function Fix({ row, done }: { row: ReviewRow; done: (msg: string) => void }) {
       <Row top="Now" line={reviewLine(row)}>{row.song && row.song.from !== "none" ? <Hear id={"game:" + row.appid} what={{ appid, title: row.title }} /> : null}</Row>
       {choosing ? <Chooser appid={appid} title={row.title} query={row.query} done={(m) => { setChoosing(false); if (m) { forgetSongs(); done(m); } }} /> : <>
         <PanelSectionRow><ButtonItem layout="below" onClick={() => setChoosing(true)}
-          description="Search Apple Music, Deezer and your soundtracks, hear them, and keep the right one">Choose music…</ButtonItem></PanelSectionRow>
+          description="Search Apple Music, Deezer, YouTube and your soundtracks (or paste a YouTube link), hear them, and keep the right one">Choose music…</ButtonItem></PanelSectionRow>
         {!(row.group === "pick" && row.song?.from === "none") && <PanelSectionRow>
           <ButtonItem layout="below" onClick={none} description="Kept as your pick: this game stays silent">No music for this game</ButtonItem></PanelSectionRow>}
         {row.group === "pick" && <PanelSectionRow>
@@ -154,6 +157,32 @@ function Review({ sc, setSc, close }: { sc: Scan | null; setSc: (s: Scan) => voi
             ))}
           </PanelSection>
         ))}
+    </>
+  );
+}
+
+/** The optional YouTube API key: pasted in once, kept by the backend (never shown again, never synced or logged). */
+function YouTubeKey() {
+  const [yt, setYt] = useState<YouTubeStatus | null>(null);
+  const [key, setKey] = useState("");
+  const [note, setNote] = useState("");
+  useEffect(() => { youtubeStatus().then(setYt).catch(() => {}); }, []);
+  const save = async (k: string) => {
+    const r = await setYoutubeKey(k).catch(() => null);
+    setKey("");
+    if (r) setYt(r);
+    setNote(!r || !r.saved ? "That doesn't look like a YouTube API key." : k ? "" : "Key removed.");
+    if (r?.saved && k) scan(false).catch(() => {});
+  };
+  return (
+    <>
+      <PanelSectionRow>
+        <TextField label="YouTube API key (optional)" value={key} onChange={(e: any) => setKey(String(e?.target?.value ?? ""))}
+          {...({ bIsPassword: true, description: "Your own YouTube Data API v3 key from Google Cloud: games with no other song are then searched on YouTube" } as any)} />
+      </PanelSectionRow>
+      {key && <PanelSectionRow><ButtonItem layout="below" onClick={() => save(key.trim())}>Save key</ButtonItem></PanelSectionRow>}
+      <PanelSectionRow><div className={staticClasses.Text} style={small}>{note || youtubeLine(yt)}</div></PanelSectionRow>
+      {yt?.key && !key && <PanelSectionRow><ButtonItem layout="below" onClick={() => save("")}>Remove key</ButtonItem></PanelSectionRow>}
     </>
   );
 }
@@ -224,6 +253,11 @@ function Panel() {
             checked={st.deezer} disabled={!st.enabled} onChange={(v: boolean) => updateSettings({ deezer: v })} />
         </PanelSectionRow>
         <PanelSectionRow>
+          <ToggleField label="YouTube mini player" description="When nothing else has the game's song: a small YouTube video (YouTube's own player, streamed, never downloaded) plays in the bottom-left corner while you browse"
+            checked={st.youtube} disabled={!st.enabled} onChange={(v: boolean) => updateSettings({ youtube: v })} />
+        </PanelSectionRow>
+        {st.youtube && <YouTubeKey />}
+        <PanelSectionRow>
           <ToggleField label="Now playing note" description="A short note when a new song starts" checked={st.toast} disabled={!st.enabled}
             onChange={(v: boolean) => updateSettings({ toast: v })} />
         </PanelSectionRow>
@@ -232,7 +266,7 @@ function Panel() {
         {msg && <PanelSectionRow><div className={staticClasses.Text} style={{ fontSize: 12 }}>{msg}</div></PanelSectionRow>}
         {choosing === s.appid ? <Chooser appid={s.appid} title={s.title} done={(m) => { setChoosing(0); setMsg(m); }} /> : <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => { setMsg(""); setChoosing(s.appid); }}
-            description="Search your soundtracks, Apple Music and Deezer; your choice always wins over the automatic song">Choose music…</ButtonItem>
+            description="Search your soundtracks, Apple Music, Deezer and YouTube, or paste a YouTube link; your choice always wins over the automatic song">Choose music…</ButtonItem>
         </PanelSectionRow>}
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => pick("app", String(s.appid), s.title || "this game")} description="An audio file of yours, for this game">Pick a song…</ButtonItem>
@@ -263,12 +297,23 @@ export default definePlugin(() => {
   // Only on Hearth OS (hearth-only.tsx); anywhere else nothing starts.
   let end: () => void = () => {};
   let gone = false;
-  hearthOs().then((ok) => { if (ok && !gone) end = begin(); });
+  let mini = false;
+  hearthOs().then((ok) => {
+    if (!ok || gone) return;
+    // The YouTube mini player, drawn over Steam's pages (guarded: if Decky can't add it, YouTube videos just don't play).
+    try { if (typeof (routerHook as any)?.addGlobalComponent === "function") { (routerHook as any).addGlobalComponent("HearthMusicMiniPlayer", MiniPlayer); mini = true; } }
+    catch { /* not on this Decky */ }
+    end = begin();
+  });
   return {
     name: "Hearth Music",
     titleView: <div className={staticClasses.Title}>Hearth Music</div>,
     content: <HearthOnly name="Hearth Music" what="Your games' soundtracks while you browse your library."><Panel /></HearthOnly>,
     icon: <FaMusic />,
-    onDismount() { gone = true; end(); },
+    onDismount() {
+      gone = true;
+      end();
+      if (mini) { try { (routerHook as any).removeGlobalComponent("HearthMusicMiniPlayer"); } catch { /* gone */ } }
+    },
   };
 });

@@ -2,8 +2,9 @@
 // (model.ts wanted), waits the delay you set, asks the backend for the song and plays it (player.ts). Play pressed:
 // a quick fade out, then silence while the game runs.
 import { callable, toaster } from "@decky/api";
-import { Choice, DEFAULTS, FADE_OUT_PLAY, ReviewRow, Scan, Seen, Settings, Song, cleanSettings, credit, nowLine, wanted } from "./model";
+import { Choice, DEFAULTS, FADE_OUT_PLAY, ReviewRow, Scan, Seen, Settings, Song, YouTubeStatus, cleanSettings, credit, nowLine, wanted } from "./model";
 import { Player } from "./player";
+import { video } from "./video";
 import { collectionsOf, gameTitle, libraryGames, readPath, readRunning, steamMissing, watchFocus, watchPlay } from "./steam";
 
 const findSong = callable<[appid: number, title: string, collections: string[]], Song>("find_song");
@@ -15,12 +16,15 @@ const report = callable<[line: string], void>("report");
 const scanLibrary = callable<[games: { appid: number; title: string; shortcut: boolean }[], force: boolean], boolean>("scan_library");
 const scanPause = callable<[paused: boolean], boolean>("scan_pause");
 export const scanStatus = callable<[], Scan>("scan_status");
-export const searchMusic = callable<[query: string], { results: Choice[]; later: string[] }>("search_music");
+export const searchMusic = callable<[query: string], { results: Choice[]; later: string[]; note?: string }>("search_music");
+export const youtubeStatus = callable<[], YouTubeStatus>("youtube_status");
+/** The person's YouTube API key goes to the backend once (kept there in a 0600 file); it never comes back. */
+export const setYoutubeKey = callable<[key: string], YouTubeStatus>("set_youtube_key");
 export const chooseMusic = callable<[appid: number, choice: string], boolean>("choose_music");
 const scanAllGames = callable<[games: { appid: number; title: string; shortcut: boolean }[]], boolean>("scan_all");
 export const scanCancel = callable<[], boolean>("scan_cancel");
 const reviewGames = callable<[games: { appid: number; title: string; shortcut: boolean }[]], ReviewRow[]>("review");
-const choicePreview = callable<[choice: string], { key: string; url?: string } | null>("choice_preview");
+const choicePreview = callable<[choice: string], { key: string; url?: string; youtube?: string } | null>("choice_preview");
 export const noMusic = callable<[appid: number], boolean>("no_music");
 export const cleanTitle = callable<[title: string], string>("clean_title");
 
@@ -82,7 +86,10 @@ async function start(appid: number, my: number) {
     if (state.preview) return;   // you're hearing a song in the review list: it plays until you stop it
     if (!song?.source || !song.key) { player.stop(); return; }
     if (player.playing() === song.key) return;
-    if (!(await playKey(song.key, song.url, () => my === seq))) return;
+    if (!(await playKey(song.key, song.url, () => my === seq, song.youtube))) {
+      if (song.youtube && my === seq) { state.song = { ...song, source: null, why: "YouTube's player couldn't play it here" }; changed(); }
+      return;
+    }
     if (state.settings.toast && !toasted.has(appid)) {
       toasted.add(appid);
       try { toaster.toast({ title: "Now playing", body: [nowLine(song), credit(song)].filter(Boolean).join("\n"), duration: 4000 } as any); } catch { /* no toasts */ }
@@ -94,7 +101,18 @@ async function start(appid: number, my: number) {
 
 /** Plays a song the backend chose (its key, and an https address to stream when there is one); false when it went
  *  stale (still() turned false) or couldn't be had. */
-async function playKey(key: string, url: string | undefined, still: () => boolean): Promise<boolean> {
+async function playKey(key: string, url: string | undefined, still: () => boolean, youtube?: string): Promise<boolean> {
+  if (youtube) {
+    // YouTube's own player in the mini player (video.tsx): streamed by YouTube, nothing passes through the backend.
+    try { await player.playYoutube(key, youtube); } catch (e: any) {
+      if (still()) {
+        report(`YouTube mini player: ${String(e?.message || e).slice(0, 120)}`).catch(() => {});
+        player.stop(400);   // never the previous game's song over this one
+      }
+      return false;
+    }
+    return still();
+  }
   let streamed = false;
   if (url) {
     // Apple's or Deezer's preview: streamed straight from its address. If Steam's browser refuses it, the backend
@@ -125,17 +143,17 @@ export async function preview(id: string, what: { choice?: string; appid?: numbe
   state.preview = id;
   changed();
   try {
-    let key = "", url: string | undefined;
+    let key = "", url: string | undefined, yt: string | undefined;
     if (what.choice) {
       const c = await choicePreview(what.choice);
-      if (c?.key) { key = c.key; url = c.url; }
+      if (c?.key) { key = c.key; url = c.url; yt = c.youtube; }
     } else if (what.appid) {
       const s = await findSong(what.appid, what.title || gameTitle(what.appid), collectionsOf(what.appid));
-      if (s?.key) { key = s.key; url = s.url; }
+      if (s?.key) { key = s.key; url = s.url; yt = s.youtube; }
     }
     if (my !== previewSeq) return false;
     if (!key) { stopPreview(); return false; }
-    return await playKey(key, url, () => my === previewSeq);
+    return await playKey(key, url, () => my === previewSeq, yt);
   } catch (e) {
     report(`preview failed: ${String((e as any)?.message || e).slice(0, 80)}`).catch(() => {});
     if (my === previewSeq) stopPreview();
@@ -195,6 +213,9 @@ function tick() {
 
 /** Starts the loop; returns the way to stop it. */
 export function begin(): () => void {
+  // YouTube's player stopped with an error after it had started (the video was removed, embedding turned off...):
+  // the mini player closed itself; the log says why.
+  video.onFail = (line) => { report(`YouTube mini player: ${line.slice(0, 120)}`).catch(() => {}); };
   getSettings().then((s) => { state.settings = cleanSettings(s); player.setVolume(state.settings.volume); changed(); }).catch(() => {});
   const onFocus = (id: number) => { state.seen = { ...state.seen, focused: id }; tick(); };
   let offFocus = watchFocus(onFocus);

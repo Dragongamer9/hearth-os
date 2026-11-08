@@ -39,8 +39,8 @@ const css = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:re
 .cap b{text-shadow:0 1px 4px #000}.cap.f{outline:3px solid #fff;transform:scale(1.05)}.note{position:absolute;bottom:10px;left:20px;font-size:11px;color:#67707b}
 .toast{position:absolute;right:24px;bottom:24px;width:360px;display:flex;gap:12px;align-items:center;background:#23262e;border-radius:6px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.6);z-index:9}
 .toast-icon{width:40px;height:40px;border-radius:6px;background:#1a9fff;display:flex;align-items:center;justify-content:center;font-size:22px}.toast-title{font-weight:700;font-size:14px}.toast-body{font-size:12.5px;color:#b8c2cc;white-space:pre-line}`;
-const PAL = { 367520: ["#1c2230", "#9fb3c8"], 1245620: ["#3b2f1a", "#c9a85b"], 413150: ["#2d6a4f", "#95d5b2"], 292030: ["#1b263b", "#8d99ae"], 620: ["#283044", "#78a1bb"], 1091500: ["#f7e600", "#00c2d1"] };
-const NAMES = { 367520: "Hollow Knight", 1245620: "ELDEN RING", 413150: "Stardew Valley", 292030: "The Witcher 3: Wild Hunt", 620: "Portal 2", 1091500: "Cyberpunk 2077" };
+const PAL = { 1145360: ["#3a1010", "#d9542b"], 367520: ["#1c2230", "#9fb3c8"], 1245620: ["#3b2f1a", "#c9a85b"], 413150: ["#2d6a4f", "#95d5b2"], 292030: ["#1b263b", "#8d99ae"], 620: ["#283044", "#78a1bb"], 1091500: ["#f7e600", "#00c2d1"] };
+const NAMES = { 1145360: "Hades", 367520: "Hollow Knight", 1245620: "ELDEN RING", 413150: "Stardew Valley", 292030: "The Witcher 3: Wild Hunt", 620: "Portal 2", 1091500: "Cyberpunk 2077" };
 const gamePage = (id, playFocus) => `<div class="stand"><div class="hero" style="background:linear-gradient(160deg,${PAL[id][0]},${PAL[id][1]})"><h1>${NAMES[id]}</h1></div>
 <div class="bar"><span class="play${playFocus ? " f" : ""}">${playFocus === "running" ? "Resume" : "Play"}</span><span class="meta">Last played today · 41 hours</span></div>
 <div class="note">Static stand-in for Steam's game page (not Steam itself)</div></div>`;
@@ -53,6 +53,40 @@ const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
+// YouTube's embed, stood in for (nothing of YouTube is loaded): a page at the embed's own address that answers the
+// mini player's handshake the way YouTube's player does and keeps the commands it gets (setVolume, playVideo...).
+const embedRequests = [];
+await page.route("https://www.youtube-nocookie.com/embed/**", (route) => {
+  embedRequests.push({ url: route.request().url(), headers: route.request().headers() });
+  route.fulfill({ contentType: "text/html", body: `<!doctype html><html><body style="margin:0;background:#111;color:#fff;font:14px Arial;display:flex;align-items:center;justify-content:center;height:100vh">
+<div style="text-align:center"><div style="font-size:40px">▶</div>Stand-in for YouTube's player<br><small>(controls and branding are YouTube's own)</small></div>
+<script>window.cmds=[];window.addEventListener("message",(e)=>{let d;try{d=JSON.parse(e.data)}catch{return}
+if(d.event==="listening"&&!window.readySent){window.readySent=1;parent.postMessage(JSON.stringify({event:"onReady",info:null}),"*")}
+if(d.event==="command")window.cmds.push(d.func+":"+JSON.stringify(d.args))});</script></body></html>` });
+});
+// The mini player as Steam would show it: on screen, at least 200x200, not under the Quick Access menu, never focusable.
+async function checkMini(name) {
+  const box = await page.evaluate(() => {
+    const f = document.querySelector(".hearth-music-mini iframe");
+    if (!f) return null;
+    const r = f.getBoundingClientRect(), q = document.querySelector(".qam")?.getBoundingClientRect();
+    return { w: r.width, h: r.height, left: r.left, right: r.right, top: r.top, bottom: r.bottom, qamLeft: q ? q.left : 99999,
+      tab: f.tabIndex, ref: f.getAttribute("referrerpolicy"), src: f.src, allow: f.getAttribute("allow"),
+      opacity: getComputedStyle(f.parentElement).opacity, focused: document.activeElement === f };
+  });
+  if (!box) { errors.push(`${name}: no mini player`); return; }
+  if (box.w < 200 || box.h < 200) errors.push(`${name}: the mini player is smaller than 200x200 (${box.w}x${box.h})`);
+  if (box.right > box.qamLeft) errors.push(`${name}: the mini player is under the Quick Access menu`);
+  if (box.left < 0 || box.bottom > 800) errors.push(`${name}: the mini player is off screen`);
+  if (box.tab !== -1 || box.focused) errors.push(`${name}: the mini player can take the controller's focus`);
+  if (box.ref !== "strict-origin-when-cross-origin") errors.push(`${name}: referrerpolicy is ${box.ref}`);
+  if (!box.src.startsWith("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?") || !box.src.includes("controls=1")) errors.push(`${name}: not the official embed: ${box.src}`);
+  if (Number(box.opacity) < 0.99) errors.push(`${name}: the mini player isn't fully visible (${box.opacity})`);
+  const frame = page.frames().find((f) => f.url().startsWith("https://www.youtube-nocookie.com/embed/"));
+  const cmds = frame ? await frame.evaluate(() => window.cmds) : [];
+  if (!cmds.some((c) => c.startsWith("playVideo")) || !cmds.some((c) => c === "setVolume:[35]")) errors.push(`${name}: YouTube's player wasn't started and faded to 35: ${cmds.slice(-5).join(" ")}`);
+  console.log(`::notice title=Hearth Music mini player::${box.w}x${box.h} at ${Math.round(box.left)},${Math.round(box.top)}; commands ${cmds.length} (last ${cmds.slice(-1)})`);
+}
 const focus = (label) => page.evaluate((l) => { document.querySelectorAll(".gpfocus").forEach((x) => x.classList.remove("gpfocus"));
   const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l))
     || [...document.querySelectorAll(".qam-field")].find((x) => x.textContent.includes(l))?.querySelector(".qam-switch");
@@ -97,6 +131,9 @@ const shots = [
     ["Control Ultimate Edition", "Search", "■ Stop", "Choose", "Apple Music preview", "Deezer preview", "Close"]],
   ["hearth-music-panel-choose", "choose", true, gamePage(1091500), async () => { await click("Choose music…"); await page.waitForTimeout(500); await reveal("Song for"); await focus("Cyberpunk 2077 Main Theme"); },
     ["Search", "01 - V · your soundtrack", "Cyberpunk 2077 Main Theme — Marcin Przybyłowicz · Apple Music preview", "Never Fade Away — P.T. Adamczyk, Olga Jankowska · Deezer preview", "Close"]],
+  ["hearth-music-mini-player", "youtube", true, gamePage(1145360), async () => { await page.waitForTimeout(2200); await checkMini("hearth-music-mini-player"); },
+    ["Hades OST - Main Theme — Supergiant Games - Topic", "Video on YouTube", "Open on YouTube", "YouTube mini player", "YouTube API key", "Key saved"]],
+  ["hearth-music-mini-player-library", "youtube", false, gamePage(1145360), async () => { await page.waitForTimeout(2200); await checkMini("hearth-music-mini-player-library"); }, []],
   ["hearth-music-toast-deezer", "deezer", false, gamePage(367520, true), async () => {}, ["Now playing", "Hollow Knight — Christopher Larkin", "Preview from Deezer"]],
   ["hearth-music-toast-gamepage", "apple", false, gamePage(1245620, true), async () => {}, ["Now playing", "Elden Ring — Tsukasa Saitoh", "Preview courtesy of Apple Music · ELDEN RING (Original Soundtrack)"]],
   ["hearth-music-toast-library", "library", false, library(), async () => { await focusTile(1245620); await page.waitForTimeout(1200); }, ["Now playing", "Elden Ring — Tsukasa Saitoh"]],

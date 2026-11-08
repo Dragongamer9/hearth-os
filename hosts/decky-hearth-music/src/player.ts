@@ -1,7 +1,9 @@
 // Plays the songs in Steam's own browser (the plugin's page, an HTML audio element), so the sound goes out with
 // Steam's and follows Steam Game Mode's volume. Two elements crossfade; each song loops until the next one or silence.
 // Apple's previews are streamed from their https address (playUrl); files come from the backend as bytes (play).
+// A YouTube video plays in YouTube's own mini player (video.tsx, playYoutube) instead, faded the same way.
 import { CROSSFADE, clamp, fadeAt } from "./model";
+import { video } from "./video";
 
 interface Track { el: HTMLAudioElement; url: string; blob: boolean; key: string; vol: number; timer: any }
 
@@ -33,7 +35,16 @@ export class Player {
   cur: Track | null = null;
   volume = 0.35;
 
-  playing(): string { return this.cur?.key || ""; }
+  playing(): string { return this.cur?.key || video.playing(); }
+
+  /** Shows a YouTube video in the mini player (YouTube's own embed) and fades out the song playing; throws when it
+   *  can't play there (the caller tells the log; nothing else is tried for YouTube). */
+  async playYoutube(key: string, id: string, fadeMs = CROSSFADE): Promise<void> {
+    await video.play(key, id, this.volume, fadeMs);
+    const old = this.cur;
+    this.cur = null;
+    if (old) ramp(old, 0, fadeMs, () => drop(old));
+  }
 
   /** Starts a song (crossfading from the one playing). Throws "unsupported" when Steam's browser can't decode it. */
   async play(key: string, data: { data: string; mime: string }, fadeMs = CROSSFADE): Promise<void> {
@@ -61,6 +72,7 @@ export class Player {
     this.cur = t;
     ramp(t, this.volume, fadeMs);
     if (old) ramp(old, 0, fadeMs, () => drop(old));
+    video.stop(fadeMs);
   }
 
   /** Fades out to silence. */
@@ -68,10 +80,12 @@ export class Player {
     const old = this.cur;
     this.cur = null;
     if (old) ramp(old, 0, fadeMs, () => drop(old));
+    video.stop(fadeMs);
   }
 
   setVolume(v: number) {
     this.volume = clamp(v);
     if (this.cur) ramp(this.cur, this.volume, 250);
+    video.setVolume(this.volume);
   }
 }

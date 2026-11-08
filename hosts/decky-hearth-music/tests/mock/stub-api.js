@@ -1,7 +1,10 @@
 // CI only (render-panel.mjs): a stand-in for @decky/api and for Steam's state. window.HM_STATE picks the scene:
-// apple, soundtrack, pick, game, nomatch, running, off, changed, library, deezer, scan, choose, scanall, review, fix, fixchoose. No Steam, no network: Apple's preview
+// apple, soundtrack, pick, game, nomatch, running, off, changed, library, deezer, scan, choose, scanall, review, fix, fixchoose,
+// youtube (the mini player: YouTube's embed is a stand-in served by render-panel.mjs, nothing of YouTube is loaded). No Steam, no network: Apple's preview
 // address doesn't resolve, so the panel goes through the backend's stream fallback, whose "song" is a tone made here.
 import { S } from "./steam-state.js";
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
 const songs = {
   apple: { source: "apple", key: "k1", url: "https://preview.invalid/a.m4a", title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", link: "https://music.apple.com/us/album/elden-ring/1" },
   library: { source: "apple", key: "k1", url: "https://preview.invalid/a.m4a", title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", link: "https://music.apple.com/us/album/elden-ring/1" },
@@ -14,6 +17,7 @@ const songs = {
   fixchoose: { source: "apple", key: "k6", url: "https://preview.invalid/c.m4a", title: "Control Theme", artist: "Petri Alanko", album: "CONTROL (Original Soundtrack)" },
   scan: { source: null, why: "no theme song found" },
   choose: { source: null, why: "no theme song found" },
+  youtube: { source: "youtube", from: "youtube", youtube: "dQw4w9WgXcQ", key: "yt:dQw4w9WgXcQ", title: "Hades OST - Main Theme", artist: "Supergiant Games - Topic", link: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
   deezer: { source: "deezer", from: "deezer", key: "k5", url: "https://preview.invalid/b.mp3", title: "Hollow Knight", artist: "Christopher Larkin", album: "Hollow Knight (Original Soundtrack)", link: "https://www.deezer.com/track/1" },
 };
 const scanning = { running: true, paused: false, total: 210, done: 150, matched: 143, waiting: "", last: 0 };
@@ -44,13 +48,15 @@ function tone() {   // 1 s of a quiet 440 Hz tone, as a WAV, base64
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.sin((i / rate) * 2 * Math.PI * 440) * 2000, true);
   let s = ""; new Uint8Array(buf).forEach((b) => { s += String.fromCharCode(b); }); return btoa(s);
 }
-const settings = () => ({ enabled: S() !== "off", volume: 0.35, delay: 0, where: S() === "library" ? "library" : "pages", online: true, toast: !["review", "fix", "fixchoose", "scanall"].includes(S()) });
+const settings = () => ({ enabled: S() !== "off", volume: 0.35, delay: 0, where: S() === "library" ? "library" : "pages", online: true, youtube: true,
+  toast: !["review", "fix", "fixchoose", "scanall", "youtube"].includes(S()) });
 const handlers = {
   get_settings: () => settings(), set_settings: (s) => s, find_song: () => songs[S()] || { source: null, why: "no theme song found" },
   audio: () => ({ data: tone(), mime: "audio/wav" }), set_pick: () => true, get_picks: () => ({}), get_home: () => "/home/you", report: () => null,
   scan_library: () => true, scan_pause: () => true, scan_status: () => (S() === "scan" ? scanning : S() === "scanall" ? scanningAll : scanned),
   search_music: () => found, choose_music: () => true, scan_all: () => true, scan_cancel: () => true, review: () => reviewRows,
-  choice_preview: () => ({ key: "kp" }), no_music: () => true, clean_title: (t) => String(t).replace(" Ultimate Edition", ""),
+  choice_preview: () => ({ key: "kp" }), youtube_status: () => ({ key: S() === "youtube", state: "ok", used: 300, daily: 10000, auto: 8000 }),
+  set_youtube_key: () => ({ key: true, state: "ok", used: 0, daily: 10000, auto: 8000, saved: true }), no_music: () => true, clean_title: (t) => String(t).replace(" Ultimate Edition", ""),
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export function definePlugin(f) { return f; }
@@ -65,3 +71,17 @@ export const toaster = { toast: (t) => {
   d.querySelector(".toast-body").textContent = t.body;
   document.body.appendChild(d);
 } };
+
+// Decky's routerHook: global components drawn over Steam's pages (Hearth Music's YouTube mini player).
+const globals = new Map();
+export const routerHook = {
+  addGlobalComponent(name, C) {
+    const d = document.createElement("div");
+    d.dataset.global = name;
+    document.body.appendChild(d);
+    const root = createRoot(d);
+    root.render(createElement(C));
+    globals.set(name, { d, root });
+  },
+  removeGlobalComponent(name) { const g = globals.get(name); if (g) { g.root.unmount(); g.d.remove(); globals.delete(name); } },
+};

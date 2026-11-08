@@ -144,6 +144,10 @@ class Sync(unittest.TestCase):
         wr(a.f(rel), {'enabled': False, 'volume': 0.6, 'delay': 3.0, 'where': 'library', 'online': False, 'toast': False})
         wr(b.f(rel), {'enabled': True, 'volume': 0.35, 'where': 'pages', 'unknownKey': 1})
         wr(a.f('homebrew/settings/decky-hearth-music/picks.json'), {'game:570': '/home/ana/Music/dota.mp3'})
+        # The YouTube mini player's API key (a made-up one): its own file, and even a stray copy in settings.json, never travel.
+        fake = 'AIzaTESTfakeKEY0000000000000000000000'
+        wr(a.f('homebrew/settings/decky-hearth-music/youtube-key.json'), {'key': fake})
+        wr(a.f(rel), dict(rd(a.f(rel)), youtube=False, youtubeKey=fake, apiKey=fake))
         os.makedirs(a.f('homebrew/plugins/decky-hearth-music'))
         wr(a.f('homebrew/plugins/decky-hearth-music/plugin.json'), {'name': 'Hearth Music'})
         for d in (a, b):
@@ -160,6 +164,10 @@ class Sync(unittest.TestCase):
         self.assertEqual(got['unknownKey'], 1, 'per key: the rest of the file stays')
         self.assertTrue(os.path.exists(b.f(rel) + '.bak'), 'written the safe way')
         self.assertFalse(os.path.exists(b.f('homebrew/settings/decky-hearth-music/picks.json')), 'picks (paths) never travel')
+        self.assertFalse(os.path.exists(b.f('homebrew/settings/decky-hearth-music/youtube-key.json')), 'the YouTube key never travels')
+        self.assertNotIn(fake, json.dumps(got))
+        for d in (a, b):
+            self.assertNotIn(fake, open(d.p.prefs).read(), "nor is it ever in Hearth Link's sync state")
         local = ls.hio.load_json(a.p.prefs, {}).get('local', {})
         self.assertIn('hearth:decky-music', local)
         self.assertFalse(any(ns.startswith('decky:decky-hearth-music:') for ns in local), 'one path only: Sync Hearth settings')

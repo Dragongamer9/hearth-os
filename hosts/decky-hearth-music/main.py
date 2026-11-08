@@ -14,13 +14,20 @@ song; this file finds it, in this order:
      track, artist and a link to it.
   4. When Apple has no good match: Deezer's 30-second preview (api.deezer.com/search, no account or key), by the same
      rules. Deezer's preview addresses expire, so only the track id is kept and the address is asked for again when it
-     plays. Streamed, never stored ("Preview from Deezer"). No match: silence. Never YouTube or anything that
-     downloads from it.
+     plays. Streamed, never stored ("Preview from Deezer").
+  5. When nothing above has the game's song: a YouTube video in YouTube's own small visible player (the frontend's
+     mini player: the official embed, www.youtube-nocookie.com/embed/<id>, at least 200x200, YouTube's controls and
+     branding kept). Found only with the official YouTube Data API v3 (search.list, embeddable videos), which needs
+     an API key the person pastes in (youtube-key.json, 0600, never logged, sent only to googleapis.com). Only the
+     video's id is kept (lookups.json), never any media; nothing of YouTube is ever downloaded or extracted. Without a
+     key, a YouTube link pasted into "Choose music..." still works as the person's pick. No match: silence.
 
 The library scan (scan_library) goes through every game in Steam's library in the background the first time, then
 new games as they appear and stale answers weekly; it pauses while a game runs and resumes where it left off.
 Apple's API is asked at most once every few seconds and 20 times a minute, Deezer's once a second; a 429/403 (or
-Deezer's quota answer) backs off for a minute, doubling up to an hour. The answers (which match belongs to which game,
+Deezer's quota answer) backs off for a minute, doubling up to an hour. YouTube's search costs 100 of the key's
+10,000 daily units: automatic searches (the scan, a highlighted game) stop at 8,000 a day, leaving the rest for
+"Choose music...", and a quota answer stops YouTube until YouTube's day ends (midnight Pacific time). The answers (which match belongs to which game,
 and "no match") are kept in lookups.json, saved atomically with a .bak. Only those answers are kept, never any audio.
 Nothing else is sent anywhere. The log gets counts and reasons only.
 """
@@ -28,6 +35,7 @@ import asyncio
 import base64
 import glob
 import hashlib
+import html
 import json
 import os
 import re
@@ -71,10 +79,22 @@ BACKOFF_FIRST = 60        # a 429/403: wait a minute, doubling up to an hour
 BACKOFF_MAX = 3600
 SCAN_REFRESH = 7 * 86400  # the library scan refreshes answers older than a week
 SCAN_FORCE_REFRESH = 86400  # "Scan my library": answers older than a day
-DEFAULTS = {'enabled': True, 'volume': 0.35, 'delay': 1.5, 'where': 'pages', 'online': True, 'toast': True, 'deezer': True}
+DEFAULTS = {'enabled': True, 'volume': 0.35, 'delay': 1.5, 'where': 'pages', 'online': True, 'toast': True, 'deezer': True,
+            'youtube': True}
+# YouTube (source 5): the official Data API v3 only (search.list / videos.list), with the person's own key.
+YT_API = 'https://www.googleapis.com/youtube/v3'
+YT_SEARCH_COST = 100
+YT_VIDEOS_COST = 1
+YT_DAILY = 10000          # a key's default daily quota
+YT_AUTO_BUDGET = 8000     # the scan and highlighted games stop here; the rest is for "Choose music..."
+YT_GAP = 1.0
+YT_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
+YT_KEY = re.compile(r'^[A-Za-z0-9_-]{20,80}$')
+YT_MIN = 7                # a video counts from this score
 
 _calls = []   # times of Apple calls in the last minute
 _deezer_calls = []   # time of the last Deezer call
+_yt_calls = []       # time of the last YouTube call
 _backoff = {}        # api -> [until, step]
 _rate_lock = threading.Lock()
 _urlopen = urllib.request.urlopen   # the one way out to the network (tests replace it)
@@ -82,7 +102,18 @@ _urlopen = urllib.request.urlopen   # the one way out to the network (tests repl
 
 def log(msg):
     if decky:
-        decky.logger.info(msg)
+        decky.logger.info(redact_key(msg))
+
+
+def redact_key(msg):
+    """Never a YouTube API key in the log: the kept one, anything shaped like a Google key, a key= in an address."""
+    msg = re.sub(r'AIza[0-9A-Za-z_-]{20,}', '[removed]', str(msg))
+    msg = re.sub(r'([?&]key=)[^&\s]+', r'\1[removed]', msg)
+    try:
+        k = youtube_key()
+    except Exception:
+        k = ''
+    return msg.replace(k, '[removed]') if k else msg
 
 
 def home():
@@ -234,7 +265,7 @@ def merge_settings(changes):
 def clean_settings(s):
     s = s if isinstance(s, dict) else {}
     out = dict(DEFAULTS)
-    for k in ('enabled', 'online', 'toast', 'deezer'):
+    for k in ('enabled', 'online', 'toast', 'deezer', 'youtube'):
         if isinstance(s.get(k), bool):
             out[k] = s[k]
     # Deezer's previews came later: someone who had turned Apple's previews off (nothing sent anywhere) doesn't get
@@ -297,14 +328,20 @@ def is_no_music(p):
 
 
 def online_pick(p):
-    """A pick that is an Apple or Deezer preview ("Choose music…"): only its id and names, never audio."""
-    if not isinstance(p, dict) or p.get('source') not in ('apple', 'deezer') or not str(p.get('id') or '').isdigit():
+    """A pick that is an Apple or Deezer preview or a YouTube video ("Choose music…"): only its id and names, never
+    audio or video."""
+    if not isinstance(p, dict) or p.get('source') not in ('apple', 'deezer', 'youtube'):
         return None
-    out = {'source': p['source'], 'id': str(p['id'])[:20]}
+    pid = str(p.get('id') or '')
+    if not (YT_ID.match(pid) if p['source'] == 'youtube' else pid.isdigit()):
+        return None
+    out = {'source': p['source'], 'id': pid[:20]}
     for k in ('track', 'artist', 'album'):
         out[k] = str(p.get(k) or '')[:200]
     link = str(p.get('link') or '')
     out['link'] = link if link.startswith('https://') else ''
+    if p['source'] == 'youtube':
+        out['link'] = youtube_watch(pid)
     if p['source'] == 'apple' and allowed_preview(p.get('preview') or ''):
         out['preview'] = p['preview']
     return out
@@ -792,6 +829,358 @@ def deezer_preview(tid, get=None, now=None):
     return url
 
 
+# ---- 5. YouTube: the official embed (the frontend's mini player), found with the official YouTube Data API v3
+#
+# Only a video's id and names are kept, never media. Nothing of YouTube is fetched here except the Data API's JSON
+# answers from googleapis.com; the video plays in YouTube's own visible player in Steam's page.
+
+def youtube_watch(vid):
+    """The video's page on YouTube (the panel's "Open on YouTube")."""
+    return 'https://www.youtube.com/watch?v=%s' % vid if YT_ID.match(str(vid or '')) else ''
+
+
+def youtube_id(link):
+    """The video id of a pasted YouTube link (youtube.com/watch?v=, youtu.be/, /shorts/, /embed/, /live/), or None."""
+    s = str(link or '').strip()[:500]
+    if not s:
+        return None
+    if '://' not in s:
+        s = 'https://' + s
+    try:
+        u = urllib.parse.urlparse(s)
+    except ValueError:
+        return None
+    host = (u.hostname or '').lower()
+    if host.startswith('www.') or host.startswith('m.'):
+        host = host.split('.', 1)[1]
+    if host == 'music.youtube.com':
+        host = 'youtube.com'
+    vid = None
+    if host == 'youtu.be':
+        vid = u.path.strip('/').split('/')[0]
+    elif host in ('youtube.com', 'youtube-nocookie.com'):
+        parts = [x for x in u.path.split('/') if x]
+        if parts[:1] == ['watch']:
+            vid = (urllib.parse.parse_qs(u.query).get('v') or [''])[0]
+        elif len(parts) >= 2 and parts[0] in ('shorts', 'embed', 'live', 'v'):
+            vid = parts[1]
+    return vid if vid and YT_ID.match(vid) else None
+
+
+def youtube_key_file():
+    return os.path.join(settings_dir(), 'youtube-key.json')
+
+
+def youtube_key():
+    """The API key the person pasted in, or ''. Read only here; never logged, never handed to the frontend."""
+    v = _read_json(youtube_key_file(), repair=False)
+    k = v.get('key') if isinstance(v, dict) else None
+    return k if isinstance(k, str) and YT_KEY.match(k) else ''
+
+
+def set_youtube_key(key):
+    """Keeps the person's key in youtube-key.json (0600, its .bak too), or forgets it ('' or None). True when kept or
+    forgotten, False when it doesn't look like a key (nothing changes then)."""
+    key = str(key or '').strip()
+    path = youtube_key_file()
+    if not key:
+        for p in (path, path + '.bak'):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        _yt_state_update(lambda st: st.pop('bad_key', None))
+        return True
+    if not YT_KEY.match(key):
+        return False
+    os.makedirs(settings_dir(), exist_ok=True)
+    _safe_write(path, json.dumps({'key': key}).encode())
+    for p in (path, path + '.bak'):
+        try:
+            os.chmod(p, 0o600)
+        except OSError:
+            pass
+    _yt_state_update(lambda st: st.pop('bad_key', None))   # a new key: asked again
+    return True
+
+
+def _pacific_day(now):
+    """YouTube's quota day (it starts at midnight Pacific time): (day, the time it ends)."""
+    try:
+        from zoneinfo import ZoneInfo
+        import datetime
+        tz = ZoneInfo('America/Los_Angeles')
+        d = datetime.datetime.fromtimestamp(now, tz)
+        end = (d + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return d.strftime('%Y-%m-%d'), end.timestamp()
+    except Exception:   # no time zone data: Pacific standard time
+        t = now - 8 * 3600
+        return time.strftime('%Y-%m-%d', time.gmtime(t)), (t // 86400 + 1) * 86400 + 8 * 3600
+
+
+def _yt_state():
+    v = load_json('youtube.json', {}, cache_dir())
+    return v if isinstance(v, dict) else {}
+
+
+def _yt_state_update(fn):
+    try:
+        return update_cache('youtube.json', fn)
+    except OSError:
+        return {}
+
+
+def _yt_units(st, now):
+    day, _ = _pacific_day(now)
+    return int(st.get('units') or 0) if st.get('day') == day else 0
+
+
+def youtube_ready(budget=YT_AUTO_BUDGET, cost=YT_SEARCH_COST, now=None, key=None):
+    """'' when YouTube can be asked now, else why not: 'key' (none), 'bad_key', 'quota' (used up for today), 'slow'."""
+    now = time.time() if now is None else now
+    if not (youtube_key() if key is None else key):
+        return 'key'
+    st = _yt_state()
+    if st.get('bad_key'):
+        return 'bad_key'
+    if now < float(st.get('until') or 0) or _yt_units(st, now) + cost > budget:
+        return 'quota'
+    if backed_off('youtube', now):
+        return 'slow'
+    return ''
+
+
+def youtube_status(now=None):
+    """For the panel: whether a key is kept (never the key), whether YouTube can be asked, and today's units."""
+    now = time.time() if now is None else now
+    st = _yt_state()
+    why = youtube_ready(YT_DAILY, YT_SEARCH_COST, now)
+    return {'key': why != 'key', 'state': why or 'ok', 'used': _yt_units(st, now), 'daily': YT_DAILY,
+            'auto': YT_AUTO_BUDGET}
+
+
+def _yt_spend(now, cost):
+    day, _ = _pacific_day(now)
+
+    def put(st):
+        if st.get('day') != day:
+            st['day'], st['units'] = day, 0
+        st['units'] = int(st.get('units') or 0) + cost
+    _yt_state_update(put)
+
+
+def _yt_request(path, params, now, cost, budget):
+    """One call to the YouTube Data API (googleapis.com only). None when it can't be asked now (no key, a key YouTube
+    refused, today's quota used up, or YouTube asked to slow down). The key never reaches the log."""
+    key = youtube_key()
+    if youtube_ready(budget, cost, now, key):
+        return None
+    with _rate_lock:
+        if _yt_calls and now - _yt_calls[-1] < YT_GAP:
+            time.sleep(YT_GAP - (now - _yt_calls[-1]))
+        _yt_calls[:] = [max(now, (_yt_calls or [0])[-1] + YT_GAP)]
+    url = '%s/%s?%s' % (YT_API, path, urllib.parse.urlencode(dict(params, key=key)))
+    req = urllib.request.Request(url, headers={'User-Agent': 'HearthMusic/1 (Hearth OS)', 'Accept': 'application/json'})
+    try:
+        with _urlopen(req, timeout=15) as r:
+            data = json.loads(r.read(2 * 1024 * 1024).decode('utf-8', 'replace'))
+    except urllib.error.HTTPError as e:
+        reason = ''
+        try:
+            body = json.loads(e.read(65536).decode('utf-8', 'replace'))
+            errs = (body.get('error') or {}).get('errors') or []
+            reason = str((errs[0] if errs else {}).get('reason') or '')
+            if not reason and 'api key not valid' in str((body.get('error') or {}).get('message') or '').lower():
+                reason = 'keyInvalid'
+        except Exception:
+            pass
+        if reason in ('quotaExceeded', 'dailyLimitExceeded'):
+            _, end = _pacific_day(now)
+            _yt_state_update(lambda st: st.update(until=end))
+            log('youtube: today\'s quota is used up; more after midnight Pacific time')
+            return None
+        if reason in ('keyInvalid', 'keyExpired', 'accessNotConfigured', 'forbidden', 'ipRefererBlocked') or e.code == 400 and reason.startswith('key'):
+            _yt_state_update(lambda st: st.update(bad_key=True))
+            log('youtube: the API key was refused (%s)' % (reason or e.code))
+            return None
+        if e.code in (429, 403) or reason in ('rateLimitExceeded', 'userRateLimitExceeded'):
+            back_off('youtube', now)
+            return None
+        raise ValueError('youtube error %s' % e.code)
+    calmed('youtube')
+    _yt_spend(now, cost)
+    return data if isinstance(data, dict) else {}
+
+
+def _yt_item(it):
+    """One search or videos result as {'id', 'title', 'channel', 'description'}, or None."""
+    if not isinstance(it, dict):
+        return None
+    vid = it.get('id')
+    if isinstance(vid, dict):
+        vid = vid.get('videoId')
+    sn = it.get('snippet') if isinstance(it.get('snippet'), dict) else {}
+    if not isinstance(vid, str) or not YT_ID.match(vid):
+        return None
+    return {'id': vid, 'title': html.unescape(str(sn.get('title') or ''))[:300],
+            'channel': html.unescape(str(sn.get('channelTitle') or ''))[:200],
+            'description': html.unescape(str(sn.get('description') or ''))[:500]}
+
+
+def _youtube_get(term, now=None, budget=YT_AUTO_BUDGET, limit=10):
+    """One search.list (100 units): embeddable videos only. [items] or None (can't be asked now)."""
+    now = time.time() if now is None else now
+    data = _yt_request('search', {'part': 'snippet', 'type': 'video', 'videoEmbeddable': 'true', 'maxResults': limit,
+                                  'q': term, 'safeSearch': 'moderate'}, now, YT_SEARCH_COST, budget)
+    if data is None:
+        return None
+    return [x for x in (_yt_item(i) for i in data.get('items') or []) if x]
+
+
+def _youtube_video(vid, now=None):
+    """videos.list (1 unit) for a pasted link: its names, and whether it may be embedded. None: can't be asked now;
+    {} when YouTube doesn't know it."""
+    now = time.time() if now is None else now
+    data = _yt_request('videos', {'part': 'snippet,status', 'id': vid}, now, YT_VIDEOS_COST, YT_DAILY)
+    if data is None:
+        return None
+    for it in data.get('items') or []:
+        x = _yt_item(it)
+        if x and x['id'] == vid:
+            x['embeddable'] = bool((it.get('status') or {}).get('embeddable', True))
+            return x
+    return {}
+
+
+# Words in a video's title that say it isn't the game's music as released (besides BAD's covers and remixes).
+YT_BAD = ('trailer', 'teaser', 'gameplay', 'walkthrough', 'playthrough', 'review', 'reaction', 'speedrun', 'lets play',
+          'let s play', 'cutscene', 'cutscenes', 'explained', 'tutorial', 'guide', 'boss fight', 'all bosses', 'fan made',
+          'fanmade', 'unofficial', 'mashup', 'mix', 'live', 'concert', 'asmr', 'reverb', 'bass boosted', 'hour', 'hours',
+          'loop', 'looped', 'orchestra', 'symphony', 'ai', 'meme', 'shorts', 'animation', 'animated', 'amv', 'gmv')
+_YT_SEP = re.compile(r'\s+[-~]\s+|[|–—:()\[\]/•·「」【】"]')
+
+
+def _yt_tokens(raw):
+    """A video title as words, with '|' where it had a separator (" - ", "|", ":", brackets...)."""
+    out = []
+    for piece in _YT_SEP.split(str(raw or '')):
+        w = norm(piece).split()
+        if w:
+            out += w + ['|']
+    return out
+
+
+def _yt_find(tokens, form):
+    """Where FORM's words stand in TOKENS (separators inside it skipped, "The Witcher 3: Wild Hunt"): (start, end)."""
+    fw = form.split()
+    for i in range(len(tokens)):
+        j, k = i, 0
+        while j < len(tokens) and k < len(fw):
+            if tokens[j] == '|' and k > 0:
+                j += 1
+                continue
+            if tokens[j] != fw[k]:
+                break
+            j, k = j + 1, k + 1
+        if k == len(fw):
+            return i, j
+    return None
+
+
+def _names_soundtrack(text, forms):
+    """TEXT names one of the game's soundtrack albums: a title form followed by soundtrack words only up to an OST
+    word ("Hades (Original Soundtrack)", not "Hades II Original Soundtrack")."""
+    t = _yt_tokens(text)
+    for f in forms:
+        for i in range(len(t)):
+            at = _yt_find(t[i:], f)
+            if not at or at[0] != 0:
+                continue
+            nxt = [w for w in t[i + at[1]:i + at[1] + 6] if w != '|']
+            for w in nxt:
+                if any(w == o or o.startswith(w + ' ') for o in OST) or w == 'ost':
+                    return True
+                if w not in FILLER:
+                    break
+    return False
+
+
+def youtube_score(v, forms):
+    """How surely a video is the game's theme song, by the same rules as Apple's and Deezer's (BAD, COMPILATION, FILM;
+    the game's whole title followed by soundtrack words, never another word: "Hades II", "Hollow Knight Silksong");
+    official channels ("- Topic", "Official", the game's own) count for it. 0 when it isn't clearly the game's music."""
+    if not isinstance(v, dict) or not YT_ID.match(str(v.get('id') or '')) or not forms:
+        return 0
+    raw_t, raw_c = str(v.get('title') or ''), str(v.get('channel') or '')
+    t, c, d = norm(raw_t), norm(raw_c), norm(v.get('description'))
+    own = forms[0]
+    if any(has_words(x, b) for b in BAD for x in (t, c) if not has_words(own, b)):
+        return 0
+    if any(has_words(t, b) for b in YT_BAD if not has_words(own, b)):
+        return 0
+    if any(has_words(x, b) for b in COMPILATION for x in (t, c) if not has_words(own, b)):
+        return 0
+    if any(has_words(t, f) for f in FILM if not has_words(own, f)) and not has_words(t, 'game'):
+        return 0
+    topic = raw_c.strip().lower().endswith(' - topic')
+    bonus = 2 if topic else 0
+    if has_words(c, 'official') or c.endswith('vevo') or any(c == f or c.startswith(f + ' ') for f in forms):
+        bonus = max(bonus, 1.5)
+    tokens = _yt_tokens(raw_t)
+    for f in sorted(forms, key=len, reverse=True):
+        at = _yt_find(tokens, f)
+        if not at:
+            continue
+        i, j = at
+        before = tokens[i - 1] if i else '|'
+        after = tokens[j] if j < len(tokens) else '|'
+        if before not in ('|', 'the', 'official', 'original', 'ost', 'soundtrack') or (after != '|' and after not in FILLER):
+            continue   # "Hades II", "Hollow Knight Silksong", "Halsey Control"
+        rest = [w for w in tokens[:i] + tokens[j:] if w != '|']
+        seg_end = tokens.index('|', j) if '|' in tokens[j:] else len(tokens)
+        after_words = ' '.join(w for w in tokens[j:] if w != '|')
+        ost = any(has_words(after_words, o) for o in OST) or _names_soundtrack(raw_t, forms)
+        tw = max([sc for w, sc in THEME_WORDS if has_words(t, w)] or [0])
+        strong = any(has_words(t, w) for w in STRONG_THEME)
+        if all(w in FILLER for w in rest):
+            # the game's title and soundtrack words only: "Hades - Main Theme", "Celeste Original Soundtrack"
+            if len(f.split()) < 2 and not ost and not bonus:
+                return 0   # "Control - Main Theme" could be anything called Control (unless its channel is official)
+            if not (ost or strong):
+                return 0   # just the title: a trailer, a let's play...
+            s = 7 + min(tw, 6) / 2.0
+        elif ost and all(w in FILLER for w in tokens[j:seg_end]):
+            # "<title> OST - <track>": a track of the game's soundtrack
+            s = 7 + min(tw, 6) / 4.0
+        else:
+            return 0
+        if any(has_words(t, w) for w in ('full', 'complete', 'all songs', 'all tracks')):
+            s -= 1   # a whole soundtrack in one video: right, but not its theme
+        return s + bonus
+    # A "- Topic" channel's video is a track of an album; its description names the album ("Provided to YouTube by
+    # ... Hades (Original Soundtrack)").
+    if topic and _names_soundtrack(v.get('description') or '', forms):
+        if any(has_words(d, b) for b in BAD if not has_words(own, b)):
+            return 0
+        tw = max([sc for w, sc in THEME_WORDS if has_words(t, w)] or [0])
+        return 7 + min(tw, 6) / 2.0 + bonus
+    return 0
+
+
+def youtube_best(items, forms):
+    ranked = sorted(((youtube_score(v, forms), i, v) for i, v in enumerate(items or []) if isinstance(v, dict)),
+                    key=lambda x: (-x[0], x[1]))
+    if not ranked or ranked[0][0] < YT_MIN:
+        return None
+    return youtube_match(ranked[0][2], ranked[0][0])
+
+
+def youtube_match(v, sc=0):
+    return {'source': 'youtube', 'id': v['id'], 'track': str(v.get('title') or '')[:200],
+            'artist': str(v.get('channel') or '')[:200], 'album': '', 'desc': str(v.get('description') or '')[:300],
+            'link': youtube_watch(v['id']), 'score': sc}
+
+
 def _current(hit):
     """An online answer from today's matcher (an older matcher's answers are looked up again once)."""
     return isinstance(hit, dict) and hit.get('v') == MATCHER
@@ -801,6 +1190,9 @@ def still_fits(m, title):
     """Whether a kept match (from any matcher) passes today's rules for TITLE; one that doesn't is never played."""
     if not isinstance(m, dict):
         return False
+    if m.get('source') == 'youtube':
+        v = {'id': m.get('id'), 'title': m.get('track'), 'channel': m.get('artist'), 'description': m.get('desc')}
+        return youtube_score(v, match_forms(title)) >= YT_MIN
     r = {'trackName': m.get('track'), 'collectionName': m.get('album'), 'artistName': m.get('artist'),
          'previewUrl': m.get('preview') or 'https://x.dzcdn.net/'}
     return score(r, match_forms(title)) >= 6
@@ -815,55 +1207,77 @@ def _fresh(hit, now, max_age=None):
     return now - float(hit.get('at') or 0) < keep
 
 
-def _usable(hit, apple, deezer):
-    """Whether a kept answer still fits the switches: its source is on, and a "no match" asked every source now on."""
+def _usable(hit, apple, deezer, youtube=False, yt_search=False):
+    """Whether a kept answer still fits the switches: its source is on, and a "no match" asked every source now on
+    (YouTube only counts when it can be searched: a key is kept and today's quota isn't used up)."""
     m = hit.get('match')
     if m:
-        return {'apple': apple, 'deezer': deezer}.get(m.get('source') or 'apple', False)
+        return {'apple': apple, 'deezer': deezer, 'youtube': youtube}.get(m.get('source') or 'apple', False)
     if hit.get('error'):
         return True   # a failed call: asked again after an hour (KEEP_ERROR)
     tried = hit.get('tried') or ['apple']
-    return (not apple or 'apple' in tried) and (not deezer or 'deezer' in tried)
+    return (not apple or 'apple' in tried) and (not deezer or 'deezer' in tried) and (not yt_search or 'youtube' in tried)
 
 
-def lookup(title, get=None, now=None, deezer=None, apple=True, use_deezer=True, max_age=None):
-    """The best online preview for a title: Apple's, else Deezer's (only when Apple has no good match). From
-    lookups.json when it was asked recently. {'match': ...|None} or {'later': True} when it can't be asked now.
-    A failed call never changes a kept answer."""
+def lookup(title, get=None, now=None, deezer=None, apple=True, use_deezer=True, max_age=None, youtube=None, youtube_on=False):
+    """The best online preview for a title: Apple's, else Deezer's (only when Apple has no good match), else (with
+    youtube_on and YOUTUBE, the search, given because it may be asked now) a YouTube video for the mini player. From
+    lookups.json when it was asked recently (a kept video plays while youtube_on, the mini player's switch, even when
+    YouTube can't be searched now); a recent "no match" asks only the sources it didn't ask yet.
+    {'match': ...|None} or {'later': True} when it can't be asked now. A failed call never changes a kept answer.
+    YouTube that can't be asked now (quota, key) is left out of this answer and asked another time."""
     get = get or _itunes_get
     deezer = deezer or _deezer_get
+    yt = youtube if youtube_on else None
     now = time.time() if now is None else now
     keys = title_forms(title)
     forms = match_forms(title)
-    if not keys or not forms or not (apple or use_deezer):
+    if not keys or not forms or not (apple or use_deezer or youtube_on):
         return {'match': None}
     key = keys[0]
     query = clean_title(title)
     hit = load_json('lookups.json', {}, cache_dir()).get(key)
     if isinstance(hit, dict) and hit.get('match') and not still_fits(hit['match'], title):
         hit = dict(hit, match=None, at=0)   # an older matcher's wrong song: never played, looked up again
-    if _fresh(hit, now, max_age) and _usable(hit, apple, use_deezer):
+    if _fresh(hit, now, max_age) and _usable(hit, apple, use_deezer, youtube_on, bool(yt)):
         return {'match': hit.get('match')}
-    match, tried = None, []
+    # A recent "no match" (YouTube came later, or had no quota then): only the sources it didn't ask.
+    prior = hit if (_fresh(hit, now, max_age) and not hit.get('match') and not hit.get('error')) else None
+    done = list((prior or {}).get('tried') or ([] if not prior else ['apple']))
+    match, tried = None, list(done)
     try:
-        for src, ask in (('apple', get if apple else None), ('deezer', deezer if use_deezer else None)):
-            if not ask:
+        for src, ask in (('apple', get if apple else None), ('deezer', deezer if use_deezer else None), ('youtube', yt)):
+            if not ask or src in done:
                 continue
-            tried.append(src)
-            for term in ('%s main theme' % query, '%s soundtrack' % query):
+            terms = ('%s main theme OST' % query, '%s soundtrack' % query) if src == 'youtube' else \
+                ('%s main theme' % query, '%s soundtrack' % query)
+            asked = False
+            kept = hit.get('match') if isinstance(hit, dict) else None
+            if src == 'youtube' and isinstance(kept, dict) and kept.get('source') == 'youtube':
+                match = kept   # the video found before still fits today's rules: no search spent on it again
+                tried.append(src)
+                break
+            for term in terms:
                 res = ask(term)
+                if res is None and src == 'youtube':
+                    break   # quota used up, key refused, asked to slow down: YouTube another time
                 if res is None:
                     if isinstance(hit, dict) and hit.get('match'):
                         return {'match': hit['match'], 'later': True}   # the kept answer (it fits today's rules) meanwhile
                     return {'later': True}
-                m = best_match(res, forms, src)
+                asked = True
+                m = youtube_best(res, forms) if src == 'youtube' else best_match(res, forms, src)
                 if m and (match is None or m['score'] > match['score']):
                     match = m
-                if match and match['score'] >= 12:   # the soundtrack album's theme or title track
+                if match and (match['score'] >= 12 or src == 'youtube'):   # the soundtrack album's theme, a video
                     break
+            if asked and src not in tried:
+                tried.append(src)
             if match:
-                break   # Deezer only when Apple has no good match
+                break   # Deezer only when Apple has no good match, YouTube only when neither has
         entry = {'at': now, 'match': match, 'tried': tried, 'v': MATCHER}
+        if prior and not match and tried == done:
+            return {'match': None}   # nothing could be asked: the kept answer stays as it was
     except (OSError, ValueError) as e:
         log('lookup: %s' % type(e).__name__)
         if isinstance(hit, dict) and (hit.get('match') or hit.get('local')):
@@ -903,13 +1317,22 @@ def is_url(v):
 
 _keys = {}
 
-CREDIT = {'apple': 'Apple Music', 'deezer': 'Deezer'}
+CREDIT = {'apple': 'Apple Music', 'deezer': 'Deezer', 'youtube': 'YouTube'}
 
 
-def online_song(m, apple=True, deezer=True, deezer_get=None):
-    """A kept match (or an online pick) made playable: Apple's address as kept, Deezer's asked for now. A dict with
-    url/key/names, or a silent answer."""
+def online_song(m, apple=True, deezer=True, deezer_get=None, youtube=True):
+    """A kept match (or an online pick) made playable: Apple's address as kept, Deezer's asked for now, a YouTube
+    video's id for the mini player (YouTube's own embed plays it; nothing of it passes through here). A dict with
+    url (or youtube)/key/names, or a silent answer."""
     src = m.get('source') or 'apple'
+    if src == 'youtube':
+        if not youtube:
+            return {'source': None, 'why': 'the YouTube mini player is off'}
+        vid = str(m.get('id') or '')
+        if not YT_ID.match(vid):
+            return {'source': None, 'why': 'no theme song found'}
+        return {'youtube': vid, 'key': 'yt:' + vid, 'title': m.get('track') or '', 'artist': m.get('artist') or '',
+                'album': '', 'link': youtube_watch(vid), 'from': 'youtube'}
     if not {'apple': apple, 'deezer': deezer}.get(src):
         return {'source': None, 'why': '%s previews are off' % CREDIT.get(src, src)}
     url = m.get('preview') if src == 'apple' else deezer_preview(m.get('id'), get=deezer_get)
@@ -922,7 +1345,21 @@ def online_song(m, apple=True, deezer=True, deezer_get=None):
             'album': m.get('album') or '', 'link': m.get('link') or '', 'from': src}
 
 
-def find_song(appid, title, collections=None, online=True, get=None, h=None, deezer=True, deezer_get=None, deezer_track=None):
+def playable(o):
+    return bool(o.get('url') or o.get('youtube'))
+
+
+def youtube_search_now(budget=YT_AUTO_BUDGET):
+    """The YouTube search to use now, or None when it can't be asked (no key, refused key, today's quota used up)."""
+    if youtube_ready(budget):
+        return None
+    return lambda term: _youtube_get(term, budget=budget)
+
+
+def find_song(appid, title, collections=None, online=True, get=None, h=None, deezer=True, deezer_get=None, deezer_track=None,
+              youtube=False, yt_get=None):
+    """The song for a game: your pick, the game's soundtrack, Apple's preview, Deezer's, then (youtube: the mini player's
+    switch) a YouTube video, searched with yt_get (default: the Data API while a key is kept and quota is left)."""
     appid = str(appid or '')
     title = str(title or '')[:200]
     p = picked(appid, collections)
@@ -930,8 +1367,8 @@ def find_song(appid, title, collections=None, online=True, get=None, h=None, dee
         if p.get('none'):
             return {'source': None, 'pick': 'none', 'why': 'you chose no music for this game'}
         if p.get('online'):
-            o = online_song(p.pop('online'), online, deezer, deezer_track)
-            if not o.get('url'):
+            o = online_song(p.pop('online'), online, deezer, deezer_track, youtube)
+            if not playable(o):
                 return dict(o, why='your pick: %s' % o.get('why'))
             return dict(p, **o)
         return dict(p, key=keyed(p.pop('path')))
@@ -939,16 +1376,18 @@ def find_song(appid, title, collections=None, online=True, get=None, h=None, dee
     if st:
         path, where = st
         return {'source': where, 'key': keyed(path), 'title': os.path.splitext(os.path.basename(path))[0]}
-    if not online and not deezer:
+    if not online and not deezer and not youtube:
         return {'source': None, 'why': 'no song of its own (online previews are off)'}
-    lk = lookup(title, get=get, deezer=deezer_get, apple=online, use_deezer=deezer)
+    if youtube and yt_get is None:
+        yt_get = youtube_search_now()
+    lk = lookup(title, get=get, deezer=deezer_get, apple=online, use_deezer=deezer, youtube=yt_get, youtube_on=youtube)
     if lk.get('later') and not lk.get('match'):
         return {'source': None, 'later': True, 'why': 'looked up in a moment'}
     m = lk.get('match')
     if not m:
         return {'source': None, 'why': 'no theme song found'}
-    o = online_song(m, online, deezer, deezer_track)
-    if not o.get('url'):
+    o = online_song(m, online, deezer, deezer_track, youtube)
+    if not playable(o):
         return o
     return dict(o, source=o['from'])
 
@@ -1005,9 +1444,11 @@ def scan_state_file():
 
 
 def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sleep=time.sleep, paused=lambda: False,
-                 stopped=lambda: False, progress=None, force=False, h=None, recheck=False):
+                 stopped=lambda: False, progress=None, force=False, h=None, recheck=False, yt_get=None):
     """Goes through GAMES (scan_order) and keeps each one's best match in lookups.json: your pick wins (left alone),
-    then a soundtrack you have, then Apple's preview, then Deezer's. Games answered recently are skipped, so a scan
+    then a soundtrack you have, then Apple's preview, then Deezer's, then (the mini player's switch on, a key kept and
+    today's automatic YouTube quota left; checked for every game, so it stops for the day when the quota runs out and
+    goes on the next day) a YouTube video, only for games nothing else matched. Games answered recently are skipped, so a scan
     that stopped carries on where it was. Waits while a game runs (paused()) and while an API asks to slow down.
     recheck ("Scan all games"): every installed game and shortcut is looked at again with today's matcher, the kept
     automatic answers ignored (your picks still never). Returns {'total', 'done', 'matched'}."""
@@ -1040,7 +1481,10 @@ def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sle
             if not recheck and isinstance(hit, dict) and hit.get('local') and now() - float(hit.get('at') or 0) < max_age:
                 st['matched'] += 1
                 break
-            if _fresh(hit, now(), max_age) and _usable(hit, s['online'], s['deezer']) and not hit.get('error'):
+            yt = None
+            if s['youtube']:
+                yt = yt_get if yt_get is not None else youtube_search_now()
+            if _fresh(hit, now(), max_age) and _usable(hit, s['online'], s['deezer'], s['youtube'], bool(yt)) and not hit.get('error'):
                 st['matched'] += 1 if hit.get('match') else 0
                 break
             local = soundtrack(r['appid'], r['title'], h)
@@ -1050,12 +1494,12 @@ def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sle
                 update_cache('lookups.json', lambda c: c.__setitem__(key, entry))
                 st['matched'] += 1
                 break
-            if not (s['online'] or s['deezer']):
+            if not (s['online'] or s['deezer'] or yt):
                 if recheck and isinstance(hit, dict) and hit.get('local'):
                     update_cache('lookups.json', lambda c: c.pop(key, None))   # its soundtrack is gone
                 break
             lk = lookup(r['title'], get=get, deezer=deezer, now=now(), apple=s['online'], use_deezer=s['deezer'],
-                        max_age=max_age)
+                        max_age=max_age, youtube=yt, youtube_on=s['youtube'])
             if lk.get('later') or lk.get('error'):   # (also when a kept answer was handed back meanwhile)
                 # Rate limit, an API asking to slow down, or the network gone: wait and try this game again.
                 st['waiting'] = 'network' if lk.get('error') else 'slow'
@@ -1190,11 +1634,36 @@ def review(games, h=None):
 _choices = {}
 
 
-def search_music(query, apple=True, deezer=True, get=None, deezer_get=None, h=None):
+def youtube_choice(v):
+    k = 'youtube:%s' % v['id']
+    m = youtube_match(v)
+    m.pop('score', None)
+    _choices[k] = m
+    return {'choice': k, 'from': 'youtube', 'title': m['track'] or 'YouTube video', 'artist': m['artist'], 'album': ''}
+
+
+def search_music(query, apple=True, deezer=True, get=None, deezer_get=None, h=None, youtube=False, yt_get=None, yt_video=None):
     """What you can pick for a game: tracks of soundtracks you have whose folder matches, and Apple's and Deezer's
-    previews (searched only when their switch is on). [{'choice', 'from', 'title', 'artist', 'album'}], plus 'later'
-    when a source couldn't be asked now."""
-    q = str(query or '').strip()[:120]
+    previews (searched only when their switch is on), and YouTube videos (the mini player's switch on and a key kept).
+    A pasted YouTube link is that video (with or without a key). [{'choice', 'from', 'title', 'artist', 'album'}],
+    plus 'later' when a source couldn't be asked now, and 'note' for a link that can't be used."""
+    raw = str(query or '').strip()[:500]
+    vid = youtube_id(raw) if re.search(r'youtu\.?be', raw, re.I) else None
+    if vid:
+        if not youtube:
+            return {'results': [], 'later': [], 'note': 'Turn on the YouTube mini player to use a YouTube video.'}
+        v = None
+        if yt_video is not None or not youtube_ready(YT_DAILY, YT_VIDEOS_COST):
+            try:
+                v = (yt_video or _youtube_video)(vid)   # 1 unit: its names, and whether it may be embedded
+            except (OSError, ValueError):
+                v = None
+            if v == {}:
+                return {'results': [], 'later': [], 'note': "YouTube doesn't know that video."}
+            if v and not v.get('embeddable', True):
+                return {'results': [], 'later': [], 'note': "That video's owner doesn't allow it to play outside YouTube."}
+        return {'results': [youtube_choice(v or {'id': vid, 'title': 'YouTube video (%s)' % vid, 'channel': ''})], 'later': []}
+    q = raw[:120]
     forms = title_forms(q)
     out, later = [], []
     if not forms:
@@ -1233,6 +1702,21 @@ def search_music(query, apple=True, deezer=True, get=None, deezer_get=None, h=No
             _choices[k] = m
             out.append({'choice': k, 'from': src, 'title': m['track'], 'artist': m['artist'], 'album': m['album']})
             n += 1
+    if youtube:
+        ask = yt_get or (None if youtube_ready(YT_DAILY) else (lambda term: _youtube_get(term, budget=YT_DAILY)))
+        if ask:
+            try:
+                res = ask(q)
+            except (OSError, ValueError):
+                res = None
+            if res is None:
+                later.append('youtube')
+            else:
+                fm = match_forms(q)
+                ranked = sorted(enumerate(r for r in res if isinstance(r, dict) and YT_ID.match(str(r.get('id') or ''))),
+                                key=lambda x: (-youtube_score(x[1], fm), x[0]))
+                for _, v in ranked[:6]:
+                    out.append(youtube_choice(v))
     return {'results': out, 'later': later}
 
 
@@ -1244,6 +1728,8 @@ def choice_preview(choice, deezer_get=None):
         return {'key': keyed(v)} if os.path.isfile(v) else None
     if not isinstance(v, dict):
         return None
+    if v.get('source') == 'youtube':   # YouTube's own player plays it (the mini player)
+        return {'key': 'yt:' + v['id'], 'youtube': v['id']} if YT_ID.match(str(v.get('id') or '')) else None
     url = v.get('preview') if v.get('source') == 'apple' else deezer_preview(v.get('id'), get=deezer_get)
     if not url or preview_source(url) != v.get('source'):
         return None
@@ -1344,7 +1830,8 @@ class Plugin:
         s = clean_settings(load_json('settings.json', {}))
         cols = [str(c)[:200] for c in collections or [] if isinstance(c, str)][:30]
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: find_song(appid, title, cols, online=s['online'], deezer=s['deezer']))
+        return await loop.run_in_executor(None, lambda: find_song(appid, title, cols, online=s['online'], deezer=s['deezer'],
+                                                                     youtube=s['youtube']))
 
     async def audio(self, key, transcode=False):
         loop = asyncio.get_event_loop()
@@ -1400,7 +1887,19 @@ class Plugin:
     async def search_music(self, query):
         s = clean_settings(load_json('settings.json', {}))
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: search_music(query, s['online'], s['deezer']))
+        return await loop.run_in_executor(None, lambda: search_music(query, s['online'], s['deezer'], youtube=s['youtube']))
+
+    async def youtube_status(self):
+        """Whether a YouTube API key is kept (never the key itself), whether YouTube can be asked, today's units."""
+        return youtube_status()
+
+    async def set_youtube_key(self, key):
+        """The key the person pasted ('' forgets it). Kept only in youtube-key.json (0600); never logged."""
+        try:
+            ok = set_youtube_key(key if isinstance(key, str) else '')
+        except OSError:
+            ok = False
+        return dict(youtube_status(), saved=bool(ok))
 
     async def choose_music(self, appid, choice):
         return choose_music(appid, choice)
@@ -1416,7 +1915,7 @@ class Plugin:
         return load_json('picks.json', {})
 
     async def report(self, line):
-        log(str(line)[:300])
+        log(redact_key(str(line)[:300]))
 
     async def _main(self):
         if not hearth_only.status(log, 'Hearth Music')['ok']:

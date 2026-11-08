@@ -44,11 +44,58 @@ In this order:
    data is strictly forbidden"), and its preview addresses are signed and expire, so only the track id is kept and the
    current address is asked for (`api.deezer.com/track/<id>`) when it plays, kept in memory until just before it
    expires. Can be turned off (*Use Deezer previews*, on by default; if you had turned Apple's previews off before
-   Deezer came, Deezer starts off too). With both off nothing is ever sent anywhere. No good match anywhere: silence.
+   Deezer came, Deezer starts off too). With both off nothing is ever sent anywhere.
+5. **A YouTube video in the YouTube mini player**, only when nothing above has the game's song (Apple's and Deezer's
+   previews only find a song for about one game in five). See "The YouTube mini player" below. No good match
+   anywhere: silence.
 
-**No YouTube.** Hearth Music never plays, extracts or downloads anything from YouTube (or Invidious, Piped, yt-dlp and
-the like): YouTube's terms don't allow audio-only background playback outside its own visible player, and Hearth OS
-has a no-piracy rule. A test fails if any of it shows up in the plugin.
+### The YouTube mini player
+
+When a game's song is a YouTube video, YouTube's own player pops up, small, in the **bottom-left corner** of Steam
+Game Mode while that game is highlighted (or its page is open), and fades out and closes exactly when the previews
+stop: pressing Play, leaving the game, a game running, Hearth Music turned off. It's **visible and streamed** on
+purpose: YouTube's terms allow its videos to be played only in its own visible player, so Hearth Music never plays
+YouTube as background audio and never downloads, extracts, caches or saves anything of it.
+
+- **YouTube's official embed only**: `https://www.youtube-nocookie.com/embed/<id>` in an iframe, 384x216 CSS px
+  (YouTube asks for at least 200x200), YouTube's own controls and branding kept, nothing drawn over it, no ad
+  blocking. It sits bottom-left because Steam's Quick Access menu opens on the right and would cover it. Being small,
+  YouTube picks a low quality by itself, so it uses little data. Its volume follows *Volume* and fades like the
+  previews (through the embed's own JavaScript messages, `enablejsapi=1`; YouTube's IFrame API script isn't loaded
+  into Steam's page).
+- **Controller focus never gets stuck in it**: the player isn't part of Steam's controller navigation (not
+  focusable), and if a touch ever puts the focus in it, the focus goes straight back to Steam; B/back work as before.
+- **It tells YouTube where it's embedded**: `referrerpolicy="strict-origin-when-cross-origin"` and `origin=` (Steam's
+  page, `https://steamloopback.host`). Without a Referer YouTube's player stops with "Error 153" (a configuration
+  error). If YouTube's player answers with an error (153, or 101/150: the owner doesn't allow embedding) or doesn't
+  answer at all, the mini player closes, the game stays silent ("YouTube's player couldn't play it here") and the
+  log says why. Nothing works around YouTube's rules.
+- **Finding the video** uses only the official **YouTube Data API v3** (`www.googleapis.com/youtube/v3/search`,
+  `type=video`, `videoEmbeddable=true`), searching "<title> main theme OST", then "<title> soundtrack". The same rules
+  as Apple and Deezer decide (the game's whole title followed only by soundtrack words, never "Hades II" or "Hollow
+  Knight Silksong"; no covers, remixes, compilations, films; also no trailers, gameplay, reactions, 10-hour loops...),
+  and official channels count for a video ("<artist> - Topic" channels, whose description names the game's soundtrack
+  album; "Official"; the game's own channel). Only the video's id and names are kept in `lookups.json`, like Apple's
+  and Deezer's answers (an id isn't media).
+- **The API needs a key**, the person's own: *YouTube API key (optional)* in the panel takes a YouTube Data API v3
+  key pasted in once (made in Google Cloud). It is kept only in `~/homebrew/settings/decky-hearth-music/youtube-key.json`
+  with 0600 permissions (its `.bak` too), never shown again, never logged (the log hides anything shaped like a key),
+  never sent anywhere but `googleapis.com`, never in Send logs, and Hearth Link's *Sync Hearth settings* doesn't carry
+  it (tests check both). *Remove key* forgets it.
+- **Quota**: a search costs 100 of the key's 10,000 daily units. Automatic searches (the library scan, a highlighted
+  game) stop at 8,000 a day, leaving the rest for *Choose music…*; the panel shows how many are used. The scan uses
+  YouTube only for games nothing else matched, never searches the same game twice while its answer is fresh, waits
+  while a game runs like the rest of the scan, and when YouTube says the day's quota is used up it stops YouTube until
+  YouTube's day ends (midnight Pacific time) and carries on the next day, asking only YouTube for those games.
+- **Without a key** nothing is searched on YouTube automatically, but *Choose music…* takes a pasted YouTube link
+  (`youtube.com/watch?v=`, `youtu.be/`, `/shorts/`) for any game; it's kept as your pick like any other, and picks
+  always win (no scan changes them). With a key, a pasted link's names are asked for (1 unit) and a video whose owner
+  doesn't allow embedding is refused. *Choose music…* also lists YouTube results when a key is kept.
+- **YouTube mini player** in the panel turns it all off (on by default; adding it changed none of your other settings).
+
+**Never** yt-dlp, youtube-dl, pytube, Invidious, Piped, YouTube's internal API, scraping youtube.com, or anything that
+downloads or extracts YouTube audio or video. A test fails if any of it shows up in the plugin, or if the plugin names
+any YouTube or Google address other than the embed, the watch page (*Open on YouTube*) and the Data API.
 
 ### The library scan
 
@@ -80,7 +127,8 @@ re-checked or changed. Only these answers are kept; no preview's sound ever is.
 - **Now playing**: the game, the song and where it's from (and Apple's or Deezer's credit and link), or why it's silent.
 - **Hearth Music** on/off, **Volume**, **Wait before playing** (0-5 s, default 1.5 s: flicking through the library
   doesn't start every song), **In the library too** (off: game pages only; on: also the highlighted tile in the
-  library), **Apple Music previews**, **Use Deezer previews**, **Now playing note** (a short toast the first time a game's song plays).
+  library), **Apple Music previews**, **Use Deezer previews**, **YouTube mini player** with **YouTube API key
+  (optional)**, **Now playing note** (a short toast the first time a game's song plays).
 - **Song for <game>**: *Choose music…* and the picks above.
 - **Your library**: the scan's count, *Scan all games* (or *Cancel scan* while it runs) and *Review music for every
   game*: every installed game and non-Steam game in three groups, **No music found**, **Found automatically** and
@@ -96,8 +144,8 @@ re-checked or changed. Only these answers are kept; no preview's sound ever is.
 These settings are kept in `~/homebrew/settings/decky-hearth-music/settings.json`, saved the safe way
 (docs/SETTINGS-PERSISTENCE.md: only the key you changed is merged into the latest file, atomically, with a `.bak`; a
 damaged file comes back from it). With Hearth Link's **Sync Hearth settings** on, they follow you to your other Hearth
-devices one key at a time (docs/HEARTH-LINK-PLUGIN.md; *Use Deezer previews* isn't among the keys it carries yet, so
-it stays per device); your picks (`picks.json`) and the lookup answers (`lookups.json`, a cache) stay on each device.
+devices one key at a time (docs/HEARTH-LINK-PLUGIN.md; *Use Deezer previews* and *YouTube mini player* aren't among
+the keys it carries, so they stay per device, and the YouTube API key never travels); your picks (`picks.json`) and the lookup answers (`lookups.json`, a cache) stay on each device.
 
 ## How it works
 
@@ -130,8 +178,12 @@ order of sources, Deezer only when Apple has no match and its address asked for 
 written atomically with a .bak, a failed call leaving it as it was, the rate limits and backing off on 429/403, the
 scan's order, resuming and pausing while a game runs, picks winning and surviving a rescan, the Deezer switch on by
 default and remembered, Apple's and Deezer's previews never written to disk, fake Steam folders, hearth-decky shipping
-it), the pure parts' unit tests (credits, the scan's lines), the build and Decky's zip, and pictures of the real panel
-(also the scan's progress and *Choose music…*) and the "Now playing" note over stand-ins (branch
+it; the YouTube mini player: the key's file and permissions and that it's never logged or handed out, link parsing,
+the official search's request, scoring made-up videos by the same rules, the order of sources with YouTube last,
+video ids cached, quota stopping YouTube for the day and the scan going on, picks winning, the new setting changing
+nothing else), the pure parts' unit tests (credits, the scan's lines, the embed's address), the build and Decky's zip, and pictures of the real panel
+(also the scan's progress and *Choose music…*), the mini player over a stand-in for YouTube's player (its size, place,
+referrer policy, focus and volume commands checked) and the "Now playing" note over stand-ins (branch
 `ci/hearth-music-shots`).
 
 ## Not verified on a device yet
@@ -140,4 +192,7 @@ Steam's internals aren't documented: the router path, the tile's React props and
 read the way other Decky plugins read them, but haven't been checked on this Steam build. Where Steam keeps the whole library
 for the scan (`collectionStore.allGamesCollection`, `appStore.allApps`; installed games are read from Steam's
 folders either way) is read the same guarded way. Whether Steam's browser plays
-Apple's and Deezer's preview addresses directly (otherwise the backend's in-memory stream, transcoded if needed) is also unchecked.
+Apple's and Deezer's preview addresses directly (otherwise the backend's in-memory stream, transcoded if needed) is also unchecked. Whether YouTube's embed loads and plays inside Steam Game Mode's page (Steam's
+page rules for iframes, YouTube accepting `https://steamloopback.host` as the embedding site, autoplay with sound) is
+unchecked until it's tried on a device; if it can't, the mini player closes and says so in the log instead of working
+around YouTube's rules.

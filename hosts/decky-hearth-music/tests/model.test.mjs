@@ -103,3 +103,46 @@ test("Scan all games: n of N, cancelled, and the review list's lines and groups"
   const g = M.grouped([row("b", "auto", null), row("a", "auto", null), row("c", "pick", null)]);
   assert.deepEqual(g.map(([k, l, r]) => [k, l, r.map((x) => x.title)]), [["none", "No music found", []], ["auto", "Found automatically", ["a", "b"]], ["pick", "Your picks", ["c"]]]);
 });
+
+test("the YouTube mini player: the official embed only, at least 200x200, YouTube's controls kept", () => {
+  const u = new URL(M.youtubeEmbedUrl("dQw4w9WgXcQ", "https://steamloopback.host"));
+  assert.equal(u.origin, "https://www.youtube-nocookie.com");
+  assert.equal(u.pathname, "/embed/dQw4w9WgXcQ");
+  assert.equal(u.searchParams.get("controls"), "1", "YouTube's own controls");
+  assert.equal(u.searchParams.get("enablejsapi"), "1");
+  assert.equal(u.searchParams.get("origin"), "https://steamloopback.host", "YouTube is told where it's embedded");
+  assert.equal(u.searchParams.get("loop"), "1");
+  assert.equal(u.searchParams.get("playlist"), "dQw4w9WgXcQ", "looping one video needs it as its playlist");
+  assert.equal(M.youtubeEmbedUrl("dQw4w9WgXcQ", "steam://x").includes("origin="), false, "only an https origin");
+  assert.equal(M.youtubeEmbedUrl("bad", "https://steamloopback.host"), "");
+  assert.equal(M.youtubeEmbedUrl("dQw4w9WgXcQ\"><script>", ""), "");
+  assert.ok(M.MINI.width >= 200 && M.MINI.height >= 200, "YouTube asks for at least 200x200");
+  assert.equal(M.ytVolume(0.35), 35);
+  assert.equal(M.ytVolume(2), 100);
+});
+
+test("YouTube's player messages: only from its own origin", () => {
+  assert.deepEqual(M.ytMessage("https://www.youtube-nocookie.com", '{"event":"onReady","info":null}'), { event: "onReady", info: null });
+  assert.deepEqual(M.ytMessage("https://www.youtube-nocookie.com", { event: "onError", info: 150 }), { event: "onError", info: 150 });
+  assert.equal(M.ytMessage("https://evil.example", '{"event":"onReady"}'), null);
+  assert.equal(M.ytMessage("https://www.youtube-nocookie.com", "not json"), null);
+  assert.match(M.ytErrorLine(150), /outside YouTube/);
+  assert.match(M.ytErrorLine(153), /153/);
+});
+
+test("a YouTube song in the panel, and its setting", () => {
+  const song = { source: "youtube", youtube: "dQw4w9WgXcQ", key: "yt:dQw4w9WgXcQ", title: "Hades OST - Main Theme", artist: "Supergiant Games", link: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" };
+  assert.equal(M.nowLine(song), "Hades OST - Main Theme — Supergiant Games");
+  assert.equal(M.credit(song), "Video on YouTube, in YouTube's player");
+  assert.equal(M.openLabel(song), "Open on YouTube");
+  assert.equal(M.credit({ source: "pick", from: "youtube", title: "x" }), "Video on YouTube, in YouTube's player");
+  assert.equal(M.choiceLine({ choice: "youtube:x", from: "youtube", title: "Hades - Main Theme", artist: "Supergiant Games", album: "" }), "Hades - Main Theme — Supergiant Games · YouTube video");
+  assert.equal(M.sourceLabel("youtube"), "YouTube");
+  assert.equal(M.DEFAULTS.youtube, true);
+  assert.equal(M.cleanSettings({}).youtube, true);
+  assert.equal(M.cleanSettings({ youtube: false }).youtube, false, "remembered off");
+  assert.equal(M.cleanSettings({ youtube: false, volume: 0.6 }).volume, 0.6);
+  assert.match(M.youtubeLine(null), /paste a YouTube link/);
+  assert.match(M.youtubeLine({ key: true, state: "quota", used: 8000, daily: 10000, auto: 8000 }), /midnight Pacific/);
+  assert.match(M.youtubeLine({ key: true, state: "ok", used: 300, daily: 10000, auto: 8000 }), /300 of 10000/);
+});
