@@ -18,18 +18,23 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 ### Server mode
 - [x] The web page never goes back to the PIN screen without a word: when the PIN was right but the browser didn't keep the sign-in, it says so and what to do; sign-ins, wrong PINs and unknown sign-ins go to the log for Send logs (needs testing on a device)
 
-### Planned next
-
-- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
-- [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
-- [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
-
 ### Bug hunt
 
 - [x] Hearth Storage's Windows sharing: a folder whose name has a line break, a trailing backslash or % in it isn't shared any more (such a name could add Samba settings of its own, even a share of the whole system) (needs testing on a device)
 - [x] Make a bootable USB: an internal drive always asks for an administrator's password, even when another option has a line break in it (polkit rule and hearth-usb both check) (needs testing on a device)
 - [x] Hearth Recovery's "Reset screen settings" writes session.conf safely (a new file swapped in, same owner and permissions), so a power cut can't leave your other session settings half-written; a file it can't write is reported instead of ending Recovery (needs testing on a device)
 - [x] Ember: an update without its checksum file is refused instead of being installed unchecked (needs testing on a device)
+- [x] Store sign-ins: starting a second sign-in while one was still open (Sign in pressed again, or another store from Hearth in Desktop Mode) no longer closes the new sign-in window and puts Hearth back over it a moment later (needs testing on a device)
+- [x] Settings changed in another program (Task Manager's Steam in the background, Hearth Link, the core service) now show and work in Hearth's Game Mode straight away, instead of the value Hearth read when it started (needs testing on a device)
+- [x] Quick Resume: closing a game put aside no longer ends another game's processes that it shares a folder or Wine prefix with (needs testing on a device)
+- [x] The fail-safe: background work (Battle.net's setup, a tool downloaded for a game) no longer switches the fail-safe off for the next request, so a Hearth stuck on that request is still freed or restarted (needs testing on a device)
+- [x] Settings › Display: the renderer choice, Nvidia's drawing choice and Xodus Nexus's games folder are written whole with a last good copy, so a power cut can't empty them and turn them back to Automatic by themselves (needs testing on a device)
+
+### Planned next
+
+- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
+- [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
+- [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
 
 ## 1.8 (released 2026-11-08)
 

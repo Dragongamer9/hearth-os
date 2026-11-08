@@ -364,6 +364,8 @@ impl Bridge {
         let method = msg["method"].as_str().unwrap_or("");
         let args = if msg["args"].is_object() { msg["args"].clone() } else { json!({}) };
         self.cur_id = id.clone();
+        // What's saved now (another program may have changed library.json since Hearth read it).
+        self.library.store.refresh();
         // A request that panics (bad data somewhere) still gets an answer. Caught here, with the bridge still held,
         // its lock isn't poisoned: before, the page waited forever, the fail-safe saw "stuck" (killing helpers,
         // sending a report, restarting Hearth), and Game Mode's own uses of the bridge failed until then.
@@ -1237,7 +1239,7 @@ impl Bridge {
                 if let Some(v) = a["set"].as_str() {
                     if !["fast", "compatible", "auto"].contains(&v) { return Err("Unknown choice".into()); }
                     let _ = std::fs::create_dir_all(crate::paths::config_dir());
-                    if v == "auto" { let _ = std::fs::remove_file(&f); } else { std::fs::write(&f, v).map_err(|e| e.to_string())?; }
+                    if v == "auto" { let _ = std::fs::remove_file(&f); } else { crate::settings_file::write_text(&f, v).map_err(|e| e.to_string())?; }
                 }
                 let pick = std::fs::read_to_string(&f).unwrap_or_default().trim().to_string();
                 Ok(json!({"pick": if pick.is_empty() { "auto".to_string() } else { pick }, "fast": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()}))
