@@ -25,7 +25,7 @@ Item {
         else if (a.publisher) out.push(a.publisher);
         const dl = a.drive && a.drive !== "/" ? fm.driveLabelFor(a.drive) : "";
         if (dl) out.push("on " + dl);
-        if (a.date) out.push(Qt.formatDate(new Date(a.date * 1000), Qt.locale().dateFormat(Locale.ShortFormat)));
+        if (a.date) out.push(Qt.formatDate(new Date(a.date * 1000), "d MMM yyyy"));
         return out.join(" · ");
     }
     function ensure(item) {

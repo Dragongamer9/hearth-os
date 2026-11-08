@@ -18,6 +18,7 @@ Item {
     readonly property real tileW: Math.floor((width - 36 - (cols - 1) * gap) / cols)
     onColsChanged: if (fm) fm.pcCols = cols
     onFmChanged: if (fm) fm.pcCols = cols
+    Component.onCompleted: if (fm) fm.pcCols = cols
 
     readonly property var groups: {
         const out = [];

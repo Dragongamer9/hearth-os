@@ -1079,6 +1079,8 @@ jobs:
           # (Views and the details pane are left as they are inside the check: changing them is a choice that's saved.)
           this_pc_shots() {  # dark | light
             ipc filemanager thispc; sleep 5; grim $P/$1-01-this-pc.png || true
+            wtype -k End 2>/dev/null; sleep 2; grim $P/$1-01b-network-locations.png || true
+            ipc filemanager section pc; sleep 2; grim $P/$1-01c-navigation-pane-this-pc.png || true
             ipc files open "$MB/Games/SteamLibrary"; ipc filemanager select steamapps; sleep 3; grim $P/$1-02-inside-games-drive.png || true
             ipc filemanager installed; sleep 8; grim $P/$1-03-installed-apps.png || true
             ipc filemanager select "Notepad++"; ipc filemanager menu; sleep 1; grim $P/$1-04-app-menu.png || true; ipc filemanager close
