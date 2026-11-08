@@ -22,6 +22,7 @@ import select
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, '/usr/libexec/nimbus')
@@ -166,13 +167,34 @@ def act_reset_screen(say):
     n = 0
     for uid, gid, home in users_homes():
         p = os.path.join(home, '.config', 'nimbus', 'session.conf')
-        if not os.path.isfile(p):
+        if os.path.islink(p) or not os.path.isfile(p):
             continue
-        lines = open(p).read().splitlines(True)
+        with open(p) as f:
+            lines = f.read().splitlines(True)
         new = [rx.sub(r'\1', l) if re.match(r'\s*(export\s+)?NIMBUS_GAMESCOPE_ARGS=', l) else l for l in lines]
         if new != lines:
-            open(p, 'w').writelines(new)
-            os.chown(p, uid, gid)
+            # Written next to it and swapped in (the rest of the file, the person's other settings, is never left
+            # half-written if the power goes), owned by the person before it's in place.
+            try:
+                fd, tmp = tempfile.mkstemp(prefix='.session.conf.', dir=os.path.dirname(p))
+            except OSError as e:
+                say(f'Couldn\'t change {p} ({e.strerror or e}); it\'s as it was.')
+                continue
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    f.writelines(new)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chown(tmp, uid, gid)
+                os.chmod(tmp, os.stat(p).st_mode & 0o7777)
+                os.replace(tmp, p)
+            except OSError as e:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                say(f'Couldn\'t change {p} ({e.strerror or e}); it\'s as it was.')
+                continue
             n += 1
     say(f'Screen settings back to the screen\'s own mode ({n} account{"s" if n != 1 else ""}).')
 
