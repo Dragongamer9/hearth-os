@@ -1,0 +1,3 @@
+668 quickshell -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell
+7384 [quickshell] <defunct>
+7455 [quickshell] <defunct>
