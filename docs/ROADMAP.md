@@ -19,6 +19,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Calendar: events added while a subscribed calendar was downloading are no longer undone by the service saving its older copy (needs testing on a device)
 - [x] Calculator, Emoji, Documents, Maps, Player, Terminal, Text, Office, Contacts and Theater: a damaged settings or list file is put back from a .bak instead of the defaults being saved over it (history, saved places, podcasts, CardDAV accounts, sites...) (needs testing on a device)
 - [x] Terminal, Office and Calculator: two windows no longer undo each other's settings (each saves only what it changed) (needs testing on a device)
+- [x] Hearth Connect, Nearby Share and Recorder: a damaged paired-devices or settings file is put back from a .bak, so a power cut no longer means pairing every phone again or losing the recorder's choices (needs testing on a device)
 
 ## 1.8 (released 2026-11-08)
 

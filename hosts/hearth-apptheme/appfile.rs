@@ -38,8 +38,15 @@ fn fsync_dir(dir: &Path) { if let Ok(d) = std::fs::File::open(dir) { let _ = d.s
 #[cfg(not(unix))]
 fn fsync_dir(_dir: &Path) {}
 
-/// Writes `bytes` all at once and makes sure they're on the drive before the old file goes.
-fn atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+#[cfg(unix)]
+fn make_private(p: &Path) -> std::io::Result<()> { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600)) }
+#[cfg(not(unix))]
+fn make_private(_p: &Path) -> std::io::Result<()> { Ok(()) }
+
+/// Writes `bytes` all at once and makes sure they're on the drive before the old file goes. `private`: only you can
+/// read it (0600); otherwise the old file's permissions are kept.
+fn atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> { atomic_as(path, bytes, false) }
+fn atomic_as(path: &Path, bytes: &[u8], private: bool) -> std::io::Result<()> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
@@ -47,10 +54,11 @@ fn atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = sibling(path, ".", &format!(".{}-{}.tmp", std::process::id(), SEQ.fetch_add(1, Ordering::SeqCst)));
     let r = (|| {
         let mut f = std::fs::File::create(&tmp)?;
+        if private { make_private(&tmp)?; }
         f.write_all(bytes)?;
         f.sync_all()?;
         drop(f);
-        if let Ok(m) = std::fs::metadata(path) { let _ = std::fs::set_permissions(&tmp, m.permissions()); }
+        if !private { if let Ok(m) = std::fs::metadata(path) { let _ = std::fs::set_permissions(&tmp, m.permissions()); } }
         std::fs::rename(&tmp, path)
     })();
     if r.is_err() { let _ = std::fs::remove_file(&tmp); }
@@ -143,11 +151,12 @@ pub fn read(path: &Path) -> Got {
 /// `read`, or None when there's nothing usable (missing, or kept aside as .broken).
 pub fn read_json(path: &Path) -> Option<Value> { read(path).value() }
 
-fn write_locked(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+fn write_locked(path: &Path, bytes: &[u8]) -> std::io::Result<()> { write_locked_as(path, bytes, false) }
+fn write_locked_as(path: &Path, bytes: &[u8], private: bool) -> std::io::Result<()> {
     let cur = std::fs::read(path).ok();
     if cur.as_deref() == Some(bytes) { return Ok(()); }
-    if let Some(c) = cur.as_deref().filter(|c| parse(c).is_some()) { atomic(&bak_path(path), c)?; }
-    atomic(path, bytes)
+    if let Some(c) = cur.as_deref().filter(|c| parse(c).is_some()) { atomic_as(&bak_path(path), c, private)?; }
+    atomic_as(path, bytes, private)
 }
 
 /// Writes PATH atomically, keeping the old good version as PATH.bak.
@@ -157,6 +166,11 @@ pub fn write_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 pub fn write_json(path: &Path, v: &Value) -> std::io::Result<()> {
     write_bytes(path, format!("{}\n", serde_json::to_string_pretty(v).unwrap_or_default()).as_bytes())
+}
+/// `write_json` for a file only you may read (0600, and its .bak too): paired devices and the like.
+pub fn write_json_private(path: &Path, v: &Value) -> std::io::Result<()> {
+    let _l = lock(path);
+    write_locked_as(path, format!("{}\n", serde_json::to_string_pretty(v).unwrap_or_default()).as_bytes(), true)
 }
 
 /// Reads the latest PATH under the lock (None when there's none yet), lets `change` make the new value, and writes
@@ -243,6 +257,17 @@ mod appfile_tests {
         std::fs::write(&f, b"").unwrap();
         update(&f, |cur| { let mut v = cur.unwrap(); v["events"].as_array_mut().unwrap().push(json!(9)); (Some(v), ()) }).unwrap();
         assert_eq!(read_json(&f), Some(json!({"events": [1, 2, 9]})));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn appfile_private_files_stay_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = dir("private");
+        let f = d.join("paired.json");
+        write_json_private(&f, &json!([1])).unwrap();
+        write_json_private(&f, &json!([1, 2])).unwrap();
+        for p in [f.clone(), bak_path(&f)] { assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600, "{p:?}"); }
     }
 
     #[test]

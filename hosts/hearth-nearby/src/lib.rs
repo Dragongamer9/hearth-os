@@ -13,6 +13,9 @@
 //! yes in the window unless they marked that device trusted, and "trusted" needs the device to prove who it is with
 //! its certificate. Received files go to ~/Downloads/Nearby.
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod discovery;
 pub mod files;
 pub mod firewall;
