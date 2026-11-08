@@ -26,7 +26,7 @@ setup() {
   echo 'steam-installer steam/license note ' | debconf-set-selections
   apt-get install -y -qq --no-install-recommends ca-certificates curl python3 xvfb xauth procps file \
     mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri libgl1-mesa-dri:i386 libglx-mesa0 libglx-mesa0:i386 \
-    libegl-mesa0 libgbm1 libvulkan1 libvulkan1:i386 vulkan-tools mesa-utils icoutils \
+    libegl-mesa0 libgbm1 libvulkan1 libvulkan1:i386 vulkan-tools mesa-utils icoutils libfreetype6 libfreetype6:i386 libfontconfig1:i386 \
     gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 >/dev/null
   # Steam's package as in the image (it brings the 32-bit libraries); Steam itself is never started or signed in to.
   apt-get install -y -qq --no-install-recommends steam-installer steam-devices >/dev/null \
@@ -53,6 +53,7 @@ setup() {
   file "$W"/*.exe
   id tester >/dev/null 2>&1 || useradd -m tester
   chown -R tester: "$W"
+  note "FreeType in the test container (Wine's text)" "$(ls /usr/lib/x86_64-linux-gnu/libfreetype.so.6 /usr/lib/i386-linux-gnu/libfreetype.so.6 2>&1 | tr '\n' ' ')"
   note "Vulkan in the test container" "$(vulkaninfo --summary 2>&1 | grep -E 'deviceName|driverName|apiVersion' | head -6)"
 }
 

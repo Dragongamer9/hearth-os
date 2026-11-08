@@ -255,7 +255,7 @@ def make_lnk(path, target, args='', cwd='', icon=''):
     out = header + info
     for v in (cwd, args, icon):
         if v:
-            out += struct.pack('<H', len(v)) + v.encode('utf-16-le')
+            out += struct.pack('<H', len(v) + 1) + (v + '\0').encode('utf-16-le')  # Wine counts the NUL
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'wb') as f:
         f.write(out)
@@ -431,7 +431,7 @@ class Logs(Base):
         a, p = self.app_()
         self.w.start(a, p, [], runner=lambda c, e, d, log=None: log.output(b'wine: could not load kernel32.dll\n') or 5)
         t = self.w.cmd_report()
-        for want in ('Built-in GE-Proton: GE-Proton11-3', '--- game (game)', 'state: a program opened directly',
+        for want in ('Built-in GE-Proton: GE-Proton11-3', '--- game (game)', 'FreeType (Wine draws text with it): 64-bit', 'state: a program opened directly',
                      'with code 5', 'could not load kernel32.dll', '--- Vulkan', 'Steam folders: none'):
             self.assertIn(want, t)
 
