@@ -600,7 +600,7 @@ var ENTRIES = [
 {
 "t": "Recomps",
 "p": "games",
-"d": "Native PC versions of classic console games: install and update them",
+"d": "Native PC versions of classic console games: install, update and play them (in Hearth Games)",
 "i": "pad"
 },
 {
