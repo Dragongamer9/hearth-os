@@ -33,8 +33,9 @@ h2{font-size:15px;font-weight:600;letter-spacing:.02em;color:var(--dim);text-tra
 .ibtn{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;position:relative;color:var(--dim)}
 .ibtn:hover,.ibtn.focus{color:var(--text);background:var(--panel2)}
 .badge{position:absolute;top:5px;right:5px;min-width:15px;height:15px;border-radius:8px;background:var(--accent);color:var(--accentInk);font-size:10px;font-weight:700;display:grid;place-items:center;padding:0 3px}
-.stat{display:flex;align-items:center;gap:5px;color:var(--dim);font-size:13px;padding:0 6px}
-.clock{font-weight:600;font-size:15px;color:var(--text);padding-left:8px;font-variant-numeric:tabular-nums}
+.stat{display:flex;align-items:center;gap:5px;color:var(--dim);font-size:13px;padding:0 6px;white-space:nowrap;flex:none}
+.topbar .ibtn{flex:none}
+.clock{font-weight:600;font-size:15px;color:var(--text);padding-left:8px;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 #view{overflow-y:auto;overflow-x:hidden;padding:4px var(--gut) 40px;scroll-behavior:smooth;scrollbar-width:none}
 #view::-webkit-scrollbar{display:none}
 .footer{display:flex;align-items:center;justify-content:flex-end;gap:18px;padding:0 var(--gut);background:var(--bg2);border-top:1px solid var(--line);font-size:13px;color:var(--dim)}
@@ -114,7 +115,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .cover .img,.ghero .img,.home-hero .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .home-hero .img{filter:blur(30px) saturate(1.2);opacity:.55;transform:scale(1.2);will-change:transform}
 .glogo-img{position:absolute;left:var(--gut);bottom:24px;z-index:1;max-width:min(46%,520px);max-height:42%;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 4px 24px rgba(0,0,0,.6))}
-.glogo{position:absolute;left:var(--gut);bottom:28px;z-index:1;font-size:clamp(30px,5vw,58px);font-weight:800;letter-spacing:-.01em;text-shadow:0 4px 30px rgba(0,0,0,.6);max-width:70%}
+.glogo{position:absolute;left:var(--gut);bottom:28px;z-index:1;font-size:clamp(30px,5vw,58px);font-weight:800;letter-spacing:-.01em;text-shadow:0 4px 30px rgba(0,0,0,.6);max-width:70%;overflow-wrap:anywhere}
 .gbar{display:flex;align-items:center;gap:12px;padding:0 var(--gut);flex-wrap:wrap}
 .play{display:flex;align-items:center;gap:10px;padding:14px 34px;border-radius:8px;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:17px}
 .play svg{width:22px;height:22px;fill:currentColor;stroke:none}
@@ -136,7 +137,7 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 /* ---------- list views ---------- */
 .rows{display:flex;flex-direction:column;gap:8px;max-width:900px}
 .row{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--panel);border-radius:var(--r)}
-.row .rt{flex:1;min-width:0}
+.row .rt{flex:1;min-width:0;overflow-wrap:anywhere}
 .row .rt b{display:block;font-weight:600}
 .lk-pair .lk-big{font-size:30px;letter-spacing:.14em;color:var(--accent);font-variant-numeric:tabular-nums;margin:2px 0}.lk-pair .lk-in{display:inline;color:var(--text)}
 .lk-scan{display:flex;align-items:center;gap:10px;padding:10px 16px}
@@ -184,7 +185,8 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .mfoot b{display:block}
 /* profile */
 .prof{display:flex;align-items:center;gap:20px;padding:18px;background:var(--panel);border-radius:var(--r)}
-.prof .pname{font-size:24px;font-weight:800}
+.prof{min-width:0}.prof>div:last-child{min-width:0}
+.prof .pname{font-size:24px;font-weight:800;overflow-wrap:anywhere}
 .opts{display:flex;flex-wrap:wrap;gap:10px;padding:4px 2px}
 .avopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:12px;width:88px}
 .avopt small{font-size:11px;color:var(--dim);text-align:center;line-height:1.2}
@@ -1261,13 +1263,14 @@ body.menu-dock #search.over-dock .kbtop{border-radius:0 0 18px 18px}
 .sc-side{width:clamp(250px,27vw,400px);flex:none;display:flex;flex-direction:column;gap:14px;position:sticky;top:0}
 .sc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
 .sc-main.srows{max-width:none}
-.sc-card{border-radius:18px;background:var(--panel);padding:22px;display:flex;flex-direction:column;gap:14px}
+.sc-card{border-radius:18px;background:var(--panel);padding:22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.sc-card h2,.sc-card .scbig,.sc-card .scs,.sc-card .scdev{overflow-wrap:anywhere;min-width:0}
 .sc-card .sci{width:52px;height:52px;border-radius:16px;background:var(--accent);color:var(--accentInk);display:grid;place-items:center}
 .sc-card .sci svg{width:28px;height:28px}
-.sc-card h2{all:unset;font-size:24px;font-weight:800;color:var(--text)}
+.sc-card h2{all:unset;font-size:24px;font-weight:800;color:var(--text);overflow-wrap:anywhere}
 .sc-card .scbig{font-size:30px;font-weight:800;line-height:1.1}
 .sc-card .scl{display:flex;justify-content:space-between;gap:12px;font-size:14px}
-.sc-card .scl span:first-child{color:var(--dim);flex:none}
+.sc-card .scl span:first-child{color:var(--dim);flex:none;max-width:62%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sc-card .scl span:last-child{text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .sc-card .scs{font-size:13px;color:var(--dim);line-height:1.5}
 .sc-card .scok{font-size:14px;color:var(--accent)}
@@ -1278,6 +1281,7 @@ body.menu-dock #search.over-dock .kbtop{border-radius:0 0 18px 18px}
 .sc-card .scbtns{display:flex;gap:8px;flex-wrap:wrap}
 .sc-card .scbtns .pill{padding:10px 14px;border-radius:10px;background:var(--panel3)}
 .sc-card .scdev{display:flex;align-items:center;gap:12px}
+.sc-card .scdev>div{min-width:0}
 .sc-card .scdev b{display:block;font-size:16px}.sc-card .scdev small{color:var(--dim);font-size:13px}
 .sc-card .screen{align-self:center;width:min(300px,100%);aspect-ratio:16/9;border-radius:10px;background:linear-gradient(135deg,var(--panel3),var(--panel2));border:6px solid #05070a;display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--text);text-align:center;padding:6px}
 .sc-card .stand{align-self:center;width:80px;height:8px;border-radius:4px;background:#05070a;margin-top:-8px}
@@ -1935,7 +1939,9 @@ function dlInfo(g){
   if(g.engine && g.engine.auto && g.state!=='paused') return {pct, label:'Automatic update'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   if(g.engine && g.engine.kind==='workshop' && g.state!=='paused') return {pct, label:'Workshop items'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   if(g.engine && g.engine.kind==='verify' && g.state!=='paused') return {pct, label:'Checking files'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
-  return {pct, label: (g.stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(g.stage||'') ? ` ${pct}%` : '')};
+  // g.stage can carry Steam's own words ("Stopped: <its reason>"), drawn as part of the page: no markup in it.
+  const stage = g.stage ? String(g.stage).replace(/[<>"]/g,'') : '';
+  return {pct, label: (stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(stage) ? ` ${pct}%` : '')};
 }
 function cover(g, opts={}){
   const kinds = opts.wide ? ['wide','hero','cover'] : ['cover','wide'];
@@ -2017,7 +2023,8 @@ try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}'));
 // source of truth on Hearth OS: WebKit's localStorage can lose its last changes in a power cut, or everything when its
 // folder is reset (docs/SETTINGS-PERSISTENCE.md). Older versions kept them only here: copied to the file once.
 const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY'];
-function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(()=>{}); }
+// Not saved to the file: say so (the file wins at the next start, so the change would have gone back by itself).
+function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(e=>{ if(LINUX && !ANDROID) toast("Couldn't save this setting: "+((e&&e.message)||'no answer')); }); }
 function uiPrefsLoad(){
   if(!host) return;
   call('uiprefs.get').then(f=>{
@@ -7062,7 +7069,7 @@ function oldFilesDelete(name){
 
 // ---------- Settings › Import games (Hearth, the OS) ----------
 // Games and personal files from this PC's other drives: Windows, SteamOS / Steam Deck, other Linux, SD cards.
-const IMP = {s:null, sel:new Set(), mode:'copy'};
+const IMP = {s:null, sel:new Set(), mode:'copy', err:null};
 if(!host){ IMP.s={supported:true,state:'idle',free:2.1e11,scan:{free:2.1e11,drives:[
   {id:'nvme0n1p3',name:'Windows',os:'Windows',kind:'windows',fs:'ntfs',size:9.9e11,
    steam:[{key:'s1',name:'Starfall Drift',size:4.6e10},{key:'s2',name:'Hollow Pines',size:9.1e9},{key:'s3',name:'Neon Courier',size:2.2e10}],
@@ -7070,7 +7077,9 @@ if(!host){ IMP.s={supported:true,state:'idle',free:2.1e11,scan:{free:2.1e11,driv
    files:[{key:'f1',name:'Documents',user:'Sam',size:3.2e9},{key:'f2',name:'Pictures',user:'Sam',size:1.7e10}]},
   {id:'mmcblk0p1',name:'SD card',os:'SD card',kind:'data',fs:'ext4',size:5.1e11,steam:[{key:'s4',name:'Tidebound',size:6.4e9}],epic:[],gog:[],files:[]},
   {id:'sda1',name:'Games',kind:'locked',fs:'BitLocker',size:1e12,problem:"it's locked with BitLocker. Turn BitLocker off in Windows (Settings › Privacy & security › Device encryption), then scan again",steam:[],epic:[],gog:[],files:[]}]}}; }
-function loadImport(){ if(host && LINUX) call('import.status').then(onImport).catch(()=>{}); }
+function loadImport(){ if(host && LINUX) call('import.status').then(d=>{ IMP.err=null; onImport(d); }).catch(e=>{
+  // Not read: Settings › Import games says why with Try again (it said "Loading…" for good).
+  if(!IMP.s){ IMP.err=(e&&e.message)||'No answer'; if(S.view==='settings' && S.settingsTab==='import') render(null,true); } }); }
 function onImport(d){
   const was=IMP.s; IMP.s=d;
   if(d && d.offer && !IMP.offered && !OVERLAY){
@@ -7175,7 +7184,7 @@ function pageTakeover(st){
 function pageImport(){
   if(!host && !IMP.s) return note('Importing works in the '+APP+' app.');
   const st=IMP.s;
-  if(!st) return note('Loading…');
+  if(!st) return loadFailNote('the drives to import from', IMP.err, 'imp-retry', 'impRetry');
   if(!st.supported) return note('Importing games and files needs Hearth, the OS.');
   if(st.state==='importing') return impProgress(st);
   if(SPC.job || SPC.result) return pageSpace();   // Make Hearth bigger: running, or just finished
@@ -9409,7 +9418,10 @@ function qdFirst(){ const p=$('#qam .qd-panel'); return p && (p.querySelector('[
 function qdTabMove(dir){
   if(dir==='down'){ const el=qdFirst(); if(el){ setFocus(el); blip(); } return; }
   if(dir!=='left' && dir!=='right') return;
-  const T=qdTabs(), i=T.findIndex(x=>x[0]===S.qtab), j=i+(dir==='left'?-1:1);
+  // From the tab that's selected (the pointer can put it on another tab than the open one; moving went from the open
+  // one, so a tab next to the selection could be skipped).
+  const on=focused && focused.classList.contains('qd-tab') && focused.dataset.tab;
+  const T=qdTabs(), i=T.findIndex(x=>x[0]===(on||S.qtab)), j=i+(dir==='left'?-1:1);
   if(j<0 || j>=T.length) return;
   qdGo(T[j][0]);
 }
@@ -10284,6 +10296,9 @@ function act(el){
     case 'swRestart': return swRestart();
     case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : setupGo(1);
     case 'setupSkip': return setupFinish();
+    case 'profRetry': PROF.err=null; render('pr-retry',true); return loadProfiles();
+    case 'impRetry': IMP.err=null; render('imp-retry',true); return loadImport();
+    case 'accRetry': ACC.err=null; render('acc-retry',true); return loadAccounts();
     case 'setupNoPad': S.noPad=true; watchPad(false); return setupGo(1);
     case 'padDone': return padFinish(false);
     case 'padSkip': return padFinish(true);
@@ -10323,7 +10338,9 @@ function act(el){
     case 'osiRestart': return call('osinstall.restart').catch(e=>toast(e.message));
     case 'osiAgain': OSI.s=null; OSI.step='review'; return render('osi-go');
     case 'osiChoose': return osiChoose();
-    case 'setupImport': if(host) call('setup.done').catch(()=>{}); HOSTINFO.setupDone=true; S.settingsTab='import'; return navigate('settings',{focusKey:'st-import'});
+    // Hearth OS hands over to Steam Game Mode when setup finishes: there, setup isn't done yet, and B from Import comes
+    // back to this step (it was marked done here, so the hand-over never came and Hearth's own Game Mode stayed).
+    case 'setupImport': if(!(host && LINUX && hasFeat('steamOnly'))){ if(host) call('setup.done').catch(()=>{}); HOSTINFO.setupDone=true; } S.settingsTab='import'; return navigate('settings',{focusKey:'st-import'});
     case 'impDone': if(IMP.s) IMP.s.result=null; IMP.sel.clear(); return render(null,true);
     case 'sysUpdInstall': return call('system.update.install').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'updCheck': return call('update.check',{},60000).then(onUpdate).catch(e=>toast(e.message));
@@ -10519,6 +10536,10 @@ function back(){
   if(!S.layers.length && S.view==='shop' && SHOP.store==='recomps' && RC.page) return rcBack();
   if(!S.layers.length && S.view==='shop' && SHOP.page) return shopBack();
   if(!S.layers.length && S.view==='settings' && !S.sfront){ setBackToFront(); return blip(420,.05); }
+  // First-time setup: B goes to the step before, and does nothing on the first. It went back to whatever was open
+  // before setup (Home), leaving setup half done (on Hearth OS, in Hearth's own Game Mode instead of Steam Game
+  // Mode), and a step passed by mistake, like Wi-Fi, couldn't be reached again with a controller.
+  if(!S.layers.length && S.view==='setup'){ if((S.setupStep||0)>0){ setupGo(-1); return blip(420,.05); } return; }
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
 function typeKey(c){
@@ -12627,7 +12648,7 @@ const STORE_INFO = {
 // On Linux the stores' own apps hold the sign-ins; Nimbus opens them.
 // On Linux, Xbox PC games can't be installed; they stream instead (Xbox Cloud Gaming).
 if(LINUX) Object.assign(STORE_INFO.xbox, {blurb:'Your gamertag and the games you\'ve played on Xbox. On Linux, Game Pass games stream with Xbox Cloud Gaming (Library › Xbox).'});
-const ACC = {list:null, root:'', signing:null, sig:''};
+const ACC = {list:null, root:'', signing:null, sig:'', err:null};
 // Browser preview: store → when its sign-in expired (?expired: GOG's, an hour ago). 0: it works.
 const MOCKEXP = {gog: /[?&]expired/.test(location.search) ? Date.now()-3.6e6 : 0};
 async function loadAccounts(fromEvent){
@@ -12642,10 +12663,16 @@ async function loadAccounts(fromEvent){
     const changed = ACC.sig && sig!==ACC.sig; ACC.sig=sig;
     if(changed && host) loadLibrary(true);
     syncExpired(!first);
-    if(S.view==='stores' || S.view==='library' || S.view==='downloads') render(null,true);
+    ACC.err=null;
+    // First-time setup's "Sign in to your game stores" too: it said "Loading…" until something else redrew it.
+    if(S.view==='stores' || S.view==='library' || S.view==='downloads' || S.view==='setup') render(null,true);
     else if(S.view==='settings' && S.settingsTab==='profile') render(null,true);
     deskSignCheck();
-  }catch(e){ if(!fromEvent) toast(e.message); }
+  }catch(e){
+    // Not read: the stores' page (and setup's step) says so with Try again, instead of "Loading…" for good.
+    if(ACC.list===null){ ACC.err=e.message||'No answer'; if(S.view==='stores' || S.view==='setup') render(null,true); }
+    if(!fromEvent) toast(e.message);
+  }
 }
 // ---------- Expired store sign-ins ----------
 // A store refused its saved sign-in (hearth-core's stores::expiry, Ember's SignInExpiry): accounts.status says
@@ -12654,6 +12681,8 @@ async function loadAccounts(fromEvent){
 // Games already installed keep showing and still start if they work offline.
 const EXPIRED_TOLD = new Set();   // stores whose expiry has been announced (once per expiry)
 const accOf = store => (ACC.list||[]).find(a=>a.store===store);
+// While the stores aren't read yet: Loading…, or why not with Try again.
+function accLoadNote(){ return loadFailNote('your game stores', ACC.err, 'acc-retry', 'accRetry'); }
 const isExpired = store => !!(accOf(store) && accOf(store).expired);
 function storeName(store){ return STORE_INFO[store] ? STORE_INFO[store].name : store; }
 // announce: a toast for an expiry that's new since the last look (not at start: the bell has it then).
@@ -12785,7 +12814,7 @@ function viewSetup(){
     const rows=(ACC.list||[]).filter(a=>STORE_INFO[a.store]).map(a=>{ const info=STORE_INFO[a.store];
       const status=ACC.signing===a.store?'Signing in…':a.signedIn?`Signed in${a.name?' as '+a.name:''}`:'Not signed in';
       return `<button class="row" data-f data-k="setup-acc-${a.store}" data-act="accSignIn" data-s="${a.store}"><span class="ricon" style="color:${info.color}">${info.mark}</span><div class="rt"><b>${info.name}</b><small>${esc(status)}</small></div><div class="rv">${a.signedIn?I.check:'Sign in ›'}</div></button>`; }).join('');
-    body=`<h1>Sign in to your game stores</h1><p class="lead">Your games from each one show up in your library. You type your password on the store's own page; ${APP} never sees it.</p><div class="rows">${rows||note('Loading…')}</div><div class="acts">${next()}</div>`;
+    body=`<h1>Sign in to your game stores</h1><p class="lead">Your games from each one show up in your library. You type your password on the store's own page; ${APP} never sees it.</p><div class="rows">${rows||accLoadNote()}</div><div class="acts">${next()}</div>`;
   }
   else if(st==='controls') body=`<h1>Your controller</h1><p class="lead">The buttons you'll use most.</p><div class="rows">
       ${[['A','Select'],['B','Back'],['Y','Search, or the on-screen keyboard'],['☰ Menu','Main menu'],['⧉ View','Quick Access: volume, brightness, power, Wi-Fi'],['Xbox / Guide','Over a game: the overlay (back to Hearth, close the game, settings)'],['View + Menu','Use the controller as a mouse'],['Power › Switch to desktop','Mantel, the desktop: windows, files, a browser']].map(([b,t],i)=>`<div class="row" data-f data-k="setup-c${i}"><div class="rt"><b>${b}</b><small>${t}</small></div></div>`).join('')}</div><div class="acts">${next()}</div>`;
@@ -13057,11 +13086,16 @@ function viewLock(){
 // ---------- Profiles (Linux): who's playing ----------
 // Each profile has its own Steam account, Epic/GOG/Xbox sign-ins, favorites, recent games and play time.
 // Installed games are shared. Switching restarts Hearth (and Steam, as that profile's account).
-const PROF = {s:null, switching:null};
+const PROF = {s:null, switching:null, err:null};
 const PROF_COLORS = ['#ff8a3d','#3fd0b8','#5aa9ff','#b57bff','#ffd166','#e5483b','#7ad15a'];
 // Profiles: Hearth (Linux) has them; Ember (Windows) since 0.0.26.
 function hasProfiles(){ return LINUX || (HOSTINFO.features||[]).includes('profiles'); }
-function loadProfiles(){ return call('profiles.get').then(r=>{ PROF.s=r; refreshUI(); return r; }).catch(()=>null); }
+function loadProfiles(){ return call('profiles.get').then(r=>{ PROF.s=r; PROF.err=null; refreshUI(); return r; }).catch(e=>{
+  // Not read: Settings › Profiles says why with Try again (it said "Loading…" for good).
+  if(!PROF.s){ PROF.err=(e&&e.message)||'No answer'; if(S.view==='settings' && S.settingsTab==='profiles') render(null,true); }
+  return null; }); }
+// Loading…, or why a page's status couldn't be read, with Try again (data-act act).
+function loadFailNote(what, err, k, act){ return err ? note(`Couldn't read ${what}: ${esc(err)}`)+`<div class="rows"><button class="row" data-f data-k="${k}" data-act="${act}"><span class="ricon">${I.restart}</span><div class="rt"><b>Try again</b></div></button></div>` : note('Loading…'); }
 const profName = p => (p.current ? PROFILE.name : null) || p.name || 'Player';
 function profTile(p, k){
   const init = esc(profName(p).trim().charAt(0).toUpperCase() || '?');
@@ -13170,7 +13204,7 @@ function pageRemote(){
 async function rpAct(k, fn){ RP.busy=k; render(null,true); try{ await fn(); }catch(e){ toast(e.message); } RP.busy=''; await loadRemote(); }
 function pageProfiles(){
   const s=PROF.s;
-  if(!s) return note('Loading…');
+  if(!s) return loadFailNote('the profiles', PROF.err, 'pr-retry', 'profRetry');
   let h = shead('Profiles') + s.list.map((p,i)=>`<button class="row" data-f data-k="pr-${i}" data-act="profEdit" data-id="${esc(p.id)}"><span class="ricon" style="background:${esc(p.color)};color:#1a0d06;font-weight:800">${esc(profName(p).charAt(0).toUpperCase())}</span><div class="rt"><b>${esc(profName(p))}${p.current?' (you)':''}</b><small>${p.steam?'Steam: '+esc(p.steam):'No Steam account linked'}${s.hasPin&&p.limits&&(p.limits.minutesPerDay||p.limits.allowed)?' · '+limitsSummary(p):''}</small></div><div class="rv">›</div></button>`).join('');
   if(s.list.length<8) h += `<button class="row" data-f data-k="pr-add" data-act="profAdd"><span class="ricon">${I.user}</span><div class="rt"><b>Add profile</b><small>For someone else who plays here</small></div></button>`;
   h += `<button class="row" data-f data-k="pr-switch" data-act="nav" data-view="profiles"><span class="ricon">${I.user}</span><div class="rt"><b>Switch profile</b><small>Who's playing?</small></div><div class="rv">›</div></button>`;
@@ -13197,7 +13231,7 @@ function profEdit(id){
 }
 
 function viewStores(){
-  if(!ACC.list) return `<h2>Game stores</h2><div class="note">Loading…</div>`;
+  if(!ACC.list) return `<h2>Game stores</h2>`+accLoadNote();
   const cards = ACC.list.map(a=>{
     const info=STORE_INFO[a.store]; if(!info) return '';
     const signing = ACC.signing===a.store;

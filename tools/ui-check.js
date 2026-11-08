@@ -2574,6 +2574,43 @@ const path = require('path');
     await sp.close();
   }
 
+  // First-time setup (bug hunt): the stores step shows the stores once they're read (it said "Loading…" until something
+  // else redrew it), says why with Try again when they can't be read, and B goes to the step before (it did nothing).
+  // Quick Access's top dock moves from the selected tab. A long name doesn't push the clock onto two lines.
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    sp.on('pageerror', e => errors.push('first-time setup: ' + e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(800);
+      const r = await sp.evaluate(async () => {
+        const out = [], w = ms => new Promise(res => setTimeout(res, ms)), txt = () => document.querySelector('#view').innerText;
+        const orig = MOCK.call.bind(MOCK);
+        ACC.list = null; closeAll(); S.history = []; navigate('home', {}, false); S.setupStep = SETUP_STEPS.indexOf('accounts') - 1; navigate('setup'); setupGo(1); await w(1200);
+        if (/Loading…/.test(txt()) || !document.querySelector('#view [data-act="accSignIn"]')) out.push('the stores step still says Loading… after the stores were read');
+        const st = S.setupStep; back();
+        if (S.setupStep !== st - 1 || S.view !== 'setup') out.push(`B didn't go to the step before (${st} -> ${S.setupStep}, ${S.view})`);
+        { const was = S.setupStep; S.setupStep = 0; render(null, true); back(); if (S.view !== 'setup') out.push('B on the first step left setup for ' + S.view); S.setupStep = was; navigate('setup', {}, false); }
+        MOCK.call = (m, a) => m === 'accounts.status' ? Promise.reject(new Error('Hearth core is not running')) : orig(m, a);
+        ACC.list = null; setupGo(1); await w(600);
+        if (!/Couldn't read your game stores: Hearth core is not running/.test(txt()) || !document.querySelector('#view [data-k="acc-retry"]')) out.push('no reason and Try again when the stores can\'t be read: ' + txt().slice(0, 200));
+        MOCK.call = orig; act(document.querySelector('#view [data-k="acc-retry"]')); await w(1000);
+        if (!document.querySelector('#view [data-act="accSignIn"]')) out.push('Try again did not bring the stores');
+        closeAll(); S.history = []; navigate('home', {}, false); LOOK.qamStyle = 'top'; openLayer('qam'); await w(300);
+        const T = qdTabs().map(t => t[0]);
+        if (T.length >= 3 && $('#qam.top')) {
+          S.qtab = T[T.length - 1]; renderQam(); setFocus($(`#qam [data-k="qt-${T[1]}"]`), true); moveNow('left');
+          if (focused.dataset.k !== 'qt-' + T[0]) out.push(`Quick Access: left from ${T[1]} went to ${focused.dataset.k}`);
+        }
+        closeAll(); GAMES[0].title = 'The Elder Scrolls V: Skyrim Special Edition Anniversary Upgrade with every Creation Club item'; navigate('game', { game: GAMES[0].id }, false); await w(300);
+        const c = $('#clock').getBoundingClientRect(); if (c.height > 30) out.push(`the clock wraps next to a long title (${Math.round(c.height)}px tall)`);
+        return out;
+      });
+      for (const e of r) errors.push('first-time setup: ' + e);
+    } catch (e) { errors.push('first-time setup: ' + e.message.split('\n')[0]); }
+    await sp.close();
+  }
+
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
