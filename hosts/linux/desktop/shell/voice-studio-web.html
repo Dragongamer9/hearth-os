@@ -72,7 +72,7 @@ audio,video{width:100%;border-radius:10px}
 .check{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 8%,var(--card2));border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);font-size:13.5px}
 .check input{width:22px;height:22px;flex:none;margin:1px 0 0;accent-color:var(--accent)}
 .read{padding:14px;border-radius:12px;background:var(--card2);font-size:16px;line-height:1.6;border-left:3px solid var(--ember)}
-.rec{width:74px;height:74px;border-radius:50%;border:0;background:var(--bad);display:grid;place-items:center;color:#fff;flex:none}
+.rec{width:74px;height:74px;min-width:0!important;flex:none!important;border-radius:50%;border:0;background:var(--bad);display:grid;place-items:center;color:#fff;flex:none}
 .rec.on{animation:pulse 1.2s infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 12px color-mix(in srgb,var(--bad) 25%,transparent)}}
 .empty{padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:14px}
