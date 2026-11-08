@@ -23,7 +23,11 @@ The plan:
    "hostname": "sams-deck", "timezone": "America/Chicago",
    "edition": "peppermint",             optional; which Hearth OS (EDITIONS: anatase, ubuntu, cachyos,
                                         peppermint); defaults to Hearth OS on Debian. Never a free-form image
-   "firmware": true}                    optional; false skips adding the boot entry (for tests)
+   "firmware": true,                    optional; false skips adding the boot entry (for tests)
+   "look": {"name": "synthwave",        optional; the look picked in the installer (Mantel's looks: hearth, steam,
+            "mode": "dark"}             gaming, zen, glass, synthwave, cabin, console; mode dark, light or auto),
+                                        either may be left out. Written into the new user's desktop.json, merged
+                                        in, only when given; anything wrong with it is dropped, never a stop
 
 How (the same way Fedora's installer puts an atomic system on a drive, without the installer):
   1. partitions: a new EFI partition (or Windows' existing one), /boot (ext4) and Hearth (btrfs, with
@@ -31,8 +35,11 @@ How (the same way Fedora's installer puts an atomic system on a drive, without t
   2. `ostree container image deploy` downloads Hearth OS straight onto the drive (nothing is kept in RAM)
   3. bootupd installs the boot loader and adds the boot entry
   4. fstab, the user account, the computer's name, time zone and Wi-Fi networks are written into the new system
+     (and the look, when one was picked)
 """
 import glob
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -133,6 +140,7 @@ def check_plan(p):
         signin = 'auto'   # nothing to ask for
     extra = [k for k in (p.get('kargs') or []) if isinstance(k, str) and re.fullmatch(r'[A-Za-z0-9_.,=:/-]+', k)]
     return {**p, 'signin': signin, 'kargs': extra, 'hostname': host, 'timezone': tz, 'image': image, 'edition': edition,
+            'look': plan_look(p.get('look')),
             'user': {'name': name, 'full': (u.get('full') or name).replace(':', ' ').strip(),
                      'password': '' if nopass else u['password'], 'nopassword': nopass}}
 
@@ -1262,6 +1270,7 @@ def setup_system(dep, root, plan):
             os.symlink(f'../usr/share/zoneinfo/{plan["timezone"]}', lt)
         copy_wifi(dep)
         signin_choice(dep, u['name'], plan['signin'])
+        apply_look(dep, u['name'], plan.get('look'))
         # Hearth's first start offers to import games from Windows (beside) and sets up the rest.
         # appMenus: installed by a Hearth OS with the five app menus (Mantel's Theme.qml: a new handheld install
         # starts with the Start screen menu; devices installed before keep the Hearth menu). Only read, never a setting.
@@ -1290,6 +1299,107 @@ def signin_choice(dep, name, signin):
             json.dump({'lockOnWake': True}, f)
         for path in (f'{home}/.local', f'{home}/.local/share', d, f'{d}/desktop.json'):
             os.chown(path, uid, gid)
+
+
+# ------------------------------------------------------------------ the look picked in the installer
+
+# Mantel's looks (hosts/linux/desktop/theme/palettes.json) and modes (Settings › Appearance; auto is its Sunset).
+LOOK_NAMES = ('hearth', 'steam', 'gaming', 'zen', 'glass', 'synthwave', 'cabin', 'console')
+LOOK_MODES = ('dark', 'light', 'auto')
+SETTINGS_IO = '/usr/share/nimbus/desktop/shell/hearth_settings_io.py'
+
+
+def plan_look(v):
+    """The look the person picked in the installer as {"name", "mode"} (either may be missing), or None when they
+    didn't pick one. Never fails the install: anything that isn't a known look or mode is left out."""
+    if not isinstance(v, dict):
+        return None
+    out = {}
+    if isinstance(v.get('name'), str) and v['name'] in LOOK_NAMES:
+        out['name'] = v['name']
+    if isinstance(v.get('mode'), str) and v['mode'] in LOOK_MODES:
+        out['mode'] = v['mode']
+    return out or None
+
+
+def look_changes(look):
+    """desktop.json's keys for a picked look (Mantel's Settings.qml: look, mode; auto is Mantel's Sunset mode, which
+    leaves mode as it is). Only what was picked."""
+    look = look or {}
+    ch = {}
+    if look.get('name') in LOOK_NAMES:
+        ch['look'] = look['name']
+    if look.get('mode') in ('dark', 'light'):
+        ch['mode'] = look['mode']
+    elif look.get('mode') == 'auto':
+        ch['sunset'] = True
+    return ch
+
+
+def settings_io(dep):
+    """Hearth's settings helper (hearth_settings_io, docs/SETTINGS-PERSISTENCE.md): the new system's own copy, else
+    this USB's. None when neither is there."""
+    for i, path in enumerate((dep + SETTINGS_IO, SETTINGS_IO)):
+        if os.path.isfile(path):
+            name = f'hearth_settings_io_{i}'
+            loader = importlib.machinery.SourceFileLoader(name, path)
+            spec = importlib.util.spec_from_loader(name, loader)
+            m = importlib.util.module_from_spec(spec)
+            loader.exec_module(m)
+            return m
+    return None
+
+
+def write_look(dep, name, look, hio=None):
+    """The picked look as the new user's starting look: merged into their desktop.json (from /etc/skel) through
+    hearth_settings_io, so every other key stays, the file before is kept as desktop.json.bak and the write is atomic.
+    Writes nothing when no look was picked, and never writes over a desktop.json that can't be read. Returns whether
+    it wrote."""
+    ch = look_changes(look)
+    if not ch:
+        return False
+    hio = hio or settings_io(dep)
+    if hio is None:
+        print('log: the look was not written: no settings helper', flush=True)
+        return False
+    ent = next((l.split(':') for l in (read_lines(f'{dep}/etc/passwd') or []) if l.split(':')[0] == name), None)
+    if not ent or len(ent) < 6:
+        print('log: the look was not written: no such user', flush=True)
+        return False
+    uid, gid, home = int(ent[2]), int(ent[3]), dep + ent[5]
+    d = f'{home}/.local/share/nimbus'
+    path = f'{d}/desktop.json'
+    if os.path.lexists(path):
+        try:
+            with open(path, 'rb') as f:
+                ok = isinstance(json.loads(f.read().decode('utf-8')), dict)
+        except (OSError, ValueError, UnicodeDecodeError):
+            ok = False
+        if not ok or os.path.islink(path):
+            print('log: the look was not written: the new desktop.json could not be read (left as it is)', flush=True)
+            return False
+    made = []
+    for p in (f'{home}/.local', f'{home}/.local/share', d):
+        if not os.path.isdir(p):
+            os.makedirs(p)
+            made.append(p)
+    hio.merge_json(path, ch)
+    for p in made + [path, path + '.bak', f'{d}/.desktop.json.lock']:
+        if os.path.lexists(p):
+            os.lchown(p, uid, gid)
+    print(f"log: the look picked in the installer: {json.dumps(ch)}", flush=True)
+    return True
+
+
+def apply_look(dep, name, look, hio=None):
+    """write_look, and whatever goes wrong with the look, the install carries on."""
+    if not look:
+        return False
+    try:
+        return write_look(dep, name, look, hio)
+    except Exception as e:   # noqa: BLE001 (never a reason to stop an install)
+        print(f'log: the look was not written ({e}); the install carries on', flush=True)
+        return False
 
 
 def copy_wifi(dep):

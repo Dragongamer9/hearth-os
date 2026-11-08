@@ -79,7 +79,7 @@ jobs:
           echo "IMG=$img" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
-          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"%s","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP" "${{ inputs.edition || 'peppermint' }}")
+          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"%s","firmware":false,"signin":"always","look":{"name":"synthwave","mode":"light"},"kargs":["console=ttyS0,115200"]}' "$LOOP" "${{ inputs.edition || 'peppermint' }}")
           # The live USB's installer tools: os/live/src/build.sh adds the ones the Hearth OS image hasn't got.
           cat > /tmp/run.sh <<'EOF'
           need=""
@@ -127,6 +127,13 @@ jobs:
           check "home folder" "sudo test -d /mnt/home/tester"
           check "login screen at start" "sudo test -e $dep/etc/nimbus/no-autologin"
           check "password after sleep" "sudo grep -q lockOnWake /mnt/home/tester/.local/share/nimbus/desktop.json"
+          # The look picked on the USB installer's Welcome screen: merged into the new user's desktop.json (the
+          # other keys kept), with the file and its backup owned by them.
+          dj=/mnt/home/tester/.local/share/nimbus/desktop.json
+          sudo cat "$dj" | sed 's/^/::notice title=desktop.json::/' || true
+          check "the picked look" "sudo grep -q '\"look\": \"synthwave\"' $dj && sudo grep -q '\"mode\": \"light\"' $dj"
+          check "the look merged in (lockOnWake kept)" "sudo grep -q lockOnWake $dj"
+          check "the person owns their settings" "[ \"\$(sudo stat -c %u $dj)\" = \"\$(sudo stat -c %u /mnt/home/tester)\" ] && ! sudo find /mnt/home/tester/.local -uid 0 | grep -q ."
           sudo umount -R /mnt/h /mnt/home || true
           sudo sh -c "cat $dep/etc/fstab /mnt/h/boot/loader/entries/*.conf 2>/dev/null" | sed 's/^/::notice title=Result::/' || true
           [ $ok = 1 ]
