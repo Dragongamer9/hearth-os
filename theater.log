@@ -1,0 +1,65 @@
+1794260190480 [theater core] ===== Hearth Theater 0.1.0 starting (--read-catalogs) =====
+1794260190480 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1794260190480 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1794260195369 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41, reading catalogs; profile /home/runner/work/_temp/theater/chromium
+1794260195377 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1794260195378 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio --read-catalogs
+1794260195384 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1794260195386 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1794260195387 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1794260195417 [theater window] reader: reading http://127.0.0.1:8761/ (catalog)
+[17243:1109/213637.689579:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[17290:1109/213637.723344:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17290:1109/213637.723261:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+1794260200535 [theater window] reader: read http://127.0.0.1:8761/ (3 rows, 0 results)
+1794260200544 [theater core] f1: 3 rows, 8 titles, search "", sources ["json-ld"], error ""
+1794260200548 [theater window] reader: reading http://127.0.0.1:8762/ (catalog)
+1794260203408 [theater window] reader: read http://127.0.0.1:8762/ (1 rows, 0 results)
+1794260203411 [theater core] f2: 1 rows, 4 titles, search "", sources ["cards", "open-graph"], error ""
+1794260203415 [theater window] reader: reading http://127.0.0.1:8763/ (catalog)
+1794260206276 [theater window] reader: read http://127.0.0.1:8763/ (2 rows, 0 results)
+1794260206280 [theater core] f3: 2 rows, 7 titles, search "", sources ["rss", "sitemap", "open-graph"], error ""
+1794260206284 [theater window] reader: reading http://127.0.0.1:8764/ (catalog)
+1794260209152 [theater window] reader: read http://127.0.0.1:8764/ (3 rows, 0 results)
+1794260209157 [theater core] f4: 3 rows, 12 titles, search "http://127.0.0.1:8764/search?q={searchTerms}", sources ["cards"], error ""
+1794260209158 [theater core] core: the window app closed; leaving
+1794260209412 [theater core] ===== Hearth Theater 0.1.0 starting (windowed) =====
+1794260209412 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1794260209412 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1794260209590 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41; profile /home/runner/work/_temp/theater/chromium
+1794260209599 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1794260209619 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio
+1794260209629 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1794260209631 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1794260209632 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+[17440:1109/213649.674427:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[17511:1109/213649.756185:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1794260209821 [theater window] main window: home screen loaded
+1794260209824 [theater window] main window: shown
+1794260224020 [theater window] core: ended (null)
+1794260228036 [theater core] ===== Hearth Theater 0.1.0 starting (--fullscreen --open http://127.0.0.1:8770/) =====
+1794260228036 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1794260228036 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1794260228193 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41, full screen; profile /home/runner/work/_temp/theater/chromium
+1794260228202 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1794260228223 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio --fullscreen --open http://127.0.0.1:8770/
+1794260228232 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1794260228233 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1794260228233 [theater core] viewer: opening http://127.0.0.1:8770/
+1794260228234 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1794260228247 [theater window] viewer: going to http://127.0.0.1:8770/
+[17639:1109/213708.308321:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[17736:1109/213708.408896:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1794260228458 [theater window] viewer: page title "Pointer test"
+[17684:1109/213708.462433:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17684:1109/213708.462480:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17684:1109/213708.463327:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17684:1109/213708.463364:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17684:1109/213708.463397:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17684:1109/213708.463421:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+1794260228464 [theater window] main window: shown
+1794260228502 [theater window] viewer: loaded http://127.0.0.1:8770/
+1794260228556 [theater window] main window: home screen loaded
+1794260231004 [theater window] test: pointer to the page's (400, 340), the screen's (440, 370), then A
+1794260231816 [theater window] viewer: page title "trusted-click-ok"
+1794260232115 [theater window] core: ended (null)
