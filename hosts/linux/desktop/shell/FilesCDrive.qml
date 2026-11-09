@@ -245,7 +245,7 @@ Item {
                                 width: parent.width - page.wName - page.wType - page.wSize
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: rowBox.cv.linux || ""
-                                color: Theme.muted; elide: Text.ElideRight; font.family: "monospace"; font.pixelSize: 11.5
+                                color: Theme.muted; elide: Text.ElideRight; font.family: "monospace"; font.pixelSize: 12
                             }
                         }
                     }

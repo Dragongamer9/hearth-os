@@ -399,12 +399,12 @@ function cExtras(p, ctx, have) {
     const names = (have || []).map(n => String(n).toLowerCase());
     const u = ctx.user || "you";
     if (p === home && names.indexOf("appdata") < 0)
-        return [{ name: "AppData", path: C_ROOT + "/Users/" + u + "/AppData", dir: true, size: 0, mtime: 0, hidden: false,
+        return [{ name: "AppData", path: C_ROOT + "/Users/" + u + "/AppData", dir: true, size: 0, mtime: 0, hidden: false, isLink: false, mime: "inode/directory",
                   cv: { type: "Folder · app settings", linux: "~/.config, ~/.local/share", win: "C:\\Users\\" + u + "\\AppData", view: true,
                         real: ["Roaming: ~/.config", "Local: ~/.local/share", "Local\\Temp: ~/.cache"],
                         note: "Where apps keep their settings and data. Roaming and Local inside it are your Linux settings folders." } }];
     if (p === home + "/.local/share" && names.indexOf("temp") < 0)
-        return [{ name: "Temp", path: C_ROOT + "/Users/" + u + "/AppData/Local/Temp", dir: true, size: 0, mtime: 0, hidden: false,
+        return [{ name: "Temp", path: C_ROOT + "/Users/" + u + "/AppData/Local/Temp", dir: true, size: 0, mtime: 0, hidden: false, isLink: false, mime: "inode/directory",
                   cv: { type: "Folder · temporary files", linux: "~/.cache", win: "C:\\Users\\" + u + "\\AppData\\Local\\Temp", real: [home + "/.cache"],
                         note: "Temporary files and caches (~/.cache)." } }];
     return [];

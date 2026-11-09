@@ -1265,7 +1265,7 @@ jobs:
                       "C:\\Users\\$U\\AppData\\Local\\Temp|$HOME/.cache" "C:\\Windows|/usr" "C:\\ProgramData|/var/lib" "C:\\|hearth:c"; do
             t=${pair%%|*}; want=${pair#*|}
             ipc filemanager hearthc "$t"; sleep 2
-            got=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call filemanager where 2>/dev/null | cut -d'|' -f1)
+            got=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call filemanager where 2>/dev/null | grep -v 'WARN' | tail -n 1 | cut -d'|' -f1)
             if [ "$got" != "$want" ]; then echo "::error title=Hearth (C:)::typing $t went to “$got”, not “$want”"; touch shots/FAILED; fi
             echo "$t -> $got" >> $C/typed.txt
           done
