@@ -1020,6 +1020,24 @@ jobs:
           sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
+      # arm64 only: the image's filesystem as a CI-only artifact, for Dragongamer9/hearth-devices to turn into a
+      # device rootfs (the Oukitel RT8's rootfs.img). Not a release and not in any registry; kept a week.
+      - name: Save the arm64 filesystem for device builds (CI only)
+        if: env.HEARTH_ARCH == 'arm64'
+        run: |
+          set -o pipefail
+          c=$(sudo podman create localhost/hearth-peppermint:latest)
+          sudo podman export "$c" | zstd -T0 -10 -q -o "$RUNNER_TEMP/hearth-peppermint-arm64-rootfs.tar.zst"
+          sudo podman rm "$c" >/dev/null
+          ls -la "$RUNNER_TEMP/hearth-peppermint-arm64-rootfs.tar.zst"
+          echo "::notice title=arm64 rootfs::$(du -h "$RUNNER_TEMP/hearth-peppermint-arm64-rootfs.tar.zst" | cut -f1) saved for device builds (artifact hearth-peppermint-arm64-rootfs)"
+      - uses: actions/upload-artifact@v4
+        if: env.HEARTH_ARCH == 'arm64'
+        with:
+          name: hearth-peppermint-arm64-rootfs
+          path: ${{ runner.temp }}/hearth-peppermint-arm64-rootfs.tar.zst
+          compression-level: 0
+          retention-days: 7
       - name: Publish to GitHub Container Registry
         if: env.PUBLISH == 'true'
         run: |

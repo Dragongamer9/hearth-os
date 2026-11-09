@@ -152,7 +152,7 @@ else
   echo "::warning title=Steam (arm64)::Valve's launcher package didn't download"
 fi
 if [ "$steam_ok" = 1 ]; then
-  STEAM_BIN=$(ls /usr/games/steam /usr/bin/steam 2>/dev/null | head -1)
+  STEAM_BIN=""; for f in /usr/bin/steam /usr/games/steam; do [ -e "$f" ] && { STEAM_BIN=$f; break; }; done
   [ -n "$STEAM_BIN" ] || { echo "Valve's package has no steam launcher"; exit 1; }
   mv "$STEAM_BIN" "$STEAM_BIN.valve"
   install -Dm755 /ctx/system_files/usr/libexec/nimbus/hearth-fex-steam /usr/libexec/nimbus/hearth-fex-steam 2>/dev/null || true
