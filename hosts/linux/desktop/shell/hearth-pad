@@ -125,8 +125,6 @@ ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_
 # Hearth Settings' own shortcuts (SettingsFrame.qml): Y search, LB / RB previous / next category, ☰ close.
 SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
                  'menu': ('KEY_LEFTCTRL', 'KEY_W')}
-# Hearth windows whose tabs LB / RB switch with Ctrl+Page Up / Down (their own shortcuts).
-TAB_WINDOWS = ('Resource Monitor',)
 SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}  # with Super
 
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
@@ -642,10 +640,6 @@ class Pad:
             return self.hold_key(ARROWS[name], down)
         if not down:
             return
-        if self.tabs_front() and name in ('lb', 'rb'):
-            # Resource Monitor: LB / RB switch its tabs (Ctrl+Page Up / Down, its own shortcuts).
-            self.tap('KEY_LEFTCTRL', 'KEY_PAGEDOWN' if name == 'rb' else 'KEY_PAGEUP')
-            return
         if self.settings_front() and name in SETTINGS_KEYS:
             # Hearth Settings: Y searches, LB / RB go to the previous / next category, ☰ closes it (its own shortcuts).
             self.tap(*SETTINGS_KEYS[name])
@@ -662,10 +656,6 @@ class Pad:
             self.want_osk()
         elif name == 'menu':
             self.out.send({'t': 'launcher'})
-
-    def tabs_front(self):
-        """A window of Hearth's with tabs that LB / RB switch has the keys (Pad.qml says "window: <app id> <title>")."""
-        return self.keys_ctx and self.keys_why.startswith('window: ') and self.keys_why.endswith(TAB_WINDOWS)
 
     def settings_front(self):
         """Hearth Settings is the window with the keys (Pad.qml says "window: <app id> Hearth Settings")."""

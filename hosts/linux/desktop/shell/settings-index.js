@@ -3,12 +3,6 @@
 // {t: title, d: description, i: icon, p: the page it's on}. Don't edit by hand: run the tool again.
 var ENTRIES = [
 {
-"t": "Resource Monitor",
-"p": "about",
-"d": "See inside this PC: its board, every part and port, and what each program uses, live",
-"i": "cpu"
-},
-{
 "t": "Rename this PC",
 "p": "about",
 "d": "Its name on your network and your other devices · on Home",

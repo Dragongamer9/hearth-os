@@ -101,7 +101,7 @@ Singleton {
 
     // Hearth's own windows (part of this shell, so their app id is Quickshell's): their icons by window title.
     readonly property var ownIcons: ({
-        "Hearth Settings": "hearth-settings", "Task Manager": "hearth-tasks", "Task Manager (always on top)": "hearth-tasks", "Files": "hearth-files", "Resource Monitor": "hearth-resmon"
+        "Hearth Settings": "hearth-settings", "Task Manager": "hearth-tasks", "Task Manager (always on top)": "hearth-tasks", "Files": "hearth-files"
     })
     function own(title) {
         const t = String(title || "");
