@@ -229,6 +229,17 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   that no settings file changed; the frame, the cards and the category pages never change a setting
   (`test_settings_redesign.py`). Moved switches keep their keys (Night light is still `nightLight`).
 
+## Keyboard shortcuts: Run and the Super+X menu
+
+- **Super+R** opens **Run**: type a Windows command (taskmgr, devmgmt.msc, diskmgmt.msc, control, notepad, cmd…), a
+  %folder% (%appdata%, %temp%…), a path (`C:\Users\you\Documents`, `D:\Games`, `~/Music`), a website or an app's
+  name, with suggestions as you type. The app menu's search is still Super+S.
+- **Super+X** (or a right-click on the Start button) opens the quick links menu: Installed apps, Power options,
+  Reliability history, System, Device Manager, Network connections, Disk Management, Terminal, Task Manager, Settings,
+  Files, Search, Run, Shut down or sign out ›, Desktop, each with its underlined letter.
+- Both, and **Device Manager**, are in `WinTools.qml` (loaded by file name); the details are in docs/DEVICE-MANAGER.md.
+  Settings › Keyboard › Keyboard shortcuts lists them from labwc's rc.xml.
+
 ## Server mode (Hearth 1.6)
 
 Server mode (docs/SERVER-MODE.md) is its own light session, not part of Desktop Mode: nimbus-session starts labwc with its

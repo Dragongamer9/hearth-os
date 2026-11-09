@@ -7,6 +7,7 @@
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <processes|performance[:cpu|memory|disk|net|gpu]|startup|details|services|settings>|close|toggle   files open <path>|home|toggle|close
+//   devices open|close|toggle|scan   run open|close|toggle   winx open|close|toggle (WinTools.qml)
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
 import QtQuick
@@ -240,6 +241,13 @@ ShellRoot {
     Loader { source: "Discord.qml" }
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
+    // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
+    // them only loses those three, never the shell.
+    Loader {
+        source: "WinTools.qml"
+        onLoaded: item.wire({ tasks: tasks, files: files, settings: settings, launcher: launcher, lockScreen: lockScreen })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Device Manager, Run and the Super+X menu (WinTools.qml) couldn't load")
+    }
     FileManager { id: files }
     VolumeOsd { id: osd }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell

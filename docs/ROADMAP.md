@@ -7,6 +7,12 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Windows tools in Mantel (docs/DEVICE-MANAGER.md)
+
+- [ ] Device Manager: the PC's devices in Windows' groups (Audio, Bluetooth, Cameras, Controllers, Disk drives, Display adapters, Keyboards and mice, Monitors, Network adapters, Processors, USB controllers, Other devices), the driver (built into Hearth or added), firmware, maker and where it's connected, a yellow warning for no driver, missing firmware and errors from the kernel log, Send logs, Disable / Enable for Bluetooth and Wi-Fi only, Nvidia driver settings, Scan for hardware changes
+- [ ] Run (Super+R): Windows commands (taskmgr, devmgmt.msc, diskmgmt.msc, control, ms-settings:, notepad, cmd, explorer, calc, msconfig, rstrui, perfmon /rel, appwiz.cpl…), %appdata% / %localappdata% / %temp% / %userprofile%, C:\ and D:\ paths with This PC's letters, apps, websites, suggestions and recent entries (state, written only after opening something)
+- [ ] The Super+X menu (also a right-click on the Start button): Windows' quick links with their underlined letters; entries whose app isn't installed are hidden; no Terminal (Admin), since Hearth has none
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

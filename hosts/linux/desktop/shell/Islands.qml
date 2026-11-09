@@ -282,8 +282,10 @@ PanelWindow {
                         columnSpacing: 8 * isl.k
                         IslandButton {
                             objectName: "appMenuButton"
+                            id: startMenuBtn
                             tip: "Apps (Super)"
                             onClicked: isl.launcherRequested()
+                            onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(isl.screen, startMenuBtn, isl.edge)   // the Super+X menu
                             Image { anchors.centerIn: parent; width: 26 * isl.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                         }
                         Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)

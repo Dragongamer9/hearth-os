@@ -263,8 +263,10 @@ PanelWindow {
 
             // Launcher (the Hearth mark)
             BarButton {
+                id: startMenuBtn
                 tip: "Apps (Super)"
                 onClicked: bar.launcherRequested()
+                onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(bar.screen, startMenuBtn, bar.portrait ? "left" : "bottom")   // the Super+X menu
                 Image {
                     anchors.centerIn: parent
                     width: 32; height: 32

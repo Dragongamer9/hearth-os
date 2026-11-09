@@ -257,9 +257,11 @@ PanelWindow {
                 spacing: dock.shelf ? 20 : 8
 
                 DockButton {   // the app menu: always the Hearth flame
+                    id: startMenuBtn
                     visible: !dock.shelf
                     tip: "Apps (Super)"
                     onClicked: dock.launcherRequested()
+                    onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(dock.screen, startMenuBtn, "bottom")   // the Super+X menu
                     Image { anchors.centerIn: parent; width: 28; height: 28; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                 }
                 Rectangle { visible: !dock.shelf; implicitWidth: 1; implicitHeight: dock.tile * 0.6; color: Theme.line }

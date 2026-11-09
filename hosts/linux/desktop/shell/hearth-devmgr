@@ -1,0 +1,899 @@
+#!/usr/bin/python3
+"""hearth-devmgr: what Device Manager shows (DeviceManager in WinTools.qml, docs/DEVICE-MANAGER.md).
+
+  hearth-devmgr list          JSON: every device by group, with its driver, firmware, maker, where it's connected and
+                              any problem (no driver, missing firmware, an error the kernel logged)
+  hearth-devmgr disable ID    turn a radio off (Bluetooth or Wi-Fi: an rfkill soft block, the same as airplane mode
+                              for that one device; nothing else can be disabled)
+  hearth-devmgr enable ID     turn it back on
+
+Read only and light: /sys, /proc, the kernel log of this boot (journalctl -k, else dmesg) and the pci.ids / usb.ids
+name lists, read once when Device Manager opens or "Scan for hardware changes" is pressed. Nothing is written, no
+service is started, and no setting is kept. Disable only ever touches rfkill (reversible, and never storage, the
+screen or anything Hearth runs from).
+HEARTH_DEVMGR_ROOT points at a folder with sys/, proc/, lib/ and dev/ inside instead of / (for tests), and
+HEARTH_DEVMGR_LOG at a file to read as the kernel log.
+Output is one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+
+ROOT = os.environ.get('HEARTH_DEVMGR_ROOT', '').rstrip('/')
+
+# The groups, in Device Manager's order (Windows' names; "Other devices" only shows when something is in it).
+GROUPS = [
+    ('audio', 'Audio'), ('bluetooth', 'Bluetooth'), ('cameras', 'Cameras'), ('controllers', 'Controllers'),
+    ('disks', 'Disk drives'), ('display', 'Display adapters'), ('input', 'Keyboards and mice'), ('monitors', 'Monitors'),
+    ('net', 'Network adapters'), ('cpu', 'Processors'), ('usb', 'USB controllers'), ('other', 'Other devices'),
+]
+GROUP_IDS = [g for g, _ in GROUPS]
+
+# USB interface classes the kernel itself is expected to drive: one of these with no driver is a problem. Others
+# (vendor-specific, phones' MTP, printers through CUPS) are used by apps directly and need no kernel driver.
+USB_NEEDS_DRIVER = {0x01, 0x02, 0x03, 0x08, 0x0a, 0x0e, 0xe0}
+# PCI classes worth showing (and worth a warning when nothing drives them); bridges and the board's own odds and ends
+# often have no driver on Linux and work fine, so they aren't listed.
+PCI_SHOWN = {0x01: 'disks', 0x02: 'net', 0x03: 'display', 0x04: 'audio', 0x0d: 'net'}
+
+FIRMWARE_TEXT = ("The driver loaded, but the device needs a firmware file Hearth doesn't have, so it may not work. "
+                 "Send logs so the file can be added to Hearth in an update.")
+
+
+def P(path):
+    """A path under the root (/ normally; a test folder in tests)."""
+    return ROOT + path
+
+
+def rd(path, default=''):
+    try:
+        with open(path, 'rb') as f:
+            return f.read().decode('utf-8', 'replace').strip()
+    except OSError:
+        return default
+
+
+def rd_bytes(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        return b''
+
+
+def hexint(s, default=-1):
+    try:
+        return int(str(s).strip(), 16)
+    except ValueError:
+        return default
+
+
+def real(path):
+    return os.path.realpath(path) if os.path.exists(path) else ''
+
+
+def link_name(path):
+    """The last part of where a symlink points (a driver's or module's name), '' when there's none."""
+    try:
+        return os.path.basename(os.readlink(path))
+    except OSError:
+        return ''
+
+
+def clean(s):
+    return re.sub(r'\s+', ' ', (s or '').replace('_', ' ')).strip()
+
+
+# ------------------------------------------------------------------ names from pci.ids / usb.ids
+
+class Ids:
+    """Vendor and product names from the ids lists, read only for the ids asked about."""
+    PCI = ['/usr/share/misc/pci.ids', '/usr/share/hwdata/pci.ids', '/usr/share/pci.ids']
+    USB = ['/usr/share/misc/usb.ids', '/usr/share/hwdata/usb.ids', '/var/lib/usbutils/usb.ids', '/usr/share/usb.ids']
+
+    def __init__(self, files):
+        self.files = files
+        self.vendors = {}
+        self.products = {}
+        self.done = False
+        self.wanted = set()
+
+    def want(self, v, d=None):
+        self.wanted.add(v)
+
+    def load(self):
+        if self.done:
+            return
+        self.done = True
+        path = next((P(f) for f in self.files if os.path.exists(P(f))), '')
+        if not path or not self.wanted:
+            return
+        cur = None
+        try:
+            with open(path, encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    if not line.strip() or line.startswith('#'):
+                        continue
+                    if line.startswith('C ') or line.startswith('AT ') or line.startswith('HID '):
+                        break          # the class lists come after every vendor
+                    if line[0] != '\t':
+                        m = re.match(r'([0-9a-fA-F]{4})\s+(.*)', line)
+                        cur = int(m.group(1), 16) if m else None
+                        if cur in self.wanted:
+                            self.vendors[cur] = m.group(2).strip()
+                        else:
+                            cur = None
+                    elif cur is not None and not line.startswith('\t\t'):
+                        m = re.match(r'\t([0-9a-fA-F]{4})\s+(.*)', line)
+                        if m:
+                            self.products[(cur, int(m.group(1), 16))] = m.group(2).strip()
+        except OSError:
+            pass
+
+    def vendor(self, v):
+        self.load()
+        return self.vendors.get(v, '')
+
+    def product(self, v, d):
+        self.load()
+        return self.products.get((v, d), '')
+
+
+SHORT_VENDOR = [
+    (r'^Advanced Micro Devices.*|^AMD\b.*', 'AMD'), (r'^NVIDIA Corporation', 'NVIDIA'), (r'^Intel Corporation', 'Intel'),
+    (r'^Realtek Semiconductor.*', 'Realtek'), (r'^Qualcomm Atheros', 'Qualcomm Atheros'), (r'^MEDIATEK Corp\.?', 'MediaTek'),
+    (r'^Broadcom Inc\. and subsidiaries', 'Broadcom'), (r'^Samsung Electronics Co Ltd', 'Samsung'),
+    (r'^Micron Technology Inc', 'Micron'), (r'^Kingston Technology Company, Inc\.', 'Kingston'),
+    (r'^Western Digital', 'Western Digital'), (r'^SK hynix', 'SK hynix'), (r'^Microsoft Corp\.?', 'Microsoft'),
+    (r'^Sony Corp\.?', 'Sony'), (r'^Logitech, Inc\.', 'Logitech'), (r'^Valve Software', 'Valve'),
+]
+
+
+def short_vendor(v):
+    for pat, s in SHORT_VENDOR:
+        if re.match(pat, v or ''):
+            return s
+    return re.sub(r',? (Inc|Corp|Corporation|Co|Ltd|LLC|GmbH|Limited)\.?$', '', v or '').strip()
+
+
+def product_name(product):
+    """pci.ids' "GA104 [GeForce RTX 3070]": the part in brackets is the name people know."""
+    m = re.search(r'\[([^\]]+)\]\s*$', product or '')
+    return m.group(1) if m else (product or '')
+
+
+# ------------------------------------------------------------------ kernel modules: built into Hearth or added
+
+class Modules:
+    def __init__(self):
+        rel = rd(P('/proc/sys/kernel/osrelease'))
+        base = P('/lib/modules/' + rel) if rel else ''
+        if base and not os.path.isdir(base):
+            base = P('/usr/lib/modules/' + rel)
+        self.paths = {}
+        self.builtin = set()
+        if base:
+            for line in rd(os.path.join(base, 'modules.dep')).splitlines():
+                path = line.split(':', 1)[0]
+                if path:
+                    self.paths[self.key(os.path.basename(path))] = path
+            for line in rd(os.path.join(base, 'modules.builtin')).splitlines():
+                if line.strip():
+                    self.builtin.add(self.key(os.path.basename(line.strip())))
+
+    @staticmethod
+    def key(name):
+        return re.sub(r'\.ko(\.(xz|zst|gz))?$', '', name).replace('-', '_')
+
+    def describe(self, driver, module):
+        """(the driver as shown, where it comes from in plain words)."""
+        if not driver:
+            return '', ''
+        mod = module or driver
+        k = self.key(mod)
+        path = self.paths.get(k, '')
+        if path.startswith('kernel/'):
+            return mod, 'built into Hearth'
+        if path:
+            if k.startswith('nvidia'):
+                return mod, "NVIDIA's driver, added by Hearth"
+            return mod, 'added to Hearth (DKMS)' if 'dkms' in path or path.startswith('updates/') else 'added to Hearth'
+        if not module or k in self.builtin:
+            return driver, "built into Hearth's kernel"
+        return mod, 'built into Hearth'
+
+
+def driver_of(dev):
+    """(driver, module) bound to a sysfs device folder."""
+    drv = link_name(os.path.join(dev, 'driver'))
+    if not drv:
+        return '', ''
+    return drv, link_name(os.path.join(dev, 'driver', 'module'))
+
+
+# ------------------------------------------------------------------ the kernel log: firmware and errors
+
+FW_RE = re.compile(r'^(?:(?P<drv>[\w.-]+) (?P<dev>[\w:.\-]+): )?(?:firmware: failed to load (?P<f1>\S+)|'
+                   r'Direct firmware load for (?P<f2>\S+) failed)')
+FW_BT_RE = re.compile(r'(?P<dev>hci\d+): .*?firmware file (?P<f>\S+) not found')
+USB_FAIL_RE = re.compile(r'\busb (?P<port>\d+-[\d.]+): (?P<what>device descriptor read/\w+, error -?\d+|'
+                         r'device not accepting address \d+, error -?\d+|unable to enumerate USB device)')
+PROBE_RE = re.compile(r'^(?P<drv>[\w.-]+) (?P<dev>[\w:.\-]+): (?:probe (?:of \S+ )?failed with error (?P<e1>-?\d+)|'
+                      r'probe with driver \S+ failed with error (?P<e2>-?\d+))')
+# Files drivers ask for that are optional (the driver works without them).
+OPTIONAL_FW = [r'\.pnvm$', r'^regulatory\.db', r'^iwl-debug', r'^intel/ibt-.*\.ddc$']
+
+
+def kernel_log():
+    """(lines, readable). This boot's kernel messages: journalctl -k (works for people in the adm or systemd-journal
+    group), else dmesg (needs kernel.dmesg_restrict=0); neither readable → firmware problems can't be seen."""
+    path = os.environ.get('HEARTH_DEVMGR_LOG')
+    if path:
+        return rd(path).splitlines(), True
+    for cmd in (['journalctl', '-k', '-b', '--no-pager', '-o', 'cat', '-q'], ['dmesg']):
+        if not shutil.which(cmd[0]):
+            continue
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=8, errors='replace')
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.splitlines(), True
+    return [], False
+
+
+def firmware_present(name):
+    for base in ('/lib/firmware/', '/usr/lib/firmware/', '/lib/firmware/updates/'):
+        for ext in ('', '.zst', '.xz'):
+            if os.path.exists(P(base + name + ext)):
+                return True
+    return False
+
+
+def firmware_fallback(name):
+    """A driver that tries newer firmware first (iwlwifi-…-89.ucode, then -88…) and found an older one: not a problem."""
+    m = re.match(r'^(.*?)-?(\d+)(\.(ucode|bin|sbin))$', name)
+    if not m:
+        return False
+    sibling = re.compile(re.escape(os.path.basename(m.group(1))) + r'-?\d+\.(ucode|bin|sbin)(\.zst|\.xz)?$')
+    for base in ('/lib/firmware/', '/usr/lib/firmware/'):
+        d = P(base + os.path.dirname(name))
+        try:
+            for f in os.listdir(d):
+                if sibling.match(f) and f != os.path.basename(name):
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def strip_stamp(line):
+    return re.sub(r'^\[\s*[\d.]+\]\s*', '', line).strip()
+
+
+def parse_log(lines):
+    """{'firmware': [(dev, driver, file)], 'usb': {port: what}, 'probe': [(dev, driver, error)]} from kernel lines.
+    Firmware that's on disk now, optional, or that the driver found an older version of is left out."""
+    fw, usb, probe = [], {}, []
+    seen = set()
+    for raw in lines:
+        line = strip_stamp(raw)
+        m = FW_RE.search(line)
+        f = None
+        if m:
+            f, dev, drv = m.group('f1') or m.group('f2'), m.group('dev') or '', m.group('drv') or ''
+        else:
+            m2 = FW_BT_RE.search(line)
+            if m2:
+                f, dev, drv = m2.group('f'), m2.group('dev'), 'bluetooth'
+        if f:
+            f = f.rstrip(',.')
+            if (dev, f) in seen or any(re.search(p, f) for p in OPTIONAL_FW):
+                continue
+            seen.add((dev, f))
+            if firmware_present(f) or firmware_fallback(f):
+                continue
+            fw.append((dev, drv, f))
+            continue
+        m = USB_FAIL_RE.search(line)
+        if m:
+            usb.setdefault(m.group('port'), m.group('what'))
+            continue
+        m = PROBE_RE.search(line)
+        if m:
+            probe.append((m.group('dev'), m.group('drv'), m.group('e1') or m.group('e2')))
+    return {'firmware': fw, 'usb': usb, 'probe': probe}
+
+
+# ------------------------------------------------------------------ the scan
+
+class Scan:
+    def __init__(self):
+        self.pci_ids = Ids(Ids.PCI)
+        self.usb_ids = Ids(Ids.USB)
+        self.mods = Modules()
+        self.devices = []          # the records shown
+        self.by_phys = {}          # a physical device's sysfs folder → its record
+        self.claimed = set()       # physical devices some group already shows
+        self.pci = {}              # sysfs folder → {...}
+        self.usb = {}
+        self.rfkill = []
+
+    # ---------------------------------------------------------- raw lists
+    def read_pci(self):
+        for d in sorted(glob.glob(P('/sys/bus/pci/devices/*'))):
+            rp = real(d) or d
+            cls = hexint(rd(os.path.join(d, 'class')), 0)
+            v, dv = hexint(rd(os.path.join(d, 'vendor'))), hexint(rd(os.path.join(d, 'device')))
+            self.pci_ids.want(v)
+            drv, mod = driver_of(d)
+            self.pci[rp] = {'path': rp, 'slot': os.path.basename(d), 'cls': cls, 'vendor': v, 'device': dv,
+                            'driver': drv, 'module': mod}
+
+    def read_usb(self):
+        for d in sorted(glob.glob(P('/sys/bus/usb/devices/*'))):
+            name = os.path.basename(d)
+            if ':' in name or name.startswith('usb'):
+                continue
+            rp = real(d) or d
+            v, p = hexint(rd(os.path.join(d, 'idVendor'))), hexint(rd(os.path.join(d, 'idProduct')))
+            self.usb_ids.want(v)
+            ifaces = []
+            for i in sorted(glob.glob(os.path.join(d, name + ':*'))):
+                drv, mod = driver_of(i)
+                ifaces.append({'path': real(i) or i, 'cls': hexint(rd(os.path.join(i, 'bInterfaceClass')), 0),
+                               'sub': hexint(rd(os.path.join(i, 'bInterfaceSubClass')), 0),
+                               'proto': hexint(rd(os.path.join(i, 'bInterfaceProtocol')), 0), 'driver': drv, 'module': mod})
+            self.usb[rp] = {'path': rp, 'port': name, 'vendor': v, 'product': p,
+                            'cls': hexint(rd(os.path.join(d, 'bDeviceClass')), 0),
+                            'maker': rd(os.path.join(d, 'manufacturer')), 'name': rd(os.path.join(d, 'product')),
+                            'speed': rd(os.path.join(d, 'speed')), 'removable': rd(os.path.join(d, 'removable')),
+                            'ifaces': ifaces}
+
+    def read_rfkill(self):
+        for r in sorted(glob.glob(P('/sys/class/rfkill/rfkill*'))):
+            idx = re.sub(r'\D', '', os.path.basename(r))
+            self.rfkill.append({'idx': int(idx) if idx else -1, 'type': rd(os.path.join(r, 'type')),
+                                'name': rd(os.path.join(r, 'name')), 'soft': rd(os.path.join(r, 'soft')) == '1',
+                                'hard': rd(os.path.join(r, 'hard')) == '1', 'parent': real(os.path.join(r, 'device'))})
+
+    # ---------------------------------------------------------- helpers
+    def phys_of(self, path):
+        """The PCI or USB device a class device (or a USB interface) belongs to: the nearest one up its sysfs path."""
+        p = path
+        while p and p != '/' and len(p) > len(ROOT) + 1:
+            if p in self.usb or p in self.pci:
+                return p
+            p = os.path.dirname(p)
+        return ''
+
+    def pci_name(self, x):
+        prod = product_name(self.pci_ids.product(x['vendor'], x['device']))
+        ven = short_vendor(self.pci_ids.vendor(x['vendor']))
+        if prod:
+            return (ven + ' ' + prod).strip() if ven and not prod.lower().startswith(ven.lower()) else prod
+        return '%s device %04x:%04x' % (ven or 'PCI', x['vendor'], x['device'])
+
+    def usb_name(self, x):
+        name = x['name'] or self.usb_ids.product(x['vendor'], x['product'])
+        maker = short_vendor(x['maker'] or self.usb_ids.vendor(x['vendor']))
+        if name:
+            return (maker + ' ' + name).strip() if maker and maker.lower() not in name.lower() and len(name) < 18 else name
+        return '%s device %04x:%04x' % (maker or 'USB', x['vendor'], x['product'])
+
+    def phys_info(self, phys):
+        """(name, maker, ids, where, driver, module) for a PCI or USB device folder."""
+        if phys in self.pci:
+            x = self.pci[phys]
+            return (self.pci_name(x), self.pci_ids.vendor(x['vendor']) or '', 'PCI %04x:%04x' % (x['vendor'], x['device']),
+                    self.pci_where(x), x['driver'], x['module'])
+        if phys in self.usb:
+            x = self.usb[phys]
+            drv = next((i for i in x['ifaces'] if i['driver']), None)
+            return (self.usb_name(x), x['maker'] or self.usb_ids.vendor(x['vendor']) or '',
+                    'USB %04x:%04x' % (x['vendor'], x['product']), self.usb_where(x),
+                    drv['driver'] if drv else '', drv['module'] if drv else '')
+        return '', '', '', '', '', ''
+
+    @staticmethod
+    def pci_where(x):
+        return 'PCI slot %s, inside the PC' % x['slot']
+
+    @staticmethod
+    def usb_where(x):
+        sp = x.get('speed') or ''
+        kind = {'1.5': 'USB 1', '12': 'USB 1', '480': 'USB 2', '5000': 'USB 3', '10000': 'USB 3.2', '20000': 'USB 3.2',
+                '40000': 'USB4', '80000': 'USB4'}.get(sp, 'USB')
+        rate = (' (%s)' % ('%g Gbps' % (int(sp) / 1000) if sp.isdigit() and int(sp) >= 1000 else sp + ' Mbps')) if sp else ''
+        place = {'fixed': ', inside the PC', 'removable': ''}.get(x.get('removable') or '', '')
+        return '%s port %s%s%s' % (kind, x['port'], rate, place)
+
+    def add(self, group, name, phys='', **kw):
+        """One device in a group. phys (its PCI or USB folder) fills in the maker, ids, where and driver, and is
+        claimed: the groups after this one don't list it again."""
+        pn, maker, ids, where, drv, mod = self.phys_info(phys) if phys else ('', '', '', '', '', '')
+        drv = kw.pop('driver', None) or drv
+        mod = kw.pop('module', None) or mod
+        shown, note = self.mods.describe(drv, mod)
+        rec = {'id': '', 'group': group, 'name': name or pn or 'Unknown device', 'maker': short_vendor(kw.pop('maker', '') or maker),
+               'ids': kw.pop('ids', '') or ids, 'where': kw.pop('where', '') or where, 'driver': shown, 'driverNote': note,
+               'firmware': '', 'problem': None, 'canDisable': False, 'disabled': False, 'phys': phys}
+        rec.update(kw)
+        if not drv and rec['problem'] is None and not rec.get('noDriverOk'):
+            rec['problem'] = {'kind': 'driver', 'title': 'No driver',
+                              'text': "Hearth has no driver for this device, so it can't be used. Send logs so support can be added."}
+        self.devices.append(rec)
+        if phys:
+            self.claimed.add(phys)
+            self.by_phys.setdefault(phys, rec)
+        return rec
+
+    def radio(self, rec, parent_path, kind):
+        for r in self.rfkill:
+            if r['parent'] and (r['parent'] == parent_path or r['parent'].startswith(parent_path + '/')) and r['type'] == kind:
+                rec['rfkill'] = r['idx']
+                rec['canDisable'] = not r['hard']
+                rec['disabled'] = r['soft']
+                if r['hard']:
+                    rec['note'] = 'Turned off with a switch or key on the device'
+                return
+
+    # ---------------------------------------------------------- groups
+    def scan_display(self):
+        for x in self.pci.values():
+            if x['cls'] >> 16 != 0x03:
+                continue
+            rec = self.add('display', '', x['path'])
+            if x['vendor'] == 0x10de:
+                rec['nvidia'] = True
+                ver = rd(P('/sys/module/nvidia/version'))
+                if ver:
+                    rec['name'] += ' · driver ' + ver.split('.')[0]
+                    rec['driverVersion'] = ver
+            rec['inUse'] = True
+
+    def scan_monitors(self):
+        for c in sorted(glob.glob(P('/sys/class/drm/card*-*'))):
+            if rd(os.path.join(c, 'status')) != 'connected':
+                continue
+            conn = re.sub(r'^card\d+-', '', os.path.basename(c))
+            edid = rd_bytes(os.path.join(c, 'edid'))
+            name, maker = edid_name(edid)
+            kind = re.sub(r'-[A-Z]?-?\d+$', '', conn).replace('-A', '').replace('eDP', 'Built-in screen')
+            gpu = self.phys_of(real(c))
+            gname = self.phys_info(gpu)[0] if gpu else ''
+            self.devices.append({'id': '', 'group': 'monitors', 'name': name or ('Built-in screen' if conn.startswith(('eDP', 'LVDS', 'DSI')) else 'Screen on ' + conn),
+                                 'maker': maker, 'ids': conn, 'where': conn + (' on ' + gname if gname else ''),
+                                 'driver': '', 'driverNote': 'uses the display adapter\'s driver', 'firmware': '', 'problem': None,
+                                 'canDisable': False, 'disabled': False, 'phys': '', 'inUse': True, 'connector': kind})
+
+    def scan_net(self):
+        for n in sorted(glob.glob(P('/sys/class/net/*'))):
+            dev = os.path.join(n, 'device')
+            if not os.path.exists(dev):
+                continue                      # lo, bridges, VPNs: not hardware
+            phys = self.phys_of(real(dev))
+            if phys in self.claimed:
+                continue
+            drv, mod = driver_of(dev)
+            wifi = os.path.isdir(os.path.join(n, 'wireless')) or os.path.exists(os.path.join(n, 'phy80211'))
+            rec = self.add('net', '', phys, driver=drv, module=mod, iface=os.path.basename(n), wifi=wifi)
+            if not phys:
+                rec['name'] = os.path.basename(n)
+            if wifi:
+                self.radio(rec, real(os.path.join(n, 'phy80211')) or real(dev), 'wlan')
+        for x in list(self.pci.values()):
+            if x['path'] not in self.claimed and (x['cls'] >> 16 in (0x02, 0x0d)):
+                rec = self.add('net', '', x['path'])
+                if rec['problem'] is None:
+                    rec['problem'] = {'kind': 'error', 'title': "Isn't working",
+                                      'text': 'The driver loaded, but no network connection appeared. Send logs so it can be looked at.'}
+
+    def scan_bluetooth(self):
+        for h in sorted(glob.glob(P('/sys/class/bluetooth/hci*'))):
+            if ':' in os.path.basename(h):
+                continue
+            hp = real(h)
+            phys = self.phys_of(hp)
+            if phys in self.claimed:
+                continue
+            rec = self.add('bluetooth', '', phys, hci=os.path.basename(h))
+            if not phys:
+                rec['name'] = 'Bluetooth adapter (%s)' % os.path.basename(h)
+            self.radio(rec, hp, 'bluetooth')
+        for x in self.usb.values():
+            if x['path'] in self.claimed:
+                continue
+            if any(i['cls'] == 0xe0 and i['sub'] == 0x01 and i['proto'] == 0x01 for i in x['ifaces']):
+                rec = self.add('bluetooth', '', x['path'])
+                if rec['problem'] is None:
+                    rec['problem'] = {'kind': 'error', 'title': "Isn't working",
+                                      'text': "The driver loaded, but the adapter didn't start, so Bluetooth won't turn on. "
+                                              'This is often missing firmware. Send logs so it can be looked at.'}
+
+    def scan_audio(self):
+        names = {}
+        for line in rd(P('/proc/asound/cards')).splitlines():
+            m = re.match(r'\s*(\d+)\s+\[[^\]]*\]:\s*\S+\s+-\s+(.*)', line)
+            if m:
+                names[m.group(1)] = m.group(2).strip()
+        for c in sorted(glob.glob(P('/sys/class/sound/card[0-9]*'))):
+            num = re.sub(r'\D', '', os.path.basename(c))
+            phys = self.phys_of(real(os.path.join(c, 'device')) or real(c))
+            if phys and self.by_phys.get(phys, {}).get('group') == 'audio':
+                continue
+            name = names.get(num) or rd(os.path.join(c, 'id'))
+            if re.match(r'^HD-Audio Generic$', name or ''):
+                name = ''
+            # A headset's sound part, when its buttons are already under Keyboards and mice: listed here too.
+            drv, mod = driver_of(os.path.join(c, 'device'))
+            self.add('audio', name, phys, driver=drv or None, module=mod or None)
+        for x in self.pci.values():
+            if x['path'] not in self.claimed and x['cls'] >> 16 == 0x04 and not x['driver']:
+                self.add('audio', '', x['path'])
+
+    def scan_cameras(self):
+        for v in sorted(glob.glob(P('/sys/class/video4linux/video*'))):
+            phys = self.phys_of(real(os.path.join(v, 'device')) or real(v))
+            if phys and phys in self.claimed:
+                continue
+            name = re.sub(r':\s.*$', '', rd(os.path.join(v, 'name')))
+            self.add('cameras', name, phys)
+        for x in self.usb.values():
+            if x['path'] not in self.claimed and any(i['cls'] == 0x0e for i in x['ifaces']):
+                self.add('cameras', '', x['path'])
+
+    def scan_input(self):
+        blocks = rd(P('/proc/bus/input/devices')).split('\n\n')
+        by_parent = {}
+        for b in blocks:
+            info = {}
+            for line in b.splitlines():
+                if len(line) > 3 and line[1] == ':':
+                    info.setdefault(line[0], []).append(line[3:].strip())
+            if 'N' not in info:
+                continue
+            sysfs = (info.get('S') or [''])[0].replace('Sysfs=', '')
+            if '/devices/virtual/' in sysfs:
+                continue                       # Hearth's own controller and keyboard (uinput), not hardware
+            ids = dict(kv.split('=', 1) for kv in (info.get('I') or [''])[0].split() if '=' in kv)
+            bits = {}
+            for line in info.get('B', []):
+                if '=' in line:
+                    k, val = line.split('=', 1)
+                    bits[k] = val.split()
+            handlers = (info.get('H') or [''])[0].replace('Handlers=', '').split()
+            name = info['N'][0].replace('Name=', '').strip('"')
+            kind = input_kind(handlers, bits, name)
+            if not kind:
+                continue
+            # One device for every node it has (a controller's motion sensors and touchpad, a keyboard's media keys):
+            # a USB device by its USB folder, anything else (Bluetooth, built in) by its own HID folder.
+            node = P('/sys' + sysfs)
+            parent = re.sub(r'/input/input\d+$', '', node)
+            phys_dev = self.phys_of(real(parent) or parent) if ids.get('Bus', '').lower() == '0003' else ''
+            phys_dev = phys_dev if phys_dev in self.usb else ''
+            key = phys_dev or real(parent) or parent
+            prev = by_parent.get(key)
+            rank = {'controllers': 3, 'keyboard': 2, 'mouse': 1}
+            if prev and rank[prev['kind']] >= rank[kind]:
+                continue
+            by_parent[key] = {'kind': kind, 'name': name, 'bus': ids.get('Bus', ''), 'vendor': ids.get('Vendor', ''),
+                              'product': ids.get('Product', ''), 'parent': real(parent) or parent, 'phys': phys_dev}
+        for key, d in sorted(by_parent.items(), key=lambda kv: kv[1]['name'].lower()):
+            drv, mod = driver_of(d['parent'])
+            if not drv and d['phys'] in self.usb:
+                i = next((i for i in self.usb[d['phys']]['ifaces'] if i['driver']), None)
+                drv, mod = (i['driver'], i['module']) if i else ('', '')
+            bus = d['bus'].lower()
+            where = {'0003': '', '0005': 'Bluetooth', '0011': 'Built in (PS/2)', '0018': 'Built in (I2C)',
+                     '0019': 'Built in', '0006': 'Virtual'}.get(bus, '')
+            group = 'controllers' if d['kind'] == 'controllers' else 'input'
+            phys = d['phys'] if d['phys'] not in self.claimed else ''
+            rec = self.add(group, d['name'], phys, driver=drv, module=mod,
+                           ids=('%s %s:%s' % ('Bluetooth' if bus == '0005' else 'USB' if bus == '0003' else 'Input', d['vendor'], d['product'])),
+                           where=where or None, inputKind=d['kind'], noDriverOk=True)
+            if not rec['where']:
+                rec['where'] = where or 'Connected'
+
+    def system_disks(self):
+        """The disks Hearth runs from (/, /sysroot, /var, /boot…): never offered for anything."""
+        out = set()
+        for line in rd(P('/proc/mounts')).splitlines():
+            parts = line.split()
+            if len(parts) < 2 or not parts[0].startswith('/dev/'):
+                continue
+            if parts[1] not in ('/', '/sysroot', '/var', '/usr', '/etc', '/boot', '/boot/efi', '/home', '/var/home'):
+                continue
+            out |= self.disks_under(os.path.basename(real(P(parts[0])) or parts[0]))
+        return out
+
+    def disks_under(self, name, depth=0):
+        if depth > 6 or not name:
+            return set()
+        if os.path.isdir(P('/sys/block/' + name)):
+            slaves = glob.glob(P('/sys/block/%s/slaves/*' % name))
+            if slaves:
+                return set().union(*(self.disks_under(os.path.basename(s), depth + 1) for s in slaves))
+            return {name}
+        cb = real(P('/sys/class/block/' + name))
+        if cb and os.path.exists(os.path.join(cb, 'partition')):
+            return self.disks_under(os.path.basename(os.path.dirname(cb)), depth + 1)
+        return {name}
+
+    def scan_disks(self):
+        system = self.system_disks()
+        for b in sorted(glob.glob(P('/sys/block/*'))):
+            name = os.path.basename(b)
+            if re.match(r'^(loop|ram|zram|dm-|md|nbd|fd|mtdblock)', name):
+                continue
+            dev = os.path.join(b, 'device')
+            if not os.path.exists(dev):
+                continue
+            size = int(rd(os.path.join(b, 'size'), '0') or 0) * 512
+            if size == 0 and not name.startswith('sr'):
+                continue                       # an empty card reader slot
+            model = clean(rd(os.path.join(dev, 'model')) or rd(os.path.join(b, 'device', 'name')))
+            vendor = clean(rd(os.path.join(dev, 'vendor')))
+            vendor = '' if re.match(r'^0x[0-9a-f]+$', vendor, re.I) else vendor
+            rp = real(b)
+            kind = ('NVMe SSD' if name.startswith('nvme') else 'SD card' if name.startswith('mmcblk')
+                    else 'DVD drive' if name.startswith('sr') else 'USB drive' if '/usb' in rp
+                    else 'Virtual drive' if '/virtio' in rp else 'Drive')
+            label = ' '.join(x for x in (vendor if vendor and vendor.upper() not in ('ATA', 'GENERIC') and vendor.lower() not in model.lower() else '', model) if x)
+            if not label:
+                label = kind
+            if size:
+                label += ' ' + human_size(size)
+            phys = self.phys_of(rp)
+            phys = phys if phys and phys in self.usb else ''
+            drv, mod = driver_of(dev)
+            if not drv:
+                drv, mod = driver_of(os.path.dirname(real(dev)) if real(dev) else dev)
+            where = ('NVMe, inside the PC' if name.startswith('nvme') else 'SD card slot' if name.startswith('mmcblk')
+                     else '' if phys else 'SATA, inside the PC' if '/ata' in rp else '')
+            rec = self.add('disks', label, phys, driver=drv or ('nvme' if name.startswith('nvme') else 'sd'),
+                           module=mod, block=name, size=size, where=where or None, noDriverOk=True)
+            if not rec['where']:
+                rec['where'] = 'Inside the PC'
+            rec['holdsSystem'] = name in system
+            if name in system:
+                rec['note'] = 'Hearth runs from this drive'
+
+    def scan_cpu(self):
+        models, vendor, count = [], '', 0
+        for line in rd(P('/proc/cpuinfo')).splitlines():
+            k, _, v = line.partition(':')
+            k, v = k.strip(), v.strip()
+            if k == 'processor':
+                count += 1
+            elif k in ('model name', 'Model', 'cpu model') and v and v not in models:
+                models.append(v)
+            elif k == 'vendor_id' and not vendor:
+                vendor = {'GenuineIntel': 'Intel', 'AuthenticAMD': 'AMD'}.get(v, v)
+        if not count:
+            return
+        drv = rd(P('/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver'))
+        for m in models or ['Processor']:
+            rec = self.add('cpu', clean(re.sub(r'\((R|TM|tm)\)', '', m)).replace(' CPU @', ' @'), '', driver=drv or 'processor',
+                           maker=vendor, where='On the board', threads=count, noDriverOk=True)
+            rec['ids'] = '%d threads' % count
+            if not drv:
+                rec['driver'], rec['driverNote'] = 'processor', "built into Hearth's kernel"
+
+    def scan_usb_controllers(self):
+        for x in self.pci.values():
+            if x['cls'] >> 8 == 0x0c03:
+                self.add('usb', '', x['path'])
+
+    def scan_other(self, log):
+        for x in self.usb.values():
+            hub = x['cls'] == 0x09 or (x['ifaces'] and all(i['cls'] == 0x09 for i in x['ifaces']))
+            if x['path'] in self.claimed or hub:
+                continue
+            bound = [i for i in x['ifaces'] if i['driver']]
+            needs = [i for i in x['ifaces'] if i['cls'] in USB_NEEDS_DRIVER and not i['driver']]
+            rec = self.add('other', '', x['path'], noDriverOk=True)
+            if needs and not bound:
+                rec['problem'] = {'kind': 'driver', 'title': 'No driver',
+                                  'text': "Hearth has no driver for this device, so it can't be used. Send logs so support can be added."}
+            elif not bound:
+                rec['driver'], rec['driverNote'] = 'none needed', 'apps talk to it directly'
+        for x in self.pci.values():
+            g = PCI_SHOWN.get(x['cls'] >> 16)
+            if x['path'] not in self.claimed and g and not x['driver']:
+                self.add('other', '', x['path'])
+        ports = {self.usb[k]['port'] for k in self.usb}
+        for port, what in sorted(log['usb'].items()):
+            if port in ports:
+                continue
+            self.devices.append({'id': '', 'group': 'other', 'name': 'Unknown USB device (port %s)' % port, 'maker': '',
+                                 'ids': '', 'where': 'USB port ' + port, 'driver': '', 'driverNote': '', 'firmware': '',
+                                 'problem': {'kind': 'error', 'title': "Couldn't start",
+                                             'text': "Something plugged into this port didn't answer when Hearth tried to start it "
+                                                     '(%s). Try another port or cable, then Scan for hardware changes.' % what},
+                                 'canDisable': False, 'disabled': False, 'phys': '', 'port': port})
+
+    # ---------------------------------------------------------- the log, on the devices
+    def record_for(self, dev):
+        """The record a kernel device name points at: 0000:00:14.3, 1-4, 1-4:1.0, hci0, wlan0."""
+        if not dev:
+            return None
+        if dev.startswith('hci'):
+            # hci0 that never came up (no firmware): the Bluetooth adapter that has no hci of its own.
+            return next((r for r in self.devices if r.get('hci') == dev), None) or \
+                next((r for r in self.devices if r['group'] == 'bluetooth' and not r.get('hci')), None)
+        for r in self.devices:
+            if r.get('iface') == dev:
+                return r
+        for path, x in self.pci.items():
+            if x['slot'] == dev:
+                return self.by_phys.get(path)
+        port = dev.split(':', 1)[0]
+        for path, x in self.usb.items():
+            if x['port'] == port:
+                return self.by_phys.get(path)
+        return None
+
+    def apply_log(self, log):
+        for dev, drv, f in log['firmware']:
+            rec = self.record_for(dev)
+            if rec is None and drv:
+                rec = next((r for r in self.devices if r['driver'] and Modules.key(r['driver']) == Modules.key(drv)), None)
+            if rec is None:
+                continue
+            rec['firmware'] = (rec['firmware'] + ', ' if rec['firmware'] else '') + os.path.basename(f) + ' · not found'
+            rec.setdefault('firmwareFiles', []).append(f)
+            if rec['problem'] is None or rec['problem']['kind'] != 'driver':
+                rec['problem'] = {'kind': 'firmware', 'title': 'Missing firmware', 'text': FIRMWARE_TEXT}
+        for dev, drv, err in log['probe']:
+            rec = self.record_for(dev)
+            if rec is not None and rec['problem'] is None:
+                rec['problem'] = {'kind': 'error', 'title': "The driver couldn't start it",
+                                  'text': '%s stopped with error %s while starting this device. Send logs so it can be looked at.' % (drv, err)}
+
+    def run(self):
+        self.read_pci()
+        self.read_usb()
+        self.read_rfkill()
+        lines, readable = kernel_log()
+        log = parse_log(lines)
+        # The order matters: specific kinds first claim their device, the leftovers fall to "Other devices".
+        self.scan_display()
+        self.scan_monitors()
+        self.scan_bluetooth()
+        self.scan_net()
+        self.scan_input()
+        self.scan_cameras()
+        self.scan_disks()
+        self.scan_audio()
+        self.scan_cpu()
+        self.scan_usb_controllers()
+        self.scan_other(log)
+        self.apply_log(log)
+        return self.result(readable)
+
+    def result(self, readable):
+        groups = []
+        used = {}
+        for gid, label in GROUPS:
+            devs = [d for d in self.devices if d['group'] == gid]
+            devs.sort(key=lambda d: (d['problem'] is None, d['name'].lower()))
+            for d in devs:
+                base = gid + ':' + re.sub(r'[^a-z0-9]+', '-', (d.get('ids') or d['name']).lower()).strip('-')
+                n = used.get(base, 0)
+                used[base] = n + 1
+                d['id'] = base if n == 0 else '%s-%d' % (base, n + 1)
+                d.pop('noDriverOk', None)
+                d.pop('phys', None)
+                # Never storage Hearth runs from, never the screen in use: only radios with rfkill can be turned off.
+                if d.get('holdsSystem') or d.get('inUse'):
+                    d['canDisable'] = False
+            if devs or gid != 'other':
+                groups.append({'id': gid, 'label': label, 'devices': devs,
+                               'problems': sum(1 for d in devs if d['problem'])})
+        host = rd(P('/proc/sys/kernel/hostname')) or 'This PC'
+        return {'host': host, 'groups': groups, 'count': len(self.devices),
+                'problems': sum(1 for d in self.devices if d['problem']), 'kernelLog': readable}
+
+
+def input_kind(handlers, bits, name):
+    """controllers / keyboard / mouse / None for one input node from /proc/bus/input/devices."""
+    if any(h.startswith('js') for h in handlers):
+        return 'controllers'
+    low = name.lower()
+    if re.search(r'(power button|sleep button|lid switch|video bus|pc speaker|hda |hdmi|headphone|mic\b|'
+                 r'wmi hotkeys|hid events|consumer control$|system control$|accelerometer|motion sensors)', low):
+        return None
+    ev = hexint((bits.get('EV') or ['0'])[-1], 0)
+    if 'kbd' in handlers and ev & (1 << 20):         # EV_REP: keys repeat when held, as on a real keyboard
+        key = bits.get('KEY') or []
+        low_word = hexint(key[-1], 0) if key else 0
+        if low_word & (1 << 30) and low_word & (1 << 57):   # KEY_A and KEY_SPACE
+            return 'keyboard'
+    if any(h.startswith('mouse') for h in handlers):
+        return 'mouse'
+    return None
+
+
+def edid_name(edid):
+    """(monitor name, maker) from an EDID block: the 0xFC descriptor and the three-letter maker code."""
+    if len(edid) < 128 or edid[:8] != b'\x00\xff\xff\xff\xff\xff\xff\x00':
+        return '', ''
+    code = (edid[8] << 8) | edid[9]
+    maker_code = ''.join(chr(((code >> s) & 0x1f) + 64) for s in (10, 5, 0))
+    makers = {'SAM': 'Samsung', 'GSM': 'LG', 'DEL': 'Dell', 'ACI': 'ASUS', 'AUS': 'ASUS', 'AOC': 'AOC', 'BNQ': 'BenQ',
+              'HWP': 'HP', 'LEN': 'Lenovo', 'MSI': 'MSI', 'PHL': 'Philips', 'SNY': 'Sony', 'TCL': 'TCL', 'VSC': 'ViewSonic',
+              'GBT': 'Gigabyte', 'BOE': 'BOE', 'AUO': 'AU Optronics', 'SHP': 'Sharp', 'CMN': 'Innolux', 'VLV': 'Valve',
+              'IVM': 'iiyama', 'HSD': 'HannStar', 'NEC': 'NEC', 'APP': 'Apple', 'HIS': 'Hisense', 'VIZ': 'Vizio'}
+    name = ''
+    for off in (54, 72, 90, 108):
+        blk = edid[off:off + 18]
+        if blk[:3] == b'\x00\x00\x00' and blk[3] == 0xfc:
+            name = blk[5:18].split(b'\x0a')[0].decode('ascii', 'replace').strip()
+    return name, makers.get(maker_code, maker_code)
+
+
+def human_size(n):
+    """Drive sizes the way they're sold: 2 TB, 512 GB, 1.5 TB."""
+    for unit, size in (('TB', 1e12), ('GB', 1e9), ('MB', 1e6)):
+        if n >= size * 0.95:
+            v = n / size
+            if v >= 10 or abs(v - round(v)) < 0.05:
+                return '%d %s' % (round(v), unit)
+            return '%.1f %s' % (v, unit)
+    return '%d KB' % (n // 1000)
+
+
+# ------------------------------------------------------------------ disable / enable: rfkill only
+
+RFKILL_OP_CHANGE = 2
+
+
+def set_radio(dev_id, block):
+    data = Scan().run()
+    rec = next((d for g in data['groups'] for d in g['devices'] if d['id'] == dev_id), None)
+    if rec is None:
+        raise ValueError("there's no device %s now" % dev_id)
+    if not rec.get('canDisable') or rec.get('rfkill') is None or rec.get('holdsSystem') or rec.get('inUse'):
+        raise ValueError("%s can't be turned off here" % rec['name'])
+    idx = rec['rfkill']
+    # /dev/rfkill: the person signed in at the screen may use it (systemd's uaccess), no password; the kernel and
+    # systemd-rfkill keep the choice until it's turned back on, the same as airplane mode does.
+    try:
+        with open(P('/dev/rfkill'), 'wb', buffering=0) as f:
+            f.write(struct.pack('IBBBB', idx, 0, RFKILL_OP_CHANGE, 1 if block else 0, 0))
+    except OSError as e:
+        if shutil.which('rfkill') and not ROOT:
+            r = subprocess.run(['rfkill', 'block' if block else 'unblock', str(idx)], capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                raise ValueError((r.stderr or r.stdout).strip() or str(e))
+        else:
+            raise ValueError("couldn't change it: %s" % e.strerror)
+    return {'id': dev_id, 'disabled': block, 'name': rec['name']}
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        if a == ['list']:
+            r = Scan().run()
+        elif len(a) == 2 and a[0] in ('disable', 'enable'):
+            r = set_radio(a[1], a[0] == 'disable')
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except (OSError, ValueError) as e:
+        print('error: %s' % e, flush=True)
+        return 1
+    print(json.dumps(r), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
