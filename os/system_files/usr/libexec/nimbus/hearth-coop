@@ -843,7 +843,9 @@ def find_game(ctx, gid):
 # ---------------------------------------------------------------------- system check, Proton, gbe
 
 def find_umu(ctx):
-    p = ctx.runner.which('umu-run')
+    # hearth-proton-run first (docs/OFFLINE-PROTON.md): umu-run's command line with the built-in GE-Proton, offline and
+    # without Steam. umu-run only where the image doesn't have it.
+    p = ctx.runner.which('hearth-proton-run') or ctx.runner.which('umu-run')
     if p:
         return p
     p = os.path.join(ctx.data_dir, 'tools', 'umu', 'umu-run')

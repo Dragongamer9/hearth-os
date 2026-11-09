@@ -1,5 +1,6 @@
-//! Games you added yourself: a Linux program or script, an AppImage, a .desktop file, or a Windows .exe (with
-//! Proton through umu-launcher, or Wine). Port of library/manual.js and game-options.js's apply().
+//! Games you added yourself: a Linux program or script, an AppImage, a .desktop file, or a Windows .exe (with the
+//! Proton built into Hearth OS through hearth-proton-run, offline and without Steam; umu-run or Wine elsewhere). Port
+//! of library/manual.js and game-options.js's apply().
 
 use serde_json::Value;
 use std::path::Path;
@@ -65,8 +66,8 @@ pub fn apply(opts: &Value, cmd: &str, args: Vec<String>, proton: bool) -> (Strin
 }
 
 /// Starts it. Returns the process id when Hearth started a process it can watch. `game_id` (appid.rs) goes in its
-/// environment as HEARTH_GAME_ID, so its processes and windows can be told apart from other games'. GAMEID (umu and
-/// Proton's game fixes) stays as it was.
+/// environment as HEARTH_GAME_ID, so its processes and windows can be told apart from other games'. GAMEID (Proton's
+/// game fixes) stays as it was.
 pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Result<u32, String> {
     if !Path::new(file).exists() { return Err(format!("File not found: {file}")); }
     let cwd = Path::new(file).parent().map(|p| p.to_path_buf()).unwrap_or_else(|| "/".into());
@@ -75,7 +76,8 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Resul
     let (cmd, argv, env, dir, proton) = if low.ends_with(".desktop") {
         let d = parse_desktop(&std::fs::read_to_string(file).unwrap_or_default());
         let exec = d.get("Exec").ok_or("That .desktop file has no Exec line")?;
-        let mut v = exec_argv(exec);
+        // An entry Hearth wrote before hearth-proton-run names umu-run: it starts with hearth-proton-run (proton_run.rs).
+        let mut v = crate::proton_run::modernize_desktop(Path::new(file), exec_argv(exec));
         if v.is_empty() { return Err("That .desktop file has no Exec line".into()); }
         let c = v.remove(0); v.extend(args);
         // "Path=" left empty (common in hand-made and exported .desktop files) means no folder of its own: starting
@@ -83,7 +85,8 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Resul
         (c, v, vec![], d.get("Path").map(|p| p.trim()).filter(|p| !p.is_empty()).map(|p| p.into()).unwrap_or(cwd), false)
     } else if low.ends_with(".exe") {
         let mut v = vec![file.to_string()]; v.extend(args);
-        if crate::system::has("umu-run") { ("umu-run".to_string(), v, vec![("GAMEID".to_string(), std::env::var("GAMEID").unwrap_or_else(|_| "umu-default".into()))], cwd, true) }
+        // hearth-proton-run in Hearth OS (offline, the built-in GE-Proton unless the game's options pick another).
+        if let Some(runner) = crate::proton_run::ready() { (runner, v, vec![("GAMEID".to_string(), std::env::var("GAMEID").unwrap_or_else(|_| "umu-default".into()))], cwd, true) }
         else if crate::system::has("wine") { ("wine".to_string(), v, vec![], cwd, false) }
         else { return Err("To run Windows games, install umu-launcher (recommended) or Wine".into()); }
     } else {
@@ -92,6 +95,7 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Resul
     let (c, a, mut e) = apply(opts, &cmd, argv, proton);
     e.extend(env);
     if game_id != 0 { e.push(crate::appid::env(game_id)); }
+    if proton { crate::proton_run::warn_if_substituted(&c, &e); }   // a saved Proton not on this device: told, kept
     crate::bridge::log(&format!("launch: {} with HEARTH_GAME_ID={game_id}", Path::new(file).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
     let child = std::process::Command::new(&c).args(&a).envs(e).current_dir(dir)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
@@ -108,8 +112,8 @@ mod tests {
         assert_eq!(exec_argv(r#"env WINEDEBUG=-all "/opt/My Game/run" %U --x %%"#), vec!["env", "WINEDEBUG=-all", "/opt/My Game/run", "--x", "%"]);
         assert_eq!(title_for("/g/Hollow_Knight.AppImage"), "Hollow Knight");
         assert_eq!(parse_env("A=1 B='two words' C=\"x y\""), vec![("A".into(), "1".into()), ("B".into(), "two words".into()), ("C".into(), "x y".into())]);
-        let (c, a, e) = apply(&json!({"args": "-skipintro \"-w 1\"", "mangohud": true, "proton": "GE-Proton", "fsr": true}), "umu-run", vec!["g.exe".into()], true);
-        assert_eq!(c, "umu-run"); assert_eq!(a, vec!["g.exe", "-skipintro", "-w 1"]);
+        let (c, a, e) = apply(&json!({"args": "-skipintro \"-w 1\"", "mangohud": true, "proton": "GE-Proton", "fsr": true}), "/usr/bin/hearth-proton-run", vec!["g.exe".into()], true);
+        assert_eq!(c, "/usr/bin/hearth-proton-run"); assert_eq!(a, vec!["g.exe", "-skipintro", "-w 1"]);
         assert!(e.contains(&("PROTONPATH".into(), "GE-Proton".into())) && e.contains(&("MANGOHUD".into(), "1".into())) && e.contains(&("WINE_FULLSCREEN_FSR".into(), "1".into())));
     }
     #[test]

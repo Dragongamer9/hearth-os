@@ -19,32 +19,36 @@ fn read_json(p: &Path) -> Value { std::fs::read(p).ok().and_then(|b| serde_json:
 /// window, so signing in once covers the library and buying games.
 pub struct SignIn { pub store: &'static str, pub title: &'static str, pub url: String, pub done: fn(&str) -> Option<String>, pub script: Option<&'static str> }
 
-// ------------------------------------------------------------------ Proton (umu)
+// ------------------------------------------------------------------ Proton (hearth-proton-run, offline)
 
 pub fn prefix_of(store: &str, id: &str) -> PathBuf {
     let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect();
     data().join("prefixes").join(format!("{store}-{safe}"))
 }
 
-/// Starts a Windows game with Proton through umu-run, in its own Wine prefix. Returns the process id.
-/// `game_id` (appid.rs) goes in as HEARTH_GAME_ID: umu passes it on to Proton and Wine untouched (it rewrites
-/// SteamGameId and SteamAppId from GAMEID, which is why those aren't used), so every process of the game carries it.
+/// Starts a Windows game with Proton, in its own Wine prefix, through hearth-proton-run (proton_run.rs: offline, no
+/// Steam; umu-run only where the image has no hearth-proton-run). Returns the process id.
+/// `game_id` (appid.rs) goes in as HEARTH_GAME_ID: the launcher passes it on to Proton and Wine untouched (it rewrites
+/// SteamGameId and SteamAppId from GAMEID, as umu does, which is why those aren't used), so every process of the game
+/// carries it.
 pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &Path, env: Vec<(String, String)>, opts: &Value, game_id: u32) -> Result<u32, String> {
-    let umu = tools::ensure(&tools::UMU)?;
+    let runner = crate::proton_run::command()?;
     let prefix = prefix_of(store, id);
     std::fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
     let mut a = vec![exe.to_string()]; a.extend(args);
-    let (cmd, argv, mut e) = crate::manual::apply(opts, &umu, a, true);
+    let (cmd, argv, mut e) = crate::manual::apply(opts, &runner, a, true);
     e.extend(env);
-    // No Proton picked in the game's options: the one built into Hearth OS (offline), or umu's own choice.
+    // No Proton picked in the game's options: the Proton detector's pick (the one built into Hearth OS, offline).
     crate::proton_pick::fill_in(&mut e, store, id);
     e.push(("WINEPREFIX".into(), prefix.to_string_lossy().into()));
     e.push(("GAMEID".into(), std::env::var("NIMBUS_GAMEID").unwrap_or_else(|_| "0".into())));
     e.push(("STORE".into(), match store { "epic" => "egs", "gog" => "gog", _ => "none" }.into()));
     e.push(("PROTON_VERB".into(), "waitforexitandrun".into()));
     if game_id != 0 { e.push(crate::appid::env(game_id)); }
+    // A saved Proton that isn't on this device: the built-in one for this run, the person is told, the choice is kept.
+    crate::proton_run::warn_if_substituted(&cmd, &e);
     crate::bridge::log(&format!("proton: {store}:{id} {exe} (HEARTH_GAME_ID={game_id})"));
-    // umu's and Proton's own words go to the game's launch log (Send logs shows the newest; a start from Steam that
+    // The launcher's and Proton's own words go to the game's launch log (Send logs shows the newest; a start from Steam that
     // fails quotes its last error lines in Hearth's log), never to nowhere as before.
     let (out, err) = launch_log_files(store, id);
     std::process::Command::new(cmd).args(argv).envs(e).current_dir(cwd)
@@ -52,7 +56,7 @@ pub fn proton_launch(store: &str, id: &str, exe: &str, args: Vec<String>, cwd: &
         .spawn().map(crate::procs::detach).map_err(|err| format!("Couldn't start the game: {err}"))
 }
 
-/// Where a game's last start through Proton wrote umu's and Proton's output: data/launch-logs/<store>-<id>.log.
+/// Where a game's last start through Proton wrote the launcher's and Proton's output: data/launch-logs/<store>-<id>.log.
 pub fn launch_log(store: &str, id: &str) -> PathBuf {
     let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect();
     data().join("launch-logs").join(format!("{store}-{safe}.log"))

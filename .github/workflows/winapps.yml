@@ -8,7 +8,8 @@ name: Windows apps
 on:
   push:
     paths: ['hosts/linux/desktop/shell/hearth-winapps', 'hosts/linux/desktop/shell/hearth_proton.py',
-            'hosts/linux/test/test_hearth_winapps.py', 'os/system_files/usr/share/hearth/proton-rules.json',
+            'hosts/linux/desktop/shell/hearth_proton_run.py', 'os/system_files/usr/bin/hearth-proton-run',
+            'hosts/linux/test/test_hearth_winapps.py', 'hosts/linux/test/test_hearth_proton_run.py', 'os/system_files/usr/share/hearth/proton-rules.json',
             'tools/winapps-e2e/**', '.github/workflows/winapps.yml']
   workflow_dispatch:
 
@@ -24,6 +25,12 @@ jobs:
           python3 -W ignore -m unittest discover -s hosts/linux/test -p 'test_hearth_winapps.py' -v 2>&1 | tee wa.log || {
             echo "::error title=Windows apps tests::$(grep -E '^(FAIL|ERROR|AssertionError|\w+Error)' -A3 wa.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=Windows apps tests::$(tail -3 wa.log | tr '\n' ' ')"
+      - name: Unit tests (test_hearth_proton_run.py, Proton offline and without Steam)
+        run: |
+          set -o pipefail
+          python3 -W ignore -m unittest discover -s hosts/linux/test -p 'test_hearth_proton_run.py' -v 2>&1 | tee pr.log || {
+            echo "::error title=hearth-proton-run tests::$(grep -E '^(FAIL|ERROR|AssertionError|\w+Error)' -A3 pr.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=hearth-proton-run tests::$(tail -3 pr.log | tr '\n' ' ')"
 
   end-to-end:
     runs-on: ubuntu-24.04
@@ -37,3 +44,56 @@ jobs:
         run: |
           chmod -R a+rX "$GITHUB_WORKSPACE"
           su tester -c "cd /home/tester && REPO='$GITHUB_WORKSPACE' bash '$GITHUB_WORKSPACE/tools/winapps-e2e/e2e.sh' run"
+
+  # Owner's red flag: Hearth OS's built-in Proton works without Steam and 100% offline (docs/OFFLINE-PROTON.md).
+  # Set up like the image (with the network), then every way Hearth starts Proton with networking OFF
+  # (podman run --network=none): hearth-proton-run for stores, your own games, a missing saved Proton and a
+  # Steam-style id, and hearth-winapps' direct start. A fake umu-run on the PATH fails the check if anything calls it.
+  # base-peppermint.yml runs the same check inside the built image itself.
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up like the image (with the network)
+        run: |
+          podman run --name prep -v "$PWD:/repo:ro" docker.io/library/debian:trixie bash -c 'REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh setup'
+          podman commit prep offline-proton-test
+          podman rm prep
+      - name: Start Windows programs with the network off
+        run: |
+          set -o pipefail
+          podman run --rm --network=none -v "$PWD:/repo:ro" offline-proton-test bash -c \
+            'chmod -R a+rX /opt/winapps-test; runuser -u tester -- env HOME=/home/tester REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh offline' 2>&1 | tee off.log
+
+  # The same network-off check as base-peppermint.yml's, in Hearth OS's published image (:testing) with this branch's
+  # launcher files on top (what the image change adds), so it can be checked without a 2-hour image build.
+  offline-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start Windows programs in Hearth OS's image with the network off
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=offline Proton step::line $LINENO: $BASH_COMMAND (exit $?)"' ERR
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq --no-install-recommends xvfb >/dev/null
+          mkdir -p /tmp/offline-exe
+          sudo podman run --rm -v "$PWD:/repo:ro" -v /tmp/offline-exe:/out docker.io/library/debian:trixie \
+            bash -c 'REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh build-exes /out'
+          Xvfb :99 -ac -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
+          sleep 2
+          S="$PWD/hosts/linux/desktop/shell"; D=/usr/share/nimbus/desktop/shell
+          sudo podman pull -q ghcr.io/dragongamer9/hearth-peppermint:testing
+          echo "::notice title=offline: the image::$(sudo podman image inspect --format 'entrypoint={{.Config.Entrypoint}} cmd={{.Config.Cmd}} env={{.Config.Env}}' ghcr.io/dragongamer9/hearth-peppermint:testing | cut -c1-900)"
+          sudo podman run --rm --network=none -e DISPLAY=:99 -v /tmp/.X11-unix:/tmp/.X11-unix:ro -v "$PWD:/repo:ro" \
+            -v /tmp/offline-exe:/usr/share/hearth-offline-test:ro \
+            -v "$S/hearth_proton_run.py:$D/hearth_proton_run.py:ro" -v "$S/hearth_proton.py:$D/hearth_proton.py:ro" \
+            -v "$S/hearth-winapps:$D/hearth-winapps:ro" -v "$PWD/os/system_files/usr/bin/hearth-proton-run:/usr/bin/hearth-proton-run:ro" \
+            --entrypoint /usr/bin/bash ghcr.io/dragongamer9/hearth-peppermint:testing /repo/tools/winapps-e2e/e2e.sh offline-image 2> >(tee /tmp/oi.err >&2) || {
+            rc=$?
+            echo "::error title=offline: podman said::$(tail -c 1500 /tmp/oi.err | tr '\n' '|')"
+            c=$(sudo podman create ghcr.io/dragongamer9/hearth-peppermint:testing /usr/bin/true)
+            echo "::error title=offline: the image's shells::$(sudo podman export "$c" | tar -tv 2>/dev/null | grep -E ' (\./)?(usr/)?bin/(bash|sh|python3|setpriv)( |$)' | tr -s ' ' | cut -c1-200 | tr '\n' '|')"
+            sudo podman rm "$c" >/dev/null; exit $rc; }

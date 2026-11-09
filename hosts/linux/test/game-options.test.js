@@ -32,6 +32,23 @@ test('installed Proton versions are offered after the defaults', () => {
   const c = protonChoices(home);
   assert.deepStrictEqual(c.map(x => x.label), ['Default', 'GE-Proton (newest)', 'GE-Proton10-4']);
   assert.strictEqual(c[2].id, ge);
+  // Owner's red flag: the built-in Proton works offline; no choice says it's downloaded.
+  assert.ok(c.every(x => !/download(ed)? when needed|UMU-Proton/.test(x.sub)), JSON.stringify(c));
+});
+
+test('Windows games start with the offline launcher when the image has it', () => {
+  const tools = require('../src/stores/tools');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hpr-'));
+  const fake = path.join(dir, 'hearth-proton-run');
+  fs.writeFileSync(fake, '#!/bin/sh\n'); fs.chmodSync(fake, 0o755);
+  const was = process.env.HEARTH_PROTON_RUN;
+  process.env.HEARTH_PROTON_RUN = fake;
+  try {
+    assert.strictEqual(tools.offlineRunner(), fake);
+    return tools.protonRunner().then(p => assert.strictEqual(p, fake));
+  } finally {
+    if (was === undefined) delete process.env.HEARTH_PROTON_RUN; else process.env.HEARTH_PROTON_RUN = was;
+  }
 });
 
 test('which games get which settings', () => {

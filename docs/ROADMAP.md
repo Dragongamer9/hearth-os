@@ -8,6 +8,11 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 ## Next (unreleased)
 
 ### Hearth Game Mode is back
+### Proton offline and without Steam
+
+- [x] Hearth OS's built-in Proton works without Steam and 100% offline: Hearth Games' stores, your own games, Steam-engine direct starts, Recomps, Battle.net and Hearth Mods start Windows games with hearth-proton-run (the built-in GE-Proton, no umu-launcher, Steam Runtime or download); a saved Proton that isn't on the PC is swapped for the built-in one for that start, with a message, and kept; checked with the network off in CI (docs/OFFLINE-PROTON.md) (needs testing on a device)
+
+### Planned next
 
 - [x] Pick your Game Mode in Settings › Gaming › Game Mode: **Steam Game Mode** (the default, exactly as before) or **Hearth Game Mode** (Hearth's own full-screen screens), as two picture cards you move through with the controller. It applies the next time Game Mode starts, with Switch now right there (needs testing on a device)
 - [x] The same choice in Hearth Game Mode's Settings › System, and in Steam Game Mode's Quick Access › Hearth Sync › Game Mode (with Switch now: Steam closes properly first). Nothing of Steam's own screens is changed (needs testing on a device)

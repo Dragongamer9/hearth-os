@@ -16,7 +16,7 @@
 //! clean-room Steam client on SteamKit2, with no steamclient at all. It signs in, lists the owned library, and
 //! installs, updates and verifies games into the user's Steam libraries (normal appmanifest records, so the Downloads
 //! page and Valve's client see them). DRM-free games it answers with how to start them, and Hearth starts them itself
-//! (natively or with Proton through umu, like Epic and GOG games); Steamworks, VAC and anything else start through
+//! (natively or with Proton through hearth-proton-run, offline, like Epic and GOG games); Steamworks, VAC and anything else start through
 //! Valve's client. The same fallback rules apply: anything it can't do is done with Valve's client, as with Classic.
 
 use serde_json::{json, Value};
@@ -363,14 +363,15 @@ pub fn game_call(a: &Value) -> Result<Value, String> {
 }
 
 /// The command line for a direct start (pure, for the tests): (program, arguments, environment). Windows games go
-/// through umu (Proton) with the game's own Steam prefix, so saves are shared with Valve's client.
-pub fn direct_command(info: &Value, opts: &Value, app: u32, umu: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
+/// with Proton through `runner` (proton_run::ready: hearth-proton-run, offline and without Steam) with the game's own
+/// Steam prefix, so saves are shared with Valve's client.
+pub fn direct_command(info: &Value, opts: &Value, app: u32, runner: Option<&str>) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     let exe = info["exe"].as_str().ok_or("No program.")?.to_string();
     let mut args = crate::manual::split_args(info["args"].as_str().unwrap_or(""));
     if info["os"] == "windows" {
-        if !umu { return Err("umu-launcher isn't installed".into()); }
+        let Some(runner) = runner else { return Err("hearth-proton-run (or umu-launcher) isn't installed".into()) };
         args.insert(0, exe);
-        let (c, a, mut e) = crate::manual::apply(opts, "umu-run", args, true);
+        let (c, a, mut e) = crate::manual::apply(opts, runner, args, true);
         e.push(("GAMEID".into(), format!("umu-{app}")));
         e.push(("STORE".into(), "steam".into()));
         if let Some(p) = info["prefix"].as_str() { e.push(("WINEPREFIX".into(), p.into())); }
@@ -382,7 +383,7 @@ pub fn direct_command(info: &Value, opts: &Value, app: u32, umu: bool) -> Result
 
 /// Starts a DRM-free game the Open engine answered for. Returns its process id.
 pub fn launch_direct(info: &Value, opts: &Value, app: u32, game_id: u32) -> Result<u32, String> {
-    let (c, a, mut e) = direct_command(info, opts, app, crate::system::has("umu-run"))?;
+    let (c, a, mut e) = direct_command(info, opts, app, crate::proton_run::ready().as_deref())?;
     if let Some(p) = info["prefix"].as_str().filter(|_| info["os"] == "windows") { let _ = std::fs::create_dir_all(p); }
     if game_id != 0 { e.push(crate::appid::env(game_id)); }
     let cwd = info["cwd"].as_str().unwrap_or("/");
@@ -529,14 +530,14 @@ mod tests {
     #[test]
     fn direct_starts() {
         let win = json!({"direct": true, "exe": "/lib/steamapps/common/G/g.exe", "args": "-a \"b c\"", "os": "windows", "prefix": "/lib/steamapps/compatdata/70/pfx"});
-        let (c, a, e) = direct_command(&win, &json!({"proton": "GE-Proton"}), 70, true).unwrap();
-        assert_eq!(c, "umu-run");
+        let (c, a, e) = direct_command(&win, &json!({"proton": "GE-Proton"}), 70, Some("/usr/bin/hearth-proton-run")).unwrap();
+        assert_eq!(c, "/usr/bin/hearth-proton-run");
         assert_eq!(a, vec!["/lib/steamapps/common/G/g.exe", "-a", "b c"]);
         assert!(e.contains(&("GAMEID".into(), "umu-70".into())) && e.contains(&("STORE".into(), "steam".into())));
         assert!(e.contains(&("WINEPREFIX".into(), "/lib/steamapps/compatdata/70/pfx".into())) && e.contains(&("PROTONPATH".into(), "GE-Proton".into())));
-        assert!(direct_command(&win, &json!({}), 70, false).is_err());   // no umu: Valve's client starts it
+        assert!(direct_command(&win, &json!({}), 70, None).is_err());   // no launcher: Valve's client starts it
         let lin = json!({"direct": true, "exe": "/g/run.sh", "args": "", "os": "linux"});
-        let (c, a, e) = direct_command(&lin, &json!({}), 70, false).unwrap();
+        let (c, a, e) = direct_command(&lin, &json!({}), 70, None).unwrap();
         assert_eq!(c, "/g/run.sh");
         assert!(a.is_empty());
         assert!(!e.iter().any(|(k, _)| k == "WINEPREFIX" || k == "PROTONPATH"));

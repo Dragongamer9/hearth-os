@@ -447,7 +447,7 @@ pub fn report(version: &str) -> String {
         }
         if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
     }
-    // Games Hearth started with Proton (GOG, Epic…): umu's and Proton's output of the newest starts (stores.rs launch_log).
+    // Games Hearth started with Proton (GOG, Epic…): hearth-proton-run's and Proton's output of the newest starts (stores.rs launch_log).
     {
         let d = data.join("launch-logs");
         let mut logs: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path())
