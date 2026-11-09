@@ -9,6 +9,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ### Planned next
 
+- [ ] Smaller, faster updates (instead of 2–3 GB every time): Debian's packages frozen to a set date (moved on purpose, weekly or for a security fix), repeatable builds so unchanged files stay byte for byte the same and aren't downloaded again, Hearth's own apps in small pieces of their own, each build saying how big the update is against what devices have now, and the download done quietly in the background so it's ready at the next restart. A normal update should be about 200–500 MB; the previous version always stays startable
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
 - [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
