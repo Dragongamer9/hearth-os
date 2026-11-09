@@ -75,6 +75,10 @@ memory (`hosts/hearth-core/src/proton_pick.rs`, docs/HEARTH-GAMES.md); a Proton 
   environment umu-launcher gives it outside Steam: `UMU_ID=0` and an empty `STEAM_COMPAT_CLIENT_INSTALL_PATH`. With
   UMU_ID, GE-Proton starts the program itself (its `umu.exe`) instead of through its `steam.exe`, which is for Steam
   games and wants the Steam client (lsteamclient). No Steam folder is used. (1.7.0 went through steam.exe.)
+- Proton: offline and without Steam. Everything else in Hearth that starts a Windows program (Hearth Games' stores,
+  games you added yourself, Steam-engine direct starts, Recomps, Battle.net, Hearth Mods) uses `hearth-proton-run`,
+  umu-run's command line with the same built-in GE-Proton and no umu-launcher, Steam Runtime or download. Proton's own
+  Python (protonfixes) runs with its network off in both. docs/OFFLINE-PROTON.md has every path and the network-off test.
 - Output: Proton's stdout and stderr go to the app's `logs/last.log` (and the terminal, when run from one); the start
   ends when everything it left running has closed (a launcher that starts the real program and exits). PROTON_LOG is
   off unless asked for (`hearth-winapps detailed ID on`: a `logs/detailed-next` file, used up by the next start;

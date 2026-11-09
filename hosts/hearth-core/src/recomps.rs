@@ -573,9 +573,10 @@ fn desktop_file(id: &str) -> PathBuf {
     std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/share")).join("applications").join(format!("hearth-recomp-{id}.desktop"))
 }
 fn desktop_quote(s: &str) -> String { format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('`', "\\`").replace('$', "\\$")) }
-/// A menu entry for Desktop Mode (and other launchers; Steam's "Add a non-Steam game" lists it too).
-pub fn desktop_entry(title: &str, game: &str, launcher: &str, windows: bool, dir: &str, icon: Option<&str>) -> String {
-    let exec = if windows { format!("umu-run {}", desktop_quote(launcher)) } else { desktop_quote(launcher) };
+/// A menu entry for Desktop Mode (and other launchers; Steam's "Add a non-Steam game" lists it too). `windows`: what
+/// starts a Windows build (proton_run::exec_name: hearth-proton-run in Hearth OS, offline and without Steam).
+pub fn desktop_entry(title: &str, game: &str, launcher: &str, windows: Option<&str>, dir: &str, icon: Option<&str>) -> String {
+    let exec = match windows { Some(runner) => format!("{runner} {}", desktop_quote(launcher)), None => desktop_quote(launcher) };
     let clean = |s: &str| s.chars().filter(|c| !c.is_control()).collect::<String>();
     format!("[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={exec}\nPath={}\nIcon={}\nCategories=Game;\nX-Hearth-Recomp=true\n",
         clean(title), clean(if game.is_empty() { "Hearth Recomps" } else { game }), clean(dir), icon.map(clean).unwrap_or_else(|| "applications-games".into()))
@@ -587,7 +588,7 @@ pub fn set_shortcut(id: &str, on: bool) -> Result<bool, String> {
     let e = entry(id).unwrap_or(Value::Null);
     let launcher = launcher_of(id, &s).ok_or("Its program is missing: install it again")?;
     let icon = icon_file(id);
-    let text = desktop_entry(e["title"].as_str().unwrap_or(id), e["game"].as_str().unwrap_or(""), &launcher, s["platform"] == "windows",
+    let text = desktop_entry(e["title"].as_str().unwrap_or(id), e["game"].as_str().unwrap_or(""), &launcher, (s["platform"] == "windows").then(crate::proton_run::exec_name),
         s["dir"].as_str().unwrap_or(""), if icon.exists() { icon.to_str() } else { None });
     if let Some(d) = f.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
     std::fs::write(&f, text).map_err(|e| e.to_string())?;
@@ -697,7 +698,7 @@ impl Recomps {
         }
         cat["limitedUntil"] = json!(limited_until());
         cat["arch"] = json!(arch());
-        cat["tools"] = json!({"proton": crate::system::has("umu-run") || crate::system::has("wine")});
+        cat["tools"] = json!({"proton": crate::proton_run::ready().is_some() || crate::system::has("wine")});
         cat
     }
 
@@ -765,8 +766,8 @@ impl Recomps {
                     }
                     None => pick_asset(&assets, arch(), &e).ok_or_else(|| format!("{} has no build for this PC in its newest release ({}).", e["title"].as_str().unwrap_or(""), release["tag"].as_str().unwrap_or("")))?,
                 };
-                if platform == "windows" && !crate::system::has("umu-run") && !crate::system::has("wine") {
-                    return Err("This port only has a Windows build, which needs Proton: install umu-launcher (Hearth OS has it) and try again".into());
+                if platform == "windows" && crate::proton_run::ready().is_none() && !crate::system::has("wine") {
+                    return Err("This port only has a Windows build, which needs Proton: install umu-launcher (Hearth OS has Proton built in) and try again".into());
                 }
                 let name = a["name"].as_str().unwrap_or("download").replace('/', "_");
                 let url = a["url"].as_str().unwrap_or("").to_string();
@@ -1158,10 +1159,10 @@ mod tests {
         assert_eq!((e["repo"].as_str().unwrap(), e["id"].as_str().unwrap(), e["custom"].as_bool()), ("Some-One/Cool.Port", "custom-some-one-cool-port", Some(true)));
         assert!(custom_entry("not a repo", None).is_err() && custom_entry("a/b/../c", None).is_ok_and(|e| e["repo"] == "a/b"));
         assert!(!repo_ok("../etc") && !repo_ok("a/..") && repo_ok("harbourmasters/2ship2harkinian"));
-        let d = desktop_entry("Ship of Harkinian", "Ocarina of Time", "/home/me/.local/share/nimbus/recomps/shipwright/run.sh", false, "/x", None);
+        let d = desktop_entry("Ship of Harkinian", "Ocarina of Time", "/home/me/.local/share/nimbus/recomps/shipwright/run.sh", None, "/x", None);
         assert!(d.contains("Exec=\"/home/me/.local/share/nimbus/recomps/shipwright/run.sh\"") && d.contains("Categories=Game;") && !d.to_lowercase().contains("xodus"));
-        let w = desktop_entry("X", "", "/g/Game $1.exe", true, "/g", Some("/i.png"));
-        assert!(w.contains("Exec=umu-run \"/g/Game \\$1.exe\"") && w.contains("Icon=/i.png"));
+        let w = desktop_entry("X", "", "/g/Game $1.exe", Some("hearth-proton-run"), "/g", Some("/i.png"));
+        assert!(w.contains("Exec=hearth-proton-run \"/g/Game \\$1.exe\"") && w.contains("Icon=/i.png"));
         assert_eq!(id_of("recomp:zelda64"), Some("zelda64"));
     }
 }

@@ -938,8 +938,9 @@ FocusScope {
             onLeave: v.toRail()
             onUpOut: search.forceActiveFocus()
             title: "Performance"
-            buttons: [{ id: "run", label: "Run new task", icon: "plus", primary: true }]
-            onButton: id => { if (id === "run") v.askRun(); }
+            // Open Resource Monitor (ResourceMonitor.qml, docs/RESOURCE-MONITOR.md), like Windows' Task Manager.
+            buttons: [{ id: "run", label: "Run new task", icon: "plus", primary: true }, { id: "resmon", label: "Open Resource Monitor", icon: "cpu" }]
+            onButton: id => { if (id === "run") v.askRun(); else if (id === "resmon") Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "resmon", "open"]); }
             readonly property var s: v.sample
             readonly property var devices: {
                 const d = [];

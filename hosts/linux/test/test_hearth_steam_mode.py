@@ -141,18 +141,24 @@ class SteamModeSession(unittest.TestCase):
         self.assertIn('safe graphics', self.read('hearth-steam-mode-failed'))
         self.assertFalse(os.path.exists(ran))
 
-    def test_hearths_own_game_mode_only_with_the_developer_switch(self):
+    def test_hearths_own_game_mode_only_on_the_live_usb(self):
         self.fake('gamescope', 'exit 1')
         self.fake('steam', 'exit 0')
-        self.run_mode(before='legacy_game() { true; }')
-        self.assertEqual(self.read('nimbus-next'), 'game', 'HEARTH_LEGACY_GAME_MODE=1 / live USB: back to Hearth\'s Game Mode')
+        self.run_mode(before='live_session() { true; }')
+        self.assertEqual(self.read('nimbus-next'), 'game', 'live USB: back to Hearth\'s Game Mode (its installer)')
         self.fake('gamescope', 'exit 0')
         os.remove(os.path.join(self.run_dir, 'nimbus-next'))   # the session empties it before every mode
-        self.run_mode(before='legacy_game() { true; }')
+        self.run_mode(before='live_session() { true; }')
         self.assertEqual(self.read('nimbus-next'), 'game')
         os.remove(os.path.join(self.run_dir, 'nimbus-next'))
-        self.run_mode(before='legacy_game() { false; }')
+        self.run_mode(before='live_session() { false; }')
         self.assertEqual(self.read('nimbus-next'), 'steam')
+        # Hearth Game Mode picked in Settings (docs/HEARTH-GAME-MODE.md): Steam Game Mode failing still goes to Desktop
+        # Mode, never back to the Hearth Game Mode that may just have failed.
+        self.fake('gamescope', 'exit 1')
+        os.remove(os.path.join(self.run_dir, 'nimbus-next'))
+        self.run_mode(before='live_session() { false; }\ngame_mode_choice() { echo hearth; }')
+        self.assertEqual(self.read('nimbus-next'), 'desktop')
 
     def test_extra_multiseat_player_never_gets_it(self):
         self.fake('gamescope', 'echo ran >"$HOME.ran"')
@@ -493,14 +499,15 @@ class SteamModeSession(unittest.TestCase):
 
     def test_session_loop_wiring(self):
         text = SESSION.read_text()
-        # Every "game" is Steam Game Mode (first-time setup while pending; Hearth's own only with the developer switch).
-        self.assertIn('game) if legacy_game; then echo game; elif setup_pending; then echo setup; else echo steam; fi ;;', text)
+        # Every "game" is the Game Mode you picked: Steam Game Mode unless it's Hearth Game Mode (first-time setup while
+        # pending; the live USB's installer is Hearth's app).
+        self.assertIn('game) if live_session; then echo game; elif setup_pending; then echo setup; elif [ "$(game_mode_choice)" = hearth ]; then hgm_route; else echo steam; fi ;;', text)
         self.assertIn('[ "$mode" = steam ] && mode="$(steam_start_mode)"', text)
         self.assertIn('elif [ "$mode" = steam ]; then run_steam_mode; code=$?', text)
         self.assertIn('[ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game', text)
         self.assertIn('to="$next"; [ -z "$HEARTH_SEAT" ] && to="$(resolve_mode "$next")"', text)
         self.assertIn('[ "$mode" = setup ] && [ -z "$next" ] && {', text, 'a setup run that just ends goes to Steam Game Mode')
-        self.assertIn('[ "${HEARTH_LEGACY_GAME_MODE:-0}" = 1 ]', text, 'the developer switch, off by default')
+        self.assertIn('[ "${HEARTH_LEGACY_GAME_MODE:-0}" = 1 ]', text, 'the old developer switch, read as Hearth Game Mode, off by default')
         self.assertNotIn('HEARTH_STEAM_DEFAULT', text, 'starting in Steam Game Mode is always on now')
         r = subprocess.run(['bash', '-n', str(SESSION)], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -707,7 +714,7 @@ class StartInSteamGameMode(unittest.TestCase):
         i_rec = text.index('[ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop')
         i_start = text.index('[ "$mode" = steam ] && mode="$(steam_start_mode)"')
         self.assertLess(i_rec, i_start)
-        self.assertIn('sd=""; [ "$mode" = steam ] && ! legacy_game && { steam_auto_before; sd=1; }', text)
+        self.assertIn('sd=""; [ "$mode" = steam ] && ! live_session && { steam_auto_before; sd=1; }', text)
         self.assertIn('[ -n "$sd" ] && steam_auto_after', text)
 
 
@@ -781,7 +788,7 @@ class NimbusModeSteam(unittest.TestCase):
         self.assertIn('setsid', calls)
 
     def test_usage_lists_steam(self):
-        self.assertIn('game|desktop|steam|server|logout|current', self.mode('bogus').stderr)
+        self.assertIn('game|desktop|steam|hearth|server|logout|current', self.mode('bogus').stderr)
 
 
 class DeckyHelper(unittest.TestCase):

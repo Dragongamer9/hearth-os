@@ -36,7 +36,8 @@ class Mods(unittest.TestCase):
     def test_wabbajack_prefix_uses_hearths_umu_and_the_same_proton_as_play(self):
         wj = (GAMING / 'wabbajack.rs').read_text()
         setup = wj.split('fn set_up(', 1)[1].split('\n}\n', 1)[0]
-        self.assertIn('crate::launch::umu()', setup)
+        # Offline Proton (1.10): hearth-proton-run starts Proton itself, without umu's container.
+        self.assertIn('crate::launch::proton_runner()', setup)
         self.assertNotIn('has("umu-run")', setup)
         self.assertIn('crate::launch::umu_env(', setup)
         self.assertNotIn('PROTONPATH=GE-Proton umu-run', wj)

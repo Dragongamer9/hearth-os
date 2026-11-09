@@ -1,0 +1,13 @@
+# System Restore (docs/SYSTEM-RESTORE.md): makes a restore point the first time a Hearth version runs (an update
+# installed by Settings or in the background) and once a week, and keeps about 10. Copies a few small settings files
+# into ~/.local/share/hearth/restore; changes nothing else. Never touches booting, the system or the session.
+[Unit]
+Description=Hearth restore points
+ConditionPathExists=/usr/share/nimbus/desktop/shell/hearth_restore.py
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth_restore.py auto
+TimeoutStartSec=2min
+Nice=10
+IOSchedulingClass=idle

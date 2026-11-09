@@ -22,11 +22,12 @@ function kindOf(g) {
   return 'external';   // installed and started by Heroic
 }
 
-/** Proton versions to choose from: umu's defaults, then any installed ones (Steam, ProtonUp, Bazzite). */
+/** Proton versions to choose from: Default (the built-in GE-Proton), the newest GE-Proton here, then any installed ones
+ * (Steam, ProtonUp, Bazzite). Nothing needs a download: hearth-proton-run only uses what's on this device. */
 function protonChoices(home = os.homedir()) {
   const out = [
-    { id: '', label: 'Default', sub: 'UMU-Proton, the newest, downloaded when needed' },
-    { id: 'GE-Proton', label: 'GE-Proton (newest)', sub: 'Community build with extra fixes, downloaded when needed' },
+    { id: '', label: 'Default', sub: 'The GE-Proton built into Hearth OS (works offline, without Steam)' },
+    { id: 'GE-Proton', label: 'GE-Proton (newest)', sub: 'The newest GE-Proton on this device: the built-in one unless you downloaded a newer one' },
   ];
   const roots = [
     path.join(home, '.local/share/Steam/compatibilitytools.d'),
@@ -72,7 +73,7 @@ function splitArgs(text) {
 
 /**
  * Applies settings to a launch: {cmd, args, env} → the same with extra args, environment and wrappers.
- * proton: whether this launch goes through umu/Proton (PROTONPATH, FSR only matter then).
+ * proton: whether this launch goes through Proton (PROTONPATH, FSR only matter then).
  */
 function apply(opts, { cmd, args = [], env = {} }, { proton = false } = {}) {
   const o = { ...DEFAULTS, ...(opts || {}) };

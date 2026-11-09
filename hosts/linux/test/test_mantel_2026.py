@@ -147,14 +147,16 @@ class SettingsNeverChangeByThemselves(unittest.TestCase):
             self.assertEqual(hits, [], f)
 
     def test_choosing_a_look_changes_only_the_look(self):
+        # (Since the sub themes, 1.10: the look and the sub theme back to its first: test_sub_themes.py.)
         a = code((SHELL / 'SetAppearance.qml').read_text())
-        card = block(a, 'component LookCard')
-        self.assertEqual(re.findall(r'\bSettings\.\w+\s*=(?!=)', card), ['Settings.look ='])
+        self.assertIn('onChosen: v => page.apply(SubThemes.changesForLook(v))', a)
+        js = (SHELL / 'subthemes.js').read_text()
+        self.assertIn('function changesForLook(look) { return { look: look, subTheme: "" }; }', js)
         # The look's wallpaper, bar, dock, clock and transparency are only used where yours is "" (not set).
         t = (SHELL / 'Theme.qml').read_text()
-        self.assertIn('Settings.wallpaper !== "" ? Settings.wallpaper : (lookDef.wallpaper || "")', t)
+        self.assertIn('readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : ownWall', t)
         w = (SHELL / 'Wallpaper.qml').read_text()
-        self.assertIn('Settings.wallpaper !== "" ? Settings.wallpaper : (Theme.lookDef.wallpaper || "")', w)
+        self.assertIn('readonly property string wall: Theme.wall', w)
 
     def test_from_wallpaper_only_runs_when_you_ask(self):
         a = code((SHELL / 'SetAppearance.qml').read_text())

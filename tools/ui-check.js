@@ -843,7 +843,25 @@ const path = require('path');
       if (overlay && !document.querySelector('#qam [data-act="gamePowerForget"]')) throw new Error('no way back to the usual power settings');
     }, overlay);
   }
-  // Hearth for Android (archive/hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
+  // Quick Access › Resources (docs/RESOURCE-MONITOR.md), the classic side panel as Hearth OS: the four meters with
+  // temperatures, also running, and the pause button that changes no setting (the preview's stand-in numbers).
+  await page.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+  await page.waitForTimeout(1200);
+  await step('resources', async () => {
+    if (!QTABS.some(q => q[0] === 'res')) throw new Error('Quick Access has no Resources tab on Hearth OS');
+    if (QTABS.findIndex(q => q[0] === 'res') !== QTABS.findIndex(q => q[0] === 'perf') + 1) throw new Error('Resources isn\'t right after Performance');
+    closeAll(); LOOK.qaStyle = 'side'; openLayer('qam'); S.qtab = 'res'; renderQam(); startRes();
+    await new Promise(r => setTimeout(r, 1500));
+    const q = document.querySelector('#qam .qbody'), t = q.textContent;
+    for (const w of ['Resources', 'Graphics', 'Processor', 'Memory', 'Network', 'ALSO RUNNING', 'Pause downloads and backups while I play', 'No setting changes'])
+      if (!t.includes(w)) throw new Error(`Resources doesn't show "${w}"`);
+    if (!q.querySelector('[data-k="res-pause"][data-act="resPause"]')) throw new Error('no pause button');
+    await resPause();
+    if (!document.querySelector('#qam .qbody').textContent.includes('Resume downloads and backups')) throw new Error('the pause button did not turn into Resume');
+    await resPause();
+    closeAll(); delete LOOK.qaStyle;
+  });
+  // Hearth for Android (hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
   // answering like Bridge.kt): only the Settings pages Android has, its own rows there, no Downloads, the Android
   // library tab, the Android power menu and "Add an app".
   const androidSteps = [];
@@ -2401,6 +2419,37 @@ const path = require('path');
       await dp.waitForTimeout(300); await dshot('settings-front');
       await dev(() => { S.settingsTab = 'display'; navigate('settings', {}, false); });
       await dp.waitForTimeout(300); await dshot('settings-display');
+      // Settings › System › Game Mode (docs/HEARTH-GAME-MODE.md): Steam Game Mode or Hearth Game Mode as two picture cards,
+      // moved through with the controller; picking one saves it (gameMode.set) and offers to switch now; Hearth Game
+      // Mode's last fallback shows with Try again.
+      st = await dev(async () => {
+        const was = HOSTINFO.features; HOSTINFO.features = [...(HOSTINFO.features || []), 'gameModeChoice'];
+        GMC.s = { choice: 'hearth', saved: true, default: 'steam', hearth: { ok: true, why: '' }, steam: { ok: true, why: '' }, now: 'game', fallback: '', paused: '', live: false };
+        closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false);
+        const steam = document.querySelector('#view [data-k="sy-gm-steam"]'), hearth = document.querySelector('#view [data-k="sy-gm-hearth"]');
+        const r = { steam: !!steam, hearth: !!hearth, on: hearth && hearth.classList.contains('on'), steamOn: steam && steam.classList.contains('on'), pics: document.querySelectorAll('#view .gm-cards .lprev').length };
+        if (hearth) { setFocus(hearth, true); hearth.scrollIntoView({ block: 'center' }); }
+        r.moved = (() => { if (!hearth) return null; input('left'); const k = focused && focused.dataset.k; input('right'); return k; })();
+        // A fallback this sign-in: the reason and Try again.
+        GMC.s = Object.assign({}, GMC.s, { fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)" });
+        const h = pageSystem(); r.retry = /data-k="sy-gm-retry"/.test(h) && /Your choice is still Hearth Game Mode/.test(h);
+        // "Play Steam games in Steam Game Mode": on by default (no key saved), shown with Hearth Game Mode picked.
+        r.sgRow = /data-k="sy-gm-steamgames"/.test(h) && /Play Steam games in Steam Game Mode<\/b><small>Play on a Steam game opens it in Steam Game Mode/.test(h);
+        r.notEpic = !steamInSteamMode({ id: 'epic:x', src: 'epic' });
+        GMC.s = Object.assign({}, GMC.s, { fallback: '' });
+        r.wasFeat = was; return r; });
+      if (!st.steam || !st.hearth || st.pics !== 2) derr('Settings › System has no Game Mode cards: ' + JSON.stringify(st));
+      if (!st.on || st.steamOn) derr('the Game Mode cards do not show Hearth Game Mode in use: ' + JSON.stringify(st));
+      if (st.moved !== 'sy-gm-steam') derr('Left on the Hearth Game Mode card did not move to Steam Game Mode: ' + st.moved);
+      if (!st.retry) derr("Hearth Game Mode's fallback is not shown with Try again");
+      if (!st.sgRow) derr('Play Steam games in Steam Game Mode is missing, or not on by default');
+      if (!st.notEpic) derr('a non-Steam game would open in Steam Game Mode');
+      await dev(() => { closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false); });
+      // (After the page has settled: it puts the selection on its first row by itself.)
+      await dp.waitForTimeout(700);
+      await dev(() => { const c = document.querySelector('#view [data-k="sy-gm-hearth"]'); if (c) { setFocus(c, true); c.scrollIntoView({ block: 'center' }); } });
+      await dp.waitForTimeout(500); await dshot('settings-gamemode');
+      await dev(() => { HOSTINFO.features = (HOSTINFO.features || []).filter(f => f !== 'gameModeChoice'); closeAll(); });
       // Go back to the previous version (Hearth OS images, Peppermint too since it keeps bootc (hearth-unlock); never
       // with an update waiting).
       st = await dev(() => { const was = [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s]; HOSTINFO.system = true; HOSTINFO.edition = 'anatase';

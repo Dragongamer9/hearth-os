@@ -325,8 +325,8 @@ SetPage {
                 icon: "palette"; title: "Your look"; linkText: "Personalize"; linkTarget: "appearance"
                 SetRow { chevron: false;
                     flat: true
-                    title: Theme.lookLabel + " · " + (Settings.sunset ? "Sunset" : Theme.dark ? "Dark" : "Light") + " · " + page.accentName
-                    sub: "Eight looks to choose from. Your wallpaper and accent stay yours."
+                    title: Theme.lookLabel + (Theme.subOwn ? "" : " " + Theme.subLabel) + " · " + (Settings.sunset ? "Auto" : Theme.dark ? "Dark" : "Light") + " · " + page.accentName
+                    sub: "Eight looks, and sub themes for their colours. Your wallpaper and accent stay yours."
                     trailing: 170
                     onActivated: SettingsNav.openPage("appearance")
                     Row {

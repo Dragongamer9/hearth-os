@@ -303,6 +303,9 @@ pub fn report(version: &str) -> String {
     // Decky plugin updates (hearth-decky plugins-*, docs/PLUGIN-UPDATES.md): installed versions, built-in or downloaded,
     // the last check, the last error and any plugin that was put back because it didn't load.
     section("Decky plugin updates", decky_plugin_updates());
+    // Which Game Mode you picked (Steam's or Hearth's, docs/HEARTH-GAME-MODE.md) and, when Hearth Game Mode didn't start
+    // this sign-in, why (the session opened Steam Game Mode or Mantel instead) and whether it's paused.
+    section("Game Mode choice", crate::game_mode_choice::report());
     // bootc status needs root ("This command must be executed as the root user" in every report) and Hearth OS on
     // Debian has no rpm-ostree ("rpm-ostree: not found"): as you, ostree's own status (read-only, no root needed);
     // bootc only when the report runs as root, rpm-ostree only where it's installed.
@@ -444,7 +447,7 @@ pub fn report(version: &str) -> String {
         }
         if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
     }
-    // Games Hearth started with Proton (GOG, Epic…): umu's and Proton's output of the newest starts (stores.rs launch_log).
+    // Games Hearth started with Proton (GOG, Epic…): hearth-proton-run's and Proton's output of the newest starts (stores.rs launch_log).
     {
         let d = data.join("launch-logs");
         let mut logs: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path())

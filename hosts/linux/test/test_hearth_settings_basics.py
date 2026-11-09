@@ -600,48 +600,42 @@ class SystemHelper(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------- hearth-clipboard
+# Hearth 1.10 keeps the history itself (~/.local/share/hearth/clipboard, pins, ~25 items): test_shell_extras.py has the
+# storage checks; these are the basics the Settings page relies on.
 class ClipboardHelper(unittest.TestCase):
     def setUp(self):
         self.c = load(SHELL / 'hearth-clipboard', 'hearth_clipboard')
 
-    def test_cliphist_list(self):
-        text = '12\thello world\n11\t[[ binary data 12 KiB png 800x600 ]]\n10\t[[ binary data 3 KiB application/octet-stream ]]\nx\tbad\n9\tline\twith tab\n'
-        items = self.c.parse_list(text)
-        self.assertEqual([i['id'] for i in items], ['12', '11', '10', '9'])
-        self.assertEqual(items[0], {'id': '12', 'kind': 'text', 'text': 'hello world'})
-        self.assertEqual((items[1]['kind'], items[1]['format'], items[1]['dims'], items[1]['size']), ('image', 'png', '800x600', '12 KiB'))
-        self.assertEqual(items[2]['kind'], 'binary')
-        self.assertEqual(items[3]['text'], 'line\twith tab')
-        self.assertEqual(len(self.c.parse_list('\n'.join('%d\tx' % i for i in range(100)))), self.c.LIMIT)
-
     def test_ids_checked(self):
         for bad in ('', 'abc', '1;2', '-1', '1 2'):
             with self.assertRaises(self.c.Fail):
-                self.c.decode(bad)
+                self.c.find(bad)
             with self.assertRaises(self.c.Fail):
                 self.c.delete(bad)
 
-    def test_list_with_text_that_isnt_utf8(self):
+    def test_text_that_isnt_utf8_is_kept(self):
         # One item copied from a Latin-1 file mustn't make the whole history fail to load.
         tmp = tempfile.mkdtemp(prefix='hearth-clip-test-')
         self.addCleanup(shutil.rmtree, tmp, True)
-        for name, body in (('cliphist', "printf '2\\tcaf\\351\\n1\\tplain\\n'"), ('wl-copy', 'exit 0'), ('wl-paste', 'exit 0')):
-            with open(os.path.join(tmp, name), 'w') as f:
-                f.write('#!/bin/sh\n' + body + '\n')
-            os.chmod(os.path.join(tmp, name), 0o755)
-        self.c.CACHE = os.path.join(tmp, 'cache')
-        old_path = os.environ.get('PATH', '')
-        os.environ['PATH'] = tmp + os.pathsep + old_path
-        self.addCleanup(os.environ.__setitem__, 'PATH', old_path)
-        r = self.c.list_items()
-        self.assertTrue(r['available'])
-        self.assertEqual([i['id'] for i in r['items']], ['2', '1'])
-        self.assertEqual(r['items'][0]['text'], 'caf\ufffd')
+        old = os.environ.get('XDG_DATA_HOME')
+        os.environ['XDG_DATA_HOME'] = tmp
+        self.addCleanup(lambda: os.environ.pop('XDG_DATA_HOME', None) if old is None else os.environ.__setitem__('XDG_DATA_HOME', old))
+        self.assertTrue(self.c.store(b'caf\xe9', types=['text/plain'], app='', now=1, state='')['stored'])
+        self.assertEqual(self.c.list_items()['items'][0]['text'], 'caf\ufffd')
 
     def test_mime(self):
         self.assertEqual(self.c.mime_of(b'\x89PNG\r\n'), 'image/png')
         self.assertEqual(self.c.mime_of(b'RIFF1234WEBPxx'), 'image/webp')
         self.assertIsNone(self.c.mime_of(b'hello'))
+
+    def test_clear_with_nothing_kept_yet(self):
+        tmp = tempfile.mkdtemp(prefix='hearth-clip-test-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        old = os.environ.get('XDG_DATA_HOME')
+        os.environ['XDG_DATA_HOME'] = tmp
+        self.addCleanup(lambda: os.environ.pop('XDG_DATA_HOME', None) if old is None else os.environ.__setitem__('XDG_DATA_HOME', old))
+        self.assertEqual(self.c.clear(), {'ok': True, 'kept': 0})
+        self.assertEqual(os.listdir(tmp), [])
 
 
 if __name__ == '__main__':

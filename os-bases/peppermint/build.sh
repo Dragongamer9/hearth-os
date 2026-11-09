@@ -430,6 +430,37 @@ Categories=System;Utility;
 MimeType=application/x-cd-image;application/x-iso9660-image;application/x-raw-disk-image;application/x-raw-disk-image-xz-compressed;
 Keywords=usb;iso;bootable;installer;flash;burn;write;linux;windows;fedora;ubuntu;debian;arch;rufus;etcher;
 DESKTOP
+  # "Tell me if this drive starts to fail" (Disks › Properties › Health, docs/STORAGE.md): a user timer, daily and about
+  # 10 minutes after signing in, runs `hearth-disks --health-watch`. With no drive turned on in ~/.config/nimbus/disks.json
+  # it ends at once and changes nothing. Only the timer is enabled (timers.target.wants); nothing depends on it, so
+  # signing in, Steam Game Mode and Mantel never wait for it and its trouble stays its own.
+  install -d /usr/lib/systemd/user/timers.target.wants
+  cat > /usr/lib/systemd/user/hearth-disks-health.service <<'UNIT'
+[Unit]
+Description=Hearth Disks: tell you if a drive starts to fail (only drives you turned it on for)
+ConditionPathExists=/usr/bin/hearth-disks
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-disks --health-watch
+TimeoutStartSec=2min
+Nice=19
+IOSchedulingClass=idle
+UNIT
+  cat > /usr/lib/systemd/user/hearth-disks-health.timer <<'UNIT'
+[Unit]
+Description=Hearth Disks' drive health check, daily and soon after signing in
+
+[Timer]
+OnStartupSec=10min
+OnCalendar=daily
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  ln -sf ../hearth-disks-health.timer /usr/lib/systemd/user/timers.target.wants/hearth-disks-health.timer
 fi
 
 # ------------------------------------------------------------------ Hearth Time (hosts/hearth-time)
@@ -1004,7 +1035,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
 rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
@@ -1559,6 +1590,11 @@ tar -xzf /tmp/ge-proton.tar.gz -C /usr/share/hearth/proton
 rm -f /tmp/ge-proton.tar.gz
 test -f "/usr/share/hearth/proton/$GE_PROTON/proton" || { echo "::error title=GE-Proton::$GE_PROTON has no proton script"; exit 1; }
 ln -sfn "/usr/share/hearth/proton/$GE_PROTON" "/usr/share/steam/compatibilitytools.d/$GE_PROTON"
+# hearth-proton-run (os/system_files, desktop/shell/hearth_proton_run.py) starts every Windows game and program with it,
+# offline and without Steam (owner's red flag): it must find this GE-Proton with nothing picked, or the build stops.
+if [ "$(HOME=/nonexistent /usr/bin/hearth-proton-run --print-proton | cut -f1)" != "$GE_PROTON" ]; then
+  echo "::error title=GE-Proton::hearth-proton-run doesn't pick the built-in $GE_PROTON: $(HOME=/nonexistent /usr/bin/hearth-proton-run --print-proton 2>&1)"; exit 1
+fi
 echo "::notice title=GE-Proton::$GE_PROTON built in ($(du -sh "/usr/share/hearth/proton/$GE_PROTON" | cut -f1) unpacked)"
 # icoutils: Windows apps' menu entries get the program's own icon (wrestool, icotool). Optional.
 "${APT[@]}" icoutils || echo "warning: couldn't install icoutils; Windows apps get Hearth's icon instead of their own"

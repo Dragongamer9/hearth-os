@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Reliability history
+Comment=How Hearth has been running: crashes, problems, warnings and updates, day by day
+Exec=/usr/bin/hearth-reliability
+Icon=hearth-reliability
+Type=Application
+Categories=System;Monitor;
+Keywords=reliability;stability;crash;problems;history;events;log;monitor;
+OnlyShowIn=Nimbus;

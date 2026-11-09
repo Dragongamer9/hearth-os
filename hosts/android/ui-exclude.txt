@@ -1,0 +1,7 @@
+# Files in ui/ that do NOT go into Hearth for Android's APK (everything else in ui/ does, folders included).
+# One name pattern per line (* matches anything), checked against the top-level name in ui/.
+# Read by app/build.gradle.kts (copyHearthUi) and by tools/android-ui-check.js (which serves the page with only the
+# files the APK has, so a file the page needs but the APK lacks fails the check).
+# Mantel (Desktop Mode on Hearth OS) and the OS installer: not part of Android.
+mantel*
+installer*

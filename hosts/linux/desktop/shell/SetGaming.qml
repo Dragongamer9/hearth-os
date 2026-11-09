@@ -1,4 +1,5 @@
-// Hearth Settings › Gaming: Steam Game Mode up top, then where Game Mode starts, your games and stores, Remote play,
+// Hearth Settings › Gaming: Game Mode up top (Steam Game Mode or Hearth Game Mode, whichever you picked), then which Game
+// Mode it is (GameModeChoice.qml, docs/HEARTH-GAME-MODE.md), where the PC starts, your games and stores, Remote play,
 // game storage, the controller and the handheld. "Start in" lives here (StartInChoice.qml); "Light mode while you play"
 // is the Home server's setting, shown here too (the same key through hearth-home-server). Opening it only reads.
 import QtQuick
@@ -30,7 +31,8 @@ SetPage {
         return m ? m.label : "";
     }
 
-    // ---- Steam Game Mode
+    // ---- Game Mode: the one you picked below (Steam Game Mode unless it's Hearth Game Mode)
+    readonly property bool hearthGm: gmChoice.choice === "hearth"
     SetBase {
         id: hero
         Layout.fillWidth: true
@@ -50,14 +52,14 @@ SetPage {
             Rectangle {
                 Layout.preferredWidth: 56; Layout.preferredHeight: 56; radius: Math.max(8, Theme.r(12))
                 color: SetStyle.tint(Theme.accent, 0.18)
-                Icon { anchors.centerIn: parent; name: "steam"; size: 30; color: Theme.accent }
+                Icon { anchors.centerIn: parent; name: page.hearthGm ? "pad" : "steam"; size: 30; color: Theme.accent }
             }
             ColumnLayout {
                 id: heroText
                 Layout.fillWidth: true
                 spacing: 3
-                Text { text: "Steam Game Mode"; color: Theme.text; font.family: Theme.font; font.pixelSize: 19; font.weight: Font.DemiBold }
-                Text { Layout.fillWidth: true; text: "Steam's big-screen mode with the Hearth Sync plugin. Press the Game Mode button any time."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                Text { text: page.hearthGm ? "Hearth Game Mode" : "Steam Game Mode"; color: Theme.text; font.family: Theme.font; font.pixelSize: 19; font.weight: Font.DemiBold }
+                Text { Layout.fillWidth: true; text: page.hearthGm ? "Hearth's own big-screen mode: every store in one library. Press the Game Mode button any time." : "Steam's big-screen mode with the Hearth Sync plugin. Press the Game Mode button any time."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
             }
             Rectangle {
                 implicitWidth: gmRow.implicitWidth + 32; implicitHeight: 38
@@ -75,6 +77,7 @@ SetPage {
     }
 
     SetHeader { text: "Game Mode" }
+    GameModeChoice { id: gmChoice }
     StartInChoice {}
     SetLinkCard {
         target: "steam"

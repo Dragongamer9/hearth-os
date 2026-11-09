@@ -169,7 +169,7 @@ async function showGameWhenReady(id) {
   const sid = String(id || '');
   const steamAppId = sid.startsWith('steam:') ? parseInt(sid.slice(6), 10) || 0 : 0;
   log(`launch: waiting for ${id} to open its window`);
-  // Windows games through Proton can take minutes the first time (umu sets up Proton and the game's prefix):
+  // Windows games through Proton can take minutes the first time (Proton sets up the game's prefix):
   // keep waiting, and after a while let the starting screen say so and offer "Show it now".
   const slow = setTimeout(() => { if (launchWait === wait) post({ type: 'event', name: 'game.slow', data: { id, firstRun: !steamAppId } }); }, 40000);
   const r = await gamescope.waitForWindow({ pids: () => library.gamePids(), steamAppId, exclude: [process.pid], timeoutMs: 10 * 60000,

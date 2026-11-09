@@ -144,6 +144,9 @@ jobs:
         run: f=shots/settings-front.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-front $i::$part"; done || true
       - name: Picture (settings-display)
         run: f=shots/settings-display.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-display $i::$part"; done || true
+      # Settings › System › Game Mode (docs/HEARTH-GAME-MODE.md): Steam Game Mode or Hearth Game Mode as picture cards.
+      - name: Picture (settings-gamemode)
+        run: f=shots/settings-gamemode.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-gamemode $i::$part"; done || true
 
   # Hearth Mods in Game Mode: a game's Mods screen, a Nexus mod's page, the FOMOD installer, Modlists with the guided
   # flow and the Dragonfire game page, as notices (title "SHOT <which> <n>", at most 9 a picture so all five fit in 50).

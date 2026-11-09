@@ -1,6 +1,6 @@
 'use strict';
 // Games the user added themselves: a Linux program or script, an AppImage, a .desktop file,
-// or a Windows .exe (run through Proton with umu-launcher, or Wine as a fallback).
+// or a Windows .exe (run through Proton with hearth-proton-run in Hearth OS, offline; umu-launcher or Wine elsewhere).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -63,8 +63,11 @@ function launch(g, options = null) {
       return go(cmd, [...rest, ...args], { cwd: d.Path || cwd });
     }
     case 'windows':
-      // umu-launcher runs Windows games with Proton outside Steam (downloads Proton on first use).
-      if (has('umu-run')) return go('umu-run', [file, ...args], { cwd, env: { GAMEID: process.env.GAMEID || 'umu-default' } }, true);
+      // hearth-proton-run (Hearth OS): the built-in GE-Proton, offline and without Steam. Elsewhere umu-run.
+      {
+        const runner = require('../stores/tools').offlineRunner() || (has('umu-run') ? 'umu-run' : null);
+        if (runner) return go(runner, [file, ...args], { cwd, env: { GAMEID: process.env.GAMEID || 'umu-default' } }, true);
+      }
       if (has('wine')) return go('wine', [file, ...args], { cwd });
       throw new Error('To run Windows games, install umu-launcher (recommended) or Wine');
     default:

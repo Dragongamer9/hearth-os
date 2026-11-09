@@ -88,7 +88,7 @@ updates, checking your copy and uninstalling work exactly as docs/RECOMPS.md des
 ## Proton
 
 A Windows game whose options say **Default** starts with the GE-Proton built into Hearth OS, if the image has one
-(`/usr/share/steam/compatibilitytools.d/GE-Proton*`), so it starts offline. Otherwise umu-launcher picks UMU-Proton,
+(`/usr/share/steam/compatibilitytools.d/GE-Proton*`), so it starts offline. Games start through hearth-proton-run (docs/OFFLINE-PROTON.md), offline, never with a download. Otherwise (not Hearth OS) umu-launcher picks UMU-Proton,
 downloaded when needed, as before. A Proton you pick in a game's options always wins.
 
 The code is `hosts/hearth-core/src/proton_pick.rs`. `auto_for` asks the Proton detector (docs/WINDOWS-APPS.md): the

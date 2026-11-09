@@ -15,6 +15,16 @@ pub struct Health {
     /// Percent of its rated life used (NVMe, or Windows' wear counter).
     pub wear_pct: Option<u64>,
     pub details: Vec<String>,
+    /// Sectors the drive had to replace or couldn't read (SATA SMART), when it says.
+    pub bad_sectors: Option<i64>,
+    /// The drive can test itself (SMART on SATA, NVMe): "Run a full check" is offered.
+    pub smart: bool,
+    /// Its last self-test: success, inprogress, aborted, fatal, error_read... (empty: never, or not reported).
+    pub selftest: String,
+    /// Percent of a running self-test still to go.
+    pub selftest_left: Option<u64>,
+    /// When its health was last read (seconds since 1970; 0: not known).
+    pub checked: u64,
 }
 
 impl Health {
@@ -58,6 +68,11 @@ pub struct Partition {
     pub letter: String,
     /// What can be done with it (safety.rs), in the order the page offers them.
     pub actions: Vec<Action>,
+    /// What can't be done with it right now, each with why (Disk Management greys these out and says why).
+    pub blocked: Vec<Action>,
+    /// Linux: the tool resizing its file system needs, when it isn't installed (udisks2's CanResize). Empty: it's
+    /// there, or the file system can't be resized at all (safety::resize_modes).
+    pub resize_tool: String,
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -99,6 +114,8 @@ pub struct Action {
     pub label: String,
     /// Erases or changes something that can't be undone: drawn in the warning colour.
     pub danger: bool,
+    /// Why it can't be done now (only for `blocked` ones; empty for what's offered).
+    pub why: String,
 }
 
 impl Drive {
@@ -245,7 +262,8 @@ pub fn fill_free(drive: &mut Drive) {
     drive.partitions.sort_by_key(|p| (p.offset, p.kind == "extended"));
 }
 
-fn is_logical(p: &Partition) -> bool { p.number > 4 && p.part_type.starts_with("0x") }
+/// A logical partition inside an MBR extended partition.
+pub fn is_logical(p: &Partition) -> bool { p.number > 4 && p.part_type.starts_with("0x") }
 
 /// A size for people: "512 MB", "1.8 TB".
 pub fn human(bytes: u64) -> String {

@@ -127,6 +127,7 @@ PanelWindow {
     }
 
     function soundMenu(btn) {
+        const p0 = menuPoint(btn);
         const sink = Pipewire.defaultAudioSink;
         const outs = Pipewire.nodes ? Pipewire.nodes.values.filter(n => n.audio && n.isSink && !n.isStream) : [];
         const list = outs.slice(0, 8).map(n => ({
@@ -136,6 +137,7 @@ PanelWindow {
         if (list.length) list.push({ separator: true });
         const a = sink ? sink.audio : null;
         if (a) list.push({ label: a.muted ? "Unmute" : "Mute", icon: a.muted ? "vol" : "vol-mute", run: () => { a.muted = !a.muted; } });
+        if (SettingsNav.mixer) list.push({ label: "Volume mixer", icon: "vol", run: () => SettingsNav.mixer.openNear(screen, p0.x + (menu ? menu.cardWidth / 2 : 134), p0.y, edge === "bottom") });
         list.push({ label: "Sound settings", icon: "gear", run: () => isl.settingsRequested("sound") });
         statusMenu(btn, "Sound output", list);
     }
@@ -282,8 +284,10 @@ PanelWindow {
                         columnSpacing: 8 * isl.k
                         IslandButton {
                             objectName: "appMenuButton"
+                            id: startMenuBtn
                             tip: "Apps (Super)"
                             onClicked: isl.launcherRequested()
+                            onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(isl.screen, startMenuBtn, isl.edge)   // the Super+X menu
                             Image { anchors.centerIn: parent; width: 26 * isl.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                         }
                         Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)

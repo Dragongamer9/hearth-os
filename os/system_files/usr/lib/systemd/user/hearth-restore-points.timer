@@ -1,0 +1,13 @@
+# System Restore's restore points (docs/SYSTEM-RESTORE.md): a few minutes after signing in and once a day. A user
+# timer, so it can never hold up starting the PC or the session.
+[Unit]
+Description=Hearth restore points (a new Hearth version, and weekly)
+
+[Timer]
+OnStartupSec=5min
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

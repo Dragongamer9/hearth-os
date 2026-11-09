@@ -3,6 +3,12 @@
 // {t: title, d: description, i: icon, p: the page it's on}. Don't edit by hand: run the tool again.
 var ENTRIES = [
 {
+"t": "Resource Monitor",
+"p": "about",
+"d": "See inside this PC: its board, every part and port, and what each program uses, live",
+"i": "cpu"
+},
+{
 "t": "Rename this PC",
 "p": "about",
 "d": "Its name on your network and your other devices · on Home",
@@ -80,20 +86,26 @@ var ENTRIES = [
 "i": "kbd"
 },
 {
+"t": "Look",
+"p": "appearance",
+"d": "The shape and style: corners, bar, frames and fonts",
+"i": "window"
+},
+{
+"t": "Sub theme",
+"p": "appearance",
+"i": "palette"
+},
+{
 "t": "Mode",
 "p": "appearance",
-"d": "Sunset (optional): light by day and dark by night, on the times below. Off unless you choose it.",
+"d": "Auto (optional): light by day and dark by night, on the times below. Off unless you choose it.",
 "i": "sun"
 },
 {
-"t": "More accent colours",
+"t": "Match sub theme",
 "p": "appearance",
-"d": "From your wallpaper, any hue, or a colour you type",
-"i": "edit"
-},
-{
-"t": "Custom accent",
-"p": "appearance"
+"i": "image"
 },
 {
 "t": "Wallpaper",
@@ -105,6 +117,16 @@ var ENTRIES = [
 "p": "appearance",
 "d": "Any picture on this device. In the Files app you can also right-click a picture › Set as Hearth wallpaper.",
 "i": "image"
+},
+{
+"t": "More accent colours",
+"p": "appearance",
+"d": "From your wallpaper, any hue, or a colour you type",
+"i": "edit"
+},
+{
+"t": "Custom accent",
+"p": "appearance"
 },
 {
 "t": "Desktop clock and weather",
@@ -300,7 +322,7 @@ var ENTRIES = [
 "i": "close"
 },
 {
-"t": "Keep clipboard history",
+"t": "Clipboard history",
 "p": "clipboard",
 "i": "clipboard"
 },
@@ -313,6 +335,7 @@ var ENTRIES = [
 {
 "t": "Clear clipboard history…",
 "p": "clipboard",
+"d": "Pinned items stay",
 "i": "trash"
 },
 {
@@ -550,6 +573,42 @@ var ENTRIES = [
 "i": "cpu"
 },
 {
+"t": "Show Hearth (C:) with Windows folder names",
+"p": "drives",
+"d": "Program Files, Users, Windows… Only names: nothing on your drive moves.",
+"i": "drive"
+},
+{
+"t": "Show the Linux folders too",
+"p": "drives",
+"d": "etc, usr, var and the rest, under their own heading on Hearth (C:)",
+"i": "folder"
+},
+{
+"t": "The address bar shows",
+"p": "drives",
+"d": "Typing either kind always works",
+"i": "edit"
+},
+{
+"t": "Copy path gives",
+"p": "drives",
+"d": "The other one is always in the right-click menu",
+"i": "link"
+},
+{
+"t": "C:  Hearth",
+"p": "drives",
+"d": "The drive Hearth runs from · always C:",
+"i": "drive"
+},
+{
+"t": "Only names",
+"p": "drives",
+"d": "These only change how Hearth names things. Your files, apps and games stay exactly where they are, and Windows apps keep their own C: inside them.",
+"i": "info"
+},
+{
 "t": "Hearth Games",
 "p": "games",
 "d": "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall (docs/HEARTH-GAMES.md)",
@@ -650,6 +709,12 @@ var ENTRIES = [
 "p": "games",
 "d": "How fast this device is, with scores and history",
 "i": "gear"
+},
+{
+"t": "Game Mode: Steam Game Mode or Hearth Game Mode",
+"p": "gaming",
+"d": "Which Game Mode this PC goes into: Steam's or Hearth's own",
+"i": "pad"
 },
 {
 "t": "Start in",
@@ -2089,7 +2154,7 @@ var ENTRIES = [
 {
 "t": "Game Mode",
 "p": "power",
-"d": "Steam's Game Mode on the full screen",
+"d": "The Game Mode you picked in Gaming (Steam's or Hearth's) on the full screen",
 "i": "pad"
 },
 {
@@ -2357,6 +2422,12 @@ var ENTRIES = [
 "i": "vol"
 },
 {
+"t": "Volume mixer",
+"p": "sound",
+"d": "Each app's own volume, and which speakers or headphones it plays on",
+"i": "vol"
+},
+{
 "t": "Input volume",
 "p": "sound",
 "i": "mic"
@@ -2467,6 +2538,18 @@ var ENTRIES = [
 "t": "Yes, go back at the next restart",
 "p": "updates",
 "i": "check"
+},
+{
+"t": "System Restore",
+"p": "updates",
+"d": "Hearth and its settings back to an earlier restore point. Made before each update, weekly, or by you",
+"i": "restart"
+},
+{
+"t": "Reliability history",
+"p": "updates",
+"d": "How Hearth has been running: apps that stopped, Hearth problems, warnings and updates, day by day",
+"i": "info"
 },
 {
 "t": "The previous version always stays startable",

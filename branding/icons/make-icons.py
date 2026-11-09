@@ -137,6 +137,11 @@ G['hearth-browser'] = (
 G['hearth-tasks'] = (  # Task Manager
     '<rect x="128" y="148" width="256" height="216" rx="44" fill="none" stroke="url(#c)" stroke-width="34"/>'
     + stroke('M168 264 H206 L234 206 L276 318 L304 256 H344', E, 30))
+G['hearth-resmon'] = (  # Resource Monitor: a chip on its board, with the live pulse
+    '<rect x="152" y="152" width="208" height="208" rx="40" fill="none" stroke="url(#c)" stroke-width="32"/>'
+    + stroke('M200 112 V140 M256 112 V140 M312 112 V140 M200 372 V400 M256 372 V400 M312 372 V400'
+             ' M112 200 H140 M112 256 H140 M112 312 H140 M372 200 H400 M372 256 H400 M372 312 H400', C, 22)
+    + stroke('M196 262 H222 L242 220 L270 304 L290 256 H316', E, 26))
 G['hearth-apps'] = (  # Apps (store)
     rect(128, 128, 112, 112, 32) + rect(272, 128, 112, 112, 32) + rect(128, 272, 112, 112, 32) + rect(272, 272, 112, 112, 32, E))
 G['hearth-installer'] = (  # Install Hearth OS: the Hearth arch with an arrow going in
@@ -235,6 +240,10 @@ G['hearth-system-info'] = (  # a chip
 G['hearth-benchmark'] = (  # a speed gauge with its needle up
     stroke('M135 370 A140 140 0 1 1 377 370', C, 38)
     + stroke('M256 300 L338 214', E, 34) + circle(256, 300, 34, C) + circle(256, 300, 12, INK))
+G['hearth-restore'] = (  # System Restore: a clock with the arrow going back round it
+    stroke('M148 256 A108 108 0 1 0 184 176 M148 160 V220 H208', C, 36) + stroke('M256 196 V256 L292 280', E, 34))
+G['hearth-reliability'] = (  # Reliability history: a stability line over a baseline
+    stroke('M136 380 H376', C, 28) + stroke('M148 316 L208 244 L256 280 L316 184 L364 244', E, 36))
 G['hearth-logs'] = (
     circle(152, 172, 18, E) + circle(152, 228, 18, E) + circle(152, 284, 18, E) + circle(152, 340, 18, E)
     + stroke('M200 172 H364 M200 228 H324 M200 284 H364 M200 340 H296', C, 28))
@@ -303,7 +312,7 @@ ALIASES = {'hearth-task-manager': 'hearth-tasks', 'hearth-claude-get': 'hearth-g
 NAMES = {
     'hearth': 'Hearth', 'hearth-settings': 'Settings', 'hearth-files': 'Files', 'hearth-terminal': 'Terminal',
     'hearth-disks': 'Disks', 'hearth-browser': 'Browser', 'hearth-tasks': 'Task Manager', 'hearth-apps': 'Apps',
-    'hearth-installer': 'Install', 'hearth-get-claude': 'Get Claude',
+    'hearth-installer': 'Install', 'hearth-get-claude': 'Get Claude', 'hearth-resmon': 'Resource Monitor',
 }
 
 

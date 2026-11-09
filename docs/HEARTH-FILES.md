@@ -88,6 +88,57 @@ Each time a Windows app starts (hearth-winapps, `ensure_prefix` → `hearth_driv
   it is left alone: nothing is moved.
 - A brand-new prefix gets its letters at its second start (Proton makes the prefix on the first).
 
+## Hearth (C:) the Windows way
+
+Since 1.10, opening **Hearth (C:)** (This PC, the navigation pane, typing `C:\`) shows Hearth's drive with Windows
+folder names (the owner's approved mockups, "Hearth (C:) drive layout"). **It's a view only: nothing on disk moves, and
+nothing is made.** Each folder shows where its files really are. Code: `drive-paths.js` (the mapping and the pages, pure
+functions), `FilesCDrive.qml` (the pages, behind a Loader like This PC), `FilesCProps.qml` (Properties, behind a Loader),
+`hearth-files cdrive` (where things really are; reads only), `hearth_drive_letters.py` (the same mapping for the helper),
+`SetDrives.qml` (Settings).
+
+| In Hearth | Really | |
+|---|---|---|
+| `C:\Program Files` | one entry per installed app (Installed apps' list): **Hearth** (Hearth's own apps, look only), each Flatpak (`/var/lib/flatpak/app/<id>`), **Hearth Games** (the stores' folders), each Recomp | a view |
+| `C:\Program Files (x86)` | each Windows app (`~/Games/Windows apps/<name>`) and **Steam** (its folder) | a view |
+| `C:\ProgramData` | `/var/lib` | look only |
+| `C:\Users` | the folder home folders are in (`/var/home`); `C:\Users\<you>` is your home folder | real |
+| `C:\Users\<you>\AppData` | **Roaming** = `~/.config`, **Local** = `~/.local/share`, **Local\Temp** = `~/.cache` | a view (AppData shows in your home folder, Temp in Local) |
+| `C:\Windows` | `/usr` (with a lock badge) | look only |
+| `C:\etc` and the rest | the real top-level folder | real |
+
+- **Opening** an entry goes to its real folder (Firefox in Program Files opens `/var/lib/flatpak/app/org.mozilla.firefox`).
+  Inside real folders reached through the view (`Users\<you>\Documents`, an app's folder) everything works as always.
+- The pages are the mockup's Details list: **Name, Type, Size, On Linux**, with a note at the top. The details pane
+  shows **In Hearth** (`C:\Program Files\Firefox`) and **On Linux** (the real place or places) for everything, real files
+  too.
+- **"Show the Linux folders too"** (off unless you turn it on; on C:\ itself, View, or Settings) adds the real top-level
+  folders under "THE LINUX FOLDERS".
+- **The address bar** shows the `C:\Program Files\…` forms and the steps "This PC › Hearth (C:) › Program Files ›
+  Firefox" (your own folders and the rest of your home folder keep their steps). Typing `C:\Program Files\Firefox`,
+  `C:\Users\<you>\AppData\Roaming`, `C:\Windows\share` and so on goes to the real folder; Linux paths always work too.
+  D:, E: and the other letters work exactly as before. Up goes to the step before (Firefox → Program Files → Hearth (C:)
+  → This PC).
+- **Right-click** (or X): Open, Open in new tab, Go to the real folder, Copy path (the `C:\` form, Ctrl+Shift+C), Copy
+  Linux path (Ctrl+Alt+C), then **Modify / Uninstall** for apps (Installed apps' own actions) and **Properties**.
+- **Properties** of a view folder: its size, how many apps (or folders) and which real places they come from, and that
+  you can't put files straight into it. Real folders get the usual Properties window.
+- **Writes into the view** are refused with a clear message: dropping or pasting into Program Files, Program Files (x86),
+  AppData or `C:\` itself ("To add an app, install it, and it shows up here by itself"), and into Windows or ProgramData
+  (look only). The view's names for other folders (AppData, Temp) can't be cut, copied, renamed or deleted; hearth-files
+  refuses any change to a `hearth:c` path as a backstop.
+- **Windows apps are unchanged**: inside a Wine prefix C: stays the prefix's own drive (`map_prefix` never touches `c:`).
+- Open / Save windows keep the real folders (the view is for Files itself).
+
+**Settings › System › Drives & folders** (and Files' View menu, the same switches): Show Hearth (C:) with Windows folder
+names (on unless turned off; off, Files is exactly as in 1.9), Show the Linux folders too (off), The address bar shows
+Windows names / Linux paths, Copy path gives the `C:\` form / the Linux path (the other is always in the menu), and the
+drive letters (C: is always Hearth; **Change letter…** for the others, the same as This PC's). They're kept in
+`~/.config/nimbus/files.json` (`cdrive`, `linuxFolders`, `addressBar`, `copyPath`) through `hearth-files prefs-set`
+(hearth_settings_io: merged under the lock, atomic, a `.bak`, never defaults over a damaged file), **only when you change
+one**: opening Files or Settings writes nothing, and a switch you set to what it already is writes nothing. Files reads
+them again each time its window opens, so a change in Settings shows straight away.
+
 ## Installed apps
 
 Like Windows Settings › Apps › Installed apps (`FilesApps.qml`, loaded with a Loader; `hearth-files installed-apps`):
@@ -137,11 +188,15 @@ Windows 95–XP's Briefcase, made new. Code: `hosts/linux/desktop/shell/hearth-b
 a JSON answer, like `hearth-files`), `Briefcase.qml` (what Files shows) and `BriefcaseDialog.qml` (its dialogs).
 
 - **A Briefcase is a folder** with a small hidden list inside (`.briefcase.json`), so it travels with the folder: on a USB
-  stick, a shared folder or another Hearth device. `~/Briefcase` is in the navigation pane (made the first time you open
-  it); **New › Briefcase** makes another anywhere. Its icon is a briefcase (or a satchel, suitcase, backpack or box) in
+  stick, a shared folder or another Hearth device. **A Briefcase is a folder you make**: **New › Briefcase** makes one
+  anywhere. Files doesn't pin `~/Briefcase` in the navigation pane or make it by itself any more (1.10); a `~/Briefcase`
+  you already have stays a normal folder in your home folder, never moved or deleted, and still works as a Briefcase
+  with its icon (a Favorite you added for it yourself stays). Other Briefcases you made show in the navigation pane
+  unless you turn off "Show in navigation pane" in Customize. Its icon is a briefcase (or a satchel, suitcase, backpack or box) in
   its colour, with its badge and a padlock when it's locked.
 - **Adding**: drag files or folders onto it (its folder, its icon, its place in the navigation pane), or **Add to
-  Briefcase ›** in the right-click menu. Each item is copied in and remembers its original: a path on this PC, a USB
+  Briefcase ›** in the right-click menu (your Briefcases, and **New Briefcase…**: pick where it goes, then the items go
+  in; with no Briefcase yet, that's the choice). Each item is copied in and remembers its original: a path on this PC, a USB
   drive (its filesystem ID and the path on it, so it's found again under any mount point) or a shared folder from Your
   devices (`smb://`, opened through gio), with the size, time and a hash (SHA-256; big files only when needed) of both
   copies at the last update.
@@ -223,6 +278,14 @@ written over a file it couldn't read; docs/SETTINGS-PERSISTENCE.md). Nothing cha
 - The Desktop Mode test's `shots/files-this-pc/` (dark and light): This PC, inside the games drive, Installed apps,
   its "···" menu, the details pane with the Linux path, This PC's Details view. Opening them may only create or change
   `~/.config/hearth/drive-letters.json`; any other changed file under `~/.config` or Hearth's settings fails the test.
+- `hosts/linux/test/test_hearth_cdrive.py`: Hearth (C:) the Windows way: C:\ forms and real paths both ways (drive-paths.js
+  with node, and hearth_drive_letters.py's copy), the steps, the pages from an Installed apps list, AppData and Temp,
+  writes into the view refused (and real folders reached through it working), D: and E: and the view switched off
+  exactly as before, a Wine prefix's own C: untouched, nothing written when Files or Settings opens, only the changed
+  key merged, a damaged files.json put back from .bak. The Desktop Mode test's `shots/files-cdrive/` (dark and light):
+  C:\, Program Files and its Properties, Program Files (x86) and its right-click menu, your home folder with AppData,
+  AppData, the Linux folders, Settings › Drives & folders; typed C:\ paths checked to reach the real folders; opening
+  them may change no settings file, and the switch only `linuxFolders`.
 - `hosts/linux/test/test_hearth_briefcase.py`: the Briefcase: statuses (unplugged versus deleted), every Update action,
   conflicts keeping both, the Trash (home, a USB stick's, `.briefcase-replaced`), a crash mid-copy (the helper killed),
   folders, a bad list kept aside, carrying, swapping, Customize, locks (gocryptfs where FUSE works, else a stand-in, with a
