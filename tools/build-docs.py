@@ -412,8 +412,9 @@ Access and the on-screen keyboard. Hearth adds its own stores, pages and tools o
 <p><span class="ver">Next update</span> Hearth OS is now Debian + Mantel (Desktop Mode) + Steam Game Mode: the device starts
 in Steam Game Mode and every Game Mode button opens it. If Steam can't start (not installed, safe graphics, Steam
 closing right away or failing twice), Mantel opens and says why, with a <b>Try Steam Game Mode again</b> button.
-Hearth's own Game Mode is archived (first-time setup still runs in Hearth's app once), and multi-seat and Couch Co-op
-are hidden for now.</p>
+Multi-seat and Couch Co-op are hidden for now.</p>
+<p><span class="ver">Next update</span> <b>Hearth Game Mode is back</b> as a choice: Settings › Gaming › Game Mode has two
+cards, <b>Steam Game Mode</b> (the default) and <b>Hearth Game Mode</b>. See <a href="#hearth-game-mode">Hearth Game Mode</a> below.</p>
 
 {h2('menu', 'Hearth in Steam\'s main menu')}
 <p><span class="ver">Next update</span> Press the Steam (or Xbox) button. Below Steam's own entries, in Hearth's look:</p>
@@ -489,11 +490,15 @@ Steam's Game Mode, just without Hearth inside it.</li>
 <div class="note warn"><p><b>About Decky:</b> Decky Loader runs as root while Steam Game Mode runs, and it turns on Steam's local
 remote debugging. Only install Decky plugins you trust. <b>Remove</b> in Settings takes it all away again.</p></div>
 
-{h2('hearth-game-mode', 'Hearth\'s old Game Mode')}
-<p>Hearth's own full-screen Game Mode is archived. It still runs Hearth OS's first-time setup once after installing, and it's
-the very last fallback; you won't see it anywhere else. Everything you set there is now in Desktop Mode's Settings or in
-an app of its own (Mods, Saves, Controller Lab, Friends, Theater, Hearth Link...). Developers can bring it back with
-<code>HEARTH_LEGACY_GAME_MODE=1</code>.</p>
+{h2('hearth-game-mode', 'Hearth Game Mode')}
+<p><span class="ver">Next update</span> Pick which Game Mode your PC goes into: <b>Steam Game Mode</b> (Steam's own big-screen
+mode, the default) or <b>Hearth Game Mode</b> (Hearth's own full-screen screens: every store in one library, Hearth's Store,
+Quick Access and Settings). Pick it in Desktop Mode's <b>Settings › Gaming › Game Mode</b>, in Hearth Game Mode's
+<b>Settings › System</b>, or in Steam Game Mode's <b>Quick Access › Hearth Sync › Game Mode</b>. It applies the next time
+Game Mode starts, and each place offers to switch now.</p>
+<p>Every Game Mode button, signing in and Server mode's Play open the one you picked. Steam games still play through Steam.</p>
+<p>If Hearth Game Mode can't start, that start goes to Steam Game Mode (then Desktop Mode) and says why, with <b>Try Hearth
+Game Mode again</b>. If it fails twice in 10 minutes it waits until you try it again. Your choice never changes by itself.</p>
 
 {h2('back', 'If Steam\'s Game Mode won\'t start')}
 <p>All of these work with just a controller:</p>

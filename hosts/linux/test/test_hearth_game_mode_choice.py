@@ -400,6 +400,32 @@ class WholeSession(unittest.TestCase):
         self.assertEqual(self.calls_list(), ['hearth', 'labwc'], log)
 
 
+class MantelNotice(unittest.TestCase):
+    """SteamFallback.qml's check (run for real): Steam's reason once, Hearth Game Mode's reason once, never a setting."""
+
+    def test_both_reasons_once(self):
+        qml = (ROOT / 'hosts/linux/desktop/shell/SteamFallback.qml').read_text()
+        m = re.search(r'command: \["sh", "-c", \'(.*?)\', "sh", root\.gmHelper\]', qml)
+        self.assertTrue(m, 'the check runs through sh with the helper as $1')
+        script = m.group(1).replace('\\n', '\n')
+        tmp = tempfile.mkdtemp(prefix='hearth-gm-notice-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        env = {'PATH': '/usr/bin:/bin', 'XDG_RUNTIME_DIR': tmp, 'HOME': tmp, 'XDG_CONFIG_HOME': os.path.join(tmp, 'cfg')}
+        go = lambda: subprocess.run(['sh', '-c', script, 'sh', str(HELPER)], env=env, capture_output=True, text=True, timeout=30).stdout
+        self.assertNotIn('steam:', go())
+        with open(os.path.join(tmp, 'hearth-steam-mode-failed'), 'w') as f:
+            f.write('Steam ended right away (code 1)\n')
+        with open(os.path.join(tmp, 'hearth-game-mode-failed'), 'w') as f:
+            f.write("Hearth's app isn't installed\n")
+        out = go()
+        self.assertIn('steam:Steam ended right away (code 1)', out)
+        self.assertIn('hearth:{"text": "Hearth\'s app isn\'t installed"}', out)
+        out = go()
+        self.assertNotIn('steam:', out)
+        self.assertNotIn('"text"', out, 'each shown once')
+        self.assertFalse(os.path.exists(os.path.join(tmp, 'cfg')), 'nothing written to your settings')
+
+
 class Wiring(unittest.TestCase):
     def test_nimbus_mode_knows_hearth(self):
         tmp = tempfile.mkdtemp(prefix='hearth-gm-mode-')

@@ -533,8 +533,7 @@ impl Bridge {
             // Start in Steam Game Mode (per device, off by default; the session turns it off by itself when it fails)
             "steamMode.setDefault" => crate::steam_mode::set_default(a["on"].as_bool().unwrap_or(false)),
             // ---- end Steam Game Mode
-            // ---- Which Game Mode (game_mode_choice.rs, docs/HEARTH-GAME-MODE.md): Settings › System › Game Mode. Switch
-            // now is session.restartGameMode (the session opens the Game Mode you picked).
+            // ---- Which Game Mode (game_mode_choice.rs, docs/HEARTH-GAME-MODE.md): Settings › System › Game Mode.
             "gameMode.get" => crate::game_mode_choice::get(),
             "gameMode.set" => crate::game_mode_choice::set(a),
             // Switch now / Try Hearth Game Mode again: in Game Mode, Hearth closes properly and the session opens it; from a
@@ -1868,8 +1867,6 @@ impl Bridge {
     pub fn version_str(&self) -> String { self.version.clone() }
     pub fn zoom_pct(&self) -> u32 { self.library.store.data["uiScale"].as_u64().unwrap_or(100) as u32 }
     fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
-    /// Game Mode starts again (gamescope with its new options): the session's next round is Game Mode, and Hearth
-    /// leaves (outside the session, Hearth restarts itself).
     /// Game Mode again as `to` ("game": the one you picked, "hearth": Hearth Game Mode asked for by name), Hearth closing
     /// first (the session reads nimbus-next when it has).
     pub fn switch_game_mode(&self, to: &str) {
@@ -1878,6 +1875,8 @@ impl Bridge {
         let emit = self.emit.clone();
         std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(600)); emit(json!({"type": if in_session { "quit" } else { "restart" }})); });
     }
+    /// Game Mode starts again (gamescope with its new options): the session's next round is Game Mode, and Hearth
+    /// leaves (outside the session, Hearth restarts itself).
     pub fn restart_game_mode(&self) {
         let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
         if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), "game\n"); }
