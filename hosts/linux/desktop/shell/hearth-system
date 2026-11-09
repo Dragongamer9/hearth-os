@@ -566,7 +566,8 @@ COMMAND_WORDS = [
     (r'call media stop', 'Stop playing'), (r'call brightness up', 'Brightness up'), (r'call brightness down', 'Brightness down'),
     (r'set-mute @DEFAULT_AUDIO_SOURCE@', 'Microphone on or off'), (r'systemctl suspend', 'Sleep'),
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
-    (r'call clipboard toggle', 'Clipboard history'), (r'call settings', 'Open Settings'),
+    (r'call clipboard toggle', 'Clipboard history'), (r'call snap ', 'Snap layouts'), (r'call mixer ', 'Volume mixer'),
+    (r'call settings', 'Open Settings'),
     (r'call apps', 'Open Bazaar (app store)'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
     (r'nimbus-mode game', 'Go to Game Mode'), (r'nimbus-mode logout', 'Sign out'),
     (r'buttons up|volume.*\+', 'Volume up'), (r'buttons down|volume.*-', 'Volume down'), (r'buttons mute|set-mute', 'Mute'),
@@ -614,6 +615,8 @@ def action_words(action):
         return 'Run ' + os.path.basename(word) if word else 'Run a command'
     if name == 'SnapToEdge':
         return 'Snap the window to the %s' % {'left': 'left half', 'right': 'right half', 'up': 'top', 'down': 'bottom'}.get(action.get('direction', ''), 'edge')
+    if name == 'SnapToRegion':
+        return 'Snap the window to the %s' % action.get('region', 'region').replace('-', ' ')
     if name == 'MoveToOutput':
         return 'Move the window to the screen on the %s' % action.get('direction', 'other side')
     if name == 'MoveToEdge':

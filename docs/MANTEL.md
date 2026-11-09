@@ -239,6 +239,44 @@ Settings has two new pages: Home server › **Server mode** (`SetServerMode.qml`
 System › **Boot splash**. Start in (`StartInChoice.qml`) now saves through hearth_settings_io's `conf-set` (only that line,
 atomic, `.bak`, under the session's lock) instead of `sed -i`.
 
+## Volume mixer, snap layouts, clipboard and emoji (Hearth 1.10)
+
+Three Windows-style extras, built to the approved mockups in Hearth's dark blues (the Steam-style dark look; other
+looks recolour them, `ExtrasPal.qml`). Each loads through a `Loader` in `shell.qml`, so a problem in one only loses
+that popup; none adds a service.
+
+- **Volume mixer** (`Mixer.qml`, rules in `mixer.js`): right-click the sound icon › **Volume mixer**, or Settings ›
+  Sound › Volume mixer. The output picker (speakers, headphones, TV), the system volume, then a row per app playing
+  sound (its icon, name, where it plays, mute and a slider; a browser's tabs are one row). Right-click an app (or X on
+  the controller) for **Play on…**, which moves it to another output (`pw-metadata` sets its target; WirePlumber moves
+  it). Each app's level is remembered **by the app's name** in `~/.config/nimbus/app-volumes.json`, only when you move
+  its slider (SettingsWriter merges just that app's line, atomically, with a `.bak`), and put back when that app plays
+  sound again. Opening the mixer writes nothing. Keys and controller: Up/Down rows, Left/Right volume, A mutes (on the
+  output row: the list), B closes.
+- **Snap layouts** (`SnapLayouts.qml`, zones in `snap-layouts.js`): **Super+Z**, a **right-click on a window's
+  Maximize button**, or **Snap layouts…** in a title bar's right-click menu shows six layouts (halves, two-thirds and a
+  third, thirds, quarters, a half and two quarters, narrow-wide-narrow); pick a zone and the window snaps there. labwc
+  draws the title bars itself and can't tell anyone the pointer is resting on Maximize, so hovering there doesn't open
+  it the way Windows does: right-click does, and a left click still maximizes. It reuses Mantel's snapping: the halves
+  are Super+Left / Super+Right, the other zones are labwc regions behind hidden Super+Ctrl+Shift+F1–F11 keys
+  (`labwc/rc.xml`), typed with wtype once the flyout has closed. D-pad moves between zones, A picks, B closes.
+- **Clipboard history** (`Clipboard.qml`, `hearth-clipboard`): **Super+V**. What you copied (text and pictures, the app
+  it came from and when), newest first with pinned items on top; click (or A) pastes into the app you were in, the pin
+  keeps an item through **Clear all** and past the limit (about 25 items, plus pins). Controller: Up/Down items,
+  Left/Right along an item (paste, pin, forget), A does it, X pins or unpins, B closes; Delete forgets. It's **off until you turn it on**, like Windows: the switch at the top of the popup or Settings › Clipboard
+  (`clipboardHistory`; a new install's `desktop.json` from `/etc/skel` says `false`, and a file without the key keeps
+  what it had, so an update never turns it on or off by itself). Only while it's on does the shell run `wl-paste
+  --watch hearth-clipboard store`. Items live in `~/.local/share/hearth/clipboard/` (a folder only you can read;
+  `index.json` written through hearth_settings_io with a `.bak`). Copies a password manager marks as secret
+  (`x-kde-passwordManagerHint`, or wl-paste's `CLIPBOARD_STATE=sensitive`) are never kept.
+- **Emoji picker** (`hosts/hearth-emoji`): **Super+.**, now a compact popup with **Emoji / Symbols / Kaomoji** tabs,
+  search and **Most used** (the app counts your picks in `~/.local/share/hearth/emoji.json`). A pick is typed into the
+  app you were in with wtype, the same way the on-screen keyboard types, and copied too.
+
+Checks: `hosts/linux/test/test_shell_extras.py` (remembered levels, snap zone geometry against labwc's regions and
+keys, the clipboard's storage: the cap, pins, secrets never kept, off until turned on) and the Desktop Mode test's
+"Volume mixer, snap layouts and clipboard history" step (shots in `shell-extras/`).
+
 ## Desktop Mode always starts (red flag 2)
 
 `shell.qml` loads `Islands.qml` and (with the floating app menu on) `Dock.qml` by file name, once your settings are

@@ -34,6 +34,12 @@ SetPage {
             checked: Buttons.overamp
             onToggled: v => Buttons.set("overamp", v)
         }
+        // Hearth 1.10: each app's own level (Mixer.qml), also from the sound icon's right-click menu.
+        SetRow {
+            visible: SettingsNav.mixer !== null
+            icon: "vol"; title: "Volume mixer"; sub: "Each app's own volume, and which speakers or headphones it plays on"
+            onActivated: if (SettingsNav.mixer) SettingsNav.mixer.open()
+        }
     }
     SetCardGroup {
         title: "Play sound through"

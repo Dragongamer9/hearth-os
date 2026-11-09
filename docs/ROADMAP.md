@@ -7,6 +7,13 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Hearth 1.10: Windows-style extras in Mantel
+
+- [ ] Volume mixer: right-click the sound icon › Volume mixer, or Settings › Sound › Volume mixer. Pick the output (speakers, headphones, TV), the system volume, and a row per app playing sound with its icon, name, where it plays, mute and a slider. Right-click an app (X on the controller) to play it on another output. Each app's level is remembered by the app's name, only when you move its slider, and put back when it plays again; opening the mixer writes nothing. Controller: Up/Down rows, Left/Right volume, A mutes
+- [ ] Snap layouts: Super+Z, a right-click on a window's Maximize button, or "Snap layouts…" in its title bar menu shows six layouts (halves, two-thirds and a third, thirds, quarters, a half and two quarters, narrow-wide-narrow); pick a zone and the window snaps there. Hovering over Maximize can't open it (labwc draws the title bars and doesn't say where the pointer rests), so right-click does. Controller: D-pad between zones, A picks
+- [ ] Clipboard history, restyled and extended (Super+V): text and pictures with the app they came from and when, pin and unpin, Clear all (pinned items stay), click to paste; about 25 items in ~/.local/share/hearth/clipboard. Off until you turn it on (a switch in the popup and in Settings › Clipboard); a new install starts with it off, and an existing install keeps what it had. Copies a password manager marks as secret are never kept. The old cliphist history isn't carried over
+- [ ] Emoji picker (Super+.), restyled: a compact popup with Emoji, Symbols and Kaomoji tabs, search and Most used; the pick is typed into the app you were in
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

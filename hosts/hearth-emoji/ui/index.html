@@ -5,72 +5,77 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Emoji</title>
 <style>
-/* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml), as in Disks and Terminal. */
+/* Hearth 1.10's picker (the approved mockup): a compact popup in Hearth's dark blues, with Emoji / Symbols / Kaomoji
+   tabs, search and Most used. ~/.config/hearth/theme.css (Settings › Appearance) overrides these with your look. */
 :root {
-  --bg:#0f0b09; --bg2:#17110e; --panel:#1c1512; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26;
-  --text:#f4ece3; --muted:#a69484; --faint:#6f6055; --ember:#ff8a3d; --flame:#ffd166; --danger:#ff5d5d;
-  --ink:#2a1206; --r:14px; --ease:cubic-bezier(.2,.8,.2,1);
+  --bg:#1e2f42; --bg2:#10151b; --panel:#1e2f42; --panel2:#213347; --panel3:#2a475e; --line:#2f4a63;
+  --text:#e6eef5; --muted:#9fb2c3; --faint:#6f8396; --ember:#66c0f4; --flame:#66c0f4; --danger:#ff9c8f;
+  --ink:#06121c; --r:12px; --ease:cubic-bezier(.2,.8,.2,1);
 }
 * { box-sizing:border-box; }
-html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
-body { font:400 15px/1.35 var(--font, system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif); overflow:hidden; user-select:none; -webkit-user-select:none;
-  background:radial-gradient(900px 500px at 90% -20%, var(--glow, #2a170d) 0%, transparent 60%), var(--bg); }
+html, body { margin:0; height:100%; background:var(--panel); color:var(--text); }
+body { font:400 13px/1.35 var(--font, "Inter", system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif); overflow:hidden; user-select:none; -webkit-user-select:none; }
 button, input { font:inherit; color:inherit; }
-.app { display:grid; grid-template-rows:auto auto 1fr auto; height:100%; }
-header { display:flex; gap:10px; align-items:center; padding:12px 14px 8px; }
-.search { flex:1; display:flex; align-items:center; gap:8px; background:var(--bg2); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:0 12px; height:42px; }
-.search:focus-within { border-color:var(--ember); box-shadow:0 0 0 2px color-mix(in srgb, var(--ember) 25%, transparent); }
-.search svg { width:18px; height:18px; color:var(--muted); flex:none; }
-.search input { flex:1; background:none; border:0; outline:none; font-size:16px; min-width:0; }
-.tones { display:flex; gap:4px; }
-.tone { width:28px; height:28px; border-radius:50%; border:2px solid transparent; padding:0; font-size:17px; line-height:1; background:var(--panel2); cursor:pointer; }
-.tone.on { border-color:var(--ember); }
-.x { width:36px; height:36px; border-radius:min(10px, var(--corner, 10px)); border:1px solid var(--line); background:var(--panel2); cursor:pointer; }
-nav { display:flex; gap:4px; padding:0 14px 8px; overflow-x:auto; scrollbar-width:none; }
-nav button { flex:none; height:34px; min-width:38px; padding:0 9px; border-radius:min(10px, var(--corner, 10px)); border:1px solid transparent; background:transparent; cursor:pointer; font-size:18px; display:flex; gap:6px; align-items:center; }
-nav button span { font-size:12px; color:var(--muted); }
-nav button.on { background:var(--panel2); border-color:var(--line); }
-nav button.on span { color:var(--text); }
-main { overflow:auto; padding:2px 14px 10px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
-h2 { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:10px 2px 6px; font-weight:650; }
-.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(46px, 1fr)); gap:4px; }
-.grid.wide { grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
-.cell { height:46px; border-radius:min(10px, var(--corner, 10px)); border:0; background:transparent; font-size:27px; line-height:1; cursor:pointer; outline:none; padding:0;
+.app { display:flex; flex-direction:column; gap:10px; height:100%; padding:12px; }
+.top { display:flex; gap:4px; align-items:center; }
+.tab { all:unset; cursor:pointer; padding:5px 12px; border-radius:min(6px, var(--corner, 6px)); color:var(--muted); }
+.tab.on { background:var(--panel3); color:var(--text); font-weight:600; }
+.tab:focus-visible { box-shadow:0 0 0 2px var(--ember); }
+.spacer { flex:1; }
+.tone, .x { all:unset; cursor:pointer; width:28px; height:28px; display:grid; place-items:center; border-radius:min(6px, var(--corner, 6px)); color:var(--muted); font-size:16px; }
+.tone:hover, .x:hover { background:var(--panel2); }
+.search { display:flex; align-items:center; gap:8px; padding:0 10px; height:34px; border-radius:min(6px, var(--corner, 6px)); background:var(--bg2); border:1px solid var(--line); color:var(--muted); }
+.search:focus-within { border-color:var(--ember); }
+.search svg { width:14px; height:14px; flex:none; }
+.search input { flex:1; background:none; border:0; outline:none; color:var(--text); min-width:0; }
+nav { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; flex:none; }
+nav[hidden] { display:none; }
+nav button { all:unset; cursor:pointer; flex:none; height:28px; min-width:30px; display:grid; place-items:center; border-radius:min(6px, var(--corner, 6px)); font-size:16px;
+  font-family:"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif; opacity:.75; }
+nav button:hover { background:var(--panel2); opacity:1; }
+nav button.on { background:var(--panel2); opacity:1; }
+main { flex:1; overflow:auto; margin:0 -4px; padding:0 4px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
+h2 { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:6px 2px 6px; font-weight:600; }
+h2:first-child { margin-top:0; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(38px, 1fr)); gap:4px; }
+.grid.wide { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
+.cell { height:38px; border-radius:min(6px, var(--corner, 6px)); border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; outline:none; padding:0;
   font-family:"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif; transition:transform .1s var(--ease), background .1s; }
-.grid.sym .cell { font-family:system-ui, "Noto Sans", "DejaVu Sans", sans-serif; font-size:22px; }
-.grid.wide .cell { font-size:16px; font-family:system-ui, "Noto Sans CJK JP", "Noto Sans", sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 8px; }
+.grid.sym .cell { font-family:system-ui, "Noto Sans", "DejaVu Sans", sans-serif; font-size:19px; }
+.grid.wide .cell { font-size:14px; font-family:system-ui, "Noto Sans CJK JP", "Noto Sans", sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 8px; }
 .cell:hover { background:var(--panel2); }
-.cell:focus { background:var(--panel3); box-shadow:0 0 0 3px var(--ember), 0 0 18px color-mix(in srgb, var(--ember) 35%, transparent); }
+.cell:focus { background:var(--panel3); box-shadow:0 0 0 2px var(--ember); }
 .cell:active { transform:scale(.92); }
-.empty { color:var(--muted); padding:30px 4px; text-align:center; }
-footer { display:flex; align-items:center; gap:16px; padding:8px 14px 11px; border-top:1px solid var(--line); background:rgba(0,0,0,.18); min-height:44px; }
-.now { flex:1; min-width:0; display:flex; align-items:center; gap:10px; }
-.now b { font-size:24px; font-family:"Noto Color Emoji", system-ui, sans-serif; font-weight:400; }
-.now span { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.hints { display:flex; gap:12px; color:var(--muted); font-size:12px; flex-wrap:wrap; justify-content:flex-end; }
-.hints i { font-style:normal; display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 5px; border-radius:min(6px, var(--corner, 6px)); background:var(--panel3); color:var(--text); margin-right:4px; font-size:11px; }
-.osk { position:fixed; left:14px; right:14px; bottom:56px; background:var(--panel); border:1px solid color-mix(in srgb, var(--line) 93%, var(--flame)); border-radius:min(16px, var(--corner, 16px)); padding:10px; display:grid; grid-template-columns:repeat(10, 1fr); gap:5px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
-.osk button { height:40px; border-radius:min(9px, var(--corner, 9px)); border:1px solid var(--line); background:var(--panel3); cursor:pointer; outline:none; }
-.osk button:focus { box-shadow:0 0 0 3px var(--ember); }
+.empty { color:var(--muted); padding:14px 4px; text-align:center; }
+footer { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; min-height:18px; }
+.now { flex:1; min-width:0; display:flex; align-items:center; gap:8px; }
+.now b { font-size:18px; font-family:"Noto Color Emoji", system-ui, sans-serif; font-weight:400; color:var(--text); }
+.now span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hints { display:none; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.pad .hints { display:flex; }
+.hints i { font-style:normal; display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 4px; border-radius:min(5px, var(--corner, 5px)); background:var(--panel3); color:var(--text); margin-right:3px; font-size:10px; }
+.osk { position:fixed; left:12px; right:12px; bottom:40px; background:var(--panel); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:8px; display:grid; grid-template-columns:repeat(10, 1fr); gap:4px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+.osk button { height:34px; border-radius:min(7px, var(--corner, 7px)); border:1px solid var(--line); background:var(--panel3); cursor:pointer; outline:none; }
+.osk button:focus { box-shadow:0 0 0 2px var(--ember); }
 .osk .wide { grid-column:span 2; }
-.toast { position:fixed; left:50%; bottom:60px; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:8px 14px; border-radius:min(10px, var(--corner, 10px)); }
-@media (max-width: 560px) { .hints { display:none; } }
+.toast { position:fixed; left:50%; bottom:44px; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:7px 12px; border-radius:min(8px, var(--corner, 8px)); white-space:nowrap; }
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" placeholder="Search emoji and symbols" spellcheck="false" autocomplete="off" aria-label="Search"></label>
-    <div class="tones" id="tones" title="Skin tone (Y)"></div>
+<div class="app" id="app">
+  <div class="top" role="tablist" aria-label="Kinds">
+    <button class="tab" role="tab" data-tab="emoji">Emoji</button>
+    <button class="tab" role="tab" data-tab="symbols">Symbols</button>
+    <button class="tab" role="tab" data-tab="kaomoji">Kaomoji</button>
+    <span class="spacer"></span>
+    <button class="tone" id="tone" title="Skin tone (Y)" aria-label="Skin tone">✋</button>
     <button class="x" id="close" title="Close (Esc)" aria-label="Close">✕</button>
-  </header>
-  <nav id="cats"></nav>
+  </div>
+  <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    <input id="q" placeholder="Search emoji, symbols and kaomoji" spellcheck="false" autocomplete="off" aria-label="Search"></label>
+  <nav id="cats" aria-label="Emoji groups"></nav>
   <main id="main"></main>
-  <footer>
-    <div class="now" id="now"></div>
-    <div class="hints" id="hints"></div>
-  </footer>
+  <footer><div class="now" id="now"></div><div class="hints" id="hints"></div></footer>
 </div>
 <script src="hearth-gamepad.js"></script>
 <script src="emoji-data.js"></script>
@@ -83,17 +88,16 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const DATA = window.EMOJI_DATA || [];
 const TONES = ['', '\u{1F3FB}', '\u{1F3FC}', '\u{1F3FD}', '\u{1F3FE}', '\u{1F3FF}'];
 const TONE_SHOW = ['✋', '✋🏻', '✋🏼', '✋🏽', '✋🏾', '✋🏿'];
-// The tabs: emoji groups, then symbols and special characters, then kaomoji.
-const CATS = [
-  ['recent', '🕘', 'Recent'], ['smileys', '😀', 'Smileys'], ['people', '👋', 'People'], ['nature', '🐻', 'Animals & nature'],
-  ['food', '🍔', 'Food'], ['travel', '🚗', 'Travel'], ['activities', '⚽', 'Activities'], ['objects', '💡', 'Objects'],
-  ['symbols', '❤️', 'Symbols'], ['flags', '🏁', 'Flags'], ['chars', 'Ω', 'Special characters'], ['kaomoji', '(◕‿◕)', 'Kaomoji'],
-];
+// Three tabs, as in Windows: Emoji (Most used first, then every group; the row of group icons jumps to one), Symbols
+// (special characters) and Kaomoji. Search looks through all three.
+const TABS = ['emoji', 'symbols', 'kaomoji'];
+const EMOJI_CATS = [['smileys', '😀', 'Smileys'], ['people', '👋', 'People'], ['nature', '🐻', 'Animals & nature'], ['food', '🍔', 'Food'],
+  ['travel', '🚗', 'Travel'], ['activities', '⚽', 'Activities'], ['objects', '💡', 'Objects'], ['symbols', '❤️', 'Symbols'], ['flags', '🏁', 'Flags']];
 const CHAR_GROUPS = [['punctuation', 'Punctuation'], ['currency', 'Currency'], ['maths', 'Maths'], ['arrows', 'Arrows'], ['letters', 'Letters'],
   ['numbers', 'Numbers and fractions'], ['marks', 'Marks and signs'], ['shapes', 'Shapes and lines']];
-const EMOJI_GROUPS = new Set(['smileys', 'people', 'nature', 'food', 'travel', 'activities', 'objects', 'symbols', 'flags']);
+const EMOJI_GROUPS = new Set(EMOJI_CATS.map(c => c[0]));
 const byChar = new Map(DATA.map(d => [d.e, d]));
-const S = { cat: 'smileys', tone: 0, recent: [], q: '', pad: false, busy: false };
+const S = { tab: 'emoji', tone: 0, recent: [], most: [], q: '', pad: false, busy: false };
 
 function withTone(d) {
   if (!d.s || !S.tone) return d.e;
@@ -106,12 +110,12 @@ function cellHtml(d, i) {
   return `<button class="cell" data-i="${i}" data-e="${esc(e)}" title="${esc(d.n)}" aria-label="${esc(d.n)}">${esc(e)}</button>`;
 }
 let shown = [];   // the entries on screen, in order (cells point into it)
-function section(title, list, kind) {
+function section(title, list, kind, id) {
   if (!list.length) return '';
   const start = shown.length; shown.push(...list);
-  return (title ? `<h2>${esc(title)}</h2>` : '') + `<div class="grid ${kind || ''}">${list.map((d, j) => cellHtml(d, start + j)).join('')}</div>`;
+  return (title ? `<h2${id ? ` id="sec-${id}"` : ''}>${esc(title)}</h2>` : '') + `<div class="grid ${kind || ''}">${list.map((d, j) => cellHtml(d, start + j)).join('')}</div>`;
 }
-function kindOf(g) { return g === 'kaomoji' ? 'wide' : EMOJI_GROUPS.has(g) ? '' : 'sym'; }
+function entryFor(e) { return byChar.get(e) || byChar.get(stripTone(e)) || { e, n: e, g: 'chars' }; }
 
 function search(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -132,51 +136,66 @@ function search(q) {
   return scored.slice(0, 400).map(x => x[1]);
 }
 
+// Most used: how often you picked each (the app counts them), then recent ones; only this tab's kind.
+function mostUsed(kind) {
+  const list = (S.most.length ? S.most : S.recent).map(entryFor);
+  if (kind === 'emoji') return list.filter(d => EMOJI_GROUPS.has(d.g)).slice(0, 21);
+  if (kind === 'kaomoji') return list.filter(d => d.g === 'kaomoji').slice(0, 8);
+  return list.filter(d => !EMOJI_GROUPS.has(d.g) && d.g !== 'kaomoji').slice(0, 14);
+}
+
 function render(keepFocus) {
   shown = [];
   let h = '';
-  if (S.q.trim()) {
+  const searching = !!S.q.trim();
+  if (searching) {
     const r = search(S.q.trim());
     const em = r.filter(d => EMOJI_GROUPS.has(d.g)), sy = r.filter(d => !EMOJI_GROUPS.has(d.g) && d.g !== 'kaomoji'), ka = r.filter(d => d.g === 'kaomoji');
-    h = section(em.length ? 'Emoji' : '', em) + section('Symbols', sy, 'sym') + section('Kaomoji', ka, 'wide');
+    h = section('Emoji', em) + section('Symbols', sy, 'sym') + section('Kaomoji', ka, 'wide');
     if (!r.length) h = `<div class="empty">Nothing called "${esc(S.q)}". Try another word, like heart, arrow or euro.</div>`;
-  } else if (S.cat === 'recent') {
-    const list = S.recent.map(e => byChar.get(e) || byChar.get(stripTone(e)) || { e, n: e, g: 'chars' });
-    h = list.length ? section('', list.filter(d => d.g !== 'kaomoji'), 'mixed') + section('', list.filter(d => d.g === 'kaomoji'), 'wide')
-      : '<div class="empty">The ones you pick show up here.</div>';
-  } else if (S.cat === 'chars') {
+  } else if (S.tab === 'emoji') {
+    const most = mostUsed('emoji');
+    h = most.length ? section('Most used', most) : '<h2>Most used</h2><div class="empty">The ones you pick most show up here.</div>';
+    for (const [g, , title] of EMOJI_CATS) h += section(title, DATA.filter(d => d.g === g), '', g);
+  } else if (S.tab === 'symbols') {
+    h = section('Most used', mostUsed('symbols'), 'sym');
     for (const [g, title] of CHAR_GROUPS) h += section(title, DATA.filter(d => d.g === g), 'sym');
   } else {
-    h = section('', DATA.filter(d => d.g === S.cat), kindOf(S.cat));
+    h = section('Most used', mostUsed('kaomoji'), 'wide') + section('Kaomoji', DATA.filter(d => d.g === 'kaomoji'), 'wide');
   }
   $('#main').innerHTML = h;
-  $('#cats').querySelectorAll('button').forEach(b => b.classList.toggle('on', !S.q.trim() && b.dataset.cat === S.cat));
+  document.querySelectorAll('.tab').forEach(b => { const on = !searching && b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+  $('#cats').hidden = searching || S.tab !== 'emoji';
   if (!keepFocus) $('#main').scrollTop = 0;
   describe(document.activeElement);
 }
 function stripTone(e) { return TONES.slice(1).reduce((s, t) => s.split(t).join(''), e); }
 
 function renderCats() {
-  $('#cats').innerHTML = CATS.map(([id, icon, label]) => `<button data-cat="${id}" title="${esc(label)}">${esc(icon)}<span>${id === 'chars' || id === 'kaomoji' || id === 'recent' ? esc(label) : ''}</span></button>`).join('');
+  $('#cats').innerHTML = EMOJI_CATS.map(([id, icon, label]) => `<button data-cat="${id}" title="${esc(label)}" aria-label="${esc(label)}">${esc(icon)}</button>`).join('');
 }
-function renderTones() {
-  $('#tones').innerHTML = TONE_SHOW.map((t, i) => `<button class="tone ${S.tone === i ? 'on' : ''}" data-tone="${i}" title="${i ? 'Skin tone ' + i : 'No skin tone'}">${t}</button>`).join('');
+function renderTone() { $('#tone').textContent = TONE_SHOW[S.tone]; }
+function setTone(t) { S.tone = t; renderTone(); const f = document.activeElement?.dataset?.i; render(true); if (f != null) $(`.cell[data-i="${f}"]`)?.focus({ preventScroll: true }); invoke('set_tone', { tone: t }).catch(() => {}); }
+function setTab(t) { S.tab = t; S.q = ''; $('#q').value = ''; render(); }
+function stepTab(d) { const i = TABS.indexOf(S.tab); setTab(TABS[(i + d + TABS.length) % TABS.length]); focusFirst(); }
+function jumpTo(cat) {
+  if (S.tab !== 'emoji' || S.q) setTab('emoji');
+  const h = $('#sec-' + cat); if (!h) return;
+  h.scrollIntoView({ block: 'start' });
+  h.nextElementSibling?.querySelector('.cell')?.focus({ preventScroll: true });
+  document.querySelectorAll('#cats button').forEach(b => b.classList.toggle('on', b.dataset.cat === cat));
 }
-function setTone(t) { S.tone = t; renderTones(); const f = document.activeElement?.dataset?.i; render(true); if (f != null) $(`.cell[data-i="${f}"]`)?.focus({ preventScroll: true }); invoke('set_tone', { tone: t }).catch(() => {}); }
-function setCat(id) { S.cat = id; S.q = ''; $('#q').value = ''; render(); const c = $('#cats [data-cat="' + id + '"]'); c?.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }
-function stepCat(d) { const i = CATS.findIndex(c => c[0] === S.cat); setCat(CATS[(i + d + CATS.length) % CATS.length][0]); focusFirst(); }
 function focusFirst() { $('.cell')?.focus(); }
 
 function describe(el) {
   if (el && el.classList?.contains('cell')) {
     const d = shown[+el.dataset.i];
     $('#now').innerHTML = `<b>${esc(el.dataset.e.length > 6 ? '' : el.dataset.e)}</b><span>${esc(d ? d.n : '')}</span>`;
-  } else $('#now').innerHTML = `<span>${DATA.length ? 'Pick one to type it where you were. It\'s copied too.' : 'The emoji list is missing.'}</span>`;
+  } else $('#now').innerHTML = `<span>${DATA.length ? 'Super+. opens this anywhere you type · the controller works too' : 'The emoji list is missing.'}</span>`;
 }
 function hints() {
-  $('#hints').innerHTML = S.pad
-    ? '<span><i>A</i>Type</span><span><i>☰</i>Copy only</span><span><i>Y</i>Skin tone</span><span><i>X</i>Search</span><span><i>LB RB</i>Tabs</span><span><i>B</i>Close</span>'
-    : '<span><i>Enter</i>Type</span><span><i>Shift+Enter</i>Copy only</span><span><i>Tab</i>Next tab</span><span><i>Esc</i>Close</span>';
+  $('#app').classList.toggle('pad', S.pad);
+  $('#hints').innerHTML = '<span><i>A</i>Type</span><span><i>Y</i>Tone</span><span><i>X</i>Search</span><span><i>LB RB</i>Tabs</span><span><i>B</i>Close</span>';
 }
 
 let toastTimer = 0;
@@ -224,7 +243,7 @@ document.addEventListener('keydown', e => {
   const k = e.key;
   if (oskOpen()) { if (k === 'Escape') { e.preventDefault(); closeOsk(); } return; }
   if (k === 'Escape') { e.preventDefault(); if (S.q) { S.q = ''; $('#q').value = ''; render(); $('#q').focus(); } else close(); return; }
-  if (k === 'Tab') { e.preventDefault(); stepCat(e.shiftKey ? -1 : 1); return; }
+  if (k === 'Tab') { e.preventDefault(); stepTab(e.shiftKey ? -1 : 1); return; }
   if (inSearch) {
     if (k === 'ArrowDown' || (k === 'Enter' && !e.shiftKey && !e.ctrlKey)) { e.preventDefault(); if (k === 'Enter') return choose($('.cell'), false); focusFirst(); }
     if (k === 'Enter' && (e.shiftKey || e.ctrlKey)) { e.preventDefault(); choose($('.cell'), true); }
@@ -242,8 +261,9 @@ $('#q').addEventListener('input', () => { S.q = $('#q').value; render(); });
 document.addEventListener('focusin', e => describe(e.target));
 document.addEventListener('click', e => {
   const c = e.target.closest('.cell'); if (c) return choose(c, e.shiftKey || e.ctrlKey);
-  const cat = e.target.closest('[data-cat]'); if (cat) return setCat(cat.dataset.cat);
-  const t = e.target.closest('[data-tone]'); if (t) return setTone(+t.dataset.tone);
+  const tab = e.target.closest('[data-tab]'); if (tab) return setTab(tab.dataset.tab);
+  const cat = e.target.closest('[data-cat]'); if (cat) return jumpTo(cat.dataset.cat);
+  if (e.target.closest('#tone')) return setTone((S.tone + 1) % 6);
   if (e.target.closest('#close')) return close();
   const o = e.target.closest('.osk button'); if (o) return oskPress(o.dataset.k);
 });
@@ -312,8 +332,8 @@ function pad() {
     else if (k === 'b') { if (S.q) { S.q = ''; $('#q').value = ''; render(); focusFirst(); } else close(); }
     else if (k === 'x') openOsk();
     else if (k === 'y') setTone((S.tone + 1) % 6);
-    else if (k === 'lb') stepCat(-1);
-    else if (k === 'rb') stepCat(1);
+    else if (k === 'lb') stepTab(-1);
+    else if (k === 'rb') stepTab(1);
   }
 }
 HearthGamepad.loop(pad);
@@ -321,13 +341,13 @@ HearthGamepad.loop(pad);
 // ---------------------------------------------------------------- start
 renderCats(); hints();
 invoke('init').then(r => {
-  S.recent = r.recent || []; S.tone = r.tone || 0;
-  if (S.recent.length) S.cat = 'recent';
-}).catch(() => {}).finally(() => { renderTones(); render(); $('#q').focus(); });
+  S.recent = r.recent || []; S.most = r.most || []; S.tone = r.tone || 0;
+}).catch(() => {}).finally(() => { renderTone(); render(); $('#q').focus(); });
 
 // Without the app (the page opened in a browser, CI's screenshots): stand-ins.
 function demoInvoke(cmd, args) {
-  if (cmd === 'init') return Promise.resolve({ recent: ['😂', '❤️', '👍', '🔥', '¯\\_(ツ)_/¯', '→', '€'], tone: 0, platform: 'linux' });
+  if (cmd === 'init') return Promise.resolve({ recent: ['😂', '❤️', '👍', '🔥', '¯\\_(ツ)_/¯', '→', '€'],
+    most: ['🔥', '😂', '👍', '❤️', '🎮', '🐉', '😎', '🙏', '🎉', '💀', '🤔', '👀', '✅', '⚔️', '🚀', '😭', '🍕', '🛡️', '⭐', '🧙', '🏆', '¯\\_(ツ)_/¯', '→', '€'], tone: 0, platform: 'linux' });
   if (cmd === 'pick') return Promise.resolve({ copied: true, typed: !args.copyOnly });
   return Promise.resolve(null);
 }
