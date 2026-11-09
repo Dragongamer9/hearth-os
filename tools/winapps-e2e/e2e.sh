@@ -62,8 +62,32 @@ setup() {
   file "$W"/*.exe
   id tester >/dev/null 2>&1 || useradd -m tester
   chown -R tester: "$W"
+  umu_prefix || true
   note "FreeType in the test container (Wine's text)" "$(ls /usr/lib/x86_64-linux-gnu/libfreetype.so.6 /usr/lib/i386-linux-gnu/libfreetype.so.6 2>&1 | tr '\n' ' ')"
   note "Vulkan in the test container" "$(vulkaninfo --summary 2>&1 | grep -E 'deviceName|driverName|apiVersion' | head -6)"
+}
+
+# A prefix umu-launcher made, as on devices before hearth-proton-run (Hearth Mods' Tuxborn: GAMEID umu-489830,
+# PROTONPATH the built-in GE-Proton by its compatibilitytools.d link). With the network, as the test user, Hearth's
+# pinned umu-launcher (hearth-core tools.rs, checked against its SHA-256). Its start is expected to fail the way it does
+# on devices (its Steam Runtime container can't see /usr/share/hearth/proton); the prefix it set up is what the
+# network-off check starts again with hearth-proton-run. Best effort: without it the check makes umu's layout by hand.
+umu_prefix() {
+  local line url sum ge
+  line=$(grep 'pub const UMU: Tool' "$REPO/hosts/hearth-core/src/tools.rs")
+  url=$(printf '%s' "$line" | sed -n 's/.*url: "\([^"]*\)".*/\1/p'); sum=$(printf '%s' "$line" | sed -n 's/.*sha256: "\([^"]*\)".*/\1/p')
+  ge=$(sed -n 's/^GE_PROTON=//p' "$REPO/os-bases/peppermint/build.sh")
+  curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o /tmp/umu.tar "$url" && echo "$sum  /tmp/umu.tar" | sha256sum -c - >/dev/null \
+    || { echo "::warning title=umu-made prefix::couldn't fetch umu-launcher ($url)"; return 1; }
+  mkdir -p /opt/umu && tar -xf /tmp/umu.tar -C /opt/umu && chmod -R a+rX /opt/umu
+  local umu; umu=$(find /opt/umu -name umu-run -type f | head -1)
+  [ -n "$umu" ] || { echo "::warning title=umu-made prefix::no umu-run in $url"; return 1; }
+  cp "$W/hello64.exe" /tmp/umu-hello.exe && chmod a+r /tmp/umu-hello.exe
+  runuser -u tester -- env HOME=/home/tester WINEPREFIX=/home/tester/prefixes/umu-made GAMEID=umu-489830 STORE=none \
+    PROTONPATH="/usr/share/steam/compatibilitytools.d/$ge" timeout 1200 python3 "$umu" /tmp/umu-hello.exe > /tmp/umu.log 2>&1
+  local rc=$?
+  echo "::notice title=umu-made prefix (umu-launcher, network on; on devices this fails)::exit $rc; $(grep -iE 'not found|reserved|error|exit' /tmp/umu.log | tail -6 | tr '\n' '|' | cut -c1-1500); prefix: $(ls -la /home/tester/prefixes/umu-made 2>&1 | tail -8 | tr '\n' '|')"
+  [ -d /home/tester/prefixes/umu-made ]
 }
 
 wa() { timeout 900 xvfb-run -a -s '-screen 0 1280x720x24' python3 "$SHELLDIR/hearth-winapps" "$@"; }
@@ -153,6 +177,7 @@ offline() {
   note "offline: networking is off" "$(python3 -c 'import socket
 try: socket.create_connection(("1.1.1.1", 443), 5)
 except OSError as e: print(e)' 2>&1)"
+  touch "$HOME/.offline-start"
   mkdir -p "$HOME/fakebin"
   printf '#!/bin/sh\necho "$0 $*" >> "$HOME/umu-was-called"\nexit 99\n' > "$HOME/fakebin/umu-run"
   chmod +x "$HOME/fakebin/umu-run"
@@ -186,6 +211,18 @@ except OSError as e: print(e)' 2>&1)"
     || err "offline: no word about the missing saved Proton" "$(head -5 "$d/out.log")"
   # 5. The newest-GE pick and a Steam-engine style start (GAMEID umu-<app>, STORE steam): still offline, no Steam.
   hpr "a GE-Proton (newest) pick, Steam-style game id" hello64.exe WINEPREFIX="$HOME/prefixes/steam-70" GAMEID=umu-70 STORE=steam PROTONPATH=GE-Proton
+  # 5b. A prefix umu-launcher made (as on devices, e.g. Hearth Mods' Tuxborn) with the built-in GE-Proton named by its
+  # compatibilitytools.d link: the start that fails under umu on devices ("proton: not found", exit 127).
+  local up="$HOME/prefixes/umu-made" how="made by umu-launcher (setup, network on)"
+  if [ ! -d "$up" ]; then
+    how="umu's layout made by hand (umu-launcher wasn't run here)"
+    mkdir -p "$up/shadercache" && ln -sfn . "$up/pfx" && : > "$up/tracked_files"
+    mkdir -p "$up/drive_c/users/steamuser" && ln -sfn steamuser "$up/drive_c/users/$(id -un 2>/dev/null || echo tester)" 2>/dev/null
+  fi
+  d="$HOME/offline/a prefix umu made, PROTONPATH by its link"
+  hpr "a prefix umu made, PROTONPATH by its link" hello64.exe WINEPREFIX="$up" GAMEID=umu-489830 STORE=none \
+    PROTONPATH="/usr/share/steam/compatibilitytools.d/$GE"
+  if [ -f "$d/ran.txt" ]; then note "offline: umu-made prefix + GE-Proton link ran ($how)" "PROTONPATH=/usr/share/steam/compatibilitytools.d/$GE; $(grep -E '^hearth-proton-run:' "$d/out.log" | head -2); prefix: $(ls "$up" | tr '\n' ' ')"; fi
   # 6. The direct path: Windows apps (hearth-winapps runs the built-in Proton itself).
   rm -f "$W/ran.txt"
   out=$(timeout 900 "${X[@]}" $WA open "$W/hello64.exe" 2>&1); echo "$out" | tail -5
@@ -194,7 +231,7 @@ except OSError as e: print(e)' 2>&1)"
   # 7. Nothing downloaded, umu-run never called.
   if [ -e "$HOME/umu-was-called" ]; then err "offline: umu-run was called" "$(cat "$HOME/umu-was-called")"; fi
   for p in "$HOME/.local/share/umu" "$HOME/.local/share/nimbus/tools/umu"; do
-    [ ! -e "$p" ] || err "offline: something was downloaded" "$p exists"
+    [ -z "$(find "$p" -newer "$HOME/.offline-start" 2>/dev/null | head -1)" ] || err "offline: something changed in $p" "$(find "$p" -newer "$HOME/.offline-start" | head -5)"
   done
   [ "$FAILED" = 0 ] && note "offline: every Proton path worked with the network off" "built-in $GE, no Steam folder, no umu-run, nothing downloaded"
   return $FAILED

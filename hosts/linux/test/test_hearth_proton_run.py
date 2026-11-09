@@ -319,6 +319,7 @@ class Wiring(unittest.TestCase):
                         self.assertNotRegex(code, r'(has|on_path)\("umu-run"\)', '%s looks for umu-run instead of hearth-proton-run' % f)
                         if f not in faugus:
                             self.assertNotRegex(code, r'"umu-run"', '%s starts umu-run' % f)
+        self.assertIn('proton_run::modernize_desktop', read('hosts', 'hearth-core', 'src', 'manual.rs'))  # old entries naming umu-run
         for f, want in (('stores.rs', 'proton_run::command()'), ('manual.rs', 'proton_run::ready()'),
                         ('steam_engine.rs', 'proton_run::ready()'), ('recomps.rs', 'proton_run::exec_name'),
                         ('battlenet.rs', 'proton_run::command()')):
@@ -341,6 +342,8 @@ class Wiring(unittest.TestCase):
     def test_the_network_off_check_runs(self):
         e2e = read('tools', 'winapps-e2e', 'e2e.sh')
         self.assertIn('offline()', e2e)
+        self.assertIn('PROTONPATH="/usr/share/steam/compatibilitytools.d/$GE"', e2e)  # the link, as on devices
+        self.assertIn('umu_prefix', e2e)  # a prefix umu-launcher made
         self.assertIn('--network=none', read('.github', 'workflows', 'winapps.yml'))
         self.assertIn('--network=none', read('.github', 'workflows', 'base-peppermint.yml'))
 

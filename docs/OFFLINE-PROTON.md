@@ -36,6 +36,15 @@ those and carries on. The game itself isn't limited.
 | Windows apps | `hosts/linux/desktop/shell/hearth-winapps` | Proton directly |
 | Steam's own games | Valve's Steam | Steam's Proton (not Hearth's) |
 
+Why it matters beyond offline: under umu-run, the built-in GE-Proton doesn't start at all on devices (Hearth 1.9).
+umu's Steam Runtime container can't see `/usr/share/hearth/proton` (`/usr` is reserved by the container), so its shim
+fails with `proton: not found` and exit 127 (Hearth Mods' Tuxborn, a GOG game). hearth-proton-run uses no container.
+
+Menu entries Hearth wrote before this (a Wabbajack list's Mod Organizer 2 entry in `mods/modlists/`, a Recomp's
+`hearth-recomp-*.desktop`) name umu-run, often by its full path (`~/.local/share/nimbus/tools/umu/umu-run`). When Hearth
+starts one, umu-run is swapped for hearth-proton-run, and Hearth's own entry file is rewritten in place (atomically)
+so the menu starts it the same way. The Battle.net `run.sh` is rewritten the same way.
+
 umu-run (the system's, or Hearth's downloaded copy from `tools.rs`) is only used on a system that has no
 hearth-proton-run, such as another distro running Hearth's apps.
 
@@ -58,7 +67,8 @@ game starts.
   no Steam folder, no network use on the start path, protonfixes kept offline, every Hearth call site wired.
 - winapps.yml `offline` job: set up like the image, then with `podman run --network=none` it starts 64- and 32-bit
   Windows test programs through hearth-proton-run (a store game, your own game, a missing saved Proton, a Steam-style
-  id) and through hearth-winapps. A fake umu-run on the PATH fails the check if anything calls it
+  id, and a prefix umu-launcher made during setup started with `PROTONPATH=/usr/share/steam/compatibilitytools.d/GE-Proton*`,
+  the link, as on devices) and through hearth-winapps. A fake umu-run on the PATH fails the check if anything calls it
   (`tools/winapps-e2e/e2e.sh offline`).
 - base-peppermint.yml runs the same check inside the built image with the network off (`e2e.sh offline-image`), and
   the build stops if hearth-proton-run doesn't pick the built-in GE-Proton.

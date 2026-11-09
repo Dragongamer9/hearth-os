@@ -76,7 +76,8 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Resul
     let (cmd, argv, env, dir, proton) = if low.ends_with(".desktop") {
         let d = parse_desktop(&std::fs::read_to_string(file).unwrap_or_default());
         let exec = d.get("Exec").ok_or("That .desktop file has no Exec line")?;
-        let mut v = exec_argv(exec);
+        // An entry Hearth wrote before hearth-proton-run names umu-run: it starts with hearth-proton-run (proton_run.rs).
+        let mut v = crate::proton_run::modernize_desktop(Path::new(file), exec_argv(exec));
         if v.is_empty() { return Err("That .desktop file has no Exec line".into()); }
         let c = v.remove(0); v.extend(args);
         // "Path=" left empty (common in hand-made and exported .desktop files) means no folder of its own: starting

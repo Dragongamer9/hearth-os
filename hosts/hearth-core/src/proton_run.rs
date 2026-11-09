@@ -50,6 +50,44 @@ pub fn ready() -> Option<String> { pick(offline(), crate::system::has("umu-run")
 /// The program's name for a menu entry's Exec line (desktop files): hearth-proton-run is on the PATH in Hearth OS.
 pub fn exec_name() -> &'static str { if offline().is_some() { "hearth-proton-run" } else { "umu-run" } }
 
+/// Whether a command is umu-run, bare or by a full path (`~/.local/share/nimbus/tools/umu/umu-run`).
+pub fn is_umu(cmd: &str) -> bool { std::path::Path::new(cmd).file_name().map(|n| n == "umu-run").unwrap_or(false) }
+
+/// Exec words from a menu entry Hearth wrote before hearth-proton-run (Hearth Mods' Wabbajack lists, Recomps' Windows
+/// builds): umu-run swapped for `runner` (pure, for the tests). Under umu, the built-in GE-Proton fails on devices
+/// (umu's Steam Runtime container can't see /usr/share/hearth/proton: "proton: not found", exit 127).
+pub fn swap_umu(argv: Vec<String>, runner: &str) -> (Vec<String>, Vec<String>) {
+    let mut old = vec![];
+    let v = argv.into_iter().map(|t| if is_umu(&t) { old.push(t); runner.to_string() } else { t }).collect();
+    (v, old)
+}
+
+/// For a .desktop file Hearth starts: its Exec words with umu-run replaced by hearth-proton-run when this image has it.
+/// A file Hearth wrote itself (a Wabbajack list's or a Recomp's entry) is also rewritten in place, atomically, so menus
+/// start it the same way. Anything else is only changed for this start.
+pub fn modernize_desktop(file: &std::path::Path, argv: Vec<String>) -> Vec<String> {
+    let Some(runner) = offline() else { return argv };
+    let (v, old) = swap_umu(argv, &runner);
+    if old.is_empty() { return v; }
+    crate::bridge::log(&format!("launch: {} named umu-run; starting it with {runner} (offline, without Steam)", file.display()));
+    let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let ours = (name.starts_with("hearth-recomp-") || file.parent().and_then(|p| p.file_name()).map(|n| n == "modlists").unwrap_or(false))
+        && name.ends_with(".desktop");
+    if ours {
+        if let Ok(text) = std::fs::read_to_string(file) {
+            let mut new = text.clone();
+            for o in &old { new = new.replace(o.as_str(), &runner); }
+            if new != text {
+                let tmp = file.with_extension("desktop.tmp");
+                if std::fs::write(&tmp, &new).is_ok() && std::fs::rename(&tmp, file).is_ok() {
+                    crate::bridge::log(&format!("launch: {} now names {runner}", file.display()));
+                } else { let _ = std::fs::remove_file(&tmp); }
+            }
+        }
+    }
+    v
+}
+
 /// The message for a start whose saved Proton isn't on this device, from `--print-proton`'s line (name, folder, note):
 /// Some when hearth-proton-run substitutes the built-in one (pure, for the tests).
 pub fn substitute_message(print_line: &str) -> Option<String> {
@@ -77,6 +115,22 @@ pub fn warn_if_substituted(runner: &str, env: &[(String, String)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_entries_naming_umu_start_with_the_offline_launcher() {
+        let argv: Vec<String> = ["env", "WINEPREFIX=/p/pfx", "GAMEID=umu-489830", "/h/.local/share/nimbus/tools/umu/umu-run", "/m/ModOrganizer.exe"]
+            .iter().map(|s| s.to_string()).collect();
+        let (v, old) = swap_umu(argv, "/usr/bin/hearth-proton-run");
+        assert_eq!(v[3], "/usr/bin/hearth-proton-run");
+        assert_eq!(old, vec!["/h/.local/share/nimbus/tools/umu/umu-run".to_string()]);
+        assert_eq!(v[4], "/m/ModOrganizer.exe");
+        let (v, old) = swap_umu(vec!["umu-run".into(), "/g/Game.exe".into()], "/usr/bin/hearth-proton-run");
+        assert_eq!(v, vec!["/usr/bin/hearth-proton-run", "/g/Game.exe"]);
+        assert_eq!(old.len(), 1);
+        let (v, old) = swap_umu(vec!["/opt/game/run".into(), "my-umu-runner".into()], "/x");
+        assert_eq!(v, vec!["/opt/game/run", "my-umu-runner"]);
+        assert!(old.is_empty() && !is_umu("umu-run.sh") && is_umu("/usr/bin/umu-run"));
+    }
 
     #[test]
     fn a_missing_saved_proton_is_told_and_kept() {
