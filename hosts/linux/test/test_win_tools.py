@@ -400,7 +400,7 @@ console.log(JSON.stringify(out));
 class RunMapTest(unittest.TestCase):
     TYPED = ['taskmgr', 'TaskMgr.exe', 'diskmgmt.msc', 'devmgmt.msc', 'control', 'ms-settings:', 'ms-settings:display',
              'ms-settings:nothing-like-this', 'notepad', 'cmd', 'powershell', 'explorer', 'calc', 'msconfig', 'rstrui',
-             'perfmon /rel', 'appwiz.cpl', '%appdata%', '%LocalAppData%', '%temp%', '%userprofile%', '%appdata%\\discord',
+             'perfmon /rel', 'resmon', 'perfmon', 'appwiz.cpl', '%appdata%', '%LocalAppData%', '%temp%', '%userprofile%', '%appdata%\\discord',
              '%nope%', 'C:\\', 'C:\\Users\\me\\Documents', 'c:/Users/ME/Downloads', 'D:\\SteamLibrary', 'E:\\', '~/Music',
              '/etc', '\\\\gaming-pc\\Games', 'https://hearthos.fun', 'www.example.com', 'firefox', 'kcalc', 'htop -t', '  ', '???']
 
@@ -444,6 +444,10 @@ class RunMapTest(unittest.TestCase):
         r = self.run_js(['hearth-restore', 'hearth-reliability'])['resolve']
         self.assertEqual(r['rstrui']['argv'], ['hearth-restore'])
         self.assertEqual(r['perfmon /rel']['argv'], ['hearth-reliability'])
+        self.assertEqual(self.run_js([])['resolve']['resmon']['kind'], 'missing')
+        self.assertEqual(self.run_js(['hearth-resmon'])['resolve']['resmon']['argv'], ['hearth-resmon'])
+        self.assertEqual(self.run_js([])['resolve']['perfmon']['page'], 'performance')
+        self.assertIn('Resource Monitor', self.run_js(['hearth-resmon'])['winx'])
 
     def test_folders_paths_and_websites(self):
         r = self.run_js([])['resolve']
@@ -491,7 +495,7 @@ class RunMapTest(unittest.TestCase):
         full = self.run_js(['hearth-reliability', 'hearth-disks'])['winx']
         self.assertEqual(full[:8], ['Installed apps', 'Power options', 'Reliability history', 'System', 'Device Manager',
                                     'Network connections', 'Disk Management', '-'])
-        self.assertEqual(out['needed'], ['hearth-calculator', 'hearth-disks', 'hearth-reliability', 'hearth-restore', 'hearth-text', 'hearth-tools'])
+        self.assertEqual(out['needed'], ['hearth-calculator', 'hearth-disks', 'hearth-reliability', 'hearth-resmon', 'hearth-restore', 'hearth-text', 'hearth-tools'])
 
     def test_the_map_file(self):
         keys = [x['key'] for x in self.data['winx'] if not x.get('sep')]

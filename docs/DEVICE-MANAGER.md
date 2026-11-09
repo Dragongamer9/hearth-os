@@ -63,7 +63,7 @@ Super+R (it used to open the app menu's search; Super+S still does), Run in the 
 Esc (B) closes; Browse… picks a file with Hearth Files' Open dialog.
 
 - **Windows commands** (one data file, `hosts/linux/desktop/shell/win-commands.json`; add a line to add one):
-  taskmgr → Task Manager; msconfig → Task Manager › Startup apps; resmon / perfmon → Performance; devmgmt.msc → Device
+  taskmgr → Task Manager; msconfig → Task Manager › Startup apps; resmon → Resource Monitor; perfmon → Performance; devmgmt.msc → Device
   Manager; diskmgmt.msc → Hearth Disks; control, ms-settings: (and ms-settings:display, :bluetooth, :windowsupdate…)
   → Settings; the .cpl files (ncpa, mmsys, desk, main, powercfg, timedate, sysdm, intl, appwiz) → their Settings page
   or Files' Installed apps; notepad → Text Editor; cmd, powershell, wt → Terminal; explorer → Files; calc →

@@ -3,7 +3,8 @@
   "commands": [
     { "names": ["taskmgr"], "opens": "Task Manager", "do": { "kind": "tasks", "page": "" } },
     { "names": ["msconfig"], "opens": "Task Manager › Startup apps", "do": { "kind": "tasks", "page": "startup" } },
-    { "names": ["resmon", "perfmon"], "opens": "Task Manager › Performance", "do": { "kind": "tasks", "page": "performance" } },
+    { "names": ["resmon"], "opens": "Resource Monitor", "do": { "kind": "exec", "argv": ["hearth-resmon"] }, "needs": "hearth-resmon" },
+    { "names": ["perfmon"], "opens": "Task Manager › Performance", "do": { "kind": "tasks", "page": "performance" } },
     { "names": ["perfmon /rel"], "opens": "Reliability history", "do": { "kind": "exec", "argv": ["hearth-reliability"] }, "needs": "hearth-reliability" },
     { "names": ["devmgmt.msc", "devmgmt", "hdwwiz.cpl"], "opens": "Device Manager", "do": { "kind": "devices" } },
     { "names": ["diskmgmt.msc", "diskmgmt"], "opens": "Disk Management (Hearth Disks)", "do": { "kind": "exec", "argv": ["hearth-disks"] }, "needs": "hearth-disks" },
@@ -55,6 +56,7 @@
     { "sep": true },
     { "label": "Terminal", "key": "I", "do": { "kind": "terminal" } },
     { "label": "Task Manager", "key": "T", "do": { "kind": "tasks", "page": "" } },
+    { "label": "Resource Monitor", "key": "C", "do": { "kind": "exec", "argv": ["hearth-resmon"] }, "needs": "hearth-resmon" },
     { "label": "Settings", "key": "N", "do": { "kind": "settings", "page": "" } },
     { "label": "Files", "key": "E", "do": { "kind": "files", "path": "" } },
     { "label": "Search", "key": "S", "do": { "kind": "search" } },
