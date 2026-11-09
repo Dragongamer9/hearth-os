@@ -32,10 +32,31 @@ Game Mode's power menu keeps **Steam Game Mode** for a one-off visit to Steam's.
 
 ## Steam games in Hearth Game Mode
 
-They still play through the real Steam client: Hearth starts Steam hidden in the background (when Steam has been used on
-this PC before) and hands it the game, so Steam's overlay, cloud saves and play time all work. Your other stores' games
-(Epic, GOG, Battle.net, Xbox, emulators, Beacon, Recomps, games you added) play through Hearth, as they do from Steam's
-library with Hearth Sync. Hearth Sync and Decky only run in Steam Game Mode.
+**Play Steam games in Steam Game Mode** (on unless you turn it off; Hearth Game Mode's Settings › System and Mantel's
+Settings › Gaming › Game Mode, shown when Hearth Game Mode is picked):
+
+- **On:** Play on a Steam game shows "Opening in Steam Game Mode…", Hearth closes, and Steam Game Mode opens with that
+  game starting straight away (`steam://rungameid/<id>` on Steam's command line). When the game has ended (its process
+  tree under Steam's reaper, `SteamLaunch AppId=<id>`, gone for a few seconds, so a launcher handing over to the game
+  doesn't count), you're back in Hearth Game Mode by itself.
+  - Started something else from Steam's library and it's still running when that game ends? Steam Game Mode stays.
+  - Quick Access › Hearth Sync › Game Mode has **Back to Hearth Game Mode** any time during that visit.
+  - The game never starting: Steam Game Mode stays (with that Back button).
+  - Steam Game Mode can't run, is paused, fails right away or closes by itself: back to **Hearth Game Mode** (not
+    Mantel) for that run, and Hearth says why once. If Hearth Game Mode then fails too, the usual order goes on
+    (Mantel, since Steam Game Mode has just failed): never back and forth.
+  - Your Game Mode choice stays Hearth Game Mode: the switch is a one-shot request (`$XDG_RUNTIME_DIR/hearth-steam-game`,
+    the app id) the session reads and deletes; session.conf is never touched by it.
+- **Off:** Steam games play from Hearth Game Mode through the real Steam client, as below.
+
+Steam games played from Hearth Game Mode go through the real Steam client: Hearth starts Steam hidden in the background
+(when Steam has been used on this PC before) and hands it the game, so Steam's overlay, cloud saves and play time all
+work. Your other stores' games (Epic, GOG, Battle.net, Xbox, emulators, Beacon, Recomps, Windows apps, games you added)
+always play inside Hearth Game Mode. Hearth Sync and Decky only run in Steam Game Mode.
+
+The switch is `HEARTH_STEAM_GAMES_IN_STEAM=on|off` in session.conf (no line = on; only exactly `off` is off), written only
+by `hearth-game-mode steam-games on|off` when you flip it. Session side: the `steam game` block of nimbus-session
+(`steam_game_take`, `steam_game_cant`, `steam_game_watch`); Hearth side: `gameMode.playSteam` (game_mode_choice.rs).
 
 ## When Hearth Game Mode can't start
 

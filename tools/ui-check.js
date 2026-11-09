@@ -2415,12 +2415,17 @@ const path = require('path');
         // A fallback this sign-in: the reason and Try again.
         GMC.s = Object.assign({}, GMC.s, { fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)" });
         const h = pageSystem(); r.retry = /data-k="sy-gm-retry"/.test(h) && /Your choice is still Hearth Game Mode/.test(h);
+        // "Play Steam games in Steam Game Mode": on by default (no key saved), shown with Hearth Game Mode picked.
+        r.sgRow = /data-k="sy-gm-steamgames"/.test(h) && /Play Steam games in Steam Game Mode<\/b><small>Play on a Steam game opens it in Steam Game Mode/.test(h);
+        r.notEpic = !steamInSteamMode({ id: 'epic:x', src: 'epic' });
         GMC.s = Object.assign({}, GMC.s, { fallback: '' });
         r.wasFeat = was; return r; });
       if (!st.steam || !st.hearth || st.pics !== 2) derr('Settings › System has no Game Mode cards: ' + JSON.stringify(st));
       if (!st.on || st.steamOn) derr('the Game Mode cards do not show Hearth Game Mode in use: ' + JSON.stringify(st));
       if (st.moved !== 'sy-gm-steam') derr('Left on the Hearth Game Mode card did not move to Steam Game Mode: ' + st.moved);
       if (!st.retry) derr("Hearth Game Mode's fallback is not shown with Try again");
+      if (!st.sgRow) derr('Play Steam games in Steam Game Mode is missing, or not on by default');
+      if (!st.notEpic) derr('a non-Steam game would open in Steam Game Mode');
       await dev(() => { closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false); });
       // (After the page has settled: it puts the selection on its first row by itself.)
       await dp.waitForTimeout(700);

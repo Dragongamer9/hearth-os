@@ -60,6 +60,7 @@ const shots = [
   ["hearth-sync-panel-game-mode", "synced", async () => { await scrollTo("Game Mode"); await focus("Hearth Game Mode"); }, ["Game Mode", "✓ Steam Game Mode (in use, default)", "Hearth Game Mode", "Applies the next time Game Mode starts"]],
   ["hearth-sync-panel-game-mode-picked", "synced", async () => { await btn("Hearth Game Mode"); await page.waitForTimeout(300); await scrollTo("Game Mode"); await focus("Switch to Hearth"); }, ["✓ Hearth Game Mode (in use)", "Switch to Hearth Game Mode now"]],
   ["hearth-sync-panel-game-mode-fallback", "gamemode-fallback", async () => { await scrollTo("Game Mode"); await focus("Try Hearth"); }, ["Hearth Game Mode didn't start", "3 times within 2 minutes", "Your choice is still Hearth Game Mode", "Try Hearth Game Mode again"]],
+  ["hearth-sync-panel-steam-game", "steam-game", async () => { await scrollTo("Game Mode"); await focus("Back to Hearth"); }, ["Back to Hearth Game Mode", "You're here for one Steam game"]],
   ["hearth-sync-panel-remove-confirm", "synced", async () => { await btn("Remove all"); await page.waitForTimeout(300); await focus("Press again"); }, ["Press again to remove them", "your other non-Steam games stay"]],
 ];
 for (const [name, st, act, wants] of shots) {

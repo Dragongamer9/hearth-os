@@ -33,6 +33,7 @@ const importState = () => ({ "import-waiting": { pending: true, result: null },
 // and the reason it didn't start.
 const gameModeFor = () => (state() === "gamemode-fallback"
   ? { choice: "hearth", saved: true, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)", paused: "" }
+  : state() === "steam-game" ? { choice: "hearth", saved: true, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "", paused: "", steamGame: "570" }
   : { choice: "steam", saved: false, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "", paused: "" });
 const handlers = {
   get_games: (force) => (force && state() === "syncing" ? new Promise(() => {}) : { ok: true, error: null, games, signature: "s" }),

@@ -3,7 +3,8 @@
 // helper keeps it (main.py game_mode_*: hearth-game-mode, one line of session.conf, only when you pick one); it applies
 // the next time Game Mode starts, and "Switch now" asks the session (nimbus-mode), which closes Steam properly first.
 // When Hearth Game Mode couldn't start (the session opened Steam Game Mode instead), it says why here and once as a
-// toast, with "Try Hearth Game Mode again". Nothing of Steam's screens is changed.
+// toast, with "Try Hearth Game Mode again". While Steam Game Mode is open for one Steam game started from Hearth Game Mode,
+// "Back to Hearth Game Mode" is first. Nothing of Steam's screens is changed.
 import { ButtonItem, PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
 import { callable, toaster } from "@decky/api";
 import { useEffect, useState } from "react";
@@ -11,6 +12,8 @@ import { useEffect, useState } from "react";
 export interface GameModeState {
   choice?: "steam" | "hearth"; saved?: boolean; hearth?: { ok: boolean; why: string }; steam?: { ok: boolean; why: string };
   fallback?: string; paused?: string; error?: string;
+  // A Steam game opened from Hearth Game Mode (its app id): Steam Game Mode is here for that one game.
+  steamGame?: string;
 }
 const getGm = callable<[], GameModeState>("game_mode_get");
 const setGm = callable<[choice: string], GameModeState>("game_mode_set");
@@ -56,6 +59,13 @@ export function GameModeSection() {
   );
   return (
     <PanelSection title="Game Mode">
+      {st.steamGame && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={() => go("hearth")} description="You're here for one Steam game. Hearth Game Mode comes back by itself when it ends; this goes now (Steam closes properly first).">
+            Back to Hearth Game Mode
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
       <PanelSectionRow>
         <div className={staticClasses.Text} style={{ fontSize: 12, color: "#b8bcbf" }}>Which Game Mode this PC goes into. Applies the next time Game Mode starts.</div>
       </PanelSectionRow>

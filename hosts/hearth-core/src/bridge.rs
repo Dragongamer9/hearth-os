@@ -531,6 +531,26 @@ impl Bridge {
             // ---- Which Game Mode (game_mode_choice.rs, docs/HEARTH-GAME-MODE.md): Settings › System › Game Mode.
             "gameMode.get" => crate::game_mode_choice::get(),
             "gameMode.set" => crate::game_mode_choice::set(a),
+            "gameMode.setSteamGames" => crate::game_mode_choice::set_steam_games(a),
+            // Why the last Steam game couldn't open in Steam Game Mode (the session came back here), once.
+            "gameMode.notice" => crate::game_mode_choice::run(&["notice", "hearth"]),
+            // Play on a Steam game in Hearth Game Mode, with "Play Steam games in Steam Game Mode" on: the one-shot request
+            // for the session, then Hearth closes (the session opens Steam Game Mode for that game and comes back here
+            // when it ends). Refused (the page then starts it here as before) when any of it doesn't hold.
+            "gameMode.playSteam" => {
+                let id = req("id")?;
+                let app = crate::game_mode_choice::steam_app_id(&id).ok_or("Not a Steam game")?.to_string();
+                let pc = self.profiles.can_play(Some(&id), chrono::Local::now(), 0.0);
+                if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
+                let st = crate::game_mode_choice::get()?;
+                crate::game_mode_choice::steam_game_ok(&st, crate::signin_handoff::game_mode())?;
+                let run = std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
+                crate::game_mode_choice::write_steam_request(&run, &app)?;
+                log(&format!("steam game: {id} opens in Steam Game Mode (back here when it ends)"));
+                let emit = self.emit.clone();
+                std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1200)); emit(json!({"type": "quit"})); });
+                Ok(json!({"switching": true}))
+            }
             // Switch now / Try Hearth Game Mode again: in Game Mode, Hearth closes properly and the session opens it; from a
             // Hearth window in Desktop Mode, through nimbus-mode (which closes Desktop Mode).
             "gameMode.switchNow" => {

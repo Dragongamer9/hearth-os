@@ -9,10 +9,14 @@ Steam Game Mode. Hearth never writes it by itself: when Hearth Game Mode can't s
 run_hearth_mode) falls back for that start (Steam Game Mode, then Mantel), says why, and the choice stays as it is.
 nimbus-session reads the same line with the same rules (game_mode_choice).
 
-  hearth-game-mode get              JSON: {choice, saved, hearth: {ok, why}, steam: {ok, why}, now, fallback, paused, live}
+  hearth-game-mode get              JSON: {choice, saved, hearth: {ok, why}, steam: {ok, why}, now, fallback, paused, live,
+                                    steamGames, steamGamesSaved, steamGame}
   hearth-game-mode choice           print steam or hearth (what the session uses)
   hearth-game-mode set steam|hearth save your choice (nothing is written when it's already that); prints get's JSON
-  hearth-game-mode notice WHERE     the fallback note once per place (steam, desktop or hearth): {"text": ...} or {}
+  hearth-game-mode steam-games on|off   "Play Steam games in Steam Game Mode" (Hearth Game Mode): on unless you turned
+                                    it off; written only when you flip it (HEARTH_STEAM_GAMES_IN_STEAM, the same way)
+  hearth-game-mode notice WHERE     the fallback note once per place (steam, desktop or hearth): {"text": ...} or {}.
+                                    For hearth: why a Steam game couldn't open in Steam Game Mode (hearth-steam-game-failed)
 
 Python standard library only.
 """
@@ -28,6 +32,8 @@ sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 
 KEY = 'HEARTH_GAME_MODE_CHOICE'
+# "Play Steam games in Steam Game Mode" (docs/HEARTH-GAME-MODE.md): only exactly "off" turns it off; no line is on.
+STEAM_GAMES_KEY = 'HEARTH_STEAM_GAMES_IN_STEAM'
 CHOICES = ('steam', 'hearth')
 DEFAULT = 'steam'
 NOTICE_PLACES = ('steam', 'desktop', 'hearth')
@@ -74,6 +80,12 @@ def choice_from(text, env_legacy=None):
         return ('hearth' if v == 'hearth' else 'steam'), True
     legacy = env_legacy == '1' or _last(text, 'HEARTH_LEGACY_GAME_MODE') == '1'
     return ('hearth' if legacy else DEFAULT), False
+
+
+def steam_games_from(text):
+    """(on, saved): the same rules as nimbus-session's steam_games_on. Only exactly "off" is off."""
+    v = _last(text, STEAM_GAMES_KEY)
+    return (v != 'off'), (v is not None)
 
 
 def current():
@@ -129,6 +141,10 @@ def status():
         # Hearth Game Mode failed twice within 10 minutes: every start opens the next one until you try it again.
         'paused': _read(os.path.join(state_dir(), 'hearth-gm-off')),
         'live': live(),
+        'steamGames': steam_games_from(read_conf())[0],
+        'steamGamesSaved': steam_games_from(read_conf())[1],
+        # A Steam game opened in Steam Game Mode from Hearth Game Mode right now (its app id), or ''.
+        'steamGame': _read(os.path.join(run_dir(), 'hearth-steam-game-active'), 16),
     }
 
 
@@ -150,11 +166,28 @@ def set_choice(value):
     return status()
 
 
+def set_steam_games(value):
+    if value not in ('on', 'off'):
+        raise ValueError('on or off')
+    import hearth_settings_io as io
+    path = conf_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    def change(text):
+        on, saved = steam_games_from(text)
+        if saved and _last(text, STEAM_GAMES_KEY) == value:
+            return text
+        return io.conf_set_text(text, STEAM_GAMES_KEY, value)
+
+    io.update_text(path, change)
+    return status()
+
+
 def notice(where):
     """The fallback note for one place, once: Steam Game Mode (Hearth Sync's toast), Mantel, or Hearth Game Mode."""
     if where not in NOTICE_PLACES:
         raise ValueError('steam, desktop or hearth')
-    note = os.path.join(run_dir(), 'hearth-game-mode-failed')
+    note = os.path.join(run_dir(), 'hearth-steam-game-failed' if where == 'hearth' else 'hearth-game-mode-failed')
     mark = os.path.join(run_dir(), 'hearth-gm-notice-' + where)
     text = _read(note, 300)
     if not text:
@@ -180,10 +213,12 @@ def main(argv):
             print(current()[0])
         elif cmd == 'set' and len(argv) == 3:
             print(json.dumps(set_choice(argv[2])))
+        elif cmd == 'steam-games' and len(argv) == 3:
+            print(json.dumps(set_steam_games(argv[2])))
         elif cmd == 'notice' and len(argv) == 3:
             print(json.dumps(notice(argv[2])))
         else:
-            print('error: usage: hearth-game-mode get | choice | set steam|hearth | notice steam|desktop|hearth')
+            print('error: usage: hearth-game-mode get | choice | set steam|hearth | steam-games on|off | notice steam|desktop|hearth')
             return 2
     except (ValueError, OSError) as e:
         print('error: %s' % e)

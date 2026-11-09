@@ -125,6 +125,16 @@ ColumnLayout {
         chevron: true
         onActivated: Quickshell.execDetached(["nimbus-mode", gm.picked === "hearth" ? "hearth" : "game"])
     }
+    // "Play Steam games in Steam Game Mode" (docs/HEARTH-GAME-MODE.md, "Steam games"): with Hearth Game Mode picked, Play on
+    // a Steam game opens it in Steam Game Mode and comes back when it ends. On unless turned off; saved only when flipped.
+    SetSwitch {
+        objectName: "gm-steam-games"
+        visible: !!gm.st && gm.st.choice === "hearth"
+        icon: "steam"; title: "Play Steam games in Steam Game Mode"
+        sub: "In Hearth Game Mode, Play on a Steam game opens it in Steam Game Mode, then comes back when the game ends"
+        checked: !gm.st || gm.st.steamGames !== false
+        onToggled: v => job.run(["steam-games", v ? "on" : "off"], r => { gm.st = r; }, e => gm.msg = e)
+    }
     // Hearth Game Mode didn't start this sign-in, or is paused after failing twice: why, and a way to try again.
     SetRow {
         objectName: "gm-fallback"

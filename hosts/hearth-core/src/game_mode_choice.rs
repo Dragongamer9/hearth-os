@@ -37,6 +37,36 @@ pub fn set(args: &Value) -> Result<Value, String> {
     Ok(v)
 }
 
+/// `gameMode.setSteamGames` {on}: "Play Steam games in Steam Game Mode" (on unless turned off; written only when flipped).
+pub fn set_steam_games(args: &Value) -> Result<Value, String> {
+    let on = args["on"].as_bool().ok_or("on or off")?;
+    run(&["steam-games", if on { "on" } else { "off" }])
+}
+
+/// A Steam game's app id from a library id ("steam:570"): only digits, at most 10; anything else isn't one.
+pub fn steam_app_id(id: &str) -> Option<&str> {
+    id.strip_prefix("steam:").filter(|a| !a.is_empty() && a.len() <= 10 && a.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Whether Play on this game should open Steam Game Mode, from the helper's answer: Hearth Game Mode is the one you
+/// picked and the one running, the switch is on, Steam Game Mode can run and isn't paused.
+pub fn steam_game_ok(st: &Value, in_hearth_gm: bool) -> Result<(), String> {
+    if !in_hearth_gm { return Err("Only from Hearth Game Mode".into()); }
+    if st["choice"] != "hearth" || st["live"] == true { return Err("Hearth Game Mode isn't your Game Mode".into()); }
+    if st["steamGames"] == false { return Err("Play Steam games in Steam Game Mode is off".into()); }
+    if st["steam"]["ok"] == false { return Err(st["steam"]["why"].as_str().unwrap_or("Steam Game Mode can't run here").to_string()); }
+    Ok(())
+}
+
+/// The one-shot request the session reads and deletes ($XDG_RUNTIME_DIR/hearth-steam-game): the app id, written
+/// whole (a temporary file renamed over it), then "steamgame" for the session. Never session.conf.
+pub fn write_steam_request(run_dir: &std::path::Path, app: &str) -> Result<(), String> {
+    let tmp = run_dir.join(".hearth-steam-game.tmp");
+    std::fs::write(&tmp, format!("{app}\n")).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, run_dir.join("hearth-steam-game")).map_err(|e| e.to_string())?;
+    std::fs::write(run_dir.join("nimbus-next"), "steamgame\n").map_err(|e| e.to_string())
+}
+
 /// What `gameMode.switchNow` asks the session for: Hearth Game Mode by name ("hearth": also ends its pause after two
 /// failures, as Try again should) or the Game Mode you picked ("game").
 pub fn switch_target(args: &Value) -> &'static str { if args["to"] == "hearth" { "hearth" } else { "game" } }
@@ -78,6 +108,24 @@ mod tests {
         for bad in ["", "Hearth", "desktop", "steam;rm", "hearth\n"] { assert!(!valid(bad), "{bad:?}"); }
         assert!(set(&json!({"choice": "desktop"})).is_err());
         assert!(set(&json!({})).is_err());
+    }
+
+    #[test]
+    fn steam_games_request() {
+        assert_eq!(steam_app_id("steam:570"), Some("570"));
+        for bad in ["steam:", "steam:57a", "epic:570", "steam:570;rm", "steam:12345678901", "570"] { assert_eq!(steam_app_id(bad), None, "{bad}"); }
+        let ok = json!({"choice": "hearth", "live": false, "steamGames": true, "steam": {"ok": true, "why": ""}});
+        assert!(steam_game_ok(&ok, true).is_ok());
+        assert!(steam_game_ok(&ok, false).is_err(), "not from a Hearth window in Desktop Mode");
+        let mut v = ok.clone(); v["steamGames"] = json!(false); assert!(steam_game_ok(&v, true).is_err());
+        let mut v = ok.clone(); v["choice"] = json!("steam"); assert!(steam_game_ok(&v, true).is_err());
+        let mut v = ok.clone(); v["steam"] = json!({"ok": false, "why": "Steam isn't installed"});
+        assert_eq!(steam_game_ok(&v, true).unwrap_err(), "Steam isn't installed");
+        let dir = tempfile::tempdir().unwrap();
+        write_steam_request(dir.path(), "570").unwrap();
+        assert_eq!(std::fs::read_to_string(dir.path().join("hearth-steam-game")).unwrap(), "570\n");
+        assert_eq!(std::fs::read_to_string(dir.path().join("nimbus-next")).unwrap(), "steamgame\n");
+        assert!(!dir.path().join(".hearth-steam-game.tmp").exists());
     }
 
     #[test]

@@ -1623,7 +1623,7 @@ function openStartPage(p){
   if(p==='recomps'){ if(typeof SHOP==='object') SHOP.store='recomps'; navigate('shop',{},false); return; }
   if(['stores','library','downloads'].includes(p)) navigate(p,{},false);
 }
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(LINUX&&!OVERLAY&&hasFeat('gameModeChoice')) gmStart(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -4348,6 +4348,7 @@ function gameModeRows(){
       <b>${c.t}${on?`<em>${c.v==='steam'&&!s.saved?'In use (default)':'In use'}</em>`:''}</b><small>${ready?c.d:'Can\'t start here: '+esc((s[c.v]||{}).why||'')+'.'}</small></button>`; }).join('')}</div>`;
   if(s.choice==='hearth' && (s.fallback || s.paused)) h += sgrid(`<button class="row" data-f data-k="sy-gm-retry" data-act="gmRetry"><span class="ricon">${I.pad}</span><div class="rt"><b>${s.paused?'Hearth Game Mode is paused':'Hearth Game Mode didn\'t start last time'}</b><small>${s.paused?'It failed twice ('+esc(s.paused)+'), so Game Mode opens Steam Game Mode until you try again.':'Why: '+esc(s.fallback)+'. Steam Game Mode (or Desktop Mode) opened instead.'} Your choice is still Hearth Game Mode.</small></div><div class="rv">Try again ›</div></button>`);
   else h += note('Applies the next time Game Mode starts. Game Mode buttons, signing in and Server mode\'s Play all open the one you pick.');
+  if(s.choice==='hearth') h += sgrid(`<button class="row" data-f data-k="sy-gm-steamgames" data-act="gmSteamGames"><span class="ricon">${I.pad}</span><div class="rt"><b>Play Steam games in Steam Game Mode</b><small>${s.steamGames!==false?'Play on a Steam game opens it in Steam Game Mode, then comes back here when it ends':'Steam games start here in Hearth Game Mode, through Steam'}</small></div><div class="sw ${s.steamGames!==false?'on':''}"></div></button>`);
   return h;
 }
 function gmPick(v){
@@ -4361,6 +4362,29 @@ function gmPick(v){
       {label:`Switch to ${name} now`, icon:'pad', run:()=>{ toast(`Starting ${name}…`); call('gameMode.switchNow',{to:v}).catch(e=>toast(e.message)); }},
       {label:'Later', icon:'check', run:()=>{}}]});
   }).catch(e=>toast(e.message)).finally(()=>{ GMC.busy=false; });
+}
+// Steam games in Steam Game Mode (docs/HEARTH-GAME-MODE.md, "Steam games"): read once at start, so Play knows; and the
+// session's note when the last one couldn't open there (it came back here), shown once.
+function gmStart(){
+  call('gameMode.get').then(r=>{ GMC.s=r; }).catch(()=>{});
+  call('gameMode.notice').then(r=>{ if(r && r.text) toast(`The game couldn't open in Steam Game Mode: ${r.text}. You're back in ${APP} Game Mode.`); }).catch(()=>{});
+}
+function steamInSteamMode(g){
+  const s=GMC.s;
+  return LINUX && host && !OVERLAY && !!g && g.src==='steam' && /^steam:\d{1,10}$/.test(g.id) && !!s && s.choice==='hearth' && s.now==='game' && s.steamGames!==false && !s.live;
+}
+// Play on a Steam game: a short screen, then the session opens Steam Game Mode for that game and comes back when it ends.
+// Refused (Steam Game Mode can't run, the switch is off...): it starts here as before.
+function steamGameMode(g){
+  const L=$('#launch');
+  L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">Opening in Steam Game Mode… You'll be back here when the game ends.</div></div>`;
+  closeAll();
+  focusStack.push({el:focused, k:focused?.dataset.k}); S.layers.push('launch'); L.classList.add('open'); renderFooter();
+  call('gameMode.playSteam',{id:g.id}).catch(e=>{ hideLaunch(); toast(`${e.message}. Starting it here instead.`); launch(g, undefined, undefined, true); });
+}
+function gmSteamGames(){
+  const on=!(GMC.s && GMC.s.steamGames!==false);
+  call('gameMode.setSteamGames',{on}).then(r=>{ GMC.s=r; render('sy-gm-steamgames',true); toast(on?'Steam games open in Steam Game Mode':'Steam games start here in Hearth Game Mode'); }).catch(e=>toast(e.message));
 }
 function gmRetry(){ toast('Trying Hearth Game Mode again…'); call('gameMode.switchNow',{to:'hearth'}).catch(e=>toast(e.message)); }
 function sgmDecky(){
@@ -10554,6 +10578,7 @@ function act(el){
     case 'sgmDecky': return sgmDecky();
     case 'gmPick': return gmPick(d.v);
     case 'gmRetry': return gmRetry();
+    case 'gmSteamGames': return gmSteamGames();
     case 'sgmDefault': return sgmDefault();
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
@@ -10647,7 +10672,7 @@ function steamCloudConflict(g, c, relaunch){
     {label:'Keep the Steam Cloud saves', icon:'dl', run:()=>pick('cloud')},
     {label:'Keep both (this device\'s go in a folder)', icon:'check', run:()=>pick('both')}]});
 }
-function launch(g, mod, save){
+function launch(g, mod, save, here){
   if(isFrozen(g)) return quickResume(g.id);
   if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
   let aside=null;
@@ -10658,6 +10683,7 @@ function launch(g, mod, save){
     if(cur && cur.cloud){ toast(`Close ${cur.title} first: cloud games can't be put aside`); return; }
     aside=cur;
   }
+  if(!aside && !mod && !save && !here && steamInSteamMode(g)) return steamGameMode(g);
   if(aside) toast(`${aside.title} is put aside (Quick Resume)`);
   const L=$('#launch');
   L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}${mod?(mod==='@none'?' without mods':' with '+esc(beaconModName(g,mod))):''}…`}</div></div>`;

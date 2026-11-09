@@ -466,6 +466,10 @@ class GameMode(unittest.TestCase):
         self.m.GAME_MODE_HELPERS = (os.path.join(self.tmp, 'nope'),)
         self.assertIn('update Hearth OS', self.m.game_mode_call(['get'], run=self.fake('{}'))['error'])
 
+    def test_the_one_game_mode_comes_through(self):
+        r = self.m.game_mode_call(['get'], run=self.fake('{"choice": "hearth", "steamGame": "570"}\n'))
+        self.assertEqual(r['steamGame'], '570')
+
     def test_switch_only_to_a_game_mode(self):
         seen = []
         prog = os.path.join(self.tmp, 'nimbus-mode')

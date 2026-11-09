@@ -54,7 +54,7 @@ def sha(p):
         return None
 
 
-class Helper(unittest.TestCase):
+class HelperBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix='hearth-gm-helper-')
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -79,6 +79,8 @@ class Helper(unittest.TestCase):
         with open(self.conf, 'w') as f:
             f.write(text)
 
+
+class Helper(HelperBase):
     def test_default_is_steam_game_mode_and_reading_writes_nothing(self):
         g = self.get()
         self.assertEqual(g['choice'], 'steam')
@@ -202,7 +204,9 @@ item=$(echo "$list" | tr ',' '\n' | sed -n "${n}p")
 [ -n "$item" ] || item=$(echo "$list" | tr ',' '\n' | tail -n 1)
 R="$XDG_RUNTIME_DIR"
 echo "$role env HEARTH_STEAM_ONLY=${HEARTH_STEAM_ONLY:-}" >>"$FAKE_CALLS.env"
+[ "$role" = steam ] && echo "$*" >>"$FAKE_CALLS.args"
 case "$item" in
+  req:*) echo "${item#req:}" >"$R/hearth-steam-game"; echo steamgame >"$R/nimbus-next"; exit 0 ;;
   crash) echo "Hearth's app closed with an error 3 times within 2 minutes (code 1)" >"$R/hearth-game-mode-crashed"; exit 1 ;;
   quick) exit 1 ;;
   quit0) exit 0 ;;
@@ -216,7 +220,7 @@ exit 0
 '''
 
 
-class WholeSession(unittest.TestCase):
+class SessionBase(unittest.TestCase):
     """nimbus-session from start to the end of the session, with stand-ins."""
 
     def setUp(self):
@@ -280,6 +284,8 @@ class WholeSession(unittest.TestCase):
         except OSError:
             return None
 
+
+class WholeSession(SessionBase):
     # ---- the default stays exactly as before
 
     def test_default_is_steam_game_mode_and_hearth_never_starts(self):
@@ -424,6 +430,164 @@ class MantelNotice(unittest.TestCase):
         self.assertNotIn('steam:', out)
         self.assertNotIn('"text"', out, 'each shown once')
         self.assertFalse(os.path.exists(os.path.join(tmp, 'cfg')), 'nothing written to your settings')
+
+
+class SteamGames(SessionBase):
+    """Steam games open in Steam Game Mode (docs/HEARTH-GAME-MODE.md, "Steam games"): the one-shot request, the
+    return to Hearth Game Mode, and every way back, with session.conf byte for byte the same (WholeSession.session)."""
+    C = 'HEARTH_GAME_MODE_CHOICE=hearth\n'
+
+    def args(self):
+        p = self.calls + '.args'
+        if not os.path.exists(p):
+            return ''
+        with open(p) as f:
+            return f.read()
+
+    def test_a_steam_game_opens_in_steam_game_mode_and_comes_back(self):
+        r, log = self.session(self.C, GS_HEARTH='req:570,desktop', GS_STEAM='hearth')
+        self.assertEqual(r.returncode, 0, log + r.stderr)
+        self.assertEqual(self.calls_list(), ['hearth', 'steam', 'hearth', 'labwc'], log)
+        self.assertIn('steam://rungameid/570', self.args())
+        self.assertIn('steam game: 570 opens in Steam Game Mode', log)
+        for f in ('hearth-steam-game', 'hearth-steam-game-active', 'hearth-steam-game-failed', 'hearth-game-mode-failed'):
+            self.assertFalse(os.path.exists(os.path.join(self.run_dir, f)), f)
+        self.assertNotIn('Hearth Game Mode closed right away', log, "Hearth closing for the game isn't a failure")
+
+    def test_steam_game_mode_failing_comes_back_to_hearth_not_mantel(self):
+        r, log = self.session(self.C, GS_HEARTH='req:570,desktop', GS_STEAM='quick')
+        self.assertEqual(self.calls_list(), ['hearth', 'steam', 'hearth', 'labwc'], log)
+        with open(os.path.join(self.run_dir, 'hearth-steam-game-failed')) as f:
+            self.assertIn("Steam Game Mode didn't start", f.read())
+        self.assertIn("Hearth's Game Mode instead", log)
+
+    def test_steam_game_mode_closing_by_itself_comes_back_to_hearth(self):
+        r, log = self.session(self.C, GS_HEARTH='req:570,desktop', GS_STEAM='quit0', STEAM_MODE_MIN_SECS='0')
+        self.assertEqual(self.calls_list(), ['hearth', 'steam', 'hearth', 'labwc'], log)
+        self.assertIn('while it was for one game; back to Hearth Game Mode', log)
+
+    def test_with_the_switch_off_or_a_bad_request_hearth_stays(self):
+        r, log = self.session(self.C + 'HEARTH_STEAM_GAMES_IN_STEAM=off\n', GS_HEARTH='req:570,desktop')
+        self.assertEqual(self.calls_list(), ['hearth', 'hearth', 'labwc'], log)
+        self.assertIn('Play Steam games in Steam Game Mode is off', log)
+        r, log = self.session(self.C, GS_HEARTH='req:57x0;rm,desktop')
+        self.assertEqual(self.calls_list(), ['hearth', 'hearth', 'labwc'], log)
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'hearth-steam-game')), 'read once and deleted')
+
+    def test_no_steam_means_hearth_again_with_the_reason(self):
+        os.remove(os.path.join(self.bin, 'steam'))
+        r, log = self.session(self.C, GS_HEARTH='req:570,desktop')
+        self.assertEqual(self.calls_list(), ['hearth', 'hearth', 'labwc'], log)
+        with open(os.path.join(self.run_dir, 'hearth-steam-game-failed')) as f:
+            self.assertIn("isn't installed", f.read())
+
+
+class SteamGameWatch(unittest.TestCase):
+    """steam_game_watch, run for real over a stand-in /proc: back to Hearth Game Mode when that game's tree has ended,
+    staying when another game runs or it never started."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-sg-watch-')
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.proc = os.path.join(self.tmp, 'proc')
+        self.run = os.path.join(self.tmp, 'run')
+        os.makedirs(self.proc)
+        os.makedirs(self.run)
+        open(os.path.join(self.run, 'hearth-steam-mode.pid'), 'w').close()
+        self.calls = os.path.join(self.tmp, 'calls')
+        self.mode = os.path.join(self.tmp, 'nimbus-mode')
+        with open(self.mode, 'w') as f:
+            f.write('#!/bin/sh\necho "$*" >>%s\n' % self.calls)
+        os.chmod(self.mode, 0o755)
+
+    def game(self, pid, appid):
+        d = os.path.join(self.proc, str(pid))
+        os.makedirs(d)
+        with open(os.path.join(d, 'cmdline'), 'wb') as f:
+            f.write(b'/home/u/.steam/steam/ubuntu12_32/reaper\0SteamLaunch\0AppId=%d\0--\0/games/x/game.exe\0' % appid)
+        return d
+
+    def watch(self, appid, wait='60'):
+        script = os.path.join(self.tmp, 's.sh')
+        with open(script, 'w') as f:
+            f.write('RUN=%s\nlog() { echo "$*" >>%s/log; }\n%s\nsteam_game_watch %s\nwait\n' % (self.run, self.tmp, block('steam game'), appid))
+        env = {'PATH': '/usr/bin:/bin', 'HOME': self.tmp, 'HEARTH_PROC': self.proc, 'HEARTH_NIMBUS_MODE': self.mode,
+               'SG_POLL': '1', 'SG_GRACE': '2', 'SG_WAIT': wait}
+        return subprocess.Popen(['sh', script], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def called(self):
+        if not os.path.exists(self.calls):
+            return []
+        with open(self.calls) as f:
+            return f.read().split()
+
+    def test_back_to_hearth_when_the_game_ends(self):
+        d = self.game(100, 570)
+        p = self.watch(570)
+        time.sleep(2.5)
+        self.assertEqual(self.called(), [], 'not while the game runs')
+        shutil.rmtree(d)
+        p.wait(timeout=20)
+        self.assertEqual(self.called(), ['hearth'])
+
+    def test_another_game_keeps_steam_game_mode(self):
+        d = self.game(100, 570)
+        self.game(200, 999)
+        p = self.watch(570)
+        time.sleep(2.5)
+        shutil.rmtree(d)
+        p.wait(timeout=20)
+        self.assertEqual(self.called(), [])
+        with open(os.path.join(self.tmp, 'log')) as f:
+            self.assertIn('another game is running', f.read())
+
+    def test_a_game_that_never_starts_leaves_it_to_you(self):
+        p = self.watch(570, wait='2')
+        p.wait(timeout=20)
+        self.assertEqual(self.called(), [])
+
+    def test_steam_game_mode_ending_stops_the_watch(self):
+        self.game(100, 570)
+        p = self.watch(570)
+        time.sleep(1.5)
+        os.remove(os.path.join(self.run, 'hearth-steam-mode.pid'))
+        p.wait(timeout=20)
+        self.assertEqual(self.called(), [])
+
+
+class SteamGamesSwitch(HelperBase):
+    """'Play Steam games in Steam Game Mode': on when the key is absent, written only when flipped."""
+
+    def test_default_on_and_opening_writes_nothing(self):
+        g = self.get()
+        self.assertEqual((g['steamGames'], g['steamGamesSaved'], g['steamGame']), (True, False, ''))
+        self.assertFalse(os.path.exists(self.conf))
+
+    def test_flipping_writes_only_its_line_once(self):
+        self.write_conf('HEARTH_GAME_MODE_CHOICE=hearth\n')
+        self.assertFalse(json.loads(self.run_helper('steam-games', 'off').stdout)['steamGames'])
+        self.assertEqual(open(self.conf).read(), 'HEARTH_GAME_MODE_CHOICE=hearth\nHEARTH_STEAM_GAMES_IN_STEAM=off\n')
+        st = os.stat(self.conf)
+        time.sleep(0.05)
+        self.run_helper('steam-games', 'off')
+        self.assertEqual(os.stat(self.conf).st_mtime_ns, st.st_mtime_ns)
+        self.assertTrue(json.loads(self.run_helper('steam-games', 'on').stdout)['steamGames'])
+        self.assertNotEqual(self.run_helper('steam-games', 'maybe').returncode, 0)
+
+    def test_shell_and_helper_agree(self):
+        h = load_helper()
+        tmp = tempfile.mkdtemp(prefix='hearth-sg-parity-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        conf = os.path.join(tmp, 'session.conf')
+        script = os.path.join(tmp, 's.sh')
+        with open(script, 'w') as f:
+            f.write('RUN=%s\nSESSION_CONF=%s\nlog() { :; }\n%s\nsteam_games_on && echo on || echo off\n' % (tmp, conf, block('steam game')))
+        for text in ('', 'HEARTH_STEAM_GAMES_IN_STEAM=off\n', 'HEARTH_STEAM_GAMES_IN_STEAM=on\n', 'HEARTH_STEAM_GAMES_IN_STEAM=Off\n',
+                     'HEARTH_STEAM_GAMES_IN_STEAM=off\nHEARTH_STEAM_GAMES_IN_STEAM=on\n', 'export HEARTH_STEAM_GAMES_IN_STEAM="off"\n'):
+            with open(conf, 'w') as f:
+                f.write(text)
+            out = subprocess.run(['sh', script], env={'PATH': '/usr/bin:/bin', 'HOME': tmp}, capture_output=True, text=True, timeout=20).stdout.strip()
+            self.assertEqual(out, 'on' if h.steam_games_from(text)[0] else 'off', repr(text))
 
 
 class Wiring(unittest.TestCase):
