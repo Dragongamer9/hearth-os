@@ -17,7 +17,7 @@ FocusScope {
     id: v
     focus: true
     readonly property string helper: wt.shellDir + "/hearth-devmgr"
-    property var data: null
+    property var devData: null
     property string loadError: ""
     property var expanded: ({})
     property int sel: 0
@@ -44,9 +44,9 @@ FocusScope {
                 try { d = JSON.parse(line); } catch (e) { d = null; }
                 if (!d) { v.loadError = "Device Manager couldn't read this PC's devices."; return; }
                 const keep = v.selected ? v.selected.id : "";
-                const first = v.data === null;
+                const first = v.devData === null;
                 v.loadError = "";
-                v.data = d;
+                v.devData = d;
                 if (first) {
                     // Groups with a problem start open, so the warning is the first thing you see.
                     const e = {};
@@ -61,8 +61,8 @@ FocusScope {
     // ------------------------------------------------ the tree's rows
     readonly property var rows: {
         const out = [];
-        if (!data) return out;
-        for (const g of data.groups) {
+        if (!devData) return out;
+        for (const g of devData.groups) {
             if (!g.devices.length && g.id === "other") continue;
             out.push({ kind: "group", id: g.id, label: g.label, count: g.devices.length, problems: g.problems, open: expanded[g.id] === true });
             if (expanded[g.id] === true) for (const d of g.devices) out.push({ kind: "device", id: d.id, group: g.id, dev: d });
@@ -94,7 +94,7 @@ FocusScope {
     }
     function selectByName(name) {
         const q = String(name || "").toLowerCase();
-        for (const g of (data ? data.groups : [])) {
+        for (const g of (devData ? devData.groups : [])) {
             const d = g.devices.find(x => x.name.toLowerCase().indexOf(q) >= 0);
             if (d) {
                 if (expanded[g.id] !== true) toggle(g.id, true);
@@ -105,9 +105,9 @@ FocusScope {
         }
     }
     function stateJson() {
-        return JSON.stringify({ loaded: data !== null, error: loadError, count: data ? data.count : 0, problems: data ? data.problems : 0,
+        return JSON.stringify({ loaded: devData !== null, error: loadError, count: devData ? devData.count : 0, problems: devData ? devData.problems : 0,
                                 selected: selected ? selected.name : (row ? row.label : ""), zone: zone,
-                                actions: actions.map(a => a.label), groups: data ? data.groups.map(g => g.label + " (" + g.devices.length + ")") : [] });
+                                actions: actions.map(a => a.label), groups: devData ? devData.groups.map(g => g.label + " (" + g.devices.length + ")") : [] });
     }
 
     // ------------------------------------------------ what can be done for the selected device
@@ -238,7 +238,7 @@ FocusScope {
                 Rectangle {
                     implicitWidth: expRow.implicitWidth + 20; implicitHeight: 30; radius: Theme.r(6)
                     color: expMa.containsMouse ? Theme.panel3 : "transparent"
-                    readonly property bool allOpen: !!v.data && v.data.groups.every(g => !g.devices.length || v.expanded[g.id] === true)
+                    readonly property bool allOpen: !!v.devData && v.devData.groups.every(g => !g.devices.length || v.expanded[g.id] === true)
                     Row {
                         id: expRow
                         anchors.centerIn: parent
@@ -248,7 +248,7 @@ FocusScope {
                         id: expMa; anchors.fill: parent; hoverEnabled: true
                         onClicked: {
                             const e = {};
-                            if (!parent.allOpen && v.data) for (const g of v.data.groups) e[g.id] = true;
+                            if (!parent.allOpen && v.devData) for (const g of v.devData.groups) e[g.id] = true;
                             v.expanded = e;
                             v.sel = Math.min(v.sel, v.rows.length - 1);
                         }
@@ -256,7 +256,7 @@ FocusScope {
                 }
                 Item { Layout.fillWidth: true }
                 Rectangle {
-                    visible: !!v.data && v.data.problems > 0
+                    visible: !!v.devData && v.devData.problems > 0
                     implicitWidth: pill.implicitWidth + 22; implicitHeight: 24; radius: 12
                     color: v.warnBg
                     Row {
@@ -265,7 +265,7 @@ FocusScope {
                         spacing: 6
                         Icon { anchors.verticalCenter: parent.verticalCenter; name: "warn"; size: 13; color: v.warn }
                         Text {
-                            text: v.data ? (v.data.problems === 1 ? "1 device needs attention" : v.data.problems + " devices need attention") : ""
+                            text: v.devData ? (v.devData.problems === 1 ? "1 device needs attention" : v.devData.problems + " devices need attention") : ""
                             color: v.warn; font.family: Theme.font; font.pixelSize: 12
                         }
                     }
@@ -297,7 +297,7 @@ FocusScope {
                         anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
                         spacing: 8
                         Icon { anchors.verticalCenter: parent.verticalCenter; name: "display"; size: 16; color: Theme.accent }
-                        Text { text: v.data ? v.data.host : "This PC"; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        Text { text: v.devData ? v.devData.host : "This PC"; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
                     }
                 }
                 delegate: Rectangle {
@@ -425,7 +425,7 @@ FocusScope {
                     // Loading / couldn't read
                     Text {
                         Layout.fillWidth: true
-                        visible: v.data === null
+                        visible: v.devData === null
                         text: v.loadError !== "" ? v.loadError : "Looking for devices…"
                         wrapMode: Text.WordWrap
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
@@ -462,7 +462,7 @@ FocusScope {
                             Text { Layout.fillWidth: true; text: v.selected ? v.selected.name : ""; wrapMode: Text.WordWrap; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
                             Text {
                                 Layout.fillWidth: true
-                                text: v.selected ? [(v.data.groups.find(g => g.id === v.selected.group) || {}).label, v.selected.ids].filter(x => x).join(" · ") : ""
+                                text: v.selected ? [(v.devData.groups.find(g => g.id === v.selected.group) || {}).label, v.selected.ids].filter(x => x).join(" · ") : ""
                                 elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
                             }
                         }
@@ -500,7 +500,7 @@ FocusScope {
                                 const out = [];
                                 out.push(["Driver", d.driver ? d.driver + (d.driverNote ? " (" + d.driverNote + ")" : "") : d.driverNote || "None"]);
                                 if (d.driverVersion) out.push(["Version", d.driverVersion]);
-                                out.push(["Firmware", d.firmware || (v.data.kernelLog ? "Nothing missing" : "Can't check: the kernel log isn't readable")]);
+                                out.push(["Firmware", d.firmware || (v.devData.kernelLog ? "Nothing missing" : "Can't check: the kernel log isn't readable")]);
                                 if (d.maker) out.push(["Maker", d.maker]);
                                 out.push(["Connected to", d.where || "–"]);
                                 if (d.threads) out.push(["Threads", String(d.threads)]);
@@ -578,7 +578,7 @@ FocusScope {
             Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.line }
             Text {
                 anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
-                text: !v.data ? "" : (v.data.count === 1 ? "1 device" : v.data.count + " devices") + (v.data.problems ? " · " + v.data.problems + " need" + (v.data.problems === 1 ? "s" : "") + " attention" : "")
+                text: !v.devData ? "" : (v.devData.count === 1 ? "1 device" : v.devData.count + " devices") + (v.devData.problems ? " · " + v.devData.problems + " need" + (v.devData.problems === 1 ? "s" : "") + " attention" : "")
                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
             }
             Text {

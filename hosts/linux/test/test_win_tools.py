@@ -533,6 +533,12 @@ class WiringTest(unittest.TestCase):
         self.assertNotIn('Timer', wt)                             # and nothing runs by itself
         self.assertNotIn('running: true', wt)
 
+    def test_pages_dont_hide_items_data(self):
+        # An Item's default property is `data` (its children): a page declaring its own `data` reads its children
+        # instead (the first CI run: "Cannot read property '0' of undefined" in DeviceManagerView.qml).
+        for n in ('DeviceManagerView.qml', 'RunView.qml'):
+            self.assertNotRegex((SHELL / n).read_text(), r'property\s+var\s+data\b', n)
+
     def test_opening_writes_nothing(self):
         wt = (SHELL / 'WinTools.qml').read_text()
         # The only write: the recent entries, through SettingsWriter, from remember() (called after something opened).
