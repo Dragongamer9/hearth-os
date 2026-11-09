@@ -8,6 +8,7 @@
 #   e2e.sh setup          (root: packages, GE-Proton, the test programs, hearth-proton-run as in the image)
 #   e2e.sh run            (the test user)
 #   e2e.sh offline        (the test user, networking off: every way Hearth starts Proton, docs/OFFLINE-PROTON.md)
+#   e2e.sh build-exes DIR (root, in debian:trixie: the network-off check's test programs, built with MinGW)
 #   e2e.sh offline-image  (root, inside Hearth OS's own image with --network=none: makes the test user, then offline)
 set -u
 REPO="${REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
@@ -260,8 +261,20 @@ offline_image() {
   return "$rc"
 }
 
+build_exes() {
+  set -e
+  local out="$1"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 >/dev/null
+  x86_64-w64-mingw32-gcc -O2 -o "$out/hello64.exe" "$REPO/tools/winapps-e2e/hello.c"
+  i686-w64-mingw32-gcc -O2 -o "$out/hello32.exe" "$REPO/tools/winapps-e2e/hello.c"
+  chmod a+r "$out"/*.exe
+  echo "::notice title=offline: test programs built::$(cd "$out" && ls -la *.exe | tr '\n' '|')"
+}
+
 case "${1:-}" in
   setup) setup ;;
+  build-exes) build_exes "$2" ;;
   run) run ;;
   offline) offline ;;
   offline-image) offline_image ;;

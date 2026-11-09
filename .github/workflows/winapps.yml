@@ -76,11 +76,12 @@ jobs:
       - name: Start Windows programs in Hearth OS's image with the network off
         run: |
           set -o pipefail
+          trap 'echo "::error title=offline Proton step::line $LINENO: $BASH_COMMAND (exit $?)"' ERR
           sudo apt-get update -qq || true
-          sudo apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 xvfb >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends xvfb >/dev/null
           mkdir -p /tmp/offline-exe
-          x86_64-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello64.exe tools/winapps-e2e/hello.c
-          i686-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello32.exe tools/winapps-e2e/hello.c
+          sudo podman run --rm -v "$PWD:/repo:ro" -v /tmp/offline-exe:/out docker.io/library/debian:trixie \
+            bash -c 'REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh build-exes /out'
           Xvfb :99 -ac -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
           sleep 2
           S="$PWD/hosts/linux/desktop/shell"; D=/usr/share/nimbus/desktop/shell
