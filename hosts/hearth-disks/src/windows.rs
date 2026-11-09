@@ -110,7 +110,7 @@ pub fn parse(v: &Value, steam: &dyn Fn(&str) -> bool) -> Vec<Drive> {
                 mount_points: mounts, part_type: if gtype.is_empty() { ptype.clone() } else { gtype }, part_name: ptype.clone(),
                 kind: kind.into(), what, system, protected: matches!(kind, "efi" | "msr" | "recovery"),
                 mounted: !letter.is_empty(), mountable: !fs.is_empty() || (vol.is_some() && kind != "msr"), steam_library: is_steam, letter,
-                actions: vec![],
+                actions: vec![], ..Default::default()
             });
         }
         model::finish(&mut drive);

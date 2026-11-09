@@ -46,6 +46,18 @@ fn run(app: tauri::AppHandle, action: String, id: String, opts: hearth_disks::sa
     Ok(json!({"started": true}))
 }
 
+/// Properties › Health: SMART's lines, the self-test, and whether you asked to hear if it starts to fail.
+#[tauri::command]
+async fn health_details(id: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || hearth_disks::health_details(&id)).await.map_err(|e| e.to_string())?
+}
+
+/// "Tell me if this drive starts to fail": only when you change it (opening Disks writes nothing).
+#[tauri::command]
+async fn set_alert(id: String, on: bool) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || hearth_disks::set_alert(&id, on)).await.map_err(|e| e.to_string())?
+}
+
 // ---------------------------------------------------------------- Make a bootable USB (Linux)
 // The page's USB maker screen calls these; a job reports on "usb://progress" and ends with "usb://done".
 
@@ -143,6 +155,14 @@ fn main() {
         for b in &bad { eprintln!("PROBLEM {b}"); }
         std::process::exit(if bad.is_empty() { 0 } else { 1 });
     }
+    // `hearth-disks --health-watch`: a notification for each drive you asked about that has started to fail.
+    #[cfg(target_os = "linux")]
+    if args.iter().any(|a| a == "--health-watch") {
+        match hearth_disks::health_watch() {
+            Ok(n) => { println!("{n} warning(s)"); std::process::exit(0); }
+            Err(e) => { eprintln!("{e}"); std::process::exit(1); }
+        }
+    }
     if args.iter().any(|a| a == "--list") {
         match hearth_disks::list() {
             Ok(d) => { println!("{}", serde_json::to_string_pretty(&d).unwrap_or_default()); std::process::exit(0); }
@@ -161,11 +181,11 @@ fn main() {
     let init = if usb_first { format!("window.__DISKS_USB_FIRST = true; window.__DISKS_USB_FILE = {};", serde_json::to_string(&usb_file).unwrap_or_else(|_| "null".into())) } else { String::new() };
     let builder = tauri::Builder::default().plugin(apptheme::plugin());
     #[cfg(target_os = "linux")]
-    let builder = builder.plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![list, plan, run,
+    let builder = builder.plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![list, plan, run, health_details, set_alert,
         usb_cmds::usb_catalog, usb_cmds::usb_resolve, usb_cmds::usb_drives, usb_cmds::usb_check_file, usb_cmds::usb_pick_file, usb_cmds::usb_start,
         usb_cmds::usb_cancel, usb_cmds::usb_open_page, usb_cmds::usb_find_windows, usb_cmds::usb_cache, usb_cmds::usb_ventoy, usb_cmds::usb_cache_remove, usb_cmds::usb_log]);
     #[cfg(not(target_os = "linux"))]
-    let builder = builder.invoke_handler(tauri::generate_handler![list, plan, run]);
+    let builder = builder.invoke_handler(tauri::generate_handler![list, plan, run, health_details, set_alert]);
     builder
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
