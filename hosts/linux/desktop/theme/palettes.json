@@ -1,5 +1,5 @@
 {
-  "_comment": "Mantel's looks (Settings › Appearance › Look and Mode). Read by shell/Theme.qml (the shell) and theme/hearth-theme (labwc, Qt, GTK and KDE colours). hearth/dark is the reference: hearth-theme turns Hearth's own colour files into any other look by mapping each colour from these tokens to the chosen ones. corner = the largest corner radius (0 = no cap). Style tokens (the shell only; docs/MANTEL.md): islandStyle floating | bar | shelf, frame plain | chamfer | neon | wood | frost, thin (a 36 px bar), dockAutoHide, deskClock (the desktop clock's default), perfIsland, edgeGlow, scanlines, hints (the controller-hint strip always shown), desc, order. A look only gives defaults: your own accent, wallpaper and Bar and dock choices always win.",
+  "_comment": "Mantel's looks (Settings › Appearance › Look and Mode). Read by shell/Theme.qml (the shell) and theme/hearth-theme (labwc, Qt, GTK and KDE colours). hearth/dark is the reference: hearth-theme turns Hearth's own colour files into any other look by mapping each colour from these tokens to the chosen ones. corner = the largest corner radius (0 = no cap). Style tokens (the shell only; docs/MANTEL.md): islandStyle floating | bar | shelf, frame plain | chamfer | neon | wood | frost, thin (a 36 px bar), dockAutoHide, deskClock (the desktop clock's default), perfIsland, edgeGlow, scanlines, hints (the controller-hint strip always shown), desc, order. A look only gives defaults: your own accent, wallpaper and Bar and dock choices always win. Sub themes (Settings › Personalisation › Sub theme; shell/subthemes.js and hearth-theme read them the same way): a look's subThemes (the first, own: true, is its own colours) and the shared blackSet it has blackWallpapers for; each one only colours (dark and light, an optional third) and a wallpaper, never the look's shape. A missing or broken one is the look's own.",
   "hearth": {
     "label": "Hearth",
     "font": "sans-serif",
@@ -40,7 +40,152 @@
     "frame": "plain",
     "deskClock": false,
     "desc": "Warm firelit darks, frosted islands",
-    "order": 1
+    "order": 1,
+    "subThemes": [
+      {
+        "id": "firelight",
+        "label": "Firelight",
+        "desc": "Ember and flame (today’s Hearth)",
+        "own": true
+      },
+      {
+        "id": "rose-quartz",
+        "label": "Rose Quartz",
+        "desc": "Dusky pink coals",
+        "wallpaper": "builtin:sub/hearth-rose-quartz",
+        "dark": {
+          "bg": "#110a0c",
+          "bg2": "#1a0f13",
+          "panel": "#201419",
+          "panel2": "#2b1a23",
+          "panel3": "#3a2330",
+          "line": "#45293a",
+          "text": "#f7e9ee",
+          "muted": "#b6939f",
+          "ember": "#ff6f91",
+          "flame": "#ffc2d1",
+          "ink": "#2a0612"
+        },
+        "light": {
+          "bg": "#f6e8ed",
+          "bg2": "#efdbe2",
+          "panel": "#fff5f9",
+          "panel2": "#f3dfe6",
+          "panel3": "#e7c9d4",
+          "line": "#d9b4c1",
+          "text": "#2a131b",
+          "muted": "#7a5663",
+          "ember": "#b04d64",
+          "flame": "#a8808a",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "evergreen",
+        "label": "Evergreen",
+        "desc": "A campfire in the pines",
+        "wallpaper": "builtin:sub/hearth-evergreen",
+        "dark": {
+          "bg": "#0a0e0a",
+          "bg2": "#101710",
+          "panel": "#141d14",
+          "panel2": "#1b2719",
+          "panel3": "#25351f",
+          "line": "#2e4128",
+          "text": "#eaf3e6",
+          "muted": "#97ab8f",
+          "ember": "#8fd16a",
+          "flame": "#f2d56b",
+          "ink": "#0f1f06"
+        },
+        "light": {
+          "bg": "#e8f6e8",
+          "bg2": "#dbefdb",
+          "panel": "#f5fff5",
+          "panel2": "#dff3df",
+          "panel3": "#c9e7c9",
+          "line": "#b4d9b4",
+          "text": "#132a13",
+          "muted": "#4e6e4e",
+          "ember": "#567d40",
+          "flame": "#a08d47",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "midnight",
+        "label": "Midnight",
+        "desc": "Deep blue night, gold moon",
+        "wallpaper": "builtin:sub/hearth-midnight",
+        "dark": {
+          "bg": "#090b12",
+          "bg2": "#0e1220",
+          "panel": "#131828",
+          "panel2": "#1a2035",
+          "panel3": "#232c48",
+          "line": "#2c3756",
+          "text": "#e8ecf8",
+          "muted": "#9ea7c3",
+          "ember": "#7c9cff",
+          "flame": "#ffd166",
+          "ink": "#0a1030"
+        },
+        "light": {
+          "bg": "#e8ebf6",
+          "bg2": "#dbdfef",
+          "panel": "#f5f7ff",
+          "panel2": "#dfe3f3",
+          "panel3": "#c9d0e7",
+          "line": "#b4bcd9",
+          "text": "#13182a",
+          "muted": "#565e7a",
+          "ember": "#546aad",
+          "flame": "#a38641",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "copper-sea",
+        "label": "Copper Sea",
+        "desc": "Teal water, copper sun",
+        "wallpaper": "builtin:sub/hearth-copper-sea",
+        "dark": {
+          "bg": "#08100f",
+          "bg2": "#0d1918",
+          "panel": "#112120",
+          "panel2": "#172b29",
+          "panel3": "#1f3836",
+          "line": "#284442",
+          "text": "#e6f4f2",
+          "muted": "#91aea9",
+          "ember": "#2ec4b6",
+          "flame": "#ff9f5a",
+          "ink": "#03201d"
+        },
+        "light": {
+          "bg": "#e8f6f5",
+          "bg2": "#dbefed",
+          "panel": "#f5fffe",
+          "panel2": "#dff3f1",
+          "panel3": "#c9e7e4",
+          "line": "#b4d9d6",
+          "text": "#132a28",
+          "muted": "#4e6e6b",
+          "ember": "#1e8178",
+          "flame": "#c77c46",
+          "ink": "#ffffff"
+        }
+      }
+    ],
+    "blackWallpapers": {
+      "black-red": "builtin:sub/hearth-black-red",
+      "black-green": "builtin:sub/hearth-black-green",
+      "black-yellow": "builtin:sub/hearth-black-yellow",
+      "hazard": "builtin:sub/hearth-hazard",
+      "volt": "builtin:sub/hearth-volt",
+      "holly": "builtin:sub/hearth-holly",
+      "traffic-light": "builtin:sub/hearth-traffic-light"
+    }
   },
   "steam": {
     "label": "Steam-style",
@@ -82,7 +227,152 @@
     "frame": "plain",
     "deskClock": false,
     "desc": "Blue-slate, flat, crisp corners",
-    "order": 2
+    "order": 2,
+    "subThemes": [
+      {
+        "id": "steam-blue",
+        "label": "Steam blue",
+        "desc": "Blue-slate (today’s Steam-style)",
+        "own": true
+      },
+      {
+        "id": "crimson",
+        "label": "Crimson",
+        "desc": "Slate with a red-hot accent",
+        "wallpaper": "builtin:sub/steam-crimson",
+        "dark": {
+          "bg": "#191416",
+          "bg2": "#271b1f",
+          "panel": "#2a1f23",
+          "panel2": "#37242a",
+          "panel3": "#4a2c34",
+          "line": "#4a333a",
+          "text": "#f0e2e5",
+          "muted": "#a8979c",
+          "ember": "#e5484d",
+          "flame": "#ff8a8f",
+          "ink": "#1b0909"
+        },
+        "light": {
+          "bg": "#f0e6e9",
+          "bg2": "#e9dbe0",
+          "panel": "#faf4f6",
+          "panel2": "#f2e8eb",
+          "panel3": "#e6d2d9",
+          "line": "#d8c0c8",
+          "text": "#2b161d",
+          "muted": "#735962",
+          "ember": "#ca3f44",
+          "flame": "#cc6e72",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "emerald",
+        "label": "Emerald",
+        "desc": "Green-slate, a sale-tag green",
+        "wallpaper": "builtin:sub/steam-emerald",
+        "dark": {
+          "bg": "#131a17",
+          "bg2": "#182822",
+          "panel": "#1c2925",
+          "panel2": "#1f362f",
+          "panel3": "#24483c",
+          "line": "#2f4a40",
+          "text": "#dcede6",
+          "muted": "#90a69d",
+          "ember": "#1fbf75",
+          "flame": "#6fe3a8",
+          "ink": "#04170e"
+        },
+        "light": {
+          "bg": "#e6f0ec",
+          "bg2": "#dbe9e4",
+          "panel": "#f4faf8",
+          "panel2": "#e8f2ee",
+          "panel3": "#d2e6df",
+          "line": "#c0d8cf",
+          "text": "#162b23",
+          "muted": "#526a61",
+          "ember": "#158451",
+          "flame": "#4b9a72",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "royal",
+        "label": "Royal",
+        "desc": "Violet-slate, purple highlights",
+        "wallpaper": "builtin:sub/steam-royal",
+        "dark": {
+          "bg": "#17151e",
+          "bg2": "#211c32",
+          "panel": "#241f33",
+          "panel2": "#2d2545",
+          "panel3": "#3a2d5e",
+          "line": "#3c3452",
+          "text": "#e6e1f2",
+          "muted": "#9d96b0",
+          "ember": "#9b6bff",
+          "flame": "#c6a8ff",
+          "ink": "#130d1f"
+        },
+        "light": {
+          "bg": "#e8e6f0",
+          "bg2": "#dedbe9",
+          "panel": "#f5f4fa",
+          "panel2": "#eae8f2",
+          "panel3": "#d7d2e6",
+          "line": "#c5c0d8",
+          "text": "#1b162b",
+          "muted": "#615b76",
+          "ember": "#8159d4",
+          "flame": "#947ebf",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "graphite",
+        "label": "Graphite",
+        "desc": "Grey on grey, white highlights",
+        "wallpaper": "builtin:sub/steam-graphite",
+        "dark": {
+          "bg": "#121213",
+          "bg2": "#1b1b1d",
+          "panel": "#202022",
+          "panel2": "#29292c",
+          "panel3": "#36363a",
+          "line": "#3a3a3e",
+          "text": "#ececee",
+          "muted": "#9c9ca1",
+          "ember": "#e4e6ea",
+          "flame": "#9aa4b1",
+          "ink": "#141416"
+        },
+        "light": {
+          "bg": "#ebebeb",
+          "bg2": "#e2e2e2",
+          "panel": "#f7f7f7",
+          "panel2": "#ededed",
+          "panel3": "#dcdcdc",
+          "line": "#cccccc",
+          "text": "#202020",
+          "muted": "#636363",
+          "ember": "#727375",
+          "flame": "#838b96",
+          "ink": "#ffffff"
+        }
+      }
+    ],
+    "blackWallpapers": {
+      "black-red": "builtin:sub/streaks-black-red",
+      "black-green": "builtin:sub/streaks-black-green",
+      "black-yellow": "builtin:sub/streaks-black-yellow",
+      "hazard": "builtin:sub/streaks-hazard",
+      "volt": "builtin:sub/streaks-volt",
+      "holly": "builtin:sub/streaks-holly",
+      "traffic-light": "builtin:sub/streaks-traffic-light"
+    }
   },
   "gaming": {
     "label": "Gaming",
@@ -126,6 +416,151 @@
       "flame": "#c0189a",
       "ink": "#ffffff",
       "glass": 0.95
+    },
+    "subThemes": [
+      {
+        "id": "cyber",
+        "label": "Cyber",
+        "desc": "Cyan and magenta (today’s Gaming)",
+        "own": true
+      },
+      {
+        "id": "toxic",
+        "label": "Toxic",
+        "desc": "Acid green, electric blue",
+        "wallpaper": "builtin:sub/gaming-toxic",
+        "dark": {
+          "bg": "#060906",
+          "bg2": "#0a100a",
+          "panel": "#0d150d",
+          "panel2": "#121e11",
+          "panel3": "#192a17",
+          "line": "#24401f",
+          "text": "#efffe6",
+          "muted": "#93ab8a",
+          "ember": "#a6ff2e",
+          "flame": "#00d5ff",
+          "ink": "#0a1600"
+        },
+        "light": {
+          "bg": "#eef7ee",
+          "bg2": "#e2f1e2",
+          "panel": "#f7fcf7",
+          "panel2": "#e9f5e9",
+          "panel3": "#d6ead6",
+          "line": "#b9d8b9",
+          "text": "#0b240b",
+          "muted": "#4d734d",
+          "ember": "#537f17",
+          "flame": "#0099b8",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "inferno",
+        "label": "Inferno",
+        "desc": "Lava orange, molten gold",
+        "wallpaper": "builtin:sub/gaming-inferno",
+        "dark": {
+          "bg": "#0c0705",
+          "bg2": "#140b08",
+          "panel": "#1a0e0a",
+          "panel2": "#25130d",
+          "panel3": "#341a10",
+          "line": "#4a2414",
+          "text": "#fff1e8",
+          "muted": "#b39484",
+          "ember": "#ff4d1a",
+          "flame": "#ffcc00",
+          "ink": "#1a0500"
+        },
+        "light": {
+          "bg": "#f7f0ee",
+          "bg2": "#f1e6e2",
+          "panel": "#fcf8f7",
+          "panel2": "#f5ece9",
+          "panel3": "#eadbd6",
+          "line": "#d8c1b9",
+          "text": "#24110b",
+          "muted": "#76594f",
+          "ember": "#d13f15",
+          "flame": "#a88700",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "ultraviolet",
+        "label": "Ultraviolet",
+        "desc": "Black light purple, aqua",
+        "wallpaper": "builtin:sub/gaming-ultraviolet",
+        "dark": {
+          "bg": "#09070f",
+          "bg2": "#0f0b18",
+          "panel": "#130e20",
+          "panel2": "#1b122d",
+          "panel3": "#26183f",
+          "line": "#3a2260",
+          "text": "#f5ecff",
+          "muted": "#a596bd",
+          "ember": "#b14dff",
+          "flame": "#2effd5",
+          "ink": "#15091f"
+        },
+        "light": {
+          "bg": "#f1eef7",
+          "bg2": "#e7e2f1",
+          "panel": "#f9f7fc",
+          "panel2": "#ede9f5",
+          "panel3": "#dcd6ea",
+          "line": "#c3b9d8",
+          "text": "#130b24",
+          "muted": "#5b4f76",
+          "ember": "#9c44e0",
+          "flame": "#1c9c82",
+          "ink": "#ffffff"
+        }
+      },
+      {
+        "id": "frostbite",
+        "label": "Frostbite",
+        "desc": "Ice blue, white neon",
+        "wallpaper": "builtin:sub/gaming-frostbite",
+        "dark": {
+          "bg": "#060a10",
+          "bg2": "#0a111b",
+          "panel": "#0d1622",
+          "panel2": "#121e2d",
+          "panel3": "#1a2a3d",
+          "line": "#24405a",
+          "text": "#eef8ff",
+          "muted": "#91a8bd",
+          "ember": "#8ad8ff",
+          "flame": "#ffffff",
+          "ink": "#031522"
+        },
+        "light": {
+          "bg": "#eef2f7",
+          "bg2": "#e2e8f1",
+          "panel": "#f7f9fc",
+          "panel2": "#e9eef5",
+          "panel3": "#d6deea",
+          "line": "#b9c6d8",
+          "text": "#0b1524",
+          "muted": "#4f5f76",
+          "ember": "#4d798f",
+          "flame": "#5e92ac",
+          "ink": "#ffffff"
+        }
+      }
+    ],
+    "blackWallpapers": {
+      "black-red": "builtin:sub/streaks-black-red",
+      "black-green": "builtin:sub/streaks-black-green",
+      "black-yellow": "builtin:sub/streaks-black-yellow",
+      "hazard": "builtin:sub/streaks-hazard",
+      "volt": "builtin:sub/streaks-volt",
+      "holly": "builtin:sub/streaks-holly",
+      "traffic-light": "builtin:sub/streaks-traffic-light"
     }
   },
   "zen": {
@@ -374,6 +809,227 @@
     {
       "name": "Rose",
       "color": "#ff5c8a"
+    }
+  ],
+  "blackSet": [
+    {
+      "id": "black-red",
+      "label": "Black & Red",
+      "desc": "Pure black, racing red",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#ff2a2a",
+        "flame": "#ff8080",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#e02525",
+        "flame": "#d46a6a",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "black-green",
+      "label": "Black & Green",
+      "desc": "Pure black, signal green",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#2bd94a",
+        "flame": "#a6ff8f",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#1a842d",
+        "flame": "#629654",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "black-yellow",
+      "label": "Black & Yellow",
+      "desc": "Pure black, bright yellow",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#ffd400",
+        "flame": "#fff27a",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#877000",
+        "flame": "#a28700",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "hazard",
+      "label": "Hazard",
+      "desc": "Red and yellow",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#ff2a2a",
+        "flame": "#ffd400",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#e02525",
+        "flame": "#a38800",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "volt",
+      "label": "Volt",
+      "desc": "Green and yellow",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#2bd94a",
+        "flame": "#ffd400",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#1a842d",
+        "flame": "#a38800",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "holly",
+      "label": "Holly",
+      "desc": "Red and green",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#ff2a2a",
+        "flame": "#2bd94a",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#e02525",
+        "flame": "#1f9e36",
+        "ink": "#ffffff"
+      }
+    },
+    {
+      "id": "traffic-light",
+      "label": "Traffic Light",
+      "desc": "Red, yellow and green",
+      "dark": {
+        "bg": "#050505",
+        "bg2": "#0b0b0b",
+        "panel": "#111111",
+        "panel2": "#191919",
+        "panel3": "#232323",
+        "line": "#2c2c2c",
+        "text": "#f2f2f2",
+        "muted": "#a3a3a3",
+        "ember": "#ff2a2a",
+        "flame": "#ffd400",
+        "third": "#2bd94a",
+        "ink": "#000000"
+      },
+      "light": {
+        "bg": "#ebebeb",
+        "bg2": "#e2e2e2",
+        "panel": "#f7f7f7",
+        "panel2": "#ededed",
+        "panel3": "#dcdcdc",
+        "line": "#cccccc",
+        "text": "#202020",
+        "muted": "#636363",
+        "ember": "#e02525",
+        "flame": "#a38800",
+        "third": "#1f9e36",
+        "ink": "#ffffff"
+      }
     }
   ]
 }

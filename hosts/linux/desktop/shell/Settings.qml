@@ -44,7 +44,11 @@ Singleton {
     // Settings › Personalization › Bar and dock › Right-click menu: "" (today's menu, the default; never written by
     // itself) | "today" | "windows" (Windows 11 style) | "compact" (Compact list) | "tiles" (Tiles and groups). Theme.menuStyle.
     property string menuStyle: ""
-    property var menuTiles: ({})         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
+    property var menuTiles: ({})
+    // ---- Sub themes (Settings › Personalisation; palettes.json "subThemes"). Missing = the default, never written by
+    // itself: "" is the look's own colours (today's), so nobody's desktop changes until they pick one.
+    property string subTheme: ""         // "" (the look's first: Firelight, Steam blue, Cyber…) | a sub theme's id
+    property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
     // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
@@ -57,6 +61,7 @@ Singleton {
         .concat(["barLayout", "barEdge", "dockFloat", "appMenu", "menuTiles"])
         .concat(["shareStatus"])
         .concat(["menuStyle"])
+        .concat(["subTheme", "wallMatch"])
     onNightLightChanged: save("nightLight")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
@@ -86,6 +91,8 @@ Singleton {
     onMenuTilesChanged: save("menuTiles")
     onShareStatusChanged: save("shareStatus")
     onMenuStyleChanged: save("menuStyle")
+    onSubThemeChanged: save("subTheme")
+    onWallMatchChanged: save("wallMatch")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Makes Hearth Settings' search index (hosts/linux/desktop/shell/settings-index.js) from the page registry
 (settings-pages.js) and every page's cards: each card with a plain title (SetRow, SetSwitch, SetChoice, SetSlider,
-SetCard, SetLinkCard, SetExpander) becomes a search entry with its description and the page it's on, so the search
+SetCard, SetLinkCard, SetExpander, SetDropdown) becomes a search entry with its description and the page it's on, so the search
 finds single settings with their path ("Go to sleep after · System › Power & battery"). Pages themselves, and their old
 names, are searched straight from the registry. A file shown as several pages (About, Boot & startup) marks its parts
 with `// @part <name>` comments; a card belongs to the page whose `props.part` is that name.
@@ -15,7 +15,7 @@ import re
 import sys
 
 SHELL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'hosts', 'linux', 'desktop', 'shell')
-CARDS = r'\b(SetRow|SetSwitch|SetChoice|SetSlider|SetCard|SetLinkCard|SetExpander|StartInChoice)\s*\{'
+CARDS = r'\b(SetRow|SetSwitch|SetChoice|SetSlider|SetCard|SetLinkCard|SetExpander|SetDropdown|StartInChoice)\s*\{'
 # Pages whose cards repeat a setting whose real home is elsewhere (Home's shortcuts): indexed last, only new titles.
 LAST = ('SetHome.qml', 'SetCategory.qml')
 

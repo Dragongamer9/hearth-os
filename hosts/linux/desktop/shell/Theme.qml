@@ -9,6 +9,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "subthemes.js" as SubThemes
 
 Singleton {
     id: root
@@ -28,7 +29,15 @@ Singleton {
     readonly property bool dark: mode === "dark"
     readonly property bool steam: look === "steam"
     readonly property var lookDef: palettes[look] || ({})
-    readonly property var p: lookDef[mode] || ({})
+    // Sub themes (Settings.subTheme; subthemes.js, palettes.json "subThemes"): only the colours and the default
+    // wallpaper. "" or one that isn't there (or a broken entry) = the look's own colours, as before.
+    readonly property var subThemes: SubThemes.list(palettes, look)
+    readonly property var subDef: SubThemes.find(palettes, look, Settings.subTheme)
+    readonly property string subTheme: subDef ? subDef.id : ""
+    readonly property bool subOwn: !subDef || subDef.own === true
+    readonly property string subLabel: subDef ? subDef.label : "Default"
+    readonly property var p: SubThemes.palette(lookDef[mode] || ({}), palettes, look, Settings.subTheme, mode)
+    readonly property var pDark: SubThemes.palette(lookDef.dark || ({}), palettes, look, Settings.subTheme, "dark")
     function c(k, d) { return p[k] || d; }
     // A colour as a CSS string, for Canvas drawing ("rgba(r,g,b,a)"; alpha from the colour unless given).
     function css(col, a) { return "rgba(" + Math.round(col.r * 255) + "," + Math.round(col.g * 255) + "," + Math.round(col.b * 255) + "," + (a === undefined ? col.a : a) + ")"; }
@@ -44,16 +53,19 @@ Singleton {
     readonly property color danger: c("danger", "#ff5d5d")
     readonly property color ember: c("ember", "#ff8a3d")       // the look's own accent
     readonly property color flame: c("flame", "#ffd166")       // its second, brighter highlight
+    readonly property color third: c("third", flame)           // a sub theme's third colour (Traffic Light), else flame
     property string profileAccent: ""
     readonly property bool validAccent: /^#[0-9a-fA-F]{6}$/.test(Settings.accent || "")
     // New installs (desktop.json made with "defaults": 2, from /etc/skel) start Steam-style with the Sky accent; everyone
     // else keeps the look's own. Only a default, filled in when read: the accent you see is never written for you.
-    readonly property bool skyDefault: steam && Settings.defaultsGen >= 2
+    readonly property bool skyDefault: steam && subOwn && Settings.defaultsGen >= 2
     readonly property color lookAccent: skyDefault ? "#66c0f4" : ember
-    readonly property string lookAccentName: skyDefault ? "Sky" : steam ? "Steam blue" : look === "hearth" && profileAccent ? "Your profile's" : "The look's own"
-    readonly property color accent: validAccent ? Settings.accent : (look === "hearth" && profileAccent) ? profileAccent : lookAccent
-    // Text on an accent background: dark on light accents, white on dark ones.
-    readonly property color accentInk: (accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722) > 0.45 ? ((lookDef.dark || {}).ink || "#2a1206") : "#ffffff"
+    readonly property string lookAccentName: !subOwn ? "From the sub theme, " + subLabel : skyDefault ? "Sky" : steam ? "Steam blue" : look === "hearth" && profileAccent ? "Your profile's" : "The look's own"
+    readonly property color accent: validAccent ? Settings.accent : (look === "hearth" && subOwn && profileAccent) ? profileAccent : lookAccent
+    // Text on an accent background: dark on light accents, white on dark ones. A sub theme's own accent uses its
+    // own ink (chosen for 4.5:1).
+    readonly property color accentInk: !subOwn && !validAccent && /^#[0-9a-fA-F]{6}$/.test(p.ink || "") ? p.ink
+        : (accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722) > 0.45 ? (pDark.ink || "#2a1206") : "#ffffff"
     // Frosted panels over the wallpaper (Steam-style: nearly solid, flat).
     // Settings › Appearance › Panel transparency: the look's own, or solid / frosted / clear for every look.
     readonly property real glassAlpha: Settings.panelGlass === "solid" ? 0.985 : Settings.panelGlass === "frosted" ? 0.9
@@ -123,8 +135,10 @@ Singleton {
     // and groups). Not chosen = today's; only read here, never written for you.
     readonly property var menuStyles: ["today", "windows", "compact", "tiles"]
     readonly property string menuStyle: menuStyles.indexOf(Settings.menuStyle) >= 0 ? Settings.menuStyle : "today"
-    // The wallpaper on show: yours, or the look's own ("" = Hearth's fireside).
-    readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : (lookDef.wallpaper || "")
+    // The wallpaper on show: yours, or the look's own ("" = Hearth's fireside). With Match sub theme on (the
+    // default), the look's own is the sub theme's; a wallpaper you chose always wins (subthemes.js shownWallpaper).
+    readonly property string ownWall: SubThemes.ownWallpaper(palettes, look, Settings.subTheme, Settings.wallMatch)
+    readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : ownWall
     // A controller focus ring: crisp, in the accent.
     readonly property int focusWidth: 2
 
@@ -146,7 +160,7 @@ Singleton {
 
     // Apps and window decorations follow (theme/apply.sh runs theme/hearth-theme, which rewrites the Qt / GTK / KDE
     // colours and labwc's theme and asks labwc to reload). Once things settle, not on every step of a change.
-    readonly property string key: look + "/" + mode + "/" + accent
+    readonly property string key: look + "/" + subTheme + "/" + mode + "/" + accent
     property string appliedKey: ""
     onKeyChanged: if (Settings.loaded) applyTimer.restart()
     Timer {

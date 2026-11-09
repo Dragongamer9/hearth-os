@@ -22,7 +22,8 @@ PanelWindow {
     readonly property string dir: Quickshell.env("HOME") + "/.config/nimbus/"
     // Hearth Settings › Appearance picks a picture (Settings.wallpaper); older setups used wallpaper.jpg/.png.
     // "" = the look's own (Theme.qml / theme/palettes.json: Hearth's fireside, Steam-style's Slate Tide).
-    readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : (Theme.lookDef.wallpaper || "")
+    // (Theme.wall: with a sub theme and Match sub theme on, its wallpaper; yours always wins.)
+    readonly property string wall: Theme.wall
     readonly property string anim: wall.startsWith("anim:") ? wall.slice(5) : ""
     readonly property string picture: anim ? "" : wall
     readonly property bool custom: !anim && (chosen.status === Image.Ready || (!picture && (jpg.status === Image.Ready || png.status === Image.Ready)))

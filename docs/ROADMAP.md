@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Sub themes in Settings › Personalisation: Hearth, Steam-style and Gaming each get five colourways (today's colours first, then four new ones: Rose Quartz, Evergreen, Midnight, Copper Sea / Crimson, Emerald, Royal, Graphite / Toxic, Inferno, Ultraviolet, Frostbite) and the Black set of seven (Black & Red, Black & Green, Black & Yellow, Hazard, Volt, Holly, Traffic Light), each with its own wallpaper and a light mode. Only the colours and wallpaper change; each look keeps its shape. The page is now compact dropdowns (Look, Sub theme with pictures and colour dots, Mode, Match sub theme, Accent) that work with a controller. Nobody's desktop changes until they pick one, and a wallpaper you chose yourself is never replaced (needs testing on a device)
+
 ### Planned next
 
 - [ ] Optimize drives in Disk Management, the Windows way: SSDs and NVMe drives show their TRIM status and last run (never defragmented); hard drives get a fragmentation check (e4defrag -c on ext4) and a free-space warning above about 90% full, with a Defragment button only when a drive really needs it (never on Btrfs snapshots or NTFS)
