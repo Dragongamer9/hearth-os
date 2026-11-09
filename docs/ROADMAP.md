@@ -7,6 +7,21 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Hearth for Android is back
+
+- [x] Hearth for Android is out of the archive: the app is built again on every change (Actions › Android), with today's Hearth page (its looks, Settings, the keyboard and everything the page loads now goes into the app, which was missing and would have left parts blank) (needs testing on a device)
+- [x] Made for the Samsung Galaxy Tab A9 (8.7", MediaTek Helio G99): landscape looks like a Steam Deck, and on a tablet Hearth now turns to portrait too, with the page's narrow layout; phones stay landscape. Other MediaTek and ARM64 phones and tablets keep working (needs testing on a device)
+- [x] The device's settings inside Hearth, with the controller: all four volumes and mute, brightness, adaptive brightness, screen timeout, auto-rotate and Do Not Disturb change right in Hearth (Android asks once for "Modify system settings" or "Do Not Disturb access", and says why first; a "no" changes nothing) (needs testing on a device)
+- [x] Wi-Fi in Hearth: the network's name and signal, networks nearby, and joining one with a password typed in Hearth (Android shows its own "Save network?"); Wi-Fi on/off, mobile data and NFC open Android's panel over Hearth, because Android doesn't let apps switch those (needs testing on a device)
+- [x] Bluetooth in Hearth: paired devices listed, pairing a controller or headphones from Android's list over Hearth, turning Bluetooth on with Android's dialog (needs testing on a device)
+- [x] Battery: level, charging and battery saver shown in Hearth; "Let Hearth run in the background" so Samsung's battery saving doesn't close Hearth or Hearth Linux (needs testing on a device)
+- [x] Everything else is one press away on the exact Android page, and B brings you straight back: dark mode, text and display size, default home app, notifications, storage, date and time, language, accessibility, developer options; Uninstall… in a game's options (needs testing on a device)
+- [x] Your library and settings are kept by the settings rules (saved whole, a backup copy kept, never written over when unreadable, and Hearth tells you if that ever happens); Appearance is kept by the app too, not only by the page (needs testing on a device)
+- [x] Android 14/15: the "Hearth Linux is running" notification asks for permission when Linux first starts something; Hearth Linux's downloads checked (Debian and PRoot still download and match their checksums) (needs testing on a device)
+- [x] Checks on every change: the unit tests, Hearth's page as the app shows it on a Tab A9 (pictures of Home, Library and Display & sound) and the app started on an Android emulator until Home is up
+- [ ] For the owner: a signing key in the repository's secrets, so each new app installs over the last one (the old 0.2.2 needs uninstalling once: it was signed with a throwaway key)
+- [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)

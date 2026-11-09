@@ -16,7 +16,6 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Hearth Plasma, Hearth GNOME, Hearth COSMIC, Hearth Deepin | 1.0: Mantel is the only desktop | stays in place for now (`hosts/linux/desktop/{plasma,gnome,cosmic}`, their parts in `os/system_files`): the image build, tests and Hearth's core still refer to them | [PLASMA](archive/PLASMA.md), [GNOME](archive/GNOME.md), [COSMIC](archive/COSMIC.md), [DEEPIN](archive/DEEPIN.md) |
 | The old Hearth Decky plugin (Steam takeover) | 1.0: Hearth Sync (`hosts/decky-hearth-sync`) replaced it | `archive/hosts/decky-hearth`; `decky-hearth.yml` | [STEAM-GAME-MODE](STEAM-GAME-MODE.md) |
 | The small online installer | 1.0: the offline Debian USB and the Recovery USB are offered | stays in place (`os/installer`); `installer-iso.yml` by hand | |
-| Hearth for Android and Hearth Linux on Android | 2026-10-21 | `archive/hosts/android`; `android.yml` (by hand, type "archived") | [ANDROID](archive/ANDROID.md), [ANDROID-LINUX](archive/ANDROID-LINUX.md) |
 | Hearth's app store (Apps) | 2026-10-24: Bazaar replaced it | `archive/app-store` | below |
 | Hearth Friends (Matrix) | 1.6: replaced by Discord, with the owner's okay | `archive/hosts/hearth-friends`, `archive/hosts/hearth-core/src/matrix_friends.rs`, `archive/hosts/linux/desktop/shell/Friends.qml`, `archive/tools/friends-*.py`; `friends.yml` (by hand, type "archived") | [FRIENDS](archive/FRIENDS.md), below |
 

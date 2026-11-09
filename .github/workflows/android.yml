@@ -1,35 +1,41 @@
-# ARCHIVED (2026-10-21): Hearth for Android is on hold; the focus is Hearth OS and Ember. Kept for reference; it only
-# runs by hand, with "archived" typed in. The last published APK is on the v0.2.2 release.
-# Hearth for Android (archive/hosts/android): unit tests, then the debug and release APKs, uploaded as the
+# Hearth for Android (hosts/android, docs/ANDROID.md): unit tests, then the debug and release APKs, uploaded as the
 # hearth-android-<version> artifact. The release APK is signed with the repository's key when the ANDROID_KEYSTORE_*
 # secrets exist, otherwise with the build's debug key (it still installs; updates need the same key every time).
-# On main the release APK is added to that version's GitHub Release (Hearth-android.apk); elsewhere it's an artifact.
-name: Android (archived)
+# On main the release APK is added to that version's GitHub Release (Hearth-android.apk) once release.yml has made it;
+# elsewhere it's only an artifact. Also: Hearth's page as the APK serves it, in a browser laid out like a Galaxy Tab A9
+# (tools/android-ui-check.js, pictures as SHOT notices), and the APK started on an Android emulator until Hearth's
+# page says it's ready.
+name: Android
 
 on:
+  push:
+    # hearth-rs's Cargo.toml: every release changes it (the version), so a release on main always gets its APK.
+    paths: ['hosts/android/**', 'ui/**', 'tools/android-ui-check.js', '.github/workflows/android.yml', 'hosts/hearth-rs/Cargo.toml']
+  pull_request:
+    paths: ['hosts/android/**', 'ui/**', 'tools/android-ui-check.js', '.github/workflows/android.yml']
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Hearth for Android is archived. Type "archived" to build it anyway'
-        required: true
-        default: ''
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
 
 env:
-  # The Gradle version the app builds with (archive/hosts/android/gradle/wrapper/gradle-wrapper.properties says the same).
+  # The Gradle version the app builds with (hosts/android/gradle/wrapper/gradle-wrapper.properties says the same).
   # CI installs it itself, so no wrapper jar is kept in git.
   GRADLE_VERSION: '8.14.3'
 
 jobs:
   android:
-    if: inputs.confirm == 'archived'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     defaults:
       run:
-        working-directory: archive/hosts/android
+        working-directory: hosts/android
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -46,7 +52,7 @@ jobs:
       - name: Version
         id: v
         run: |
-          v=$(grep -m1 -E '^version *=' ../../../hosts/hearth-rs/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          v=$(grep -m1 -E '^version *=' ../../hosts/hearth-rs/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
           [ -n "$v" ] || v=0.2.1
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "::notice title=Hearth for Android::version $v"
@@ -67,7 +73,7 @@ jobs:
             echo "::notice title=Signing::no ANDROID_KEYSTORE_* secrets: the release APK is signed with the debug key"
           fi
       # Hearth Linux: PRoot goes into the APK as native libraries (jniLibs), from pinned downloads checked by SHA-256.
-      # A mismatch stops the build with an annotation. See docs/archive/ANDROID-LINUX.md.
+      # A mismatch stops the build with an annotation. See docs/ANDROID-LINUX.md.
       - name: PRoot for Hearth Linux
         run: |
           ./fetch-proot.sh
@@ -116,6 +122,21 @@ jobs:
           got=$(unzip -l "out/hearth-android-$v.apk" | grep -cE ' assets/ui/novnc/.*[^/]$' || true)
           [ "$got" -eq "$want" ] || { echo "::error title=APK::$got of $want noVNC files are in the APK"; exit 1; }
           echo "::notice title=APK size::$(du -h "out/hearth-android-$v.apk" | cut -f1) (release), $(du -h "out/hearth-android-$v-debug.apk" | cut -f1) (debug)"
+      # Android 15+ devices with 16 KB memory pages only run native code built for them (Google Play asks for it from
+      # apps targeting Android 15). Reported, never failing: the Galaxy Tab A9 uses 4 KB pages.
+      - name: 16 KB pages (reported)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import struct, glob
+          out = []
+          for f in sorted(glob.glob('app/src/main/jniLibs/arm64-v8a/*.so')):
+              d = open(f, 'rb').read()
+              phoff = struct.unpack_from('<Q', d, 32)[0]; es = struct.unpack_from('<H', d, 54)[0]; n = struct.unpack_from('<H', d, 56)[0]
+              al = min(struct.unpack_from('<Q', d, phoff + i * es + 48)[0] for i in range(n) if struct.unpack_from('<I', d, phoff + i * es)[0] == 1)
+              out.append(f"{f.split('/')[-1]}: {al // 1024} KB")
+          print("::notice title=16 KB pages::" + ", ".join(out) + " (PRoot runs only where pages are 4 KB if this says 4 KB; Hearth itself runs everywhere)")
+          PY
       - name: Lint (reported, never fails the build)
         continue-on-error: true
         run: |
@@ -128,7 +149,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-android-${{ steps.v.outputs.version }}
-          path: archive/hosts/android/out/*.apk
+          path: hosts/android/out/*.apk
           if-no-files-found: error
       # On main: the APK goes on that version's GitHub Release (made by release.yml), as hearth-android-<v>.apk and under
       # a fixed name (releases/latest/download/Hearth-android.apk), once that release exists.
@@ -149,6 +170,111 @@ jobs:
         with:
           name: hearth-android-reports
           path: |
-            archive/hosts/android/*.log
-            archive/hosts/android/app/build/reports/
+            hosts/android/*.log
+            hosts/android/app/build/reports/
+          if-no-files-found: ignore
+
+  # Hearth's page as the APK serves it (only the files the APK has, the real host shim, a pretend host answering what
+  # Bridge.kt answers), laid out like a Samsung Galaxy Tab A9 in landscape and portrait and like a phone; the device's
+  # settings inside Hearth with the controller. Pictures as notices (title "SHOT android-<which> <n>", a JPEG in base64
+  # pieces), one step each, and all of them as the android-page-shots download.
+  page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check the page as Hearth for Android
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node android-ui-check.js
+      - name: Picture (Tab A9, Home, landscape)
+        if: always()
+        run: f=tools/android-shots/tab-a9-landscape-home.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT android-home $i::$part"; done || true
+      - name: Picture (Tab A9, Library, landscape)
+        if: always()
+        run: f=tools/android-shots/tab-a9-landscape-library.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT android-library $i::$part"; done || true
+      - name: Picture (Tab A9, Home, portrait)
+        if: always()
+        run: f=tools/android-shots/tab-a9-portrait-home.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT android-home-portrait $i::$part"; done || true
+      - name: Picture (Tab A9, Library, portrait)
+        if: always()
+        run: f=tools/android-shots/tab-a9-portrait-library.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT android-library-portrait $i::$part"; done || true
+      - name: Picture (Tab A9, Settings › Display & sound)
+        if: always()
+        run: f=tools/android-shots/tab-a9-settings-display.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT android-settings-display $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-page-shots
+          path: tools/android-shots/
+          if-no-files-found: ignore
+
+  # The debug APK on an Android 14 emulator (x86_64, Google APIs): it installs, starts, and
+  # Hearth's page says it's ready (its log line "page ready") within three minutes, with no crash. Page errors are
+  # reported. A picture of the screen as a notice (title "SHOT android-emulator <n>").
+  emulator:
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-android-${{ needs.android.outputs.version }}
+          path: apk
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: The smoke test
+        run: |
+          cat > smoke.sh <<'SH'
+          set -u
+          apk="$1"
+          adb install -r "$apk" || { echo "::error title=Emulator::the APK didn't install"; exit 1; }
+          adb logcat -c
+          adb shell am start -W -n dev.hearthos.android.debug/dev.hearthos.android.MainActivity
+          ok=0
+          for i in $(seq 1 90); do
+            if adb logcat -d -s Hearth:I | grep -q 'page ready'; then ok=1; break; fi
+            sleep 2
+          done
+          sleep 5
+          adb logcat -d -s Hearth:I AndroidRuntime:E > emulator.log || true
+          adb exec-out screencap -p > emulator.png || true
+          if grep -q 'FATAL EXCEPTION' emulator.log; then
+            echo "::error title=Emulator::Hearth crashed: $(grep -A12 'FATAL EXCEPTION' emulator.log | tr '\n' '|' | cut -c1-3500)"; exit 1
+          fi
+          grep 'page error' emulator.log | head -10 | while read -r l; do echo "::warning title=Emulator page error::$l"; done
+          if [ "$ok" != 1 ]; then
+            echo "::error title=Emulator::Hearth's page never said it's ready: $(tail -30 emulator.log | tr '\n' '|' | cut -c1-3500)"; exit 1
+          fi
+          echo "::notice title=Emulator::$(grep -m1 -o 'Hearth [^ ]* starting.*' emulator.log | cut -c1-300) · page ready"
+          SH
+          chmod +x smoke.sh
+      - name: Start Hearth on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./smoke.sh apk/hearth-android-${{ needs.android.outputs.version }}-debug.apk
+      - name: Picture (emulator)
+        if: always()
+        run: |
+          [ -f emulator.png ] || exit 0
+          python3 -c "import PIL" 2>/dev/null || pip install -q pillow
+          python3 -c "from PIL import Image; im=Image.open('emulator.png').convert('RGB'); im.thumbnail((800,800)); im.save('emulator.jpg', quality=45)"
+          base64 -w0 emulator.jpg | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT android-emulator $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator
+          path: |
+            emulator.log
+            emulator.png
           if-no-files-found: ignore

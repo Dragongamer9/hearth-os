@@ -2,7 +2,7 @@
 
 A real ARM64 Linux (Debian 13 "trixie") inside Hearth for Android, without root. Settings › System › **Linux (Beta Experimental)**.
 
-- **Stage 1:** install it, run commands, install packages, show Linux apps in Termux:X11. Confirmed on a real device (Oukitel RT8: MediaTek Helio G99, Mali-G57, Android 13, 1920×1200): the install works, xterm shows in Termux:X11, and `xfce4 dbus-x11` + `dbus-launch --exit-with-session startxfce4` gives an XFCE desktop there.
+- **Stage 1:** install it, run commands, install packages, show Linux apps in Termux:X11. Confirmed on a real device before Hearth for Android was archived (an Oukitel RT8: MediaTek Helio G99, Mali-G57, Android 13, 1920×1200; the test device is now a Samsung Galaxy Tab A9, the same Helio G99, which still needs this checked): the install works, xterm shows in Termux:X11, and `xfce4 dbus-x11` + `dbus-launch --exit-with-session startxfce4` gives an XFCE desktop there.
 - **Stage 2:** the [Linux desktop](#stage-2-the-linux-desktop) with one tap, shown **inside Hearth** (TigerVNC's Xvnc in the Linux, noVNC in Hearth's page, the controller as mouse and keyboard) or in Termux:X11. Built and checked off-device; not yet run on a device. See [What's verified](#whats-verified-and-what-isnt).
 
 ## How it works
@@ -91,7 +91,7 @@ Any app on the device can connect to 127.0.0.1, so three things stand between th
 
 ### Limits (stage 2)
 
-- **Software rendering.** Xvnc draws in memory and noVNC on a 2D canvas: fine for a desktop, a terminal, a browser or an editor, not for games or 3D. That's stage 3: on **Mali** (the RT8's Mali-G57 and most MediaTek devices) GPU acceleration in PRoot means **VirGL** (virgl_test_server on Android's GLES, Mesa's virgl in the Linux) or **Vulkan passthrough** (e.g. venus / a Vulkan wrapper over Android's Mali driver) with Zink for OpenGL; on **Adreno**, Mesa's **Turnip** (Vulkan) with Zink.
+- **Software rendering.** Xvnc draws in memory and noVNC on a 2D canvas: fine for a desktop, a terminal, a browser or an editor, not for games or 3D. That's stage 3: on **Mali** (the Galaxy Tab A9's Mali-G57 and most MediaTek devices) GPU acceleration in PRoot means **VirGL** (virgl_test_server on Android's GLES, Mesa's virgl in the Linux) or **Vulkan passthrough** (e.g. venus / a Vulkan wrapper over Android's Mali driver) with Zink for OpenGL; on **Adreno**, Mesa's **Turnip** (Vulkan) with Zink.
 - XFCE's compositor (xfwm4) costs redraws in software; turning it off (Settings › Window Manager Tweaks › Compositor) helps on slow devices.
 - No sound yet; no clipboard sharing with Android yet (noVNC can do it; not wired up).
 - Phones: the desktop is sized for readability (long side ≥1024), so on a small screen things are small; pinch-zoom isn't there.
