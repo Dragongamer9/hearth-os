@@ -843,6 +843,24 @@ const path = require('path');
       if (overlay && !document.querySelector('#qam [data-act="gamePowerForget"]')) throw new Error('no way back to the usual power settings');
     }, overlay);
   }
+  // Quick Access › Resources (docs/RESOURCE-MONITOR.md), the classic side panel as Hearth OS: the four meters with
+  // temperatures, also running, and the pause button that changes no setting (the preview's stand-in numbers).
+  await page.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+  await page.waitForTimeout(1200);
+  await step('resources', async () => {
+    if (!QTABS.some(q => q[0] === 'res')) throw new Error('Quick Access has no Resources tab on Hearth OS');
+    if (QTABS.findIndex(q => q[0] === 'res') !== QTABS.findIndex(q => q[0] === 'perf') + 1) throw new Error('Resources isn\'t right after Performance');
+    closeAll(); LOOK.qaStyle = 'side'; openLayer('qam'); S.qtab = 'res'; renderQam(); startRes();
+    await new Promise(r => setTimeout(r, 1500));
+    const q = document.querySelector('#qam .qbody'), t = q.textContent;
+    for (const w of ['Resources', 'Graphics', 'Processor', 'Memory', 'Network', 'ALSO RUNNING', 'Pause downloads and backups while I play', 'No setting changes'])
+      if (!t.includes(w)) throw new Error(`Resources doesn't show "${w}"`);
+    if (!q.querySelector('[data-k="res-pause"][data-act="resPause"]')) throw new Error('no pause button');
+    await resPause();
+    if (!document.querySelector('#qam .qbody').textContent.includes('Resume downloads and backups')) throw new Error('the pause button did not turn into Resume');
+    await resPause();
+    closeAll(); delete LOOK.qaStyle;
+  });
   // Hearth for Android (archive/hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
   // answering like Bridge.kt): only the Settings pages Android has, its own rows there, no Downloads, the Android
   // library tab, the Android power menu and "Add an app".

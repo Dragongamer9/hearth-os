@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Resource Monitor
+Comment=See inside this PC: its board, every part and port, and what each program uses, live
+Exec=/usr/bin/hearth-resmon
+Icon=hearth-resmon
+Type=Application
+Categories=System;Monitor;
+Keywords=resource;monitor;resmon;hardware;motherboard;memory;ram;cpu;gpu;disk;network;ports;slots;sensors;temperature;
+OnlyShowIn=Nimbus;

@@ -137,6 +137,11 @@ G['hearth-browser'] = (
 G['hearth-tasks'] = (  # Task Manager
     '<rect x="128" y="148" width="256" height="216" rx="44" fill="none" stroke="url(#c)" stroke-width="34"/>'
     + stroke('M168 264 H206 L234 206 L276 318 L304 256 H344', E, 30))
+G['hearth-resmon'] = (  # Resource Monitor: a chip on its board, with the live pulse
+    '<rect x="152" y="152" width="208" height="208" rx="40" fill="none" stroke="url(#c)" stroke-width="32"/>'
+    + stroke('M200 112 V140 M256 112 V140 M312 112 V140 M200 372 V400 M256 372 V400 M312 372 V400'
+             ' M112 200 H140 M112 256 H140 M112 312 H140 M372 200 H400 M372 256 H400 M372 312 H400', C, 22)
+    + stroke('M196 262 H222 L242 220 L270 304 L290 256 H316', E, 26))
 G['hearth-apps'] = (  # Apps (store)
     rect(128, 128, 112, 112, 32) + rect(272, 128, 112, 112, 32) + rect(128, 272, 112, 112, 32) + rect(272, 272, 112, 112, 32, E))
 G['hearth-installer'] = (  # Install Hearth OS: the Hearth arch with an arrow going in
@@ -303,7 +308,7 @@ ALIASES = {'hearth-task-manager': 'hearth-tasks', 'hearth-claude-get': 'hearth-g
 NAMES = {
     'hearth': 'Hearth', 'hearth-settings': 'Settings', 'hearth-files': 'Files', 'hearth-terminal': 'Terminal',
     'hearth-disks': 'Disks', 'hearth-browser': 'Browser', 'hearth-tasks': 'Task Manager', 'hearth-apps': 'Apps',
-    'hearth-installer': 'Install', 'hearth-get-claude': 'Get Claude',
+    'hearth-installer': 'Install', 'hearth-get-claude': 'Get Claude', 'hearth-resmon': 'Resource Monitor',
 }
 
 
