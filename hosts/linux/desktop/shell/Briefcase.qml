@@ -221,7 +221,8 @@ Scope {
             out.push({ id: "bc-send:" + e.path, label: "Send Briefcase to…", icon: "share", group: "Briefcase" });
             return out;
         }
-        if (n && known.length) out.push({ id: "bc-addto", label: "Add to Briefcase  ›", icon: "bc-briefcase", group: "Briefcase" });
+        // Add to Briefcase: the Briefcases you have, and "New Briefcase…" (you pick where); with none yet, only that.
+        if (n) out.push({ id: "bc-addto", label: "Add to Briefcase  ›", icon: "bc-briefcase", group: "Briefcase" });
         return out;
     }
     function folderItems(s) {
@@ -274,7 +275,8 @@ Scope {
                 "The copy in the Briefcase stays, but it won't be updated any more (Orphan).", "Split",
                 () => call(["split", here].concat(names), r => { if (done(r, "Split from the original")) refresh(); }));
         }
-        case "bc-addto": return choose("Add to Briefcase", known.filter(k => !k.missing), k => addTo(k.path, t));
+        case "bc-addto": return choose("Add to Briefcase", known.filter(k => !k.missing).concat([{ name: "New Briefcase…", sub: "Pick where it goes", newBc: true }]),
+                                       k => k.newBc ? newBriefcaseFor(t) : addTo(k.path, t));
         case "bc-addto-path": return addTo(arg, t);
         case "bc-moveto": case "bc-copyto": {
             const names = itemsIn(t).map(p => app.base(p));
@@ -331,9 +333,25 @@ Scope {
             app.reload();
         });
     }
-    function openPlace(p) {
-        if (p.missing) return call(["new", app.home, "Briefcase", "--ensure"], r => { if (done(r)) { app.navigate(r.path, ""); app.refreshPlaces(); } });
-        app.navigate(p.path, "");
+    // A Briefcase is a folder you make (New › Briefcase): Files never makes ~/Briefcase by itself any more, and an
+    // existing ~/Briefcase is a normal folder in your home folder (still a Briefcase, never moved or deleted).
+    function openPlace(p) { app.navigate(p.path, ""); }
+    // "Add to Briefcase › New Briefcase…": where it goes (this folder, your usual folders, your drives), then the
+    // picked items are added to it.
+    function newBriefcaseFor(paths) {
+        const where = [];
+        const seen = {};
+        const put = (name, path) => { if (path && !seen[path]) { seen[path] = true; where.push({ name: name, path: path, sub: path }); } };
+        if (app.listing && app.writable && !inBriefcase) put("This folder (" + (app.listing.name || app.base(app.listing.path)) + ")", app.listing.path);
+        put("Home folder", app.home);
+        for (const q of app.rawPlaces || []) if (q.section === "places" && !q.child && (q.kind === "documents" || q.kind === "desktop")) put(q.label, q.path);
+        for (const q of app.rawPlaces || []) if (q.section === "drives" && q.path && q.path !== "/" && q.mounted !== false) put(q.label, q.path);
+        choose("Where should the new Briefcase go?", where, d => call(["new", d.path, "Briefcase"], r => {
+            if (!done(r, "Made “" + app.base(r.path) + "”")) return;
+            refreshKnown();
+            app.refreshPlaces();
+            addTo(r.path, paths);
+        }));
     }
     function addTo(path, paths) {
         if (!paths.length) return;

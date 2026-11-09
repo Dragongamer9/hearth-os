@@ -63,6 +63,9 @@ jobs:
           # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
           # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
+          # Hearth (C:) with Windows folder names (1.10): C:\ forms and real paths both ways, the view's pages, writes into
+          # them refused, D:/E: unchanged, Windows apps' own C: untouched, nothing written on open, only the changed key.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_cdrive.py' -v
           # The Briefcase in Hearth Files (hearth-briefcase): statuses, updates, Trash, crashes, locks, auto-lock, auto-sync.
           # Locking runs with the real gocryptfs where FUSE can be mounted, else with the stand-in (a ::notice says which).
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_briefcase.py' -v
@@ -1269,6 +1272,68 @@ jobs:
           fi
           grep -q "couldn't load (Files" "$LOG" && { echo "::error title=This PC::$(grep "couldn't load (Files" "$LOG" | head -3 | tr '\n' ' ')"; touch shots/FAILED; }
           ls $P/*.png >/dev/null 2>&1 || { echo "::error title=This PC::no screenshots were taken"; touch shots/FAILED; }
+          # ---- Hearth (C:) with Windows folder names (shots/files-cdrive, docs/HEARTH-FILES.md "Hearth (C:) the Windows way"):
+          # C:\, Program Files, Program Files (x86) with its right-click menu, Properties, your home folder with AppData,
+          # AppData, typed C:\ paths going to the real folders, then the Linux folders switched on (a choice: saved) and
+          # Settings › System › Drives & folders. Opening them changes no settings file (drive-letters.json may appear);
+          # switching the Linux folders on changes only files.json (and its .bak).
+          C=shots/files-cdrive; mkdir -p $C
+          U=$(id -un)
+          snap_cfg > $C/files-before.txt
+          cdrive_shots() {  # dark | light
+            ipc filemanager hearthc ""; sleep 5; grim $C/$1-01-hearth-c.png || true
+            ipc filemanager hearthc "Program Files"; sleep 8; grim $C/$1-02-program-files.png || true
+            ipc filemanager cprops; sleep 2; grim $C/$1-03-program-files-properties.png || true; ipc filemanager close
+            ipc filemanager hearthc "Program Files (x86)"; sleep 6; grim $C/$1-04-program-files-x86.png || true
+            ipc filemanager select "Notepad++"; ipc filemanager menu; sleep 1; grim $C/$1-05-right-click.png || true; ipc filemanager close
+            ipc files open "$HOME"; ipc filemanager select AppData; sleep 3; grim $C/$1-06-home-with-appdata.png || true
+            ipc filemanager activate AppData; sleep 3; grim $C/$1-07-appdata.png || true
+            ipc files close
+          }
+          cdrive_shots dark
+          # Typed C:\ forms go to the real folders (the view moves nothing).
+          ipc filemanager hearthc "Program Files (x86)"; sleep 6
+          for pair in "C:\\Program Files (x86)\\Notepad++|$HOME/Games/Windows apps/Notepad++" "C:\\Users\\$U\\AppData\\Roaming|$HOME/.config" \
+                      "C:\\Users\\$U\\AppData\\Local\\Temp|$HOME/.cache" "C:\\Windows|/usr" "C:\\ProgramData|/var/lib" "C:\\|hearth:c"; do
+            t=${pair%%|*}; want=${pair#*|}
+            ipc filemanager hearthc "$t"; sleep 2
+            got=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call filemanager where 2>/dev/null | grep -v 'WARN' | tail -n 1 | cut -d'|' -f1)
+            if [ "$got" != "$want" ]; then echo "::error title=Hearth (C:)::typing $t went to “$got”, not “$want”"; touch shots/FAILED; fi
+            echo "$t -> $got" >> $C/typed.txt
+          done
+          ipc files close
+          snap_cfg > $C/files-after.txt
+          changed=$(diff $C/files-before.txt $C/files-after.txt | grep '^[<>]' | awk '{print $NF}' | sort -u | grep -v -E '/\.config/hearth/drive-letters\.json(\.bak)?$' | tr '\n' ' ' || true)
+          if [ -n "$changed" ]; then
+            echo "::error title=Hearth (C:)::opening Hearth (C:), Program Files, AppData and Properties changed: $changed"; touch shots/FAILED
+          else
+            echo "::notice title=Hearth (C:)::no settings file changed by opening the view ($(wc -l < $C/files-before.txt) files checked); typed: $(tr '\n' ' ' < $C/typed.txt | head -c 500)"
+          fi
+          # A choice is saved, and only that key: View's "Show the Linux folders too".
+          cp "$HOME/.config/nimbus/files.json" $C/files-json-before.json 2>/dev/null || echo '{}' > $C/files-json-before.json
+          ipc filemanager hearthc ""; sleep 3
+          python3 hosts/linux/desktop/shell/hearth-files prefs-set '{"linuxFolders": true}' > /dev/null
+          ipc files close; ipc filemanager hearthc ""; sleep 4; grim $C/dark-08-linux-folders.png || true
+          python3 - "$C/files-json-before.json" "$HOME/.config/nimbus/files.json" <<'PY' || touch shots/FAILED
+          import json, sys
+          a, b = (json.load(open(p)) for p in sys.argv[1:3])
+          extra = {k: v for k, v in b.items() if a.get(k) != v}
+          lost = [k for k in a if k not in b]
+          if lost or set(extra) - {'linuxFolders'}:
+              print('::error title=Hearth (C:)::files.json changed more than the switch: %s, lost %s' % (extra, lost)); sys.exit(1)
+          print('::notice title=Hearth (C:)::the switch saved only %s' % sorted(extra))
+          PY
+          ipc settings close; ipc settings page drives; sleep 4; grim $C/dark-09-settings-drives.png || true; ipc settings close
+          python3 hosts/linux/desktop/shell/hearth-files prefs-set '{"linuxFolders": false}' > /dev/null
+          set_look steam light "" ""; cdrive_shots light; set_look steam dark "" ""
+          ipc files close
+          python3 hosts/linux/desktop/shell/hearth-files cdrive > $C/cdrive.json 2>&1 || true
+          grep -E "(FilesCDrive|FilesCProps|SetDrives)\.qml|drive-paths\.js" "$LOG" | head -40 > $C/qml-warnings.txt 2>/dev/null || true
+          if grep -q -E "TypeError|ReferenceError|is not a type|non-existent|Cannot assign|is not defined|Expected token|Syntax" $C/qml-warnings.txt; then
+            echo "::error title=Hearth (C:) QML::$(head -c 900 $C/qml-warnings.txt | tr '\n' ' ')"; touch shots/FAILED
+          fi
+          grep -q "couldn't load (FilesC" "$LOG" && { echo "::error title=Hearth (C:)::$(grep "couldn't load (FilesC" "$LOG" | head -3 | tr '\n' ' ')"; touch shots/FAILED; }
+          ls $C/*.png >/dev/null 2>&1 || { echo "::error title=Hearth (C:)::no screenshots were taken"; touch shots/FAILED; }
           # ---- The Briefcase (shots/briefcase, docs/HEARTH-FILES.md › Briefcase): two Briefcases customized differently,
           # files added, one changed on each side and one changed in both, Update All's list of actions, after it ran,
           # and the Customize dialog. hearth-briefcase does the work; Files shows it.

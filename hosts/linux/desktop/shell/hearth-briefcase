@@ -6,7 +6,8 @@ stick, a shared folder or another Hearth device. Each item in it remembers where
 this PC, a removable drive (its filesystem UUID and the path on it, so it's found under any mount point) or a shared
 folder (smb://, opened through gio/gvfs), with the size, time and content hash of both copies at the last update.
 
-  hearth-briefcase new PARENT [NAME] [--ensure]   make a Briefcase (--ensure: ~/Briefcase, made once)
+  hearth-briefcase new PARENT [NAME] [--ensure]   make a Briefcase (--ensure: reuse PARENT/NAME if it's already one;
+                                                Files never makes ~/Briefcase by itself)
   hearth-briefcase list                           the Briefcases this device knows (for the navigation pane and menus)
   hearth-briefcase status BC                      each item's status (and the lock's), recomputed now
   hearth-briefcase add BC SRC...                  copy SRC in and remember it as the original      } "progress: {json}"
@@ -1016,10 +1017,7 @@ def list_known():
         if rp in seen:
             continue
         seen.add(rp)
-        if not is_briefcase(rp):
-            if rp == os.path.realpath(default):
-                out.append({'path': rp, 'name': 'Briefcase', 'missing': True, 'default': True,
-                            'look': look_of({}), 'locked': False, 'unlocked': False})
+        if not is_briefcase(rp):          # (a ~/Briefcase that isn't there is just not there: nothing is offered)
             continue
         try:
             bc = open_bc(rp, recover_ok=False)

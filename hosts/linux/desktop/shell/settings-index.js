@@ -550,6 +550,42 @@ var ENTRIES = [
 "i": "cpu"
 },
 {
+"t": "Show Hearth (C:) with Windows folder names",
+"p": "drives",
+"d": "Program Files, Users, Windows… Only names: nothing on your drive moves.",
+"i": "drive"
+},
+{
+"t": "Show the Linux folders too",
+"p": "drives",
+"d": "etc, usr, var and the rest, under their own heading on Hearth (C:)",
+"i": "folder"
+},
+{
+"t": "The address bar shows",
+"p": "drives",
+"d": "Typing either kind always works",
+"i": "edit"
+},
+{
+"t": "Copy path gives",
+"p": "drives",
+"d": "The other one is always in the right-click menu",
+"i": "link"
+},
+{
+"t": "C:  Hearth",
+"p": "drives",
+"d": "The drive Hearth runs from · always C:",
+"i": "drive"
+},
+{
+"t": "Only names",
+"p": "drives",
+"d": "These only change how Hearth names things. Your files, apps and games stay exactly where they are, and Windows apps keep their own C: inside them.",
+"i": "info"
+},
+{
 "t": "Hearth Games",
 "p": "games",
 "d": "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall (docs/HEARTH-GAMES.md)",
