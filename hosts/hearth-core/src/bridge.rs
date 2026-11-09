@@ -99,13 +99,8 @@ impl Bridge {
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
         // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
         // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
-        // Hearth's own Steam client (Open) is the default: switched on once for everyone who never chose an
-        // engine, with a short explainer in Settings › Library (steam_engine::migrate).
-        if let Some(writes) = b.library.store.data.as_object().and_then(crate::steam_engine::migrate) {
-            if b.library.store.update(|d| { for (k, v) in writes { d.insert(k.into(), v); } }).is_ok() {
-                crate::bridge::log("steam engine: Hearth's own Steam client is now the default (Settings › Library to turn it off)");
-            }
-        }
+        // The Steam engine (Settings › Library) is never written here: with none saved, Valve's Steam client does
+        // everything (steam_engine::Mode::from_setting). An older Hearth switched it to Open by itself at this point.
         {
             let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready_effective(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
             let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
@@ -2120,6 +2115,30 @@ mod tests {
         let r = b.handle(&json!({"type":"call","id":9,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
         assert_eq!(r["ok"], true);
         assert!(b.library.store.list_has("favorites", "steam:1"));
+    }
+    /// Settings never change by themselves: Hearth starting (Bridge::new) never writes a Steam engine, and with none
+    /// saved, opening Hearth Game Mode (its first calls) writes nothing and Steam games go to Valve's client.
+    #[test]
+    fn no_steam_engine_saved_writes_nothing_and_uses_valves_client() {
+        let src = include_str!("bridge.rs");
+        let start = &src[src.find("pub fn new(version: &str) -> Bridge {").unwrap()..src.find("pub fn with(library: Library").unwrap()];
+        assert!(!start.contains("\"steamEngine\""), "Hearth's start writes no Steam engine");
+        assert!(!start.contains("steam_engine::migrate"), "no switch to another engine at start");
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("l.json");
+        std::fs::write(&file, "{\"favorites\": []}\n").unwrap();
+        let before = std::fs::read(&file).unwrap();
+        let mut b = Bridge::with(Library::new(Store::open(file.clone()), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
+        for (id, m) in [(1, "library.get"), (2, "steam.engine.status")] {
+            let r = b.handle(&json!({"type":"call","id":id,"method":m,"args":{}})).unwrap();
+            assert_eq!(r["ok"], true, "{m}: {r}");
+        }
+        let st = b.handle(&json!({"type":"call","id":3,"method":"steam.engine.status","args":{}})).unwrap();
+        assert_eq!(st["value"]["mode"], "classic");
+        assert_eq!(b.library.steam_engine_mode(), crate::steam_engine::Mode::Classic);
+        assert!(!crate::steam_engine::launch(b.library.steam_engine_mode(), 10), "a Steam game goes to Valve's client");
+        assert_eq!(std::fs::read(&file).unwrap(), before, "library.json is byte for byte as it was");
+        assert!(b.library.store.data.get("steamEngine").map(|v| v.is_null()).unwrap_or(true));
     }
     /// The page's other calls are answered while a picker waits for the person (it held the bridge before 0.6.5,
     /// so Hearth froze and the fail-safe stopped it: "stuck in accounts.pickFolder").

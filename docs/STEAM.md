@@ -181,11 +181,12 @@ steamclient's own doing; Steam's web UI never runs. This is the one place Hearth
   `hearth-steam-engine.service` (not enabled: Hearth starts and stops it). Built by `.github/workflows/hearth-steam.yml`
   and by the image builds, where a failed build only leaves it out.
 
-## 8. Open engine (the default)
+## 8. Open engine
 
-Settings › Library › **Hearth's Steam client** (on by default; turning it on turns Lightweight off and the
-other way round). New installs start with it, and everyone who never chose an engine gets it switched on once, with a
-short explainer in Settings › Library (`steam_engine::migrate`, `steamEngineExplain`); turning it off (Classic) sticks.
+Settings › Library › **Hearth's Steam client** (off unless you turn it on; turning it on turns Lightweight off and the
+other way round). With no engine saved, Hearth uses Classic (Valve's client) and writes nothing until you pick one
+(1.10; before that, Hearth switched everyone who never chose to Open once when its app first started, with an
+explainer in Settings › Library: `steamEngineExplain`. Anyone it switched keeps Open and can turn it off there).
 Until the player signs in to it, everything behaves exactly like Classic (Settings › Library and a pill in the Library
 offer to sign in; never forced). Steam's own Game Mode (Decky) always uses Valve's client (`steam_engine::effective`). Hearth's own open-source Steam client: the same `hosts/hearth-steam` service and socket API, started with
 `HEARTH_STEAM_ENGINE=open` (Hearth sets it in the user manager before starting `hearth-steam-engine.service`), but

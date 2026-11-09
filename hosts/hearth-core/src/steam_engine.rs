@@ -6,9 +6,11 @@
 //!
 //! Hearth never stores or logs what's typed to sign in: it's handed to the service, which hands it to steamclient.
 //!
-//! Default: Open, for new installs and for everyone who never chose an engine (once, with a short
-//! explainer in Settings; Classic stays one switch away). Until the player signs in to it, everything behaves like
-//! Classic. Steam's own Game Mode (Decky) always uses Valve's client.
+//! Default: Classic (Valve's Steam client) whenever no engine is saved. Hearth never writes an engine by itself (the
+//! owner's rule: settings never change by themselves); the setting is saved only when the player picks one in
+//! Settings › Library. An older Hearth switched everyone who never chose to Open once at start (`migrate`, removed in
+//! 1.10): people it switched keep "open" because it's what their file says; the explainer it set still shows once.
+//! Steam's own Game Mode (Decky) always uses Valve's client.
 //!
 //! Open is the same service started with HEARTH_STEAM_ENGINE=open: Hearth's own
 //! clean-room Steam client on SteamKit2, with no steamclient at all. It signs in, lists the owned library, and
@@ -86,9 +88,10 @@ pub fn ask(req: &Value, timeout: Duration) -> Answer { ask_at(&socket_path(), re
 pub enum Mode { Classic, Lightweight, Open }
 
 impl Mode {
-    /// From library.json's "steamEngine": nothing chosen is Open (the default); anything unknown is Classic.
+    /// From library.json's "steamEngine": nothing chosen is Classic (Valve's client, the default); anything unknown
+    /// is Classic too. Only an engine the player picked is ever saved.
     pub fn from_setting(v: &Value) -> Mode {
-        match v.as_str() { Some("lightweight") => Mode::Lightweight, Some("open") => Mode::Open, None if v.is_null() => Mode::Open, _ => Mode::Classic }
+        match v.as_str() { Some("lightweight") => Mode::Lightweight, Some("open") => Mode::Open, _ => Mode::Classic }
     }
     pub fn name(self) -> &'static str { match self { Mode::Classic => "classic", Mode::Lightweight => "lightweight", Mode::Open => "open" } }
     /// The service runs for this mode.
@@ -97,13 +100,6 @@ impl Mode {
 
 /// The engine actually used: Steam's own Game Mode (the Decky session) always uses Valve's client.
 pub fn effective(mode: Mode, steam_game_mode: bool) -> Mode { if steam_game_mode { Mode::Classic } else { mode } }
-
-/// The one-time switch to the default (pure, for the tests): Some(settings to write) when the player never chose an
-/// engine. The explainer flag makes Settings › Library say once what changed and how to turn it off.
-pub fn migrate(stored: &serde_json::Map<String, Value>) -> Option<Vec<(&'static str, Value)>> {
-    if stored.get("steamEngine").map(|v| !v.is_null()).unwrap_or(false) { return None; }
-    Some(vec![("steamEngine", json!("open")), ("steamEngineExplain", json!(true))])
-}
 
 /// Which client does a Steam action.
 #[derive(Debug, PartialEq)]
@@ -521,7 +517,7 @@ mod tests {
         assert_eq!(Mode::from_setting(&json!("open")), Mode::Open);
         assert_eq!(Mode::from_setting(&json!("lightweight")), Mode::Lightweight);
         assert_eq!(Mode::from_setting(&json!("classic")), Mode::Classic);
-        assert_eq!(Mode::from_setting(&json!(null)), Mode::Open);   // the default now
+        assert_eq!(Mode::from_setting(&json!(null)), Mode::Classic);   // nothing saved: Valve's client
         assert_eq!(Mode::from_setting(&json!("something")), Mode::Classic);
         assert!(!Mode::Classic.service() && Mode::Open.service() && Mode::Lightweight.service());
         // Classic never asks the engine anything.
@@ -652,22 +648,20 @@ mod tests {
     }
 
     #[test]
-    fn open_is_the_default_once_and_can_be_turned_off() {
-        let mut m = serde_json::Map::new();
-        let w = migrate(&m).expect("never chosen: switched once");
-        assert!(w.contains(&("steamEngine", json!("open"))) && w.contains(&("steamEngineExplain", json!(true))));
-        for (k, v) in w { m.insert(k.into(), v); }
-        assert_eq!(migrate(&m), None, "only once");
-        assert_eq!(Mode::from_setting(&m["steamEngine"]), Mode::Open);
-        // Chosen before (Classic, Lightweight or Open): left alone; turning it off sticks.
-        for e in ["classic", "lightweight", "open"] {
-            let mut c = serde_json::Map::new();
-            c.insert("steamEngine".into(), json!(e));
-            assert_eq!(migrate(&c), None, "{e}");
+    fn nothing_saved_is_valves_client_and_a_pick_is_kept() {
+        // No engine saved (the field missing or null): Classic, and Valve's client does every Steam action.
+        let none = serde_json::Map::new();
+        let mode = Mode::from_setting(none.get("steamEngine").unwrap_or(&Value::Null));
+        assert_eq!(mode, Mode::Classic);
+        assert!(!mode.service(), "the engine's service isn't even started");
+        assert_eq!(route(mode, true, false, &Answer::Ok(json!({"kind": "open", "engine": "ready", "signedIn": true}))), Route::Classic("Classic is chosen"));
+        assert_eq!(try_do(mode, json!({"cmd": "launch", "appid": 10}), Duration::from_millis(10)), None);
+        assert!(!launch(mode, 10));
+        assert_eq!(launch_info(mode, 10), None);
+        // What the player picked is what's used.
+        for (e, m) in [("classic", Mode::Classic), ("lightweight", Mode::Lightweight), ("open", Mode::Open)] {
+            assert_eq!(Mode::from_setting(&json!(e)), m, "{e}");
         }
-        m.insert("steamEngine".into(), json!("classic"));
-        assert_eq!(migrate(&m), None);
-        assert_eq!(Mode::from_setting(&m["steamEngine"]), Mode::Classic);
         // Steam's own Game Mode (Decky) uses Valve's client whatever is chosen.
         assert_eq!(effective(Mode::Open, true), Mode::Classic);
         assert_eq!(effective(Mode::Lightweight, true), Mode::Classic);
