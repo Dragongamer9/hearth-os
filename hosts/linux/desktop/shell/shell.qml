@@ -240,6 +240,10 @@ ShellRoot {
     Loader { source: "Discord.qml" }
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
+    // System Restore and Reliability history (docs/SYSTEM-RESTORE.md): loaded separately like Discord, so a problem in
+    // either only loses that window. IPC targets "restore" and "reliability" (hearth-restore, hearth-reliability).
+    Loader { source: "Restore.qml" }
+    Loader { source: "Reliability.qml" }
     FileManager { id: files }
     VolumeOsd { id: osd }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell

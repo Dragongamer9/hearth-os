@@ -37,6 +37,7 @@ Scope {
         || SettingsNav.clipShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
+        || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
     // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
