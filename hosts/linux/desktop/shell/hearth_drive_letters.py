@@ -17,8 +17,16 @@ Windows apps (hearth-winapps): map_prefix(PREFIX) points each lettered drive's d
 prefix at the same drive and the prefix's Documents, Desktop, Downloads, Pictures, Music and Videos at your own
 folders, touching only links Hearth made (remembered in PREFIX/.hearth-drives.json) and empty folders.
 
+Hearth (C:) with Windows folder names (docs/HEARTH-FILES.md "Hearth (C:) the Windows way"): a view, nothing moves on
+disk. from_c / to_c are the same mapping as drive-paths.js's (C:\\Program Files\\<app>, C:\\ProgramData = /var/lib,
+C:\\Windows = /usr, C:\\Users = the folder home folders are in, …\\AppData\\Roaming = ~/.config, \\Local = ~/.local/share,
+\\Local\\Temp = ~/.cache), for hearth-files and the tests. view_refusal says why nothing can be put into the view's own
+folders (hearth:c paths) or into Windows and ProgramData (look only). Windows apps never see it: inside a Wine prefix
+C: stays the prefix's own drive (map_prefix never touches c:).
+
   hearth_drive_letters.py show                 the letters, as JSON
   hearth_drive_letters.py map-prefix PREFIX    what map_prefix would change, then changes it (JSON)
+  hearth_drive_letters.py c-path TEXT          what a C:\\ form stands for with the view on (JSON: {path} or {error})
 """
 import json
 import os
@@ -312,6 +320,136 @@ def map_prefix(prefix, letters_path=None, dry=False):
     return out
 
 
+# ---------------------------------------------------------------- Hearth (C:) with Windows folder names
+C_ROOT = 'hearth:c'
+
+
+def c_context(apps=None, home_dir=None, user_name=None):
+    """{home, user, users, apps: [{name, path, x86}]} for from_c / to_c."""
+    h = (home_dir or home()).rstrip('/') or '/'
+    u = user_name or os.path.basename(h) or 'you'
+    return {'home': h, 'user': u, 'users': os.path.dirname(h) or '/', 'apps': list(apps or [])}
+
+
+def _join(root, segs):
+    root = root.rstrip('/')
+    rest = '/'.join(s for s in segs if s)
+    return (root + '/' + rest if rest else root) or '/'
+
+
+def is_c_path(p):
+    return isinstance(p, str) and p.startswith(C_ROOT)
+
+
+def c_page(p, ctx):
+    """'root', 'pf', 'x86', 'appdata', or '' (the view's own pages, like drive-paths.js cPage)."""
+    if not is_c_path(p):
+        return ''
+    segs = [s.lower() for s in p[len(C_ROOT):].split('/') if s]
+    if not segs:
+        return 'root'
+    if segs == ['program files']:
+        return 'pf'
+    if segs == ['program files (x86)']:
+        return 'x86'
+    if len(segs) == 3 and segs[0] == 'users' and segs[2] == 'appdata' and segs[1] == ctx['user'].lower():
+        return 'appdata'
+    return ''
+
+
+def _c_segs(segs, ctx):
+    if not segs:
+        return {'path': C_ROOT}
+    low = [s.lower() for s in segs]
+    h = ctx['home']
+    if low[0] in ('program files', 'program files (x86)'):
+        x86 = low[0] == 'program files (x86)'
+        name = 'Program Files (x86)' if x86 else 'Program Files'
+        if len(segs) == 1:
+            return {'path': C_ROOT + '/' + name}
+        for a in ctx.get('apps') or []:
+            if bool(a.get('x86')) == x86 and str(a.get('name', '')).lower() == low[1] and a.get('path'):
+                return {'path': _join(a['path'], segs[2:])}
+        return {'error': 'There\'s no “%s” in %s' % (segs[1], name)}
+    if low[0] == 'programdata':
+        return {'path': _join('/var/lib', segs[1:])}
+    if low[0] == 'windows':
+        return {'path': _join('/usr', segs[1:])}
+    if low[0] == 'users':
+        if len(segs) == 1:
+            return {'path': ctx['users']}
+        if low[1] == ctx['user'].lower():
+            r, rl = segs[2:], low[2:]
+            if rl[:1] == ['appdata']:
+                if len(r) == 1:
+                    return {'path': C_ROOT + '/Users/' + ctx['user'] + '/AppData'}
+                if rl[1] == 'roaming':
+                    return {'path': _join(h + '/.config', r[2:])}
+                if rl[1] == 'local' and rl[2:3] == ['temp']:
+                    return {'path': _join(h + '/.cache', r[3:])}
+                if rl[1] == 'local':
+                    return {'path': _join(h + '/.local/share', r[2:])}
+                return {'error': 'AppData has Roaming and Local (Local\\Temp too)'}
+            return {'path': _join(h, r)}
+        return {'path': _join(ctx['users'], segs[1:])}
+    return {'path': '/' + '/'.join(segs)}
+
+
+def from_c(text, ctx):
+    """'C:\\Program Files\\Firefox' → {'path': real path or a hearth:c page}, {'error': …}; None if it isn't a C: path."""
+    m = re.match(r'^\s*[Cc]:([\\/].*)?\s*$', text or '')
+    if not m:
+        return None
+    segs = []
+    for s in re.split(r'[\\/]+', m.group(1) or ''):
+        if not s or s == '.':
+            continue
+        if s == '..':
+            if segs:
+                segs.pop()
+            continue
+        segs.append(s)
+    return _c_segs(segs, ctx)
+
+
+def to_c(path, ctx):
+    """The C:\\ form of a real path (or a hearth:c page) with the view on."""
+    if is_c_path(path):
+        return 'C:\\' + '\\'.join(s for s in path[len(C_ROOT):].split('/') if s)
+    h, u = ctx['home'], ctx['user']
+    maps = [(a['path'].rstrip('/'), 'C:\\%s\\%s' % ('Program Files (x86)' if a.get('x86') else 'Program Files', a['name']))
+            for a in ctx.get('apps') or [] if a.get('path', '').startswith('/') and a.get('name') and not a.get('noMap')]
+    maps += [(h + '/.config', 'C:\\Users\\%s\\AppData\\Roaming' % u), (h + '/.local/share', 'C:\\Users\\%s\\AppData\\Local' % u),
+             (h + '/.cache', 'C:\\Users\\%s\\AppData\\Local\\Temp' % u), (h, 'C:\\Users\\' + u),
+             (ctx['users'], 'C:\\Users'), ('/var/lib', 'C:\\ProgramData'), ('/usr', 'C:\\Windows')]
+    maps.sort(key=lambda x: -len(x[0]))
+    for root, win in maps:
+        if path == root or path.startswith(root + '/'):
+            rest = '\\'.join(s for s in path[len(root):].split('/') if s)
+            return win + ('\\' + rest if rest else '')
+    return 'C:\\' + '\\'.join(s for s in path.split('/') if s)
+
+
+def view_refusal(path, ctx=None):
+    """Why nothing can be dropped or pasted here, or '' (real folders reached through the view work as always)."""
+    if is_c_path(path):
+        pg = c_page(path, ctx or c_context())
+        if pg in ('pf', 'x86'):
+            return ('You can\'t put files straight into %s. To add an app, install it, and it shows up here by itself.'
+                    % ('Program Files (x86)' if pg == 'x86' else 'Program Files'))
+        if pg == 'appdata':
+            return 'You can\'t put files straight into AppData: open Roaming or Local first.'
+        if pg == 'root':
+            return 'You can\'t put files straight into Hearth (C:). Open a folder in it first (your own folder is in Users).'
+        return 'That\'s a name for another folder: open it first.'
+    p = os.path.abspath(path) if isinstance(path, str) and path else ''
+    if p == '/usr' or p.startswith('/usr/'):
+        return 'Windows (C:\\Windows) is Hearth itself: look only. Each update replaces it all at once.'
+    if p == '/var/lib' or p.startswith('/var/lib/'):
+        return 'ProgramData (C:\\ProgramData) is look only: what apps keep there is changed by the apps themselves.'
+    return ''
+
+
 def main(argv):
     a = argv[1:]
     try:
@@ -319,6 +457,8 @@ def main(argv):
             r = {'letters': load(), 'file': state_file()}
         elif a[:1] == ['map-prefix'] and len(a) == 2:
             r = map_prefix(a[1])
+        elif a[:1] == ['c-path'] and len(a) == 2:
+            r = from_c(a[1], c_context()) or {'error': 'That isn\'t a C:\\ path'}
         else:
             print(__doc__.strip(), file=sys.stderr)
             return 2
