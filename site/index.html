@@ -303,7 +303,9 @@ footer .legal a{font-size:inherit;color:var(--muted)}
 .player [data-show="pause"],.player [data-show="muted"]{display:none}
 html.playing .player [data-show="play"]{display:none}html.playing .player [data-show="pause"]{display:block}
 html.muted .player [data-show="loud"]{display:none}html.muted .player [data-show="muted"]{display:block}
-@media (max-width:1180px){.player .meta{display:none}}
+@media (max-width:1300px){.player .meta{display:none}}
+@media (max-width:1100px){header nav{display:none}}
+.hero2 .wrap.covers{display:block}
 @media (max-width:640px){header .dl{display:none}.player .next{display:none}.player input[type=range]{width:64px}}
 @media (max-width:420px){.brand .bt{display:none}}
 .brand img{transform:scale(calc(1 + var(--beat,0) * .18))}
@@ -413,10 +415,10 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <a class="brand" href="#top"><img src="img/logo.svg" alt="" width="30" height="30"><span class="bt">Hearth OS</span></a>
     <nav aria-label="Sections">
       <a href="#games">Games</a>
-      <a href="#apps">Windows-style apps</a>
-      <a href="#safe">Safe updates</a>
-      <a href="#heading">Where we're heading</a>
-      <a href="#soundtrack">Soundtrack</a>
+      <a href="#apps">Apps</a>
+      <a href="#safe">Updates</a>
+      <a href="#heading">Roadmap</a>
+      <a href="#soundtrack">Music</a>
       <a href="docs/">Docs</a>
     </nav>
     <div class="player" role="group" aria-label="Music player">
