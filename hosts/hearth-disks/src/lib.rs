@@ -253,7 +253,7 @@ mod tests {
         let apps = dir.join("SteamLibrary/steamapps");
         std::fs::create_dir_all(apps.join("common")).unwrap();
         std::fs::write(apps.join("appmanifest_620.acf"), "\"AppState\"\n{\n\t\"appid\"\t\t\"620\"\n\t\"installdir\"\t\t\"Portal 2\"\n\t\"SizeOnDisk\"\t\t\"12000\"\n}\n").unwrap();
-        std::fs::write(apps.join("appmanifest_70.acf"), "\"AppState\" { \"installdir\" \"Half-Life\" \"SizeOnDisk\" \"500\" }").unwrap();
+        std::fs::write(apps.join("appmanifest_70.acf"), "\"AppState\"\n{\n\t\"installdir\"\t\t\"Half-Life\"\n\t\"SizeOnDisk\"\t\t\"500\"\n}\n").unwrap();
         let m = dir.to_string_lossy().to_string();
         // Storage knows Portal 2 (bigger, with its own count) and a GOG game; Steam's records add Half-Life.
         let storage = serde_json::json!({"games": {
