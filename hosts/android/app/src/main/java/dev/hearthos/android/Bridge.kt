@@ -40,6 +40,12 @@ class Bridge(private val act: MainActivity) {
     val art = IconArt(act)
     private val roms = RomFolder(act)
     private val dev = DeviceStatus(act)
+    private val settings = AndroidSettings(act)
+    /** Settings › Appearance and the button swaps, kept by Hearth itself too (uiprefs, like game-mode-ui.json on
+     *  Hearth OS): the page's localStorage can be lost, this file is the one source of truth (Store: atomic, .bak). */
+    private val uiPrefs = Store(File(act.filesDir, "ui-prefs.json"))
+    /** The page has shown Android's settings: they're sent again whenever Hearth comes back to the front. */
+    @Volatile private var settingsShown = false
     private val linux = LinuxEnv.get(act, version).also { l -> l.emit = { n, d -> event(n, d) }; l.startActivity = { start(it) } }
     private val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "hearth-bridge") }
     private val main = Handler(Looper.getMainLooper())
@@ -86,7 +92,11 @@ class Bridge(private val act: MainActivity) {
                 }
             }
             // A (re)loaded page starts in Hearth's own controller mode (the desktop's view turns raw mode on itself).
-            "ready" -> { pageReady = true; Logs.log("page ready"); main.post { act.setRawPad(false) }; padsChanged() }
+            "ready" -> {
+                pageReady = true; Logs.log("page ready"); main.post { act.setRawPad(false) }; padsChanged()
+                // Saved data Hearth couldn't read (and kept a copy of): say so once, never silently.
+                (store.recovered ?: uiPrefs.recovered)?.let { toast(it) }
+            }
             "log" -> Logs.log("page: " + msg.optString("text").take(4000))
             "power" -> power(msg.optString("action"))
             "resume" -> resume()
@@ -122,17 +132,18 @@ class Bridge(private val act: MainActivity) {
             .put("platform", "android").put("name", dev.deviceName()).put("host", "Hearth (Android)").put("version", version)
             .put("edition", "android").put("features", JSONArray(FEATURES)).put("deviceId", deviceId())
             .put("setupDone", true).put("live", false).put("autoReport", false).put("isDefaultHome", isDefaultHome())
-        "sys.status" -> dev.status()
+        "sys.status" -> status()
         "audio.get" -> dev.audio()
         "audio.setVolume" -> { dev.setVolume(a.optDouble("v", 0.0).roundToInt()); JSONObject.NULL }
         "audio.setMute" -> { dev.setMute(a.optBoolean("m")); JSONObject.NULL }
-        "display.get" -> dev.display()
+        "display.get" -> dev.display().put("supported", settings.has("writeSettings")).put("brightness", brightnessPct())
+        "display.setBrightness" -> { needOk(settings.set("brightness", a.optDouble("v", 50.0))); JSONObject.NULL }
         "power.get" -> dev.power()
         "system.info" -> dev.info()
         "pad.status" -> JSONObject().put("connected", dev.controllers().length()).put("mouseMode", false).put("mouseOn", false)
         // Apps can't switch Wi-Fi, Bluetooth or airplane mode on Android 10+: their settings open instead.
-        "radios.set" -> { openSettings(if (a.optString("kind") == "bt") "bluetooth" else "wifi", ""); dev.status() }
-        "airplane.set" -> { openSettings("airplane", ""); dev.status() }
+        "radios.set" -> { if (a.optString("kind") == "bt") openSettings("bluetooth", "") else panel("wifi"); status() }
+        "airplane.set" -> { openSettings("airplane", ""); status() }
 
         "profile.get" -> store.profile(dev.deviceName())
         "profile.set" -> store.profileSet(a, dev.deviceName())
@@ -170,9 +181,27 @@ class Bridge(private val act: MainActivity) {
         }
         // Hearth Linux (Beta Experimental): LinuxEnv answers at once; long jobs report with linux.* events.
         "linux.status", "linux.install", "linux.run", "linux.apt", "linux.stop", "linux.openX11", "linux.trustX11", "linux.reset", "linux.remove",
-        "linux.desktop.status", "linux.desktop.install", "linux.desktop.start", "linux.desktop.stop" -> linux.call(method, a)
+        "linux.desktop.status", "linux.desktop.install", "linux.desktop.start", "linux.desktop.stop" -> {
+            // Starting something in Linux keeps a "Hearth Linux is running" notification up: Android 13+ asks once
+            // whether Hearth may show it (Linux runs either way).
+            if (method in setOf("linux.install", "linux.run", "linux.apt", "linux.desktop.install", "linux.desktop.start") && !settings.has("notifications"))
+                settings.runtimePerms("notifications")?.let { p -> main.post { act.askPermissions(p) { } } }
+            linux.call(method, a)
+        }
         // The Linux desktop's view: controller buttons as presses and releases, and the sticks' positions (padAxes).
         "pad.raw" -> { val on = a.optBoolean("on"); main.post { act.setRawPad(on) }; JSONObject().put("on", on) }
+        // Settings for the device itself, inside Hearth (AndroidSettings.kt): read, change, ask for a permission.
+        "android.settings.get" -> { settingsShown = true; settings.state(dev) }
+        "android.settings.set" -> settings.set(req(a, "key"), a.opt("value")).also { r -> r.put("state", settings.state(dev)); if (r.optBoolean("ok")) event("status", status()) }
+        "android.settings.ask" -> { ask(req(a, "perm"), id); DEFERRED }
+        "android.panel" -> { panel(req(a, "name")); JSONObject().put("ok", true) }
+        "android.wifi.scan" -> settings.wifiScan()
+        "android.wifi.join" -> { wifiJoin(req(a, "ssid"), a.optString("password", ""), a.optString("security", "wpa"), id); DEFERRED }
+        "android.bt.enable" -> { btEnable(id); DEFERRED }
+        "android.bt.pair" -> { btPair(id); DEFERRED }
+        "android.uninstall" -> { uninstall(req(a, "id").removePrefix("android:")); JSONObject().put("ok", true) }
+        "uiprefs.get" -> synchronized(uiPrefs) { JSONObject(uiPrefs.data.toString()) }
+        "uiprefs.set" -> { uiPrefsSet(a.optJSONObject("values") ?: JSONObject()); JSONObject().put("ok", true) }
         "android.roms.forget" -> { romsTree()?.let { releaseTree(it) }; store.update { it.remove("roms") }; romList = null; androidStatus() }
         else -> throw Exception("That isn't in Hearth for Android yet")
     }
@@ -282,10 +311,11 @@ class Bridge(private val act: MainActivity) {
 
     /** Hearth is in front again: the game is over (Android has no way to see it still running behind). */
     fun onForeground() = exec.execute {
+        if (pageReady && settingsShown) runCatching { event("android.settings", settings.state(dev)) }
         val r = running ?: return@execute
         if (r.startedAt > 0) finish(r)
         else if (System.currentTimeMillis() - r.launchedAt > 60_000) { running = null; store.update { it.remove("running") } }
-        event("status", dev.status())
+        event("status", status())
     }
 
     private fun finish(r: Running) {
@@ -318,24 +348,121 @@ class Bridge(private val act: MainActivity) {
     }
 
     // ================================================================ Android's settings, the home app
+    /** One of Android's settings pages, in Hearth's own task: Back (B on the controller) comes back to Hearth, and
+     *  Hearth's Settings show what changed. A page this device lacks falls back to the next one, then to Settings. */
     private fun openSettings(page: String, id: String) {
-        val i = when (page) {
-            "wifi" -> Intent(Settings.ACTION_WIFI_SETTINGS)
-            "bluetooth" -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-            "display" -> Intent(Settings.ACTION_DISPLAY_SETTINGS)
-            "sound" -> Intent(Settings.ACTION_SOUND_SETTINGS)
-            "battery" -> Intent(Intent.ACTION_POWER_USAGE_SUMMARY)
-            "airplane" -> Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)
-            "home" -> Intent(Settings.ACTION_HOME_SETTINGS)
-            "app" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", id.removePrefix("android:").ifEmpty { act.packageName }, null))
-            "settings" -> Intent(Settings.ACTION_SETTINGS)
-            else -> throw Exception("Unknown settings page: $page")
-        }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val fallbacks = listOfNotNull(if (page == "home") Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS) else null, Intent(Settings.ACTION_SETTINGS))
-        for (x in listOf(i) + fallbacks) {
-            try { onMain { act.startActivity(x.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }; return } catch (e: ActivityNotFoundException) { continue }
+        val pkg = id.removePrefix("android:")
+        val list = settings.pageIntents(page, pkg)
+        for (x in list) {
+            try { onMain { act.openForResult(x) { _, _ -> backFromAndroid() } }; return } catch (e: ActivityNotFoundException) { continue } catch (e: SecurityException) { continue }
         }
         throw Exception("This device doesn't have that settings page.")
+    }
+
+    /** Back from one of Android's pages, panels or dialogs: the page gets the settings as they are now. */
+    private fun backFromAndroid() = exec.execute { if (pageReady) { event("android.settings", settings.state(dev)); event("status", status()) } }
+
+    private fun status(): JSONObject = dev.status().also { st ->
+        st.put("display", JSONObject().put("supported", settings.has("writeSettings")).put("brightness", brightnessPct()))
+    }
+    private fun brightnessPct(): Int = SettingsLogic.brightnessToPercent(Settings.System.getInt(act.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128))
+
+    /** A change that needs a permission first answers with why (the page offers to ask). */
+    private fun needOk(r: JSONObject) { if (!r.optBoolean("ok")) throw Exception(r.optString("why", "Android didn't allow that change.")) }
+
+    /** Asks Android for one of Hearth's one-time permissions (SettingsLogic.PERMS), then answers {granted, state}. */
+    private fun ask(perm: String, id: Any?) {
+        if (perm !in SettingsLogic.PERMS) throw Exception("Unknown permission: $perm")
+        val answer = { exec.execute { reply(id, true, JSONObject().put("perm", perm).put("granted", settings.has(perm)).put("state", settings.state(dev)), null); backFromAndroid() } }
+        if (settings.has(perm)) { answer(); return }
+        val runtime = settings.runtimePerms(perm)
+        val page = settings.permIntent(perm)
+        main.post {
+            try {
+                when {
+                    runtime != null -> act.askPermissions(runtime) { answer() }
+                    page != null -> act.openForResult(page) { _, _ -> answer() }
+                    else -> answer()
+                }
+            } catch (e: Exception) {
+                // Some devices hide a page (or the battery dialog): their list page instead.
+                Logs.log("settings: asking $perm: $e")
+                val alt = if (perm == "batteryOpt") "batteryOpt" else "settings"
+                runCatching { act.openForResult(settings.pageIntents(alt, "").first()) { _, _ -> answer() } }.onFailure { answer() }
+            }
+        }
+    }
+
+    private fun panel(name: String) {
+        val i = settings.panelIntent(name)
+        if (i == null) { openSettings(SettingsLogic.panelFallback(name), ""); return }
+        try { onMain { act.openForResult(i) { _, _ -> backFromAndroid() } } }
+        catch (e: ActivityNotFoundException) { openSettings(SettingsLogic.panelFallback(name), "") }
+    }
+
+    private fun wifiJoin(ssid: String, password: String, security: String, id: Any?) {
+        val i = try { settings.wifiJoinIntent(ssid, password, security) } catch (e: IllegalArgumentException) { if (security == "enterprise") openSettings("wifi", ""); throw Exception(e.message) }
+        if (i == null) { reply(id, true, JSONObject().put("ok", true).put("suggested", true), null); return }
+        main.post {
+            try { act.openForResult(i) { rc, _ -> exec.execute { reply(id, true, JSONObject().put("ok", rc == android.app.Activity.RESULT_OK), null); backFromAndroid() } } }
+            catch (e: Exception) { exec.execute { reply(id, false, null, "Android couldn't add that network here: try Wi-Fi settings.") } }
+        }
+    }
+
+    /** Bluetooth on: Android's own "Allow Hearth to turn on Bluetooth?" dialog (after "Nearby devices" on 12+). */
+    private fun btEnable(id: Any?) {
+        val go = {
+            main.post {
+                try { act.openForResult(settings.btEnableIntent()) { rc, _ -> exec.execute { reply(id, true, JSONObject().put("ok", rc == android.app.Activity.RESULT_OK).put("state", settings.state(dev)), null); backFromAndroid() } } }
+                catch (e: Exception) { exec.execute { runCatching { openSettings("bluetooth", "") }; reply(id, true, JSONObject().put("ok", false).put("opened", true), null) } }
+            }
+        }
+        if (settings.has("btConnect")) go()
+        else main.post { act.askPermissions(settings.runtimePerms("btConnect")!!) { ok -> if (ok) go() else exec.execute { reply(id, true, JSONObject().put("ok", false).put("need", "btConnect").put("why", SettingsLogic.PERMS["btConnect"]), null) } } }
+    }
+
+    /** Pairing a controller or headphones: Android's companion chooser over Hearth, then Android's pairing. */
+    private fun btPair(id: Any?) {
+        val go = {
+            main.post {
+                act.pairDevice { d, fallback ->
+                    exec.execute {
+                        when {
+                            d != null -> {
+                                val ok = settings.bond(d)
+                                Logs.log("bluetooth: pairing a device: $ok")
+                                reply(id, true, JSONObject().put("ok", ok).put("device", runCatching { d.name }.getOrNull() ?: "the device"), null)
+                                main.postDelayed({ backFromAndroid() }, 4000)
+                            }
+                            fallback -> { runCatching { openSettings("bluetooth", "") }; reply(id, true, JSONObject().put("ok", false).put("opened", true), null) }
+                            else -> reply(id, true, JSONObject().put("ok", false), null)
+                        }
+                    }
+                }
+            }
+        }
+        val perms = settings.runtimePerms("btConnect")
+        if (perms == null || settings.has("btConnect")) go()
+        else main.post { act.askPermissions(perms) { ok -> if (ok) go() else exec.execute { reply(id, true, JSONObject().put("ok", false).put("need", "btConnect").put("why", SettingsLogic.PERMS["btConnect"]), null) } } }
+    }
+
+    /** Android's own "Uninstall this app?" dialog; the library is scanned again when it's done. */
+    private fun uninstall(pkg: String) {
+        val i = settings.uninstallIntent(pkg)
+        onMain { act.openForResult(i) { _, _ -> exec.execute { appList = null; event("library.changed", JSONObject()) } } }
+    }
+
+    /** Merge-on-write: only the keys the page sent change; the rest of the file stays. Strings only, small. */
+    private fun uiPrefsSet(values: JSONObject) {
+        val keys = values.keys().asSequence().toList()
+        if (keys.size > 32) throw Exception("Too many settings at once")
+        uiPrefs.update { d ->
+            for (k in keys) {
+                if (k.length > 64) continue
+                val v = values.opt(k)
+                if (v is String && v.length <= 65536) d.put(k, v)
+            }
+        }
     }
 
     /** A web page in the browser (https only: the page links to things like Termux:X11's releases). */
@@ -410,7 +537,7 @@ class Bridge(private val act: MainActivity) {
     /** Controllers came or went: Hearth reads them itself, so the page doesn't also read them (padHost). */
     fun padsChanged() = exec.execute { event("padHost", JSONObject().put("connected", dev.controllers().length())) }
 
-    fun pushStatus() = exec.execute { if (pageReady) event("status", dev.status()) }
+    fun pushStatus() = exec.execute { if (pageReady) event("status", status()) }
 
     // ================================================================ logs
     private fun deviceReport(): JSONObject {

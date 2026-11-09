@@ -1,8 +1,6 @@
-> **Archived (2026-10-21).** Hearth for Android is on hold; the focus is Hearth OS and Ember. The code and these notes stay for reference; the Android workflow only runs by hand (type "archived"). The last published APK is on the v0.2.2 release.
-
 # Hearth for Android
 
-Hearth's library and controller interface as an Android app: the same page as Hearth OS and Ember (`ui/index.html`), in a full-screen WebView, with a small Kotlin host (`archive/hosts/android`). It can also be your home screen, so a handheld or TV box starts straight into your games. This first version (0.2.1) is **Beta Experimental**.
+Hearth's library and controller interface as an Android app: the same page as Hearth OS and Ember (`ui/index.html`), in a full-screen WebView, with a small Kotlin host (`hosts/android`). It can also be your home screen, so a handheld or TV box starts straight into your games. This first version (0.2.1) is **Beta Experimental**.
 
 ## What works
 
@@ -57,7 +55,7 @@ No location, no storage-wide access, no usage access. Because of that the Wi-Fi 
 ## How it's built
 
 ```
-archive/hosts/android/
+hosts/android/
   settings.gradle.kts, build.gradle.kts    Android Gradle Plugin 8.11, Kotlin 2.2, Gradle 8.14.3
   app/build.gradle.kts                     version from hosts/hearth-rs/Cargo.toml; copies ui/index.html into the assets
   app/src/main/java/dev/hearthos/android/
@@ -112,18 +110,18 @@ Anything else answers "That isn't in Hearth for Android yet". Events: `status` (
 You need JDK 17 and the Android SDK (platform 35). The Gradle wrapper's jar isn't kept in git; make it once with an installed Gradle (8.13 or newer):
 
 ```sh
-cd archive/hosts/android
+cd hosts/android
 gradle wrapper --gradle-version 8.14.3
 ./fetch-proot.sh          # PRoot for Hearth Linux (pinned, checksummed; optional: without it the Linux tab says it's missing)
 ./gradlew testDebugUnitTest assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Or open `archive/hosts/android` in Android Studio. Debug builds are `dev.hearthos.android.debug` (they install next to the release build) and can be inspected from Chrome's `chrome://inspect`.
+Or open `hosts/android` in Android Studio. Debug builds are `dev.hearthos.android.debug` (they install next to the release build) and can be inspected from Chrome's `chrome://inspect`.
 
 ### CI
 
-`.github/workflows/android.yml` runs on pushes to `android`, `linux-host` and `main` that touch `archive/hosts/android/**` or `ui/**` (and by hand): JDK 17, the Android SDK (android-actions/setup-android), Gradle 8.14.3 (gradle/actions/setup-gradle, so no wrapper jar is needed), then PRoot for Hearth Linux (`fetch-proot.sh`: pinned downloads, SHA-256 checked, a mismatch fails the build), the unit tests, `assembleDebug` and `assembleRelease` (the APK must contain PRoot and its license), and lint (reported, never failing the build). The APKs are uploaded as **hearth-android-&lt;version&gt;**. A failing step puts its error lines in an annotation on the run page. There's no release or publish step yet.
+`.github/workflows/android.yml` runs on pushes to `android`, `linux-host` and `main` that touch `hosts/android/**` or `ui/**` (and by hand): JDK 17, the Android SDK (android-actions/setup-android), Gradle 8.14.3 (gradle/actions/setup-gradle, so no wrapper jar is needed), then PRoot for Hearth Linux (`fetch-proot.sh`: pinned downloads, SHA-256 checked, a mismatch fails the build), the unit tests, `assembleDebug` and `assembleRelease` (the APK must contain PRoot and its license), and lint (reported, never failing the build). The APKs are uploaded as **hearth-android-&lt;version&gt;**. A failing step puts its error lines in an annotation on the run page. There's no release or publish step yet.
 
 **Signing.** With the repository secrets `ANDROID_KEYSTORE_B64` (the keystore, base64), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, the release APK is signed with that key; without them, with the build's debug key (it installs, but every CI machine has a different debug key, so an update may need an uninstall first). Make a key once with:
 

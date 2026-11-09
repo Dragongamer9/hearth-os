@@ -7,7 +7,7 @@ plugins {
 
 // Hearth's version, from the Rust host's Cargo.toml (one version for every Hearth). 0.2.1 if it can't be read.
 val hearthVersion: String = run {
-    val cargo = rootProject.layout.projectDirectory.file("../../../hosts/hearth-rs/Cargo.toml").asFile
+    val cargo = rootProject.layout.projectDirectory.file("../../hosts/hearth-rs/Cargo.toml").asFile
     val line = if (cargo.exists()) cargo.readLines().firstOrNull { it.trim().startsWith("version") } else null
     Regex("\"([0-9]+\\.[0-9]+\\.[0-9]+)[^\"]*\"").find(line ?: "")?.groupValues?.get(1) ?: "0.2.1"
 }
@@ -67,7 +67,7 @@ android {
 
     testOptions { unitTests.isReturnDefaultValues = false }
 
-    // Hearth Linux: PRoot is in jniLibs (lib/<abi>/libproot.so…, fetched by CI, see docs/archive/ANDROID-LINUX.md) and must
+    // Hearth Linux: PRoot is in jniLibs (lib/<abi>/libproot.so…, fetched by CI, see docs/ANDROID-LINUX.md) and must
     // be a real file in the app's native library folder: Android 10+ runs programs only from there, never from the
     // app's data. So the libraries are unpacked at install (extractNativeLibs=true) instead of staying in the APK.
     packaging { jniLibs { useLegacyPackaging = true } }
@@ -76,11 +76,15 @@ android {
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 // Hearth's page has one home: ui/ at the top of the repository. It's copied into the APK's assets (as ui/) when
-// the app is built, never kept twice in git.
+// the app is built, never kept twice in git: every file and folder in ui/ except the names in ui-exclude.txt (Mantel,
+// the OS installer). The page loads scripts next to it (hearth-play.js, support-links.js, osk/, pad/…): all go in.
 abstract class CopyHearthUi : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val pageFiles: ConfigurableFileCollection
+
+    @get:Internal
+    abstract val uiDir: DirectoryProperty
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -90,15 +94,24 @@ abstract class CopyHearthUi : DefaultTask() {
         val out = outputDir.get().asFile.resolve("ui")
         outputDir.get().asFile.deleteRecursively()
         out.mkdirs()
+        val root = uiDir.get().asFile
         val files = pageFiles.files
-        if (files.none { it.name == "index.html" }) throw GradleException("ui/index.html is missing: Hearth's page can't go into the app")
-        files.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
+        if (files.none { it.name == "index.html" && it.parentFile == root }) throw GradleException("ui/index.html is missing: Hearth's page can't go into the app")
+        files.forEach { f -> f.copyTo(out.resolve(f.relativeTo(root).path), overwrite = true) }
     }
 }
 
+/** ui-exclude.txt's patterns (one per line, # comments, * wildcards), checked against the top-level names in ui/. */
+val uiExclude: List<Regex> = rootProject.layout.projectDirectory.file("ui-exclude.txt").asFile.readLines()
+    .map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+    .map { p -> Regex("^" + p.split("*").joinToString(".*") { Regex.escape(it) } + "$") }
+
 val copyHearthUi = tasks.register<CopyHearthUi>("copyHearthUi") {
-    val ui = rootProject.layout.projectDirectory.dir("../../../ui")
-    pageFiles.from(ui.file("index.html"), ui.file("hearth-logo.svg"))
+    val ui = rootProject.layout.projectDirectory.dir("../../ui")
+    uiDir.set(ui)
+    pageFiles.from(fileTree(ui) {
+        exclude { el -> el.relativePath.segments.firstOrNull()?.let { top -> uiExclude.any { it.matches(top) } } == true }
+    })
 }
 
 androidComponents {

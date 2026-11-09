@@ -18,7 +18,7 @@ import java.security.MessageDigest
 /*
  * Hearth Linux, the parts without Android in them (so the unit tests run on a plain JVM): where the Linux comes from,
  * reading its tar archive safely, the PRoot command line, the stand-ins for the /proc files Android hides, package
- * names, and deleting a tree without following its symlinks. LinuxEnv.kt puts these to work. See docs/archive/ANDROID-LINUX.md.
+ * names, and deleting a tree without following its symlinks. LinuxEnv.kt puts these to work. See docs/ANDROID-LINUX.md.
  */
 
 /** The pinned Linux: Debian 13 (trixie) for arm64, the rootfs Termux's proot-distro installs (4.29.0 build). */

@@ -6,7 +6,7 @@
 # files are never kept in git.
 #
 # noVNC: https://github.com/novnc/noVNC, MPL-2.0 (pako, in vendor/pako: MIT). Licenses: app/src/main/assets/licenses/
-# (noVNC-LICENSE.txt, MPL-2.0.txt, pako-LICENSE.txt) and docs/archive/ANDROID-LINUX.md.
+# (noVNC-LICENSE.txt, MPL-2.0.txt, pako-LICENSE.txt) and docs/ANDROID-LINUX.md.
 set -euo pipefail
 
 TAG=v1.7.0

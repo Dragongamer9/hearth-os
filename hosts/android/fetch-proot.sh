@@ -6,7 +6,7 @@
 # Source of the binaries: green-green-avk/build-proot-android (the PRoot builds Another Term uses): PRoot from
 # green-green-avk/proot v0.15_release with talloc 2.1.14 linked in statically, built with the Android NDK, so they need
 # nothing but Android's own libc. Each ABI's tarball is pinned by commit and SHA-256. Licenses and the exact source:
-# app/src/main/assets/licenses/README.txt and docs/archive/ANDROID-LINUX.md.
+# app/src/main/assets/licenses/README.txt and docs/ANDROID-LINUX.md.
 #
 # Every ABI the APK supports gets PRoot (not only arm64-v8a): an APK with native libraries for some ABIs only won't
 # install on the others. Hearth Linux itself runs on arm64-v8a only (the pinned Debian is aarch64).
