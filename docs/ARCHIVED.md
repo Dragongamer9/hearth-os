@@ -11,7 +11,6 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0); installs keep their last version | `os-bases/anatase` (stays: it shares checks and scripts with the Debian build); workflow `base-anatase.yml` | [BASE-ANATASE](archive/BASE-ANATASE.md) |
 | Hearth OS on Ubuntu and on CachyOS | 2026-10-22 | `archive/os-bases/ubuntu`, `archive/os-bases/cachyos`; `base-ubuntu.yml` / `base-cachyos.yml` (by hand, type "archived") | [BASE-UBUNTU](archive/BASE-UBUNTU.md), [BASE-CACHYOS](archive/BASE-CACHYOS.md) |
 | Hearth OS on Bazzite | 0.1.3 was its last update | `os/build_files`, `os/Containerfile` (stay: `os/` also holds the shared system files, the installer and Recovery) | |
-| Hearth's own Game Mode | 1.0: Steam Game Mode replaced it | stays in place (`ui/`, `hosts/hearth-rs`, `hosts/hearth-core`): it still runs first-time setup and the fallback; Ember keeps its own Game Mode | |
 | Multi-seat and Couch Co-op | 1.0 (hidden) | stays in place (`hosts/hearth-core`, `os/system_files/usr/libexec/nimbus/hearth-seats`, `hearth-coop`) | [MULTI-SEAT](archive/MULTI-SEAT.md), [COUCH-COOP](archive/COUCH-COOP.md) |
 | Hearth Plasma, Hearth GNOME, Hearth COSMIC, Hearth Deepin | 1.0: Mantel is the only desktop | stays in place for now (`hosts/linux/desktop/{plasma,gnome,cosmic}`, their parts in `os/system_files`): the image build, tests and Hearth's core still refer to them | [PLASMA](archive/PLASMA.md), [GNOME](archive/GNOME.md), [COSMIC](archive/COSMIC.md), [DEEPIN](archive/DEEPIN.md) |
 | The old Hearth Decky plugin (Steam takeover) | 1.0: Hearth Sync (`hosts/decky-hearth-sync`) replaced it | `archive/hosts/decky-hearth`; `decky-hearth.yml` | [STEAM-GAME-MODE](STEAM-GAME-MODE.md) |
@@ -19,6 +18,12 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Hearth for Android and Hearth Linux on Android | 2026-10-21 | `archive/hosts/android`; `android.yml` (by hand, type "archived") | [ANDROID](archive/ANDROID.md), [ANDROID-LINUX](archive/ANDROID-LINUX.md) |
 | Hearth's app store (Apps) | 2026-10-24: Bazaar replaced it | `archive/app-store` | below |
 | Hearth Friends (Matrix) | 1.6: replaced by Discord, with the owner's okay | `archive/hosts/hearth-friends`, `archive/hosts/hearth-core/src/matrix_friends.rs`, `archive/hosts/linux/desktop/shell/Friends.qml`, `archive/tools/friends-*.py`; `friends.yml` (by hand, type "archived") | [FRIENDS](archive/FRIENDS.md), below |
+
+## Back from the archive
+
+| Part | Archived | Back | Docs |
+|---|---|---|---|
+| Hearth Game Mode (Hearth's own Game Mode) | 1.0: Steam Game Mode replaced it (its code stayed in place: `ui/`, `hosts/hearth-rs`, `hosts/hearth-core`) | 1.10: a choice in Settings › Gaming › Game Mode next to Steam Game Mode (the default); falls back to Steam Game Mode, then Mantel, when it can't start | [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md) |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 

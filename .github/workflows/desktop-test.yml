@@ -273,6 +273,38 @@ jobs:
           # (The status card, Update anyway, then Go back: two Downs.)
           wtype -k Right; sleep 1; for i in 1 2; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
           rm -f /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
+          # ---- Which Game Mode (docs/HEARTH-GAME-MODE.md): Settings › Gaming's two picture cards with the controller, picking
+          # Hearth Game Mode (saved as one line of session.conf, nothing else changed), the Switch now row, and the notice
+          # when Hearth Game Mode didn't start. A stand-in gamescope and Hearth app, for these shots only; session.conf is
+          # put back exactly as it was afterwards. (The game-mode-shots job posts two of them as SHOT notices.)
+          mkdir -p shots/hearth-game-mode "$HOME/.config/nimbus"
+          printf '#!/bin/sh\nexit 0\n' > /tmp/fakebin/gamescope; printf '#!/bin/sh\nexit 0\n' > /tmp/hearth-app; chmod +x /tmp/fakebin/gamescope /tmp/hearth-app
+          echo /tmp/hearth-app > "$HOME/.config/nimbus/app-path"
+          SC="$HOME/.config/nimbus/session.conf"
+          if [ -f "$SC" ]; then cp -p "$SC" /tmp/session.conf.before; else rm -f /tmp/session.conf.before; fi
+          gm() { ipc settings close; ipc settings page gaming; sleep 3; grim "shots/hearth-game-mode/$1.png" || true; }
+          gm 01-gaming-steam-game-mode-default
+          # Into the page (the Game Mode card at the top), down to the Steam Game Mode card, Right to Hearth Game Mode, A.
+          wtype -k Right; sleep 1; wtype -k Down; sleep 1; wtype -k Right; sleep 1; grim shots/hearth-game-mode/02-controller-on-hearth-card.png || true
+          wtype -k Return; sleep 4; grim shots/hearth-game-mode/03-picked-hearth-switch-now.png || true
+          if grep -qx 'HEARTH_GAME_MODE_CHOICE=hearth' "$SC" 2>/dev/null; then
+            echo "::notice title=Game Mode choice::picking Hearth Game Mode with the controller saved it ($(grep -c . "$SC") line(s) in session.conf)"
+          else
+            echo "::error title=Game Mode choice::picking Hearth Game Mode with the controller didn't save it: $(head -5 "$SC" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED
+          fi
+          if [ -f /tmp/session.conf.before ] && ! diff <(grep -v '^HEARTH_GAME_MODE_CHOICE=' "$SC") /tmp/session.conf.before >/dev/null; then
+            echo "::error title=Game Mode choice::picking it changed other lines of session.conf"; touch shots/FAILED
+          fi
+          gm 03b-gaming-hearth-game-mode-in-use
+          # Hearth Game Mode didn't start this sign-in (the session opened Steam Game Mode instead): why, with Try again.
+          echo "Hearth's app closed with an error 3 times within 2 minutes (code 1)" > "$XDG_RUNTIME_DIR/hearth-game-mode-failed"
+          gm 04-hearth-game-mode-didnt-start
+          wtype -k Right; sleep 1; for i in 1 2 3 4; do wtype -k Down; done; sleep 1; grim shots/hearth-game-mode/05-try-again-focused.png || true
+          ipc settings close
+          rm -f "$XDG_RUNTIME_DIR/hearth-game-mode-failed" /tmp/fakebin/gamescope /tmp/hearth-app "$HOME/.config/nimbus/app-path"
+          if [ -f /tmp/session.conf.before ]; then cp -p /tmp/session.conf.before "$SC"; else rm -f "$SC"; fi
+          rm -f "$SC.bak"
+          ls -la shots/hearth-game-mode
           # ---- Settings › Home server, stage 1 (docs/HOME-SERVER.md): its pages with two shares, a stand-in Tailscale, and
           # the root helper through a stand-in pkexec (the drives as this runner has them), for these shots only.
           mkdir -p shots/home-server "$HOME/Games" "$HOME/Work" "$HOME/.config/nimbus" /usr/libexec/nimbus
@@ -1572,3 +1604,43 @@ jobs:
           name: desktop-screenshots
           path: shots
           retention-days: 14
+
+  # Which Game Mode (docs/HEARTH-GAME-MODE.md): two of the Game Mode choice's pictures as notices (a JPEG in base64 pieces,
+  # title "SHOT <which> <n>"), one step each: the desktop job's own notices are many, and a job keeps 50.
+  game-mode-shots:
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in ('02-controller-on-hearth-card', '04-hearth-game-mode-didnt-start', '03-picked-hearth-switch-now'):
+              p = 'shots/hearth-game-mode/%s.png' % name
+              if not os.path.exists(p):
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/hearth-game-mode/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+          ls -la shots/hearth-game-mode || true
+      - name: Picture (gm-cards)
+        run: f=shots/hearth-game-mode/02-controller-on-hearth-card.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-cards $i::$part"; done || true
+      - name: Picture (gm-switch-now)
+        run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
+      - name: Picture (gm-fallback)
+        run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true

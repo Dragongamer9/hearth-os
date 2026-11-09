@@ -15,7 +15,10 @@ import re
 import sys
 
 SHELL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'hosts', 'linux', 'desktop', 'shell')
-CARDS = r'\b(SetRow|SetSwitch|SetChoice|SetSlider|SetCard|SetLinkCard|SetExpander|StartInChoice)\s*\{'
+CARDS = r'\b(SetRow|SetSwitch|SetChoice|SetSlider|SetCard|SetLinkCard|SetExpander|StartInChoice|GameModeChoice)\s*\{'
+# Shared cards drawn by their own file: the title, description and icon they show.
+OWN = {'StartInChoice': ('Start in', 'What this PC opens when it turns on or you sign in', 'power'),
+       'GameModeChoice': ('Game Mode: Steam Game Mode or Hearth Game Mode', 'Which Game Mode this PC goes into: Steam\'s or Hearth\'s own', 'pad')}
 # Pages whose cards repeat a setting whose real home is elsewhere (Home's shortcuts): indexed last, only new titles.
 LAST = ('SetHome.qml', 'SetCategory.qml')
 
@@ -82,11 +85,11 @@ def cards(path):
         start = m.end() - 1
         top = top_level(s[start + 1:block_end(s, start)])
         kind = m.group(1)
-        title = literal(top, 'title') or ('Start in' if kind == 'StartInChoice' else '')
+        title = literal(top, 'title') or (OWN[kind][0] if kind in OWN else '')
         if not title or len(title) < 3:
             continue
-        sub = literal(top, 'sub') or ('What this PC opens when it turns on or you sign in' if kind == 'StartInChoice' else '')
-        icon = literal(top, 'icon') or ('power' if kind == 'StartInChoice' else '')
+        sub = literal(top, 'sub') or (OWN[kind][1] if kind in OWN else '')
+        icon = literal(top, 'icon') or (OWN[kind][2] if kind in OWN else '')
         part = None
         for pos, name in parts:
             if pos < m.start():

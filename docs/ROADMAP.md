@@ -7,6 +7,17 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Hearth Game Mode is back
+
+- [x] Pick your Game Mode in Settings › Gaming › Game Mode: **Steam Game Mode** (the default, exactly as before) or **Hearth Game Mode** (Hearth's own full-screen screens), as two picture cards you move through with the controller. It applies the next time Game Mode starts, with Switch now right there (needs testing on a device)
+- [x] The same choice in Hearth Game Mode's Settings › System, and in Steam Game Mode's Quick Access › Hearth Sync › Game Mode (with Switch now: Steam closes properly first). Nothing of Steam's own screens is changed (needs testing on a device)
+- [x] Everything that opens "Game Mode" opens the one you picked: turning on and signing in (automatic sign-in too), Mantel's Game Mode buttons and Super+G, Server mode's Guide countdown, Play and way back, Steam's own Game Mode switch. Switch to desktop from either Game Mode opens Mantel (needs testing on a device)
+- [x] Hearth Game Mode works on today's image again: it starts Hearth's app in gamescope with Hearth Input, first-time setup no longer pushes it over to Steam, Steam games still play through the real Steam client, and your other stores' games play through Hearth (needs testing on a device)
+- [x] If Hearth Game Mode can't start (missing pieces, Hearth crashing 3 times, closing right away), that start goes to Steam Game Mode, then Mantel, and says why: a toast in Steam Game Mode, Mantel's "didn't start" card, Settings, and Send logs. Failing twice in 10 minutes pauses it until you press Try Hearth Game Mode again. Your choice is never changed by Hearth (needs testing on a device)
+- [x] Holding B or Guide while it starts still opens Desktop Mode, and nothing about booting, the boot menu or the login screen changed (needs testing on a device)
+- [x] Steam games open in Steam Game Mode: in Hearth Game Mode, Play on a Steam game shows "Opening in Steam Game Mode…" and Steam Game Mode starts that game straight away; when it ends you're back in Hearth Game Mode by itself (started something else from Steam's library: it stays; Quick Access › Hearth Sync has Back to Hearth Game Mode). If Steam Game Mode can't come up, you're back in Hearth Game Mode with a note. Your Game Mode choice never changes. **Play Steam games in Steam Game Mode** in Settings turns it off (on by default; nothing saved until you flip it). Other stores' games keep playing inside Hearth Game Mode (needs testing on a device)
+- [x] Hearth no longer changes the Steam engine by itself: with none picked, Steam games use Valve's Steam client, and nothing is saved until you pick an engine in Settings › Library (an older Hearth switched it to Hearth's own Steam client once when the app first started; anyone it switched keeps that and can turn it off there) (needs testing on a device)
+
 ### Planned next
 
 - [ ] Optimize drives in Disk Management, the Windows way: SSDs and NVMe drives show their TRIM status and last run (never defragmented); hard drives get a fragmentation check (e4defrag -c on ext4) and a free-space warning above about 90% full, with a Defragment button only when a drive really needs it (never on Btrfs snapshots or NTFS)

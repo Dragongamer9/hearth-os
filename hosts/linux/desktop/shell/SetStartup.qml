@@ -50,7 +50,7 @@ SetPage {
         Layout.fillWidth: true
         spacing: 12
         Repeater {
-            model: [{ v: "game", icon: "pad", t: "Game Mode", d: "Steam in Game Mode, for the TV and controllers" },
+            model: [{ v: "game", icon: "pad", t: "Game Mode", d: "Steam Game Mode or Hearth Game Mode (Gaming), for the TV and controllers" },
                     { v: "desktop", icon: "desktops", t: "Desktop Mode", d: "The Mantel desktop with windows, files and apps" },
                     { v: "server", icon: "server", t: "Server mode", d: "A dashboard and full power for your services; one press to play" }]
             delegate: SetBase {

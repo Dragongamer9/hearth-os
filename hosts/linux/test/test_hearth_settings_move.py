@@ -101,14 +101,19 @@ class Hidden(unittest.TestCase):
         self.assertIn('(root.legacyGame || !/^nimbus(\\.desktop)?$/.test(a.id || ""))', launcher)
 
     def test_mantel_never_offers_the_old_game_mode(self):
+        # Hearth Game Mode is back in 1.10 as a choice (docs/HEARTH-GAME-MODE.md): only the Game Mode choice and its
+        # notices name it. Settings pages still never send you into the old Game Mode's own pages for a setting.
+        choice = {'GameModeChoice.qml', 'SteamFallback.qml', 'SetGaming.qml', 'SetPower.qml', 'SetStartup.qml'}
         bad = re.compile(r"Hearth'?s? (own )?Game Mode|Game Mode's (Friends|Settings|Library)|Picked in Game Mode|in Game Mode \(Settings")
+        old_pages = re.compile(r"Game Mode's (Friends|Settings|Library)|Picked in Game Mode|in Game Mode \(Settings")
         for f in sorted(SHELL.glob('*.qml')):
             for s in qml_strings(f.read_text()):
-                self.assertIsNone(bad.search(s), '%s: "%s"' % (f.name, s))
+                self.assertIsNone((old_pages if f.name in choice else bad).search(s), '%s: "%s"' % (f.name, s))
+        self.assertIn('GameModeChoice { id: gmChoice }', (SHELL / 'SetGaming.qml').read_text())
 
     def test_the_docs_say_it_is_archived(self):
         d = (ROOT / 'tools' / 'build-docs.py').read_text()
-        for gone in ("Hearth's Game Mode is still here", 'Switch to Hearth Game Mode', "Setting multi-seat up stays in Hearth's Game Mode"):
+        for gone in ("Hearth's Game Mode is still here", "Setting multi-seat up stays in Hearth's Game Mode"):
             self.assertNotIn(gone, d)
         doc = (ROOT / 'docs' / 'SETTINGS-MOVE.md').read_text()
         for page in ('Remote play', 'Games & stores', 'Storage', 'Steam Game Mode', 'Interim', 'Obsolete', 'HEARTH_LEGACY_GAME_MODE'):

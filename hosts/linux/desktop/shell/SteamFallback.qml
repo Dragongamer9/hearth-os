@@ -4,6 +4,9 @@
 // shown, so switching to Desktop Mode later doesn't bring it back. "Try Steam Game Mode again" runs
 // `nimbus-mode steam` (a request you make always runs, and a good run ends the session's pause). Controller: Up/Down
 // and A; B closes it. docs/STEAM-GAME-MODE.md "When Steam Game Mode can't start".
+// Hearth Game Mode (docs/HEARTH-GAME-MODE.md): when you picked it and it couldn't start either (the session went on to
+// Steam Game Mode, then here), or went straight here (no Steam), its reason shows too, once (hearth-game-mode notice
+// desktop), with "Try Hearth Game Mode again" (`nimbus-mode hearth`). Your choice is never changed here.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -14,20 +17,27 @@ PanelWindow {
     id: root
     property bool shown: false
     property string reason: ""
+    property string hearthReason: ""   // Hearth Game Mode's, when you picked it and it didn't start
     property int sel: 0
-    readonly property var items: [
-        { icon: "pad", label: "Try Steam Game Mode again", sub: "Steam's gamepad screens, like SteamOS" },
-        { icon: "close", label: "Stay in Desktop Mode", sub: "Game Mode on the taskbar or the power menu tries again any time" }
-    ]
+    readonly property string gmHelper: decodeURIComponent(Qt.resolvedUrl("hearth-game-mode").toString().replace(/^file:\/\//, ""))
+    readonly property var items: (reason !== "" ? [{ icon: "pad", label: "Try Steam Game Mode again", sub: "Steam's gamepad screens, like SteamOS", cmd: "steam" }] : [])
+        .concat(hearthReason !== "" ? [{ icon: "pad", label: "Try Hearth Game Mode again", sub: "Hearth's own Game Mode, the one you picked", cmd: "hearth" }] : [])
+        .concat([{ icon: "close", label: "Stay in Desktop Mode", sub: "Game Mode on the taskbar or the power menu tries again any time", cmd: "" }])
     function pick(i) {
         shown = false;
-        if (i === 0) Quickshell.execDetached(["nimbus-mode", "steam"]);
+        const c = items[i] ? items[i].cmd : "";
+        if (c !== "") Quickshell.execDetached(["nimbus-mode", c]);
     }
     // Once, a few seconds after Mantel starts (after the live USB's welcome, which never has this note).
     Process {
         id: check
-        command: ["sh", "-c", 'r="${XDG_RUNTIME_DIR:-/tmp}"; f="$r/hearth-steam-mode-failed"; s="$r/hearth-steam-notice-shown"; [ -s "$f" ] || exit 0; [ -e "$s" ] && [ ! "$f" -nt "$s" ] && exit 0; : >"$s"; head -c 300 "$f"']
-        stdout: StdioCollector { onStreamFinished: { const t = text.trim(); if (t !== "") { root.reason = t; root.sel = 0; root.shown = true; } } }
+        command: ["sh", "-c", 'r="${XDG_RUNTIME_DIR:-/tmp}"; f="$r/hearth-steam-mode-failed"; s="$r/hearth-steam-notice-shown"; if [ -s "$f" ] && ! { [ -e "$s" ] && [ ! "$f" -nt "$s" ]; }; then : >"$s"; printf "steam:"; head -c 300 "$f" | tr "\n" " "; echo; fi; [ -f "$1" ] && python3 "$1" notice desktop 2>/dev/null | sed "s/^/hearth:/"', "sh", root.gmHelper]
+        stdout: StdioCollector { onStreamFinished: {
+            const st = text.match(/^steam:(.*)$/m), hm = text.match(/^hearth:(\{.*\})$/m);
+            let h = ""; try { h = hm ? (JSON.parse(hm[1]).text || "") : ""; } catch (e) {}
+            root.reason = st ? st[1].trim() : ""; root.hearthReason = h.trim();
+            if (root.reason !== "" || root.hearthReason !== "") { root.sel = 0; root.shown = true; }
+        } }
     }
     Timer { interval: 1500; running: true; onTriggered: check.running = true }
 
@@ -63,8 +73,9 @@ PanelWindow {
             ColumnLayout {
                 spacing: 4
                 Layout.bottomMargin: 6
-                Text { text: "Steam Game Mode didn't start"; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
-                Text { Layout.fillWidth: true; text: "Why: " + root.reason + ". You're in Desktop Mode, so you can fix it here (install or update Steam, connect to the internet) and try again."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                Text { text: root.reason !== "" ? "Steam Game Mode didn't start" : "Hearth Game Mode didn't start"; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
+                Text { visible: root.reason !== ""; Layout.fillWidth: true; text: "Why: " + root.reason + ". You're in Desktop Mode, so you can fix it here (install or update Steam, connect to the internet) and try again."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                Text { visible: root.hearthReason !== ""; Layout.fillWidth: true; text: (root.reason !== "" ? "Hearth Game Mode, the one you picked, didn't start before that either: " : "Why: ") + root.hearthReason + ". Your choice is still Hearth Game Mode (Settings › Gaming › Game Mode)."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
             }
             Repeater {
                 model: root.items

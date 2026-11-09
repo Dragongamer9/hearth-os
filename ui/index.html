@@ -666,6 +666,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 /* Appearance: layout picker */
 .layouts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}.lcard small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .lcard{background:var(--panel);border-radius:var(--r);padding:8px 8px 10px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
+.gm-cards,.srows .gm-cards{grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px;gap:12px}.gm-cards .lcard,.srows .gm-cards .lcard{padding:8px 8px 10px;gap:6px;text-align:left;display:flex;flex-direction:column;align-items:stretch}
+.gm-cards .lprev{display:block;width:100%;height:auto;min-height:96px;flex:none}.gm-cards .lcard small,.srows .gm-cards .lcard small{-webkit-line-clamp:3}.srows .gm-cards .lcard b{font-size:15px}
 .lcard.on{border-color:var(--accent)}
 .lcard b{font-size:15px;margin-top:4px;display:flex;align-items:center;gap:8px}
 .lcard b em{font-style:normal;font-size:11px;font-weight:700;color:var(--accentInk);background:var(--accent);border-radius:6px;padding:2px 6px}
@@ -1621,7 +1623,7 @@ function openStartPage(p){
   if(p==='recomps'){ if(typeof SHOP==='object') SHOP.store='recomps'; navigate('shop',{},false); return; }
   if(['stores','library','downloads'].includes(p)) navigate(p,{},false);
 }
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(LINUX&&!OVERLAY&&hasFeat('gameModeChoice')) gmStart(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -4216,6 +4218,7 @@ function pageSystem(){
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX || WINHOST) h += browserRows();
   if(LINUX && CLAUDE.s && CLAUDE.s.available) h += claudeRows();
+  if(LINUX && feat('gameModeChoice')) h += gameModeRows();   // Which Game Mode: Steam's or Hearth's (docs/HEARTH-GAME-MODE.md)
   if(LINUX && feat('steamMode')) h += steamModeRows();   // Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md)
   h += shead('Date and time')
     + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
@@ -4324,6 +4327,66 @@ function sgmDefault(){
   if(on) return openSheet({title:'Start in Steam Game Mode?', sub:`Experimental. The device starts in Steam's Game Mode instead of ${APP}'s. Ways back with only a controller: Quick Access › Hearth › Switch to Hearth Game Mode (or turn off Start in Steam Game Mode there), Steam's Power › Switch to Desktop, or hold B or Guide while the device starts. If Steam fails to start, it turns itself off.`, items:[{label:'Start in Steam Game Mode', icon:'pad', run:go}]});
   return go();
 }
+// ---- Which Game Mode (docs/HEARTH-GAME-MODE.md, Hearth 1.10): Steam Game Mode (the default) or Hearth Game Mode, the same
+// two cards as Mantel's Settings › Gaming. Saved by hearth-game-mode (one line of session.conf, only when you pick one);
+// it applies the next time Game Mode starts, and a sheet offers to switch now (gameMode.switchNow: the session opens the
+// Game Mode you picked). When Hearth Game Mode couldn't start this sign-in, or is paused after failing twice, it says
+// why. Hearth never changes the choice by itself.
+const GMC = {s:null, busy:false};
+function loadGameMode(){ if(host && LINUX && hasFeat('gameModeChoice')) call('gameMode.get').then(r=>{ GMC.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
+function gmPreview(v){
+  return v==='steam'
+    ? `<i style="left:0;top:0;width:100%;height:100%;background:linear-gradient(160deg,#1b2b3f,#0d141d)"></i><i style="left:5%;top:8%;width:90%;height:9%;background:#23364c"></i><i style="left:5%;top:8%;width:22%;height:9%;background:#1a9fff"></i>${['#3b6ea5','#6b4fa0','#2f8f72','#a5793b','#a54a3b'].map((c,i)=>`<i style="left:${5+i*18}%;top:28%;width:15%;height:42%;background:${c}"></i>`).join('')}<i style="left:5%;top:78%;width:28%;height:12%;background:#1a9fff;border-radius:6px"></i>`
+    : `<i style="left:0;top:0;width:100%;height:100%;background:linear-gradient(160deg,#3a2216,#140c09)"></i><i style="left:5%;top:8%;width:52%;height:46%;background:linear-gradient(90deg,#c8642c,#7a2e1c)"></i><i style="left:9%;top:40%;width:18%;height:8%;background:#ffd9a8;border-radius:6px"></i>${[0,1,2].map(i=>`<i style="left:62%;top:${10+i*14}%;width:33%;height:9%;background:#4a2c1e"></i>`).join('')}${['#e08a3c','#9b5a3a','#5e7f9e','#7d9e5e','#b0624f','#6a5e9e'].map((c,i)=>`<i style="left:${5+i*15.5}%;top:64%;width:13%;height:28%;background:${c}"></i>`).join('')}`;
+}
+function gameModeRows(){
+  const s=GMC.s; if(!s){ loadGameMode(); return shead('Game Mode')+note('Loading…'); }
+  const cards=[{v:'steam', t:'Steam Game Mode', d:'Steam\'s own big-screen mode, like a Steam Deck, with Hearth Sync for your other stores\' games.'},
+               {v:'hearth', t:'Hearth Game Mode', d:`${APP}'s own screens: every store in one library, ${APP}'s Store, Quick Access and Settings. Steam games still play through Steam.`}];
+  let h = shead('Game Mode') + `<div class="layouts gm-cards">${cards.map(c=>{ const on=s.choice===c.v, ready=(s[c.v]||{}).ok!==false;
+    return `<button class="lcard ${on?'on':''}" data-f data-k="sy-gm-${c.v}" data-act="gmPick" data-v="${c.v}"><div class="lprev">${gmPreview(c.v)}</div>
+      <b>${c.t}${on?`<em>${c.v==='steam'&&!s.saved?'In use (default)':'In use'}</em>`:''}</b><small>${ready?c.d:'Can\'t start here: '+esc((s[c.v]||{}).why||'')+'.'}</small></button>`; }).join('')}</div>`;
+  if(s.choice==='hearth' && (s.fallback || s.paused)) h += sgrid(`<button class="row" data-f data-k="sy-gm-retry" data-act="gmRetry"><span class="ricon">${I.pad}</span><div class="rt"><b>${s.paused?'Hearth Game Mode is paused':'Hearth Game Mode didn\'t start last time'}</b><small>${s.paused?'It failed twice ('+esc(s.paused)+'), so Game Mode opens Steam Game Mode until you try again.':'Why: '+esc(s.fallback)+'. Steam Game Mode (or Desktop Mode) opened instead.'} Your choice is still Hearth Game Mode.</small></div><div class="rv">Try again ›</div></button>`);
+  else h += note('Applies the next time Game Mode starts. Game Mode buttons, signing in and Server mode\'s Play all open the one you pick.');
+  if(s.choice==='hearth') h += sgrid(`<button class="row" data-f data-k="sy-gm-steamgames" data-act="gmSteamGames"><span class="ricon">${I.pad}</span><div class="rt"><b>Play Steam games in Steam Game Mode</b><small>${s.steamGames!==false?'Play on a Steam game opens it in Steam Game Mode, then comes back here when it ends':'Steam games start here in Hearth Game Mode, through Steam'}</small></div><div class="sw ${s.steamGames!==false?'on':''}"></div></button>`);
+  return h;
+}
+function gmPick(v){
+  if(!['steam','hearth'].includes(v) || GMC.busy) return;
+  const name=v==='hearth'?'Hearth Game Mode':'Steam Game Mode';
+  if(GMC.s && GMC.s.choice===v && GMC.s.saved) return toast(`${name} is already your Game Mode`);
+  GMC.busy=true;
+  call('gameMode.set',{choice:v}).then(r=>{ GMC.s=r; render('sy-gm-'+v,true);
+    // In Hearth Game Mode now: switching to Steam's (or back) closes this one, so it asks first.
+    openSheet({title:`${name} is your Game Mode`, sub:'Saved. Game Mode opens this way from now on, the next time it starts.', items:[
+      {label:`Switch to ${name} now`, icon:'pad', run:()=>{ toast(`Starting ${name}…`); call('gameMode.switchNow',{to:v}).catch(e=>toast(e.message)); }},
+      {label:'Later', icon:'check', run:()=>{}}]});
+  }).catch(e=>toast(e.message)).finally(()=>{ GMC.busy=false; });
+}
+// Steam games in Steam Game Mode (docs/HEARTH-GAME-MODE.md, "Steam games"): read once at start, so Play knows; and the
+// session's note when the last one couldn't open there (it came back here), shown once.
+function gmStart(){
+  call('gameMode.get').then(r=>{ GMC.s=r; }).catch(()=>{});
+  call('gameMode.notice').then(r=>{ if(r && r.text) toast(`The game couldn't open in Steam Game Mode: ${r.text}. You're back in ${APP} Game Mode.`); }).catch(()=>{});
+}
+function steamInSteamMode(g){
+  const s=GMC.s;
+  return LINUX && host && !OVERLAY && !!g && g.src==='steam' && /^steam:\d{1,10}$/.test(g.id) && !!s && s.choice==='hearth' && s.now==='game' && s.steamGames!==false && !s.live;
+}
+// Play on a Steam game: a short screen, then the session opens Steam Game Mode for that game and comes back when it ends.
+// Refused (Steam Game Mode can't run, the switch is off...): it starts here as before.
+function steamGameMode(g){
+  const L=$('#launch');
+  L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">Opening in Steam Game Mode… You'll be back here when the game ends.</div></div>`;
+  closeAll();
+  focusStack.push({el:focused, k:focused?.dataset.k}); S.layers.push('launch'); L.classList.add('open'); renderFooter();
+  call('gameMode.playSteam',{id:g.id}).catch(e=>{ hideLaunch(); toast(`${e.message}. Starting it here instead.`); launch(g, undefined, undefined, true); });
+}
+function gmSteamGames(){
+  const on=!(GMC.s && GMC.s.steamGames!==false);
+  call('gameMode.setSteamGames',{on}).then(r=>{ GMC.s=r; render('sy-gm-steamgames',true); toast(on?'Steam games open in Steam Game Mode':'Steam games start here in Hearth Game Mode'); }).catch(e=>toast(e.message));
+}
+function gmRetry(){ toast('Trying Hearth Game Mode again…'); call('gameMode.switchNow',{to:'hearth'}).catch(e=>toast(e.message)); }
 function sgmDecky(){
   const d=(SGM.s&&SGM.s.decky)||{}; if(d.via==='builtin') return toast('Decky Loader is built into Hearth OS: it starts with Steam Game Mode');
   const action=d.installed&&d.via==='hearth'?'remove':'install';
@@ -6774,7 +6837,7 @@ function loadLogin(){ if(host) call('login.get').then(r=>{ LOGIN.s=r; refreshUI(
 function pageSignin(){
   if(!host) return note('Sign-in settings work in the '+APP+' app.');
   const L=LOGIN.s; if(!L) return note('Loading…');
-  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Steam Game Mode';
+  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
   let h='';
   if(L.canAdmin) h += `<button class="row" data-f data-k="li-auto" data-act="loginAuto"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign in automatically</b><small>${L.autologin?'Starts straight into '+APP+' when you turn it on, like a console':'Shows the login screen when you turn it on'}</small></div><div class="sw ${L.autologin?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-wake" data-act="loginWake"><span class="ricon">${I.lock}</span><div class="rt"><b>Ask for my password after sleep</b><small>${L.lockOnWake?'Locked when it wakes up, in Game Mode and on the desktop':'Wakes straight back to where you were'}</small></div><div class="sw ${L.lockOnWake?'on':''}"></div></button>`;
@@ -6792,9 +6855,9 @@ async function loginAuto(){
 }
 function loginStart(){
   const cur=LOGIN.s&&LOGIN.s.startMode;
-  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Steam Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
+  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
   openSheet({title:'Start in', sub:'What you see after signing in', items:[
-    {label:'Steam Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
+    {label:'Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
     {label:'Desktop Mode', icon:cur==='desktop'?'check':'', run:()=>pick('desktop')}]});
 }
 async function loginPass(){
@@ -10513,6 +10576,9 @@ function act(el){
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p, d.sure==='1');
     case 'sgmDecky': return sgmDecky();
+    case 'gmPick': return gmPick(d.v);
+    case 'gmRetry': return gmRetry();
+    case 'gmSteamGames': return gmSteamGames();
     case 'sgmDefault': return sgmDefault();
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
@@ -10606,7 +10672,7 @@ function steamCloudConflict(g, c, relaunch){
     {label:'Keep the Steam Cloud saves', icon:'dl', run:()=>pick('cloud')},
     {label:'Keep both (this device\'s go in a folder)', icon:'check', run:()=>pick('both')}]});
 }
-function launch(g, mod, save){
+function launch(g, mod, save, here){
   if(isFrozen(g)) return quickResume(g.id);
   if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
   let aside=null;
@@ -10617,6 +10683,7 @@ function launch(g, mod, save){
     if(cur && cur.cloud){ toast(`Close ${cur.title} first: cloud games can't be put aside`); return; }
     aside=cur;
   }
+  if(!aside && !mod && !save && !here && steamInSteamMode(g)) return steamGameMode(g);
   if(aside) toast(`${aside.title} is put aside (Quick Resume)`);
   const L=$('#launch');
   L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}${mod?(mod==='@none'?' without mods':' with '+esc(beaconModName(g,mod))):''}…`}</div></div>`;
@@ -12792,7 +12859,7 @@ function setupFinish(){
   // Hearth OS: first-time setup runs once in Hearth's app, then the device goes to its Game Mode, Steam Game Mode
   // (nimbus-session's "setup" run; host.info feature steamOnly).
   if(host && LINUX && hasFeat('steamOnly')){
-    toast('Setup is done. Starting Steam Game Mode…');
+    toast('Setup is done. Starting Game Mode…');
     call('setup.done').catch(()=>{}).finally(()=>setTimeout(()=>call('session.restartGameMode').catch(e=>toast(e.message)), 1000));
     return;
   }

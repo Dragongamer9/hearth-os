@@ -9,7 +9,8 @@ it and where each thing lives now.
 - **First-time setup** after installing (nimbus-session's `setup` mode), until the 1.1 installer takes it over.
 - **The last-resort fallback** in nimbus-session, when nothing else can start.
 - **`HEARTH_LEGACY_GAME_MODE=1`** (the developer switch): it's back as "Game Mode", and Mantel's launcher lists the
-  Hearth app again.
+  Hearth app again. From 1.10 anyone can pick Hearth Game Mode in Settings › Gaming › Game Mode
+  ([HEARTH-GAME-MODE](HEARTH-GAME-MODE.md)); the switch is read as that choice.
 - **Interim windows** (below): a few pages that have no app of their own yet open in the Hearth app's window at that
   one page (`nimbus --windowed --page <page>`). That's a normal window, not Game Mode.
 

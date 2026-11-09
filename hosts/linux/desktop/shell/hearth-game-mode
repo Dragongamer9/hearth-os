@@ -1,0 +1,230 @@
+#!/usr/bin/python3
+"""hearth-game-mode: which Game Mode this PC goes into (docs/HEARTH-GAME-MODE.md): Steam Game Mode (Valve's Steam in
+gamescope, the default) or Hearth Game Mode (Hearth's own screens in gamescope, ui/ and hosts/hearth-rs).
+
+The one source of truth is one line of ~/.config/nimbus/session.conf, HEARTH_GAME_MODE_CHOICE=steam|hearth, written
+only when you pick one (Mantel's Settings › Gaming, Hearth Game Mode's Settings › System, or Hearth Sync in Steam Game
+Mode's Quick Access), through hearth_settings_io (only that line changes; atomic, .bak, under the lock). No line means
+Steam Game Mode. Hearth never writes it by itself: when Hearth Game Mode can't start, the session (nimbus-session
+run_hearth_mode) falls back for that start (Steam Game Mode, then Mantel), says why, and the choice stays as it is.
+nimbus-session reads the same line with the same rules (game_mode_choice).
+
+  hearth-game-mode get              JSON: {choice, saved, hearth: {ok, why}, steam: {ok, why}, now, fallback, paused, live,
+                                    steamGames, steamGamesSaved, steamGame}
+  hearth-game-mode choice           print steam or hearth (what the session uses)
+  hearth-game-mode set steam|hearth save your choice (nothing is written when it's already that); prints get's JSON
+  hearth-game-mode steam-games on|off   "Play Steam games in Steam Game Mode" (Hearth Game Mode): on unless you turned
+                                    it off; written only when you flip it (HEARTH_STEAM_GAMES_IN_STEAM, the same way)
+  hearth-game-mode notice WHERE     the fallback note once per place (steam, desktop or hearth): {"text": ...} or {}.
+                                    For hearth: why a Steam game couldn't open in Steam Game Mode (hearth-steam-game-failed)
+
+Python standard library only.
+"""
+import json
+import os
+import re
+import shutil
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+sys.dont_write_bytecode = True
+
+KEY = 'HEARTH_GAME_MODE_CHOICE'
+# "Play Steam games in Steam Game Mode" (docs/HEARTH-GAME-MODE.md): only exactly "off" turns it off; no line is on.
+STEAM_GAMES_KEY = 'HEARTH_STEAM_GAMES_IN_STEAM'
+CHOICES = ('steam', 'hearth')
+DEFAULT = 'steam'
+NOTICE_PLACES = ('steam', 'desktop', 'hearth')
+
+
+def conf_path():
+    return os.environ.get('HEARTH_SESSION_CONF') or os.path.join(
+        os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config'), 'nimbus', 'session.conf')
+
+
+def run_dir():
+    return os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+
+
+def state_dir():
+    return os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state'), 'nimbus')
+
+
+def _last(text, key, rx_value=r'["\']*([A-Za-z0-9]*)'):
+    """The value of KEY's last line (the shell takes the last), or None when there's no line."""
+    rx = re.compile(r'^[ \t]*(?:export[ \t]+)?' + re.escape(key) + '=' + rx_value)
+    val = None
+    for line in text.splitlines():
+        m = rx.match(line)
+        if m:
+            val = m.group(1)
+    return val
+
+
+def read_conf():
+    try:
+        with open(conf_path(), encoding='utf-8', errors='surrogateescape') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def choice_from(text, env_legacy=None):
+    """(choice, saved): the same rules as nimbus-session's game_mode_choice. Only exactly "hearth" is Hearth Game Mode;
+    anything else (no line, "steam", a typo) is Steam Game Mode. With no line at all, the old developer switch
+    HEARTH_LEGACY_GAME_MODE=1 still means Hearth Game Mode (read, never written)."""
+    v = _last(text, KEY)
+    if v is not None:
+        return ('hearth' if v == 'hearth' else 'steam'), True
+    legacy = env_legacy == '1' or _last(text, 'HEARTH_LEGACY_GAME_MODE') == '1'
+    return ('hearth' if legacy else DEFAULT), False
+
+
+def steam_games_from(text):
+    """(on, saved): the same rules as nimbus-session's steam_games_on. Only exactly "off" is off."""
+    v = _last(text, STEAM_GAMES_KEY)
+    return (v != 'off'), (v is not None)
+
+
+def current():
+    return choice_from(read_conf(), os.environ.get('HEARTH_LEGACY_GAME_MODE'))
+
+
+def _read(path, n=400):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read(n).strip()
+    except OSError:
+        return ''
+
+
+def _app():
+    p = os.environ.get('NIMBUS_APP') or _read(os.path.join(os.path.dirname(conf_path()), 'app-path')) or '/usr/bin/nimbus'
+    return p if os.path.isfile(p) and os.access(p, os.X_OK) else ''
+
+
+def hearth_ready():
+    if not shutil.which('gamescope'):
+        return False, "gamescope isn't installed"
+    if not _app():
+        return False, "Hearth's app isn't installed"
+    return True, ''
+
+
+def steam_ready():
+    if not shutil.which('gamescope'):
+        return False, "gamescope isn't installed"
+    flat = any(os.path.isdir(p) for p in ('/var/lib/flatpak/app/com.valvesoftware.Steam',
+                                          os.path.expanduser('~/.local/share/flatpak/app/com.valvesoftware.Steam')))
+    if not shutil.which('steam') and not flat:
+        return False, "Steam isn't installed"
+    return True, ''
+
+
+def live():
+    return os.path.exists(os.environ.get('HEARTH_LIVE_FLAG') or '/etc/hearth-live') or os.environ.get('USER') == 'liveuser'
+
+
+def status():
+    c, saved = current()
+    h_ok, h_why = hearth_ready()
+    s_ok, s_why = steam_ready()
+    return {
+        'choice': c, 'saved': saved, 'default': DEFAULT,
+        'hearth': {'ok': h_ok, 'why': h_why}, 'steam': {'ok': s_ok, 'why': s_why},
+        # The mode the session is in now (game = Hearth Game Mode, steam = Steam Game Mode, desktop, server), or ''.
+        'now': _read(os.path.join(run_dir(), 'nimbus-mode-now'), 32),
+        # Why Hearth Game Mode didn't start last time this sign-in (the session opened Steam Game Mode or Mantel instead).
+        'fallback': _read(os.path.join(run_dir(), 'hearth-game-mode-failed')),
+        # Hearth Game Mode failed twice within 10 minutes: every start opens the next one until you try it again.
+        'paused': _read(os.path.join(state_dir(), 'hearth-gm-off')),
+        'live': live(),
+        'steamGames': steam_games_from(read_conf())[0],
+        'steamGamesSaved': steam_games_from(read_conf())[1],
+        # A Steam game opened in Steam Game Mode from Hearth Game Mode right now (its app id), or ''.
+        'steamGame': _read(os.path.join(run_dir(), 'hearth-steam-game-active'), 16),
+    }
+
+
+def set_choice(value):
+    if value not in CHOICES:
+        raise ValueError('steam or hearth')
+    import hearth_settings_io as io
+    path = conf_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    def change(text):
+        c, saved = choice_from(text, os.environ.get('HEARTH_LEGACY_GAME_MODE'))
+        # Already that, saved: nothing to write (the file stays byte for byte as it was).
+        if saved and c == value and _last(text, KEY) == value:
+            return text
+        return io.conf_set_text(text, KEY, value)
+
+    io.update_text(path, change)
+    return status()
+
+
+def set_steam_games(value):
+    if value not in ('on', 'off'):
+        raise ValueError('on or off')
+    import hearth_settings_io as io
+    path = conf_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    def change(text):
+        on, saved = steam_games_from(text)
+        if saved and _last(text, STEAM_GAMES_KEY) == value:
+            return text
+        return io.conf_set_text(text, STEAM_GAMES_KEY, value)
+
+    io.update_text(path, change)
+    return status()
+
+
+def notice(where):
+    """The fallback note for one place, once: Steam Game Mode (Hearth Sync's toast), Mantel, or Hearth Game Mode."""
+    if where not in NOTICE_PLACES:
+        raise ValueError('steam, desktop or hearth')
+    note = os.path.join(run_dir(), 'hearth-steam-game-failed' if where == 'hearth' else 'hearth-game-mode-failed')
+    mark = os.path.join(run_dir(), 'hearth-gm-notice-' + where)
+    text = _read(note, 300)
+    if not text:
+        return {}
+    try:
+        if os.path.exists(mark) and os.path.getmtime(mark) >= os.path.getmtime(note):
+            return {}
+        with open(mark, 'w'):
+            pass
+        now = time.time()
+        os.utime(mark, (now, max(now, os.path.getmtime(note))))
+    except OSError:
+        pass
+    return {'text': text}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'get'
+    try:
+        if cmd == 'get':
+            print(json.dumps(status()))
+        elif cmd == 'choice':
+            print(current()[0])
+        elif cmd == 'set' and len(argv) == 3:
+            print(json.dumps(set_choice(argv[2])))
+        elif cmd == 'steam-games' and len(argv) == 3:
+            print(json.dumps(set_steam_games(argv[2])))
+        elif cmd == 'notice' and len(argv) == 3:
+            print(json.dumps(notice(argv[2])))
+        else:
+            print('error: usage: hearth-game-mode get | choice | set steam|hearth | steam-games on|off | notice steam|desktop|hearth')
+            return 2
+    except (ValueError, OSError) as e:
+        print('error: %s' % e)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

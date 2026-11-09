@@ -652,6 +652,12 @@ var ENTRIES = [
 "i": "gear"
 },
 {
+"t": "Game Mode: Steam Game Mode or Hearth Game Mode",
+"p": "gaming",
+"d": "Which Game Mode this PC goes into: Steam's or Hearth's own",
+"i": "pad"
+},
+{
 "t": "Start in",
 "p": "gaming",
 "d": "What this PC opens when it turns on or you sign in",
@@ -2089,7 +2095,7 @@ var ENTRIES = [
 {
 "t": "Game Mode",
 "p": "power",
-"d": "Steam's Game Mode on the full screen",
+"d": "The Game Mode you picked in Gaming (Steam's or Hearth's) on the full screen",
 "i": "pad"
 },
 {

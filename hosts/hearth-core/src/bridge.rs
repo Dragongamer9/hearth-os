@@ -99,13 +99,8 @@ impl Bridge {
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
         // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
         // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
-        // Hearth's own Steam client (Open) is the default: switched on once for everyone who never chose an
-        // engine, with a short explainer in Settings › Library (steam_engine::migrate).
-        if let Some(writes) = b.library.store.data.as_object().and_then(crate::steam_engine::migrate) {
-            if b.library.store.update(|d| { for (k, v) in writes { d.insert(k.into(), v); } }).is_ok() {
-                crate::bridge::log("steam engine: Hearth's own Steam client is now the default (Settings › Library to turn it off)");
-            }
-        }
+        // The Steam engine (Settings › Library) is never written here: with none saved, Valve's Steam client does
+        // everything (steam_engine::Mode::from_setting). An older Hearth switched it to Open by itself at this point.
         {
             let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready_effective(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
             let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
@@ -533,6 +528,36 @@ impl Bridge {
             // Start in Steam Game Mode (per device, off by default; the session turns it off by itself when it fails)
             "steamMode.setDefault" => crate::steam_mode::set_default(a["on"].as_bool().unwrap_or(false)),
             // ---- end Steam Game Mode
+            // ---- Which Game Mode (game_mode_choice.rs, docs/HEARTH-GAME-MODE.md): Settings › System › Game Mode.
+            "gameMode.get" => crate::game_mode_choice::get(),
+            "gameMode.set" => crate::game_mode_choice::set(a),
+            "gameMode.setSteamGames" => crate::game_mode_choice::set_steam_games(a),
+            // Why the last Steam game couldn't open in Steam Game Mode (the session came back here), once.
+            "gameMode.notice" => crate::game_mode_choice::run(&["notice", "hearth"]),
+            // Play on a Steam game in Hearth Game Mode, with "Play Steam games in Steam Game Mode" on: the one-shot request
+            // for the session, then Hearth closes (the session opens Steam Game Mode for that game and comes back here
+            // when it ends). Refused (the page then starts it here as before) when any of it doesn't hold.
+            "gameMode.playSteam" => {
+                let id = req("id")?;
+                let app = crate::game_mode_choice::steam_app_id(&id).ok_or("Not a Steam game")?.to_string();
+                let pc = self.profiles.can_play(Some(&id), chrono::Local::now(), 0.0);
+                if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
+                let st = crate::game_mode_choice::get()?;
+                crate::game_mode_choice::steam_game_ok(&st, crate::signin_handoff::game_mode())?;
+                let run = std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
+                crate::game_mode_choice::write_steam_request(&run, &app)?;
+                log(&format!("steam game: {id} opens in Steam Game Mode (back here when it ends)"));
+                let emit = self.emit.clone();
+                std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1200)); emit(json!({"type": "quit"})); });
+                Ok(json!({"switching": true}))
+            }
+            // Switch now / Try Hearth Game Mode again: in Game Mode, Hearth closes properly and the session opens it; from a
+            // Hearth window in Desktop Mode, through nimbus-mode (which closes Desktop Mode).
+            "gameMode.switchNow" => {
+                let to = crate::game_mode_choice::switch_target(a);
+                if crate::signin_handoff::game_mode() { self.switch_game_mode(to); Ok(Value::Null) }
+                else { crate::game_mode_choice::nimbus_mode(to).map(|_| Value::Null) }
+            }
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1857,6 +1882,14 @@ impl Bridge {
     pub fn version_str(&self) -> String { self.version.clone() }
     pub fn zoom_pct(&self) -> u32 { self.library.store.data["uiScale"].as_u64().unwrap_or(100) as u32 }
     fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
+    /// Game Mode again as `to` ("game": the one you picked, "hearth": Hearth Game Mode asked for by name), Hearth closing
+    /// first (the session reads nimbus-next when it has).
+    pub fn switch_game_mode(&self, to: &str) {
+        let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+        if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), format!("{to}\n")); }
+        let emit = self.emit.clone();
+        std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(600)); emit(json!({"type": if in_session { "quit" } else { "restart" }})); });
+    }
     /// Game Mode starts again (gamescope with its new options): the session's next round is Game Mode, and Hearth
     /// leaves (outside the session, Hearth restarts itself).
     pub fn restart_game_mode(&self) {
@@ -2041,6 +2074,8 @@ fn features() -> Vec<&'static str> {
     // Hearth OS's Game Mode is Steam Game Mode (nimbus-session exports HEARTH_STEAM_ONLY=1 unless Hearth's own Game Mode
     // is switched back on): first-time setup hands over to it when it finishes.
     if crate::steam_mode::steam_only(std::env::var("HEARTH_STEAM_ONLY").ok().as_deref()) { f.push("steamOnly"); }
+    // Which Game Mode (Steam's or Hearth's): Settings › System's two cards, where Hearth OS's helper is.
+    if crate::game_mode_choice::available() { f.push("gameModeChoice"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
@@ -2100,6 +2135,30 @@ mod tests {
         let r = b.handle(&json!({"type":"call","id":9,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
         assert_eq!(r["ok"], true);
         assert!(b.library.store.list_has("favorites", "steam:1"));
+    }
+    /// Settings never change by themselves: Hearth starting (Bridge::new) never writes a Steam engine, and with none
+    /// saved, opening Hearth Game Mode (its first calls) writes nothing and Steam games go to Valve's client.
+    #[test]
+    fn no_steam_engine_saved_writes_nothing_and_uses_valves_client() {
+        let src = include_str!("bridge.rs");
+        let start = &src[src.find("pub fn new(version: &str) -> Bridge {").unwrap()..src.find("pub fn with(library: Library").unwrap()];
+        assert!(!start.contains("\"steamEngine\""), "Hearth's start writes no Steam engine");
+        assert!(!start.contains("steam_engine::migrate"), "no switch to another engine at start");
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("l.json");
+        std::fs::write(&file, "{\"favorites\": []}\n").unwrap();
+        let before = std::fs::read(&file).unwrap();
+        let mut b = Bridge::with(Library::new(Store::open(file.clone()), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
+        for (id, m) in [(1, "library.get"), (2, "steam.engine.status")] {
+            let r = b.handle(&json!({"type":"call","id":id,"method":m,"args":{}})).unwrap();
+            assert_eq!(r["ok"], true, "{m}: {r}");
+        }
+        let st = b.handle(&json!({"type":"call","id":3,"method":"steam.engine.status","args":{}})).unwrap();
+        assert_eq!(st["value"]["mode"], "classic");
+        assert_eq!(b.library.steam_engine_mode(), crate::steam_engine::Mode::Classic);
+        assert!(!crate::steam_engine::launch(b.library.steam_engine_mode(), 10), "a Steam game goes to Valve's client");
+        assert_eq!(std::fs::read(&file).unwrap(), before, "library.json is byte for byte as it was");
+        assert!(b.library.store.data.get("steamEngine").map(|v| v.is_null()).unwrap_or(true));
     }
     /// The page's other calls are answered while a picker waits for the person (it held the bridge before 0.6.5,
     /// so Hearth froze and the fail-safe stopped it: "stuck in accounts.pickFolder").
