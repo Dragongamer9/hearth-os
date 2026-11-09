@@ -973,7 +973,12 @@ jobs:
         timeout-minutes: 45
         run: |
           set -o pipefail
-          sudo apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 xvfb >/dev/null
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 xvfb >/dev/null \
+            || { echo "::error title=offline Proton::couldn't install MinGW and Xvfb on the runner"; exit 1; }
+          for c in x86_64-w64-mingw32-gcc i686-w64-mingw32-gcc Xvfb; do
+            command -v "$c" >/dev/null || { echo "::error title=offline Proton::$c isn't on the runner"; exit 1; }
+          done
           mkdir -p /tmp/offline-exe
           x86_64-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello64.exe tools/winapps-e2e/hello.c
           i686-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello32.exe tools/winapps-e2e/hello.c
