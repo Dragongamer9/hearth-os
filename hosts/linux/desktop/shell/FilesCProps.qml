@@ -17,7 +17,7 @@ Rectangle {
     readonly property var p: fm && fm.cProps ? fm.cProps : ({ name: "", places: [] })
     anchors.centerIn: parent
     width: Math.min(560, root.width - 48)
-    height: Math.min(root.height - 48, body.implicitHeight + 120)
+    height: Math.min(root.height - 48, body.implicitHeight + 156)   // title bar, OK row and margins
     radius: Theme.radius + 2
     color: Theme.panel
     border.color: Theme.line
