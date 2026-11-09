@@ -65,3 +65,28 @@ jobs:
           set -o pipefail
           podman run --rm --network=none -v "$PWD:/repo:ro" offline-proton-test bash -c \
             'chmod -R a+rX /opt/winapps-test; runuser -u tester -- env HOME=/home/tester REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh offline' 2>&1 | tee off.log
+
+  # The same network-off check as base-peppermint.yml's, in Hearth OS's published image (:testing) with this branch's
+  # launcher files on top (what the image change adds), so it can be checked without a 2-hour image build.
+  offline-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start Windows programs in Hearth OS's image with the network off
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 xvfb >/dev/null
+          mkdir -p /tmp/offline-exe
+          x86_64-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello64.exe tools/winapps-e2e/hello.c
+          i686-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello32.exe tools/winapps-e2e/hello.c
+          Xvfb :99 -ac -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
+          sleep 2
+          S="$PWD/hosts/linux/desktop/shell"; D=/usr/share/nimbus/desktop/shell
+          sudo podman pull -q ghcr.io/dragongamer9/hearth-peppermint:testing
+          sudo podman run --rm --network=none -e DISPLAY=:99 -v /tmp/.X11-unix:/tmp/.X11-unix:ro -v "$PWD:/repo:ro" \
+            -v /tmp/offline-exe:/opt/offline-exe:ro \
+            -v "$S/hearth_proton_run.py:$D/hearth_proton_run.py:ro" -v "$S/hearth_proton.py:$D/hearth_proton.py:ro" \
+            -v "$S/hearth-winapps:$D/hearth-winapps:ro" -v "$PWD/os/system_files/usr/bin/hearth-proton-run:/usr/bin/hearth-proton-run:ro" \
+            ghcr.io/dragongamer9/hearth-peppermint:testing bash /repo/tools/winapps-e2e/e2e.sh offline-image
