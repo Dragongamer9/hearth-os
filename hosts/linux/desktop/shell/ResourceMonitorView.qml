@@ -832,7 +832,7 @@ FocusScope {
                                     id: graph
                                     width: parent.width; height: parent.height - 46
                                     property var pts: modelData[3] || []
-                                    property real top: modelData[4]
+                                    property real topVal: modelData[4]
                                     property color col: modelData[2]
                                     onPtsChanged: requestPaint()
                                     onPaint: {
@@ -842,7 +842,7 @@ FocusScope {
                                         for (const f of [0.25, 0.5, 0.75]) { ctx.moveTo(0, Math.round(height * f) + 0.5); ctx.lineTo(width, Math.round(height * f) + 0.5); }
                                         ctx.stroke();
                                         const a = pts; if (!a.length) return;
-                                        const mx = top > 0 ? top : Math.max(1048576, ...a) * 1.15;
+                                        const mx = topVal > 0 ? topVal : Math.max(1048576, ...a) * 1.15;
                                         const xs = i => width - (a.length - 1 - i) * (width / (v.histMax - 1));
                                         const ys = val => height - Math.min(1, (val || 0) / mx) * (height - 4) - 1;
                                         ctx.beginPath(); ctx.moveTo(xs(0), height);
