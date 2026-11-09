@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth OS</title>
-<meta name="description" content="Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, with Mantel, Hearth's own desktop, one press away, and updates that always keep the previous version startable.">
+<meta name="description" content="Hearth OS is a free, Debian-based OS for gaming PCs and handhelds: it turns on into Steam Game Mode with all your games in one place, has a desktop that feels like Windows, only friendlier, and updates that can always go back.">
 <meta property="og:title" content="Hearth OS">
 <meta property="og:description" content="A free, Debian-based gaming OS for PCs and handhelds: Steam Game Mode on the couch, Mantel on the desk.">
 <meta property="og:image" content="img/desk-classic.webp">
@@ -284,6 +284,121 @@ footer .brand{margin-right:12px;font-size:17px}
 footer a{color:var(--text);font-size:15px}
 footer .legal{flex-basis:100%;margin:18px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted);max-width:80em}
 footer .legal a{font-size:inherit;color:var(--muted)}
+
+/* ===== 2026-11 redesign: gaming first, Windows-friendly, with Hearth's soundtrack ===== */
+.brand .bt{display:inline}
+.player{display:flex;align-items:center;gap:4px;padding:4px 8px 4px 4px;border-radius:999px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);margin-right:6px}
+.player button{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:50%;background:none;color:var(--text);cursor:pointer;padding:0}
+.player button:hover{background:var(--raise);color:var(--hi)}
+.player .pp{background:var(--acc);color:var(--onacc);box-shadow:0 0 0 calc(var(--beat,0) * 6px) color-mix(in srgb,var(--acc) 35%,transparent)}
+.player .pp:hover{background:var(--acc);color:var(--onacc);filter:brightness(1.08)}
+.player .ico{width:18px;height:18px}
+.player .fill{fill:currentColor;stroke:none}
+.player .meta{display:flex;flex-direction:column;line-height:1.15;min-width:0;max-width:150px;padding:0 4px}
+.player .meta b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player .meta span{font-size:11.5px;color:var(--muted)}
+.player input[type=range]{width:84px;accent-color:var(--acc);cursor:pointer}
+.player .vol{display:flex;align-items:center}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.player [data-show="pause"],.player [data-show="muted"]{display:none}
+html.playing .player [data-show="play"]{display:none}html.playing .player [data-show="pause"]{display:block}
+html.muted .player [data-show="loud"]{display:none}html.muted .player [data-show="muted"]{display:block}
+@media (max-width:1300px){.player .meta{display:none}}
+@media (max-width:1100px){header nav{display:none}}
+.hero2 .wrap.covers{display:block}
+@media (max-width:640px){header .dl{display:none}.player .next{display:none}.player input[type=range]{width:64px}}
+@media (max-width:420px){.brand .bt{display:none}}
+.brand img{transform:scale(calc(1 + var(--beat,0) * .18))}
+.music-fx{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none}
+html.has-wall.playing section{background:color-mix(in srgb,var(--page) 58%,transparent)}
+html.has-wall.playing section.deep,html.has-wall.playing footer{background:color-mix(in srgb,var(--deep) 64%,transparent)}
+@media (prefers-color-scheme:light){html.has-wall.playing:not([data-theme="dark"]) section{background:color-mix(in srgb,var(--page) 74%,transparent)}}
+html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,var(--page) 74%,transparent)}
+
+.eyebrow{display:block;font:700 14px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--acc);margin-bottom:14px}
+.big{font:900 clamp(44px,6.2vw,88px)/.96 var(--display);font-stretch:125%;letter-spacing:-.01em;color:var(--hi)}
+.big em{font-style:normal;color:var(--acc)}
+.h2x{font:900 clamp(34px,4.4vw,60px)/1 var(--display);font-stretch:120%;letter-spacing:-.01em}
+.new{display:inline-block;padding:3px 9px;border-radius:999px;background:var(--acc2);color:var(--onacc);font:700 11.5px/1.3 var(--body);letter-spacing:.05em;text-transform:uppercase;vertical-align:middle}
+
+.hero2 .wrap{display:flex;flex-wrap:wrap;gap:48px;align-items:center;padding-top:clamp(48px,7vw,92px);padding-bottom:28px}
+.hero2 .copy{flex:1 1 440px;min-width:0}
+.hero2 .lede{margin:22px 0 28px;font-size:clamp(18px,1.8vw,21px);max-width:34em}
+.hero2 .shot{flex:1 1 520px;min-width:0;position:relative}
+.tv{padding:10px;border-radius:18px;background:#050505;box-shadow:0 40px 90px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06)}
+.tv img{border-radius:10px;width:100%}
+.tv.small{position:absolute;left:-24px;bottom:-30px;width:42%;padding:6px;border-radius:13px}
+.tv.small img{border-radius:8px}
+@media (max-width:700px){.tv.small{display:none}}
+.covers{padding-top:30px;padding-bottom:clamp(48px,6vw,72px)}
+.covers .lab{font:700 13px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.covers ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+.covers li{position:relative;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:var(--panel);box-shadow:0 14px 30px rgba(0,0,0,.35);transition:transform .2s}
+.covers li:hover{transform:translateY(-4px)}
+.covers img{width:100%;height:100%;object-fit:cover}
+.covers span{position:absolute;left:0;right:0;bottom:0;padding:26px 10px 10px;background:linear-gradient(transparent,rgba(0,0,0,.85));color:#fff;font-weight:700;font-size:14px}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{padding:24px;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.card .ic{display:grid;place-items:center;width:48px;height:48px;border-radius:8px;background:var(--accsoft);color:var(--acc);margin-bottom:14px}
+.card .ic .ico{width:26px;height:26px}
+.card h3{font:700 21px/1.25 var(--body);margin-bottom:8px}
+.card p{margin:0;font-size:16px}
+.band{display:flex;flex-wrap:wrap;gap:36px;align-items:center;margin-top:28px;padding:clamp(22px,3vw,32px);border-radius:10px;background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.band>div{flex:1 1 320px}
+.band h3{font:900 clamp(26px,3vw,34px)/1.05 var(--display);font-stretch:115%;margin:12px 0 10px}
+.band p{margin:0}
+.band img{flex:1 1 480px;min-width:0;width:100%;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+
+.apphead{display:flex;flex-wrap:wrap;gap:20px 48px;align-items:flex-end;margin-bottom:clamp(32px,4vw,48px)}
+.apphead>div{flex:1 1 480px}
+.apphead p{flex:1 1 360px;margin:0;font-size:19px}
+.wins{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:22px}
+.win{display:flex;flex-direction:column;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule),0 18px 40px rgba(0,0,0,.22);overflow:hidden;transition:transform .2s}
+.win:hover{transform:translateY(-4px)}
+.win .tb{display:flex;align-items:center;gap:10px;padding:7px 4px 7px 14px;background:var(--raise);font-size:13.5px;font-weight:600;color:var(--hi)}
+.win .tb i{width:10px;height:10px;border-radius:3px;background:var(--acc)}
+.win .tb b{flex:1;font-weight:600}
+.win .tb svg{width:30px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.4}
+.win .pic{aspect-ratio:16/10;background:var(--deep);overflow:hidden}
+.win .pic img{width:100%;height:100%;object-fit:cover;object-position:top left}
+.win .tx{padding:18px 20px 22px}
+.win h3{font:700 20px/1.3 var(--body);margin-bottom:6px}
+.win p{margin:0;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;padding:0;list-style:none}
+.chips li{padding:9px 16px;border-radius:999px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);font-size:15px;font-weight:600;color:var(--hi)}
+
+.safe2{display:flex;flex-wrap:wrap;gap:48px;align-items:center}
+.safe2>div{flex:1 1 400px}
+.safe2 img{flex:1 1 480px;min-width:0;width:100%;border-radius:10px;box-shadow:0 30px 70px rgba(0,0,0,.4)}
+.steps{list-style:none;margin:22px 0 0;padding:0;display:grid;gap:14px}
+.steps li{display:flex;gap:14px}
+.steps .n{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--acc);color:var(--onacc);font-weight:700}
+
+.road{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}
+.road article{padding:26px;border-radius:10px;background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.road .when{display:flex;align-items:center;gap:10px;font:700 13px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.road .when i{width:12px;height:12px;border-radius:50%;background:var(--acc);box-shadow:0 0 calc(var(--beat,0) * 14px) var(--acc)}
+.road h3{font:900 28px/1.05 var(--display);font-stretch:115%;margin:14px 0 12px}
+.road ul{margin:0;padding-left:20px;display:grid;gap:6px;font-size:16px}
+.road .next{background:var(--acc);box-shadow:none;color:var(--onacc)}
+.road .next h3,.road .next .when{color:var(--onacc)}
+.road .next .when i{background:var(--onacc)}
+
+.music{display:flex;flex-wrap:wrap;gap:48px}
+.music>div{flex:1 1 320px}
+.music ol{flex:1 1 540px;list-style:none;margin:0;padding:8px;border-radius:10px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);display:grid;gap:2px}
+.music ol button{display:flex;align-items:center;gap:14px;width:100%;padding:12px 14px;border:0;border-radius:6px;background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.music ol button:hover{background:var(--raise)}
+.music ol button[aria-current="true"]{background:var(--raise)}
+.music .no{display:grid;place-items:center;width:34px;height:34px;flex:none;border-radius:50%;background:var(--raise);color:var(--hi);font-weight:700;font-size:13px}
+.music button[aria-current="true"] .no{background:var(--acc);color:var(--onacc)}
+.music .nm{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.music .nm b{font-size:16px}
+.music .nm span,.music .ln{font-size:13.5px;color:var(--muted)}
+.music button[aria-current="true"] .nm span,.music button[aria-current="true"] .ln{color:var(--text)}
+.music .ln{font-variant-numeric:tabular-nums}
+
 </style>
 <link rel="stylesheet" href="looks.css?v=1f63a1a478">
 </head>
@@ -298,431 +413,169 @@ footer .legal a{font-size:inherit;color:var(--muted)}
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="#top"><img src="img/logo.svg" alt="" width="30" height="30">Hearth OS</a>
+    <a class="brand" href="#top"><img src="img/logo.svg" alt="" width="30" height="30"><span class="bt">Hearth OS</span></a>
     <nav aria-label="Sections">
-      <a href="#steam">Steam Game Mode</a>
-      <a href="#sync">Hearth Sync</a>
-      <a href="#mantel">Mantel</a>
-      <a href="#v18">What's new</a>
-      <a href="#server">Home server</a>
-      <a href="#updates">Updates</a>
+      <a href="#games">Games</a>
+      <a href="#apps">Apps</a>
+      <a href="#safe">Updates</a>
+      <a href="#heading">Roadmap</a>
+      <a href="#soundtrack">Music</a>
       <a href="docs/">Docs</a>
-      <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     </nav>
+    <div class="player" role="group" aria-label="Music player">
+      <button class="pp" type="button" id="mPlay" aria-label="Play the music"><svg class="ico fill" data-show="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><svg class="ico fill" data-show="pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>
+      <span class="meta"><b id="mName">Out Now</b><span id="mStatus">Hearth's soundtrack</span></span>
+      <button class="next" type="button" id="mNext" aria-label="Next song"><svg class="ico fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14l10-7zM17 5h2.5v14H17z"/></svg></button>
+      <button type="button" id="mMute" aria-label="Mute the music"><svg class="ico" data-show="loud" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg><svg class="ico" data-show="muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg></button>
+      <label class="vol"><span class="sr">Music volume</span><input type="range" id="mVol" min="0" max="100" step="1" value="25"></label>
+    </div>
     <div class="looks"></div>
     <button class="theme" id="theme" type="button" aria-label="Switch between light and dark"><svg class="ico moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ico sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
     <a class="dl" href="#download">Download</a>
   </div>
 </header>
+<audio id="mAudio" preload="none"></audio>
 
 <main id="main">
 
-<div class="hero" id="top">
+<div class="hero hero2" id="top">
   <div class="wrap">
-    <div>
-      <h1 class="h1">Steam Game Mode on the couch. Mantel on the desk.</h1>
-      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away. New in 1.9: Voice Studio on your home server, a redesigned installer that finds your controllers, and modded Skyrim that starts properly.</p>
+    <div class="copy">
+      <h1 class="big">Your PC,<br><em>ready to play.</em></h1>
+      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, and built on Debian.</p>
       <div class="ctas">
-        <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
-        <a class="btn line" href="#new">See what's new in 1.9</a>
+        <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Get Hearth OS</a>
+        <a class="btn line" href="#soundtrack" id="heroPlay">Play the soundtrack</a>
       </div>
       <div class="status">
         <span><span class="tag now">Out now</span>Hearth OS 1.9</span>
-        <span><span class="tag next">Next update</span>in development</span>
+        <span><span class="tag next">Next update</span>1.10, in development</span>
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
     </div>
-    <figure class="stack" id="stack" style="margin:0;position:relative">
-      <svg viewBox="0 0 600 512" role="img" aria-labelledby="stack-cap">
-        <defs>
-          <linearGradient id="g-top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".55"/><stop offset="1" stop-color="var(--acc2)" stop-opacity=".18"/></linearGradient>
-          <radialGradient id="g-light" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="var(--acc2)" stop-opacity=".30"/><stop offset="1" stop-color="var(--acc2)" stop-opacity="0"/></radialGradient>
-          <linearGradient id="g-flame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd166"/><stop offset=".55" stop-color="#ff8a3d"/><stop offset="1" stop-color="#e5483b"/></linearGradient>
-        </defs>
-        <ellipse cx="220" cy="139" rx="260" ry="140" fill="url(#g-light)"/>
-        <!-- Debian 13: the base -->
-        <g class="plate p3">
-          <path d="M220 292 L410 387 L220 482 L30 387 Z" fill="var(--panel)" stroke="var(--rule2)"/>
-          <path d="M30 387 L220 482 L220 504 L30 409 Z" fill="var(--deep)"/><path d="M220 482 L410 387 L410 409 L220 504 Z" fill="var(--raise)"/>
-          <g transform="matrix(1,.5,-1,.5,220,292)"><path d="M24 40H166M24 70H166M24 100H166M24 130H140" fill="none" stroke="var(--rule2)" stroke-width="1.2" opacity=".7"/></g>
-        </g>
-        <!-- Mantel: the desktop -->
-        <g class="plate p2">
-          <path d="M220 168 L410 263 L220 358 L30 263 Z" fill="var(--panel)" stroke="var(--rule2)"/>
-          <path d="M30 263 L220 358 L220 380 L30 285 Z" fill="var(--deep)"/><path d="M220 358 L410 263 L410 285 L220 380 Z" fill="var(--raise)"/>
-          <g transform="matrix(1,.5,-1,.5,220,168)"><rect x="20" y="22" width="92" height="70" rx="4" fill="var(--raise)"/><rect x="20" y="22" width="92" height="12" rx="3" fill="var(--rule2)"/>
-            <rect x="72" y="62" width="96" height="72" rx="4" fill="var(--raise)" stroke="var(--acc)" stroke-opacity=".6"/><rect x="72" y="62" width="96" height="12" rx="3" fill="var(--acc)" fill-opacity=".55"/>
-            <rect x="16" y="162" width="158" height="14" rx="7" fill="var(--deep)"/></g>
-        </g>
-        <!-- Steam Game Mode: the top, with the Hearth flame (the one warm thing) above it -->
-        <g class="plate p1">
-          <path d="M220 44 L410 139 L220 234 L30 139 Z" fill="url(#g-top)" stroke="var(--acc)"/>
-          <path d="M30 139 L220 234 L220 256 L30 161 Z" fill="var(--deep)"/><path d="M220 234 L410 139 L410 161 L220 256 Z" fill="var(--raise)"/>
-          <g transform="matrix(1,.5,-1,.5,220,44)"><g fill="var(--page)" fill-opacity=".75"><rect x="18" y="18" width="70" height="44" rx="3"/><rect x="96" y="18" width="70" height="44" rx="3"/>
-            <rect x="18" y="72" width="34" height="48" rx="3"/><rect x="58" y="72" width="34" height="48" rx="3"/><rect x="98" y="72" width="34" height="48" rx="3"/><rect x="138" y="72" width="34" height="48" rx="3"/>
-            <rect x="18" y="128" width="34" height="48" rx="3"/><rect x="58" y="128" width="34" height="48" rx="3"/><rect x="98" y="128" width="34" height="48" rx="3" fill="var(--acc)" fill-opacity=".9"/></g></g>
-        
-          <g transform="translate(179 -8) scale(.16)"><path d="M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z" fill="url(#g-flame)"/></g>
-        </g>
-        <g font-size="19" fill="var(--hi)">
-          <path d="M412 139 H446" stroke="var(--acc)" stroke-width="2"/><text x="454" y="136" font-weight="700">Steam Game Mode</text><text x="454" y="160" font-size="15" fill="var(--muted)">with Hearth Sync</text>
-          <path d="M412 263 H446" stroke="var(--rule2)" stroke-width="2"/><text x="454" y="260" font-weight="700">Mantel</text><text x="454" y="284" font-size="15" fill="var(--muted)">Hearth's desktop</text>
-          <path d="M412 387 H446" stroke="var(--rule2)" stroke-width="2"/><text x="454" y="384" font-weight="700">Debian 13</text><text x="454" y="408" font-size="15" fill="var(--muted)">the base</text>
-        </g>
-      </svg>
-      <figcaption id="stack-cap" class="small" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Hearth OS as three layers: Steam Game Mode with Hearth Sync on top, Mantel, Hearth's desktop, in the middle, and Debian 13 underneath.</figcaption>
-    </figure>
+    <div class="shot">
+      <div class="tv"><img src="img/gm-home.webp" width="1600" height="1000" alt="Steam Game Mode on Hearth OS: recent games along the top, with games from other stores next to Steam's."></div>
+      <div class="tv small"><img src="img/gm-overlay.webp" width="1600" height="1000" loading="lazy" alt="Quick Access over a game, with volume, brightness and Wi-Fi."></div>
+    </div>
+  </div>
+  <div class="wrap covers">
+    <p class="lab">Free games that look great on Hearth</p>
+    <ul>
+      <li><img src="img/games/wesnoth-cover.webp" width="600" height="900" loading="lazy" alt=""><span>Battle for Wesnoth</span></li>
+      <li><img src="img/games/stk-cover.webp" width="600" height="900" loading="lazy" alt=""><span>SuperTuxKart</span></li>
+      <li><img src="img/games/veloren-cover.webp" width="600" height="900" loading="lazy" alt=""><span>Veloren</span></li>
+      <li><img src="img/games/0ad-cover.webp" width="600" height="900" loading="lazy" alt=""><span>0 A.D.</span></li>
+      <li><img src="img/games/es-cover.webp" width="400" height="600" loading="lazy" alt=""><span>Endless Sky</span></li>
+      <li><img src="img/games/openttd-cover.webp" width="600" height="900" loading="lazy" alt=""><span>OpenTTD</span></li>
+    </ul>
   </div>
 </div>
 
-<section id="steam">
+<section id="games" class="deep">
   <div class="wrap">
     <div class="head">
-      <span class="tag now">Out now</span>
-      <h2 class="h2">The Game Mode is Steam's Game Mode</h2>
-      <p class="lede">Hearth OS starts into Valve's Steam client in gamescope, the same full-screen gamepad screens SteamOS uses: Steam's library, store, Quick Access menu and overlay. The Hearth plugin for Decky Loader brings Hearth's tools into it.</p>
+      <span class="eyebrow">Gaming first</span>
+      <h2 class="h2x">Every game. One couch. No fuss.</h2>
+      <p class="lede">Hearth OS starts in Valve's own Steam Game Mode, the one from the Steam Deck. Everything else you own comes along with it.</p>
     </div>
-    <div class="split">
+    <div class="cards">
+      <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-3.9 3.2l-1.3 6.4A3 3 0 0 0 4.4 18c1 0 1.9-.5 2.4-1.3L8 15h8l1.2 1.7c.5.8 1.4 1.3 2.4 1.3a3 3 0 0 0 2.9-3.4l-1.3-6.4A4 4 0 0 0 17.3 5z"/></svg></span><h3>Steam Game Mode</h3><p>Valve's couch screens, the same as the Steam Deck: the library, the store, Quick Access and your controller, from the moment it turns on.</p></div>
+      <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg></span><h3>Every store, one library</h3><p>Hearth Sync puts your GOG, Epic and Battle.net games, emulators and recomps into Steam's library, with their pictures, so you never hunt for a launcher.</p></div>
+      <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5h14v14H5zM12 5v14M5 12h14"/></svg></span><h3>Windows games just run <span class="new">More in 1.10</span></h3><p>GE-Proton is built in: double-click a .exe or .msi and it opens. In 1.10 it works fully offline, without Steam.</p></div>
+      <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg></span><h3>Mods made easy</h3><p>Hearth Mod Organizer keeps Mod Organizer 2's layout, and Wabbajack lists install with their downloads handled.</p></div>
+      <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 18v2M16 18v2"/></svg></span><h3>Console classics, native</h3><p>Recomps: native PC ports of console games, installed and kept up to date in their own tab in Hearth Games.</p></div>
+      <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h.01M8 16.5h.01"/></svg></span><h3>Game servers in a click</h3><p>Minecraft, Valheim, Terraria and Palworld servers from Settings, so friends can join while you play.</p></div>
+    </div>
+    <div class="band">
       <div>
-        <ul class="points">
-          <li><b>Starts by itself.</b> Turn on the PC or handheld and you're in Steam Game Mode, ready for the controller.</li>
-          <li><b>Mantel one press away.</b> Switch to the desktop from Steam's power menu, and back again.</li>
-          <li><b>Hearth inside Steam.</b> Hearth's quick settings, power modes, updates and your non-Steam games, through Decky.</li>
-          <li><b>Updates from Steam's own settings.</b> Check for updates runs Hearth's update, and the device never restarts by itself.</li>
-        </ul>
-        <p class="small" style="margin-top:18px">In 0.6.63 Steam Game Mode is already there as an option to switch to (Experimental). From the next update it is the Game Mode. <a href="docs/steam.html">How Steam Game Mode works</a></p>
+        <span class="new">Coming in 1.10</span>
+        <h3>Pick your Game Mode</h3>
+        <p>Steam Game Mode, or Hearth's own. In Hearth's, Steam games still open in Steam Game Mode, and if Hearth's ever can't start, you land in Steam's instead. Change it any time in Settings › Gaming.</p>
       </div>
-      <div class="flow">
-        <ol>
-          <li><span class="n">1</span><div><h3>You turn it on</h3><p>The boot menu starts the newest version, and keeps the one before it.</p></div></li>
-          <li><span class="n">2</span><div><h3>Steam Game Mode opens</h3><p>Your games, from Steam and from Hearth Sync, in one library.</p></div></li>
-          <li class="alt"><span class="n">!</span><div><h3>If Steam Game Mode can't start</h3><p>The PC opens Mantel instead, with a message saying what happened and a button to try again.</p>
-            <div class="mock" aria-hidden="true"><span>Steam Game Mode didn't start.</span><span class="fake">Try again</span></div></div></li>
-        </ol>
-      </div>
-    </div>
-    <div class="archived">
-      <h3>Hearth's own Game Mode is archived</h3>
-      <p>It's no longer part of Hearth OS from the next update. Its code stays in the repository, and the Ember app on Windows keeps its own Game Mode.</p>
+      <img src="img/s110-gamemode.webp" width="1200" height="681" loading="lazy" alt="Settings › Gaming with Steam Game Mode and Hearth Game Mode side by side.">
     </div>
   </div>
 </section>
 
-<section id="sync" class="deep">
-  <div class="wrap sync">
+<section id="apps">
+  <div class="wrap">
+    <div class="apphead">
+      <div>
+        <span class="eyebrow">Mantel, the desktop</span>
+        <h2 class="h2x">Feels like Windows.<br>Friendlier.</h2>
+      </div>
+      <p>The apps you already know how to use, in plain words. Your files live on a Hearth (C:) drive, Windows programs open with a double-click, and Super+R and Super+X do what your hands expect.</p>
+    </div>
+    <div class="wins">
+      <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Files</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
+        <div class="pic"><img src="img/s110-cdrive.webp" width="1190" height="795" loading="lazy" alt="Files showing the Hearth (C:) drive with Program Files, Users and Windows."></div>
+        <div class="tx"><h3>Hearth (C:) <span class="new">In 1.10</span></h3><p>Program Files, Users and Windows, right where you'd look. Nothing on your PC is moved; it's just easier to find.</p></div></article>
+      <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Disk Management</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
+        <div class="pic"><img src="img/s110-disks.webp" width="1200" height="750" loading="lazy" alt="Disk Management with drives, partitions and a right-click menu."></div>
+        <div class="tx"><h3>Disk Management <span class="new">In 1.10</span></h3><p>Format, shrink, grow and give drives a letter. Hearth's own drive is locked, so you can't break it by accident.</p></div></article>
+      <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Task Manager</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
+        <div class="pic"><img src="img/s18-task-manager.webp" width="1200" height="780" loading="lazy" alt="Task Manager with processes grouped under Apps and Background processes."></div>
+        <div class="tx"><h3>Task Manager</h3><p>Processes, Performance, Startup apps and Services, the Windows 11 way. End a stuck game in two clicks.</p></div></article>
+      <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Restore</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
+        <div class="pic"><img src="img/s110-restore.webp" width="980" height="685" loading="lazy" alt="Restore Hearth to an earlier point, with what will change and what stays."></div>
+        <div class="tx"><h3>System Restore <span class="new">In 1.10</span></h3><p>Broke something? Pick a point from before, see what will change, and go back. Your files and games are never touched.</p></div></article>
+      <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Run</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
+        <div class="pic"><img src="img/s110-run.webp" width="1120" height="770" loading="lazy" alt="The Run box with devmgmt.msc typed in, offering Device Manager."></div>
+        <div class="tx"><h3>Run and Super+X <span class="new">In 1.10</span></h3><p>Super+R opens Run, and Windows commands like devmgmt.msc work. Super+X opens the power menu.</p></div></article>
+      <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Volume mixer</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
+        <div class="pic"><img src="img/s110-mixer.webp" width="820" height="700" loading="lazy" alt="The volume mixer with a slider for each app and where its sound plays."></div>
+        <div class="tx"><h3>Volume mixer <span class="new">In 1.10</span></h3><p>A slider for every app, and send Discord to your headset while the game plays on the TV.</p></div></article>
+    </div>
+    <ul class="chips">
+      <li>This PC</li><li>The Briefcase</li><li>Device Manager (1.10)</li><li>Snap layouts (1.10)</li><li>Clipboard history, Super+V (1.10)</li><li>Emoji, Super+. (1.10)</li><li>Reliability history (1.10)</li><li>Right-click menus your way</li><li>.exe and .msi open with a double-click</li>
+    </ul>
+  </div>
+</section>
+
+<section id="safe" class="deep">
+  <div class="wrap safe2">
     <div>
-      <span class="tag now">Out now</span>
-      <h2 class="h2" style="margin-top:16px">Hearth Sync</h2>
-      <p class="lede" style="margin-top:18px">A small Decky plugin that puts the games you have outside Steam into Steam's library, with covers, and keeps them in sync.</p>
-      <ul class="points" style="margin-top:26px">
-        <li>Epic and GOG games through Heroic Games Launcher, Battle.net, Xbox cloud gaming, emulators, recomps, and games you add by hand.</li>
-        <li>A collection for each store, so they're easy to find with the controller.</li>
-        <li>Install or remove a game and Steam's library follows. Nothing else in your library is touched.</li>
-      </ul>
+      <span class="eyebrow">Updates you don't have to worry about</span>
+      <h2 class="h2x">Always a way back.</h2>
+      <ol class="steps">
+        <li><span class="n">1</span><span><b>The previous version stays.</b> Pick it in the boot menu, or go back from Settings.</span></li>
+        <li><span class="n">2</span><span><b>It falls back by itself.</b> If Hearth can't start twice in a row, the version before starts instead and stays the default.</span></li>
+        <li><span class="n">3</span><span><b>Restore points.</b> One before every update, and roll your settings back with a click. <span class="new">In 1.10</span></span></li>
+        <li><span class="n">4</span><span><b>Hearth Recovery.</b> Hold Volume Down while starting, or boot the <a href="#recovery">Recovery USB</a>: reinstall keeping your files, or copy them off.</span></li>
+      </ol>
     </div>
-    <figure class="shelf" style="margin:0">
-      <div class="bar"><b>Collections in Steam's library</b><span>added by Hearth Sync</span></div>
-      <ul>
-        <li><span class="src">Epic Games</span><span class="via">through Heroic Games Launcher</span><span class="col">Epic</span></li>
-        <li><span class="src">GOG</span><span class="via">through Heroic Games Launcher</span><span class="col">GOG</span></li>
-        <li><span class="src">Battle.net</span><span class="via">Blizzard games</span><span class="col">Battle.net</span></li>
-        <li><span class="src">Xbox cloud gaming</span><span class="via">streamed games</span><span class="col">Xbox Cloud</span></li>
-        <li><span class="src">Emulators and recomps</span><span class="via">console games you own, played on PC</span><span class="col">Emulators, Recomps</span></li>
-        <li><span class="src">Added by hand</span><span class="via">any game or app you pick</span><span class="col">My games</span></li>
-      </ul>
-      <figcaption>Where each kind of game ends up. Collection names are examples.</figcaption>
-    </figure>
+    <img src="img/s110-restore.webp" width="980" height="685" loading="lazy" alt="System Restore listing restore points, one made before updating.">
   </div>
 </section>
 
-<section id="mantel">
+<section id="heading">
   <div class="wrap">
     <div class="head">
-      <h2 class="h2">Mantel, Hearth's own desktop</h2>
-      <p class="lede">A full Linux desktop you can use with a controller or a mouse and keyboard: the Hearth menu on the Guide button, an on-screen keyboard on Guide + X, Hearth Link and Hearth Storage built in.</p>
+      <span class="eyebrow">Where we're heading</span>
+      <h2 class="h2x">A console you can live on.</h2>
+      <p class="lede">Couch-first gaming, a desktop anyone coming from Windows can use on day one, and a PC that quietly runs your home in the background. Updates come out often, and every one can be undone.</p>
     </div>
-    <figure style="margin:0">
-      <div class="mantel-shot"><img src="img/desk-classic.webp" width="1600" height="900" loading="lazy" alt="The Mantel desktop with the Hearth menu open: a ring of actions around the Hearth flame."></div>
-      <figcaption class="cap">Mantel in 0.6.63, with the Hearth menu open. The Steam-style theme below comes in the next update.</figcaption>
-    </figure>
-    <div class="feats">
-      <div>
-        <span class="tag now">Out now</span>
-        <h3 class="h3" style="margin-top:14px">A Steam-style theme</h3>
-        <p>Deep blue-slate panels, cool grey text and a bright accent, so the desktop looks at home next to Steam Game Mode.</p>
-      </div>
-      <div>
-        <span class="tag now">Out now</span>
-        <h3 class="h3" style="margin-top:14px">New wallpapers</h3>
-        <p>New static and animated wallpapers. Today's set stays available:</p>
-        <div class="walls">
-          <img src="img/wall-peaks.webp" width="640" height="360" loading="lazy" alt="Wallpaper: low-poly mountains under a moon.">
-          <img src="img/wall-lanterns.webp" width="640" height="360" loading="lazy" alt="Wallpaper: lanterns floating over water.">
-          <img src="img/wall-topo.webp" width="640" height="360" loading="lazy" alt="Wallpaper: glowing contour lines.">
-        </div>
-      </div>
-      <div>
-        <span class="tag now">Out now</span>
-        <h3 class="h3" style="margin-top:14px">Make it yours</h3>
-        <p>Pick an accent colour, dark or light, and a theme.</p>
-        <div class="try" id="try" hidden>
-          <p id="try-label">Try an accent on this page:</p>
-          <div class="swatches" role="group" aria-labelledby="try-label">
-            <button type="button" data-accent="" style="--c:#66c0f4" aria-label="Blue" aria-pressed="true"></button>
-            <button type="button" data-accent="teal" style="--c:#4fd6c0" aria-label="Teal" aria-pressed="false"></button>
-            <button type="button" data-accent="violet" style="--c:#b9a2ff" aria-label="Violet" aria-pressed="false"></button>
-            <button type="button" data-accent="green" style="--c:#8fd96b" aria-label="Green" aria-pressed="false"></button>
-            <button type="button" data-accent="ember" style="--c:#ffa25e" aria-label="Ember" aria-pressed="false"></button>
-          </div>
-        </div>
-      </div>
+    <div class="road">
+      <article><p class="when"><i aria-hidden="true"></i>Out now</p><h3>Hearth OS 1.9</h3><ul><li>Steam Game Mode with Hearth Sync</li><li>Files with This PC and the Briefcase</li><li>Task Manager, the Windows 11 way</li><li>A home server, with Voice Studio</li><li>Updates that can always go back</li></ul></article>
+      <article class="next"><p class="when"><i aria-hidden="true"></i>Next: 1.10</p><h3>Feels like home</h3><ul><li>Pick Steam Game Mode or Hearth's own</li><li>Proton that works offline, without Steam</li><li>Hearth (C:), Disk Management, Device Manager</li><li>System Restore and Reliability history</li><li>Run, Super+X, snap layouts, the mixer, clipboard</li><li>A Resource Monitor that shows your own motherboard</li></ul></article>
+      <article><p class="when"><i aria-hidden="true"></i>After that</p><h3>Faster and further</h3><ul><li>Smaller, faster updates instead of a few GB each time</li><li>Optimize drives</li><li>Hearth Games: cloud saves, DLC and Amazon</li><li>When a game won't start, Hearth tries the next Proton by itself</li></ul></article>
     </div>
+    <p class="small" style="margin-top:20px">Everything planned is in the <a href="docs/releases.html#next">release notes</a>. Every update so far: <a href="whats-new/">What's new</a>.</p>
   </div>
 </section>
 
-<section id="v18">
-  <div class="wrap">
-    <div class="head">
-      <span class="tag now">In 1.8</span>
-      <h2 class="h2" style="margin-top:14px">This PC, the Briefcase, and a new Task Manager</h2>
-      <p class="lede">Hearth Files gets a This PC page with drive letters that stay put, the Briefcase comes back from Windows 95 with locks and auto-sync, and Task Manager is rebuilt the Windows 11 way.</p>
+<section id="soundtrack" class="deep">
+  <div class="wrap music">
+    <div>
+      <span class="eyebrow">The soundtrack</span>
+      <h2 class="h2x">Hearth's music.</h2>
+      <p class="lede" style="margin-top:16px">Every song from every Hearth OS video. The whole page moves to the beat, and each look dances its own way: embers for Hearth, neon for Gaming, a sunset grid for Synthwave.</p>
+      <p class="small">It starts quietly the first time you click on the page. Pause it or turn it down from the bar at the top; it stays where you leave it.</p>
     </div>
-    <div class="srv-hero">
-      <figure style="margin:0">
-        <div class="mantel-shot"><img src="img/s18-this-pc.webp" width="1200" height="780" loading="lazy" alt="Hearth Files' This PC page: your six folders, then Devices and drives with Hearth (C:), Local Disk (D:), Backup (E:) and Games (F:), each with a bar showing free space."></div>
-        <figcaption class="cap">This PC in Hearth Files, with a letter for every drive.</figcaption>
-      </figure>
-      <ul>
-        <li><b>This PC</b>Your folders, every drive with a letter that stays the same (Hearth is always C:), network locations and Installed apps, all in Files. Windows apps see the same letters.</li>
-        <li><b>The Briefcase</b>Carry files to a USB stick or another device and bring them back: Update All shows what changed on each side. Lock one with a password, and new Briefcases sync by themselves.</li>
-        <li><b>Task Manager</b>Processes with a heat map, Performance graphs, Startup apps, Details and Services, in Hearth's look.</li>
-        <li><b>Right-click menus</b>Four looks to pick from in Settings &rsaquo; Personalization: Today, Windows 11, Compact and Tiles.</li>
-      </ul>
-    </div>
-    <div class="srv-shots">
-      <figure><img src="img/s18-task-manager.webp" width="1200" height="780" loading="lazy" alt="The new Task Manager: a search box in the title bar, a rail on the left, and processes grouped under Apps and Background processes with CPU, memory, disk, network and GPU columns."><figcaption><b>Task Manager.</b> Search, group, sort and end tasks, with Efficiency mode.</figcaption></figure>
-      <figure><img src="img/s18-briefcase-update.webp" width="1200" height="780" loading="lazy" alt="Hearth Files updating a Briefcase: three files listed, each with what will happen (Replace, Keep both) and an Update button."><figcaption><b>The Briefcase.</b> Update All shows every file and lets you choose. A file changed in both places is never overwritten.</figcaption></figure>
-      <figure><img src="img/s18-menu.webp" width="1200" height="780" loading="lazy" alt="A compact right-click menu on a file on the desktop, with cut, copy, rename and delete along the top."><figcaption><b>A right-click menu for you.</b> Four looks; pick yours in Settings.</figcaption></figure>
-    </div>
-    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
-      <div><h3>Recomps in Hearth Games</h3><p>Native PC ports of console classics get their own tab: browse by console, install and play.</p></div>
-      <div><h3>Apps the right size</h3><p>Hearth's own apps match the bar on the desktop again, and stay big in Game Mode.</p></div>
-      <div><h3>Fixes</h3><p>Your devices' shared folders open, the server web page takes your PIN, and Windows apps like Unigine Heaven install and run.</p></div>
-    </div>
+    <ol id="mList"></ol>
   </div>
 </section>
 
-<section id="v17">
-  <div class="wrap">
-    <div class="head">
-      <span class="tag now">Since 1.7</span>
-      <h2 class="h2" style="margin-top:14px">A brand-new Files, and Windows apps that just run</h2>
-      <p class="lede">Hearth Files is rebuilt in the style of Windows 11's File Explorer and does everything a file manager should, Windows programs open with a double-click, and your games from GOG, Epic and Battle.net get Hearth's own store app.</p>
-    </div>
-    <div class="srv-hero">
-      <figure style="margin:0">
-        <div class="mantel-shot"><img src="img/s17-files.webp" width="1200" height="780" loading="lazy" alt="The new Hearth Files: tabs along the top, an address bar, a sidebar with Home, Favorites and this device, three files selected and a details pane on the right."></div>
-        <figcaption class="cap">The new Hearth Files, with tabs, multi-select and the details pane.</figcaption>
-      </figure>
-      <ul>
-        <li><b>Everything a file manager does</b>Tabs you can drop files onto, drag and drop, select many by dragging a box, rename in place, undo and redo, and type to jump to a file.</li>
-        <li><b>Windows apps that just run</b>Double-click a .exe or .msi. GE-Proton is built in, so it works offline, and each app gets its own space and menu icon.</li>
-        <li><b>The Proton detector</b>Picks the right Proton for each game and app. If one closes right away, Hearth offers the next and remembers what works.</li>
-        <li><b>Hearth Games</b>Hearth's own store app for GOG, Epic and Battle.net.</li>
-      </ul>
-    </div>
-    <div class="srv-shots">
-      <figure><img src="img/s17-rename.webp" width="1200" height="780" loading="lazy" alt="Hearth Files renaming a file in place, the name turned into a text box."><figcaption><b>Rename in place.</b> F2 or Rename, type, Enter. Undo brings the old name back.</figcaption></figure>
-      <figure><img src="img/s17-drag.webp" width="1200" height="780" loading="lazy" alt="Hearth Files with files being dragged onto another folder."><figcaption><b>Drag and drop.</b> Onto folders, the sidebar or another tab.</figcaption></figure>
-      <figure><img src="img/s17-files-home.webp" width="1200" height="780" loading="lazy" alt="Hearth Files' Home page with quick access folders and recent files."><figcaption><b>A Home page.</b> Your favourite folders and recent files in one place.</figcaption></figure>
-    </div>
-    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
-      <div><h3>Server apps</h3><p>One-click Minecraft, Valheim, Terraria and Palworld servers, and your own Vaultwarden, Immich and Navidrome, in Settings &rsaquo; Home server. Off until you turn them on.</p></div>
-      <div><h3>Shares connect by themselves</h3><p>A "Connect automatically" switch per share in Files. A device that's asleep is skipped, so signing in never waits.</p></div>
-      <div><h3>AI video</h3><p>Wan 2.2 in the home server's ComfyUI, sized to your graphics card, with a one-click download.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="v16">
-  <div class="wrap">
-    <div class="head">
-      <span class="tag now">Since 1.6</span>
-      <h2 class="h2" style="margin-top:14px">Server mode, Discord, and all your devices in one place</h2>
-      <p class="lede">Your gaming PC can now start as a quiet home server with one big dashboard and a Play button, Discord lives in the bar, and your other devices' drives and status show up by themselves.</p>
-    </div>
-    <div class="srv-hero">
-      <figure style="margin:0">
-        <div class="mantel-shot"><img src="img/s16-server.webp" width="1200" height="675" loading="lazy" alt="Server mode's dashboard: All good, 8 services running, a big Play button, and a tile for AI chat, pictures, media, storage, backups, heat and power, who's connected and remote desktop."></div>
-        <figcaption class="cap">Server mode: one screen for everything your PC is doing, and Play a press away.</figcaption>
-      </figure>
-      <ul>
-        <li><b>A third mode</b>Next to Steam Game Mode and Desktop Mode: a light session with one dashboard. Off until you turn it on in Settings &rsaquo; Home server.</li>
-        <li><b>Play in five seconds</b>Press Play or the Guide button: a countdown shows what pauses and what keeps working, then Steam Game Mode. Leave it and you're back in Server mode.</li>
-        <li><b>AI that keeps answering</b>While you play, AI chat switches to a small model on the processor so your other devices still get answers.</li>
-        <li><b>Always starts</b>If anything about Server mode goes wrong, the PC starts in Game Mode instead.</li>
-      </ul>
-    </div>
-    <div class="srv-shots">
-      <figure><img src="img/s16-play.webp" width="1200" height="675" loading="lazy" alt="Switching to Game Mode: a 4-second countdown listing what pauses while you play and what keeps working."><figcaption><b>What pauses, what keeps going.</b> Pictures and backups wait, shared folders, media and Tailscale keep working.</figcaption></figure>
-      <figure><img src="img/s16-web.webp" width="1200" height="750" loading="lazy" alt="Server mode's web page on a laptop: services with Pause and Restart, the mode switcher, power and alerts."><figcaption><b>Run it from your phone or laptop.</b> A PIN-protected web page over Tailscale: pause and restart services, switch modes, sleep or restart.</figcaption></figure>
-      <figure><img src="img/s16-discord-choose.webp" width="1200" height="675" loading="lazy" alt="Which Discord do you want? The official app, Discord in a web window, or Dorion."><figcaption><b>Discord replaces Hearth Friends.</b> The bar's button opens a small Discord window. Pick the official app, a web window or Dorion. Friends can ask to join your game.</figcaption></figure>
-      <figure><img src="img/s16-devices.webp" width="1200" height="675" loading="lazy" alt="Settings, Hearth Link, Your devices: each paired device's battery, processor, graphics, memory and what it's playing."><figcaption><b>Your devices.</b> Battery, temperatures, memory, drives and what's playing on each of your Hearth devices, with Wake it and Remote desktop.</figcaption></figure>
-      <figure><img src="img/s16-files.webp" width="1200" height="675" loading="lazy" alt="Hearth Files with a Your devices section in the sidebar listing each device's shared folders."><figcaption><b>Shares show up in Files.</b> Your other devices' shared folders appear in Files by themselves, at home and over Tailscale.</figcaption></figure>
-    </div>
-    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
-      <div><h3>Share a whole drive</h3><p>Share a whole data drive, your Home or (read only) the system drive, at home and over Tailscale. Hidden files and secrets stay blocked.</p></div>
-      <div><h3>GOG and Epic games start in Game Mode</h3><p>Games Hearth starts with Proton now come to the front in Steam Game Mode, and a failed start says why.</p></div>
-      <div><h3>Settings, tidied up</h3><p>Sound, Power, Date &amp; time, Printers, Controller and more in titled groups, and Wi-Fi shows the network you're on.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="v15">
-  <div class="wrap">
-    <div class="head">
-      <span class="tag now">Since 1.5</span>
-      <h2 class="h2" style="margin-top:14px">A whole new Settings, and a desktop that's yours</h2>
-      <p class="lede">Settings is rebuilt around a Home page and twelve tidy categories, the bar and app menu work the way you like, and your gaming PC's AI, pictures, voices and desktop are yours from anywhere through Tailscale.</p>
-    </div>
-    <div class="srv-hero">
-      <figure style="margin:0">
-        <div class="mantel-shot"><img src="img/s15-settings.webp" width="1200" height="728" loading="lazy" alt="The new Hearth Settings Home page: this PC with its name, Wi-Fi, Bluetooth, Updates and Hearth Link at a glance, recommended settings, storage, the home server and your look, with twelve categories on the left."></div>
-        <figcaption class="cap">The new Settings opens on Home.</figcaption>
-      </figure>
-      <ul>
-        <li><b>Twelve categories instead of 42 pages</b>System, Network &amp; internet, Bluetooth &amp; devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy &amp; security, Accessibility and Updates &amp; recovery.</li>
-        <li><b>Search finds the setting itself</b>Type "sleep" and go straight to the setting, with where it lives. Old page names still work.</li>
-        <li><b>Built for a controller</b>A big focus ring, button hints, LB / RB between categories, and a layout made for handhelds.</li>
-        <li><b>Your settings stay put</b>Every page keeps working as before, and opening a page never changes anything.</li>
-      </ul>
-    </div>
-    <div class="srv-shots">
-      <figure><img src="img/s15-bar-left.webp" width="1200" height="728" loading="lazy" alt="One main bar on the left edge of the screen, with Quick settings open."><figcaption><b>One main bar, any edge.</b> Put it at the bottom, top, left or right, or keep today's top bar and floating dock. Turn the floating app menu off to put your apps in the bar.</figcaption></figure>
-      <figure><img src="img/s15-menu-start.webp" width="1200" height="728" loading="lazy" alt="The Start screen app menu: big live tiles in groups for games, apps and today."><figcaption><b>Five app menus.</b> Hearth, Centred, Tiles, Start screen and Classic, each with search for apps, games, Settings and files, live tiles and controller hints.</figcaption></figure>
-      <figure><img src="img/s15-menu-classic.webp" width="1200" height="728" loading="lazy" alt="The Classic app menu: two columns with frequent apps and places, and a Shut down button."><figcaption><b>Classic, Tiles and more.</b> Pick yours in Settings › Personalization › Bar and dock. Picking Tiles or Classic asks before it changes your bar.</figcaption></figure>
-      <figure><img src="img/s15-remote.webp" width="1200" height="728" loading="lazy" alt="Use this PC from anywhere: the Moonlight address, the PIN box, who is connected and whether the connection is direct."><figcaption><b>Use this PC from anywhere.</b> One switch for a fast remote desktop with Moonlight over Tailscale: type Moonlight's PIN in Hearth, see who's connected and whether it's direct, and the PC stays awake meanwhile.</figcaption></figure>
-      <figure><img src="img/s15-services.webp" width="1200" height="728" loading="lazy" alt="Home server Services with AI image generation (ComfyUI) and AI voices (Kokoro) next to the media server and AI chat."><figcaption><b>AI pictures and voices.</b> ComfyUI and Kokoro join the home server: installed only when you ask, only for your Tailscale devices, and pictures pause while you play.</figcaption></figure>
-      <figure><img src="img/s15-ai-devices.webp" width="1200" height="728" loading="lazy" alt="AI devices: every Hearth device sharing its AI, in your order, with the Command Center address to copy."><figcaption><b>Share AI across your devices.</b> Each Hearth device can share its chat, voices, pictures and speech-to-text. The Hearth AI Command Center picks the best one, and skips a device while it's gaming.</figcaption></figure>
-      <figure><img src="img/s15-boot.webp" width="1200" height="728" loading="lazy" alt="Boot and startup: picture cards for every boot splash and startup animation, with a preview."><figcaption><b>See it before you pick it.</b> Every boot splash and startup animation has a preview in Settings, plus three new ones of each: Aurora, Starlight and Ember orbit.</figcaption></figure>
-      <figure><img src="img/s15-search.webp" width="1200" height="728" loading="lazy" alt="Settings search for sleep: single settings with where they live."><figcaption><b>Search everything.</b> Settings search finds single settings across every category.</figcaption></figure>
-      <figure><img src="img/s15-bar-dock.webp" width="1200" height="728" loading="lazy" alt="Personalization, Bar and dock: bar layout cards, placement, floating app menu and the app menu picker."><figcaption><b>Bar and dock, your way.</b> Layout, edge, auto-hide and app menu, all in one place.</figcaption></figure>
-    </div>
-    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
-      <div><h3>Controller clicks everywhere</h3><p>RT and LT always click and right-click, also in Files, Settings and dialogs, and a click no longer slips off a window's close button.</p></div>
-      <div><h3>Tailscale sign-in that explains itself</h3><p>If signing in is refused, Hearth now says why instead of doing nothing.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="server" class="deep">
-  <div class="wrap">
-    <div class="head">
-      <span class="tag now">Since 1.4</span>
-      <h2 class="h2" style="margin-top:14px">Your gaming PC is also your home server</h2>
-      <p class="lede">Share folders with every device in the house, reach them from anywhere through Tailscale, back everything up and run your own media server and AI, all from Settings &rsaquo; Home server, with a controller. The PC keeps playing games: big jobs wait while you play.</p>
-    </div>
-    <div class="srv-hero">
-      <figure style="margin:0">
-        <div class="mantel-shot"><img src="img/hs-overview.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Overview: Light mode while you play, storage used, shared folders, Tailscale, drive health, backups, alerts, services, safety and the AI service at a glance."></div>
-        <figcaption class="cap">The Home server at a glance, in Mantel's Settings.</figcaption>
-      </figure>
-      <ul>
-        <li><b>Shared folders</b>Windows PCs, phones, TVs and other Hearth devices open them like any network drive. Read only or read &amp; write, with a 30-day recycle bin.</li>
-        <li><b>Anywhere, through Tailscale</b>A private network for your own devices: open your files from work or school, send files with Taildrop and wake the PC from away.</li>
-        <li><b>Light mode while you play</b>Backups, snapshots and clean-ups wait while Game Mode or a game runs, and the AI unloads from the graphics card. Sharing keeps working.</li>
-        <li><b>Off until you turn it on</b>Nothing is shared and no server runs until you choose it. The system drive is never shared or formatted.</li>
-      </ul>
-    </div>
-    <div class="srv-shots">
-      <figure><img src="img/hs-ai.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, AI: the AI service running Ollama, reachable only through Tailscale, with ready-made models."><figcaption><b>Your own AI.</b> Ollama on your graphics card, with models picked for it, for the Hearth AI Command Center. Only your devices can reach it.</figcaption></figure>
-      <figure><img src="img/hs-backups.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Backups and sync: backups to a drive and to the cloud, and backups from other Hearth devices."><figcaption><b>Backups &amp; sync.</b> Encrypted backups to a drive, another Hearth device or the cloud. Restores never overwrite your files.</figcaption></figure>
-      <figure><img src="img/hs-tailscale.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Tailscale: signed in, this PC's name, and options such as only reachable through Tailscale."><figcaption><b>Tailscale built in.</b> Sign in with a QR code, see your devices, and make the PC reachable only through Tailscale.</figcaption></figure>
-      <figure><img src="img/hs-files.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Files and links: search every share, share links, a drop-off folder and smart folders."><figcaption><b>Files &amp; links.</b> Search every share, send share links that expire, take drop-offs and tidy up with smart folders.</figcaption></figure>
-      <figure><img src="img/hs-gaming.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Gaming: a Games folder, Steam downloads at home, the game archive and Remote play."><figcaption><b>Gaming.</b> A Games folder for all your devices, the game archive and saves, and Remote play over Tailscale.</figcaption></figure>
-      <figure><img src="img/hs-safety.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Safety: who can reach what, with one-step fixes."><figcaption><b>Safety.</b> See who can reach what, fix it in one step with Undo, and turn on the ransomware guard, which makes shares read only when far too many files change at once.</figcaption></figure>
-    </div>
-    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
-      <div><h3>Drives &amp; undo</h3><p>Drive health and temperatures, btrfs snapshots to bring back deleted or changed files, and new drives as more space, a mirror or a backup target, with a dry run first.</p></div>
-      <div><h3>People</h3><p>Accounts for the household that can only open shares, each with their own access and an optional folder with a size limit. Removing someone never deletes their files.</p></div>
-      <div><h3>Alerts &amp; power</h3><p>A note when a drive is unhealthy or full, a backup fails or a mirror loses a drive. Sleeps when nobody needs it, never while you play, and wakes on a schedule or over the network.</p></div>
-      <div><h3>Services</h3><p>Jellyfin for movies, shows, music and photos, and files in a browser. Each is downloaded only when you ask, from its maker, with its checksum checked.</p></div>
-      <div><h3>Family &amp; home</h3><p>A Family folder for everyone, and cameras on your network shown once one is found.</p></div>
-      <div><h3>In Steam Game Mode too</h3><p>Quick Access &rsaquo; Hearth Link shows the server in short, with Light mode and "Let paused jobs run now" a press away.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="updates">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">Updates that can always go back</h2>
-      <p class="lede">Each update replaces the system in one piece and keeps the version before it startable. Three ways back, from the easiest:</p>
-    </div>
-    <div class="safe">
-      <div><span class="k">1</span><h3 class="h3">The boot menu</h3><p>The previous version stays in the boot menu. Pick it there, or go back from Settings.</p></div>
-      <div><span class="k">2</span><h3 class="h3">Automatic fallback</h3><p>If Hearth fails to start twice in a row, the previous version starts by itself and stays the default.</p></div>
-      <div><span class="k">3</span><h3 class="h3">Hearth Recovery</h3><p>Hold Volume Down while starting, or boot the Recovery USB: reinstall keeping your files, copy files off, send logs.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="new">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">New in Hearth OS 1.9</h2>
-      <p class="lede">A free update for everyone on 1.0 to 1.8: Settings &rsaquo; Updates.</p>
-    </div>
-    <div class="more">
-      <div><h3>Voice Studio</h3><p>Your own voice studio on the home server: speak in any voice, clone and design voices, transcribe, make audiobooks and dub videos, with an API for the Command Center.</p></div>
-      <div><h3>A new installer</h3><p>Redesigned from the ground up, with your controllers found and paired on the first screen.</p></div>
-      <div><h3>Play with mods</h3><p>Modded Skyrim with a Wabbajack list like Tuxborn starts on the right Steam and its Proton.</p></div>
-      <div><h3>Server mode sign-in</h3><p>The web page says why when a sign-in doesn't stick, and your PIN and passwords really save.</p></div>
-      <div><h3>Fixes</h3><p>A big bug hunt: settings that survive power cuts, first-time setup's Back button, long names that fit, and safer sharing and updates.</p></div>
-      <div><h3>Still off until you choose</h3><p>Voice Studio installs only when you ask, and Game Mode starts whatever it does.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="recent">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">Recently, in Hearth OS 1.8</h2>
-      <p class="lede">Still new if you're coming from 1.7.</p>
-    </div>
-    <div class="more">
-      <div><h3>This PC</h3><p>Drive letters that stay the same, network locations and Installed apps, right in Files. <a href="#v18">See it</a>.</p></div>
-      <div><h3>The Briefcase</h3><p>Take files with you and sync them back, with a password lock and auto-sync.</p></div>
-      <div><h3>Task Manager</h3><p>Rebuilt the Windows 11 way: Processes, Performance, Startup apps, Details and Services.</p></div>
-      <div><h3>Right-click menus</h3><p>Today, Windows 11, Compact or Tiles: pick yours in Settings.</p></div>
-      <div><h3>Recomps</h3><p>Native ports of console games, in their own tab in Hearth Games.</p></div>
-      <div><h3>Fixes</h3><p>Shared folders open, the server web page takes your PIN, Hearth's apps are the bar's size, and Windows apps install properly.</p></div>
-      <div><h3>Still off until you choose</h3><p>Auto-sync runs only for Briefcases you have, and Game Mode starts whatever it does.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="more">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">Still in Hearth OS</h2>
-      <p class="lede">The parts of Hearth that work in Steam Game Mode and Mantel alike.</p>
-    </div>
-    <div class="more">
-      <div><h3>Hearth Link</h3><p>Pair your Hearth devices: copy games between them, update every device with one download, and share a device's local AI with the others.</p></div>
-      <div><h3>Hearth Storage</h3><p>Shared folders, a game archive, save and screenshot backups, media streaming and wake over the network, now part of the Home server.</p></div>
-      <div><h3>Hearth Input</h3><p>Controller layouts with action sets, layers, chords, flick stick and gyro, and the on-screen keyboard on Guide + X.</p></div>
-      <div><h3>Mods</h3><p>Hearth Mod Organizer keeps Mod Organizer 2's layout and files, and Wabbajack lists install with their downloads handled. Experimental.</p></div>
-      <div><h3>Hearth Recomps</h3><p>Native PC ports of console games, installed and updated from their releases, with your own copy of the game checked and set up.</p></div>
-      <div><h3>Writable Debian</h3><p>Install with apt or open a .deb file and it stays across restarts and updates. Lock the system again whenever you like in Settings.</p></div>
-    </div>
-    <div class="paused">
-      <div><span class="tag off">Archived</span><h3>Hearth's Game Mode</h3><p>Replaced by Steam Game Mode in Hearth OS 1.0. The code is kept.</p></div>
-      <div><span class="tag off">Archived</span><h3>The Anatase edition</h3><p>The Fedora edition gets no more updates. Installs keep working on their last version; install Hearth OS on Debian to keep updating.</p></div>
-      <div><span class="tag off">Paused</span><h3>Multi-seat and couch co-op</h3><p>Paused for now while Hearth moves to Steam Game Mode.</p></div>
-    </div>
-  </div>
-</section>
 
 <section id="download" class="deep">
   <div class="wrap">
@@ -805,6 +658,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
     <a href="docs/troubleshooting.html">Troubleshooting</a>
     <a href="docs/requests.html">Requests</a>
     <a href="docs/releases.html">Release notes</a>
+    <a href="whats-new/">What's new</a>
     <a href="docs/troubleshooting.html#ask">Report a problem</a>
     <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     <a href="#support" id="support-foot" hidden>Support</a>
@@ -838,19 +692,7 @@ document.getElementById('theme').addEventListener('click', function(){
   try { localStorage.setItem('hearth.theme', next); } catch (e) {}
 });
 
-// The layers settle together once, when the page opens.
-requestAnimationFrame(function(){ requestAnimationFrame(function(){ document.getElementById('stack').classList.add('in'); }); });
 
-// Try an accent: Mantel's accent colour, previewed on this page only (not kept).
-(function(){
-  var box = document.getElementById('try'); box.hidden = false;
-  var bs = [].slice.call(box.querySelectorAll('button'));
-  bs.forEach(function(b){ b.addEventListener('click', function(){
-    var a = b.getAttribute('data-accent');
-    if (a) document.documentElement.dataset.accent = a; else delete document.documentElement.dataset.accent;
-    bs.forEach(function(x){ x.setAttribute('aria-pressed', x === b); });
-  }); });
-})();
 
 // How many people are using Hearth OS right now (installs check in with the counter about every 10 minutes; only
 // Hearth OS itself counts, not Ember or the AppImage: the counter's "os" numbers). Refreshed every minute.
@@ -900,6 +742,212 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
     navigator.clipboard.writeText(document.getElementById(b.getAttribute('data-copy')).textContent).then(function(){ b.textContent = 'Copied'; setTimeout(function(){ b.textContent = 'Copy'; }, 1600); });
   });
 });
+</script>
+<script>
+// Hearth's soundtrack: the music from every Hearth OS video, a player in the top bar and a background that moves to
+// the beat in the look you picked. Quiet by default (25%), it starts the first time you click on the page unless you
+// paused it, and your volume, mute and pause stay as you left them (in this browser only).
+(function(){
+  var TRACKS = [
+    ['Out Now', 'Hearth OS 1.10 trailer', '2:21', 'hearth-1-10'],
+    ['Better Every Day', 'Hearth OS 1.9', '1:44', 'hearth-1-9'],
+    ['The Story So Far', 'Hearth OS: the story so far', '4:51', 'hearth-story'],
+    ['A Day with Hearth', 'Hearth OS 1.4: a day', '1:27', 'hearth-a-day'],
+    ['Fireside', 'Hearth OS 1.6 trailer', '0:55', 'hearth-1-6'],
+    ['First Light', 'Hearth OS trailer', '0:47', 'hearth-trailer'],
+    ['Spark', 'Hearth OS 1.2 trailer', '0:40', 'hearth-1-2'],
+    ['Kindling', 'Hearth OS 1.1 trailer', '0:30', 'hearth-1-1'],
+    ['Ember Glow', 'Hearth OS 1.8 trailer', '0:30', 'hearth-1-8']
+  ];
+  var root = document.documentElement, $ = function(id){ return document.getElementById(id); };
+  var audio = $('mAudio'), bPlay = $('mPlay'), bNext = $('mNext'), bMute = $('mMute'), vol = $('mVol'), list = $('mList');
+  if (!audio || !bPlay) return;
+  function get(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function put(k, v){ try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  var v0 = parseFloat(get('hearth.site.volume'));
+  var S = { vol: v0 >= 0 && v0 <= 1 ? v0 : 0.25, muted: get('hearth.site.muted') === '1', off: get('hearth.site.music') === 'off',
+            track: Math.max(0, Math.min(TRACKS.length - 1, parseInt(get('hearth.site.track'), 10) || 0)), playing: false, started: false };
+  var ctx = null, an = null, gain = null, freq = null;
+
+  // the song list
+  var rows = TRACKS.map(function(t, i){
+    var li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = '<span class="no"></span><span class="nm"><b></b><span></span></span><span class="ln"></span>';
+    b.querySelector('.no').textContent = i + 1; b.querySelector('.nm b').textContent = t[0];
+    b.querySelector('.nm span').textContent = t[1]; b.querySelector('.ln').textContent = t[2];
+    b.setAttribute('aria-label', 'Play ' + t[0] + ', from ' + t[1] + ', ' + t[2]);
+    b.addEventListener('click', function(){ if (i === S.track && S.playing) pause(true); else { S.track = i; load(); play(); } });
+    li.appendChild(b); if (list) list.appendChild(li); return b;
+  });
+
+  function applyVolume(){
+    var v = S.muted ? 0 : S.vol;
+    audio.muted = v === 0;
+    if (gain) { audio.volume = 1; gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setTargetAtTime(v, ctx.currentTime, 0.015); }
+    else audio.volume = v;
+    vol.value = Math.round(v * 100);
+    root.classList.toggle('muted', v === 0);
+    bMute.setAttribute('aria-label', v === 0 ? 'Unmute the music' : 'Mute the music');
+    status();
+  }
+  function status(){
+    var t = TRACKS[S.track];
+    $('mName').textContent = t[0];
+    $('mStatus').textContent = S.playing ? (S.muted || S.vol === 0 ? 'Muted' : 'Playing · ' + Math.round(S.vol * 100) + '%') : (S.off ? 'Paused' : 'Hearth’s soundtrack');
+    bPlay.setAttribute('aria-label', S.playing ? 'Pause the music' : 'Play the music');
+    var hp = $('heroPlay'); if (hp) hp.textContent = S.playing ? 'Pause the soundtrack' : 'Play the soundtrack';
+    rows.forEach(function(b, i){
+      b.setAttribute('aria-current', i === S.track ? 'true' : 'false');
+      b.querySelector('.no').innerHTML = i === S.track && S.playing ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="9" width="3.5" height="10" rx="1"/><rect x="10.25" y="4" width="3.5" height="15" rx="1"/><rect x="16.5" y="11" width="3.5" height="8" rx="1"/></svg>' : String(i + 1);
+    });
+  }
+  function load(){ audio.src = 'music/' + TRACKS[S.track][3] + '.mp3'; put('hearth.site.track', String(S.track)); status(); }
+  function wire(){
+    if (ctx) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext; ctx = new AC();
+      var src = ctx.createMediaElementSource(audio);
+      an = ctx.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0.78; freq = new Uint8Array(an.frequencyBinCount);
+      gain = ctx.createGain(); src.connect(an); an.connect(gain); gain.connect(ctx.destination);
+    } catch (e) { an = gain = null; }
+    applyVolume();
+  }
+  function play(){
+    S.started = true; S.off = false; put('hearth.site.music', null);
+    if (!audio.src) load();
+    wire(); if (ctx && ctx.state === 'suspended') ctx.resume();
+    var p = audio.play();
+    if (p && p.catch) p.catch(function(){ S.playing = false; root.classList.remove('playing'); status(); });
+  }
+  function pause(byYou){ audio.pause(); if (byYou) { S.off = true; put('hearth.site.music', 'off'); } status(); }
+  audio.addEventListener('playing', function(){ S.playing = true; root.classList.add('playing'); status(); kick(); });
+  audio.addEventListener('pause', function(){ S.playing = false; root.classList.remove('playing'); status(); });
+  audio.addEventListener('ended', function(){ S.track = (S.track + 1) % TRACKS.length; load(); play(); });
+
+  bPlay.addEventListener('click', function(){ S.playing ? pause(true) : play(); });
+  bNext.addEventListener('click', function(){ S.track = (S.track + 1) % TRACKS.length; load(); play(); });
+  bMute.addEventListener('click', function(){ S.muted = !(S.muted || S.vol === 0); if (!S.muted && S.vol === 0) S.vol = 0.25; put('hearth.site.muted', S.muted ? '1' : null); put('hearth.site.volume', String(S.vol)); applyVolume(); });
+  vol.addEventListener('input', function(){ S.vol = Math.max(0, Math.min(1, vol.value / 100)); S.muted = false; put('hearth.site.muted', null); put('hearth.site.volume', String(S.vol)); applyVolume(); });
+  var hp = $('heroPlay'); if (hp) hp.addEventListener('click', function(e){ e.preventDefault(); S.playing ? pause(true) : play(); });
+  // The first click anywhere starts it, quietly, unless you paused it before.
+  document.addEventListener('pointerdown', function first(e){
+    document.removeEventListener('pointerdown', first, true);
+    if (S.started || S.off) return;
+    if (e.target.closest && e.target.closest('.player, #mList, #heroPlay')) return;   // those buttons do it themselves
+    play();
+  }, true);
+  applyVolume(); status();
+
+  // ---- the background that moves to the music
+  var still = matchMedia('(prefers-reduced-motion: reduce)'), lightQ = matchMedia('(prefers-color-scheme: light)');
+  var cv = document.createElement('canvas'); cv.className = 'music-fx'; cv.setAttribute('aria-hidden', 'true');
+  var g = cv.getContext('2d'), raf = 0, lvl = { b: 0, m: 0, h: 0 }, avg = 0.2, lastBeat = 0, t0 = performance.now(), parts = [], rings = [], fade = 0;
+  function place(){ document.body.appendChild(cv); }   // after the look's own wallpaper, so it draws over it
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', place); else place();
+  var FX = { hearth: 'embers', cabin: 'embers', console: 'embers', steam: 'bars', gaming: 'neon', zen: 'ripples', glass: 'aurora', synthwave: 'synth' };
+  function col(name, dflt){ var v = getComputedStyle(root).getPropertyValue(name).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : (/^#[0-9a-f]{3}$/i.test(v) ? '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3] : dflt); }
+  function rgba(h, a){ var n = parseInt(h.slice(1), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')'; }
+  function levels(){
+    var now = performance.now(), t = (now - t0) / 1000, b = 0, m = 0, h = 0, real = false, i;
+    if (an && S.playing) {
+      an.getByteFrequencyData(freq);
+      for (i = 1; i < 9; i++) b += freq[i]; b /= 8 * 255;
+      for (i = 9; i < 60; i++) m += freq[i]; m /= 51 * 255;
+      for (i = 60; i < 180; i++) h += freq[i]; h /= 120 * 255;
+      real = b + m + h > 0.01;
+    }
+    if (!real) { var ph = (t * 128 / 60) % 1; b = Math.pow(1 - ph, 3) * 0.6 + 0.15; m = 0.3 + 0.15 * Math.sin(t * 0.9); h = 0.22 + 0.1 * Math.sin(t * 2.3); }
+    lvl.b += (b - lvl.b) * 0.35; lvl.m += (m - lvl.m) * 0.2; lvl.h += (h - lvl.h) * 0.2;
+    avg += (lvl.b - avg) * 0.02;
+    var beat = lvl.b > avg * 1.25 && lvl.b > 0.3 && now - lastBeat > 280; if (beat) lastBeat = now;
+    return { t: t, bass: lvl.b * fade, mid: lvl.m * fade, high: lvl.h * fade, beat: beat && fade > 0.5, spec: real ? freq : null };
+  }
+  var DRAW = {
+    embers: function(w, h, e, A, B, k){
+      var gl = g.createRadialGradient(w * 0.62, h * 1.05, 10, w * 0.62, h * 1.05, h * (0.7 + e.bass * 0.6));
+      gl.addColorStop(0, rgba(A, 0.42 * k * (0.4 + e.bass))); gl.addColorStop(0.5, rgba(B, 0.12 * k * fade)); gl.addColorStop(1, rgba(A, 0));
+      g.fillStyle = gl; g.fillRect(0, 0, w, h);
+      while (parts.length < 200) parts.push({ x: Math.random() * w, y: h + Math.random() * h, s: 0.6 + Math.random() * 2.4, v: 0.3 + Math.random() * 1.1, p: Math.random() * 6.28 });
+      var sp = 0.6 + e.bass * 3.2;
+      parts.forEach(function(p, i){
+        p.y -= p.v * sp; p.x += Math.sin(e.t * 1.4 + p.p) * 0.5;
+        if (p.y < -10 || p.x > w + 10) { p.y = h + 10; p.x = Math.random() * w; }
+        g.fillStyle = rgba(i % 3 ? A : B, k * fade * Math.max(0, Math.min(1, p.y / h)) * (0.35 + e.high * 1.2));
+        g.beginPath(); g.arc(p.x, p.y, p.s * (1 + e.bass * 0.8), 0, 6.283); g.fill();
+      });
+      g.beginPath(); g.moveTo(0, h);
+      for (var x = 0; x <= w; x += 12) g.lineTo(x, h - 30 * fade - e.bass * 70 * (0.6 + 0.4 * Math.sin(x * 0.012 + e.t * 3)) - e.mid * 30 * Math.sin(x * 0.03 - e.t * 2));
+      g.lineTo(w, h); g.closePath(); g.fillStyle = rgba(A, 0.16 * k * fade); g.fill();
+    },
+    bars: function(w, h, e, A, B, k){
+      var n = 64, bw = w / n;
+      for (var i = 0; i < n; i++) {
+        var v = e.spec ? e.spec[2 + Math.floor(i * 2.6)] / 255 * fade : (0.25 + 0.5 * e.bass * Math.abs(Math.sin(i * 0.5 + e.t * 2))) * (1 - i / n * 0.5) * fade;
+        var bh = v * h * 0.55, gr = g.createLinearGradient(0, h - bh, 0, h);
+        gr.addColorStop(0, rgba(A, 0.5 * k)); gr.addColorStop(1, rgba(B, 0.06 * k));
+        g.fillStyle = gr; g.fillRect(i * bw + 2, h - bh, bw - 4, bh);
+      }
+      var sx = ((e.t * 0.12) % 1.4 - 0.2) * w, sw = g.createLinearGradient(sx - 200, 0, sx + 200, 0);
+      sw.addColorStop(0, rgba(A, 0)); sw.addColorStop(0.5, rgba(A, 0.07 * k * fade * (1 + e.bass))); sw.addColorStop(1, rgba(A, 0));
+      g.fillStyle = sw; g.fillRect(0, 0, w, h);
+    },
+    neon: function(w, h, e, A, B, k){
+      var hz = h * 0.58, off = (e.t * (40 + e.bass * 160)) % 40, y, x, r;
+      g.lineWidth = 1;
+      for (y = 0; y < 22; y++) { var z = (y * 40 + off) / 880, yy = hz + (h - hz) * z * z; g.strokeStyle = rgba(A, k * fade * 0.35 * z); g.beginPath(); g.moveTo(0, yy); g.lineTo(w, yy); g.stroke(); }
+      for (x = -20; x <= 20; x++) { g.strokeStyle = rgba(x % 2 ? A : B, k * fade * 0.16); g.beginPath(); g.moveTo(w / 2 + x * 18, hz); g.lineTo(w / 2 + x * 160, h); g.stroke(); }
+      var cx = w * 0.72, cy = h * 0.42;
+      for (r = 0; r < 4; r++) { var a0 = e.t * (r % 2 ? -0.6 : 0.4); g.strokeStyle = rgba(r % 2 ? B : A, k * fade * (0.35 - r * 0.06)); g.lineWidth = r ? 1.5 : 3; g.beginPath(); g.arc(cx, cy, 90 + r * 70 + e.bass * 40 * (r + 1), a0, a0 + 4.2); g.stroke(); }
+      g.lineWidth = 1;
+      if (e.beat) rings.push({ r: 60, a: 0.6 });
+      rings = rings.filter(function(q){ return q.a > 0.02; });
+      rings.forEach(function(q){ q.r += 9; q.a *= 0.93; g.strokeStyle = rgba(B, q.a * k); g.beginPath(); g.arc(cx, cy, q.r, 0, 6.283); g.stroke(); });
+    },
+    ripples: function(w, h, e, A, B, k){
+      if (e.beat || (fade > 0.5 && Math.random() < 0.01)) rings.push({ x: w * (0.3 + Math.random() * 0.6), y: h * (0.3 + Math.random() * 0.6), r: 4, a: 0.5 });
+      rings = rings.filter(function(q){ return q.a > 0.01; });
+      g.lineWidth = 1.2;
+      rings.forEach(function(q){ q.r += 1.2 + e.mid * 2; q.a *= 0.985; for (var j = 0; j < 3; j++) { g.strokeStyle = rgba(j ? B : A, q.a * k * fade * (1 - j * 0.3)); g.beginPath(); g.arc(q.x, q.y, q.r + j * 16, 0, 6.283); g.stroke(); } });
+    },
+    aurora: function(w, h, e, A, B, k){
+      [A, B, A].forEach(function(c, b){
+        var base = h * (0.25 + b * 0.16), x; g.beginPath();
+        for (x = 0; x <= w; x += 16) { var y = base + Math.sin(x * 0.004 + e.t * (0.5 + b * 0.2) + b) * (40 + e.mid * 120) + Math.sin(x * 0.011 - e.t) * 20 * (1 + e.bass); if (x) g.lineTo(x, y); else g.moveTo(x, y); }
+        g.lineTo(w, base + 260); g.lineTo(0, base + 260); g.closePath();
+        var gr = g.createLinearGradient(0, base - 80, 0, base + 260);
+        gr.addColorStop(0, rgba(c, 0)); gr.addColorStop(0.35, rgba(c, k * fade * (0.12 + e.bass * 0.18))); gr.addColorStop(1, rgba(c, 0));
+        g.fillStyle = gr; g.fill();
+      });
+    },
+    synth: function(w, h, e, A, B, k){
+      var hz = h * 0.62, cx = w * 0.7, R = 130 + e.bass * 40, s, y, x;
+      var sg = g.createLinearGradient(0, hz - R, 0, hz); sg.addColorStop(0, rgba(B, 0.55 * k * fade)); sg.addColorStop(1, rgba(A, 0.6 * k * fade));
+      g.save(); g.beginPath(); g.arc(cx, hz, R, Math.PI, 0); g.closePath(); g.clip(); g.fillStyle = sg; g.fillRect(cx - R, hz - R, R * 2, R);
+      for (s = 0; s < 7; s++) g.clearRect(cx - R, hz - 8 - s * 13 - ((e.t * 20) % 13), R * 2, 2 + s * 0.8);
+      g.restore();
+      var off = (e.t * (50 + e.bass * 200)) % 30;
+      for (y = 0; y < 26; y++) { var z = (y * 30 + off) / 780, yy = hz + (h - hz) * z * z; g.strokeStyle = rgba(A, k * fade * 0.5 * z); g.beginPath(); g.moveTo(0, yy); g.lineTo(w, yy); g.stroke(); }
+      for (x = -24; x <= 24; x++) { g.strokeStyle = rgba(A, k * fade * 0.22); g.beginPath(); g.moveTo(cx + x * 14, hz); g.lineTo(cx + x * 150, h); g.stroke(); }
+    }
+  };
+  function frame(){
+    raf = 0;
+    fade += ((S.playing ? 1 : 0) - fade) * 0.05;
+    var dpr = Math.min(devicePixelRatio || 1, 2), w = innerWidth, h = innerHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    var e = levels();
+    root.style.setProperty('--beat', e.bass.toFixed(3));
+    var light = root.dataset.theme ? root.dataset.theme === 'light' : lightQ.matches;
+    var A = col('--acc', '#66c0f4'), B = col('--focus', A);
+    DRAW[FX[root.dataset.look || 'steam'] || 'bars'](w, h, e, A, B, light ? 0.6 : 1);
+    if (S.playing || fade > 0.01) raf = requestAnimationFrame(frame);
+    else { g.clearRect(0, 0, w, h); root.style.setProperty('--beat', '0'); }
+  }
+  function kick(){ if (!raf && !still.matches && !document.hidden) raf = requestAnimationFrame(frame); }
+  document.addEventListener('visibilitychange', kick);
+})();
 </script>
 </body>
 </html>
