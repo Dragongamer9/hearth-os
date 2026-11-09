@@ -1498,12 +1498,16 @@ jobs:
           say() { echo "::notice title=Shell extras::$*"; }
           bad() { echo "::error title=Shell extras::$*"; touch shots/FAILED; }
           # ---- Volume mixer
+          # wtype's very first key into a fresh labwc was lost (the mixer's Right did nothing while every later key
+          # worked): a lone Shift first, with nothing open, so the keymap is in place.
+          wtype -k Shift_L; sleep 1
           ipc mixer open; sleep 1; grim $o/01-mixer.png || true
           [ -e "$VOL" ] && bad "opening the mixer wrote app-volumes.json" || say "opening the mixer wrote nothing"
+          before=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state 2>/dev/null | tail -1)
           wtype -k Right; sleep 2; grim $o/02-mixer-first-app-louder.png || true
           if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d == {"Cyberpunk 2077": 0.95} else 1)' "$VOL" 2>/dev/null; then
             say "moving Cyberpunk 2077's level saved just that app: $(cat "$VOL" | tr -d '\n ')"
-          else bad "app-volumes.json after Right on the first app: $(cat "$VOL" 2>&1 | tr '\n' ' ')"; fi
+          else bad "app-volumes.json after Right on the first app: $(cat "$VOL" 2>&1 | tr '\n' ' ') (mixer before the key: $before)"; fi
           wtype -k Down; wtype -k Return; sleep 1; grim $o/03-mixer-discord-muted.png || true
           wtype -k x; sleep 1; grim $o/04-mixer-play-on.png || true
           wtype -k Down; wtype -k Return; sleep 1
