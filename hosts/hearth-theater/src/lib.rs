@@ -11,6 +11,10 @@
 //! program is their core (`--core-stdio`), and the parts of that here are the window app's lookup, the log, and the
 //! controller pointer's commands (`ptr_cmd`; main.rs's pointer.rs turns them into real mouse input).
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -229,16 +233,16 @@ pub fn parse_meta(html: &str, base: &str) -> Meta {
 
 pub fn sites_file(dir: &Path) -> PathBuf { dir.join("sites.json") }
 
+/// A list a power cut damaged is put back from sites.json.bak (it used to read as empty, and adding the next site
+/// saved just that one over all of yours).
 pub fn load(dir: &Path) -> Vec<Site> {
-    std::fs::read_to_string(sites_file(dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    appfile::read_json(&sites_file(dir)).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
 }
 
-/// Saved through a temporary file and a rename, so a crash never leaves half a list.
+/// Saved through a temporary file and a rename, so a crash never leaves half a list; the last good one is kept as
+/// sites.json.bak.
 pub fn save(dir: &Path, sites: &[Site]) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let tmp = dir.join(".sites.json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(sites).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, sites_file(dir)).map_err(|e| e.to_string())
+    appfile::write_json(&sites_file(dir), &serde_json::to_value(sites).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 pub fn new_id(sites: &[Site]) -> String {
@@ -723,6 +727,13 @@ mod tests {
         assert_eq!(recent(&v, 10).len(), 1);
         save(&dir, &v).unwrap();
         assert_eq!(load(&dir), v);
+        // Cut short by a power cut: the last good list comes back.
+        let mut more = v.clone();
+        more.pop();
+        save(&dir, &more).unwrap();
+        std::fs::write(sites_file(&dir), b"[{\"id\": \"x").unwrap();
+        assert_eq!(load(&dir), v);
+        save(&dir, &v).unwrap();
         std::fs::create_dir_all(art_dir(&dir)).unwrap();
         std::fs::write(art_dir(&dir).join("x-art.png"), b"p").unwrap();
         v[0].art = "x-art.png".into();

@@ -141,9 +141,7 @@ fn ring_now(st: &mut State, items: Vec<clock::Due>, now: i64) {
     if !stopped {
         alert::notify("Clock", "hearth-clock", &format!("Missed: {title}"), "It rang and nobody stopped it.", alert::Urgency::Normal);
         // Nobody answered: what ringing would have changed happens anyway (a one-time alarm switches off, a timer resets).
-        let mut c = clock::load();
-        for d in &items { clock::after_ring(&mut c, d.kind, &d.id, "dismiss", crate::now_ms()); }
-        let _ = store::save(&paths::clock_file(), &c);
+        let _ = clock::update(|c| for d in &items { clock::after_ring(c, d.kind, &d.id, "dismiss", crate::now_ms()); });
     }
 }
 
@@ -151,15 +149,10 @@ fn background_jobs(st: &mut State, now: i64) {
     // Subscribed calendars: every 6 hours (checked every 10 minutes; a failed download is tried again then).
     if now - st.last_sub_check > 10 * 60 * 1000 {
         st.last_sub_check = now;
-        let mut cal = calendar::load();
-        let mut changed = false;
-        if let Some(subs) = cal["subs"].as_array_mut() {
-            for s in subs.iter_mut() {
-                let last = s["updated"].as_i64().unwrap_or(0);
-                if now - last > SUB_EVERY_MS { let _ = calendar::refresh_sub(s); changed = true; }
-            }
-        }
-        if changed { let _ = calendar::save(&cal); }
+        // Downloaded first, then only the subscriptions' times are written into the latest file (an event added
+        // in Calendar during the download used to be lost when the service saved its older copy).
+        let due = |s: &Value| now - s["updated"].as_i64().unwrap_or(0) > SUB_EVERY_MS;
+        if calendar::load()["subs"].as_array().map(|l| l.iter().any(due)).unwrap_or(false) { let _ = calendar::refresh_subs(due); }
     }
     // The weather summary for the taskbar.
     if now - st.last_weather > crate::weather::FRESH_MS {

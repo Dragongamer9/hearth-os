@@ -6,6 +6,9 @@
 //! podcasts and radio downloads (net.rs), what it remembers (store.rs), keeping the screen awake (awake.rs) and
 //! MPRIS for media keys (mpris.rs, Linux).
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod awake;
 pub mod media;
 pub mod net;

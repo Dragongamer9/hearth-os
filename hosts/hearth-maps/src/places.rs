@@ -25,15 +25,13 @@ impl Default for View {
     fn default() -> Self { View { lat: 30.0, lon: 10.0, zoom: 1.6, style: "liberty".into() } }
 }
 
+// A file a power cut damaged is put back from its .bak, so saving the next place can't replace all your saved
+// places with just that one.
 fn read<T: for<'de> Deserialize<'de> + Default>(name: &str) -> T {
-    std::fs::read_to_string(data_dir().join(name)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::appfile::read_json(&data_dir().join(name)).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
 }
 fn write<T: Serialize>(name: &str, v: &T) -> Result<(), String> {
-    std::fs::create_dir_all(data_dir()).map_err(|e| e.to_string())?;
-    let p = data_dir().join(name);
-    let tmp = p.with_extension("tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(v).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    std::fs::rename(tmp, p).map_err(|e| e.to_string())
+    crate::appfile::write_json(&data_dir().join(name), &serde_json::to_value(v).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 pub fn saved() -> Vec<Saved> { read("places.json") }

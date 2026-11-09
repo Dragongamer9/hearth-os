@@ -681,6 +681,21 @@ class Extras(Base):
         with self.assertRaises(self.hf.Fail):
             self.hf.prefs_set('[1]')
 
+    def test_prefs_two_windows_keep_each_others_changes(self):
+        # Settings › Devices turned "Show in Files" off and another window remembered /b's view; this window then
+        # changes /a's view: only what it changed goes in, so neither comes back by itself.
+        self.hf.prefs_set('{"view": "grid", "showDevices": true, "folders": {"/a": {"view": "grid"}}}')
+        self.hf.prefs_set('{"showDevices": false}')
+        self.hf.prefs_set('{"folders": {"/b": {"view": "details"}}}')
+        self.hf.prefs_set('{"view": "details", "folders": {"/a": {"view": "details"}}}')
+        p = self.hf.prefs_get()
+        self.assertIs(p['showDevices'], False)
+        self.assertEqual(p['folders'], {'/b': {'view': 'details'}, '/a': {'view': 'details'}})
+        self.assertEqual(list(p['folders']), ['/b', '/a'])          # newest last (the newest 400 are kept)
+        qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop' / 'shell' / 'FileManager.qml').read_text()
+        self.assertNotIn('JSON.stringify(app.prefs)', qml)
+        self.assertIn('app.call(["prefs-set", JSON.stringify(ch)])', qml)
+
     def test_new_file_and_templates(self):
         f = self.hf.new_file(os.path.join(self.home, 'empty.txt'))['path']
         self.assertEqual(os.path.getsize(f), 0)

@@ -122,8 +122,9 @@ Scope {
 
     Process {
         id: proc
-        command: ["python3", pad.helper]
-        environment: pad.simDir !== "" ? { "HEARTH_PAD_SIM": pad.simDir } : ({})
+        // The simulated controller (checks only) through env: Process.environment can't take a JavaScript object on
+        // Hearth's Debian (Qt 6.8; "Unable to assign QJSValue to QVariantHash" at every start).
+        command: pad.simDir !== "" ? ["env", "HEARTH_PAD_SIM=" + pad.simDir, "python3", pad.helper] : ["python3", pad.helper]
         running: true
         stdinEnabled: true
         stdout: SplitParser { onRead: line => pad.handle(line) }

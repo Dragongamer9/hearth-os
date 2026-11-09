@@ -49,7 +49,7 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
   app-remove NAME       the app goes; its data (models, libraries) stays
   services run          the services timer: Light mode for the AI service and the media server, the Command Center
                         noted when it uses the AI service, the ransomware guard, the Tailscale-only rule kept loaded;
-                        also Light mode for AI pictures (ComfyUI) and AI voices (Kokoro), your own user services
+                        also Light mode for AI pictures (ComfyUI), AI voices (Kokoro) and Voice Studio, your own user services
                         (stopped while you play when you chose that, started again after)
   guard-reset           your shares writable again after the ransomware guard turned them read only
   ---- Server mode (docs/SERVER-MODE.md; hearth-server-mode runs these, as the person at the device)
@@ -732,7 +732,8 @@ def plan_write(data, shares, user, backups=(), svc=None):
             'backups': list(backups), 'alerts': alerts, 'power': power}
     if svc:
         plan.update({'media': svc['media'], 'ai': svc['ai'], 'guard': clean_guard(data.get('guard')),
-                     'pictures': svc.get('pictures') or clean_user_app(None, True), 'voices': svc.get('voices') or clean_user_app(None, False)})
+                     'pictures': svc.get('pictures') or clean_user_app(None, True), 'voices': svc.get('voices') or clean_user_app(None, False),
+                     'studio': svc.get('studio') or clean_user_app(None, True)})
     write(PLAN, json.dumps(plan, indent=2) + '\n')
     recycles = any(p['recycle'] for p in plan['shares'])
     timer_on = snaps_on or recycles
@@ -2393,12 +2394,15 @@ GUARD_DEFAULT = {'on': False, 'limit': 1000}
 # you play when you chose so, started again after; what was stopped is state in SERVICES_STATE, never a setting).
 COMFY_PORT = 8188
 KOKORO_PORT = 8880
+STUDIO_PORT = 8890                 # Voice Studio (hearth-voice-studio: its page and its OpenAI-compatible speech API)
 SERVER_WEB_PORT = 8460             # Server mode's web page (hearth-server-mode)
 SMALL_MODEL = 'qwen3:14b'          # Light mode's small model while you play (on the processor), when you chose it
 SMALL_MODELS = (SMALL_MODEL, 'huihui_ai/qwen3-abliterated:14b')   # the choices (the abliterated 14B when you picked it)
 COMFY_QUEUE = '/run/hearth/comfyui-queue.json'   # ComfyUI's queue kept while it's stopped for your game (root only, 0600)
 GPU_LIMIT_STATE = '/run/hearth/server-gpu-limit'
-USER_APPS = {'comfyui': ('pictures', 'hearth-comfyui.service', True), 'kokoro': ('voices', 'hearth-kokoro.service', False)}
+USER_APPS = {'comfyui': ('pictures', 'hearth-comfyui.service', True), 'kokoro': ('voices', 'hearth-kokoro.service', False),
+             'voicestudio': ('studio', 'hearth-voice-studio.service', True)}   # on the graphics card: stops while you play by default
+USER_APP_PORTS = {'comfyui': COMFY_PORT, 'kokoro': KOKORO_PORT, 'voicestudio': STUDIO_PORT}
 ACCOUNT_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 USER_RUN = '/run/user/%d'      # your user manager's runtime folder (its bus is there while you're signed in)
 GUARD_LIMITS = (500, 1000, 5000)
@@ -2418,7 +2422,7 @@ def clean_ai(a):
 
 
 def clean_user_app(a, pause_default):
-    """AI pictures {on, pause: on by default} or AI voices {on, pause: off by default}."""
+    """AI pictures and Voice Studio {on, pause: on by default} or AI voices {on, pause: off by default}."""
     a = a if isinstance(a, dict) else {}
     return {'on': a.get('on') is True, 'pause': (a.get('pause', True) is not False) if pause_default else a.get('pause') is True}
 
@@ -2731,7 +2735,7 @@ def services_plan(data, user):
     for name, (key, _, pdef) in USER_APPS.items():
         out[key] = clean_user_app(data.get(key), pdef)
         if out[key]['on']:
-            out['ports']['tcp'].append(COMFY_PORT if name == 'comfyui' else KOKORO_PORT)
+            out['ports']['tcp'].append(USER_APP_PORTS[name])
     # Server mode's web page (hearth-server-mode serve, docs/SERVER-MODE.md): only Tailscale and this PC, always.
     if data.get('serverWeb') is True:
         out['ports']['tcp'].append(SERVER_WEB_PORT)
@@ -3050,10 +3054,12 @@ def services_run(now=None):
         run(['systemctl', 'stop', 'hearth-jellyfin.service'])
         paused.append('jellyfin')
     user_apps_light(plan, playing, paused, did, st, now)
-    if not playing and clean_user_app(plan.get('voices'), False)['on']:
-        users = ai_clients(KOKORO_PORT)     # the Command Center's voice settings talking to AI voices
-        if users:
-            mark_seen_sys('commandCenter', users[0], now)
+    for key, port, pdef in (('voices', KOKORO_PORT, False), ('studio', STUDIO_PORT, True)):
+        if not playing and clean_user_app(plan.get(key), pdef)['on']:
+            users = ai_clients(port)     # the Command Center's voice settings talking to AI voices or Voice Studio
+            if users:
+                mark_seen_sys('commandCenter', users[0], now)
+                break
     if not playing and paused:
         for name in paused:
             if name in USER_APPS:

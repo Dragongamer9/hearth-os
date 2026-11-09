@@ -148,8 +148,17 @@ pub fn after_ring(clock: &mut Value, kind: &str, id: &str, action: &str, now: i6
 }
 
 /// The file, with defaults filled in.
-pub fn load() -> Value {
-    let mut v = crate::store::load(&crate::paths::clock_file());
+pub fn load() -> Value { fill(crate::store::load(&crate::paths::clock_file())) }
+
+/// Changes the latest clock file under its lock (the service and the ringing window both change alarms).
+pub fn update(change: impl FnOnce(&mut Value)) -> Result<(), String> {
+    let p = crate::paths::clock_file();
+    crate::appfile::update(&p, |cur| { let mut v = fill(cur.unwrap_or(Value::Null)); change(&mut v); (Some(v), ()) })
+        .map_err(|e| format!("Couldn't save {}: {e}", p.display()))
+}
+
+fn fill(mut v: Value) -> Value {
+    if !v.is_object() { v = json!({}); }
     for k in ["alarms", "timers", "world"] { if !v[k].is_array() { v[k] = json!([]); } }
     if !v["stopwatch"].is_object() { v["stopwatch"] = json!({"startedAt": null, "elapsed": 0, "laps": []}); }
     if !v["settings"].is_object() { v["settings"] = json!({"ringMinutes": 10, "snooze": 10}); }

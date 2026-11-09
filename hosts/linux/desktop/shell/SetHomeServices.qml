@@ -5,6 +5,9 @@
 // or through Tailscale, as you choose (the AI service: Tailscale or this PC only), with a status and an Open link.
 // AI pictures (ComfyUI, on the graphics card) and AI voices (Kokoro-FastAPI, on the CPU) are always shown here: your own
 // user services, installed only when you ask, Tailscale and this PC only; your own copies can be taken over and given back.
+// Voice Studio (hearth-voice-studio) is Hearth's own voice studio and the main voices entry: speak, clone, design,
+// transcribe, audiobooks, video dubbing and an OpenAI-compatible speech API, behind its PIN (or Server mode's) and a key.
+// Kokoro stays as the fast voice on the CPU for anyone who uses it (Voice Studio lists its voices too).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -23,6 +26,9 @@ SetPage {
     readonly property var ai: sv ? sv.ai : null
     readonly property var pic: sv ? sv.pictures : null
     readonly property var voi: sv ? sv.voices : null
+    readonly property var vs: sv ? sv.studio : null
+    property bool vsPinOpen: false
+    property int studioRm: 0
     readonly property bool picOwnerRuns: !!pic && !!pic.owner && (pic.owner.active || pic.owner.enabled) && !pic.takenOver
     property int modelsRm: 0
     readonly property bool aiShown: !!st && !!st.seen && !!st.seen.commandCenter && (st.seen.commandCenter.shown || (!!ai && (ai.on || ai.installed)))
@@ -44,7 +50,7 @@ SetPage {
         return (a.active ? "Running" : "Starting…") + " · " + label + " " + (a.version || "");
     }
     Component.onCompleted: refresh()
-    onVisibleChanged: if (!visible) modelsRm = 0
+    onVisibleChanged: if (!visible) { modelsRm = 0; studioRm = 0; }
     onPwOpenChanged: if (pwOpen) webX.open = true
     Timer { interval: 4000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-home-server" }
@@ -318,6 +324,125 @@ SetPage {
         }
     }
 
+    // ---- Voice Studio: Hearth's own voice studio (hearth-voice-studio), on the graphics card
+    SetRow {
+        boxed: true
+        visible: !!page.vs && page.vs.installing
+        icon: "vol"; chevron: false; interactive: false
+        title: "Installing Voice Studio… " + (page.vs ? page.vs.progress || 0 : 0) + "%"
+        sub: page.vs ? (page.vs.step || "starting") + ". It keeps going if you leave this page" : ""
+    }
+    SetRow {
+        boxed: true
+        badge: "New"
+        visible: !!page.vs && !page.vs.installed && !page.vs.installing
+        icon: "vol"; title: "Install Voice Studio"
+        sub: (page.vs && page.vs.error ? "Didn't install: " + page.vs.error + ". Try again. " : "")
+             + "Your own voice studio: speak in any voice, clone a voice from a short recording, design one from words, transcribe, narrate audiobooks and dub videos, for your devices and the Command Center. "
+             + "About 14 GB in your Home (PyTorch, OmniVoice, Whisper, Demucs). OmniVoice's voice model is free for personal, non-commercial use (CC BY-NC); everything else is open source (Apache, MIT)"
+        value: "Install"
+        onActivated: act.run(["studio-install"], () => { page.say("Installing Voice Studio… it keeps going in the background"); page.refresh(); }, e => page.say(e, true))
+    }
+    SetSwitch {
+        boxed: true
+        visible: !!page.vs && page.vs.installed
+        icon: "vol"; title: "Voice Studio"
+        sub: !page.vs ? "" : !page.vs.on ? "Off · speak, clone, design, transcribe, audiobooks, dubbing" + (page.vs.voices ? " · " + page.vs.voices + (page.vs.voices === 1 ? " voice" : " voices") : "")
+             : page.vs.paused ? "Stopped while you play (Light mode); its queue carries on after"
+             : page.vs.active ? (page.vs.healthy ? "Running" + (page.vs.queue ? " · " + page.vs.queue + " in the queue" : "") : "Starting…")
+             : "Starting…"
+        chip: page.vs && page.vs.on ? (page.vs.paused ? "Paused" : page.vs.active && page.vs.healthy ? "Running" : "Starting") : "Off"
+        chipKind: page.vs && page.vs.on && page.vs.active && page.vs.healthy ? "ok" : "off"
+        value: page.vs && page.vs.on ? "Tailscale only" : ""
+        checked: !!page.vs && page.vs.on
+        onToggled: v => page.set("studioOn", v ? "on" : "off", v ? (page.vs && (page.vs.pin || page.vs.serverPin) ? "Voice Studio on: only your devices through Tailscale, and this PC" : "Voice Studio on. Set its PIN below so you can open it") : "Voice Studio off")
+    }
+    SetRow {
+        boxed: true
+        visible: !!page.vs && page.vs.installed && page.vs.on
+        icon: "open"; title: "Open Voice Studio"
+        sub: (page.vs ? (page.vs.url || page.vs.local) : "") + (page.vs && !page.vs.pin && !page.vs.serverPin ? " · set a PIN first (below)" : " · on your phone or laptop too, through Tailscale")
+        onActivated: page.openUrl(page.vs.local)
+    }
+    SetExpander {
+        visible: !!page.vs && page.vs.installed
+        icon: "gear"; title: "Voice Studio: PIN, apps, while you play"; sub: "The PIN for its page, the address and key for the Command Center, removing it"
+        anchor: "studio"
+        SetRow {
+            id: vsPinRow
+            icon: "lock"; title: "PIN for Voice Studio"
+            sub: page.vs && page.vs.pin ? "Its own PIN is set. A new one signs every device out; only its hash is kept"
+                 : page.vs && page.vs.serverPin ? "Uses your Server mode PIN. Set one here to give Voice Studio its own"
+                 : "4 to 12 digits. Nobody can open the page until you set one"
+            value: page.vs && page.vs.pin ? "●●●●●● · Change" : "Set"
+            onActivated: { page.vsPinOpen = !page.vsPinOpen; if (page.vsPinOpen) { vsPad.clear(); Qt.callLater(vsPad.focusPad); } }
+        }
+        SetPinPad {
+            id: vsPad
+            visible: page.vsPinOpen
+            Layout.leftMargin: 56; Layout.rightMargin: 18; Layout.topMargin: 6; Layout.bottomMargin: 6
+            minLength: 4; maxLength: 12
+            hint: "Type a PIN of 4 to 12 digits for Voice Studio's page"
+            onSubmitted: pin => {
+                if (!/^[0-9]{4,12}$/.test(pin)) { page.say("Use 4 to 12 digits (numbers only)", true); return; }
+                act.run(["studio-pin"], () => { vsPad.clear(); page.vsPinOpen = false; vsPinRow.forceActiveFocus(); page.say("PIN set ✓"); page.refresh(); },
+                        e => { vsPad.clear(); page.say(e, true); }, pin);
+            }
+        }
+        SetRow {
+            visible: !!page.vs && page.vs.pin
+            icon: "back"; title: page.vs && page.vs.serverPin ? "Use Server mode's PIN instead" : "Clear Voice Studio's PIN"
+            sub: page.vs && page.vs.serverPin ? "Its own PIN goes; Server mode's PIN opens it" : "Nobody can open the page until a PIN is set again"
+            onActivated: act.run(["studio-pin-clear"], () => { page.say("Done"); page.refresh(); }, e => page.say(e, true))
+        }
+        SetRow {
+            icon: "clipboard"; title: "Address for the Command Center"
+            sub: (page.vs ? (page.vs.url || page.vs.local) : "") + " · in Settings › Voice › Add a speech server › OpenAI-compatible speech API" + (page.vs && !page.vs.url ? " (turn on Tailscale for the address your other devices use)" : "")
+            value: "Copy"
+            onActivated: { Quickshell.execDetached(["wl-copy", page.vs.url || page.vs.local]); page.say("Copied ✓ Now copy the key below"); }
+        }
+        SetRow {
+            icon: "lock"; title: "API key for apps"
+            sub: "The Command Center and other apps send it with each request. Copy it into the speech server's key field"
+            value: "Copy"
+            onActivated: act.run(["studio-key"], r => { Quickshell.execDetached(["wl-copy", r.key]); page.say("Key copied ✓"); }, e => page.say(e, true))
+        }
+        SetRow {
+            icon: "restart"; title: "Make a new key"
+            sub: "The old key stops working: apps using it need the new one"
+            onActivated: act.run(["studio-key-new"], r => { Quickshell.execDetached(["wl-copy", r.key]); page.say("New key copied ✓"); }, e => page.say(e, true))
+        }
+        SetRow {
+            visible: !!page.vs && page.vs.on
+            icon: "lock"; chevron: false; interactive: false; title: "Who can reach it"
+            sub: "Your devices through Tailscale, and this PC: it listens only on this PC" + (page.vs && page.vs.listen.length > 1 ? " and " + page.vs.listen[1] : " and its Tailscale address") + ", Hearth's firewall rule lets only Tailscale reach port 8890, and the page asks for the PIN"
+        }
+        SetSwitch {
+            icon: "pad"; title: "Stop it while I play"
+            sub: "Voice Studio uses the graphics card. On: it stops when Game Mode or a game starts (with Light mode on); audiobooks and dubs waiting in its queue carry on after"
+            checked: !!page.vs && page.vs.pause
+            onToggled: v => page.set("studioPause", v ? "on" : "off")
+        }
+        SetRow {
+            visible: !!page.vs && page.vs.installed && !page.vs.on
+            icon: "trash"; title: "Remove Voice Studio"
+            sub: "Its engines and downloaded models go (about 14 GB). Your voices, audiobooks, dubs and transcripts stay"
+            onActivated: act.run(["studio-remove"], () => { page.say("Voice Studio removed. Your voices and work are kept"); page.refresh(); }, e => page.say(e, true))
+        }
+        SetRow {
+            visible: !!page.vs && page.vs.installed && !page.vs.on
+            icon: "trash"
+            title: page.studioRm === 0 ? "Remove Voice Studio and your voices" : page.studioRm === 1 ? "Sure? Your voices and finished work will be deleted" : "Really delete " + (page.vs ? page.vs.voices : 0) + " voices and your work? This can't be undone"
+            sub: page.studioRm === 0 ? "Also deletes your cloned and designed voices, audiobooks, dubs and transcripts (asks twice)" : "Select again to go on, or leave this page to keep them"
+            onActivated: {
+                if (page.studioRm < 2) { page.studioRm += 1; return; }
+                page.studioRm = 0;
+                act.run(["studio-remove", "voices", "sure", "really-sure"], () => { page.say("Voice Studio and your voices removed"); page.refresh(); }, e => page.say(e, true));
+            }
+        }
+    }
+
+    // ---- AI voices (Kokoro): the fast voice on the CPU, kept for everyone who uses it
     SetRow {
         boxed: true
         visible: !!page.voi && page.voi.installing

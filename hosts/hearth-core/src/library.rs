@@ -104,6 +104,8 @@ fn first_run_watch(track: crate::procs::Track, app: u32, home: std::path::PathBu
 
 /// Same rule as the engine's LaunchPolicy.FirstRunOk (pure, for the tests).
 pub fn steam_open_first_run_ok(ran: std::time::Duration, still_running: bool) -> bool { still_running || ran >= std::time::Duration::from_secs(20) }
+/// `pids` without the ones in `others` (other games' processes).
+fn not_others(mut pids: Vec<u32>, others: &std::collections::HashSet<u32>) -> Vec<u32> { pids.retain(|p| !others.contains(p)); pids }
 fn pids_of(track: &crate::procs::Track) -> Vec<u32> { crate::procs::game_processes(track, &crate::procs::snapshot(proc_root()), std::process::id()) }
 fn rec(r: &Running) -> Value {
     json!({"id": r.id, "pid": r.track.pid, "dirs": r.track.dirs, "steamAppId": r.track.steam_app_id, "appId": r.app_id, "launchedAt": r.launched_at, "startedAt": r.started_at,
@@ -1114,7 +1116,12 @@ impl Library {
         Ok(dto)
     }
     fn close_frozen_entry(&mut self, r: Running) -> Value {
-        let pids = pids_of(&r.track);
+        // Never another game's processes (the same rule as quick_resume): the guesses (folders, a shared Wine prefix)
+        // can find processes another game put aside or running owns too, and closing this one ended that one.
+        let snap = crate::procs::snapshot(proc_root());
+        let me = std::process::id();
+        let others: std::collections::HashSet<u32> = self.frozen.iter().chain(self.running.iter()).flat_map(|o| crate::procs::game_processes(&o.track, &snap, me)).collect();
+        let pids = not_others(crate::procs::game_processes(&r.track, &snap, me), &others);
         crate::bridge::log(&format!("quick resume: closing {} (id {}): {}", r.id, r.app_id, crate::procs::describe(&pids)));
         crate::procs::signal(&pids, "CONT");   // stopped processes only act on "please close" once they run again
         crate::procs::stop(&pids, std::time::Duration::from_secs(5));
@@ -1361,5 +1368,30 @@ mod tests {
         crate::procs::signal(&[gb.id()], "KILL");
         let _ = ga.wait(); let _ = gb.wait();
         let _ = a.kill(); let _ = a.wait();
+    }
+    #[test]
+    fn closing_a_game_put_aside_leaves_another_games_processes_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lib = Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf());
+        // Game A: a launcher with a child; game B's guess finds only that same child (a shared folder or prefix).
+        let mut sh = std::process::Command::new("sh").args(["-c", "sleep 60 & wait"]).spawn().unwrap();
+        let mut child = 0;
+        for _ in 0..50 {
+            if let Some(p) = crate::procs::snapshot(std::path::Path::new("/proc")).iter().find(|p| p.ppid == sh.id()) { child = p.pid; break; }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(child != 0);
+        let frozen = |id: &str, pid: u32| Running { id: id.into(), track: crate::procs::Track { pid: Some(pid), ..Default::default() }, launched_at: 1, started_at: now_ms(), gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: now_ms(), app_id: 0 };
+        lib.frozen = vec![frozen("manual:a", sh.id()), frozen("manual:b", child)];
+        lib.close_frozen("manual:b").unwrap();
+        assert!(crate::procs::alive(child), "game A's process was closed with game B");
+        assert_eq!(lib.frozen.len(), 1);
+        crate::procs::signal(&[child, sh.id()], "KILL");
+        let _ = sh.wait();
+    }
+    #[test]
+    fn other_games_processes_are_left_out() {
+        let others: std::collections::HashSet<u32> = [2, 3].into_iter().collect();
+        assert_eq!(not_others(vec![1, 2, 3, 4], &others), vec![1, 4]);
     }
 }

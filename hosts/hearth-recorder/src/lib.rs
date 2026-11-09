@@ -7,6 +7,9 @@
 //! The window (main.rs), the shortcuts (`hearth-recorder --toggle`...) and Hearth's Quick Access all go through
 //! the functions here; the recording itself runs in a process of its own (session.rs).
 
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod control;
 pub mod plan;
 pub mod probe;

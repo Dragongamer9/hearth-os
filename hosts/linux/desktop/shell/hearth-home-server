@@ -82,8 +82,18 @@ everything again.
                                                 or back the way it was
   hearth-home-server voices-install | voices-remove         Kokoro-FastAPI's image (pinned digest) in your rootless Podman
   hearth-home-server voices-takeover | voices-giveback      your own "kokoro" container stopped, Hearth's on; or back
-  hearth-home-server ai-run comfyui|kokoro      what hearth-comfyui.service / hearth-kokoro.service run (127.0.0.1 and
-                                                this PC's Tailscale address only)
+  hearth-home-server ai-run comfyui|kokoro|voicestudio   what hearth-comfyui.service / hearth-kokoro.service /
+                                                hearth-voice-studio.service run (127.0.0.1 and this PC's Tailscale address only)
+  ---- Voice Studio (hearth-voice-studio, next to this file): your own user service, off until you turn it on
+  hearth-home-server set KEY VALUE              also: studioOn, studioPause (on|off)
+  hearth-home-server studio-install             its engines into ~/.local/share/nimbus/voice-studio/venv (only when
+                                                asked), in its own unit
+  hearth-home-server studio-remove [voices sure really-sure]   the engines and models go; your voices and finished
+                                                work stay unless both confirmations
+  hearth-home-server studio-pin                 the page's PIN on stdin (HEARTH_INPUT); studio-pin-clear for none
+                                                (Server mode's PIN then opens it)
+  hearth-home-server studio-key | studio-key-new   the API key for the Command Center (shown, or a new one)
+  hearth-home-server studio-set KEY VALUE       Voice Studio's own choices (language, voice, translateModel, speakerLabels)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import concurrent.futures
@@ -147,6 +157,7 @@ DEFAULTS = {
     # ---- AI pictures and AI voices (off until you turn them on; their install and run state is never here)
     'pictures': {'on': False, 'pause': True},     # ComfyUI on the graphics card: stopped while you play (it holds VRAM)
     'voices': {'on': False, 'pause': False},      # Kokoro-FastAPI on the CPU: keeps running while you play unless you choose
+    'studio': {'on': False, 'pause': True},       # Voice Studio on the graphics card: stopped while you play (its queue waits)
 }
 BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone', 'showAdult')
 KEEP_KEYS = {'keepHourly': 'hourly', 'keepDaily': 'daily', 'keepWeekly': 'weekly'}
@@ -168,6 +179,7 @@ NESTED = {
     'guardOn': ('guard', 'on', 'bool'), 'guardLimit': ('guard', 'limit', (500, 1000, 5000)),
     'picturesOn': ('pictures', 'on', 'bool'), 'picturesPause': ('pictures', 'pause', 'bool'),
     'voicesOn': ('voices', 'on', 'bool'), 'voicesPause': ('voices', 'pause', 'bool'),
+    'studioOn': ('studio', 'on', 'bool'), 'studioPause': ('studio', 'pause', 'bool'),
 }
 WEB_KEYS = ('webOn', 'webReach')
 APPLY_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'snapshots') + tuple(KEEP_KEYS) + tuple(NESTED)
@@ -334,7 +346,7 @@ def apply_payload(data):
             'backups': backups, 'receive': {'on': rc.get('on') is True, 'path': rc.get('path') or ''},
             'alerts': data.get('alerts'), 'power': data.get('power'),
             'media': data.get('media'), 'ai': ai_payload(data), 'guard': data.get('guard'),
-            'pictures': data.get('pictures'), 'voices': data.get('voices'), 'serverWeb': server_web_on()}
+            'pictures': data.get('pictures'), 'voices': data.get('voices'), 'studio': data.get('studio'), 'serverWeb': server_web_on()}
 
 
 SERVER_MODE = os.path.join(CONFIG_HOME, 'nimbus', 'server-mode.json')
@@ -806,7 +818,7 @@ def side_effect(key, on):
         return {'notes': [n for n in notes if n]}
     elif key in WEB_KEYS:
         return web_apply()
-    elif key in ('picturesOn', 'voicesOn'):
+    elif key in ('picturesOn', 'voicesOn', 'studioOn'):
         # Root's part first (their ports in the Tailscale-only rule, the Light mode timer); they listen only on this PC
         # and its Tailscale address either way, so a failed apply never stops them being yours to turn on or off.
         out = {}
@@ -814,7 +826,7 @@ def side_effect(key, on):
             out = apply_now()
         except Fail as e:
             out = {'note': str(e)}
-        out['app'] = user_app_switch('comfyui' if key == 'picturesOn' else 'kokoro', on)
+        out['app'] = user_app_switch({'picturesOn': 'comfyui', 'voicesOn': 'kokoro', 'studioOn': 'voicestudio'}[key], on)
         return out
     elif key in APPLY_KEYS:
         return apply_now()
@@ -1612,6 +1624,8 @@ def quick():
             paused.append('AI pictures')
         if data['voices'].get('on') and data['voices'].get('pause'):
             paused.append('AI voices')
+        if data['studio'].get('on') and data['studio'].get('pause'):
+            paused.append('Voice Studio')
     return {'available': True, 'host': socket.gethostname().split('.')[0], 'lightMode': data['lightMode'] is not False,
             'playing': playing, 'resumed': resumed(), 'paused': paused, 'shares': len(shares), 'people': len(data['people']),
             'usage': fs_usage([s['path'] for s in shares if os.path.isdir(s.get('path', ''))]),
@@ -1620,6 +1634,7 @@ def quick():
             'alerts': [a.get('text', '') for a in alerts if isinstance(a, dict)][:3], 'setupDone': bool(data['setupDone']),
             'ai': ai_quick(data, playing), 'pictures': ai_app_quick(data, 'pictures', 'comfyui', playing),
             'voices': ai_app_quick(data, 'voices', 'kokoro', playing),
+            'studio': ai_app_quick(data, 'studio', 'voicestudio', playing),
             'remote': remote_quick()}
 
 
@@ -1706,7 +1721,7 @@ def model_name_ok(name):
 CC_DIRS = ('Hearth AI Command Center', 'hearth-ai-command-center')   # its settings folder in ~/.config (Electron's userData)
 KNOWN_PORTS = {22: 'SSH', 139: 'Samba (old)', 445: 'Shared folders (Samba)', 631: 'Printing', 5353: 'Device discovery (mDNS)',
                7359: 'Media server discovery', 8095: 'Backups from your Hearth devices', 8096: 'Media server (Jellyfin)',
-               8097: 'Files on the web, links, drop-off', 8188: 'AI pictures (ComfyUI)', 8880: 'AI voices (Kokoro)', 8384: 'Folder sync (Syncthing\'s own page)', 11434: 'AI service (Ollama)',
+               8097: 'Files on the web, links, drop-off', 8188: 'AI pictures (ComfyUI)', 8880: 'AI voices (Kokoro)', 8890: 'Voice Studio', 8384: 'Folder sync (Syncthing\'s own page)', 11434: 'AI service (Ollama)',
                21027: 'Folder sync discovery', 22000: 'Folder sync (Syncthing)', 41641: 'Tailscale', 47984: 'Remote play (Sunshine)',
                47989: 'Remote play (Sunshine)', 47990: 'Remote play (Sunshine\'s page)', 48010: 'Remote play (Sunshine)'}
 
@@ -1792,7 +1807,7 @@ def services_status(data=None):
     web['urls'] = web_urls(data, ts_dns, ts_ip, lan)
     extra = home_ai_view(data)
     return {'media': media, 'ai': ai, 'web': web, 'host': host, 'tsName': ts_dns, 'syncs': len(data['syncs']),
-            'pictures': extra['pictures'], 'voices': extra['voices'],
+            'pictures': extra['pictures'], 'voices': extra['voices'], 'studio': extra.get('studio'),
             'remote': unit_active('sunshine.service', user=True) or unit_active('app-dev.lizardbyte.app.Sunshine.service', user=True),
             'storage': os.path.exists('/etc/samba/hearth-storage.conf'), 'playing': bool(sv.get('playing'))}
 
@@ -1926,7 +1941,7 @@ def ai_status():
             'loaded': loaded, 'reachable': bool(tags is not None),
             'address': 'http://%s:11434/v1' % ts_dns if ts_dns else '', 'local': 'http://localhost:11434/v1',
             'commandCenter': seen.get('commandCenter'), 'showHidden': data['showHidden'], 'ccDays': data['ccDays'],
-            'pictures': sv['pictures'], 'voices': sv['voices'],
+            'pictures': sv['pictures'], 'voices': sv['voices'], 'studio': sv.get('studio'),
             'playing': sv['playing'], 'unloadedAt': (sio.load_json(SERVICES_STATE, {}, repair=False) if os.path.exists(SERVICES_STATE) else {}).get('unloadedAt', 0)}
 
 
@@ -2029,9 +2044,10 @@ KOKORO_DIGEST = 'sha256:cbcc28802fb5d1eaaba8b91e38b0e872a669e85831c513cf6a29c709
 KOKORO_PORT = 8880
 KOKORO_NAME = 'hearth-kokoro'
 HOME_AI_STATE = os.path.join(STATE_HOME, 'nimbus', 'home-ai.json')
-AI_UNITS = {'comfyui': 'hearth-comfyui.service', 'kokoro': 'hearth-kokoro.service'}
-AI_TIMERS = {'comfyui': 'hearth-comfyui.timer', 'kokoro': 'hearth-kokoro.timer'}
-AI_KEYS = {'comfyui': 'picturesOn', 'kokoro': 'voicesOn'}
+AI_UNITS = {'comfyui': 'hearth-comfyui.service', 'kokoro': 'hearth-kokoro.service', 'voicestudio': 'hearth-voice-studio.service'}
+AI_TIMERS = {'comfyui': 'hearth-comfyui.timer', 'kokoro': 'hearth-kokoro.timer', 'voicestudio': 'hearth-voice-studio.timer'}
+AI_KEYS = {'comfyui': 'picturesOn', 'kokoro': 'voicesOn', 'voicestudio': 'studioOn'}
+STUDIO_PORT = 8890
 OWNER_COMFY_UNIT = 'comfyui.service'       # the owner's own (from his install script), adopted only when he says so
 OWNER_KOKORO = 'kokoro'                    # his own container (podman run --name kokoro ...)
 COMFY_KEEP = ('models', 'output', 'input', 'user')    # never removed with the app: your models, pictures and workflows
@@ -2131,10 +2147,11 @@ def ai_listen():
 
 
 def ai_run(kind):
-    """hearth-comfyui.service / hearth-kokoro.service: becomes ComfyUI or Kokoro's container (exec), on 127.0.0.1 and
-    the Tailscale address only. Where it listens is noted in your runtime folder for the page."""
+    """hearth-comfyui.service / hearth-kokoro.service / hearth-voice-studio.service: becomes ComfyUI, Kokoro's container
+    or Voice Studio (exec), on 127.0.0.1 and the Tailscale address only. Where it listens is noted in your runtime folder
+    for the page."""
     if kind not in AI_UNITS:
-        raise Fail('comfyui or kokoro')
+        raise Fail('comfyui, kokoro or voicestudio')
     addrs = ai_listen()
     rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-home-server')
     try:
@@ -2149,6 +2166,14 @@ def ai_run(kind):
         argv = [os.path.join(d, 'venv', 'bin', 'python'), os.path.join(d, 'main.py'), '--listen', ','.join(addrs), '--port', str(COMFY_PORT)]
         os.chdir(d)
         os.execv(argv[0], argv)
+        return {}
+    if kind == 'voicestudio':
+        vs = studio_mod()
+        py = os.path.join(vs.VENV, 'bin', 'python')
+        if not vs.installed():
+            raise Fail('Voice Studio isn\'t installed')
+        os.chdir(vs.DATA)
+        os.execve(py, [py, os.path.join(HERE, 'hearth-voice-studio'), 'serve'], vs.venv_env())
         return {}
     ref = kokoro_ref()
     if not ref:
@@ -2166,7 +2191,7 @@ def user_app_switch(name, on):
     """Your own service on or off now (and its timer, which starts it a minute after you sign in). Off deletes nothing."""
     unit, timer = AI_UNITS[name], AI_TIMERS[name]
     if on:
-        installed = comfy_installed() if name == 'comfyui' else kokoro_installed()
+        installed = comfy_installed() if name == 'comfyui' else kokoro_installed() if name == 'kokoro' else studio_installed()
         if not installed:
             return 'not installed'
         cmd(['systemctl', '--user', 'enable', timer], 30)
@@ -2192,6 +2217,9 @@ def user_app_precheck(key, raw):
             raise Fail('Your own "kokoro" container still runs on port 8880: take it over first')
         if not kokoro_installed():
             raise Fail('Install AI voices first')
+    elif key == 'studioOn':
+        if not studio_installed():
+            raise Fail('Install Voice Studio first')
 
 
 def free_gb(path):
@@ -2680,6 +2708,99 @@ def kokoro_giveback():
     return {'givenBack': True}
 
 
+# ------------------------------------------------------------------ Voice Studio (hearth-voice-studio, next to this file)
+#
+# Hearth's own voice studio (docs/HOME-SERVER.md): speak, clone, design, transcribe, audiobooks, video dubbing and an
+# OpenAI-compatible speech API, as your own user service like AI pictures. Its engines go into a venv under
+# ~/.local/share/nimbus/voice-studio only when you press Install (start_job, like ComfyUI); its page listens only on this PC
+# and its Tailscale address, behind its PIN (or Server mode's), and the API behind a key. Kokoro (AI voices) keeps
+# working as it is, and Voice Studio uses its voices too when it's on.
+
+_VS = None
+
+
+def studio_mod():
+    global _VS
+    if _VS is None:
+        p = os.path.join(HERE, 'hearth-voice-studio')
+        loader = importlib.machinery.SourceFileLoader('hearth_voice_studio', p)
+        spec = importlib.util.spec_from_loader('hearth_voice_studio', loader)
+        m = importlib.util.module_from_spec(spec)
+        loader.exec_module(m)
+        _VS = m
+    return _VS
+
+
+def studio_installed():
+    try:
+        return bool(studio_mod().installed())
+    except Exception:  # noqa: BLE001 - the page still shows, saying it isn't installed
+        return False
+
+
+def studio_job():
+    """The install itself, in its own unit (start_job). Anything wrong: you're told why; your voices and work stay."""
+    name = 'voicestudio'
+    try:
+        vs = studio_mod()
+        rec = vs.install(lambda text, pct: ai_state_set(name, step=text, progress=pct))
+        ai_state_set(name, installing=False, progress=100, step='', error='', version='rev %d' % rec.get('rev', 0),
+                     torch=rec.get('torch', ''), cuda=rec.get('cuda') is True, gpu=rec.get('gpu', ''), notes=rec.get('notes') or [], at=int(time.time()))
+        if value('studioOn'):
+            cmd(['systemctl', '--user', 'restart', AI_UNITS[name]], 30)
+        return {'installed': True, 'notes': rec.get('notes') or []}
+    except Fail as e:
+        ai_state_set(name, installing=False, error=str(e)[:300])
+        raise
+    except Exception as e:  # noqa: BLE001 - Voice Studio's own failure, in words
+        ai_state_set(name, installing=False, error=str(e)[:300])
+        raise Fail(str(e))
+
+
+def studio_remove(voices=False):
+    """Voice Studio's engines and models go (its service off first). Your voices and finished work stay unless you
+    confirmed twice. Kokoro (AI voices) isn't touched."""
+    user_app_switch('voicestudio', False)
+    try:
+        out = studio_mod().remove(voices)
+    except Exception as e:  # noqa: BLE001
+        raise Fail(str(e))
+    st = ai_state()
+    st.pop('voicestudio', None)
+    sio.write_json(HOME_AI_STATE, st)
+    if set_key('studioOn', 'off'):
+        out['turnedOff'] = 'studioOn'
+        try:
+            apply_now()
+        except Fail:
+            pass
+    return out
+
+
+def studio_view(data, st, paused, run_st, ts_dns, deep=True):
+    """Voice Studio for the pages: installed, on, running, healthy, the PIN and key, the addresses."""
+    s = st.get('voicestudio') if isinstance(st.get('voicestudio'), dict) else {}
+    v = dict(data['studio'])
+    v.update({'installing': bool(s.get('installing')) and time.time() - (s.get('started') or 0) < 4 * 3600,
+              'progress': s.get('progress', 0), 'step': s.get('step', ''), 'error': s.get('error', ''), 'notes': s.get('notes') or [],
+              'version': s.get('version', ''), 'active': unit_active(AI_UNITS['voicestudio'], user=True), 'paused': 'voicestudio' in paused,
+              'listen': ((run_st.get('voicestudio') or {}).get('listen') or []) if isinstance(run_st, dict) else [],
+              'url': 'http://%s:%d' % (ts_dns, STUDIO_PORT) if ts_dns else '', 'local': 'http://localhost:%d' % STUDIO_PORT,
+              'api': ('http://%s:%d/v1' % (ts_dns, STUDIO_PORT)) if ts_dns else 'http://localhost:%d/v1' % STUDIO_PORT,
+              'gpu': s.get('gpu', ''), 'installed': False, 'pin': False, 'serverPin': False, 'keySet': False, 'voices': 0, 'queue': 0})
+    try:
+        vs = studio_mod().status()
+        v.update({k: vs[k] for k in ('installed', 'pin', 'serverPin', 'keySet', 'voices', 'queue', 'dir')})
+        v['install'] = vs.get('install') or {}
+    except Exception:  # noqa: BLE001 - shown as not installed
+        pass
+    if deep and v['active']:
+        h = http_json('GET', 'http://127.0.0.1:%d/health' % STUDIO_PORT, timeout=3)
+        v['healthy'] = isinstance(h, dict) and h.get('status') == 'ok'
+        v['engines'] = h.get('engines') if isinstance(h, dict) else {}
+    return v
+
+
 def size_gb(path, limit=200000):
     """How big a folder is (links not followed), in GB; quick and rough."""
     total, n = 0, 0
@@ -2748,6 +2869,7 @@ def home_ai_view(data=None, deep=True):
             k['voices'] = len(vs.get('voices') or []) if isinstance(vs, dict) else 0
     else:
         k['installed'] = bool((st.get('kokoro') or {}).get('digest'))
+    out['studio'] = studio_view(data, st, paused, run_st, ts_dns, deep)
     return out
 
 
@@ -3231,6 +3353,7 @@ def gaming_view():
     return {'games': games, 'lightMode': data['lightMode'], 'playing': bool(mod and mod.game_running()), 'resumed': resumed(),
             'ai': {k: sv['ai'][k] for k in ('on', 'unload', 'pause', 'installed')}, 'media': {k: sv['media'][k] for k in ('on', 'pause')},
             'pictures': {k: sv['pictures'][k] for k in ('on', 'pause', 'installed')}, 'voices': {k: sv['voices'][k] for k in ('on', 'pause', 'installed')},
+            'studio': {k: (sv.get('studio') or {}).get(k) for k in ('on', 'pause', 'installed')},
             'snapshots': data['snapshots'], 'backups': len(data['backups']), 'syncs': len(data['syncs']), 'tsName': ts_dns,
             'storage': sv['storage'], 'remote': sv['remote']}
 
@@ -3313,6 +3436,8 @@ def safety_view():
         reach.append({'what': 'AI pictures (ComfyUI)', 'where': 'tailscale', 'who': 'your devices on Tailscale (no password: keep it Tailscale only)'})
     if data['voices'].get('on'):
         reach.append({'what': 'AI voices (Kokoro)', 'where': 'tailscale', 'who': 'your devices on Tailscale'})
+    if data['studio'].get('on'):
+        reach.append({'what': 'Voice Studio', 'where': 'tailscale', 'who': 'your PIN (the page) and its key (apps)'})
     jobs = backups_state(data)
     last_ok = max([(j.get('state') or {}).get('lastOk') or 0 for j in jobs] or [0])
     guard = sio.load_json(GUARD_STATE, {}, repair=False) if os.path.exists(GUARD_STATE) else {}
@@ -3471,7 +3596,8 @@ def status():
            'web': {'on': web_needed(data), 'active': unit_active(WEB_UNIT, user=True)},
            'links': len([l for l in data['links'] if isinstance(l, dict)]), 'guardTripped': guard.get('tripped', 0),
            'pictures': {'on': data['pictures']['on'], 'active': unit_active(AI_UNITS['comfyui'], user=True)},
-           'voices': {'on': data['voices']['on'], 'active': unit_active(AI_UNITS['kokoro'], user=True)}}
+           'voices': {'on': data['voices']['on'], 'active': unit_active(AI_UNITS['kokoro'], user=True)},
+           'studio': {'on': data['studio']['on'], 'active': unit_active(AI_UNITS['voicestudio'], user=True)}}
     alerts = sio.load_json(ALERT_STATE, {}, repair=False) if os.path.exists(ALERT_STATE) else {}
     power = sio.load_json(POWER_STATE, {}, repair=False) if os.path.exists(POWER_STATE) else {}
     return {'settings': data, 'file': SETTINGS, 'user': user, 'host': host, 'shares': shares, 'tools': tools,
@@ -3730,6 +3856,24 @@ def main(argv):
             res = kokoro_takeover()
         elif a == ['voices-giveback']:
             res = kokoro_giveback()
+        elif a == ['studio-install']:
+            res = start_job('voicestudio', ['studio-job'])
+        elif a == ['studio-job']:
+            res = studio_job()
+        elif a == ['studio-remove']:
+            res = studio_remove(False)
+        elif a == ['studio-remove', 'voices', 'sure', 'really-sure']:
+            res = studio_remove(True)
+        elif a == ['studio-pin']:
+            res = studio_mod().pin_set(stdin.split('\n')[0])     # the running page reads it as it serves
+        elif a == ['studio-pin-clear']:
+            res = studio_mod().pin_clear()
+        elif a == ['studio-key']:
+            res = {'key': studio_mod().api_key()}
+        elif a == ['studio-key-new']:
+            res = {'key': studio_mod().api_key_new()}
+        elif len(a) == 3 and a[0] == 'studio-set':
+            res = {'changed': studio_mod().set_key(a[1], a[2])}
         elif len(a) == 2 and a[0] == 'ai-run':
             res = ai_run(a[1])
         else:

@@ -68,6 +68,16 @@ PanelWindow {
         close();
         if (it.run) Qt.callLater(it.run);
     }
+    // Today's menu scrolls when it's taller than the screen (a handheld with app scaling): the row you're on stays in
+    // view. It used to run off the bottom, and Up/Down picked rows you couldn't see.
+    onItemsChanged: flick.contentY = 0
+    onSelChanged: reveal()
+    function reveal() {
+        const it = rows.itemAt(sel);
+        if (!it) return;
+        if (it.y < flick.contentY) flick.contentY = it.y;
+        else if (it.y + it.height > flick.contentY + flick.height) flick.contentY = it.y + it.height - flick.height;
+    }
     function back() {
         if (stack.length > 1) { stack = stack.slice(0, -1); sel = -1; move(1); }
         else close();
@@ -147,7 +157,7 @@ PanelWindow {
         id: card
         visible: !root.styled
         width: 268
-        height: col.implicitHeight + 12
+        height: Math.min(col.implicitHeight + 12, root.height - 16)
         x: Math.max(8, Math.min(root.width - width - 8, root.px))
         y: Math.max(8, Math.min(root.height - height - 8, root.above ? root.py - height - 8 : root.py))
         radius: Theme.radius
@@ -160,9 +170,18 @@ PanelWindow {
         Behavior on scale { NumberAnimation { duration: Theme.quick; easing.type: Easing.OutCubic } }
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton | Qt.RightButton }   // clicks inside don't close
 
-        ColumnLayout {
+        Flickable {
+          id: flick
+          anchors { fill: parent; margins: 6 }
+          contentWidth: width
+          contentHeight: col.implicitHeight
+          interactive: contentHeight > height + 1
+          boundsBehavior: Flickable.StopAtBounds
+          clip: true
+
+          ColumnLayout {
             id: col
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 6 }
+            width: flick.width
             spacing: 0
 
             // Title (the app or file name), with a way back from a submenu
@@ -190,6 +209,7 @@ PanelWindow {
             }
 
             Repeater {
+                id: rows
                 model: root.items
                 delegate: Item {
                     id: row
@@ -278,6 +298,7 @@ PanelWindow {
                     model: [{ b: "A", t: "Choose" }, { b: "B", t: "Back" }]
                 }
             }
+          }
         }
     }
 }

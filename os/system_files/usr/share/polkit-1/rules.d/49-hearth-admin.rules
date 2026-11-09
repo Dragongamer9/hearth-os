@@ -5,7 +5,8 @@
 // One exception: write-file (Hearth Text's Edit as administrator saving a system file) always asks for an
 // administrator's password, so nothing running as you can change system files without it.
 // The same for .deb files installed on the system (deb-install/deb-remove), and for Make a bootable USB (Hearth Disks) writing to an internal drive (usb-* --allow-internal, only after
-// "Show all drives" and typing ERASE): USB drives and SD cards don't ask, internal drives always do.
+// "Show all drives" and typing ERASE): USB drives and SD cards don't ask, internal drives always do. ([\s\S]*, not .*:
+// an argument with a line break in it before --allow-internal mustn't let an internal drive through without asking.)
 polkit.addRule(function (action, subject) {
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
@@ -14,7 +15,7 @@ polkit.addRule(function (action, subject) {
     }
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
-        /^\S+\s+usb-\S+(\s.*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {
+        /^\S+\s+usb-\S+(\s[\s\S]*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
     // Steam Game Mode's Decky Loader (hearth-decky): installing it adds a service that runs as root, downloaded from

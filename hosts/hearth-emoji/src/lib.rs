@@ -3,6 +3,9 @@
 //! (wl-copy) and typed (wtype; xdotool on X11) a moment after the picker's window has closed and that app has
 //! the keyboard again.
 
+#[path = "../../hearth-apptheme/appfile.rs"]
+mod appfile;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -26,16 +29,14 @@ pub fn data_file() -> PathBuf {
     base.join("hearth").join("emoji.json")
 }
 
+/// A file a power cut damaged is put back from emoji.json.bak, so the next pick can't save an empty list and the
+/// default skin tone over yours.
 pub fn load() -> Saved {
-    std::fs::read_to_string(data_file()).ok().and_then(|t| serde_json::from_str(&t).ok()).map(clean).unwrap_or_default()
+    appfile::read_json(&data_file()).and_then(|v| serde_json::from_value(v).ok()).map(clean).unwrap_or_default()
 }
 
 pub fn save(s: &Saved) -> Result<(), String> {
-    let f = data_file();
-    if let Some(d) = f.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
-    let tmp = f.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(s).unwrap_or_default()).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &f).map_err(|e| e.to_string())
+    appfile::write_json(&data_file(), &serde_json::to_value(s).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// Anything odd in the file dropped: too many, too long, empty, repeated, a tone that doesn't exist.
@@ -160,6 +161,10 @@ mod tests {
         std::env::set_var("XDG_DATA_HOME", &d);
         let s = Saved { recent: vec!["🔥".into()], tone: 3 };
         save(&s).unwrap();
+        assert_eq!(load(), s);
+        // A power cut that left the file empty: the last good copy comes back (the tone isn't reset).
+        save(&remember(s.clone(), "🎉")).unwrap();
+        std::fs::write(data_file(), b"").unwrap();
         assert_eq!(load(), s);
         let _ = std::fs::remove_dir_all(&d);
     }

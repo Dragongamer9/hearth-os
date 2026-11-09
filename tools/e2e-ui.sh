@@ -73,9 +73,9 @@ for i in $(seq 1 12); do sleep 2.5; shot "usb-boot-$(printf %02d "$i")"; done   
 
 wait_screen welcome 600 || fail "no installer"
 shot 01-welcome
-key up; key ret 0.2; sleep 2; shot 01b-welcome-rotated-90
+key right; key right; key ret 0.2; sleep 2; shot 01b-welcome-rotated-90   # Let's go > Language > Screen rotation
 key ret; key ret; key ret; sleep 2                                    # round to normal again
-key down; shot 01c-welcome-focus-next; key ret
+key left; key left; shot 01c-welcome-focus-next; key ret
 wait_screen wifi || fail "no Wi-Fi screen"
 sleep 4; shot 02-wifi
 key ret

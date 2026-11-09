@@ -106,10 +106,12 @@ fn now_secs() -> i64 { crate::now_ms() / 1000 }
 
 impl Daemon {
     pub fn new(me: Identity, home: PathBuf, dest: PathBuf) -> Arc<Daemon> {
-        let paired: HashMap<String, PairedDev> = std::fs::read_to_string(home.join("paired.json")).ok()
-            .and_then(|t| serde_json::from_str::<Vec<PairedDev>>(&t).ok()).unwrap_or_default()
+        // A file a power cut damaged is put back from its .bak (it used to read as no paired devices, and the next
+        // pairing saved just that one: every other phone had to pair again).
+        let paired: HashMap<String, PairedDev> = crate::appfile::read_json(&home.join("paired.json"))
+            .and_then(|v| serde_json::from_value::<Vec<PairedDev>>(v).ok()).unwrap_or_default()
             .into_iter().map(|p| (p.id.clone(), p)).collect();
-        let settings: Value = std::fs::read_to_string(home.join("settings.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+        let settings: Value = crate::appfile::read_json(&home.join("settings.json")).unwrap_or(Value::Null);
         let name = settings["name"].as_str().map(crate::identity::filter_name).filter(|n| !n.is_empty()).unwrap_or_else(|| crate::identity::filter_name(&crate::host_name()));
         let manual = settings["manual"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()?.parse().ok()).collect()).unwrap_or_default();
         let (stop_tx, _) = watch::channel(false);
@@ -148,12 +150,12 @@ impl Daemon {
     fn save_paired(&self) {
         let list: Vec<PairedDev> = lock(&self.paired).values().cloned().collect();
         let _ = std::fs::create_dir_all(&self.home);
-        let _ = crate::identity::write_private(&self.home.join("paired.json"), serde_json::to_string_pretty(&list).unwrap_or_default().as_bytes());
+        if let Ok(v) = serde_json::to_value(&list) { let _ = crate::appfile::write_json_private(&self.home.join("paired.json"), &v); }
     }
 
     fn save_settings(&self) {
         let v = json!({"name": *lock(&self.name), "manual": lock(&self.manual).iter().map(|i| i.to_string()).collect::<Vec<_>>()});
-        let _ = crate::identity::write_private(&self.home.join("settings.json"), v.to_string().as_bytes());
+        let _ = crate::appfile::write_json_private(&self.home.join("settings.json"), &v);
     }
 
     pub fn is_paired(&self, id: &str) -> bool { lock(&self.paired).contains_key(id) }

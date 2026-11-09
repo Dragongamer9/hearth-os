@@ -7,6 +7,9 @@
 // Hearth's look (Settings › Appearance), shared by Hearth's apps.
 #[path = "../../hearth-apptheme/apptheme.rs"]
 mod apptheme;
+// Safe settings files (atomic, .bak, a damaged file put back instead of starting over).
+#[path = "../../hearth-apptheme/appfile.rs"]
+mod appfile;
 use serde_json::Value;
 use std::path::PathBuf;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -18,19 +21,20 @@ fn state_file() -> PathBuf {
         .join("state.json")
 }
 
+static SEEN: appfile::Seen = std::sync::Mutex::new(None);
+
+/// History, memory and mode. A file a power cut damaged is put back from state.json.bak, so the first sum after
+/// it can't save an empty history over yours.
 #[tauri::command(async)]
 fn store_get() -> Value {
-    std::fs::read(state_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null)
+    appfile::read_seen(&state_file(), &SEEN).unwrap_or(Value::Null)
 }
 
-/// Saved through a temporary file, so a crash never leaves half a file.
+/// Only what this window changed is merged into the file (atomic, with .bak): a second Calculator window doesn't
+/// put back the mode or history the other one just saved.
 #[tauri::command(async)]
 fn store_set(value: Value) -> Result<(), String> {
-    let f = state_file();
-    if let Some(d) = f.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
-    let tmp = f.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec(&value).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &f).map_err(|e| e.to_string())
+    appfile::save_changed(&state_file(), &SEEN, &value).map_err(|e| e.to_string())
 }
 
 #[tauri::command(async)]

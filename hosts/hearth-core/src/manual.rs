@@ -95,7 +95,7 @@ pub fn launch(file: &str, extra_args: &str, opts: &Value, game_id: u32) -> Resul
     crate::bridge::log(&format!("launch: {} with HEARTH_GAME_ID={game_id}", Path::new(file).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
     let child = std::process::Command::new(&c).args(&a).envs(e).current_dir(dir)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-        .spawn().map_err(|err| if err.kind() == std::io::ErrorKind::PermissionDenied { format!("{} isn't executable. Mark it as executable (chmod +x) and try again", Path::new(file).file_name().unwrap().to_string_lossy()) } else { format!("Couldn't start it: {err}") })?;
+        .spawn().map_err(|err| if err.kind() == std::io::ErrorKind::PermissionDenied { format!("{} isn't executable. Mark it as executable (chmod +x) and try again", Path::new(file).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| file.to_string())) } else { format!("Couldn't start it: {err}") })?;
     Ok(crate::procs::detach(child))
 }
 

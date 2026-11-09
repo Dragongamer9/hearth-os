@@ -51,6 +51,19 @@ impl Store {
         self.seen = stamp_of(&self.file);
         Ok(())
     }
+    /// Reads the file again when another program changed it since (Mantel's Task Manager, Hearth Link, nimbus
+    /// --play-now, the core service), so what Hearth shows and acts on is what's saved, not the copy it read when it
+    /// started. Before, a switch changed elsewhere (Steam in the background, from Task Manager) still showed and
+    /// worked the old way in Game Mode until Hearth itself saved something. Returns true when it read it again.
+    /// A missing or unreadable file keeps what's in memory (nothing is written here).
+    pub fn refresh(&mut self) -> bool {
+        let now = stamp_of(&self.file);
+        if now == self.seen || now.is_none() { return false; }
+        match crate::settings_file::read(&self.file).map() {
+            Some(saved) => { self.data = with_defaults(saved); self.seen = stamp_of(&self.file); true }
+            None => false,
+        }
+    }
     pub fn source_on(&self, k: &str) -> bool { self.data["sources"][k] != Value::Bool(false) }
     pub fn list_has(&self, list: &str, id: &str) -> bool {
         self.data[list].as_array().map(|a| a.iter().any(|v| v == id)).unwrap_or(false)
@@ -116,6 +129,25 @@ mod tests {
         assert_eq!(again.data["steamBackground"], json!(false));
         assert_eq!(again.data["favorites"], json!(["steam:1", "gog:2"]));
         assert_eq!(hearth.data["steamBackground"], json!(false));
+    }
+    #[test]
+    fn what_another_program_saved_is_what_hearth_shows() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("library.json");
+        std::fs::write(&f, r#"{"steamBackground":true,"favorites":["steam:1"]}"#).unwrap();
+        let mut hearth = Store::open(f.clone());
+        assert!(!hearth.refresh(), "nothing changed: not read again");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        crate::settings_file::merge_json(&f, &json!({"steamBackground": false}).as_object().unwrap().clone()).unwrap();
+        assert!(hearth.refresh());
+        assert_eq!(hearth.data["steamBackground"], json!(false));
+        assert_eq!(hearth.data["favorites"], json!(["steam:1"]));
+        assert_eq!(hearth.data["autoUpdateCheck"], json!(true), "defaults still fill in missing keys");
+        // Gone (or unreadable): what's in memory stays, nothing is written.
+        std::fs::remove_file(&f).unwrap();
+        assert!(!hearth.refresh());
+        assert_eq!(hearth.data["steamBackground"], json!(false));
+        assert!(!f.exists());
     }
     #[test]
     fn a_damaged_file_comes_back_from_its_copy_not_as_defaults() {

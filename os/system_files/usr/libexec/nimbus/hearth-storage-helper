@@ -36,6 +36,11 @@ HOME_SERVER_CONF = '/etc/samba/hearth-home-server.conf'
 HOME_SERVER_STARTED = '/etc/samba/.hearth-home-server-started'
 NAME_RE = re.compile(r'^[A-Za-z0-9 _\-]{1,40}$')
 IFACE_RE = re.compile(r'^[A-Za-z0-9_.\-]{1,15}$')
+# What a shared folder's path may not have: Samba's config is one setting a line, so a folder name with a line break in
+# it could add settings of its own (a share of / as root), a backslash at the end joins the next line ("valid users")
+# onto the path, and % is expanded (%u...): such a folder isn't shared. Everything else stays shareable (a folder that
+# was shared before isn't dropped for an & or a # in its name).
+PATH_RE = re.compile(r'^/[^\x00-\x1f\x7f\\%]*$')
 
 
 class Fail(Exception):
@@ -76,10 +81,10 @@ def caller():
 
 def share_ok(path, user, home):
     """A folder of that person's that may be shared: theirs, nothing hidden on the way."""
-    if not isinstance(path, str) or not path.startswith('/'):
+    if not isinstance(path, str) or not path.startswith('/') or not PATH_RE.fullmatch(path):
         return None
     real = os.path.realpath(path)
-    if not os.path.isdir(real):
+    if not PATH_RE.fullmatch(real) or not os.path.isdir(real):
         return None
     for base in (home, '/run/media/' + user, '/media/' + user, '/mnt'):
         b = os.path.realpath(base)
