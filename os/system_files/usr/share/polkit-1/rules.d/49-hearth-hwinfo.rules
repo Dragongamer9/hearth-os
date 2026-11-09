@@ -1,0 +1,12 @@
+// Hearth Resource Monitor's "Your PC" (docs/RESOURCE-MONITOR.md): the memory sticks, slots and ports come from the
+// firmware's SMBIOS table, which only root can read. /usr/libexec/nimbus/hearth-hwinfo reads it and gives back only the
+// memory and slot tables (no serial numbers); it takes no arguments, writes nothing and changes nothing. It runs once,
+// when Resource Monitor first opens (the answer is cached in ~/.cache/hearth). Like 49-hearth-network, the person at the
+// device doesn't get a password prompt for it: only this helper, only from a local, active session.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-hwinfo" &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});
