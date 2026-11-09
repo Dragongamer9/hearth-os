@@ -235,7 +235,11 @@ ShellRoot {
         }
     }
     DebInstaller { id: debInstaller }
-    Clipboard { id: clipboardHistory }
+    // Clipboard history (Super+V), the volume mixer and snap layouts (Super+Z), Hearth 1.10: loaded by file name, so a
+    // problem in one only loses that popup, never the shell.
+    Loader { source: "Clipboard.qml" }
+    Loader { source: "Mixer.qml" }
+    Loader { source: "SnapLayouts.qml" }
     // Discord (Discord.qml): the bar's button, its small window and chooser; IPC targets "discord" and "friends". Loaded
     // separately like MediaKeys, so a problem in it only loses Discord, never the shell.
     Loader { source: "Discord.qml" }

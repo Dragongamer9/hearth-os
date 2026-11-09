@@ -14,7 +14,10 @@ Singleton {
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
     property bool lockOnWake: false      // lock the screen when the device goes to sleep (Desktop Mode)
     property bool clock24: false         // taskbar clock: 24-hour ("14:05") instead of 12-hour ("2:05 PM"); Settings › Date & time
-    property bool clipboardHistory: true // keep what you copy for Super+V (cliphist); Settings › Clipboard
+    // Keep what you copy for Super+V (hearth-clipboard); Settings › Clipboard and the popup's switch. A new install's
+    // desktop.json (/etc/skel) says false, so history is off until you turn it on; a file without the key keeps what
+    // it always had (on), so an update never turns it off (or on) by itself.
+    property bool clipboardHistory: true
     property int screenOffMinutes: 10    // turn the screen off after this long without use (0 = never); Settings › Power
     property int sleepMinutes: 0         // go to sleep after this long without use (0 = never); Settings › Power
     property string look: "steam"        // Mantel's look: "hearth" (warm) or "steam" (Steam-style blue-slate); Settings › Appearance

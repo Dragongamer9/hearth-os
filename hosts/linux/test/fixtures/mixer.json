@@ -1,0 +1,13 @@
+{
+  "_comment": "Stand-in sound for the volume mixer's screenshots in desktop-test.yml (HEARTH_MIXER_FIXTURE): the approved mockup's apps. The runner has no PipeWire.",
+  "outputs": [{"name": "TCL 55\" TV (HDMI)"}, {"name": "Headset (USB)"}, {"name": "Speakers (Realtek)"}],
+  "default": "TCL 55\" TV (HDMI)",
+  "system": 0.72,
+  "apps": [
+    {"name": "Cyberpunk 2077", "volume": 0.9, "out": "TCL 55\" TV (HDMI)"},
+    {"name": "Discord", "volume": 0.65, "out": "Headset (USB)"},
+    {"name": "Firefox", "volume": 0.4, "out": "TCL 55\" TV (HDMI)"},
+    {"name": "Spotify", "volume": 0.5, "muted": true, "out": "TCL 55\" TV (HDMI)"},
+    {"name": "Hearth sounds", "volume": 0.3, "out": "TCL 55\" TV (HDMI)"}
+  ]
+}

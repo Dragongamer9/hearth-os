@@ -41,6 +41,12 @@
     <region name="middle-third" x="33%" y="0%" width="34%" height="100%" />
     <region name="right-third" x="67%" y="0%" width="33%" height="100%" />
     <region name="center" x="12%" y="8%" width="76%" height="84%" />
+    <!-- Snap layouts (Super+Z, SnapLayouts.qml): the zones the regions above don't have. snap-layouts.js has the same
+         sizes (test_shell_extras.py checks). -->
+    <region name="left-two-thirds" x="0%" y="0%" width="67%" height="100%" />
+    <region name="narrow-left" x="0%" y="0%" width="25%" height="100%" />
+    <region name="wide-middle" x="25%" y="0%" width="50%" height="100%" />
+    <region name="narrow-right" x="75%" y="0%" width="25%" height="100%" />
   </regions>
 
   <!-- Virtual desktops: the numbered buttons on the taskbar, Super+Ctrl+Left/Right, Super+Ctrl+1-4. -->
@@ -203,6 +209,24 @@
     <keybind key="W-A-s"><action name="Execute" command="sh -c 'python3 $NIMBUS_SHARE/desktop/shell/hearth-access screen-reader toggle'" /></keybind>
     <keybind key="W-period"><action name="Execute" command="sh -c 'pkill -x hearth-emoji || hearth-emoji'" /></keybind>
     <!-- ==== end Accessibility and the emoji picker ==== -->
+    <!-- ==== Snap layouts (Hearth 1.10, SnapLayouts.qml) ====
+         Super+Z opens the six layouts for the window you're in (a right-click on its Maximize button, or "Snap
+         layouts…" in its title bar menu, does too). Picking a zone presses Super+Left / Super+Right (the halves) or one
+         of the Super+Ctrl+Shift+F1–F11 keys below, each snapping the window to a region above. snap-layouts.js says
+         which key is which zone; test_shell_extras.py checks they agree. -->
+    <keybind key="W-z"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'" /></keybind>
+    <keybind key="W-C-S-F1"><action name="SnapToRegion" region="left-two-thirds" /></keybind>
+    <keybind key="W-C-S-F2"><action name="SnapToRegion" region="right-third" /></keybind>
+    <keybind key="W-C-S-F3"><action name="SnapToRegion" region="left-third" /></keybind>
+    <keybind key="W-C-S-F4"><action name="SnapToRegion" region="middle-third" /></keybind>
+    <keybind key="W-C-S-F5"><action name="SnapToRegion" region="top-left" /></keybind>
+    <keybind key="W-C-S-F6"><action name="SnapToRegion" region="top-right" /></keybind>
+    <keybind key="W-C-S-F7"><action name="SnapToRegion" region="bottom-left" /></keybind>
+    <keybind key="W-C-S-F8"><action name="SnapToRegion" region="bottom-right" /></keybind>
+    <keybind key="W-C-S-F9"><action name="SnapToRegion" region="narrow-left" /></keybind>
+    <keybind key="W-C-S-F10"><action name="SnapToRegion" region="wide-middle" /></keybind>
+    <keybind key="W-C-S-F11"><action name="SnapToRegion" region="narrow-right" /></keybind>
+    <!-- ==== end Snap layouts ==== -->
   </keyboard>
 
   <mouse>
@@ -212,6 +236,14 @@
     <context name="TitleBar">
       <mousebind direction="Up" action="Scroll"><action name="None" /></mousebind>
       <mousebind direction="Down" action="Scroll"><action name="None" /></mousebind>
+    </context>
+    <!-- Snap layouts (Hearth 1.10): right-click on a window's Maximize button shows them (labwc can't tell anyone the
+         pointer is resting there, so this stands in for Windows' hover). A left click still maximizes. -->
+    <context name="Maximize">
+      <mousebind button="Right" action="Click">
+        <action name="Focus" />
+        <action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap open'" />
+      </mousebind>
     </context>
   </mouse>
 

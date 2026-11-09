@@ -1,14 +1,23 @@
 #!/usr/bin/python3
-"""hearth-clipboard: clipboard history for Desktop Mode (Clipboard.qml, Super+V), kept by cliphist.
+"""hearth-clipboard: clipboard history for Desktop Mode (Clipboard.qml, Super+V).
 
-The shell itself runs `wl-paste --watch cliphist store` while history is on (Settings › Clipboard).
+History is OFF until you turn it on (the switch in the Super+V popup, or Settings › Clipboard). While it's on, the
+shell runs `wl-paste --watch hearth-clipboard store`, so each copy reaches `store` on its standard input. Nothing
+runs while it's off.
 
-  hearth-clipboard status            JSON: are wl-clipboard and cliphist installed
-  hearth-clipboard list              JSON: the most recent items, newest first; pictures as small files to show
+Kept in ~/.local/share/hearth/clipboard/ (a folder only you can read): index.json (the list, newest first, written
+atomically with a .bak through hearth_settings_io) and one file per item (<id>.txt or <id>.png). About 25 items are
+kept, plus the ones you pinned; Clear all keeps the pinned ones. Copies a password manager marks as secret
+(the x-kde-passwordManagerHint type, or wl-paste's CLIPBOARD_STATE=sensitive) are never kept.
+
+  hearth-clipboard status            JSON: is wl-clipboard installed
+  hearth-clipboard list              JSON: the items, newest first (pinned ones first)
+  hearth-clipboard store             (wl-paste --watch) keep what was just copied, from standard input
   hearth-clipboard paste ID          put the item back on the clipboard and paste it (Ctrl+V) into the app in front
   hearth-clipboard copy ID           only put it back on the clipboard
-  hearth-clipboard delete ID         forget one item
-  hearth-clipboard wipe              forget everything
+  hearth-clipboard pin ID | unpin ID
+  hearth-clipboard delete ID         forget one item (pinned or not)
+  hearth-clipboard clear             forget everything that isn't pinned ("wipe" is the same)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import hashlib
@@ -20,104 +29,118 @@ import subprocess
 import sys
 import time
 
-CACHE = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache'), 'nimbus', 'clipboard')
-LIMIT = 60
-ID_RE = re.compile(r'^[0-9]{1,12}$')
-# cliphist's preview of a picture: "[[ binary data 12 KiB png 800x600 ]]"
-BINARY_RE = re.compile(r'^\[\[ binary data (.+?) (png|jpeg|jpg|gif|bmp|webp|svg\+xml|[a-z0-9.+/-]+)(?: (\d+)x(\d+))? \]\]$')
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_settings_io as hsio  # noqa: E402  (the safe writer, next to this file)
+
+LIMIT = 25                 # unpinned items kept
+PIN_MAX = 25               # pinned items kept (pinning one more is refused with a message; nothing is unpinned)
+MAX_BYTES = 16 * 1024 * 1024
+PREVIEW = 400
+ID_RE = re.compile(r'^[0-9]{1,20}$')
+# Copies password managers mark as secret (KeePassXC, Bitwarden, KDE Wallet...).
+SECRET_TYPES = ('x-kde-passwordManagerHint',)
+IMAGE_EXT = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp'}
 
 
 class Fail(Exception):
     pass
 
 
+def data_dir():
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
+    return os.path.join(base, 'hearth', 'clipboard')
+
+
+def index_path():
+    return os.path.join(data_dir(), 'index.json')
+
+
+def runtime_app_file():
+    rt = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    return os.path.join(rt, 'hearth-clipboard-app')
+
+
 def have():
-    return bool(shutil.which('cliphist')) and bool(shutil.which('wl-copy')) and bool(shutil.which('wl-paste'))
+    return bool(shutil.which('wl-copy')) and bool(shutil.which('wl-paste'))
 
 
-def parse_list(text, limit=LIMIT):
-    """cliphist list ("ID<TAB>preview" lines, newest first) -> [{id, text} or {id, image, size, kind}]."""
-    out = []
-    for line in text.splitlines():
-        if '\t' not in line:
+def ensure_dir():
+    d = data_dir()
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
+    return d
+
+
+# ------------------------------------------------------------------ the list
+def clean_items(raw):
+    """index.json's items, with anything odd dropped (a hand-edited or old file never breaks the popup)."""
+    out, seen = [], set()
+    for it in raw if isinstance(raw, list) else []:
+        if not isinstance(it, dict):
             continue
-        cid, preview = line.split('\t', 1)
-        if not ID_RE.fullmatch(cid.strip()):
+        iid = str(it.get('id', ''))
+        if not ID_RE.fullmatch(iid) or iid in seen or it.get('kind') not in ('text', 'image'):
             continue
-        m = BINARY_RE.fullmatch(preview.strip())
-        if m:
-            item = {'id': cid.strip(), 'kind': 'image' if m.group(2) in ('png', 'jpeg', 'jpg', 'gif', 'bmp', 'webp') else 'binary',
-                    'format': m.group(2), 'size': m.group(1), 'dims': ('%sx%s' % (m.group(3), m.group(4))) if m.group(3) else '',
-                    'text': ''}
-        else:
-            item = {'id': cid.strip(), 'kind': 'text', 'text': preview[:400]}
-        out.append(item)
-        if len(out) >= limit:
-            break
+        f = str(it.get('file', ''))
+        if not re.fullmatch(r'[0-9]{1,20}\.(txt|png|jpg|gif|webp|bmp)', f):
+            continue
+        seen.add(iid)
+        out.append({'id': iid, 'kind': it['kind'], 'file': f, 'text': str(it.get('text', ''))[:PREVIEW],
+                    'app': str(it.get('app', ''))[:80], 'time': float(it.get('time', 0) or 0),
+                    'pinned': it.get('pinned') is True, 'hash': str(it.get('hash', ''))[:64],
+                    'size': int(it.get('size', 0) or 0), 'dims': str(it.get('dims', ''))[:20]})
     return out
 
 
-def cliphist(args, input=None, binary=False, timeout=20):
+def ordered(items):
+    """Pinned first (in the order they were copied), then the rest, each newest first."""
+    pins = sorted((i for i in items if i['pinned']), key=lambda i: -i['time'])
+    rest = sorted((i for i in items if not i['pinned']), key=lambda i: -i['time'])
+    return pins + rest
+
+
+def trim(items):
+    """Every pin (up to PIN_MAX) and the newest LIMIT others. Returns (kept, dropped)."""
+    items = ordered(items)
+    pins = [i for i in items if i['pinned']][:PIN_MAX]
+    rest = [i for i in items if not i['pinned']]
+    kept_rest, dropped = rest[:LIMIT], rest[LIMIT:]
+    dropped += [i for i in items if i['pinned']][PIN_MAX:]
+    return pins + kept_rest, dropped
+
+
+def read_items():
+    return clean_items(hsio.load_json(index_path(), {}).get('items'))
+
+
+def update(change):
+    """CHANGE(items) -> items, under the index's lock; files of items that left the list are removed."""
+    ensure_dir()
+    gone = []
+
+    def apply(d):
+        before = clean_items(d.get('items'))
+        after = change(list(before))
+        keep = {i['id'] for i in after}
+        gone.extend(i for i in before if i['id'] not in keep)
+        d['items'] = after
+        d.setdefault('version', 1)
+    hsio.update_json(index_path(), apply)
+    for i in gone:
+        remove_file(i['file'])
+
+
+def remove_file(name):
     try:
-        # Text that isn't UTF-8 (copied from an old Latin-1 file) is shown with replacement marks instead of
-        # making the whole list fail to load.
-        text = {} if binary else {'encoding': 'utf-8', 'errors': 'replace'}
-        r = subprocess.run(['cliphist'] + args, input=input, capture_output=True, timeout=timeout, **text)
-        return r.returncode, r.stdout
-    except (OSError, subprocess.TimeoutExpired) as e:
-        raise Fail('cliphist didn\'t answer (%s)' % e)
-
-
-def decode(cid):
-    if not ID_RE.fullmatch(cid or ''):
-        raise Fail('not an item')
-    code, data = cliphist(['decode', cid], binary=True)
-    if code != 0:
-        raise Fail('that item isn\'t in the history any more')
-    return data
-
-
-def thumb(item):
-    """A picture item saved where the shell can show it (once; named by id and size)."""
-    os.makedirs(CACHE, mode=0o700, exist_ok=True)
-    ext = {'jpeg': 'jpg', 'svg+xml': 'svg'}.get(item['format'], item['format'])
-    name = '%s-%s.%s' % (item['id'], hashlib.sha1(item['size'].encode()).hexdigest()[:8], ext)
-    path = os.path.join(CACHE, name)
-    if not os.path.exists(path):
-        try:
-            data = decode(item['id'])
-        except Fail:
-            return ''
-        with open(path + '.tmp', 'wb') as f:
-            f.write(data)
-        os.replace(path + '.tmp', path)
-    return path
-
-
-def tidy(keep):
-    """Pictures for items no longer listed are removed from the cache."""
-    try:
-        for f in os.listdir(CACHE):
-            if f not in keep:
-                os.remove(os.path.join(CACHE, f))
+        os.remove(os.path.join(data_dir(), name))
     except OSError:
         pass
 
 
-def list_items():
-    if not have():
-        return {'available': False, 'items': []}
-    code, out = cliphist(['list'])
-    items = parse_list(out if code == 0 else '')
-    keep = set()
-    for it in items:
-        if it['kind'] == 'image':
-            it['image'] = thumb(it)
-            keep.add(os.path.basename(it['image']))
-    tidy(keep)
-    return {'available': True, 'items': items}
-
-
+# ------------------------------------------------------------------ keeping a copy
 def mime_of(data):
     if data.startswith(b'\x89PNG'):
         return 'image/png'
@@ -127,11 +150,174 @@ def mime_of(data):
         return 'image/gif'
     if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
         return 'image/webp'
+    if data.startswith(b'BM') and len(data) > 26:
+        return 'image/bmp'
     return None
 
 
-def copy(cid):
-    data = decode(cid)
+def png_size(data):
+    if data.startswith(b'\x89PNG') and len(data) >= 24:
+        return '%dx%d' % (int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big'))
+    return ''
+
+
+def offered_types():
+    """The types the app that copied offers ($HEARTH_CLIP_TYPES for the tests: one per line)."""
+    if 'HEARTH_CLIP_TYPES' in os.environ:
+        return [t for t in os.environ['HEARTH_CLIP_TYPES'].splitlines() if t.strip()]
+    try:
+        r = subprocess.run(['wl-paste', '--list-types'], capture_output=True, text=True, timeout=3)
+        return [t.strip() for t in r.stdout.splitlines() if t.strip()]
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+
+def is_secret(types, state=None):
+    """A copy marked secret: wl-paste says CLIPBOARD_STATE=sensitive, or the app offers a password manager's hint."""
+    if (state if state is not None else os.environ.get('CLIPBOARD_STATE', '')) == 'sensitive':
+        return True
+    return any(t.strip() in SECRET_TYPES for t in types)
+
+
+def source_app():
+    """The app that was in front when you copied (the shell writes its name while history is on)."""
+    try:
+        with open(runtime_app_file(), encoding='utf-8', errors='replace') as f:
+            name = f.read().strip().splitlines()
+        return name[0][:80] if name else ''
+    except OSError:
+        return ''
+
+
+def new_id(items):
+    n = time.time_ns() // 1000
+    used = {i['id'] for i in items}
+    while str(n) in used:
+        n += 1
+    return str(n)
+
+
+def store(data, types=None, app=None, now=None, state=None):
+    """Keep one copy. Returns {'stored': bool, 'why'?: str, 'id'?: str}."""
+    types = offered_types() if types is None else types
+    if is_secret(types, state):
+        return {'stored': False, 'why': 'secret'}
+    if not data or len(data) > MAX_BYTES:
+        return {'stored': False, 'why': 'empty' if not data else 'too big'}
+    mime = mime_of(data)
+    if mime:
+        kind, text, ext = 'image', '', IMAGE_EXT[mime]
+    else:
+        if b'\x00' in data[:4096]:
+            return {'stored': False, 'why': 'not text'}
+        text = data.decode('utf-8', errors='replace')
+        if not text.strip():
+            return {'stored': False, 'why': 'empty'}
+        kind, ext = 'text', 'txt'
+    digest = hashlib.sha256(data).hexdigest()
+    app = source_app() if app is None else app
+    now = time.time() if now is None else now
+    out = {'stored': True}
+
+    def change(items):
+        same = next((i for i in items if i['hash'] == digest), None)
+        if same:                                      # copied again (or pasted from the popup): back to the top,
+            same['time'] = now                        # pin and the app it first came from kept
+            if app and not same['app']:
+                same['app'] = app
+            out['id'] = same['id']
+            return trim(items)[0]
+        iid = new_id(items)
+        name = '%s.%s' % (iid, ext)
+        hsio._atomic_bytes(os.path.join(data_dir(), name), data, mode=0o600)
+        items.insert(0, {'id': iid, 'kind': kind, 'file': name, 'text': text[:PREVIEW], 'app': app, 'time': now,
+                         'pinned': False, 'hash': digest, 'size': len(data), 'dims': png_size(data)})
+        out['id'] = iid
+        return trim(items)[0]
+    ensure_dir()
+    update(change)
+    tidy()
+    return out
+
+
+def tidy():
+    """Files no item points at (a crash between writing a file and the list) are removed."""
+    try:
+        keep = {i['file'] for i in read_items()}
+        for f in os.listdir(data_dir()):
+            if re.fullmatch(r'[0-9]{1,20}\.(txt|png|jpg|gif|webp|bmp)', f) and f not in keep:
+                remove_file(f)
+    except OSError:
+        pass
+
+
+# ------------------------------------------------------------------ the popup's actions
+def list_items():
+    items = ordered(read_items())
+    d = data_dir()
+    for i in items:
+        i['path'] = os.path.join(d, i['file'])
+        i.pop('hash', None)
+    return {'available': have(), 'items': items}
+
+
+def find(iid):
+    if not ID_RE.fullmatch(iid or ''):
+        raise Fail('not an item')
+    it = next((i for i in read_items() if i['id'] == iid), None)
+    if not it:
+        raise Fail('that item isn\'t in the history any more')
+    return it
+
+
+def set_pin(iid, on):
+    find(iid)
+    res = {}
+
+    def change(items):
+        pins = [i for i in items if i['pinned']]
+        for i in items:
+            if i['id'] == iid:
+                if on and not i['pinned'] and len(pins) >= PIN_MAX:
+                    res['full'] = True
+                    return items
+                i['pinned'] = bool(on)
+        return trim(items)[0]
+    update(change)
+    if res.get('full'):
+        raise Fail('you can pin up to %d items: unpin one first' % PIN_MAX)
+    return {'ok': True, 'id': iid, 'pinned': bool(on)}
+
+
+def delete(iid):
+    if not ID_RE.fullmatch(iid or ''):
+        raise Fail('not an item')
+    update(lambda items: [i for i in items if i['id'] != iid])
+    return {'ok': True, 'id': iid}
+
+
+def clear():
+    """Clear all: pinned items stay."""
+    if not os.path.exists(index_path()):
+        return {'ok': True, 'kept': 0}
+    kept = {}
+
+    def change(items):
+        pins = [i for i in items if i['pinned']]
+        kept['n'] = len(pins)
+        return pins
+    update(change)
+    tidy()
+    return {'ok': True, 'kept': kept.get('n', 0)}
+
+
+def copy(iid):
+    it = find(iid)
+    try:
+        with open(os.path.join(data_dir(), it['file']), 'rb') as f:
+            data = f.read()
+    except OSError:
+        raise Fail('that item\'s copy is missing')
     cmd = ['wl-copy']
     mime = mime_of(data)
     if mime:
@@ -147,12 +333,12 @@ def copy(cid):
         pass
     except OSError as e:
         raise Fail('couldn\'t put it on the clipboard (%s)' % e)
-    return {'ok': True, 'id': cid}
+    return {'ok': True, 'id': iid}
 
 
 def press_ctrl_v():
-    """Ctrl+V into the window in front: wtype (Wayland's virtual keyboard), else a short-lived uinput keyboard
-    (python3-evdev; Hearth's controller support already needs /dev/uinput)."""
+    """Ctrl+V into the window in front: wtype (Wayland's virtual keyboard, what the on-screen keyboard types with),
+    else a short-lived uinput keyboard (python3-evdev; Hearth's controller support already needs /dev/uinput)."""
     if shutil.which('wtype'):
         r = subprocess.run(['wtype', '-M', 'ctrl', '-k', 'v', '-m', 'ctrl'], capture_output=True, timeout=5)
         if r.returncode == 0:
@@ -171,34 +357,10 @@ def press_ctrl_v():
         return False
 
 
-def paste(cid):
-    copy(cid)
-    time.sleep(0.2)            # the picker has closed and the app in front has the keyboard again
-    pasted = press_ctrl_v()
-    return {'ok': True, 'id': cid, 'pasted': pasted}
-
-
-def delete(cid):
-    if not ID_RE.fullmatch(cid or ''):
-        raise Fail('not an item')
-    code, out = cliphist(['list'])
-    line = next((l for l in out.splitlines() if l.split('\t', 1)[0] == cid), None)
-    if line is None:
-        return {'ok': True, 'id': cid}
-    code, _ = cliphist(['delete'], input=line + '\n')
-    if code != 0:
-        raise Fail('couldn\'t forget that item')
-    return {'ok': True, 'id': cid}
-
-
-def wipe():
-    if not have():
-        return {'ok': True}
-    code, _ = cliphist(['wipe'])
-    if code != 0:
-        raise Fail('couldn\'t clear the history')
-    tidy(set())
-    return {'ok': True}
+def paste(iid):
+    copy(iid)
+    time.sleep(0.2)            # the popup has closed and the app in front has the keyboard again
+    return {'ok': True, 'id': iid, 'pasted': press_ctrl_v()}
 
 
 def main(argv):
@@ -208,16 +370,21 @@ def main(argv):
         out = {'available': have(), 'wtype': bool(shutil.which('wtype'))}
     elif c == 'list' and not a:
         out = list_items()
+    elif c == 'store' and not a:
+        data = sys.stdin.buffer.read(MAX_BYTES + 1)
+        out = store(data)
     elif c == 'paste' and len(a) == 1:
         out = paste(a[0])
     elif c == 'copy' and len(a) == 1:
         out = copy(a[0])
+    elif c in ('pin', 'unpin') and len(a) == 1:
+        out = set_pin(a[0], c == 'pin')
     elif c == 'delete' and len(a) == 1:
         out = delete(a[0])
-    elif c == 'wipe' and not a:
-        out = wipe()
+    elif c in ('clear', 'wipe') and not a:
+        out = clear()
     else:
-        print('usage: hearth-clipboard status | list | paste ID | copy ID | delete ID | wipe')
+        print('usage: hearth-clipboard status | list | store | paste ID | copy ID | pin ID | unpin ID | delete ID | clear')
         sys.exit(2)
     print(json.dumps(out), flush=True)
 

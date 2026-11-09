@@ -79,6 +79,10 @@ jobs:
           # the right-click menu scrolling on a small screen, Files saving only what changed.
           python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_bug_hunt_2.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_files.py' 2>&1 | tail -3
+          # Hearth 1.10: the volume mixer's remembered levels, snap layouts' zones and labwc keys, clipboard history's storage.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_shell_extras.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_labwc_rc.py'
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_settings_basics.py'
 
       - name: Start Desktop Mode
         shell: bash
@@ -1626,6 +1630,107 @@ jobs:
             echo "::error title=looks::$(printf '%s' "$bad" | cut -c1-250 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
             touch shots/FAILED
           fi
+
+      # Hearth 1.10's Windows-style extras (docs/MANTEL.md "Volume mixer, snap layouts, clipboard and emoji"): Desktop Mode
+      # started again in the Steam-style dark look (the mockups' palette), with stand-in sound for the mixer (no PipeWire
+      # here). The mixer, its "Play on…" menu and outputs; Super+Z's snap layouts snapping a window; clipboard history off
+      # (as on a new install), turned on from its own switch, with copies, a pin and a password manager's copy that must
+      # not be kept. Opening each writes nothing; moving an app's level saves just that app. Shots in shots/shell-extras/.
+      - name: Volume mixer, snap layouts and clipboard history
+        if: always()
+        shell: bash
+        run: |
+          o=shots/shell-extras; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; pkill -x foot || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          export HEARTH_MIXER_FIXTURE="$PWD/hosts/linux/test/fixtures/mixer.json"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"
+          python3 - "$D" <<'PY'
+          import json, sys
+          p = sys.argv[1]
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          d.update(look="steam", mode="dark", accent="", wallpaper="", reduceMotion=True, defaults=2, clipboardHistory=False)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          VOL="$HOME/.config/nimbus/app-volumes.json"; CLIP="$HOME/.local/share/hearth/clipboard"
+          rm -f "$VOL" "$VOL.bak"; rm -rf "$CLIP"; rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          sh hosts/linux/desktop/theme/apply.sh
+          CONF=$(python3 hosts/linux/desktop/shell/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 2; }
+          say() { echo "::notice title=Shell extras::$*"; }
+          bad() { echo "::error title=Shell extras::$*"; touch shots/FAILED; }
+          # ---- Volume mixer
+          # wtype's very first key into a fresh labwc was lost (the mixer's Right did nothing while every later key
+          # worked): a lone Shift first, with nothing open, so the keymap is in place.
+          wtype -k Shift_L; sleep 1
+          ipc mixer open; sleep 1; grim $o/01-mixer.png || true
+          [ -e "$VOL" ] && bad "opening the mixer wrote app-volumes.json" || say "opening the mixer wrote nothing"
+          before=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state 2>/dev/null | tail -1)
+          wtype -k Right; sleep 2; grim $o/02-mixer-first-app-louder.png || true
+          if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d == {"Cyberpunk 2077": 0.95} else 1)' "$VOL" 2>/dev/null; then
+            say "moving Cyberpunk 2077's level saved just that app: $(cat "$VOL" | tr -d '\n ')"
+          else bad "app-volumes.json after Right on the first app: $(cat "$VOL" 2>&1 | tr '\n' ' ') (mixer before the key: $before)"; fi
+          wtype -k Down; wtype -k Return; sleep 1; grim $o/03-mixer-discord-muted.png || true
+          wtype -k x; sleep 1; grim $o/04-mixer-play-on.png || true
+          wtype -k Down; wtype -k Return; sleep 1
+          echo "mixer: $(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state)"
+          wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Return; sleep 1; grim $o/05-mixer-outputs.png || true
+          wtype -k Escape; sleep 0.5; wtype -k Escape; sleep 1
+          ipc settings page sound; sleep 2; grim $o/06-settings-sound.png || true; ipc settings close
+          # ---- Snap layouts: a window to snap, Super+Z (here over IPC), Right to the right half, Enter.
+          (foot -a snaptest -T "Snap test" sh -c 'sleep 120' >/dev/null 2>&1 &) ; sleep 4
+          ipc snap open; sleep 1; grim $o/07-snap-layouts.png || true
+          wtype -k Right; sleep 1; grim $o/08-snap-right-half-lit.png || true
+          st=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call snap state); echo "snap: $st"
+          case "$st" in *'"zone":"right-half"'*'"window":true'*) say "snap layouts: Right lit the right half, with a window to snap" ;; *) bad "snap state after Right: $st" ;; esac
+          wtype -k Return; sleep 3; grim $o/09-snapped-right.png || true
+          ipc snap open; for k in Down Right; do wtype -k $k; sleep 0.3; done; grim $o/10-snap-quarters.png || true; wtype -k Escape; sleep 1
+          pkill -x foot || true
+          # ---- Clipboard history: off as on a new install; opening writes nothing; its own switch turns it on.
+          ipc clipboard open; sleep 2; grim $o/11-clipboard-off.png || true
+          python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("clipboardHistory") is False else 1)' "$D" && say "clipboard history stays off until you turn it on" || bad "clipboardHistory changed by itself: $(cat "$D" | tr '\n' ' ')"
+          wtype -k Return; sleep 4
+          python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("clipboardHistory") is True else 1)' "$D" && say "the popup's switch turned history on (and saved it)" || bad "the switch didn't save clipboardHistory"
+          echo "clipboard: $(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call clipboard state)"
+          ipc clipboard close
+          printf 'chris-hearth.tail0e2082.ts.net:8188' | wl-copy; sleep 2
+          printf 'sudo apt install -y openjdk-21-jre-headless' | wl-copy; sleep 2
+          grim -g "0,0 960x540" /tmp/clip-shot.png 2>/dev/null && wl-copy --type image/png < /tmp/clip-shot.png; sleep 2
+          printf 'hunter2-not-kept' | wl-copy --type x-kde-passwordManagerHint; sleep 2
+          printf 'Meet at 7 for the raid, bring snacks' | wl-copy; sleep 3
+          ipc clipboard open; sleep 2; wtype -k Down; wtype -k Down; wtype -k Down; wtype -k x; sleep 2
+          grim $o/12-clipboard-history.png || true
+          wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Right; wtype -k Return; sleep 1; grim $o/13-clipboard-clear-confirm.png || true
+          wtype -k Return; sleep 3; grim $o/14-clipboard-cleared-pin-stays.png || true
+          ipc clipboard close
+          ls -la "$CLIP" > $o/clipboard-folder.txt 2>&1 || true
+          cp "$CLIP/index.json" $o/clipboard-index.json 2>/dev/null || true
+          if grep -rq hunter2 "$CLIP" 2>/dev/null; then bad "a password manager's copy was kept"; else say "the password manager's copy wasn't kept"; fi
+          python3 - "$CLIP/index.json" <<'PY' || touch shots/FAILED
+          import json, sys
+          try: items = json.load(open(sys.argv[1]))["items"]
+          except Exception as e: print("::error title=Shell extras::no clipboard index: %s" % e); sys.exit(1)
+          pins = [i for i in items if i.get("pinned")]
+          print("::notice title=Shell extras::clipboard after Clear all: %d item(s), %d pinned: %s" % (len(items), len(pins), [i.get("text", "")[:30] or i["kind"] for i in items]))
+          sys.exit(0 if len(items) == len(pins) == 1 else 1)
+          PY
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(Mixer|SnapLayouts|Clipboard|ExtrasPal)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|(mixer|snap-layouts)\.js" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] || bad "$xbad"
+          pkill -x labwc || true; pkill -f quickshell || true
 
       # Server mode (docs/SERVER-MODE.md): its own labwc folder and dashboard started for real on a virtual screen, with the
       # dashboard's data from a fixture (the mockup's numbers); the AI tile opened, the 5-second switch countdown, a web

@@ -300,7 +300,7 @@ var ENTRIES = [
 "i": "close"
 },
 {
-"t": "Keep clipboard history",
+"t": "Clipboard history",
 "p": "clipboard",
 "i": "clipboard"
 },
@@ -313,6 +313,7 @@ var ENTRIES = [
 {
 "t": "Clear clipboard history…",
 "p": "clipboard",
+"d": "Pinned items stay",
 "i": "trash"
 },
 {
@@ -2396,6 +2397,12 @@ var ENTRIES = [
 "t": "Over-amplification",
 "p": "sound",
 "d": "Lets the volume go up to 150%. Sound can distort, and loud sound can damage speakers or your hearing.",
+"i": "vol"
+},
+{
+"t": "Volume mixer",
+"p": "sound",
+"d": "Each app's own volume, and which speakers or headphones it plays on",
 "i": "vol"
 },
 {

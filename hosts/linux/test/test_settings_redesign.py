@@ -271,7 +271,9 @@ class NeverChangeByThemselves(unittest.TestCase):
         self.assertIn('readonly property bool skyDefault: steam && Settings.defaultsGen >= 2', t)
         self.assertIn('readonly property color lookAccent: skyDefault ? "#66c0f4" : ember', t)
         skel = json.loads((ROOT / 'os' / 'system_files' / 'etc' / 'skel' / '.local' / 'share' / 'nimbus' / 'desktop.json').read_text())
-        self.assertEqual(skel, {'defaults': 2})
+        # Clipboard history is off on a new install until the person turns it on (Hearth 1.10); older files without
+        # the key keep it as it was (on), so nothing changes by itself for anyone.
+        self.assertEqual(skel, {'defaults': 2, 'clipboardHistory': False})
         # hearth-theme (labwc, Qt, GTK) works it out the same way, only when the file says so.
         for desktop, accent in (({'defaults': 2}, '#66c0f4'), ({}, '#1a9fff'), ({'defaults': 2, 'accent': '#ff5c8a'}, '#ff5c8a'),
                                 ({'defaults': 2, 'look': 'hearth'}, '#ff8a3d'), ({'defaults': True}, '#1a9fff')):
