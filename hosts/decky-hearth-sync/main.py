@@ -1162,6 +1162,76 @@ def game_mode_switch(to, popen=subprocess.Popen):
     return True
 
 
+# ---------------------------------------------------------------------- Resources (docs/RESOURCE-MONITOR.md)
+# Quick Access › Resources: the graphics, processor, memory and network meters with temperatures, the game and what
+# else runs, from Resource Monitor's helper (Mantel's desktop/shell/hearth-resmon, read-only). Sampled only while the
+# panel is open (the frontend asks once a second while it's on screen); the sampler is dropped a minute after the last
+# ask. "Pause downloads and backups while I play" uses Hearth's existing pauses only (hearth-resmon pause): never a
+# setting by itself.
+RESMON = '/usr/share/nimbus/desktop/shell/hearth-resmon'
+PAUSE_ACTIONS = ('status', 'on', 'off', 'light-on')
+_RES = {'mod': None, 'sampler': None, 'last': 0.0, 'failed': False}
+
+
+def resmon_path():
+    return os.environ.get('HEARTH_RESMON') or RESMON
+
+
+def _resmon_module():
+    if _RES['mod'] is not None or _RES['failed']:
+        return _RES['mod']
+    path = resmon_path()
+    try:
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader('hearth_resmon', path)
+        spec = importlib.util.spec_from_loader('hearth_resmon', loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        _RES['mod'] = mod
+    except Exception as e:   # not on Hearth OS, or an older one: the subprocess way below
+        _RES['failed'] = True
+        log('resources: the helper could not be loaded (%s); asking it per sample' % type(e).__name__)
+    return _RES['mod']
+
+
+def _resmon_run(args, timeout=10):
+    path = resmon_path()
+    if not os.path.exists(path):
+        return None
+    try:
+        r = subprocess.run(['python3', path] + args, capture_output=True, text=True, timeout=timeout, env=clean_env(), stdin=subprocess.DEVNULL)
+        line = (r.stdout.strip().splitlines() or [''])[-1]
+        return json.loads(line) if line.startswith('{') else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def resources_sample(now=None):
+    """The panel's numbers once (None when Resource Monitor's helper isn't on this system)."""
+    now = time.monotonic() if now is None else now
+    mod = _resmon_module()
+    if mod is None:
+        return _resmon_run(['sample', 'brief'])
+    if _RES['sampler'] is None or now - _RES['last'] > 60:
+        _RES['sampler'] = mod.ResSampler()
+        _RES['sampler'].sample(['procs', 'gpu', 'temps'])
+        time.sleep(0.3)
+    _RES['last'] = now
+    try:
+        return mod.brief(_RES['sampler'])
+    except Exception as e:
+        _RES['sampler'] = None
+        log('resources: a sample failed (%s)' % type(e).__name__)
+        return None
+
+
+def resources_pause(action):
+    if action not in PAUSE_ACTIONS:
+        return None
+    return _resmon_run(['pause', action], timeout=15)
+
+
 class Plugin:
     async def hearth_os(self):
         """Whether this is Hearth OS (the frontend shows the Hearth OS panel instead of the plugin when not)."""
@@ -1169,6 +1239,14 @@ class Plugin:
 
     async def import_scan(self):
         return import_scan()
+
+    async def resources_sample(self):
+        """Quick Access › Resources, once (the panel asks every second while it's open)."""
+        return resources_sample()
+
+    async def resources_pause(self, action):
+        """status | on | off | light-on: Hearth's existing pauses only (light-on only when the person pressed it)."""
+        return resources_pause(str(action))
 
     async def import_state(self):
         return import_state()

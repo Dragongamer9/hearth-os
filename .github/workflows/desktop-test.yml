@@ -69,6 +69,9 @@ jobs:
           # Device Manager, Run (Super+R) and the Super+X menu: device groups and problems from a made-up PC, the Run map
           # (Windows commands, %folders%, C:\ paths), hidden entries, the key bindings, nothing written when opened.
           python3 -m unittest discover -s hosts/linux/test -p 'test_win_tools.py' -v
+          # Resource Monitor: Your PC's detection on four sample machines, the drawing chosen, tips, the root helper's
+          # memory and slot tables only, the sampler's extras, and no setting written on open.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_resource_monitor.py' -v
           # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
           # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
@@ -823,6 +826,49 @@ jobs:
             echo "::error title=Win tools::$(sort -u $W/shell-log.txt | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
           else
             echo "::notice title=Win tools::$(ls $W/*.png 2>/dev/null | wc -l) pictures in win-tools/"
+          fi
+          # ---- Resource Monitor (docs/RESOURCE-MONITOR.md), in shots/resource-monitor/: Your PC for this runner, then the
+          # board drawn from the four sample machines (the owner's ATX desktop with a memory stick and the graphics card
+          # clicked, dad's FM2A88X, a laptop, a ROG Ally), Overview, Processor, Memory, Disk, Network, Graphics and a
+          # program's actions. Opening it writes no setting; its sampler runs only while it's open.
+          mkdir -p shots/resource-monitor; R=shots/resource-monitor; FX="$PWD/hosts/linux/test/fixtures/resmon"
+          rm_before=$(find "$HOME/.config" "$HOME/.local/share" -type f -newer /proc/1 2>/dev/null | sort | xargs -r sha256sum 2>/dev/null | sha256sum)
+          ipc resmon open; sleep 6; grim $R/01-your-pc-this-runner.png || true
+          ipc resmon fixture "$FX/owner-atx.json"; sleep 5; grim $R/02-owner-board.png || true
+          ipc resmon select dimm1; sleep 2; grim $R/03-owner-memory-stick.png || true
+          ipc resmon select pcie0; sleep 2; grim $R/04-owner-graphics-card.png || true
+          ipc resmon select m2_1; sleep 2; grim $R/05-owner-empty-m2.png || true
+          ipc resmon fixture "$FX/dad-fm2.json"; sleep 5; grim $R/06-dad-board.png || true
+          ipc resmon select sata1; sleep 2; grim $R/07-dad-hdd-tip.png || true
+          ipc resmon fixture "$FX/laptop.json"; sleep 5; grim $R/08-laptop.png || true
+          ipc resmon fixture "$FX/rog-ally.json"; sleep 5; grim $R/09-rog-ally.png || true
+          ipc resmon tab overview; sleep 4; grim $R/10-overview.png || true
+          ipc resmon tab cpu; sleep 3; grim $R/11-processor.png || true
+          ipc resmon tab memory; sleep 3; grim $R/12-memory.png || true
+          ipc resmon tab disk; sleep 3; grim $R/13-disk.png || true
+          ipc resmon tab network; sleep 4; grim $R/14-network.png || true
+          ipc resmon tab gpu; sleep 3; grim $R/15-graphics.png || true
+          ipc resmon tab memory; ipc resmon menu; sleep 1; grim $R/16-actions-menu.png || true; wtype -k Escape 2>/dev/null || true
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call resmon state > $R/state.json 2>&1 || true
+          sp=$(pgrep -f "hearth-resmon serve" 2>/dev/null | head -1 || true)
+          if [ -n "$sp" ]; then
+            a=$(awk '{print $14+$15}' /proc/$sp/stat); sleep 10; b=$(awk '{print $14+$15}' /proc/$sp/stat)
+            echo "::notice title=Resource Monitor::its sampler used $(( (b - a) * 100 / (10 * $(getconf CLK_TCK)) ))% of one core over 10 s on Memory ($(nproc) cores here)"
+          else
+            echo "::error title=Resource Monitor::its sampler (hearth-resmon serve) isn't running while the window is open"; touch shots/FAILED
+          fi
+          ipc resmon close; sleep 2
+          pgrep -f "hearth-resmon serve" >/dev/null && { echo "::error title=Resource Monitor::its sampler kept running after the window closed"; touch shots/FAILED; }
+          python3 hosts/linux/desktop/shell/hearth-resmon pc --no-helper > $R/pc-this-runner.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-resmon sample brief > $R/brief.json 2>&1 || true
+          rm_after=$(find "$HOME/.config" "$HOME/.local/share" -type f -newer /proc/1 2>/dev/null | sort | xargs -r sha256sum 2>/dev/null | sha256sum)
+          [ "$rm_before" = "$rm_after" ] || echo "::warning title=Resource Monitor::files in ~/.config or ~/.local/share changed while it was open (other parts of the desktop may have written them)"
+          grep -E "Resmon|ResourceMonitor|ResmonBoard" "$LOG" > $R/shell-log.txt 2>/dev/null || true
+          if grep -qE "(ResourceMonitor(View)?|ResmonBoard)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read)" "$LOG" 2>/dev/null \
+             || grep -q "Resource Monitor: its page (ResourceMonitorView.qml) couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=Resource Monitor::$(grep -E 'ResourceMonitor|ResmonBoard|Resource Monitor: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Resource Monitor::$(ls $R/*.png 2>/dev/null | wc -l) pictures in resource-monitor/; state $(head -c 300 $R/state.json)"
           fi
           # ---- Right-click menu looks (Settings › Personalization › Bar and dock › Right-click menu, MenuStyles.qml), in
           # shots/menu-styles/: a file's menu and the desktop's menu on the desktop, and Hearth Files' menu, in each look

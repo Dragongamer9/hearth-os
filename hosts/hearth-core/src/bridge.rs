@@ -1423,6 +1423,10 @@ impl Bridge {
                 s["powerModes"] = st["mode"]["available"].clone(); s["tdp"] = st["tdp"].clone();
                 Ok(s)
             }
+            // Quick Access › Resources (docs/RESOURCE-MONITOR.md): Resource Monitor's numbers in short and its pause (Hearth's
+            // existing pauses only). Off the bridge: the helper takes two samples half a second apart.
+            "resources.sample" => self.later(|| crate::resources::run(&["sample", "brief"])),
+            "resources.pause" => { let act = crate::resources::pause_arg(a)?; self.later(move || crate::resources::run(&["pause", act])) }
             "system.info" => Ok(crate::sysinfo::info(std::path::Path::new("/"))),
             // hearth-power can take seconds: what it said last answers at once, and changing the mode runs off the
             // bridge (every other request waited for it, and the fail-safe saw Hearth as stuck).

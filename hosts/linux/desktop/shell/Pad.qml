@@ -36,6 +36,7 @@ Scope {
     readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (steamFallback !== null && steamFallback.shown) || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && String(active.title).indexOf("Task Manager") === 0) || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files") || active.appId === "org.kde.dolphin"))
         || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
+        || (active !== null && active.title === "Resource Monitor")   // ResourceMonitor.qml (LB / RB switch its tabs: hearth-pad)
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml

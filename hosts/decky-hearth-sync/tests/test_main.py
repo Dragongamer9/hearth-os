@@ -424,6 +424,39 @@ class Backend(unittest.TestCase):
         self.assertTrue(any('compatibility tool' in str(l) for l in LOG))
         self.assertEqual(self.m.forced_compat(mine, home_dir=os.path.join(self.tmp, 'nobody')), [])
 
+    # ---- Quick Access › Resources (docs/RESOURCE-MONITOR.md)
+    def test_resources_sample_from_resource_monitors_helper(self):
+        os.environ['HEARTH_RESMON'] = str(HERE.parents[1] / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-resmon')
+        try:
+            r = run(self.m.Plugin().resources_sample())
+            self.assertIsInstance(r, dict)
+            for k in ('gpu', 'cpu', 'mem', 'net', 'game', 'others'):
+                self.assertIn(k, r)
+            self.assertIsNotNone(r['mem']['total'])
+            r2 = run(self.m.Plugin().resources_sample())   # the same sampler, kept while the panel asks
+            self.assertIs(self.m._RES['sampler'], self.m._RES['sampler'])
+            self.assertIsInstance(r2['cpu']['busy'], (int, float))
+        finally:
+            os.environ.pop('HEARTH_RESMON', None)
+
+    def test_resources_without_the_helper_shows_nothing(self):
+        os.environ['HEARTH_RESMON'] = os.path.join(self.tmp, 'missing')
+        try:
+            self.assertIsNone(run(self.m.Plugin().resources_sample()))
+            self.assertIsNone(run(self.m.Plugin().resources_pause('on')))
+        finally:
+            os.environ.pop('HEARTH_RESMON', None)
+
+    def test_resources_pause_only_known_actions(self):
+        calls = []
+        self.m._resmon_run = lambda args, timeout=10: calls.append(args) or {'backups': {}, 'needsOption': False}
+        self.assertIsNone(run(self.m.Plugin().resources_pause('rm -rf')))
+        self.assertIsNone(run(self.m.Plugin().resources_pause('status; reboot')))
+        self.assertEqual(calls, [])
+        for a in ('status', 'on', 'off', 'light-on'):
+            run(self.m.Plugin().resources_pause(a))
+        self.assertEqual(calls, [['pause', 'status'], ['pause', 'on'], ['pause', 'off'], ['pause', 'light-on']])
+
 
 
 class GameMode(unittest.TestCase):

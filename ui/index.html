@@ -1462,6 +1462,7 @@ body.ovosk #ovosk{display:block;position:fixed;left:0;right:0;bottom:0;z-index:9
 
 // ---------- icons ----------
 const I = {
+  pulse:'<svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
   theater:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="11.5" rx="2"/><path d="M10.5 8.6v4.3l3.7-2.15z"/><path d="M8.5 20h7M12 16.5V20"/></svg>',
   home:'<svg viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>',
   lib:'<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
@@ -1588,6 +1589,8 @@ const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settin
 // Open apps: wherever the host can list them (Hearth OS's window and every overlay page; not Ember's own window), the
 // same tab in Hearth's panel and over a game.
 if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search)) QTABS.splice(3,0,['apps','lib','Open apps']);
+// Resources (Resource Monitor in short, docs/RESOURCE-MONITOR.md): wherever Hearth runs on Linux, after Performance.
+if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search)) QTABS.splice(QTABS.findIndex(q=>q[0]==='perf')+1,0,['res','pulse','Resources']);
 // Friends (Hearth Friends on Matrix) over a game and in Hearth's panel, wherever Hearth runs on Linux (the tab says so when the service isn't there).
 if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHost.platform!=='android') || /[?&]preview=linux/.test(location.search) || !window.nimbusHost && !(window.chrome && window.chrome.webview)) QTABS.splice(QTABS.length-1,0,['friends','user','Friends']);
 
@@ -1767,6 +1770,10 @@ const MOCK = (()=>{
       ...(a&&a.hhd?{powerMode:null,powerModes:[],tdp:{supported:false}}:{})}),
     'perf.setTdp':async({watts})=>{ st.tdp=watts; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); S2.tdp.unified.tdp.mode='custom'; S2.tdp.unified.tdp.custom.tdp=watts; return {supported:true,watts,min:7,max:30}; },
     'perf.setFpsLimit':async({fps,game})=>{ if(game&&S.running){ MOCKOPT[S.running]=Object.assign(MOCKOPT[S.running]||{},{fpsLimit:fps,perfSaved:true}); return {fpsLimit:fps,game:S.running}; } MOCKFPS=fps; return {fpsLimit:fps}; },
+    'resources.sample':async()=>({gpu:{busy:Math.round(60+Math.random()*20),temp:64,name:'NVIDIA GeForce RTX 5070',vramUsed:8482000000,vramTotal:12884000000,watts:168},cpu:{busy:Math.round(35+Math.random()*20),temp:71},
+      mem:{used:12025000000,total:33350000000,cache:15140000000},net:{recv:53477376,send:409600,kind:'Wi-Fi'},game:S.running?{name:(G(S.running)||{}).title||'Game',cpu:31,gpu:68,mem:7945000000,tag:'Game · Proton'}:null,
+      others:[{name:'steam',tag:'Steam',color:'steam',cpu:4,mem:1181000000},{name:'Discord',tag:'',color:'app',cpu:2,mem:640000000},{name:'hearth-home-server',tag:'Home server',color:'home',cpu:0,mem:52000000}]}),
+    'resources.pause':async({action})=>({backups:{available:true,count:2,lightMode:true,resumed:action==='off',paused:action==='off'?[]:['backups'],waiting:action!=='off'},needsOption:false}),
     'perf.setOverlay':async({level})=>{ MOCKPO=level; return {perfOverlay:level}; },
     'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
@@ -9135,6 +9142,77 @@ function startPerf(){
   if(LINUX && !HHDP.schema && !HHDP.loading && (HHDP.err!=='off' || Date.now()-HHDP.offAt>60000)) hhdLoad();
   if(!PERF.timer && !PERF.busy) PERF.timer=setTimeout(perfTick, 50);
 }
+// ---------- Quick Access › Resources (docs/RESOURCE-MONITOR.md, the approved GameOverlay mockup) ----------
+// Graphics, processor, memory and network with temperatures, what else runs, and "Pause downloads and backups while I
+// play". The numbers come from Resource Monitor's helper (resources.sample: hearth-core resources.rs → desktop/shell/
+// hearth-resmon), asked once a second only while this tab shows; perf.stats stands in where the helper isn't. The pause
+// uses existing pauses only: Hearth's downloads (downloads.pauseAll, as Downloads › Pause all) and the home server's
+// runtime flag (resources.pause). It changes no setting; Light mode only turns on from its own button.
+const RES = {s:null, p:null, paused:false, timer:null, busy:false, msg:'', pAsked:false};
+function resShowing(){ return S.layers.includes('qam') && S.qtab==='res' && (!OVERLAY || OV.shown); }
+function resFromPerf(p){ return p ? {gpu:{busy:p.gpu, temp:p.gpuTemp, vramUsed:p.vramUsed!=null?p.vramUsed*1073741824:null, vramTotal:null, watts:null},
+  cpu:{busy:p.cpu, temp:p.cpuTemp}, mem:{used:p.ramUsed!=null?p.ramUsed*1073741824:null, total:p.ramTotal!=null?p.ramTotal*1073741824:null, cache:null},
+  net:{recv:0, send:0, kind:''}, game:null, others:[]} : null; }
+async function resTick(){
+  if(RES.busy) return; RES.busy=true; RES.timer=null;
+  try{
+    if(!resShowing()) return;
+    let r=null;
+    try{ r=await call('resources.sample',{},8000); }catch(e){ r=null; }
+    if(!r){ try{ r=resFromPerf(await call('perf.stats',{},8000)); }catch(e){} }
+    RES.s=r||RES.s;
+    resRedraw();
+    RES.timer=setTimeout(resTick, 1000);
+  } finally { RES.busy=false; }
+}
+function startRes(){
+  if(!RES.timer && !RES.busy) RES.timer=setTimeout(resTick, 50);
+  if(!RES.pAsked){ RES.pAsked=true; call('resources.pause',{action:'status'},15000).then(p=>{ RES.p=p; resRedraw(); }).catch(()=>{}); }
+}
+function resRedraw(){
+  if(!(S.layers.includes('qam') && S.qtab==='res') || qamTop()) return;
+  const qb=$('#qam .qbody'); if(!qb) return;
+  const k=focused && $('#qam').contains(focused) ? focused.dataset.k : null, top=qb.scrollTop;
+  qb.innerHTML=`<h3>Resources</h3>${resBody()}`; qb.scrollTop=top;
+  if(k){ const el=$(`#qam [data-k="${CSS.escape(k)}"]`); setFocus(el||$('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
+}
+const resGb=b=>b==null?'–':b>=1073741824?(b/1073741824).toFixed(1)+' GB':Math.round(b/1048576)+' MB';
+const resRate=b=>b>=1048576?(b/1048576).toFixed(b>=104857600?0:1)+' MB/s':b>=1024?Math.round(b/1024)+' KB/s':'0 KB/s';
+function resBody(){
+  const b=RES.s;
+  if(!b) return '<div class="muted">Reading…</div>';
+  const pc=v=>v==null?'–':Math.round(v)+'%', tc=t=>t==null?'':Math.round(t)+' °C';
+  const M=[];
+  if(b.gpu) M.push(['Graphics', pc(b.gpu.busy), tc(b.gpu.temp), b.gpu.busy||0, '#ff9a4d', [b.gpu.vramTotal?`Video memory ${resGb(b.gpu.vramUsed)} of ${resGb(b.gpu.vramTotal)}`:'', b.gpu.watts?Math.round(b.gpu.watts)+' W':''].filter(Boolean).join(' · ')]);
+  M.push(['Processor', pc(b.cpu.busy), tc(b.cpu.temp), b.cpu.busy||0, '#66c0f4', b.game&&b.game.cpu!=null?`The game uses ${pc(b.game.cpu)}`:'']);
+  M.push(['Memory', resGb(b.mem.used), '', b.mem.total?100*(b.mem.used||0)/b.mem.total:0, '#9a7cff', b.mem.cache?`${resGb(b.mem.cache)} more is cache the game can have`:'']);
+  const net=(b.net.recv||0)+(b.net.send||0);
+  M.push(['Network', resRate(net), '', Math.min(100, net/(50*1048576)*100), '#f2c14e', b.net.kind?`${b.net.kind} · ${resRate(b.net.recv||0)} down`:'']);
+  const C={game:'#f2c14e', steam:'#66c0f4', hearth:'#ff9a4d', app:'#9a7cff', sys:'#5d7488', home:'#3fb8c9'};
+  let h=M.map(([l,v,t,bar,col,note],i)=>`<div data-f data-k="res-m-${i}" style="padding:10px 12px;border-radius:10px;margin-bottom:10px;background:${i===0?'#2a475e':'#213347'}">
+    <div style="display:flex;align-items:baseline;gap:8px"><b style="flex:1;font-weight:600">${l}</b><span style="font-weight:700">${esc(v)}</span>${t?`<span style="font-size:12px;color:#7fe0a4">${t}</span>`:''}</div>
+    <span style="display:block;height:8px;border-radius:4px;background:#2f4a63;margin-top:7px"><span style="display:block;height:8px;border-radius:4px;width:${Math.max(0,Math.min(100,bar)).toFixed(0)}%;background:${col}"></span></span>
+    ${note?`<div class="muted" style="font-size:12px;margin-top:6px">${esc(note)}</div>`:''}</div>`).join('');
+  if((b.others||[]).length) h+=`<div class="muted" style="font-size:11px;font-weight:600;letter-spacing:.04em;margin:6px 0">ALSO RUNNING</div>`+b.others.map(o=>`<div style="display:flex;align-items:center;gap:10px;padding:5px 4px"><span style="width:16px;height:16px;border-radius:4px;flex:none;background:${C[o.color]||C.app}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}${o.tag?' · '+esc(o.tag):''}</span><span class="muted" style="font-size:12px">${o.cpu?pc(o.cpu)+' · ':''}${resGb(o.mem)}</span></div>`).join('');
+  h+=`<button class="btn" data-f data-k="res-pause" data-act="resPause" style="margin-top:12px">${RES.paused?I.play+'Resume downloads and backups':I.pause+'Pause downloads and backups while I play'}</button>`;
+  if(RES.p && RES.p.needsOption) h+=`<button class="btn" data-f data-k="res-light" data-act="resLight">${I.pause}Always wait while I play (Light mode)</button>`;
+  h+=`<div class="muted" style="font-size:12px;margin-top:6px">${esc(RES.msg || (RES.paused?'Paused until you resume. No setting was changed.':'This session only: downloads and the home server\'s backups wait. No setting changes.'))}</div>`;
+  return h;
+}
+async function resPause(){
+  const on=!RES.paused;
+  const [d,p]=await Promise.allSettled([call(on?'downloads.pauseAll':'downloads.resumeAll'), call('resources.pause',{action:on?'on':'off'},15000)]);
+  RES.paused=on;
+  if(p.status==='fulfilled' && p.value) RES.p=p.value;
+  const what=[d.status==='fulfilled'?'Hearth\'s downloads':'', RES.p&&RES.p.backups&&RES.p.backups.available?'the home server\'s backups':''].filter(Boolean).join(' and ');
+  RES.msg=on?(what?`Paused ${what} until you resume. No setting was changed.`:'Nothing to pause right now.'):(what?'Downloads and backups can run again.':'');
+  renderQam(); setFocus($('#qam [data-k="res-pause"]'),true);
+}
+async function resLight(){
+  try{ RES.p=await call('resources.pause',{action:'light-on'},15000); RES.msg='Light mode is on: the home server\'s big jobs wait whenever you play. Turn it off in Settings › Home server.'; }
+  catch(e){ RES.msg=e.message; }
+  renderQam(); setFocus($('#qam [data-k="res-pause"]'),true);
+}
 function qamPerfShowing(){ return S.layers.includes('qam') && S.qtab==='perf'; }
 /** Quick Access › Performance drawn again in place: the selection (and a slider being moved) stays where it was. */
 function qamPerfRedraw(){
@@ -9351,6 +9429,7 @@ function renderQam(){
     <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>${discordQam(false)}`; }
   if(t==='friends') body = mfQam();
   if(t==='perf') body = `<h3>Performance</h3>${perfBody()}`;
+  if(t==='res') body = `<h3>Resources</h3>${resBody()}`;
   if(t==='apps') body = `<h3>Open apps</h3>${appsBody()}`;
   if(t==='now'){ const g=S.running&&G(S.running);
     const mins = S.runningSince ? Math.max(0,Math.round((Date.now()-S.runningSince)/60000)) : null;
@@ -10020,7 +10099,7 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(qamTop()) qdOnTab(S.qtab); else { if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); } }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(qamTop()) qdOnTab(S.qtab); else { if(S.qtab==='perf') startPerf(); if(S.qtab==='res') startRes(); if(S.qtab==='apps') loadApps(); } }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
@@ -10428,7 +10507,7 @@ function act(el){
     case 'madeFor': LOOK.madeFor=d.v; saveLook(); renderFooter(); return render('ap-mf-'+d.v);
     case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; t.oskHidden=false; oskRefresh(); } return; }
     case 'oskKb': return;   // the keyboard's own box (its keys handle taps and clicks themselves)
-    case 'qtab': S.qtab=d.tab; renderQam(); if(qamTop()) qdOnTab(d.tab); else { if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); } return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'qtab': S.qtab=d.tab; renderQam(); if(qamTop()) qdOnTab(d.tab); else { if(d.tab==='perf') startPerf(); if(d.tab==='res') startRes(); if(d.tab==='apps') loadApps(); } return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
     case 'gsRetry': loadGameSet(S.game); return render(null,true);
     case 'gsToggle': return saveGameSet({[d.key]:!GSET.s.options[d.key]}, 'gs-'+d.key);
@@ -10514,6 +10593,8 @@ function act(el){
     case 'dlFirst': return dlCall('game.installFirst', d.id).then(()=>dlCall('game.resumeInstall', d.id));
     case 'dlMove': return dlCall('game.moveInstall', d.id, null, {to:d.v});
     case 'dlPauseAll': return call('downloads.pauseAll').then(()=>{ toast('Downloads paused'); startDownloadPoll(); }).catch(e=>toast(e.message));
+    case 'resPause': return resPause();
+    case 'resLight': return resLight();
     case 'dlResumeAll': return call('downloads.resumeAll').then(()=>{ toast('Downloads carry on'); startDownloadPoll(); }).catch(e=>toast(e.message));
     case 'dlCancel': { const g=G(d.id); return openSheet({title:`Cancel ${g?g.title:'this download'}?`, sub:'What it downloaded so far is kept, so installing it again later carries on from there.', items:[{label:'Cancel download', icon:'x', run:()=>dlCall('game.cancelInstall', d.id)}]}); }
     case 'dlSteam': return call('steam.downloads').catch(e=>toast(e.message));
@@ -14025,7 +14106,7 @@ function input(k){
 function shiftTab(d){
   const top=S.layers.at(-1);
   if(top==='qam' && qamTop()){ const T=qdTabs(), i=T.findIndex(t=>t[0]===S.qtab); return qdGo(T[(i+d+T.length)%T.length][0]); }
-  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
+  if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='res') startRes(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='shop') return shopShiftTab(d);
   if(!top && S.view==='hmods') return hmShiftTab(d);   // Hearth Mods in Game Mode
   if(!top && S.view==='settings'){ setShiftTab(d); return blip(600); }

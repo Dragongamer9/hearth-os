@@ -8,6 +8,7 @@
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <processes|performance[:cpu|memory|disk|net|gpu]|startup|details|services|settings>|close|toggle   files open <path>|home|toggle|close
 //   devices open|close|toggle|scan   run open|close|toggle   winx open|close|toggle (WinTools.qml)
+//   resmon open|tab <pc|overview|cpu|memory|disk|network|gpu>|select <part>|close|toggle (ResourceMonitor.qml)
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
 import QtQuick
@@ -256,6 +257,9 @@ ShellRoot {
         onLoaded: item.wire({ tasks: tasks, files: files, settings: settings, launcher: launcher, lockScreen: lockScreen })
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Device Manager, Run and the Super+X menu (WinTools.qml) couldn't load")
     }
+    // Resource Monitor (docs/RESOURCE-MONITOR.md): loaded by file name, so a problem in it only loses that window, never
+    // the shell. IPC target "resmon" (hearth-resmon).
+    Loader { source: "ResourceMonitor.qml" }
     FileManager { id: files }
     VolumeOsd { id: osd }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell

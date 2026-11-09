@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { FaSyncAlt } from "react-icons/fa";
 import { CHECK_EVERY, Item, Status, ago, storeList, storeOn } from "./model";
 import { ImportSection } from "./import";
+import { ResourcesSection } from "./resources";
 import { HearthOnly, hearthOs } from "./hearth-only";
 import { GameModeSection, gameModeNotice } from "./gamemode";
 import { Settings, getSettings, getStatus, isBusy, listGames, onChange, removeAll, runSync, setSettings } from "./sync";
@@ -48,6 +49,7 @@ function Panel() {
   const stores = storeList(games);
   return (
     <>
+      <ResourcesSection />
       <PanelSection title="Status">
         <PanelSectionRow>
           <div className={staticClasses.Text}>

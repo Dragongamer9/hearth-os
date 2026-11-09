@@ -35,7 +35,18 @@ const gameModeFor = () => (state() === "gamemode-fallback"
   ? { choice: "hearth", saved: true, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)", paused: "" }
   : state() === "steam-game" ? { choice: "hearth", saved: true, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "", paused: "", steamGame: "570" }
   : { choice: "steam", saved: false, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "", paused: "" });
+// Quick Access › Resources (src/resources.tsx): numbers only in the "resources" pictures (else no section, like a system
+// without Resource Monitor's helper).
+const brief = { gpu: { busy: 72, temp: 64, name: "NVIDIA GeForce RTX 5070", vramUsed: 8482000000, vramTotal: 12884000000, watts: 168 }, cpu: { busy: 46, temp: 71 },
+  mem: { used: 12025000000, total: 33350000000, cache: 15140000000 }, net: { recv: 53477376, send: 409600, kind: "Wi-Fi" },
+  game: { name: "Cyberpunk 2077", cpu: 31, gpu: 68, mem: 7945000000, tag: "Game · Proton" },
+  others: [{ name: "steam", tag: "Steam", color: "steam", cpu: 4, mem: 1181000000, disk: 0 }, { name: "Discord", tag: "", color: "app", cpu: 2, mem: 640000000, disk: 0 },
+           { name: "hearth-home-server", tag: "Home server", color: "home", cpu: 0, mem: 52000000, disk: 0 }] };
+const pauseFor = (a) => ({ backups: { available: true, count: 2, lightMode: state() !== "resources-light-off", resumed: a === "off", paused: a === "off" ? [] : ["backups"], waiting: a !== "off" && state() !== "resources-light-off" },
+  needsOption: state() === "resources-light-off" && a !== "light-on" });
 const handlers = {
+  resources_sample: () => (String(state()).startsWith("resources") ? brief : null),
+  resources_pause: (a) => (String(state()).startsWith("resources") ? pauseFor(a) : null),
   get_games: (force) => (force && state() === "syncing" ? new Promise(() => {}) : { ok: true, error: null, games, signature: "s" }),
   get_status: () => statusFor(), set_status: (s) => s, get_settings: () => settingsFor(), set_settings: (s) => s,
   import_scan: () => importScan(), import_state: () => importState(), import_arm: () => true,

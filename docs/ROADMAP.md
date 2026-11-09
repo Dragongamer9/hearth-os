@@ -55,6 +55,13 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Sub themes in Settings › Personalisation: Hearth, Steam-style and Gaming each get five colourways (today's colours first, then four new ones: Rose Quartz, Evergreen, Midnight, Copper Sea / Crimson, Emerald, Royal, Graphite / Toxic, Inferno, Ultraviolet, Frostbite) and the Black set of seven (Black & Red, Black & Green, Black & Yellow, Hazard, Volt, Holly, Traffic Light), each with its own wallpaper and a light mode. Only the colours and wallpaper change; each look keeps its shape. The page is now compact dropdowns (Look, Sub theme with pictures and colour dots, Mode, Match sub theme, Accent) that work with a controller. Nobody's desktop changes until they pick one, and a wallpaper you chose yourself is never replaced (needs testing on a device)
 
 ### Planned next
+### Resource Monitor (docs/RESOURCE-MONITOR.md)
+
+- [ ] Resource Monitor in Mantel: Your PC, Overview, Processor, Memory, Disk, Network and Graphics, per-program tables with tags (Game · Proton, Steam, Hearth, Home server, System), live graphs, right-click End / Efficiency mode / Open file location / Search online, LB / RB tabs; from the app menu, Task Manager and Settings › System › About
+- [ ] Your PC: the board or device drawn from what this PC really has (desktop ATX / mATX / ITX boards, laptops, ROG Ally family, Steam Deck, Legion Go), every slot, port and header with its wires (as many lines as lanes), flow on busy links, click a part for its full specs, and tips only when true
+- [ ] Memory sticks' maker, part number and slot through a small read-only helper (no password for the person at the device, cached in ~/.cache/hearth)
+- [ ] Quick Access › Resources in Steam Game Mode (Hearth Sync's panel) and Hearth Game Mode, with "Pause downloads and backups while I play" (this session only, no setting changed)
+
 
 - [ ] Optimize drives in Disk Management, the Windows way: SSDs and NVMe drives show their TRIM status and last run (never defragmented); hard drives get a fragmentation check (e4defrag -c on ext4) and a free-space warning above about 90% full, with a Defragment button only when a drive really needs it (never on Btrfs snapshots or NTFS)
 - [ ] Smaller, faster updates (instead of 2–3 GB every time): Debian's packages frozen to a set date (moved on purpose, weekly or for a security fix), repeatable builds so unchanged files stay byte for byte the same and aren't downloaded again, Hearth's own apps in small pieces of their own, each build saying how big the update is against what devices have now, and the download done quietly in the background so it's ready at the next restart. A normal update should be about 200–500 MB; the previous version always stays startable

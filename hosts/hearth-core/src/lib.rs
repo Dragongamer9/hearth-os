@@ -68,6 +68,7 @@ pub mod profile;
 pub mod profiles;
 pub mod remote;
 pub mod renderer;
+pub mod resources;   // Quick Access › Resources in Hearth's Game Mode (desktop/shell/hearth-resmon, docs/RESOURCE-MONITOR.md)
 pub mod signin_handoff;
 // ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
 pub mod signins;
