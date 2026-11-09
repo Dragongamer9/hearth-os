@@ -666,7 +666,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 /* Appearance: layout picker */
 .layouts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}.lcard small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .lcard{background:var(--panel);border-radius:var(--r);padding:8px 8px 10px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
-.gm-cards{grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px}.gm-cards .lcard small{-webkit-line-clamp:3}
+.gm-cards,.srows .gm-cards{grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px;gap:12px}.gm-cards .lcard,.srows .gm-cards .lcard{padding:8px 8px 10px;gap:6px;text-align:left;display:flex;flex-direction:column;align-items:stretch}
+.gm-cards .lprev{display:block;width:100%;height:auto;min-height:96px;flex:none}.gm-cards .lcard small,.srows .gm-cards .lcard small{-webkit-line-clamp:3}.srows .gm-cards .lcard b{font-size:15px}
 .lcard.on{border-color:var(--accent)}
 .lcard b{font-size:15px;margin-top:4px;display:flex;align-items:center;gap:8px}
 .lcard b em{font-style:normal;font-size:11px;font-weight:700;color:var(--accentInk);background:var(--accent);border-radius:6px;padding:2px 6px}
