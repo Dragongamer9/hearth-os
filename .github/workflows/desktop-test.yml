@@ -1345,9 +1345,8 @@ jobs:
           try: d = json.load(open(p))
           except Exception: d = {}
           d.update(look=look, mode=mode, accent="", wallpaper=wall, reduceMotion=False)
-          d.pop("wallMatch", None)
-          if sub: d["subTheme"] = sub
-          else: d.pop("subTheme", None)
+          # Written out (the shell keeps what it has for a key that's missing from the file, as it should).
+          d.update(subTheme=sub, wallMatch=True)
           open(p, "w").write(json.dumps(d, indent=2) + "\n")
           PY
             sleep 4
@@ -1360,7 +1359,7 @@ jobs:
             grim "$st/$1-$2-$3-1-desktop.png" || true
             ipc settings page appearance; sleep 2; grim "$st/$1-$2-$3-2-personalisation.png" || true; ipc settings close
           done
-          # The dropdowns with the controller's keys, starting from today's colours (no subTheme in the file).
+          # The dropdowns with the controller's keys, starting from today's colours (subTheme "").
           set_sub hearth "" dark
           ipc settings page appearance; sleep 2; grim "$st/01-personalisation-default.png" || true
           wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim "$st/02-look-dropdown-open.png" || true
@@ -1369,7 +1368,7 @@ jobs:
           for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim "$st/05-sub-theme-list-black-set.png" || true
           wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Up; sleep 1; wtype -k Return; sleep 4; grim "$st/06-sub-theme-picked.png" || true
           picked=$(key subTheme); wall=$(key wallpaper)
-          if [ "$picked" = "<missing>" ] || [ -z "$picked" ]; then echo "::warning title=Sub themes::picking with the keys didn't set a sub theme (subTheme: $picked); see $st/06-sub-theme-picked.png"; fi
+          if [ "$picked" != "copper-sea" ]; then echo "::error title=Sub themes::A on Copper Sea in the open list didn't pick it (subTheme: $picked); see $st/06-sub-theme-picked.png"; touch shots/FAILED; fi
           [ -z "$wall" ] || { echo "::error title=Sub themes::picking a sub theme wrote the wallpaper ($wall)"; touch shots/FAILED; }
           ipc settings close; sleep 3; grim "$st/07-desktop-after-picking.png" || true
           # Your own wallpaper stays: with one chosen, pick another sub theme (Left/Right on the card steps through them).
@@ -1380,7 +1379,7 @@ jobs:
           echo "::notice title=Sub themes::keys picked '$picked'; with your own wallpaper the sub theme went to '$(key subTheme)' and the wallpaper stayed '$(key wallpaper)'"
           # Changing the look with the keys resets the sub theme to that look's first.
           wtype -k Up; sleep 1; wtype -k Right; sleep 4; grim "$st/09-look-changed.png" || true
-          [ "$(key subTheme)" = "" ] || echo "::warning title=Sub themes::after changing the look with the keys, subTheme is '$(key subTheme)' (look $(key look))"
+          [ "$(key subTheme)" = "" ] || { echo "::error title=Sub themes::after changing the look with the keys, subTheme is '$(key subTheme)' (look $(key look))"; touch shots/FAILED; }
           ipc settings close
           if grep -E "(subthemes\.js|Theme\.qml|SetDropdown\.qml|SetAppearance\.qml|Wallpaper\.qml).*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Cannot read)" "$LOG" >/dev/null 2>&1; then
             echo "::error title=Sub themes QML::$(grep -E "(subthemes\.js|Theme\.qml|SetDropdown\.qml|SetAppearance\.qml|Wallpaper\.qml).*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Cannot read)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
