@@ -1183,7 +1183,6 @@ run_hearth_mode() {
 #   hgm_failed's order (Steam Game Mode has just failed, so Mantel): never back and forth.
 # (test_hearth_game_mode_choice.py runs these lines, between the >>> and <<< marks.)
 SG_REQ="$RUN/hearth-steam-game"
-SG_ACTIVE="$RUN/hearth-steam-game-active"
 SG_NOTE="$RUN/hearth-steam-game-failed"
 SG_WAIT="${SG_WAIT:-600}"
 SG_GRACE="${SG_GRACE:-6}"
