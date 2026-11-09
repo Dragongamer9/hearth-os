@@ -38,6 +38,7 @@ Scope {
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
+        || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
     // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
@@ -52,6 +53,7 @@ Scope {
         if (steamFallback !== null && steamFallback.shown) return "Steam fallback";
         if (SettingsNav.clipShown) return "clipboard";
         if (SettingsNav.discordShown) return "Discord chooser";
+        if (SettingsNav.winxShown) return "Super+X menu";
         if (DeskState.overlayShown) return "desktop menu";
         return "window: " + (active !== null ? ((active.appId || "") + " " + (active.title || "")).trim().slice(0, 60) : "?");
     }
@@ -75,6 +77,7 @@ Scope {
     // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
     // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
     readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.discordShown || DeskState.overlayShown
+        || SettingsNav.winxShown
     property var beforeMenu: null
     onMenuOpenChanged: {
         if (menuOpen) { beforeMenu = active; refocus.stop(); }

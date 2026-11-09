@@ -26,6 +26,8 @@ Singleton {
     property bool clipShown: false    // the clipboard history picker (Super+V)
     property var discord: null        // Discord (Discord.qml): the bar's Discord button toggles its small window
     property bool discordShown: false // its "Which Discord?" chooser is open
+    property var winTools: null       // Device Manager, Run and the Super+X menu (WinTools.qml): the Start button's right-click
+    property bool winxShown: false    // the Super+X menu is open
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;

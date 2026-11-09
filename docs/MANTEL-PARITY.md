@@ -154,7 +154,7 @@ US-layout keyboard below; moving it to ui/osk (KeyTyper already types any charac
 |---|---|---|
 | Show desktop | Strip at the end of the taskbar, Super+D / Super+M (the shell minimizes everything, then puts it back) | Same strip; Windows+D over Explorer, Ember's own in full Mantel |
 | Desktop icons | Double-click opens, Ctrl/Shift+click, selection box, Cut/Copy/Paste (text/uri-list, so file managers share it), drag out to apps and in from them, Open with, New text file and Templates, Sort by, Keep icons lined up, Shift+Delete asks | Same except dragging files out of / into the desktop (WebView2 can't start a Windows file drag) and Keep icons lined up; the clipboard is Windows' (File Explorer pastes it) |
-| Windows-key shortcuts | Super+I/A/N/S/R/1-9/Tab, Ctrl+Alt+T, Print / Shift+Print / Super+Shift+S screenshots (clipboard + notification) | Windows handles them over Explorer; full Mantel handles D, M, E, I, A, N, S, R, Shift+S (Snipping Tool) and 1-9 |
+| Windows-key shortcuts | Super+I/A/N/S/1-9/Tab, Super+R Run and Super+X the quick links menu (docs/DEVICE-MANAGER.md), Ctrl+Alt+T, Print / Shift+Print / Super+Shift+S screenshots (clipboard + notification) | Windows handles them over Explorer; full Mantel handles D, M, E, I, A, N, S, R, Shift+S (Snipping Tool) and 1-9 |
 | Notifications | Mute an app from its pop-up, Settings › Notifications | not yet |
 | Mouse & touchpad, screen off / sleep timers, several screens | Hearth Settings | Windows Settings |
 | Autostart apps | XDG autostart entries that are on (not Steam) | Windows' own |

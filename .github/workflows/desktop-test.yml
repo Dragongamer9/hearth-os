@@ -63,6 +63,9 @@ jobs:
           # System Restore and Reliability history (docs/SYSTEM-RESTORE.md): restore points, settings back safely, the version
           # only through hearth-admin rollback, the journal's crashes, Hearth problems, warnings and the cache.
           python3 -m unittest discover -s hosts/linux/test -p 'test_restore_reliability.py' -v
+          # Device Manager, Run (Super+R) and the Super+X menu: device groups and problems from a made-up PC, the Run map
+          # (Windows commands, %folders%, C:\ paths), hidden entries, the key bindings, nothing written when opened.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_win_tools.py' -v
           # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
           # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
@@ -771,6 +774,48 @@ jobs:
             echo "::error title=System Restore::$(grep -E '(Restore|Reliability)(View)?\.qml|its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
           else
             echo "::notice title=System Restore::$(ls $R/*.png 2>/dev/null | wc -l) pictures in restore/; $(python3 -c "import json;print(len(json.load(open('$R/overview.json'))['points']))" 2>/dev/null) points; reliability rows: $(python3 -c "import json;print(len(json.load(open('$R/summary.json'))['rows']))" 2>/dev/null)"
+          fi
+          # ---- Device Manager, Run (Super+R) and the Super+X menu (WinTools.qml, docs/DEVICE-MANAGER.md), in shots/win-tools/.
+          # A stand-in Hearth Disks (so Disk Management shows); System Restore and Reliability history aren't here, so
+          # their entries stay hidden. Opening any of them writes nothing (run-history.json only after something opened).
+          W=shots/win-tools; mkdir -p $W
+          printf '#!/bin/sh\necho "$@" >> "$HOME/hearth-disks-args"\n' > /tmp/fakebin/hearth-disks && chmod +x /tmp/fakebin/hearth-disks
+          rh="$HOME/.local/state/nimbus/run-history.json"; wt_before=$(snap | sha256sum); rh_before=$(sha256sum "$rh" 2>/dev/null || echo none)
+          python3 hosts/linux/desktop/shell/hearth-devmgr list > $W/devices.json 2> $W/devices.err || { echo "::error title=Device Manager::hearth-devmgr list failed: $(head -c 300 $W/devices.err)"; touch shots/FAILED; }
+          python3 -c "import json,sys; d=json.load(open('$W/devices.json')); print('::notice title=Device Manager::%d devices on the runner, %d need attention, kernel log readable: %s; groups: %s' % (d['count'], d['problems'], d['kernelLog'], ', '.join('%s %d' % (g['label'], len(g['devices'])) for g in d['groups'])))" || true
+          ipc devices open; sleep 4; grim $W/01-device-manager.png || true
+          ipc devices state > $W/devices-state.json 2>&1 || true
+          grep -q '"loaded":true' $W/devices-state.json || { echo "::error title=Device Manager::its list didn't load: $(head -c 300 $W/devices-state.json)"; touch shots/FAILED; }
+          wtype -k End; sleep 1; wtype -k Right; sleep 1; grim $W/02-device-manager-keys.png || true
+          ipc devices select "Processor"; ipc devices select "Intel"; sleep 1; grim $W/03-device-manager-device.png || true
+          wtype -k Menu; sleep 1; grim $W/04-device-manager-actions.png || true; wtype -k Escape; sleep 1
+          ipc devices scan; sleep 4; ipc devices close
+          ipc run open; sleep 2; grim $W/05-run.png || true
+          ipc run type devmgmt; sleep 1; grim $W/06-run-suggestions.png || true
+          ipc run type "%appdata%"; sleep 1; grim $W/07-run-appdata.png || true
+          ipc run type "C:\\Users"; sleep 1; ipc run state > $W/run-state.json 2>&1 || true
+          ipc run type "rstrui"; ipc run go; sleep 1; grim $W/08-run-not-installed.png || true
+          ipc run state > $W/run-missing.json 2>&1 || true
+          grep -q "isn't installed" $W/run-missing.json || { echo "::error title=Run::rstrui (not installed) didn't say so: $(head -c 300 $W/run-missing.json)"; touch shots/FAILED; }
+          [ "$(sha256sum "$rh" 2>/dev/null || echo none)" = "$rh_before" ] || { echo "::error title=Run::opening Run and typing wrote run-history.json"; touch shots/FAILED; }
+          ipc run type "diskmgmt.msc"; ipc run go; sleep 3
+          [ -e "$HOME/hearth-disks-args" ] || { echo "::error title=Run::diskmgmt.msc didn't open Hearth Disks (the stand-in left no mark)"; touch shots/FAILED; }
+          grep -q 'diskmgmt.msc' "$rh" 2>/dev/null || { echo "::error title=Run::diskmgmt.msc didn't go into the recent entries: $(head -c 300 "$rh" 2>&1)"; touch shots/FAILED; }
+          ipc run open; sleep 2; grim $W/09-run-recent.png || true; ipc run close
+          ipc winx open; sleep 2; grim $W/10-winx.png || true
+          ipc winx state > $W/winx-state.json 2>&1 || true
+          grep -q '"Disk Management"' $W/winx-state.json && ! grep -q 'Reliability history' $W/winx-state.json \
+            || { echo "::error title=Super+X menu::installed/hidden entries are wrong: $(head -c 400 $W/winx-state.json)"; touch shots/FAILED; }
+          wtype -k Down; wtype -k Down; sleep 1; grim $W/11-winx-keys.png || true
+          ipc winx key u; sleep 1; grim $W/12-winx-shut-down-or-sign-out.png || true; wtype -k Escape; wtype -k Escape; sleep 1
+          ipc winx key m; sleep 4; grim $W/13-winx-opened-device-manager.png || true; ipc devices close
+          [ "$(snap | sha256sum)" = "$wt_before" ] || { echo "::error title=Win tools::opening Device Manager, Run or the Super+X menu changed a settings file"; touch shots/FAILED; }
+          grep -E "(WinTools|DeviceManagerView|RunView)\.qml|WinTools|Device Manager: its page|Run: its page" "$LOG" > $W/shell-log.txt 2>/dev/null || true
+          if grep -qE "(WinTools|DeviceManagerView|RunView)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read)" "$LOG" 2>/dev/null \
+             || grep -qE "couldn't load|its page \((DeviceManagerView|RunView)\.qml\)" $W/shell-log.txt 2>/dev/null; then
+            echo "::error title=Win tools::$(sort -u $W/shell-log.txt | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Win tools::$(ls $W/*.png 2>/dev/null | wc -l) pictures in win-tools/"
           fi
           # ---- Right-click menu looks (Settings › Personalization › Bar and dock › Right-click menu, MenuStyles.qml), in
           # shots/menu-styles/: a file's menu and the desktop's menu on the desktop, and Hearth Files' menu, in each look

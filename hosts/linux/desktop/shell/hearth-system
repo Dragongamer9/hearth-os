@@ -567,6 +567,8 @@ COMMAND_WORDS = [
     (r'set-mute @DEFAULT_AUDIO_SOURCE@', 'Microphone on or off'), (r'systemctl suspend', 'Sleep'),
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
     (r'call clipboard toggle', 'Clipboard history'), (r'call settings', 'Open Settings'),
+    (r'call run toggle', 'Run: open an app, folder, website or Windows command'), (r'call winx toggle', 'Quick links menu (like Windows\' Win+X)'),
+    (r'call devices', 'Open Device Manager'),
     (r'call apps', 'Open Bazaar (app store)'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
     (r'nimbus-mode game', 'Go to Game Mode'), (r'nimbus-mode logout', 'Sign out'),
     (r'buttons up|volume.*\+', 'Volume up'), (r'buttons down|volume.*-', 'Volume down'), (r'buttons mute|set-mute', 'Mute'),
