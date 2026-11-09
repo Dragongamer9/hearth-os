@@ -42,6 +42,9 @@ SetPage {
     function preview(f) {
         if (f === "") f = Theme.ownWall;
         if (f === "") return "";
+        // The new looks' drawn scenes have no picture file: Gaming's neon shows its sub theme picture, the others none.
+        if (f === "anim:neon") return Qt.resolvedUrl("images/wallpapers/sub/thumbs/gaming-cyber.jpg");
+        if (["anim:zen", "anim:glass", "anim:synth"].indexOf(f) >= 0) return "";
         if (f.startsWith("anim:")) return Qt.resolvedUrl("images/wall-" + f.slice(5) + ".jpg");
         if (f.startsWith("builtin:")) return Qt.resolvedUrl("images/wallpapers/" + f.slice(8) + ".jpg");
         return "file://" + f.split("/").map(encodeURIComponent).join("/");
