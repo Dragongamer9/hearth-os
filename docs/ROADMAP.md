@@ -7,15 +7,17 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
-### New
+### Planned next
+
+- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
+- [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
+- [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
+
+## 1.9 (released 2026-11-08)
 
 - [x] The USB installer looks for controllers again on its first screen: a Controllers card lists every controller it finds (wired and built-in ones show as Connected straight away), and a Bluetooth controller put in pairing mode pairs by itself (Pairing…, then Connected; Couldn't connect has Try again). Only controllers are paired, never keyboards or headsets. A PC without Bluetooth says to plug in a controller with a cable. It stops looking when you leave the first screen, and Let's go always works (needs testing on a device)
 - [x] The USB installer, redesigned to the approved mockups: "Your PC, ready to play." with a big flame and the controllers as tiles on Welcome, Internet (optional, with Skip), the drives as big cards you browse with ◀ ▶ showing what's on each, Hold Ⓐ to erase, About you, the time zone with quick picks (the full list one press away), a last look that also lists your controllers and look, a huge percentage with a checklist that follows the real install steps, and "Hearth OS is ready.". **Pick a look** on Welcome (the Look chip, or Ⓧ): the same eight looks as Mantel and the website, coloured from Mantel's own palettes, with Dark / Light / Auto; each one recolours every screen and brings its touches (Gaming's cut corners, Synthwave's grid and scanlines, Glass's aurora, Cabin's wood, Console's bigger type). The look you pick becomes your desktop's starting look on the installed system (merged into your settings once, with a backup copy); pick nothing and Hearth OS keeps its own defaults. A broken look never stops the install (needs testing on a device)
-
-### Hearth Mods
 - [x] Play with mods: a modded Steam game (Skyrim SE with a Wabbajack list like Tuxborn) starts on the regular Steam, which it can reach: Play starts that Steam hidden when it isn't running, uses its Proton, and when only the Flatpak Steam is open says to close it instead of SKSE quietly ending after 3 seconds. Send logs keeps Proton's errors instead of hundreds of trace lines (needs testing on a device)
-
-### Voice Studio
 - [x] Voice Studio, Hearth's own voice studio on the home server (Settings › Home server › Services › Voice Studio): install on demand (about 14 GB, in your Home), on/off, Open, a PIN for its page (or Server mode's), the address and an API key to copy for the Command Center, Stop it while I play, Remove (your voices stay unless you confirm twice). Only your devices on Tailscale and this PC can reach it (needs testing on a device)
 - [x] Speak: any voice, 40+ languages, speed, download as MP3, WAV, FLAC or Opus (needs testing on a device)
 - [x] Clone a voice from a short recording (upload, or record; on a phone the recorder opens), with a consent box; it goes into your voice library (needs testing on a device)
@@ -26,12 +28,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Video dubbing: transcribed, translated by your AI service, spoken again in each speaker's own cloned voice (or one you pick), each line timed to the original, music and sounds kept (Demucs), muxed back with subtitles in both languages; queued like audiobooks (needs testing on a device)
 - [x] OpenAI-compatible speech API: /v1/audio/speech, /v1/audio/transcriptions, /v1/audio/translations, /v1/audio/voices and /v1/models, with a key, for the Hearth AI Command Center and other apps (needs testing on a device)
 - [x] Kokoro (AI voices) keeps working as before for anyone who uses it, and Voice Studio lists its voices too (needs testing on a device)
-
-### Server mode
 - [x] The web page never goes back to the PIN screen without a word: when the PIN was right but the browser didn't keep the sign-in, it says so and what to do; sign-ins, wrong PINs and unknown sign-ins go to the log for Send logs (needs testing on a device)
-
-### Bug hunt
-
 - [x] Hearth Storage's Windows sharing: a folder whose name has a line break, a trailing backslash or % in it isn't shared any more (such a name could add Samba settings of its own, even a share of the whole system) (needs testing on a device)
 - [x] Make a bootable USB: an internal drive always asks for an administrator's password, even when another option has a line break in it (polkit rule and hearth-usb both check) (needs testing on a device)
 - [x] Hearth Recovery's "Reset screen settings" writes session.conf safely (a new file swapped in, same owner and permissions), so a power cut can't leave your other session settings half-written; a file it can't write is reported instead of ending Recovery (needs testing on a device)
@@ -58,12 +55,6 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Hearth Files only saves the view settings you changed: it wrote back everything it had read when it opened, so "Show in Files" (Settings › Devices) or another Files window's folder views could switch back by themselves (needs testing on a device)
 - [x] A Desktop Mode setting whose save failed is tried again instead of being dropped, and the taskbar's switches (Do Not Disturb, desktop icons, auto-arrange, unpinning) say when they couldn't be saved instead of quietly coming back at the next sign-in (needs testing on a device)
 - [x] The right-click menu scrolls when it's taller than the screen (a handheld with app scaling): rows ran off the bottom and Up/Down picked ones you couldn't see (needs testing on a device)
-
-### Planned next
-
-- [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
-- [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
-- [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
 
 ## 1.8 (released 2026-11-08)
 
