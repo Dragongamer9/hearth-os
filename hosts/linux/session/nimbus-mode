@@ -1,7 +1,8 @@
 #!/bin/sh
 # Switches the Nimbus session between modes, or leaves it.
-#   nimbus-mode game      go to Game Mode: Steam Game Mode (docs/STEAM-GAME-MODE.md; first-time setup while it's
-#                         pending, Hearth's own Game Mode only with HEARTH_LEGACY_GAME_MODE=1 or on the live USB)
+#   nimbus-mode game      go to Game Mode: the one picked in Settings › Gaming › Game Mode (Steam Game Mode unless
+#                         you picked Hearth Game Mode: docs/HEARTH-GAME-MODE.md; the installer on the live USB)
+#   nimbus-mode hearth    go to Hearth Game Mode now (also "try again" after it didn't start: its pause ends)
 #   nimbus-mode desktop   go to Desktop Mode (Mantel)
 #   nimbus-mode steam     go to Steam Game Mode (also "try again" after it didn't start)
 #   nimbus-mode server    go to Server mode (docs/SERVER-MODE.md; Game Mode instead when it's off or can't start)
@@ -17,7 +18,7 @@ case "$1" in
     server_pid=$(cat "$RUN/hearth-server-mode.pid" 2>/dev/null)
     if [ "$HEARTH_SERVER_MODE" = 1 ] || { [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null && [ "$(cat "$RUN/nimbus-mode-now" 2>/dev/null)" = server ]; }; then echo server
     elif [ -n "$LABWC_PID" ]; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
-  game|desktop|logout|steam|server)
+  game|desktop|logout|steam|server|hearth)
     # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
     # asked for and isn't started again.)
     echo "$1" >"$RUN/nimbus-next"
@@ -37,5 +38,5 @@ case "$1" in
       pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null \
         || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null
     fi ;;
-  *) echo "usage: nimbus-mode game|desktop|steam|server|logout|current" >&2; exit 2 ;;
+  *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current" >&2; exit 2 ;;
 esac
