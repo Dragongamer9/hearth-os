@@ -387,5 +387,19 @@ class ClipboardWiring(unittest.TestCase):
         self.assertIn('hearth-emoji', binds['W-period'])
 
 
+
+class QmlSyntax(unittest.TestCase):
+    """QML doesn't allow ';' after a block ("anchors { ... }; name: x" or "Stop {...}; Stop {...}"): quickshell
+    refuses the whole file, and the popup never loads (the 1.10 mixer and clipboard did this in CI once)."""
+
+    def test_no_semicolon_after_a_block(self):
+        bad = []
+        for name in ('Mixer.qml', 'Clipboard.qml', 'SnapLayouts.qml', 'ExtrasPal.qml', 'SetSound.qml', 'SetClipboard.qml'):
+            for n, line in enumerate((SHELL / name).read_text().splitlines(), 1):
+                code = line.split('//')[0]
+                if re.search(r'\}\s*;\s*[A-Za-z_][\w.]*\s*(:|\{)', code) and not re.search(r'\b(if|else|for|function|=>)\b', code):
+                    bad.append('%s:%d: %s' % (name, n, line.strip()[:120]))
+        self.assertEqual(bad, [])
+
 if __name__ == '__main__':
     unittest.main()

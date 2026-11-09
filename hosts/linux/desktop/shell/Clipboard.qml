@@ -76,6 +76,8 @@ Scope {
                     cb.available = r.available;
                     cb.items = r.items || [];
                 } catch (e) { cb.items = []; }
+                // The item you just pinned or unpinned stays selected where it moved to.
+                if (cb.keepId !== "") { const k = cb.items.findIndex(x => x.id === cb.keepId); if (k >= 0) cb.current = k; cb.keepId = ""; }
                 if (cb.current >= cb.items.length) cb.current = cb.items.length - 1;
             }
         }
@@ -96,10 +98,11 @@ Scope {
         current = Math.min(current, items.length - 1);
         column = 0;
     }
+    property string keepId: ""
     function togglePin(i) {
         const it = items[i];
         if (!it) return;
-        run([it.pinned ? "unpin" : "pin", it.id]);
+        if (run([it.pinned ? "unpin" : "pin", it.id])) keepId = it.id;
     }
     function clearAll() {
         if (!confirmClear) { confirmClear = true; return; }
@@ -282,7 +285,8 @@ Scope {
                                 Layout.preferredWidth: 120; Layout.preferredHeight: 64
                                 radius: Theme.r(6)
                                 clip: true
-                                gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: "#2a475e" }; GradientStop { position: 1; color: "#3fb8c9" } }
+                                gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: "#2a475e" }
+                                    GradientStop { position: 1; color: "#3fb8c9" } }
                                 Image {
                                     anchors.fill: parent
                                     source: row.modelData.kind === "image" && row.modelData.path ? "file://" + row.modelData.path : ""
@@ -290,7 +294,8 @@ Scope {
                                     sourceSize: Qt.size(240, 128)
                                     asynchronous: true
                                 }
-                                Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }; height: 18; color: "#80000000" }
+                                Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                    height: 18; color: "#80000000" }
                                 Text {
                                     anchors { left: parent.left; bottom: parent.bottom; leftMargin: 6; bottomMargin: 3 }
                                     text: "Picture" + (row.modelData.dims ? " · " + row.modelData.dims.replace("x", "×") : "")

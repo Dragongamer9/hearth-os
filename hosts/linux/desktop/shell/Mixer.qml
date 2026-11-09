@@ -386,7 +386,8 @@ Scope {
                                 Icon { name: mx.devIcon(mx.defaultOut); size: 16; color: pal.accent }
                                 Text { text: mx.defaultOut; color: pal.text; font.family: pal.font; font.pixelSize: 13; elide: Text.ElideRight; width: outCol.width - 80 }
                             }
-                            Icon { anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }; name: mx.menuFor === "out" ? "chevu" : "chevd"; size: 12; color: pal.muted }
+                            Icon { anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                name: mx.menuFor === "out" ? "chevu" : "chevd"; size: 12; color: pal.muted }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: { mx.current = 0; if (mx.menuFor === "out") mx.menuFor = ""; else { mx.menuFor = "out"; mx.menuIndex = Math.max(0, mx.outList.findIndex(o => o.name === mx.defaultOut)); } }
@@ -483,7 +484,8 @@ Scope {
                                 Item {
                                     Layout.preferredWidth: 20; Layout.preferredHeight: 20
                                     Icon { anchors.centerIn: parent; name: app.muted ? "vol-mute" : "vol"; size: 16; color: app.muted ? pal.warn : pal.muted }
-                                    MouseArea { anchors { fill: parent; margins: -4 }; cursorShape: Qt.PointingHandCursor; onClicked: { mx.current = app.index + 2; mx.toggleMute(app.modelData); } }
+                                    MouseArea { anchors { fill: parent; margins: -4 }
+                                        cursorShape: Qt.PointingHandCursor; onClicked: { mx.current = app.index + 2; mx.toggleMute(app.modelData); } }
                                 }
                                 MixSlider {
                                     Layout.fillWidth: true
