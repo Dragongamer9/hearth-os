@@ -242,6 +242,9 @@ except OSError as e: print(e)' 2>&1)"
 # from /usr/share/hearth-offline-test (built on the runner with MinGW), then offline(). (/opt is a link to /var/opt in the image, so the programs are mounted under /usr)
 offline_image() {
   export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  # In the image /opt, /home, /usr/local, /srv and /mnt are links into /var, which is empty until the PC boots: make
+  # the folders they point to (only inside this throwaway container).
+  local d; for d in /opt /home /usr/local /srv /mnt; do [ -L "$d" ] && mkdir -p "$(readlink -f "$d")"; done
   for c in python3 hearth-proton-run setpriv; do
     command -v "$c" >/dev/null || { echo "::error title=offline: the image has no $c::PATH=$PATH"; return 1; }
   done
