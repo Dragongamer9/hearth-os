@@ -511,7 +511,7 @@ FocusScope {
                                         width: (detCol.width - 6) / 2; height: 46; radius: 7; color: v.c.head
                                         Column {
                                             anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter } spacing: 1
-                                            Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 10.5 }
+                                            Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11 }
                                             Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold }
                                         }
                                     }
@@ -539,7 +539,7 @@ FocusScope {
                             }
                             Column {
                                 width: parent.width; spacing: 3
-                                Text { text: "TALKS TO"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 10.5; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
+                                Text { text: "TALKS TO"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
                                 Text {
                                     width: parent.width; wrapMode: Text.WordWrap; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; lineHeight: 1.2
                                     text: !details.p ? "" : (details.p.hub ? "Wired to " + ((v.pcView.hubNames || {})[details.p.hub] || ((v.pcView.parts.find(x => x.id === details.p.hub) || {}).title || "").toLowerCase() || details.p.hub)
@@ -549,7 +549,7 @@ FocusScope {
                             Column {
                                 width: parent.width; spacing: 2
                                 visible: v.selLive.users.length > 0
-                                Text { text: "RIGHT NOW"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 10.5; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
+                                Text { text: "RIGHT NOW"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
                                 Repeater {
                                     model: v.selLive.users
                                     delegate: Row {
@@ -563,7 +563,7 @@ FocusScope {
                             Column {   // tips that are true for this PC (the one about this part first)
                                 width: parent.width; spacing: 6
                                 visible: v.pcView && v.pcView.tips.length > 0
-                                Text { text: "TIPS FOR THIS PC"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 10.5; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
+                                Text { text: "TIPS FOR THIS PC"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.6 }
                                 Repeater {
                                     model: v.pcView ? v.pcView.tips : []
                                     delegate: Rectangle {
