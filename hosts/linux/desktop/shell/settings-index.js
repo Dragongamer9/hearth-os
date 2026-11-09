@@ -2469,6 +2469,18 @@ var ENTRIES = [
 "i": "check"
 },
 {
+"t": "System Restore",
+"p": "updates",
+"d": "Hearth and its settings back to an earlier restore point. Made before each update, weekly, or by you",
+"i": "restart"
+},
+{
+"t": "Reliability history",
+"p": "updates",
+"d": "How Hearth has been running: apps that stopped, Hearth problems, warnings and updates, day by day",
+"i": "info"
+},
+{
 "t": "The previous version always stays startable",
 "p": "updates",
 "d": "Every update keeps the version before it in the boot menu",

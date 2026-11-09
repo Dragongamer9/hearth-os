@@ -235,6 +235,10 @@ G['hearth-system-info'] = (  # a chip
 G['hearth-benchmark'] = (  # a speed gauge with its needle up
     stroke('M135 370 A140 140 0 1 1 377 370', C, 38)
     + stroke('M256 300 L338 214', E, 34) + circle(256, 300, 34, C) + circle(256, 300, 12, INK))
+G['hearth-restore'] = (  # System Restore: a clock with the arrow going back round it
+    stroke('M148 256 A108 108 0 1 0 184 176 M148 160 V220 H208', C, 36) + stroke('M256 196 V256 L292 280', E, 34))
+G['hearth-reliability'] = (  # Reliability history: a stability line over a baseline
+    stroke('M136 380 H376', C, 28) + stroke('M148 316 L208 244 L256 280 L316 184 L364 244', E, 36))
 G['hearth-logs'] = (
     circle(152, 172, 18, E) + circle(152, 228, 18, E) + circle(152, 284, 18, E) + circle(152, 340, 18, E)
     + stroke('M200 172 H364 M200 228 H324 M200 284 H364 M200 340 H296', C, 28))

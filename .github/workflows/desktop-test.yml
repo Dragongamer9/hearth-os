@@ -60,6 +60,9 @@ jobs:
           # Task Manager (Windows 11 style): the helper's parsing, heat map, startup writes, settings and the sampler.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_tasks.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_task_manager.py' -v
+          # System Restore and Reliability history (docs/SYSTEM-RESTORE.md): restore points, settings back safely, the version
+          # only through hearth-admin rollback, the journal's crashes, Hearth problems, warnings and the cache.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_restore_reliability.py' -v
           # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
           # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
@@ -703,6 +706,36 @@ jobs:
             echo "::error title=Task Manager::$(grep -E 'TaskManager(View)?\.qml|Task Manager: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
           else
             echo "::notice title=Task Manager::$(ls $T/*.png 2>/dev/null | wc -l) pictures in task-manager/"
+          fi
+          # ---- System Restore and Reliability history (docs/SYSTEM-RESTORE.md), in shots/restore/: the points list (two made
+          # here, one setting changed since), every changed setting, the confirm dialog (cancelled), and Reliability history
+          # by days and weeks with a day's Details. Opening either writes no settings file; their QML loads without errors.
+          R=shots/restore; mkdir -p $R; SH="$NIMBUS_SHARE/desktop/shell"
+          python3 "$SH/hearth_settings_io.py" merge "$HOME/.local/share/nimbus/desktop.json" '{"restoreCheck": 0}' || true
+          python3 "$SH/hearth_restore.py" snapshot --kind update --title "Before updating to Hearth 1.10" > $R/snap1.json 2>&1 || true
+          python3 "$SH/hearth_restore.py" snapshot --kind manual > $R/snap2.json 2>&1 || true
+          python3 "$SH/hearth_settings_io.py" merge "$HOME/.local/share/nimbus/desktop.json" '{"restoreCheck": 1}' || true   # one setting changed since
+          set_hash() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" -maxdepth 2 -type f ! -name '*.log' ! -name '.*' -print0 2>/dev/null | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum; }
+          rs_before=$(set_hash)
+          ipc restore open; sleep 3; grim $R/01-restore-points.png || true
+          wtype -k Right 2>/dev/null; wtype -k Return 2>/dev/null; sleep 2; grim $R/02-every-changed-setting.png || true
+          wtype -k Escape 2>/dev/null; wtype -k Left 2>/dev/null; wtype -k Return 2>/dev/null; wtype -k Return 2>/dev/null; sleep 1
+          grim $R/03-confirm.png || true; wtype -k Escape 2>/dev/null; sleep 1
+          ipc restore close
+          python3 "$SH/hearth_restore.py" overview > $R/overview.json 2>&1 || true
+          ipc reliability open; sleep 6; grim $R/04-reliability-days.png || true
+          wtype -k Down 2>/dev/null; wtype -k Return 2>/dev/null; sleep 1; grim $R/05-reliability-details.png || true; wtype -k Escape 2>/dev/null
+          wtype -k Up 2>/dev/null; wtype -k Up 2>/dev/null; wtype -k Right 2>/dev/null; sleep 6; grim $R/06-reliability-weeks.png || true
+          ipc reliability close
+          python3 "$SH/hearth_reliability.py" summary > $R/summary.json 2>&1 || true
+          [ "$(set_hash)" = "$rs_before" ] || { echo "::error title=System Restore::opening System Restore or Reliability history changed a settings file"; touch shots/FAILED; }
+          python3 "$SH/hearth_settings_io.py" merge "$HOME/.local/share/nimbus/desktop.json" '{"restoreCheck": null}' || true
+          grep -E "(Restore|RestoreView|Reliability|ReliabilityView)\.qml" "$LOG" > $R/shell-log.txt 2>/dev/null || true
+          if grep -qE "(Restore|RestoreView|Reliability|ReliabilityView)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot override|Expected token|Syntax)" "$LOG" 2>/dev/null \
+             || grep -qE "(System Restore|Reliability history): its page .* couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=System Restore::$(grep -E '(Restore|Reliability)(View)?\.qml|its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=System Restore::$(ls $R/*.png 2>/dev/null | wc -l) pictures in restore/; $(python3 -c "import json;print(len(json.load(open('$R/overview.json'))['points']))" 2>/dev/null) points; reliability rows: $(python3 -c "import json;print(len(json.load(open('$R/summary.json'))['rows']))" 2>/dev/null)"
           fi
           # ---- Right-click menu looks (Settings › Personalization › Bar and dock › Right-click menu, MenuStyles.qml), in
           # shots/menu-styles/: a file's menu and the desktop's menu on the desktop, and Hearth Files' menu, in each look

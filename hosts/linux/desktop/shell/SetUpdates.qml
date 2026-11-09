@@ -29,8 +29,13 @@ SetPage {
     function shown(v) { const m = /^(\d+)\.(\d+)\.0$/.exec(v || ""); return m && Number(m[1]) >= 1 ? m[1] + "." + m[2] : v; }
     function ver(i) { return i && i.version ? shown(i.version) : (i && i.timestamp ? i.timestamp.slice(0, 10) : ""); }
     property string lastCmd: ""
+    // System Restore (docs/SYSTEM-RESTORE.md): a restore point of your settings before each update and before the
+    // writable system is switched. Detached, so a problem in it can never stop or slow the update.
+    readonly property string restoreHelper: decodeURIComponent(Qt.resolvedUrl("hearth_restore.py").toString().replace(/^file:\/\//, ""))
+    function restorePoint(kind, extra) { Quickshell.execDetached(["python3", restoreHelper, "snapshot", "--kind", kind].concat(extra)); }
     function start(cmd) {
         if (admin.running) return;
+        if (cmd === "update") restorePoint("update", page.status && page.status.available && page.ver(page.status.available) ? ["--to", page.ver(page.status.available)] : []);
         lastCmd = cmd;
         error = ""; line = cmd === "update" ? "Starting…" : cmd === "update-check" ? "Looking for updates…" : "";
         phase = cmd === "update" ? "updating" : cmd === "update-check" ? "checking" : "idle";
@@ -45,6 +50,7 @@ SetPage {
     function unlockSet(action) {
         if (unlockAdmin.running) return;
         unlockError = "";
+        if (action === "on" || action === "off") restorePoint("automatic", ["--title", action === "on" ? "Before unlocking the system" : "Before locking the system"]);
         unlockAdmin.command = ["pkexec", helper, "unlock", action];
         unlockAdmin.running = true;
     }
@@ -305,7 +311,7 @@ SetPage {
     // ---- Go back to the version before (shown only when the system reports one, and no update waits for a restart)
     readonly property bool canGoBack: page.canAdmin && page.phase === "idle" && !!(page.status && page.status.rollback && page.ver(page.status.rollback)) && !(page.status && page.status.staged)
     property bool askBack: false
-    SetHeader { visible: page.canAdmin; text: "If something broke" }
+    SetHeader { text: "If something broke" }
     SetRow {
         visible: page.canGoBack && !page.status.rollbackQueued
         icon: "restart"; title: "Go back to " + page.ver(page.status ? page.status.rollback : null)
@@ -328,6 +334,16 @@ SetPage {
         visible: page.canGoBack && !!page.status.rollbackQueued
         icon: "close"; title: "Stay on " + page.ver(page.status ? page.status.booted : null); sub: "Don't go back after all"
         onActivated: page.start("rollback")
+    }
+    SetRow {
+        icon: "restart"; title: "System Restore"
+        sub: "Hearth and its settings back to an earlier restore point. Made before each update, weekly, or by you"
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "restore", "open"])
+    }
+    SetRow {
+        icon: "info"; title: "Reliability history"
+        sub: "How Hearth has been running: apps that stopped, Hearth problems, warnings and updates, day by day"
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "reliability", "open"])
     }
     SetRow {
         visible: page.canAdmin

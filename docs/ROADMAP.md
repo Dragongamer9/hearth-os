@@ -7,6 +7,13 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### System Restore and Reliability history (docs/SYSTEM-RESTORE.md)
+
+- [ ] System Restore (the app menu, Settings › Updates & recovery, `hearth-restore`), to the approved mockup: restore points with date, description and type (Update, Automatic, Scheduled, Manual), "What will change" (the Hearth version, how many settings changed, apps stay, your files are never touched), See every changed setting, Make a restore point now, Restore and restart; mouse, keyboard and the controller
+- [ ] Restore points: a copy of your Hearth settings files (only the listed ones; never secrets, play time or your files), made before each update from Settings, the first time a new Hearth version runs, before the writable system is switched, weekly (a user timer that can't hold up starting) and on demand; about 10 kept in ~/.local/share/hearth/restore
+- [ ] Restoring: today's settings are kept as a restore point first, the settings go back through hearth_settings_io (atomic, .bak), and the version goes back only with Settings › Updates' own hearth-admin rollback when it's the one bootc keeps (the version you come from stays in the boot menu); if that fails, today's settings come back. A version no longer kept: it says so and offers the settings only
+- [ ] Reliability history (the app menu, Settings › Updates & recovery, `hearth-reliability`), to the approved mockup: a stability line over 14 days or weeks, marks for App stopped working (crashes), Hearth problems (session fallbacks, failed Hearth services), Warnings (network drops, kept modest) and Updates and changes; a day's events with Details and Send logs. Reads only; the journal is read on open and finished days are cached in ~/.cache/hearth
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
