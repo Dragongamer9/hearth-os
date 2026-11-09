@@ -60,4 +60,6 @@ in `docs/archive/`). The owner is Dragongamer9.
   `docs/HEARTH-LINK.md`, `docs/archive/MULTI-SEAT.md`, `docs/STEAM.md`, `docs/RENDERERS.md`, `docs/ARCHIVED.md`.
 - Core: `hosts/hearth-core` (Rust); Game Mode host: `hosts/hearth-rs`; UI: `ui/`; Desktop Mode: `hosts/linux/desktop`;
   shared system files: `os/system_files`; bug-report and counter service: `counter/`.
+- Hearth for Android: `hosts/android` (Kotlin WebView host for `ui/index.html`, plus `ui/android-settings.js`; test
+  device a Samsung Galaxy Tab A9), workflow `android.yml`; docs `docs/ANDROID.md`, `docs/ANDROID-LINUX.md`.
 - Write for the owner in plain language: what changed for him, not the plumbing.

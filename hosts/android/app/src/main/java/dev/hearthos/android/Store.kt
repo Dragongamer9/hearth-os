@@ -7,31 +7,53 @@ import java.io.File
 /**
  * Hearth's own data on this device, one JSON file in the app's private folder (like library.json on Linux and
  * Windows): favorites, hidden games, collections, play time, apps added to the library, the ROMs folder and the
- * profile. Written whole to a temporary file and renamed, so it's never left half-written.
+ * profile. Kept by the settings rules (docs/SETTINGS-PERSISTENCE.md): written whole to a temporary file, synced and
+ * renamed (never half-written), the previous good copy kept as <name>.bak, never replaced by defaults when it can't be
+ * read (the .bak is used, and an unreadable file is kept aside under its own name and never overwritten).
  *
  *   {"favorites":[id], "hidden":[id], "manual":[package], "collections":[{id,name,games:[id]}],
  *    "stats":{id:{minutes,lastPlayed}}, "showAll":bool, "roms":{tree,docId}, "profile":{...}, "running":{id,startedAt}}
  */
 class Store(private val file: File) {
+    private val bak = File(file.path + ".bak")
+
+    /** Set when the file couldn't be read: what happened, for the person (Bridge shows it once). */
+    @Volatile var recovered: String? = null
+        private set
+
     @get:Synchronized
     var data: JSONObject = load()
         private set
 
-    private fun load(): JSONObject = try {
-        if (file.exists()) JSONObject(file.readText()) else JSONObject()
-    } catch (e: Exception) {
-        // A broken file isn't thrown away: it's kept next to the new one for a bug report.
-        runCatching { file.copyTo(File(file.path + ".broken"), overwrite = true) }
-        JSONObject()
+    private fun read(f: File): JSONObject? = try { if (f.isFile) JSONObject(f.readText()) else null } catch (e: Exception) { null }
+
+    private fun load(): JSONObject {
+        if (!file.exists()) {
+            // A save that stopped between keeping the .bak and the rename: the .bak is the newest good copy.
+            return read(bak) ?: JSONObject()
+        }
+        read(file)?.let { return it }
+        // Unreadable: kept aside (never overwritten: each one gets its own name) so nothing is lost, and the last good
+        // copy is used. Defaults are never written over it.
+        val aside = File(file.path + ".unreadable-" + System.currentTimeMillis())
+        runCatching { file.copyTo(aside, overwrite = false) }
+        val b = read(bak)
+        recovered = if (b != null) "Hearth couldn't read ${file.name} and used its last good copy (the unreadable one is kept as ${aside.name})."
+                    else "Hearth couldn't read ${file.name}: it's kept as ${aside.name} and Hearth started it fresh."
+        runCatching { Logs.log("store: $recovered") }
+        return b ?: JSONObject()
     }
 
     @Synchronized
     fun update(change: (JSONObject) -> Unit) {
-        change(data)
+        val next = JSONObject(data.toString())   // the change works on a copy: a failed save leaves data as it was on disk
+        change(next)
         file.parentFile?.mkdirs()
         val tmp = File(file.path + ".tmp")
-        tmp.writeText(data.toString(1))
+        java.io.FileOutputStream(tmp).use { out -> out.write(next.toString(1).toByteArray(Charsets.UTF_8)); out.fd.sync() }
+        if (file.isFile && read(file) != null) runCatching { file.copyTo(bak, overwrite = true) }
         if (!tmp.renameTo(file)) { file.delete(); if (!tmp.renameTo(file)) throw java.io.IOException("Couldn't save ${file.name}") }
+        data = next
     }
 
     // ---------------------------------------------------------------- lists of ids (favorites, hidden, manual)

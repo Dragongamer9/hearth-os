@@ -2,8 +2,16 @@ package dev.hearthos.android
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.bluetooth.BluetoothDevice
+import android.companion.AssociationRequest
+import android.companion.BluetoothDeviceFilter
+import android.companion.CompanionDeviceManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.IntentSender
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.hardware.input.InputManager
 import android.os.Build
 import android.os.Bundle
@@ -55,6 +63,10 @@ class MainActivity : Activity() {
         Logs.init(File(filesDir, "logs"))
         Logs.log("Hearth ${BuildConfig.VERSION_NAME} starting · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}")
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Tablets (the Galaxy Tab A9 and up) turn with the screen, following the person's rotation lock; phones stay
+        // landscape (Viewport.kt).
+        requestedOrientation = if (Viewport.isTablet(resources.configuration.smallestScreenWidthDp)) ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                               else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         bridge = Bridge(this)
 
         web = WebView(this)
@@ -162,16 +174,23 @@ class MainActivity : Activity() {
 
     /**
      * The host shim, first thing in <head> (before the page's script looks for its host), like hearth-rs's SHIM:
-     * window.nimbusHost with platform 'android'. Small screens (phones and most handhelds, under 1000 dp wide) get
-     * the page laid out 1280 px wide and scaled to fit, the size it's designed for.
+     * window.nimbusHost with platform 'android'. The page is laid out at the width Viewport.kt picks for this screen
+     * (1280 px in landscape on phones and the Tab A9, 800 px on a tablet held upright) and scaled to fit.
      */
     private fun injectShim(html: String): String {
-        val c = resources.configuration
-        val narrow = maxOf(c.screenWidthDp, c.screenHeightDp) < 1000
-        var out = html
-        if (narrow) out = out.replaceFirst(Regex("""<meta name="viewport" content="[^"]*">"""), """<meta name="viewport" content="width=1280, viewport-fit=cover">""")
+        val out = html.replaceFirst(Regex("""<meta name="viewport" content="[^"]*">"""), """<meta name="viewport" content="${viewportMeta(resources.configuration)}">""")
         val i = out.indexOf("<head>", ignoreCase = true)
         return if (i < 0) SHIM + out else out.substring(0, i + 6) + SHIM + out.substring(i + 6)
+    }
+
+    private fun viewportMeta(c: Configuration): String = Viewport.meta(Viewport.width(c.screenWidthDp, c.screenHeightDp), c.screenWidthDp)
+
+    /** The screen turned (or was resized): the page keeps running and is laid out again for the new width. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::web.isInitialized) return
+        val meta = org.json.JSONObject.quote(viewportMeta(newConfig))
+        web.evaluateJavascript("window.__hearthViewport&&window.__hearthViewport($meta)", null)
     }
 
     // ---------------------------------------------------------------- full screen
@@ -298,6 +317,55 @@ class MainActivity : Activity() {
         if (intent.hasCategory(Intent.CATEGORY_HOME)) bridge.event("open", org.json.JSONObject().put("view", "home"))
     }
 
+    // ---------------------------------------------------------------- Android's dialogs, pages and permissions
+    private val waiting = HashMap<Int, (Int, Intent?) -> Unit>()
+    private var nextRequest = 100
+
+    /** Opens an Android page or dialog in Hearth's own task, so Back (B on the controller) comes straight back to
+     *  Hearth. [done] hears the result (for dialogs that give one). */
+    fun openForResult(i: Intent, done: ((Int, Intent?) -> Unit)? = null) {
+        val code = nextRequest++
+        if (done != null) waiting[code] = done
+        try { startActivityForResult(i, code) }
+        catch (e: Exception) { waiting.remove(code); throw e }
+    }
+
+    private val permWaiting = HashMap<Int, (Boolean) -> Unit>()
+    /** Android's own permission dialog; [done] hears whether everything was given. */
+    fun askPermissions(perms: Array<String>, done: (Boolean) -> Unit) {
+        if (perms.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) { done(true); return }
+        val code = nextRequest++
+        permWaiting[code] = done
+        requestPermissions(perms, code)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        permWaiting.remove(requestCode)?.invoke(grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED })
+    }
+
+    /** Pairing a Bluetooth device: Android's companion-device chooser over Hearth (no location, no leaving Hearth).
+     *  [done] gets the device picked, or null (cancelled, or the device has no chooser: [fallback] is true then). */
+    @Suppress("DEPRECATION")
+    fun pairDevice(done: (BluetoothDevice?, Boolean) -> Unit) {
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_COMPANION_DEVICE_SETUP)) { done(null, true); return }
+        val cdm = getSystemService(CompanionDeviceManager::class.java) ?: run { done(null, true); return }
+        val req = AssociationRequest.Builder().addDeviceFilter(BluetoothDeviceFilter.Builder().build()).setSingleDevice(false).build()
+        try {
+            cdm.associate(req, object : CompanionDeviceManager.Callback() {
+                override fun onDeviceFound(chooser: IntentSender) {
+                    val code = nextRequest++
+                    waiting[code] = { rc, data ->
+                        val d = if (rc == RESULT_OK) data?.getParcelableExtra<android.os.Parcelable>(CompanionDeviceManager.EXTRA_DEVICE) as? BluetoothDevice else null
+                        done(d, false)
+                    }
+                    try { startIntentSenderForResult(chooser, code, null, 0, 0, 0) } catch (e: Exception) { waiting.remove(code); done(null, true) }
+                }
+                override fun onFailure(error: CharSequence?) { Logs.log("bluetooth: pairing chooser: $error"); done(null, false) }
+            }, main)
+        } catch (e: Exception) { Logs.log("bluetooth: no pairing chooser: $e"); done(null, true) }
+    }
+
     /** Settings › Games › ROMs folder: Android's folder picker; the answer goes to the bridge. */
     fun pickFolder() {
         try {
@@ -312,6 +380,7 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_FOLDER) bridge.folderPicked(if (resultCode == RESULT_OK) data?.data else null)
+        else waiting.remove(requestCode)?.invoke(resultCode, data)
     }
 
     override fun onDestroy() {
@@ -332,6 +401,8 @@ class MainActivity : Activity() {
   if (window.nimbusHost || !window.HearthAndroid) return;
   var listeners = [];
   window.__hearthRecv = function (m) { for (var i = 0; i < listeners.length; i++) { try { listeners[i]({ data: m }); } catch (e) { console.error(e); } } };
+  // The screen turned: MainActivity hands over the new viewport (Viewport.kt), the page stays as it is.
+  window.__hearthViewport = function (content) { var m = document.querySelector('meta[name="viewport"]'); if (m && content) m.setAttribute('content', content); };
   window.nimbusHost = {
     platform: 'android',
     postMessage: function (msg) { window.HearthAndroid.postMessage(JSON.stringify(msg)); },

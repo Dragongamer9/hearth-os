@@ -13,7 +13,7 @@ import java.util.Locale
  * Hearth Linux stage 2 (the Linux desktop inside Hearth), the parts without Android in them so the unit tests run on
  * a plain JVM: the WebSocket protocol (RFC 6455) noVNC speaks, VNC's password file (DES, as `vncpasswd -f` writes it),
  * what the desktop needs (packages, its size, the script that starts it) and apt's progress lines. WsBridge.kt is the
- * WebSocket ↔ VNC bridge, LinuxEnv.kt puts them together. See docs/archive/ANDROID-LINUX.md.
+ * WebSocket ↔ VNC bridge, LinuxEnv.kt puts them together. See docs/ANDROID-LINUX.md.
  */
 
 // ==================================================================== the desktop

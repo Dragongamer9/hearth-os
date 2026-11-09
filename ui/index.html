@@ -7755,6 +7755,7 @@ async function andAddApp(){
     try{ const dto=await call('library.addManual',{id:a.id}); if(!dto) return; const old=G(dto.id); if(old) Object.assign(old, fromHost(dto)); else GAMES.push(fromHost(dto)); toast(`Added ${dto.title}`); render(null,true); }catch(e){ toast(e.message); } }}))});
 }
 function androidPage(t, body){
+  if(typeof anPage==='function'){ const h=anPage(t, body); if(h!=null) return h; }   // the device's settings inside Hearth (android-settings.js)
   const a=AND.s||{}, w=S.sys.wifi, b=S.sys.battery;
   if(t==='wifi') return sgrid(infoRow('an-wifi','Wi-Fi', !w.on ? 'Off' : w.ssid ? 'Connected · '+w.ssid : 'Not connected')
     + andRow('an-wset','wifi','Wi-Fi settings','Networks and passwords, in Android\'s settings','wifi')
@@ -10187,6 +10188,7 @@ function adjustSlider(el, d){
   const k=el.dataset.slider, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
   if(k.startsWith('im:')) return imSlide(el, d);   // Hearth Input's sliders (controller layouts)
   if(k.startsWith('hhd:')) return hhdSlide(el, d);   // Handheld Daemon's settings
+  if(k.startsWith('an:') && typeof anSlide==='function') return anSlide(el, d);   // Hearth for Android's device settings (android-settings.js)
   S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st)); SLIDE_AT[k]=performance.now();
   const pct=(S.set[k]-min)/(max-min)*100;
   el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
@@ -10223,6 +10225,7 @@ function act(el){
   if(a==='theater') return theaterOpen();   // Theater: Hearth Theater, your wall of video sites
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
+  if(ANDROID && /^an[A-Z]/.test(a) && typeof anAct==='function') return anAct(a, d, el);   // Hearth for Android's device settings (android-settings.js)
   if(/^stg[A-Z]/.test(a)) return stgAct(a, d);   // Hearth Storage
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
   if(/^qd[A-Z]/.test(a)) return qdAct(a, d);   // Quick Access over a game (the top dock)
@@ -11502,6 +11505,7 @@ function gameOptionItems(g){
   items.push(g.hidden ? {label:'Show in library',icon:'lib',run:()=>setHidden(g,false)} : {label:'Hide from library',icon:'x',run:()=>setHidden(g,true)});
   if(g.canRemove) items.push({label:'Remove from '+APP+'',icon:'trash',run:()=>removeGame(g)});
   if(ANDROID && g.src!=='emu') items.push({label:'App info',icon:'info',run:()=>andOpen('app', g.id)});
+  if(ANDROID && typeof anGameItems==='function') items.push(...anGameItems(g));   // Uninstall… (android-settings.js)
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
   if(lkOn() && g.inst && ['steam','epic','gog','beacon'].includes(g.src) && LK.s && (LK.s.peers||[]).length) items.push({label:'Send to another Hearth…',icon:'dl',run:()=>lkSend(g)});   // Hearth Link
@@ -14335,5 +14339,7 @@ send({type:'ready'});
 </script>
 <!-- Discover, game details, achievements, pictures, other downloads, Find games, Activity, Integrations (docs/HYDRA-FEATURES.md) -->
 <script src="hearth-play.js"></script>
+<!-- Hearth for Android: the device's own settings inside Hearth's Settings (does nothing elsewhere; docs/ANDROID.md) -->
+<script src="android-settings.js"></script>
 </body>
 </html>

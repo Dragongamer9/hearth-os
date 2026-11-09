@@ -119,8 +119,8 @@ are so existing installs keep updating.
 ## Archived
 
 Kept in the repository, but not built or shipped: the Anatase (Fedora), Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
-COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer, Hearth's app
-store and Hearth for Android. What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
+COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer and Hearth's app
+store. (Hearth for Android is back: [docs/ANDROID.md](docs/ANDROID.md).) What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
 
 ## License
 

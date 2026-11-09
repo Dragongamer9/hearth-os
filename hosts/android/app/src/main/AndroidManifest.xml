@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Game art, the player counter and "Send logs to the developer". -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -9,11 +10,39 @@
     <!-- Bluetooth on/off, on Android 11 and older (newer Android needs no permission for that). -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <!-- Hearth Linux (Beta Experimental): keeps Linux programs running while Hearth is in the background (a foreground
-         service with a notification, only while something runs). See docs/archive/ANDROID-LINUX.md. -->
+         service with a notification, only while something runs). See docs/ANDROID-LINUX.md. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <!-- Settings inside Hearth (AndroidSettings.kt, docs/ANDROID.md "Settings"). Each is asked for only when the person
+         uses the row that needs it, with the reason shown first; Hearth works without any of them.
+         Brightness, screen timeout, auto-rotate ("Modify system settings", a special permission the person turns on): -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <!-- Do Not Disturb on/off ("Do Not Disturb access"): -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- The Wi-Fi network's name and nearby networks: Android only tells apps with location permission. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Asking for a Wi-Fi scan, and Android 10's network suggestions (joining a network). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Paired Bluetooth devices and pairing new ones ("Nearby devices", Android 12+); older Android: -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- "Let Hearth run in the background" (Android's own dialog): a home app with Linux programs the person started
+         mustn't be closed by battery saving (Samsung's especially). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Uninstall from a game's options (Android's own "Uninstall this app?" dialog). -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- The "Hearth Linux is running" notification (Android 13+ asks once, when Linux first starts something). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 

@@ -1,4 +1,4 @@
-// Hearth for Android: the WebView host for Hearth's page (ui/index.html). See docs/archive/ANDROID.md.
+// Hearth for Android: the WebView host for Hearth's page (ui/index.html). See docs/ANDROID.md.
 pluginManagement {
     repositories {
         google()

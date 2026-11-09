@@ -64,13 +64,44 @@ class StoreTest {
         assertEquals("Pixel 9", p.getString("name"))
     }
 
-    @Test fun aBrokenFileStartsOverAndIsKept() {
+    @Test fun anUnreadableFileIsKeptAsideAndNeverOverwritten() {
         val dir = tmp.newFolder(); val f = dir.resolve("l.json")
         f.writeText("{not json")
         val s = Store(f)
         assertEquals(emptyList<String>(), s.list("favorites"))
-        assertTrue(dir.resolve("l.json.broken").exists())
+        assertTrue(s.recovered != null)                                       // the person is told
+        val aside = dir.listFiles()!!.single { it.name.startsWith("l.json.unreadable-") }
+        assertEquals("{not json", aside.readText())                          // the original, untouched
         s.setIn("manual", "com.app", true)
         assertEquals(listOf("com.app"), Store(f).list("manual"))
+        assertEquals("{not json", aside.readText())
+    }
+
+    @Test fun anUnreadableFileFallsBackToItsLastGoodCopy() {
+        val dir = tmp.newFolder(); val f = dir.resolve("l.json")
+        val s = Store(f)
+        s.setIn("favorites", "android:com.a", true)
+        s.setIn("favorites", "android:com.b", true)                          // the .bak now holds com.a
+        assertTrue(dir.resolve("l.json.bak").exists())
+        f.writeText("{\"favorites\": [\"android:com.a\", ")              // a cut-off write
+        val again = Store(f)
+        assertEquals(listOf("android:com.a"), again.list("favorites"))       // the last good copy, not defaults
+        assertTrue(again.recovered!!.contains("last good copy"))
+    }
+
+    @Test fun aSaveCutBeforeTheRenameKeepsTheBak() {
+        val dir = tmp.newFolder(); val f = dir.resolve("l.json")
+        Store(f).setIn("hidden", "android:x", true)
+        Store(f).setIn("hidden", "android:y", true)
+        f.delete()                                                           // as if the rename never happened
+        assertEquals(listOf("android:x"), Store(f).list("hidden"))
+    }
+
+    @Test fun merging() {
+        val s = Store(tmp.newFolder().resolve("ui-prefs.json"))
+        s.update { it.put("nimbus.look", "{\"layout\":\"tiles\"}") }
+        s.update { it.put("nimbus.swapAB", "1") }                          // only that key changes
+        assertEquals("{\"layout\":\"tiles\"}", s.data.getString("nimbus.look"))
+        assertEquals("1", s.data.getString("nimbus.swapAB"))
     }
 }
