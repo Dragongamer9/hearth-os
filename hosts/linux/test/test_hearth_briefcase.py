@@ -130,6 +130,23 @@ class Statuses(Base):
         other = bc.new(self.home, 'Briefcase')['path']
         self.assertNotEqual(other, self.b)
 
+    def test_no_briefcase_is_offered_before_you_make_one(self):
+        """~/Briefcase isn't offered (or made) by itself: a Briefcase is a folder you make. One you have is kept."""
+        home = tempfile.mkdtemp(prefix='hearth-bc-none-')
+        old = os.environ.get('HOME')
+        try:
+            os.environ['HOME'] = home
+            self.assertEqual([b for b in bc.list_known()['briefcases'] if os.path.realpath(b['path']) == os.path.realpath(os.path.join(home, 'Briefcase'))], [])
+            self.assertFalse(os.path.exists(os.path.join(home, 'Briefcase')))
+        finally:
+            os.environ['HOME'] = old
+            shutil.rmtree(home, ignore_errors=True)
+        # The one in this home is still known and works (never moved or deleted).
+        known = [b for b in bc.list_known()['briefcases'] if b['path'] == os.path.realpath(self.b)]
+        self.assertEqual(len(known), 1)
+        self.assertTrue(known[0]['default'])
+        self.assertTrue(os.path.isfile(os.path.join(self.b, '.briefcase.json')))
+
     def test_up_to_date_and_newer_on_each_side(self):
         src, cp = self.add_file()
         self.assertEqual(self.status_of('essay.txt')['status'], 'ok')
@@ -870,6 +887,13 @@ class FilesWiring(unittest.TestCase):
         files = read(os.path.join(SHELL, 'hearth-files'))
         self.assertIn("'kind': 'briefcase'", files)
         self.assertIn('briefcase_places', files)
+        # ~/Briefcase isn't pinned in the navigation pane or made by Files; Add to Briefcase offers New Briefcase….
+        self.assertIn("b.get('default') or b.get('missing')", files)
+        bq = read(os.path.join(SHELL, 'Briefcase.qml'))
+        self.assertNotIn('"--ensure"', bq)
+        self.assertIn('"New Briefcase…"', bq)
+        self.assertIn('function newBriefcaseFor(paths)', bq)
+        self.assertIn('if (n) out.push({ id: "bc-addto"', bq)
         qml = read(os.path.join(SHELL, 'FileManager.qml'))
         self.assertIn('Briefcase {', qml)
         self.assertTrue(os.path.exists(os.path.join(SHELL, 'Briefcase.qml')))

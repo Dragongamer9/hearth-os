@@ -188,11 +188,15 @@ Windows 95–XP's Briefcase, made new. Code: `hosts/linux/desktop/shell/hearth-b
 a JSON answer, like `hearth-files`), `Briefcase.qml` (what Files shows) and `BriefcaseDialog.qml` (its dialogs).
 
 - **A Briefcase is a folder** with a small hidden list inside (`.briefcase.json`), so it travels with the folder: on a USB
-  stick, a shared folder or another Hearth device. `~/Briefcase` is in the navigation pane (made the first time you open
-  it); **New › Briefcase** makes another anywhere. Its icon is a briefcase (or a satchel, suitcase, backpack or box) in
+  stick, a shared folder or another Hearth device. **A Briefcase is a folder you make**: **New › Briefcase** makes one
+  anywhere. Files doesn't pin `~/Briefcase` in the navigation pane or make it by itself any more (1.10); a `~/Briefcase`
+  you already have stays a normal folder in your home folder, never moved or deleted, and still works as a Briefcase
+  with its icon (a Favorite you added for it yourself stays). Other Briefcases you made show in the navigation pane
+  unless you turn off "Show in navigation pane" in Customize. Its icon is a briefcase (or a satchel, suitcase, backpack or box) in
   its colour, with its badge and a padlock when it's locked.
 - **Adding**: drag files or folders onto it (its folder, its icon, its place in the navigation pane), or **Add to
-  Briefcase ›** in the right-click menu. Each item is copied in and remembers its original: a path on this PC, a USB
+  Briefcase ›** in the right-click menu (your Briefcases, and **New Briefcase…**: pick where it goes, then the items go
+  in; with no Briefcase yet, that's the choice). Each item is copied in and remembers its original: a path on this PC, a USB
   drive (its filesystem ID and the path on it, so it's found again under any mount point) or a shared folder from Your
   devices (`smb://`, opened through gio), with the size, time and a hash (SHA-256; big files only when needed) of both
   copies at the last update.

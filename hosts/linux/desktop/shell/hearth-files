@@ -690,8 +690,9 @@ def briefcase_mod():
 
 
 def briefcase_places():
-    """The Briefcases you have (~/Briefcase, even before it's made, and the ones you made or opened that are
-    reachable now), unless one's "Show in navigation pane" is off."""
+    """The Briefcases you made or opened that are reachable now, unless one's "Show in navigation pane" is off.
+    ~/Briefcase is never pinned here by Hearth (a Briefcase is a folder you make): an existing one stays a normal
+    folder in your home folder; a Favorite you added for it yourself (GTK bookmarks) stays as it is."""
     m = briefcase_mod()
     if not m:
         return []
@@ -702,7 +703,7 @@ def briefcase_places():
     out = []
     for b in known:
         look = b.get('look') or {}
-        if look.get('showInNav') is False:
+        if look.get('showInNav') is False or b.get('default') or b.get('missing'):
             continue
         out.append({'id': 'briefcase:' + b['path'], 'label': look.get('name') or b.get('name') or 'Briefcase',
                     'path': b['path'], 'kind': 'briefcase', 'section': 'briefcases', 'missing': bool(b.get('missing')),

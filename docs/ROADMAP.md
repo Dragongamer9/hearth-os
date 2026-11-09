@@ -9,6 +9,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 - [ ] Hearth (C:) the Windows way in Hearth Files (the approved mockups): opening Hearth (C:) shows Program Files (every installed app, one folder each: Hearth's own, Flatpaks, Hearth Games, Recomps), Program Files (x86) (Windows apps and Steam), ProgramData, Users (your folder with AppData: Roaming, Local, Local\Temp) and Windows (look only), each with where it really is (an On Linux column and In Hearth / On Linux in the details pane). Only names: nothing on your drive moves. The address bar shows and understands C:\Program Files\… (D:, E: as before), the right-click menu has Go to the real folder, Copy path, Copy Linux path, Modify, Uninstall and Properties, Properties says where the apps come from, and files can't be dropped straight into the view's folders. "Show the Linux folders too" adds the real folders. Settings › System › Drives & folders (and Files' View menu) has the switches and the drive letters; nothing is saved until you change one. Windows apps keep their own C:
 
+- [ ] Briefcase is a folder you make: Files no longer pins ~/Briefcase in the navigation pane or makes it by itself. New › Briefcase makes one anywhere, and Add to Briefcase offers New Briefcase… (pick where) when you have none. A ~/Briefcase you already have stays where it is and keeps working, and a Favorite you added for it stays
+
 ### Planned next
 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
