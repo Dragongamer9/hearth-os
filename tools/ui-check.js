@@ -2401,6 +2401,29 @@ const path = require('path');
       await dp.waitForTimeout(300); await dshot('settings-front');
       await dev(() => { S.settingsTab = 'display'; navigate('settings', {}, false); });
       await dp.waitForTimeout(300); await dshot('settings-display');
+      // Settings › System › Game Mode (docs/HEARTH-GAME-MODE.md): Steam Game Mode or Hearth Game Mode as two picture cards,
+      // moved through with the controller; picking one saves it (gameMode.set) and offers to switch now; Hearth Game
+      // Mode's last fallback shows with Try again.
+      st = await dev(async () => {
+        const was = HOSTINFO.features; HOSTINFO.features = [...(HOSTINFO.features || []), 'gameModeChoice'];
+        GMC.s = { choice: 'hearth', saved: true, default: 'steam', hearth: { ok: true, why: '' }, steam: { ok: true, why: '' }, now: 'game', fallback: '', paused: '', live: false };
+        closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false);
+        const steam = document.querySelector('#view [data-k="sy-gm-steam"]'), hearth = document.querySelector('#view [data-k="sy-gm-hearth"]');
+        const r = { steam: !!steam, hearth: !!hearth, on: hearth && hearth.classList.contains('on'), steamOn: steam && steam.classList.contains('on'), pics: document.querySelectorAll('#view .gm-cards .lprev').length };
+        if (hearth) { setFocus(hearth, true); hearth.scrollIntoView({ block: 'center' }); }
+        r.moved = (() => { if (!hearth) return null; input('left'); const k = focused && focused.dataset.k; input('right'); return k; })();
+        // A fallback this sign-in: the reason and Try again.
+        GMC.s = Object.assign({}, GMC.s, { fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)" });
+        const h = pageSystem(); r.retry = /data-k="sy-gm-retry"/.test(h) && /Your choice is still Hearth Game Mode/.test(h);
+        GMC.s = Object.assign({}, GMC.s, { fallback: '' });
+        r.wasFeat = was; return r; });
+      if (!st.steam || !st.hearth || st.pics !== 2) derr('Settings › System has no Game Mode cards: ' + JSON.stringify(st));
+      if (!st.on || st.steamOn) derr('the Game Mode cards do not show Hearth Game Mode in use: ' + JSON.stringify(st));
+      if (st.moved !== 'sy-gm-steam') derr('Left on the Hearth Game Mode card did not move to Steam Game Mode: ' + st.moved);
+      if (!st.retry) derr("Hearth Game Mode's fallback is not shown with Try again");
+      await dev(() => { closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false); const c = document.querySelector('#view [data-k="sy-gm-hearth"]'); if (c) { setFocus(c, true); c.scrollIntoView({ block: 'center' }); } });
+      await dp.waitForTimeout(400); await dshot('settings-gamemode');
+      await dev(() => { HOSTINFO.features = (HOSTINFO.features || []).filter(f => f !== 'gameModeChoice'); closeAll(); });
       // Go back to the previous version (Hearth OS images, Peppermint too since it keeps bootc (hearth-unlock); never
       // with an update waiting).
       st = await dev(() => { const was = [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s]; HOSTINFO.system = true; HOSTINFO.edition = 'anatase';

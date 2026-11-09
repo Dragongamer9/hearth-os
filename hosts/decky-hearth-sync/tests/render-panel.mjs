@@ -55,6 +55,11 @@ const shots = [
   ["hearth-sync-panel-import-done", "import-done", async () => { await scrollTo("Other Steam folders"); }, ["Last import: 3 moved, 1 from 1 added library folder, 2 skipped."]],
   ["hearth-sync-panel-import-none", "synced", async () => { await scrollTo("Other Steam folders"); }, ["No Steam games in other Steam folders (1 Steam already has)"]],
   ["hearth-sync-panel-not-hearth", "not-hearth", async () => focus("Get Hearth OS"), ["part of Hearth OS", "Steam Game Mode, like SteamOS", "Get Hearth OS", "Free and open source"]],
+  // Which Game Mode (src/gamemode.tsx, docs/HEARTH-GAME-MODE.md): Steam Game Mode in use by default; picking Hearth Game
+  // Mode offers Switch now; when Hearth Game Mode didn't start, why and Try again.
+  ["hearth-sync-panel-game-mode", "synced", async () => { await scrollTo("Game Mode"); await focus("Hearth Game Mode"); }, ["Game Mode", "✓ Steam Game Mode (in use, default)", "Hearth Game Mode", "Applies the next time Game Mode starts"]],
+  ["hearth-sync-panel-game-mode-picked", "synced", async () => { await btn("Hearth Game Mode"); await page.waitForTimeout(300); await scrollTo("Game Mode"); await focus("Switch to Hearth"); }, ["✓ Hearth Game Mode (in use)", "Switch to Hearth Game Mode now"]],
+  ["hearth-sync-panel-game-mode-fallback", "gamemode-fallback", async () => { await scrollTo("Game Mode"); await focus("Try Hearth"); }, ["Hearth Game Mode didn't start", "3 times within 2 minutes", "Your choice is still Hearth Game Mode", "Try Hearth Game Mode again"]],
   ["hearth-sync-panel-remove-confirm", "synced", async () => { await btn("Remove all"); await page.waitForTimeout(300); await focus("Press again"); }, ["Press again to remove them", "your other non-Steam games stay"]],
 ];
 for (const [name, st, act, wants] of shots) {

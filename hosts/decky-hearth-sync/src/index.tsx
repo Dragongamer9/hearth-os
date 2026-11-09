@@ -9,6 +9,7 @@ import { FaSyncAlt } from "react-icons/fa";
 import { CHECK_EVERY, Item, Status, ago, storeList, storeOn } from "./model";
 import { ImportSection } from "./import";
 import { HearthOnly, hearthOs } from "./hearth-only";
+import { GameModeSection, gameModeNotice } from "./gamemode";
 import { Settings, getSettings, getStatus, isBusy, listGames, onChange, removeAll, runSync, setSettings } from "./sync";
 
 function Panel() {
@@ -80,6 +81,7 @@ function Panel() {
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
+      <GameModeSection />
     </>
   );
 }
@@ -92,6 +94,8 @@ export default definePlugin(() => {
   // Only on Hearth OS (hearth-only.tsx); anywhere else nothing starts.
   hearthOs().then((ok) => {
     if (!ok || gone) return;
+    // Hearth Game Mode didn't start and the session opened Steam Game Mode instead: say so once (gamemode.tsx).
+    gameModeNotice();
     first = setTimeout(() => { runSync(true).catch(() => {}); }, 15000);
     timer = setInterval(() => { runSync(false).catch(() => {}); }, CHECK_EVERY);
   });

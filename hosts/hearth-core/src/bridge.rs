@@ -533,6 +533,17 @@ impl Bridge {
             // Start in Steam Game Mode (per device, off by default; the session turns it off by itself when it fails)
             "steamMode.setDefault" => crate::steam_mode::set_default(a["on"].as_bool().unwrap_or(false)),
             // ---- end Steam Game Mode
+            // ---- Which Game Mode (game_mode_choice.rs, docs/HEARTH-GAME-MODE.md): Settings › System › Game Mode. Switch
+            // now is session.restartGameMode (the session opens the Game Mode you picked).
+            "gameMode.get" => crate::game_mode_choice::get(),
+            "gameMode.set" => crate::game_mode_choice::set(a),
+            // Switch now / Try Hearth Game Mode again: in Game Mode, Hearth closes properly and the session opens it; from a
+            // Hearth window in Desktop Mode, through nimbus-mode (which closes Desktop Mode).
+            "gameMode.switchNow" => {
+                let to = crate::game_mode_choice::switch_target(a);
+                if crate::signin_handoff::game_mode() { self.switch_game_mode(to); Ok(Value::Null) }
+                else { crate::game_mode_choice::nimbus_mode(to).map(|_| Value::Null) }
+            }
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1859,6 +1870,14 @@ impl Bridge {
     fn auto_update(&self) -> bool { self.library.store.data["autoUpdateCheck"] != false }
     /// Game Mode starts again (gamescope with its new options): the session's next round is Game Mode, and Hearth
     /// leaves (outside the session, Hearth restarts itself).
+    /// Game Mode again as `to` ("game": the one you picked, "hearth": Hearth Game Mode asked for by name), Hearth closing
+    /// first (the session reads nimbus-next when it has).
+    pub fn switch_game_mode(&self, to: &str) {
+        let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+        if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), format!("{to}\n")); }
+        let emit = self.emit.clone();
+        std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(600)); emit(json!({"type": if in_session { "quit" } else { "restart" }})); });
+    }
     pub fn restart_game_mode(&self) {
         let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
         if in_session { let _ = std::fs::write(std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("nimbus-next"), "game\n"); }
@@ -2041,6 +2060,8 @@ fn features() -> Vec<&'static str> {
     // Hearth OS's Game Mode is Steam Game Mode (nimbus-session exports HEARTH_STEAM_ONLY=1 unless Hearth's own Game Mode
     // is switched back on): first-time setup hands over to it when it finishes.
     if crate::steam_mode::steam_only(std::env::var("HEARTH_STEAM_ONLY").ok().as_deref()) { f.push("steamOnly"); }
+    // Which Game Mode (Steam's or Hearth's): Settings › System's two cards, where Hearth OS's helper is.
+    if crate::game_mode_choice::available() { f.push("gameModeChoice"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
