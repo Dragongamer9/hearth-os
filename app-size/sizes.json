@@ -1,0 +1,154 @@
+[
+ {
+  "app": "Saves",
+  "where": "1280x800 window",
+  "before": {
+   "font": 19.52,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 26.352001,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 18.9,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Saves",
+  "where": "maximized",
+  "before": {
+   "font": 25.280001,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 34.128002,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 18.9,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Mods",
+  "where": "1280x800 window",
+  "before": {
+   "font": 16.040001,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 24.060001,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 21,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Mods",
+  "where": "maximized",
+  "before": {
+   "font": 19.560001,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 34.230003,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 24.5,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Disks",
+  "where": "1280x800 window",
+  "before": {
+   "font": 18.52,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 25.002001,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 18.9,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Disks",
+  "where": "maximized",
+  "before": {
+   "font": 24,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 32.400002,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 18.9,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Contacts",
+  "where": "1280x800 window",
+  "before": {
+   "font": 18.52,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 25.002001,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1280,
+   "h1": 18.9,
+   "size": "desktop"
+  },
+  "bar": 14
+ },
+ {
+  "app": "Contacts",
+  "where": "maximized",
+  "before": {
+   "font": 24,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 32.400002,
+   "size": ""
+  },
+  "after": {
+   "font": 14,
+   "dpr": 1,
+   "w": 1920,
+   "h1": 18.9,
+   "size": "desktop"
+  },
+  "bar": 14
+ }
+]
