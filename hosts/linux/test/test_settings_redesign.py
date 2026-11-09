@@ -76,7 +76,7 @@ class Registry(unittest.TestCase):
         # Every Set*.qml page file is in the registry (nothing gets lost), except the parts other pages use.
         parts = {'SetBase.qml', 'SetRow.qml', 'SetSwitch.qml', 'SetChoice.qml', 'SetSlider.qml', 'SetField.qml', 'SetHeader.qml',
                  'SetPage.qml', 'SetJob.qml', 'SetBootCard.qml', 'SetBootFrames.qml', 'SetBootPreview.qml', 'SetBootVideo.qml',
-                 'SetCard.qml', 'SetCardGroup.qml', 'SetExpander.qml', 'SetChip.qml', 'SetBanner.qml', 'SetLinkCard.qml', 'SetButton.qml', 'SetPinPad.qml',
+                 'SetCard.qml', 'SetCardGroup.qml', 'SetExpander.qml', 'SetDropdown.qml', 'SetChip.qml', 'SetBanner.qml', 'SetLinkCard.qml', 'SetButton.qml', 'SetPinPad.qml',
                  'SetStyle.qml'}
         files = {p['file'] for p in ps.values()}
         for f in SHELL.glob('Set*.qml'):
@@ -188,7 +188,7 @@ class Frame(unittest.TestCase):
         for want in ('Reg.crumbs(entry.id)', 'function back()', 'Ctrl+PgDown', 'Ctrl+PgUp', '"Ctrl+F"', '"Ctrl+W"',
                      'label: "Select"', 'label: "Back"', 'label: "Search"', 'label: "Previous / next category"', 'label: "Close"'):
             self.assertIn(want, f)
-        self.assertIn('case Qt.Key_Escape: SettingsNav.back(); break;', (SHELL / 'SetBase.qml').read_text())
+        self.assertIn('case Qt.Key_Escape: if (base.ownsEscape) base.escaped(); else SettingsNav.back(); break;', (SHELL / 'SetBase.qml').read_text())   # (an open dropdown closes first)
         pad = (SHELL / 'hearth-pad').read_text()
         self.assertIn("SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),", pad)
         self.assertIn("self.keys_why.endswith('Hearth Settings')", pad)
@@ -268,7 +268,7 @@ class NeverChangeByThemselves(unittest.TestCase):
         self.assertNotRegex(code(s), r'save\("defaults"\)|defaultsGen\s*=(?!=)(?!.*o\.defaults)')
         self.assertIn('property string look: "steam"', s)
         t = (SHELL / 'Theme.qml').read_text()
-        self.assertIn('readonly property bool skyDefault: steam && Settings.defaultsGen >= 2', t)
+        self.assertIn('readonly property bool skyDefault: steam && subOwn && Settings.defaultsGen >= 2', t)   # not with a sub theme: its own accent
         self.assertIn('readonly property color lookAccent: skyDefault ? "#66c0f4" : ember', t)
         skel = json.loads((ROOT / 'os' / 'system_files' / 'etc' / 'skel' / '.local' / 'share' / 'nimbus' / 'desktop.json').read_text())
         # Clipboard history is off on a new install until the person turns it on (Hearth 1.10); older files without

@@ -52,6 +52,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Checks on every change: the unit tests, Hearth's page as the app shows it on a Tab A9 (pictures of Home, Library and Display & sound) and the app started on an Android emulator until Home is up
 - [ ] For the owner: a signing key in the repository's secrets, so each new app installs over the last one (the old 0.2.2 needs uninstalling once: it was signed with a throwaway key)
 - [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
+- [x] Sub themes in Settings › Personalisation: Hearth, Steam-style and Gaming each get five colourways (today's colours first, then four new ones: Rose Quartz, Evergreen, Midnight, Copper Sea / Crimson, Emerald, Royal, Graphite / Toxic, Inferno, Ultraviolet, Frostbite) and the Black set of seven (Black & Red, Black & Green, Black & Yellow, Hazard, Volt, Holly, Traffic Light), each with its own wallpaper and a light mode. Only the colours and wallpaper change; each look keeps its shape. The page is now compact dropdowns (Look, Sub theme with pictures and colour dots, Mode, Match sub theme, Accent) that work with a controller. Nobody's desktop changes until they pick one, and a wallpaper you chose yourself is never replaced (needs testing on a device)
 
 ### Planned next
 

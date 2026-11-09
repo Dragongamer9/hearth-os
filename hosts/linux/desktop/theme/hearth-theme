@@ -91,6 +91,76 @@ def sunset_mode(d, now=None):
 
 
 SKY = '#66c0f4'   # the Sky accent preset (palettes.json "accents")
+SUB_TOKENS = ('bg', 'bg2', 'panel', 'panel2', 'panel3', 'line', 'text', 'muted', 'ember', 'flame', 'third', 'ink')
+
+
+# ---- Sub themes (Settings › Personalisation › Sub theme; "subTheme" in desktop.json). The same rules as the shell's
+# shell/subthemes.js (the tests run both): a look's "subThemes" (the first = its own colours) and the shared
+# "blackSet" it has "blackWallpapers" for. "" or an id that isn't there, or anything broken, = the look's own.
+def sub_list(pal, look):
+    try:
+        L = pal.get(look) if isinstance(pal, dict) else None
+        if not isinstance(L, dict) or not isinstance(L.get('subThemes'), list):
+            return []
+        out, seen = [], set()
+
+        def add(s, group, wall):
+            if not isinstance(s, dict) or not isinstance(s.get('id'), str) or not s['id'] or s['id'] in seen:
+                return
+            seen.add(s['id'])
+            out.append({'id': s['id'], 'label': s.get('label') if isinstance(s.get('label'), str) and s.get('label') else s['id'],
+                        'group': group, 'own': not out or s.get('own') is True, 'wallpaper': wall if isinstance(wall, str) else '',
+                        'dark': s.get('dark') if isinstance(s.get('dark'), dict) else None,
+                        'light': s.get('light') if isinstance(s.get('light'), dict) else None})
+        for s in L['subThemes']:
+            add(s, 'colours', s.get('wallpaper') if isinstance(s, dict) else '')
+        if not out:
+            return []
+        bw = L.get('blackWallpapers')
+        if isinstance(bw, dict) and isinstance(pal.get('blackSet'), list):
+            for b in pal['blackSet']:
+                if isinstance(b, dict) and isinstance(b.get('id'), str) and b['id'] in bw:
+                    add(b, 'black', bw[b['id']])
+        return out
+    except Exception:
+        return []
+
+
+def sub_find(pal, look, sid):
+    subs = sub_list(pal, look)
+    if not subs:
+        return None
+    return next((s for s in subs if s['id'] == sid), subs[0])
+
+
+def sub_palette(base, pal, look, sid, mode):
+    """The look's own colours for this mode with the sub theme's valid colours on top."""
+    out = dict(base) if isinstance(base, dict) else {}
+    s = sub_find(pal, look, sid)
+    if not s or s['own']:
+        return out
+    c = s['light'] if mode == 'light' else s['dark']
+    if isinstance(c, dict):
+        for k in SUB_TOKENS:
+            if valid(c.get(k)):
+                out[k] = c[k].lower()
+    return out
+
+
+def with_sub(pal, look, sid):
+    """palettes.json as hearth-theme uses it, with the chosen sub theme's colours as the look's own. Hearth's dark
+    colours stay the reference every colour file is mapped from ("_ref")."""
+    s = sub_find(pal, look, sid)
+    if not s or s['own']:
+        return pal, ''
+    out = dict(pal)
+    out['_ref'] = (pal.get('hearth') or {}).get('dark', {})
+    out['_sub'] = s['id']
+    lk = dict(pal.get(look) or {})
+    for mode in ('dark', 'light'):
+        lk[mode] = sub_palette(lk.get(mode) or lk.get('dark') or {}, pal, look, s['id'], mode)
+    out[look] = lk
+    return out, s['id']
 
 
 def choice():
@@ -99,11 +169,13 @@ def choice():
     look = d.get('look') if d.get('look') in pal and not str(d.get('look')).startswith('_') else 'steam'
     mode = sunset_mode(d) or ('light' if d.get('mode') == 'light' else 'dark')
     accent = d.get('accent') if valid(d.get('accent')) else ''
+    pal, sub = with_sub(pal, look, d.get('subTheme') if isinstance(d.get('subTheme'), str) else '')
     # A new install's desktop.json (from /etc/skel) says "defaults": 2: its Steam-style look starts with the Sky accent.
-    # Only a default, worked out when read (Theme.qml does the same); nothing is written.
-    if not accent and look == 'steam' and isinstance(d.get('defaults'), int) and not isinstance(d.get('defaults'), bool) and d.get('defaults') >= 2:
+    # Only a default, worked out when read (Theme.qml does the same); nothing is written. Not with a sub theme: its
+    # own accent then.
+    if not accent and not sub and look == 'steam' and isinstance(d.get('defaults'), int) and not isinstance(d.get('defaults'), bool) and d.get('defaults') >= 2:
         accent = SKY
-    if not accent and look == 'hearth':
+    if not accent and not sub and look == 'hearth':
         a = ((load(os.path.join(DATA, 'nimbus', 'library.json'), {}) or {}).get('profile') or {}).get('accent')
         accent = a if valid(a) else ''
     return pal, look, mode, accent.lower()
@@ -116,16 +188,19 @@ def luminance(c):
 
 class Mapper:
     def __init__(self, pal, look, mode, accent):
-        ref = pal.get('hearth', {}).get('dark', {})
+        sub = '_ref' in pal          # a sub theme's colours are in pal[look] (with_sub)
+        ref = pal.get('_ref') or pal.get('hearth', {}).get('dark', {})
         tgt = dict(pal.get(look, {}).get(mode, {}))
+        own_ink = tgt.get('ink')
         self.accent = accent or tgt.get('ember', '#ff8a3d')
         tgt['ember'] = self.accent
-        # Text on the accent: dark on light accents, white on dark ones (as Theme.qml's accentInk).
+        # Text on the accent: dark on light accents, white on dark ones (as Theme.qml's accentInk); a sub theme's own
+        # accent has its own ink.
         dark_ink = pal.get(look, {}).get('dark', {}).get('ink', '#2a1206')
-        tgt['ink'] = dark_ink if luminance(self.accent) > 0.45 else '#ffffff'
+        tgt['ink'] = own_ink if sub and not accent and valid(own_ink) else dark_ink if luminance(self.accent) > 0.45 else '#ffffff'
         self.ref = {k: rgb(ref[k]) for k in TOKENS if valid(ref.get(k))}
         self.tgt = {k: rgb(tgt[k]) for k in TOKENS if valid(tgt.get(k))}
-        self.identity = look == 'hearth' and mode == 'dark' and self.accent == ref.get('ember')
+        self.identity = not sub and look == 'hearth' and mode == 'dark' and self.accent == ref.get('ember')
 
     def color(self, h):
         h = h.lower()
@@ -241,7 +316,7 @@ def main():
         return 0
     if '--show' in sys.argv:
         m = Mapper(pal, look, mode, accent)
-        print(json.dumps({'look': look, 'mode': mode, 'accent': m.accent, 'colors': {k: hexc(v) for k, v in m.tgt.items()}}))
+        print(json.dumps({'look': look, 'sub': pal.get('_sub', ''), 'mode': mode, 'accent': m.accent, 'colors': {k: hexc(v) for k, v in m.tgt.items()}}))
         return 0
     m = Mapper(pal, look, mode, accent)
     lk = pal.get(look, {})

@@ -80,20 +80,26 @@ var ENTRIES = [
 "i": "kbd"
 },
 {
+"t": "Look",
+"p": "appearance",
+"d": "The shape and style: corners, bar, frames and fonts",
+"i": "window"
+},
+{
+"t": "Sub theme",
+"p": "appearance",
+"i": "palette"
+},
+{
 "t": "Mode",
 "p": "appearance",
-"d": "Sunset (optional): light by day and dark by night, on the times below. Off unless you choose it.",
+"d": "Auto (optional): light by day and dark by night, on the times below. Off unless you choose it.",
 "i": "sun"
 },
 {
-"t": "More accent colours",
+"t": "Match sub theme",
 "p": "appearance",
-"d": "From your wallpaper, any hue, or a colour you type",
-"i": "edit"
-},
-{
-"t": "Custom accent",
-"p": "appearance"
+"i": "image"
 },
 {
 "t": "Wallpaper",
@@ -105,6 +111,16 @@ var ENTRIES = [
 "p": "appearance",
 "d": "Any picture on this device. In the Files app you can also right-click a picture › Set as Hearth wallpaper.",
 "i": "image"
+},
+{
+"t": "More accent colours",
+"p": "appearance",
+"d": "From your wallpaper, any hue, or a colour you type",
+"i": "edit"
+},
+{
+"t": "Custom accent",
+"p": "appearance"
 },
 {
 "t": "Desktop clock and weather",
