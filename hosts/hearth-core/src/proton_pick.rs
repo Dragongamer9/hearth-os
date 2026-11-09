@@ -2,7 +2,7 @@
 //!
 //! Hearth OS 1.7 builds the newest GE-Proton into the image (Steam's system folder for compatibility tools,
 //! `/usr/share/steam/compatibilitytools.d/GE-Proton*`), so Windows games and apps start without a download, offline.
-//! "Default" means that one, never "UMU-Proton, downloaded when needed": games start through hearth-proton-run
+//! "Default" means that one, never a UMU-Proton download: games start through hearth-proton-run
 //! (proton_run.rs), which with nothing set uses the built-in GE-Proton too, without Steam and without the internet
 //! (owner's red flag). Only on another distro with no built-in GE-Proton and no hearth-proton-run is nothing set, and
 //! umu-run picks its own Proton there.
