@@ -132,6 +132,7 @@ jobs:
           out = []
           for f in sorted(glob.glob('app/src/main/jniLibs/arm64-v8a/*.so')):
               d = open(f, 'rb').read()
+              if d[:4] != b'\x7fELF' or d[4] != 2: continue   # the 32-bit loader rides along; only 64-bit code matters here
               phoff = struct.unpack_from('<Q', d, 32)[0]; es = struct.unpack_from('<H', d, 54)[0]; n = struct.unpack_from('<H', d, 56)[0]
               al = min(struct.unpack_from('<Q', d, phoff + i * es + 48)[0] for i in range(n) if struct.unpack_from('<I', d, phoff + i * es)[0] == 1)
               out.append(f"{f.split('/')[-1]}: {al // 1024} KB")
@@ -143,6 +144,7 @@ jobs:
           gradle --no-daemon lintDebug > lint.log 2>&1 || echo "::warning title=Android lint::$(tail -15 lint.log | tr '\n' '|' | cut -c1-1500)"
           f=app/build/reports/lint-results-debug.txt
           [ -f "$f" ] && echo "::notice title=Android lint::$(tail -1 "$f")" || true
+          [ -f "$f" ] && grep -E -A2 ': Error: ' "$f" | head -30 | tr '\n' '|' | cut -c1-3500 | sed 's/^/::notice title=Android lint errors::/' || true
       - name: Forget the signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/hearth-release.jks"
