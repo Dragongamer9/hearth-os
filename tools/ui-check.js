@@ -2421,8 +2421,11 @@ const path = require('path');
       if (!st.on || st.steamOn) derr('the Game Mode cards do not show Hearth Game Mode in use: ' + JSON.stringify(st));
       if (st.moved !== 'sy-gm-steam') derr('Left on the Hearth Game Mode card did not move to Steam Game Mode: ' + st.moved);
       if (!st.retry) derr("Hearth Game Mode's fallback is not shown with Try again");
-      await dev(() => { closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false); const c = document.querySelector('#view [data-k="sy-gm-hearth"]'); if (c) { setFocus(c, true); c.scrollIntoView({ block: 'center' }); } });
-      await dp.waitForTimeout(400); await dshot('settings-gamemode');
+      await dev(() => { closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false); });
+      // (After the page has settled: it puts the selection on its first row by itself.)
+      await dp.waitForTimeout(700);
+      await dev(() => { const c = document.querySelector('#view [data-k="sy-gm-hearth"]'); if (c) { setFocus(c, true); c.scrollIntoView({ block: 'center' }); } });
+      await dp.waitForTimeout(500); await dshot('settings-gamemode');
       await dev(() => { HOSTINFO.features = (HOSTINFO.features || []).filter(f => f !== 'gameModeChoice'); closeAll(); });
       // Go back to the previous version (Hearth OS images, Peppermint too since it keeps bootc (hearth-unlock); never
       // with an update waiting).
