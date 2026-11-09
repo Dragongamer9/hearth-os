@@ -91,4 +91,9 @@ jobs:
             -v /tmp/offline-exe:/opt/offline-exe:ro \
             -v "$S/hearth_proton_run.py:$D/hearth_proton_run.py:ro" -v "$S/hearth_proton.py:$D/hearth_proton.py:ro" \
             -v "$S/hearth-winapps:$D/hearth-winapps:ro" -v "$PWD/os/system_files/usr/bin/hearth-proton-run:/usr/bin/hearth-proton-run:ro" \
-            --entrypoint /usr/bin/bash ghcr.io/dragongamer9/hearth-peppermint:testing /repo/tools/winapps-e2e/e2e.sh offline-image
+            --entrypoint /usr/bin/bash ghcr.io/dragongamer9/hearth-peppermint:testing /repo/tools/winapps-e2e/e2e.sh offline-image 2> >(tee /tmp/oi.err >&2) || {
+            rc=$?
+            echo "::error title=offline: podman said::$(tail -c 1500 /tmp/oi.err | tr '\n' '|')"
+            c=$(sudo podman create ghcr.io/dragongamer9/hearth-peppermint:testing /usr/bin/true)
+            echo "::error title=offline: the image's shells::$(sudo podman export "$c" | tar -tv 2>/dev/null | grep -E ' (\./)?(usr/)?bin/(bash|sh|python3|setpriv)( |$)' | tr -s ' ' | cut -c1-200 | tr '\n' '|')"
+            sudo podman rm "$c" >/dev/null; exit $rc; }
