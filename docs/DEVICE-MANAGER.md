@@ -84,10 +84,10 @@ Esc (B) closes; Browse… picks a file with Hearth Files' Open dialog.
 
 Super+X, or a right-click on the Start button (the Hearth flame) in any bar layout. Windows' list, each with its
 underlined letter: Installed apps (P), Power options (O), Reliability history (L), System (Y), Device Manager (M),
-Network connections (W), Disk Management (K), Terminal (I), Task Manager (T), Settings (N), Files (E), Search (S),
+Network connections (W), Disk Management (K), Terminal (I), Task Manager (T), Resource Monitor (C), Settings (N), Files (E), Search (S),
 Run (R), Shut down or sign out › (U: Sign out, Lock, Sleep, Shut down, Restart, Game Mode), Desktop (D).
 
-- Entries whose app isn't installed (Reliability history, Disk Management) are hidden.
+- Entries whose app isn't installed (Reliability history, Disk Management, Resource Monitor) are hidden.
 - **Terminal (Admin) is left out**: Hearth has no admin terminal; things that need it ask for your password themselves.
 - Reliability history's letter is L, not Windows' V: the underlined letter has to be in the name.
 - Keys and the controller: the letter opens its entry, Up / Down and Enter (A), Right opens Shut down or sign out,
