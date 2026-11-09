@@ -1,0 +1,33 @@
+{
+  "drives": {
+    "mount:/__e": {
+      "letter": "D",
+      "name": "Local Disk",
+      "path": "/__e",
+      "kind": "drive",
+      "since": 1794242498
+    },
+    "mount:/run/media/root/Backup": {
+      "letter": "E",
+      "name": "Backup",
+      "path": "/run/media/root/Backup",
+      "kind": "drive",
+      "since": 1794243719
+    },
+    "mount:/run/media/root/Games": {
+      "letter": "F",
+      "name": "Games",
+      "path": "/run/media/root/Games",
+      "kind": "steam",
+      "since": 1794243719
+    },
+    "net:dev:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1:Media": {
+      "letter": "G",
+      "name": "Media (\\\\chris-hearth)",
+      "path": "",
+      "kind": "network",
+      "since": 1794243719
+    }
+  },
+  "version": 1
+}

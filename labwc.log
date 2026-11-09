@@ -1,0 +1,90 @@
+00:00:00.005 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:00:00.005 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:00:00.005 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:00:00.088 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:00:00.088 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:00:00.088 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:11:08.916 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:11:08.916 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:11:08.916 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:11:40.394 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:11:40.394 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:11:40.394 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:28:11.941 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:28:11.941 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:28:11.941 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:28:23.090 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:28:23.090 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:28:23.090 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:28:34.265 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:28:34.265 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:28:34.265 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:28:38.298 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:28:38.298 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:28:38.298 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:28:49.469 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:28:49.469 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:28:49.469 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:29:00.635 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:29:00.635 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:29:00.635 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:29:04.659 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:29:04.659 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:29:04.659 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:29:15.852 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:29:15.852 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:29:15.852 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:29:27.024 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:29:27.024 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:29:27.024 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+Xwayland glamor: GBM Wayland interfaces not available
+Failed to initialize glamor, falling back to sw
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Multiple symbols for level 1/group 1 on key <FK23>
+>                   Using F23, ignoring XF86TouchpadOff
+> Warning:          Symbol map for key <FK23> redefined
+>                   Using last definition for conflicting fields
+> Warning:          Symbol map for key <FK24> redefined
+>                   Using last definition for conflicting fields
+Errors from xkbcomp are not fatal to the X server
+00:30:16.426 [ERROR] [../src/view.c:1758] view has no last placement info
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Unsupported maximum keycode 709, clipping.
+>                   X11 cannot support keycodes above 255.
+> Warning:          Virtual modifier Hyper multiply defined
+>                   Using 0, ignoring 0
+> Warning:          Virtual modifier ScrollLock multiply defined
+>                   Using 0, ignoring 0
+Errors from xkbcomp are not fatal to the X server
+00:30:39.560 [ERROR] [xwayland/xwm.c:1920] xcb error: op ConfigureWindow (no minor), code Window (no extension), sequence 232, value 4194327
+00:30:39.560 [ERROR] [xwayland/xwm.c:1920] xcb error: op ChangeProperty (no minor), code Window (no extension), sequence 235, value 4194327
+00:30:39.561 [ERROR] [xwayland/xwm.c:1920] xcb error: op ConfigureWindow (no minor), code Window (no extension), sequence 237, value 4194327
+00:30:39.561 [ERROR] [xwayland/xwm.c:1920] xcb error: op ChangeProperty (no minor), code Window (no extension), sequence 240, value 4194327
+00:30:39.561 [ERROR] [xwayland/xwm.c:1920] xcb error: op DeleteProperty (no minor), code Window (no extension), sequence 241, value 4194327
+00:30:39.742 [ERROR] [../src/view.c:1758] view has no last placement info
+00:30:46.676 [ERROR] [xwayland/xwm.c:1920] xcb error: op ConfigureWindow (no minor), code Window (no extension), sequence 297, value 4194327
+00:30:46.676 [ERROR] [xwayland/xwm.c:1920] xcb error: op ChangeProperty (no minor), code Window (no extension), sequence 300, value 4194327
+00:30:46.677 [ERROR] [xwayland/xwm.c:1920] xcb error: op ConfigureWindow (no minor), code Window (no extension), sequence 302, value 4194327
+00:30:46.677 [ERROR] [xwayland/xwm.c:1920] xcb error: op ChangeProperty (no minor), code Window (no extension), sequence 305, value 4194327
+00:30:46.677 [ERROR] [xwayland/xwm.c:1920] xcb error: op DeleteProperty (no minor), code Window (no extension), sequence 306, value 4194327
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+00:32:55.458 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:32:55.458 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:32:55.458 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:33:06.514 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:33:06.514 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:33:06.514 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:34:03.368 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:34:03.368 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:34:03.368 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:34:14.462 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:34:14.462 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:34:14.462 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+hosts/linux/desktop/labwc/autostart: line 61: nimbus-mode: command not found
