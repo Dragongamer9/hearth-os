@@ -35,7 +35,10 @@ setup() {
     || echo "::warning title=Steam's package::steam-installer didn't install here; the test goes on without its 32-bit libraries"
   GE=$(sed -n 's/^GE_PROTON=//p' "$REPO/os-bases/peppermint/build.sh")
   SUM=$(sed -n 's/^GE_PROTON_SHA256=//p' "$REPO/os-bases/peppermint/build.sh")
-  curl -fsSL --retry 5 --retry-delay 10 -o /tmp/ge.tar.gz "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$GE/$GE.tar.gz"
+  # GitHub's download server sometimes answers runners with an error for a while: retry those too, and say what it was.
+  GEURL="https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$GE/$GE.tar.gz"
+  curl -fsSL --retry 8 --retry-delay 20 --retry-all-errors -o /tmp/ge.tar.gz "$GEURL" || {
+    echo "::error title=GE-Proton download::$GEURL: $(curl -sSIL -o /dev/null -w 'HTTP %{http_code}' "$GEURL" 2>&1)"; exit 1; }
   echo "$SUM  /tmp/ge.tar.gz" | sha256sum -c -
   mkdir -p /usr/share/hearth/proton /usr/share/steam/compatibilitytools.d
   tar -xzf /tmp/ge.tar.gz -C /usr/share/hearth/proton && rm /tmp/ge.tar.gz
