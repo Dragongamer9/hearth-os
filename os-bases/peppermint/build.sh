@@ -1004,7 +1004,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
 rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
@@ -1559,6 +1559,11 @@ tar -xzf /tmp/ge-proton.tar.gz -C /usr/share/hearth/proton
 rm -f /tmp/ge-proton.tar.gz
 test -f "/usr/share/hearth/proton/$GE_PROTON/proton" || { echo "::error title=GE-Proton::$GE_PROTON has no proton script"; exit 1; }
 ln -sfn "/usr/share/hearth/proton/$GE_PROTON" "/usr/share/steam/compatibilitytools.d/$GE_PROTON"
+# hearth-proton-run (os/system_files, desktop/shell/hearth_proton_run.py) starts every Windows game and program with it,
+# offline and without Steam (owner's red flag): it must find this GE-Proton with nothing picked, or the build stops.
+if [ "$(HOME=/nonexistent /usr/bin/hearth-proton-run --print-proton | cut -f1)" != "$GE_PROTON" ]; then
+  echo "::error title=GE-Proton::hearth-proton-run doesn't pick the built-in $GE_PROTON: $(HOME=/nonexistent /usr/bin/hearth-proton-run --print-proton 2>&1)"; exit 1
+fi
 echo "::notice title=GE-Proton::$GE_PROTON built in ($(du -sh "/usr/share/hearth/proton/$GE_PROTON" | cut -f1) unpacked)"
 # icoutils: Windows apps' menu entries get the program's own icon (wrestool, icotool). Optional.
 "${APT[@]}" icoutils || echo "warning: couldn't install icoutils; Windows apps get Hearth's icon instead of their own"

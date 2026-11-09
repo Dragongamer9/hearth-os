@@ -251,20 +251,13 @@ def ensure_prefix(prefix):
 
 
 def proton_env(a, target=''):
-    """Proton's environment for a Windows app, the way umu-launcher starts Proton outside Steam: UMU_ID makes
-    GE-Proton start the program itself (through its umu.exe) instead of through its steam.exe, which wants the Steam
-    client (lsteamclient) and is for Steam games. No Steam folder is used or needed, so it's the same on a device
-    without Steam (Lenovo laptop, Hearth 1.7.0: "no Steam folder") and works offline."""
-    env = dict(os.environ)
-    env.update({'STEAM_COMPAT_DATA_PATH': a['prefix'], 'WINEPREFIX': a['prefix'],
-                'STEAM_COMPAT_CLIENT_INSTALL_PATH': '', 'STEAM_COMPAT_APP_ID': '0', 'UMU_ID': '0',
-                'SteamAppId': '0', 'SteamGameId': 'hearth-winapp-' + a['id'], 'PROTON_LOG': env.get('PROTON_LOG', '')})
-    env.pop('UMU_USE_STEAM', None)
-    # GE-Proton's protonfixes downloads AMD's FSR4 files at every start of a new prefix ("Downloading upscaler file
-    # amdxcffx64.dll"): Windows apps start offline and don't need them.
-    env.setdefault('PROTONFIXES_DISABLE_UPSCALERS', '1')
-    if target and os.path.isabs(target):
-        env['STEAM_COMPAT_INSTALL_PATH'] = os.path.dirname(target)
+    """Proton's environment for a Windows app, the way umu-launcher starts Proton outside Steam (hearth_proton.offline_env,
+    shared with hearth-proton-run): no Steam folder is used or needed, so it's the same on a device without Steam
+    (Lenovo laptop, Hearth 1.7.0: "no Steam folder") and works offline."""
+    env = hp.offline_env(os.environ, a['prefix'], umu_id='0', app_id='0', game_label='hearth-winapp-' + a['id'],
+                         install_dir=os.path.dirname(target) if target and os.path.isabs(target) else '')
+    env['STEAM_COMPAT_CLIENT_INSTALL_PATH'] = ''
+    env['PROTON_LOG'] = env.get('PROTON_LOG', '')
     if not env['PROTON_LOG']:
         env.pop('PROTON_LOG')
     else:
@@ -291,7 +284,8 @@ def choose(a, wanted=None):
 
 
 def proton_cmd(path, verb, args):
-    return ['python3', os.path.join(path, 'proton'), verb] + args
+    """Proton's script with a verb, run offline (hearth_proton.proton_argv: Proton's own downloads are switched off)."""
+    return hp.proton_argv(path, verb, args)
 
 
 def win_path(path, prefix):

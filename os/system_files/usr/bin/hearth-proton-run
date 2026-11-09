@@ -1,0 +1,6 @@
+#!/bin/sh
+# hearth-proton-run (docs/WINDOWS-APPS.md, "Proton: offline and without Steam"): starts a Windows game or program with
+# the Proton built into Hearth OS, umu-run's command line without umu-launcher: no Steam, no Steam Runtime, no internet.
+# What Hearth Games, Hearth Mods, Recomps and Battle.net start Windows programs with. The work is in
+# desktop/shell/hearth_proton_run.py.
+exec python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth_proton_run.py" "$@"

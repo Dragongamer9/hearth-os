@@ -10,6 +10,10 @@ The order (candidates()):
 A Proton that closed right away for that program goes to the end of the list. Hearth Games reads the same table and
 the same file (hosts/hearth-core/src/proton_pick.rs auto_for).
 
+Also how every part of Hearth starts Proton outside Steam (offline_env, proton_argv, resolve), shared by hearth-winapps
+and hearth-proton-run (hearth_proton_run.py, the offline launcher Hearth Games, Hearth Mods, Recomps and Battle.net use
+instead of umu-run): no Steam, no Steam Runtime, no internet.
+
 Used by hearth-winapps (Windows apps). Settings-style files are written with hearth_settings_io (atomic, .bak).
 """
 import fnmatch
@@ -22,7 +26,6 @@ import sys
 import tarfile
 import tempfile
 import time
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
@@ -124,9 +127,15 @@ def downloaded():
     return out
 
 
+def compat_dirs():
+    """Folders where Protons that aren't Valve's live: the built-in one's, Hearth's downloads, Steam's own
+    compatibilitytools.d (umu-launcher and ProtonUp put theirs there)."""
+    return [system_dir(), user_dir()] + [os.path.join(r, 'compatibilitytools.d') for r in steam_roots()]
+
+
 def find(name):
     """The folder of a Proton by its name, wherever it is on this device, or None."""
-    if not name:
+    if not name or '/' in name or name.startswith('.'):
         return None
     b = builtin()
     if name == 'builtin':
@@ -140,6 +149,9 @@ def find(name):
     d = downloaded()
     if name in d:
         return d[name]
+    for c in compat_dirs()[1:]:
+        if usable(os.path.join(c, name)):
+            return os.path.join(c, name)
     for r in steam_roots():
         p = os.path.join(r, 'steamapps', 'common', name)
         if usable(p):
@@ -290,7 +302,10 @@ def fetch(name, progress=None, opener=None):
     try:
         tgz = os.path.join(work, name + '.tar.gz')
         h = hashlib.sha512()
-        with (opener or urllib.request.urlopen)(GE_URL.format(name)) as r, open(tgz, 'wb') as f:
+        if opener is None:  # only here: starting a program never imports or uses the network
+            import urllib.request
+            opener = urllib.request.urlopen
+        with opener(GE_URL.format(name)) as r, open(tgz, 'wb') as f:
             total = int(r.headers.get('Content-Length') or 0) if hasattr(r, 'headers') else 0
             got = 0
             while True:
@@ -321,3 +336,74 @@ def fetch(name, progress=None, opener=None):
         return dest
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+# ---- starting Proton outside Steam, offline (hearth-winapps and hearth-proton-run)
+RUNNER = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth_proton_run.py')
+
+
+def newest_named(prefix):
+    """(name, path) of the newest Proton on this device whose name starts with `prefix` ("GE-Proton", "UMU-Proton"), or
+    None. Looks only at what's here; nothing is downloaded."""
+    found = []
+    for d in compat_dirs():
+        found += _tools_in(d, prefix)
+    found.sort(key=lambda t: version_key(t[0]))
+    return found[-1] if found else None
+
+
+def resolve(want):
+    """The Proton for PROTONPATH as umu-run takes it (a folder, or a name like "GE-Proton", "GE-Proton11-3",
+    "UMU-Proton"), from what's on this device only: (name, path, note). A pick that isn't here, or none, gets the
+    GE-Proton built into Hearth OS; `note` says so. None when there's no Proton at all."""
+    w = (want or '').strip()
+    b = builtin()
+    hit, note = None, ''
+    if not w:
+        note = 'no Proton picked: the one built into Hearth OS'
+    elif '/' in w:
+        p = os.path.expanduser(w).rstrip('/') or '/'
+        if usable(p):
+            hit = (os.path.basename(p), p)
+        else:
+            alt = find(os.path.basename(p))
+            hit = (os.path.basename(p), alt) if alt else None
+    elif w in ('GE-Proton', 'GE-Latest'):
+        hit = newest_named('GE-Proton')
+    elif w in ('UMU-Proton', 'UMU-Latest'):
+        hit = newest_named('UMU-Proton')
+    else:
+        p = find(w)
+        hit = (os.path.basename(p) if w in ('builtin', 'valve') else w, p) if p else None
+    if hit:
+        return hit[0], hit[1], note
+    if w and not note:
+        note = "%s isn't on this device: the one built into Hearth OS instead (nothing is downloaded)" % w
+    return (b[0], b[1], note) if b else None
+
+
+def offline_env(environ, prefix, umu_id='0', app_id='0', game_label=None, install_dir='', compat=None):
+    """Proton's environment outside Steam, the way umu-launcher starts it, without umu: UMU_ID makes GE-Proton start
+    the program itself (through its umu.exe) instead of through its steam.exe, which wants the Steam client
+    (lsteamclient) and is for Steam games. No Steam folder is used or needed (STEAM_COMPAT_CLIENT_INSTALL_PATH empty
+    unless the caller names Steam's own), and nothing here or in Proton needs the internet (proton_argv)."""
+    env = dict(environ)
+    env.update({'STEAM_COMPAT_DATA_PATH': compat or prefix, 'WINEPREFIX': prefix,
+                'STEAM_COMPAT_CLIENT_INSTALL_PATH': environ.get('STEAM_COMPAT_CLIENT_INSTALL_PATH') or '',
+                'STEAM_COMPAT_APP_ID': app_id, 'UMU_ID': umu_id, 'SteamAppId': app_id,
+                'SteamGameId': game_label or app_id})
+    env.pop('UMU_USE_STEAM', None)  # never through Steam's steam.exe and client
+    # Older protonfixes read this; GE-Proton11-3's doesn't (it always looks for AMD's FSR4 files online), which is
+    # why proton_argv runs Proton with its network use switched off.
+    env.setdefault('PROTONFIXES_DISABLE_UPSCALERS', '1')
+    if install_dir:
+        env['STEAM_COMPAT_INSTALL_PATH'] = install_dir
+    return env
+
+
+def proton_argv(path, verb, args):
+    """The command that runs a Proton's `proton` script with a verb, offline: through hearth_proton_run.py, which
+    switches off every internet use in Proton's own Python (GE-Proton's protonfixes: the FSR4 download at every start,
+    winetricks downloads its game fixes ask for, other files some fixes fetch) before running the script unchanged.
+    The game itself isn't limited."""
+    return ['python3', RUNNER, '--in-proton', path, verb] + list(args)

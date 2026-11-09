@@ -964,6 +964,24 @@ jobs:
         run: |
           sudo podman run --rm -v "$PWD/.github/scripts/overlay-text-check.sh:/ovtext.sh:ro" hearth-peppermint:latest bash /ovtext.sh
 
+      # REQUIRED (owner's red flag): Hearth OS's built-in Proton works without Steam and 100% offline
+      # (docs/OFFLINE-PROTON.md). In this image with networking OFF (podman run --network=none), as a normal user with no
+      # Steam folder: small Windows programs (built here with MinGW) through hearth-proton-run (stores, your own games, a
+      # missing saved Proton, a Steam-style id) and hearth-winapps (the direct path); a fake umu-run fails it if called.
+      # The runner's Xvfb is the screen (only its socket is shared). tools/winapps-e2e/e2e.sh offline-image.
+      - name: Proton works offline and without Steam (network off)
+        timeout-minutes: 45
+        run: |
+          set -o pipefail
+          sudo apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 xvfb >/dev/null
+          mkdir -p /tmp/offline-exe
+          x86_64-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello64.exe tools/winapps-e2e/hello.c
+          i686-w64-mingw32-gcc -O2 -o /tmp/offline-exe/hello32.exe tools/winapps-e2e/hello.c
+          Xvfb :99 -ac -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
+          sleep 2
+          sudo podman run --rm --network=none -e DISPLAY=:99 -v /tmp/.X11-unix:/tmp/.X11-unix:ro -v "$PWD:/repo:ro" \
+            -v /tmp/offline-exe:/opt/offline-exe:ro hearth-peppermint:latest bash /repo/tools/winapps-e2e/e2e.sh offline-image
+
       # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
       # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
       # nested containers, which a runner may not give, so it never fails the build.

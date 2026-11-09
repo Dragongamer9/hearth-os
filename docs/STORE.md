@@ -116,9 +116,9 @@ Hearth OS (`hosts/hearth-core/src/battlenet.rs`):
   game's folder finds its processes.
 - **Controller:** Battle.net's own window starts with the **Mouse only** layout (it's made for a mouse); the games
   start Off, since they have controller support of their own.
-- **Set up before Faugus** (Hearth's own prefix, `~/.local/share/nimbus/battlenet/prefix`, started with umu-run by
-  `battlenet/run.sh`): keeps working as it was, nothing moves and nothing is installed again. **Without Faugus**
-  Launcher the card says so, and one press uses that same built-in setup (umu-launcher, downloaded if needed).
+- **Set up before Faugus** (Hearth's own prefix, `~/.local/share/nimbus/battlenet/prefix`, started by
+  `battlenet/run.sh` with hearth-proton-run, offline; an older `run.sh` that named umu-run is rewritten): keeps working as it was, nothing moves and nothing is installed again. **Without Faugus**
+  Launcher the card says so, and one press uses that same built-in setup (the built-in GE-Proton through hearth-proton-run, offline).
 - **Remove** takes Battle.net and Hearth's game entries out of Faugus's games and deletes its prefix, with every
   Blizzard game installed in it (not a prefix another Faugus game uses, and never Faugus's shared `default` one), and
   the built-in setup's folder if there is one.

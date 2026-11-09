@@ -219,7 +219,7 @@ and never touches anti-cheat.
   progress; 4 with `buildid` and `InstalledDepots` when done), so Valve's client sees them installed. A failed job
   leaves the record as "update required": Valve's client finishes it the next time it runs. Uninstall removes only
   inside the library (one plain folder name, links never followed); Proton prefixes (saves) are kept.
-- **Launching.** DRM-free games start directly from Hearth: natively, or with Proton through umu (`GAMEID=umu-<id>`,
+- **Launching.** DRM-free games start directly from Hearth: natively, or with Proton through hearth-proton-run (offline, no Steam Runtime; docs/OFFLINE-PROTON.md) (`GAMEID=umu-<id>`,
   `STORE=steam`, the game's own `steamapps/compatdata/<id>/pfx`, so saves are shared with Valve's client). A game is
   DRM-free only when it's not VAC-secured, has no Steamworks file in its folder (`steam_api*.dll`, `libsteam_api.so`,
   `steamclient*`, `steam_appid.txt`), its Windows program has no Steam DRM wrapper (a `.bind` PE section, read from

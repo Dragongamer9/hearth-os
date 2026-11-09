@@ -728,7 +728,7 @@ impl Library {
                 crate::steam_ctl::touch();
                 let app_num: u32 = id.trim_start_matches("steam:").parse().unwrap_or(0);
                 let mode = self.steam_engine_mode();
-                // Open engine: a DRM-free game is started by Hearth itself (natively or with Proton through umu); everything
+                // Open engine: a DRM-free game is started by Hearth itself (natively or with Proton, offline); everything
                 // else (Steamworks, VAC, a failed first start…) starts through Valve's client below.
                 let mut direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
                 // Steam Cloud first (the engine syncs Auto-Cloud saves): a conflict asks the player before anything
@@ -796,6 +796,7 @@ impl Library {
             // shortcut with the game's number in its environment, and the game's own folder finds its processes, since
             // the launcher (not Hearth) starts the game itself.
             "battlenet" | "xodus" => {
+                if g.source == "battlenet" { crate::battlenet::refresh_runner(); }   // an old run.sh named umu-run
                 let exe = g.exe.clone().unwrap_or_default();
                 let opts = crate::game_options::get(&self.store, id);
                 let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
@@ -803,7 +804,7 @@ impl Library {
                 crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             // Hearth Recomps: Hearth's start script for a Linux build (in the port's folder), or the Windows build's
-            // .exe, which starts with Proton (umu-run) like any Windows game. The port's folder finds its processes.
+            // .exe, which starts with Proton (hearth-proton-run, offline) like any Windows game. The port's folder finds its processes.
             "recomps" => {
                 let exe = g.exe.clone().unwrap_or_default();
                 let opts = crate::game_options::get(&self.store, id);

@@ -1770,7 +1770,7 @@ const MOCK = (()=>{
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
     'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:'',perfSaved:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
-      protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
+      protonChoices:[{id:'',label:'Default',sub:'GE-Proton11-3, built into Hearth OS (works offline, without Steam)'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'The newest GE-Proton on this device'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
     'bazaar.open':async()=>({ok:true, mouse:true}),   // Bazaar, Hearth OS's app store (hearth-core bazaar.rs)
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle',hearth:{available:true,installed:true,own:true,default:false,version:'150.0'}}),
     'browser.hearth':async()=>clone(st.br||{available:true,installed:false,state:'idle',hearth:{available:true,installed:true,own:true,default:true,version:'150.0'}}),

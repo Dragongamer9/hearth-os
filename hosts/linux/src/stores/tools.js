@@ -5,6 +5,8 @@
 //   umu-run    (runs Windows games with Proton outside Steam)  github.com/Open-Wine-Components/umu-launcher
 // Downloaded from their GitHub releases the first time they're needed, checked against a pinned SHA-256,
 // kept in ~/.local/share/nimbus/tools. An umu-run already installed on the system is used instead of downloading.
+// Windows games don't use umu-run in Hearth OS: protonRunner() picks hearth-proton-run, the image's offline launcher
+// (umu-run's command line, the built-in GE-Proton, no Steam, no internet; docs/WINDOWS-APPS.md).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -130,4 +132,16 @@ async function run(t, args, { env = {}, onLine, signal, timeoutMs } = {}) {
   });
 }
 
-module.exports = { TOOLS, ensure, run, problem, isReady, pathOf, TOOLS_DIR };
+/** hearth-proton-run in Hearth OS's image (HEARTH_PROTON_RUN for the tests): starts Windows programs offline, without Steam. */
+const OFFLINE_RUNNER = '/usr/bin/hearth-proton-run';
+function offlineRunner() {
+  const p = process.env.HEARTH_PROTON_RUN || OFFLINE_RUNNER;
+  try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile() ? p : null; } catch { return null; }
+}
+/** What starts Windows programs with Proton: hearth-proton-run when the image has it (never a download), else umu-run. */
+function protonRunner(progress) {
+  const p = offlineRunner();
+  return p ? Promise.resolve(p) : ensure(TOOLS.umu, progress);
+}
+
+module.exports = { TOOLS, ensure, run, problem, isReady, pathOf, TOOLS_DIR, offlineRunner, protonRunner, OFFLINE_RUNNER };

@@ -8,7 +8,8 @@ name: Windows apps
 on:
   push:
     paths: ['hosts/linux/desktop/shell/hearth-winapps', 'hosts/linux/desktop/shell/hearth_proton.py',
-            'hosts/linux/test/test_hearth_winapps.py', 'os/system_files/usr/share/hearth/proton-rules.json',
+            'hosts/linux/desktop/shell/hearth_proton_run.py', 'os/system_files/usr/bin/hearth-proton-run',
+            'hosts/linux/test/test_hearth_winapps.py', 'hosts/linux/test/test_hearth_proton_run.py', 'os/system_files/usr/share/hearth/proton-rules.json',
             'tools/winapps-e2e/**', '.github/workflows/winapps.yml']
   workflow_dispatch:
 
@@ -24,6 +25,12 @@ jobs:
           python3 -W ignore -m unittest discover -s hosts/linux/test -p 'test_hearth_winapps.py' -v 2>&1 | tee wa.log || {
             echo "::error title=Windows apps tests::$(grep -E '^(FAIL|ERROR|AssertionError|\w+Error)' -A3 wa.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=Windows apps tests::$(tail -3 wa.log | tr '\n' ' ')"
+      - name: Unit tests (test_hearth_proton_run.py, Proton offline and without Steam)
+        run: |
+          set -o pipefail
+          python3 -W ignore -m unittest discover -s hosts/linux/test -p 'test_hearth_proton_run.py' -v 2>&1 | tee pr.log || {
+            echo "::error title=hearth-proton-run tests::$(grep -E '^(FAIL|ERROR|AssertionError|\w+Error)' -A3 pr.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=hearth-proton-run tests::$(tail -3 pr.log | tr '\n' ' ')"
 
   end-to-end:
     runs-on: ubuntu-24.04
@@ -37,3 +44,24 @@ jobs:
         run: |
           chmod -R a+rX "$GITHUB_WORKSPACE"
           su tester -c "cd /home/tester && REPO='$GITHUB_WORKSPACE' bash '$GITHUB_WORKSPACE/tools/winapps-e2e/e2e.sh' run"
+
+  # Owner's red flag: Hearth OS's built-in Proton works without Steam and 100% offline (docs/OFFLINE-PROTON.md).
+  # Set up like the image (with the network), then every way Hearth starts Proton with networking OFF
+  # (podman run --network=none): hearth-proton-run for stores, your own games, a missing saved Proton and a
+  # Steam-style id, and hearth-winapps' direct start. A fake umu-run on the PATH fails the check if anything calls it.
+  # base-peppermint.yml runs the same check inside the built image itself.
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up like the image (with the network)
+        run: |
+          podman run --name prep -v "$PWD:/repo:ro" docker.io/library/debian:trixie bash -c 'REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh setup'
+          podman commit prep offline-proton-test
+          podman rm prep
+      - name: Start Windows programs with the network off
+        run: |
+          set -o pipefail
+          podman run --rm --network=none -v "$PWD:/repo:ro" offline-proton-test bash -c \
+            'chmod -R a+rX /opt/winapps-test; runuser -u tester -- env HOME=/home/tester REPO=/repo bash /repo/tools/winapps-e2e/e2e.sh offline' 2>&1 | tee off.log

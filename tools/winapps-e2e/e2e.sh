@@ -5,11 +5,13 @@
 # itself: a 64-bit and a 32-bit console program, a .bat, an Inno-Setup-like installer whose name doesn't say "setup"
 # (its Start menu shortcut must become the app), and a Direct3D 11 device (DXVK on Mesa's software Vulkan).
 # Every check posts a GitHub annotation with what happened and the end of the app's log.
-#   e2e.sh setup   (root: packages, GE-Proton, the test programs)
-#   e2e.sh run     (the test user)
+#   e2e.sh setup          (root: packages, GE-Proton, the test programs, hearth-proton-run as in the image)
+#   e2e.sh run            (the test user)
+#   e2e.sh offline        (the test user, networking off: every way Hearth starts Proton, docs/OFFLINE-PROTON.md)
+#   e2e.sh offline-image  (root, inside Hearth OS's own image with --network=none: makes the test user, then offline)
 set -u
 REPO="${REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
-W=/opt/winapps-test
+W="${W:-/opt/winapps-test}"
 SHELLDIR=/opt/hearth-shell
 note() { echo "::notice title=$1::$(printf '%s' "$2" | tr '\n' '|' | cut -c1-3800)"; }
 err() { echo "::error title=$1::$(printf '%s' "$2" | tr '\n' '|' | cut -c1-3800)"; FAILED=1; }
@@ -41,7 +43,11 @@ setup() {
   install -Dm644 "$REPO/os/system_files/usr/share/hearth/proton-rules.json" /usr/share/hearth/proton-rules.json
   mkdir -p "$SHELLDIR"
   cp "$REPO/hosts/linux/desktop/shell/hearth-winapps" "$REPO/hosts/linux/desktop/shell/hearth_proton.py" \
-     "$REPO/hosts/linux/desktop/shell/hearth_settings_io.py" "$SHELLDIR/"
+     "$REPO/hosts/linux/desktop/shell/hearth_proton_run.py" "$REPO/hosts/linux/desktop/shell/hearth_settings_io.py" "$SHELLDIR/"
+  # hearth-proton-run where the image has it (/usr/bin, its Python in /usr/share/nimbus/desktop/shell).
+  mkdir -p /usr/share/nimbus/desktop
+  ln -sfn "$SHELLDIR" /usr/share/nimbus/desktop/shell
+  install -Dm755 "$REPO/os/system_files/usr/bin/hearth-proton-run" /usr/bin/hearth-proton-run
   note "GE-Proton in the test" "$GE: $(ls "/usr/share/hearth/proton/$GE" | tr '\n' ' ') umu.exe in its prefix: $(find "/usr/share/hearth/proton/$GE/files/share/default_pfx" -iname umu.exe 2>/dev/null | head -1)"
   mkdir -p "$W"
   S="$REPO/tools/winapps-e2e"
@@ -124,8 +130,85 @@ run() {
   return $FAILED
 }
 
+
+# ---- Proton offline and without Steam (docs/OFFLINE-PROTON.md; owner's red flag). Run with networking off
+# (podman run --network=none): every way Hearth starts a Windows program with Proton must work from what's on the disk.
+#   WA   hearth-winapps (the direct path; default: the image's /usr/bin/hearth-winapps, else this test's copy)
+#   W    the folder with hello64.exe and hello32.exe
+offline() {
+  FAILED=0
+  cd "$HOME"
+  local RUNNER=/usr/bin/hearth-proton-run WA="${WA:-}" GE X=()
+  [ -n "$WA" ] || { [ -x /usr/bin/hearth-winapps ] && WA=/usr/bin/hearth-winapps || WA="python3 $SHELLDIR/hearth-winapps"; }
+  if [ -n "${DISPLAY:-}" ]; then X=(); elif command -v xvfb-run >/dev/null; then X=(xvfb-run -a -s '-screen 0 1280x720x24'); fi
+  [ ! -e "$HOME/.steam" ] && [ ! -e "$HOME/.local/share/Steam" ] || err "offline: setup" "the test home has a Steam folder"
+  # 0. The network really is off (else this proves nothing), and umu-run is never what runs: a fake one first on the PATH
+  # leaves a mark if anything calls it.
+  if python3 -c 'import socket; socket.create_connection(("1.1.1.1", 443), 5)' 2>/dev/null; then
+    err "offline: the network isn't off" "this check must run with podman run --network=none"; return 1
+  fi
+  note "offline: networking is off" "$(python3 -c 'import socket
+try: socket.create_connection(("1.1.1.1", 443), 5)
+except OSError as e: print(e)' 2>&1)"
+  mkdir -p "$HOME/fakebin"
+  printf '#!/bin/sh\necho "$0 $*" >> "$HOME/umu-was-called"\nexit 99\n' > "$HOME/fakebin/umu-run"
+  chmod +x "$HOME/fakebin/umu-run"
+  export PATH="$HOME/fakebin:$PATH"
+
+  # 1. What it picks with nothing set: the built-in GE-Proton.
+  GE=$($RUNNER --print-proton | cut -f1)
+  case "$GE" in GE-Proton*) note "offline: hearth-proton-run picks the built-in Proton" "$($RUNNER --print-proton)" ;;
+    *) err "offline: no built-in Proton picked" "$($RUNNER --print-proton 2>&1)" ;; esac
+
+  # One start through hearth-proton-run (umu-run's command line): $1 name, $2 exe, then VAR=value pairs.
+  hpr() {
+    local name=$1 exe=$2; shift 2
+    local d="$HOME/offline/$name"
+    rm -rf "$d"; mkdir -p "$d"; cp "$W/$exe" "$d/"
+    ( cd "$d" && env "$@" timeout 900 "${X[@]}" "$RUNNER" "$d/$exe" "arg one" > "$d/out.log" 2>&1; echo "exit code $?" >> "$d/out.log" )
+    if grep -q 'ran bits=' "$d/ran.txt" 2>/dev/null && grep -q '\[arg one\]' "$d/ran.txt"; then
+      note "offline: $name ran" "$(cat "$d/ran.txt"); $(grep -E '^hearth-proton-run:' "$d/out.log" | head -3); $(tail -1 "$d/out.log")"
+    else
+      err "offline: $name didn't run" "$(tail -40 "$d/out.log")"
+    fi
+  }
+  # 2. Hearth Games' stores (stores.rs proton_launch: GOG and Epic), its own prefix, nothing picked.
+  hpr "a GOG game (Hearth Games, nothing picked)" hello64.exe WINEPREFIX="$HOME/prefixes/gog-1" GAMEID=0 STORE=gog PROTON_VERB=waitforexitandrun
+  # 3. A game you added yourself (manual.rs: GAMEID umu-default, umu's default prefix), 32-bit.
+  hpr "your own 32-bit game" hello32.exe GAMEID=umu-default
+  # 4. A game whose saved Proton isn't on this device: the built-in one for this start, and it says so.
+  d="$HOME/offline/a saved Proton that isn't here"
+  hpr "a saved Proton that isn't here" hello64.exe WINEPREFIX="$HOME/prefixes/epic-1" GAMEID=0 STORE=egs PROTONPATH=GE-Proton8-1
+  grep -q "GE-Proton8-1 isn't on this device" "$d/out.log" && note "offline: it says the saved Proton isn't here" "$(grep -m1 "isn't on this device" "$d/out.log")" \
+    || err "offline: no word about the missing saved Proton" "$(head -5 "$d/out.log")"
+  # 5. The newest-GE pick and a Steam-engine style start (GAMEID umu-<app>, STORE steam): still offline, no Steam.
+  hpr "a GE-Proton (newest) pick, Steam-style game id" hello64.exe WINEPREFIX="$HOME/prefixes/steam-70" GAMEID=umu-70 STORE=steam PROTONPATH=GE-Proton
+  # 6. The direct path: Windows apps (hearth-winapps runs the built-in Proton itself).
+  rm -f "$W/ran.txt"
+  out=$(timeout 900 "${X[@]}" $WA open "$W/hello64.exe" 2>&1); echo "$out" | tail -5
+  if [ -f "$W/ran.txt" ]; then note "offline: a Windows app ran (direct path)" "$(cat "$W/ran.txt"); $(echo "$out" | tail -1)"
+  else err "offline: a Windows app didn't run (direct path)" "$(echo "$out" | tail -5); log: $(tailof "$(appdir hello64)/logs/last.log" 40)"; fi
+  # 7. Nothing downloaded, umu-run never called.
+  if [ -e "$HOME/umu-was-called" ]; then err "offline: umu-run was called" "$(cat "$HOME/umu-was-called")"; fi
+  for p in "$HOME/.local/share/umu" "$HOME/.local/share/nimbus/tools/umu"; do
+    [ ! -e "$p" ] || err "offline: something was downloaded" "$p exists"
+  done
+  [ "$FAILED" = 0 ] && note "offline: every Proton path worked with the network off" "built-in $GE, no Steam folder, no umu-run, nothing downloaded"
+  return $FAILED
+}
+
+# Inside Hearth OS's own image (base-peppermint.yml, podman run --network=none): a normal user, the test programs
+# from /opt/offline-exe (built on the runner with MinGW), then offline().
+offline_image() {
+  id tester >/dev/null 2>&1 || useradd -m tester
+  mkdir -p "$W" && cp /opt/offline-exe/*.exe "$W/" && chown -R tester: "$W"
+  runuser -u tester -- env HOME=/home/tester DISPLAY="${DISPLAY:-}" W="$W" PATH=/usr/bin:/bin bash "$REPO/tools/winapps-e2e/e2e.sh" offline
+}
+
 case "${1:-}" in
   setup) setup ;;
   run) run ;;
-  *) echo "e2e.sh setup|run" >&2; exit 2 ;;
+  offline) offline ;;
+  offline-image) offline_image ;;
+  *) echo "e2e.sh setup|run|offline|offline-image" >&2; exit 2 ;;
 esac

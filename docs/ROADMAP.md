@@ -7,6 +7,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Proton offline and without Steam
+
+- [x] Hearth OS's built-in Proton works without Steam and 100% offline: Hearth Games' stores, your own games, Steam-engine direct starts, Recomps, Battle.net and Hearth Mods start Windows games with hearth-proton-run (the built-in GE-Proton, no umu-launcher, Steam Runtime or download); a saved Proton that isn't on the PC is swapped for the built-in one for that start, with a message, and kept; checked with the network off in CI (docs/OFFLINE-PROTON.md) (needs testing on a device)
+
 ### Planned next
 
 - [ ] Smaller, faster updates (instead of 2–3 GB every time): Debian's packages frozen to a set date (moved on purpose, weekly or for a security fix), repeatable builds so unchanged files stay byte for byte the same and aren't downloaded again, Hearth's own apps in small pieces of their own, each build saying how big the update is against what devices have now, and the download done quietly in the background so it's ready at the next restart. A normal update should be about 200–500 MB; the previous version always stays startable

@@ -6,9 +6,10 @@
 //! - Otherwise (Hearth Mods' own list: the mods are already in the game's folder): the game's script extender when
 //!   it's there (skse64_loader.exe for Skyrim SE...), else the game itself through Hearth (`nimbus --play-now`, the
 //!   library's Play). Asking Steam to start the game (1.0) only ever started its own launcher, never the extender.
-//! - Windows programs run with Proton through umu-launcher: the system's umu-run, else Hearth's own copy (hearth-core
-//!   tools.rs, downloaded once and checked), in the game's own Steam prefix, with the Proton that prefix was made with,
-//!   and Steam's app id so Steam games (Steam DRM) find the running Steam client.
+//! - Windows programs run with Proton through hearth-proton-run (Hearth OS's offline launcher, hearth-core
+//!   proton_run.rs: no download, no Steam Runtime, Proton's own downloads off; umu-run only where it isn't installed),
+//!   in the game's own Steam prefix, with the Proton that prefix was made with, and Steam's app id so Steam games
+//!   (Steam DRM) find the running Steam client.
 //!
 //! Every step goes to Hearth's log (bridge.log, which Send logs includes) and to mods/logs/launch.log with the
 //! program's own output; Proton's log of the last modded start is mods/logs/steam-<app>.log (PROTON_LOG). Send logs
@@ -46,11 +47,17 @@ fn on_path(cmd: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(cmd)).find(|f| f.is_file()))
 }
 
-/// umu-run: the system's, else Hearth's own (downloaded the first time).
-pub fn umu() -> Result<String, String> {
+/// What starts Windows programs with Proton: hearth-proton-run (Hearth OS: offline, without Steam), else where it
+/// isn't installed, the system's umu-run, else Hearth's own umu-run (downloaded the first time).
+pub fn proton_runner() -> Result<String, String> {
+    if let Some(p) = offline_runner() { return Ok(p); }
     if let Some(p) = on_path("umu-run") { return Ok(p.to_string_lossy().to_string()); }
     own_umu()
 }
+#[cfg(target_os = "linux")]
+fn offline_runner() -> Option<String> { hearth_core::proton_run::offline() }
+#[cfg(not(target_os = "linux"))]
+fn offline_runner() -> Option<String> { None }
 #[cfg(target_os = "linux")]
 fn own_umu() -> Result<String, String> {
     hearth_core::tools::ensure(&hearth_core::tools::UMU).map_err(|e| format!("umu-launcher (which runs Windows programs with Proton) isn't here and couldn't be fetched: {e}"))
@@ -177,7 +184,8 @@ pub fn hearths_own_prefix(compat: &Path) -> bool { !compat.to_string_lossy().rep
 ///    Proton - Experimental for a Valve-made prefix with no matching numbered Proton (as before 1.7);
 /// 4. the Proton detector (hearth-core proton_pick, the same as Hearth Games and Windows apps): the Proton the game
 ///    last worked with, Hearth's table, the GE-Proton built into Hearth OS (offline), Valve's newest;
-/// 5. the newest Valve Proton in Steam's libraries; else GE-Proton (umu downloads it).
+/// 5. the newest Valve Proton in Steam's libraries; else "GE-Proton" (hearth-proton-run: the newest GE-Proton on this
+///    device, never a download).
 pub fn proton_for(compat: Option<&Path>, libraries: &[PathBuf]) -> String { proton_for_game(compat, libraries, None) }
 
 pub fn proton_for_game(compat: Option<&Path>, libraries: &[PathBuf], app: Option<u64>) -> String {
@@ -223,7 +231,7 @@ fn detected_proton(_: Option<u64>) -> Option<PathBuf> { None }
 /// script-extender plugins down and fill the disk over a long session. Your own WINEDEBUG wins.
 pub const PROTON_LOG_CHANNELS: &str = "+timestamp,+pid,+tid,+seh,+loaddll,+mscoree,+threadname";
 
-/// The environment for a Windows program under umu: its prefix, Steam's app id (Steam DRM games ask the running Steam
+/// The environment for a Windows program under hearth-proton-run (umu-run's variables): its prefix, Steam's app id (Steam DRM games ask the running Steam
 /// client through Proton's bridge), Steam's folder for that bridge, the Proton, and Proton's log for the last start.
 /// For Hearth's own prefixes the Proton used is noted in the prefix, so the next start uses the same one.
 pub fn umu_env(prefix: &Path, app: Option<u64>, steam: Option<&Path>, libraries: &[PathBuf]) -> Vec<(String, String)> {
@@ -339,9 +347,9 @@ pub fn play_modded(g: &GameEntry) -> Result<Value, String> {
             let (steam, libs) = steam_dirs();
             #[cfg(target_os = "linux")]
             if g.store == "steam" { ensure_reachable_steam(&format!("play modded {}", g.title))?; }
-            let umu = umu().map_err(|e| { log(&format!("play modded: {e}")); e })?;
+            let runner = proton_runner().map_err(|e| { log(&format!("play modded: {e}")); e })?;
             let env = umu_env(&prefix, g.steam_app, steam.as_deref(), &libs);
-            let code = run_logged(&format!("play modded {}", g.title), &umu, &[loader.to_string_lossy().to_string()], &env, &install, Some(&install))?;
+            let code = run_logged(&format!("play modded {}", g.title), &runner, &[loader.to_string_lossy().to_string()], &env, &install, Some(&install))?;
             Ok(json!({"ok": true, "how": "extender", "exit": code}))
         }
         _ => {
@@ -360,10 +368,10 @@ pub fn run_mo2(inst: &crate::organizer::Instance) -> Result<Value, String> {
     log(&format!("mod organizer 2: {} asked", inst.rec.title));
     let exe = mo2_exe(inst).ok_or_else(|| { let m = format!("{} has no ModOrganizer.exe in its folder.", inst.rec.title); log(&format!("mod organizer 2: {m}")); m })?;
     let (steam, libs) = steam_dirs();
-    let umu = umu().map_err(|e| { log(&format!("mod organizer 2: {e}")); e })?;
+    let runner = proton_runner().map_err(|e| { log(&format!("mod organizer 2: {e}")); e })?;
     let app = inst.steam_app.or(if inst.kind.steam > 0 { Some(inst.kind.steam) } else { None });
     let env = umu_env(&inst.wine_prefix(), app, steam.as_deref(), &libs);
-    let code = run_logged(&format!("mod organizer 2 {}", inst.rec.title), &umu, &[exe.to_string_lossy().to_string()], &env, &inst.dir, inst.game_dir.as_deref())?;
+    let code = run_logged(&format!("mod organizer 2 {}", inst.rec.title), &runner, &[exe.to_string_lossy().to_string()], &env, &inst.dir, inst.game_dir.as_deref())?;
     Ok(json!({"ok": true, "exit": code}))
 }
 
