@@ -128,6 +128,10 @@ pub fn health(drive_obj: Ifaces) -> Health {
         };
         let pct = u(n, "SmartPercentUsed");
         if pct > 0 { h.wear_pct = Some(pct); }
+        h.smart = true;
+        h.checked = u(n, "SmartUpdated");
+        h.selftest = s(n, "SmartSelftestStatus");
+        h.selftest_left = selftest_left(n);
         for w in &warnings {
             h.details.push(match w.as_str() {
                 "spare" => "Its spare space is running out",
@@ -153,7 +157,12 @@ pub fn health(drive_obj: Ifaces) -> Health {
             power_on_hours: Some(u(a, "SmartPowerOnSeconds") / 3600).filter(|h| *h > 0),
             ..Default::default()
         };
+        h.smart = true;
+        h.checked = u(a, "SmartUpdated");
+        h.selftest = s(a, "SmartSelftestStatus");
+        h.selftest_left = selftest_left(a);
         let bad_sectors = i(a, "SmartNumBadSectors");
+        h.bad_sectors = Some(bad_sectors.max(0));
         let failing_attrs = i(a, "SmartNumAttributesFailing");
         if b(a, "SmartFailing") { h.state = "bad".into(); h.text = "Failing: copy your files off it soon".into(); h.details.push("The drive says it's about to fail".into()); }
         else if bad_sectors > 0 || failing_attrs > 0 { h.state = "warn".into(); h.text = "Some problems: keep a copy of what matters".into(); }
@@ -161,6 +170,53 @@ pub fn health(drive_obj: Ifaces) -> Health {
         return h;
     }
     Health::unknown()
+}
+
+/// SATA SMART attributes (name, normalised value, threshold, raw "pretty" value, its unit: 2 ms, 3 sectors,
+/// 4 millikelvin) → Properties › Health's lines: [{name, value, ok}], the ones that tell how a drive is doing.
+/// Names come as libatasmart's ("reallocated-sector-count") or smartctl's ("Reallocated_Sector_Ct").
+pub fn ata_lines(attrs: &[(String, i32, i32, i64, i32)]) -> Vec<Value> {
+    // (what the name has in it, what to call it, a count that should be 0)
+    const WANT: &[(&str, &str, bool)] = &[
+        ("reallocated-sector", "Reallocated sectors", true), ("realloc", "Reallocated sectors", true),
+        ("pending", "Pending sectors", true), ("offline-uncorrectable", "Sectors it couldn't read", true),
+        ("reported-uncorrect", "Read errors it couldn't fix", true), ("crc-error", "Cable errors", false),
+        ("spin-up-time", "Spin-up time", false), ("power-cycle", "Times switched on", false),
+    ];
+    let mut out: Vec<Value> = vec![];
+    for (want, label, zero) in WANT {
+        if out.iter().any(|l| l["name"] == *label) { continue; }
+        let Some((_, value, thresh, pretty, unit)) = attrs.iter().find(|a| a.0.to_lowercase().replace('_', "-").contains(want)) else { continue };
+        let text = match unit {
+            2 => if *pretty >= 1000 { format!("{:.1} s", *pretty as f64 / 1000.0) } else { format!("{pretty} ms") },
+            4 => format!("{:.0} °C", *pretty as f64 / 1000.0 - 273.15),
+            _ => pretty.to_string(),
+        };
+        let ok = if *zero { *pretty == 0 } else { *thresh <= 0 || value > thresh };
+        out.push(serde_json::json!({"name": label, "value": text, "ok": ok}));
+    }
+    out
+}
+
+/// An NVMe drive's health log (udisks2's SmartGetAttributes) → Properties › Health's lines.
+pub fn nvme_lines(a: &serde_json::Map<String, Value>) -> Vec<Value> {
+    let n = |k: &str| a.get(k).and_then(|v| v.as_u64().or_else(|| v.as_f64().map(|f| f.max(0.0) as u64)));
+    let mut out = vec![];
+    if let Some(spare) = n("avail_spare") {
+        let thresh = n("spare_thresh").unwrap_or(10);
+        out.push(serde_json::json!({"name": "Spare space left", "value": format!("{spare}%"), "ok": spare > thresh}));
+    }
+    if let Some(used) = n("percent_used") { out.push(serde_json::json!({"name": "Rated life used", "value": format!("{used}%"), "ok": used < 90})); }
+    if let Some(e) = n("media_errors") { out.push(serde_json::json!({"name": "Data it couldn't read", "value": e.to_string(), "ok": e == 0})); }
+    if let Some(e) = n("unsafe_shutdowns") { out.push(serde_json::json!({"name": "Power lost while on", "value": e.to_string(), "ok": true})); }
+    if let Some(e) = n("power_cycles") { out.push(serde_json::json!({"name": "Times switched on", "value": e.to_string(), "ok": true})); }
+    out
+}
+
+/// How much of a running self-test is left (udisks says -1, or nothing, when none is running).
+fn selftest_left(v: Option<&Value>) -> Option<u64> {
+    let left = v.and_then(|v| v.get("SmartSelftestPercentRemaining")).and_then(Value::as_i64).unwrap_or(-1);
+    if s(v, "SmartSelftestStatus") == "inprogress" && left >= 0 { Some(left as u64) } else { None }
 }
 
 /// (kind, connection, removable) for a drive.
@@ -280,7 +336,7 @@ fn partitions_of(bl: &BTreeMap<String, Blk>, whole: &Blk, _drive: &Drive, is_roo
             part_type: ptype, part_name: pname, kind: kind.into(), what, system,
             protected: matches!(kind, "efi" | "msr" | "recovery" | "boot" | "steamos"),
             mounted: !b.mounts.is_empty(), mountable: b.has_fs, steam_library: steam,
-            letter: String::new(), actions: vec![],
+            letter: String::new(), actions: vec![], ..Default::default()
         }
     }).collect()
 }
@@ -423,10 +479,15 @@ pub mod tests {
         // The second btrfs device is Hearth OS: never changed.
         let more = &d[0].partitions[3];
         assert!(crate::safety::plan("delete", &d[0], Some(more), "linux").refuse.is_some());
-        // The games partition on the system drive: changes need the word.
+        // The games partition on the system drive: formatting it needs its name typed; it's never resized here.
         let games = &d[0].partitions[5];
         assert!(games.steam_library);
-        assert_eq!(crate::safety::plan("format", &d[0], Some(games), "linux").typed.as_deref(), Some("ERASE"));
+        assert_eq!(crate::safety::plan("format", &d[0], Some(games), "linux").typed.as_deref(), Some("Games"));
+        assert!(games.blocked.iter().any(|a| a.id == "shrink" && a.why.contains("Hearth runs from this drive")));
+        // Hearth's own partitions: only Open, the rest greyed out with the note.
+        let root = &d[0].partitions[2];
+        assert_eq!(root.actions.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), vec!["open"]);
+        assert!(root.blocked.iter().any(|a| a.id == "format" && a.why == crate::safety::HEARTH_NOTE));
     }
 
     #[test]
@@ -450,12 +511,40 @@ pub mod tests {
         assert_eq!(h.state, "warn");
         assert_eq!(h.temp_c, Some(35.0));
         assert_eq!(h.power_on_hours, Some(10));
+        assert_eq!(h.bad_sectors, Some(3));
+        assert!(h.smart);
+        let o = json!({ATA: {"SmartSupported": true, "SmartEnabled": true, "SmartUpdated": 1, "SmartSelftestStatus": "inprogress", "SmartSelftestPercentRemaining": 70}});
+        let h = health(o.as_object().unwrap());
+        assert_eq!((h.selftest.as_str(), h.selftest_left), ("inprogress", Some(70)));
+        let o = json!({ATA: {"SmartSupported": true, "SmartEnabled": true, "SmartUpdated": 1, "SmartSelftestStatus": "success", "SmartSelftestPercentRemaining": -1}});
+        assert_eq!(health(o.as_object().unwrap()).selftest_left, None);
         let o = json!({ATA: {"SmartSupported": true, "SmartEnabled": true, "SmartUpdated": 1, "SmartFailing": true}});
         assert_eq!(health(o.as_object().unwrap()).state, "bad");
         let o = json!({NVME: {"SmartUpdated": 1, "SmartCriticalWarning": ["spare"], "SmartTemperature": 300}});
         assert_eq!(health(o.as_object().unwrap()).state, "warn");
         let o = json!({NVME: {"SmartUpdated": 1, "SmartCriticalWarning": ["readonly"]}});
         assert_eq!(health(o.as_object().unwrap()).state, "bad");
+    }
+
+    #[test]
+    fn smart_lines() {
+        let attrs = vec![
+            ("Reallocated_Sector_Ct".to_string(), 100, 10, 0i64, 3),
+            ("current-pending-sector".to_string(), 100, 0, 2, 3),
+            ("spin-up-time".to_string(), 95, 21, 4100, 2),
+            ("power-cycle-count".to_string(), 99, 0, 812, 1),
+            ("temperature-celsius-2".to_string(), 60, 0, 314150, 4),
+        ];
+        let l = ata_lines(&attrs);
+        let names: Vec<&str> = l.iter().map(|x| x["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["Reallocated sectors", "Pending sectors", "Spin-up time", "Times switched on"]);
+        assert_eq!(l[0]["ok"], true);
+        assert_eq!(l[1]["ok"], false, "pending sectors aren't OK");
+        assert_eq!(l[2]["value"], "4.1 s");
+        let n = json!({"avail_spare": 100, "spare_thresh": 10, "percent_used": 3, "media_errors": 0, "power_cycles": 51});
+        let l = nvme_lines(n.as_object().unwrap());
+        assert_eq!(l.len(), 4);
+        assert!(l.iter().all(|x| x["ok"] == true));
     }
 
     #[test]

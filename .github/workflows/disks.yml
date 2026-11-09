@@ -250,8 +250,24 @@ jobs:
           w=$(xdotool search --name '^Disks$' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
           xdotool key Down; sleep 1; xdotool key Right; sleep 1; xdotool key Down; sleep 1
           import -window root shots/disks-partition.png || true
+          # Disk Management's menu for what has the focus (X on a controller), then its Properties › Health.
+          xdotool key x; sleep 1; import -window root shots/disks-menu.png || true
+          xdotool key Escape; sleep 0.5; xdotool key Up; sleep 0.5; xdotool key alt+Return; sleep 2; xdotool key Next; sleep 2
+          import -window root shots/disks-props.png || true
           pkill -f target/release/hearth-disks || true
           echo "::notice title=App output::$(tail -c 1500 run.log | tr '\n' '|')"
+      - name: Picture disks
+        if: always()
+        working-directory: hosts/hearth-disks
+        run: test -f shots/disks.png && convert shots/disks.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT disks $i::$part"; done || true
+      - name: Picture disks-menu
+        if: always()
+        working-directory: hosts/hearth-disks
+        run: test -f shots/disks-menu.png && convert shots/disks-menu.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT disks-menu $i::$part"; done || true
+      - name: Picture disks-props
+        if: always()
+        working-directory: hosts/hearth-disks
+        run: test -f shots/disks-props.png && convert shots/disks-props.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT disks-props $i::$part"; done || true
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-disks-linux
