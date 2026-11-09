@@ -430,6 +430,37 @@ Categories=System;Utility;
 MimeType=application/x-cd-image;application/x-iso9660-image;application/x-raw-disk-image;application/x-raw-disk-image-xz-compressed;
 Keywords=usb;iso;bootable;installer;flash;burn;write;linux;windows;fedora;ubuntu;debian;arch;rufus;etcher;
 DESKTOP
+  # "Tell me if this drive starts to fail" (Disks › Properties › Health, docs/STORAGE.md): a user timer, daily and about
+  # 10 minutes after signing in, runs `hearth-disks --health-watch`. With no drive turned on in ~/.config/nimbus/disks.json
+  # it ends at once and changes nothing. Only the timer is enabled (timers.target.wants); nothing depends on it, so
+  # signing in, Steam Game Mode and Mantel never wait for it and its trouble stays its own.
+  install -d /usr/lib/systemd/user/timers.target.wants
+  cat > /usr/lib/systemd/user/hearth-disks-health.service <<'UNIT'
+[Unit]
+Description=Hearth Disks: tell you if a drive starts to fail (only drives you turned it on for)
+ConditionPathExists=/usr/bin/hearth-disks
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-disks --health-watch
+TimeoutStartSec=2min
+Nice=19
+IOSchedulingClass=idle
+UNIT
+  cat > /usr/lib/systemd/user/hearth-disks-health.timer <<'UNIT'
+[Unit]
+Description=Hearth Disks' drive health check, daily and soon after signing in
+
+[Timer]
+OnStartupSec=10min
+OnCalendar=daily
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  ln -sf ../hearth-disks-health.timer /usr/lib/systemd/user/timers.target.wants/hearth-disks-health.timer
 fi
 
 # ------------------------------------------------------------------ Hearth Time (hosts/hearth-time)

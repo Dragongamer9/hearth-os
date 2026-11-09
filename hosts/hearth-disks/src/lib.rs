@@ -185,33 +185,51 @@ pub fn set_alert(id: &str, on: bool) -> Result<bool, String> {
     { let _ = (key, on); Err("Hearth Disks can't watch drives on Windows.".into()) }
 }
 
-/// `hearth-disks --health-watch`: a desktop notification for each drive you asked about that has started to fail
-/// (once per change: the last state is kept in ~/.local/state/nimbus/disks-health.json). Returns how many.
+/// The drives "Tell me if this drive starts to fail" is on for, from disks.json's contents ({"failAlerts": {key: true}}).
+/// None at all (no file, a damaged one, every switch off): the watch does nothing.
+pub fn watch_keys(settings: &Value) -> Vec<String> {
+    settings["failAlerts"].as_object().map(|o| o.iter().filter(|(_, v)| **v == true).map(|(k, _)| k.clone()).collect()).unwrap_or_default()
+}
+
+/// `hearth-disks --health-watch` (hearth-disks-health.timer, daily and soon after signing in): a desktop notification
+/// for each drive you asked about that has started to fail, once per new problem. Returns how many.
 #[cfg(target_os = "linux")]
 pub fn health_watch() -> Result<usize, String> {
-    let on = alerts();
-    if !on.is_object() { return Ok(0); }
-    let drives = list()?;
     let state_dir = std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from)
         .unwrap_or_else(|| hearth_core::paths::home().join(".local/state")).join("nimbus");
+    health_watch_at(&settings_path(), &state_dir, &|| list())
+}
+
+/// The watch with its places given (tests). Whether it does anything is decided only by the setting: with no drive
+/// turned on it ends at once, before looking at a drive, and writes nothing. It never writes the settings file (it's
+/// read as it is, not repaired: that's left to Disks itself); what it has told you is kept in `state_dir`'s
+/// disks-health.json, separate from the settings.
+#[cfg(target_os = "linux")]
+pub fn health_watch_at(settings: &std::path::Path, state_dir: &std::path::Path, drives: &dyn Fn() -> Result<Vec<Drive>, String>) -> Result<usize, String> {
+    let on = std::fs::read(settings).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null);
+    let keys = watch_keys(&on);
+    if keys.is_empty() { return Ok(0); }
+    let drives = drives()?;
     let file = state_dir.join("disks-health.json");
     let mut seen: serde_json::Map<String, Value> = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     let before = seen.clone();
     let mut told = 0;
-    for d in drives.iter().filter(|d| alert_on(&on, d)) {
+    for d in drives.iter().filter(|d| keys.contains(&alert_key(d))) {
         let key = alert_key(d);
         let state = d.health.state.clone();
         if state == "unknown" { continue; }
         if matches!(state.as_str(), "warn" | "bad") && seen.get(&key).and_then(Value::as_str) != Some(state.as_str()) {
             let title = if state == "bad" { format!("{} is failing", d.name()) } else { format!("{} has problems", d.name()) };
             let body = format!("{}. Copy what matters off it. Hearth Disks › Properties › Health has the details.", d.health.text);
-            let _ = std::process::Command::new("notify-send").args(["-a", "Hearth Disks", "-i", "hearth-disks", title.as_str(), body.as_str()]).status();
+            if std::env::var_os("HEARTH_DISKS_NO_NOTIFY").is_none() {
+                let _ = std::process::Command::new("notify-send").args(["-a", "Hearth Disks", "-i", "hearth-disks", title.as_str(), body.as_str()]).status();
+            }
             told += 1;
         }
         seen.insert(key, json!(state));
     }
     if seen != before {
-        let _ = std::fs::create_dir_all(&state_dir);
+        let _ = std::fs::create_dir_all(state_dir);
         hearth_core::paths::write_atomic(&file, Value::Object(seen).to_string().as_bytes()).map_err(|e| e.to_string())?;
     }
     Ok(told)
@@ -245,6 +263,36 @@ mod tests {
         assert_eq!(super::safe_name("My Games", "x"), "My-Games");
         assert_eq!(super::safe_name("../..", "1234-ABCD-ef"), "1234ABCD");
         assert_eq!(super::safe_name("", "abc"), "abc");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn health_watch_does_nothing_unless_turned_on() {
+        let dir = std::env::temp_dir().join(format!("hearth-disks-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let settings = dir.join("disks.json");
+        let state = dir.join("state");
+        std::env::set_var("HEARTH_DISKS_NO_NOTIFY", "1");
+        let looked = std::cell::Cell::new(0);
+        let failing = || -> Result<Vec<crate::model::Drive>, String> { looked.set(looked.get() + 1); Ok(vec![crate::model::Drive { serial: "S1".into(), health: crate::model::Health { state: "bad".into(), text: "Failing".into(), ..Default::default() }, ..Default::default() }]) };
+        // No settings file, a damaged one, every switch off: nothing looked at, nothing written, exit 0.
+        for content in [None, Some("{not json"), Some(r#"{"failAlerts": {}}"#), Some(r#"{"failAlerts": {"serial:S1": false}}"#), Some(r#"{"other": 1}"#)] {
+            if let Some(c) = content { std::fs::write(&settings, c).unwrap(); }
+            let before = std::fs::read(&settings).ok();
+            assert_eq!(super::health_watch_at(&settings, &state, &failing), Ok(0), "{content:?}");
+            assert_eq!(std::fs::read(&settings).ok(), before, "the settings are never written");
+        }
+        assert_eq!(looked.get(), 0, "no drive is looked at unless a switch is on");
+        assert!(!state.exists(), "nothing is kept");
+        // Turned on for that drive: told once, not again for the same problem, and the settings stay as they are.
+        std::fs::write(&settings, r#"{"failAlerts": {"serial:S1": true}}"#).unwrap();
+        assert_eq!(super::health_watch_at(&settings, &state, &failing), Ok(1));
+        assert_eq!(super::health_watch_at(&settings, &state, &failing), Ok(0));
+        assert_eq!(std::fs::read_to_string(&settings).unwrap(), r#"{"failAlerts": {"serial:S1": true}}"#);
+        assert!(state.join("disks-health.json").is_file());
+        assert_eq!(super::watch_keys(&serde_json::json!({"failAlerts": {"a": true, "b": false}})), vec!["a".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

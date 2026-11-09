@@ -178,10 +178,12 @@ The right-click (X) menu depends on what's selected. Everything it can't do is g
 * **Properties**: General (with Rename, Check for problems, Repair), Health (status, temperature, powered on, bad
   sectors or wear, the drive's SMART or NVMe lines, the last self-test, Run a full check: the drive's extended self-
   test) and Volumes. **Tell me if this drive starts to fail** is off unless you turn it on; it's kept per drive (by
-  serial) in `~/.config/nimbus/disks.json` (`failAlerts`) through `settings_file.rs`. `hearth-disks --health-watch`
-  sends a notification once when such a drive turns to a warning or failing (state in
-  `~/.local/state/nimbus/disks-health.json`). Nothing runs it on a schedule yet (that needs a timer or a Mantel
-  hook, so it waits for the owner's okay); until then the check happens when it's run.
+  serial) in `~/.config/nimbus/disks.json` (`failAlerts`) through `settings_file.rs`. A user timer, `hearth-disks-health.timer`
+  (daily, and about 10 minutes after signing in, with a random delay; only the timer is enabled, through the image's
+  `timers.target.wants`, and nothing depends on it) runs `hearth-disks --health-watch` (`hearth-disks-health.service`:
+  oneshot, Nice=19, idle I/O, 2 minutes at most). With no drive turned on it ends at once without looking at a drive.
+  It never writes the settings; it sends a notification once per new problem (a drive turning to a warning or
+  failing) and keeps what it has told you in `~/.local/state/nimbus/disks-health.json`.
 * On **Windows** (Ember) Hearth's letters, Extend, Shrink, the full check and the failure notice aren't there.
 
 Every change is checked twice in `safety.rs`: when the menu is drawn and again, from a fresh look at the drives, right

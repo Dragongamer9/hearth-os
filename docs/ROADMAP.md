@@ -7,7 +7,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
-- [x] Hearth Disks is now laid out like Windows' Disk Management: a volume list on top and a map of every disk below (gold: Hearth runs from it, green: games, blue: a partition, black: unallocated), Hearth's drive letters (C: is Hearth), a right-click or X menu with New Simple Volume, Change drive letter, Format, Extend, Shrink, Delete, Use for games and Properties (General, Health with SMART and a full check, Volumes). Hearth's own partitions only offer Open and Properties; Format and Delete need the volume's name typed; Extend and Shrink go through udisks2 and refuse while Steam uses the drive (docs/STORAGE.md "Disk Management") (needs testing on a device)
+- [x] Hearth Disks is now laid out like Windows' Disk Management: a volume list on top and a map of every disk below (gold: Hearth runs from it, green: games, blue: a partition, black: unallocated), Hearth's drive letters (C: is Hearth), a right-click or X menu with New Simple Volume, Change drive letter, Format, Extend, Shrink, Delete, Use for games and Properties (General, Health with SMART and a full check, Volumes). Hearth's own partitions only offer Open and Properties; Format and Delete need the volume's name typed; Extend and Shrink go through udisks2 and refuse while Steam uses the drive; "Tell me if this drive starts to fail" is checked daily by a small user timer that does nothing unless you turned it on for a drive (docs/STORAGE.md "Disk Management") (needs testing on a device)
 
 ### Planned next
 
