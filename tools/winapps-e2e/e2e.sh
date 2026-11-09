@@ -239,20 +239,20 @@ except OSError as e: print(e)' 2>&1)"
 }
 
 # Inside Hearth OS's own image (base-peppermint.yml, podman run --network=none): a normal user, the test programs
-# from /opt/offline-exe (built on the runner with MinGW), then offline().
+# from /usr/share/hearth-offline-test (built on the runner with MinGW), then offline(). (/opt is a link to /var/opt in the image, so the programs are mounted under /usr)
 offline_image() {
   export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   for c in python3 hearth-proton-run setpriv; do
     command -v "$c" >/dev/null || { echo "::error title=offline: the image has no $c::PATH=$PATH"; return 1; }
   done
-  ls /opt/offline-exe/hello64.exe /opt/offline-exe/hello32.exe >/dev/null || { echo "::error title=offline: no test programs::$(ls -la /opt/offline-exe 2>&1)"; return 1; }
+  ls /usr/share/hearth-offline-test/hello64.exe /usr/share/hearth-offline-test/hello32.exe >/dev/null || { echo "::error title=offline: no test programs::$(ls -la /usr/share/hearth-offline-test 2>&1)"; return 1; }
   # A normal user with a home (useradd if the image has it, else uid 1000 with its own folder: Proton only needs HOME).
   local uid=1000 home=/home/tester
   if command -v useradd >/dev/null; then
     id tester >/dev/null 2>&1 || useradd -m tester || echo "::warning title=offline::useradd failed; using uid 1000"
     uid=$(id -u tester 2>/dev/null || echo 1000)
   fi
-  mkdir -p "$home" "$W" && cp /opt/offline-exe/*.exe "$W/" && chown -R "$uid:$uid" "$home" "$W"
+  mkdir -p "$home" "$W" && cp /usr/share/hearth-offline-test/*.exe "$W/" && chown -R "$uid:$uid" "$home" "$W"
   local out=/tmp/offline.log rc
   setpriv --reuid="$uid" --regid="$uid" --clear-groups env -i HOME="$home" USER=tester LOGNAME=tester DISPLAY="${DISPLAY:-}" \
     W="$W" PATH=/usr/bin:/bin bash "$REPO/tools/winapps-e2e/e2e.sh" offline 2>&1 | tee "$out"

@@ -982,7 +982,7 @@ jobs:
           Xvfb :99 -ac -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
           sleep 2
           sudo podman run --rm --network=none -e DISPLAY=:99 -v /tmp/.X11-unix:/tmp/.X11-unix:ro -v "$PWD:/repo:ro" \
-            -v /tmp/offline-exe:/opt/offline-exe:ro --entrypoint /usr/bin/bash hearth-peppermint:latest /repo/tools/winapps-e2e/e2e.sh offline-image
+            -v /tmp/offline-exe:/usr/share/hearth-offline-test:ro --entrypoint /usr/bin/bash hearth-peppermint:latest /repo/tools/winapps-e2e/e2e.sh offline-image
 
       # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
       # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and

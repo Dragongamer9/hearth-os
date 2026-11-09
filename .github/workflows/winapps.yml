@@ -88,7 +88,7 @@ jobs:
           sudo podman pull -q ghcr.io/dragongamer9/hearth-peppermint:testing
           echo "::notice title=offline: the image::$(sudo podman image inspect --format 'entrypoint={{.Config.Entrypoint}} cmd={{.Config.Cmd}} env={{.Config.Env}}' ghcr.io/dragongamer9/hearth-peppermint:testing | cut -c1-900)"
           sudo podman run --rm --network=none -e DISPLAY=:99 -v /tmp/.X11-unix:/tmp/.X11-unix:ro -v "$PWD:/repo:ro" \
-            -v /tmp/offline-exe:/opt/offline-exe:ro \
+            -v /tmp/offline-exe:/usr/share/hearth-offline-test:ro \
             -v "$S/hearth_proton_run.py:$D/hearth_proton_run.py:ro" -v "$S/hearth_proton.py:$D/hearth_proton.py:ro" \
             -v "$S/hearth-winapps:$D/hearth-winapps:ro" -v "$PWD/os/system_files/usr/bin/hearth-proton-run:/usr/bin/hearth-proton-run:ro" \
             --entrypoint /usr/bin/bash ghcr.io/dragongamer9/hearth-peppermint:testing /repo/tools/winapps-e2e/e2e.sh offline-image 2> >(tee /tmp/oi.err >&2) || {
