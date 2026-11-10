@@ -177,6 +177,7 @@ impl Node {
         let n = self.clone(); tokio::spawn(async move { n.sync_loop().await });
         self.storage_start();
         self.status_start();
+        self.family_start();
         // The firewall (Anatase has firewalld): our two UDP ports, to the local network only (hearth-link-firewall;
         // Hearth's polkit rule lets it run without a prompt). Over the internet nothing needs opening: hole
         // punching starts from both sides.
@@ -250,7 +251,10 @@ impl Node {
     pub async fn unpair_device(self: &Arc<Self>, id: &str) {
         let _ = tokio::time::timeout(Duration::from_secs(15), self.request(id, &json!({"op": "unpair"}))).await;
         self.drop_conn(id).await;
-        crate::lock(&self.peers).remove(id);
+        // One of yours: remembered, so your other devices drop it too (family.rs).
+        crate::lock(&self.peers).remove_and_remember(id);
+        let n = self.clone();
+        tokio::spawn(async move { n.family_round(None).await; });
     }
 
     pub async fn drop_conn(&self, id: &str) {
@@ -259,7 +263,8 @@ impl Node {
 
     async fn hello(self: &Arc<Self>, id: &str, c: &Connection) -> Result<(), String> {
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
-        let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": signed_in_here(&self.home), "relay": relay})).await;
+        let si = if crate::lock(&self.peers).is_mine(id) { signed_in_here(&self.home) } else { json!({}) };
+        let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": si, "relay": relay})).await;
         match r {
             Ok(v) => { self.take_hello(id, &v); Ok(()) }
             Err(e) => { self.check_unpaired(id, &e); Err(e) }
@@ -270,7 +275,8 @@ impl Node {
         let mut ps = crate::lock(&self.peers);
         if let Some(p) = ps.get_mut(id) {
             if let Some(n) = v["name"].as_str() { p.name = n.chars().filter(|c| !c.is_control()).take(40).collect(); }
-            let mut si = v["signedIn"].clone();
+            // A friend's device: only its relay is kept (what it's signed in to isn't used for anything).
+            let mut si = if p.mine() { v["signedIn"].clone() } else { json!({}) };
             if !si.is_object() { si = json!({}); }
             if let Some(r) = v["relay"].as_str().filter(|r| crate::state::valid_relay_url(r)) { si["relay"] = json!(r); }
             p.signed_in = si;
@@ -279,9 +285,9 @@ impl Node {
         let _ = ps.save();
     }
 
-    fn add_peer(&self, id: &str, name: &str, relay: Option<String>) {
+    fn add_peer(&self, id: &str, name: &str, relay: Option<String>, friend: bool) {
         let mut ps = crate::lock(&self.peers);
-        ps.add(id, name);
+        ps.add_paired(id, name, friend);
         if let (Some(r), Some(p)) = (relay, ps.get_mut(id)) { if !p.signed_in.is_object() { p.signed_in = json!({}); } p.signed_in["relay"] = json!(r); }
         let _ = ps.save();
     }
@@ -289,8 +295,12 @@ impl Node {
     /// The other device said it isn't paired with this one anymore (it unpaired while this one was away).
     fn check_unpaired(&self, id: &str, err: &str) {
         if err.contains("not paired") {
+            let mut ps = crate::lock(&self.peers);
+            // Told about it by another of your devices and never reached yet: it just hasn't heard about this one
+            // yet (it will from your other devices), so it's kept.
+            if ps.get(id).map(|p| p.introduced_by.is_some() && p.last_seen == 0).unwrap_or(false) { return; }
             eprintln!("hearth-link: {id} unpaired this device");
-            crate::lock(&self.peers).remove(id);
+            ps.remove(id);
         }
     }
 
@@ -376,20 +386,22 @@ impl Node {
             me.set_event(json!({"state": "checking", "name": j.name, "kind": j.kind}));
         };
         let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), relay, &pairing, left_if_wrong, seen)).await;
-        self.after_pair_attempt(remote, short, r);
+        self.after_pair_attempt(remote, short, pairing.mine, r);
         // The next attempt is taken only now, with the tries counted.
         self.pair_busy.store(false, Ordering::SeqCst);
     }
 
-    fn after_pair_attempt(self: &Arc<Self>, remote: String, short: String, r: Result<Result<crate::pair::Joiner, (crate::pair::HostFail, crate::pair::Joiner)>, tokio::time::error::Elapsed>) {
+    fn after_pair_attempt(self: &Arc<Self>, remote: String, short: String, mine_here: bool, r: Result<Result<crate::pair::Joiner, (crate::pair::HostFail, crate::pair::Joiner)>, tokio::time::error::Elapsed>) {
         let left_if_wrong = crate::lock(&self.pairing).as_ref().map(|p| crate::pair::MAX_TRIES.saturating_sub(p.tries + 1)).unwrap_or(0);
         use crate::pair::HostFail;
         match r {
             Ok(Ok(j)) => {
-                self.add_peer(&remote, &j.name, j.relay.clone());
+                let friend = crate::pair::is_friend(mine_here, j.mine);
+                self.add_peer(&remote, &j.name, j.relay.clone(), friend);
                 self.end_pairing();
-                self.set_event(json!({"state": "paired", "name": j.name, "id": remote}));
-                eprintln!("hearth-link: pairing: paired with {} ({remote})", j.name);
+                self.set_event(json!({"state": "paired", "name": j.name, "id": remote, "friend": friend}));
+                eprintln!("hearth-link: pairing: paired with {} ({remote}){}", j.name, if friend { " as a friend's device" } else { "" });
+                self.family_after_pairing(&remote);
                 let n = self.clone();
                 tokio::spawn(async move { tokio::time::sleep(Duration::from_secs(1)).await; let _ = n.sync_with(&remote).await; });
             }
@@ -421,6 +433,12 @@ impl Node {
     async fn on_stream(self: Arc<Self>, peer: String, mut s: iroh::endpoint::SendStream, mut r: iroh::endpoint::RecvStream) {
         let req = match wire::read_msg(&mut r).await { Ok(v) => v, Err(_) => return };
         let op = req["op"].as_str().unwrap_or("").to_string();
+        // A friend's device only gets what makes sense between two people (family.rs).
+        if !crate::family::friend_may(&op) && !crate::lock(&self.peers).is_mine(&peer) {
+            let _ = wire::write_msg(&mut s, &json!({"error": "That's only for your own devices"})).await;
+            let _ = s.finish();
+            return;
+        }
         if op == "chunks" {
             if let Err(e) = self.serve_chunks(&peer, &req, &mut s).await {
                 eprintln!("hearth-link: sending chunks: {e}");
@@ -448,6 +466,8 @@ impl Node {
     /// archived games, shared folders and backups (storage.rs) are checked for `peer` every time instead.
     pub(crate) async fn local_game(self: &Arc<Self>, peer: &str, id: &str) -> Result<Arc<crate::games::LocalGame>, String> {
         if crate::storage::is_special(id) {
+            // Archived games, shared folders and backups are only for your own devices.
+            if !crate::lock(&self.peers).is_mine(peer) { return Err("That's only for your own devices".into()); }
             let (n, p, i) = (self.clone(), peer.to_string(), id.to_string());
             return tokio::task::spawn_blocking(move || n.storage_find(&p, &i)).await.map_err(|e| e.to_string())?.map(Arc::new);
         }
@@ -487,7 +507,8 @@ impl Node {
             "hello" => {
                 self.take_hello(peer, req);
                 let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
-                Ok(json!({"name": self.name(), "signedIn": signed_in_here(&self.home), "relay": relay}))
+                let si = if crate::lock(&self.peers).is_mine(peer) { signed_in_here(&self.home) } else { json!({}) };
+                Ok(json!({"name": self.name(), "signedIn": si, "relay": relay}))
             }
             "games" => {
                 let home = self.home.clone();
@@ -536,6 +557,7 @@ impl Node {
             }
             "unpair" => { crate::lock(&self.peers).remove(peer); self.conns.lock().await.remove(peer); Ok(json!({"ok": true})) }
             "ping" => Ok(json!({"ok": true})),
+            "family.sync" => self.clone().family_answer(peer, req).await,
             o if o.starts_with("saves.") => self.clone().saves_answer(peer, op, req).await,
             o if o.starts_with("device.") || o.starts_with("devices.") => self.clone().health_answer(peer, op, req).await,
             o if o.starts_with("bench.") => self.clone().bench_answer(peer, op, req).await,
@@ -571,6 +593,7 @@ impl Node {
 
     pub async fn sync_with(self: &Arc<Self>, peer: &str) -> Result<Value, String> {
         if !crate::lock(&self.cfg).sync { return Err("Sync is off".into()); }
+        if !crate::lock(&self.peers).is_mine(peer) { return Err("Settings and the library only sync between your own devices".into()); }
         let n = self.clone(); let p = peer.to_string();
         let mut req = tokio::task::spawn_blocking(move || {
             let mut s = crate::lock(&n.sync);
@@ -603,7 +626,7 @@ impl Node {
             let changed = { let n = self.clone(); tokio::task::spawn_blocking(move || { let mut s = crate::lock(&n.sync); let c = s.scan(&n.me, &n.src); let _ = s.save(&n.dir); c }).await.unwrap_or(false) };
             if !changed && last_full.map(|t| t.elapsed() < Duration::from_secs(300)).unwrap_or(false) { continue; }
             last_full = Some(Instant::now());
-            let ids: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();
+            let ids: Vec<String> = crate::lock(&self.peers).mine().map(|p| p.id.clone()).collect();
             for id in ids { if let Err(e) = self.sync_with(&id).await { eprintln!("hearth-link: sync with {id}: {e}"); } }
         }
     }
@@ -699,12 +722,14 @@ impl Node {
     pub fn status(&self) -> Value {
         let now = crate::now_ms();
         let found = crate::lock(&self.found).clone();
+        let names: HashMap<String, String> = crate::lock(&self.peers).list.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
         let peers: Vec<Value> = crate::lock(&self.peers).list.iter().map(|p| {
             // On this network: heard announcing itself here lately (discovery); otherwise online means over the internet.
             let lan = found.get(&p.id).map(|f| now.saturating_sub(f.at) < 60_000).unwrap_or(false);
             let online = lan || now.saturating_sub(p.last_seen) < 60_000;
+            let by = p.introduced_by.as_ref().and_then(|b| names.get(b).cloned());
             json!({"id": p.id, "name": p.name, "pairedAt": p.paired_at, "lastSeen": p.last_seen, "online": online, "lan": lan, "alwaysAccept": p.always_accept,
-                   "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id)})
+                   "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id), "friend": p.friend, "introducedBy": by})
         }).collect();
         let paired: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();
         // Devices showing a code first (the ones to pick), then by name. A device that stopped announcing a code is
@@ -717,7 +742,7 @@ impl Node {
         let mut hints = Vec::new();
         for st in ["steam", "epic", "gog", "xbox"] {
             if here[st] == true { continue; }
-            if let Some(p) = crate::lock(&self.peers).list.iter().find(|p| p.signed_in[st] == true) {
+            if let Some(p) = crate::lock(&self.peers).mine().find(|p| p.signed_in[st] == true) {
                 hints.push(json!({"store": st, "name": store_name(st), "on": p.name, "text": format!("You're signed in to {} on {}: sign in once on this device too", store_name(st), p.name)}));
             }
         }
@@ -862,19 +887,22 @@ impl Node {
         self.set_joining("checking", &name);
         eprintln!("hearth-link: pairing: connected, checking the code");
         let mine = self.ep.addr().relay_urls().next().map(|u| u.to_string());
-        let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code, with)).await
+        let mine_here = a["mine"] != false;
+        let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code, with, mine_here)).await
             .map_err(|_| format!("{name} didn't answer"))?;
         conn.close(VarInt::from_u32(0), b"done");
         // The other device's own words (wrong code, not open, busy, expired) pass through; a connection that just
         // ended (Hearth Link as in 0.6.5 closes it when pairing isn't open there) is said plainly.
-        let (host_name, their_relay) = r.map_err(|e| {
+        let (host_name, their_relay, mine_there) = r.map_err(|e| {
             if e.starts_with("reading") || e.contains("connection lost") || e.contains("closed") { format!("{name} ended the pairing: pairing may not be open on it (or the code expired). Select Pair a device on it and try again") }
             else { e }
         })?;
-        self.add_peer(&id, &host_name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))));
+        let friend = crate::pair::is_friend(mine_here, mine_there);
+        self.add_peer(&id, &host_name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))), friend);
         let n = self.clone(); let id2 = id.clone();
         tokio::spawn(async move { let _ = n.sync_with(&id2).await; });
-        Ok(json!({"id": id, "name": host_name}))
+        self.family_after_pairing(&id);
+        Ok(json!({"id": id, "name": host_name, "friend": friend}))
     }
 
     pub async fn command(self: &Arc<Self>, cmd: &str, a: &Value) -> Result<Value, String> {
@@ -888,6 +916,9 @@ impl Node {
                     let mut p = crate::lock(&self.pairing);
                     let keep = p.as_ref().map(|x| x.open() && x.lan_code().is_some()).unwrap_or(false);
                     if !keep { *p = Some(crate::pair::Pairing::new(secs.unwrap_or(crate::pair::CODE_LIFETIME_MS).min(crate::pair::CODE_LIFETIME_MS))); }
+                    // My device (the default) or A friend's device: what the other device is told when it pairs.
+                    // Asking for a short code as well keeps what was picked.
+                    if let (Some(x), Some(m)) = (p.as_mut(), a["mine"].as_bool()) { x.mine = m; }
                     !keep
                 };
                 if fresh {
@@ -932,6 +963,13 @@ impl Node {
                 let mut ps = crate::lock(&self.peers);
                 let p = ps.get_mut(&id).ok_or("Not a paired device")?;
                 if let Some(b) = a["alwaysAccept"].as_bool() { p.always_accept = b; }
+                // Making one of yours a friend's device stops sharing with it at once. The other way needs both
+                // devices to agree: pairing again, picking My device on both.
+                match a["friend"].as_bool() {
+                    Some(true) => { p.friend = true; p.introduced_by = None; p.signed_in = json!({}); }
+                    Some(false) if p.friend => return Err("To make it one of your devices, pair with it again and pick My device on both".into()),
+                    _ => {}
+                }
                 ps.save()?;
                 Ok(Value::Null)
             }
@@ -1017,7 +1055,7 @@ impl Node {
             }
             "transfer.clear" => { crate::lock(&self.jobs).retain(|j| !matches!(j.state().as_str(), "done" | "cancelled")); Ok(Value::Null) }
             "sync.now" => {
-                let ids: Vec<String> = match a["peer"].as_str() { Some(p) => vec![p.to_string()], None => crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect() };
+                let ids: Vec<String> = match a["peer"].as_str() { Some(p) => vec![p.to_string()], None => crate::lock(&self.peers).mine().map(|p| p.id.clone()).collect() };
                 let mut out = serde_json::Map::new();
                 for id in ids {
                     let r = self.sync_with(&id).await;

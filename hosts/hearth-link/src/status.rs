@@ -67,7 +67,7 @@ impl Node {
     pub async fn status_answer(self: Arc<Self>, peer: &str, op: &str, _req: &Value) -> Result<Value, String> {
         match op {
             "status.get" => {
-                let paired = crate::lock(&self.peers).is_paired(peer);
+                let paired = crate::lock(&self.peers).is_mine(peer);
                 let st = if paired { tokio::task::spawn_blocking(|| run_helper("status")).await.map_err(|e| e.to_string())? } else { Err(String::new()) };
                 answer_for(paired, st)
             }
@@ -78,7 +78,7 @@ impl Node {
     pub async fn status_command(self: &Arc<Self>, cmd: &str, _a: &Value) -> Result<Value, String> {
         match cmd {
             "status.devices" => {
-                let peers: Vec<(String, String, u64)> = crate::lock(&self.peers).list.iter().map(|p| (p.id.clone(), p.name.clone(), p.last_seen)).collect();
+                let peers: Vec<(String, String, u64)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone(), p.last_seen)).collect();
                 let mut set = tokio::task::JoinSet::new();
                 for (id, name, seen) in peers {
                     let n = self.clone();

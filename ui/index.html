@@ -5701,7 +5701,7 @@ function lkPairHere(s){
     else if(s.shortCodes!==false) h += lkRow('pnet','lkPairNet','globe','Not on the same network?','Get a code to type on a device somewhere else (over the internet)', LK.busy==='net'?'<div class="rv"><span class="mini-spin"></span></div>':undefined);
     h += lkRow('pclose','lkPairClose','x','Stop pairing','', '');
   } else {
-    if(ev&&ev.state==='paired') h += lkRow('pdone','lkNone','check',`Paired ✓ with ${esc(ev.name)}`,'Your Hearth data syncs between them now', '');
+    if(ev&&ev.state==='paired') h += lkRow('pdone','lkNone','check',`Paired ✓ with ${esc(ev.name)}`, ev.friend?'A friend\'s device: you can copy games between you. Nothing else is shared, and your other devices don\'t see it':'Your Hearth data syncs between them now, and it\'s paired with your other devices too', '');
     if(ev&&ev.state==='locked') h += note('Too many wrong codes, so pairing stopped. Select Pair a device for a new code.');
     if(ev&&ev.state==='expired') h += note('The code ran out. Select Pair a device for a new one.');
     h += lkRow('pair','lkPairOpen','lock','Pair a device','Shows a code to type on your other Hearth device');
@@ -5715,7 +5715,7 @@ function lkPairThere(s){
     const name=esc(jn.name||j.name||'the other device');
     const line = j.state==='busy' ? ({looking:'Looking up the code…', found:`Found ${name}`, connecting:`Found ${name}: connecting…`, checking:`Checking the code with ${name}…`}[jn.state]||`Waiting for ${name}…`)
       : j.state==='wrong' ? esc(j.msg) : j.state==='done' ? `Paired ✓ with ${name}` : esc(j.msg||'That didn\'t work');
-    h += `<div class="row lk-pair" data-f data-k="lk-join"><span class="ricon">${j.state==='done'?I.check:j.state==='busy'?'<span class="mini-spin"></span>':I.info}</span><div class="rt"><b>${line}</b>${j.state==='done'?'<small>Your Hearth data syncs between them now</small>':''}</div></div>`;
+    h += `<div class="row lk-pair" data-f data-k="lk-join"><span class="ricon">${j.state==='done'?I.check:j.state==='busy'?'<span class="mini-spin"></span>':I.info}</span><div class="rt"><b>${line}</b>${j.state==='done'?`<small>${j.friend?'A friend\'s device: you can copy games between you. Nothing else is shared':'Your Hearth data syncs between them now, and it\'s paired with your other devices too'}</small>`:''}</div></div>`;
   }
   const near=s.nearby||[];
   near.forEach((n,i)=>{
@@ -5728,13 +5728,19 @@ function lkPairThere(s){
   h += lkRow('other','lkOther','info','Other ways to pair','The other device\'s long link');
   return h;
 }
+// My device (paired with all your devices, everything shared) or a friend's (this device only, games only).
+function lkWhose(title, go){
+  return openSheet({title, sub:'Your own devices are paired with each other once: a new one is paired with all of them. A friend\'s device is paired with this one only, just for copying games.', items:[
+    {label:'My device', icon:'display', run:()=>go(true)},
+    {label:'A friend\'s device', icon:'user', run:()=>go(false)}]});
+}
 function lkRedraw(){ if(lkTab()&&!S.layers.length) render(null,true); }
 // Runs a pairing and says how it goes; a wrong code asks for it again (`again`), with the tries left.
 async function lkJoinRun(args, name, again){
   LK.join={name, state:'busy'}; lkRedraw();
   try{
-    const r=await call('link.pair.join', args, 100000);
-    LK.join={name:(r&&r.name)||name, state:'done'};
+    const r=await call('link.pair.join', Object.assign({mine: LK.joinMine!==false}, args), 100000);
+    LK.join={name:(r&&r.name)||name, state:'done', friend:!!(r&&r.friend)};
     toast(`Paired with ${LK.join.name}`);
   }catch(e){
     const m=(e&&e.message)||String(e);
@@ -5864,7 +5870,7 @@ function pageLink(){
   const peers = s.peers||[];
   h += shead('Your devices');
   if(!peers.length) h += note('No devices paired yet. Pair once, and your favorites, collections, play time, appearance and controller layouts stay the same on both, and you can copy games between them.');
-  else h += peers.map((p,i)=>lkRow('p'+i,'lkPeer','display', esc(p.name), (p.online?'Online':'Not on right now') + (p.sync&&p.sync.at?` · synced ${new Date(p.sync.at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`:''), undefined, ` data-id="${esc(p.id)}"`)).join('');
+  else h += peers.map((p,i)=>lkRow('p'+i,'lkPeer','display', esc(p.name), (p.friend?'Friend\'s device · ':'') + (p.online?'Online':p.lastSeen?'Not on right now':'Not reached yet') + (p.introducedBy?` · paired through ${esc(p.introducedBy)}`:'') + (p.sync&&p.sync.at?` · synced ${new Date(p.sync.at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`:''), undefined, ` data-id="${esc(p.id)}"`)).join('');
   const offers = s.offers||[];
   if(offers.length) h += shead('Games offered to you') + offers.map((o,i)=>lkRow('o'+i,'lkOffer','dl', `${esc(o.game.title)} from ${esc(o.from)}`, `${LK_STORE[o.game.store]||''}${o.game.size?' · '+lkBytes(o.game.size):''} · select to accept or decline`, undefined, ` data-id="${esc(o.id)}"`)).join('');
   const jobs = s.transfers||[];
@@ -5919,12 +5925,12 @@ function lkCall(m, a, t, ok){ return call(m, a||{}, t||15000).then(r=>{ if(ok) t
 function lkAct(a, d){
   const s=LK.s||{};
   switch(a){
-    case 'lkPairOpen': return lkCall('link.pair.open', {}, 30000);
+    case 'lkPairOpen': return lkWhose('Who\'s pairing with this device?', mine=>lkCall('link.pair.open', {mine}, 30000));
     case 'lkPairNet': LK.busy='net'; lkRedraw(); return lkCall('link.pair.open', {internet:true}, 60000).then(()=>{ LK.busy=''; lkRedraw(); });
     case 'lkPairClose': return lkCall('link.pair.close');
     case 'lkJoin': if(d.ready!=='1') return toast(`On ${d.name}, select Settings › Hearth Link › Pair a device first. It shows up here as ready.`);
-      return lkJoinLan(d.id, d.name);
-    case 'lkJoinCode': return lkJoinShort();
+      return lkWhose(`Is ${d.name} yours?`, mine=>{ LK.joinMine=mine; lkJoinLan(d.id, d.name); });
+    case 'lkJoinCode': return lkWhose('Is the other device yours?', mine=>{ LK.joinMine=mine; lkJoinShort(); });
     case 'lkOther': return openSheet({title:'Other ways to pair', sub:'When the other device isn\'t listed and a code doesn\'t work: its long link (Settings › Hearth Link › Other ways › Show this device\'s link on it), then its 6-digit code.', items:[
       {label:'Type the other device\'s long link', icon:'kbd', run:()=>lkAct('lkJoinFar', {})},
       {label:'Show this device\'s long link', icon:'info', run:()=>lkAct('lkTicket', {})}]});
@@ -5941,11 +5947,13 @@ function lkAct(a, d){
       {label:'My own relay…', icon:'globe', run:async()=>{ const u=await openPrompt({title:'Your relay\'s address (https://…)', value:(s.settings&&s.settings.relayUrl)||'', osk:true}); if(u==null) return; lkCall('link.settings.set',{relay:'custom', relayUrl:u.trim()},15000,'Hearth Link restarts with your relay'); }},
       {label:'Off (same network only)', icon:'x', run:()=>lkCall('link.settings.set',{relay:'off'},15000,'Hearth Link works on this network only now')}]});
     case 'lkPeer': { const p=(s.peers||[]).find(x=>x.id===d.id); if(!p) return;
-      return openSheet({title:p.name, sub:p.online?'Online':'Not on right now', items:[
+      return openSheet({title:p.name, sub:(p.friend?'A friend\'s device: paired with this device only. You can copy games between you; nothing else is shared. ':'')+(p.online?'Online':'Not on right now'), items:[
         {label:'Get a game from it', icon:'dl', run:()=>lkGetFrom(p.id)},
-        {label:'Sync now', icon:'refresh', run:()=>lkCall('link.sync.now',{peer:p.id},70000,'Synced')},
+        ...(p.friend?[{label:'Make it one of my devices', icon:'info', run:()=>openSheet({title:'Make it one of your devices', sub:'Both devices have to agree: unpair it, then pair again and pick My device on both.', items:[]})}]
+          :[{label:'Sync now', icon:'refresh', run:()=>lkCall('link.sync.now',{peer:p.id},70000,'Synced')},
+            {label:'Make it a friend\'s device', icon:'user', run:()=>openSheet({title:`Make ${p.name} a friend's device?`, sub:'This device stops sharing your settings, library, saves, status and storage with it right away. You can still copy games between you.', items:[{label:'Make it a friend\'s device', icon:'user', run:()=>lkCall('link.peer.set',{id:p.id, friend:true},15000,`${p.name} is a friend's device now`)}]})}]),
         {label:p.alwaysAccept?'Ask before accepting its games':'Accept its games without asking', icon:'check', run:()=>lkCall('link.peer.set',{id:p.id, alwaysAccept:!p.alwaysAccept})},
-        {label:'Unpair', icon:'trash', run:()=>openSheet({title:`Unpair ${p.name}?`, sub:'Nothing is synced or copied between them anymore, until you pair again.', items:[{label:'Unpair', icon:'trash', run:()=>lkCall('link.unpair',{id:p.id},70000,`Unpaired ${p.name}`)}]})}]}); }
+        {label:'Unpair', icon:'trash', run:()=>openSheet({title:`Unpair ${p.name}?`, sub:p.friend?'Nothing is copied between them anymore, until you pair again.':'Nothing is synced or copied with it anymore, until you pair again. Your other devices remove it too.', items:[{label:'Unpair', icon:'trash', run:()=>lkCall('link.unpair',{id:p.id},70000,`Unpaired ${p.name}`)}]})}]}); }
     case 'lkOffer': { const o=(s.offers||[]).find(x=>x.id===d.id); if(!o) return;
       return openSheet({title:`${o.game.title} from ${o.from}`, sub:o.game.size?lkBytes(o.game.size):'', items:[
         {label:'Accept', icon:'check', run:()=>lkPlace(o.game.store, place=>lkCall('link.offer.accept',{id:o.id, place},20000,`Copying ${o.game.title}`))},

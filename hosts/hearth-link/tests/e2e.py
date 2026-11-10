@@ -1070,16 +1070,99 @@ def internet():
     pk.terminate()
 
 
+
+def family_network():
+    """Three devices on one network: a bridge in its own namespace (nothing else's firewall in the way)."""
+    for ns in ('hfBr', 'hfA', 'hfB', 'hfC'):
+        sh('ip netns del %s' % ns, check=False)
+        sh('ip netns add %s' % ns)
+        sh('ip -n %s link set lo up' % ns)
+    sh('ip -n hfBr link add br0 type bridge && ip -n hfBr link set br0 up')
+    for i, x in enumerate('ABC'):
+        sh('ip link add f%s0 type veth peer name f%s1' % (x, x))
+        sh('ip link set f%s0 netns hf%s' % (x, x))
+        sh('ip link set f%s1 netns hfBr' % x)
+        sh('ip -n hfBr link set f%s1 master br0 && ip -n hfBr link set f%s1 up' % (x, x))
+        sh('ip -n hf%s addr add 10.78.0.%d/24 brd + dev f%s0 && ip -n hf%s link set f%s0 up' % (x, i + 1, x, x, x))
+
+
+def pair_quick(joiner, host, mine_joiner=True, mine_host=True):
+    code = host.call('pair.open', {'mine': mine_host})['code']
+    wait_for('%s to list %s as ready to pair' % (joiner.name, host.name), lambda: any(n['id'] == host.id and n['pairing'] for n in joiner.status()['nearby']), 20)
+    return joiner.call('pair.join', {'id': host.id, 'code': code, 'mine': mine_joiner}, timeout=90)
+
+
+def peer_of(dev, other):
+    return next((p for p in dev.status()['peers'] if p['id'] == other.id), None)
+
+
+def family():
+    """Pair once for all your devices: A-B, then B-C, and A and C are paired with no code. Removing C on A removes
+    it from B too. A friend's device pairs with one device only and nobody else hears of it."""
+    shutil.rmtree(ROOT, ignore_errors=True)
+    os.makedirs(ROOT)
+    family_network()
+    pk, pk_url = pkarr_relay('hfA', '10.78.0.1')
+    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url, 'HEARTH_LINK_NO_FIREWALL': '1'}
+    a, b, c = Dev('A', 'hfA', dict(env, HEARTH_LINK_KIND='desktop')), Dev('B', 'hfB', dict(env, HEARTH_LINK_KIND='handheld')), Dev('C', 'hfC', dict(env, HEARTH_LINK_KIND='laptop'))
+    for d in (a, b, c):
+        d.start()
+    wait_for('the three to hear each other', lambda: all(any(n['id'] == o.id for n in d.status()['nearby']) for d in (a, b, c) for o in (a, b, c) if o is not d), 40)
+    r = pair_quick(a, b)
+    if r.get('friend') is not False:
+        fail('A and B (both My device): %s' % r)
+    pair_quick(c, b)
+    t0 = time.time()
+    wait_for('A and C to be paired through B', lambda: peer_of(a, c) and peer_of(c, a), 60)
+    pa, pc = peer_of(a, c), peer_of(c, a)
+    if pa.get('friend') or pa.get('introducedBy') != 'B' or pc.get('introducedBy') != 'B':
+        fail('A and C as each other lists them: %s / %s' % (pa, pc))
+    # They really talk: A asks C for its games (C only answers devices it's paired with).
+    g = a.call('games', {'peer': c.id, 'refresh': True}, timeout=60)
+    if 'games' not in g:
+        fail('A asking C (paired through B): %s' % g)
+    notice('your devices', 'paired A-B and B-C with codes; A and C were paired with each other through B in %.1f s, no code, and talk directly' % (time.time() - t0))
+    # Removing C on A removes it from B too (and C hears from A).
+    a.call('unpair', {'id': c.id})
+    wait_for('C to forget A', lambda: not peer_of(c, a), 30)
+    wait_for('B to drop C (removed on A)', lambda: not peer_of(b, c), 60)
+    wait_for('C to forget B too', lambda: not peer_of(c, b), 30)
+    time.sleep(3)
+    if peer_of(a, c):
+        fail('A added C back from an older list')
+    notice('removing', 'removed C on A: B dropped C by itself and told it, C forgot both; nobody added it back')
+    # C again, this time as a friend's device of A's (A picks A friend's device): paired with A only.
+    r = pair_quick(c, a, mine_joiner=True, mine_host=False)
+    if r.get('friend') is not True:
+        fail('pairing as a friend: %s' % r)
+    if not (peer_of(a, c) or {}).get('friend') or not (peer_of(c, a) or {}).get('friend'):
+        fail('the friend mark: %s / %s' % (peer_of(a, c), peer_of(c, a)))
+    time.sleep(12)
+    if peer_of(b, c) or peer_of(c, b):
+        fail('a friend\'s device was passed on to B: %s / %s' % (peer_of(b, c), peer_of(c, b)))
+    # A friend can see A's games (for copies) but not sync with it.
+    if 'games' not in c.call('games', {'peer': a.id, 'refresh': True}, timeout=60):
+        fail('a friend asking for games')
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'own devices' not in json.dumps(r):
+        fail('sync with a friend\'s device: %s' % r)
+    notice('friends', "C paired with A as a friend's device: B never heard of it, games can be seen for copies, settings and the library don't sync")
+    for d in (a, b, c):
+        d.kill(signal.SIGTERM)
+    pk.terminate()
+    log_b = tail(os.path.join(ROOT, 'B.log'), 200000)
+    notice('family log on B', ' | '.join(l.split('family: ', 1)[1] for l in log_b.splitlines() if 'family: ' in l)[-1500:])
+
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'lan'
     try:
         try:
-            {'lan': lan, 'internet': internet}[what]()
+            {'lan': lan, 'internet': internet, 'family': family}[what]()
         except SystemExit:
             raise
         except Exception as e:
             import traceback
             fail('%s: %s\n%s' % (type(e).__name__, e, traceback.format_exc()[-1500:]))
     finally:
-        for p in ('hlA', 'hlB', 'hiA', 'natA', 'inet', 'natB', 'hiB'):
+        for p in ('hlA', 'hlB', 'hiA', 'natA', 'inet', 'natB', 'hiB', 'hfA', 'hfB', 'hfC', 'hfBr'):
             subprocess.run('ip netns pids %s 2>/dev/null | xargs -r kill -9' % p, shell=True)

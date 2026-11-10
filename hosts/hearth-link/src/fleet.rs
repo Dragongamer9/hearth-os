@@ -157,7 +157,7 @@ impl Node {
 
     /// Every paired device's answer to `op` (in parallel, a few seconds each), and this device's.
     async fn fleet_ask(self: &Arc<Self>, op: &str) -> Vec<Value> {
-        let peers: Vec<(String, String)> = crate::lock(&self.peers).list.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
+        let peers: Vec<(String, String)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
         let mut set = tokio::task::JoinSet::new();
         for (id, name) in peers {
             let (n, op) = (self.clone(), op.to_string());

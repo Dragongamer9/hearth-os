@@ -65,6 +65,10 @@ jobs:
         env:
           LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
         run: sudo -E python3 hosts/hearth-link/tests/e2e.py lan
+      - name: Three devices (pair once for all your devices, removing, a friend's device)
+        env:
+          LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
+        run: sudo -E python3 hosts/hearth-link/tests/e2e.py family
       - name: The internet path (NATs and a local iroh relay)
         env:
           LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
