@@ -13,6 +13,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ### Planned next
 
+- [ ] Memory and swap in Settings › System › Memory, so a full RAM slows the PC down instead of freezing it (a laptop with 7.5 GB froze under AI work: the Debian edition has no swap and no early memory guard). Choose how much swap: Off, 4, 8, 16, 32 GB or as much as memory, as a file in /var/swap with a nofail line in /etc/fstab, made and removed only when you press it; a swap file you already made (like /var/swap/swapfile) is found and used, never doubled. zram (compressed swap in memory, used first) with its size to pick. An early memory guard (systemd-oomd) that closes only the biggest app when memory is really full and says which one, never Game Mode or the desktop. Nothing changes on devices already set up until you choose; booting is never touched
 - [ ] Proton detector for Hearth Games: notice a game that closes right away and offer the next Proton (games already use the table and what worked before)
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] Optimize drives in Disk Management, the Windows way: SSDs and NVMe drives show their TRIM status and last run (never defragmented); hard drives get a fragmentation check (e4defrag -c on ext4) and a free-space warning above about 90% full, with a Defragment button only when a drive really needs it (never on Btrfs snapshots or NTFS)
