@@ -2070,12 +2070,15 @@ const path = require('path');
         const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
         out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
         act(document.querySelector('#view [data-k="lk-n0"]')); await wait(200);
+        // First: My device or a friend's device (family.rs).
+        out.whose = sheet && sheet.items ? sheet.items.map(i => i.label).join('|') : null; sheetPick(0); await wait(200);
         out.prompt1 = prompt && prompt.title; out.mode = prompt && prompt.mode;
         prompt.text = '482914'; promptSubmit(); await wait(400);
         out.prompt2 = prompt && prompt.title;
         if (prompt) { prompt.text = '482 913'; promptSubmit(); }
         await wait(400);
         out.joined = calls.filter(c => c[0] === 'link.pair.join').map(c => c[1].code + '@' + c[1].id.slice(0, 2));
+        out.mines = calls.filter(c => c[0] === 'link.pair.join').map(c => c[1].mine).join(',');
         out.done = /Paired ✓ with Nvidia-PC/.test(v());
         // The internet code showing here.
         st.pairing.netCode = '234-567-89A9'; st.pairing.netUntil = Date.now() + 590000; st.pairEvent = null;
@@ -2084,6 +2087,8 @@ const path = require('path');
         // Short codes: the page's check is the service's.
         out.fmt = lkShortFmt('k7m4q'); out.ok = lkShortCheck('234-567-89a9'); out.typo = lkShortCheck('234-567-89AA'); out.amb = lkShortCheck('234-567-89A0'); out.short = lkShortCheck('234-567');
         act(document.querySelector('#view [data-k="lk-entercode"]')); await wait(200);
+        sheetPick(1); await wait(200);
+        out.friendJoin = LK.joinMine === false;
         for (const ch of '23456789a9') promptKey(ch);
         out.typed = prompt && prompt.text; out.typedTitle = prompt && prompt.title;
         promptKey('bksp'); promptKey('b');
@@ -2091,7 +2096,8 @@ const path = require('path');
         closeAll();
         return out;
       });
-      const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair' };
+      const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair',
+                     whose: "My device|A friend's device", mines: 'true,true', friendJoin: true };
       for (const k of Object.keys(want)) if (r[k] !== want[k]) lerr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
       if (r.dupKeys.length) lerr('two rows with the same key: ' + r.dupKeys.join(', '));
       if (!/The 6-digit code Nvidia-PC shows/.test(r.prompt1 || '')) lerr('picking a device asked: ' + r.prompt1);
@@ -2099,7 +2105,7 @@ const path = require('path');
       if (r.joined.join(' ') !== '482914@bb 482913@bb') lerr('codes sent: ' + r.joined.join(' '));
       if (!/one of the characters is off/.test(r.typo) || !/never have 0/.test(r.amb) || !/10 characters/.test(r.short)) lerr('short code checks: ' + JSON.stringify([r.typo, r.amb, r.short]));
       if (!/doesn't look right/.test(r.typoTitle || '')) lerr('a typo while typing: ' + r.typoTitle);
-      if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, number pad, wrong code asked again, short codes checked and formatted ok');
+      if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, My device or a friend\'s device, number pad, wrong code asked again, short codes checked and formatted ok');
     } catch (e) { lerr(e.message.split('\n')[0]); }
     await lp.close();
   }
