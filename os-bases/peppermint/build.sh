@@ -79,7 +79,7 @@ KVER=$(basename "${KDIRS[0]}")
   util-linux fdisk parted gdisk efibootmgr btrfs-progs e2fsprogs xfsprogs dosfstools ntfs-3g exfatprogs \
   rsync cpio zstd skopeo podman pciutils usbutils lsof procps psmisc \
   network-manager wpasupplicant iw bluez bluez-obexd openssh-client \
-  pipewire pipewire-audio pipewire-pulse pipewire-alsa pipewire-jack wireplumber libspa-0.2-bluetooth alsa-utils rtkit \
+  pipewire pipewire-audio pipewire-pulse pipewire-alsa pipewire-jack wireplumber libspa-0.2-bluetooth alsa-utils alsa-ucm-conf rtkit \
   upower udisks2 fwupd flatpak xdg-user-dirs xdg-utils \
   plymouth plymouth-themes \
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
