@@ -87,6 +87,33 @@ class Wiring(unittest.TestCase):
         for needle in ["function pageLink()", "['link','refresh','Hearth Link']", 'data-act="lkGet"', "call('link.status'", "call('link.ui.sync'"]:
             self.assertIn(needle, ui)
 
+    def test_my_devices_and_friends_devices(self):
+        # Pairing a friend's device: the last word "friend" (mine: false); without it, one of your devices (the
+        # service's default). Only pairing takes it.
+        self.assertEqual(hls.request(['pair-open', 'friend']), ('pair.open', {'mine': False}))
+        self.assertEqual(hls.request(['pair-open-internet', 'friend']), ('pair.open', {'internet': True, 'mine': False}))
+        self.assertEqual(hls.request(['join', ID, 'friend'], '123456'), ('pair.join', {'id': ID, 'code': '123456', 'mine': False}))
+        self.assertEqual(hls.request(['join-code', 'friend'], '234-567-89A9'), ('pair.join', {'code': '234-567-89A9', 'mine': False}))
+        self.assertNotIn('mine', hls.request(['join', ID], '123456')[1])
+        self.assertEqual(hls.request(['make-friend', ID]), ('peer.set', {'id': ID, 'friend': True}))
+        for bad in (['make-friend', '; rm -rf /'], ['unpair', ID, 'friend'], ['status', 'friend']):
+            with self.assertRaises(hls.Fail):
+                hls.request(bad, '123456')
+        # Both screens ask, and mark a friend's device and one paired through another of yours.
+        ui = (ROOT / 'ui' / 'index.html').read_text()
+        for needle in ["function lkWhose(", "{label:'My device'", "{label:'A friend\\'s device'", "'link.pair.open', {mine}", "mine: LK.joinMine!==false",
+                       "p.friend?'Friend\\'s device · '", "paired through ${esc(p.introducedBy)}", "lkCall('link.peer.set',{id:p.id, friend:true}"]:
+            self.assertIn(needle, ui)
+        qml = (SHELL / 'SetLink.qml').read_text()
+        for needle in ['property bool friendMode: false', 'title: "Pairing a friend\'s device"', 'page.f(["pair-open"])', 'act.run(page.f(args)', 'modelData.friend ? "Friend\'s device · "', 'paired through " + modelData.introducedBy']:
+            self.assertIn(needle, qml)
+        # The service: what a friend's device may ask, and that your devices share their lists.
+        fam = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'family.rs').read_text()
+        self.assertIn('pub const FRIEND_OPS: &[&str] = &["hello", "ping", "unpair", "games", "manifest", "hashes", "chunks", "offer"];', fam)
+        node = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'node.rs').read_text()
+        self.assertIn('if !crate::family::friend_may(&op) && !crate::lock(&self.peers).is_mine(&peer)', node)
+        self.assertIn('"family.sync" => self.clone().family_answer(peer, req).await', node)
+
     def test_easy_pairing_in_both_modes(self):
         # Game Mode: the devices on this network to pick, the number pad for the 6-digit code, short codes typed
         # with the same check as the service; Mantel the same.

@@ -344,7 +344,7 @@ impl Node {
     /// The server this device's saves follow (the one it backs up to), when on.
     pub(crate) fn save_server(&self) -> Option<String> {
         let c = self.st();
-        (c.saves_follow && !c.backup_to.is_empty() && crate::lock(&self.peers).is_paired(&c.backup_to)).then_some(c.backup_to)
+        (c.saves_follow && !c.backup_to.is_empty() && crate::lock(&self.peers).is_mine(&c.backup_to)).then_some(c.backup_to)
     }
 
     /// Requests from paired devices: saves.info, saves.offer (server), saves.done (the device that pushed).

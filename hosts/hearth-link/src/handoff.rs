@@ -123,7 +123,7 @@ impl Node {
         match cmd {
             "handoff.status" => {
                 // The other devices' games (asked at most every 15 seconds; never while a game runs here).
-                let peers: Vec<(String, String)> = crate::lock(&self.peers).list.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
+                let peers: Vec<(String, String)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
                 if !crate::game_running() {
                     let stale: Vec<(String, String)> = { let s = crate::lock(state()); peers.iter().filter(|(id, _)| s.seen.get(id).map(|(t, _)| t.elapsed() > Duration::from_secs(15)).unwrap_or(true)).cloned().collect() };
                     let mut set = tokio::task::JoinSet::new();
@@ -155,7 +155,7 @@ impl Node {
             "handoff.take" => {
                 let peer = a["peer"].as_str().filter(|p| !p.is_empty()).ok_or("Missing 'peer'")?.to_string();
                 let game = a["game"].as_str().filter(|g| !g.is_empty()).ok_or("Missing 'game'")?.to_string();
-                if !crate::lock(&self.peers).is_paired(&peer) { return Err("Not a paired device".into()); }
+                if !crate::lock(&self.peers).is_mine(&peer) { return Err("Not a paired device".into()); }
                 if crate::game_running() { return Err("A game is running on this device: quit it first".into()); }
                 let name = self.handoff_peer_name(&peer);
                 let wait = a["wait"].as_u64().map(Duration::from_secs).unwrap_or(TAKE_WAIT).min(TAKE_WAIT);

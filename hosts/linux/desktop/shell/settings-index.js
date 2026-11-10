@@ -1951,6 +1951,11 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Pairing a friend's device",
+"p": "link",
+"i": "users"
+},
+{
 "t": "Not on the same network?",
 "p": "link",
 "d": "Get a code to type on a device somewhere else (over the internet)",

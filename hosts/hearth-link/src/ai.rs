@@ -253,7 +253,7 @@ impl Node {
         match cmd {
             "ai.status" => {
                 let c = self.ai_cfg();
-                let peers: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();
+                let peers: Vec<String> = crate::lock(&self.peers).mine().map(|p| p.id.clone()).collect();
                 let mut set = tokio::task::JoinSet::new();
                 for id in peers {
                     let n = self.clone();
@@ -282,7 +282,7 @@ impl Node {
             }
             "ai.use" => {
                 let server = a["server"].as_str().filter(|s| !s.is_empty()).ok_or("Missing 'server'")?.to_string();
-                if !crate::lock(&self.peers).is_paired(&server) { return Err("Not a paired device".into()); }
+                if !crate::lock(&self.peers).is_mine(&server) { return Err("Not a paired device".into()); }
                 let port = self.ai_listen(&server).await?;
                 eprintln!("hearth-link: ai: using {server}'s AI at 127.0.0.1:{port}");
                 Ok(json!({"port": port, "url": format!("http://127.0.0.1:{port}")}))

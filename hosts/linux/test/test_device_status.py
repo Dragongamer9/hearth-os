@@ -194,7 +194,7 @@ class Link(unittest.TestCase):
         self.assertIn('c if c.starts_with("status.") => self.status_command(c, a).await,', node)
         # ...and status.get checks again, and runs the helper only for a paired device.
         get = st[st.index('"status.get" =>'):st.index('_ => Err', st.index('"status.get" =>'))]
-        self.assertIn('is_paired(peer)', get)
+        self.assertIn('is_mine(peer)', get)  # your own devices only: not a friend's (family.rs)
         self.assertIn('if paired {', get)
         self.assertIn('if !paired { return Err("Not a paired device".into()); }', st)
         # Not shared: only that, whatever the helper said.

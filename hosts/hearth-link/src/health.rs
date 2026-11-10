@@ -131,7 +131,7 @@ impl Node {
         let now = crate::now_ms();
         let near_ids: Vec<String> = crate::lock(&self.found).values().filter(|f| now.saturating_sub(f.at) < 60_000).map(|f| f.id.clone()).collect();
         let mut devs = vec![(self.me.clone(), self.name(), true, now, true)];
-        for p in crate::lock(&self.peers).list.iter() {
+        for p in crate::lock(&self.peers).mine() {
             let near = near_ids.contains(&p.id);
             devs.push((p.id.clone(), p.name.clone(), false, p.last_seen, near || now.saturating_sub(p.last_seen) < 60_000));
         }
@@ -201,7 +201,7 @@ impl Node {
         if !c.backup_to.is_empty() && !to.contains(&c.backup_to) { to.push(c.backup_to.clone()); }
         let report = self.health_report();
         for id in to {
-            if !crate::lock(&self.peers).is_paired(&id) { continue; }
+            if !crate::lock(&self.peers).is_mine(&id) { continue; }
             // Never woken for this, and never long.
             let _ = tokio::time::timeout(Duration::from_secs(8), self.request(&id, &json!({"op": "device.report", "report": report}))).await;
         }
@@ -213,8 +213,8 @@ impl Node {
         let c = self.st();
         if c.server { return Some(self.me.clone()); }
         let ps = crate::lock(&self.peers);
-        if !c.backup_to.is_empty() && ps.is_paired(&c.backup_to) { return Some(c.backup_to); }
-        c.servers.keys().find(|k| ps.is_paired(k)).cloned()
+        if !c.backup_to.is_empty() && ps.is_mine(&c.backup_to) { return Some(c.backup_to); }
+        c.servers.keys().find(|k| ps.is_mine(k)).cloned()
     }
 
     /// The UI's storage.devices and storage.device.* commands.
@@ -289,7 +289,7 @@ impl Node {
         reports.insert(self.me.clone(), self.health_report());
         let now = crate::now_ms();
         let mut devs = vec![(self.me.clone(), self.name(), true, now, true)];
-        for p in crate::lock(&self.peers).list.iter() { devs.push((p.id.clone(), p.name.clone(), false, p.last_seen, now.saturating_sub(p.last_seen) < 60_000)); }
+        for p in crate::lock(&self.peers).mine() { devs.push((p.id.clone(), p.name.clone(), false, p.last_seen, now.saturating_sub(p.last_seen) < 60_000)); }
         rows(devs, &reports, now)
     }
 }
