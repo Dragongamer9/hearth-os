@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supported ARM devices · Hearth OS</title>
+<meta name="description" content="The ARM (arm64) tablets and phones Hearth OS is being made for, and how far along each one is.">
+<meta property="og:title" content="Hearth OS">
+<meta property="og:description" content="A free, Debian-based gaming OS for PCs and handhelds: Steam Game Mode on the couch, Mantel on the desk.">
+<meta property="og:image" content="../img/desk-classic.webp">
+<meta name="theme-color" content="#171a21">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
+<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;var k=localStorage.getItem('hearth.look');if(/^[a-z]{2,20}$/.test(k||''))document.documentElement.dataset.look=k;}catch(e){}document.documentElement.classList.add('js');</script>
+<style>
+/* Hearth OS website, in the spirit of a game client at night: deep blue-slate, cool grey text, one bright blue for
+   what you can act on, and the Hearth flame as the only warm thing on the page.
+   Type: Anybody (wide and heavy, for headings) and Figtree (for reading), both SIL OFL and served from this site. */
+@font-face{font-family:"Anybody";src:url(../fonts/anybody.woff2) format("woff2");font-weight:100 900;font-stretch:50% 150%;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-regular.woff) format("woff");font-weight:400;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-semibold.woff) format("woff");font-weight:600;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-bold.woff) format("woff");font-weight:700;font-display:swap}
+:root{
+  --deep:#171a21; --page:#1b2838; --panel:#213347; --raise:#2a475e; --rule:#2f4a63; --rule2:#3d5d7a;
+  --hi:#eef5fb; --text:#c7d5e0; --muted:#9ba5ae;
+  --acc:#66c0f4; --acc2:#1a9fff; --onacc:#06121c; --accsoft:rgba(102,192,244,.14);
+  --flame:#ffb35c; --ok:#7ccf8a; --focus:#9fd8ff;
+  --glow:radial-gradient(60% 70% at 70% 0%,rgba(26,159,255,.20),transparent 70%);
+  --display:"Anybody","Arial Black",system-ui,sans-serif;
+  --body:"Figtree","Segoe UI",system-ui,-apple-system,"Cantarell","Noto Sans",Roboto,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --max:1200px; --gut:clamp(16px,4vw,40px);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --deep:#dfe7ee; --page:#eef3f7; --panel:#ffffff; --raise:#dde8f1; --rule:#c9d6e2; --rule2:#a9bccd;
+    --hi:#0f1b27; --text:#26394b; --muted:#4f5f6e;
+    --acc:#0b67ad; --acc2:#0b67ad; --onacc:#ffffff; --accsoft:rgba(11,103,173,.10);
+    --flame:#a8530a; --ok:#17692b; --focus:#0b67ad;
+    --glow:radial-gradient(60% 70% at 70% 0%,rgba(26,159,255,.16),transparent 70%);
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --deep:#dfe7ee; --page:#eef3f7; --panel:#ffffff; --raise:#dde8f1; --rule:#c9d6e2; --rule2:#a9bccd;
+  --hi:#0f1b27; --text:#26394b; --muted:#4f5f6e;
+  --acc:#0b67ad; --acc2:#0b67ad; --onacc:#ffffff; --accsoft:rgba(11,103,173,.10);
+  --flame:#a8530a; --ok:#17692b; --focus:#0b67ad;
+  --glow:radial-gradient(60% 70% at 70% 0%,rgba(26,159,255,.16),transparent 70%);
+  color-scheme:light;
+}
+/* Accents to try (Mantel's accent colour, previewed on this page). Light mode gets a darker shade of each. */
+:root[data-accent="teal"]{--acc:#4fd6c0;--acc2:#2bbfa6;--accsoft:rgba(79,214,192,.14);--focus:#9ff0e2}
+:root[data-accent="violet"]{--acc:#b9a2ff;--acc2:#9a7dff;--accsoft:rgba(185,162,255,.15);--focus:#d6c9ff}
+:root[data-accent="green"]{--acc:#8fd96b;--acc2:#6cc444;--accsoft:rgba(143,217,107,.14);--focus:#c3f0ab}
+:root[data-accent="ember"]{--acc:#ffa25e;--acc2:#ff8a3d;--accsoft:rgba(255,162,94,.14);--focus:#ffd0a8}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"])[data-accent="teal"]{--acc:#0a7262;--acc2:#0a7262;--focus:#0a7262}
+  :root:not([data-theme="dark"])[data-accent="violet"]{--acc:#5b3fc4;--acc2:#5b3fc4;--focus:#5b3fc4}
+  :root:not([data-theme="dark"])[data-accent="green"]{--acc:#2d6e14;--acc2:#2d6e14;--focus:#2d6e14}
+  :root:not([data-theme="dark"])[data-accent="ember"]{--acc:#a8460a;--acc2:#a8460a;--focus:#a8460a}
+}
+:root[data-theme="light"][data-accent="teal"]{--acc:#0a7262;--acc2:#0a7262;--focus:#0a7262}
+:root[data-theme="light"][data-accent="violet"]{--acc:#5b3fc4;--acc2:#5b3fc4;--focus:#5b3fc4}
+:root[data-theme="light"][data-accent="green"]{--acc:#2d6e14;--acc2:#2d6e14;--focus:#2d6e14}
+:root[data-theme="light"][data-accent="ember"]{--acc:#a8460a;--acc2:#a8460a;--focus:#a8460a}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth;scroll-padding-top:76px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--text);font:17px/1.6 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+img{display:block;max-width:100%;height:auto}
+a{color:var(--acc);text-underline-offset:3px;text-decoration-thickness:1px}
+a:hover{color:var(--hi)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:4px;box-shadow:0 0 0 6px var(--accsoft)}
+h1,h2,h3{color:var(--hi);margin:0;text-wrap:balance}
+p{margin:0 0 14px}
+b,strong{color:var(--hi);font-weight:700}
+code{font:14px/1.5 var(--mono);color:var(--hi);background:var(--raise);border-radius:4px;padding:1px 6px;overflow-wrap:anywhere}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
+.skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--acc);color:var(--onacc);padding:8px 14px;border-radius:4px;font-weight:700}
+.skip:focus{top:12px}
+.ico{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* type */
+.h1{font:800 clamp(36px,4.9vw,66px)/1.02 var(--display);font-stretch:112%;letter-spacing:-.02em}
+.h2{font:800 clamp(30px,4vw,48px)/1.04 var(--display);font-stretch:118%;letter-spacing:-.015em}
+.h3{font:700 21px/1.3 var(--body)}
+.lede{font-size:clamp(18px,1.7vw,20px);line-height:1.55;color:var(--text);max-width:36em}
+.small{font-size:15px;color:var(--muted)}
+@media (max-width:560px){.h1{font-stretch:104%}.h2{font-stretch:106%}}
+
+/* status tags: what's out now and what's still coming, the same two everywhere */
+.tag{display:inline-flex;align-items:center;gap:6px;font:600 13px/1 var(--body);padding:6px 9px;border-radius:3px;white-space:nowrap;vertical-align:middle}
+.tag.now{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent)}
+.tag.next{color:var(--acc);background:var(--accsoft)}
+.tag.off{color:var(--muted);background:color-mix(in srgb,var(--muted) 14%,transparent)}
+.tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.tag.next::before{background:none;border:1.5px solid currentColor;width:5px;height:5px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:10px;font:700 16px/1 var(--body);padding:14px 20px;border-radius:3px;text-decoration:none;border:0;cursor:pointer;min-height:48px}
+.btn.go{color:var(--onacc);background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 82%,#fff) 0%,var(--acc2) 100%)}
+.btn.go:hover{color:var(--onacc);filter:brightness(1.08)}
+.btn.line{color:var(--hi);background:var(--raise)}
+.btn.line:hover{color:var(--hi);background:color-mix(in srgb,var(--raise) 70%,var(--acc))}
+.btn small{font-weight:600;opacity:.8;font-size:14px}
+.ctas{display:flex;flex-wrap:wrap;gap:12px}
+
+/* top bar: always the deep slate */
+header.top{position:sticky;top:0;z-index:30;background:var(--deep);border-bottom:1px solid var(--rule)}
+header.top .wrap{display:flex;align-items:center;gap:8px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font:800 19px/1 var(--display);font-stretch:118%;color:var(--hi);text-decoration:none;white-space:nowrap;margin-right:auto}
+.brand:hover{color:var(--hi)}
+.brand img{width:30px;height:30px}
+header nav{display:flex;gap:2px;font-size:15px}
+header nav a{color:var(--text);text-decoration:none;padding:9px 11px;border-radius:3px}
+header nav a:hover{color:var(--hi);background:var(--raise)}
+.theme{display:grid;place-items:center;width:44px;height:44px;background:none;border:0;color:var(--text);border-radius:3px;cursor:pointer}
+.theme:hover{background:var(--raise);color:var(--hi)}
+.theme .sun{display:none}
+:root[data-theme="light"] .theme .sun{display:block}:root[data-theme="light"] .theme .moon{display:none}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .theme .sun{display:block}:root:not([data-theme="dark"]) .theme .moon{display:none}}
+header .dl{font-weight:700;font-size:15px;color:var(--onacc);background:var(--acc2);padding:10px 15px;border-radius:3px;text-decoration:none}
+:root:not([data-theme="light"]) header .dl{background:var(--acc)}
+header .dl:hover{color:var(--onacc);filter:brightness(1.08)}
+@media (max-width:1020px){header nav{display:none}}
+
+/* hero */
+.hero{position:relative;background:var(--glow),linear-gradient(180deg,var(--deep) 0%,var(--page) 100%);overflow:hidden}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:center;padding-top:clamp(48px,7vw,96px);padding-bottom:clamp(40px,6vw,80px)}
+.hero .lede{margin:26px 0 30px}
+.status{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:28px;font-size:15px;color:var(--muted)}
+.status span{display:inline-flex;align-items:center;gap:8px}
+.livecount{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font:600 14px/1 var(--body);color:var(--text);background:color-mix(in srgb,var(--ok) 12%,transparent);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent)}
+.livecount[hidden]{display:none}
+.livecount i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 60%,transparent);animation:livepulse 2s infinite}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.livecount i{animation:none}}
+.stack{width:100%;max-width:600px;justify-self:end}
+.stack svg{display:block;width:100%;height:auto;overflow:visible}
+.stack .plate{transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.stack text{font-family:var(--body)}
+.js .stack:not(.in) .p1{transform:translateY(-46px)}
+.js .stack:not(.in) .p3{transform:translateY(40px)}
+@media (prefers-reduced-motion:reduce){.stack .plate{transition:none}.js .stack:not(.in) .plate{transform:none}}
+@media (max-width:860px){.hero .wrap{grid-template-columns:minmax(0,1fr)}.stack{justify-self:center;max-width:520px}}
+
+/* sections */
+section{padding:clamp(64px,8vw,112px) 0}
+section.deep{background:var(--deep)}
+.head{max-width:760px;margin-bottom:clamp(32px,4vw,52px)}
+.head .lede{margin-top:18px}
+.head .tag{margin-bottom:16px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,5vw,72px);align-items:start}
+@media (max-width:860px){.split{grid-template-columns:minmax(0,1fr)}}
+.points{list-style:none;padding:0;margin:0}
+.points li{position:relative;padding:12px 0 12px 28px;border-top:1px solid var(--rule)}
+.points li:last-child{border-bottom:1px solid var(--rule)}
+.points li::before{content:"";position:absolute;left:4px;top:22px;width:10px;height:2px;background:var(--acc)}
+
+/* Steam Game Mode: what starts when */
+.flow{background:var(--panel);border-radius:4px;padding:clamp(20px,3vw,32px);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.flow ol{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.flow li{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:16px;padding-bottom:26px}
+.flow li:last-child{padding-bottom:0}
+.flow li::after{content:"";position:absolute;left:19px;top:40px;bottom:2px;width:2px;background:var(--rule2)}
+.flow li:last-child::after{display:none}
+.flow .n{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--raise);color:var(--hi);font:800 16px/1 var(--display)}
+.flow li.alt .n{background:none;border:2px dashed var(--rule2);color:var(--muted)}
+.flow h3{font:700 18px/1.3 var(--body);margin:8px 0 4px}
+.flow p{margin:0;font-size:16px}
+.mock{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 14px;border-radius:3px;background:var(--deep);font-size:15px;color:var(--text)}
+.mock .fake{font-weight:700;font-size:14px;color:var(--onacc);background:var(--acc);padding:7px 12px;border-radius:3px}
+.archived{margin-top:32px;padding:20px 22px;border-left:3px solid var(--rule2);background:color-mix(in srgb,var(--panel) 55%,transparent);border-radius:0 4px 4px 0}
+.archived h3{font:700 17px/1.3 var(--body);margin-bottom:6px}
+.archived p{margin:0;font-size:16px}
+
+/* Hearth Sync: sources become collections */
+.sync{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(28px,5vw,72px);align-items:center}
+@media (max-width:860px){.sync{grid-template-columns:minmax(0,1fr)}}
+.shelf{background:var(--panel);border-radius:4px;overflow:hidden}
+.shelf .bar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:14px 18px;background:var(--raise);font-size:14px;color:var(--text)}
+.shelf .bar b{font-size:15px}
+.shelf ul{list-style:none;margin:0;padding:6px 0}
+.shelf li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;align-items:center;padding:11px 18px}
+.shelf li+li{border-top:1px solid var(--rule)}
+.shelf .src{font-weight:700;color:var(--hi)}
+.shelf .via{grid-column:1;font-size:14px;color:var(--muted)}
+.shelf .col{grid-row:1 / span 2;grid-column:2;font-size:14px;color:var(--acc);white-space:nowrap}
+.shelf figcaption{padding:12px 18px;font-size:14px;color:var(--muted);border-top:1px solid var(--rule)}
+
+/* Mantel */
+.mantel-shot{border-radius:4px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(0,0,0,.6),0 0 0 1px var(--rule)}
+figcaption.cap{margin-top:12px;font-size:15px;color:var(--muted)}
+.feats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px);margin-top:clamp(36px,5vw,56px)}
+@media (max-width:860px){.feats{grid-template-columns:minmax(0,1fr)}}
+.feats h3{margin-bottom:8px}
+.feats p{margin:0;font-size:16px}
+.walls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.walls img{border-radius:3px;aspect-ratio:16/9;object-fit:cover}
+.srv-hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:center}
+@media (max-width:860px){.srv-hero{grid-template-columns:minmax(0,1fr)}}
+.srv-hero ul{margin:0;padding:0;list-style:none}
+.srv-hero li{padding:14px 0;border-top:1px solid var(--rule);font-size:16px}
+.srv-hero li b{display:block;color:var(--hi);font-size:17px;margin-bottom:2px}
+.srv-shots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(14px,2vw,24px);margin-top:clamp(36px,5vw,56px)}
+@media (max-width:860px){.srv-shots{grid-template-columns:minmax(0,1fr)}}
+.srv-shots figure{margin:0}
+.srv-shots img{border-radius:4px;box-shadow:0 0 0 1px var(--rule);width:100%;height:auto}
+.srv-shots figcaption{margin-top:10px;font-size:15px;color:var(--muted)}
+.srv-shots figcaption b{color:var(--hi)}
+.try{margin-top:18px}
+.try p{margin:0 0 10px;font-size:15px;color:var(--muted)}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatches button{width:44px;height:44px;border-radius:50%;border:3px solid var(--page);background:var(--c);cursor:pointer;box-shadow:0 0 0 1px var(--rule2)}
+.swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--hi)}
+.swatches button:focus-visible{outline-offset:4px}
+
+/* safety */
+.safe{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;background:var(--rule);border-radius:4px;overflow:hidden}
+.safe>div{background:var(--panel);padding:clamp(22px,3vw,32px)}
+.safe .k{font:800 15px/1 var(--display);font-stretch:118%;color:var(--acc);display:block;margin-bottom:14px}
+.safe h3{margin-bottom:8px}
+.safe p{margin:0;font-size:16px}
+@media (max-width:860px){.safe{grid-template-columns:minmax(0,1fr)}}
+
+/* everything else */
+.more{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 clamp(28px,5vw,72px)}
+.more>div{padding:20px 0;border-top:1px solid var(--rule)}
+.more h3{font:700 18px/1.3 var(--body);margin-bottom:6px}
+.more p{margin:0;font-size:16px}
+@media (max-width:700px){.more{grid-template-columns:minmax(0,1fr)}}
+.paused{margin-top:clamp(40px,5vw,64px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(18px,3vw,36px)}
+.paused>div{padding-top:14px;border-top:2px solid var(--rule2)}
+.paused h3{font:700 17px/1.3 var(--body);margin:10px 0 6px}
+.paused p{margin:0;font-size:15.5px}
+@media (max-width:860px){.paused{grid-template-columns:minmax(0,1fr)}}
+
+/* download */
+.get{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.get{grid-template-columns:minmax(0,1fr)}}
+.box{background:var(--panel);border-radius:4px;padding:clamp(22px,3vw,34px);display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.box.main{background:linear-gradient(160deg,color-mix(in srgb,var(--acc2) 18%,var(--panel)) 0%,var(--panel) 60%);box-shadow:inset 0 2px 0 var(--acc)}
+.box h3{font:800 clamp(24px,2.6vw,30px)/1.1 var(--display);font-stretch:115%;margin-bottom:8px}
+.box.alt h3{font:700 20px/1.3 var(--body)}
+.box p{font-size:16px;margin-bottom:10px}
+.box .v{font-size:14px;color:var(--muted);margin:0 0 14px;min-height:1px}
+.box .btn{margin-bottom:12px}
+.side{display:grid;gap:16px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 22px}
+.stats[hidden]{display:none}
+.stat{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);min-width:130px}
+.stat b{font:800 26px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.stat>span{font-size:13.5px;color:var(--muted)}
+.stat.live b{display:inline-flex;align-items:center;gap:8px}
+.stat.live b i{width:9px;height:9px;border-radius:50%;background:var(--ok);animation:livepulse 2s infinite}
+@media (prefers-reduced-motion:reduce){.stat.live b i{animation:none}}
+.ember{margin-top:clamp(40px,5vw,64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(24px,4vw,56px);align-items:start;padding-top:clamp(32px,4vw,48px);border-top:1px solid var(--rule)}
+@media (max-width:860px){.ember{grid-template-columns:minmax(0,1fr)}}
+.cmd{position:relative;margin:8px 0 14px;background:var(--panel);border-radius:4px;box-shadow:0 0 0 1px var(--rule)}
+.ember .btn.line{background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.cmd pre{margin:0 72px 0 0;padding:14px 16px;overflow-x:auto;font:14px/1.6 var(--mono);color:var(--hi)}
+.cmd code{background:none;padding:0;white-space:pre}
+.cmd button{position:absolute;right:8px;top:8px;font:600 14px/1 var(--body);color:var(--hi);background:var(--raise);border:0;border-radius:3px;padding:9px 12px;cursor:pointer}
+
+/* questions */
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 clamp(28px,5vw,72px)}
+@media (max-width:760px){.faq{grid-template-columns:minmax(0,1fr)}}
+details{border-top:1px solid var(--rule)}
+summary{cursor:pointer;list-style:none;padding:18px 32px 18px 0;position:relative;font-weight:700;color:var(--hi)}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";position:absolute;right:6px;top:26px;width:9px;height:9px;border-right:2px solid var(--acc);border-bottom:2px solid var(--acc);transform:rotate(45deg);transition:transform .2s}
+details[open] summary::after{transform:rotate(-135deg);top:30px}
+details p{margin:0 0 18px;font-size:16px}
+
+/* footer */
+footer{background:var(--deep);padding:44px 0 56px;border-top:1px solid var(--rule)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}
+footer .brand{margin-right:12px;font-size:17px}
+footer a{color:var(--text);font-size:15px}
+footer .legal{flex-basis:100%;margin:18px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted);max-width:80em}
+footer .legal a{font-size:inherit;color:var(--muted)}
+</style>
+<link rel="stylesheet" href="../looks.css?v=1f63a1a478">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM13 4.2 21 3v8.5h-8zM3 13h7.5v7L3 19zM13 13h8v8l-8-1.2z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+</svg>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="30" height="30">Hearth OS</a>
+    <nav aria-label="Sections">
+      <a href="#devices">Devices</a>
+      <a href="#rt8">Oukitel RT8</a>
+      <a href="#how">How it works</a>
+      <a href="../whats-new/">What's new</a>
+    </nav>
+    <div class="looks"></div>
+    <button class="theme" id="theme" type="button" aria-label="Switch between light and dark"><svg class="ico moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ico sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
+    <a class="dl" href="../#download">Download</a>
+  </div>
+</header>
+<main id="main">
+<div class="hero"><div class="wrap" style="display:block;padding-top:clamp(40px,6vw,72px);padding-bottom:clamp(24px,4vw,40px)">
+  <h1 class="h1">Supported ARM devices</h1>
+  <p class="lede" style="margin-top:18px">Hearth OS is coming to ARM (arm64) tablets and phones, replacing Android with the same Hearth you know: Mantel on the desk, Game Mode on the couch. Here is every device it's being made for and how far along each one is.</p>
+</div></div>
+<section id="devices">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="h2">Devices</h2>
+      <p class="lede">Nothing on this page is ready for everyday use yet. Each device says what works today.</p>
+    </div>
+    <div class="more" id="rt8">
+      <div><h3>Oukitel RT8</h3><p>11-inch rugged tablet: MediaTek Helio G99, 6 GB of memory, 256 GB of storage and a 20,000 mAh battery.</p></div>
+      <div><h3>Status: in development</h3><p>The first ARM device. It starts, and if Hearth can't come up it falls back by itself to a working system, so the tablet is never left unable to start. Getting Hearth's desktop on screen is being worked on now.</p></div>
+      <div><h3>What's planned</h3><p>Hearth in landscape like a PC, with normal desktop windows, Hearth's look and a display scale of 1.25. Steam's ARM Game Mode comes after that.</p></div>
+      <div><h3>Before you try</h3><p>It needs an unlocked bootloader and replaces Android. There's no download for it yet; it will be listed here when there is.</p></div>
+    </div>
+  </div>
+</section>
+<section id="how">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="h2">How it works</h2>
+      <p class="lede">The same Hearth OS, built for ARM.</p>
+    </div>
+    <div class="more">
+      <div><h3>One Hearth</h3><p>ARM devices get the same Hearth OS as PCs, built for arm64, with the parts each device needs (its kernel and drivers) added on top.</p></div>
+      <div><h3>Safe to try</h3><p>Like every Hearth update, the previous working system always stays startable.</p></div>
+      <div><h3>Android tablets you keep</h3><p>Not replacing Android? Hearth for Android runs as an app instead, made for the Galaxy Tab A9.</p></div>
+    </div>
+  </div>
+</section>
+</main>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" alt="" width="26" height="26">Hearth OS</a>
+    <a href="../">Home</a>
+    <a href="../docs/">Documentation</a>
+    <a href="../docs/releases.html">Release notes</a>
+    <a href="../whats-new/">What's new</a>
+    <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+  </div>
+</footer>
+<script src="../looks.js?v=1f63a1a478" defer></script>
+<script>
+document.getElementById('theme').addEventListener('click', function(){
+  var root = document.documentElement;
+  var now = root.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  var next = now === 'light' ? 'dark' : 'light'; root.dataset.theme = next;
+  try { localStorage.setItem('hearth.theme', next); } catch (e) {}
+});
+</script>
+</body>
+</html>
