@@ -174,9 +174,29 @@ def moz_platform():
                    "(set HEARTH_FIREFOX_ARCH to Mozilla's folder, e.g. linux-aarch64)" % machine)
 
 
+def software_gfx(dest):
+    """arm64 tablets drive the GPU through libhybris (an Android GPU), which
+    can't give Firefox a GPU surface -- it crashes on the VA-API / renderDeviceFD
+    probe -- so default the arm64 build to software rendering. Firefox on x86
+    keeps hardware acceleration (this runs only for the linux-aarch64 build).
+    A future arm64 device with a working GL stack would revisit this."""
+    pref_dir = os.path.join(dest, 'defaults', 'pref')
+    os.makedirs(pref_dir, exist_ok=True)
+    with open(os.path.join(pref_dir, 'hearth-arm64-gfx.js'), 'w') as f:
+        f.write('// Hearth (arm64): the panel GPU goes through libhybris and\n'
+                '// cannot back a Firefox GPU surface; render in software.\n'
+                'pref("gfx.webrender.software", true);\n'
+                'pref("media.ffmpeg.vaapi.enabled", false);\n'
+                'pref("media.hardware-video-decoding.enabled", false);\n'
+                'pref("gfx.canvas.accelerated", false);\n'
+                'pref("webgl.forbid-hardware", true);\n')
+    say('arm64: Firefox set to software rendering')
+
+
 def install(dest, version=None):
     version = version or os.environ.get('HEARTH_FIREFOX_VERSION') or latest()
-    name = '%s/en-US/firefox-%s.tar.xz' % (moz_platform(), version)
+    plat = moz_platform()
+    name = '%s/en-US/firefox-%s.tar.xz' % (plat, version)
     base = '%s/%s/' % (ARCHIVE, version)
     say('Firefox %s from %s' % (version, base))
     parent = os.path.dirname(os.path.abspath(dest))
@@ -221,6 +241,8 @@ def install(dest, version=None):
             os.rename(dest, old)
         os.rename(new, dest)
     apply(dest)
+    if plat == 'linux-aarch64':
+        software_gfx(dest)
     say('Firefox %s installed in %s' % (version, dest))
 
 
