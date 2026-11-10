@@ -17,6 +17,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] For the owner: a signing key in the repository's secrets, so each new app installs over the last one (the old 0.2.2 needs uninstalling once: it was signed with a throwaway key)
 - [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
 - [ ] Game saves backed up by Ludusavi (github.com/mtkennerly/ludusavi, MIT) on the home server: its list of where thousands of games keep their saves, Proton and Wine games included, under Hearth's save backups over Tailscale
+- [ ] Hearth Link pairs once for all your devices: pairing asks My device or A friend's device. Your own devices swap their lists, so a new one is paired with every device you have, and removing one removes it everywhere; a friend's device stays paired only with the device it paired with and never sees the others. A device on an older Hearth OS stays paired as now
 - [ ] One Settings › Your devices page: your paired devices at the top (Hearth Link), and on the server PC a "This PC is the home server" section under them; each device's tile says what it does (paired, or home server: archive, backups, AI). Hearth Link and Hearth Server stay two separate services underneath, and every setting stays where it's saved now
 - [ ] Graphics card controls with LACT (github.com/ilya-zlobintsev/LACT, MIT) next to Resource Monitor: fan curves, power limits and undervolting for Nvidia, AMD and Intel; off until you change something, every change remembered and undoable
 
