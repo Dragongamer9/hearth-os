@@ -4,6 +4,14 @@ Server mode is a third mode next to **Steam Game Mode** and **Desktop Mode** (Ma
 server. It's the same Hearth OS image with a switch (Settings › Home server › Server mode › **Use Server mode**), no
 separate edition, and it's **off until you turn it on**: Hearth still starts in Game Mode unless you pick Server mode.
 
+The dashboard has the **gold look of the Hearth AI Command Center** (since the update after 1.10): the AIs on this PC are
+drawn as living **cores**, exactly as the Command Center's Live view draws them (AI chat as a wire globe named after its
+loaded model, ComfyUI a pixel grid, Voices a sound wave, Whisper ripples, AI sharing a nebula), and the one that's working
+moves in its own way and sends out rings. The status card adds **last-hour graphs** (graphics memory, storage, power,
+network: kept only on the screen), and the right column shows **Next** (the schedule's next switch), **graphics memory by
+app**, the running services, alerts and **your phone** (the web page's address with a QR code, made once by qrencode in
+the runtime folder). Reduce motion keeps the cores still.
+
 In Server mode the screen shows one full-screen **dashboard**: is everything fine, the **Play** button (Game Mode), every
 service as a tile (AI chat, Pictures, Media, Storage, Backups, Heat & power, Who's connected, Remote desktop) and the
 latest alerts. Nothing else runs on the screen: no Steam, no desktop, no taskbar or menu. Your services (shared folders,
