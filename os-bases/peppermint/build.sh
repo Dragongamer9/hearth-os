@@ -1635,7 +1635,9 @@ echo "::notice title=GE-Proton::$GE_PROTON built in ($(du -sh "/usr/share/hearth
 # ------------------------------------------------------------------ Minigalaxy (GOG)
 # Minigalaxy (github.com/sharkwouter/minigalaxy, GPL), the simple open-source GOG client, from Debian's own repositories.
 # Hearth Sync (docs/HEARTH-SYNC.md) adds the games it installs to Steam's library. Optional: skipped with a warning.
-if have_pkg minigalaxy && "${APT[@]}" minigalaxy; then
+# It imports the Notify typelib at startup (gi.require_version('Notify', '0.7')); nothing else on the lean arm64 image
+# pulls gir1.2-notify-0.7 in, so install it here too or Minigalaxy aborts on launch ("Namespace Notify not available").
+if have_pkg minigalaxy && "${APT[@]}" minigalaxy gir1.2-notify-0.7; then
   echo "Minigalaxy installed"
 else
   echo "warning: couldn't install Minigalaxy from Debian's repositories; Hearth works without it"
