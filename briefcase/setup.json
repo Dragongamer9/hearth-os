@@ -1,0 +1,13 @@
++ python3 hosts/linux/desktop/shell/hearth-briefcase new /tmp/home Briefcase --ensure
+{"ok": true, "path": "/tmp/home/Briefcase", "made": true}
++ python3 hosts/linux/desktop/shell/hearth-briefcase new /tmp/home School
+{"ok": true, "path": "/tmp/home/School", "made": true}
++ python3 hosts/linux/desktop/shell/hearth-briefcase add /tmp/home/Briefcase /tmp/home/Documents/School /tmp/home/Documents/plan.txt
+progress: {"verb": "add", "done": 19, "total": 41, "file": "essay.txt", "speed": 19000.0}
+progress: {"verb": "add", "done": 31, "total": 41, "file": "notes.md", "speed": 23896.971880169087}
+progress: {"verb": "add", "done": 41, "total": 41, "file": "plan.txt", "speed": 770.4141963057707}
+{"ok": true, "added": [{"name": "School", "path": "/tmp/home/Briefcase/School", "origin": "~/Documents/School"}, {"name": "plan.txt", "path": "/tmp/home/Briefcase/plan.txt", "origin": "~/Documents/plan.txt"}]}
++ python3 hosts/linux/desktop/shell/hearth-briefcase customize /tmp/home/Briefcase '{"color":"gold","note":"Carried between the desk and the laptop","autosync":{"mode":"off"}}'
+{"ok": true, "path": "/tmp/home/Briefcase", "look": {"name": "Briefcase", "autosync": {"mode": "off", "minutes": 15}, "color": "gold", "note": "Carried between the desk and the laptop", "icon": "briefcase", "badge": "", "view": "", "sort": "", "showInNav": true, "autolock": {"minutes": 15, "onSleep": true, "onEject": true}}}
++ python3 hosts/linux/desktop/shell/hearth-briefcase customize /tmp/home/School '{"color":"green","icon":"backpack","badge":"A+","note":"Homework and class notes"}'
+{"ok": true, "path": "/tmp/home/School", "look": {"name": "School", "autosync": {"mode": "instant", "minutes": 15}, "color": "green", "icon": "backpack", "badge": "A+", "note": "Homework and class notes", "view": "", "sort": "", "showInNav": true, "autolock": {"minutes": 15, "onSleep": true, "onEject": true}}}
