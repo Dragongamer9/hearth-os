@@ -18,6 +18,7 @@ import base64
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -154,9 +155,28 @@ def apply(dest):
     say("Hearth's parts are in " + dest)
 
 
+# Mozilla's per-platform download folder for the machine we're installing for.
+# The image build runs this on the target arch (arm64 image on an arm64 runner),
+# so default to this machine; HEARTH_FIREFOX_ARCH overrides it for cross-builds.
+_MOZ_PLATFORM = {'x86_64': 'linux-x86_64', 'amd64': 'linux-x86_64',
+                 'aarch64': 'linux-aarch64', 'arm64': 'linux-aarch64'}
+
+
+def moz_platform():
+    forced = os.environ.get('HEARTH_FIREFOX_ARCH')
+    if forced:
+        return forced
+    machine = platform.machine().lower()
+    try:
+        return _MOZ_PLATFORM[machine]
+    except KeyError:
+        raise Fail("no Firefox build is mapped for machine %r "
+                   "(set HEARTH_FIREFOX_ARCH to Mozilla's folder, e.g. linux-aarch64)" % machine)
+
+
 def install(dest, version=None):
     version = version or os.environ.get('HEARTH_FIREFOX_VERSION') or latest()
-    name = 'linux-x86_64/en-US/firefox-%s.tar.xz' % version
+    name = '%s/en-US/firefox-%s.tar.xz' % (moz_platform(), version)
     base = '%s/%s/' % (ARCHIVE, version)
     say('Firefox %s from %s' % (version, base))
     parent = os.path.dirname(os.path.abspath(dest))
