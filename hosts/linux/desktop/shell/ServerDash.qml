@@ -468,7 +468,7 @@ PanelWindow {
             GPanel {
                 id: heroCard
                 title: "This PC · " + (dash.d ? dash.d.host : "")
-                Layout.fillWidth: true; Layout.preferredHeight: 196 * dash.k
+                Layout.fillWidth: true; Layout.preferredHeight: 178 * dash.k
                 readonly property color sc: dash.d && dash.d.status && dash.d.status.level !== "ok" ? dash.gWarn : dash.gOk
                 ColumnLayout { anchors.fill: parent; spacing: 10 * dash.k
                     RowLayout { Layout.fillWidth: true; spacing: 12 * dash.k
@@ -493,7 +493,7 @@ PanelWindow {
             }
             GPanel {
                 title: "The AIs on this PC · the same as in your Command Center"
-                Layout.fillWidth: true; Layout.preferredHeight: 232 * dash.k
+                Layout.fillWidth: true; Layout.preferredHeight: 214 * dash.k
                 visible: !!(dash.d && dash.d.cores && dash.d.cores.length)
                 ColumnLayout { anchors.fill: parent; spacing: 6 * dash.k
                     RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
