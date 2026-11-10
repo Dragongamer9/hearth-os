@@ -16,6 +16,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] The other server ideas: night maintenance, a power history graph, a self-hosted GitHub Actions runner, one smart AI address
 - [ ] For the owner: a signing key in the repository's secrets, so each new app installs over the last one (the old 0.2.2 needs uninstalling once: it was signed with a throwaway key)
 - [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
+- [ ] Game saves backed up by Ludusavi (github.com/mtkennerly/ludusavi, MIT) on the home server: its list of where thousands of games keep their saves, Proton and Wine games included, under Hearth's save backups over Tailscale
+- [ ] Graphics card controls with LACT (github.com/ilya-zlobintsev/LACT, MIT) next to Resource Monitor: fan curves, power limits and undervolting for Nvidia, AMD and Intel; off until you change something, every change remembered and undoable
 
 ## 1.10 (released 2026-11-09)
 
