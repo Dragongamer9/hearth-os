@@ -334,6 +334,37 @@ class Helper(unittest.TestCase):
         p = self.m.SETTINGS
         return json.load(open(p)) if os.path.exists(p) else None
 
+    def test_the_ai_chat_core_is_named_after_the_loaded_model(self):
+        self.assertEqual(self.m.pretty_model('qwen3:30b-a3b'), 'Qwen3 30B')
+        self.assertEqual(self.m.pretty_model('huihui_ai/qwen3-abliterated:14b'), 'Qwen3-abliterated 14B')
+        self.assertEqual(self.m.pretty_model('llava'), 'Llava')
+        self.assertEqual(self.m.pretty_model(''), 'AI chat')
+
+    def test_the_schedules_next_switch_is_shown_and_nothing_when_its_off(self):
+        sched = {'on': True, 'weekday': [{'at': '00:00', 'mode': 'server'}, {'at': '18:00', 'mode': 'game'}],
+                 'weekend': [{'at': '01:00', 'mode': 'server'}, {'at': '10:00', 'mode': 'game'}]}
+        tue = time.strptime('2026-11-10 02:14', '%Y-%m-%d %H:%M')
+        self.assertEqual(self.m.next_change(sched, tue)['text'], 'Game Mode at 6:00 PM')
+        late = time.strptime('2026-11-10 19:00', '%Y-%m-%d %H:%M')
+        self.assertEqual(self.m.next_change(sched, late)['text'], 'Server mode at 12:00 AM tomorrow')
+        fri = time.strptime('2026-11-13 19:00', '%Y-%m-%d %H:%M')
+        self.assertEqual(self.m.next_change(sched, fri)['text'], 'Server mode at 1:00 AM tomorrow', 'Saturday is the weekend')
+        self.assertIsNone(self.m.next_change(dict(sched, on=False), tue))
+        self.assertIsNone(self.m.next_change(None, tue))
+        self.assertEqual(self.calls, [], 'reading the schedule runs nothing')
+
+    def test_the_web_pages_qr_code_is_made_once_and_only_when_the_page_is_on(self):
+        self.assertEqual(self.m.web_qr(False), '')
+        made = []
+        self.m.shutil = type('S', (), {'which': staticmethod(lambda n: '/usr/bin/' + n)})
+        self.m.run = lambda cmd, timeout=10, env=None, inp=None: (made.append(cmd) or (0, '<svg>qr</svg>', ''))
+        p = self.m.web_qr(True)
+        self.assertTrue(p.startswith(self.run_dir) and open(p).read() == '<svg>qr</svg>')
+        self.assertEqual(oct(os.stat(os.path.dirname(p)).st_mode & 0o777), '0o700')
+        self.assertEqual(self.m.web_qr(True), p)
+        self.assertEqual(len(made), 1, 'made once for the same address')
+        self.assertEqual(made[0][:3], ['qrencode', '-t', 'SVG'])
+
     def test_settings_are_written_only_when_changed_and_never_with_defaults(self):
         self.assertFalse(self.m.set_key('dim', '2'), 'the default already')
         self.assertIsNone(self.settings(), 'nothing written for a default')

@@ -10,6 +10,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 ### Done
 
 - [x] Hearth Link pairs once for all your devices: pairing asks My device or A friend's device. Your own devices swap their lists, so a new one is paired with every device you have, and removing one removes it everywhere; a friend's device stays paired only with the device it paired with, for copying games, and never sees the others or anything personal. A device on an older Hearth OS stays paired as now (docs/HEARTH-LINK.md, "Your devices and friends' devices") (needs testing on a device)
+- [x] Server mode's new gold look, the Hearth AI Command Center's: the AIs on this PC as living cores, the same shapes, colours and talking motions as in the Command Center (AI chat's model, ComfyUI, Voices, Whisper, AI sharing), with who's being answered; everything the dashboard showed before, plus last-hour graphs on graphics memory, storage, power and network, graphics memory by app, Voices and Server apps tiles, the schedule's next switch, and a QR code to open the web page on your phone; the countdown, menu, details and idle screen in gold, with faint cores on the dimmed clock; Reduce motion keeps the cores still (needs testing on a device)
 
 ### Planned next
 
