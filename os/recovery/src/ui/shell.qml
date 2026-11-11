@@ -713,7 +713,10 @@ ShellRoot {
                 spacing: 48 * win.u
 
                 ColumnLayout {
-                    Layout.preferredWidth: parent.width * 0.44
+                    // Fixed shares of the screen (sizes from the window, not the layout: no rearranging loop).
+                    Layout.preferredWidth: win.width * 0.42
+                    Layout.maximumWidth: win.width * 0.42
+                    Layout.fillWidth: false
                     Layout.fillHeight: true
                     Layout.alignment: Qt.AlignTop
                     spacing: 6 * win.u
@@ -766,6 +769,7 @@ ShellRoot {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: win.width * 0.42
                     Layout.fillHeight: true
                     Layout.alignment: Qt.AlignTop
                     spacing: 14 * win.u
@@ -879,7 +883,7 @@ ShellRoot {
                             onLitChanged: if (lit) { const y0 = row.y, y1 = row.y + row.height; if (y0 < list.contentY) list.contentY = y0; else if (y1 > list.contentY + list.height) list.contentY = y1 - list.height; }
                             // "Hold A": the bar fills over 3 seconds.
                             Rectangle {
-                                visible: row.modelData.hold && row.lit
+                                visible: !!row.modelData.hold && row.lit
                                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
                                 width: parent.width * app.hold
                                 radius: parent.radius
