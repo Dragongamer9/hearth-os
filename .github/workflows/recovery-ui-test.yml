@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install labwc and Quickshell
         run: |
-          dnf -y install dnf5-plugins labwc qt6-qtsvg grim wlr-randr python3 python3-pillow rsms-inter-fonts google-noto-sans-fonts >/dev/null
+          dnf -y install dnf5-plugins labwc xorg-x11-server-Xwayland qt6-qtsvg grim wlr-randr python3 python3-pillow rsms-inter-fonts google-noto-sans-fonts >/dev/null
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version
