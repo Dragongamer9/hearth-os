@@ -1,0 +1,135 @@
+# The Recovery USB's screen (os/recovery/src/ui/shell.qml) run for real on a virtual screen (labwc headless +
+# Quickshell on Fedora, as on the USB stick) with a pretend PC (hosts/linux/test/recovery-ui/fake-recovery): the
+# health check finding a broken update, finding nothing wrong, and still checking. Fails on QML errors or when the
+# screen doesn't show what the health check found. The pictures are kept on the run and shown as SHOT annotations.
+name: Recovery screen test
+
+on:
+  push:
+    branches: ['feature/recovery-*', bughunt, main]
+    paths: ['os/recovery/src/ui/**', 'hosts/linux/test/recovery-ui/**', '.github/workflows/recovery-ui-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install labwc and Quickshell
+        run: |
+          dnf -y install dnf5-plugins labwc qt6-qtsvg grim wlr-randr python3 python3-pillow rsms-inter-fonts google-noto-sans-fonts >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version
+          # What the USB stick has where the screen looks: the icons and the logo.
+          mkdir -p /usr/share/nimbus/desktop/shell /usr/share/pixmaps
+          cp -a hosts/linux/desktop/shell/icons /usr/share/nimbus/desktop/shell/
+          cp branding/icons/png/128x128/hearth.png /usr/share/pixmaps/hearth.png
+      - name: Run the screen
+        shell: bash
+        run: |
+          set -x
+          mkdir -p shots
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home HEARTH_RECOVERY_NO_PAD=1 HEARTH_RECOVERY_BIN=$PWD/hosts/linux/test/recovery-ui/fake-recovery
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          UI=$PWD/os/recovery/src/ui
+          state() { quickshell ipc -p "$UI" call recovery state 2>&1 | tail -n1; }
+          fail=0
+          for c in broken fine slow; do
+            HEARTH_FAKE_CASE=$c quickshell -p "$UI" >"shots/$c.log" 2>&1 &
+            qs=$!
+            sleep 8
+            grim "shots/$c.png" || true
+            state > "shots/$c-state.json"
+            if [ "$c" = broken ]; then
+              quickshell ipc -p "$UI" call recovery key right >/dev/null; quickshell ipc -p "$UI" call recovery key down >/dev/null; sleep 1
+              grim shots/broken-tool.png || true
+              quickshell ipc -p "$UI" call recovery key up >/dev/null; quickshell ipc -p "$UI" call recovery key up >/dev/null; sleep 1
+              quickshell ipc -p "$UI" call recovery key a >/dev/null; sleep 1
+              state > shots/broken-confirm.json; grim shots/broken-confirm.png || true
+            fi
+            kill $qs; wait $qs 2>/dev/null
+          done
+          python3 - <<'PY'
+          import json, re, sys
+          bad = 0
+          def err(m):
+              global bad; bad = 1; print('::error title=Recovery screen::' + m)
+          for c in ('broken', 'fine', 'slow'):
+              log = open(f'shots/{c}.log', errors='replace').read()
+              for line in log.splitlines():
+                  if re.search(r'ReferenceError|TypeError|Unable to assign|is not defined|Cannot read property|failed to load', line):
+                      err(f'{c}: {line.strip()[:300]}')
+              try:
+                  st = json.loads(open(f'shots/{c}-state.json').read())
+              except ValueError:
+                  err(f'{c}: no state from the screen: ' + open(f'shots/{c}-state.json').read()[:300]); continue
+              print(f'::notice title=state {c}::screen={st["screen"]} sel={st["sel"]} healthView={st.get("healthView")} items={st["items"]}')
+              if st['screen'] != 'home' or not st.get('healthView'):
+                  err(f'{c}: not the health view: screen={st["screen"]}')
+              h = st.get('health')
+              if c == 'slow':
+                  if h is not None: err('slow: the check showed before it finished')
+              elif not h or not h.get('checks'):
+                  err(f'{c}: the health check result is missing')
+              if c == 'broken' and st['items'][:1] != ['Start 1.9']:
+                  err(f'broken: the suggested fix is not first: {st["items"][:3]}')
+              if c == 'broken' and 'Start the previous version' in st['items']:
+                  err('broken: the suggested fix is listed again among the tools')
+              if c == 'fine' and st['items'][0] == 'Start 1.9':
+                  err('fine: a fix was suggested with nothing wrong')
+          try:
+              cf = json.loads(open('shots/broken-confirm.json').read())
+              print(f'::notice title=after A on the fix::screen={cf["screen"]} title={cf["title"]}')
+              if cf['screen'] != 'confirm' or '1.9' not in cf['title']:
+                  err(f'A on the fix: expected the "Start Hearth 1.9" check, got {cf["screen"]}: {cf["title"]}')
+          except (OSError, ValueError) as e:
+              err(f'A on the fix: {e}')
+          sys.exit(bad)
+          PY
+      - name: Make the JPEGs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, io, os
+          from PIL import Image
+          for n in ('broken', 'fine', 'slow', 'broken-tool', 'broken-confirm'):
+              p = f'shots/{n}.png'
+              if not os.path.exists(p):
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((900, 55), (760, 45), (640, 38), (520, 30)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open(f'shots/{n}.jpg', 'wb').write(b.getvalue())
+          PY
+      - name: Picture (broken)
+        if: always()
+        run: f=shots/broken.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT broken $i::$part"; done || true
+      - name: Picture (fine)
+        if: always()
+        run: f=shots/fine.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT fine $i::$part"; done || true
+      - name: Picture (slow)
+        if: always()
+        run: f=shots/slow.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT slow $i::$part"; done || true
+      - name: Picture (broken-tool)
+        if: always()
+        run: f=shots/broken-tool.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT broken-tool $i::$part"; done || true
+      - name: Picture (broken-confirm)
+        if: always()
+        run: f=shots/broken-confirm.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT broken-confirm $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovery-screen
+          path: shots

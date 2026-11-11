@@ -46,6 +46,11 @@ ShellRoot {
     property var drives: []
     property bool drivesBusy: false
     property var factory: null            // factory-check's answer: {mode, erase, others, reason, ...}
+    // The health check on the main screen (hearth-recovery health): {title, checks, fix, starts} or {error}.
+    property var health: null
+    // The main screen as a health check (what's wrong, the suggested fix, the other tools in a grid); a narrow
+    // (portrait) screen keeps the plain list.
+    readonly property bool healthView: screen === "home" && !win.narrow
     property string pickUser: ""
     property string wifiSsid: ""
     property string pw: ""
@@ -93,6 +98,9 @@ ShellRoot {
         }
         if (screen === "home") {
             const cur = dep(0), prev = dep(1);
+            const fx = health && health.fix ? health.fix : null;
+            const fixIcon = { previous: "back", desktop: "window", resetdisplay: "display", update: "update", copy: "folder", logs: "help" };
+            if (fx) items.push({ label: fx.button, icon: fixIcon[fx.act] || "check", act: fx.act === "previous" ? "version:1" : fx.act, fix: true, sub: fx.title });
             items.push({ label: "Start the previous version", icon: "back", act: "previous", off: !prev,
                          sub: prev ? depName(prev) + " (" + (prev.deployedText || prev.builtText || "older") + ") instead of " + depName(cur) : "There's no previous version on this drive" });
             items.push({ label: "Start in Desktop Mode", icon: "window", act: "desktop",
@@ -109,12 +117,17 @@ ShellRoot {
             if (systems.length > 1) items.push({ label: "Choose another Hearth OS", icon: "file", act: "systems", sub: systems.length + " found on this PC" });
             items.push({ label: "Restart", icon: "restart", act: "restart", sub: "Into the Hearth OS on the drive (take the USB stick out if this screen comes back)" });
             items.push({ label: "Power off", icon: "power", act: "poweroff", sub: "" });
-            return { title: "What would you like to do?", body: "", items: items, card: true };
+            // The suggested fix isn't listed again among the other tools.
+            const same = fx ? (fx.act === "previous" ? "previous" : fx.act) : "";
+            const shown = items.filter((it, i) => it.fix || !same || it.act !== same);
+            return { title: "What would you like to do?", body: "", items: shown, card: true, health: true };
         }
         if (screen === "versions") {
             for (let i = 1; s && i < s.deployments.length; i++) {
                 const d = s.deployments[i];
-                items.push({ label: depName(d) + (d.osVersion ? " · " + d.osVersion : ""), sub: depWhen(d) || d.title, icon: "back", act: "version:" + i });
+                const st = health && health.starts ? health.starts[String(i)] : null;
+                const how = st ? (st.good ? "started fine " + (st.good === 1 ? "once" : st.good + " times") + " lately" : st.failed ? "didn't finish starting lately" : "") : "";
+                items.push({ label: depName(d) + (d.osVersion ? " · " + d.osVersion : ""), sub: [how, depWhen(d) || d.title].filter(x => x).join(" · "), icon: "back", act: "version:" + i });
             }
             items.push({ label: "Back", icon: "close", act: "back", sub: "" });
             return { title: "Which version should start?", body: "The version that starts now is " + depName(dep(0)) + ". Pick one to start instead (it stays the default until the next update).", items: items };
@@ -181,7 +194,7 @@ ShellRoot {
         if (screen === "osk") return { title: "Password for " + app.wifiSsid, body: "", items: [], osk: true };
         return { title: "", body: "", items: [] };
     }
-    readonly property var pg: build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned, drivesBusy)
+    readonly property var pg: build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned, drivesBusy, health)
     onPgChanged: if (sel >= pg.items.length) sel = Math.max(0, pg.items.length - 1)
 
     // ---------------------------------------------------------------- navigation
@@ -203,12 +216,24 @@ ShellRoot {
         for (let k = 0; k < n; k++) { i = (i + d + n) % n; if (!pg.items[i].off) break; }
         sel = i; hold = 0; holding = false;
     }
+    // The health view: the suggested fix (if any) on top, then the tools two to a row.
+    function gridMove(k) {
+        const n = pg.items.length, top = pg.items.length && pg.items[0].fix ? 1 : 0;
+        let i = sel;
+        if (k === "left") i = sel > top && (sel - top) % 2 === 1 ? sel - 1 : sel;
+        else if (k === "right") i = sel >= top && (sel - top) % 2 === 0 && sel + 1 < n ? sel + 1 : sel;
+        else if (k === "up") i = sel - top >= 2 ? sel - 2 : (top && sel >= top ? 0 : sel);
+        else if (k === "down") i = sel < top ? top : (sel + 2 < n ? sel + 2 : (sel + 1 < n && (sel - top) % 2 === 0 ? sel + 1 : sel));
+        if (i !== sel && pg.items[i] && !pg.items[i].off) { sel = i; hold = 0; holding = false; }
+    }
     function key(k) {
         if (screen === "osk") return oskKey(k);
+        if (healthView && (k === "up" || k === "down" || k === "left" || k === "right")) { gridMove(k); return "ok"; }
         if (k === "up" || k === "left") move(-1);
         else if (k === "down" || k === "right") move(1);
         else if (k === "a") { const it = pg.items[sel]; if (it && !it.hold) activate(sel); }
         else if (k === "b") back();
+        else if (k === "y" && healthView) checkHealth();
         return "ok";
     }
     function press() { const it = pg.items[sel]; if (it && it.hold && !busy) { holding = true; hold = 0; holdTimer.start(); } }
@@ -365,7 +390,30 @@ ShellRoot {
             if (app.sysIdx >= list.length) app.sysIdx = 0;
             app.scanned = true;
             if (wasHome) { app.screen = list.length ? "home" : "scan"; app.sel = app.firstOn(); }
+            app.checkHealth();
             console.log("HEARTH-RECOVERY-UI scanned systems=" + list.length);
+        }
+    }
+    function checkHealth() {
+        if (!sys || healthProc.running) return;
+        health = null;
+        healthProc.command = [app.bin, "health", sys.id];
+        healthProc.running = true;
+    }
+    onSysIdxChanged: if (scanned) checkHealth()
+    Process {
+        id: healthProc
+        property string out: ""
+        stdout: SplitParser { onRead: data => healthProc.out += data }
+        onRunningChanged: if (running) out = ""
+        onExited: code => {
+            const t = healthProc.out.trim();
+            let r = null;
+            try { r = JSON.parse(t); } catch (e) {}
+            app.health = r && r.checks ? r : { error: t.startsWith("error: ") ? t.slice(7) : "the check stopped (code " + code + ")" };
+            // The suggested fix is where the highlight starts.
+            if (app.screen === "home") app.sel = 0;
+            console.log("HEARTH-RECOVERY-UI health fix=" + (r && r.fix ? r.fix.act : "none"));
         }
     }
     function wifiScan() { wifi = { busy: true, networks: wifi.networks, error: "" }; wifiProc.command = [app.bin, "wifi-list"]; wifiProc.running = true; }
@@ -493,7 +541,7 @@ ShellRoot {
             return JSON.stringify({ screen: app.screen, sel: app.sel, title: app.pg.title, items: app.pg.items.map(i => i.label + (i.off ? " (off)" : "")),
                                     big: app.pg.big || "", body: app.pg.body, systems: app.systems.length, busy: app.busy, work: app.work,
                                     osk: app.screen === "osk" ? { row: app.oskRow, col: app.oskCol, key: app.oskRows[app.oskRow][app.oskCol], typed: app.pw.length } : null,
-                                    net: app.net, pads: app.pads, hold: app.hold });
+                                    net: app.net, pads: app.pads, hold: app.hold, health: app.health, healthView: app.healthView });
         }
     }
 
@@ -578,7 +626,7 @@ ShellRoot {
 
             // ---- the installed system (main screen)
             Rectangle {
-                visible: app.pg.card === true && app.sys !== null
+                visible: app.pg.card === true && app.sys !== null && !app.healthView
                 Layout.fillWidth: true
                 implicitHeight: card.implicitHeight + 32 * win.u
                 radius: 18 * win.u
@@ -619,7 +667,7 @@ ShellRoot {
             Text {
                 Layout.fillWidth: true
                 text: app.pg.title
-                visible: text !== ""
+                visible: text !== "" && !app.healthView
                 color: app.pg.bad ? app.danger : app.pg.good ? app.good : app.text
                 font.pixelSize: 30 * win.u; font.weight: Font.DemiBold; wrapMode: Text.WordWrap
             }
@@ -657,10 +705,154 @@ ShellRoot {
                 NumberAnimation on sweepPos { from: 0; to: 1; duration: 1400; loops: Animation.Infinite; running: progressBox.visible && !bar.known; easing.type: Easing.InOutSine }
             }
 
+            // ---- the main screen as a health check: what was found on the left, the suggested fix and the tools on the right
+            RowLayout {
+                visible: app.healthView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 48 * win.u
+
+                ColumnLayout {
+                    Layout.preferredWidth: parent.width * 0.44
+                    Layout.fillHeight: true
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 6 * win.u
+                    Text { text: "HEALTH CHECK"; color: app.ember; font.pixelSize: 17 * win.u; font.weight: Font.Bold; font.letterSpacing: 3 * win.u }
+                    Text {
+                        Layout.fillWidth: true
+                        text: !app.health ? "Checking this PC…" : app.health.error ? "The check couldn't finish" : app.health.title
+                        color: app.text; font.pixelSize: 46 * win.u; font.weight: Font.Bold; wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !!(app.health && app.health.error)
+                        text: app.health && app.health.error ? app.health.error.charAt(0).toUpperCase() + app.health.error.slice(1) + ". The tools on the right still work." : ""
+                        color: app.muted; font.pixelSize: 19 * win.u; wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !app.health
+                        text: "Looking at the drive and the last starts. Nothing is changed."
+                        color: app.muted; font.pixelSize: 19 * win.u; wrapMode: Text.WordWrap
+                    }
+                    Item { implicitHeight: 10 * win.u }
+                    Repeater {
+                        model: app.health && app.health.checks ? app.health.checks : []
+                        delegate: RowLayout {
+                            id: chk
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: 16 * win.u
+                            readonly property color tint: modelData.state === "ok" ? app.good : modelData.state === "bad" ? app.danger : modelData.state === "warn" ? app.flame : app.muted
+                            Rectangle {
+                                Layout.alignment: Qt.AlignTop
+                                Layout.topMargin: 10 * win.u
+                                implicitWidth: 38 * win.u; implicitHeight: 38 * win.u; radius: width / 2
+                                color: Qt.rgba(chk.tint.r, chk.tint.g, chk.tint.b, 0.16)
+                                Text { anchors.centerIn: parent; text: chk.modelData.state === "ok" ? "✓" : chk.modelData.state === "bad" ? "✕" : chk.modelData.state === "warn" ? "!" : "?"; color: chk.tint; font.pixelSize: 20 * win.u; font.weight: Font.Bold }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2 * win.u
+                                Item { implicitHeight: 6 * win.u }
+                                Text { Layout.fillWidth: true; text: chk.modelData.title; color: app.text; font.pixelSize: 22 * win.u; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                Text { Layout.fillWidth: true; text: chk.modelData.detail || ""; color: app.muted; font.pixelSize: 17 * win.u; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                                Rectangle { Layout.fillWidth: true; Layout.topMargin: 10 * win.u; implicitHeight: 1; color: app.line }
+                            }
+                        }
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 14 * win.u
+
+                    // The suggested fix (or that nothing needs fixing).
+                    Rectangle {
+                        id: fixCard
+                        readonly property var fx: app.health && app.health.fix ? app.health.fix : null
+                        readonly property bool lit: !!fx && app.sel === 0
+                        visible: !!app.health && !app.health.error
+                        Layout.fillWidth: true
+                        implicitHeight: fixCol.implicitHeight + 52 * win.u
+                        radius: 24 * win.u
+                        color: fx ? Qt.rgba(1, 0.54, 0.24, 0.13) : app.panel
+                        border.color: fx ? Qt.rgba(1, 0.54, 0.24, 0.45) : app.line
+                        border.width: 1
+                        ColumnLayout {
+                            id: fixCol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 * win.u }
+                            spacing: 10 * win.u
+                            Text { text: fixCard.fx ? "SUGGESTED FIX" : "NOTHING TO FIX"; color: fixCard.fx ? app.ember : app.good; font.pixelSize: 16 * win.u; font.weight: Font.Bold; font.letterSpacing: 3 * win.u }
+                            Text { Layout.fillWidth: true; text: fixCard.fx ? fixCard.fx.title : "Hearth OS looks fine from here"; color: app.text; font.pixelSize: 32 * win.u; font.weight: Font.Bold; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; text: fixCard.fx ? fixCard.fx.body : "If something still isn't right, send logs to the developer or try one of the tools below."; color: app.muted; font.pixelSize: 19 * win.u; wrapMode: Text.WordWrap; lineHeight: 1.1 }
+                            Rectangle {
+                                visible: !!fixCard.fx
+                                Layout.topMargin: 6 * win.u
+                                implicitWidth: fixLabel.implicitWidth + 70 * win.u; implicitHeight: 70 * win.u; radius: height / 2
+                                color: fixCard.lit ? app.ember : app.panel3
+                                border.color: fixCard.lit ? app.flame : app.line; border.width: fixCard.lit ? 3 * win.u : 1
+                                Text { id: fixLabel; anchors.centerIn: parent; text: fixCard.fx ? fixCard.fx.button : ""; color: fixCard.lit ? "#2a1206" : app.text; font.pixelSize: 24 * win.u; font.weight: Font.Bold }
+                                MouseArea { anchors.fill: parent; onClicked: app.activate(0) }
+                            }
+                        }
+                    }
+
+                    Text { Layout.topMargin: 8 * win.u; text: "OTHER TOOLS"; color: app.muted; font.pixelSize: 16 * win.u; font.weight: Font.Bold; font.letterSpacing: 3 * win.u }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 12 * win.u
+                        rowSpacing: 12 * win.u
+                        Repeater {
+                            model: app.pg.items
+                            delegate: Rectangle {
+                                id: tool
+                                required property var modelData
+                                required property int index
+                                readonly property bool lit: app.sel === index
+                                visible: !modelData.fix
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 1
+                                implicitHeight: 70 * win.u
+                                radius: 16 * win.u
+                                opacity: modelData.off ? 0.45 : 1
+                                color: lit ? (modelData.danger ? app.danger : app.ember) : app.panel2
+                                border.color: lit ? app.flame : app.line
+                                border.width: lit ? 3 * win.u : 1
+                                RowLayout {
+                                    anchors { fill: parent; leftMargin: 18 * win.u; rightMargin: 18 * win.u }
+                                    spacing: 14 * win.u
+                                    Image {
+                                        source: app.iconDir + tool.modelData.icon + (tool.lit ? "-ink.svg" : "-light.svg")
+                                        Layout.preferredWidth: 28 * win.u; Layout.preferredHeight: 28 * win.u
+                                        sourceSize: Qt.size(56, 56); fillMode: Image.PreserveAspectFit; visible: status === Image.Ready
+                                    }
+                                    Text { Layout.fillWidth: true; text: tool.modelData.label; color: tool.lit ? "#2a1206" : (tool.modelData.danger ? app.danger : app.text); font.pixelSize: 20 * win.u; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: app.activate(tool.index) }
+                            }
+                        }
+                    }
+                    // What the highlighted tool does.
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4 * win.u
+                        readonly property var it: app.pg.items[app.sel]
+                        text: it && !it.fix ? (it.sub || "") : ""
+                        color: app.muted; font.pixelSize: 17 * win.u; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+            }
+
             // ---- the choices
             Flickable {
                 id: list
-                visible: !app.pg.osk
+                visible: !app.pg.osk && !app.healthView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -769,7 +961,7 @@ ShellRoot {
             // ---- footer
             Text {
                 Layout.fillWidth: true
-                text: (app.padProblem ? app.padProblem + " · " : "") + "A  select     B  back     ·     no controller? Volume buttons move, Power selects     ·     touch works too"
+                text: (app.padProblem ? app.padProblem + " · " : "") + (app.healthView ? "Y  check again     " : "") + "A  select     B  back     ·     no controller? Volume buttons move, Power selects     ·     touch works too"
                 color: app.muted; font.pixelSize: 15 * win.u; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
             }
         }

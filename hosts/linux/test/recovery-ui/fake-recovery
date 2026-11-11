@@ -1,0 +1,38 @@
+#!/usr/bin/python3
+"""A pretend hearth-recovery for the Recovery screen's CI pictures (.github/workflows/recovery-ui-test.yml): the
+screen runs it instead of the real one (HEARTH_RECOVERY_BIN). HEARTH_FAKE_CASE picks what the health check finds:
+broken (a new version that never started), fine, or slow (the check takes 30 seconds)."""
+import json
+import os
+import sys
+import time
+
+CASE = os.environ.get('HEARTH_FAKE_CASE', 'broken')
+cmd = sys.argv[1] if len(sys.argv) > 1 else ''
+dep = lambda i, v, when: {'index': i, 'role': ['current', 'previous', 'older'][i], 'hearthVersion': v, 'osName': 'Debian GNU/Linux', 'osVersion': '13',
+                          'deployedText': when, 'builtText': when, 'edition': 'peppermint', 'title': 'Hearth OS ' + v}
+if cmd == 'scan':
+    print(json.dumps({'systems': [{'id': '/dev/nvme0n1p3:root', 'device': '/dev/nvme0n1p3', 'model': 'Samsung SSD 980 1TB', 'size': 1000204886016,
+                                   'edition': 'peppermint', 'editionLabel': 'Hearth OS on Debian', 'users': [{'name': 'chris', 'full': 'Chris', 'home': '/var/home/chris'}],
+                                   'deployments': [dep(0, '1.10', 'Nov 10'), dep(1, '1.9', 'Nov 8'), dep(2, '1.8', 'Nov 5')]}]}))
+elif cmd == 'health':
+    if CASE == 'slow':
+        time.sleep(30)
+    ok = lambda i, t, d: {'id': i, 'state': 'ok', 'title': t, 'detail': d}
+    checks = [ok('drive', 'The drive is healthy', 'Samsung SSD 980 1TB · Its own self-check passed'),
+              ok('space', 'There is room on the drive', '412 GB free'),
+              ok('system', 'Hearth OS 1.10 is there', 'Installed Nov 10 · Hearth OS 1.9 kept as the previous version')]
+    if CASE == 'fine':
+        checks += [ok('starts', 'It started fine last time', 'Hearth came up today at 6:02 pm'), ok('files', 'Your files are there', 'Chris · nothing here changes them')]
+        print(json.dumps({'title': 'Everything looks fine', 'checks': checks, 'fix': None, 'starts': {'0': {'good': 6, 'failed': 0}, '1': {'good': 14, 'failed': 0}}}))
+    else:
+        checks += [{'id': 'starts', 'state': 'bad', 'title': "Hearth OS 1.10 didn't finish starting", 'detail': 'Its last 2 starts stopped before Game Mode or the desktop came up (today at 6:12 pm, today at 6:15 pm)'},
+                   ok('files', 'Your files are there', 'Chris · nothing here changes them')]
+        print(json.dumps({'title': "We found what's wrong", 'checks': checks,
+                          'fix': {'act': 'previous', 'title': 'Start the previous version', 'body': 'Hearth OS 1.9 started fine 14 times. Going back changes nothing in your files, and the next update tries again.', 'button': 'Start 1.9'},
+                          'starts': {'0': {'good': 0, 'failed': 2}, '1': {'good': 14, 'failed': 0}, '2': {'good': 9, 'failed': 0}}}))
+elif cmd == 'net-status':
+    print(json.dumps({'online': True, 'connection': 'Home-5G', 'connectivity': 'full'}))
+else:
+    print('error: not in the pretend PC')
+    sys.exit(1)
