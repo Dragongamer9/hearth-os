@@ -33,7 +33,7 @@ jobs:
       - name: Run the screen
         shell: bash
         run: |
-          set -x
+          set +e
           mkdir -p shots
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home HEARTH_RECOVERY_NO_PAD=1 HEARTH_RECOVERY_BIN=$PWD/hosts/linux/test/recovery-ui/fake-recovery
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
@@ -58,7 +58,11 @@ jobs:
               state > shots/broken-confirm.json; grim shots/broken-confirm.png || true
             fi
             kill $qs; wait $qs 2>/dev/null
+            # What the screen said (the logs can't be read here otherwise).
+            echo "::notice title=log $c::$(tail -c 3000 "shots/$c.log" | tr '\n' '|' )"
           done
+          echo "::notice title=labwc::$(tail -c 1500 shots/labwc.log | tr '\n' '|')"
+          ls -la shots
           python3 - <<'PY'
           import json, re, sys
           bad = 0
