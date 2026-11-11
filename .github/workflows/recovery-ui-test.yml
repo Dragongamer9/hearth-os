@@ -35,6 +35,7 @@ jobs:
         run: |
           set +e
           mkdir -p shots
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 LANG=C.UTF-8
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home HEARTH_RECOVERY_NO_PAD=1 HEARTH_RECOVERY_BIN=$PWD/hosts/linux/test/recovery-ui/fake-recovery
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
           labwc >shots/labwc.log 2>&1 &
