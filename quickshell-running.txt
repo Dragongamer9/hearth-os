@@ -1,0 +1,3 @@
+1094 quickshell -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell
+10536 [quickshell] <defunct>
+10606 [quickshell] <defunct>
