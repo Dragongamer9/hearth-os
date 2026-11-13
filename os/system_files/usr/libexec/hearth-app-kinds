@@ -13,6 +13,11 @@ GNOME, COSMIC, Deepin), this:
   hearth-app-kinds check [--root ROOT]               only check (what an image check runs)
   hearth-app-kinds hidden [DESKTOP]                  ids not shown in this desktop (XDG_CURRENT_DESKTOP), one per line
   hearth-app-kinds resolve DESKTOP                   JSON: the app of each kind there
+  hearth-app-kinds hardware --out DIR                apps for hardware this PC doesn't have (the table's "hardware",
+                                                     e.g. NVIDIA Settings without an Nvidia card): NoDisplay copies in
+                                                     DIR/applications (nimbus-session: $XDG_RUNTIME_DIR, so it's worked
+                                                     out again at every sign-in and a new card shows them at once);
+                                                     prints JSON {hidden, have}. Never fails the session
 
 --refresh (the apt hook on writable Peppermint): never fails, and only hides apps the image had or the table names, so
 an app you install yourself isn't hidden.
@@ -459,6 +464,63 @@ def check(root='/', table=None):
     return {'ok': not problems, 'problems': problems, 'notes': notes, 'desktops': report}
 
 
+# ---------------------------------------------------------------------- apps for hardware this PC doesn't have
+HW_DEFAULT = {'nvidia': {'label': 'an Nvidia graphics card', 'pci_vendor': '0x10de', 'pci_class': '0x03',
+                         'ids': ['nvidia-settings.desktop', 'com.nvidia.nvidia-settings.desktop']}}
+
+
+def pci_has(vendor, klass, root='/'):
+    """Is there a PCI device from this vendor (0x10de) whose class starts with klass (0x03: a display controller)?"""
+    base = under(root, 'sys/bus/pci/devices')
+    try:
+        devs = os.listdir(base)
+    except OSError:
+        return None                      # can't tell: show everything
+    for d in devs:
+        v = read(os.path.join(base, d, 'vendor')).strip().lower()
+        c = read(os.path.join(base, d, 'class')).strip().lower()
+        if v == vendor and c.startswith(klass):
+            return True
+    return False
+
+
+def hardware(out_dir, root='/', table=None):
+    """NoDisplay copies of the apps whose hardware isn't here; stale copies (the hardware came back) removed."""
+    if table is None:
+        try:
+            table = load_table(under(root, TABLE))
+        except (OSError, ValueError):
+            table = {}
+    rules = table.get('hardware') or HW_DEFAULT
+    eff = effective(root, extra=[os.path.join(d, 'applications') for d in
+                                 (os.environ.get('XDG_DATA_DIRS') or '').split(':') if d.startswith('/') and
+                                 os.path.abspath(d) != os.path.abspath(out_dir)])
+    texts = {}
+    for d in [os.path.join(OVERRIDE_DIR, 'applications'), 'usr/local/share/applications', APPS]:
+        for did, text in scan(under(root, d)).items():
+            texts.setdefault(did, text)
+    want, have = {}, {}
+    for name, r in rules.items():
+        present = pci_has(str(r.get('pci_vendor', '')).lower(), str(r.get('pci_class', '')).lower(), root)
+        have[name] = present
+        if present is not False:
+            continue
+        for did in r.get('ids') or []:
+            if ID_RE.match(did) and did in eff and did in texts:
+                want[did] = with_keys(texts[did], {'NoDisplay': 'true', MARK: 'hardware-' + name})
+    apps = os.path.join(out_dir, 'applications')
+    os.makedirs(apps, mode=0o700, exist_ok=True)
+    for f in os.listdir(apps):
+        if f.endswith('.desktop') and f not in want and MARK + '=hardware-' in read(os.path.join(apps, f)):
+            os.remove(os.path.join(apps, f))
+    for did, text in want.items():
+        tmp = os.path.join(apps, '.' + did + '.tmp')
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(text)
+        os.replace(tmp, os.path.join(apps, did))
+    return {'hidden': sorted(want), 'have': have}
+
+
 def hidden(desktop_names, root='/'):
     eff = effective(root, extra=[os.path.join(d, 'applications') for d in
                                  (os.environ.get('XDG_DATA_DIRS') or '').split(':') if d.startswith('/')])
@@ -484,6 +546,12 @@ def main(argv):
             names = args[1:] or [n for n in (os.environ.get('XDG_CURRENT_DESKTOP') or '').split(':') if n]
             for i in hidden(names, root):
                 print(i[:-8] if i.endswith('.desktop') else i)
+            return 0
+        elif cmd == 'hardware' and len(args) == 3 and args[1] == '--out':
+            try:
+                print(json.dumps(hardware(args[2], root)))
+            except (OSError, ValueError, KeyError) as e:      # never stops a sign-in
+                print(json.dumps({'hidden': [], 'error': str(e)}))
             return 0
         elif cmd == 'resolve' and len(args) == 2:
             rep = check(root)['desktops'].get(args[1]) or {}

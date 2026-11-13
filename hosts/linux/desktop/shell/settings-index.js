@@ -579,9 +579,9 @@ var ENTRIES = [
 "i": "drive"
 },
 {
-"t": "Show the Linux folders too",
+"t": "Show system folders",
 "p": "drives",
-"d": "etc, usr, var and the rest, under their own heading on Hearth (C:)",
+"d": "/usr, /etc and the other Linux folders in Files and every app's Open and Save window (hidden by default, like macOS)",
 "i": "folder"
 },
 {
@@ -589,6 +589,18 @@ var ENTRIES = [
 "p": "drives",
 "d": "Typing either kind always works",
 "i": "edit"
+},
+{
+"t": "Apps you install",
+"p": "drives",
+"d": "Apps from apt or Flatpak use Hearth's Open and Save window, with Hearth (C:). Text an app draws itself keeps its own paths.",
+"i": "window"
+},
+{
+"t": "Terminal speaks C:\\\\",
+"p": "drives",
+"d": "dir, copy, del, cd C:\\\\Users… in every terminal (Linux commands still work). Applies to new terminal windows",
+"i": "kbd"
 },
 {
 "t": "Copy path gives",
@@ -905,6 +917,11 @@ var ENTRIES = [
 "i": "globe"
 },
 {
+"t": "One AI address",
+"p": "hs-aidevices",
+"i": "globe"
+},
+{
 "t": "Looking for your devices…",
 "p": "hs-aidevices",
 "i": "update"
@@ -997,6 +1014,27 @@ var ENTRIES = [
 {
 "t": "Spin down idle storage drives after",
 "p": "hs-alerts"
+},
+{
+"t": "Night maintenance",
+"p": "hs-alerts",
+"d": "Once a night: optimize drives (TRIM), tidy the system logs, update apps (Flatpak) and clear downloaded package files. Never while it's used or busy, and never anything that touches starting the PC",
+"i": "clock"
+},
+{
+"t": "Start at",
+"p": "hs-alerts"
+},
+{
+"t": "Last night",
+"p": "hs-alerts",
+"i": "info"
+},
+{
+"t": "Power history",
+"p": "hs-alerts",
+"d": "Keeps what the processor and graphics card draw, every 5 minutes for 30 days, and shows it here",
+"i": "power"
 },
 {
 "t": "Right now",
@@ -1951,6 +1989,11 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Pairing a friend's device",
+"p": "link",
+"i": "users"
+},
+{
 "t": "Not on the same network?",
 "p": "link",
 "d": "Get a code to type on a device somewhere else (over the internet)",
@@ -2268,6 +2311,12 @@ var ENTRIES = [
 "t": "Moonlight",
 "p": "remote",
 "i": "desktops"
+},
+{
+"t": "Restore all saves",
+"p": "savedgames",
+"d": "Puts every backed-up save back where its game looks for it (after a reinstall, or on another PC). What it replaces is kept by Ludusavi.",
+"i": "restart"
 },
 {
 "t": "Use Server mode",
@@ -2675,6 +2724,11 @@ var ENTRIES = [
 {
 "t": "Windows version",
 "p": "winapps"
+},
+{
+"t": "Use these files from Windows",
+"p": "winapps",
+"i": "file"
 },
 {
 "t": "In Steam",

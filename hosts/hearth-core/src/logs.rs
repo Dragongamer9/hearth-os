@@ -521,6 +521,8 @@ pub fn report(version: &str) -> String {
     // driver that didn't make the HDMI 2.1 fast link (FRL), or a mode Hearth chose.
     section("Screen: modes and what it says it can do (EDID)", sh(&format!("{{ {SCREEN_SH} }}")));
     section("Graphics driver and the screen link", sh(&format!("{{ {DRIVER_SH} }}")));
+    // 1.11: the desktop shell's own memory and CPU every 10 minutes (hearth-shell-health), to catch a slow leak.
+    section("Desktop shell health (memory and CPU over time)", sh("tail -n 80 \"${XDG_STATE_HOME:-$HOME/.local/state}/hearth/shell-health.log\" 2>/dev/null || echo 'no samples yet'"));
     section("Sound (PipeWire)", sh("echo \"RealtimeKit (sound priority): $(busctl --system status org.freedesktop.RealtimeKit1 >/dev/null 2>&1 && echo running || echo missing)\"; \
         echo; pactl info 2>&1 | grep -E 'Server Name|Default Sink|Default Sample'; echo; pw-metadata -n settings 0 2>&1 | grep -E 'clock' ; \
         echo; echo '--- outputs'; pactl list short sinks 2>&1; echo; echo '--- what is playing'; pactl list short sink-inputs 2>&1; \

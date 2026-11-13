@@ -84,8 +84,12 @@ Scope {
     // when you change them (View here, or Settings › System › Drives & folders): cdrive (on unless turned off),
     // linuxFolders (off unless turned on), addressBar (windows | linux), copyPath (windows | linux).
     readonly property string cRoot: "hearth:c"
-    readonly property bool cdriveOn: prefs.cdrive !== false && !picking   // (Open / Save windows keep the real folders)
+    // C: everywhere (1.11, step 1, the approved mockup cdrive-1): the Open / Save windows every app uses show Hearth (C:)
+    // too. What they hand back is always the real path (an app can't open C:\…); a folder that's only a name in the
+    // view (Program Files, C:\ itself) can't be saved into.
+    readonly property bool cdriveOn: prefs.cdrive !== false
     readonly property bool cLinux: prefs.linuxFolders === true
+    readonly property bool navShown: prefs.navPane !== false     // View › Navigation pane (1.11, files.json navPane)
     readonly property bool cAddrLinux: prefs.addressBar === "linux"
     readonly property bool cCopyLinux: prefs.copyPath === "linux"
     property var cdata: ({})                   // hearth-files cdrive (read only)
@@ -107,7 +111,7 @@ Scope {
     property var redoStack: []
     // The view as drawn: the Home page is always a list (Quick access tiles above it).
     readonly property string shownView: onHome ? "details" : view
-    readonly property var views: ["large", "grid", "small", "tiles", "compact", "details"]
+    readonly property var views: ["xlarge", "large", "grid", "small", "tiles", "compact", "details"]
     property var prefs: ({})
     property bool prefsLoaded: false
     property string query: ""                  // filters this folder as you type
@@ -342,13 +346,14 @@ Scope {
     // What Open / Choose returns now: the picked items, else the one under the cursor (folder mode: this folder).
     function pickTargets() {
         if (!picking) return [];
-        const sel = entries.filter(e => marked[e.path] && (pick.directory ? e.dir : !e.dir)).map(e => e.path);
+        // Only real folders and files go back to the app (never a hearth:c name from the C:\ view).
+        const sel = entries.filter(e => marked[e.path] && (pick.directory ? e.dir : !e.dir) && !DrivePaths.isCPath(e.path)).map(e => e.path);
         if (pick.directory) {
             if (sel.length) return pick.multiple ? sel : sel.slice(0, 1);
-            return listing && !listing.error && found === null ? [listing.path] : [];
+            return listing && !listing.error && found === null && !DrivePaths.isCPath(listing.path) ? [listing.path] : [];
         }
         if (sel.length) return pick.multiple ? sel : sel.slice(0, 1);
-        return current && !current.dir ? [current.path] : [];
+        return current && !current.dir && !DrivePaths.isCPath(current.path) ? [current.path] : [];
     }
     readonly property string pickAcceptLabel: {
         if (!picking) return "";
@@ -404,7 +409,7 @@ Scope {
         if (!picking || pickDone) return;
         if (pick.kind === "save") return pickSave();
         if (pick.kind === "savefiles") {
-            if (!listing || listing.error || found !== null) return say("Open the folder to save in first", true);
+            if (!listing || listing.error || found !== null || DrivePaths.isCPath(path)) return say("Open the folder to save in first", true);
             const there = (listing.entries || []).filter(e => (pick.files || []).indexOf(e.name) >= 0).map(e => e.name);
             const dir = listing.path;
             if (!there.length) return pickFinish([dir]);
@@ -420,6 +425,13 @@ Scope {
         let n = pickName.trim();
         if (!n) { if (ui) ui.focusName(); return say("Type a name first", true); }
         if (n.startsWith("~")) n = home + n.slice(1);
+        // A typed C:\Users\chris\notes.txt (or G:\…) is the real path it stands for.
+        if (/^[A-Za-z]:([\\/]|$)/.test(n)) {
+            const w = DrivePaths.fromWindows(n, pathCtx);
+            if (!w || !w.path || DrivePaths.isCPath(w.path)) return say(w && w.error ? w.error : "That's not a folder you can save in", true);
+            n = w.path;
+        }
+        if (!n.startsWith("/") && DrivePaths.isCPath(path)) return say("Open a folder to save in first (your own folders are in Users)", true);
         const full = n.startsWith("/") ? n : (path === "/" ? "" : path) + "/" + n;
         const dir = parentOf(full), name = base(full);
         const decide = (list) => {
@@ -451,8 +463,9 @@ Scope {
                     else {
                         try { res = JSON.parse(last); } catch (e) { err = "Something went wrong"; }
                     }
-                    if (proc.cb) proc.cb(res, err);
-                    proc.destroy();
+                    // Always destroyed, even when the callback throws (a window that closed meanwhile): a
+                    // leftover Process per call was part of the shell slowly growing over a day (1.11).
+                    try { if (proc.cb) proc.cb(res, err); } finally { proc.destroy(); }
                 }
             }
         }
@@ -475,8 +488,9 @@ Scope {
                     if (last.startsWith("error: ")) err = last.slice(7);
                     else { try { res = JSON.parse(last); } catch (e) { err = "Something went wrong"; } }
                     procIn.input = "";
-                    if (procIn.cb) procIn.cb(res, err);
-                    procIn.destroy();
+                    // Always destroyed, even when the callback throws (a window that closed meanwhile): a
+                    // leftover Process per call was part of the shell slowly growing over a day (1.11).
+                    try { if (procIn.cb) procIn.cb(res, err); } finally { procIn.destroy(); }
                 }
             }
         }
@@ -900,36 +914,66 @@ Scope {
     // Hearth (C:) and every lettered drive under it, Network (Hearth Storage and Your devices under it), Installed
     // apps and Trash. This PC's and Network's arrows fold them (for this session).
     property var rawPlaces: []
+    // The left menu's width (1.11): 158 px unless you dragged it (files.json navWidth, saved when you let go).
+    property real navW: prefs && prefs.navWidth >= 120 && prefs.navWidth <= 360 ? prefs.navWidth : 158
+    function saveNavWidth() {
+        const w = Math.round(navW);
+        if (prefs && prefs.navWidth === w) return;
+        prefs = Object.assign({}, prefs, { navWidth: w });
+        call(["prefs-set", JSON.stringify({ navWidth: w })], (r, err) => { if (err) say(err, true); });
+    }
+    // The left menu the Windows 11 way (1.11, the owner's approved option A, docs/mockups/next-update/files-4-A-narrow.png):
+    // Home, Gallery, Home server; your folders; This PC (Hearth (C:) open with Users, Program Files and Windows apps,
+    // then the other drives); Network; the Linux folders folded under "Linux" (only with Show the Linux folders).
     function buildNav(list) {
-        const out = picking ? [] : [{ id: "start", label: "Home", path: homePage, kind: "start", section: "start" }];
+        const out = [];
         const sorted = sortPlaces(list);
-        for (const q of sorted) if (q.section === "bookmarks" || q.section === "places" || q.section === "briefcases" || q.section === "games") out.push(q);
-        const drives = sorted.filter(q => q.section === "drives");
-        out.push({ id: "thispc", label: "This PC", path: thisPcPage, kind: "thispc", section: "pc", tree: "thispc", open: !!navOpen.thispc });
-        if (navOpen.thispc) for (const d of drives) {
-            // Hearth (C:) with Windows folder names: it opens the view, and its arrow shows the view's folders.
-            const sys = d.key === "system" && cdriveOn;
-            out.push(Object.assign({}, d, { child: true, depth: 1, kind: d.kind === "games" ? "drive" : d.kind },
-                                   sys ? { path: cRoot, tree: "cdrive", open: !!navOpen.cdrive } : {}));
-            if (sys && navOpen.cdrive) for (const f of cNavFolders) out.push(f);
+        const byId = id => sorted.find(q => q.id === id);
+        if (!picking) out.push({ id: "start", label: "Home", path: homePage, kind: "start", section: "start" });
+        const pics = byId("pictures");
+        if (pics) out.push({ id: "gallery", label: "Gallery", path: pics.path, kind: "pictures", section: "start" });
+        const devs = sorted.filter(q => q.section === "network" || q.section === "devices");
+        if (devs.length) {
+            out.push({ id: "homeserver", label: "Home server", path: "", kind: "netroot", section: "start", tree: "homeserver", open: !!navOpen.homeserver });
+            if (navOpen.homeserver) for (const q of devs) out.push(Object.assign({}, q, { section: "start", depth: q.child ? 2 : 1 }));
         }
-        const nets = sorted.filter(q => q.section === "network" || q.section === "devices");
-        out.push({ id: "netroot", label: "Network", path: "", kind: "netroot", section: "netroot", tree: "network", open: !!navOpen.network, empty: !nets.length });
-        if (navOpen.network) for (const q of nets) out.push(Object.assign({}, q, { depth: q.child ? 2 : 1 }));
-        if (!picking) out.push({ id: "apps", label: "Installed apps", path: appsPage, kind: "apps", section: "apps" });
-        for (const q of sorted) if (q.section === "trash") out.push(q);
+        // your folders (Home itself is This PC › Hearth (C:) › Users › you), then pinned ones, briefcases and games
+        for (const q of sorted) if (q.section === "places" && q.id !== "home" && !q.child) out.push(Object.assign({}, q, { section: "folders" }));
+        for (const q of sorted) if (q.section === "bookmarks" || q.section === "briefcases" || q.section === "games") out.push(Object.assign({}, q, { section: "folders" }));
+        const drives = sorted.filter(q => q.section === "drives");
+        const pcOpen = navOpen.thispc !== false;               // open unless you folded it
+        out.push({ id: "thispc", label: "This PC", path: thisPcPage, kind: "thispc", section: "pc", tree: "thispc", open: pcOpen });
+        if (pcOpen) for (const d of drives) {
+            const sys = d.key === "system" && cdriveOn;
+            const cOpen = navOpen.cdrive !== false;
+            out.push(Object.assign({}, d, { section: "pc", child: true, depth: 1, kind: d.kind === "games" ? "drive" : d.kind, sub: "" },
+                                   sys ? { path: cRoot, tree: "cdrive", open: cOpen } : {}));
+            if (sys && cOpen) for (const f of cNavFolders) out.push(f);
+        }
+        out.push({ id: "netroot", label: "Network", path: "", kind: "netroot", section: "pc", tree: "network", open: !!navOpen.network, empty: !devs.length });
+        if (navOpen.network) for (const q of devs) out.push(Object.assign({}, q, { section: "pc", depth: q.child ? 2 : 1 }));
+        if (cLinux) {
+            out.push({ id: "linux", label: "Linux", path: "", kind: "drive", section: "pc", tree: "linux", open: !!navOpen.linux });
+            if (navOpen.linux) for (const f of linuxNavFolders) out.push(f);
+        }
         return out;
     }
+    readonly property var linuxNavFolders: [
+        { id: "lx-root", label: "/", path: "/", kind: "folder", section: "pc", child: true, depth: 1 },
+        { id: "lx-home", label: "/home", path: "/home", kind: "folder", section: "pc", child: true, depth: 1 },
+        { id: "lx-usr", label: "/usr", path: "/usr", kind: "folder", section: "pc", child: true, depth: 1 },
+        { id: "lx-etc", label: "/etc", path: "/etc", kind: "folder", section: "pc", child: true, depth: 1 },
+        { id: "lx-var", label: "/var", path: "/var", kind: "folder", section: "pc", child: true, depth: 1 }
+    ]
     readonly property var cNavFolders: [
-        { id: "c-pf", label: "Program Files", path: cRoot + "/Program Files", kind: "folder", section: "pc", child: true, depth: 2 },
-        { id: "c-x86", label: "Program Files (x86)", path: cRoot + "/Program Files (x86)", kind: "folder", section: "pc", child: true, depth: 2 },
-        { id: "c-pd", label: "ProgramData", path: "/var/lib", kind: "folder", section: "pc", child: true, depth: 2 },
         { id: "c-users", label: "Users", path: DrivePaths.usersDir(pathCtx), kind: "folder", section: "pc", child: true, depth: 2 },
-        { id: "c-win", label: "Windows", path: "/usr", kind: "folder", section: "pc", child: true, depth: 2 }
+        { id: "c-pf", label: "Program Files", path: cRoot + "/Program Files", kind: "folder", section: "pc", child: true, depth: 2 },
+        { id: "c-apps", label: "Windows apps", path: appsPage, kind: "apps", section: "pc", child: true, depth: 2 }
     ]
     function toggleNav(k) {
         const o = Object.assign({}, navOpen);
-        o[k] = !o[k];
+        const wasOpen = (k === "thispc" || k === "cdrive") ? o[k] !== false : !!o[k];   // This PC and C: start open
+        o[k] = !wasOpen;
         navOpen = o;
         const at = places[placeIndex] ? places[placeIndex].id : "";
         places = buildNav(rawPlaces);
@@ -1055,27 +1099,29 @@ Scope {
         const q = found !== null ? "" : query.trim().toLowerCase();
         let out = q ? all.filter(e => e.name.toLowerCase().indexOf(q) >= 0) : all.slice();
         if (picking) out = out.filter(e => pickShows(e));
+        // Sorted with every key worked out once per entry (1.11): comparing split names and dates inside the sort
+        // made folders with thousands of files take seconds to open.
         const by = sort, d = desc ? -1 : 1, g = group;
-        out.sort((a, b) => {
-            if (g !== "none") {
-                const ga = groupRank(a, g), gb = groupRank(b, g);
-                if (ga !== gb) return ga - gb;
-            }
+        const day = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime() / 1000; })();
+        const keyed = out.map(e => ({ e: e, g: g === "none" ? 0 : groupRankAt(e, g, day), n: naturalKey(e.name), x: by === "type" ? extOf(e) : "" }));
+        keyed.sort((A, B) => {
+            if (A.g !== B.g) return A.g - B.g;
+            const a = A.e, b = B.e;
             if (a.dir !== b.dir) return a.dir ? -1 : 1;
             let r = 0;
             if (by === "date") r = a.mtime - b.mtime;
             else if (by === "size") r = a.size - b.size;
-            else if (by === "type") r = (extOf(a) < extOf(b) ? -1 : extOf(a) > extOf(b) ? 1 : 0);
-            if (r === 0) r = natural(a.name, b.name);
+            else if (by === "type") r = A.x < B.x ? -1 : A.x > B.x ? 1 : 0;
+            if (r === 0) r = naturalCmp(A.n, B.n, a.name, b.name);
             return d * r;
         });
-        return out;
+        return keyed.map(k => k.e);
     }
     readonly property var current: entries.length > cur && cur >= 0 ? entries[cur] : null
     readonly property bool writable: !!(listing && listing.writable) && found === null
     readonly property bool inTrash: !!(listing && listing.trash)
     readonly property string trashPath: {
-        const t = places.find(p => p.kind === "trash");
+        const t = rawPlaces.find(p => p.kind === "trash");          // Trash isn't in the left menu (the desktop has it)
         return t ? t.path : home + "/.local/share/Trash/files";
     }
     function extOf(e) {
@@ -1105,6 +1151,20 @@ Scope {
     }
 
     // "file 9" before "file 10"; case doesn't matter.
+    // A name split once into text and number parts, for naturalCmp ("file 2" before "file 10").
+    function naturalKey(name) { return name.toLowerCase().split(/(\d+)/); }
+    function naturalCmp(x, y, a, b) {
+        for (let i = 0; i < Math.min(x.length, y.length); i++) {
+            if (x[i] === y[i]) continue;
+            if (i % 2 === 1) return parseInt(x[i], 10) - parseInt(y[i], 10) || x[i].length - y[i].length;
+            return x[i] < y[i] ? -1 : 1;
+        }
+        return x.length - y.length || (a < b ? -1 : a > b ? 1 : 0);
+    }
+    function groupRankAt(e, g, day) {
+        if (g === "type") return kindOrder.indexOf(kindOf(e));
+        return groupRank(e, g);
+    }
     function natural(a, b) {
         const x = a.toLowerCase().split(/(\d+)/), y = b.toLowerCase().split(/(\d+)/);
         for (let i = 0; i < Math.min(x.length, y.length); i++) {
@@ -1474,7 +1534,7 @@ Scope {
         rememberView();
         makeThumbs();
     }
-    function cycleView() { setView(({ large: "grid", grid: "small", small: "tiles", tiles: "compact", compact: "details", details: "large" })[view]); }
+    function cycleView() { setView(({ xlarge: "large", large: "grid", grid: "small", small: "tiles", tiles: "compact", compact: "details", details: "xlarge" })[view]); }
     readonly property var viewNames: ({ large: "Large icons", grid: "Medium icons", small: "Small icons", tiles: "Tiles", compact: "List", details: "Details" })
     function setShowExt(on) { showExt = on; rememberView(); say(on ? "Showing file name extensions" : "Hiding file name extensions"); }
     function toggleDetails() { detailsPane = !detailsPane; rememberView(); }
@@ -1742,8 +1802,8 @@ Scope {
             if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T", icon: "plus", group: "View" });
             if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W", icon: "close", group: "View" });
             const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
-            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D", icon: "pin" });
-            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4", icon: "kbd", group: "Open" });
+            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Pin to the left menu", key: "Ctrl+D", icon: "pin" });
+            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd", group: "Open" });
             if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
@@ -1870,7 +1930,7 @@ Scope {
     // The view's switches, from its menus and View (the same files.json keys as Settings › System › Drives & folders):
     // saved only when you change them, one key at a time (hearth-files prefs-set merges it under the lock).
     function setFilesPref(k, v) {
-        const now = ({ cdrive: prefs.cdrive !== false, linuxFolders: cLinux, addressBar: cAddrLinux ? "linux" : "windows", copyPath: cCopyLinux ? "linux" : "windows" })[k];
+        const now = ({ cdrive: prefs.cdrive !== false, linuxFolders: cLinux, addressBar: cAddrLinux ? "linux" : "windows", copyPath: cCopyLinux ? "linux" : "windows", navPane: navShown })[k];
         if (now === v) return;                 // already so: nothing is written
         const o = {};
         o[k] = v;
@@ -1881,7 +1941,8 @@ Scope {
         say(({ cdrive: v ? "Hearth (C:) shows Windows folder names" : "Hearth (C:) shows its real folders",
                linuxFolders: v ? "Showing the Linux folders on Hearth (C:) too" : "The Linux folders are hidden on Hearth (C:)",
                addressBar: v === "linux" ? "The address bar shows Linux paths" : "The address bar shows Windows names",
-               copyPath: v === "linux" ? "Copy path gives the Linux path" : "Copy path gives the C:\\ form" })[k] || "Saved");
+               copyPath: v === "linux" ? "Copy path gives the Linux path" : "Copy path gives the C:\\ form",
+               navPane: v ? "Navigation pane shown" : "Navigation pane hidden" })[k] || "Saved");
         if (k === "cdrive" && v && !Object.keys(cdata).length) loadCData(null);
     }
     // Change drive letter… (like Windows' Disk Management): the free letters, D: to Y:. C: is always Hearth.
@@ -2095,6 +2156,7 @@ Scope {
         ].concat(start), mx, my);
         if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
         showMenu("View", [
+            { id: "view:xlarge", label: ck(view === "xlarge") + "Extra large icons", key: "Ctrl+7" },
             { id: "view:large", label: ck(view === "large") + "Large icons", key: "Ctrl+4" },
             { id: "view:grid", label: ck(view === "grid") + "Medium icons", key: "Ctrl+1" },
             { id: "view:small", label: ck(view === "small") + "Small icons", key: "Ctrl+5" },
@@ -2102,6 +2164,7 @@ Scope {
             { id: "view:compact", label: ck(view === "compact") + "List", key: "Ctrl+2" },
             { id: "view:details", label: ck(view === "details") + "Details", key: "Ctrl+3" },
             sep(),
+            { id: "navpane", label: ck(navShown) + "Navigation pane" },
             { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" },
             { id: "exts", label: ck(showExt) + "File name extensions" },
             { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" }
@@ -2252,6 +2315,7 @@ Scope {
         case "hidden": setHidden(!hidden); break;
         case "exts": setShowExt(!showExt); break;
         case "detailspane": toggleDetails(); break;
+        case "navpane": setFilesPref("navPane", !navShown); break;
         case "undo": undo(); break;
         case "redo": redo(); break;
         case "home": navigate(homePage, ""); break;
@@ -3071,6 +3135,7 @@ Scope {
                         case Qt.Key_2: app.setView("compact"); break;
                         case Qt.Key_3: app.setView("details"); break;
                         case Qt.Key_4: app.setView("large"); break;
+                        case Qt.Key_7: app.setView("xlarge"); break;
                         case Qt.Key_5: app.setView("small"); break;
                         case Qt.Key_6: app.setView("tiles"); break;
                         case Qt.Key_Z: if (shift) app.redo(); else app.undo(); break;
@@ -3272,6 +3337,7 @@ Scope {
                 e.accepted = true;
             }
             function toPlaces() {
+                if (!app.navShown) return;       // View › Navigation pane is off
                 const i = app.places.findIndex(p => p.path === app.path);
                 if (i >= 0) app.placeIndex = i;
                 app.zone = "places";
@@ -3700,25 +3766,37 @@ Scope {
                     spacing: 0
 
                     // ------------------------------------------------ places
+                    // The narrow Windows 11 left menu (1.11, option A): 158 px to start, drag its edge to resize
+                    // (120–360 px, remembered in files.json as navWidth when you let go).
                     Rectangle {
+                        id: navPane
+                        visible: app.navShown
                         Layout.fillHeight: true
-                        Layout.preferredWidth: win.width < 900 ? 220 : 260
+                        Layout.preferredWidth: app.navW
                         color: Theme.panel
+                        MouseArea {
+                            id: navGrip
+                            z: 5
+                            anchors { top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: -3 }
+                            width: 6
+                            cursorShape: Qt.SizeHorCursor
+                            property real startX: 0
+                            property real startW: 0
+                            onPressed: m => { startX = mapToItem(null, m.x, 0).x; startW = app.navW; }
+                            onPositionChanged: m => { if (pressed) app.navW = Math.max(120, Math.min(360, startW + mapToItem(null, m.x, 0).x - startX)); }
+                            onReleased: app.saveNavWidth()
+                            Rectangle { anchors.fill: parent; color: navGrip.containsMouse || navGrip.pressed ? Theme.accent : "transparent"; opacity: 0.5 }
+                            hoverEnabled: true
+                        }
                         ColumnLayout {
-                            anchors { fill: parent; margins: 14 }
-                            spacing: 6
-                            RowLayout {
-                                Layout.bottomMargin: 10; Layout.leftMargin: 6; Layout.topMargin: 6
-                                spacing: 10
-                                Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 30; Layout.preferredHeight: 30; fillMode: Image.PreserveAspectFit; smooth: true }
-                                Text { text: "Files"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
-                            }
+                            anchors { fill: parent; margins: 6; topMargin: 10 }
+                            spacing: 2
                             ListView {
                                 id: placeList
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 model: app.places
-                                spacing: 4
+                                spacing: 1
                                 clip: true
                                 boundsBehavior: Flickable.StopAtBounds
                                 keyNavigationEnabled: false
@@ -3731,15 +3809,14 @@ Scope {
                                     readonly property string sec: modelData.section
                                     // A heading for your folders, Games, Favorites and Network's groups; a gap before This PC and Trash;
                                     // nothing between This PC's drives, Network and Installed apps (a tree, as in Windows).
-                                    readonly property real headH: !starts ? 0 : (sec === "trash" || sec === "pc") ? 12
-                                        : (sec === "drives" || sec === "netroot" || sec === "apps") ? 0 : 32
+                                    // Windows 11: no headings, a thin line between Home's group, your folders and This PC.
+                                    readonly property real headH: starts ? 13 : 0
                                     width: ListView.view.width
                                     height: headH + place.height
-                                    Text {
-                                        visible: placeItem.headH > 20
-                                        anchors { left: parent.left; leftMargin: 14 + (placeItem.modelData.depth ? 20 : 0); top: parent.top; topMargin: 12 }
-                                        text: ({ places: "This device", briefcases: "Briefcases", games: "Games", bookmarks: "Favorites", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || ""
-                                        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                                    Rectangle {
+                                        visible: placeItem.headH > 0
+                                        anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; top: parent.top; topMargin: 6 }
+                                        height: 1; color: Theme.line
                                     }
                                     Rectangle {
                                         id: place
@@ -3750,8 +3827,8 @@ Scope {
                                         readonly property color ink: lit ? Theme.accentInk : here ? Theme.accent : Theme.text
                                         y: placeItem.headH
                                         width: parent.width
-                                        height: modelData.section === "drives" || (modelData.section === "devices" && !!modelData.sub) ? 56 : 44
-                                        radius: Theme.r(10)
+                                        height: 30
+                                        radius: Theme.r(6)
                                         color: lit ? Theme.accent : placeDrop.containsDrag ? Theme.panel3 : here ? Theme.panel3 : placeMouse.containsMouse ? Theme.panel2 : "transparent"
                                         border.width: placeDrop.containsDrag ? 2 : 0
                                         border.color: Theme.accent
@@ -3768,17 +3845,17 @@ Scope {
                                         Text {
                                             z: 2
                                             visible: !!place.modelData.tree && !place.modelData.empty
-                                            anchors { left: parent.left; leftMargin: 4; verticalCenter: parent.verticalCenter }
+                                            anchors { left: parent.left; leftMargin: 4 + (place.modelData.depth || 0) * 12; verticalCenter: parent.verticalCenter }
                                             text: place.modelData.open ? "⌄" : "›"
                                             color: place.lit ? Theme.accentInk : Theme.muted
                                             font.pixelSize: 12
                                             MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: { keys.forceActiveFocus(); app.toggleNav(place.modelData.tree); } }
                                         }
                                         RowLayout {
-                                            anchors { fill: parent; leftMargin: 14 + (place.modelData.depth !== undefined ? place.modelData.depth : (place.modelData.child ? 1 : 0)) * 20; rightMargin: 12 }
-                                            spacing: 12
+                                            anchors { fill: parent; leftMargin: 16 + (place.modelData.depth !== undefined ? place.modelData.depth : (place.modelData.child ? 1 : 0)) * 12; rightMargin: 6 }
+                                            spacing: 8
                                             PlaceIcon { kind: place.modelData.kind === "briefcase" ? "bc:" + ((place.modelData.look || {}).icon || "briefcase") : place.modelData.kind
-                                                        tint: place.modelData.kind === "briefcase" ? briefcase.colorOf(place.modelData.look) : place.ink; size: place.modelData.child ? 16 : 20 }
+                                                        tint: place.modelData.kind === "briefcase" ? briefcase.colorOf(place.modelData.look) : place.ink; size: 16 }
                                             ColumnLayout {
                                                 Layout.fillWidth: true
                                                 spacing: 1
@@ -3787,7 +3864,7 @@ Scope {
                                                     text: place.modelData.label
                                                     color: place.lit ? Theme.accentInk : Theme.text
                                                     elide: Text.ElideRight
-                                                    font.family: Theme.font; font.pixelSize: place.modelData.child ? 13 : 15; font.weight: place.here || place.lit ? Font.DemiBold : Font.Normal
+                                                    font.family: Theme.font; font.pixelSize: 13; font.weight: place.here || place.lit ? Font.DemiBold : Font.Normal
                                                 }
                                                 Text {
                                                     Layout.fillWidth: true
@@ -3997,14 +4074,14 @@ Scope {
                                 id: grid
                                 visible: app.shownView !== "details" && !app.onSpecial
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                model: app.entries
+                                model: visible ? app.entries : []       // the hidden view makes no rows (1.11: big folders)
                                 clip: true
                                 interactive: !app.mouseMode
                                 boundsBehavior: Flickable.StopAtBounds
                                 // Large, medium and small icons; List (small icons in columns); Tiles (an icon and two lines).
-                                readonly property int baseW: ({ large: 200, grid: 136, small: 100, compact: 250, tiles: 300 })[app.view] || 136
+                                readonly property int baseW: ({ xlarge: 300, large: 200, grid: 136, small: 100, compact: 250, tiles: 300 })[app.view] || 136
                                 cellWidth: Math.floor(width / Math.max(1, Math.floor(width / baseW)))
-                                cellHeight: ({ large: 224, grid: 156, small: 112, compact: 44, tiles: 78 })[app.view] || 156
+                                cellHeight: ({ xlarge: 320, large: 224, grid: 156, small: 112, compact: 44, tiles: 78 })[app.view] || 156
                                 keyNavigationEnabled: false
                                 cacheBuffer: 600
                                 delegate: Item {
@@ -4016,8 +4093,8 @@ Scope {
                                     readonly property bool cut: app.clip.mode === "cut" && app.clip.paths.indexOf(modelData.path) >= 0
                                     readonly property bool compact: app.view === "compact" || app.view === "tiles"
                                     readonly property bool tiles: app.view === "tiles"
-                                    readonly property real artW: app.view === "large" ? 150 : app.view === "small" ? 54 : 84
-                                    readonly property real artH: app.view === "large" ? 134 : app.view === "small" ? 50 : 76
+                                    readonly property real artW: app.view === "xlarge" ? 250 : app.view === "large" ? 150 : app.view === "small" ? 54 : 84
+                                    readonly property real artH: app.view === "xlarge" ? 226 : app.view === "large" ? 134 : app.view === "small" ? 50 : 76
                                     width: grid.cellWidth
                                     height: grid.cellHeight
                                     opacity: cut ? 0.45 : 1
@@ -4045,7 +4122,7 @@ Scope {
                                             bc: cell.modelData.briefcase || null
                                             bcColor: briefcase.colorOf(cell.modelData.briefcase)
                                             badge: briefcase.badgeFor(cell.modelData)
-                                            size: app.view === "large" ? 112 : app.view === "small" ? 42 : 64
+                                            size: app.view === "xlarge" ? 180 : app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
                                         Rectangle {
                                             anchors.fill: parent
@@ -4056,7 +4133,7 @@ Scope {
                                                 id: thumb
                                                 anchors { fill: parent; margins: 3 }
                                                 source: cell.compact ? "" : app.thumbFor(cell.modelData)
-                                                sourceSize: app.view === "large" ? Qt.size(320, 320) : Qt.size(192, 192)
+                                                sourceSize: app.view === "xlarge" ? Qt.size(512, 512) : app.view === "large" ? Qt.size(320, 320) : Qt.size(192, 192)
                                                 asynchronous: true
                                                 cache: true
                                                 fillMode: Image.PreserveAspectCrop
@@ -4169,7 +4246,7 @@ Scope {
                                 id: list
                                 visible: app.shownView === "details" && !app.onSpecial
                                 anchors { fill: parent; leftMargin: 14; rightMargin: 14; topMargin: app.onHome ? quick.height : 0 }
-                                model: app.entries
+                                model: visible ? app.entries : []       // the hidden view makes no rows (1.11: big folders)
                                 clip: true
                                 interactive: !app.mouseMode
                                 spacing: 2

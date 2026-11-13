@@ -271,7 +271,7 @@ class Stats(unittest.TestCase):
         b = self.hs.cpu_times('cpu  150 0 150 900 0 0 0 0 0 0\n')
         self.assertEqual(self.hs.cpu_percent(a, b), 50)
         self.assertIsNone(self.hs.cpu_percent(None, b))
-        self.assertEqual(self.hs.memory('MemTotal: 16777216 kB\nMemFree: 1 kB\nMemAvailable: 11429478 kB\n'), (5.1, 16.0))
+        self.assertEqual(self.hs.memory('MemTotal: 16777216 kB\nMemFree: 1 kB\nMemAvailable: 11429478 kB\nCached: 11429477 kB\n'), (5.1, 16.0))
         self.assertIsNone(self.hs.memory('nothing'))
 
     def test_fps_only_from_a_fresh_mangohud_log(self):

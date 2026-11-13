@@ -1,0 +1,133 @@
+#!/usr/bin/python3
+"""Keeps the drive Hearth OS starts from from filling up completely (1.11).
+
+Hearth's own partition holds the system, /var and your home folder together (btrfs, no space set aside for the
+system), so a full drive means the login screen, the session, Steam and even the next update can't write anything
+and the PC may not start properly. Two things guard against that:
+
+* An emergency reserve: a 2 GB file (/var/lib/hearth/space-reserve) made only while the drive has plenty free
+  (over 30 GB). When the drive gets nearly full (under 2 GB free) it is deleted, at start-up before the login
+  screen, or by the desktop's warning, so there is always room to start and clean up. It comes back by itself once
+  there's plenty of space again. It is not a setting and holds nothing.
+* The desktop's warning (SpaceWatch.qml) pops up at 90% full or under 10 GB free, and Hearth's system update stops
+  before downloading when there's too little room (hearth-admin update).
+
+  hearth-diskguard status     JSON (works without root): the drive, free space, the reserve
+  hearth-diskguard boot       at start-up (hearth-diskguard.service): free the reserve if the drive is nearly
+                              full, or make it if there's plenty of room. Never fails the start-up.
+  hearth-diskguard release    free the reserve now (the desktop's warning, through pkexec)
+"""
+import json
+import os
+import subprocess
+import sys
+
+RESERVE = '/var/lib/hearth/space-reserve'
+RESERVE_BYTES = 2 * 1000 ** 3
+LOW = 2 * 1000 ** 3            # under this free: the reserve goes
+PLENTY = 30 * 1000 ** 3        # over this free (after the reserve): it comes back
+GB = 1000 ** 3
+
+
+def log(msg):
+    print('hearth-diskguard: ' + msg, file=sys.stderr, flush=True)
+
+
+def drive(path='/var'):
+    """(size, free, used percent) of the file system holding `path` (free = what a normal user can still use)."""
+    st = os.statvfs(path)
+    size = st.f_blocks * st.f_frsize
+    free = st.f_bavail * st.f_frsize
+    pct = round(100.0 * (size - free) / size, 1) if size else 0.0
+    return size, free, pct
+
+
+def reserve_size(path=RESERVE):
+    try:
+        return os.stat(path).st_blocks * 512
+    except OSError:
+        return 0
+
+
+def decide(free, reserve):
+    """What start-up does: 'release', 'make' or 'keep'."""
+    if reserve and free < LOW:
+        return 'release'
+    if not reserve and free - RESERVE_BYTES > PLENTY:
+        return 'make'
+    return 'keep'
+
+
+def release(path=RESERVE):
+    try:
+        os.unlink(path)
+        log('freed the 2 GB emergency reserve: the drive is nearly full')
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def make(path=RESERVE):
+    """A 2 GB file whose space is really taken (fallocate, so it costs nothing to write); never compressed or shared
+    with a snapshot, so deleting it gives the space back."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.new'
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.posix_fallocate(fd, 0, RESERVE_BYTES)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+        log('set aside 2 GB of emergency space (freed by itself if the drive fills up)')
+        return True
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        log("couldn't set aside emergency space: %s" % e)
+        return False
+
+
+def status():
+    size, free, pct = drive()
+    res = reserve_size()
+    return {'mount': '/', 'size': size, 'free': free, 'pct': pct, 'reserve': res,
+            'freeGb': round(free / GB, 1), 'sizeGb': round(size / GB, 1)}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'status'
+    if cmd == 'status':
+        print(json.dumps(status()))
+        return 0
+    if os.geteuid() != 0:
+        log('needs root')
+        return 1
+    if cmd == 'release':
+        release()
+        print(json.dumps(status()))
+        return 0
+    if cmd == 'boot':
+        try:
+            _, free, _ = drive()
+            what = decide(free, reserve_size())
+            if what == 'release':
+                release()
+            elif what == 'make':
+                make()
+            # A leftover half-made file from a cut-off start
+            try:
+                os.unlink(RESERVE + '.new')
+            except OSError:
+                pass
+        except Exception as e:      # never stops the PC from starting
+            log('skipped: %s' % e)
+        return 0
+    log('unknown command: ' + cmd)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

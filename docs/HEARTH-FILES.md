@@ -16,7 +16,7 @@ design, "Hearth Files redesign".
 - **The command bar**: New (folder, empty file, or a document from Templates), Cut, Copy, Paste, Rename, Copy path,
   Delete (Move to Trash; in the Trash, delete for good) | Sort (and group), View, Show (hidden files, file name
   extensions) | Undo, Redo, Details (the details pane). Buttons that can't do anything right now are dimmed.
-- **The navigation pane**: Home, Favorites (your bookmarks: Ctrl+D or "Add to Favorites"), This device (Home folder,
+- **The navigation pane**: Home, Favorites (your bookmarks: Ctrl+D or "Pin to the left menu"), This device (Home folder,
   Desktop, Documents…, in yellow), Games, then **This PC** opened out like a tree with Hearth (C:) and every drive
   under it by its letter (with free space; mount, unmount, safely remove, Change drive letter…), **Network** (Hearth
   Storage and Your devices: shared folders on your other devices, at home and over Tailscale), **Installed apps** and
@@ -173,7 +173,7 @@ The **"···"** menu (or A / X on a row):
   Trash), copy, move (moved back) and links. The last 50 changes this session; deleting for good asks first and can't
   be undone.
 - Rename (F2; several at once), Move to Trash (Del), delete for good (Shift+Del, asks first), New folder
-  (Ctrl+Shift+N), new file (Ctrl+Alt+N), Open with, Properties (Alt+Enter), Open terminal here (Shift+F4), Copy path
+  (Ctrl+Shift+N), new file (Ctrl+Alt+N), Open with, Properties (Alt+Enter), Open in Terminal (Shift+F4), Copy path
   (Ctrl+Alt+C), compress and extract, Preview (Space), Set as wallpaper, Install (.deb), Run (AppImage).
 - **Views**: Large icons (Ctrl+4), Medium icons (Ctrl+1), Small icons (Ctrl+5), Tiles (Ctrl+6), List (Ctrl+2) and
   Details (Ctrl+3), sort by name, date, size or type and group by type or date; each folder remembers its own.
@@ -295,3 +295,10 @@ written over a file it couldn't read; docs/SETTINGS-PERSISTENCE.md). Nothing cha
 - The Desktop Mode test takes pictures in `shots/files-redesign/` (dark and light: Home, a folder with three picked
   and the details pane, a drag in progress (staged over IPC, as CI has no mouse), Your devices, Large icons, Tiles,
   the actions menu) and publishes them to the `ci/desktop-shots-<branch>` branch.
+
+## View menu (1.11)
+
+Layout: Extra large icons (Ctrl+7), Large icons, Medium icons, Small icons, Tiles, List, Details. Show: Navigation
+pane (hide the left menu; saved as `navPane` in files.json), Details pane (Alt+P), File name extensions, Hidden files,
+and on Hearth (C:) the Linux folders and Linux paths in the address bar.
+

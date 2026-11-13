@@ -180,10 +180,10 @@ impl Node {
         let c = self.st();
         let live = crate::lock(&self.storage.servers).clone();
         let ps = crate::lock(&self.peers);
-        let mut ids: Vec<String> = live.iter().filter(|(id, (_, v))| v["server"] == true && v[what] == true && v["usable"] == true && ps.is_paired(id))
+        let mut ids: Vec<String> = live.iter().filter(|(id, (_, v))| v["server"] == true && v[what] == true && v["usable"] == true && ps.is_mine(id))
             .map(|(id, _)| id.clone()).collect();
         if ids.is_empty() {
-            ids = c.servers.iter().filter(|(id, v)| v[what] == true && ps.is_paired(id) && live.get(*id).map(|(_, l)| l["server"] == true).unwrap_or(true))
+            ids = c.servers.iter().filter(|(id, v)| v[what] == true && ps.is_mine(id) && live.get(*id).map(|(_, l)| l["server"] == true).unwrap_or(true))
                 .map(|(id, _)| id.clone()).collect();
         }
         ids.sort();

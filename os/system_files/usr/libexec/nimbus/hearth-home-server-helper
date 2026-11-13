@@ -741,7 +741,7 @@ def plan_write(data, shares, user, backups=(), svc=None):
     backups_on = any(j['on'] for j in backups)
     unit_switch(BACKUP_TIMER, backups_on)
     unit_switch(ALERT_TIMER, alerts['on'])
-    power_on = bool(power['sleepIdle'] or power['spinDown'] or power['keepAwake'] or power['schedule'])
+    power_on = bool(power['sleepIdle'] or power['spinDown'] or power['keepAwake'] or power['schedule'] or power['night'] or power['history'])
     unit_switch(POWER_TIMER, power_on)
     services_on = bool(svc) and services_timer_needed(plan)
     unit_switch(SERVICES_TIMER, services_on)
@@ -2145,7 +2145,12 @@ POWER_STATE = '/run/hearth/home-server-power.json'
 WAKE_TIMER = 'hearth-home-server-wake.timer'
 WAKE_DROPIN = '/etc/systemd/system/hearth-home-server-wake.timer.d/hearth.conf'
 AWAKE_UNIT = 'hearth-home-server-awake'
-POWER_DEFAULT = {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False}
+POWER_DEFAULT = {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False,
+                 'night': False, 'nightAt': '03:30', 'history': False}
+NIGHT_TIMES = ('02:30', '03:30', '04:30', '05:30')
+NIGHT_STATE = '/var/lib/hearth/home-server-night.json'          # what the last night's maintenance did (a record)
+HISTORY_FILE = '/var/lib/hearth/power-history.json'              # 30 days of watts, every 5 minutes (a record, 0644)
+HISTORY_POINTS = 30 * 288
 SPIN_MINUTES = (0, 10, 20, 30, 60)
 IDLE_MINUTES = (0, 30, 60, 120, 240)
 
@@ -2157,9 +2162,11 @@ def clean_power(p):
         out['sleepIdle'] = p['sleepIdle']
     if p.get('spinDown') in SPIN_MINUTES:
         out['spinDown'] = p['spinDown']
-    for k in ('keepAwake', 'schedule', 'ups'):
+    for k in ('keepAwake', 'schedule', 'ups', 'night', 'history'):
         if isinstance(p.get(k), bool):
             out[k] = p[k]
+    if p.get('nightAt') in NIGHT_TIMES:
+        out['nightAt'] = p['nightAt']
     for k in ('sleepAt', 'wakeAt'):
         if isinstance(p.get(k), str) and TIME_RE.fullmatch(p[k]):
             out[k] = p[k]
@@ -2249,6 +2256,101 @@ def in_window(now, start, end):
     return s <= cur < e if s < e else (cur >= s or cur < e)
 
 
+def rapl_uj(root='/sys/class/powercap'):
+    """The processor package's energy counter (µJ), Intel or AMD (RAPL), or None."""
+    total, found = 0, False
+    for d in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        if re.fullmatch(r'(intel-rapl|amd-rapl):\d+', d):
+            v = read(os.path.join(root, d, 'energy_uj')).strip()
+            if v.isdigit():
+                total += int(v)
+                found = True
+    return total if found else None
+
+
+def gpu_watts():
+    """The graphics cards' power now (W): nvidia-smi, or the amdgpu/xe hwmon's power1_average/input. None if none says."""
+    w, found = 0.0, False
+    if which('nvidia-smi'):
+        code, out = run(['nvidia-smi', '--query-gpu=power.draw', '--format=csv,noheader,nounits'], timeout=10)
+        for l in out.splitlines() if code == 0 else []:
+            try:
+                w += float(l.strip())
+                found = True
+            except ValueError:
+                pass
+    import glob as _glob
+    for f in _glob.glob('/sys/class/drm/card[0-9]/device/hwmon/hwmon*/power1_average') + _glob.glob('/sys/class/drm/card[0-9]/device/hwmon/hwmon*/power1_input'):
+        v = read(f).strip()
+        if v.isdigit():
+            w += int(v) / 1e6
+            found = True
+            break
+    return round(w, 1) if found else None
+
+
+def history_sample(now, st):
+    """One point of the power history: [time, processor W, graphics W] (each None when this PC can't say)."""
+    e = rapl_uj()
+    cpu = None
+    prev = st.get('rapl')
+    if e is not None and prev and now > prev[0] and e >= prev[1]:
+        cpu = round((e - prev[1]) / 1e6 / (now - prev[0]), 1)
+    if e is not None:
+        st['rapl'] = [now, e]
+    return [int(now), cpu, gpu_watts()]
+
+
+def history_add(points, point, limit=HISTORY_POINTS):
+    if point[1] is None and point[2] is None:
+        return points
+    return (points + [point])[-limit:]
+
+
+def history_record(now, st):
+    try:
+        with open(HISTORY_FILE) as f:
+            points = json.load(f).get('points') or []
+    except (OSError, ValueError, AttributeError):
+        points = []
+    points = history_add(points, history_sample(now, st))
+    write(HISTORY_FILE, json.dumps({'points': points}, separators=(',', ':')) + '\n', 0o644)
+    return len(points)
+
+
+NIGHT_STEPS = (
+    ('Optimize drives (TRIM)', ['fstrim', '--all'], 1800),
+    ('Tidy the system logs (keep 1 GB)', ['journalctl', '--vacuum-size=1G'], 300),
+    ('Update apps (Flatpak)', ['flatpak', 'update', '--system', '-y', '--noninteractive'], 3600),
+    ('Clear downloaded package files', ['apt-get', 'clean'], 300),
+)
+
+
+def night_due(now, p, st, busy, using):
+    """Once a night, in the hour after the time you picked, only when nobody is using it and it isn't busy."""
+    if not p['night'] or busy or using:
+        return False
+    h, m = int(p['nightAt'][:2]), int(p['nightAt'][3:])
+    end = '%02d:%02d' % ((h + 1) % 24, m)
+    today = time.strftime('%Y-%m-%d', time.localtime(now))
+    return in_window(now, p['nightAt'], end) and st.get('night') != today
+
+
+def night_run(now, steps=NIGHT_STEPS):
+    """Night maintenance: each step on its own (one that fails doesn't stop the others); never anything that touches
+    starting the PC, the system image or your settings. What happened is kept for Settings."""
+    done = []
+    for name, cmd, timeout in steps:
+        if not which(cmd[0]):
+            done.append({'step': name, 'ok': None, 'note': 'not on this PC'})
+            continue
+        code, out = run(cmd, timeout=timeout)
+        done.append({'step': name, 'ok': code == 0, 'note': '' if code == 0 else (out.strip().splitlines() or ['failed'])[-1][:200]})
+    rec = {'at': int(now), 'steps': done}
+    write(NIGHT_STATE, json.dumps(rec) + '\n', 0o644)
+    return rec
+
+
 def power_run(now=None):
     """The power timer (every 5 minutes, while a power choice is on): spins down idle data drives, keeps the PC awake
     while your devices use it, and lets it sleep when nobody needs it: never while Game Mode runs, a share is open or a
@@ -2268,6 +2370,14 @@ def power_run(now=None):
                  '--who=Hearth home server', '--why=Your devices are using it', '--mode=block', 'sleep', '600'])
         res['awake'] = True
     using = bool(busy) or someone_using()
+    # 1.11: the power history (every 5 minutes) and night maintenance (once a night, before any scheduled sleep
+    # decision: it runs only when nobody is using the PC and it isn't busy)
+    if p['history']:
+        res['history'] = history_record(now, st)
+    if night_due(now, p, st, busy, using):
+        st['night'] = time.strftime('%Y-%m-%d', time.localtime(now))
+        state_write(POWER_STATE, st)
+        res['night'] = night_run(now)
     if using or not st.get('quietSince'):
         st['quietSince'] = int(now)
     quiet = now - st['quietSince']

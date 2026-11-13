@@ -2210,7 +2210,8 @@ def install(step=lambda text, pct: None, runner=run):
     if free_gb(DATA) < 14:
         raise Fail('Not enough free space in your Home: Voice Studio with PyTorch and its models needs about 14 GB')
     py = os.path.join(VENV, 'bin', 'python')
-    pip = [py, '-m', 'pip', '--disable-pip-version-check', '--no-input', '--no-cache-dir', '--progress-bar', 'off']
+    # --progress-bar belongs to pip install, not to pip itself: before the command pip stops with "no such option".
+    pip = [py, '-m', 'pip', '--disable-pip-version-check', '--no-input', '--no-cache-dir', 'install', '--progress-bar', 'off']
     env = venv_env()
     if not os.path.isfile(py):
         step('making its Python environment', 5)
@@ -2218,20 +2219,20 @@ def install(step=lambda text, pct: None, runner=run):
         if code != 0:
             raise Fail('Couldn\'t make its Python environment: ' + err.strip()[-200:])
     step('downloading PyTorch for CUDA 12.8 (a few GB)', 10)
-    code, _, err = runner(pip + ['install', '--index-url', TORCH_INDEX, 'torch', 'torchaudio'], 3 * 3600, env=env)
+    code, _, err = runner(pip + ['--index-url', TORCH_INDEX, 'torch', 'torchaudio'], 3 * 3600, env=env)
     if code != 0:
         raise Fail('PyTorch didn\'t install: ' + err.strip()[-200:])
     step('installing the voice engines (OmniVoice, faster-whisper)', 40)
-    code, _, err = runner(pip + ['install', '--extra-index-url', TORCH_INDEX] + PIP_MAIN, 3600, env=env)
+    code, _, err = runner(pip + ['--extra-index-url', TORCH_INDEX] + PIP_MAIN, 3600, env=env)
     if code != 0:
         raise Fail('The voice engines didn\'t install: ' + err.strip()[-200:])
     notes = []
     step('installing vocal separation for dubbing (Demucs)', 55)
-    if runner(pip + ['install', '--no-deps'] + PIP_DEMUCS, 1800, env=env)[0] != 0 or runner(pip + ['install'] + PIP_DEMUCS_DEPS, 1800, env=env)[0] != 0:
+    if runner(pip + ['--no-deps'] + PIP_DEMUCS, 1800, env=env)[0] != 0 or runner(pip + PIP_DEMUCS_DEPS, 1800, env=env)[0] != 0:
         notes.append('Vocal separation (Demucs) didn\'t install: dubbing keeps the original sound quietly underneath')
-    runner(pip + ['install', 'lameenc'], 600, env=env)          # Demucs's own MP3 writer; not needed by Hearth
+    runner(pip + ['lameenc'], 600, env=env)          # Demucs's own MP3 writer; not needed by Hearth
     step('installing speaker labels (SpeechBrain)', 62)
-    if runner(pip + ['install'] + PIP_LABELS, 1800, env=env)[0] != 0:
+    if runner(pip + PIP_LABELS, 1800, env=env)[0] != 0:
         notes.append('Speaker labels (SpeechBrain) didn\'t install: transcripts come without "Speaker 1, Speaker 2"')
     step('downloading the voice model (OmniVoice, about 3 GB)', 70)
     code, _, err = runner([py, '-c', 'from huggingface_hub import snapshot_download; snapshot_download(%r)' % OMNI_MODEL], 3 * 3600, env=env)

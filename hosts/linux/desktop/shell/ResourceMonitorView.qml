@@ -54,7 +54,7 @@ FocusScope {
     property int samples: 0
     property string sampleError: ""
     readonly property int histMax: 60
-    property var hist: ({ cpu: [], disk: [], net: [], mem: [], gpu: [] })
+    property var hist: ({ cpu: [], disk: [], net: [], mem: [], gpu: [], g3d: [], gdec: [], vram: [], gtemp: [], resp: [], ping: [] })
     function push(h, k, val) { const a = (h[k] || []).slice(-(histMax - 1)); a.push(val || 0); h[k] = a; }
     function applySample(line) {
         let d;
@@ -67,6 +67,13 @@ FocusScope {
         push(h, "net", (d.nets || []).reduce((a, x) => a + (x.recv || 0) + (x.send || 0), 0));
         push(h, "mem", d.memBar ? d.memBar.inUse : 0);
         push(h, "gpu", (d.gpus || []).reduce((a, g) => Math.max(a, g.busy || 0), 0));
+        // 1.11: the Graphics tab's 3D, video decode, video memory and temperature, and the disks' response time
+        const gp = d.procs || [];
+        push(h, "g3d", Math.min(100, gp.reduce((a, g) => a + (g.g3d || 0), 0)) || (d.gpus || []).reduce((a, g) => Math.max(a, g.busy || 0), 0));
+        push(h, "gdec", Math.min(100, gp.reduce((a, g) => a + (g.gdec || 0), 0)));
+        push(h, "vram", ((d.gpus || [])[0] || {}).vramUsed || 0);
+        push(h, "gtemp", ((d.gpus || [])[0] || {}).temp || 0);
+        push(h, "resp", (d.disks || []).reduce((a, x) => Math.max(a, x.response || 0), 0));
         hist = h;
         sample = d;
         if (d.procs) groups = d.procs;
@@ -235,18 +242,91 @@ FocusScope {
         const gs = groups.slice();
         const by = (k) => gs.sort((a, b) => (b[k] || 0) - (a[k] || 0) || (b.mem || 0) - (a.mem || 0));
         switch (t) {
-        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: pct(g.avg) }));
+        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: priorityName(g.nice) }));
         case "memory": return by("mem").map(g => ({ g: g, a: size(g.mem), b: g.shared !== undefined ? size(g.shared) : "–", c: g.swap ? size(g.swap) : "0" }));
         case "disk": return gs.sort((a, b) => ((b.read || 0) + (b.write || 0)) - ((a.read || 0) + (a.write || 0)) || (b.disk || 0) - (a.disk || 0)).map(g => ({ g: g, a: rate(g.read !== undefined ? g.read : g.disk), b: rate(g.write || 0), c: rate((g.read || 0) + (g.write || 0) || g.disk) }));
-        case "network": return gs.sort((a, b) => (b.conns || 0) - (a.conns || 0) || (b.cpu || 0) - (a.cpu || 0)).map(g => ({ g: g, a: g.conns ? String(g.conns) : "0", b: g.remote || "–", c: pct(g.cpu) }));
-        case "gpu": return gs.sort((a, b) => (b.gpu || 0) - (a.gpu || 0) || (b.vram || 0) - (a.vram || 0)).map(g => ({ g: g, a: pct(g.gpu), b: g.vram ? size(g.vram) : "–", c: g.gpuUse || "" }));
+        case "network": {
+            // 1.11 (mockup resmon-5): each program's download and upload speed (TCP, from ss), then its connections
+            const nr = g => { const r = { down: 0, up: 0 }; for (const p of (g.pids || [])) { const x = (netPorts.apps || {})[String(p)]; if (x) { r.down += x.down || 0; r.up += x.up || 0; } } return r; };
+            return gs.map(g => ({ g: g, r: nr(g) })).sort((a, b) => (b.r.down + b.r.up) - (a.r.down + a.r.up) || (b.g.conns || 0) - (a.g.conns || 0))
+                .map(x => ({ g: x.g, a: rate(x.r.down), b: rate(x.r.up), c: (x.r.down + x.r.up) ? rate(x.r.down + x.r.up) : (x.g.conns ? x.g.conns + " conn." : "0") }));
+        }
+        case "gpu": return gs.sort((a, b) => ((b.g3d !== undefined && b.g3d !== null ? b.g3d : b.gpu) || 0) - ((a.g3d !== undefined && a.g3d !== null ? a.g3d : a.gpu) || 0) || (b.vram || 0) - (a.vram || 0))
+            .map(g => ({ g: g, a: pct(g.g3d !== undefined && g.g3d !== null ? g.g3d : g.gpu), b: g.gdec !== undefined && g.gdec !== null ? pct(g.gdec) : "–", c: g.vram ? size(g.vram) : "–" }));
         }
         return [];
     }
-    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"], disk: ["Read", "Write", "Total ↓"],
-                                      network: ["Connections ↓", "Talking to", "CPU"], gpu: ["GPU ↓", "Video memory", "Using"] })
+    function priorityName(n) { return n === undefined || n === null ? "Normal" : n < -10 ? "High" : n < 0 ? "Above normal" : n === 0 ? "Normal" : n < 19 ? "Below normal" : "Low"; }
+    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Priority"], memory: ["In use ↓", "Shared", "Compressed"], disk: ["Read", "Write", "Total ↓"],
+                                      network: ["Down", "Up", "Total ↓"], gpu: ["3D ↓", "Video decode", "Video memory"] })
     readonly property var tableRows: { samples; return rowsFor(tab === "overview" ? "cpu" : tab); }
+    // Overview's state: folded sections and the programs you ticked (only while it's open; nothing is saved).
+    property var folded: ({ disk: true, network: true, gpu: true })
+    property var ticked: ({})
+    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Compressed"] })
+    // The chips on each Overview heading: [[text, tone]] (tone: main, good, warn or "").
+    function overviewChips(k) {
+        const s = sample || {};
+        if (k === "cpu") return s.cpu ? [[pct(s.cpu.total) + " used", "main"], [ghz(s.cpu.mhz), ""]].concat(s.cpu.temp ? [[temp(s.cpu.temp), s.cpu.temp > 85 ? "warn" : ""]] : []) : [];
+        if (k === "memory") {
+            const mb = s.memBar || {};
+            const pr = s.pressure !== undefined && s.pressure !== null ? s.pressure : null;
+            return [[size(mb.inUse || 0) + " in use", "main"]].concat(mb.swapUsed ? [[size(mb.swapUsed) + " in swap", ""]] : [])
+                .concat(pr === null ? [] : [["pressure: " + (pr < 1 ? "none" : pr < 10 ? "light" : pr < 30 ? "medium" : "heavy"), pr < 10 ? "good" : "warn"]]);
+        }
+        if (k === "disk") { const d = (s.disks || []).slice().sort((a, b) => b.active - a.active)[0]; return d ? [[d.label + " " + pct(d.active) + " busy", "main"], [rate((s.disks || []).reduce((a, x) => a + x.write, 0)) + " write", ""]] : []; }
+        if (k === "network") { const n = (s.nets || []).filter(x => x.up); return n.length ? [[rate(n.reduce((a, x) => a + x.recv, 0)) + " down", "main"], [rate(n.reduce((a, x) => a + x.send, 0)) + " up", ""]] : [["Not connected", ""]]; }
+        if (k === "gpu") { const g = (s.gpus || [])[0]; return g ? [[(g.vendor || "GPU") + " " + (g.busy === null || g.busy === undefined ? "" : pct(g.busy)), "main"]].concat(g.temp ? [[temp(g.temp), ""]] : []) : [["No graphics card seen", ""]]; }
+        return [];
+    }
     property int listIndex: 0
+    // Processor tab: the selected program's open files (1.11, mockup resmon-2; hearth-resmon files PID…).
+    property var openFiles: []
+    // Network tab: listening ports and open connections (1.11, mockup resmon-5; hearth-resmon ports), every 3 s.
+    property var netPorts: ({ listening: [], connections: [] })
+    Timer { interval: 2000; repeat: true; triggeredOnStart: true; running: v.tab === "network" && v.visible; onTriggered: if (!portsProc.running) portsProc.running = true }
+    // Disk tab (1.11, mockup resmon-4): each drive's kind, space and temperature every 5 s, and the files the busiest
+    // programs have open for writing every 3 s (hearth-resmon drives / writing PID…).
+    property var driveInfo: []
+    property var busyFiles: []
+    Timer { interval: 5000; repeat: true; triggeredOnStart: true; running: v.tab === "disk" && v.visible; onTriggered: if (!drivesProc.running) drivesProc.running = true }
+    Process {
+        id: drivesProc
+        command: ["python3", v.helper, "drives"]
+        stdout: StdioCollector { onStreamFinished: { try { v.driveInfo = JSON.parse(text.trim().split("\n").pop()).drives || []; } catch (e) {} } }
+    }
+    Timer {
+        interval: 3000; repeat: true; triggeredOnStart: true; running: v.tab === "disk" && v.visible
+        onTriggered: {
+            if (writingProc.running) return;
+            const busy = v.groups.filter(g => (g.write || 0) + (g.read || 0) > 0).sort((a, b) => ((b.read || 0) + (b.write || 0)) - ((a.read || 0) + (a.write || 0))).slice(0, 3);
+            const pids = [].concat(...busy.map(g => (g.pids || []).slice(0, 20)));
+            if (!pids.length) { v.busyFiles = []; return; }
+            v.busyNames = {}; const nm = {}; for (const g of busy) for (const p of (g.pids || [])) nm[p] = g;
+            v.busyNames = nm;
+            writingProc.command = ["python3", v.helper, "writing"].concat(pids.map(String));
+            writingProc.running = true;
+        }
+    }
+    property var busyNames: ({})
+    Process {
+        id: writingProc
+        stdout: StdioCollector { onStreamFinished: { try { v.busyFiles = JSON.parse(text.trim().split("\n").pop()).files || []; } catch (e) { v.busyFiles = []; } } }
+    }
+    Process {
+        id: portsProc
+        command: ["python3", v.helper, "ports"]
+        stdout: StdioCollector { onStreamFinished: { try {
+            v.netPorts = JSON.parse(text.trim().split("\n").pop());
+            const pings = (v.netPorts.connections || []).map(c => c.ping).filter(x => x !== null && x !== undefined);
+            const h = Object.assign({}, v.hist); v.push(h, "ping", pings.length ? pings.reduce((a, x) => a + x, 0) / pings.length : 0); v.hist = h;
+        } catch (e) {} } }
+    }
+    onSelRowChanged: if (tab === "cpu" && selRow && selRow.g && selRow.g.pids && !filesProc.running) { filesProc.command = ["python3", v.helper, "files"].concat(selRow.g.pids.slice(0, 64).map(String)); filesProc.running = true; }
+    Process {
+        id: filesProc
+        stdout: StdioCollector { onStreamFinished: { try { v.openFiles = JSON.parse(text.trim().split("\n").pop()).files || []; } catch (e) { v.openFiles = []; } } }
+    }
     readonly property var selRow: tableRows[Math.min(listIndex, tableRows.length - 1)] || null
 
     // ================================================ actions (End, Efficiency mode, Open file location, Search online)
@@ -606,39 +686,70 @@ FocusScope {
                     Layout.fillHeight: true
                     spacing: 10
 
-                    // Overview: Processor, Disk, Network in short
-                    Repeater {
-                        model: v.tab === "overview" ? [["cpu", "Processor", "#66c0f4"], ["disk", "Disk", "#7ccf8a"], ["network", "Network", "#f2c14e"]] : []
-                        delegate: Rectangle {
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 34 + 26 + Math.min(5, secRows.length) * 28
-                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                            readonly property var secRows: { v.samples; return v.rowsFor(modelData[0]).slice(0, 5); }
-                            readonly property string sum1: { v.samples; const s = v.sample || {};
-                                return modelData[0] === "cpu" ? pct(s.cpu ? s.cpu.total : 0) + " used" : modelData[0] === "disk" ? rate((s.disks || []).reduce((a, x) => a + x.read + x.write, 0))
-                                     : rate((s.nets || []).reduce((a, x) => a + x.recv + x.send, 0)); }
-                            readonly property string sum2: { v.samples; const s = v.sample || {};
-                                if (modelData[0] === "cpu") return s.cpu ? (s.cpu.logical + " threads · " + ghz(s.cpu.mhz) + (s.cpu.temp ? " · " + temp(s.cpu.temp) : "")) : "";
-                                if (modelData[0] === "disk") { const d = (s.disks || []).slice().sort((a, b) => b.active - a.active)[0]; return d ? d.label + " busiest · " + pct(d.active) + " active" : ""; }
-                                const n = (s.nets || []).find(x => x.up); return n ? n.kind + (n.speed ? " · " + (n.speed >= 1000 ? (n.speed / 1000).toFixed(1) + " Gbps" : n.speed + " Mbps") + " link" : "") : "Not connected"; }
-                            Column {
-                                anchors.fill: parent
-                                Rectangle {
-                                    width: parent.width; height: 34; color: v.c.head
-                                    Row {
-                                        anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } spacing: 12
-                                        Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; width: 80 }
-                                        Rectangle { width: 10; height: 10; radius: 2; color: modelData[2]; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: sum1; color: v.c.text; font.family: Theme.font; font.pixelSize: 13 }
-                                        Text { text: sum2; color: v.c.muted; font.family: Theme.font; font.pixelSize: 13 }
+                    // Overview (1.11, the approved mockup resmon-1): Processor, Memory, Disk, Network and Graphics, each with its
+                    // own chips and its top programs; click a heading to fold it; tick programs to show only them everywhere.
+                    Flickable {
+                        visible: v.tab === "overview"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        contentHeight: ovCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ColumnLayout {
+                            id: ovCol
+                            width: parent.width
+                            spacing: 10
+                            Repeater {
+                                model: v.tab === "overview" ? [["cpu", "Processor"], ["memory", "Memory"], ["disk", "Disk"], ["network", "Network"], ["gpu", "Graphics"]] : []
+                                delegate: Rectangle {
+                                    id: sec
+                                    required property var modelData
+                                    readonly property string k: modelData[0]
+                                    readonly property bool open: !v.folded[k]
+                                    Layout.fillWidth: true
+                                    implicitHeight: 38 + (open ? 26 + Math.max(1, secRows.length) * 28 : 0)
+                                    radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                                    readonly property var secRows: { v.samples; v.ticked; const r = v.rowsFor(k); const t = Object.keys(v.ticked); return (t.length ? r.filter(x => v.ticked[x.g.id]) : r).slice(0, 5); }
+                                    readonly property var chips: { v.samples; return v.overviewChips(k); }
+                                    Column {
+                                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                                        Rectangle {
+                                            width: parent.width; height: 38; color: v.c.head
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { const f = Object.assign({}, v.folded); f[sec.k] = !f[sec.k]; v.folded = f; } }
+                                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: (sec.open ? "▾ " : "▸ ") + sec.modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                            Row {
+                                                anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                                spacing: 6
+                                                Repeater {
+                                                    model: sec.chips
+                                                    delegate: Rectangle {
+                                                        required property var modelData
+                                                        height: 24; width: chT.implicitWidth + 18; radius: 12; color: "transparent"
+                                                        border.color: modelData[1] === "good" ? v.c.ok : modelData[1] === "warn" ? v.c.warn : modelData[1] === "main" ? v.c.accent : v.c.line
+                                                        Text { id: chT; anchors.centerIn: parent; text: parent.modelData[0]; color: parent.modelData[1] === "good" ? v.c.ok : parent.modelData[1] === "warn" ? v.c.warn : v.c.text; font.family: Theme.font; font.pixelSize: 12 }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        ProgHeader { visible: sec.open; width: parent.width; cols: v.overviewCols[sec.k] || v.colsFor[sec.k] }
+                                        Repeater {
+                                            model: sec.open ? sec.secRows : []
+                                            delegate: ProgRow {
+                                                required property var modelData; required property int index
+                                                width: parent.width; row: modelData; alt: index % 2 === 0; picked: false
+                                                tickable: true; ticked: !!v.ticked[modelData.g.id]
+                                                onTick: { const t = Object.assign({}, v.ticked); if (t[modelData.g.id]) delete t[modelData.g.id]; else t[modelData.g.id] = true; v.ticked = t; }
+                                                onMenuRow: (x, y) => { const pt = mapToItem(v, x, y); v.openMenu(modelData.g, pt.x, pt.y); }
+                                            }
+                                        }
+                                        Text { visible: sec.open && !sec.secRows.length; leftPadding: 12; topPadding: 6; text: "Nothing here right now."; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
                                     }
                                 }
-                                ProgHeader { width: parent.width; cols: v.colsFor[modelData[0]] }
-                                Repeater {
-                                    model: secRows
-                                    delegate: ProgRow { required property var modelData; required property int index; width: parent.width; row: modelData; alt: index % 2 === 0; picked: false }
-                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true; Layout.leftMargin: 4; wrapMode: Text.WordWrap
+                                text: Object.keys(v.ticked).length ? "Showing only the programs you ticked. Untick them to see everything." : "Tick programs to show only them in every section. Click a heading to fold it."
+                                color: v.c.muted; font.family: Theme.font; font.pixelSize: 12
                             }
                         }
                     }
@@ -679,11 +790,20 @@ FocusScope {
                     Rectangle {
                         visible: v.tab === "memory"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 150
+                        Layout.preferredHeight: 230
                         radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
                         readonly property var mb: { v.samples; return (v.sample && v.sample.memBar) || null; }
+                        readonly property var zr: { v.samples; return (v.sample && v.sample.zram) || null; }
+                        readonly property var drive: { v.samples; return ((v.sample && v.sample.swaps) || []).filter(x => x.path.indexOf("/dev/zram") !== 0); }
+                        // 1.11 (the approved mockup resmon-3): compressed memory and the swaps in numbers too
+                        readonly property var facts: !mb ? [] : [
+                            ["Zram holds", zr && zr.size ? v.size(zr.orig) + " of " + v.size(zr.size) + (zr.compr ? " (" + (zr.orig / zr.compr).toFixed(1) + ":1)" : "") : "off"],
+                            ["Drive swap", drive.length ? v.size(drive.reduce((a, x) => a + x.used, 0)) + " of " + v.size(drive.reduce((a, x) => a + x.size, 0)) : "none"],
+                            ["Compressed (real size)", zr ? v.size(zr.mem) : "–"],
+                            ["Committed", v.size(mb.committed || 0)]]
                         readonly property var parts: !mb ? [] : [
                             ["Reserved", mb.reserved, "Kept by the hardware and graphics", "#5d7488"], ["In use", mb.inUse, "Programs and games", "#66c0f4"],
+                            ["Compressed", zr ? zr.mem : 0, "Idle memory squeezed into zram", "#3fb8c9"],
                             ["Being saved", mb.saving, "Waiting to be written to the drive", "#ff9a4d"], ["Cache", mb.cache, "Recent files, handed back the moment a game needs it", "#9a7cff"],
                             ["Free", mb.free, "Not used at all", "#2f4a63"]]
                         Column {
@@ -710,10 +830,22 @@ FocusScope {
                                     model: memBox.parts
                                     delegate: Column {
                                         required property var modelData
-                                        width: parent.width / 5; spacing: 3
+                                        width: parent.width / 6; spacing: 3
                                         Row { spacing: 6; Rectangle { width: 10; height: 10; radius: 2; color: modelData[3]; anchors.verticalCenter: parent.verticalCenter } Text { text: modelData[0]; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12 } }
                                         Text { text: v.size(modelData[1]); color: v.c.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
                                         Text { width: parent.width - 10; text: modelData[2]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                                    }
+                                }
+                            }
+                            Grid {
+                                width: parent.width; columns: 4; columnSpacing: 18; rowSpacing: 4
+                                Repeater {
+                                    model: memBox.facts
+                                    delegate: Row {
+                                        required property var modelData
+                                        spacing: 8
+                                        Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
+                                        Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                                     }
                                 }
                             }
@@ -800,6 +932,141 @@ FocusScope {
                             }
                         }
                     }
+                    // Network: listening ports and connections (1.11)
+                    Repeater {
+                        model: v.tab === "network" ? [["connections", "Connections (TCP)", ["Program", "PID", "Talking to", "Port", "Ping"]], ["listening", "Listening ports", ["Program", "PID", "Port", "Open to"]]] : []
+                        delegate: Rectangle {
+                            id: npBox
+                            required property var modelData
+                            readonly property var rows: (v.netPorts[modelData[0]] || [])
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.min(220, 60 + Math.max(1, rows.length) * 24)
+                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                            Rectangle {
+                                id: npHead; width: parent.width; height: 34; color: v.c.head
+                                Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: npBox.modelData[1] + " (" + npBox.rows.length + ")"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            }
+                            Row {
+                                id: npCols; anchors.top: npHead.bottom; x: 12; height: 24
+                                Repeater { model: npBox.modelData[2]; delegate: Text { required property var modelData; required property int index; width: [220, 80, 260, 200, 80][index]; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
+                            }
+                            ListView {
+                                anchors { left: parent.left; right: parent.right; top: npCols.bottom; bottom: parent.bottom; leftMargin: 12 }
+                                clip: true; boundsBehavior: Flickable.StopAtBounds
+                                model: npBox.rows
+                                delegate: Row {
+                                    required property var modelData
+                                    height: 24
+                                    Text { width: 220; text: modelData.name; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 80; text: modelData.pid ? String(modelData.pid) : "–"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 260; text: npBox.modelData[0] === "listening" ? String(modelData.port) : modelData.remote; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 200; text: npBox.modelData[0] === "listening" ? modelData.openTo : String(modelData.port); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { visible: npBox.modelData[0] === "connections"; width: 80; text: modelData.ping !== null && modelData.ping !== undefined ? modelData.ping + " ms" : "–"; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                            }
+                        }
+                    }
+
+                    // Disk (1.11, mockup resmon-4): files the busiest programs have open, and every drive
+                    Rectangle {
+                        id: bfBox
+                        visible: v.tab === "disk" && v.busyFiles.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(190, 60 + v.busyFiles.length * 24)
+                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                        Rectangle {
+                            id: bfHead; width: parent.width; height: 34; color: v.c.head
+                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: "Files being read and written"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } text: "open by the busiest programs · ✎ open for writing"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11 }
+                        }
+                        Row {
+                            id: bfCols; anchors.top: bfHead.bottom; x: 12; height: 24
+                            Repeater { model: ["File", "Program", "PID", "Read", "Write"]; delegate: Text { required property var modelData; required property int index; width: [bfBox.width * 0.5, 150, 70, 90, 90][index]; horizontalAlignment: index > 2 ? Text.AlignRight : Text.AlignLeft; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
+                        }
+                        ListView {
+                            anchors { left: parent.left; right: parent.right; top: bfCols.bottom; bottom: parent.bottom; leftMargin: 12 }
+                            clip: true; boundsBehavior: Flickable.StopAtBounds
+                            model: v.busyFiles
+                            delegate: Row {
+                                required property var modelData
+                                readonly property var grp: v.busyNames[modelData.pid] || ({})
+                                height: 24
+                                Text { width: bfBox.width * 0.5; text: (modelData.writing ? "✎ " : "") + (modelData.win || modelData.path); elide: Text.ElideMiddle; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: 150; text: grp.name || ""; elide: Text.ElideRight; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: 70; text: String(modelData.pid); color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: 90; horizontalAlignment: Text.AlignRight; text: v.rate(grp.read || 0); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: 90; horizontalAlignment: Text.AlignRight; text: v.rate(grp.write || 0); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        id: drBox
+                        visible: v.tab === "disk"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 60 + Math.max(1, v.driveInfo.length) * 26
+                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                        readonly property var widths: [0.2, 0.17, 0.08, 0.11, 0.11, 0.11, 0.1, 0.08]
+                        Rectangle {
+                            id: drHead; width: parent.width; height: 34; color: v.c.head
+                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: "Drives"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } text: "Health: Hearth Disks › Properties"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11 }
+                        }
+                        Row {
+                            id: drCols; anchors.top: drHead.bottom; x: 12; width: parent.width - 24; height: 24
+                            Repeater { model: ["Drive", "Type", "Busy", "Response", "Free", "Total", "Full", "Temp"]; delegate: Text { required property var modelData; required property int index; width: drCols.width * drBox.widths[index]; horizontalAlignment: index > 1 ? Text.AlignRight : Text.AlignLeft; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
+                        }
+                        Column {
+                            anchors { left: parent.left; right: parent.right; top: drCols.bottom; leftMargin: 12; rightMargin: 12 }
+                            Repeater {
+                                model: v.driveInfo
+                                delegate: Row {
+                                    id: drRow
+                                    required property var modelData
+                                    readonly property var live: { v.samples; return ((v.sample && v.sample.disks) || []).find(x => x.name === modelData.name) || ({}); }
+                                    readonly property var cells: [modelData.label + (modelData.model ? " · " + modelData.model : ""), modelData.type + (modelData.fs ? " · " + modelData.fs : ""),
+                                        live.active !== undefined ? v.pct(live.active) : "–", live.response !== undefined && live.response !== null ? live.response + " ms" : "–",
+                                        modelData.free !== null && modelData.free !== undefined ? v.size(modelData.free) : "–", v.size(modelData.total || 0),
+                                        modelData.pct !== null && modelData.pct !== undefined ? Math.round(modelData.pct) + "%" : "–", modelData.temp ? modelData.temp + "°C" : "–"]
+                                    width: parent.width; height: 26
+                                    Repeater {
+                                        model: drRow.cells
+                                        delegate: Text {
+                                            required property var modelData; required property int index
+                                            width: drRow.width * drBox.widths[index]; horizontalAlignment: index > 1 ? Text.AlignRight : Text.AlignLeft; elide: Text.ElideRight
+                                            text: modelData; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter
+                                            color: index === 6 && drRow.modelData.pct >= 90 ? v.c.warn : index === 0 ? v.c.text : v.c.sub
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Processor: the selected program's open files (1.11)
+                    Rectangle {
+                        visible: v.tab === "cpu" && v.openFiles.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(190, 34 + v.openFiles.length * 26)
+                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                        Rectangle {
+                            id: ofHead
+                            width: parent.width; height: 34; color: v.c.head
+                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                                   text: "Open files · " + (v.selRow && v.selRow.g ? v.selRow.g.name : "") + " (" + v.openFiles.length + ")"
+                                   color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        }
+                        ListView {
+                            anchors { left: parent.left; right: parent.right; top: ofHead.bottom; bottom: parent.bottom }
+                            clip: true; boundsBehavior: Flickable.StopAtBounds
+                            model: v.openFiles
+                            delegate: Row {
+                                required property var modelData
+                                width: ListView.view.width; height: 26; spacing: 12; leftPadding: 12
+                                Text { width: 70; text: String(modelData.pid); color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: parent.width - 110; text: modelData.win || modelData.path; elide: Text.ElideMiddle; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                        }
+                    }
                 }
 
                 // ---- the four live graphs
@@ -809,6 +1076,21 @@ FocusScope {
                     spacing: 10
                     Repeater {
                         model: { v.samples; const s = v.sample || {}; const mb = s.memBar || {};
+                            const gpu0 = (s.gpus || [])[0] || {};
+                            const last = k => (v.hist[k] || []).slice(-1)[0] || 0;
+                            // 1.11 (mockups resmon-4, -5, -6): each tab's own four graphs
+                            if (v.tab === "gpu") return [["3D", v.pct(last("g3d")), "#ff6fb1", v.hist.g3d, 100, gpu0.name || ""],
+                                ["Video decode", v.pct(last("gdec")), "#3fb8c9", v.hist.gdec, 100, "Videos playing through the graphics card"],
+                                ["Video memory", v.size(last("vram")), "#9a7cff", v.hist.vram, gpu0.vramTotal || 0, gpu0.vramTotal ? "of " + v.size(gpu0.vramTotal) : "shared with the system"],
+                                ["Temperature", last("gtemp") ? Math.round(last("gtemp")) + "°C" : "–", "#ff9a4d", v.hist.gtemp, 100, gpu0.watts ? Math.round(gpu0.watts) + " W" : ""]];
+                            if (v.tab === "network") return [["Network", v.rate(last("net")), "#7ccf8a", v.hist.net, 0, ((s.nets || []).find(n => n.up) || {}).kind || "Not connected"],
+                                ["Ping", last("ping") ? Math.round(last("ping")) + " ms" : "–", "#f2c14e", v.hist.ping, -1, "Average of your open connections"],
+                                ["Processor", v.pct(s.cpu ? s.cpu.total : 0), "#66c0f4", v.hist.cpu, 100, ""],
+                                ["Memory", v.size(mb.inUse), "#9a7cff", v.hist.mem, mb.total || 1, ""]];
+                            if (v.tab === "disk") return [["Disk", v.rate(last("disk")), "#7ccf8a", v.hist.disk, 0, "All drives, read and write"],
+                                ["Response time", last("resp") ? last("resp") + " ms" : "–", "#3fb8c9", v.hist.resp, -1, "The slowest drive"],
+                                ["Processor", v.pct(s.cpu ? s.cpu.total : 0), "#66c0f4", v.hist.cpu, 100, ""],
+                                ["Memory", v.size(mb.inUse), "#9a7cff", v.hist.mem, mb.total || 1, ""]];
                             const g4 = v.tab === "gpu" ? ["Graphics", v.pct((v.hist.gpu || []).slice(-1)[0] || 0), "#ff9a4d", v.hist.gpu, 100, ((s.gpus || [])[0] || {}).vramTotal ? v.size(((s.gpus || [])[0]).vramUsed) + " of " + v.size(((s.gpus || [])[0]).vramTotal) + " video memory" : ""]
                                      : ["Memory", v.size(mb.inUse), "#9a7cff", v.hist.mem, mb.total || 1, v.size(mb.cache) + " more is cache"];
                             const busiest = (s.disks || []).slice().sort((a, b) => b.active - a.active)[0];
@@ -842,7 +1124,7 @@ FocusScope {
                                         for (const f of [0.25, 0.5, 0.75]) { ctx.moveTo(0, Math.round(height * f) + 0.5); ctx.lineTo(width, Math.round(height * f) + 0.5); }
                                         ctx.stroke();
                                         const a = pts; if (!a.length) return;
-                                        const mx = topVal > 0 ? topVal : Math.max(1048576, ...a) * 1.15;
+                                        const mx = topVal > 0 ? topVal : topVal < 0 ? Math.max(1, ...a) * 1.15 : Math.max(1048576, ...a) * 1.15;   // < 0: small numbers (ms)
                                         const xs = i => width - (a.length - 1 - i) * (width / (v.histMax - 1));
                                         const ys = val => height - Math.min(1, (val || 0) / mx) * (height - 4) - 1;
                                         ctx.beginPath(); ctx.moveTo(xs(0), height);
@@ -932,8 +1214,11 @@ FocusScope {
         property var row: null
         property bool alt: false
         property bool picked: false
+        property bool tickable: false
+        property bool ticked: false
         signal clickedRow()
         signal menuRow(real x, real y)
+        signal tick()
         readonly property var g: row ? row.g : ({})
         height: 28
         color: picked ? vv.c.sel : (alt ? vv.c.alt : "transparent")
@@ -943,7 +1228,13 @@ FocusScope {
                 width: parent.width * 0.42; height: parent.height
                 Row {
                     anchors.verticalCenter: parent.verticalCenter; spacing: 8; width: parent.width - 6
-                    Rectangle { width: 16; height: 16; radius: 4; color: vv.tagColor(pr.g); anchors.verticalCenter: parent.verticalCenter }
+                    Rectangle {
+                        width: 16; height: 16; radius: 4; anchors.verticalCenter: parent.verticalCenter
+                        color: pr.tickable ? (pr.ticked ? vv.tagColor(pr.g) : "transparent") : vv.tagColor(pr.g)
+                        border.width: pr.tickable ? 1 : 0; border.color: vv.c.muted
+                        Text { visible: pr.tickable && pr.ticked; anchors.centerIn: parent; text: "✓"; color: "#10151b"; font.pixelSize: 11; font.bold: true }
+                        MouseArea { enabled: pr.tickable; anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: pr.tick() }
+                    }
                     Text { id: nm; text: (pr.g.name || "") + (pr.g.count > 1 ? " (" + pr.g.count + ")" : ""); color: vv.c.text; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight; width: Math.min(implicitWidth, parent.width - 24 - (tagPill.visible ? tagPill.width + 8 : 0)); anchors.verticalCenter: parent.verticalCenter }
                     Rectangle {
                         id: tagPill

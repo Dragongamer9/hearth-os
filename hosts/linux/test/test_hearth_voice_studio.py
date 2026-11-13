@@ -573,6 +573,10 @@ class Install(Base):
         self.assertTrue(any('omnivoice' in c and 'faster-whisper==1.1.1' in c for c in flat))
         self.assertTrue(any('--no-deps demucs==4.0.1' in c for c in flat))
         self.assertFalse(any('sudo' in c or 'shell' in c for c in flat))
+        # pip's install options come after the command: "pip --progress-bar off install" stops with "no such option".
+        for c in calls:
+            if '--progress-bar' in c:
+                self.assertLess(c.index('install'), c.index('--progress-bar'), ' '.join(c))
         self.assertTrue(rec['cuda'])
         self.assertTrue(any('Speaker labels' in n for n in rec['notes']))
         self.assertTrue(vs.installed())

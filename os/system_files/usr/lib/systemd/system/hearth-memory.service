@@ -1,0 +1,18 @@
+# Memory and swap from your settings (hearth-memory, /etc/hearth/memory.json): compressed memory (zram) first, your
+# drive swap file after it, and how much memory the system keeps free. 1.11. Early, but nothing waits for it: it's
+# not ordered before the login screen or Game Mode, a failure is ignored ("-"), and it gives up after 2 minutes.
+[Unit]
+Description=Hearth: memory and swap (zram, swap file, keep memory free)
+DefaultDependencies=no
+After=local-fs.target systemd-sysctl.service systemd-modules-load.service
+Before=shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-memory apply
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

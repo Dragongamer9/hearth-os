@@ -1,0 +1,14 @@
+# Your processor and battery settings from Task Manager › Performance (turbo boost, top speed, the battery's charge
+# limit; /etc/hearth/hardware.json) put back at every start. 1.11. Nothing waits for it, and a failure is ignored.
+[Unit]
+Description=Hearth: processor and battery settings (turbo, top speed, charge limit)
+After=local-fs.target systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset apply
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

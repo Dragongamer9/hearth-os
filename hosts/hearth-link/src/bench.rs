@@ -54,7 +54,7 @@ impl Node {
     pub async fn bench_command(self: &Arc<Self>, cmd: &str, a: &Value) -> Result<Value, String> {
         match cmd {
             "bench.peers" => {
-                let peers: Vec<(String, String)> = crate::lock(&self.peers).list.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
+                let peers: Vec<(String, String)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
                 let asks: Vec<_> = peers.into_iter().map(|(id, name)| {
                     let me = self.clone();
                     tokio::spawn(async move {

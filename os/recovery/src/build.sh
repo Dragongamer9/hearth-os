@@ -53,6 +53,8 @@ rm -f /etc/localtime; systemd-firstboot --timezone UTC || true
 # ---------------------------------------------------------------- tools the repairs use
 dnf install -y ntfsprogs ntfs-3g dosfstools exfatprogs e2fsprogs btrfs-progs efibootmgr openssl rsync NetworkManager-wifi python3-evdev || \
   dnf install -y --skip-unavailable ntfsprogs dosfstools e2fsprogs btrfs-progs efibootmgr rsync python3-evdev
+# The health check asks the drive how it's doing (SMART); without it that check just says it couldn't ask.
+dnf install -y smartmontools || true
 if ! ostree container --help >/dev/null 2>&1; then dnf install -y rpm-ostree; fi
 ostree container image deploy --help >/dev/null
 ostree admin set-default --help >/dev/null

@@ -18,6 +18,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
+import "menu-search.js" as Score
 
 PanelWindow {
     id: root
@@ -29,6 +30,8 @@ PanelWindow {
     property double gamesAt: 0                 // when Hearth was last asked (it takes a moment)
     property bool folderOpen: false            // the System apps folder is open
     property var systemIds: ({})               // desktop ids that came with the system image
+    // What you opened lately (DeskState.recent, newest first) as {id: weight}: a small lift in the search.
+    readonly property var uses: { const u = {}; const r = DeskState.recent || []; for (let i = 0; i < r.length; i++) u[r[i]] = 8 - i; return u; }
     property var hiddenIds: ({})               // not for this desktop (OnlyShowIn/NotShowIn: docs/APP-KINDS.md)
     readonly property string gamesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-games").toString().replace(/^file:\/\//, ""))
     signal settingsRequested()
@@ -104,11 +107,10 @@ PanelWindow {
                 .sort((a, b) => (b.title.toLowerCase().startsWith(q) ? 1 : 0) - (a.title.toLowerCase().startsWith(q) ? 1 : 0));
         }
         if (!q) return folderOpen ? sysApps : (sysApps.length ? mainApps.concat([folderTile]) : mainApps);
-        const hit = a => [a.name, a.genericName, a.comment, Array.from(a.keywords || []).join(" ")].join(" ").toLowerCase().includes(q);
-        // Names that start with the query first; then Settings pages and games that match.
-        const found = apps.filter(hit).sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
-        const pages = settingsPages.filter(p => (p.name + " " + p.words).toLowerCase().includes(q));
-        const gs = games.filter(g => (g.title || "").toLowerCase().includes(q)).slice(0, 8);
+        // Ranked (menu-search.js): the best-fitting apps first, then Settings pages and games that fit.
+        const found = Score.rank(apps, a => Score.appScore(q, a, root.uses));
+        const pages = Score.rank(settingsPages, p => Score.itemScore(q, p.name, p.words));
+        const gs = Score.rank(games, g => Score.itemScore(q, g.title, g.source || "")).slice(0, 8);
         return found.concat(pages).concat(gs);
     }
 
@@ -246,21 +248,21 @@ PanelWindow {
         q = (q || "").trim().toLowerCase();
         const out = { best: null, apps: [], games: [], pages: [], files: [] };
         if (!q) return out;
-        const hit = a => [a.name, a.genericName, a.comment, Array.from(a.keywords || []).join(" ")].join(" ").toLowerCase().includes(q);
-        const starts = s => (s || "").toLowerCase().startsWith(q) ? 1 : 0;
-        const word = s => (s || "").toLowerCase().split(/[\s()._-]+/).some(w => w.startsWith(q));
         const f = filter || "all";
-        if (f === "all" || f === "apps") out.apps = apps.filter(hit).sort((a, b) => starts(b.name) - starts(a.name)).slice(0, f === "all" ? 6 : 40);
-        if (f === "all" || f === "games") out.games = games.filter(g => (g.title || "").toLowerCase().includes(q)).sort((a, b) => starts(b.title) - starts(a.title)).slice(0, f === "all" ? 4 : 40);
-        if (f === "all" || f === "pages") out.pages = settingsPages.filter(p => (p.name + " " + p.words).toLowerCase().includes(q)).slice(0, f === "all" ? 4 : 40);
+        // Ranked (menu-search.js): exact and starting names first, then words, initials, the program's own name,
+        // Windows' names (explorer, cmd, notepad…), one typo, and what you open often a little higher.
+        const sa = a => Score.appScore(q, a, root.uses), sg = g => Score.itemScore(q, g.title, g.source || ""), sp = p => Score.itemScore(q, p.name, p.words);
+        if (f === "all" || f === "apps") out.apps = Score.rank(apps, sa).slice(0, f === "all" ? 6 : 40);
+        if (f === "all" || f === "games") out.games = Score.rank(games, sg).slice(0, f === "all" ? 4 : 40);
+        if (f === "all" || f === "pages") out.pages = Score.rank(settingsPages, sp).slice(0, f === "all" ? 4 : 40);
         if (f === "all" || f === "files") out.files = fileHits.slice(0, f === "all" ? 5 : 24);
-        // Best match: a name that starts with what you typed (an app, then a game, then a page), else the first app.
-        const pick = out.apps.find(a => starts(a.name)) ? { kind: "app", item: out.apps.find(a => starts(a.name)) }
-            : out.games.find(g => starts(g.title)) ? { kind: "game", item: out.games.find(g => starts(g.title)) }
-            : out.pages.find(p => starts(p.name)) ? { kind: "page", item: out.pages.find(p => starts(p.name)) }
-            : out.apps.find(a => word(a.name)) ? { kind: "app", item: out.apps.find(a => word(a.name)) }
-            : out.apps.length ? { kind: "app", item: out.apps[0] } : out.games.length ? { kind: "game", item: out.games[0] }
-            : out.pages.length ? { kind: "page", item: out.pages[0] } : out.files.length ? { kind: "file", item: out.files[0] } : null;
+        // Best match: the highest score of the top app, game and page (an app wins a tie); else the first file.
+        const cands = [];
+        if (out.apps.length) cands.push({ kind: "app", item: out.apps[0], s: sa(out.apps[0]) + 1 });
+        if (out.games.length) cands.push({ kind: "game", item: out.games[0], s: sg(out.games[0]) });
+        if (out.pages.length) cands.push({ kind: "page", item: out.pages[0], s: sp(out.pages[0]) - 1 });
+        cands.sort((a, b) => b.s - a.s);
+        const pick = cands.length ? { kind: cands[0].kind, item: cands[0].item } : out.files.length ? { kind: "file", item: out.files[0] } : null;
         out.best = pick;
         return out;
     }

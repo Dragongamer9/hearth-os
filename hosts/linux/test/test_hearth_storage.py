@@ -186,7 +186,9 @@ class Wiring(unittest.TestCase):
 
     def test_files_shows_the_section(self):
         qml = (SHELL / 'FileManager.qml').read_text()
-        self.assertIn('network: "Hearth Storage"', qml)
+        # 1.11's Windows 11 left menu: Hearth Storage and your devices under "Home server" (and Network)
+        self.assertIn('const devs = sorted.filter(q => q.section === "network" || q.section === "devices");', qml)
+        self.assertIn('label: "Home server"', qml)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,421 @@
+#!/usr/bin/python3
+"""hearth-hwset: the hardware settings in Task Manager › Performance (1.11): the processor's turbo boost and top speed,
+and the battery's charge limit. Saved in /etc/hearth/hardware.json (the only place they live; written only when you
+change one) and put back at every start by hearth-hwset.service, which nothing waits for.
+
+  hearth-hwset status             JSON: what this PC offers, what's set, temperatures and throttling. Works without root
+  hearth-hwset set KEY VALUE      cpu.turbo on|off · cpu.maxPct 30-100 · battery.limit 50-100 (100 = no limit). Root
+  hearth-hwset apply              your saved values onto the hardware (the service runs this)
+  hearth-hwset drives             JSON: Optimize drives: each drive's kind (SSD, NVMe, hard drive) and TRIM's last and
+                                  next weekly run. Works without root
+  hearth-hwset optimize           Optimize now: TRIM every SSD and NVMe drive (fstrim, never defragmented). Root
+  hearth-hwset gamecores          Game cores (game.cores, off unless you turn it on): while a game runs, it gets its
+                                  own cores and the system's services (updates, AI, builds) run on the others. The
+                                  hearth-gamecores service runs this; nothing is kept after a restart or when it stops
+"""
+import glob
+import json
+import os
+import re
+import signal
+import sys
+import time
+
+SETTINGS = os.environ.get('HEARTH_HWSET_SETTINGS', '/etc/hearth/hardware.json')
+SYS = os.environ.get('HEARTH_SYS', '/sys')
+
+
+class Fail(Exception):
+    pass
+
+
+def _sio():
+    for d in (os.path.join(os.environ.get('NIMBUS_SHARE') or '/usr/share/nimbus', 'desktop', 'shell'),
+              os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', '..', 'hosts', 'linux', 'desktop', 'shell')):
+        if os.path.isfile(os.path.join(d, 'hearth_settings_io.py')):
+            sys.path.insert(0, d)
+            break
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+def read(p, d=''):
+    try:
+        with open(p) as f:
+            return f.read().strip()
+    except OSError:
+        return d
+
+
+def write(p, v):
+    try:
+        with open(p, 'w') as f:
+            f.write(str(v))
+        return True
+    except OSError:
+        return False
+
+
+def turbo_file():
+    """(path, on_value): intel_pstate's no_turbo (1 = off) or cpufreq's boost (1 = on)."""
+    p = os.path.join(SYS, 'devices/system/cpu/intel_pstate/no_turbo')
+    if os.path.exists(p):
+        return p, '0'
+    p = os.path.join(SYS, 'devices/system/cpu/cpufreq/boost')
+    if os.path.exists(p):
+        return p, '1'
+    return None, None
+
+
+def batteries():
+    return sorted(d for d in glob.glob(os.path.join(SYS, 'class/power_supply/*')) if read(os.path.join(d, 'type')) == 'Battery'
+                  and read(os.path.join(d, 'scope')) != 'Device')
+
+
+def throttles():
+    n = 0
+    for f in glob.glob(os.path.join(SYS, 'devices/system/cpu/cpu*/thermal_throttle/core_throttle_count')):
+        v = read(f)
+        n += int(v) if v.isdigit() else 0
+    return n
+
+
+def status():
+    tf, on = turbo_file()
+    pstate = os.path.exists(os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct'))
+    cpufreq = sorted(glob.glob(os.path.join(SYS, 'devices/system/cpu/cpu[0-9]*/cpufreq')))
+    bats = []
+    for b in batteries():
+        full = int(read(os.path.join(b, 'energy_full'), read(os.path.join(b, 'charge_full'), '0')) or 0)
+        design = int(read(os.path.join(b, 'energy_full_design'), read(os.path.join(b, 'charge_full_design'), '0')) or 0)
+        lim = os.path.join(b, 'charge_control_end_threshold')
+        bats.append({'name': os.path.basename(b), 'health': round(100.0 * full / design) if design else None,
+                     'cycles': int(read(os.path.join(b, 'cycle_count'), '0') or 0) or None,
+                     'capacity': int(read(os.path.join(b, 'capacity'), '0') or 0), 'status': read(os.path.join(b, 'status')),
+                     'limit': int(read(lim)) if read(lim).isdigit() else None, 'canLimit': os.path.exists(lim),
+                     'model': read(os.path.join(b, 'model_name')), 'tech': read(os.path.join(b, 'technology'))})
+    saved = {}
+    if os.path.exists(SETTINGS):
+        saved = _sio().load_json(SETTINGS, {}, repair=False) or {}
+    gc = saved.get('game.cores', 'off')
+    return {'gameCores': {'can': logical_cpus() >= 4, 'value': gc, 'threads': logical_cpus(), 'suggested': cpu_text(default_game_cores())},
+            'turbo': {'can': bool(tf), 'on': read(tf) == on if tf else None},
+            'maxPct': {'can': pstate or bool(cpufreq), 'value': int(read(os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct'), '100') or 100) if pstate else saved.get('cpu.maxPct', 100)},
+            'throttled': throttles(), 'batteries': bats, 'saved': saved}
+
+
+def set_max_pct(pct):
+    p = os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct')
+    if os.path.exists(p):
+        return write(p, pct)
+    ok = False
+    for d in glob.glob(os.path.join(SYS, 'devices/system/cpu/cpu[0-9]*/cpufreq')):
+        lo, hi = read(os.path.join(d, 'cpuinfo_min_freq')), read(os.path.join(d, 'cpuinfo_max_freq'))
+        if lo.isdigit() and hi.isdigit():
+            ok = write(os.path.join(d, 'scaling_max_freq'), int(int(lo) + (int(hi) - int(lo)) * pct / 100)) or ok
+    return ok
+
+
+def put(key, value):
+    if key == 'cpu.turbo':
+        tf, on = turbo_file()
+        if not tf:
+            raise Fail('this processor has no turbo switch')
+        if not write(tf, on if value else ('1' if on == '0' else '0')):
+            raise Fail("couldn't change turbo boost")
+    elif key == 'cpu.maxPct':
+        if not set_max_pct(value):
+            raise Fail("couldn't change the top speed")
+    elif key == 'game.cores':
+        pass                    # hearth-gamecores.service does it while a game runs (see gamecores())
+    elif key == 'battery.limit':
+        done = False
+        for b in batteries():
+            p = os.path.join(b, 'charge_control_end_threshold')
+            if os.path.exists(p):
+                done = write(p, value) or done
+        if not done:
+            raise Fail("this battery can't be told to stop charging early")
+
+
+def logical_cpus():
+    return os.cpu_count() or 1
+
+
+def parse_cpus(text, n=None):
+    """'4-7' or '0,2,4-5' → sorted list of CPU numbers (each below n), or raise Fail."""
+    n = n or logical_cpus()
+    out = set()
+    for part in (text or '').split(','):
+        part = part.strip()
+        m = re.fullmatch(r'(\d+)(?:-(\d+))?', part)
+        if not m:
+            raise Fail('cores like 4-7 or 0,2,4')
+        a, b = int(m.group(1)), int(m.group(2) or m.group(1))
+        if a > b or b >= n:
+            raise Fail('this PC has cores 0 to %d' % (n - 1))
+        out.update(range(a, b + 1))
+    return sorted(out)
+
+
+def cpu_text(cpus):
+    """[0,1,2,3,6] → '0-3,6'."""
+    out, run = [], []
+    for c in sorted(cpus):
+        if run and c == run[-1] + 1:
+            run.append(c)
+        else:
+            if run:
+                out.append('%d-%d' % (run[0], run[-1]) if len(run) > 1 else str(run[0]))
+            run = [c]
+    if run:
+        out.append('%d-%d' % (run[0], run[-1]) if len(run) > 1 else str(run[0]))
+    return ','.join(out)
+
+
+def default_game_cores(n=None):
+    """The upper half of the cores (a quad-core keeps 2 for the system)."""
+    n = n or logical_cpus()
+    return list(range(n // 2, n))
+
+
+def parse(key, raw):
+    if key == 'game.cores':
+        if raw == 'off':
+            return 'off'
+        n = logical_cpus()
+        if n < 4:
+            raise Fail('Game cores needs a processor with at least 4 threads')
+        cpus = default_game_cores(n) if raw == 'on' else parse_cpus(raw, n)
+        if len(cpus) >= n:
+            raise Fail('leave at least one core for the system')
+        return cpu_text(cpus)
+    if key == 'cpu.turbo':
+        if raw not in ('on', 'off'):
+            raise Fail('turbo: on or off')
+        return raw == 'on'
+    if key in ('cpu.maxPct', 'battery.limit'):
+        if not raw.isdigit():
+            raise Fail('a number, please')
+        v = int(raw)
+        lo = 30 if key == 'cpu.maxPct' else 50
+        if not lo <= v <= 100:
+            raise Fail('%s: %d to 100' % (key, lo))
+        return v
+    raise Fail('unknown setting ' + key)
+
+
+def set_one(key, raw):
+    v = parse(key, raw)
+    put(key, v)
+    sio = _sio()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    if os.path.exists(SETTINGS) and not isinstance(sio.load_json(SETTINGS, None, repair=False), dict):
+        raise Fail('the hardware settings file could not be read; it was kept as it is')
+
+    def change(d):
+        d[key] = v
+    sio.update_json(SETTINGS, change)
+    if key == 'game.cores':
+        import subprocess
+        subprocess.run(['systemctl', 'restart' if v != 'off' else 'stop', 'hearth-gamecores.service'], capture_output=True, timeout=30)
+    return {'ok': True, key: v}
+
+
+def apply():
+    if not os.path.exists(SETTINGS):
+        return {'ok': True, 'applied': {}}
+    saved = _sio().load_json(SETTINGS, None, repair=False)
+    if not isinstance(saved, dict):
+        return {'ok': False, 'error': 'settings file unreadable; nothing changed'}
+    done = {}
+    for k, v in saved.items():
+        try:
+            put(k, v)
+            done[k] = v
+        except Fail:
+            pass
+    return {'ok': True, 'applied': done}
+
+
+def _timer_times():
+    import subprocess
+    try:
+        r = subprocess.run(['systemctl', 'show', 'fstrim.timer', '-p', 'LastTriggerUSec', '-p', 'NextElapseUSecRealtime', '-p', 'UnitFileState'],
+                           capture_output=True, text=True, timeout=10)
+        return dict(l.split('=', 1) for l in r.stdout.splitlines() if '=' in l)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+
+
+def drives():
+    """Optimize drives (1.11): every real drive and what's done to keep it fast."""
+    out = []
+    for d in sorted(glob.glob(os.path.join(SYS, 'block', '*'))):
+        name = os.path.basename(d)
+        if re.match(r'^(loop|ram|zram|dm-|sr|md)', name) or not os.path.exists(os.path.join(d, 'device')):
+            continue
+        rot = read(os.path.join(d, 'queue', 'rotational')) == '1'
+        disc = int(read(os.path.join(d, 'queue', 'discard_max_bytes'), '0') or 0) > 0
+        kind = 'NVMe' if name.startswith('nvme') else 'Hard drive' if rot else 'SSD'
+        out.append({'name': name, 'kind': kind, 'model': read(os.path.join(d, 'device', 'model')),
+                    'trim': disc and not rot, 'what': 'TRIM weekly (never defragmented)' if disc and not rot else
+                    'Hard drive: Linux file systems keep it tidy themselves; no defragmenting needed' if rot else 'No TRIM support'})
+    t = _timer_times()
+    return {'drives': out, 'timer': {'on': t.get('UnitFileState', '') == 'enabled', 'last': t.get('LastTriggerUSec', ''),
+                                     'next': t.get('NextElapseUSecRealtime', '')}}
+
+
+def hdd_ext4_mounts():
+    """Mount points of ext4 file systems on hard drives (the only place defragmenting helps; never Btrfs or NTFS)."""
+    out = []
+    for line in read('/proc/self/mounts').splitlines():
+        f = line.split()
+        if len(f) < 3 or f[2] != 'ext4' or not f[0].startswith('/dev/'):
+            continue
+        dev = os.path.basename(os.path.realpath(f[0]))
+        disk = re.sub(r'p?\d+$', '', dev)
+        if read(os.path.join(SYS, 'block', disk, 'queue', 'rotational')) == '1':
+            out.append(f[1])
+    return out
+
+
+def frag_score(text):
+    """e4defrag -c's 'Fragmentation score' (0–100; above 30 it says to defragment)."""
+    m = re.search(r'Fragmentation score\s+(\d+)', text or '')
+    return int(m.group(1)) if m else None
+
+
+def optimize():
+    """Optimize now: TRIM every SSD and NVMe drive; on a hard drive's ext4, check fragmentation (e4defrag -c) and
+    defragment only when it really needs it (score above 30)."""
+    import subprocess
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    r = subprocess.run(['fstrim', '--all', '--verbose'], capture_output=True, text=True, timeout=1800)
+    if r.returncode not in (0, 1, 32, 64):     # 32/64: some file systems don't take TRIM; 1: none to TRIM
+        raise Fail('TRIM didn\'t run: ' + (r.stderr or r.stdout).strip()[-200:])
+    done = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    for mp in hdd_ext4_mounts():
+        c = subprocess.run(['e4defrag', '-c', mp], capture_output=True, text=True, timeout=3600)
+        score = frag_score(c.stdout)
+        if score is not None and score > 30:
+            subprocess.run(['e4defrag', mp], capture_output=True, text=True, timeout=6 * 3600)
+            done.append('%s: defragmented (score was %d)' % (mp, score))
+        elif score is not None:
+            done.append('%s: no need to defragment (score %d)' % (mp, score))
+    return {'ok': True, 'done': done}
+
+
+# ---------------------------------------------------------------------------------------------- Game cores
+GAME_ENV = (b'SteamGameId=', b'STEAM_COMPAT_APP_ID=', b'HEARTH_PROTON_KEY=', b'HEARTH_GAME=1')
+NOT_GAMES = {'steam', 'steamwebhelper', 'steam-runtime-launcher-service', 'srt-bwrap', 'pressure-vessel-wrap', 'reaper',
+             'pv-adverb', 'gameoverlayui', 'wineserver', 'services.exe', 'winedevice.exe', 'explorer.exe', 'plugplay.exe',
+             'rpcss.exe', 'svchost.exe', 'tabtip.exe', 'conhost.exe', 'start.exe'}
+
+
+def is_game_env(env, comm):
+    """A game's process: Steam, Hearth's Proton or Hearth's launcher marked it, and it isn't one of their helpers."""
+    if comm.lower() in NOT_GAMES:
+        return False
+    return any(m in env for m in GAME_ENV) and b'SteamGameId=0\x00' not in env
+
+
+def game_pids(proc='/proc'):
+    out = []
+    for d in os.listdir(proc):
+        if not d.isdigit():
+            continue
+        try:
+            with open(os.path.join(proc, d, 'environ'), 'rb') as f:
+                env = f.read()
+            comm = read(os.path.join(proc, d, 'comm'))
+        except OSError:
+            continue
+        if is_game_env(env, comm):
+            out.append(int(d))
+    return out
+
+
+def pin(pids, cpus, proc='/proc'):
+    """Every thread of these processes onto `cpus` (new threads inherit it)."""
+    for pid in pids:
+        for t in os.listdir(os.path.join(proc, str(pid), 'task')) if os.path.isdir(os.path.join(proc, str(pid), 'task')) else []:
+            try:
+                if os.sched_getaffinity(int(t)) != set(cpus):
+                    os.sched_setaffinity(int(t), cpus)
+            except OSError:
+                pass
+
+
+def system_cores(cpus_text):
+    """The system's services (system.slice) onto these cores, until the next restart ('' = all of them again)."""
+    import subprocess
+    subprocess.run(['systemctl', 'set-property', '--runtime', 'system.slice', 'AllowedCPUs=' + cpus_text], capture_output=True, timeout=30)
+
+
+def gamecores():
+    """The loop hearth-gamecores.service runs: every 5 seconds, a game running → it gets its cores and the system's
+    services the others; no game → everything back on every core. Stops (and puts everything back) when Game cores
+    is off, the settings can't be read, or the service is stopped."""
+    stop = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
+    active = False
+    try:
+        while not stop:
+            saved = _sio().load_json(SETTINGS, None, repair=False) if os.path.exists(SETTINGS) else {}
+            v = (saved or {}).get('game.cores', 'off') if isinstance(saved, dict) else 'off'
+            if v == 'off':
+                break
+            try:
+                cpus = parse_cpus(v)
+            except Fail:
+                break
+            rest = [c for c in range(logical_cpus()) if c not in cpus]
+            games = game_pids()
+            if games and rest:
+                pin(games, cpus)
+                if not active:
+                    system_cores(cpu_text(rest))
+                    active = True
+                    print('game cores: a game is running; it has cores %s, the system %s' % (cpu_text(cpus), cpu_text(rest)), flush=True)
+            elif active:
+                system_cores('')
+                active = False
+                print('game cores: no game running; every core is shared again', flush=True)
+            for _ in range(5):
+                if stop:
+                    break
+                time.sleep(1)
+    finally:
+        if active:
+            system_cores('')
+    return {'ok': True}
+
+
+def main(a):
+    try:
+        if a == ['status']:
+            out = status()
+        elif len(a) == 3 and a[0] == 'set':
+            out = set_one(a[1], a[2])
+        elif a == ['apply']:
+            out = apply()
+        elif a == ['drives']:
+            out = drives()
+        elif a == ['optimize']:
+            out = optimize()
+        elif a == ['gamecores']:
+            out = gamecores()
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

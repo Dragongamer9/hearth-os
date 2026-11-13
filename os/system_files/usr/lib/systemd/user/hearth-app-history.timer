@@ -1,0 +1,11 @@
+# Task Manager's App history: every 5 minutes while you're signed in.
+[Unit]
+Description=Hearth: App history for Task Manager (every 5 minutes)
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

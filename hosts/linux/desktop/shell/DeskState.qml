@@ -64,8 +64,9 @@ Singleton {
                     else {
                         try { res = JSON.parse(last); } catch (e) { err = "Something went wrong"; }
                     }
-                    if (proc.cb) proc.cb(res, err);
-                    proc.destroy();
+                    // Always destroyed, even when the callback throws (a window that closed meanwhile): a
+                    // leftover Process per call was part of the shell slowly growing over a day (1.11).
+                    try { if (proc.cb) proc.cb(res, err); } finally { proc.destroy(); }
                 }
             }
         }

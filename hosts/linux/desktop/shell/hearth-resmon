@@ -233,8 +233,11 @@ def parse_pmon(text):
             except ValueError:
                 return None
         sm, fb = num('sm'), num('fb')
-        cur = out.setdefault(pid, {'gpu': 0.0, 'vram': 0, 'type': row.get('type', '')})
+        cur = out.setdefault(pid, {'gpu': 0.0, 'vram': 0, 'type': row.get('type', ''), '3d': 0.0, 'dec': 0.0, 'enc': 0.0})
         cur['gpu'] = round(cur['gpu'] + (sm or 0.0), 1)
+        cur['3d'] = cur['gpu'] if 'G' in cur['type'] else cur['3d']
+        cur['dec'] = round(cur['dec'] + (num('dec') or 0.0), 1)
+        cur['enc'] = round(cur['enc'] + (num('enc') or 0.0), 1)
         cur['vram'] += int((fb or 0) * 1048576)
     return out
 
@@ -294,10 +297,11 @@ def meminfo_breakdown(mi, installed=None):
     """The Memory view's bar from /proc/meminfo (bytes): reserved, in use, being saved, cache, free. They add up to
     what's installed (or to MemTotal when that isn't known)."""
     total = mi.get('MemTotal', 0)
-    avail = mi.get('MemAvailable', mi.get('MemFree', 0))
-    free = min(mi.get('MemFree', 0), avail)
-    in_use = max(0, total - avail)
-    cache = max(0, avail - free)
+    # In use as Windows counts it: total − free − cache (not − MemAvailable, which also takes off the kernel's
+    # reserve: "0 free" with Keep memory free set high). 1.11.
+    free = mi.get('MemFree', 0)
+    cache = max(0, mi.get('Cached', 0) + mi.get('Buffers', 0) + mi.get('SReclaimable', 0) - mi.get('Shmem', 0))
+    in_use = max(0, total - free - cache)
     saving = min(cache, mi.get('Dirty', 0) + mi.get('Writeback', 0))
     reserved = max(0, (installed or total) - total)
     return {'installed': installed or total, 'total': total, 'reserved': reserved, 'inUse': in_use, 'saving': saving,
@@ -359,6 +363,20 @@ class ResSampler(ht.Sampler):
         if self.installed is None:
             self.installed = installed_memory(self.sys) or 0
         out['memBar'] = meminfo_breakdown(mi, self.installed or None)
+        # Compressed memory and the swaps (1.11, the Memory tab): zram's own numbers, and each swap's use.
+        zb = os.path.join(self.sys, 'block', 'zram0')
+        mm = (read(os.path.join(zb, 'mm_stat'), '') or '').split()
+        if mm and mm[0].isdigit():
+            out['zram'] = {'orig': int(mm[0]), 'compr': int(mm[1]), 'mem': int(mm[2]), 'size': int((read(os.path.join(zb, 'disksize'), '0') or '0').strip() or 0)}
+        sw = []
+        for line in (read(os.path.join(self.root, 'swaps'), '') or '').splitlines()[1:]:
+            f = line.split()
+            if len(f) >= 4 and f[2].isdigit():
+                sw.append({'path': f[0], 'size': int(f[2]) * 1024, 'used': int(f[3]) * 1024})
+        out['swaps'] = sw
+        # Memory pressure (1.11, Overview's chip): the share of the last 10 s programs waited for memory.
+        pm = re.search(r'some avg10=([\d.]+)', read(os.path.join(self.root, 'pressure', 'memory'), '') or '')
+        out['pressure'] = float(pm.group(1)) if pm else None
         if 'gpu' in self.want:
             self.gpu_extra(out.get('gpus') or [])
         if 'temps' in self.want:
@@ -443,6 +461,14 @@ class ResSampler(ht.Sampler):
                     g['gpuUse'] = '3D' if any('G' in x['type'] for x in nv) else 'Compute'
                 else:
                     g['gpuUse'] = '3D' if (g.get('gpu') or 0) > 0 or g['vram'] else ''
+                # 1.11 (mockup resmon-6): 3D, video decode and video encode apart
+                eng = [getattr(self, 'drm_engines', {}).get(p) for p in g['pids']]
+                eng = [e for e in eng if e]
+                for k, key in (('3d', 'g3d'), ('dec', 'gdec'), ('enc', 'genc')):
+                    vals = [e[k] for e in eng] + [x.get(k) or 0 for x in nv]
+                    g[key] = round(min(100.0, sum(vals)), 1) if vals else None
+                if g.get('gdec') and not g.get('g3d'):
+                    g['gpuUse'] = 'Video'
         if 'disk' in want:
             self.io2 = io_now
         for k in [k for k in self.cpu_hist if k not in seen]:
@@ -1972,9 +1998,278 @@ def open_window(tab=''):
     raise Fail("Hearth's desktop (Mantel) isn't running; open Resource Monitor from Desktop Mode")
 
 
+def open_files(pids, root=None, limit=200):
+    """Processor tab's Open files (1.11, mockup resmon-2): the regular files a program (all its PIDs) has open, yours
+    only (/proc/PID/fd is readable only for your own programs), with the C:\\ form when Hearth (C:) has one."""
+    root = root or ht.PROC
+    seen, out = set(), []
+    try:
+        import hearth_drive_letters as hdl
+        ctx = hdl.c_context()
+    except Exception:  # noqa: BLE001
+        hdl = ctx = None
+    for pid in pids:
+        d = os.path.join(root, str(pid), 'fd')
+        try:
+            fds = os.listdir(d)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                t = os.readlink(os.path.join(d, fd))
+            except OSError:
+                continue
+            if not t.startswith('/') or t.startswith(('/dev/', '/proc/', '/sys/', '/memfd:')) or t in seen or ' (deleted)' in t:
+                continue
+            seen.add(t)
+            win = ''
+            if hdl and ctx:
+                try:
+                    win = hdl.to_c(t, ctx)
+                except Exception:  # noqa: BLE001
+                    win = ''
+            out.append({'pid': pid, 'path': t, 'win': win})
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _hexaddr(h):
+    """'0100007F:1F90' or a 32-hex IPv6 → ('127.0.0.1', 8080)."""
+    import socket
+    import struct
+    a, p = h.split(':')
+    if len(a) == 8:
+        ip = socket.inet_ntop(socket.AF_INET, struct.pack('<I', int(a, 16)))
+    else:
+        b = bytes.fromhex(a)
+        ip = socket.inet_ntop(socket.AF_INET6, b''.join(b[i:i + 4][::-1] for i in range(0, 16, 4)))
+        if ip.startswith('::ffff:'):
+            ip = ip[7:]
+    return ip, int(p, 16)
+
+
+def open_to(ip):
+    if ip in ('127.0.0.1', '::1') or ip.startswith('127.'):
+        return 'This PC only'
+    if ip.startswith('100.') or ip.startswith('fd7a:115c'):
+        return 'Tailscale only'
+    if ip in ('0.0.0.0', '::'):
+        return 'Any network (the firewall decides)'
+    return 'Your network (' + ip + ')'
+
+
+def drive_temp(name, sys_root='/sys'):
+    """A disk's temperature (°C) from its hwmon (NVMe's own sensor, or drivetemp for SATA), or None."""
+    for pat in ('block/%s/device/hwmon/hwmon*/temp1_input', 'block/%s/device/hwmon*/temp1_input',
+                'block/%s/device/device/hwmon/hwmon*/temp1_input'):
+        for f in glob.glob(os.path.join(sys_root, pat % name)):
+            v = read_int(f)
+            if v:
+                return round(v / 1000)
+    return None
+
+
+def fs_of(mount, mounts_text):
+    for line in (mounts_text or '').splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[1].replace('\\040', ' ') == mount:
+            return f[2]
+    return ''
+
+
+def drives_info(sys_root='/sys', mounts_text=None):
+    """Disk tab's Drives (1.11, mockup resmon-4): each disk's kind, file system, free and total space, temperature,
+    and how full it is (nothing here needs root; health is in Hearth Disks › Properties)."""
+    mounts_text = mounts_text if mounts_text is not None else (read('/proc/mounts', '') or '')
+    try:
+        letters = ht.read_drive_letters()
+    except Exception:  # noqa: BLE001
+        letters = None
+    out = []
+    for d in ht.disk_layout(sys_root, mounts_text, letters):
+        mp = next((m for m in d['mounts'] if m in ('/sysroot', '/var', '/')), None) or (d['mounts'][0] if d['mounts'] else None)
+        free = total = None
+        if mp:
+            try:
+                st = os.statvfs(mp)
+                total, free = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+            except OSError:
+                pass
+        out.append({'name': d['name'], 'label': d['label'], 'letters': d['letters'], 'type': d['type'], 'model': d['model'],
+                    'fs': fs_of(mp, mounts_text) if mp else '', 'free': free, 'total': total or d['size'],
+                    'pct': round(100.0 * (total - free) / total, 1) if total and free is not None else None,
+                    'temp': drive_temp(d['name'], sys_root), 'system': d['system']})
+    return out
+
+
+def writing_files(pids, root=None, limit=40):
+    """Disk tab's Files being read and written (1.11): the files these programs have open for writing (fdinfo
+    flags), then the others they have open; yours only."""
+    root = root or ht.PROC
+    files = open_files(pids, root, limit=400)
+    for f in files:
+        f['writing'] = False
+        try:
+            for fd in os.listdir(os.path.join(root, str(f['pid']), 'fd')):
+                if os.readlink(os.path.join(root, str(f['pid']), 'fd', fd)) == f['path']:
+                    m = re.search(r'flags:\s*([0-7]+)', read(os.path.join(root, str(f['pid']), 'fdinfo', fd), '') or '')
+                    if m and int(m.group(1), 8) & 3:
+                        f['writing'] = True
+                        break
+        except OSError:
+            pass
+    files.sort(key=lambda f: not f['writing'])
+    return files[:limit]
+
+
+def _split_addr(a):
+    """'192.168.1.5:443', '[2001:db8::1]:443', '[::ffff:1.2.3.4]:80' → ('ip', port)."""
+    host, _, port = a.rpartition(':')
+    host = host.strip('[]')
+    if host.startswith('::ffff:'):
+        host = host[7:]
+    host = host.split('%')[0]
+    try:
+        return host, int(port)
+    except ValueError:
+        return host, 0
+
+
+def parse_ss(text):
+    """`ss -tinpHO state established` (one line per socket; older ss put the details on an indented next line):
+    [{pid, local, peer, port, rtt (ms), recv, sent (bytes so far)}]. Sockets of other users have no pid."""
+    lines, out = [], []
+    for line in (text or '').splitlines():
+        if line[:1] in (' ', '\t') and lines:
+            lines[-1] += ' ' + line.strip()
+        elif line.strip():
+            lines.append(line.strip())
+    for line in lines:
+        f = line.split()
+        if f and not f[0].isdigit():          # a State column (no state filter)
+            f = f[1:]
+        if len(f) < 4:
+            continue
+        lip, _ = _split_addr(f[2])
+        rip, rport = _split_addr(f[3])
+        m = re.search(r'pid=(\d+)', line)
+        rtt = re.search(r'\brtt:([\d.]+)', line)
+        rc = re.search(r'\bbytes_received:(\d+)', line)
+        ak = re.search(r'\bbytes_acked:(\d+)', line) or re.search(r'\bbytes_sent:(\d+)', line)
+        out.append({'pid': int(m.group(1)) if m else 0, 'local': f[2], 'peer': rip, 'port': rport,
+                    'rtt': float(rtt.group(1)) if rtt else None,
+                    'recv': int(rc.group(1)) if rc else 0, 'sent': int(ak.group(1)) if ak else 0, 'lip': lip})
+    return out
+
+
+def tcp_rates(socks, prev, dt):
+    """Per-program download and upload speeds (bytes/s) from two looks at the same sockets, `dt` seconds apart:
+    {pid: {'down', 'up'}}. A socket that wasn't there before counts from the next look."""
+    out = {}
+    if not prev or dt <= 0:
+        return out
+    for x in socks:
+        if not x['pid']:
+            continue
+        key = '%s|%s:%s|%s' % (x['local'], x['peer'], x['port'], x['pid'])
+        p = prev.get(key)
+        if not p:
+            continue
+        r = out.setdefault(x['pid'], {'down': 0, 'up': 0})
+        r['down'] += int(max(0, x['recv'] - p[0]) / dt)
+        r['up'] += int(max(0, x['sent'] - p[1]) / dt)
+    return out
+
+
+def tcp_traffic():
+    """Runs ss and compares with the last look (a cache file, never a setting): (sockets, {pid: rates})."""
+    try:
+        r = subprocess.run(['ss', '-tinpHO', 'state', 'established'], capture_output=True, text=True, timeout=4)
+        if r.returncode != 0:
+            r = subprocess.run(['ss', '-tinpH', 'state', 'established'], capture_output=True, text=True, timeout=4)
+        socks = parse_ss(r.stdout) if r.returncode == 0 else []
+    except (OSError, subprocess.TimeoutExpired):
+        return [], {}
+    now = time.time()
+    old = read_cache('resmon-tcp.json') or {}
+    rates = tcp_rates(socks, old.get('socks') or {}, now - (old.get('t') or now)) if now - (old.get('t') or 0) < 30 else {}
+    write_cache('resmon-tcp.json', {'t': now, 'socks': {'%s|%s:%s|%s' % (x['local'], x['peer'], x['port'], x['pid']): [x['recv'], x['sent']]
+                                                          for x in socks if x['pid']}})
+    return socks, rates
+
+
+def ports(root=None):
+    """Network tab (1.11, mockup resmon-5): listening ports and open TCP connections, with the program when it's yours
+    (another user's or the system's sockets show without a name)."""
+    root = root or ht.PROC
+    inode_pid = {}
+    for d in os.listdir(root):
+        if not d.isdigit():
+            continue
+        try:
+            for fd in os.listdir(os.path.join(root, d, 'fd')):
+                try:
+                    t = os.readlink(os.path.join(root, d, 'fd', fd))
+                except OSError:
+                    continue
+                if t.startswith('socket:['):
+                    inode_pid[t[8:-1]] = int(d)
+        except OSError:
+            continue
+    names = {}
+
+    def name(pid):
+        if pid not in names:
+            names[pid] = (read(os.path.join(root, str(pid), 'comm'), '') or '').strip()
+        return names[pid]
+    listening, conns, seen = [], [], set()
+    for f in ('tcp', 'tcp6'):
+        for line in (read(os.path.join(root, 'net', f), '') or '').splitlines()[1:]:
+            x = line.split()
+            if len(x) < 10:
+                continue
+            try:
+                lip, lport = _hexaddr(x[1])
+                rip, rport = _hexaddr(x[2])
+            except (ValueError, OSError):
+                continue
+            pid = inode_pid.get(x[9])
+            who = {'pid': pid or 0, 'name': name(pid) if pid else 'system'}
+            if x[3] == '0A':
+                k = (lport, open_to(lip), who['name'])
+                if k in seen:
+                    continue
+                seen.add(k)
+                listening.append(dict(who, port=lport, openTo=open_to(lip)))
+            elif x[3] == '01' and not rip.startswith('127.') and rip != '::1':
+                conns.append(dict(who, remote=rip, port=rport))
+    listening.sort(key=lambda r: r['port'])
+    # 1.11: each program's download and upload speed and each connection's ping (ss's round-trip time)
+    socks, rates = tcp_traffic() if root is None else ([], {})
+    rtt = {(x['peer'], x['port']): x['rtt'] for x in socks if x['rtt'] is not None}
+    for c in conns:
+        p = rtt.get((c['remote'], c['port']))
+        c['ping'] = round(p) if p is not None else None
+    conns.sort(key=lambda c: (c['pid'] == 0, -(rates.get(c['pid'], {}).get('down', 0))))
+    return {'listening': listening[:100], 'connections': conns[:150], 'apps': {str(k): v for k, v in rates.items()}}
+
+
 def cmd(argv):
     c = argv[1] if len(argv) > 1 else 'open'
     rest = argv[2:]
+    if c == 'ports' and not rest:
+        print(json.dumps(ports()))
+        return
+    if c == 'drives' and not rest:
+        print(json.dumps({'drives': drives_info()}))
+        return
+    if c == 'writing' and rest and all(x.isdigit() for x in rest):
+        print(json.dumps({'files': writing_files([int(x) for x in rest[:64]])}))
+        return
+    if c == 'files' and rest and all(x.isdigit() for x in rest):
+        print(json.dumps({'files': open_files([int(x) for x in rest[:64]])}))
+        return
     if c == 'open':
         out = open_window(rest[0] if rest else '')
     elif c == 'serve' and not rest:

@@ -1,0 +1,14 @@
+// Hearth: Task Manager › Memory › Swap & settings and Settings › System › Memory change memory and swap
+// (hearth-memory), the processor and battery settings in Task Manager › Performance (hearth-hwset) and the
+// full-drive warning's emergency space (hearth-diskguard release), without a
+// password prompt, like Hearth Settings' other system options (49-hearth-admin.rules):
+// only that helper, only from a local active session, only for administrators (wheel).
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        (action.lookup("program") == "/usr/libexec/nimbus/hearth-memory" ||
+         action.lookup("program") == "/usr/libexec/nimbus/hearth-hwset" ||
+         action.lookup("program") == "/usr/libexec/nimbus/hearth-diskguard") &&
+        subject.local && subject.active && subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

@@ -52,6 +52,10 @@ main.dm[hidden] { display:none; }
 .vrow:hover { background:color-mix(in srgb, var(--panel3) 35%, transparent); }
 .vrow.sel { background:var(--panel3); }
 .vrow .nm { display:flex; align-items:center; gap:.6em; }
+.vrow .low { color:var(--gold); font-weight:600; }
+.fullbar { display:flex; gap:.7em; align-items:flex-start; margin:.5em 1.08em; padding:.65em .9em; border-radius:8px; background:var(--warnbg); color:var(--gold); line-height:1.4; }
+.fullbar b { color:color-mix(in srgb, var(--gold) 85%, #fff); }
+.fullbar[hidden] { display:none; }
 .sw { width:.92em; height:.92em; border-radius:3px; flex:none; display:inline-block; }
 .s-gold { background:var(--gold); } .s-green { background:var(--green); } .s-blue { background:var(--blue); } .s-none { background:var(--none); border:1px solid var(--faint); } .s-grey { background:var(--faint); }
 
@@ -299,6 +303,7 @@ main.dm[hidden] { display:none; }
   <main class="dm">
     <section class="vl" aria-label="Volumes">
       <div class="cols vh"><span>Volume</span><span>Layout</span><span>Type</span><span>File system</span><span>Status</span><span>Capacity</span><span>Free space</span><span>% Free</span></div>
+      <div class="fullbar" id="fullbar" role="alert" hidden></div>
       <div class="scroll" id="vols"></div>
     </section>
     <section class="map" aria-label="Disks">
@@ -444,10 +449,20 @@ function render() {
   $('#vols').innerHTML = vols.map(([d, p]) => {
     const total = p.used != null && p.free != null ? p.used + p.free : null;
     const pct = total ? `${Math.round(p.free / total * 100)} %` : '';
+    const low = total && (p.free / total <= .1 || (p.system && p.free < 10e9));
     return `<button class="vrow cols f ${p.id === S.sel ? 'sel' : ''}" data-sel="${esc(p.id)}" data-key="vol:${esc(p.id)}" title="${esc(driveName(d))} · ${esc(p.device)}">
       <span class="nm"><i class="sw s-${stripe(p)}"></i>${esc(volName(p))}</span><span class="dim">Simple</span><span class="dim">Basic</span><span class="dim">${esc(fsName(p.fs) || '—')}</span>
-      <span class="dim">${esc(volStatus(d, p))}</span><span>${esc(human(p.size))}</span><span>${p.free != null ? esc(human(p.free)) : ''}</span><span class="dim">${pct}</span></button>`;
+      <span class="dim">${esc(volStatus(d, p))}</span><span>${esc(human(p.size))}</span><span class="${low ? 'low' : ''}">${p.free != null ? esc(human(p.free)) : ''}</span><span class="${low ? 'low' : 'dim'}">${pct}</span></button>`;
   }).join('') || '<div class="empty">No volumes.</div>';
+  // 1.11: the drive Hearth starts from almost full (90% or under 10 GB free), as on the desktop (SpaceWatch.qml)
+  const sys = vols.find(([, p]) => p.system && p.kind === 'hearth' && p.free != null && p.used != null);
+  const fb = $('#fullbar');
+  if (fb) {
+    const [, sp] = sys || [];
+    const full = sp ? sp.used / (sp.used + sp.free) : 0;
+    fb.hidden = !(sp && (full >= .9 || sp.free < 10e9));
+    if (!fb.hidden) fb.innerHTML = `<span>⚠</span><span><b>${esc(volName(sp))} is ${Math.round(full * 100)}% full (${esc(human(sp.free))} free).</b> If the drive ${S.host === 'windows' ? 'Windows' : 'Hearth OS'} starts from fills up, your PC might not start properly. Free up some space: Settings › Storage can clean up shader caches, old downloads and games you don't play.</span>`;
+  }
   $('#disks').innerHTML = S.drives.map((d, i) => {
     const total = d.size || d.partitions.reduce((a, p) => a + p.size, 0) || 1;
     const parts = d.partitions.filter(p => !(p.kind === 'extended' && d.partitions.some(q => q !== p && q.offset >= p.offset && q.offset < p.offset + p.size)));

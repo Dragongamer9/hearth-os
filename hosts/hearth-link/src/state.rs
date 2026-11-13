@@ -131,17 +131,56 @@ pub struct Peer {
     pub always_accept: bool,
     /// What it said about itself the last time: stores it's signed in to.
     pub signed_in: Value,
+    /// A friend's device (pairing: either side picked "A friend's device"): paired with this device only, and only
+    /// for what makes sense between two people (game copies, seeing it online). Missing in peers.json from before
+    /// this: false, since every device paired before was the owner's own.
+    pub friend: bool,
+    /// One of your devices that told this one about it (family.rs), instead of pairing with a code.
+    pub introduced_by: Option<String>,
 }
 
-pub struct Peers { pub file: PathBuf, pub list: Vec<Peer> }
+impl Peer {
+    pub fn mine(&self) -> bool { !self.friend }
+}
+
+/// A device of yours that was removed (on this device or another of yours), so the others drop it too and nobody
+/// adds it back from an older list. Pairing with it again (a newer pairedAt) wins.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Removed { pub id: String, pub at: u64 }
+
+pub struct Peers { pub file: PathBuf, pub list: Vec<Peer>, pub removed: Vec<Removed> }
 
 impl Peers {
     pub fn load(dir: &Path) -> Peers {
         let file = dir.join("peers.json");
         let list = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Vec<Peer>>(&b).ok()).unwrap_or_default();
-        Peers { file, list }
+        let removed = std::fs::read(dir.join("removed-devices.json")).ok().and_then(|b| serde_json::from_slice::<Vec<Removed>>(&b).ok()).unwrap_or_default();
+        Peers { file, list, removed }
     }
-    pub fn save(&self) -> Result<(), String> { crate::write_atomic(&self.file, serde_json::to_string_pretty(&self.list).unwrap().as_bytes()) }
+    pub fn save(&self) -> Result<(), String> {
+        crate::write_atomic(&self.file, serde_json::to_string_pretty(&self.list).unwrap().as_bytes())?;
+        let rf = self.file.with_file_name("removed-devices.json");
+        if !self.removed.is_empty() || rf.exists() { crate::write_atomic(&rf, serde_json::to_string_pretty(&self.removed).unwrap().as_bytes())?; }
+        Ok(())
+    }
+    /// Your own devices (not friends'): the only ones anything personal goes to or comes from.
+    pub fn mine(&self) -> impl Iterator<Item = &Peer> { self.list.iter().filter(|p| p.mine()) }
+    pub fn is_mine(&self, id: &str) -> bool { self.get(id).map(Peer::mine).unwrap_or(false) }
+    /// Paired with a code (pairing), as one of your devices or a friend's. Pairing again clears a removal.
+    pub fn add_paired(&mut self, id: &str, name: &str, friend: bool) {
+        self.add(id, name);
+        if let Some(p) = self.get_mut(id) { p.friend = friend; p.introduced_by = None; p.paired_at = crate::now_ms(); }
+        self.removed.retain(|r| r.id != id);
+        let _ = self.save();
+    }
+    /// Removing one of your devices is remembered, so your other devices drop it too (family.rs).
+    pub fn remove_and_remember(&mut self, id: &str) -> bool {
+        let mine = self.is_mine(id);
+        let changed = self.remove(id);
+        if changed && mine { crate::family::remember_removed(&mut self.removed, id, crate::now_ms()); let _ = self.save(); }
+        changed
+    }
     pub fn get(&self, id: &str) -> Option<&Peer> { self.list.iter().find(|p| p.id == id) }
     pub fn get_mut(&mut self, id: &str) -> Option<&mut Peer> { self.list.iter_mut().find(|p| p.id == id) }
     pub fn is_paired(&self, id: &str) -> bool { self.get(id).is_some() }
@@ -208,5 +247,34 @@ mod tests {
         let mut q = q;
         assert!(q.remove("ab"));
         assert!(!Peers::load(d.path()).is_paired("ab"));
+    }
+    #[test]
+    fn devices_paired_before_friends_existed_are_yours() {
+        let p: Vec<Peer> = serde_json::from_str(r#"[{"id":"ab","name":"Deck","pairedAt":1,"lastSeen":2,"addrs":[],"alwaysAccept":false,"signedIn":{}}]"#).unwrap();
+        assert!(p[0].mine());
+        assert!(!p[0].friend);
+        assert_eq!(p[0].introduced_by, None);
+    }
+    #[test]
+    fn friends_and_removals_are_kept() {
+        let d = tempfile::tempdir().unwrap();
+        let mut p = Peers::load(d.path());
+        p.add_paired("me1", "Ally", false);
+        p.add_paired("fr1", "Sam's Deck", true);
+        assert!(p.is_mine("me1"));
+        assert!(!p.is_mine("fr1"));
+        assert!(p.is_paired("fr1"));
+        assert_eq!(p.mine().count(), 1);
+        // Removing a friend's device isn't passed on; removing yours is.
+        assert!(p.remove_and_remember("fr1"));
+        assert!(p.removed.is_empty());
+        assert!(p.remove_and_remember("me1"));
+        assert_eq!(p.removed.len(), 1);
+        let q = Peers::load(d.path());
+        assert_eq!(q.removed[0].id, "me1");
+        // Pairing again clears it.
+        let mut q = q;
+        q.add_paired("me1", "Ally", false);
+        assert!(Peers::load(d.path()).removed.is_empty());
     }
 }

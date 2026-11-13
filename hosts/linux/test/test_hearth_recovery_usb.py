@@ -492,3 +492,74 @@ class SessionConf(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Health(Base):
+    """The main screen's health check: which version started fine (the journal), the drive, and one suggested fix."""
+    CUR, PREV = f'default/{CSUM1}/0', f'default/{CSUM2}/0'
+
+    def check(self, starts, smart=True, space=50 * GIB, trial=False):
+        if smart is not None:
+            write(os.path.join(self.f.fake, 'smart.json'), json.dumps({'smart_status': {'passed': smart}}))
+        if trial:
+            write(os.path.join(self.f.fake, 'hearth', 'home', 'sam', '.config', 'nimbus', 'renderer-once'), 'qt')
+        sid = self.sid()
+        with self.f.active(), mock.patch.object(R, 'journal_starts', return_value=starts), mock.patch.object(R, 'free_space', return_value=space):
+            return R.health(sid)
+
+    def start(self, key, good, when='2026-11-10 18:12:03'):
+        return {'boot': 'x', 'first': when, 'last': when, 'key': key, 'good': good}
+
+    def ids(self, h, state):
+        return [c['id'] for c in h['checks'] if c['state'] == state]
+
+    def test_a_new_version_that_never_started_suggests_the_previous_one(self):
+        h = self.check([self.start(self.PREV, True, '2026-11-08 10:00:00')] * 3 + [self.start(self.CUR, False), self.start(self.CUR, False, '2026-11-10 18:15:00')])
+        self.assertEqual(h['title'], "We found what's wrong")
+        self.assertEqual(h['fix']['act'], 'previous')
+        self.assertIn('Hearth OS 0.6.52 started fine 3 times', h['fix']['body'])
+        self.assertEqual(h['fix']['button'], 'Start 0.6.52')
+        bad = next(c for c in h['checks'] if c['id'] == 'starts')
+        self.assertEqual(bad['title'], "Hearth OS 0.6.53 didn't finish starting")
+        self.assertIn('last 2 starts', bad['detail'])
+        self.assertEqual(h['starts']['1']['good'], 3)
+        self.assertEqual(h['starts']['0'], {'good': 0, 'failed': 2, 'lastGood': ''})
+
+    def test_all_good_suggests_nothing(self):
+        h = self.check([self.start(self.CUR, True)])
+        self.assertIsNone(h['fix'])
+        self.assertEqual(h['title'], 'Everything looks fine')
+        self.assertEqual(self.ids(h, 'bad'), [])
+        self.assertIn('files', self.ids(h, 'ok'))
+
+    def test_a_full_drive_suggests_desktop_mode_to_free_space(self):
+        h = self.check([self.start(self.CUR, False)], space=GIB // 2)
+        self.assertIn('space', self.ids(h, 'bad'))
+        self.assertEqual(h['fix']['act'], 'desktop')
+
+    def test_a_failing_drive_comes_first(self):
+        h = self.check([self.start(self.CUR, False)], smart=False)
+        self.assertEqual(h['fix']['act'], 'copy')
+        self.assertIn('drive', self.ids(h, 'bad'))
+
+    def test_a_version_that_started_before_and_a_display_trial_suggests_resetting_the_display(self):
+        h = self.check([self.start(self.CUR, True, '2026-11-09 09:00:00'), self.start(self.CUR, False)], trial=True)
+        self.assertEqual(h['fix']['act'], 'resetdisplay')
+        self.assertIn('display', self.ids(h, 'warn'))
+
+    def test_no_journal_and_no_smart_is_unknown_not_wrong(self):
+        h = self.check(None, smart=None)
+        self.assertIsNone(h['fix'])
+        self.assertIn('starts', self.ids(h, 'unknown'))
+        self.assertIn('drive', self.ids(h, 'unknown'))
+
+    def test_boot_key_ignores_which_boot_folder(self):
+        self.assertEqual(R.boot_key('root=x ostree=/ostree/boot.0/default/abc/1 quiet'), 'default/abc/1')
+        self.assertEqual(R.boot_key('BOOT_IMAGE=/vmlinuz ostree=/ostree/boot.1/default/abc/1'), 'default/abc/1')
+        self.assertEqual(R.boot_key('quiet'), '')
+
+    def test_the_command_prints_json(self):
+        sid = self.sid()
+        with self.f.active(), mock.patch.object(R, 'journal_starts', return_value=[]):
+            self.assertEqual(R.main(['hearth-recovery', 'health', sid]), 0)
+        self.assertIn('"checks"', self.out.getvalue())

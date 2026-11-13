@@ -37,6 +37,7 @@ var PAGES = [
     { id: "sound", file: "SetSound.qml", cat: "system", label: "Sound", icon: "vol", desc: "Volume, speakers and headphones, microphone", words: "volume audio speakers output microphone", old: "Sound" },
     { id: "notifications", file: "SetNotifications.qml", cat: "system", label: "Notifications", icon: "bell", desc: "Do not disturb, apps you muted", words: "do not disturb mute alerts", old: "Notifications", status: "dnd" },
     { id: "power", file: "SetPower.qml", cat: "system", label: "Power & battery", icon: "power", desc: "Screen off and sleep times, the power button, battery", words: "battery sleep screen off suspend power button", old: "Power" },
+    { id: "memory", file: "SetMemory.qml", cat: "system", label: "Memory", icon: "cpu", desc: "Compressed memory (zram), keep memory free, the swap file, what closes when memory runs out", words: "ram memory swap zram swappiness swap file pagefile virtual memory oom out of memory freeze compress keep free" },
     { id: "storage", file: "SetStorage.qml", cat: "system", label: "Storage", icon: "drive", desc: "Space on your drives, games by size, clean up", words: "disk space clean games by size move games low space", old: "Storage" },
     { id: "drives", file: "SetDrives.qml", cat: "system", label: "Drives & folders", icon: "drive", desc: "Hearth (C:) with Windows folder names, the address bar, Copy path, drive letters", words: "c: drive letter program files users windows appdata linux folders address bar copy path hearth files explorer" },
     { id: "startup", file: "SetStartup.qml", cat: "system", label: "Startup", icon: "power", desc: "Start in Game Mode, Desktop Mode or Server mode, and an optional schedule", words: "start in boot mode schedule server mode game mode desktop mode turn on" },
@@ -74,6 +75,7 @@ var PAGES = [
 
     // ---- Gaming
     { id: "gaming", file: "SetGaming.qml", cat: "gaming", label: "Gaming", icon: "pad", words: "game mode start in steam", landing: true, ownList: true },
+    { id: "savedgames", file: "SetSavedGames.qml", cat: "gaming", label: "Saved games", icon: "sync", desc: "Every game's saves, backed up and put back (Ludusavi)", words: "saves save games backup restore ludusavi cloud saves appdata documents my games" },
     { id: "steam", file: "SetSteam.qml", cat: "gaming", label: "Steam Game Mode and Decky", icon: "steam", desc: "Steam's big-screen mode, Decky Loader and Hearth Sync", words: "game mode decky plugins steam", old: "Steam Game Mode" },
     { id: "startup-animation", file: "SetBoot.qml", cat: "gaming", label: "Startup animation", icon: "film", desc: "What Steam Game Mode plays while it starts", words: "boot startup movie animation", old: "Boot & startup", props: { part: "animation" } },
     { id: "games", file: "SetGames.qml", cat: "gaming", label: "Games & stores", icon: "store", desc: "Epic Games, GOG and Xbox accounts, library sources, mods and saves", words: "steam stores library epic gog xbox", old: "Games & stores" },
