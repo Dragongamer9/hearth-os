@@ -1,0 +1,2 @@
+[33m  WARN[97m scene[0m: @TaskManagerView.qml[1075:25]: Type MemorySettings unavailable
+[33m  WARN[97m qml[0m: Task Manager: its page (TaskManagerView.qml) couldn't load

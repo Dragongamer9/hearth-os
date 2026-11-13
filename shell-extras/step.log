@@ -1,0 +1,284 @@
++ pkill -f labwc/autostart
++ pkill -x labwc
++ pkill -f quickshell
++ pkill -x foot
++ true
++ sleep 2
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ export HEARTH_MIXER_FIXTURE=/__w/hearth-os/hearth-os/hosts/linux/test/fixtures/mixer.json
++ HEARTH_MIXER_FIXTURE=/__w/hearth-os/hearth-os/hosts/linux/test/fixtures/mixer.json
++ '[' -S /tmp/xdg/bus ']'
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\n# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds\' copies of the menu entries, with the\n# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages\' own (same ids).\nif [ -d /usr/share/hearth/app-kinds/applications ]; then\n  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac\nfi\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ '[' -d /usr/share/hearth/app-kinds/applications ']'
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d
++ D=/tmp/home/.local/share/nimbus/desktop.json
+++ dirname /tmp/home/.local/share/nimbus/desktop.json
++ mkdir -p /tmp/home/.local/share/nimbus
++ python3 - /tmp/home/.local/share/nimbus/desktop.json
++ VOL=/tmp/home/.config/nimbus/app-volumes.json
++ CLIP=/tmp/home/.local/share/hearth/clipboard
++ rm -f /tmp/home/.config/nimbus/app-volumes.json /tmp/home/.config/nimbus/app-volumes.json.bak
++ rm -rf /tmp/home/.local/share/hearth/clipboard
++ rm -f '/tmp/xdg/wayland-*'
++ sh hosts/linux/desktop/theme/apply.sh
+++ python3 hosts/linux/desktop/shell/hearth-system labwc-config
++ CONF=/tmp/xdg/hearth-labwc
+++ seq 1 30
++ labwc -C /tmp/xdg/hearth-labwc
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ head -1
++++ ls /tmp/xdg/wayland-0
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ wtype -k Shift_L
++ sleep 1
++ ipc mixer open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call mixer open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 1
++ grim shots/shell-extras/01-mixer.png
++ '[' -e /tmp/home/.config/nimbus/app-volumes.json ']'
++ say 'opening the mixer wrote nothing'
++ echo '::notice title=Shell extras::opening the mixer wrote nothing'
+::notice title=Shell extras::opening the mixer wrote nothing
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call mixer state
+++ tail -1
++ before='{"shown":true,"apps":["Cyberpunk 2077","Discord","Firefox","Spotify","Hearth sounds"],"current":2,"menu":"","remembered":{}}'
++ wtype -k Right
++ sleep 2
++ grim shots/shell-extras/02-mixer-first-app-louder.png
++ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d == {"Cyberpunk 2077": 0.95} else 1)' /tmp/home/.config/nimbus/app-volumes.json
+++ cat /tmp/home/.config/nimbus/app-volumes.json
+++ tr -d '\n '
++ say 'moving Cyberpunk 2077'\''s level saved just that app: {"Cyberpunk2077":0.95}'
++ echo '::notice title=Shell extras::moving Cyberpunk 2077'\''s level saved just that app: {"Cyberpunk2077":0.95}'
+::notice title=Shell extras::moving Cyberpunk 2077's level saved just that app: {"Cyberpunk2077":0.95}
++ wtype -k Down
++ wtype -k Return
++ sleep 1
++ grim shots/shell-extras/03-mixer-discord-muted.png
++ wtype -k x
++ sleep 1
++ grim shots/shell-extras/04-mixer-play-on.png
++ wtype -k Down
++ wtype -k Return
++ sleep 1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call mixer state
++ echo $'mixer: \E[33m  WARN\E[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.\nQt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.\nIf this causes problems, reconfigure your locale. See the locale(1) manual\nfor more information.\n{"shown":true,"apps":["Cyberpunk 2077","Discord","Firefox","Spotify","Hearth sounds"],"current":3,"menu":"","remembered":{"Cyberpunk 2077":0.95}}'
+mixer: [33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+{"shown":true,"apps":["Cyberpunk 2077","Discord","Firefox","Spotify","Hearth sounds"],"current":3,"menu":"","remembered":{"Cyberpunk 2077":0.95}}
++ wtype -k Up
++ wtype -k Up
++ wtype -k Up
++ wtype -k Return
++ sleep 1
++ grim shots/shell-extras/05-mixer-outputs.png
++ wtype -k Escape
++ sleep 0.5
++ wtype -k Escape
++ sleep 1
++ ipc settings page sound
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page sound
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/shell-extras/06-settings-sound.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ foot -a snaptest -T 'Snap test' sh -c 'sleep 120'
++ sleep 4
++ ipc snap open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call snap open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 1
++ grim shots/shell-extras/07-snap-layouts.png
++ wtype -k Right
++ sleep 1
++ grim shots/shell-extras/08-snap-right-half-lit.png
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call snap state
++ st=$'\E[33m  WARN\E[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.\nQt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.\nIf this causes problems, reconfigure your locale. See the locale(1) manual\nfor more information.\n{"shown":true,"zone":"right-half","window":true}'
++ echo $'snap: \E[33m  WARN\E[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.\nQt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.\nIf this causes problems, reconfigure your locale. See the locale(1) manual\nfor more information.\n{"shown":true,"zone":"right-half","window":true}'
+snap: [33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+{"shown":true,"zone":"right-half","window":true}
++ case "$st" in
++ say 'snap layouts: Right lit the right half, with a window to snap'
++ echo '::notice title=Shell extras::snap layouts: Right lit the right half, with a window to snap'
+::notice title=Shell extras::snap layouts: Right lit the right half, with a window to snap
++ wtype -k Return
++ sleep 3
++ grim shots/shell-extras/09-snapped-right.png
++ ipc snap open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call snap open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ for k in Down Right
++ wtype -k Down
++ sleep 0.3
++ for k in Down Right
++ wtype -k Right
++ sleep 0.3
++ grim shots/shell-extras/10-snap-quarters.png
++ wtype -k Escape
++ sleep 1
++ pkill -x foot
++ ipc clipboard open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call clipboard open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/shell-extras/11-clipboard-off.png
++ python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("clipboardHistory") is False else 1)' /tmp/home/.local/share/nimbus/desktop.json
++ say 'clipboard history stays off until you turn it on'
++ echo '::notice title=Shell extras::clipboard history stays off until you turn it on'
+::notice title=Shell extras::clipboard history stays off until you turn it on
++ wtype -k Return
++ sleep 4
++ python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("clipboardHistory") is True else 1)' /tmp/home/.local/share/nimbus/desktop.json
++ say 'the popup'\''s switch turned history on (and saved it)'
++ echo '::notice title=Shell extras::the popup'\''s switch turned history on (and saved it)'
+::notice title=Shell extras::the popup's switch turned history on (and saved it)
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call clipboard state
++ echo $'clipboard: \E[33m  WARN\E[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.\nQt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.\nIf this causes problems, reconfigure your locale. See the locale(1) manual\nfor more information.\n{"shown":true,"on":true,"watching":true,"items":0,"pinned":0}'
+clipboard: [33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+{"shown":true,"on":true,"watching":true,"items":0,"pinned":0}
++ ipc clipboard close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call clipboard close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ printf chris-hearth.tail0e2082.ts.net:8188
++ wl-copy
++ sleep 2
++ printf 'sudo apt install -y openjdk-21-jre-headless'
++ wl-copy
++ sleep 2
++ grim -g '0,0 960x540' /tmp/clip-shot.png
++ wl-copy --type image/png
++ sleep 2
++ printf hunter2-not-kept
++ wl-copy --type x-kde-passwordManagerHint
++ sleep 2
++ printf 'Meet at 7 for the raid, bring snacks'
++ wl-copy
++ sleep 3
++ ipc clipboard open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call clipboard open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ wtype -k Down
++ wtype -k Down
++ wtype -k Down
++ wtype -k x
++ sleep 2
++ grim shots/shell-extras/12-clipboard-history.png
++ wtype -k Up
++ wtype -k Up
++ wtype -k Up
++ wtype -k Up
++ wtype -k Right
++ wtype -k Return
++ sleep 1
++ grim shots/shell-extras/13-clipboard-clear-confirm.png
++ wtype -k Return
++ sleep 3
++ grim shots/shell-extras/14-clipboard-cleared-pin-stays.png
++ ipc clipboard close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call clipboard close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ls -la /tmp/home/.local/share/hearth/clipboard
++ cp /tmp/home/.local/share/hearth/clipboard/index.json shots/shell-extras/clipboard-index.json
++ grep -rq hunter2 /tmp/home/.local/share/hearth/clipboard
++ say 'the password manager'\''s copy wasn'\''t kept'
++ echo '::notice title=Shell extras::the password manager'\''s copy wasn'\''t kept'
+::notice title=Shell extras::the password manager's copy wasn't kept
++ python3 - /tmp/home/.local/share/hearth/clipboard/index.json
+::notice title=Shell extras::clipboard after Clear all: 1 item(s), 1 pinned: ['sudo apt install -y openjdk-21']
++ cp /tmp/xdg/nimbus-shell.log shots/shell-extras/nimbus-shell.log
+++ grep -E '(Mixer|SnapLayouts|Clipboard|ExtrasPal)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|(mixer|snap-layouts)\.js' /tmp/xdg/nimbus-shell.log
+++ head -8
+++ cut -c1-240
+++ tr '\n' '|'
+++ true
++ xbad=
++ '[' -z '' ']'
++ pkill -x labwc
++ pkill -f quickshell
+wl_display_dispatch: Broken pipe
