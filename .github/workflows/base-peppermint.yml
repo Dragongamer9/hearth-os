@@ -1011,6 +1011,7 @@ jobs:
       - name: Proton works offline and without Steam (network off)
         timeout-minutes: 45
         run: |
+          if [ "$HEARTH_ARCH" != amd64 ]; then echo "::notice title=offline Proton::skipped on $HEARTH_ARCH (this runs x86 Windows programs through Proton; on arm64 Steam/Proton go through FEX, which this test harness doesn't set up)"; exit 0; fi
           set -o pipefail
           trap 'echo "::error title=offline Proton step::line $LINENO: $BASH_COMMAND (exit $?)"' ERR
           sudo apt-get update -qq || true
