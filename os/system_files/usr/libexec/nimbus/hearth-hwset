@@ -9,6 +9,19 @@ change one) and put back at every start by hearth-hwset.service, which nothing w
   hearth-hwset drives             JSON: Optimize drives: each drive's kind (SSD, NVMe, hard drive) and TRIM's last and
                                   next weekly run. Works without root
   hearth-hwset optimize           Optimize now: TRIM every SSD and NVMe drive (fstrim, never defragmented). Root
+  hearth-hwset plug               the power mode for plugged in / on battery (power.plugged, power.unplugged); the
+                                  udev rule 70-hearth-power-plug.rules runs it when the charger goes in or out (1.12)
+  hearth-hwset disk-health        JSON: every drive's health, life left, data written, power-on hours (smartctl). Root
+  hearth-hwset space              JSON: what's using space on C:, biggest first. Root (it reads every folder)
+  hearth-hwset cleanup            Clean up: temporary files and caches (never your files). Root
+  hearth-hwset scrub              Check the file system (btrfs scrub) now; hearth-scrub.timer runs it. Root
+  hearth-hwset snapshot           A snapshot of your files (Previous versions); hearth-snapshots.timer runs it. Root
+  hearth-hwset app-rule cpu NAME 10-90|low|remove   Per-app limits (Task Manager › CPU): a program's top share of
+                                  the processor, or low priority (its AI jobs and helpers included). Root
+  hearth-hwset app-rule net NAME allow|block|limit:MB   Which programs use the network (Task Manager › Network). Root
+  hearth-hwset apprules           the loop hearth-app-rules.service runs while any rule is set: each matching program
+                                  goes into its own box (hearth-app-NAME.scope) with its limit; the network rules
+                                  match those boxes (nftables table inet hearth_apps). Stopping it frees them
   hearth-hwset gamecores          Game cores (game.cores, off unless you turn it on): while a game runs, it gets its
                                   own cores and the system's services (updates, AI, builds) run on the others. The
                                   hearth-gamecores service runs this; nothing is kept after a restart or when it stops
@@ -89,7 +102,10 @@ def status():
         full = int(read(os.path.join(b, 'energy_full'), read(os.path.join(b, 'charge_full'), '0')) or 0)
         design = int(read(os.path.join(b, 'energy_full_design'), read(os.path.join(b, 'charge_full_design'), '0')) or 0)
         lim = os.path.join(b, 'charge_control_end_threshold')
+        volt = int(read(os.path.join(b, 'voltage_min_design'), '0') or 0)
+        wh = lambda x: round(x / 1e6) if os.path.exists(os.path.join(b, 'energy_full')) else (round(x * volt / 1e12) if volt else None)
         bats.append({'name': os.path.basename(b), 'health': round(100.0 * full / design) if design else None,
+                     'fullWh': wh(full) if full else None, 'designWh': wh(design) if design else None,
                      'cycles': int(read(os.path.join(b, 'cycle_count'), '0') or 0) or None,
                      'capacity': int(read(os.path.join(b, 'capacity'), '0') or 0), 'status': read(os.path.join(b, 'status')),
                      'limit': int(read(lim)) if read(lim).isdigit() else None, 'canLimit': os.path.exists(lim),
@@ -101,7 +117,39 @@ def status():
     return {'gameCores': {'can': logical_cpus() >= 4, 'value': gc, 'threads': logical_cpus(), 'suggested': cpu_text(default_game_cores())},
             'turbo': {'can': bool(tf), 'on': read(tf) == on if tf else None},
             'maxPct': {'can': pstate or bool(cpufreq), 'value': int(read(os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct'), '100') or 100) if pstate else saved.get('cpu.maxPct', 100)},
-            'throttled': throttles(), 'batteries': bats, 'saved': saved}
+            'throttled': throttles(), 'batteries': bats, 'saved': saved,
+            'onAC': on_ac(), 'tempLimit': temp_limit(), 'hibernate': hibernate_state(),
+            'cpuModel': cpu_model(), 'home': home_fs(), 'throttledToday': throttled_today(throttles()), 'c': c_drive()}
+
+
+def c_drive():
+    """Free and total on C: (the drive your files are on)."""
+    try:
+        st = os.statvfs('/var/home' if os.path.isdir('/var/home') else '/home')
+        return {'free': st.f_bavail * st.f_frsize, 'size': st.f_blocks * st.f_frsize}
+    except OSError:
+        return {}
+
+
+def throttled_today(count):
+    """Throttling "today": the count since the first look today (kept in your own state folder, never a setting)."""
+    if os.geteuid() == 0:
+        return None
+    path = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state'), 'hearth', 'throttle-day.json')
+    day, boot = time.strftime('%Y-%m-%d'), read('/proc/sys/kernel/random/boot_id')
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        d = {}
+    if d.get('day') != day or d.get('boot') != boot or count < d.get('base', 0):
+        d = {'day': day, 'boot': boot, 'base': count if d.get('day') != day else 0}
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            _sio().write_json(path, d)
+        except OSError:
+            pass
+    return max(0, count - d.get('base', 0))
 
 
 def set_max_pct(pct):
@@ -128,6 +176,20 @@ def put(key, value):
             raise Fail("couldn't change the top speed")
     elif key == 'game.cores':
         pass                    # hearth-gamecores.service does it while a game runs (see gamecores())
+    elif key in ('power.plugged', 'power.unplugged'):
+        pass                    # used when the charger goes in or out (plug(); 70-hearth-power-plug.rules)
+    elif key == 'updates.priority':
+        low = value == 'low'
+        for unit in UPDATE_UNITS:
+            _systemctl('set-property', unit, 'CPUWeight=%s' % ('20' if low else ''), 'IOWeight=%s' % ('20' if low else ''))
+    elif key == 'disk.scrub':
+        _timer('hearth-scrub.timer', value, {'weekly': 'weekly', 'monthly': 'monthly'})
+    elif key == 'disk.snapshots':
+        _timer('hearth-snapshots.timer', value, {'hourly': 'hourly', 'daily': 'daily'})
+    elif key in ('disk.commit', 'disk.compress'):
+        _remount_home()
+    elif key in ('disk.warnPct', 'battery.warn', 'battery.at5', 'battery.saver', 'battery.dim'):
+        pass                    # read by the desktop (SpaceWatch.qml, BatteryWatch) from this file
     elif key == 'battery.limit':
         done = False
         for b in batteries():
@@ -202,6 +264,18 @@ def parse(key, raw):
         if not lo <= v <= 100:
             raise Fail('%s: %d to 100' % (key, lo))
         return v
+    if key in ('power.plugged', 'power.unplugged'):
+        if raw not in POWER_MODES:
+            raise Fail('%s: %s' % (key, ', '.join(POWER_MODES)))
+        return raw
+    if key == 'updates.priority':
+        if raw not in ('normal', 'low'):
+            raise Fail('updates.priority: normal or low')
+        return raw
+    if key in CHOICES:
+        if raw not in CHOICES[key]:
+            raise Fail('%s: %s' % (key, ', '.join(CHOICES[key])))
+        return raw
     raise Fail('unknown setting ' + key)
 
 
@@ -307,6 +381,566 @@ def optimize():
     return {'ok': True, 'done': done}
 
 
+# ---------------------------------------------------------------------------------------------- 1.12: the rest of the mockups
+# Task Manager › Performance's settings tabs, built completely to the approved mockups tm-3 … tm-7 (red flag 11;
+# docs/mockups/checklists/task-manager.md). Everything here changes only what you press; nothing waits for it.
+POWER_MODES = ('off', 'power-saver', 'balanced', 'performance')
+UPDATE_UNITS = ('bootc-fetch-apply-updates.service',)
+CHOICES = {
+    'disk.scrub': ('off', 'weekly', 'monthly'),
+    'disk.warnPct': ('off', '80', '85', '90', '95'),
+    'disk.commit': ('5', '10', '30'),
+    'disk.compress': ('on', 'off'),
+    'disk.snapshots': ('off', 'hourly', 'daily'),
+    'battery.warn': ('10,5', '15,5', '20,10', 'off'),
+    'battery.at5': ('hibernate', 'shutdown', 'sleep'),
+    'battery.saver': ('off', '10', '20', '30', '50'),
+    'battery.dim': ('on', 'off'),
+}
+STATE = os.environ.get('HEARTH_HWSET_STATE', '/var/lib/hearth')
+SNAPDIR = '.hearth-snapshots'
+
+
+def _run(cmd, timeout=60):
+    import subprocess
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+def _systemctl(*a):
+    return _run(['systemctl'] + list(a), timeout=30)[0] == 0
+
+
+def _saved():
+    if not os.path.exists(SETTINGS):
+        return {}
+    d = _sio().load_json(SETTINGS, None, repair=False)
+    return d if isinstance(d, dict) else {}
+
+
+def _timer(unit, value, calendars):
+    """A timer on (with its calendar, as a drop-in in /etc) or off."""
+    dropin = os.path.join('/etc/systemd/system', unit + '.d')
+    if value == 'off':
+        _systemctl('disable', '--now', unit)
+        return
+    os.makedirs(dropin, exist_ok=True)
+    _sio().write_text(os.path.join(dropin, 'hearth.conf'), '# Task Manager (hearth-hwset)\n[Timer]\nOnCalendar=\nOnCalendar=%s\n' % calendars[value])
+    _systemctl('daemon-reload')
+    _systemctl('enable', '--now', unit)
+
+
+def on_ac(sys_root=None):
+    """True plugged in, False on battery, None for a PC without a battery."""
+    root = sys_root or SYS
+    mains = [d for d in glob.glob(os.path.join(root, 'class/power_supply/*')) if read(os.path.join(d, 'type')) in ('Mains', 'USB')]
+    if not batteries():
+        return None
+    return any(read(os.path.join(d, 'online')) == '1' for d in mains)
+
+
+def plug():
+    """The charger went in or out: the power mode you chose for it (nothing when you chose Off, the default)."""
+    s = _saved()
+    ac = on_ac()
+    want = s.get('power.plugged') if ac else s.get('power.unplugged')
+    if ac is None or not want or want == 'off':
+        return {'ok': True, 'onAC': ac, 'mode': None}
+    code = _run(['powerprofilesctl', 'set', want])[0]
+    return {'ok': code == 0, 'onAC': ac, 'mode': want}
+
+
+def temp_limit(sys_root=None):
+    """The processor's own limit (°C): coretemp / k10temp's crit, or the thermal zone's critical trip."""
+    root = sys_root or SYS
+    for h in sorted(glob.glob(os.path.join(root, 'class/hwmon/hwmon*'))):
+        if read(os.path.join(h, 'name')) in ('coretemp', 'k10temp', 'zenpower', 'cpu_thermal'):
+            for f in sorted(glob.glob(os.path.join(h, 'temp*_crit'))) + sorted(glob.glob(os.path.join(h, 'temp*_max'))):
+                v = read(f)
+                if v.lstrip('-').isdigit() and int(v) > 0:
+                    return round(int(v) / 1000)
+    for z in sorted(glob.glob(os.path.join(root, 'class/thermal/thermal_zone*'))):
+        if 'x86_pkg' in read(os.path.join(z, 'type')) or 'cpu' in read(os.path.join(z, 'type')).lower():
+            for t in sorted(glob.glob(os.path.join(z, 'trip_point_*_type'))):
+                if read(t) == 'critical':
+                    v = read(t.replace('_type', '_temp'))
+                    if v.isdigit():
+                        return round(int(v) / 1000)
+    return None
+
+
+def cpu_model(proc='/proc'):
+    for line in read(os.path.join(proc, 'cpuinfo')).splitlines():
+        if line.startswith('model name'):
+            return re.sub(r'\s+', ' ', line.split(':', 1)[1]).strip().replace('(R)', '').replace('(TM)', '')
+    return ''
+
+
+def hibernate_state():
+    """Hibernation on this PC: 'works' after a hibernate that came back, 'untested', or 'unavailable'."""
+    if os.path.exists(os.path.join(STATE, 'hibernate-proven')):     # hearth-resumed writes it after a hibernate came back
+        return 'works'
+    return 'untested' if 'disk' in read(os.path.join(SYS, 'power/state')).split() else 'unavailable'
+
+
+def home_fs():
+    """The file system your files are on: its mount point, type and options (commit, compress)."""
+    best = None
+    for line in read('/proc/self/mounts').splitlines():
+        f = line.split()
+        if len(f) >= 4 and ('/var/home'.startswith(f[1].rstrip('/') + '/') or f[1] in ('/var/home', '/')):
+            if not best or len(f[1]) > len(best[1]):
+                best = f
+    if not best:
+        return {}
+    opts = dict((o.split('=', 1) + [''])[:2] for o in best[3].split(','))
+    return {'mount': best[1], 'type': best[2], 'commit': opts.get('commit', '30'),
+            'compress': 'off' if not (opts.get('compress') or opts.get('compress-force')) or opts.get('compress') == 'no' else 'on'}
+
+
+def _remount_home():
+    """Save to the drive every … and Compress files on C: are mount options; changed with a remount (nothing restarts)."""
+    fs = home_fs()
+    if fs.get('type') != 'btrfs':
+        raise Fail('your files are not on btrfs here, so this can\'t be changed')
+    s = _saved()
+    opts = ['remount', 'commit=%s' % s.get('disk.commit', '30'),
+            'compress=zstd:1' if s.get('disk.compress', 'on') == 'on' else 'compress=no']
+    code, _, err = _run(['mount', '-o', ','.join(opts), fs['mount']])
+    if code != 0:
+        raise Fail('couldn\'t change it: ' + err.strip()[-160:])
+
+
+def _disks():
+    out = []
+    for d in sorted(glob.glob(os.path.join(SYS, 'block', '*'))):
+        name = os.path.basename(d)
+        if re.match(r'^(loop|ram|zram|dm-|sr|md)', name) or not os.path.exists(os.path.join(d, 'device')):
+            continue
+        out.append(name)
+    return out
+
+
+def parse_smart(j):
+    """smartctl -j -a: health, life left, data written, power-on hours, temperature (any of them may be missing)."""
+    out = {'ok': (j.get('smart_status') or {}).get('passed'), 'model': j.get('model_name', ''),
+           'size': (j.get('user_capacity') or {}).get('bytes') or j.get('nvme_total_capacity'),
+           'hours': (j.get('power_on_time') or {}).get('hours'), 'temp': (j.get('temperature') or {}).get('current'),
+           'lifeLeft': None, 'written': None}
+    nv = j.get('nvme_smart_health_information_log')
+    if nv:
+        if nv.get('percentage_used') is not None:
+            out['lifeLeft'] = max(0, 100 - int(nv['percentage_used']))
+        if nv.get('data_units_written') is not None:
+            out['written'] = int(nv['data_units_written']) * 512000
+    for a in (j.get('ata_smart_attributes') or {}).get('table', []):
+        n, raw = a.get('name', ''), (a.get('raw') or {}).get('value')
+        if n in ('Total_LBAs_Written',) and raw is not None:
+            out['written'] = int(raw) * 512
+        elif n in ('Host_Writes_32MiB',) and raw is not None:
+            out['written'] = int(raw) * 32 * 1048576
+        elif n in ('Wear_Leveling_Count', 'Media_Wearout_Indicator', 'Percent_Lifetime_Remain', 'SSD_Life_Left') and out['lifeLeft'] is None:
+            out['lifeLeft'] = int(a.get('value', 0)) if a.get('value') is not None else None
+    return out
+
+
+def disk_health():
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    out = {}
+    for name in _disks():
+        code, so, _ = _run(['smartctl', '-j', '-a', '/dev/' + name], timeout=30)
+        try:
+            out[name] = parse_smart(json.loads(so or '{}'))
+        except ValueError:
+            out[name] = {}
+    return {'drives': out, 'scrub': _load_state('scrub.json'), 'snapshots': len(snapshots_list().get('snapshots', []))}
+
+
+def _load_state(name):
+    try:
+        with open(os.path.join(STATE, name)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_state(name, data):
+    os.makedirs(STATE, exist_ok=True)
+    _sio().write_json(os.path.join(STATE, name), data)
+
+
+def _du(path, timeout=120):
+    if not os.path.exists(path):
+        return 0
+    code, so, _ = _run(['du', '-sb', '-x', path], timeout=timeout)
+    try:
+        return int(so.split()[0]) if code in (0, 1) and so else 0
+    except ValueError:
+        return 0
+
+
+def _homes():
+    return sorted(glob.glob('/var/home/*')) or sorted(glob.glob('/home/*'))
+
+
+def space():
+    """What's using space on C:, biggest first (mockup tm-4)."""
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    homes = _homes()
+    games = sum(_du(os.path.join(h, p)) for h in homes for p in ('.local/share/Steam/steamapps', 'Games',
+                '.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps', '.local/share/heroic', '.local/share/hearth/games'))
+    temp = sum(_du(os.path.join(h, '.cache')) for h in homes) + _du('/var/tmp') + _du('/var/cache/apt') + _du('/var/log/journal')
+    restore = sum(_du(os.path.join(h, '.local/share/hearth/restore')) for h in homes)
+    snaps = len(snapshots_list().get('snapshots', []))
+    swap = sum(os.path.getsize(f) for f in glob.glob('/var/swap/*') if os.path.isfile(f))
+    versions = _du('/sysroot/ostree/repo', timeout=300)
+    rows = [{'id': 'games', 'label': 'Games', 'bytes': games},
+            {'id': 'versions', 'label': 'Hearth versions kept (to go back)', 'bytes': versions},
+            {'id': 'swap', 'label': 'Swap file (hibernation)', 'bytes': swap},
+            {'id': 'restore', 'label': 'Restore points', 'bytes': restore, 'snapshots': snaps},
+            {'id': 'temp', 'label': 'Temporary files & caches', 'bytes': temp, 'clean': True}]
+    rows.sort(key=lambda r: -r['bytes'])
+    return {'rows': rows}
+
+
+def cleanup():
+    """Clean up: caches and temporary files only; never your files, games or settings."""
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    import shutil
+    before = sum(_du(os.path.join(h, '.cache')) for h in _homes()) + _du('/var/tmp') + _du('/var/cache/apt') + _du('/var/log/journal')
+    for h in _homes():
+        c = os.path.join(h, '.cache')
+        for n in (os.listdir(c) if os.path.isdir(c) else []):
+            if n in ('hearth', 'nimbus', 'fontconfig', 'keyring'):      # Hearth's own small state and your keyring stay
+                continue
+            p = os.path.join(c, n)
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) and not os.path.islink(p) else _rm(p)
+    now = time.time()
+    for root, dirs, files in os.walk('/var/tmp'):
+        for f in files:
+            p = os.path.join(root, f)
+            try:
+                if now - os.path.getmtime(p) > 7 * 86400:
+                    os.remove(p)
+            except OSError:
+                pass
+    _run(['apt-get', 'clean'])
+    _run(['journalctl', '--vacuum-size=500M'])
+    after = sum(_du(os.path.join(h, '.cache')) for h in _homes()) + _du('/var/tmp') + _du('/var/cache/apt') + _du('/var/log/journal')
+    return {'ok': True, 'freed': max(0, before - after)}
+
+
+def _rm(p):
+    try:
+        os.remove(p)
+    except OSError:
+        pass
+
+
+def scrub():
+    """Check the file system: btrfs scrub reads everything and checks it isn't damaged (low priority)."""
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    fs = home_fs()
+    if fs.get('type') != 'btrfs':
+        raise Fail('your files are not on btrfs here')
+    code, so, err = _run(['btrfs', 'scrub', 'start', '-B', '-c', '3', fs['mount']], timeout=24 * 3600)
+    errs = re.search(r'(\d+)\s+errors?|Error summary:\s*(.*)', so + err)
+    ok = code == 0 and ('no errors found' in (so + err) or not errs)
+    res = {'last': time.strftime('%Y-%m-%d %H:%M'), 'ok': ok, 'text': (so + err).strip()[-300:]}
+    _save_state('scrub.json', res)
+    return res
+
+
+def _home_subvol():
+    """The btrfs subvolume your files are in (the installer's "home"), or None."""
+    p = '/var/home' if os.path.isdir('/var/home') else '/home'
+    p = os.path.realpath(p)
+    while True:
+        try:
+            if os.stat(p).st_ino == 256:
+                return p
+        except OSError:
+            return None
+        if p == '/':
+            return None
+        p = os.path.dirname(p)
+
+
+def snapshots_list():
+    sv = _home_subvol()
+    d = os.path.join(sv, SNAPDIR) if sv else None
+    snaps = sorted(os.listdir(d)) if d and os.path.isdir(d) else []
+    return {'subvol': sv, 'dir': d, 'snapshots': snaps}
+
+
+def snapshot():
+    """A read-only snapshot of your files (Previous versions in Hearth Files): keeps 24 hourly and 14 daily, and none
+    when C: is short of space (the full-drive guard's line, 10 GB)."""
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    sv = _home_subvol()
+    if not sv or not sv.rstrip('/').endswith('home') or home_fs().get('type') != 'btrfs':
+        raise Fail('your files are not in a btrfs subvolume here, so snapshots aren\'t possible')
+    st = os.statvfs(sv)
+    if st.f_bavail * st.f_frsize < 10 * 1000 ** 3:
+        return {'ok': False, 'skipped': 'less than 10 GB free'}
+    d = os.path.join(sv, SNAPDIR)
+    os.makedirs(d, mode=0o755, exist_ok=True)
+    name = time.strftime('%Y-%m-%d_%H%M')
+    code, _, err = _run(['btrfs', 'subvolume', 'snapshot', '-r', sv, os.path.join(d, name)], timeout=120)
+    if code != 0:
+        raise Fail('the snapshot wasn\'t made: ' + err.strip()[-160:])
+    keep = snapshots_to_keep(sorted(os.listdir(d)))
+    for n in sorted(os.listdir(d)):
+        if n not in keep:
+            _run(['btrfs', 'subvolume', 'delete', os.path.join(d, n)], timeout=120)
+    return {'ok': True, 'made': name, 'kept': len(keep)}
+
+
+def snapshots_to_keep(names, hourly=24, daily=14):
+    """The newest `hourly` snapshots, and the newest of each of the last `daily` days."""
+    names = sorted((n for n in names if re.match(r'^\d{4}-\d\d-\d\d_\d{4}$', n)), reverse=True)
+    keep = set(names[:hourly])
+    days = []
+    for n in names:
+        day = n[:10]
+        if day not in days:
+            days.append(day)
+            if len(days) <= daily:
+                keep.add(n)
+    return keep
+
+
+def parse_dmidecode_memory(text):
+    """dmidecode -t memory: the speed the memory runs at and how many slots are used of how many."""
+    slots = used = 0
+    speeds, kinds = [], []
+    for block in (text or '').split('\n\n'):
+        if 'Memory Device' not in block:
+            continue
+        slots += 1
+        size = re.search(r'^\s*Size:\s*(.+)$', block, re.M)
+        if not size or 'No Module' in size.group(1) or size.group(1).strip() in ('0', 'Unknown'):
+            continue
+        used += 1
+        sp = re.search(r'^\s*Configured (?:Memory|Clock) Speed:\s*(\d+)\s*(MT/s|MHz)', block, re.M) or re.search(r'^\s*Speed:\s*(\d+)\s*(MT/s|MHz)', block, re.M)
+        if sp:
+            speeds.append(int(sp.group(1)))
+        t = re.search(r'^\s*Type:\s*(\S+)', block, re.M)
+        if t and t.group(1) not in ('Unknown', 'Other'):
+            kinds.append(t.group(1))
+    return {'slots': slots, 'used': used, 'speed': max(speeds) if speeds else None, 'type': kinds[0] if kinds else ''}
+
+
+def memory_info():
+    """Task Manager › Memory's speed and slots (mockup task-manager-memory), from the board (dmidecode). Root."""
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    code, so, _ = _run(['dmidecode', '-t', 'memory'], timeout=10)
+    return parse_dmidecode_memory(so) if code == 0 else {'slots': 0, 'used': 0, 'speed': None, 'type': ''}
+
+
+# ---------------------------------------------------------------------------------------------- per-app rules (1.12)
+APP_SLICE = 'hearth-apps.slice'
+
+
+def slug(name):
+    return re.sub(r'[^A-Za-z0-9_-]+', '-', name).strip('-').lower()[:60] or 'app'
+
+
+def parse_rule(kind, value):
+    if value == 'remove':
+        return None
+    if kind == 'cpu':
+        if value == 'low' or (value.isdigit() and 10 <= int(value) <= 90):
+            return value
+        raise Fail('a program\'s limit: 10 to 90 (percent of the processor), low, or remove')
+    if value in ('allow', 'block'):
+        return value
+    m = re.match(r'^limit:(\d{1,4})$', value)
+    if m and int(m.group(1)) > 0:
+        return value
+    raise Fail('network: allow, block or limit:MB (megabytes a second)')
+
+
+def app_rule(kind, name, value):
+    """Per-app limits and network rules, kept in /etc/hearth/hardware.json ('apps.cpu', 'net.apps')."""
+    if not re.match(r'^[^/\x00]{1,80}$', name):
+        raise Fail('a program name, please')
+    v = parse_rule(kind, value)
+    key = 'apps.cpu' if kind == 'cpu' else 'net.apps'
+    sio = _sio()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    if os.path.exists(SETTINGS) and not isinstance(sio.load_json(SETTINGS, None, repair=False), dict):
+        raise Fail('the hardware settings file could not be read; it was kept as it is')
+
+    def change(d):
+        rules = dict(d.get(key) or {})
+        if v is None or (kind == 'net' and v == 'allow'):
+            rules.pop(name, None)
+        else:
+            rules[name] = v
+        d[key] = rules
+    sio.update_json(SETTINGS, change)
+    s = _saved()
+    any_rule = bool(s.get('apps.cpu') or s.get('net.apps'))
+    _systemctl('restart' if any_rule else 'stop', 'hearth-app-rules.service')
+    if kind == 'cpu' and v is None:
+        _systemctl('set-property', '--runtime', 'hearth-app-%s.scope' % slug(name), 'CPUQuota=', 'CPUWeight=')
+    net_apply()
+    return {'ok': True, 'kind': kind, 'name': name, 'value': v}
+
+
+def proc_name(pid, proc='/proc'):
+    try:
+        exe = os.path.basename(os.readlink(os.path.join(proc, str(pid), 'exe'))).replace(' (deleted)', '')
+    except OSError:
+        exe = ''
+    return exe, read(os.path.join(proc, str(pid), 'comm'))
+
+
+def rule_pids(names, proc='/proc'):
+    """{name: [pids]}: each of your programs (uid ≥ 1000) with a rule, and everything it started."""
+    kids, uid, match = {}, {}, {}
+    for d in os.listdir(proc):
+        if not d.isdigit():
+            continue
+        st = read(os.path.join(proc, d, 'stat'))
+        b = st.rfind(')')
+        if b < 0:
+            continue
+        try:
+            ppid = int(st[b + 2:].split()[1])
+            u = os.stat(os.path.join(proc, d)).st_uid
+        except (ValueError, IndexError, OSError):
+            continue
+        pid = int(d)
+        kids.setdefault(ppid, []).append(pid)
+        uid[pid] = u
+        exe, comm = proc_name(pid, proc)
+        for n in names:
+            if n in (exe, comm):
+                match.setdefault(n, []).append(pid)
+    out = {}
+    for n, roots in match.items():
+        seen, todo = set(), [p for p in roots if uid.get(p, 0) >= 1000]
+        while todo:
+            p = todo.pop()
+            if p in seen:
+                continue
+            seen.add(p)
+            todo.extend(kids.get(p, []))
+        if seen:
+            out[n] = sorted(seen)
+    return out
+
+
+def _in_unit(pid, unit, proc='/proc'):
+    return unit in read(os.path.join(proc, str(pid), 'cgroup'))
+
+
+def scope_props(rule):
+    if rule == 'low':
+        return [('CPUWeight', 't', 20), ('IOWeight', 't', 20)]
+    if rule and rule.isdigit():
+        return [('CPUQuotaPerSecUSec', 't', int(rule) * (logical_cpus()) * 10000)]
+    return []
+
+
+def box(name, pids, rule):
+    """Puts `pids` into hearth-app-NAME.scope (made with its limit, or the processes added to it). True when new."""
+    unit = 'hearth-app-%s.scope' % slug(name)
+    todo = [p for p in pids if not _in_unit(p, unit)]
+    if not todo:
+        return False
+    code = _run(['systemctl', 'is-active', '--quiet', unit])[0]
+    if code != 0:
+        props = [('PIDs', 'au', None), ('Slice', 's', APP_SLICE), ('Description', 's', 'Hearth: rules for ' + name)] + scope_props(rule)
+        args = ['busctl', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager',
+                'StartTransientUnit', 'ssa(sv)a(sa(sv))', unit, 'fail', str(len(props))]
+        for k, t, v in props:
+            args += [k, t] + ([str(len(todo))] + [str(p) for p in todo] if k == 'PIDs' else [str(v)])
+        args += ['0']
+        _run(args, timeout=10)
+        return True
+    for p in todo:
+        _run(['busctl', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager',
+              'AttachProcessesToUnit', 'ssau', unit, '/', '1', str(p)], timeout=5)
+    props = ['CPUWeight=20', 'IOWeight=20'] if rule == 'low' else ['CPUQuota=%d%%' % (int(rule) * logical_cpus())] if rule and rule.isdigit() else []
+    if props:
+        _systemctl('set-property', '--runtime', unit, *props)
+    return False
+
+
+def nft_rules(net, live_units):
+    """The nftables table for the network rules: a blocked program's sockets dropped, a limited one's over its rate."""
+    lines = ['table inet hearth_apps {', '  chain out {', '    type filter hook output priority 0; policy accept;']
+    ins = ['  chain in {', '    type filter hook input priority 0; policy accept;']
+    for name, rule in sorted(net.items()):
+        unit = 'hearth-app-%s.scope' % slug(name)
+        if unit not in live_units:
+            continue
+        path = '%s/%s' % (APP_SLICE, unit)
+        if rule == 'block':
+            lines.append('    socket cgroupv2 level 2 "%s" drop' % path)
+            ins.append('    socket cgroupv2 level 2 "%s" drop' % path)
+        elif rule.startswith('limit:'):
+            mb = int(rule.split(':')[1])
+            lines.append('    socket cgroupv2 level 2 "%s" limit rate over %d mbytes/second drop' % (path, mb))
+            ins.append('    socket cgroupv2 level 2 "%s" limit rate over %d mbytes/second drop' % (path, mb))
+    return '\n'.join(lines + ['  }'] + ins + ['  }', '}']) + '\n'
+
+
+def live_scopes():
+    code, so, _ = _run(['systemctl', 'list-units', '--plain', '--no-legend', '--state=active', 'hearth-app-*.scope'])
+    return {l.split()[0] for l in (so or '').splitlines() if l.strip()}
+
+
+def net_apply():
+    net = _saved().get('net.apps') or {}
+    _run(['nft', 'delete', 'table', 'inet', 'hearth_apps'])
+    if not net:
+        return {'ok': True, 'rules': 0}
+    text = nft_rules(net, live_scopes())
+    import subprocess
+    try:
+        r = subprocess.run(['nft', '-f', '-'], input=text, capture_output=True, text=True, timeout=10)
+        return {'ok': r.returncode == 0, 'rules': len(net), 'error': r.stderr.strip()[-200:]}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def apprules():
+    """The loop hearth-app-rules.service runs: every 5 seconds, programs with a rule go into their box."""
+    stop = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
+    try:
+        while not stop:
+            s = _saved()
+            cpu, net = s.get('apps.cpu') or {}, s.get('net.apps') or {}
+            if not cpu and not net:
+                break
+            new = False
+            for name, pids in rule_pids(set(cpu) | set(net)).items():
+                new = box(name, pids, cpu.get(name)) or new
+            if new and net:
+                net_apply()
+            for _ in range(5):
+                if stop:
+                    break
+                time.sleep(1)
+    finally:
+        _run(['nft', 'delete', 'table', 'inet', 'hearth_apps'])
+    return {'ok': True}
+
+
 # ---------------------------------------------------------------------------------------------- Game cores
 GAME_ENV = (b'SteamGameId=', b'STEAM_COMPAT_APP_ID=', b'HEARTH_PROTON_KEY=', b'HEARTH_GAME=1')
 NOT_GAMES = {'steam', 'steamwebhelper', 'steam-runtime-launcher-service', 'srt-bwrap', 'pressure-vessel-wrap', 'reaper',
@@ -407,6 +1041,28 @@ def main(a):
             out = optimize()
         elif a == ['gamecores']:
             out = gamecores()
+        elif a == ['plug']:
+            out = plug()
+        elif a == ['disk-health']:
+            out = disk_health()
+        elif a == ['space']:
+            out = space()
+        elif a == ['cleanup']:
+            out = cleanup()
+        elif a == ['scrub']:
+            out = scrub()
+        elif a == ['snapshot']:
+            out = snapshot()
+        elif a == ['snapshots']:
+            out = snapshots_list()
+        elif a == ['memory-info']:
+            out = memory_info()
+        elif len(a) == 4 and a[0] == 'app-rule' and a[1] in ('cpu', 'net'):
+            out = app_rule(a[1], a[2], a[3])
+        elif a == ['apprules']:
+            out = apprules()
+        elif a == ['net-apply']:
+            out = net_apply()
         else:
             print(__doc__.strip(), file=sys.stderr)
             return 2

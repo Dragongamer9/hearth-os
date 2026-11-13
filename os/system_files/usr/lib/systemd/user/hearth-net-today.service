@@ -1,0 +1,12 @@
+# Task Manager › Network's "Used today" (1.12, mockup tm-5): adds the last minute's traffic, for the PC and each
+# program. Reads /proc/net/dev and ss; writes only ~/.local/state/hearth/net-today.json (a count, never a setting).
+[Unit]
+Description=Hearth: network used today, for Task Manager
+ConditionPathExists=/usr/share/nimbus/desktop/shell/hearth-netinfo
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-netinfo tick
+TimeoutStartSec=20
+Nice=19
+IOSchedulingClass=idle

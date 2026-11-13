@@ -1,0 +1,11 @@
+# Task Manager › Disk › Check the file system (1.12, mockup tm-4): btrfs scrub reads everything on the drive your
+# files are on and checks it isn't damaged, at idle priority. Only when you turn it on (hearth-scrub.timer).
+[Unit]
+Description=Hearth: check the file system (btrfs scrub)
+ConditionPathExists=/usr/libexec/nimbus/hearth-hwset
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset scrub
+Nice=19
+IOSchedulingClass=idle

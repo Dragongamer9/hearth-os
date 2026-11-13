@@ -1,0 +1,11 @@
+# Task Manager › Disk › Snapshots of your files (1.12, mockup tm-4): a read-only btrfs snapshot of your home folder,
+# shown as Previous versions in Hearth Files. 24 hourly and 14 daily are kept; none while C: has under 10 GB free.
+[Unit]
+Description=Hearth: a snapshot of your files (Previous versions)
+ConditionPathExists=/usr/libexec/nimbus/hearth-hwset
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset snapshot
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,10 @@
+# Off unless you choose Every hour or Every day in Task Manager › Disk › Health & settings. Nothing waits for it.
+[Unit]
+Description=Hearth: snapshots of your files on a schedule
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

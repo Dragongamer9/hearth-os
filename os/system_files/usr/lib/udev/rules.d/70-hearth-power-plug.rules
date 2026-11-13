@@ -1,0 +1,4 @@
+# Task Manager › CPU › When plugged in (1.12, mockup tm-3): the power mode you chose when the charger goes in or out.
+# hearth-hwset plug does nothing unless you chose one (power.plugged / power.unplugged in /etc/hearth/hardware.json).
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ACTION=="change", RUN+="/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset plug"
+SUBSYSTEM=="power_supply", ATTR{type}=="USB", ACTION=="change", RUN+="/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset plug"

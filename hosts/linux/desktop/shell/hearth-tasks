@@ -224,6 +224,14 @@ def parse_meminfo(text):
             out[k] = int(v[0]) * 1024
     return out
 
+def fdinfo_vram(text):
+    """Video memory a DRM client holds (bytes): drm-memory-vram / drm-total-vram (KiB or MiB)."""
+    m = re.search(r'^drm-(?:total|memory)-(?:vram|local)\d*:\s*(\d+)\s*(KiB|MiB|GiB)?', text or '', re.M)
+    if not m:
+        return 0
+    return int(m.group(1)) * {'KiB': 1024, 'MiB': 1048576, 'GiB': 1073741824, None: 1}[m.group(2)]
+
+
 def cores_label(cpus, n=None):
     """Cpus_allowed_list as Details shows it: "All" when every core is allowed, else "4–7" / "0,2"."""
     n = n or os.cpu_count() or 1
@@ -977,6 +985,7 @@ def services():
     info = {}
     try:
         info = parse_show(systemctl('show', '-p', 'Id', '-p', 'Description', '-p', 'ActiveState', '-p', 'CPUUsageNSec',
+                                    '-p', 'InactiveExitTimestampMonotonic', '-p', 'ActiveEnterTimestampMonotonic',
                                     *(units + hearth)).stdout)
     except (Fail, OSError, subprocess.TimeoutExpired):
         pass
@@ -987,17 +996,25 @@ def services():
             return v if v < 2 ** 63 else None
         except ValueError:
             return None
+    def took(i):
+        try:
+            a, b = int(i.get('InactiveExitTimestampMonotonic') or 0), int(i.get('ActiveEnterTimestampMonotonic') or 0)
+            return round((b - a) / 1e6, 1) if a and b >= a else None
+        except ValueError:
+            return None
     out = []
     for u in units:
         i = info.get(u, {})
         desc = i.get('Description') or u[:-8]
         on = states[u] == 'enabled'
         out.append({'id': 'service:' + u, 'kind': 'service', 'name': desc, 'sub': u[:-8] + (' · running' if i.get('ActiveState') == 'active' else ''),
-                    'on': on, 'canChange': True, 'publisher': 'Service', 'impact': startup_impact(cpu_ns(i), on)})
+                    'on': on, 'canChange': True, 'publisher': 'Service', 'impact': startup_impact(cpu_ns(i), on),
+                    'added': took(i) if on else None, 'starts': 'at sign-in' if on else ''})
     for u in hearth:
         i = info.get(u, {})
         out.append({'id': 'hearth-part:' + u, 'kind': 'hearth-part', 'name': i.get('Description') or u[:-8], 'sub': u[:-8],
-                    'on': True, 'canChange': False, 'publisher': 'Hearth', 'impact': startup_impact(cpu_ns(i), True)})
+                    'on': True, 'canChange': False, 'publisher': 'Hearth', 'impact': startup_impact(cpu_ns(i), True),
+                    'added': took(i), 'starts': 'at sign-in'})
     return out
 
 
@@ -1057,7 +1074,10 @@ def autostart_entries(user=None, system=None):
         prog = os.path.basename(argv[0]) if argv else ''
         own = bool(re.search(r'^(nimbus|hearth)[\w-]*$', prog)) or 'nimbus-' in ' '.join(argv)
         on = autostart_on(de)
+        added = autostart_times().get(fn)
         out.append({'id': ('hearth-part:' if own else 'autostart:') + fn, 'kind': 'hearth-part' if own else 'autostart',
+                    'added': added if on else None,
+                    'starts': ('at sign-in, minimized' if MINIMIZED.search(' '.join(argv)) else 'at sign-in') if on else '',
                     'name': name or fn[:-8],
                     'sub': de.get('Comment', '') or ('For everyone' if files[fn] != os.path.join(user, fn) else 'Yours'),
                     'on': on, 'canChange': not own, 'publisher': 'Hearth' if own else autostart_publisher(de, prog),
@@ -1318,7 +1338,50 @@ def autostart_run(plan=None, spawn=None):
             started.append(it['name'])
         except OSError:
             pass
+    if not spawn and started:
+        # "Time added to start" (1.12, mockup tm-8): measured 20 s later, from what each app used while starting
+        try:
+            subprocess.Popen([sys.executable, os.path.realpath(__file__), 'autostart-measure', str(int(time.time()))],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
     return {'started': started}
+
+
+def autostart_times_file():
+    return os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state'), 'hearth', 'autostart-times.json')
+
+
+def autostart_measure(since, plan=None, root=PROC, wait=20):
+    """Each autostart app's processor time in its first `wait` seconds after the session started it: the time it
+    added to starting (what Windows' Task Manager calls its start-up cost)."""
+    time.sleep(max(0, since + wait - time.time()))
+    plan = autostart_plan() if plan is None else plan
+    procs = scan(root)
+    out = {}
+    for it in plan:
+        if not it['start'] or not it['argv']:
+            continue
+        prog = os.path.basename(it['argv'][0])
+        secs = sum(p.jiffies / CLK_TCK for p in procs.values() if p.exe == prog or p.comm == prog[:15])
+        out[os.path.basename(it['file'])] = round(secs, 1)
+    path = autostart_times_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.tmp', 'w') as f:
+        json.dump({'t': since, 'apps': out}, f)
+    os.replace(path + '.tmp', path)
+    return out
+
+
+def autostart_times():
+    try:
+        with open(autostart_times_file()) as f:
+            return (json.load(f) or {}).get('apps') or {}
+    except (OSError, ValueError):
+        return {}
+
+
+MINIMIZED = re.compile(r'(^|\s)(--?(start-)?minimi[sz]ed|--hidden|--silent|-silent|--tray|--background|-m)(\s|$)')
 
 
 # ---------------------------------------------------------------------- the shared sampler (Task Manager, Windows 11 style)
@@ -1542,6 +1605,10 @@ def net_adapters(sys_root=SYS):
         return out
     for n in names:
         base = os.path.join(sys_root, 'class/net', n)
+        if n.startswith('tailscale'):              # Tailscale too, as its own adapter (1.12, mockup tm-5)
+            out.append({'name': n, 'kind': 'Tailscale', 'speed': None,
+                        'up': (read(os.path.join(base, 'operstate')) or '').strip() in ('up', 'unknown')})
+            continue
         if n == 'lo' or not os.path.exists(os.path.join(base, 'device')):
             continue
         wifi = os.path.exists(os.path.join(base, 'wireless')) or n.startswith('wl')
@@ -1719,11 +1786,14 @@ class Sampler:
                 continue
             best = 0.0
             per = {'3d': 0.0, 'dec': 0.0, 'enc': 0.0}
+            vram = 0
             for fd in fds:
-                client, engines = parse_fdinfo(read(os.path.join(self.root, str(pid), 'fdinfo', fd)))
+                text = read(os.path.join(self.root, str(pid), 'fdinfo', fd))
+                client, engines = parse_fdinfo(text)
                 if client is None or client in seen:
                     continue
                 seen.add(client)
+                vram += fdinfo_vram(text)
                 for e, ns in engines.items():
                     cur[(client, e)] = ns
                     prev = self.client_prev.get((client, e))
@@ -1734,7 +1804,7 @@ class Sampler:
                         if k:
                             per[k] = min(100.0, max(per[k], busy))
             out[pid] = min(100.0, best)
-            kinds[pid] = per
+            kinds[pid] = dict(per, vram=vram)
         self.client_prev = cur
         self.drm_engines = kinds
         return out
@@ -1946,6 +2016,10 @@ class Sampler:
             g['nice'] = min((k['nice'] for k in kids), default=0)
             g['disk'] = sum(k['disk'] for k in kids)
             g['gpu'] = round(min(100.0, sum(k['gpu'] for k in kids)), 1)
+            eng = [self.drm_engines.get(k['pid']) for k in kids if self.drm_engines.get(k['pid'])]
+            g['vram'] = sum(e.get('vram', 0) for e in eng)
+            g['uses'] = [lbl for key, lbl in (('3d', '3D'), ('dec', 'Video decode'), ('enc', 'Video encode'))
+                         if any(e.get(key, 0) >= 0.5 for e in eng)]
             g['exe'] = procs[g['pid']].path
             g['suspended'] = all(k['state'] in ('T', 't') for k in kids)
             g['eco'] = g['id'] in eco or all(k['nice'] >= 19 for k in kids)
@@ -2220,6 +2294,99 @@ def set_limit(pid, cpu_pct, mem_mb, root=PROC):
     return {'pid': pid, 'unit': unit, 'cpu': cpu_pct, 'memMb': mem_mb}
 
 
+# ---------------------------------------------------------------------- + New task (1.12, mockup tm-8)
+# A program or script at a time, at sign-in, every hour or 6 hours (a systemd user timer), when idle or when the PC
+# goes on battery (Mantel's IdlePower.qml and BatteryWatch.qml run `task-trigger idle|battery`). Yours only, in
+# ~/.config/systemd/user (hearth-task-NAME.service/.timer) and ~/.config/hearth/tasks.json for the two triggers.
+TASK_WHEN = re.compile(r'^(daily@([01]\d|2[0-3]):[0-5]\d|signin|hourly|every6h|idle|battery)$')
+
+
+def task_unit_dir():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'systemd', 'user')
+
+
+def tasks_file():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'hearth', 'tasks.json')
+
+
+def _tasks():
+    try:
+        with open(tasks_file()) as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_tasks(d):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import hearth_settings_io
+    os.makedirs(os.path.dirname(tasks_file()), exist_ok=True)
+    hearth_settings_io.write_json(tasks_file(), d)
+
+
+def task_slug(name):
+    return re.sub(r'[^a-z0-9-]+', '-', name.lower()).strip('-')[:40] or 'task'
+
+
+def task_new(name, when, command):
+    if not name.strip() or not command.strip():
+        raise Fail('a name and what to run, please')
+    if not TASK_WHEN.match(when):
+        raise Fail('when: daily@HH:MM, signin, hourly, every6h, idle or battery')
+    slug = task_slug(name)
+    d = task_unit_dir()
+    os.makedirs(d, exist_ok=True)
+    svc = '[Unit]\nDescription=%s\n# made in Task Manager › Scheduled tasks (+ New task)\n\n[Service]\nType=oneshot\nExecStart=/bin/sh -c %s\n' % (
+        name.replace('\n', ' '), shlex.quote(command))
+    with open(os.path.join(d, 'hearth-task-%s.service' % slug), 'w') as f:
+        f.write(svc)
+    timer = os.path.join(d, 'hearth-task-%s.timer' % slug)
+    t = _tasks()
+    t.pop(slug, None)
+    if when in ('idle', 'battery'):
+        if os.path.exists(timer):
+            run_systemctl(True, 'disable', '--now', os.path.basename(timer))
+            os.remove(timer)
+        t[slug] = {'name': name, 'when': when}
+    else:
+        cal = {'hourly': 'OnCalendar=hourly', 'every6h': 'OnCalendar=00/6:00', 'signin': 'OnStartupSec=30s'}.get(when) or 'OnCalendar=*-*-* %s:00' % when.split('@')[1]
+        with open(timer, 'w') as f:
+            f.write('[Unit]\nDescription=%s\n\n[Timer]\n%s\nPersistent=%s\n\n[Install]\nWantedBy=timers.target\n' % (name, cal, 'false' if when == 'signin' else 'true'))
+    _save_tasks(t)
+    run_systemctl(True, 'daemon-reload')
+    if os.path.exists(timer):
+        r = run_systemctl(True, 'enable', '--now', os.path.basename(timer), timeout=30)
+        if r.returncode != 0:
+            raise Fail((r.stderr.strip().splitlines() or ['could not turn it on'])[-1])
+    return {'ok': True, 'task': slug, 'when': when}
+
+
+def task_delete(slug):
+    if not re.match(r'^[a-z0-9-]{1,40}$', slug):
+        raise Fail('not one of yours')
+    d = task_unit_dir()
+    run_systemctl(True, 'disable', '--now', 'hearth-task-%s.timer' % slug)
+    for ext in ('.timer', '.service'):
+        p = os.path.join(d, 'hearth-task-%s%s' % (slug, ext))
+        if os.path.exists(p):
+            os.remove(p)
+    t = _tasks()
+    if t.pop(slug, None) is not None:
+        _save_tasks(t)
+    run_systemctl(True, 'daemon-reload')
+    return {'ok': True}
+
+
+def task_trigger(what):
+    started = []
+    for slug, v in _tasks().items():
+        if v.get('when') == what:
+            run_systemctl(True, 'start', '--no-block', 'hearth-task-%s.service' % slug)
+            started.append(slug)
+    return {'started': started}
+
+
 def _usec_when(us):
     """systemd's microseconds since the epoch → seconds (0 = never)."""
     try:
@@ -2248,6 +2415,21 @@ def timer_list():
             out.append({'id': scope + ':' + unit, 'unit': unit, 'scope': scope, 'runs': t.get('activates') or '',
                         'next': _usec_when(t.get('next')), 'last': _usec_when(t.get('last')),
                         'hearth': unit.startswith(('hearth', 'nimbus')), 'canChange': not essential})
+    # Last result (1.12, mockup tm-8): how the job it runs ended last time
+    for scope in ('user', 'system'):
+        units = [x['runs'] for x in out if x['scope'] == scope and x['runs'].endswith('.service')]
+        if not units:
+            continue
+        try:
+            info = parse_show(subprocess.run(['systemctl'] + (['--user'] if scope == 'user' else []) + ['show', '-p', 'Id', '-p', 'Result', '-p', 'Description'] + units,
+                                             capture_output=True, text=True, timeout=10).stdout)
+        except (OSError, subprocess.TimeoutExpired):
+            info = {}
+        for x in out:
+            i = info.get(x['runs']) if x['scope'] == scope else None
+            if i:
+                x['result'] = 'OK' if i.get('Result') == 'success' else (i.get('Result') or '').replace('exit-code', 'Failed')
+                x['desc'] = i.get('Description') or ''
     out.sort(key=lambda x: (x['scope'] != 'user', x['unit']))
     return {'timers': out}
 
@@ -2362,24 +2544,57 @@ def service_list():
             seen.add(u['unit'])
             essential = is_essential_unit(u['unit'])
             out.append({'id': ('user:' if user else 'system:') + u['unit'], 'unit': u['unit'], 'name': u['unit'][:-8],
-                        'desc': u['desc'], 'status': 'Running' if u['active'] == 'active' else 'Failed' if u['active'] == 'failed' else 'Stopped',
+                        'desc': plain_service(u['unit'], u['desc']), 'starts': starts_label(files.get(u['unit'], '')), 'status': 'Running' if u['active'] == 'active' else 'Failed' if u['active'] == 'failed' else 'Stopped',
                         'pid': pids.get(u['unit']) or None, 'startup': files.get(u['unit'], ''), 'group': 'Yours' if user else 'System',
                         'canChange': user and not essential, 'hearth': essential and bool(re.match(r'(nimbus|hearth)', u['unit']))})
         for unit, state in files.items():
             if unit in seen or unit.endswith('@.service') or state in ('masked', 'alias'):
                 continue
-            out.append({'id': ('user:' if user else 'system:') + unit, 'unit': unit, 'name': unit[:-8], 'desc': '',
+            out.append({'id': ('user:' if user else 'system:') + unit, 'unit': unit, 'name': unit[:-8], 'desc': plain_service(unit, ''),
+                        'starts': starts_label(state),
                         'status': 'Stopped', 'pid': None, 'startup': state, 'group': 'Yours' if user else 'System',
                         'canChange': user and not is_essential_unit(unit), 'hearth': bool(re.match(r'(nimbus|hearth)', unit))})
     out.sort(key=lambda s: (s['group'] != 'Yours', s['name'].lower()))
     return {'services': out}
 
 
+# Services' "Starts" and what each one is for, in plain words (1.12, mockup tm-8)
+def starts_label(state):
+    return {'enabled': 'Automatic', 'enabled-runtime': 'Automatic', 'static': 'When needed', 'indirect': 'When needed',
+            'generated': 'Automatic', 'transient': 'When needed', 'disabled': 'Off', 'masked': 'Off'}.get(state, 'When needed' if state else '')
+
+
+PLAIN = [
+    (r'^bluetooth', 'Bluetooth: headphones, controllers, keyboards'), (r'^cups', 'Printing (CUPS): your printers'),
+    (r'^NetworkManager', 'Wi-Fi and wired networking'), (r'^tailscaled', 'Tailscale: your own private network'),
+    (r'^ssh', 'Remote terminal (SSH)'), (r'^smartd', 'Watches your drives\' health'), (r'^upower', 'Battery and power information'),
+    (r'^udisks', 'Drives and USB sticks: mounting and checking'), (r'^fwupd', 'Firmware updates for your devices'),
+    (r'^pipewire|^wireplumber', 'Sound and screen sharing'), (r'^avahi', 'Finds printers and devices on your network'),
+    (r'^hearth-link', 'Hearth Link: your other Hearth devices'), (r'^ModemManager', 'Mobile broadband (SIM) modems'),
+    (r'^power-profiles', 'Power modes (Battery saver, Balanced, Performance)'), (r'^smbd|^nmbd', 'Shared folders (Samba)'),
+    (r'^lactd', 'Graphics card tuning (LACT)'), (r'^flatpak', 'Flatpak apps'), (r'^bootc', 'Hearth OS updates'),
+    (r'^systemd-resolved', 'Names on the internet (DNS)'), (r'^systemd-timesyncd', 'Keeps the clock right'),
+    (r'^xdg-desktop-portal', 'Lets apps open files and share the screen safely'), (r'^gamemoded', 'Game Mode tweaks while you play'),
+]
+
+
+def plain_service(unit, desc):
+    for pat, words in PLAIN:
+        if re.match(pat, unit):
+            return words
+    return desc
+
+
 def service_act(unit, action):
-    if action not in ('start', 'stop', 'restart'):
+    if action not in ('start', 'stop', 'restart', 'enable', 'disable'):
         raise Fail('unknown action ' + action)
     if not unit.endswith('.service') or '/' in unit or is_essential_unit(unit):
         raise Fail("that service keeps Hearth or the desktop working, so it can't be changed here")
+    if action in ('enable', 'disable'):            # Starts: Automatic / When needed (Off is the same for your own)
+        r = run_systemctl(True, action, unit, timeout=30)
+        if r.returncode != 0:
+            raise Fail((r.stderr.strip().splitlines() or ['could not change it'])[-1])
+        return {'unit': unit, 'action': action}
     r = run_systemctl(True, action, unit, timeout=30)
     if r.returncode != 0:
         raise Fail((r.stderr.strip().splitlines() or ['could not %s it' % action])[-1])
@@ -2449,6 +2664,37 @@ def proc_usage(root=PROC):
     return out
 
 
+def vm_swap_pages(text):
+    """/proc/vmstat pswpin + pswpout (pages moved between memory and swap so far)."""
+    v = {}
+    for line in (text or '').splitlines():
+        f = line.split()
+        if len(f) == 2 and f[0] in ('pswpin', 'pswpout') and f[1].isdigit():
+            v[f[0]] = int(f[1])
+    return v.get('pswpin', 0), v.get('pswpout', 0)
+
+
+def disk_busy(root=PROC):
+    """Task Manager › Disk › Busiest programs (1.12, mockup tm-4): what each of your apps read and wrote this second,
+    and swapping between memory and the drive (bytes/s)."""
+    a1, s1 = proc_usage(root), vm_swap_pages(read(os.path.join(root, 'vmstat'), ''))
+    t1 = time.time()
+    time.sleep(1)
+    a2, s2 = proc_usage(root), vm_swap_pages(read(os.path.join(root, 'vmstat'), ''))
+    dt = max(0.2, time.time() - t1)
+    by = {}
+    for k, (name, _cpu, rd, wr) in a2.items():
+        if k not in a1:
+            continue
+        r = by.setdefault(name, {'name': name, 'pid': int(k.split(':')[0]), 'read': 0, 'write': 0})
+        r['read'] += int(max(0, rd - a1[k][2]) / dt)
+        r['write'] += int(max(0, wr - a1[k][3]) / dt)
+    rows = sorted((r for r in by.values() if r['read'] or r['write']), key=lambda r: -(r['read'] + r['write']))[:6]
+    page = os.sysconf('SC_PAGE_SIZE') if hasattr(os, 'sysconf') else 4096
+    rows.append({'name': 'zram ↔ drive swap', 'pid': 0, 'read': int((s2[0] - s1[0]) * page / dt), 'write': int((s2[1] - s1[1]) * page / dt), 'swap': True})
+    return {'rows': rows}
+
+
 def history_add(state, now_procs, now):
     """Adds what each app used since the last look: a process seen before counts its growth, a new one all it has
     used (it started since)."""
@@ -2490,10 +2736,100 @@ def history_read():
         return {}
 
 
+def on_battery(sys_root='/sys'):
+    """True while a battery (not a mouse's or a pad's) is discharging."""
+    for b in glob.glob(os.path.join(sys_root, 'class/power_supply/*')):
+        if read(os.path.join(b, 'type'), '').strip() == 'Battery' and read(os.path.join(b, 'scope'), '').strip() != 'Device':
+            if read(os.path.join(b, 'status'), '').strip() == 'Discharging':
+                return True
+    return False
+
+
+def brightness_pct(sys_root='/sys'):
+    for d in glob.glob(os.path.join(sys_root, 'class/backlight/*')):
+        b, m = read(os.path.join(d, 'brightness'), '').strip(), read(os.path.join(d, 'max_brightness'), '').strip()
+        if b.isdigit() and m.isdigit() and int(m):
+            return round(100 * int(b) / int(m))
+    return None
+
+
+def battery_add(state, before, now_procs, now, day, batt, bright):
+    """What used the battery today (1.12, mockup tm-7): each app's processor time while on battery, and the screen's
+    time on battery with its brightness; a new day starts again."""
+    b = state.get('battery') or {}
+    if b.get('day') != day:
+        b = {'day': day, 'apps': {}, 'screen': 0.0, 'brightSum': 0.0}
+    if batt:
+        dt = max(0.0, min(900.0, now - (b.get('t') or now)))
+        for key, (name, cpu, _rd, _wr) in now_procs.items():
+            prev = before.get(key)
+            d = max(0.0, cpu - prev[1]) if prev else 0.0
+            if d > 0:
+                b['apps'][name] = round(b['apps'].get(name, 0.0) + d, 2)
+        b['screen'] = round(b.get('screen', 0.0) + dt, 1)
+        if bright is not None:
+            b['brightSum'] = round(b.get('brightSum', 0.0) + dt * bright, 1)
+    b['t'] = now
+    state['battery'] = b
+    return state
+
+
 def history_collect():
-    st = history_add(history_read(), proc_usage(), time.time())
+    st = history_read()
+    before = dict(st.get('procs') or {})
+    usage = proc_usage()
+    now = time.time()
+    st = history_add(st, usage, now)
+    st = battery_add(st, before, usage, now, time.strftime('%Y-%m-%d'), on_battery(), brightness_pct())
     history_write(st)
     return {'ok': True, 'apps': len(st.get('apps') or {})}
+
+
+def battery_use(cpu_now=None):
+    """Rows for "What used the battery today": share of the day's use on battery, power now (an estimate from the
+    battery's own draw and each app's share of the processor right now), and a tip."""
+    b = (history_read().get('battery') or {})
+    watts = None
+    for d in glob.glob('/sys/class/power_supply/*'):
+        if read(os.path.join(d, 'type'), '').strip() == 'Battery':
+            p = read(os.path.join(d, 'power_now'), '').strip()
+            if p.isdigit():
+                watts = int(p) / 1e6
+            else:
+                c, v = read(os.path.join(d, 'current_now'), '').strip(), read(os.path.join(d, 'voltage_now'), '').strip()
+                if c.isdigit() and v.isdigit():
+                    watts = int(c) * int(v) / 1e12
+            break
+    bright = (b.get('brightSum', 0) / b['screen']) if b.get('screen') else brightness_pct()
+    screen_w = 0.6 + 2.4 * (bright or 50) / 100.0                     # a laptop screen: about 0.6 W dark to 3 W full
+    cpu_total = sum((b.get('apps') or {}).values())
+    # the screen's share: its estimated energy against the apps' (a processor second ≈ 1.5 W on a laptop)
+    screen_j = screen_w * b.get('screen', 0)
+    app_j = cpu_total * 1.5
+    total_j = screen_j + app_j
+    rows = []
+    cpu_now = cpu_now or {}
+    cpu_sum = sum(cpu_now.values()) or 1.0
+    for name, sec in sorted((b.get('apps') or {}).items(), key=lambda x: -x[1])[:8]:
+        share = 100.0 * sec * 1.5 / total_j if total_j else 0.0
+        now_w = round((watts - screen_w) * cpu_now.get(name, 0) / cpu_sum, 1) if watts and cpu_now.get(name) else None
+        rows.append({'name': name, 'share': round(share), 'watts': now_w, 'tip': battery_tip(name, share)})
+    if b.get('screen'):
+        rows.append({'name': 'Screen', 'share': round(100.0 * screen_j / total_j) if total_j else 0, 'watts': round(screen_w, 1),
+                     'tip': 'brightness %d%%' % round(bright or 0), 'screen': True})
+    rows.sort(key=lambda r: -r['share'])
+    return {'day': b.get('day'), 'onBattery': on_battery(), 'watts': round(watts, 1) if watts else None, 'rows': rows}
+
+
+def battery_tip(name, share):
+    n = name.lower()
+    if share < 8:
+        return ''
+    if any(x in n for x in ('firefox', 'chrom', 'brave', 'vivaldi', 'web content', 'hearth browser')):
+        return 'a video tab in the background?'
+    if 'steam' in n or 'game' in n:
+        return 'games use the most; plug in to play'
+    return 'Efficiency mode on battery?'
 
 
 def history_list():
@@ -2519,6 +2855,17 @@ def cmd(argv):
         out = signal_app(parse_pid(argv[2]), signal.SIGTERM)
     elif c == 'kill' and len(argv) == 3:
         out = signal_app(parse_pid(argv[2]), signal.SIGKILL)
+    elif c == 'disk-busy' and len(argv) == 2:
+        out = disk_busy()
+    elif c == 'battery-use' and len(argv) == 2:
+        a1 = proc_usage()
+        time.sleep(1)
+        a2 = proc_usage()
+        now = {}
+        for k, (name, cpu, _r, _w) in a2.items():
+            if k in a1:
+                now[name] = now.get(name, 0.0) + max(0.0, cpu - a1[k][1])
+        out = battery_use(now)
     elif c == 'startup' and len(argv) == 2:
         out = startup()
     elif c == 'startup-set' and len(argv) == 4 and argv[3] in ('on', 'off'):
@@ -2554,6 +2901,14 @@ def cmd(argv):
         out = history_collect()
     elif c == 'history-clear' and len(argv) == 2:
         out = history_clear()
+    elif c == 'autostart-measure' and len(argv) == 3 and argv[2].isdigit():
+        out = autostart_measure(int(argv[2]))
+    elif c == 'task-new' and len(argv) == 5:
+        out = task_new(argv[2], argv[3], argv[4])
+    elif c == 'task-delete' and len(argv) == 3:
+        out = task_delete(argv[2])
+    elif c == 'task-trigger' and len(argv) == 3 and argv[2] in ('idle', 'battery'):
+        out = task_trigger(argv[2])
     elif c == 'services' and len(argv) == 2:
         out = service_list()
     elif c == 'service' and len(argv) == 4:

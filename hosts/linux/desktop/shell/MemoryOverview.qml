@@ -27,6 +27,17 @@ ColumnLayout {
     function pressColor(p) { return p < 1 ? cOk : p < 10 ? Theme.flame : p < 30 ? Theme.ember : Theme.danger; }
     function pressWord(p) { return p === null || p === undefined ? "–" : p < 1 ? "None" : p < 10 ? "Light" : p < 30 ? "Medium" : "Heavy"; }
 
+    // the memory's speed and slots, from the board (dmidecode, through hearth-hwset), read once
+    property var board: null
+    Process {
+        id: boardProc
+        running: true
+        command: ["pkexec", "/usr/libexec/nimbus/hearth-hwset", "memory-info"]
+        stdout: StdioCollector { onStreamFinished: { try { mo.board = JSON.parse(text.trim().split("\n").pop()); } catch (e) { } } }
+    }
+    readonly property string headline: view ? view.size(m.total) + (board && board.speed ? " · " + (board.type ? board.type + " " : "") + board.speed + " MT/s" : "")
+        + (board && board.slots ? " · " + board.used + " of " + board.slots + " slots" : "") : ""
+
     // your memory settings, read once when this opens and every 30 s (nothing is written)
     property var st: null
     Process {
@@ -267,6 +278,8 @@ ColumnLayout {
         color: "transparent"
         border.color: Theme.line
         readonly property bool drive: (mo.m.driveUsed || 0) > 0
+        // swapped memory is in zram or on the drive; Linux doesn't say which per program, so each gets the PC's split
+        readonly property real driveShare: drive ? (mo.m.driveUsed || 0) / Math.max(1, (mo.m.driveUsed || 0) + (mo.m.zramUsed || 0)) : 0
         readonly property var top: (mo.view.groups || []).slice().sort((a, b) => (b.mem || 0) - (a.mem || 0)).slice(0, 6)
         ColumnLayout {
             id: tbl
@@ -290,7 +303,8 @@ ColumnLayout {
                         Val { Layout.fillWidth: true; elide: Text.ElideRight; color: parent.c; text: modelData.head ? "Program" : modelData.name + ((modelData.count || 1) > 1 ? " (" + modelData.count + ")" : "") }
                         Val { Layout.preferredWidth: 110; horizontalAlignment: Text.AlignRight; color: parent.c; text: modelData.head ? "In use" : mo.view.size(modelData.mem || 0) }
                         Val { Layout.preferredWidth: 110; horizontalAlignment: Text.AlignRight; color: parent.c; text: modelData.head ? "Shared" : mo.view.size(modelData.shared || 0) }
-                        Val { Layout.preferredWidth: 130; horizontalAlignment: Text.AlignRight; color: parent.c; text: modelData.head ? (users.drive ? "Swapped out" : "Compressed") : mo.view.size(modelData.swap || 0) }
+                        Val { Layout.preferredWidth: 130; horizontalAlignment: Text.AlignRight; color: parent.c; text: modelData.head ? "Compressed" : mo.view.size(Math.round((modelData.swap || 0) * (1 - users.driveShare))) }
+                        Val { Layout.preferredWidth: 100; horizontalAlignment: Text.AlignRight; color: parent.c; text: modelData.head ? "On drive" : users.driveShare > 0 ? mo.view.size(Math.round((modelData.swap || 0) * users.driveShare)) : "0" }
                     }
                 }
             }

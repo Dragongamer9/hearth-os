@@ -74,6 +74,14 @@ FocusScope {
     property var groupMap: ({})
     property var details: []
     property var hist: ({})                 // device key → the last minute of values
+    // Tailscale's other devices, for its entry in Performance's list (1.12, mockup tm-5)
+    property int tsPeers: -1
+    Process {
+        id: tsProc
+        command: ["sh", "-c", "tailscale status --json 2>/dev/null || true"]
+        stdout: StdioCollector { onStreamFinished: { try { const j = JSON.parse(text); v.tsPeers = Object.keys(j.Peer || {}).length; } catch (e) { v.tsPeers = -1; } } }
+    }
+    Timer { interval: 30000; repeat: true; triggeredOnStart: true; running: tm.page === "performance"; onTriggered: if (!tsProc.running) tsProc.running = true }
     property var expanded: ({})
     property string query: ""
     readonly property int histMax: tm.interval > 0 ? Math.round(60 / tm.interval) + 1 : 61
@@ -107,7 +115,7 @@ FocusScope {
     function wants() {
         switch (tm.page) {
         case "processes": return ["procs"];
-        case "performance": return tm.perfDevice === "memory" ? ["gpu", "temps", "procs"] : ["gpu", "temps"];
+        case "performance": return ["gpu", "temps", "procs"];         // procs: Memory's Biggest users, the settings tabs' programs (1.12)
         case "details": return ["details"];
         default: return [];
         }
@@ -531,7 +539,7 @@ FocusScope {
         const list = startItems.filter(i => !q || i.name.toLowerCase().indexOf(q) >= 0 || String(i.publisher || "").toLowerCase().indexOf(q) >= 0);
         const rows = sortBy(list.map(i => ({ key: i.id, type: "row", depth: 0, icon: "", tag: "", expandable: false, expanded: false,
             eco: false, name: i.name, publisher: i.publisher || "", status: statusOfStart(i), impact: i.impact || "Not measured",
-            on: !!i.on, canChange: !!i.canChange, sub: i.sub || "", kind: i.kind })), s.key, s.desc);
+            on: !!i.on, canChange: !!i.canChange, sub: i.sub || "", kind: i.kind, added: i.added === null || i.added === undefined ? -1 : i.added, starts: i.starts || "" })), s.key, s.desc);
         sync(startModel, rows);
     }
     function startCell(r, key) {
@@ -541,6 +549,8 @@ FocusScope {
         }
         if (key === "impact") return { t: r.impact, muted: r.impact === "Not measured" || r.impact === "None" };
         if (key === "publisher") return { t: r.publisher || "–", muted: !r.publisher };
+        if (key === "added") return { t: r.added >= 0 ? r.added.toFixed(1) + " s" : "—", muted: r.added < 0 };
+        if (key === "starts") return { t: r.starts || "—", muted: !r.starts };
         return { t: String(r[key] || "") };
     }
     function setStartup(key, on) {
@@ -585,13 +595,31 @@ FocusScope {
         const same = d.toDateString() === now.toDateString();
         return same ? Qt.formatTime(d, "h:mm AP") : Qt.formatDateTime(d, "MMM d, h:mm AP");
     }
+    // + New task (1.12, mockup tm-8): a name, then what to run, then when (a time, at sign-in, every hour or 6 hours,
+    // when idle, when on battery). Yours only; a systemd user timer, or Mantel's idle / battery watch.
+    function newTask(x, y) {
+        askText("New task", "A name for it (for example: Back up game saves).", "", name => {
+            askText("New task · " + name, "What to run: a program or a script, as you'd type it in a terminal.", "", cmd => {
+                showMenu("When should " + name + " run?", [
+                    { id: "daily@03:00", label: "Every day at 3:00" }, { id: "daily@12:00", label: "Every day at 12:00" }, { id: "daily@21:00", label: "Every day at 21:00" },
+                    { id: "hourly", label: "Every hour" }, { id: "every6h", label: "Every 6 hours" }, { id: "signin", label: "At sign-in" },
+                    { id: "idle", label: "When the PC is idle" }, { id: "battery", label: "When it goes on battery" }, { id: "time", label: "Every day at…" }], x, y, w => {
+                    if (w === "time") askText("New task · " + name, "Every day at what time? (24-hour, like 03:30)", "03:00", t => {
+                        const m = t.trim().match(/^(\d{1,2}):(\d{2})$/);
+                        if (m) run(timerActProc, ["task-new", name, "daily@" + (m[1].length < 2 ? "0" : "") + m[1] + ":" + m[2], cmd]);
+                    });
+                    else run(timerActProc, ["task-new", name, w, cmd]);
+                });
+            });
+        });
+    }
     function buildTimers() {
         const q = query.trim().toLowerCase();
         const list = timerItems.filter(t => !q || t.unit.toLowerCase().indexOf(q) >= 0 || t.runs.toLowerCase().indexOf(q) >= 0);
         const row = t => ({ key: t.id, type: "row", depth: 0, icon: "", tag: t.hearth ? "Part of Hearth" : "", expandable: false, expanded: false, eco: false,
-            name: t.unit.replace(/\.timer$/, ""), unit: t.unit, runs: t.runs, next: t.next, last: t.last, scope: t.scope, canChange: !!t.canChange, label: "" });
+            name: t.desc || t.unit.replace(/\.timer$/, ""), unit: t.unit, runs: t.runs, next: t.next, last: t.last, scope: t.scope, canChange: !!t.canChange, label: "", result: t.result || "" });
         const sec = (k, l) => ({ key: k, type: "section", depth: 0, icon: "", tag: "", expandable: false, expanded: false, eco: false,
-            name: "", unit: "", runs: "", next: 0, last: 0, scope: "", canChange: false, label: l });
+            name: "", unit: "", runs: "", next: 0, last: 0, scope: "", canChange: false, label: l, result: "" });
         const mine = list.filter(t => t.scope === "user"), sys = list.filter(t => t.scope === "system");
         const rows = [];
         if (mine.length) { rows.push(sec("s:mine", "Yours (" + mine.length + ")")); mine.forEach(t => rows.push(row(t))); }
@@ -602,6 +630,7 @@ FocusScope {
         if (key === "next") return { t: r.next ? when(r.next) : "Off", muted: !r.next };
         if (key === "last") return { t: when(r.last), muted: !r.last };
         if (key === "runs") return { t: r.runs, muted: true };
+        if (key === "result") return { t: r.result || "—", good: r.result === "OK", bad: !!r.result && r.result !== "OK", muted: !r.result };
         return { t: String(r[key] === undefined ? "" : r[key]) };
     }
     function buildUsers() {
@@ -681,15 +710,16 @@ FocusScope {
         const rows = [];
         const row = i => ({ key: i.id, type: "row", depth: 0, icon: "", tag: i.hearth ? "Part of Hearth" : "", expandable: false, expanded: false,
             eco: false, name: i.name, pid: i.pid || 0, desc: i.desc || "", status: i.status, group: i.group, canChange: !!i.canChange,
-            unit: i.unit, label: "" });
+            unit: i.unit, label: "", starts: i.starts || "" });
         const sec = (k, l) => ({ key: k, type: "section", depth: 0, icon: "", tag: "", expandable: false, expanded: false, eco: false,
-            name: "", pid: 0, desc: "", status: "", group: "", canChange: false, unit: "", label: l });
+            name: "", pid: 0, desc: "", status: "", group: "", canChange: false, unit: "", label: l, starts: "" });
         const mine = pick("Yours"), sys = pick("System");
         if (mine.length) { rows.push(sec("s:yours", "Your services (" + mine.length + ")")); mine.forEach(i => rows.push(row(i))); }
         if (sys.length) { rows.push(sec("s:system", "System services (" + sys.length + ") · read only")); sys.forEach(i => rows.push(row(i))); }
         sync(svcModel, rows);
     }
     function svcCell(r, key) {
+        if (key === "starts") return { t: r.starts || "", muted: r.starts === "Off" };
         if (key === "pid") return { t: r.pid ? String(r.pid) : "", muted: true };
         if (key === "status") return { t: r.status, good: r.status === "Running", bad: r.status === "Failed", muted: r.status === "Stopped" };
         if (key === "desc") return { t: r.desc, muted: true };
@@ -708,8 +738,16 @@ FocusScope {
             { id: "stop", label: "Stop", icon: "pause", enabled: r.canChange && r.status === "Running" },
             { id: "restart", label: "Restart", icon: "restart", enabled: r.canChange && r.status === "Running" },
             { sep: true },
+            { id: "starts", label: "Starts ▸", icon: "clock", enabled: r.canChange },
+            { sep: true },
             { id: "web", label: "Search online", icon: "search" }
-        ], x, y, id => { if (id === "web") searchOnline(r.name + " service"); else svcAct(r, id); });
+        ], x, y, id => {
+            if (id === "web") searchOnline(r.name + " service");
+            else if (id === "starts") showMenu("Starts · " + r.name, [
+                { id: "enable", label: "Automatic", checked: r.starts === "Automatic" },
+                { id: "disable", label: "When needed (or Off)", checked: r.starts !== "Automatic" }], x, y, a => svcAct(r, a));
+            else svcAct(r, id);
+        });
     }
 
     // ---- one-shot helper processes
@@ -1175,14 +1213,15 @@ FocusScope {
             property string memTab: "overview"
             readonly property bool memSettings: !!dev && memTab === "settings"
             readonly property bool memOverview: !!dev && !memSettings && dev.kind === "memory"
-            readonly property var settingsLabel: ({ memory: "Swap & settings", cpu: "Power & settings", disk: "Health & settings", net: "Connection & hotspot", gpu: "Tuning", battery: "Health & settings" })
+            readonly property var settingsLabel: ({ memory: "Swap & settings", cpu: "Power & settings", disk: "Health & settings", net: "Apps & settings", gpu: "Tuning", battery: "Health & settings" })
             readonly property var devices: {
                 const d = [];
                 if (!s) return d;
                 d.push({ key: "cpu", kind: "cpu", title: "CPU", sub: v.pct(s.cpu.total) + "  " + v.ghz(s.cpu.mhz), max: 100 });
                 d.push({ key: "memory", kind: "memory", title: "Memory", sub: v.sizeOf(s.mem.used, s.mem.total) + " (" + v.pct(100 * s.mem.used / Math.max(1, s.mem.total)) + ")", max: 100 });
                 (s.disks || []).forEach(x => d.push({ key: "disk:" + x.name, kind: "disk", title: x.label, sub: x.type + "  " + v.pct(x.active), max: 100, disk: x }));
-                (s.nets || []).forEach(x => d.push({ key: "net:" + x.name, kind: "net", title: x.kind, sub: x.up ? "S: " + v.kbps(x.send) + "  R: " + v.kbps(x.recv) : "Not connected", max: 0, net: x }));
+                (s.nets || []).forEach(x => d.push({ key: "net:" + x.name, kind: "net", title: x.kind,
+                    sub: x.kind === "Tailscale" ? (v.tsPeers >= 0 ? v.plural(v.tsPeers, "device") : x.up ? "Connected" : "Not connected") : x.up ? "S: " + v.kbps(x.send) + "  R: " + v.kbps(x.recv) : "Not connected", max: 0, net: x }));
                 (s.gpus || []).forEach(x => d.push({ key: "gpu:" + x.index, kind: "gpu", title: "GPU " + x.index, sub: x.name + "  " + (x.busy === null || x.busy === undefined ? "" : v.pct(x.busy)) + (x.temp !== null && x.temp !== undefined ? " (" + v.temp(x.temp) + ")" : ""), max: 100, gpu: x }));
                 if (s.battery) d.push({ key: "battery", kind: "battery", title: "Battery", sub: s.battery.percent + "% · " + s.battery.status, max: 100, battery: s.battery });
                 return d;
@@ -1282,7 +1321,7 @@ FocusScope {
                                 Layout.maximumWidth: dcol.width * 0.6
                                 horizontalAlignment: Text.AlignRight
                                 elide: Text.ElideRight
-                                text: !pf.dev ? "" : pf.dev.kind === "cpu" ? pf.s.cpu.name : pf.dev.kind === "memory" ? v.size(pf.s.mem.total) : pf.dev.kind === "disk" ? (pf.dev.disk.model || pf.dev.disk.name)
+                                text: !pf.dev ? "" : pf.memSettings && devLoader.item && devLoader.item.headline ? devLoader.item.headline : pf.memOverview && memOv.headline ? memOv.headline : pf.dev.kind === "cpu" ? pf.s.cpu.name : pf.dev.kind === "memory" ? v.size(pf.s.mem.total) : pf.dev.kind === "disk" ? (pf.dev.disk.model || pf.dev.disk.name)
                                     : pf.dev.kind === "net" ? pf.dev.net.name : pf.dev.kind === "gpu" ? pf.dev.gpu.name : pf.dev.kind === "battery" ? pf.dev.battery.name : ""
                                 color: Theme.text; font.family: Theme.font; font.pixelSize: 15
                             }
@@ -1305,6 +1344,7 @@ FocusScope {
                             }
                         }
                         MemoryOverview {
+                            id: memOv
                             visible: pf.memOverview
                             Layout.fillWidth: true
                             Layout.topMargin: 6
@@ -1318,11 +1358,12 @@ FocusScope {
                             Layout.topMargin: 6
                         }
                         Loader {
+                            id: devLoader
                             active: pf.memSettings && pf.dev.kind !== "memory"
                             visible: active
                             Layout.fillWidth: true
                             Layout.topMargin: 6
-                            sourceComponent: DeviceSettings { kind: pf.dev ? pf.dev.kind : "cpu"; dev: pf.dev; sample: pf.s; width: parent ? parent.width : 600 }
+                            sourceComponent: DeviceSettings { kind: pf.dev ? pf.dev.kind : "cpu"; dev: pf.dev; sample: pf.s; view: v; width: parent ? parent.width : 600 }
                         }
                         RowLayout {
                             visible: !!pf.dev && !pf.memSettings && !pf.memOverview
@@ -1467,10 +1508,16 @@ FocusScope {
             subtitle: "What runs by itself at set times, like Windows' Task Scheduler"
             readonly property var sel: table.currentIndex >= 0 && table.currentIndex < timerModel.count ? timerModel.get(table.currentIndex) : null
             buttons: [
-                { id: "on", label: "Turn on", enabled: !!tp.sel && tp.sel.canChange && !tp.sel.next, primary: true },
-                { id: "off", label: "Turn off", enabled: !!tp.sel && tp.sel.canChange && !!tp.sel.next }
+                { id: "new", label: "+ New task", icon: "plus", primary: true },
+                { id: "on", label: "Turn on", enabled: !!tp.sel && tp.sel.canChange && !tp.sel.next },
+                { id: "off", label: "Turn off", enabled: !!tp.sel && tp.sel.canChange && !!tp.sel.next },
+                { id: "del", label: "Delete", icon: "trash", enabled: !!tp.sel && /^hearth-task-/.test(tp.sel.unit || "") }
             ]
-            onButton: id => { if (sel) v.run(timerActProc, ["timer", sel.unit, id === "on" ? "on" : "off"]); }
+            onButton: (id, x, y) => {
+                if (id === "new") v.newTask(x, y);
+                else if (id === "del" && sel) v.run(timerActProc, ["task-delete", sel.unit.replace(/^hearth-task-/, "").replace(/\.timer$/, "")]);
+                else if (sel) v.run(timerActProc, ["timer", sel.unit, id === "on" ? "on" : "off"]);
+            }
             function focusFirst() { table.focusList(); }
             DataTable {
                 id: table
@@ -1481,10 +1528,11 @@ FocusScope {
                 rowHeight: 36
                 widths: tm.pref("cols_tasks", ({}))
                 columns: [
-                    { key: "name", title: "Name", flex: true },
-                    { key: "next", title: "Next run", width: 170 },
+                    { key: "name", title: "Task", flex: true },
+                    { key: "next", title: "When (next)", width: 170 },
                     { key: "last", title: "Last run", width: 170 },
-                    { key: "runs", title: "What it runs", width: 260 }
+                    { key: "result", title: "Last result", width: 110 },
+                    { key: "runs", title: "What it runs", width: 240 }
                 ]
                 cell: (r, k) => v.timerCell(r, k)
                 empty: v.timersLoaded ? "Nothing is scheduled." : "Looking at what's scheduled…"
@@ -1572,7 +1620,7 @@ FocusScope {
             onLeave: v.toRail()
             onUpOut: search.forceActiveFocus()
             title: "Startup apps"
-            subtitle: v.bootSeconds !== null && v.bootSeconds !== undefined ? "Last start-up time: " + v.bootSeconds + " seconds" : ""
+            subtitle: v.bootSeconds !== null && v.bootSeconds !== undefined ? "Last start: " + Math.round(v.bootSeconds) + " s (desktop ready)" : ""
             readonly property var sel: table.currentIndex >= 0 && table.currentIndex < startModel.count ? startModel.get(table.currentIndex) : null
             buttons: [
                 { id: "on", label: "Enable", enabled: !!sp.sel && sp.sel.canChange && !sp.sel.on, primary: true },
@@ -1600,7 +1648,9 @@ FocusScope {
                     { key: "name", title: "Name", flex: true },
                     { key: "publisher", title: "Publisher", width: 200 },
                     { key: "status", title: "Status", width: 150 },
-                    { key: "impact", title: "Start-up impact", width: 150 }
+                    { key: "impact", title: "Start-up impact", width: 150 },
+                    { key: "added", title: "Time added to start", width: 160, right: true },
+                    { key: "starts", title: "Starts", width: 180 }
                 ]
                 cell: (r, k) => v.startCell(r, k)
                 empty: v.startLoaded ? "Nothing starts on its own." : "Looking for things that start on their own…"
@@ -1729,6 +1779,7 @@ FocusScope {
                     { key: "pid", title: "PID", width: 72, right: true },
                     { key: "desc", title: "Description", flex: true },
                     { key: "status", title: "Status", width: 96 },
+                    { key: "starts", title: "Starts", width: 120 },
                     { key: "group", title: "Group", width: 80 }
                 ]
                 cell: (r, k) => v.svcCell(r, k)

@@ -58,7 +58,7 @@ class Page(unittest.TestCase):
         view = (SHELL / 'TaskManagerView.qml').read_text()
         self.assertIn('MemoryOverview {', view)
         self.assertIn('push(h, "memz"', view)
-        self.assertIn('tm.perfDevice === "memory" ? ["gpu", "temps", "procs"]', view)
+        self.assertIn('case "performance": return ["gpu", "temps", "procs"]', view)
 
 
 if __name__ == '__main__':

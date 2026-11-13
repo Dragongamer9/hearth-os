@@ -605,6 +605,30 @@ def swapfile_size(gb):
 
 
 # ------------------------------------------------------------------ status
+def watermarks(root=None):
+    """/proc/zoneinfo's low and high watermarks, added over the zones (bytes): the kernel starts freeing memory when
+    free memory drops below `low` and frees until it's back at `high` (Swap & settings' "Starts freeing below")."""
+    low = high = 0
+    for line in read(os.path.join(root or PROC, 'zoneinfo')).splitlines():
+        f = line.split()
+        if len(f) == 2 and f[1].isdigit():
+            if f[0] == 'low':
+                low += int(f[1])
+            elif f[0] == 'high':
+                high += int(f[1])
+    page = os.sysconf('SC_PAGE_SIZE') if hasattr(os, 'sysconf') else 4096
+    return {'low': low * page, 'high': high * page}
+
+
+def hibernate_checked():
+    """When a hibernation last came back on this PC (hearth-resumed's record), or None."""
+    p = '/var/lib/hearth/hibernate-proven'
+    try:
+        return int(os.path.getmtime(p))
+    except OSError:
+        return None
+
+
 def status():
     mi = meminfo()
     mem = mi.get('MemTotal', 0)
@@ -631,7 +655,7 @@ def status():
         'swaps': sw, 'swapfile': {'path': SWAPFILE, 'exists': os.path.isfile(SWAPFILE),
                                   'gb': round(os.path.getsize(SWAPFILE) / GIB) if os.path.isfile(SWAPFILE) else 0,
                                   'hibernate': os.path.isfile(HIBERNATE_FILE)},
-        'vm': vm_now(), 'setBy': owners, 'pressure': dict(p, word=pressure_word(p)),
+        'vm': vm_now(), 'watermarks': watermarks(), 'hibernateChecked': hibernate_checked(), 'setBy': owners, 'pressure': dict(p, word=pressure_word(p)),
         'settings': merged(saved, mem), 'saved': bool(saved) and not broken, 'broken': broken,
         'from': saved.get('_from', ''), 'recommended': recommended(mem), 'limits': limits(mem, free_on('/var')),
         'algos': kernel_algos(), 'testFiles': test_files(), 'neverLabels': NEVER_LABEL, 'lastClosed': last,
