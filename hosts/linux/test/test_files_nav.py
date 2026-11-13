@@ -35,5 +35,25 @@ class BigFolders(unittest.TestCase):
         self.assertEqual(FM.count('model: visible ? app.entries : []'), 2)
 
 
+
+class CEverywhere(unittest.TestCase):
+    """C: everywhere, step 1 (the approved mockups cdrive-1 … 4)."""
+
+    def test_open_save_windows_show_c_but_return_real_paths(self):
+        self.assertIn('readonly property bool cdriveOn: prefs.cdrive !== false\n', FM)
+        pt = FM[FM.index('    function pickTargets() {'):FM.index('    readonly property string pickAcceptLabel')]
+        self.assertEqual(pt.count('!DrivePaths.isCPath('), 3)
+        ps = FM[FM.index('    function pickSave() {'):FM.index('    // ================================================ talking to hearth-files')]
+        self.assertIn('DrivePaths.fromWindows(n, pathCtx)', ps)
+        self.assertIn('DrivePaths.isCPath(path)) return say(', ps)
+
+    def test_properties_and_terminal_switch(self):
+        base = os.path.join(os.path.dirname(__file__), '..', 'desktop', 'shell')
+        fp = open(os.path.join(base, 'FileProperties.qml')).read()
+        self.assertIn('value: !pr.info ? "" : pr.single ? pr.winPath(pr.info.parent)', fp)
+        self.assertIn('label: "Linux path"', fp)
+        rc = open(os.path.join(base, '..', '..', '..', '..', 'os/system_files/usr/share/hearth/shell/windows-commands.bash')).read()
+        self.assertIn('"terminalWindows": *false', rc)
+
 if __name__ == '__main__':
     unittest.main()

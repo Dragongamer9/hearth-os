@@ -84,7 +84,10 @@ Scope {
     // when you change them (View here, or Settings › System › Drives & folders): cdrive (on unless turned off),
     // linuxFolders (off unless turned on), addressBar (windows | linux), copyPath (windows | linux).
     readonly property string cRoot: "hearth:c"
-    readonly property bool cdriveOn: prefs.cdrive !== false && !picking   // (Open / Save windows keep the real folders)
+    // C: everywhere (1.11, step 1, the approved mockup cdrive-1): the Open / Save windows every app uses show Hearth (C:)
+    // too. What they hand back is always the real path (an app can't open C:\…); a folder that's only a name in the
+    // view (Program Files, C:\ itself) can't be saved into.
+    readonly property bool cdriveOn: prefs.cdrive !== false
     readonly property bool cLinux: prefs.linuxFolders === true
     readonly property bool cAddrLinux: prefs.addressBar === "linux"
     readonly property bool cCopyLinux: prefs.copyPath === "linux"
@@ -342,13 +345,14 @@ Scope {
     // What Open / Choose returns now: the picked items, else the one under the cursor (folder mode: this folder).
     function pickTargets() {
         if (!picking) return [];
-        const sel = entries.filter(e => marked[e.path] && (pick.directory ? e.dir : !e.dir)).map(e => e.path);
+        // Only real folders and files go back to the app (never a hearth:c name from the C:\ view).
+        const sel = entries.filter(e => marked[e.path] && (pick.directory ? e.dir : !e.dir) && !DrivePaths.isCPath(e.path)).map(e => e.path);
         if (pick.directory) {
             if (sel.length) return pick.multiple ? sel : sel.slice(0, 1);
-            return listing && !listing.error && found === null ? [listing.path] : [];
+            return listing && !listing.error && found === null && !DrivePaths.isCPath(listing.path) ? [listing.path] : [];
         }
         if (sel.length) return pick.multiple ? sel : sel.slice(0, 1);
-        return current && !current.dir ? [current.path] : [];
+        return current && !current.dir && !DrivePaths.isCPath(current.path) ? [current.path] : [];
     }
     readonly property string pickAcceptLabel: {
         if (!picking) return "";
@@ -404,7 +408,7 @@ Scope {
         if (!picking || pickDone) return;
         if (pick.kind === "save") return pickSave();
         if (pick.kind === "savefiles") {
-            if (!listing || listing.error || found !== null) return say("Open the folder to save in first", true);
+            if (!listing || listing.error || found !== null || DrivePaths.isCPath(path)) return say("Open the folder to save in first", true);
             const there = (listing.entries || []).filter(e => (pick.files || []).indexOf(e.name) >= 0).map(e => e.name);
             const dir = listing.path;
             if (!there.length) return pickFinish([dir]);
@@ -420,6 +424,13 @@ Scope {
         let n = pickName.trim();
         if (!n) { if (ui) ui.focusName(); return say("Type a name first", true); }
         if (n.startsWith("~")) n = home + n.slice(1);
+        // A typed C:\Users\chris\notes.txt (or G:\…) is the real path it stands for.
+        if (/^[A-Za-z]:([\\/]|$)/.test(n)) {
+            const w = DrivePaths.fromWindows(n, pathCtx);
+            if (!w || !w.path || DrivePaths.isCPath(w.path)) return say(w && w.error ? w.error : "That's not a folder you can save in", true);
+            n = w.path;
+        }
+        if (!n.startsWith("/") && DrivePaths.isCPath(path)) return say("Open a folder to save in first (your own folders are in Users)", true);
         const full = n.startsWith("/") ? n : (path === "/" ? "" : path) + "/" + n;
         const dir = parentOf(full), name = base(full);
         const decide = (list) => {

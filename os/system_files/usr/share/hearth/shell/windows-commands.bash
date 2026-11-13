@@ -4,6 +4,8 @@
 # ~/.bashrc (before this is read) or with `unset -f dir copy del` and so on. Sourced from /etc/bash.bashrc.
 [ -n "${PS1:-}" ] || return 0 2>/dev/null
 [ "${HEARTH_WINDOWS_COMMANDS:-1}" = 0 ] && return 0 2>/dev/null
+# Settings › System › Drives & folders › Terminal speaks C:\ (files.json "terminalWindows": false turns it off).
+grep -qs '"terminalWindows": *false' "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/files.json" && return 0 2>/dev/null
 
 __hearth_letters=/usr/share/nimbus/desktop/shell/hearth_drive_letters.py
 # A Windows path (C:\Users\me, d:/Games, C:) as the real one; anything else as it is.

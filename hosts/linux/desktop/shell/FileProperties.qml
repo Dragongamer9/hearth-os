@@ -15,6 +15,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
+import "drive-paths.js" as DrivePaths
 
 Scope {
     id: pr
@@ -287,6 +288,12 @@ Scope {
         if (!a) return;
         newApp = { id: a.id, name: a.name, icon: a.icon };
     }
+    // C: everywhere (1.11, the approved mockup cdrive-3): where a file is, the Windows way. The Linux path is the line
+    // under it; Copy gives the C:\ form (Files' "Copy path gives" choice is in its own right-click menu).
+    readonly property string homeDir: Quickshell.env("HOME") || ""
+    readonly property var winCtx: ({ home: homeDir, user: Quickshell.env("USER") || homeDir.replace(/^.*\//, ""),
+                                      c: { on: true, users: homeDir.replace(/\/[^\/]*$/, "") || "/home" } })
+    function winPath(p) { return p && p.indexOf("/") === 0 ? (DrivePaths.toWindows(p, winCtx) || p) : p; }
     function copyText(t) {
         Quickshell.execDetached(["wl-copy", "--", t]);
         if (SettingsNav) SettingsNav.toast("Copied");
@@ -372,7 +379,7 @@ Scope {
     function activate(id) {
         if (id === "tabs") return switchTab(1);
         if (id === "name") return pr.startEditName();
-        if (id === "copyloc") return copyText(single ? info.path : (info.parent || ""));
+        if (id === "copyloc") return copyText(winPath(single ? info.path : (info.parent || "")));
         if (id === "copytarget") return copyText(info.target);
         if (id === "change") return openPicker(false);
         if (id === "exec") return setExec(!(mode & 0o100));
@@ -635,12 +642,17 @@ Scope {
                             PropRow {
                                 id: locRow
                                 label: "Location"
-                                value: !pr.info ? "" : pr.single ? pr.info.parent : (pr.info.parent || "Different folders")
+                                value: !pr.info ? "" : pr.single ? pr.winPath(pr.info.parent) : (pr.info.parent ? pr.winPath(pr.info.parent) : "Different folders")
                                 visible: !!pr.info
                                 button: "Copy"
                                 buttonFocused: pr.focusId === "copyloc"
                                 onPressed: pr.activate("copyloc")
                                 Component.onCompleted: win.reg("copyloc", locRow)
+                            }
+                            PropRow {
+                                label: "Linux path"
+                                value: !pr.info ? "" : pr.single ? pr.info.path : (pr.info.parent || "")
+                                visible: !!pr.info && value !== "" && pr.winPath(value) !== value
                             }
                             PropRow {
                                 id: targetRow
