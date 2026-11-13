@@ -1,0 +1,332 @@
++ pkill -f labwc/autostart
++ pkill -x labwc
++ pkill -f quickshell
++ sleep 2
++ pkill -f quickshell
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export HEARTH_SERVER_DASH_FIXTURE=/__w/hearth-os/hearth-os/hosts/linux/test/fixtures/server-dash.json HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
++ HEARTH_SERVER_DASH_FIXTURE=/__w/hearth-os/hearth-os/hosts/linux/test/fixtures/server-dash.json
++ HEARTH_SERVER_NO_PAD=1
++ HEARTH_NIMBUS_MODE=/bin/true
++ QML=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml
++ H=hosts/linux/desktop/shell/hearth-server-mode
++ rm -f '/tmp/xdg/wayland-*' /tmp/xdg/hearth-server-dash-up
++ mkdir -p /tmp/home/.config/nimbus
++ printf '%s\n' '{"on": true, "web": {"on": true}, "schedule": {"on": true}}'
++ printf %s 482916
++ HEARTH_INPUT=482916
++ python3 hosts/linux/desktop/shell/hearth-server-mode pin-set
+{"pin": true}
++ python3 hosts/linux/desktop/shell/hearth-server-mode start-in server
+{"startIn": "server"}
++ HEARTH_SERVER_DASH_FIXTURE=
++ python3 hosts/linux/desktop/shell/hearth-server-mode dash
++ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("::notice title=Server mode::dash on the runner: %d tiles, %s" % (len(d["tiles"]), d["status"]["title"]))' shots/server-mode/dash-real.json
+::notice title=Server mode::dash on the runner: 10 tiles, Needs a look
++ HEARTH_SERVER_MODE=1
++ HEARTH_SERVER_QML=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml
++ labwc -C hosts/linux/desktop/server/labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
+++ seq 1 40
++ for i in $(seq 1 40)
++ '[' -e /tmp/xdg/hearth-server-dash-up ']'
++ break
++ '[' -e /tmp/xdg/hearth-server-dash-up ']'
++ echo '::notice title=Server mode::the dashboard said it'\''s up after 1s (the session waits for this)'
+::notice title=Server mode::the dashboard said it's up after 1s (the session waits for this)
++ sleep 6
++ grim shots/server-mode/01-dashboard.png
++ ipc server detail 1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server detail 1
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ grim shots/server-mode/02-ai-expanded.png
++ ipc server detail 2
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server detail 2
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ grim shots/server-mode/02b-pictures-expanded.png
++ ipc server close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server play
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 1
++ grim shots/server-mode/03-switch-to-game-mode.png
++ ipc server close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ mkdir -p /tmp/xdg/hearth-server
++ python3 -c 'import json,time,sys; json.dump({"action": {"kind": "mode", "to": "game"}, "to": "game", "what": "mode", "deadline": time.time() + 9, "total": 10, "from": "web", "by": "Work laptop"}, open(sys.argv[1], "w"))' /tmp/xdg/hearth-server/countdown.json
++ sleep 3
++ grim shots/server-mode/03b-web-switch-countdown.png
++ ipc server cancel
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server cancel
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ ipc server back
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server back
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ grim shots/server-mode/04-back-in-server-mode.png
++ ipc server close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc server menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ grim shots/server-mode/05-menu.png
++ ipc server close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc server idle dim
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server idle dim
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ grim shots/server-mode/09-screen-idle.png
++ ipc server idle on
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server idle on
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call server state
++ echo $'state: \E[33m  WARN\E[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.\nQt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.\nIf this causes problems, reconfigure your locale. See the locale(1) manual\nfor more information.\n{"overlay":"","sel":2,"screen":"on","count":4,"remote":false,"tiles":10,"settings":false}'
+state: [33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+{"overlay":"","sel":2,"screen":"on","count":4,"remote":false,"tiles":10,"settings":false}
++ ipc settings page hs-server
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call settings page hs-server
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 3
++ grim shots/server-mode/06-settings-server-mode.png
++ wtype -k Right
++ sleep 1
+++ seq 1 12
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ for i in $(seq 1 12)
++ wtype -k Down
++ sleep 1
++ grim shots/server-mode/06b-settings-what-pauses.png
+++ seq 1 8
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ for i in $(seq 1 8)
++ wtype -k Down
++ sleep 1
++ grim shots/server-mode/06c-settings-web-page.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page startup
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call settings page startup
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 3
++ grim shots/server-mode/07-settings-startup.png
++ wtype -k Right
++ sleep 1
+++ seq 1 6
++ for i in $(seq 1 6)
++ wtype -k Down
++ for i in $(seq 1 6)
++ wtype -k Down
++ for i in $(seq 1 6)
++ wtype -k Down
++ for i in $(seq 1 6)
++ wtype -k Down
++ for i in $(seq 1 6)
++ wtype -k Down
++ for i in $(seq 1 6)
++ wtype -k Down
++ sleep 1
++ grim shots/server-mode/07b-settings-schedule.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page gaming
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call settings page gaming
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 3
++ grim shots/server-mode/08-gaming-start-in.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ cp /tmp/xdg/hearth-server-dash.log shots/server-mode/dashboard.log
+++ grep -E 'TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load|Unable to assign' shots/server-mode/dashboard.log
+++ grep -viE 'uinput|evdev|DBus|hearth-pad'
+++ tr '\n' '|'
+++ head -10
+++ cut -c1-220
+++ true
++ sbad=
++ '[' -z '' ']'
++ pkill -x labwc
++ pkill -f quickshell
++ dnf -y install chromium
+++ command -v chromium-browser
++ CH=/usr/bin/chromium-browser
++ '[' -n /usr/bin/chromium-browser ']'
++ SRV=22125
++ sleep 3
++ HEARTH_SERVER_DASH_FIXTURE=/__w/hearth-os/hearth-os/hosts/linux/test/fixtures/server-dash.json
++ timeout 120 python3 hosts/linux/desktop/shell/hearth-server-mode serve
++ python3 - hosts/linux/desktop/shell/hearth-server-mode
++ python3 hosts/linux/desktop/shell/hearth-server-mode web-html /tmp/web-data.json
++ shot 10a-web-phone.png 390,844 2 file:///tmp/web-page.html
++ timeout 60 /usr/bin/chromium-browser --headless --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=390,844 --screenshot=/__w/hearth-os/hearth-os/shots/server-mode/10a-web-phone.png file:///tmp/web-page.html
++ shot 10b-web-laptop.png 1440,900 1 file:///tmp/web-page.html
++ timeout 60 /usr/bin/chromium-browser --headless --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1440,900 --screenshot=/__w/hearth-os/hearth-os/shots/server-mode/10b-web-laptop.png file:///tmp/web-page.html
++ shot 10c-web-sign-in-phone.png 390,844 2 http://127.0.0.1:8460/
++ timeout 60 /usr/bin/chromium-browser --headless --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=390,844 --screenshot=/__w/hearth-os/hearth-os/shots/server-mode/10c-web-sign-in-phone.png http://127.0.0.1:8460/
++ python3 -c $'import urllib.request,urllib.error\ntry: urllib.request.urlopen("http://127.0.0.1:8460/api/status", timeout=5); print(200)\nexcept urllib.error.HTTPError as e: print(e.code)'
++ grep -qx 401
++ echo '::notice title=Server mode web page::/api/status without the PIN: 401'
+::notice title=Server mode web page::/api/status without the PIN: 401
++ kill 22125
++ ls -la shots/server-mode
+total 3108
+drwxr-xr-x  2 root root   4096 Nov 13 02:42 .
+drwxr-xr-x 21 root root  12288 Nov 13 02:41 ..
+-rw-r--r--  1 root root 310332 Nov 13 02:41 01-dashboard.png
+-rw-r--r--  1 root root 148974 Nov 13 02:41 02-ai-expanded.png
+-rw-r--r--  1 root root 131843 Nov 13 02:41 02b-pictures-expanded.png
+-rw-r--r--  1 root root 265124 Nov 13 02:41 03-switch-to-game-mode.png
+-rw-r--r--  1 root root 268914 Nov 13 02:41 03b-web-switch-countdown.png
+-rw-r--r--  1 root root 320761 Nov 13 02:41 04-back-in-server-mode.png
+-rw-r--r--  1 root root 265413 Nov 13 02:42 05-menu.png
+-rw-r--r--  1 root root 191769 Nov 13 02:42 06-settings-server-mode.png
+-rw-r--r--  1 root root 111716 Nov 13 02:42 06b-settings-what-pauses.png
+-rw-r--r--  1 root root 111716 Nov 13 02:42 06c-settings-web-page.png
+-rw-r--r--  1 root root 150955 Nov 13 02:42 07-settings-startup.png
+-rw-r--r--  1 root root 140494 Nov 13 02:42 07b-settings-schedule.png
+-rw-r--r--  1 root root 156663 Nov 13 02:42 08-gaming-start-in.png
+-rw-r--r--  1 root root  51967 Nov 13 02:42 09-screen-idle.png
+-rw-r--r--  1 root root 225544 Nov 13 02:42 10a-web-phone.png
+-rw-r--r--  1 root root 194646 Nov 13 02:42 10b-web-laptop.png
+-rw-r--r--  1 root root  49895 Nov 13 02:42 10c-web-sign-in-phone.png
+-rw-r--r--  1 root root      0 Nov 13 02:41 dash-real.err
+-rw-r--r--  1 root root   4504 Nov 13 02:41 dash-real.json
+-rw-r--r--  1 root root   1398 Nov 13 02:42 dashboard.log
+-rw-r--r--  1 root root     91 Nov 13 02:41 labwc.log
+-rw-r--r--  1 root root      0 Nov 13 02:42 serve.log
+-rw-r--r--  1 root root  14955 Nov 13 02:42 step.log
