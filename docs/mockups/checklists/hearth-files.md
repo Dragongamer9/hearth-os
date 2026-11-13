@@ -13,12 +13,12 @@ files-2-B was the option not chosen.
 - [x] Right-click: Pin to the left menu — hosts/linux/desktop/shell/FileManager.qml: "label: \"Pin to the left menu\""
 - [x] Right-click: Open in Terminal — hosts/linux/desktop/shell/FileManager.qml: "label: \"Open in Terminal\""
 - [x] Right-click: Set as wallpaper — hosts/linux/desktop/shell/FileManager.qml: "label: \"Set as wallpaper\""
-- [ ] Right-click: Compress to ZIP
-- [ ] Right-click: Lock as a Briefcase
-- [ ] Right-click: Restore previous versions (needs snapshots of your files)
-- [ ] Right-click: Copy as path
-- [ ] Right-click: Show more options
-- [ ] Details pane: Previous versions
-- [ ] Type names the Windows way (File folder, Python file, PDF document)
+- [x] Right-click: Compress to ZIP — hosts/linux/desktop/shell/FileManager.qml: "label: \"Compress to ZIP\""
+- [x] Right-click: Lock as a Briefcase — hosts/linux/desktop/shell/FileManager.qml: "label: \"Lock as a Briefcase\""
+- [x] Right-click: Restore previous versions (needs snapshots of your files) — hosts/linux/desktop/shell/FileManager.qml: "label: \"Restore previous versions\""
+- [x] Right-click: Copy as path — hosts/linux/desktop/shell/FileManager.qml: "label: \"Copy as path\""
+- [x] Right-click: Show more options — hosts/linux/desktop/shell/FileManager.qml: "label: \"Show more options\""
+- [x] Details pane: Previous versions — hosts/linux/desktop/shell/FileManager.qml: "rows.push([\"Previous versions\", String(app.versions.length)])"
+- [x] Type names the Windows way (File folder, Python file, PDF document) — hosts/linux/desktop/shell/FileManager.qml: "if (e.dir) return \"File folder\";"
 - [x] View: Extra large icons — hosts/linux/desktop/shell/FileManager.qml: "xlarge"
 - [x] View: Linux folders and Linux paths in the address bar — hosts/linux/desktop/shell/FileManager.qml: "Linux paths"

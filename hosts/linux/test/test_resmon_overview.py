@@ -12,7 +12,7 @@ class Overview(unittest.TestCase):
         self.assertIn('property var folded: ({ disk: true, network: true, gpu: true })', Q)
 
     def test_scrolls_and_filters(self):
-        ov = Q[Q.index('// Overview (1.11'):Q.index('// Processor, Disk, Network, Graphics: a summary on top')]
+        ov = Q[Q.index('// Overview (1.11'):Q.index('// Processor, Memory, Disk, Network, Graphics (1.12')]
         self.assertIn('Flickable {', ov)
         self.assertIn('contentHeight: ovCol.implicitHeight', ov)
         self.assertIn('r.filter(x => v.ticked[x.g.id])', ov)

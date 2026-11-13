@@ -324,6 +324,20 @@ Scope {
                 "Start again", () => call(["reset-list", here], r => { if (done(r, "A new list was started; the old one is kept aside")) refresh(); }));
         }
     }
+    // Lock as a Briefcase (1.12, mockup files-7): a new Briefcase next to the folder, holding it (kept in step with the
+    // original), then its lock is set up (your password). The folder itself isn't moved or changed.
+    function lockAsBriefcase(path) {
+        const parent = app.parentOf(path), name = app.base(path) + " (Briefcase)";
+        call(["new", parent, name], r => {
+            if (!done(r, "Made “" + app.base(r.path) + "”")) return;
+            call(["add", r.path, path], r2 => {
+                refreshKnown();
+                app.refreshPlaces();
+                app.reload();
+                run("bc-setlock:" + r.path, [], null);
+            });
+        });
+    }
     function makeNew() {
         const parent = app.listing && app.writable ? app.listing.path : app.home;
         call(["new", parent, "Briefcase"], r => {
