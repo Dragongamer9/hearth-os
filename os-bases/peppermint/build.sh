@@ -1681,6 +1681,7 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed
 systemctl enable NetworkManager.service bluetooth.service systemd-resolved.service systemd-timesyncd.service \
   fstrim.timer bootc-fetch-apply-updates.timer sddm.service
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+chmod 755 /usr/libexec/nimbus/hearth-boot-move   # 1.11: a PC moved from the Fedora edition gets Hearth's own boot menu (only when asked)
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
 # packages you added put back after an update, a safe start if your changes stop Hearth from starting.
