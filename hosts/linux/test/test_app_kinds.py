@@ -303,5 +303,50 @@ class ApplyTest(Base):
         self.assertEqual(out, '[Desktop Entry]\nName=A\nOnlyShowIn=KDE;\n\n[Desktop Action x]\nName=X\nOnlyShowIn=keep\n')
 
 
+class Hardware(unittest.TestCase):
+    """NVIDIA Settings and the like only in the menus of PCs that have the hardware (the owner, Nov 12)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.out = tempfile.mkdtemp()
+        apps = os.path.join(self.root, 'usr/share/applications')
+        os.makedirs(apps)
+        with open(os.path.join(apps, 'nvidia-settings.desktop'), 'w') as f:
+            f.write(entry('NVIDIA X Server Settings', cats='Settings'))
+        with open(os.path.join(apps, 'hearth-files.desktop'), 'w') as f:
+            f.write(entry('Files'))
+
+    def tearDown(self):
+        shutil.rmtree(self.root)
+        shutil.rmtree(self.out)
+
+    def card(self, vendor, klass='0x030000'):
+        d = os.path.join(self.root, 'sys/bus/pci/devices/0000:01:00.0')
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, 'vendor'), 'w').write(vendor + '\n')
+        open(os.path.join(d, 'class'), 'w').write(klass + '\n')
+
+    def test_hidden_without_an_nvidia_card_and_back_with_one(self):
+        self.card('0x8086')                                  # Intel graphics only
+        r = ak.hardware(self.out, self.root, json.load(open(TABLE)))
+        self.assertEqual(r['hidden'], ['nvidia-settings.desktop'])
+        copy_ = open(os.path.join(self.out, 'applications/nvidia-settings.desktop')).read()
+        self.assertIn('NoDisplay=true', copy_)
+        self.assertIn('Name=NVIDIA X Server Settings', copy_)
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'applications/hearth-files.desktop')))
+        self.card('0x10de')                                  # an Nvidia card went in
+        r = ak.hardware(self.out, self.root, json.load(open(TABLE)))
+        self.assertEqual(r['hidden'], [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'applications/nvidia-settings.desktop')))
+
+    def test_an_nvidia_device_that_isnt_graphics_doesnt_count(self):
+        self.card('0x10de', '0x040300')                      # an Nvidia sound function on its own
+        self.assertEqual(ak.hardware(self.out, self.root, json.load(open(TABLE)))['hidden'], ['nvidia-settings.desktop'])
+
+    def test_unknown_hardware_shows_everything(self):
+        r = ak.hardware(self.out, self.root, json.load(open(TABLE)))   # no /sys here: can't tell
+        self.assertEqual(r['hidden'], [])
+
+
 if __name__ == '__main__':
     unittest.main()

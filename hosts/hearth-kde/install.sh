@@ -8,8 +8,8 @@
 #  - Hearth Terminal (Konsole), Hearth Text (Kate), Reader (Okular), Capture (Spectacle) and Hearth Calculator (KCalc):
 #    the base's own KDE packages, unchanged (GPL; KDE's About and credits as they are), with Hearth's menu entries
 #    (apps/), names, icons and colors (config/). KDE's own entries stay, hidden, for the window's app id.
-#  - Where an old Hearth app does the same (terminal, text editor, calculator), it stays installed, named
-#    "… (classic)"; the KDE-based one is the default (hearth-system's HEARTH_RANK).
+#  - Where an old Hearth app does the same (terminal, text editor, calculator), it stays installed under its own
+#    name; each desktop shows one of the two (hearth-app-kinds).
 # Never fails the image build: anything that doesn't work out is a warning, and that app is left out.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -91,8 +91,10 @@ while read -r entry prog stock name icon old; do
       python3 /usr/share/hearth-kde/hearth_kde.py rebrand "$APPS/$stock" "$name" "$icon" || warn "couldn't rename $stock"
     fi
   fi
+  # The old Hearth app keeps its own name (no "… (classic)"): each desktop shows one app of each kind
+  # (hearth-app-kinds, docs/APP-KINDS.md), so the two never sit side by side in a menu.
   if [ "$old" != - ] && [ -f "$APPS/$old" ]; then
-    python3 /usr/share/hearth-kde/hearth_kde.py classic "$APPS/$old" || true
+    python3 /usr/share/hearth-kde/hearth_kde.py plain "$APPS/$old" || true
   fi
   installed="$installed ${name}"
 done <<'LIST'

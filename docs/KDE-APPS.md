@@ -8,11 +8,11 @@ Hearth Files' About adds what Hearth changed and where to find it.
 | Hearth app | Built from | How | Menu entry | Replaces (stays installed) |
 |---|---|---|---|---|
 | **Files** (Hearth Files) | KDE Dolphin | built from Dolphin's release source + Hearth's patch + Hearth's sources, in CI | `hearth-files-kde.desktop` | the old Hearth Files (only outside Hearth Classic and Game Mode, see below) |
-| **Terminal** (Hearth Terminal) | KDE Konsole | the base's package, Hearth's profile and colors | `hearth-terminal-kde.desktop` | Terminal (classic) |
-| **Text Editor** (Hearth Text) | KDE Kate | the base's package, Hearth's colors | `hearth-text-kde.desktop` | Text Editor (classic) |
+| **Terminal** (Hearth Terminal) | KDE Konsole | the base's package, Hearth's profile and colors | `hearth-terminal-kde.desktop` | the old Terminal (same name; one shows per desktop) |
+| **Text Editor** (Hearth Text) | KDE Kate | the base's package, Hearth's colors | `hearth-text-kde.desktop` | the old Text Editor (same name; one shows per desktop) |
 | **Reader** (document viewer) | KDE Okular | the base's package, Hearth's colors | `hearth-reader.desktop` | nothing: Documents stays the default for PDFs and e-books |
 | **Capture** (Hearth Capture) | KDE Spectacle | the base's package, Hearth's colors | `hearth-capture.desktop` | nothing (Recorder stays as it is) |
-| **Calculator** (Hearth Calculator) | KDE KCalc | the base's package, Hearth's colors | `hearth-calculator-kde.desktop` | Calculator (classic) |
+| **Calculator** (Hearth Calculator) | KDE KCalc | the base's package, Hearth's colors | `hearth-calculator-kde.desktop` | the old Calculator (same name; one shows per desktop) |
 
 Kept as they are: Photos, Contacts, Time, Paint, Office and every other Hearth app.
 
@@ -138,7 +138,7 @@ windows, authors and licences are KDE's. Hearth adds:
 - Hearth's colors: `[UiSettings] ColorScheme=Hearth` in `/etc/xdg/konsolerc`, `katerc`, `okularrc`, `kcalcrc`,
   `spectaclerc` (the apps' own color menus can change it), and Konsole's default profile `Hearth.profile` with the
   `Hearth.colorscheme` palette;
-- the old Hearth Terminal, Text Editor and Calculator renamed "… (classic)" and kept. Hearth Plasma shows and uses
+- the old Hearth Terminal, Text Editor and Calculator kept under their own names (no "… (classic)" since 1.11; each desktop shows one of each kind). Hearth Plasma shows and uses
   the KDE-based ones, Hearth Classic and Game Mode the classic ones (docs/APP-KINDS.md); Settings › Default apps
   offers both. Places that start the old ones by name (`hearth-terminal -e …`) still do.
 
