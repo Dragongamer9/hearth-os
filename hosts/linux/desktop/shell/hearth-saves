@@ -1,0 +1,100 @@
+#!/usr/bin/python3
+"""hearth-saves: Saved Games (1.11). Finds every game's saves with Ludusavi (github.com/mtkennerly/ludusavi, MIT: a
+list of where thousands of games keep them, Steam, Proton, Wine, Heroic and Lutris included), backs them up into your
+Saved Games folder and puts them back, on this PC or another after a reinstall.
+
+  hearth-saves status             JSON: {ludusavi, games: [{name, bytes, files, backedUp}], folder, last}. Read only
+  hearth-saves backup [GAME…]     back up all games (or the ones named) into ~/Saved Games/Backups; progress lines
+  hearth-saves restore [GAME…]    put the backed-up saves back where each game looks for them (the newest backup)
+
+Nothing is deleted: a backup adds a new copy (Ludusavi keeps the last few), a restore keeps what it replaces as Ludusavi
+does. The folder is yours; Settings never changes by itself.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+FOLDER = os.path.join(os.path.expanduser('~'), 'Saved Games', 'Backups')
+
+
+def ludusavi():
+    return shutil.which('ludusavi') or ('/usr/libexec/hearth/ludusavi' if os.path.exists('/usr/libexec/hearth/ludusavi') else None)
+
+
+def run(args, timeout=1800):
+    exe = ludusavi()
+    if not exe:
+        raise SystemExit('error: Ludusavi isn\'t on this Hearth')
+    r = subprocess.run([exe] + args, capture_output=True, text=True, timeout=timeout)
+    try:
+        return json.loads(r.stdout or '{}')
+    except ValueError:
+        raise SystemExit('error: Ludusavi said: ' + (r.stderr or r.stdout).strip()[-300:])
+
+
+def games_of(api):
+    out = []
+    for name, g in (api.get('games') or {}).items():
+        files = g.get('files') or {}
+        size = sum(int(f.get('bytes') or 0) for f in files.values())
+        out.append({'name': name, 'bytes': size, 'files': len(files), 'decision': g.get('decision', ''),
+                    'change': g.get('change', '')})
+    out.sort(key=lambda x: x['name'].lower())
+    return out
+
+
+def status():
+    if not ludusavi():
+        return {'ludusavi': False, 'games': [], 'folder': FOLDER}
+    found = games_of(run(['backup', '--preview', '--api', '--force']))
+    backed = {}
+    if os.path.isdir(FOLDER):
+        try:
+            backed = {g['name']: g for g in games_of(run(['restore', '--preview', '--api', '--force', '--path', FOLDER]))}
+        except SystemExit:
+            backed = {}
+    for g in found:
+        g['backedUp'] = g['name'] in backed
+    only_backup = [dict(b, bytes=b['bytes'], backedUp=True, here=False) for n, b in backed.items() if n not in {g['name'] for g in found}]
+    last = ''
+    try:
+        last = time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(FOLDER)))
+    except OSError:
+        pass
+    return {'ludusavi': True, 'games': found + only_backup, 'folder': FOLDER, 'last': last}
+
+
+def backup(names):
+    os.makedirs(FOLDER, exist_ok=True)
+    r = run(['backup', '--api', '--force', '--path', FOLDER] + names, timeout=3600)
+    o = r.get('overall') or {}
+    return {'ok': True, 'games': o.get('processedGames', 0), 'bytes': o.get('processedBytes', 0), 'folder': FOLDER}
+
+
+def restore(names):
+    if not os.path.isdir(FOLDER):
+        raise SystemExit('error: there are no backups in ' + FOLDER + ' yet')
+    r = run(['restore', '--api', '--force', '--path', FOLDER] + names, timeout=3600)
+    o = r.get('overall') or {}
+    return {'ok': True, 'games': o.get('processedGames', 0), 'bytes': o.get('processedBytes', 0)}
+
+
+if __name__ == '__main__':
+    a = sys.argv[1:]
+    try:
+        if a == ['status']:
+            out = status()
+        elif a[:1] == ['backup']:
+            out = backup(a[1:])
+        elif a[:1] == ['restore']:
+            out = restore(a[1:])
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            sys.exit(2)
+    except subprocess.TimeoutExpired:
+        print('error: Ludusavi took too long')
+        sys.exit(1)
+    print(json.dumps(out))
