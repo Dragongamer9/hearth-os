@@ -12,7 +12,7 @@ function template(meta) {
   return (c.CloudSaveFolder && c.CloudSaveFolder.value) || null;
 }
 
-/** drive_c of a Proton prefix (umu puts it in the prefix itself; Proton proper in pfx/). */
+/** drive_c of a Proton prefix (hearth-proton-run and umu put it in the prefix itself; Proton proper in pfx/). */
 function driveC(prefix) {
   for (const d of [path.join(prefix, 'drive_c'), path.join(prefix, 'pfx', 'drive_c')]) if (fs.existsSync(d)) return d;
   return path.join(prefix, 'drive_c');

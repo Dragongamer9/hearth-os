@@ -31,6 +31,9 @@
 Hearth OS starts straight into **Steam Game Mode**, the same full-screen gamepad interface SteamOS uses. Your games
 from other stores show up in Steam's library too, and **Mantel**, Hearth's own desktop, is one press away.
 
+Prefer Hearth's own screens? **Hearth Game Mode** is a choice in Settings › Gaming › Game Mode (from 1.10); Steam Game
+Mode stays the default. See [docs/HEARTH-GAME-MODE.md](docs/HEARTH-GAME-MODE.md).
+
 ## What's in 1.0
 
 - **Steam Game Mode** is the Game Mode. Turn the device on and you're in Steam, ready for the controller. If Steam
@@ -99,7 +102,7 @@ os/                      Shared system files (os/system_files), the installer US
 hosts/linux/             The Linux session and Mantel (desktop/shell: Quickshell QML; desktop/labwc; desktop/theme)
 hosts/decky-hearth-sync/ Hearth Sync, the Decky plugin for Steam Game Mode
 hosts/hearth-core/       Rust: library, stores, settings, updates, Hearth Link and the rest of Hearth's core
-hosts/hearth-rs/         Rust: the Hearth app (Tauri); first-time setup and the fallback Game Mode
+hosts/hearth-rs/         Rust: the Hearth app (Tauri); Hearth Game Mode (a choice next to Steam Game Mode)
 hosts/hearth-*/          Hearth's apps (Terminal, Disks, Photos, Text, Tools …)
 hosts/windows/           Ember: .NET 8 + WebView2
 ui/                      The web interface shared by Ember and Hearth's own Game Mode
@@ -115,10 +118,9 @@ are so existing installs keep updating.
 
 ## Archived
 
-Kept in the repository, but not built or shipped: Hearth's own Game Mode on Linux (its code still runs first-time
-setup and the fallback), the Anatase (Fedora), Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
-COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer, Hearth's app
-store and Hearth for Android. What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
+Kept in the repository, but not built or shipped: the Anatase (Fedora), Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
+COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer and Hearth's app
+store. (Hearth for Android is back: [docs/ANDROID.md](docs/ANDROID.md).) What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
 
 ## License
 

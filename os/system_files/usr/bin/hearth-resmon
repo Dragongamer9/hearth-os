@@ -1,0 +1,13 @@
+#!/bin/sh
+# Opens Resource Monitor (this PC's parts and what each program uses, live) in Hearth's desktop (Mantel):
+# docs/RESOURCE-MONITOR.md. The Run box and Super+X can call this name; `hearth-resmon TAB` opens a tab
+# (pc overview cpu memory disk network gpu). Anything else goes to the helper (hearth-resmon pc, sample…).
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+case "${1:-}" in
+  ""|pc|overview|cpu|memory|disk|network|gpu)
+    if [ -n "${1:-}" ]; then set -- tab "$1"; else set -- open; fi
+    if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$SHELL_DIR" call resmon "$@" >/dev/null 2>&1; then exit 0; fi
+    echo "hearth-resmon: Hearth's desktop (Mantel) isn't running; open it from Desktop Mode." >&2
+    exit 1 ;;
+  *) exec python3 "$SHELL_DIR/hearth-resmon" "$@" ;;
+esac

@@ -1,18 +1,17 @@
-//! JSON files: read (an empty object when missing or damaged) and written safely (a temporary file first, then
-//! renamed over the old one, so a crash or a full disk never leaves half a file).
+//! JSON files: read (an empty object when missing) and written safely (a temporary file first, then renamed over
+//! the old one, so a crash or a full disk never leaves half a file). The JSON files (alarms, timers, calendar
+//! events, weather place) go through appfile.rs: FILE.bak keeps the last good version and a file a power cut
+//! damaged is put back from it, so the next save can't replace your alarms or events with an empty list.
 
 use serde_json::Value;
 use std::path::Path;
 
 pub fn load(p: &Path) -> Value {
-    std::fs::read_to_string(p).ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| Value::Object(Default::default()))
+    crate::appfile::read_json(p).filter(Value::is_object).unwrap_or_else(|| Value::Object(Default::default()))
 }
 
 pub fn save(p: &Path, v: &Value) -> Result<(), String> {
-    write_bytes(p, &serde_json::to_vec_pretty(v).map_err(|e| e.to_string())?)
+    crate::appfile::write_json(p, v).map_err(|e| format!("Couldn't save {}: {e}", p.display()))
 }
 
 pub fn write_bytes(p: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -57,9 +56,14 @@ mod tests {
         assert!(super::load(&p).as_object().unwrap().is_empty());
         super::save(&p, &serde_json::json!({"x": 1})).unwrap();
         assert_eq!(super::load(&p)["x"], 1);
-        std::fs::write(&p, "{broken").unwrap();
-        assert!(super::load(&p).as_object().unwrap().is_empty());
         assert!(super::mtime(&p) > 0);
+        // A power cut that cut the file short: the last good copy comes back, never an empty file saved over it.
+        super::save(&p, &serde_json::json!({"x": 2, "alarms": [{"id": "a"}]})).unwrap();
+        std::fs::write(&p, "").unwrap();
+        assert_eq!(super::load(&p)["x"], 1);
+        std::fs::write(&p, "{broken").unwrap();
+        assert_eq!(super::load(&p)["x"], 1);
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(&p).unwrap()).unwrap()["x"], 1);
         assert_ne!(super::new_id("e"), super::new_id("e"));
     }
 }

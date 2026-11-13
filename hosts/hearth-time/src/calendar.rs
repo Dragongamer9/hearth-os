@@ -139,15 +139,42 @@ pub fn reminder_times(o: &Occurrence) -> Vec<(i64, i64)> {
 
 // ---------------------------------------------------------------------------------------------- the file
 
-pub fn load() -> Value {
-    let mut v = crate::store::load(&crate::paths::calendar_file());
+fn fill(mut v: Value) -> Value {
+    if !v.is_object() { v = json!({}); }
     if !v["events"].is_array() { v["events"] = json!([]); }
     if !v["subs"].is_array() { v["subs"] = json!([]); }
     if !v["settings"].is_object() { v["settings"] = json!({"weekStart": 1, "view": "month", "defaultReminder": 10}); }
     v
 }
 
+pub fn load() -> Value { fill(crate::store::load(&crate::paths::calendar_file())) }
+
 pub fn save(v: &Value) -> Result<(), String> { crate::store::save(&crate::paths::calendar_file(), v) }
+
+/// Changes the latest calendar file under its lock: an event the Calendar window adds while the service is saving
+/// a subscription (or the other way round) is never lost. Nothing is written when `change` fails.
+pub fn update<T>(change: impl FnOnce(&mut Value) -> Result<T, String>) -> Result<T, String> {
+    let p = crate::paths::calendar_file();
+    crate::appfile::update(&p, |cur| {
+        let mut v = fill(cur.unwrap_or(Value::Null));
+        match change(&mut v) { Ok(t) => (Some(v), Ok(t)), Err(e) => (None, Err(e)) }
+    }).map_err(|e| format!("Couldn't save {}: {e}", p.display()))?
+}
+
+/// Downloads the subscribed calendars `due` picks (with no lock held: a download can take a while), then puts only
+/// each one's new time and error into the latest file. Returns the subscriptions.
+pub fn refresh_subs(due: impl Fn(&Value) -> bool) -> Result<Value, String> {
+    let got: Vec<Value> = load()["subs"].as_array().into_iter().flatten().filter(|s| due(s))
+        .map(|s| { let mut s = s.clone(); let _ = refresh_sub(&mut s); s }).collect();
+    update(|v| {
+        if let Some(subs) = v["subs"].as_array_mut() {
+            for g in &got {
+                if let Some(s) = subs.iter_mut().find(|s| s["id"] == g["id"]) { s["updated"] = g["updated"].clone(); s["error"] = g["error"].clone(); }
+            }
+        }
+        Ok(v["subs"].clone())
+    })
+}
 
 pub fn own_events(v: &Value) -> Vec<Event> {
     v["events"].as_array().into_iter().flatten().filter_map(|e| serde_json::from_value(e.clone()).ok()).collect()
@@ -331,6 +358,28 @@ mod tests {
         let (a, u) = import(&mut v, "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:1\nDTSTART:20261022T110000\nSUMMARY:A2\nEND:VEVENT\nEND:VCALENDAR\n").unwrap();
         assert_eq!((a, u), (0, 1));
         assert!(import(&mut v, "nothing").is_err());
+    }
+
+    /// The only test that points HEARTH_TIME_HOME somewhere (tests run side by side).
+    #[test]
+    fn the_file_survives_damage_and_failed_changes() {
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("HEARTH_TIME_HOME", home.path());
+        let lunch = || Event { title: "Lunch".into(), start: "2026-10-22T12:00:00".into(), end: "2026-10-22T13:00:00".into(), ..Default::default() };
+        update(|v| put_event(v, lunch())).unwrap();
+        update(|v| put_event(v, lunch())).unwrap();
+        assert_eq!(own_events(&load()).len(), 2);
+        // A change that fails writes nothing.
+        assert!(update(|v| { v["events"] = json!([]); Err::<(), _>("no".to_string()) }).is_err());
+        assert_eq!(own_events(&load()).len(), 2);
+        // A power cut left an empty file: the next event is added to the last good copy, not to an empty calendar.
+        std::fs::write(crate::paths::calendar_file(), b"").unwrap();
+        update(|v| put_event(v, lunch())).unwrap();
+        assert_eq!(own_events(&load()).len(), 2);
+        // Nothing due: nothing downloaded, the events are untouched.
+        refresh_subs(|_| false).unwrap();
+        assert_eq!(own_events(&load()).len(), 2);
+        std::env::remove_var("HEARTH_TIME_HOME");
     }
 
     #[test]

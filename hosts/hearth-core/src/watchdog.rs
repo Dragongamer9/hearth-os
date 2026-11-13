@@ -20,6 +20,10 @@ static AUTO_SEND: AtomicBool = AtomicBool::new(true);
 static SEQ: AtomicU64 = AtomicU64::new(0);
 /// Set while the request in hand is known to take long (a download it waits for): the fail-safe leaves it be.
 static LONG: AtomicBool = AtomicBool::new(false);
+/// The thread working on the request in hand: only it can say that request takes long. Background work (Battle.net's
+/// setup, a tool downloaded for a game) said so too, from its own thread, often just after its request was done: the
+/// next request was then never seen as stuck, so the fail-safe never freed or restarted a Hearth stuck on it.
+static OWNER: Mutex<Option<std::thread::ThreadId>> = Mutex::new(None);
 
 /// Programs Hearth starts and waits on that are safe to stop when Hearth is stuck on them.
 pub const HELPERS: &[&str] = &["hearth-hhd", "hearth-power", "hearth-controller", "beacon", "xprop", "xdotool", "gamescopectl",
@@ -31,12 +35,24 @@ fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX
 pub fn enter(method: &str) -> u64 {
     let n = SEQ.fetch_add(1, Ordering::SeqCst) + 1;
     if let Ok(mut b) = BUSY.lock() { *b = Some((method.to_string(), now_ms())); }
+    if let Ok(mut o) = OWNER.lock() { *o = Some(std::thread::current().id()); }
+    LONG.store(false, Ordering::SeqCst);
     n
 }
 /// That request is done.
-pub fn leave(_n: u64) { LONG.store(false, Ordering::SeqCst); if let Ok(mut b) = BUSY.lock() { *b = None; } }
-/// The request in hand is going to take a while on purpose (downloading a tool, sending logs): not "stuck".
-pub fn long_task() { LONG.store(true, Ordering::SeqCst); }
+pub fn leave(_n: u64) {
+    LONG.store(false, Ordering::SeqCst);
+    if let Ok(mut o) = OWNER.lock() { *o = None; }
+    if let Ok(mut b) = BUSY.lock() { *b = None; }
+}
+/// The request in hand is going to take a while on purpose (downloading a tool, sending logs): not "stuck". Only from
+/// the thread working on it; from anywhere else (background work) it changes nothing.
+pub fn long_task() {
+    let mine = OWNER.lock().map(|o| *o == Some(std::thread::current().id())).unwrap_or(false);
+    if mine { LONG.store(true, Ordering::SeqCst); }
+}
+/// Whether the request in hand said it takes long.
+pub fn is_long() -> bool { LONG.load(Ordering::SeqCst) }
 /// What's being worked on now and for how long (ms).
 pub fn busy() -> Option<(String, u64)> { BUSY.lock().ok().and_then(|b| b.clone()).map(|(m, t)| (m, now_ms().saturating_sub(t))) }
 
@@ -103,7 +119,7 @@ pub fn start(version: String, edition: &'static str, emit: Arc<dyn Fn(Value) + S
         loop {
             std::thread::sleep(Duration::from_secs(2));
             let Some((method, ms)) = busy() else { killed = 0; reported = 0; restarted = false; stall_start = 0; continue };
-            if ms < 15_000 || LONG.load(Ordering::SeqCst) { continue; }
+            if ms < 15_000 || is_long() { continue; }
             let now = now_ms();
             let began = now - ms;
             if stall_start != began { stall_start = began; killed = 0; reported = 0; restarted = false; }
@@ -195,5 +211,17 @@ mod tests {
         assert_eq!(busy().map(|b| b.0), Some("library.list".to_string()));
         leave(n);
         assert!(busy().is_none());
+        // Only the request's own thread can say it takes long; background work's "long" never covers the next request.
+        let n = enter("battlenet.install");
+        std::thread::spawn(long_task).join().unwrap();
+        assert!(!is_long(), "another thread's long task covered this request");
+        long_task();
+        assert!(is_long());
+        leave(n);
+        assert!(!is_long());
+        std::thread::spawn(long_task).join().unwrap();   // after the request: nothing in hand
+        let n = enter("library.tick");
+        assert!(!is_long());
+        leave(n);
     }
 }

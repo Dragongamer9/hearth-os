@@ -2,8 +2,10 @@
 //!
 //! Hearth OS 1.7 builds the newest GE-Proton into the image (Steam's system folder for compatibility tools,
 //! `/usr/share/steam/compatibilitytools.d/GE-Proton*`), so Windows games and apps start without a download, offline.
-//! When it's there, "Default" means that one. When it isn't (an older image, another distro), nothing is set and
-//! umu-launcher picks UMU-Proton, downloaded when needed, as before.
+//! "Default" means that one, never a UMU-Proton download: games start through hearth-proton-run
+//! (proton_run.rs), which with nothing set uses the built-in GE-Proton too, without Steam and without the internet
+//! (owner's red flag). Only on another distro with no built-in GE-Proton and no hearth-proton-run is nothing set, and
+//! umu-run picks its own Proton there.
 //!
 //! The Proton detector (docs/WINDOWS-APPS.md) decides in `auto_for`, in the same order as Windows apps
 //! (hosts/linux/desktop/shell/hearth_proton.py): the Proton the game last worked with on this device
@@ -125,7 +127,7 @@ pub fn detect(key: &str, builtin_dir: &Path, rules: &Path, home: Option<&Path>) 
 }
 
 /// The Proton for a game with no pick of its own (store and id as in stores::prefix_of): the Proton detector's choice.
-/// None: let umu-launcher choose (UMU-Proton, downloaded when needed).
+/// None only when this device has no Proton Hearth knows (no built-in GE-Proton): hearth-proton-run then says so.
 pub fn auto_for(store: &str, id: &str) -> Option<PathBuf> {
     let rules = std::env::var_os("HEARTH_PROTON_RULES").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(RULES));
     detect(&format!("{store}:{id}"), &system_dir(), &rules, home().as_deref())
@@ -134,8 +136,8 @@ pub fn auto_for(store: &str, id: &str) -> Option<PathBuf> {
 /// What "Default" means on this device, for the game options' list.
 pub fn default_label() -> String {
     match builtin_ge().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())) {
-        Some(n) => format!("{n}, built into Hearth OS (works offline)"),
-        None => "UMU-Proton, the newest, downloaded when needed".into(),
+        Some(n) => format!("{n}, built into Hearth OS (works offline, without Steam)"),
+        None => "The Proton built into Hearth OS (works offline, without Steam)".into(),
     }
 }
 
@@ -145,6 +147,9 @@ pub fn fill_in(env: &mut Vec<(String, String)>, store: &str, id: &str) {
     if let Some(p) = auto_for(store, id) {
         crate::bridge::log(&format!("proton: {store}:{id} has no Proton of its own: using {}", p.display()));
         env.push(("PROTONPATH".into(), p.to_string_lossy().into()));
+        // 1.11, the Proton detector: hearth-proton-run notes how this automatic pick went (closed right away → the
+        // next Proton first next time; ran fine → remembered), only for picks Hearth made, never your own.
+        env.push(("HEARTH_PROTON_KEY".into(), format!("{store}:{id}")));
     }
 }
 
@@ -170,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn nothing_there_means_umu_chooses() {
+    fn nothing_there_means_no_builtin() {
         let t = tempfile::tempdir().unwrap();
         assert!(newest_ge_in(t.path()).is_none());
         assert!(newest_ge_in(&t.path().join("missing")).is_none());
@@ -210,6 +215,12 @@ mod tests {
         tool(&common, "Proton 10.0", true);
         tool(&common, "Proton Hotfix", true);
         assert_eq!(newest_valve_in(&[root]).unwrap().file_name().unwrap(), "Proton 10.0");
+    }
+
+    #[test]
+    fn default_never_means_a_download() {
+        let l = default_label();
+        assert!(!l.contains("downloaded") && !l.contains("UMU-Proton") && l.contains("offline"), "{l}");
     }
 
     #[test]

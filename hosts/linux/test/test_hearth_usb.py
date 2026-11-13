@@ -365,6 +365,17 @@ class Ventoy(unittest.TestCase):
         self.assertEqual(o['--tarball'], '/home/a/Downloads/Hearth USB/ventoy.tar.gz')
         self.assertTrue(o['--gpt'])
 
+    def test_control_characters_in_arguments_are_refused(self):
+        """polkit decides from the whole command line whether --allow-internal needs a password: a line break in an
+        earlier argument mustn't hide it (bug hunt)."""
+        m = load()
+        with self.assertRaisesRegex(m.Refuse, 'control character'):
+            m.parse(['/dev/sda', '--expect-size', '1', '--label', 'a\nb', '--allow-internal'])
+        with self.assertRaisesRegex(m.Refuse, 'control character'):
+            m.parse(['/dev/sda\t', '--expect-size', '1'])
+        dev, o = m.parse(['/dev/sdb', '--expect-size', '1', '--label', 'WIN 11'])
+        self.assertEqual((dev, o['--label']), ('/dev/sdb', 'WIN 11'))
+
     def test_disks_pins_the_same_release(self):
         m = load()
         rs = (ROOT / 'hosts' / 'hearth-disks' / 'src' / 'usb' / 'ventoy.rs').read_text()

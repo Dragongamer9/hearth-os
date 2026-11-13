@@ -34,9 +34,12 @@ Scope {
     // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files". Hearth Files built from Dolphin
     // (app id org.kde.dolphin, hosts/hearth-kde) too: it does LB/RB, LT/RT and View itself (hearthgamepad.cpp).
     readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (steamFallback !== null && steamFallback.shown) || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && String(active.title).indexOf("Task Manager") === 0) || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files") || active.appId === "org.kde.dolphin"))
-        || SettingsNav.clipShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
+        || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
+        || (active !== null && active.title === "Resource Monitor")   // ResourceMonitor.qml (LB / RB switch its tabs: hearth-pad)
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
+        || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
+        || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
     // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
@@ -50,7 +53,10 @@ Scope {
         if (liveWelcome.shown) return "live welcome";
         if (steamFallback !== null && steamFallback.shown) return "Steam fallback";
         if (SettingsNav.clipShown) return "clipboard";
+        if (SettingsNav.mixerShown) return "volume mixer";
+        if (SettingsNav.snapShown) return "snap layouts";
         if (SettingsNav.discordShown) return "Discord chooser";
+        if (SettingsNav.winxShown) return "Super+X menu";
         if (DeskState.overlayShown) return "desktop menu";
         return "window: " + (active !== null ? ((active.appId || "") + " " + (active.title || "")).trim().slice(0, 60) : "?");
     }
@@ -73,7 +79,8 @@ Scope {
     // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Discord's chooser, the
     // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
     // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
-    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.discordShown || DeskState.overlayShown
+    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || DeskState.overlayShown
+        || SettingsNav.winxShown
     property var beforeMenu: null
     onMenuOpenChanged: {
         if (menuOpen) { beforeMenu = active; refocus.stop(); }
@@ -122,8 +129,9 @@ Scope {
 
     Process {
         id: proc
-        command: ["python3", pad.helper]
-        environment: pad.simDir !== "" ? { "HEARTH_PAD_SIM": pad.simDir } : ({})
+        // The simulated controller (checks only) through env: Process.environment can't take a JavaScript object on
+        // Hearth's Debian (Qt 6.8; "Unable to assign QJSValue to QVariantHash" at every start).
+        command: pad.simDir !== "" ? ["env", "HEARTH_PAD_SIM=" + pad.simDir, "python3", pad.helper] : ["python3", pad.helper]
         running: true
         stdinEnabled: true
         stdout: SplitParser { onRead: line => pad.handle(line) }

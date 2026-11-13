@@ -5,7 +5,8 @@ and by hearth-files-kde at run time.
   hearth_kde.py rebrand STOCK.desktop NAME ICON [EXEC]   KDE's own menu entry kept for the window's app id (so the
                                                         taskbar shows Hearth's name and icon), hidden from the menu
                                                         (Hearth's own entry is the one shown), EXEC replacing its program
-  hearth_kde.py classic HEARTH.desktop                   the old Hearth app's entry, named "… (classic)" (still installed)
+  hearth_kde.py plain HEARTH.desktop                     the old Hearth app's entry under its own name (an old "… (classic)"
+                                                        taken off); each desktop shows one app of each kind
   hearth_kde.py places                                   Hearth Storage in KDE's Places (every KDE app's file dialogs and
                                                         Hearth Files), from Hearth Link; nothing without Hearth Link
 """
@@ -16,9 +17,6 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-
-CLASSIC = ' (classic)'
-
 
 # ---------------------------------------------------------------- menu entries
 def _groups(text):
@@ -85,23 +83,25 @@ def rebrand(path, name, icon, exec_=None):
     _write(path, rebrand_text(text, name, icon, exec_, program))
 
 
-def classic_text(text):
-    groups = _groups(text)
+def plain_text(text):
+    """No "(classic)" on an app's name (its Name= and every translated Name[xx]=), in any section."""
     out = []
-    for head, body in groups:
+    for head, body in _groups(text):
         new = []
         for line in body:
-            if head == '[Desktop Entry]' and line.startswith('Name=') and not line.endswith(CLASSIC):
-                line += CLASSIC
+            if re.match(r'Name(\[[^\]]*\])?=', line):
+                line = re.sub(r'\s*\((?i:classic)\)\s*$', '', line)
             new.append(line)
         out.append((head, new))
     return _join(out)
 
 
-def classic(path):
+def plain(path):
     with open(path) as f:
         text = f.read()
-    _write(path, classic_text(text))
+    new = plain_text(text)
+    if new != text:
+        _write(path, new)
 
 
 # ---------------------------------------------------------------- Places (KDE's user-places.xbel)
@@ -292,8 +292,8 @@ def main(argv):
     c = argv[1] if len(argv) > 1 else ''
     if c == 'rebrand' and len(argv) in (5, 6):
         rebrand(argv[2], argv[3], argv[4], argv[5] if len(argv) == 6 else None)
-    elif c == 'classic' and len(argv) == 3:
-        classic(argv[2])
+    elif c in ('plain', 'classic') and len(argv) == 3:     # 'classic' was the old name: it now does the same
+        plain(argv[2])
     elif c == 'places':
         print(json.dumps(sync_places()))
     else:

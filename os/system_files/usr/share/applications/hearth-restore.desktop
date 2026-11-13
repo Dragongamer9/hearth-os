@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=System Restore
+Comment=Put Hearth and its settings back to an earlier restore point
+Exec=/usr/bin/hearth-restore
+Icon=hearth-restore
+Type=Application
+Categories=System;Settings;
+Keywords=restore;rollback;go back;restore point;undo;recovery;snapshot;
+OnlyShowIn=Nimbus;

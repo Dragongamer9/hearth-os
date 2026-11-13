@@ -467,26 +467,26 @@ impl Executable {
     pub fn windows(&self) -> bool { self.binary.extension().map(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("bat")).unwrap_or(false) }
 }
 
-/// The command that starts it: Windows programs with umu-run in the game's Proton folder (as Hearth starts Steam
-/// games itself: GAMEID umu-<app>, STORE steam, PROTONPATH), Linux programs as they are.
-/// The command line for one of the instance's programs: Windows ones through umu (Proton) in the instance's prefix
-/// with the game's Steam app id and the Proton the prefix was made with (launch.rs); `umu` is umu-run's path, or the
-/// reason it isn't there.
-pub fn command_for(inst: &Instance, ex: &Executable, umu: Result<String, String>) -> Result<(String, Vec<String>, Vec<(String, String)>, PathBuf), String> {
+/// The command line for one of the instance's programs: Windows ones with Proton (hearth-proton-run, offline) in the
+/// instance's prefix with the game's Steam app id and the Proton the prefix was made with (launch.rs: GAMEID umu-<app>,
+/// STORE steam, PROTONPATH), Linux programs as they are. `runner` is launch::proton_runner's answer: the launcher's
+/// path, or the reason there's none.
+pub fn command_for(inst: &Instance, ex: &Executable, runner: Result<String, String>) -> Result<(String, Vec<String>, Vec<(String, String)>, PathBuf), String> {
     let args: Vec<String> = split_args(&ex.args);
     let cwd = ex.cwd.clone().filter(|c| c.is_dir()).or_else(|| ex.binary.parent().map(Path::to_path_buf)).unwrap_or_else(|| PathBuf::from("/"));
     if !ex.windows() { return Ok((ex.binary.to_string_lossy().to_string(), args, Vec::new(), cwd)); }
-    let umu = umu?;
+    let runner = runner?;
     let app = inst.steam_app.or(if inst.kind.steam > 0 { Some(inst.kind.steam) } else { None });
     let (steam, libs) = steam_dirs();
     let env = crate::launch::umu_env(&inst.wine_prefix(), app, steam.as_deref(), &libs);
     let mut a = vec![ex.binary.to_string_lossy().to_string()];
     a.extend(args);
-    Ok((umu, a, env, cwd))
+    Ok((runner, a, env, cwd))
 }
 #[cfg(target_os = "linux")]
 fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) {
-    let s = hearth_core::steam::steam_path(&crate::util::home());
+    // The regular Steam's folder and Proton (launch.rs: a game started from here can't reach the Flatpak Steam).
+    let s = crate::launch::native_steam_dir(&crate::util::home()).or_else(|| hearth_core::steam::steam_path(&crate::util::home()));
     let libs = s.as_deref().map(hearth_core::steam::libraries).unwrap_or_default();
     (s, libs)
 }
@@ -518,14 +518,17 @@ pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
     use crate::launch::log;
     let t = format!("organizer {}", inst.rec.title);
     if !ex.binary.is_file() { let m = format!("{} isn't there ({}).", ex.title, ex.binary.display()); log(&format!("{t}: {m}")); return Err(m); }
-    // Without umu (none on the system and Hearth's own couldn't be fetched) a Steam game is started by Steam itself:
-    // only its own program (script extenders need umu), with the mods laid over it all the same.
-    let planned = command_for(inst, ex, if ex.windows() { crate::launch::umu() } else { Ok(String::new()) });
+    // Without a Proton launcher (not Hearth OS, and umu-run couldn't be fetched) a Steam game is started by Steam
+    // itself: only its own program (script extenders need Proton), with the mods laid over it all the same.
+    let planned = command_for(inst, ex, if ex.windows() { crate::launch::proton_runner() } else { Ok(String::new()) });
     let app = inst.steam_app.or(if inst.kind.steam > 0 { Some(inst.kind.steam) } else { None });
     if let Err(e) = &planned {
         log(&format!("{t}: {e}"));
         if app.is_none() || !has("steam") { return Err(e.clone()); }
     }
+    // A Steam game started with Proton needs the regular Steam running (Steam DRM), before the mods go on.
+    #[cfg(target_os = "linux")]
+    if planned.is_ok() && ex.windows() && app.is_some() { crate::launch::ensure_reachable_steam(&t)?; }
     let a = deploy(inst, std::process::id(), true).map_err(|e| { log(&format!("{t}: couldn't lay the mods over the game: {e}")); e })?;
     log(&format!("{t}: the mods are laid over the game ({})", a.mode));
     let game_dir = inst.game_dir.clone().unwrap_or_else(|| a.target.clone());
@@ -534,7 +537,7 @@ pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
         Ok((cmd, args, env, cwd)) => crate::launch::run_logged(&format!("{t}: {}", ex.title), &cmd, &args, &env, &cwd, Some(&game_dir)),
         Err(_) => {
             let app = app.unwrap_or(0);
-            log(&format!("{t}: starting it through Steam (steam -applaunch {app}): without umu, Steam starts the game's own program"));
+            log(&format!("{t}: starting it through Steam (steam -applaunch {app}): without a Proton launcher, Steam starts the game's own program"));
             let r = std::process::Command::new("steam").arg("-applaunch").arg(app.to_string()).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())
                 .and_then(|mut c| c.wait().map_err(|e| e.to_string()));
             let t0 = std::time::Instant::now();

@@ -321,6 +321,105 @@ them (Nvidia PC first by default; Move up / Move down). It's its own program (`h
 (`hearth-ai-share.service`) and firewall rule (`inet hearth_ai_share`, port 8189, Tailscale only), all off until you
 turn them on, with its own settings file (`ai-share.json`). The protocol and the rest: docs/AI-SHARE.md.
 
+## Voice Studio (Hearth's own voice studio)
+
+**Services › Voice Studio** (and the **AI** page) is the main voices entry now: Hearth's own voice studio on this PC's
+graphics card, for your phone, laptop and the Hearth AI Command Center. Kokoro (AI voices, below) keeps working as it was
+for anyone who uses it, and Voice Studio lists Kokoro's voices too while it's on. Written for Hearth in Python
+(`hosts/linux/desktop/shell/hearth-voice-studio`, the page `voice-studio-web.html`); ideas from VoiceStudio
+(debpalash/voicestudio), whose code is AGPL-3.0 and was only read, never copied.
+
+What it does (the page has a tab for each, phone, laptop and controller friendly):
+
+- **Speak**: text to speech in any voice and 40+ listed languages (OmniVoice speaks 600+), speed, download as MP3, WAV,
+  FLAC or Opus. Long text is spoken in whole sentences and joined.
+- **Clone**: a voice from 5 to 15 seconds of one person talking: upload a file, or record (in the page on this PC; on a
+  phone "Record" opens the voice recorder, because browsers allow the microphone only over HTTPS or on the PC itself).
+  A consent box must be ticked ("this is my voice, or I have permission"); the time and device are kept with the voice.
+  The words in the clip are written down by themselves when you don't type them.
+- **Design**: describe a voice in your own words ("an old man with a deep British voice") or tap chips (who, age, pitch,
+  whisper, accent); Hearth turns the words into OmniVoice's voice-design attributes. Hear it, then keep it: one sample is
+  made and kept, so a designed voice stays the same person every time (OmniVoice alone makes a new person on each call).
+- **Transcribe**: audio or video to text, SRT and VTT (and JSON), with "Speaker 1 / Speaker 2" labels (SpeechBrain's
+  ECAPA voice fingerprints, grouped by Hearth), in the queue.
+- **Your voices**: the library shared by every feature and the API: hear, use, make default, rename, delete. Eight
+  ready-made voices (Narrator, Storyteller, Bright, Calm, Elder, Clear, Kid, Whisper) are designed voices rendered once
+  the first time they're used; OpenAI's voice names (alloy, nova, onyx, ...) map onto them for apps that send those.
+- **Audiobooks**: paste text, or a .txt / .epub (the book's reading order; covers and contents pages left out).
+  Chapters are found at "Chapter 3", "# Title", "Prologue"... (or about 15,000-character parts). Narrated in the
+  background: an MP3 per chapter, every chapter in a zip, and the whole book as an .m4b with chapter marks.
+- **Video dubbing**: the sound is taken out (ffmpeg), the voices are lifted out of the music and sounds (Demucs
+  htdemucs), what's said is written down with who said it (faster-whisper), translated by the home server's own AI
+  service (Ollama: your choice of model, else a Qwen3 / gpt-oss / Llama one it has, asked for JSON, checked line for
+  line), then spoken again **in each speaker's own voice** (cloned from their clearest 6 to 14 seconds in the video) or in
+  a voice you pick. Each line is made to the length of the original line (OmniVoice's duration), sped up a little (at
+  most 1.5x, pitch kept) if it still runs over, and placed at the original time; the new voices go over the kept
+  background and are muxed back into the video (video stream copied). You also get subtitles in both languages.
+  Without Demucs the original sound stays quietly underneath. Copying voices from a video asks for the same consent.
+- **Apps & API** (OpenAI-compatible, `http://<this PC>:8890/v1`, with the API key):
+  `POST /v1/audio/speech` (input, voice, response_format mp3|wav|opus|flac|aac|pcm, speed, language, and OpenAI's
+  `instructions`, read as a voice description), `POST /v1/audio/transcriptions` and `/v1/audio/translations`
+  (multipart file, language, response_format json|text|srt|vtt|verbose_json), `GET /v1/audio/voices`, `GET /v1/models`.
+  In the Command Center: Settings › Voice › Add a speech server › **OpenAI-compatible speech API**, the address and the
+  key from Settings (Services › Voice Studio › Address / API key, both copy).
+
+**The queue** (audiobooks, dubbing, transcripts) is on disk: `~/.local/share/nimbus/voice-studio/jobs/<id>/job.json`
+(written atomically, with a .bak) and its files beside it. One job at a time; Speak and previews take turns with it.
+When Voice Studio stops (a game started and "Stop it while I play" is on, the PC restarted, Settings turned it off) the
+running job goes back to the queue and carries on where it stopped next time: audiobooks from the chapter they reached,
+dubs from the step and line they reached. Cancel, Try again and Delete are on each job. When a dub is done its big
+in-between files go (the video you sent, the results and subtitles stay).
+
+**Settings** (`~/.config/nimbus/voice-studio.json` through `hearth_settings_io`, only the key you change, defaults never
+written): `language`, `voice` (the default voice), `translateModel`, `speakerLabels`. On/off and "stop while I play" are
+the home server's `studio` {on, pause} in `home-server.json` (both through `hearth-home-server set studioOn|studioPause`;
+default off, pause on because it uses the graphics card). Deleting your default voice never changes your settings: speech
+uses the Narrator and the page says so. Install progress is state (`home-ai.json`, key `voicestudio`), never a setting.
+
+**Who can open it**: the page and the API listen only on 127.0.0.1 and this PC's Tailscale address (port 8890, in
+Hearth's Tailscale-only firewall rule while it's on, like the other AI services), and refuse any other peer. The page
+asks for a PIN: Voice Studio's own (Settings › Services › Voice Studio › PIN, typed on Hearth's PIN pad and sent to the
+helper on stdin, `hearth-home-server studio-pin`), or, with none of its own, **Server mode's PIN**. Only the hash is kept
+(`~/.local/state/nimbus/voice-studio-web.json`, 0600, PBKDF2-SHA256); a new PIN signs every device out; five wrong PINs
+wait five minutes. Sign-ins are an HttpOnly, SameSite=Strict cookie for 30 days; every write must come from the page
+itself (Hearth's X-Hearth header, then Sec-Fetch-Site or Origin, as Server mode). Referrer-Policy is `same-origin`
+(never `no-referrer`, which broke Server mode's PIN in 1.6). Apps send `Authorization: Bearer <key>`; the key is made the
+first time, kept in the same 0600 file, compared in constant time, and **Make a new key** replaces it.
+
+**Install** (only when you press Install; never in the image): `hearth-home-server studio-install` runs in its own
+transient unit (like ComfyUI) and, as you, makes `~/.local/share/nimbus/voice-studio/venv` (Debian's `python3 -m venv`),
+then pip installs (pip checks every file against the hash its index lists, over https): PyTorch and torchaudio from
+PyTorch's own CUDA 12.8 index; `omnivoice` (k2-fsa), `faster-whisper==1.1.1` and `soundfile` from PyPI; `demucs==4.0.1`
+without its old torchaudio pin (`--no-deps`) plus its own small needs; `speechbrain==1.0.3`. A part that fails (Demucs,
+SpeechBrain) is noted on the page and the rest still works. Then OmniVoice's model and Whisper large-v3 turbo are
+downloaded into `voice-studio/models` so the first use doesn't wait (they download on first use if that fails). About
+14 GB; it refuses with less free space. Models are let go after ten idle minutes so the graphics card is free again.
+**Remove** takes the venv, the models and the ready-made samples; your voices and finished work stay unless you confirm
+twice (`studio-remove voices sure really-sure`).
+
+**Licences** (checked November 2026; Settings shows the short version before Install):
+
+| Part | Code | Model | Notes |
+| --- | --- | --- | --- |
+| OmniVoice (k2-fsa) | Apache-2.0 | CC BY-NC (personal, non-commercial use); its audio tokenizer is under Boson's Higgs Audio licence (Llama 3 terms, "Built with Llama") | downloaded by you from Hugging Face, never bundled |
+| faster-whisper | MIT | Whisper large-v3 turbo: MIT | |
+| Demucs | MIT | htdemucs: MIT | |
+| SpeechBrain | Apache-2.0 | spkrec-ecapa-voxceleb: Apache-2.0 | |
+| Kokoro (AI voices) | Apache-2.0 | Apache-2.0 | unchanged |
+
+Nothing AGPL is used, and nothing non-commercial is in the Hearth image or the repository. pyannote's diarization model
+was left out because it's gated (it needs a Hugging Face sign-in).
+
+**The service**: `hearth-voice-studio.service` (user unit, no install section; `ConditionPathExists` on the venv, so
+without the engines it doesn't start at all) and `hearth-voice-studio.timer` (a minute after sign-in, enabled only while
+it's on; disabled globally in the image). `ExecStart` is `hearth-home-server ai-run voicestudio`, which execs the venv's
+Python on `hearth-voice-studio serve` with its models folder and the CUDA libraries pip installed. It is never part of
+starting the PC, the session or Game Mode; Light mode (the root helper's services timer) stops it while you play when
+"Stop it while I play" is on and starts it again after, exactly like AI pictures.
+
+**Stand-in engines** (`hearth-voice-studio mock-serve PORT`): the same page and API with tones instead of speech, for
+tests and screenshots (`hosts/linux/test/test_hearth_voice_studio.py`).
+
 ## AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI)
 
 Two more services in **Services** (always shown, not hidden until seen: they're useful without the Command Center) and

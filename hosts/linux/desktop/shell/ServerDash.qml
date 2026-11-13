@@ -35,7 +35,7 @@ PanelWindow {
 
     anchors { top: true; bottom: true; left: true; right: true }
     exclusiveZone: -1
-    color: Theme.bg
+    color: dash.gBg
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "hearth-server-mode"
     WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -47,7 +47,7 @@ PanelWindow {
         command: ["python3", dash.helper, "dash"]
         stdout: StdioCollector {
             onStreamFinished: {
-                try { const v = JSON.parse(text); dash.d = v; if (v.busy) dash.lastBusy = Date.now(); } catch (e) { console.warn("server mode: dash: " + e); }
+                try { const v = JSON.parse(text); dash.d = v; if (v.busy) dash.lastBusy = Date.now(); dash.sample(); } catch (e) { console.warn("server mode: dash: " + e); }
             }
         }
     }
@@ -221,10 +221,11 @@ PanelWindow {
         if (x) return serviceAct(cur, "restart");
         if (y) return serviceAct(cur, "pause");
         const n = tiles.length;
-        if (K === Qt.Key_Right) sel = sel === 0 ? 0 : Math.min(n, sel + 1);
-        else if (K === Qt.Key_Left) sel = sel === 0 ? 4 : Math.max(1, sel - 1);
-        else if (K === Qt.Key_Down) sel = sel === 0 ? 4 : Math.min(n, sel + 4);
-        else if (K === Qt.Key_Up) sel = sel <= 4 ? 0 : sel - 4;
+        // Play sits to the right of the tiles: Right from a row's last tile goes to it, Left from Play to the top row's last.
+        if (K === Qt.Key_Right) sel = sel === 0 ? 0 : (sel % cols === 0 || sel === n) ? 0 : Math.min(n, sel + 1);
+        else if (K === Qt.Key_Left) sel = sel === 0 ? Math.min(n, cols) : Math.max(1, sel - 1);
+        else if (K === Qt.Key_Down) sel = sel === 0 ? Math.min(n, cols) : Math.min(n, sel + cols);
+        else if (K === Qt.Key_Up) sel = sel === 0 ? 0 : sel <= cols ? 0 : sel - cols;
         else e.accepted = false;
     }
     // From hearth-pad (server-mode.qml): Guide is Play, ☰ the menu, Y pause / resume.
@@ -245,178 +246,330 @@ PanelWindow {
     }
     MouseArea { anchors.fill: parent; hoverEnabled: true; onPositionChanged: dash.wake(); onClicked: dash.wake(); z: -1 }
 
+    // ---------------------------------------------------------------- the gold look (the Hearth AI Command Center's)
+    readonly property color gBg: "#030201"
+    readonly property color gPanel: "#0c0702"
+    readonly property color gPanel2: "#140c03"
+    readonly property color gLine: "#2b1c08"
+    readonly property color gLine2: "#4a3212"
+    readonly property color gText: "#ffe9c7"
+    readonly property color gHi: "#fff4df"
+    readonly property color gMuted: "#c9a372"
+    readonly property color gFaint: "#8a6a3e"
+    readonly property color gAcc: "#ffb347"
+    readonly property color gInk: "#140c03"
+    readonly property color gOk: "#6fe39a"
+    readonly property color gWarn: "#ff8a4c"
+    readonly property int cols: 5
+
+    // The last hour, one sample every 30 seconds (only on this screen, never saved).
+    property var hist: ({ vram: [], storage: [], power: [], net: [] })
+    property double lastSample: 0
+    function sample() {
+        if (!d || !d.live || Date.now() - lastSample < 30000) return;
+        lastSample = Date.now();
+        const L = d.live, h = hist;
+        const push = (k, v) => { const a = (h[k] || []).concat([typeof v === "number" ? v : 0]); h[k] = a.slice(-120); };
+        push("vram", L.vram); push("storage", L.storage); push("power", L.power); push("net", (L.rx || 0) + (L.tx || 0));
+        hist = Object.assign({}, h);
+    }
+    function mbps(b) { return b === null || b === undefined ? "—" : (b / 1e6).toFixed(1); }
+    readonly property var asking: d && d.who ? d.who.filter(w => (w.what || []).indexOf("AI chat") >= 0).map(w => w.name) : []
+    readonly property var talker: d && d.cores ? d.cores.find(c => c.mode === "working" || c.state === "working") || null : null
+    readonly property var vramParts: {
+        const names = { ai: ["AI chat", "#e8d66e"], pictures: ["ComfyUI", "#ff5fd2"], voices: ["Voices", "#ff9aa8"], media: ["Media", "#7fb2ff"], other: ["Other", "#c9a372"] };
+        return (d && d.vram ? d.vram : []).map(v => ({ name: (names[v.who] || names.other)[0], color: (names[v.who] || names.other)[1], gb: v.gb }));
+    }
+
+    component GPanel: Rectangle {
+        property string title: ""
+        default property alias content: inner.data
+        radius: 16 * dash.k; color: dash.gPanel; border.color: dash.gLine; border.width: 1
+        Rectangle { x: -1; y: -1; width: 16 * dash.k; height: 2 * dash.k; color: dash.gAcc }
+        Rectangle { x: -1; y: -1; width: 2 * dash.k; height: 16 * dash.k; color: dash.gAcc }
+        Rectangle { x: parent.width - width + 1; y: parent.height - height + 1; width: 16 * dash.k; height: 2 * dash.k; color: dash.gAcc }
+        Rectangle { x: parent.width - width + 1; y: parent.height - height + 1; width: 2 * dash.k; height: 16 * dash.k; color: dash.gAcc }
+        Text { id: ttl; x: 18 * dash.k; y: 14 * dash.k; text: "◢ " + parent.title.toUpperCase(); color: dash.gMuted; font.family: Theme.font; font.pixelSize: 12.5 * dash.k; font.weight: Font.DemiBold; font.letterSpacing: 2.6 * dash.k }
+        Item { id: inner; anchors { left: parent.left; right: parent.right; top: ttl.bottom; bottom: parent.bottom; leftMargin: 18 * dash.k; rightMargin: 18 * dash.k; topMargin: 10 * dash.k; bottomMargin: 14 * dash.k } }
+    }
+    component Spark: Canvas {
+        property var pts: []
+        property color line: dash.gAcc
+        onPtsChanged: requestPaint()
+        onPaint: {
+            const c = getContext("2d"); c.reset();
+            if (!pts || pts.length < 2) return;
+            const mx = Math.max.apply(null, pts.concat([1])), mn = Math.min.apply(null, pts);
+            const span = Math.max(mx - mn, mx * 0.1, 0.001);
+            c.strokeStyle = "" + line; c.lineWidth = 2 * dash.k; c.lineJoin = "round"; c.beginPath();
+            for (let i = 0; i < pts.length; i++) {
+                const x = i * width / (pts.length - 1), y = height - 2 - (pts[i] - mn) / span * (height - 4);
+                if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            c.stroke();
+        }
+    }
+    component Fact: Rectangle {
+        property string label: ""
+        property string value: ""
+        property string sub: ""
+        property var pts: []
+        property color line: dash.gAcc
+        radius: 12 * dash.k; color: dash.gPanel2; border.color: dash.gLine
+        Text { id: fl; x: 14 * dash.k; y: 10 * dash.k; text: parent.label; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 14 * dash.k }
+        Text { id: fv; x: 14 * dash.k; anchors.top: fl.bottom; anchors.topMargin: 2 * dash.k; text: parent.value; color: dash.gHi; font.family: Theme.font; font.pixelSize: 23 * dash.k; font.weight: Font.DemiBold }
+        Text { x: 14 * dash.k; anchors.top: fv.bottom; anchors.topMargin: 2 * dash.k; width: parent.width - 28 * dash.k; text: parent.sub; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13 * dash.k; elide: Text.ElideRight }
+        Spark { anchors { right: parent.right; rightMargin: 14 * dash.k; top: parent.top; topMargin: 28 * dash.k } width: 120 * dash.k; height: 32 * dash.k; pts: parent.pts; line: parent.line }
+    }
+
     // ---------------------------------------------------------------- the dashboard
     Item {
         anchors.fill: parent
         visible: dash.screenState === "on"
-        // Top line: the PC's name, Server mode, the clock.
-        RowLayout {
-            id: top
-            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 48 * dash.k; rightMargin: 48 * dash.k; topMargin: 20 * dash.k }
-            height: 34 * dash.k
-            spacing: 14 * dash.k
-            Icon { name: "server"; size: 26 * dash.k; color: Theme.accent }
-            Text { text: dash.d ? dash.d.host : "Hearth"; color: Theme.text; font.family: Theme.font; font.pixelSize: 21 * dash.k; font.weight: Font.DemiBold }
-            Rectangle {
-                implicitWidth: modeRow.implicitWidth + 24 * dash.k; height: 30 * dash.k; radius: 15 * dash.k
-                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                Row { id: modeRow; anchors.centerIn: parent; spacing: 6 * dash.k
-                    Icon { name: "server"; size: 15 * dash.k; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "Server mode"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 14 * dash.k; font.weight: Font.DemiBold } }
+        // The dotted grid behind everything.
+        Canvas {
+            anchors.fill: parent
+            onPaint: {
+                const c = getContext("2d"); c.reset();
+                c.fillStyle = "rgba(255,179,71,0.07)";
+                const step = 24 * dash.k;
+                for (let y = step / 2; y < height; y += step) for (let x = step / 2; x < width; x += step) c.fillRect(x, y, 1.2, 1.2);
             }
-            Item { Layout.fillWidth: true }
-            Icon { name: "tailscale"; size: 20 * dash.k; color: Theme.muted }
-            Icon { name: "wired"; size: 20 * dash.k; color: Theme.muted }
-            Text { text: Qt.formatTime(new Date(dash.nowMs), "h:mm AP"); color: Theme.text; font.family: Theme.font; font.pixelSize: 19 * dash.k; font.weight: Font.DemiBold }
-            Text { text: Qt.formatDate(new Date(dash.nowMs), "ddd d MMM"); color: Theme.muted; font.family: Theme.font; font.pixelSize: 16 * dash.k }
+            onWidthChanged: requestPaint(); onHeightChanged: requestPaint()
         }
-        // Status and Play.
-        RowLayout {
+        // Top line: Server mode, the PC's name, Tailscale and the web page, the date and the clock.
+        Rectangle {
+            id: top
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: 78 * dash.k; color: "transparent"
+            Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: dash.gLine }
+            RowLayout {
+                anchors.fill: parent; anchors.leftMargin: 36 * dash.k; anchors.rightMargin: 36 * dash.k
+                spacing: 16 * dash.k
+                Rectangle { implicitWidth: 42 * dash.k; implicitHeight: 42 * dash.k; radius: 11 * dash.k; color: "#2b1a08"
+                    Icon { anchors.centerIn: parent; name: "server"; size: 22 * dash.k; color: Theme.accent } }
+                Text { text: "◢ SERVER MODE"; color: dash.gAcc; font.family: Theme.font; font.pixelSize: 14 * dash.k; font.weight: Font.DemiBold; font.letterSpacing: 3.6 * dash.k }
+                Text { text: (dash.d ? dash.d.host : "Hearth").toUpperCase(); color: dash.gHi; font.family: Theme.font; font.pixelSize: 24 * dash.k; font.weight: Font.DemiBold; font.letterSpacing: 2.4 * dash.k }
+                Item { Layout.fillWidth: true }
+                Repeater {
+                    model: [["Tailscale", !!(dash.d && dash.tiles.find(t => t.id === "who" && t.state === "running"))], ["Web page", !!(dash.d && dash.d.web && dash.d.web.on)]]
+                    delegate: Rectangle {
+                        required property var modelData
+                        implicitWidth: pt.implicitWidth + 26 * dash.k; implicitHeight: 30 * dash.k; radius: 15 * dash.k; color: "transparent"
+                        border.color: modelData[1] ? Qt.rgba(0.435, 0.89, 0.604, 0.45) : dash.gLine2
+                        Text { id: pt; anchors.centerIn: parent; text: modelData[0] + (modelData[1] ? " · on" : " · off"); color: modelData[1] ? dash.gOk : dash.gMuted; font.family: Theme.font; font.pixelSize: 14 * dash.k }
+                    }
+                }
+                Text { text: Qt.formatDate(new Date(dash.nowMs), "ddd d MMM"); color: dash.gMuted; font.family: Theme.font; font.pixelSize: 17 * dash.k }
+                Text { text: Qt.formatTime(new Date(dash.nowMs), "h:mm AP"); color: dash.gHi; font.family: Theme.font; font.pixelSize: 23 * dash.k; font.weight: Font.DemiBold }
+            }
+        }
+
+        // ---- the right column: Play, Next, graphics memory by app, Running, Alerts, your phone
+        ColumnLayout {
             id: hero
-            anchors { left: parent.left; right: parent.right; top: top.bottom; leftMargin: 48 * dash.k; rightMargin: 48 * dash.k; topMargin: 22 * dash.k }
-            height: 168 * dash.k
-            spacing: 14 * dash.k
+            anchors { right: parent.right; top: top.bottom; bottom: hints.top; rightMargin: 36 * dash.k; topMargin: 14 * dash.k; bottomMargin: 12 * dash.k }
+            width: 430 * dash.k
+            spacing: 12 * dash.k
             Rectangle {
-                id: heroCard
-                Layout.fillWidth: true; Layout.fillHeight: true
-                radius: 18 * dash.k
-                readonly property color sc: dash.d && dash.d.status && dash.d.status.level !== "ok" ? SetStyle.warn : SetStyle.ok
-                gradient: Gradient { orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: Qt.rgba(heroCard.sc.r, heroCard.sc.g, heroCard.sc.b, 0.16) }
-                    GradientStop { position: 0.6; color: SetStyle.card } }
-                border.color: Theme.line
-                RowLayout {
-                    anchors.fill: parent; anchors.margins: 26 * dash.k
-                    spacing: 26 * dash.k
-                    Rectangle {
-                        width: 104 * dash.k; height: width; implicitWidth: 104 * dash.k; implicitHeight: 104 * dash.k; radius: width / 2
-                        color: Qt.rgba(heroCard.sc.r, heroCard.sc.g, heroCard.sc.b, 0.18)
-                        Icon { anchors.centerIn: parent; name: dash.d && dash.d.status && dash.d.status.level !== "ok" ? "warn" : "check"; size: 54 * dash.k; color: heroCard.sc }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true; spacing: 6 * dash.k
-                        Row { spacing: 12 * dash.k
-                            Text { id: statusTitle; text: dash.backInfo && dash.overlay === "back" ? "Coming back" : (dash.d ? dash.d.status.title : "Starting…"); color: Theme.text; font.family: Theme.font; font.pixelSize: 44 * dash.k; font.weight: Font.Bold }
-                            Text { anchors.baseline: statusTitle.baseline; text: dash.d ? "· " + dash.d.status.sub : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 40 * dash.k } }
-                        Row { spacing: 22 * dash.k
-                            Text { text: dash.d ? "<b>" + dash.d.devices + (dash.d.devices === 1 ? " device</b> connected" : " devices</b> connected") : ""; textFormat: Text.StyledText; color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 * dash.k }
-                            Text { text: dash.d ? "Up <b>" + Math.floor(dash.d.uptime / 86400) + " days</b>" : ""; textFormat: Text.StyledText; color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 * dash.k; visible: !!dash.d && dash.d.uptime >= 86400 }
-                            Text { text: dash.d ? "Server mode since <b>" + dash.d.sinceText + "</b>" : ""; textFormat: Text.StyledText; color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 * dash.k } }
-                    }
+                id: playCard
+                Layout.fillWidth: true; Layout.preferredHeight: 108 * dash.k
+                radius: 18 * dash.k; color: dash.gAcc
+                border.width: dash.sel === 0 ? 4 * dash.k : 0; border.color: "#ffe2b0"
+                Column { anchors.centerIn: parent; spacing: 2 * dash.k
+                    Row { anchors.horizontalCenter: parent.horizontalCenter; spacing: 14 * dash.k
+                        Icon { anchors.verticalCenter: parent.verticalCenter; name: "pad"; size: 34 * dash.k; color: Theme.accentInk }
+                        Text { text: "PLAY"; color: dash.gInk; font.family: Theme.font; font.pixelSize: 36 * dash.k; font.weight: Font.Bold; font.letterSpacing: 5 * dash.k } }
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Switch to Game Mode"; color: dash.gInk; font.family: Theme.font; font.pixelSize: 16 * dash.k; font.weight: Font.DemiBold } }
+                Text { anchors { right: parent.right; top: parent.top; margins: 14 * dash.k } text: "or press Guide"; color: dash.gInk; font.family: Theme.font; font.pixelSize: 13 * dash.k; font.weight: Font.DemiBold }
+                MouseArea { anchors.fill: parent; onClicked: { dash.sel = 0; dash.play(); } }
+            }
+            GPanel {
+                title: "Next"
+                Layout.fillWidth: true; Layout.preferredHeight: 104 * dash.k
+                Column { spacing: 4 * dash.k
+                    Text { text: dash.d && dash.d.next ? dash.d.next.text : "No schedule"; color: dash.gHi; font.family: Theme.font; font.pixelSize: 19 * dash.k; font.weight: Font.DemiBold }
+                    Text { text: dash.d && dash.d.next ? "Your " + (new Date(dash.nowMs).getDay() % 6 === 0 ? "weekend" : "weekday") + " schedule" + (dash.d.idle && dash.d.idle.dim > 0 ? " · the screen dims after " + dash.d.idle.dim + " min" : "")
+                                                       : (dash.d && dash.d.idle && dash.d.idle.dim > 0 ? "The screen dims after " + dash.d.idle.dim + " min with nothing pressed" : "Make one in Settings › System › Startup")
+                          color: dash.gMuted; font.family: Theme.font; font.pixelSize: 14 * dash.k } }
+            }
+            GPanel {
+                title: "Graphics memory by app"
+                Layout.fillWidth: true; Layout.preferredHeight: 116 * dash.k
+                visible: dash.vramParts.length > 0 && !!dash.d && dash.d.vramTotal > 0
+                Column { width: parent.width; spacing: 8 * dash.k
+                    Rectangle { width: parent.width; height: 12 * dash.k; radius: 6 * dash.k; color: dash.gLine; clip: true
+                        Row { Repeater { model: dash.vramParts
+                            delegate: Rectangle { required property var modelData; height: 12 * dash.k; width: dash.d && dash.d.vramTotal > 0 ? parent.parent.width * modelData.gb / dash.d.vramTotal : 0; color: modelData.color } } } }
+                    Flow { width: parent.width; spacing: 16 * dash.k
+                        Repeater { model: dash.vramParts
+                            delegate: Text { required property var modelData; text: "<font color='" + modelData.color + "'>●</font> " + modelData.name + " " + modelData.gb + " GB"; textFormat: Text.StyledText; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 14 * dash.k } }
+                        Text { text: dash.d ? "free " + Math.max(0, dash.d.vramTotal - dash.d.vramUsed).toFixed(1) + " GB" : ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 14 * dash.k } }
+                }
+            }
+            GPanel {
+                title: "Running"
+                Layout.fillWidth: true; Layout.preferredHeight: pillFlow.implicitHeight + 60 * dash.k
+                Flow {
+                    id: pillFlow
+                    width: parent.width; spacing: 8 * dash.k
                     Repeater {
-                        model: dash.d ? dash.d.facts : []
-                        delegate: Column {
+                        model: dash.d ? dash.d.pills : []
+                        delegate: Rectangle {
                             required property var modelData
-                            spacing: 2 * dash.k
-                            Text { text: modelData[0]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * dash.k }
-                            Text { text: modelData[1]; color: Theme.text; font.family: Theme.font; font.pixelSize: 22 * dash.k; font.weight: Font.DemiBold }
+                            height: 32 * dash.k; radius: 16 * dash.k; width: pr.implicitWidth + 24 * dash.k
+                            readonly property color dc: modelData.state === "running" ? dash.gOk : modelData.state === "off" ? dash.gMuted : dash.gWarn
+                            color: "transparent"; border.color: Qt.rgba(dc.r, dc.g, dc.b, 0.4)
+                            Row { id: pr; anchors.centerIn: parent; spacing: 7 * dash.k
+                                Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 8 * dash.k; height: width; radius: width / 2; color: parent.parent.dc }
+                                Text { text: modelData.name; color: dash.gText; font.family: Theme.font; font.pixelSize: 14.5 * dash.k }
+                                Text { text: modelData.extra || ""; visible: text !== ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13 * dash.k; anchors.verticalCenter: parent.verticalCenter } }
                         }
                     }
                 }
             }
-            Rectangle {
-                id: playCard
-                Layout.preferredWidth: 436 * dash.k; Layout.fillHeight: true
-                radius: 18 * dash.k
-                color: Theme.accent
-                border.width: dash.sel === 0 ? 4 * dash.k : 0
-                border.color: Qt.lighter(Theme.accent, 1.4)
-                RowLayout {
-                    anchors.fill: parent; anchors.margins: 30 * dash.k; spacing: 22 * dash.k
-                    Rectangle { width: 84 * dash.k; height: width; implicitWidth: 84 * dash.k; implicitHeight: 84 * dash.k; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.12)
-                        Icon { anchors.centerIn: parent; name: "pad"; size: 44 * dash.k; color: Theme.accentInk } }
-                    ColumnLayout { spacing: 2 * dash.k; Layout.fillWidth: true
-                        Text { text: "Play"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 38 * dash.k; font.weight: Font.Bold }
-                        Text { text: "Switch to Game Mode"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 16 * dash.k } }
-                }
-                Text { anchors { right: parent.right; top: parent.top; margins: 18 * dash.k } text: "or press Guide"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 13 * dash.k; font.weight: Font.DemiBold }
-                MouseArea { anchors.fill: parent; onClicked: { dash.sel = 0; dash.play(); } }
-            }
-        }
-        // Every service in a word.
-        Flow {
-            id: pills
-            anchors { left: parent.left; right: parent.right; top: hero.bottom; leftMargin: 48 * dash.k; rightMargin: 48 * dash.k; topMargin: 16 * dash.k }
-            spacing: 10 * dash.k
-            Repeater {
-                model: dash.d ? dash.d.pills : []
-                delegate: Rectangle {
-                    required property var modelData
-                    height: 44 * dash.k; radius: 22 * dash.k
-                    width: pillRow.implicitWidth + 32 * dash.k
-                    color: SetStyle.card; border.color: Theme.line
-                    Row { id: pillRow; anchors.centerIn: parent; spacing: 10 * dash.k
-                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9 * dash.k; height: width; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: width / 2
-                            color: modelData.state === "running" ? SetStyle.ok : modelData.state === "off" ? Theme.muted : SetStyle.warn }
-                        Text { text: modelData.name; color: Theme.text; font.family: Theme.font; font.pixelSize: 16 * dash.k }
-                        Text { text: modelData.extra || ""; visible: text !== ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 * dash.k; anchors.verticalCenter: parent.verticalCenter } }
+            GPanel {
+                id: alerts
+                title: "Alerts"
+                Layout.fillWidth: true; Layout.preferredHeight: alertCol.implicitHeight + 60 * dash.k
+                Column {
+                    id: alertCol
+                    width: parent.width; spacing: 10 * dash.k
+                    Repeater {
+                        model: dash.d && dash.d.alerts.length ? dash.d.alerts : [{ level: "ok", text: "Nothing needs a look", sub: "", at: "" }]
+                        delegate: RowLayout {
+                            required property var modelData
+                            width: alertCol.width; spacing: 10 * dash.k
+                            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 6 * dash.k; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: 5 * dash.k; color: modelData.level === "warn" ? dash.gWarn : modelData.level === "ok" ? dash.gOk : dash.gMuted }
+                            Text { Layout.fillWidth: true; text: modelData.text + (modelData.sub ? "<font color='" + dash.gMuted + "'> · " + modelData.sub + "</font>" : ""); textFormat: Text.StyledText; color: dash.gText; font.family: Theme.font; font.pixelSize: 15 * dash.k; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                            Text { Layout.alignment: Qt.AlignTop; text: modelData.at || ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k }
+                        }
+                    }
                 }
             }
+            GPanel {
+                title: "Your phone"
+                Layout.fillWidth: true; Layout.preferredHeight: 128 * dash.k
+                visible: !!(dash.d && dash.d.web && dash.d.web.on)
+                RowLayout { anchors.fill: parent; spacing: 14 * dash.k
+                    Image { visible: !!(dash.d && dash.d.qr); source: dash.d && dash.d.qr ? "file://" + dash.d.qr : ""; Layout.preferredWidth: 72 * dash.k; Layout.preferredHeight: 72 * dash.k; sourceSize.width: 144; sourceSize.height: 144; smooth: false; fillMode: Image.PreserveAspectFit }
+                    Column { Layout.fillWidth: true; spacing: 3 * dash.k
+                        Text { text: dash.d && dash.d.web ? dash.d.web.url : ""; color: dash.gHi; font.family: Theme.font; font.pixelSize: 16 * dash.k; font.weight: Font.DemiBold }
+                        Text { width: parent.width; text: (dash.d && dash.d.qr ? "Scan to open this dashboard on your phone · " : "Open it on your phone · ") + "Tailscale only · your PIN"; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k; wrapMode: Text.WordWrap } }
+                }
+            }
+            Item { Layout.fillHeight: true }
         }
-        // The tiles: four across, two down.
-        GridLayout {
-            id: grid
-            anchors { left: parent.left; right: parent.right; top: pills.bottom; bottom: alerts.top; leftMargin: 48 * dash.k; rightMargin: 48 * dash.k; topMargin: 16 * dash.k; bottomMargin: 16 * dash.k }
-            columns: 4; rowSpacing: 16 * dash.k; columnSpacing: 16 * dash.k
-            Repeater {
-                model: dash.tiles
-                delegate: ServerTile {
-                    required property var modelData
-                    required property int index
-                    Layout.fillWidth: true; Layout.fillHeight: true
-                    Layout.preferredWidth: 1; Layout.preferredHeight: 1
-                    t: modelData; k: dash.k; focused: dash.sel === index + 1
-                    MouseArea { anchors.fill: parent; onClicked: { dash.sel = index + 1; dash.overlay = "detail"; } }
+
+        // ---- the left column: this PC, the AIs, the services
+        ColumnLayout {
+            anchors { left: parent.left; right: hero.left; top: top.bottom; bottom: hints.top; leftMargin: 36 * dash.k; rightMargin: 22 * dash.k; topMargin: 14 * dash.k; bottomMargin: 12 * dash.k }
+            spacing: 12 * dash.k
+            GPanel {
+                id: heroCard
+                title: "This PC · " + (dash.d ? dash.d.host : "")
+                Layout.fillWidth: true; Layout.preferredHeight: 178 * dash.k
+                readonly property color sc: dash.d && dash.d.status && dash.d.status.level !== "ok" ? dash.gWarn : dash.gOk
+                ColumnLayout { anchors.fill: parent; spacing: 10 * dash.k
+                    RowLayout { Layout.fillWidth: true; spacing: 12 * dash.k
+                        Text { id: statusTitle; text: dash.backInfo && dash.overlay === "back" ? "Coming back" : (dash.d ? dash.d.status.title : "Starting…"); color: heroCard.sc; font.family: Theme.font; font.pixelSize: 34 * dash.k; font.weight: Font.DemiBold }
+                        Text { Layout.alignment: Qt.AlignBaseline; text: dash.d ? "· " + dash.d.status.sub : ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 21 * dash.k }
+                        Item { Layout.fillWidth: true }
+                        Text { text: dash.d ? "<b>" + dash.d.devices + (dash.d.devices === 1 ? " device</b> connected" : " devices</b> connected") + (dash.d.uptime >= 86400 ? " · Up <b>" + Math.floor(dash.d.uptime / 86400) + " days</b>" : "") + " · Server mode since <b>" + dash.d.sinceText + "</b>" : ""
+                               textFormat: Text.StyledText; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 16 * dash.k }
+                    }
+                    RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 12 * dash.k
+                        Fact { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1; label: dash.d ? dash.d.facts[0][0] : "Graphics memory"; value: dash.d ? dash.d.facts[0][1] : "—"; line: "#e8d66e"; pts: dash.hist.vram
+                            sub: dash.d && dash.d.live ? (dash.d.gpuName || "Graphics card") + (dash.d.live.gpuBusy !== null && dash.d.live.gpuBusy !== undefined ? " · " + Math.round(dash.d.live.gpuBusy) + "% busy" : "") + (dash.d.live.gpuTemp ? " · " + Math.round(dash.d.live.gpuTemp) + " °C" : "") : "" }
+                        Fact { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1; label: dash.d ? dash.d.facts[1][0] : "Storage"; value: dash.d ? dash.d.facts[1][1] : "—"; line: dash.gAcc; pts: dash.hist.storage
+                            sub: dash.d && dash.d.live && dash.d.live.storage !== null && dash.d.live.storage !== undefined ? dash.d.live.storage + "% used" : "" }
+                        Fact { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1; label: dash.d ? dash.d.facts[2][0] : "Power"; value: dash.d ? dash.d.facts[2][1] : "—"; line: dash.gWarn; pts: dash.hist.power
+                            sub: dash.d && dash.d.live ? "processor " + (dash.d.live.cpuTemp ? dash.d.live.cpuTemp + " °C · " : "") + (dash.d.live.cpu !== null && dash.d.live.cpu !== undefined ? Math.round(dash.d.live.cpu) + "% busy" : "") : "" }
+                        Fact { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1; label: "Network"; line: "#7fb2ff"; pts: dash.hist.net
+                            value: dash.d && dash.d.live ? "↓" + dash.mbps(dash.d.live.rx) + " ↑" + dash.mbps(dash.d.live.tx) + " MB/s" : "—"
+                            sub: dash.d && dash.d.live ? dash.d.live.online + " online on Tailscale" : "" }
+                    }
+                }
+            }
+            GPanel {
+                title: "The AIs on this PC · the same as in your Command Center"
+                Layout.fillWidth: true; Layout.preferredHeight: 214 * dash.k
+                visible: !!(dash.d && dash.d.cores && dash.d.cores.length)
+                ColumnLayout { anchors.fill: parent; spacing: 6 * dash.k
+                    RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
+                        Repeater {
+                            model: dash.d && dash.d.cores ? dash.d.cores : []
+                            delegate: Column {
+                                required property var modelData
+                                Layout.fillWidth: true; Layout.preferredWidth: 1
+                                spacing: 4 * dash.k
+                                ServerCore { anchors.horizontalCenter: parent.horizontalCenter; kind: modelData.id; mode: modelData.state || "ready"; size: 82 * dash.k }
+                                Item { width: 1; height: 4 * dash.k }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: (modelData.name || "").toUpperCase(); color: modelData.state === "working" ? (({ gpu: "#e8d66e", comfy: "#ff5fd2", voice: "#ff9aa8", listen: "#9cf5d6", hearth: "#ff8a4c" })[modelData.id] || dash.gHi) : dash.gHi; font.family: Theme.font; font.pixelSize: 14 * dash.k; font.weight: Font.DemiBold; font.letterSpacing: 1.6 * dash.k }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.status || ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k }
+                            }
+                        }
+                    }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: dash.gLine }
+                    RowLayout { Layout.fillWidth: true; spacing: 12 * dash.k
+                        Row { spacing: 3 * dash.k; visible: !!dash.talker
+                            Repeater { model: [700, 500, 800, 600, 900]
+                                delegate: Rectangle { required property var modelData; anchors.verticalCenter: parent.verticalCenter; width: 4 * dash.k; height: 22 * dash.k; radius: 2; color: "#e8d66e"
+                                    SequentialAnimation on scale { running: !Settings.reduceMotion && !!dash.talker; loops: Animation.Infinite
+                                        NumberAnimation { to: 0.25; duration: modelData / 2 } NumberAnimation { to: 1; duration: modelData / 2 } } } } }
+                        Text { Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.StyledText; font.family: Theme.font; font.pixelSize: 16 * dash.k; color: dash.gHi
+                            text: dash.talker ? "<b>" + dash.talker.name.toUpperCase() + "</b>  " + (dash.talker.id === "gpu" && dash.asking.length ? "answering " + dash.asking.join(", ") : dash.talker.status)
+                                              : "<font color='" + dash.gMuted + "'>All quiet: nobody's asking right now</font>" }
+                    }
+                }
+            }
+            GPanel {
+                title: "Services"
+                Layout.fillWidth: true; Layout.fillHeight: true
+                GridLayout {
+                    id: grid
+                    anchors.fill: parent
+                    columns: dash.cols; rowSpacing: 12 * dash.k; columnSpacing: 12 * dash.k
+                    Repeater {
+                        model: dash.tiles
+                        delegate: ServerTile {
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true; Layout.fillHeight: true
+                            Layout.preferredWidth: 1; Layout.preferredHeight: 1
+                            t: modelData; k: dash.k * 0.86; focused: dash.sel === index + 1; gold: true
+                            MouseArea { anchors.fill: parent; onClicked: { dash.sel = index + 1; dash.overlay = "detail"; } }
+                        }
+                    }
                 }
             }
         }
-        // Alerts: up to three.
-        RowLayout {
-            id: alerts
-            anchors { left: parent.left; right: parent.right; bottom: hints.top; leftMargin: 48 * dash.k; rightMargin: 48 * dash.k; bottomMargin: 14 * dash.k }
-            height: 62 * dash.k
-            spacing: 14 * dash.k
-            Repeater {
-                model: dash.d && dash.d.alerts.length ? dash.d.alerts : [{ level: "ok", text: "Nothing needs a look", sub: "", at: "" }]
-                delegate: Rectangle {
-                    required property var modelData
-                    Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
-                    radius: 12 * dash.k
-                    readonly property color c: modelData.level === "warn" ? SetStyle.warn : modelData.level === "ok" ? SetStyle.ok : Theme.accent
-                    color: modelData.level === "warn" ? Qt.rgba(c.r, c.g, c.b, 0.12) : SetStyle.card
-                    border.color: modelData.level === "warn" ? Qt.rgba(c.r, c.g, c.b, 0.45) : Theme.line
-                    RowLayout { anchors.fill: parent; anchors.leftMargin: 20 * dash.k; anchors.rightMargin: 20 * dash.k; spacing: 14 * dash.k
-                        Icon { name: modelData.level === "warn" ? "warn" : modelData.level === "ok" ? "check" : "globe"; size: 22 * dash.k; color: parent.parent.c }
-                        Text { Layout.fillWidth: true; text: modelData.text + (modelData.sub ? "<font color='" + Theme.muted + "'> · " + modelData.sub + "</font>" : ""); textFormat: Text.StyledText; color: Theme.text; font.family: Theme.font; font.pixelSize: 16 * dash.k; elide: Text.ElideRight }
-                        Text { text: modelData.at || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 * dash.k } }
-                }
-            }
-        }
+
         // The buttons along the bottom.
         Rectangle {
             id: hints
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: 52 * dash.k
-            color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.9)
-            Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.line }
+            height: 48 * dash.k
+            color: Qt.rgba(0.008, 0.004, 0, 0.92)
+            Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: dash.gLine }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 48 * dash.k; anchors.rightMargin: 48 * dash.k; spacing: 26 * dash.k
+                anchors.fill: parent; anchors.leftMargin: 36 * dash.k; anchors.rightMargin: 36 * dash.k; spacing: 26 * dash.k
                 Repeater {
-                    model: [["A", "Open"], ["X", "Restart service"], ["Y", "Pause or resume"], ["☰", "Settings"]]
+                    model: [["A", "Open"], ["X", "Restart service"], ["Y", "Pause or resume"], ["☰", "Menu"]]
                     delegate: Row { required property var modelData; spacing: 8 * dash.k
-                        Rectangle { width: 24 * dash.k; height: width; implicitWidth: 24 * dash.k; implicitHeight: 24 * dash.k; radius: width / 2; border.color: Theme.muted; color: "transparent"
-                            Text { anchors.centerIn: parent; text: modelData[0]; color: Theme.text; font.pixelSize: 12 * dash.k; font.weight: Font.Bold } }
-                        Text { text: modelData[1]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
+                        Rectangle { width: 26 * dash.k; height: width; implicitWidth: 26 * dash.k; implicitHeight: 26 * dash.k; radius: width / 2; border.color: dash.gMuted; color: "transparent"
+                            Text { anchors.centerIn: parent; text: modelData[0]; color: dash.gHi; font.pixelSize: 12 * dash.k; font.weight: Font.Bold } }
+                        Text { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; color: dash.gText; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
                 }
                 Item { Layout.fillWidth: true }
-                Text { visible: dash.toast !== ""; text: dash.toast; color: Theme.flame; font.family: Theme.font; font.pixelSize: 15 * dash.k }
+                Text { visible: dash.toast !== ""; text: dash.toast; color: dash.gAcc; font.family: Theme.font; font.pixelSize: 15 * dash.k }
                 Item { Layout.fillWidth: true }
-                Text { text: "Guide  Play (Game Mode)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * dash.k }
+                Text { text: "Guide  Play (Game Mode)"; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 15 * dash.k }
             }
         }
 
         // ------------------------------------------------------------ overlays
-        Rectangle { anchors.fill: parent; visible: dash.overlay !== "" && dash.overlay !== "back" || !!dash.remote; color: Qt.rgba(0.02, 0.035, 0.055, 0.78) }
+        Rectangle { anchors.fill: parent; visible: dash.overlay !== "" && dash.overlay !== "back" || !!dash.remote; color: Qt.rgba(0.012, 0.008, 0.004, 0.82) }
 
         // The countdown: Play / Guide (5 s, here) or the web page / schedule (10 s, the agent's).
         Rectangle {
@@ -424,7 +577,7 @@ PanelWindow {
             visible: dash.overlay === "switch" || !!dash.remote
             anchors.centerIn: parent
             width: 1240 * dash.k; height: swCol.implicitHeight + 72 * dash.k
-            radius: 22 * dash.k; color: Theme.panel; border.color: Theme.line
+            radius: 22 * dash.k; color: dash.gPanel; border.color: dash.gLine
             readonly property bool isRemote: !!dash.remote
             readonly property int secsLeft: isRemote ? dash.remoteLeft : dash.count
             readonly property int total: isRemote ? (dash.remote.total || 10) : 5
@@ -446,35 +599,35 @@ PanelWindow {
                                 const c = getContext("2d"); c.reset();
                                 const r = width / 2 - 8 * dash.k;
                                 c.lineWidth = 12 * dash.k; c.lineCap = "round";
-                                c.strokeStyle = "" + SetStyle.card2; c.beginPath(); c.arc(width / 2, height / 2, r, 0, Math.PI * 2); c.stroke();
-                                c.strokeStyle = "" + Theme.accent; c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); c.stroke();
+                                c.strokeStyle = "" + dash.gLine2; c.beginPath(); c.arc(width / 2, height / 2, r, 0, Math.PI * 2); c.stroke();
+                                c.strokeStyle = "" + dash.gAcc; c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); c.stroke();
                             }
                         }
                         Column { anchors.centerIn: parent
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: String(sw.secsLeft); color: Theme.text; font.family: Theme.font; font.pixelSize: 72 * dash.k; font.weight: Font.DemiBold }
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "seconds"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: String(sw.secsLeft); color: dash.gText; font.family: Theme.font; font.pixelSize: 72 * dash.k; font.weight: Font.DemiBold }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "seconds"; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 8 * dash.k
-                        Text { text: (sw.isRemote && dash.remote.what === "power" ? "" : "SWITCHING TO ") + sw.toName + (sw.isRemote ? "  ·  ASKED FOR " + (dash.remote.from === "schedule" ? "BY THE SCHEDULE" : "FROM " + (dash.remote.by || "THE WEB PAGE").toUpperCase()) : ""); color: Theme.accent; font.family: Theme.font; font.pixelSize: 15 * dash.k; font.weight: Font.DemiBold; font.letterSpacing: 0.4 }
-                        Text { text: sw.isRemote && dash.remote.what === "power" ? (dash.remote.to === "sleep" ? "The PC is going to sleep" : "The PC is restarting") : sw.toName === "DESKTOP MODE" ? "Opening Desktop Mode" : "Getting the PC ready to play"; color: Theme.text; font.family: Theme.font; font.pixelSize: 40 * dash.k; font.weight: Font.DemiBold }
-                        Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Big jobs pause so your game gets the graphics card. They come back by themselves when you return to Server mode."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 17 * dash.k }
+                        Text { text: (sw.isRemote && dash.remote.what === "power" ? "" : "SWITCHING TO ") + sw.toName + (sw.isRemote ? "  ·  ASKED FOR " + (dash.remote.from === "schedule" ? "BY THE SCHEDULE" : "FROM " + (dash.remote.by || "THE WEB PAGE").toUpperCase()) : ""); color: dash.gAcc; font.family: Theme.font; font.pixelSize: 15 * dash.k; font.weight: Font.DemiBold; font.letterSpacing: 0.4 }
+                        Text { text: sw.isRemote && dash.remote.what === "power" ? (dash.remote.to === "sleep" ? "The PC is going to sleep" : "The PC is restarting") : sw.toName === "DESKTOP MODE" ? "Opening Desktop Mode" : "Getting the PC ready to play"; color: dash.gText; font.family: Theme.font; font.pixelSize: 40 * dash.k; font.weight: Font.DemiBold }
+                        Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Big jobs pause so your game gets the graphics card. They come back by themselves when you return to Server mode."; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 17 * dash.k }
                     }
                 }
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 2; columnSpacing: 28 * dash.k; rowSpacing: 10 * dash.k
-                    Text { text: "Pauses while you play"; color: Theme.text; font.family: Theme.font; font.pixelSize: 16 * dash.k; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    Text { text: "Keeps working"; color: Theme.text; font.family: Theme.font; font.pixelSize: 16 * dash.k; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                    Text { text: "Pauses while you play"; color: dash.gText; font.family: Theme.font; font.pixelSize: 16 * dash.k; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                    Text { text: "Keeps working"; color: dash.gText; font.family: Theme.font; font.pixelSize: 16 * dash.k; font.weight: Font.DemiBold; Layout.fillWidth: true }
                     ColumnLayout { Layout.alignment: Qt.AlignTop; Layout.fillWidth: true; Layout.preferredWidth: 1; spacing: 10 * dash.k
-                        Repeater { model: dash.pauseList; delegate: ServerLine { required property var modelData; Layout.fillWidth: true; k: dash.k; icon: modelData.icon; title: modelData.t; sub: modelData.s; tone: SetStyle.warn } }
-                        Text { visible: dash.pauseList.length === 0; text: "Nothing: Light mode is off or nothing big is on"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
+                        Repeater { model: dash.pauseList; delegate: ServerLine { required property var modelData; Layout.fillWidth: true; k: dash.k; icon: modelData.icon; title: modelData.t; sub: modelData.s; tone: dash.gWarn } }
+                        Text { visible: dash.pauseList.length === 0; text: "Nothing: Light mode is off or nothing big is on"; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
                     ColumnLayout { Layout.alignment: Qt.AlignTop; Layout.fillWidth: true; Layout.preferredWidth: 1; spacing: 10 * dash.k
-                        Repeater { model: dash.keepList; delegate: ServerLine { required property var modelData; Layout.fillWidth: true; k: dash.k; icon: modelData.icon; title: modelData.t; sub: modelData.s; tone: SetStyle.ok } } }
+                        Repeater { model: dash.keepList; delegate: ServerLine { required property var modelData; Layout.fillWidth: true; k: dash.k; icon: modelData.icon; title: modelData.t; sub: modelData.s; tone: dash.gOk } } }
                 }
                 RowLayout {
                     Layout.fillWidth: true; spacing: 14 * dash.k
-                    Text { text: "The same rules as Light mode · change them in Settings › Home server › Server mode"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 * dash.k; Layout.fillWidth: true; elide: Text.ElideRight }
+                    Text { text: "The same rules as Light mode · change them in Settings › Home server › Server mode"; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 14 * dash.k; Layout.fillWidth: true; elide: Text.ElideRight }
                     ServerButton { k: dash.k; label: "Cancel"; keyName: "B"; onClicked: sw.isRemote ? dash.remoteCancel() : dash.cancelSwitch() }
                     ServerButton { k: dash.k; label: sw.isRemote && dash.remote.what === "power" ? "Now" : "Switch now"; keyName: "A"; primary: true; onClicked: sw.isRemote ? dash.remoteNow() : dash.switchNow() }
                 }
@@ -486,7 +639,7 @@ PanelWindow {
             visible: dash.overlay === "detail" && !!dash.cur && !dash.remote
             anchors.centerIn: parent
             width: 1620 * dash.k; height: 860 * dash.k
-            radius: 22 * dash.k; color: Theme.panel; border.color: Theme.line
+            radius: 22 * dash.k; color: dash.gPanel; border.color: dash.gLine
             ServerDetail { anchors.fill: parent; t: dash.cur; d: dash.d; k: dash.k
                 onAction: a => a === "unload" ? dash.act(["ai-unload"], "Model unloaded") : dash.serviceAct(dash.cur, a)
                 onClose: dash.overlay = "" }
@@ -497,7 +650,7 @@ PanelWindow {
             visible: dash.overlay === "menu" && !dash.remote
             anchors.centerIn: parent
             width: 640 * dash.k; height: menuCol.implicitHeight + 40 * dash.k
-            radius: 22 * dash.k; color: Theme.panel; border.color: Theme.line
+            radius: 22 * dash.k; color: dash.gPanel; border.color: dash.gLine
             Column {
                 id: menuCol
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 * dash.k }
@@ -508,13 +661,13 @@ PanelWindow {
                         required property var modelData
                         required property int index
                         width: menuCol.width; height: 66 * dash.k; radius: 12 * dash.k
-                        color: dash.menuSel === index ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : "transparent"
-                        border.width: dash.menuSel === index ? 2 : 0; border.color: Theme.accent
+                        color: dash.menuSel === index ? Qt.rgba(dash.gAcc.r, dash.gAcc.g, dash.gAcc.b, 0.18) : "transparent"
+                        border.width: dash.menuSel === index ? 2 : 0; border.color: dash.gAcc
                         RowLayout { anchors.fill: parent; anchors.leftMargin: 18 * dash.k; spacing: 16 * dash.k
-                            Icon { name: modelData.icon; size: 24 * dash.k; color: dash.menuSel === index ? Theme.accent : Theme.text }
+                            Icon { name: modelData.icon; size: 24 * dash.k; color: dash.menuSel === index ? dash.gAcc : dash.gText }
                             Column { Layout.fillWidth: true
-                                Text { text: modelData.t; color: Theme.text; font.family: Theme.font; font.pixelSize: 18 * dash.k; font.weight: Font.DemiBold }
-                                Text { text: modelData.s; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k } } }
+                                Text { text: modelData.t; color: dash.gText; font.family: Theme.font; font.pixelSize: 18 * dash.k; font.weight: Font.DemiBold }
+                                Text { text: modelData.s; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k } } }
                         MouseArea { anchors.fill: parent; onClicked: modelData.a() }
                     }
                 }
@@ -539,20 +692,31 @@ PanelWindow {
             visible: dash.screenState === "dim"
             anchors.centerIn: parent
             spacing: 26 * dash.k
-            Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(new Date(dash.nowMs), "h:mm"); color: "#4a535d"; font.family: Theme.font; font.pixelSize: 230 * dash.k; font.weight: Font.Light }
-            Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(new Date(dash.nowMs), "dddd d MMMM"); color: "#3d454e"; font.family: Theme.font; font.pixelSize: 30 * dash.k }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(new Date(dash.nowMs), "h:mm"); color: "#8a6a3e"; font.family: Theme.font; font.pixelSize: 230 * dash.k; font.weight: Font.Light }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(new Date(dash.nowMs), "dddd d MMMM"); color: "#5a4424"; font.family: Theme.font; font.pixelSize: 30 * dash.k }
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter; spacing: 34 * dash.k
                 Row { spacing: 10 * dash.k
                     Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10 * dash.k; height: width; implicitWidth: 10 * dash.k; implicitHeight: 10 * dash.k; radius: width / 2; color: dash.d && dash.d.status.level !== "ok" ? "#6b5a2f" : "#2f6b47" }
-                    Text { text: dash.d ? dash.d.status.title : ""; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k } }
-                Text { text: dash.d ? dash.d.status.sub : ""; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k }
-                Text { text: dash.d ? dash.d.devices + (dash.d.devices === 1 ? " device" : " devices") : ""; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k }
+                    Text { text: dash.d ? dash.d.status.title : ""; color: "#5a4424"; font.family: Theme.font; font.pixelSize: 21 * dash.k } }
+                Text { text: dash.d ? dash.d.status.sub : ""; color: "#5a4424"; font.family: Theme.font; font.pixelSize: 21 * dash.k }
+                Text { text: dash.d ? dash.d.devices + (dash.d.devices === 1 ? " device" : " devices") : ""; color: "#5a4424"; font.family: Theme.font; font.pixelSize: 21 * dash.k }
                 Repeater { model: dash.d ? dash.d.facts.filter(f => f[1] !== "—").slice(0, 2) : []
-                    delegate: Text { required property var modelData; text: modelData[0] + " " + modelData[1]; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k } }
+                    delegate: Text { required property var modelData; text: modelData[0] + " " + modelData[1]; color: "#5a4424"; font.family: Theme.font; font.pixelSize: 21 * dash.k } }
+            }
+        }
+        // The AIs, faint (kind to OLED screens): they keep moving only while one is working.
+        Row {
+            visible: dash.screenState === "dim" && !!(dash.d && dash.d.cores && dash.d.cores.length)
+            anchors { bottom: parent.bottom; bottomMargin: 150 * dash.k; horizontalCenter: parent.horizontalCenter }
+            spacing: 70 * dash.k
+            opacity: 0.32
+            Repeater {
+                model: dash.d && dash.d.cores ? dash.d.cores : []
+                delegate: ServerCore { required property var modelData; kind: modelData.id; mode: modelData.state === "working" ? "working" : "ready"; size: 64 * dash.k }
             }
         }
         Text { visible: dash.screenState === "dim"; anchors { bottom: parent.bottom; bottomMargin: 56 * dash.k; horizontalCenter: parent.horizontalCenter }
-            text: (dash.d ? dash.d.host : "") + " · Server mode · press any button"; color: "#2b3138"; font.family: Theme.font; font.pixelSize: 16 * dash.k }
+            text: (dash.d ? dash.d.host : "") + " · Server mode · press any button"; color: "#3a2c18"; font.family: Theme.font; font.pixelSize: 16 * dash.k }
     }
 }

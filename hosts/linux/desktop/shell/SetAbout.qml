@@ -83,6 +83,15 @@ SetPage {
         }
     }
 
+    // Resource Monitor (ResourceMonitor.qml, docs/RESOURCE-MONITOR.md): this PC's parts drawn as they really are, live.
+    SetRow {
+        visible: page.inPart("about")
+        chevron: true
+        icon: "cpu"; title: "Resource Monitor"
+        sub: "See inside this PC: its board, every part and port, and what each program uses, live"
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "resmon", "open"])
+    }
+
     // ------------------------------------------------ Privacy: the player count (hearth-counter, sent by a systemd user
     // timer; the Hearth app sent it before). On unless turned off, as before.
     SetRow {

@@ -835,6 +835,40 @@ def dash():
                   'rows': [], 'actions': ['restart'] if rq.get('on') else []})
     # ---- Server apps (docs/SERVER-APPS.md): a pill while one is on (the eight tiles fill the screen), and in the summary
     sa = server_apps()
+    # ---- Voices (Kokoro, Voice Studio) and Server apps get tiles of their own (2.0 of Server mode: ten tiles)
+    voi = hsd.get('voices') or {}
+    voi_on = voi.get('on') is True
+    voi_active = unit_active('hearth-kokoro.service', True) if voi_on else False
+    voi_state = state_of('voices', voi_on, voi_active, 'kokoro' in sys_paused)
+    studio_active = unit_active('hearth-voice-studio.service', True)
+    tiles.insert(2, {'id': 'voices', 'title': 'Voices', 'engine': 'Kokoro' + (' · Voice Studio' if studio_active else ''), 'icon': 'wave',
+                     'state': voi_state if voi_on else ('running' if studio_active else 'off'),
+                     'chip': {'running': 'Running', 'stopped': 'Stopped', 'off': 'Off', 'paused': 'Paused for your game', 'paused-you': 'Paused'}[voi_state if voi_on else ('running' if studio_active else 'off')],
+                     'big': 'Ready' if voi_active or studio_active else 'Off', 'unit': 'for your devices' if voi_active or studio_active else '',
+                     'sub': '' if voi_on or studio_active else 'Turn it on in Settings › Home server › Services',
+                     'rows': [['While you play', 'Pauses' if pauses.get('voices') == 'pause' else 'Keeps running']],
+                     'actions': ['restart', 'pause'] if voi_on else []})
+    app_list = [a for a in (sa.get('apps') or []) if isinstance(a, dict)]
+    app_run = [a.get('name') or '' for a in app_list if a.get('state') == 'running']
+    tiles.append({'id': 'apps', 'title': 'Server apps', 'engine': ('%d on' % len(app_list)) if app_list else 'None added',
+                  'icon': 'grid', 'state': ('stopped' if sa.get('failed') else 'running') if sa.get('on') else 'off',
+                  'chip': 'Check' if sa.get('failed') else 'Running' if app_run else 'Off',
+                  'big': str(len(app_run)), 'unit': 'running' if app_run else 'apps running',
+                  'rows': [['Running', ', '.join(app_run[:3]) or 'none']], 'actions': []})
+    # ---- the AIs on this PC, drawn like their cores in the Hearth AI Command Center (same ids, same looks)
+    share_active = unit_active('hearth-ai-share.service', True)
+    cores = [
+        {'id': 'gpu', 'name': pretty_model(loaded[0]) if loaded else 'AI chat',
+         'state': 'off' if ai_state in ('off', 'stopped') else 'working' if asking and loaded else 'ready',
+         'status': ('%d asking' % asking if asking else 'ready') if ai_state == 'running' else {'off': 'off', 'stopped': 'stopped', 'paused': 'paused for your game', 'paused-you': 'paused'}.get(ai_state, ai_state)},
+        {'id': 'comfy', 'name': 'ComfyUI', 'state': 'working' if running_q else 'ready' if pic_state == 'running' else 'off',
+         'status': ('making 1 · %d waiting' % pending_q) if running_q else ('%d waiting' % pending_q if pending_q else 'ready') if pic_state == 'running' else pic_state.replace('-you', '')},
+        {'id': 'voice', 'name': 'Voices', 'state': 'ready' if voi_active or studio_active else 'off',
+         'status': ('Kokoro' + (' · Voice Studio' if studio_active else '')) if voi_active or studio_active else 'off'},
+        {'id': 'listen', 'name': 'Whisper', 'state': 'ready' if studio_active else 'off', 'status': 'in Voice Studio' if studio_active else 'off'},
+        {'id': 'hearth', 'name': 'AI sharing', 'state': 'ready' if share_active else 'off',
+         'status': ('shared with %d' % len(who)) if share_active and who else 'ready' if share_active else 'off'},
+    ]
     # ---- the pills: every service in a word
     smb = bool(shares)
     for name, extra, st in (('Shared folders', ', '.join(shares[:2]), 'running' if smb else 'off'),
@@ -877,6 +911,10 @@ def dash():
             'web': {'on': srv['web']['on'] is True, 'url': 'http://%s:%d' % (socket.gethostname().split('.')[0], PORT)},
             'idle': {'dim': srv['dim'], 'off': srv['off'], 'idlePower': srv['idlePower'] is True, 'idleMinutes': srv['idleMinutes'],
                      'wlopm': bool(shutil.which('wlopm'))},
+            'live': {'vram': round(((g or {}).get('memUsed') or 0) / 1024, 1), 'power': (g or {}).get('power'), 'rx': r['rx'], 'tx': r['tx'],
+                     'storage': round(100 * used / total) if total else None, 'cpu': r['cpu'], 'cpuTemp': ct,
+                     'gpuBusy': (g or {}).get('busy'), 'gpuTemp': (g or {}).get('temp'), 'online': online},
+            'cores': cores, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
             'countdown': countdown_view(), 'now': int(now)}
 
 
@@ -890,6 +928,65 @@ def server_apps():
     except ValueError:
         v = {}
     return v if isinstance(v, dict) and isinstance(v.get('apps'), list) else {}
+
+
+def pretty_model(name):
+    """qwen3:30b-a3b → Qwen3 30B (the name on the AI chat core)."""
+    base, _, tag = str(name or '').partition(':')
+    base = base.split('/')[-1]
+    size = tag.split('-')[0].upper() if tag else ''
+    return ((base[:1].upper() + base[1:]) + (' ' + size if size else '')).strip() or 'AI chat'
+
+
+MODE_WORDS = {'game': 'Game Mode', 'desktop': 'Desktop Mode', 'server': 'Server mode'}
+
+
+def next_change(sched, now=None):
+    """The schedule's next switch from now ({'at', 'mode', 'text'}), or None when it's off. Never changes anything."""
+    if not isinstance(sched, dict) or sched.get('on') is not True:
+        return None
+    t = time.localtime() if now is None else now
+    hm = '%02d:%02d' % (t.tm_hour, t.tm_min)
+    for add in range(0, 8):
+        day = time.localtime(time.mktime(t) + add * 86400)
+        try:
+            items = clean_changes(sched.get('weekend' if day.tm_wday >= 5 else 'weekday'))
+        except Fail:
+            return None
+        for it in items:
+            if add > 0 or it['at'] > hm:
+                h, m = (int(x) for x in it['at'].split(':'))
+                when = '%d:%02d %s' % ((h % 12) or 12, m, 'AM' if h < 12 else 'PM')
+                return {'at': it['at'], 'mode': it['mode'], 'day': add,
+                        'text': '%s at %s%s' % (MODE_WORDS.get(it['mode'], it['mode']), when, '' if add == 0 else ' tomorrow' if add == 1 else '')}
+    return None
+
+
+def web_qr(on):
+    """A QR code of the web page's address (an SVG in the runtime folder, made once by qrencode), or '' without it."""
+    if not on or not shutil.which('qrencode'):
+        return ''
+    url = 'http://%s:%d' % (socket.gethostname().split('.')[0], PORT)
+    d = os.path.join(RUN, 'hearth-server')
+    path = os.path.join(d, 'web-qr.svg')
+    mark = path + '.url'
+    if read(mark, 300).strip() == url and os.path.exists(path):
+        return path
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        code, o, _ = run(['qrencode', '-t', 'SVG', '-m', '1', '--foreground=FFE9C7', '--background=0C0702', '-o', '-', url], 6)
+        if code != 0 or '<svg' not in o:
+            return ''
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(o)
+        os.replace(tmp, path)
+        with open(mark + '.tmp', 'w', encoding='utf-8') as f:
+            f.write(url)
+        os.replace(mark + '.tmp', mark)
+        return path
+    except OSError:
+        return ''
 
 
 def speed(bps):
@@ -1454,6 +1551,9 @@ def make_handler():
                 return self.send(200, summary())
             if path == '/api/status':
                 if not self.authed():
+                    if self.token():
+                        # For Send logs: a sign-in the PC doesn't know (expired, PIN changed, or the browser sent an old one).
+                        print('hearth-server-mode: web page: %s sent a sign-in this PC doesn\'t know' % peer_name(self.ip()), file=sys.stderr, flush=True)
                     return self.send(401, {'error': 'Type the PIN' if secret_read().get('pin') else NO_PIN, 'pin': bool(secret_read().get('pin'))})
                 d = summary()
                 s = peek()
@@ -1485,6 +1585,7 @@ def make_handler():
                     return self.send(400, {'error': pin_problem(typed)})      # not a PIN at all: not counted as a wrong one
                 if not pin_check(typed, h):
                     failed(ip)
+                    print('hearth-server-mode: web page: a wrong PIN from %s' % peer_name(ip), file=sys.stderr, flush=True)
                     return self.send(401, {'error': 'That PIN isn\'t right. It\'s the one set on the PC in Settings › Home server › Server mode (change it there if you\'ve forgotten it)'})
                 name = peer_name(ip)
                 try:
@@ -1492,6 +1593,7 @@ def make_handler():
                 except Fail as e:
                     return self.send(500, {'error': str(e).replace('save the PIN', 'remember this device')})
                 event_add('%s opened the web page' % name)
+                print('hearth-server-mode: web page: %s signed in with the PIN' % name, file=sys.stderr, flush=True)
                 return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hs=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (tok, SESSION_DAYS * 86400))])
             if not self.authed():
                 return self.send(401, {'error': 'Signed out (30 days passed, or the PIN was changed): type the PIN again', 'pin': bool(secret_read().get('pin'))})

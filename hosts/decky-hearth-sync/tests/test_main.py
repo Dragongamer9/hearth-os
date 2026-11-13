@@ -424,6 +424,99 @@ class Backend(unittest.TestCase):
         self.assertTrue(any('compatibility tool' in str(l) for l in LOG))
         self.assertEqual(self.m.forced_compat(mine, home_dir=os.path.join(self.tmp, 'nobody')), [])
 
+    # ---- Quick Access › Resources (docs/RESOURCE-MONITOR.md)
+    def test_resources_sample_from_resource_monitors_helper(self):
+        os.environ['HEARTH_RESMON'] = str(HERE.parents[1] / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-resmon')
+        try:
+            r = run(self.m.Plugin().resources_sample())
+            self.assertIsInstance(r, dict)
+            for k in ('gpu', 'cpu', 'mem', 'net', 'game', 'others'):
+                self.assertIn(k, r)
+            self.assertIsNotNone(r['mem']['total'])
+            r2 = run(self.m.Plugin().resources_sample())   # the same sampler, kept while the panel asks
+            self.assertIs(self.m._RES['sampler'], self.m._RES['sampler'])
+            self.assertIsInstance(r2['cpu']['busy'], (int, float))
+        finally:
+            os.environ.pop('HEARTH_RESMON', None)
+
+    def test_resources_without_the_helper_shows_nothing(self):
+        os.environ['HEARTH_RESMON'] = os.path.join(self.tmp, 'missing')
+        try:
+            self.assertIsNone(run(self.m.Plugin().resources_sample()))
+            self.assertIsNone(run(self.m.Plugin().resources_pause('on')))
+        finally:
+            os.environ.pop('HEARTH_RESMON', None)
+
+    def test_resources_pause_only_known_actions(self):
+        calls = []
+        self.m._resmon_run = lambda args, timeout=10: calls.append(args) or {'backups': {}, 'needsOption': False}
+        self.assertIsNone(run(self.m.Plugin().resources_pause('rm -rf')))
+        self.assertIsNone(run(self.m.Plugin().resources_pause('status; reboot')))
+        self.assertEqual(calls, [])
+        for a in ('status', 'on', 'off', 'light-on'):
+            run(self.m.Plugin().resources_pause(a))
+        self.assertEqual(calls, [['pause', 'status'], ['pause', 'on'], ['pause', 'off'], ['pause', 'light-on']])
+
+
+
+class GameMode(unittest.TestCase):
+    """Which Game Mode (docs/HEARTH-GAME-MODE.md): the plugin only asks Hearth OS's helper and passes on one of two names."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-sync-gm-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+        self.helper = os.path.join(self.tmp, 'hearth-game-mode')
+        open(self.helper, 'w').close()
+        self.m.GAME_MODE_HELPERS = (self.helper,)
+        self.calls = []
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake(self, out):
+        def run(cmd, **kw):
+            self.calls.append(cmd)
+            return types.SimpleNamespace(stdout=out, returncode=0)
+        return run
+
+    def test_get_and_set_go_through_the_helper(self):
+        r = self.m.game_mode_call(['get'], run=self.fake('{"choice": "steam", "saved": false}\n'))
+        self.assertEqual(r['choice'], 'steam')
+        self.assertEqual(self.calls[-1], ['python3', self.helper, 'get'])
+        r = self.m.game_mode_set('hearth', run=self.fake('{"choice": "hearth", "saved": true}\n'))
+        self.assertEqual(r['choice'], 'hearth')
+        self.assertEqual(self.calls[-1], ['python3', self.helper, 'set', 'hearth'])
+
+    def test_only_the_two_names_are_passed_on(self):
+        for bad in ('desktop', 'Hearth', '', 'hearth; rm -rf ~'):
+            self.assertIn('error', self.m.game_mode_set(bad, run=self.fake('{}')))
+        self.assertEqual(self.calls, [], 'the helper is never even asked')
+
+    def test_errors_come_back_in_plain_words(self):
+        self.assertEqual(self.m.game_mode_call(['set', 'x'], run=self.fake('error: steam or hearth\n')), {'error': 'steam or hearth'})
+        self.assertIn('error', self.m.game_mode_call(['get'], run=self.fake('')))
+        self.m.GAME_MODE_HELPERS = (os.path.join(self.tmp, 'nope'),)
+        self.assertIn('update Hearth OS', self.m.game_mode_call(['get'], run=self.fake('{}'))['error'])
+
+    def test_the_one_game_mode_comes_through(self):
+        r = self.m.game_mode_call(['get'], run=self.fake('{"choice": "hearth", "steamGame": "570"}\n'))
+        self.assertEqual(r['steamGame'], '570')
+
+    def test_switch_only_to_a_game_mode(self):
+        seen = []
+        prog = os.path.join(self.tmp, 'nimbus-mode')
+        with open(prog, 'w') as f:
+            f.write('#!/bin/sh\n')
+        os.chmod(prog, 0o755)
+        self.m.find_program = lambda name: prog if name == 'nimbus-mode' else None
+        popen = lambda cmd, **kw: seen.append(cmd)
+        self.assertTrue(self.m.game_mode_switch('hearth', popen=popen))
+        self.assertTrue(self.m.game_mode_switch('game', popen=popen))
+        self.assertFalse(self.m.game_mode_switch('desktop', popen=popen))
+        self.assertFalse(self.m.game_mode_switch('logout', popen=popen))
+        self.assertEqual(seen, [[prog, 'hearth'], [prog, 'game']])
+
 
 if __name__ == '__main__':
     unittest.main()

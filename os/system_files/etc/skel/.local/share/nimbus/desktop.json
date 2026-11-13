@@ -1,3 +1,4 @@
 {
-  "defaults": 2
+  "defaults": 2,
+  "clipboardHistory": false
 }

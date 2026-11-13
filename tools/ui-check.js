@@ -843,7 +843,25 @@ const path = require('path');
       if (overlay && !document.querySelector('#qam [data-act="gamePowerForget"]')) throw new Error('no way back to the usual power settings');
     }, overlay);
   }
-  // Hearth for Android (archive/hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
+  // Quick Access › Resources (docs/RESOURCE-MONITOR.md), the classic side panel as Hearth OS: the four meters with
+  // temperatures, also running, and the pause button that changes no setting (the preview's stand-in numbers).
+  await page.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+  await page.waitForTimeout(1200);
+  await step('resources', async () => {
+    if (!QTABS.some(q => q[0] === 'res')) throw new Error('Quick Access has no Resources tab on Hearth OS');
+    if (QTABS.findIndex(q => q[0] === 'res') !== QTABS.findIndex(q => q[0] === 'perf') + 1) throw new Error('Resources isn\'t right after Performance');
+    closeAll(); LOOK.qaStyle = 'side'; openLayer('qam'); S.qtab = 'res'; renderQam(); startRes();
+    await new Promise(r => setTimeout(r, 1500));
+    const q = document.querySelector('#qam .qbody'), t = q.textContent;
+    for (const w of ['Resources', 'Graphics', 'Processor', 'Memory', 'Network', 'ALSO RUNNING', 'Pause downloads and backups while I play', 'No setting changes'])
+      if (!t.includes(w)) throw new Error(`Resources doesn't show "${w}"`);
+    if (!q.querySelector('[data-k="res-pause"][data-act="resPause"]')) throw new Error('no pause button');
+    await resPause();
+    if (!document.querySelector('#qam .qbody').textContent.includes('Resume downloads and backups')) throw new Error('the pause button did not turn into Resume');
+    await resPause();
+    closeAll(); delete LOOK.qaStyle;
+  });
+  // Hearth for Android (hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
   // answering like Bridge.kt): only the Settings pages Android has, its own rows there, no Downloads, the Android
   // library tab, the Android power menu and "Add an app".
   const androidSteps = [];
@@ -2052,12 +2070,15 @@ const path = require('path');
         const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
         out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
         act(document.querySelector('#view [data-k="lk-n0"]')); await wait(200);
+        // First: My device or a friend's device (family.rs).
+        out.whose = sheet && sheet.items ? sheet.items.map(i => i.label).join('|') : null; sheetPick(0); await wait(200);
         out.prompt1 = prompt && prompt.title; out.mode = prompt && prompt.mode;
         prompt.text = '482914'; promptSubmit(); await wait(400);
         out.prompt2 = prompt && prompt.title;
         if (prompt) { prompt.text = '482 913'; promptSubmit(); }
         await wait(400);
         out.joined = calls.filter(c => c[0] === 'link.pair.join').map(c => c[1].code + '@' + c[1].id.slice(0, 2));
+        out.mines = calls.filter(c => c[0] === 'link.pair.join').map(c => c[1].mine).join(',');
         out.done = /Paired ✓ with Nvidia-PC/.test(v());
         // The internet code showing here.
         st.pairing.netCode = '234-567-89A9'; st.pairing.netUntil = Date.now() + 590000; st.pairEvent = null;
@@ -2066,6 +2087,8 @@ const path = require('path');
         // Short codes: the page's check is the service's.
         out.fmt = lkShortFmt('k7m4q'); out.ok = lkShortCheck('234-567-89a9'); out.typo = lkShortCheck('234-567-89AA'); out.amb = lkShortCheck('234-567-89A0'); out.short = lkShortCheck('234-567');
         act(document.querySelector('#view [data-k="lk-entercode"]')); await wait(200);
+        sheetPick(1); await wait(200);
+        out.friendJoin = LK.joinMine === false;
         for (const ch of '23456789a9') promptKey(ch);
         out.typed = prompt && prompt.text; out.typedTitle = prompt && prompt.title;
         promptKey('bksp'); promptKey('b');
@@ -2073,7 +2096,8 @@ const path = require('path');
         closeAll();
         return out;
       });
-      const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair' };
+      const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair',
+                     whose: "My device|A friend's device", mines: 'true,true', friendJoin: true };
       for (const k of Object.keys(want)) if (r[k] !== want[k]) lerr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
       if (r.dupKeys.length) lerr('two rows with the same key: ' + r.dupKeys.join(', '));
       if (!/The 6-digit code Nvidia-PC shows/.test(r.prompt1 || '')) lerr('picking a device asked: ' + r.prompt1);
@@ -2081,7 +2105,7 @@ const path = require('path');
       if (r.joined.join(' ') !== '482914@bb 482913@bb') lerr('codes sent: ' + r.joined.join(' '));
       if (!/one of the characters is off/.test(r.typo) || !/never have 0/.test(r.amb) || !/10 characters/.test(r.short)) lerr('short code checks: ' + JSON.stringify([r.typo, r.amb, r.short]));
       if (!/doesn't look right/.test(r.typoTitle || '')) lerr('a typo while typing: ' + r.typoTitle);
-      if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, number pad, wrong code asked again, short codes checked and formatted ok');
+      if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, My device or a friend\'s device, number pad, wrong code asked again, short codes checked and formatted ok');
     } catch (e) { lerr(e.message.split('\n')[0]); }
     await lp.close();
   }
@@ -2401,6 +2425,37 @@ const path = require('path');
       await dp.waitForTimeout(300); await dshot('settings-front');
       await dev(() => { S.settingsTab = 'display'; navigate('settings', {}, false); });
       await dp.waitForTimeout(300); await dshot('settings-display');
+      // Settings › System › Game Mode (docs/HEARTH-GAME-MODE.md): Steam Game Mode or Hearth Game Mode as two picture cards,
+      // moved through with the controller; picking one saves it (gameMode.set) and offers to switch now; Hearth Game
+      // Mode's last fallback shows with Try again.
+      st = await dev(async () => {
+        const was = HOSTINFO.features; HOSTINFO.features = [...(HOSTINFO.features || []), 'gameModeChoice'];
+        GMC.s = { choice: 'hearth', saved: true, default: 'steam', hearth: { ok: true, why: '' }, steam: { ok: true, why: '' }, now: 'game', fallback: '', paused: '', live: false };
+        closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false);
+        const steam = document.querySelector('#view [data-k="sy-gm-steam"]'), hearth = document.querySelector('#view [data-k="sy-gm-hearth"]');
+        const r = { steam: !!steam, hearth: !!hearth, on: hearth && hearth.classList.contains('on'), steamOn: steam && steam.classList.contains('on'), pics: document.querySelectorAll('#view .gm-cards .lprev').length };
+        if (hearth) { setFocus(hearth, true); hearth.scrollIntoView({ block: 'center' }); }
+        r.moved = (() => { if (!hearth) return null; input('left'); const k = focused && focused.dataset.k; input('right'); return k; })();
+        // A fallback this sign-in: the reason and Try again.
+        GMC.s = Object.assign({}, GMC.s, { fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)" });
+        const h = pageSystem(); r.retry = /data-k="sy-gm-retry"/.test(h) && /Your choice is still Hearth Game Mode/.test(h);
+        // "Play Steam games in Steam Game Mode": on by default (no key saved), shown with Hearth Game Mode picked.
+        r.sgRow = /data-k="sy-gm-steamgames"/.test(h) && /Play Steam games in Steam Game Mode<\/b><small>Play on a Steam game opens it in Steam Game Mode/.test(h);
+        r.notEpic = !steamInSteamMode({ id: 'epic:x', src: 'epic' });
+        GMC.s = Object.assign({}, GMC.s, { fallback: '' });
+        r.wasFeat = was; return r; });
+      if (!st.steam || !st.hearth || st.pics !== 2) derr('Settings › System has no Game Mode cards: ' + JSON.stringify(st));
+      if (!st.on || st.steamOn) derr('the Game Mode cards do not show Hearth Game Mode in use: ' + JSON.stringify(st));
+      if (st.moved !== 'sy-gm-steam') derr('Left on the Hearth Game Mode card did not move to Steam Game Mode: ' + st.moved);
+      if (!st.retry) derr("Hearth Game Mode's fallback is not shown with Try again");
+      if (!st.sgRow) derr('Play Steam games in Steam Game Mode is missing, or not on by default');
+      if (!st.notEpic) derr('a non-Steam game would open in Steam Game Mode');
+      await dev(() => { closeAll(); S.settingsTab = 'system'; navigate('settings', {}, false); });
+      // (After the page has settled: it puts the selection on its first row by itself.)
+      await dp.waitForTimeout(700);
+      await dev(() => { const c = document.querySelector('#view [data-k="sy-gm-hearth"]'); if (c) { setFocus(c, true); c.scrollIntoView({ block: 'center' }); } });
+      await dp.waitForTimeout(500); await dshot('settings-gamemode');
+      await dev(() => { HOSTINFO.features = (HOSTINFO.features || []).filter(f => f !== 'gameModeChoice'); closeAll(); });
       // Go back to the previous version (Hearth OS images, Peppermint too since it keeps bootc (hearth-unlock); never
       // with an update waiting).
       st = await dev(() => { const was = [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s]; HOSTINFO.system = true; HOSTINFO.edition = 'anatase';
@@ -2571,6 +2626,43 @@ const path = require('path');
       });
       for (const e of r) errors.push('steam game mode default: ' + e);
     } catch (e) { errors.push('steam game mode default: ' + e.message.split('\n')[0]); }
+    await sp.close();
+  }
+
+  // First-time setup (bug hunt): the stores step shows the stores once they're read (it said "Loading…" until something
+  // else redrew it), says why with Try again when they can't be read, and B goes to the step before (it did nothing).
+  // Quick Access's top dock moves from the selected tab. A long name doesn't push the clock onto two lines.
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    sp.on('pageerror', e => errors.push('first-time setup: ' + e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(800);
+      const r = await sp.evaluate(async () => {
+        const out = [], w = ms => new Promise(res => setTimeout(res, ms)), txt = () => document.querySelector('#view').innerText;
+        const orig = MOCK.call.bind(MOCK);
+        ACC.list = null; closeAll(); S.history = []; navigate('home', {}, false); S.setupStep = SETUP_STEPS.indexOf('accounts') - 1; navigate('setup'); setupGo(1); await w(1200);
+        if (/Loading…/.test(txt()) || !document.querySelector('#view [data-act="accSignIn"]')) out.push('the stores step still says Loading… after the stores were read');
+        const st = S.setupStep; back();
+        if (S.setupStep !== st - 1 || S.view !== 'setup') out.push(`B didn't go to the step before (${st} -> ${S.setupStep}, ${S.view})`);
+        { const was = S.setupStep; S.setupStep = 0; render(null, true); back(); if (S.view !== 'setup') out.push('B on the first step left setup for ' + S.view); S.setupStep = was; navigate('setup', {}, false); }
+        MOCK.call = (m, a) => m === 'accounts.status' ? Promise.reject(new Error('Hearth core is not running')) : orig(m, a);
+        ACC.list = null; setupGo(1); await w(600);
+        if (!/Couldn't read your game stores: Hearth core is not running/.test(txt()) || !document.querySelector('#view [data-k="acc-retry"]')) out.push('no reason and Try again when the stores can\'t be read: ' + txt().slice(0, 200));
+        MOCK.call = orig; act(document.querySelector('#view [data-k="acc-retry"]')); await w(1000);
+        if (!document.querySelector('#view [data-act="accSignIn"]')) out.push('Try again did not bring the stores');
+        closeAll(); S.history = []; navigate('home', {}, false); LOOK.qamStyle = 'top'; openLayer('qam'); await w(300);
+        const T = qdTabs().map(t => t[0]);
+        if (T.length >= 3 && $('#qam.top')) {
+          S.qtab = T[T.length - 1]; renderQam(); setFocus($(`#qam [data-k="qt-${T[1]}"]`), true); moveNow('left');
+          if (focused.dataset.k !== 'qt-' + T[0]) out.push(`Quick Access: left from ${T[1]} went to ${focused.dataset.k}`);
+        }
+        closeAll(); GAMES[0].title = 'The Elder Scrolls V: Skyrim Special Edition Anniversary Upgrade with every Creation Club item'; navigate('game', { game: GAMES[0].id }, false); await w(300);
+        const c = $('#clock').getBoundingClientRect(); if (c.height > 30) out.push(`the clock wraps next to a long title (${Math.round(c.height)}px tall)`);
+        return out;
+      });
+      for (const e of r) errors.push('first-time setup: ' + e);
+    } catch (e) { errors.push('first-time setup: ' + e.message.split('\n')[0]); }
     await sp.close();
   }
 

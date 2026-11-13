@@ -96,6 +96,21 @@ pub fn signin_outcome(url: &str, done: fn(&str) -> Option<String>) -> Option<Opt
 
 struct SignInWait { done: fn(&str) -> Option<String>, tx: Sender<Option<String>> }
 
+/// Sign-ins come one at a time, but a second one can start while the first window is still open (Sign in pressed
+/// again, or another store's from a windowed Hearth). The newer one takes over: the older one is answered "closed",
+/// and when its thread wakes up it must leave the window alone and not bring Hearth back in front, since both now
+/// belong to the newer sign-in. (It used to close the newer sign-in's window, and put Hearth over it.)
+pub struct SignInTurns(AtomicU64);
+impl SignInTurns {
+    pub const fn new() -> SignInTurns { SignInTurns(AtomicU64::new(0)) }
+    /// A new sign-in's turn.
+    pub fn take(&self) -> u64 { self.0.fetch_add(1, Ordering::SeqCst) + 1 }
+    /// Whether `turn` is still the newest sign-in (it may close its window and bring Hearth back).
+    pub fn is_current(&self, turn: u64) -> bool { self.current() == turn }
+    /// The newest sign-in's turn (0: none yet).
+    pub fn current(&self) -> u64 { self.0.load(Ordering::SeqCst) }
+}
+
 /// The Electron window app's side, reached through this process's standard output (answers come in through
 /// `IpcHost::incoming`, fed from standard input by core_ipc.rs).
 pub struct IpcHost {
@@ -104,13 +119,14 @@ pub struct IpcHost {
     next: AtomicU64,
     asks: Mutex<HashMap<u64, Sender<Value>>>,
     signin: Mutex<Option<SignInWait>>,
+    signin_turns: SignInTurns,
     hotkey: Mutex<Option<Hotkey>>,
 }
 
 impl IpcHost {
     pub fn new(out: Box<dyn Write + Send>) -> IpcHost {
         IpcHost { out: Mutex::new(out), wins: Mutex::new(HashMap::new()), next: AtomicU64::new(1), asks: Mutex::new(HashMap::new()),
-                  signin: Mutex::new(None), hotkey: Mutex::new(None) }
+                  signin: Mutex::new(None), signin_turns: SignInTurns::new(), hotkey: Mutex::new(None) }
     }
     pub fn send(&self, v: Value) {
         if let Ok(mut o) = self.out.lock() { let _ = o.write_all(line(&v).as_bytes()); let _ = o.flush(); }
@@ -190,7 +206,13 @@ impl WindowHost for IpcHost {
     }
     fn sign_in(&self, page: &hearth_core::stores::SignIn) -> Option<String> {
         let (tx, rx) = channel();
-        { let mut s = self.signin.lock().unwrap(); if let Some(old) = s.take() { let _ = old.tx.send(None); } *s = Some(SignInWait { done: page.done, tx }); }
+        let turn;
+        {
+            let mut s = self.signin.lock().unwrap();
+            turn = self.signin_turns.take();
+            if let Some(old) = s.take() { let _ = old.tx.send(None); }
+            *s = Some(SignInWait { done: page.done, tx });
+        }
         let pad = crate::signin_pad_wanted();
         // The store's own browser profile (shared with Game Mode › Store's store window): one sign-in covers both.
         let profile = hearth_core::storefront::web_profile(page.store, "chromium");
@@ -198,6 +220,8 @@ impl WindowHost for IpcHost {
                          "pad": pad, "fullscreen": crate::in_session() && !hearth_core::signin_handoff::windowed(), "profile": profile}));
         if let Some(gm) = crate::GM.get() { gm.to_front(page.title); }
         let answer = rx.recv().ok().flatten();
+        // A newer sign-in took over: its window and its place in front are its own.
+        if !self.signin_turns.is_current(turn) { return answer; }
         self.send(json!({"t": "do", "op": "signin.close"}));
         if let Some(gm) = crate::GM.get() { gm.come_back(); }
         answer
@@ -284,6 +308,32 @@ mod tests {
         assert_eq!((ask["t"].as_str(), ask["op"].as_str()), (Some("ask"), Some("pickFile")));
         h.incoming(&json!({"t": "answer", "id": ask["id"], "value": "/home/me/setup.exe"}));
         assert_eq!(t.join().unwrap().as_deref(), Some("/home/me/setup.exe"));
+    }
+
+    #[test]
+    fn a_newer_sign_in_keeps_its_window() {
+        fn done(u: &str) -> Option<String> { u.strip_prefix("https://example.com/ok?c=").map(str::to_string) }
+        let page = || hearth_core::stores::SignIn { store: "gog", title: "GOG", url: "https://example.com/login".into(), done, script: None };
+        let b = Buf::default();
+        let h = Arc::new(IpcHost::new(Box::new(b.clone())));
+        let opens = |b: &Buf| lines(b).iter().filter(|l| l["op"] == "signin.open").count();
+        let wait = |n: usize| for _ in 0..200 { if opens(&b) >= n { break; } std::thread::sleep(std::time::Duration::from_millis(10)); };
+        let h1 = h.clone();
+        let first = std::thread::spawn(move || h1.sign_in(&page()));
+        wait(1);
+        let h2 = h.clone();
+        let second = std::thread::spawn(move || h2.sign_in(&page()));
+        wait(2);
+        // The first is answered "closed" and leaves the second's window open.
+        assert_eq!(first.join().unwrap(), None);
+        assert!(!lines(&b).iter().any(|l| l["op"] == "signin.close"), "{:?}", lines(&b));
+        // The second still gets its code, then closes its own window.
+        assert!(h.incoming(&json!({"t": "signin.nav", "url": "https://example.com/ok?c=abc"})));
+        assert_eq!(second.join().unwrap().as_deref(), Some("abc"));
+        assert_eq!(lines(&b).iter().filter(|l| l["op"] == "signin.close").count(), 1);
+        let t = SignInTurns::new();
+        let (a, c) = (t.take(), t.take());
+        assert!(!t.is_current(a) && t.is_current(c));
     }
 
     #[test]

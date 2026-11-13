@@ -64,8 +64,9 @@ Singleton {
                     else {
                         try { res = JSON.parse(last); } catch (e) { err = "Something went wrong"; }
                     }
-                    if (proc.cb) proc.cb(res, err);
-                    proc.destroy();
+                    // Always destroyed, even when the callback throws (a window that closed meanwhile): a
+                    // leftover Process per call was part of the shell slowly growing over a day (1.11).
+                    try { if (proc.cb) proc.cb(res, err); } finally { proc.destroy(); }
                 }
             }
         }
@@ -89,6 +90,14 @@ Singleton {
         recent = Array.isArray(r.recent) ? r.recent : [];
     }
 
+    // A change that couldn't be saved says so and shows what's really saved again: it used to keep showing your
+    // choice while desk.json kept the old one, which came back by itself at the next sign-in.
+    function failedOr(r, err) {
+        if (!err) { apply(r); return; }
+        SettingsNav.toast("Couldn't save that: " + err);
+        file.reload();
+    }
+
     // ------------------------------------------------ taskbar pins
     function isPinned(id) { return !!id && pins.indexOf(id) >= 0; }
     function pin(id) {
@@ -98,7 +107,7 @@ Singleton {
     }
     function unpin(id) {
         pins = pins.filter(p => p !== id);
-        call(["unpin", id], (r, err) => { if (!err) apply(r); });
+        call(["unpin", id], (r, err) => failedOr(r, err));
     }
     function togglePin(id) { isPinned(id) ? unpin(id) : pin(id); }
     function reorderPins(order) {
@@ -109,7 +118,7 @@ Singleton {
     // ------------------------------------------------ switches
     function setDnd(on) {
         dnd = on;
-        call(["set", "dnd", on ? "on" : "off"], (r, err) => { if (!err) apply(r); });
+        call(["set", "dnd", on ? "on" : "off"], (r, err) => failedOr(r, err));
     }
     function noteLaunch(id) {
         if (!id) return;
@@ -118,7 +127,7 @@ Singleton {
     }
     function setAutoArrange(on) {
         autoArrange = on;
-        call(["set", "autoArrange", on ? "on" : "off"], (r, err) => { if (!err) apply(r); });
+        call(["set", "autoArrange", on ? "on" : "off"], (r, err) => failedOr(r, err));
     }
     // Notifications from an app: muted ones go to the history without popping up.
     function isMuted(app) { return !!app && muted.indexOf(app) >= 0; }
@@ -129,7 +138,7 @@ Singleton {
     }
     function setDesktopIcons(on) {
         desktopIcons = on;
-        call(["set", "desktopIcons", on ? "on" : "off"], (r, err) => { if (!err) apply(r); });
+        call(["set", "desktopIcons", on ? "on" : "off"], (r, err) => failedOr(r, err));
     }
 
     // ------------------------------------------------ notification history

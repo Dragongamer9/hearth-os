@@ -48,6 +48,7 @@
 pub mod ai;
 pub mod decky;
 pub mod discovery;
+pub mod family;
 pub mod fleet;
 pub mod handoff;
 pub mod games;

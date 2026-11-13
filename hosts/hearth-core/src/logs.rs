@@ -303,6 +303,9 @@ pub fn report(version: &str) -> String {
     // Decky plugin updates (hearth-decky plugins-*, docs/PLUGIN-UPDATES.md): installed versions, built-in or downloaded,
     // the last check, the last error and any plugin that was put back because it didn't load.
     section("Decky plugin updates", decky_plugin_updates());
+    // Which Game Mode you picked (Steam's or Hearth's, docs/HEARTH-GAME-MODE.md) and, when Hearth Game Mode didn't start
+    // this sign-in, why (the session opened Steam Game Mode or Mantel instead) and whether it's paused.
+    section("Game Mode choice", crate::game_mode_choice::report());
     // bootc status needs root ("This command must be executed as the root user" in every report) and Hearth OS on
     // Debian has no rpm-ostree ("rpm-ostree: not found"): as you, ostree's own status (read-only, no root needed);
     // bootc only when the report runs as root, rpm-ostree only where it's installed.
@@ -440,11 +443,11 @@ pub fn report(version: &str) -> String {
             .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p))).collect();
         protons.sort();
         if let Some((_, p)) = protons.last() {
-            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- Proton's log of the last modded start ({})\n{}\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&tail(&t, 300), 60_000))); }
+            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- Proton's log of the last modded start ({}; its errors and what it loaded, without trace and fixme lines)\n{}\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&proton_summary(&t), 60_000))); }
         }
         if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
     }
-    // Games Hearth started with Proton (GOG, Epic…): umu's and Proton's output of the newest starts (stores.rs launch_log).
+    // Games Hearth started with Proton (GOG, Epic…): hearth-proton-run's and Proton's output of the newest starts (stores.rs launch_log).
     {
         let d = data.join("launch-logs");
         let mut logs: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path())
@@ -518,6 +521,8 @@ pub fn report(version: &str) -> String {
     // driver that didn't make the HDMI 2.1 fast link (FRL), or a mode Hearth chose.
     section("Screen: modes and what it says it can do (EDID)", sh(&format!("{{ {SCREEN_SH} }}")));
     section("Graphics driver and the screen link", sh(&format!("{{ {DRIVER_SH} }}")));
+    // 1.11: the desktop shell's own memory and CPU every 10 minutes (hearth-shell-health), to catch a slow leak.
+    section("Desktop shell health (memory and CPU over time)", sh("tail -n 80 \"${XDG_STATE_HOME:-$HOME/.local/state}/hearth/shell-health.log\" 2>/dev/null || echo 'no samples yet'"));
     section("Sound (PipeWire)", sh("echo \"RealtimeKit (sound priority): $(busctl --system status org.freedesktop.RealtimeKit1 >/dev/null 2>&1 && echo running || echo missing)\"; \
         echo; pactl info 2>&1 | grep -E 'Server Name|Default Sink|Default Sample'; echo; pw-metadata -n settings 0 2>&1 | grep -E 'clock' ; \
         echo; echo '--- outputs'; pactl list short sinks 2>&1; echo; echo '--- what is playing'; pactl list short sink-inputs 2>&1; \
@@ -717,5 +722,33 @@ mod tests {
         let out = fit(&text, 100_000);
         assert!(out.len() <= 100_000 + 200, "{}", out.len());
         assert!(out.contains("newest hearth line") && out.contains("===== System journal: errors") && out.contains("===== Your session's journal"));
+    }
+}
+
+/// Proton's log for Send logs: its first lines (the command, Proton's version) and then the last 300 lines without
+/// trace and fixme lines. With only its tail kept, a modded Skyrim's log was hundreds of "trace:unwind" lines and
+/// none of the errors that said why the game stopped (Nvidia PC, Tuxborn, 1.6).
+pub fn proton_summary(t: &str) -> String {
+    let noise = |l: &str| l.contains(":trace:") || l.contains("fixme:") || l.contains(":fixme:");
+    let head: Vec<&str> = t.lines().filter(|l| !noise(l)).take(40).collect();
+    let rest: Vec<&str> = t.lines().filter(|l| !noise(l)).skip(40).collect();
+    let tail_n = rest.len().saturating_sub(300);
+    let mut out = head.join("\n");
+    if tail_n > 0 { out.push_str(&format!("\n[… {tail_n} lines left out …]")); }
+    if !rest.is_empty() { out.push('\n'); out.push_str(&rest[tail_n..].join("\n")); }
+    out
+}
+
+#[cfg(test)]
+mod proton_summary_tests {
+    #[test]
+    fn errors_stay_noise_goes() {
+        let mut t = String::from("Proton: skse64_loader.exe\n");
+        for i in 0..2000 { t.push_str(&format!("54479.914:0128:012c:trace:unwind:RtlGrowFunctionTable 00000000039A1FB0, {i}\n")); }
+        t.push_str("0128:fixme:ntdll:NtQuerySystemInformation info_class\n");
+        t.push_str("0130:err:module:import_dll Library steam_api64.dll not found\n");
+        let s = super::proton_summary(&t);
+        assert!(s.contains("Proton: skse64_loader.exe") && s.contains("err:module:import_dll"), "{s}");
+        assert!(!s.contains("trace:unwind") && !s.contains("fixme:"), "{s}");
     }
 }

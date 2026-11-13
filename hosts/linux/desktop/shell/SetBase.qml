@@ -12,6 +12,9 @@ Rectangle {
     signal activated()
     signal adjusted(int step)          // Left/Right on sliders and choices
     property bool usesLeftRight: false
+    // Esc (B) handled by the control itself (an open dropdown's options close it) instead of going back a level.
+    property bool ownsEscape: false
+    signal escaped()
 
     activeFocusOnTab: interactive
     radius: inset ? 0 : SetStyle.radius
@@ -60,7 +63,7 @@ Rectangle {
         case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: base.activated(); break;
         case Qt.Key_Right: if (base.usesLeftRight) base.adjusted(1); else return; break;
         case Qt.Key_Left: if (base.usesLeftRight) base.adjusted(-1); else SettingsNav.toNav(); break;
-        case Qt.Key_Escape: SettingsNav.back(); break;
+        case Qt.Key_Escape: if (base.ownsEscape) base.escaped(); else SettingsNav.back(); break;
         default: return;
         }
         e.accepted = true;

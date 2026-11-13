@@ -33,7 +33,7 @@ and **Settings**; on a game's page it also has the games' covers, to switch game
   a game with an organizer instance through the organizer (the mods laid over it while it runs); a game on Hearth
   Mods' own list through its script extender when it's in the game folder (`skse64_loader.exe` for Skyrim SE: Steam's
   own Play only ever starts `SkyrimSELauncher.exe`), else through Hearth (`nimbus --play-now`). Windows programs run
-  with umu-launcher (the system's, else Hearth's own copy from hearth-core `tools.rs`) in the game's Steam prefix, with
+  with hearth-proton-run (offline, the built-in GE-Proton unless picked otherwise; docs/OFFLINE-PROTON.md; umu-launcher only where it isn't installed) in the game's Steam prefix, with
   the Proton the prefix was made with (`compatdata/<app>/version`: the same Steam Proton or GE-Proton; Proton -
   Experimental for a Valve-made one without a match), `SteamAppId` and Steam's folder so a Steam DRM game finds the
   running Steam client. A prefix of Hearth's own (a Wabbajack list's) keeps the Proton Hearth noted in it
@@ -170,9 +170,9 @@ folder, and opens the next page by itself. A wrong file stays where it is, with 
 With a controller: A opens the page again, X "I have it: choose the file…" (checked the same way), Y skips for now
 (skipped files come back at the end), B stops. When all are there the install carries on by itself.
 - Afterwards: `ModOrganizer.ini`'s `gamePath` and `download_directory` as Wine `Z:` paths (backup next to it), the
-  list's own prefix in `prefixes/wabbajack-<id>` with the Windows parts these lists need (`umu-run winetricks` with
-  Hearth's umu and the Proton every later start uses, the same sets Jackify uses), and a library entry that starts
-  `ModOrganizer.exe` with umu by its full path (`GAMEID=umu-<steam app>`).
+  list's own prefix in `prefixes/wabbajack-<id>` with the Windows parts these lists need (`hearth-proton-run winetricks` with
+  GE-Proton's own winetricks and the Proton every later start uses, the same sets Jackify uses), and a library entry that starts
+  `ModOrganizer.exe` with hearth-proton-run by its full path (`GAMEID=umu-<steam app>`).
 - Games Hearth knows: Skyrim SE / LE / VR, Fallout 4 / 4 VR / New Vegas / 3, Oblivion (and Remastered), Enderal SE,
   Starfield, Cyberpunk 2077, Baldur's Gate 3. Others install, but their prefix may need setting up by hand.
 - Lists that don't use Mod Organizer 2 aren't set up yet. Collections (nxm://…/collections/…) aren't supported yet.
@@ -226,7 +226,7 @@ installer_fomod), GPL-3.0 like Hearth; no MO2 code is copied, it's written anew 
 - **Play.** Each instance has a library entry (`mods/modlists/org-<id>.json` + `.desktop`, or the Wabbajack list's
   own), so Game Mode's Play button starts `hearth-mods --organizer <id> run`: mount the view, start the program,
   wait for it (and anything still running in the game's folder) to end, then take the view away. Windows programs
-  start with `umu-run` in the game's Proton folder as Hearth starts Steam games (`GAMEID=umu-<app>`, `STORE=steam`,
+  start with `hearth-proton-run` in the game's Proton folder as Hearth starts Steam games (`GAMEID=umu-<app>`, `STORE=steam`,
   `PROTONPATH` chosen as in "Play modded" above, or `$HEARTH_PROTON`); without umu, Steam starts the game (`-applaunch`, no
   script extender). The executables list is the script extender's loader (SKSE, F4SE...) if it's in the game folder,
   the game, its launcher, and MO2's `[customExecutables]`. Default: the script extender, else the game.

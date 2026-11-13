@@ -95,6 +95,27 @@
    ]
   },
   {
+   "id": "voices",
+   "title": "Voices",
+   "engine": "Kokoro \u00b7 Voice Studio",
+   "icon": "wave",
+   "state": "running",
+   "chip": "Running",
+   "big": "Ready",
+   "unit": "for your devices",
+   "sub": "",
+   "rows": [
+    [
+     "While you play",
+     "Pauses"
+    ]
+   ],
+   "actions": [
+    "restart",
+    "pause"
+   ]
+  },
+  {
    "id": "media",
    "title": "Media",
    "engine": "Jellyfin",
@@ -169,13 +190,13 @@
    "boxes": [
     [
      "Processor",
-     "48 °C",
+     "48 \u00b0C",
      "31% busy"
     ],
     [
      "Graphics card",
-     "63 °C",
-     "RTX 5070 · 88% busy"
+     "63 \u00b0C",
+     "RTX 5070 \u00b7 88% busy"
     ],
     [
      "Power now",
@@ -202,17 +223,17 @@
    "list": [
     [
      "Work laptop",
-     "Web page · Shared folders · AI chat"
+     "Web page \u00b7 Shared folders \u00b7 AI chat"
     ],
     [
      "ROG Ally",
-     "Media · Shared folders"
+     "Media \u00b7 Shared folders"
     ]
    ],
    "rows": [
     [
      "Network",
-     "↓ 4.2 MB/s · ↑ 18.6 MB/s"
+     "\u2193 4.2 MB/s \u00b7 \u2191 18.6 MB/s"
     ],
     [
      "Online on Tailscale",
@@ -235,6 +256,23 @@
    "actions": [
     "restart"
    ]
+  },
+  {
+   "id": "apps",
+   "title": "Server apps",
+   "engine": "3 on",
+   "icon": "grid",
+   "state": "running",
+   "chip": "Running",
+   "big": "3",
+   "unit": "running",
+   "rows": [
+    [
+     "Running",
+     "Immich, Home Assistant, Pi-hole"
+    ]
+   ],
+   "actions": []
   }
  ],
  "pills": [
@@ -283,7 +321,7 @@
   {
    "level": "warn",
    "text": "Drive 3 ran warm at noon",
-   "sub": "46 °C for 20 min, 41 °C now",
+   "sub": "46 \u00b0C for 20 min, 41 \u00b0C now",
    "at": "12:20 PM"
   },
   {
@@ -348,5 +386,56 @@
   "wlopm": false
  },
  "countdown": null,
- "now": 0
+ "now": 0,
+ "cores": [
+  {
+   "id": "gpu",
+   "name": "Qwen3 30B",
+   "state": "working",
+   "status": "2 asking"
+  },
+  {
+   "id": "comfy",
+   "name": "ComfyUI",
+   "state": "working",
+   "status": "making 1 \u00b7 3 waiting"
+  },
+  {
+   "id": "voice",
+   "name": "Voices",
+   "state": "ready",
+   "status": "Kokoro \u00b7 Voice Studio"
+  },
+  {
+   "id": "listen",
+   "name": "Whisper",
+   "state": "ready",
+   "status": "in Voice Studio"
+  },
+  {
+   "id": "hearth",
+   "name": "AI sharing",
+   "state": "ready",
+   "status": "shared with 2"
+  }
+ ],
+ "next": {
+  "at": "18:00",
+  "mode": "game",
+  "day": 0,
+  "text": "Game Mode at 6:00 PM"
+ },
+ "qr": "",
+ "live": {
+  "vram": 11.1,
+  "power": 186,
+  "rx": 4200000,
+  "tx": 1100000,
+  "storage": 33,
+  "cpu": 23,
+  "cpuTemp": 41,
+  "gpuBusy": 74,
+  "gpuTemp": 58,
+  "online": 7
+ }
 }

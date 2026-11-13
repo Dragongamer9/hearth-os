@@ -13,7 +13,7 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 #[tauri::command]
 fn init() -> Value {
     let s = hearth_emoji::load();
-    json!({"recent": s.recent, "tone": s.tone, "platform": if cfg!(windows) { "windows" } else { "linux" }})
+    json!({"recent": s.recent, "most": hearth_emoji::most_used(&s, 28), "tone": s.tone, "platform": if cfg!(windows) { "windows" } else { "linux" }})
 }
 
 #[tauri::command]
@@ -49,8 +49,8 @@ fn main() {
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Emoji")
-                .inner_size(760.0, 540.0)
-                .min_inner_size(420.0, 360.0)
+                .inner_size(420.0, 520.0)
+                .min_inner_size(340.0, 380.0)
                 .center()
                 .always_on_top(true)
                 .skip_taskbar(true)

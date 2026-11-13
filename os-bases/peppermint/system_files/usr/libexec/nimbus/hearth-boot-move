@@ -1,0 +1,337 @@
+#!/usr/bin/python3
+"""hearth-boot-move: a PC that came to the Debian edition from the Fedora edition (bootc switch) still starts through
+Fedora's boot menu (shim and GRUB on the EFI partition, "anatase" in `bootupctl status`): it starts, but without
+Hearth's themed menu and Hearth's ordering of versions. This moves it to Hearth's own (Debian's signed shim and GRUB),
+the way a fresh install has it. 1.11, only when you run it; never by itself.
+
+  hearth-boot-move check          JSON: {needed, why, installed, ...}; changes nothing (no root needed for most of it)
+  hearth-boot-move run --yes      do it (root). Each step is checked before the next, and the PC can start at every step:
+                                    1 a full copy of the EFI partition and /boot's menu in /var/lib/hearth/boot-move/<time>
+                                    2 Fedora's boot loader kept as EFI/hearth-fedora, with its own firmware entry
+                                      ("Hearth OS (old boot menu)"), so the firmware's boot menu can always start it
+                                    3 Hearth's menu written (hearth-bls-grub) and /boot/grub2/grub.cfg made the Debian
+                                      edition's static one: plain entries both GRUBs read (Fedora's still starts it)
+                                    4 EFI/debian/grub.cfg (where Debian's signed GRUB looks) pointing at /boot's menu
+                                    5 bootupctl update: Debian's signed shim and GRUB onto the EFI partition
+                                    6 the firmware's "Hearth OS" entry starts EFI/debian/shimx64.efi, first
+  hearth-boot-move undo [--yes]   put the last copy back (the EFI partition, /boot's grub.cfg) and start Fedora's again
+
+Any failure stops before the next step and says what's left as it was. Output: one JSON line ("error: ..." and exit 1).
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+BACKUPS = '/var/lib/hearth/boot-move'
+STATIC = '/usr/lib/bootupd/grub2-static'
+BLS = '/usr/libexec/nimbus/hearth-bls-grub'
+ESP_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
+MNT = '/run/hearth-boot-move/esp'
+
+
+class Fail(Exception):
+    pass
+
+
+def sh(cmd, check=True, timeout=300, inp=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+    except (OSError, subprocess.SubprocessError) as e:
+        if check:
+            raise Fail('%s: %s' % (cmd[0], e))
+        return subprocess.CompletedProcess(cmd, 127, '', str(e))
+    if check and r.returncode != 0:
+        raise Fail('%s failed: %s' % (' '.join(cmd[:3]), (r.stderr or r.stdout).strip()[-300:]))
+    return r
+
+
+def read(p, d=''):
+    try:
+        with open(p) as f:
+            return f.read()
+    except OSError:
+        return d
+
+
+def bootupd_status():
+    r = sh(['bootupctl', 'status', '--json'], check=False, timeout=60)
+    try:
+        return json.loads(r.stdout)
+    except ValueError:
+        return {}
+
+
+def efi_installed(st):
+    comp = ((st.get('components') or {}).get('EFI') or {})
+    inst = comp.get('installed') or {}
+    return str(inst.get('version') or ''), comp
+
+
+def fedora_loader(version):
+    return bool(re.search(r'anatase|\.fc\d+|fedora', version, re.I))
+
+
+def edition():
+    """(VARIANT_ID, is Debian underneath) of the running system."""
+    t = read('/usr/lib/os-release')
+    v = re.search(r'^VARIANT_ID=(.*)$', t, re.M)
+    i = re.search(r'^ID=(.*)$', t, re.M)
+    return (v.group(1).strip().strip('"') if v else ''), bool(i and 'debian' in i.group(1))
+
+
+def check():
+    st = bootupd_status()
+    ver, comp = efi_installed(st)
+    variant, debian = edition()
+    out = {'installed': ver, 'edition': variant, 'debian': debian, 'needed': False, 'why': '',
+           'static': os.path.isdir(STATIC), 'bls': os.path.exists(BLS), 'done': read(os.path.join(BACKUPS, 'done')).strip()}
+    if not st:
+        out['why'] = "couldn't read bootupctl status (run as an administrator)"
+    elif not debian:
+        out['why'] = 'only for the Debian edition'
+    elif fedora_loader(ver):
+        out['needed'] = True
+        out['why'] = "the boot menu is still the Fedora edition's (%s)" % ver
+    else:
+        out['why'] = "the boot menu is already Hearth's own (%s)" % (ver or 'unknown')
+    return out
+
+
+# ------------------------------------------------------------------ the EFI partition
+def esp_mount():
+    """(mount point, device, disk, partition number) of the EFI partition on the drive /boot is on."""
+    cur = sh(['findmnt', '-no', 'SOURCE', '/boot/efi'], check=False).stdout.strip()
+    boot = sh(['findmnt', '-no', 'SOURCE', '/boot'], check=False).stdout.strip() or sh(['findmnt', '-no', 'SOURCE', '/sysroot'], check=False).stdout.strip()
+    boot = re.sub(r'\[.*\]$', '', boot)
+    disk = sh(['lsblk', '-no', 'PKNAME', boot], check=False).stdout.strip().splitlines()
+    if not disk:
+        raise Fail("couldn't tell which drive Hearth starts from")
+    disk = '/dev/' + disk[0].strip()
+    dev = cur
+    if not dev:
+        for line in sh(['lsblk', '-rno', 'NAME,PARTTYPE', disk]).stdout.splitlines():
+            f = line.split()
+            if len(f) == 2 and f[1].lower() == ESP_TYPE:
+                dev = '/dev/' + f[0]
+                break
+    if not dev:
+        raise Fail('no EFI partition on %s' % disk)
+    num = re.search(r'(\d+)$', dev).group(1)
+    if cur:
+        return '/boot/efi', dev, disk, num
+    # Where bootupd looks for it (bootupctl update needs it there); elsewhere only when /boot/efi can't be used.
+    where = '/boot/efi' if os.path.isdir('/boot/efi') else MNT
+    os.makedirs(where, exist_ok=True)
+    if not os.path.ismount(where):
+        sh(['mount', dev, where])
+        MOUNTED_HERE.add(where)
+    return where, dev, disk, num
+
+
+MOUNTED_HERE = set()
+
+
+def esp_umount(mp):
+    """Only a mount this tool made (a /boot/efi that was already mounted stays)."""
+    if mp in MOUNTED_HERE and os.path.ismount(mp):
+        sh(['sync'], check=False)
+        sh(['umount', mp], check=False)
+        MOUNTED_HERE.discard(mp)
+
+
+def boot_grub_dir():
+    for d in ('/boot/grub2', '/boot/boot/grub2'):
+        if os.path.isfile(os.path.join(d, 'grub.cfg')):
+            return d
+    raise Fail('no /boot/grub2/grub.cfg: this boot menu isn\'t the one bootupd made')
+
+
+def static_cfg():
+    """The Debian edition's static /boot/grub2/grub.cfg, made the way bootupd's --with-static-configs makes it."""
+    pre = os.path.join(STATIC, 'grub-static-pre.cfg')
+    if not os.path.isfile(pre):
+        raise Fail('this image has no %s, so the menu can\'t be made safely' % pre)
+    # Exactly as bootupd writes it (src/grubconfigs.rs): a header, the pre part, then each drop-in between markers.
+    text = '# Generated by bootupd / do not edit\n\n' + read(pre)
+    for f in sorted(glob.glob(os.path.join(STATIC, 'configs.d', '*.cfg'))):
+        text += '\n### BEGIN %s ###\n' % os.path.basename(f) + read(f) + '### END %s ###\n' % os.path.basename(f)
+    if re.search(r'^\s*blscfg\b', text, re.M):
+        raise Fail('the static menu still says blscfg, which Debian\'s GRUB doesn\'t have')
+    if 'hearth-bls.cfg' not in text:
+        raise Fail("the static menu doesn't read Hearth's menu (hearth-bls.cfg)")
+    return text
+
+
+def write_safely(path, text):
+    tmp = path + '.hearth-new'
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    sh(['sync'], check=False)
+
+
+def efibootmgr_entries():
+    out = sh(['efibootmgr', '-v'], check=False).stdout
+    entries = {m.group(1): m.group(0) for m in re.finditer(r'^Boot([0-9A-Fa-f]{4})\*?\s.*$', out, re.M)}
+    m = re.search(r'^BootOrder:\s*([0-9A-Fa-f,]*)', out, re.M)
+    return entries, [x for x in (m.group(1).split(',') if m else []) if x]
+
+
+def entry_for(path_part):
+    entries, _ = efibootmgr_entries()
+    return next((n for n, l in entries.items() if path_part.lower() in l.lower().replace('/', '\\')), None)
+
+
+# ------------------------------------------------------------------ the move
+def run(yes):
+    if os.geteuid() != 0:
+        raise Fail('run it as an administrator (sudo)')
+    c = check()
+    if not c['needed']:
+        raise Fail('nothing to do: ' + c['why'])
+    if not yes:
+        raise Fail('add --yes to do it (see hearth-boot-move --help)')
+    if not c['bls']:
+        raise Fail('no hearth-bls-grub in this image')
+    if not os.path.isdir('/sys/firmware/efi'):
+        raise Fail('this PC doesn\'t start with UEFI')
+    gdir = boot_grub_dir()
+    new_cfg = static_cfg()
+    mp, dev, disk, num = esp_mount()
+    steps = []
+    try:
+        efi = os.path.join(mp, 'EFI')
+        fed = os.path.join(efi, 'fedora')
+        if not os.path.isfile(os.path.join(fed, 'shimx64.efi')):
+            raise Fail('no EFI/fedora/shimx64.efi: this isn\'t the boot loader this tool knows how to move')
+        # 1. a copy of everything
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        bdir = os.path.join(BACKUPS, stamp)
+        os.makedirs(bdir, exist_ok=True)
+        sh(['tar', '-C', mp, '-cf', os.path.join(bdir, 'esp.tar'), '.'])
+        shutil.copy2(os.path.join(gdir, 'grub.cfg'), os.path.join(bdir, 'grub.cfg'))
+        for f in ('/boot/bootupd-state.json',):
+            if os.path.isfile(f):
+                shutil.copy2(f, os.path.join(bdir, os.path.basename(f)))
+        with open(os.path.join(bdir, 'info.json'), 'w') as f:
+            json.dump({'at': stamp, 'esp': dev, 'disk': disk, 'part': num, 'grubDir': gdir, 'installed': c['installed'],
+                       'efibootmgr': sh(['efibootmgr', '-v'], check=False).stdout}, f, indent=1)
+        with open(os.path.join(BACKUPS, 'last'), 'w') as f:
+            f.write(stamp + '\n')
+        steps.append('copied the EFI partition and the menu to ' + bdir)
+        # 2. Fedora's loader kept, with its own firmware entry
+        keep = os.path.join(efi, 'hearth-fedora')
+        if not os.path.isdir(keep):
+            shutil.copytree(fed, keep)
+        if not entry_for('\\EFI\\hearth-fedora\\shimx64.efi'):
+            sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS (old boot menu)', '-l', '\\EFI\\hearth-fedora\\shimx64.efi'], check=False)
+        steps.append("kept Fedora's boot loader as EFI/hearth-fedora")
+        # 3. Hearth's menu, and the static grub.cfg both GRUBs read
+        sh(['sh', BLS, '--boot', '/boot'], timeout=120)
+        if not os.path.isfile(os.path.join(gdir, 'hearth-bls.cfg')) or 'menuentry' not in read(os.path.join(gdir, 'hearth-bls.cfg')):
+            raise Fail("Hearth's menu (hearth-bls.cfg) came out empty; nothing else was changed")
+        write_safely(os.path.join(gdir, 'grub.cfg'), new_cfg)
+        steps.append("wrote Hearth's menu and the Debian edition's grub.cfg (Fedora's GRUB starts it too)")
+        # 4. where Debian's signed GRUB looks
+        deb = os.path.join(efi, 'debian')
+        os.makedirs(deb, exist_ok=True)
+        efi_cfg = os.path.join(STATIC, 'grub-static-efi.cfg')
+        src = efi_cfg if os.path.isfile(efi_cfg) else os.path.join(fed, 'grub.cfg')
+        if not os.path.isfile(src):
+            raise Fail('no EFI grub.cfg to copy')
+        shutil.copy2(src, os.path.join(deb, 'grub.cfg'))
+        if os.path.isfile(os.path.join(fed, 'bootuuid.cfg')):
+            shutil.copy2(os.path.join(fed, 'bootuuid.cfg'), os.path.join(deb, 'bootuuid.cfg'))
+        steps.append('wrote EFI/debian/grub.cfg')
+        # 5. Debian's signed shim and GRUB
+        sh(['sync'], check=False)
+        sh(['bootupctl', 'update'], timeout=600)
+        deb = os.path.join(mp, 'EFI', 'debian')
+        for f in ('shimx64.efi', 'grubx64.efi', 'grub.cfg'):
+            if not os.path.isfile(os.path.join(deb, f)):
+                raise Fail("after bootupctl update EFI/debian/%s is missing: the firmware entry still starts Fedora's loader (EFI/hearth-fedora); run hearth-boot-move undo" % f)
+        steps.append("installed Debian's signed shim and GRUB")
+        # 6. the firmware's Hearth OS entry, first
+        entries, order = efibootmgr_entries()
+        for n, l in entries.items():
+            low = l.lower().replace('/', '\\')
+            if '\\efi\\fedora\\' in low:
+                sh(['efibootmgr', '-q', '-b', n, '-B'], check=False)       # its files are gone
+        mine = entry_for('\\EFI\\debian\\shimx64.efi')
+        if not mine:
+            sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', '\\EFI\\debian\\shimx64.efi'])
+            mine = entry_for('\\EFI\\debian\\shimx64.efi')
+        old = entry_for('\\EFI\\hearth-fedora\\shimx64.efi')
+        entries, order = efibootmgr_entries()
+        new_order = [x for x in [mine, old] if x] + [x for x in order if x not in (mine, old)]
+        sh(['efibootmgr', '-q', '-o', ','.join(new_order)], check=False)
+        steps.append("the firmware's Hearth OS entry starts Debian's shim first; the old boot menu is second")
+        with open(os.path.join(BACKUPS, 'done'), 'w') as f:
+            f.write(stamp + '\n')
+        return {'ok': True, 'steps': steps, 'backup': bdir, 'bootOrder': new_order}
+    except Fail as e:
+        raise Fail('%s. Done before it: %s' % (e, '; '.join(steps) or 'nothing'))
+    finally:
+        esp_umount(mp)
+
+
+def undo(yes):
+    if os.geteuid() != 0:
+        raise Fail('run it as an administrator (sudo)')
+    stamp = read(os.path.join(BACKUPS, 'last')).strip()
+    bdir = os.path.join(BACKUPS, stamp)
+    if not stamp or not os.path.isfile(os.path.join(bdir, 'esp.tar')):
+        raise Fail('no copy to put back')
+    if not yes:
+        raise Fail('add --yes to put back the copy from ' + stamp)
+    info = json.loads(read(os.path.join(bdir, 'info.json'), '{}') or '{}')
+    mp, dev, disk, num = esp_mount()
+    try:
+        sh(['tar', '-C', mp, '-xf', os.path.join(bdir, 'esp.tar')])
+        write_safely(os.path.join(info.get('grubDir') or boot_grub_dir(), 'grub.cfg'), read(os.path.join(bdir, 'grub.cfg')))
+        if os.path.isfile(os.path.join(bdir, 'bootupd-state.json')):
+            shutil.copy2(os.path.join(bdir, 'bootupd-state.json'), '/boot/bootupd-state.json')
+        fed = entry_for('\\EFI\\fedora\\shimx64.efi')
+        if not fed:
+            sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', '\\EFI\\fedora\\shimx64.efi'], check=False)
+            fed = entry_for('\\EFI\\fedora\\shimx64.efi')
+        _, order = efibootmgr_entries()
+        if fed:
+            sh(['efibootmgr', '-q', '-o', ','.join([fed] + [x for x in order if x != fed])], check=False)
+        try:
+            os.remove(os.path.join(BACKUPS, 'done'))
+        except OSError:
+            pass
+        return {'ok': True, 'restored': bdir}
+    finally:
+        esp_umount(mp)
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        if a == ['check']:
+            out = check()
+        elif a[:1] == ['run'] and a[1:] in ([], ['--yes']):
+            out = run(a[1:] == ['--yes'])
+        elif a[:1] == ['undo'] and a[1:] in ([], ['--yes']):
+            out = undo(a[1:] == ['--yes'])
+        else:
+            print(__doc__.strip())
+            return 0 if a in (['--help'], ['-h']) else 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -39,8 +39,10 @@ SetPage {
         id: admin
         property var after: null
         property string input: ""
-        // a binding, not an assignment in runAdmin: assigning a JS object to environment threw on Hearth 1.0's Quickshell
-        environment: ({ HEARTH_INPUT: admin.input })
+        // On stdin, then stdin closes (see SetJob.qml: Process.environment can't take a JavaScript object on
+        // Hearth's Debian, so changing your password sent nothing and failed).
+        stdinEnabled: admin.input !== ""
+        onStarted: { if (admin.input !== "") { admin.write(admin.input); admin.input = ""; } }
         stdout: StdioCollector {
             onStreamFinished: {
                 const err = text.split("\n").find(l => l.startsWith("error: "));
@@ -55,9 +57,9 @@ SetPage {
         if (admin.running) return;
         busy = what; say("");
         admin.after = done;
-        // stdin through the environment (readable only by you), not the command line
+        // what the helper needs goes on its stdin, never the command line
         admin.input = input || "";
-        admin.command = ["sh", "-c", 'printf "%s" "$HEARTH_INPUT" | exec pkexec "$@" 2>&1', "sh", helper].concat(args);
+        admin.command = ["sh", "-c", 'exec pkexec "$@" 2>&1', "sh", helper].concat(args);
         admin.running = true;
     }
 

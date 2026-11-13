@@ -3,6 +3,12 @@
 // {t: title, d: description, i: icon, p: the page it's on}. Don't edit by hand: run the tool again.
 var ENTRIES = [
 {
+"t": "Resource Monitor",
+"p": "about",
+"d": "See inside this PC: its board, every part and port, and what each program uses, live",
+"i": "cpu"
+},
+{
 "t": "Rename this PC",
 "p": "about",
 "d": "Its name on your network and your other devices · on Home",
@@ -80,20 +86,26 @@ var ENTRIES = [
 "i": "kbd"
 },
 {
+"t": "Look",
+"p": "appearance",
+"d": "The shape and style: corners, bar, frames and fonts",
+"i": "window"
+},
+{
+"t": "Sub theme",
+"p": "appearance",
+"i": "palette"
+},
+{
 "t": "Mode",
 "p": "appearance",
-"d": "Sunset (optional): light by day and dark by night, on the times below. Off unless you choose it.",
+"d": "Auto (optional): light by day and dark by night, on the times below. Off unless you choose it.",
 "i": "sun"
 },
 {
-"t": "More accent colours",
+"t": "Match sub theme",
 "p": "appearance",
-"d": "From your wallpaper, any hue, or a colour you type",
-"i": "edit"
-},
-{
-"t": "Custom accent",
-"p": "appearance"
+"i": "image"
 },
 {
 "t": "Wallpaper",
@@ -105,6 +117,16 @@ var ENTRIES = [
 "p": "appearance",
 "d": "Any picture on this device. In the Files app you can also right-click a picture › Set as Hearth wallpaper.",
 "i": "image"
+},
+{
+"t": "More accent colours",
+"p": "appearance",
+"d": "From your wallpaper, any hue, or a colour you type",
+"i": "edit"
+},
+{
+"t": "Custom accent",
+"p": "appearance"
 },
 {
 "t": "Desktop clock and weather",
@@ -300,7 +322,7 @@ var ENTRIES = [
 "i": "close"
 },
 {
-"t": "Keep clipboard history",
+"t": "Clipboard history",
 "p": "clipboard",
 "i": "clipboard"
 },
@@ -313,6 +335,7 @@ var ENTRIES = [
 {
 "t": "Clear clipboard history…",
 "p": "clipboard",
+"d": "Pinned items stay",
 "i": "trash"
 },
 {
@@ -550,6 +573,54 @@ var ENTRIES = [
 "i": "cpu"
 },
 {
+"t": "Show Hearth (C:) with Windows folder names",
+"p": "drives",
+"d": "Program Files, Users, Windows… Only names: nothing on your drive moves.",
+"i": "drive"
+},
+{
+"t": "Show system folders",
+"p": "drives",
+"d": "/usr, /etc and the other Linux folders in Files and every app's Open and Save window (hidden by default, like macOS)",
+"i": "folder"
+},
+{
+"t": "The address bar shows",
+"p": "drives",
+"d": "Typing either kind always works",
+"i": "edit"
+},
+{
+"t": "Apps you install",
+"p": "drives",
+"d": "Apps from apt or Flatpak use Hearth's Open and Save window, with Hearth (C:). Text an app draws itself keeps its own paths.",
+"i": "window"
+},
+{
+"t": "Terminal speaks C:\\\\",
+"p": "drives",
+"d": "dir, copy, del, cd C:\\\\Users… in every terminal (Linux commands still work). Applies to new terminal windows",
+"i": "kbd"
+},
+{
+"t": "Copy path gives",
+"p": "drives",
+"d": "The other one is always in the right-click menu",
+"i": "link"
+},
+{
+"t": "C:  Hearth",
+"p": "drives",
+"d": "The drive Hearth runs from · always C:",
+"i": "drive"
+},
+{
+"t": "Only names",
+"p": "drives",
+"d": "These only change how Hearth names things. Your files, apps and games stay exactly where they are, and Windows apps keep their own C: inside them.",
+"i": "info"
+},
+{
 "t": "Hearth Games",
 "p": "games",
 "d": "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall (docs/HEARTH-GAMES.md)",
@@ -652,6 +723,12 @@ var ENTRIES = [
 "i": "gear"
 },
 {
+"t": "Game Mode: Steam Game Mode or Hearth Game Mode",
+"p": "gaming",
+"d": "Which Game Mode this PC goes into: Steam's or Hearth's own",
+"i": "pad"
+},
+{
 "t": "Start in",
 "p": "gaming",
 "d": "What this PC opens when it turns on or you sign in",
@@ -728,6 +805,16 @@ var ENTRIES = [
 },
 {
 "t": "Open ComfyUI",
+"p": "hs-ai",
+"i": "open"
+},
+{
+"t": "Voice Studio",
+"p": "hs-ai",
+"i": "vol"
+},
+{
+"t": "Open Voice Studio",
 "p": "hs-ai",
 "i": "open"
 },
@@ -1458,6 +1545,55 @@ var ENTRIES = [
 "i": "trash"
 },
 {
+"t": "Install Voice Studio",
+"p": "hs-services",
+"i": "vol"
+},
+{
+"t": "Voice Studio",
+"p": "hs-services",
+"i": "vol"
+},
+{
+"t": "Open Voice Studio",
+"p": "hs-services",
+"i": "open"
+},
+{
+"t": "Voice Studio: PIN, apps, while you play",
+"p": "hs-services",
+"d": "The PIN for its page, the address and key for the Command Center, removing it",
+"i": "gear"
+},
+{
+"t": "PIN for Voice Studio",
+"p": "hs-services",
+"i": "lock"
+},
+{
+"t": "Address for the Command Center",
+"p": "hs-services",
+"i": "clipboard"
+},
+{
+"t": "API key for apps",
+"p": "hs-services",
+"d": "The Command Center and other apps send it with each request. Copy it into the speech server's key field",
+"i": "lock"
+},
+{
+"t": "Make a new key",
+"p": "hs-services",
+"d": "The old key stops working: apps using it need the new one",
+"i": "restart"
+},
+{
+"t": "Remove Voice Studio",
+"p": "hs-services",
+"d": "Its engines and downloaded models go (about 14 GB). Your voices, audiobooks, dubs and transcripts stay",
+"i": "trash"
+},
+{
 "t": "Take over your own Kokoro",
 "p": "hs-services",
 "d": "Your \"kokoro\" container is running, and it answers your home network too. Take it over: it's stopped (never deleted; Give it back starts it again) and Hearth runs its own copy, Tailscale only",
@@ -1827,6 +1963,11 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Pairing a friend's device",
+"p": "link",
+"i": "users"
+},
+{
 "t": "Not on the same network?",
 "p": "link",
 "d": "Get a code to type on a device somewhere else (over the internet)",
@@ -2030,7 +2171,7 @@ var ENTRIES = [
 {
 "t": "Game Mode",
 "p": "power",
-"d": "Steam's Game Mode on the full screen",
+"d": "The Game Mode you picked in Gaming (Steam's or Hearth's) on the full screen",
 "i": "pad"
 },
 {
@@ -2144,6 +2285,12 @@ var ENTRIES = [
 "t": "Moonlight",
 "p": "remote",
 "i": "desktops"
+},
+{
+"t": "Restore all saves",
+"p": "savedgames",
+"d": "Puts every backed-up save back where its game looks for it (after a reinstall, or on another PC). What it replaces is kept by Ludusavi.",
+"i": "restart"
 },
 {
 "t": "Use Server mode",
@@ -2298,6 +2445,12 @@ var ENTRIES = [
 "i": "vol"
 },
 {
+"t": "Volume mixer",
+"p": "sound",
+"d": "Each app's own volume, and which speakers or headphones it plays on",
+"i": "vol"
+},
+{
 "t": "Input volume",
 "p": "sound",
 "i": "mic"
@@ -2408,6 +2561,18 @@ var ENTRIES = [
 "t": "Yes, go back at the next restart",
 "p": "updates",
 "i": "check"
+},
+{
+"t": "System Restore",
+"p": "updates",
+"d": "Hearth and its settings back to an earlier restore point. Made before each update, weekly, or by you",
+"i": "restart"
+},
+{
+"t": "Reliability history",
+"p": "updates",
+"d": "How Hearth has been running: apps that stopped, Hearth problems, warnings and updates, day by day",
+"i": "info"
 },
 {
 "t": "The previous version always stays startable",
@@ -2533,6 +2698,11 @@ var ENTRIES = [
 {
 "t": "Windows version",
 "p": "winapps"
+},
+{
+"t": "Use these files from Windows",
+"p": "winapps",
+"i": "file"
 },
 {
 "t": "In Steam",

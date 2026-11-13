@@ -7,6 +7,10 @@ through `hearth-link call` (its socket, only this user's).
                                               (pair-open-internet: also a short code for a device somewhere else)
   hearth-link-settings join ID                the 6-digit code comes on stdin (HEARTH_INPUT), never on the command line
   hearth-link-settings join-code              a short code (K7M-4QX-92HC) on stdin: the device is looked up from it
+                                              (pair-open, pair-open-internet, join and join-code take a last word
+                                              "friend": a friend's device, paired with this one only, for copying
+                                              games; without it, one of your devices)
+  hearth-link-settings make-friend ID         one of your devices becomes a friend's device (stops sharing at once)
   hearth-link-settings unpair ID
   hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
   hearth-link-settings sync
@@ -57,6 +61,16 @@ def request(argv, stdin=''):
     if not argv:
         raise Fail('usage: hearth-link-settings status|pair-open|pair-open-internet|pair-close|join ID|join-code|unpair ID|set KEY VALUE|sync|pause|resume|cancel ID')
     cmd, rest = argv[0], argv[1:]
+    # A friend's device (family.rs): only pairing takes it, as its last word.
+    friend = cmd in ('pair-open', 'pair-open-internet', 'join', 'join-code') and rest[-1:] == ['friend']
+    if friend:
+        rest = rest[:-1]
+        c, a = request([cmd] + rest, stdin)
+        return c, dict(a, mine=False)
+    if cmd == 'make-friend' and len(rest) == 1:
+        if not ID_RE.match(rest[0].strip()):
+            raise Fail("That isn't a Hearth device")
+        return 'peer.set', {'id': rest[0].strip(), 'friend': True}
     simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now'}
     if cmd in simple and not rest:
         return simple[cmd], {}

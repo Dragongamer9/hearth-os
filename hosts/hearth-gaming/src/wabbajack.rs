@@ -788,41 +788,41 @@ fn set_up(j: &Job) -> Result<Vec<String>, String> {
     // The Windows parts these lists need, once per prefix.
     let verbs: Vec<&str> = WT_BASE.iter().copied().chain(match info.map(|g| g.2) { Some("legacy") => WT_LEGACY.to_vec(), _ => WT_MODERN.to_vec() }).collect();
     let mark = prefix.join("hearth-winetricks.txt");
-    // umu-run: the system's, else Hearth's own copy (Hearth OS has no system umu-run: checking only the PATH meant
-    // these parts were never installed). The Proton: the one every later start of the list uses (launch.rs: the
-    // GE-Proton built into Hearth OS for a new prefix, noted in the prefix), so the prefix is never switched.
-    let umu = crate::launch::umu();
+    // hearth-proton-run (launch::proton_runner: Proton itself offline; winetricks downloads the Windows parts, which
+    // needs the internet by nature). The Proton: the one every later start of the list uses (launch.rs: the GE-Proton
+    // built into Hearth OS for a new prefix, noted in the prefix), so the prefix is never switched.
+    let runner = crate::launch::proton_runner();
     let app = info.map(|g| g.1);
     let env = crate::launch::umu_env(&prefix.join("pfx"), app, None, &steam_libraries());
     let proton = env.iter().find(|(k, _)| k == "PROTONPATH").map(|(_, v)| v.clone()).unwrap_or_else(|| "GE-Proton".into());
     if std::fs::read_to_string(&mark).map(|s| s.trim() != verbs.join(" ")).unwrap_or(true) {
-        match &umu {
-            Ok(umu) => {
+        match &runner {
+            Ok(runner) => {
                 // winetricks' own output goes to the list's log (Log on its card), so a failure can be read.
                 let log = std::fs::OpenOptions::new().create(true).append(true).open(j.log()).ok();
-                if let Some(mut f) = log.as_ref().and_then(|f| f.try_clone().ok()) { use std::io::Write; let _ = writeln!(f, "--- setting up its Proton folder: {umu} winetricks -q {} (PROTONPATH={proton})", verbs.join(" ")); }
+                if let Some(mut f) = log.as_ref().and_then(|f| f.try_clone().ok()) { use std::io::Write; let _ = writeln!(f, "--- setting up its Proton folder: {runner} winetricks -q {} (PROTONPATH={proton})", verbs.join(" ")); }
                 let (out, err) = match log.as_ref().and_then(|f| Some((f.try_clone().ok()?, f.try_clone().ok()?))) {
                     Some((a, b)) => (std::process::Stdio::from(a), std::process::Stdio::from(b)),
                     None => (std::process::Stdio::null(), std::process::Stdio::null()),
                 };
-                let st = std::process::Command::new(umu).arg("winetricks").arg("-q").args(&verbs)
+                let st = std::process::Command::new(runner).arg("winetricks").arg("-q").args(&verbs)
                     .env("WINEPREFIX", prefix.join("pfx")).env("STEAM_COMPAT_DATA_PATH", &prefix).env("GAMEID", &gameid).env("PROTONPATH", &proton)
                     .env_remove("LD_LIBRARY_PATH")
                     .stdin(std::process::Stdio::null()).stdout(out).stderr(err).status();
                 match st {
                     Ok(s) if s.success() => { let _ = std::fs::write(&mark, verbs.join(" ")); }
                     Ok(s) => notes.push(format!("{PROBLEM}some Windows parts didn't install into its Proton folder (winetricks ended with code {}). Check that this PC is online, then press Repair again; the list's Log says what went wrong.", s.code().map(|c| c.to_string()).unwrap_or_else(|| "none".into()))),
-                    Err(e) => notes.push(format!("{PROBLEM}umu-launcher ({umu}) couldn't be started ({e}). Restart Hearth Mods and press Repair again.")),
+                    Err(e) => notes.push(format!("{PROBLEM}Proton's launcher ({runner}) couldn't be started ({e}). Restart Hearth Mods and press Repair again.")),
                 }
             }
-            Err(e) => notes.push(format!("{PROBLEM}its Proton folder couldn't be set up: {e}. Check that this PC is online (Hearth fetches umu-launcher the first time), then press Repair again.")),
+            Err(e) => notes.push(format!("{PROBLEM}its Proton folder couldn't be set up: {e}. Press Repair again; if it keeps failing, Send logs.")),
         }
     }
     // The library entry: a .desktop file that starts MO2 with this prefix (every argument quoted whole, as the
-    // desktop-entry format wants; umu-run by its full path, since Hearth OS has none on the PATH).
+    // desktop-entry format wants; the launcher by its full path).
     std::fs::create_dir_all(modlists_dir()).map_err(|e| e.to_string())?;
     let desktop = modlists_dir().join(format!("{}.desktop", j.id));
-    let text = mo2_desktop(&j.title, &prefix, &gameid, &proton, umu.as_deref().unwrap_or("umu-run"), &mo2, &j.install_dir);
+    let text = mo2_desktop(&j.title, &prefix, &gameid, &proton, runner.as_deref().unwrap_or("hearth-proton-run"), &mo2, &j.install_dir);
     util::write_atomic(&desktop, text.as_bytes()).map_err(|e| e.to_string())?;
     util::write_json(&modlists_dir().join(format!("{}.json", j.id)), &json!({"id": j.id, "title": j.title, "launch": desktop, "folder": j.install_dir, "game": j.game,
         "added": util::now_ms(), "note": "Wabbajack modlist (Mod Organizer 2)"}))?;
@@ -838,12 +838,12 @@ fn steam_libraries() -> Vec<PathBuf> { hearth_core::steam::steam_path(&util::hom
 fn steam_libraries() -> Vec<PathBuf> { Vec::new() }
 
 /// Mod Organizer 2's .desktop for a list (its "launcher mo2" fallback).
-pub fn mo2_desktop(title: &str, prefix: &Path, gameid: &str, proton: &str, umu: &str, mo2: &Path, dir: &Path) -> String {
+pub fn mo2_desktop(title: &str, prefix: &Path, gameid: &str, proton: &str, runner: &str, mo2: &Path, dir: &Path) -> String {
     let q = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('`', "\\`").replace('$', "\\$"));
     format!("[Desktop Entry]\nType=Application\nName={}\nExec=env {} {} {} {} {} {}\nPath={}\n",
         title.replace('\n', " "),
         q(&format!("WINEPREFIX={}", prefix.join("pfx").to_string_lossy())), q(&format!("STEAM_COMPAT_DATA_PATH={}", prefix.to_string_lossy())),
-        q(&format!("GAMEID={gameid}")), q(&format!("PROTONPATH={proton}")), q(umu), q(&mo2.to_string_lossy()), dir.to_string_lossy())
+        q(&format!("GAMEID={gameid}")), q(&format!("PROTONPATH={proton}")), q(runner), q(&mo2.to_string_lossy()), dir.to_string_lossy())
 }
 
 /// Sets the list's Proton folder up again (after a failed winetricks run, or one that never ran). It runs on its own
@@ -1015,12 +1015,12 @@ mod tests {
     }
 
     #[test]
-    fn mo2_entry_names_umu_and_the_proton_in_full() {
+    fn mo2_entry_names_the_launcher_and_the_proton_in_full() {
         let d = mo2_desktop("Tuxborn", Path::new("/h/prefixes/wabbajack-w1"), "umu-489830", "/usr/share/steam/compatibilitytools.d/GE-Proton11-3",
-                            "/h/.local/share/nimbus/tools/umu/umu-run", Path::new("/h/Modlists/Tux born/ModOrganizer.exe"), Path::new("/h/Modlists/Tux born"));
+                            "/usr/bin/hearth-proton-run", Path::new("/h/Modlists/Tux born/ModOrganizer.exe"), Path::new("/h/Modlists/Tux born"));
         let exec = d.lines().find_map(|l| l.strip_prefix("Exec=")).unwrap();
         assert!(exec.starts_with("env \"WINEPREFIX=/h/prefixes/wabbajack-w1/pfx\" \"STEAM_COMPAT_DATA_PATH=/h/prefixes/wabbajack-w1\""), "{exec}");
-        assert!(exec.contains("\"PROTONPATH=/usr/share/steam/compatibilitytools.d/GE-Proton11-3\" \"/h/.local/share/nimbus/tools/umu/umu-run\" \"/h/Modlists/Tux born/ModOrganizer.exe\""), "{exec}");
+        assert!(exec.contains("\"PROTONPATH=/usr/share/steam/compatibilitytools.d/GE-Proton11-3\" \"/usr/bin/hearth-proton-run\" \"/h/Modlists/Tux born/ModOrganizer.exe\""), "{exec}");
         let p = mo2_desktop("x", Path::new("/p"), "umu-default", "/Steam/steamapps/common/Proton - Experimental", "umu-run", Path::new("/m.exe"), Path::new("/"));
         assert!(p.contains("\"PROTONPATH=/Steam/steamapps/common/Proton - Experimental\""), "a Proton with spaces stays one argument");
     }

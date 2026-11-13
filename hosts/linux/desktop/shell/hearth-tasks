@@ -11,6 +11,13 @@
   hearth-tasks sample [WANT…]        JSON: one sample as serve gives it (WANT: procs details gpu temps), for checks
   hearth-tasks end-pid|kill-pid PID  end one process (Details), yours only, never a part of Hearth
   hearth-tasks eco PID on|off        Efficiency mode for one of your apps (lowest priority; CPU weight 1 on its own scope)
+  hearth-tasks end-tree PID          End process tree: the process and everything it started (1.11)
+  hearth-tasks priority PID normal|below|low   Set priority for one of your apps
+  hearth-tasks affinity PID 0-3,6    Run on these cores (until it closes)
+  hearth-tasks limit PID CPU% MEMMB  Limit CPU / memory on the app's own scope (0 = no limit; until it closes)
+  hearth-tasks timers                JSON: Scheduled tasks (systemd timers: yours on / off, the system's read only)
+  hearth-tasks timer UNIT on|off     one of your scheduled tasks on or off
+  hearth-tasks users                 JSON: Users: who is signed in and what their programs use
   hearth-tasks services              JSON: your services (start / stop) and the system's (read only)
   hearth-tasks service UNIT start|stop|restart   one of your own services (never one that keeps Hearth running)
   hearth-tasks autostart-run         start the autostart apps that are on (~/.config/autostart, /etc/xdg/autostart),
@@ -156,7 +163,7 @@ def parse_stat(text):
 def parse_status(text):
     """/proc/PID/status: the real user id and memory (bytes). Memory is what the process uses itself
     (anonymous + shared memory), so shared libraries aren't counted again for every process."""
-    out = {'uid': None, 'mem': 0, 'kthread': False}
+    out = {'uid': None, 'mem': 0, 'swap': 0, 'kthread': False}
     for line in text.splitlines():
         k, _, v = line.partition(':')
         v = v.split()
@@ -166,6 +173,8 @@ def parse_status(text):
             out['uid'] = int(v[0])
         elif k in ('RssAnon', 'RssShmem'):
             out['mem'] += int(v[0]) * 1024
+        elif k == 'VmSwap':
+            out['swap'] = int(v[0]) * 1024          # moved to compressed memory (zram) or the swap file (1.11)
         elif k == 'Kthread':
             out['kthread'] = v[0] == '1'
     return out
@@ -207,6 +216,13 @@ def parse_meminfo(text):
             out[k] = int(v[0]) * 1024
     return out
 
+def mem_used(mi):
+    """Memory in use as Windows' Task Manager counts it: total − free − cache (page cache, buffers, reclaimable slab;
+    shared memory counts as used). Not total − MemAvailable: MemAvailable also subtracts the kernel's reserve, so with
+    Keep memory free set high it said "100% in use" while gigabytes were free (1.11)."""
+    cache = mi.get('Cached', 0) + mi.get('Buffers', 0) + mi.get('SReclaimable', 0) - mi.get('Shmem', 0)
+    return max(0, mi.get('MemTotal', 0) - mi.get('MemFree', 0) - max(0, cache))
+
 
 def parse_cgroup_app(text):
     """The app a process belongs to, from its systemd unit: Flatpak app id or the app-…scope name."""
@@ -222,7 +238,7 @@ def parse_cgroup_app(text):
 
 class Proc:
     __slots__ = ('pid', 'ppid', 'comm', 'uid', 'mem', 'jiffies', 'start', 'cmd', 'exe', 'kthread', 'root',
-                 'state', 'nice', 'threads', 'path')
+                 'state', 'nice', 'threads', 'path', 'swap')
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -594,7 +610,7 @@ def list_apps(root=PROC):
     groups.sort(key=lambda g: (-g['mem'], g['name'].lower()))
     mi = parse_meminfo(read(os.path.join(root, 'meminfo'), '') or '')
     return {'apps': groups, 'cpu': round(busy_percent((st['total'], st['idle']), total[0][1:]), 1),
-            'mem': {'total': mi.get('MemTotal', 0), 'used': max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0))}}
+            'mem': {'total': mi.get('MemTotal', 0), 'used': mem_used(mi)}}
 
 
 def signal_app(pid, sig, root=PROC):
@@ -804,7 +820,7 @@ def perf(root=PROC, sys_root=SYS):
     return {
         'cpu': {'total': pct[0] if pct else 0, 'cores': pct[1:], 'name': name, 'mhz': mhz,
                 'temp': summary_temp(temps, 'cpu', ('tctl', 'tdie', 'package id 0', 'cpu'))},
-        'mem': {'total': mi.get('MemTotal', 0), 'used': max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0)),
+        'mem': {'total': mi.get('MemTotal', 0), 'used': mem_used(mi),
                 'cached': mi.get('Cached', 0)},
         'swap': {'total': mi.get('SwapTotal', 0), 'used': max(0, mi.get('SwapTotal', 0) - mi.get('SwapFree', 0))},
         'gpus': gl,
@@ -1587,7 +1603,7 @@ class Sampler:
                 self.static[key] = info
             kthread = u['kthread'] or s['pid'] == 2 or s['ppid'] == 2
             p = Proc(pid=s['pid'], ppid=s['ppid'], comm=s['comm'], uid=u['uid'], mem=u['mem'], jiffies=s['jiffies'],
-                     start=s['start'], kthread=kthread, root=self.root, cmd=info['cmd'],
+                     start=s['start'], kthread=kthread, root=self.root, cmd=info['cmd'], swap=u.get('swap', 0),
                      exe=os.path.basename(info['path']), path=info['path'], state=s['state'], nice=s['nice'],
                      threads=s['threads'])
             procs[p.pid] = p
@@ -1719,7 +1735,7 @@ class Sampler:
         mi = parse_meminfo(read(os.path.join(self.root, 'meminfo'), '') or '')
         total = mi.get('MemTotal', 0)
         out['mem'] = {'total': total, 'available': mi.get('MemAvailable', 0),
-                      'used': max(0, total - mi.get('MemAvailable', 0)), 'free': mi.get('MemFree', 0),
+                      'used': mem_used(mi), 'free': mi.get('MemFree', 0),
                       'cached': mi.get('Cached', 0) + mi.get('SReclaimable', 0) + mi.get('Buffers', 0),
                       'committed': mi.get('Committed_AS', 0), 'commitLimit': mi.get('CommitLimit', 0),
                       'swapTotal': mi.get('SwapTotal', 0), 'swapUsed': max(0, mi.get('SwapTotal', 0) - mi.get('SwapFree', 0))}
@@ -1806,7 +1822,8 @@ class Sampler:
                         continue
                     rows.append({'pid': p.pid, 'name': p.exe or p.comm, 'status': state_label(p.state), 'user': self.user(p.uid),
                                  'cpu': cpu_of.get(p.pid, 0.0), 'mem': p.mem, 'cmd': ' '.join(p.cmd)[:400] or '[' + p.comm + ']',
-                                 'mine': p.uid == self.uid, 'path': p.path, 'threads': p.threads})
+                                 'mine': p.uid == self.uid, 'path': p.path, 'threads': p.threads, 'swap': p.swap or 0,
+                                 'nice': p.nice, 'ppid': p.ppid})
                 rows.sort(key=lambda r: r['pid'])
                 out['details'] = rows
         else:
@@ -1835,8 +1852,10 @@ class Sampler:
                 d = io_now.get(p.key, 0) - io_prev.get(p.key, io_now.get(p.key, 0))
                 disk = int(max(0, d) / dt) if dt > 0 else 0
                 kids.append({'pid': pid, 'name': script_name(p) or p.exe or p.comm, 'cpu': cpu_of.get(pid, 0.0), 'mem': p.mem,
-                             'disk': disk, 'gpu': round(gpu_of.get(pid, 0.0), 1), 'state': p.state, 'nice': p.nice})
+                             'swap': p.swap or 0, 'disk': disk, 'gpu': round(gpu_of.get(pid, 0.0), 1), 'state': p.state, 'nice': p.nice})
             g['cpu'] = round(sum(k['cpu'] for k in kids), 1)
+            g['swap'] = sum(k['swap'] for k in kids)
+            g['nice'] = min((k['nice'] for k in kids), default=0)
             g['disk'] = sum(k['disk'] for k in kids)
             g['gpu'] = round(min(100.0, sum(k['gpu'] for k in kids)), 1)
             g['exe'] = procs[g['pid']].path
@@ -1981,6 +2000,203 @@ def set_efficiency(pid, on, root=PROC):
     return {'pid': pid, 'on': on, 'unit': unit or '', 'stuck': stuck}
 
 
+PRIORITY = {'normal': 0, 'below': 10, 'low': 19}
+PRIORITY_LABEL = {0: 'Normal', 10: 'Below normal', 19: 'Low'}
+
+
+def own_group(pid, root=PROC):
+    """(procs, group) for one of your apps that may be changed; Fail in plain words otherwise."""
+    procs = scan(root)
+    p = procs.get(pid)
+    if not p:
+        raise Fail('that app has already closed')
+    if p.uid != os.getuid():
+        raise Fail("that belongs to another user, so it can't be changed here")
+    g = next((g for g in build_groups(procs, os.getuid(), os.getpid()) if pid in g['pids']), None)
+    if not g or g['protected']:
+        raise Fail("%s keeps Hearth running, so it can't be changed here" % ((g or {}).get('why') or 'this'))
+    return procs, g
+
+
+def descendants(procs, pid):
+    out, todo = [], [pid]
+    while todo:
+        cur = todo.pop()
+        out.append(cur)
+        todo.extend(q.pid for q in procs.values() if q.ppid == cur and q.pid not in out)
+    return out
+
+
+def end_tree(pid, root=PROC):
+    """End process tree: the process and everything it started (yours only, never a part of Hearth)."""
+    procs = scan(root)
+    if pid not in procs:
+        raise Fail('that process has already ended')
+    guarded = set(ancestors(procs, os.getpid()))
+    tree = [x for x in descendants(procs, pid) if procs[x].uid == os.getuid()]
+    for x in tree:
+        why = protected_reason(procs[x], guarded)
+        if why:
+            raise Fail("%s keeps Hearth running, so it can't be ended here" % why)
+    ended = []
+    for x in reversed(tree):
+        try:
+            os.kill(x, signal.SIGTERM)
+            ended.append(x)
+        except OSError:
+            pass
+    return {'pid': pid, 'ended': ended}
+
+
+def set_priority(pid, level, root=PROC):
+    """Set priority (Normal, Below normal, Low) for every process of the app. Linux only lets an administrator raise a
+    priority again, so going back up can stay low until the app restarts (the answer says so)."""
+    if level not in PRIORITY:
+        raise Fail('priority: normal, below or low')
+    procs, g = own_group(pid, root)
+    stuck = False
+    for x in g['pids']:
+        if not renice_all(x, PRIORITY[level], root):
+            stuck = True
+    return {'pid': pid, 'priority': level, 'label': PRIORITY_LABEL[PRIORITY[level]], 'stuck': stuck}
+
+
+def parse_cpus(text, n=None):
+    """'0-3,6' → [0, 1, 2, 3, 6] (checked against this PC's cores)."""
+    n = n or os.cpu_count() or 1
+    out = set()
+    for part in text.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        a, _, b = part.partition('-')
+        if not a.isdigit() or (b and not b.isdigit()):
+            raise Fail('cores: like 0-3,6')
+        lo, hi = int(a), int(b or a)
+        if lo > hi or hi >= n:
+            raise Fail('this PC has cores 0 to %d' % (n - 1))
+        out.update(range(lo, hi + 1))
+    if not out:
+        raise Fail('pick at least one core')
+    return sorted(out)
+
+
+def set_affinity(pid, cpus, root=PROC):
+    """Run on these cores: every process (and thread) of the app kept to the cores you picked, until it closes."""
+    procs, g = own_group(pid, root)
+    cores = parse_cpus(cpus)
+    done = 0
+    for x in g['pids']:
+        for t in (os.listdir(os.path.join(root, str(x), 'task')) if os.path.isdir(os.path.join(root, str(x), 'task')) else [str(x)]):
+            try:
+                os.sched_setaffinity(int(t), cores)
+                done += 1
+            except OSError:
+                pass
+    if not done:
+        raise Fail("couldn't change where it runs")
+    return {'pid': pid, 'cores': cores}
+
+
+def set_limit(pid, cpu_pct, mem_mb, root=PROC):
+    """Limit CPU / memory: a cap on the app's own systemd scope (CPUQuota, MemoryHigh: slowed down, never closed), until
+    it closes. 0 removes a cap. Only apps that run in their own scope (started from the menu, the taskbar or Files)."""
+    procs, g = own_group(pid, root)
+    unit = own_unit(procs, g, root)
+    if not unit:
+        raise Fail("this app wasn't started in a box of its own, so it can't be limited (open it from the app menu first)")
+    props = []
+    cpu_pct, mem_mb = int(cpu_pct), int(mem_mb)
+    if not 0 <= cpu_pct <= 100 * (os.cpu_count() or 1):
+        raise Fail('CPU limit: 0 (none) to %d%%' % (100 * (os.cpu_count() or 1)))
+    if mem_mb < 0:
+        raise Fail('memory limit: 0 (none) or more')
+    props.append('CPUQuota=%s' % ('%d%%' % cpu_pct if cpu_pct else ''))
+    props.append('MemoryHigh=%s' % ('%dM' % mem_mb if mem_mb else 'infinity'))
+    systemctl('set-property', '--runtime', unit, *props, timeout=5)
+    return {'pid': pid, 'unit': unit, 'cpu': cpu_pct, 'memMb': mem_mb}
+
+
+def _usec_when(us):
+    """systemd's microseconds since the epoch → seconds (0 = never)."""
+    try:
+        us = int(us or 0)
+    except (TypeError, ValueError):
+        return 0
+    return us // 1000000 if us > 0 else 0
+
+
+def timer_list():
+    """Scheduled tasks (1.11): systemd timers, yours (on / off) and the system's (read only), with the next and last run."""
+    out = []
+    for scope in ('user', 'system'):
+        args = ['--user'] if scope == 'user' else []
+        try:
+            r = subprocess.run(['systemctl'] + args + ['list-timers', '--all', '--output=json', '--no-pager'],
+                               capture_output=True, text=True, timeout=10)
+            rows = json.loads(r.stdout or '[]') if r.returncode == 0 else []
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            rows = []
+        for t in rows:
+            unit = t.get('unit') or ''
+            if not unit:
+                continue
+            essential = scope == 'system' or is_essential_unit(unit)
+            out.append({'id': scope + ':' + unit, 'unit': unit, 'scope': scope, 'runs': t.get('activates') or '',
+                        'next': _usec_when(t.get('next')), 'last': _usec_when(t.get('last')),
+                        'hearth': unit.startswith(('hearth', 'nimbus')), 'canChange': not essential})
+    out.sort(key=lambda x: (x['scope'] != 'user', x['unit']))
+    return {'timers': out}
+
+
+def set_timer(unit, on):
+    """A scheduled task of yours on or off (never the system's, never one that keeps Hearth running)."""
+    if not re.match(r'^[\w@.-]+\.timer$', unit) or is_essential_unit(unit):
+        raise Fail("that one keeps Hearth running, so it can't be changed here")
+    systemctl('--user', 'enable' if on else 'disable', '--now', unit, timeout=15)
+    return {'unit': unit, 'on': on}
+
+
+def user_list(root=PROC):
+    """Users (1.11): everyone signed in, and how much CPU and memory their programs use."""
+    import pwd
+    procs = scan(root)
+    st = load_state('users') or {}
+    cur_total = cpu_total(root)[0][1]
+    per = {}
+    for p in procs.values():
+        if p.kthread or p.uid is None or p.uid < 1000:
+            continue
+        u = per.setdefault(p.uid, {'mem': 0, 'jiffies': 0, 'procs': 0})
+        u['mem'] += p.mem
+        u['jiffies'] += p.jiffies
+        u['procs'] += 1
+    prev = st.get('per', {})
+    dt = cur_total - st.get('total', cur_total)
+    sessions = {}
+    try:
+        r = subprocess.run(['loginctl', 'list-sessions', '--no-legend'], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            f = line.split()
+            if len(f) >= 3 and f[1].isdigit():
+                sessions.setdefault(int(f[1]), []).append(f[0])
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    out = []
+    for uid, u in sorted(per.items()):
+        try:
+            pw = pwd.getpwuid(uid)
+            name, full = pw.pw_name, (pw.pw_gecos or '').split(',')[0]
+        except KeyError:
+            name, full = str(uid), ''
+        pj = prev.get(str(uid))
+        cpu = round(100.0 * max(0, u['jiffies'] - pj) / dt, 1) if pj is not None and dt > 0 else 0.0
+        out.append({'uid': uid, 'name': name, 'full': full, 'you': uid == os.getuid(), 'signedIn': uid in sessions,
+                    'sessions': len(sessions.get(uid, [])), 'cpu': cpu, 'mem': u['mem'], 'procs': u['procs']})
+    save_state('users', {'total': cur_total, 'per': {str(k): v['jiffies'] for k, v in per.items()}})
+    return {'users': out}
+
+
 def signal_one(pid, sig, root=PROC):
     """Ends one process (Details' End task), yours only, never a part of Hearth."""
     procs = scan(root)
@@ -2107,6 +2323,20 @@ def cmd(argv):
         out = signal_one(parse_pid(argv[2]), signal.SIGKILL)
     elif c == 'eco' and len(argv) == 4 and argv[3] in ('on', 'off'):
         out = set_efficiency(parse_pid(argv[2]), argv[3] == 'on')
+    elif c == 'end-tree' and len(argv) == 3:
+        out = end_tree(parse_pid(argv[2]))
+    elif c == 'priority' and len(argv) == 4:
+        out = set_priority(parse_pid(argv[2]), argv[3])
+    elif c == 'affinity' and len(argv) == 4:
+        out = set_affinity(parse_pid(argv[2]), argv[3])
+    elif c == 'limit' and len(argv) == 5:
+        out = set_limit(parse_pid(argv[2]), argv[3], argv[4])
+    elif c == 'timers' and len(argv) == 2:
+        out = timer_list()
+    elif c == 'timer' and len(argv) == 4 and argv[3] in ('on', 'off'):
+        out = set_timer(argv[2], argv[3] == 'on')
+    elif c == 'users' and len(argv) == 2:
+        out = user_list()
     elif c == 'services' and len(argv) == 2:
         out = service_list()
     elif c == 'service' and len(argv) == 4:

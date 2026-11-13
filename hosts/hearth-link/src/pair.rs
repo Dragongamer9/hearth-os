@@ -26,10 +26,12 @@ pub const MAX_TRIES: u32 = 5;
 
 /// Pairing open on this device: the 6-digit code, and the short code for somewhere else once asked for.
 #[derive(Debug, Clone)]
-pub struct Pairing { pub code: String, pub until: u64, pub tries: u32, pub net: Option<(String, u64)> }
+pub struct Pairing { pub code: String, pub until: u64, pub tries: u32, pub net: Option<(String, u64)>,
+                     /// "My device" (true) or "A friend's device" (false), picked when pairing opened (family.rs).
+                     pub mine: bool }
 
 impl Pairing {
-    pub fn new(lifetime_ms: u64) -> Self { Pairing { code: new_code(), until: crate::now_ms() + lifetime_ms, tries: 0, net: None } }
+    pub fn new(lifetime_ms: u64) -> Self { Pairing { code: new_code(), until: crate::now_ms() + lifetime_ms, tries: 0, net: None, mine: true } }
     /// Still taking attempts: a code showing and tries left.
     pub fn open(&self) -> bool { self.tries < MAX_TRIES && (self.until > crate::now_ms() || self.net_code().is_some()) }
     pub fn lan_code(&self) -> Option<&str> { (self.until > crate::now_ms()).then_some(self.code.as_str()) }
@@ -91,12 +93,13 @@ pub fn wrong_code_text(left: u32, host: &str) -> String {
 }
 
 /// The joining side (B), on a connection to the host. `with`: "lan" (the 6-digit code) or "net" (the short code).
-/// Returns the host's name and relay (where it can be reached from elsewhere).
-pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, my_relay: Option<String>, code: &str, with: &str) -> Result<(String, Option<String>), String> {
+/// `mine`: this side picked "My device". Returns the host's name, relay (where it can be reached from elsewhere)
+/// and whether it picked My device too (a device from before this doesn't say: yes, as before).
+pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, my_relay: Option<String>, code: &str, with: &str, mine: bool) -> Result<(String, Option<String>, bool), String> {
     let host_key = *conn.remote_id().as_bytes();
     let (mut s, mut r) = conn.open_bi().await.map_err(|e| e.to_string())?;
     let (state, msg) = start(code, &host_key, me);
-    write_msg(&mut s, &json!({"v": 2, "name": my_name, "kind": crate::discovery::device_kind(), "relay": my_relay, "with": with, "msg": crate::hex(&msg)})).await?;
+    write_msg(&mut s, &json!({"v": 2, "name": my_name, "kind": crate::discovery::device_kind(), "relay": my_relay, "with": with, "mine": mine, "msg": crate::hex(&msg)})).await?;
     let a = read_msg(&mut r).await?;
     if let Some(e) = a["error"].as_str() { return Err(e.to_string()); }
     let their = a["msg"].as_str().and_then(crate::unhex).ok_or("The other device didn't answer the pairing")?;
@@ -109,12 +112,15 @@ pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     let theirs = c["confirm"].as_str().and_then(crate::unhex).unwrap_or_default();
     if !tag_eq(&theirs, &confirm_tag(&key, b"host", &host_key, me)) { return Err("Wrong code".into()); }
     let _ = s.finish();
-    Ok((host_name, relay_of(&a)))
+    // Only now, with both keys proven, is what it said about itself taken.
+    Ok((host_name, relay_of(&a), a["mine"] != false))
 }
 
 /// Who's pairing, as the joiner said in its first message.
 #[derive(Debug, Clone, Default)]
-pub struct Joiner { pub name: String, pub kind: String, pub relay: Option<String> }
+pub struct Joiner { pub name: String, pub kind: String, pub relay: Option<String>,
+                    /// It picked "My device" (a device from before this doesn't say: yes, as before).
+                    pub mine: bool }
 
 /// Why a pairing attempt on the host didn't pair.
 #[derive(Debug, PartialEq)]
@@ -131,6 +137,7 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
         name: b["name"].as_str().unwrap_or("Hearth").chars().filter(|c| !c.is_control()).take(40).collect(),
         kind: b["kind"].as_str().filter(|k| crate::discovery::KINDS.contains(k)).unwrap_or("").to_string(),
         relay: relay_of(&b),
+        mine: b["mine"] != false,
     };
     seen(&who);
     let fail = |f: HostFail| (f, who.clone());
@@ -146,7 +153,7 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
         }
     };
     let (state, msg) = start(&code, me, &joiner);
-    write_msg(&mut s, &json!({"v": 2, "name": my_name, "relay": my_relay, "msg": crate::hex(&msg)})).await.map_err(|_| fail(HostFail::Other))?;
+    write_msg(&mut s, &json!({"v": 2, "name": my_name, "relay": my_relay, "mine": pairing.mine, "msg": crate::hex(&msg)})).await.map_err(|_| fail(HostFail::Other))?;
     let key = match state.finish(&their) { Ok(k) => k, Err(_) => return Err(fail(HostFail::Wrong)) };
     let c = read_msg(&mut r).await.map_err(|_| fail(HostFail::Other))?;
     let theirs = c["confirm"].as_str().and_then(crate::unhex).unwrap_or_default();
@@ -164,6 +171,9 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), conn.closed()).await;
     Ok(who)
 }
+
+/// A paired device is a friend's unless both sides picked My device.
+pub fn is_friend(mine_here: bool, mine_there: bool) -> bool { !(mine_here && mine_there) }
 
 /// What the joiner sends the host first; used by tests of the message exchange without a network.
 pub fn exchange_offline(code_a: &str, code_b: &str) -> bool {
@@ -225,6 +235,14 @@ mod tests {
         assert!(!q.open());
         assert!(wrong_code_text(3, "Deck").contains("3 tries left"));
         assert!(wrong_code_text(0, "Deck").contains("stopped on Deck"));
+    }
+    #[test]
+    fn yours_only_when_both_say_so() {
+        assert!(!is_friend(true, true));
+        assert!(is_friend(true, false));
+        assert!(is_friend(false, true));
+        assert!(is_friend(false, false));
+        assert!(Pairing::new(1000).mine, "My device is the default");
     }
     #[test]
     fn codes() {

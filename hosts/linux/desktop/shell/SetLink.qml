@@ -18,6 +18,10 @@ SetPage {
     property string joining: ""
     property string joiningName: ""
     property bool pairingBusy: false
+    // Pairing a friend's device (family.rs): paired with this device only, for copying games. Off: one of yours,
+    // paired with all your devices. Only for this screen, never saved.
+    property bool friendMode: false
+    function f(args) { return page.friendMode ? args.concat(["friend"]) : args; }
     // Hearth Storage's settings (in Hearth Link's status), for its section at the end.
     readonly property var stc: page.st && page.st.storage ? (page.st.storage.config || {}) : null
     readonly property var kinds: ({ handheld: "Handheld", laptop: "Laptop", desktop: "Desktop", tablet: "Tablet", tv: "TV" })
@@ -52,7 +56,7 @@ SetPage {
     function join(args, input, okText) {
         page.pairingBusy = true;
         page.say("");
-        act.run(args, r => { page.pairingBusy = false; page.joining = ""; page.say("Paired ✓ with " + ((r && r.name) || page.joiningName)); page.refresh(); },
+        act.run(page.f(args), r => { page.pairingBusy = false; page.joining = ""; page.say("Paired ✓ with " + ((r && r.name) || page.joiningName) + (r && r.friend ? ": a friend's device, for copying games only" : ": it's paired with your other devices too")); page.refresh(); },
                 e => { page.pairingBusy = false; const wrong = /^Wrong code/.test(e) && !/last try/.test(e); if (!wrong) page.joining = ""; page.say(e, true); if (wrong) code.focusInput(); page.refresh(); }, input || "");
     }
     function refresh() { job.run(["status"], r => page.st = r, e => { page.st = { error: e }; }); }
@@ -99,7 +103,15 @@ SetPage {
         sub: page.st && page.st.pairEvent && page.st.pairEvent.state === "paired" ? "Paired ✓ with " + page.st.pairEvent.name + ". Select to pair another"
            : page.st && page.st.pairEvent && page.st.pairEvent.state === "locked" ? "Too many wrong codes, so pairing stopped. Select for a new code"
            : "Shows a code to type on your other Hearth device"
-        onActivated: page.run(["pair-open"])
+        onActivated: page.run(page.f(["pair-open"]))
+    }
+    SetSwitch {
+        visible: !!page.st && !!page.st.me
+        icon: "users"; title: "Pairing a friend's device"
+        sub: page.friendMode ? "On: the next device you pair is paired with this one only, just for copying games. Nothing else is shared"
+                             : "Off: the next device you pair is yours: paired with all your devices at once, with your settings and library"
+        checked: page.friendMode
+        onToggled: v => page.friendMode = v
     }
     SetRow {
         visible: !!page.st && !!page.st.pairing && !!page.st.pairing.code
@@ -116,7 +128,7 @@ SetPage {
     SetRow {
         visible: !!page.st && !!page.st.pairing && !page.st.pairing.netCode && page.st.shortCodes !== false
         icon: "globe"; title: "Not on the same network?"; sub: "Get a code to type on a device somewhere else (over the internet)"
-        onActivated: page.run(["pair-open-internet"])
+        onActivated: page.run(page.f(["pair-open-internet"]))
     }
     SetRow {
         visible: !!page.st && !!page.st.pairing
@@ -182,7 +194,8 @@ SetPage {
         delegate: SetRow {
             required property var modelData
             icon: "display"; title: modelData.name
-            sub: (modelData.online ? "Online" : "Not on right now") + " · select to unpair"
+            sub: (modelData.friend ? "Friend's device · " : "") + (modelData.online ? "Online" : modelData.lastSeen ? "Not on right now" : "Not reached yet")
+                 + (modelData.introducedBy ? " · paired through " + modelData.introducedBy : "") + " · select to unpair" + (modelData.friend ? "" : " (your other devices remove it too)")
             value: modelData.online ? "Online" : ""
             onActivated: page.run(["unpair", modelData.id], "Unpaired " + modelData.name)
         }

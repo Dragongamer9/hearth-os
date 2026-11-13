@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Makes Hearth Settings' search index (hosts/linux/desktop/shell/settings-index.js) from the page registry
 (settings-pages.js) and every page's cards: each card with a plain title (SetRow, SetSwitch, SetChoice, SetSlider,
-SetCard, SetLinkCard, SetExpander) becomes a search entry with its description and the page it's on, so the search
+SetCard, SetLinkCard, SetExpander, SetDropdown) becomes a search entry with its description and the page it's on, so the search
 finds single settings with their path ("Go to sleep after · System › Power & battery"). Pages themselves, and their old
 names, are searched straight from the registry. A file shown as several pages (About, Boot & startup) marks its parts
 with `// @part <name>` comments; a card belongs to the page whose `props.part` is that name.
@@ -15,7 +15,10 @@ import re
 import sys
 
 SHELL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'hosts', 'linux', 'desktop', 'shell')
-CARDS = r'\b(SetRow|SetSwitch|SetChoice|SetSlider|SetCard|SetLinkCard|SetExpander|StartInChoice)\s*\{'
+CARDS = r'\b(SetRow|SetSwitch|SetChoice|SetSlider|SetCard|SetLinkCard|SetExpander|SetDropdown|StartInChoice|GameModeChoice)\s*\{'
+# Shared cards drawn by their own file: the title, description and icon they show.
+OWN = {'StartInChoice': ('Start in', 'What this PC opens when it turns on or you sign in', 'power'),
+       'GameModeChoice': ('Game Mode: Steam Game Mode or Hearth Game Mode', 'Which Game Mode this PC goes into: Steam\'s or Hearth\'s own', 'pad')}
 # Pages whose cards repeat a setting whose real home is elsewhere (Home's shortcuts): indexed last, only new titles.
 LAST = ('SetHome.qml', 'SetCategory.qml')
 
@@ -82,11 +85,11 @@ def cards(path):
         start = m.end() - 1
         top = top_level(s[start + 1:block_end(s, start)])
         kind = m.group(1)
-        title = literal(top, 'title') or ('Start in' if kind == 'StartInChoice' else '')
+        title = literal(top, 'title') or (OWN[kind][0] if kind in OWN else '')
         if not title or len(title) < 3:
             continue
-        sub = literal(top, 'sub') or ('What this PC opens when it turns on or you sign in' if kind == 'StartInChoice' else '')
-        icon = literal(top, 'icon') or ('power' if kind == 'StartInChoice' else '')
+        sub = literal(top, 'sub') or (OWN[kind][1] if kind in OWN else '')
+        icon = literal(top, 'icon') or (OWN[kind][2] if kind in OWN else '')
         part = None
         for pos, name in parts:
             if pos < m.start():

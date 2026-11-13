@@ -212,7 +212,9 @@ pub fn set(pick: &str) -> Result<(), String> {
     // A new choice gets a fresh try.
     note_chromium_ok(); note_qt_ok(); let _ = std::fs::remove_file(qt_crashes_file());
     crate::bridge::log(&format!("renderer: Settings chose {p} (from the next start)"));
-    if p == "auto" { let _ = std::fs::remove_file(setting_file()); Ok(()) } else { std::fs::write(setting_file(), p).map_err(|e| e.to_string()) }
+    // Written whole (settings_file: a temporary file, then a rename, with .bak): a power cut while it was written left
+    // an empty file, and an empty file reads as Automatic, so the renderer you chose changed by itself.
+    if p == "auto" { let _ = std::fs::remove_file(setting_file()); Ok(()) } else { crate::settings_file::write_text(&setting_file(), p).map(|_| ()).map_err(|e| e.to_string()) }
 }
 /// One start only with another engine ("web": automatic without Qt; the Qt renderer's Open in the web renderer).
 pub fn set_once(pick: &str) -> Result<(), String> {

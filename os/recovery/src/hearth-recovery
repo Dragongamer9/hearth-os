@@ -6,6 +6,11 @@ Run as root (the recovery USB's screen runs as root). Works on the drives of the
 
   hearth-recovery scan                       the Hearth OS installs on the internal drives: device, edition, users,
                                              deployments (current first, then previous) with versions and dates
+  hearth-recovery health SYS                 what's wrong, for the main screen: {"checks": [...], "fix": {...} | null,
+                                             "starts": {INDEX: {"good": n, "failed": n}}} from the drive alone (offline):
+                                             the drive's health and free space, which versions started fine (the
+                                             installed system's journal), display settings on trial, the automatic
+                                             fallback; and one suggested fix
   hearth-recovery set-default SYS INDEX      start deployment INDEX next time (`ostree admin set-default`), the GRUB
                                              menu rewritten to match on Peppermint (hearth-bls-grub), read back
   hearth-recovery reset-display SYS [--desktop] [--user NAME]
@@ -594,6 +599,189 @@ def scan():
         except Fail as e:
             out.append({'id': s.id, 'device': s.dev['path'], 'model': s.dev['model'], 'error': str(e), 'deployments': []})
     return {'systems': out}
+
+
+# ------------------------------------------------------------------ 0. the health check (the main screen)
+# Offline and read-only: only the drive is looked at. Each check is {id, state: ok | warn | bad | unknown, title,
+# detail}; the fix is one of the menu's own actions ({act, title, body, button}), never something new.
+LOW_SPACE = 2 * GIB
+TIME_RE = re.compile(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)')
+
+
+def boot_key(options):
+    """A boot entry's (or a start's kernel command line's) ostree= target without the boot.N part, which changes
+    each time the deployments do: "default/<bootcsum>/0"."""
+    m = re.search(r'(?:^|\s)ostree=(\S+)', options or '')
+    if not m:
+        return ''
+    return re.sub(r'^/?ostree/boot\.\d+/', '', m.group(1)).strip('/')
+
+
+def start_times(first, last):
+    a, z = TIME_RE.search(first or ''), TIME_RE.search(last or '')
+    return (a.group(1) if a else ''), (z.group(1) if z else '')
+
+
+def journal_starts(jdir, limit=8):
+    """The installed system's last starts, newest last: [{boot, first, last, key, good}]. good: Hearth was up
+    (hearth-boot-good saw Game Mode, Desktop Mode or the login screen for 45 seconds and finished). None when the
+    journal can't be read."""
+    if not os.path.isdir(jdir) or not shutil.which('journalctl'):
+        return None
+    out = []
+    for off, bid, first, last in journal_boots(jdir)[-limit:]:
+        kern = sh(['journalctl', '-D', jdir, '-b', bid, '-k', '--no-pager', '-o', 'cat', '-g', 'Command line', '-n', '4'], check=False, timeout=60).stdout or ''
+        good = sh(['journalctl', '-D', jdir, '-b', bid, '--no-pager', '-o', 'cat', '-u', 'hearth-boot-good.service', '-n', '40'], check=False, timeout=60).stdout or ''
+        a, z = start_times(first, last)
+        out.append({'boot': bid, 'first': a, 'last': z, 'key': boot_key(kern),
+                    'good': bool(re.search(r'Deactivated successfully|Finished hearth-boot-good|count back', good))})
+    return out
+
+
+def when_text(ts):
+    """"today at 6:12 pm", "Nov 8" from "2026-11-10 18:12:03" (the PC's clock as the journal wrote it)."""
+    try:
+        t = time.strptime(ts, '%Y-%m-%d %H:%M:%S')
+    except (TypeError, ValueError):
+        return ts or ''
+    clock = time.strftime('%I:%M %p', t).lstrip('0').lower()
+    if time.strftime('%Y-%m-%d', t) == time.strftime('%Y-%m-%d'):
+        return 'today at ' + clock
+    return time.strftime('%b ', t) + str(t.tm_mday) + ' at ' + clock
+
+
+def drive_health(disk):
+    """('ok' | 'bad' | 'unknown', detail) from the drive's own self-check (SMART), when smartctl can ask it."""
+    if FAKE:
+        v = read(os.path.join(FAKE, 'smart.json'))
+        j = json.loads(v) if v else None
+    elif shutil.which('smartctl') and disk.startswith('/dev/'):
+        r = sh(['smartctl', '-H', '-j', disk], check=False, timeout=30)
+        try:
+            j = json.loads(r.stdout or '{}')
+        except ValueError:
+            j = None
+    else:
+        j = None
+    passed = ((j or {}).get('smart_status') or {}).get('passed')
+    if passed is True:
+        return 'ok', 'Its own self-check passed'
+    if passed is False:
+        return 'bad', 'Its own self-check says it is failing: copy your files off soon'
+    return 'unknown', "It couldn't be asked how it's doing"
+
+
+def free_space(path):
+    try:
+        st = os.statvfs(path)
+        return st.f_bavail * st.f_frsize
+    except OSError:
+        return None
+
+
+def display_on_trial(s, people):
+    """Users whose Game Mode is trying a display setting (a renderer for one start, a mode not yet kept)."""
+    out = []
+    for u in people:
+        cfg = os.path.join(s.host_path(u['home']), '.config', 'nimbus')
+        if any(os.path.exists(os.path.join(cfg, n)) for n in ('renderer-once', 'display-pending.json', 'renderer-qt-crashes')):
+            out.append(u['name'])
+    return out
+
+
+def health_of(s, starts, drive, space, trial, fellback):
+    """The checks and the suggested fix from what was found (no drive access: tested on its own)."""
+    deps = s.deps
+    cur = deps[0] if deps else {}
+    prev = deps[1] if len(deps) > 1 else None
+    name = lambda d: 'Hearth OS ' + (d.get('hearthVersion') or d.get('osVersion') or '')
+    keys = {boot_key(d.get('kargs', '')): d['index'] for d in deps if boot_key(d.get('kargs', ''))}
+    per = {d['index']: {'good': 0, 'failed': 0, 'lastGood': '', 'failedAt': []} for d in deps}
+    for st in starts or []:
+        i = keys.get(st['key'])
+        if i is None:
+            continue
+        if st['good']:
+            per[i]['good'] += 1
+            per[i]['lastGood'] = st['first']
+        else:
+            per[i]['failed'] += 1
+            per[i]['failedAt'].append(st['first'])
+    # The newest starts in a row that didn't get Hearth up (any version: what happens now).
+    failing = []
+    for st in reversed(starts or []):
+        if st['good']:
+            break
+        failing.append(st)
+    failing.reverse()
+    cur_failing = bool(failing) and keys.get(failing[-1]['key']) == 0
+    checks = []
+    state, detail = drive
+    checks.append({'id': 'drive', 'state': state, 'title': {'ok': 'The drive is healthy', 'bad': 'The drive is failing', 'unknown': 'The drive'}[state],
+                   'detail': f"{s.dev['model']} · {detail}"})
+    if space is not None and space < LOW_SPACE:
+        checks.append({'id': 'space', 'state': 'bad', 'title': 'The drive is almost full', 'detail': f"Only {gb_text(space)} free: Hearth OS needs about 2 GB to start properly"})
+    elif space is not None:
+        checks.append({'id': 'space', 'state': 'ok', 'title': 'There is room on the drive', 'detail': f"{gb_text(space)} free"})
+    checks.append({'id': 'system', 'state': 'ok', 'title': f"{name(cur)} is there",
+                   'detail': (f"Installed {cur.get('deployedText')}" if cur.get('deployedText') else 'Found on the drive') + (f" · {name(prev)} kept as the previous version" if prev else ' · no previous version on the drive')})
+    if starts is None:
+        checks.append({'id': 'starts', 'state': 'unknown', 'title': 'Its last starts', 'detail': "It keeps no logs on the drive, so they can't be checked"})
+    elif failing:
+        times = ', '.join(when_text(x['first']) for x in failing[-3:])
+        n = len(failing)
+        checks.append({'id': 'starts', 'state': 'bad', 'title': f"{name(cur) if cur_failing else 'Hearth OS'} didn't finish starting",
+                       'detail': f"{'Its last start' if n == 1 else f'Its last {n} starts'} stopped before Game Mode or the desktop came up ({times})"})
+    elif starts:
+        checks.append({'id': 'starts', 'state': 'ok', 'title': 'It started fine last time', 'detail': 'Hearth came up ' + when_text(starts[-1]['first'])})
+    if fellback:
+        checks.append({'id': 'fallback', 'state': 'warn', 'title': 'It went back to the previous version by itself',
+                       'detail': f"{fellback[0].upper() + fellback[1:]}, after the new version didn't start twice"})
+    if trial:
+        checks.append({'id': 'display', 'state': 'warn', 'title': 'Game Mode is trying a new display setting', 'detail': 'For ' + ', '.join(trial) + ': it can turn the screen black'})
+    people = users_of(cur['path']) if cur.get('path') else []
+    if people:
+        checks.append({'id': 'files', 'state': 'ok', 'title': 'Your files are there', 'detail': ', '.join(u['full'] or u['name'] for u in people) + " · nothing here changes them"})
+    # One suggested fix, the likeliest first.
+    fix = None
+    if state == 'bad':
+        fix = {'act': 'copy', 'title': 'Copy your files off', 'body': "The drive says it's failing. Copy your files onto a USB drive while it still works, then replace the drive.", 'button': 'Copy my files'}
+    elif space is not None and space < LOW_SPACE:
+        fix = {'act': 'desktop', 'title': 'Start in Desktop Mode and free up space', 'body': f"With only {gb_text(space)} free, Game Mode can't start properly. Desktop Mode needs less: uninstall a game or delete big files there, then switch back.", 'button': 'Start in Desktop Mode'}
+    elif failing and cur_failing and prev and per[0]['good'] == 0:
+        good = per[prev['index']]['good']
+        fix = {'act': 'previous', 'title': 'Start the previous version', 'body': f"{name(prev)}{' started fine ' + (str(good) + ' times' if good > 1 else 'before') if good else ' is still on the drive'}. Going back changes nothing in your files, and the next update tries again.", 'button': 'Start ' + (prev.get('hearthVersion') or 'it')}
+    elif failing and trial:
+        fix = {'act': 'resetdisplay', 'title': "Reset Game Mode's display settings", 'body': 'Game Mode was trying a new display setting when it stopped starting. This puts the renderer, resolution and refresh rate back to automatic.', 'button': 'Reset display settings'}
+    elif failing:
+        fix = {'act': 'desktop', 'title': 'Start in Desktop Mode', 'body': "Game Mode didn't come up. Desktop Mode starts without it and puts the display settings back to automatic, so you can get in and send logs from there.", 'button': 'Start in Desktop Mode'}
+    bad = [c for c in checks if c['state'] == 'bad']
+    head = "We found what's wrong" if bad else 'Everything looks fine' if not [c for c in checks if c['state'] == 'warn'] else 'Mostly fine'
+    starts_out = {str(i): {'good': v['good'], 'failed': v['failed'], 'lastGood': when_text(v['lastGood']) if v['lastGood'] else ''} for i, v in per.items()}
+    return {'title': head, 'checks': checks, 'fix': fix, 'starts': starts_out}
+
+
+def health(sid):
+    s = get_system(sid)
+    with s.open(rw=False, boot=True, home=True):
+        if not s.deps:
+            raise Fail('no Hearth OS found there')
+        starts = journal_starts(os.path.join(s.stateroot_var(), 'log', 'journal'))
+        fb = {}
+        try:
+            fb = json.loads(read(os.path.join(s.stateroot_var(), 'lib', 'hearth', 'boot-fallback.json'), '{}') or '{}')
+        except ValueError:
+            pass
+        fellback = ''
+        when = str(fb.get('when') or '').replace('T', ' ')[:19]
+        try:
+            recent = time.time() - time.mktime(time.strptime(when, '%Y-%m-%d %H:%M:%S')) < 14 * 86400
+        except ValueError:
+            recent = False
+        if recent:
+            fellback = when_text(when)
+        people = users_of(s.deps[0]['path'])
+        return health_of(s, starts, drive_health(s.dev['disk']), free_space(s.sysroot), display_on_trial(s, people), fellback)
 
 
 # ------------------------------------------------------------------ 1. start the previous version
@@ -1519,6 +1707,8 @@ def main(argv):
         long = {'update', 'factory-reset', 'copy-home', 'send-logs'}
         if cmd == 'scan':
             res = scan()
+        elif cmd == 'health' and len(a) == 1:
+            res = health(a[0])
         elif cmd == 'set-default' and len(a) == 2:
             res = set_default(a[0], a[1])
         elif cmd == 'reset-display' and a:
@@ -1545,7 +1735,7 @@ def main(argv):
         elif cmd in ('restart', 'poweroff'):
             res = power(cmd, a[0] if a else None)
         else:
-            print('error: usage: hearth-recovery scan | set-default SYS INDEX | reset-display SYS [--desktop] | send-logs SYS [NOTE] | '
+            print('error: usage: hearth-recovery scan | health SYS | set-default SYS INDEX | reset-display SYS [--desktop] | send-logs SYS [NOTE] | '
                   'update SYS | factory-check SYS | factory-reset SYS MODE | copy-targets [SYS] | copy-home SYS USER PART | wifi-list | wifi-connect SSID [PW] | '
                   'net-status | restart [SYS] | poweroff', flush=True)
             return 1

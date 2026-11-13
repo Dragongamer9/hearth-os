@@ -38,7 +38,7 @@ impl Node {
     pub async fn inputs_command(self: &Arc<Self>, cmd: &str, _a: &Value) -> Result<Value, String> {
         match cmd {
             "input.peers" => {
-                let peers: Vec<(String, String)> = crate::lock(&self.peers).list.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
+                let peers: Vec<(String, String)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
                 let mut set = tokio::task::JoinSet::new();
                 for (id, name) in peers {
                     let n = self.clone();

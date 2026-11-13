@@ -147,14 +147,16 @@ class SettingsNeverChangeByThemselves(unittest.TestCase):
             self.assertEqual(hits, [], f)
 
     def test_choosing_a_look_changes_only_the_look(self):
+        # (Since the sub themes, 1.10: the look and the sub theme back to its first: test_sub_themes.py.)
         a = code((SHELL / 'SetAppearance.qml').read_text())
-        card = block(a, 'component LookCard')
-        self.assertEqual(re.findall(r'\bSettings\.\w+\s*=(?!=)', card), ['Settings.look ='])
+        self.assertIn('onChosen: v => page.apply(SubThemes.changesForLook(v))', a)
+        js = (SHELL / 'subthemes.js').read_text()
+        self.assertIn('function changesForLook(look) { return { look: look, subTheme: "" }; }', js)
         # The look's wallpaper, bar, dock, clock and transparency are only used where yours is "" (not set).
         t = (SHELL / 'Theme.qml').read_text()
-        self.assertIn('Settings.wallpaper !== "" ? Settings.wallpaper : (lookDef.wallpaper || "")', t)
+        self.assertIn('readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : ownWall', t)
         w = (SHELL / 'Wallpaper.qml').read_text()
-        self.assertIn('Settings.wallpaper !== "" ? Settings.wallpaper : (Theme.lookDef.wallpaper || "")', w)
+        self.assertIn('readonly property string wall: Theme.wall', w)
 
     def test_from_wallpaper_only_runs_when_you_ask(self):
         a = code((SHELL / 'SetAppearance.qml').read_text())
@@ -269,7 +271,7 @@ class Stats(unittest.TestCase):
         b = self.hs.cpu_times('cpu  150 0 150 900 0 0 0 0 0 0\n')
         self.assertEqual(self.hs.cpu_percent(a, b), 50)
         self.assertIsNone(self.hs.cpu_percent(None, b))
-        self.assertEqual(self.hs.memory('MemTotal: 16777216 kB\nMemFree: 1 kB\nMemAvailable: 11429478 kB\n'), (5.1, 16.0))
+        self.assertEqual(self.hs.memory('MemTotal: 16777216 kB\nMemFree: 1 kB\nMemAvailable: 11429478 kB\nCached: 11429477 kB\n'), (5.1, 16.0))
         self.assertIsNone(self.hs.memory('nothing'))
 
     def test_fps_only_from_a_fresh_mangohud_log(self):

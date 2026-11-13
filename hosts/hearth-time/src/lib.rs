@@ -8,6 +8,9 @@
 //! apps closed, shows calendar reminders, refreshes subscribed calendars and keeps the weather summary fresh.
 
 pub mod alert;
+/// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
+#[path = "../../hearth-apptheme/appfile.rs"]
+pub mod appfile;
 pub mod calendar;
 pub mod clock;
 pub mod ics;

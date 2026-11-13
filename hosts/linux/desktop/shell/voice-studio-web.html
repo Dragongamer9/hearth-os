@@ -1,0 +1,485 @@
+<!doctype html>
+<!-- Voice Studio's page (docs/HOME-SERVER.md), served by hearth-voice-studio serve on port 8890: only on this PC and its
+     Tailscale address, behind the PIN (Voice Studio's own, or Server mode's). Phone, laptop and controller in one file:
+     a d-pad or arrow keys move between controls, A / Enter presses, B / Escape goes back to the tabs, LB / RB change tab.
+     Every request is checked again on the PC. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>{{HOST}} · Voice Studio</title>
+<style>
+:root{--bg:#0e141b;--card:#18212b;--card2:#202b37;--line:#2a3644;--text:#e8eef4;--muted:#93a1b0;--faint:#6b7886;--accent:#66c0f4;--ink:#06131d;--ok:#5bd18b;--warn:#f5b84b;--bad:#ff6b6b;--ember:#ff9a4d}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 Inter,"Noto Sans",system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.shell{display:flex;min-height:100vh}
+.rail{width:236px;flex:none;padding:18px 12px;border-right:1px solid var(--line);position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;margin:0 6px 16px}
+.logo{width:36px;height:36px;border-radius:11px;background:radial-gradient(circle at 50% 62%,#ffb36b,#e0602a 60%,#7a2a10);display:grid;place-items:center;flex:none}
+.brand b{display:block;font-size:16.5px}.brand span{font-size:12px;color:var(--muted)}
+.tab{display:flex;align-items:center;gap:12px;height:46px;padding:0 12px;border-radius:12px;border:0;background:none;text-align:left;color:var(--muted);font-weight:550;width:100%}
+.tab svg{flex:none}
+.tab.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
+.tab .n{margin-left:auto;font-size:11.5px;background:var(--card2);border-radius:8px;padding:1px 7px;color:var(--muted)}
+.rail .foot{margin-top:auto;font-size:12px;color:var(--faint);padding:8px}
+.main{flex:1;min-width:0;padding:22px 30px 60px;max-width:1180px}
+h1{font-size:24px;margin:2px 0 4px;font-weight:650}
+.lead{color:var(--muted);margin:0 0 18px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:14px}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--muted);font-weight:600;letter-spacing:.2px}
+input[type=text],input[type=search],select,textarea{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;min-height:46px;width:100%}
+textarea{min-height:150px;resize:vertical;line-height:1.5}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1;min-width:140px}
+.btn{height:46px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:var(--card2);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;flex:none;min-width:0}
+a.btn{text-decoration:none;color:var(--text)}
+.btn.pri{background:var(--accent);color:var(--ink);border:0}
+.btn.ember{background:var(--ember);color:#1d0d02;border:0}
+.btn.sm{height:36px;padding:0 12px;font-size:13.5px;border-radius:10px}
+.btn.bad{color:var(--bad)}
+.btn[disabled]{opacity:.45;cursor:default}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{height:36px;padding:0 13px;border-radius:18px;border:1px solid var(--line);background:var(--card2);font-size:13.5px;font-weight:550}
+.chip.on{background:color-mix(in srgb,var(--accent) 20%,transparent);border-color:var(--accent);color:var(--text)}
+.k{font-size:11.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin:4px 0 2px}
+.player{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:var(--card2);border:1px solid var(--line)}
+audio,video{width:100%;border-radius:10px}
+.muted{color:var(--muted)}.small{font-size:12.5px}
+.voices{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.voice{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+.voice .top{display:flex;gap:12px;align-items:center}
+.av{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:var(--ink);flex:none}
+.voice b{display:block;font-size:15px}.voice .t{flex:1;min-width:0}.voice .t span{font-size:12px;color:var(--muted)}
+.tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:7px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.tag.def{background:color-mix(in srgb,var(--ember) 18%,transparent);color:var(--ember)}
+.jobs{display:flex;flex-direction:column;gap:10px}
+.job{padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.job .h{display:flex;align-items:center;gap:10px}
+.job .h b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{height:8px;border-radius:4px;background:var(--card2);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .4s}
+.st{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:7px}
+.st.queued{background:var(--card2);color:var(--muted)}.st.running{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.st.done{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}.st.failed,.st.cancelled{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.outs{display:flex;flex-wrap:wrap;gap:8px}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
+.drop.has{border-style:solid;border-color:color-mix(in srgb,var(--accent) 50%,var(--line));color:var(--text)}
+.check{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 8%,var(--card2));border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);font-size:13.5px}
+.check input{width:22px;height:22px;flex:none;margin:1px 0 0;accent-color:var(--accent)}
+.read{padding:14px;border-radius:12px;background:var(--card2);font-size:16px;line-height:1.6;border-left:3px solid var(--ember)}
+.rec{width:74px;height:74px;min-width:0!important;flex:none!important;border-radius:50%;border:0;background:var(--bad);display:grid;place-items:center;color:#fff;flex:none}
+.rec.on{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 12px color-mix(in srgb,var(--bad) 25%,transparent)}}
+.empty{padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:14px}
+.code{font:13px/1.5 ui-monospace,"JetBrains Mono",monospace;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;white-space:pre-wrap;word-break:break-all}
+.banner{padding:12px 14px;border-radius:12px;background:color-mix(in srgb,var(--warn) 10%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);font-size:13.5px;margin-bottom:14px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);padding:11px 18px;border-radius:12px;font-size:14px;display:none;max-width:92vw;z-index:9}
+.toast.bad{border-color:var(--bad)}
+.login{max-width:380px;margin:10vh auto;padding:28px;text-align:center}
+.login input{height:56px;font-size:28px;text-align:center;letter-spacing:10px;margin:16px 0 12px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.pad .btn{height:52px;font-size:19px}
+.err{color:var(--bad);font-size:13.5px;min-height:20px}
+.hint{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;color:var(--faint);font-size:12px;margin-top:18px}
+.hint kbd{background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;color:var(--muted)}
+@media (max-width:900px){
+  .shell{flex-direction:column}
+  .rail{width:auto;height:auto;position:sticky;top:0;z-index:5;flex-direction:row;overflow-x:auto;padding:8px 10px;border-right:0;border-bottom:1px solid var(--line);background:var(--bg);gap:6px;scrollbar-width:none}
+  .brand,.rail .foot{display:none}
+  .tab{width:auto;flex:none;height:40px;padding:0 13px;gap:8px;font-size:14px}
+  .tab.on{box-shadow:inset 0 -3px 0 var(--accent)}
+  .tab .n{display:none}
+  .main{padding:16px 16px 60px}
+  .grid2{grid-template-columns:1fr}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+<script>
+const EMBED = /*HEARTH_DATA*/null;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const P = {
+  speak:'<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>',
+  clone:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  design:'<path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  transcribe:'<path d="M4 6h16M4 10h16M4 14h10M4 18h7"/>',
+  voices:'<circle cx="9" cy="8" r="3.2"/><path d="M3 19c.8-3.4 3.2-5 6-5s5.2 1.6 6 5"/><path d="M16.5 5.5a3 3 0 0 1 0 5M18.5 13.5c1.4.8 2.2 2.5 2.5 5"/>',
+  books:'<path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"/>',
+  dub:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/>',
+  api:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>',
+  play:'<path d="m8 5 11 7-11 7z"/>', down:'<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/>', trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>', mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>', up:'<path d="M12 20V9m-5 5 5-5 5 5M5 4h14"/>', star:'<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+};
+const I = (n, s = 18) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n] || ''}</svg>`;
+const TABS = [['speak','Speak'],['clone','Clone'],['design','Design'],['transcribe','Transcribe'],['voices','Your voices'],['books','Audiobooks'],['dub','Video dubbing'],['api','Apps & API']];
+const READ = 'The quick brown fox jumps over the lazy dog. On a bright spring morning, I like to walk to the river, listen to the birds, and think about the day ahead.';
+let S = null, tab = 'speak', pollT = null, rec = null, recChunks = [], recBlob = null;
+const ui = {speakText:'', speakVoice:'', speakLang:'auto', speed:1, fmt:'mp3', clip:null, design:{}, designText:'', bookFile:null, dubFile:null, trFile:null};
+try { const t = localStorage.getItem('vs-tab'); if (t && TABS.some(x => x[0] === t)) tab = t; } catch (e) {}
+
+function toast(t, bad) { const el = $('#toast'); el.textContent = t; el.className = 'toast' + (bad ? ' bad' : ''); el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', bad ? 6000 : 3000); }
+async function api(path, opt = {}) {
+  const r = await fetch(path, Object.assign({credentials: 'same-origin', headers: Object.assign({'X-Hearth': '1'}, opt.json !== undefined ? {'Content-Type': 'application/json'} : {})}, opt.json !== undefined ? {method: 'POST', body: JSON.stringify(opt.json)} : {}, opt.fetch || {}));
+  if (r.status === 401) { const j = await r.json().catch(() => ({})); login(j.error); throw new Error(j.error || 'Signed out'); }
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error((j.error && j.error.message) || j.error || ('The PC answered ' + r.status)); }
+  return opt.blob ? r : r.json();
+}
+function upload(path, file, onp) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest(); x.open('POST', path); x.setRequestHeader('X-Hearth', '1'); x.withCredentials = true;
+    x.upload.onprogress = e => e.lengthComputable && onp && onp(e.loaded / e.total);
+    x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch (e) {} if (x.status === 401) { login(j.error); rej(new Error('Signed out')); } else if (x.status >= 400) rej(new Error(j.error || ('The PC answered ' + x.status))); else res(j); };
+    x.onerror = () => rej(new Error('The upload didn\'t reach the PC')); x.send(file);
+  });
+}
+function q(o) { return Object.entries(o).filter(([, v]) => v !== '' && v != null).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'); }
+function size(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB'; }
+function dur(s) { s = Math.round(s || 0); return s >= 3600 ? Math.floor(s / 3600) + ' h ' + Math.round(s % 3600 / 60) + ' min' : s >= 60 ? Math.round(s / 60) + ' min' : s + ' s'; }
+const COLORS = ['#66c0f4', '#ff9a4d', '#5bd18b', '#c79bff', '#f5b84b', '#ff7aa8', '#4fd1c5'];
+const colorOf = s => COLORS[[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
+
+// ---------------------------------------------------------------- sign in
+function login(msg) {
+  clearInterval(pollT); S = null;
+  $('#app').innerHTML = `<div class="card login"><div class="logo" style="margin:0 auto 12px;width:52px;height:52px;border-radius:15px">${I('speak', 26)}</div>
+    <h1>Voice Studio</h1><div class="muted small">on ${esc(location.hostname)}</div>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" placeholder="PIN" aria-label="PIN">
+    <div class="pad">${[1,2,3,4,5,6,7,8,9,'⌫',0,'OK'].map(k => `<button class="btn" data-k="${k}">${k}</button>`).join('')}</div>
+    <div class="err" id="err">${esc(msg && msg !== 'Type the PIN' ? msg : '')}</div>
+    <div class="muted small">The PIN from Settings › Home server › Voice Studio on the PC (or Server mode's PIN). Only your devices on Tailscale can open this page.</div></div>`;
+  const pin = $('#pin'); pin.focus();
+  const go = async () => {
+    try { const r = await fetch('/api/login', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'X-Hearth': '1'}, body: JSON.stringify({pin: pin.value})});
+      const j = await r.json().catch(() => ({})); if (!r.ok) { $('#err').textContent = j.error || 'That didn\'t work'; pin.value = ''; return; } load(); }
+    catch (e) { $('#err').textContent = 'The PC didn\'t answer'; }
+  };
+  pin.onkeydown = e => { if (e.key === 'Enter') go(); };
+  document.querySelectorAll('.pad .btn').forEach(b => b.onclick = () => { const k = b.dataset.k; if (k === 'OK') go(); else if (k === '⌫') pin.value = pin.value.slice(0, -1); else pin.value += k; });
+}
+
+// ---------------------------------------------------------------- the shell
+async function load() {
+  try { S = EMBED || await api('/api/state'); } catch (e) { if (S === null && !$('#pin')) $('#app').innerHTML = `<div class="card login"><h1>Voice Studio</h1><p class="err">${esc(e.message)}</p></div>`; return; }
+  if (!ui.speakVoice) ui.speakVoice = S.settings.voice || (S.library[0] ? S.library[0].id : 'narrator');
+  ui.speakLang = ui.speakLang || S.settings.language;
+  render(); poll();
+}
+function poll() { clearInterval(pollT); if (EMBED) return; pollT = setInterval(async () => { const busy = S && S.jobs.some(j => j.state === 'queued' || j.state === 'running'); if (!busy) return; try { const r = await api('/api/jobs'); S.jobs = r.jobs; if (['transcribe', 'books', 'dub'].includes(tab)) renderJobs(); } catch (e) {} }, 2500); }
+function render() {
+  const counts = {voices: S.library.length, books: S.jobs.filter(j => j.kind === 'audiobook').length, dub: S.jobs.filter(j => j.kind === 'dub').length, transcribe: S.jobs.filter(j => j.kind === 'transcribe').length};
+  $('#app').innerHTML = `<div class="shell"><nav class="rail" aria-label="Voice Studio">
+      <div class="brand"><div class="logo">${I('speak', 20)}</div><div><b>Voice Studio</b><span>${esc(S.host)} · Hearth</span></div></div>
+      ${TABS.map(([id, name]) => `<button class="tab${tab === id ? ' on' : ''}" data-tab="${id}">${I({books: 'books'}[id] || id)}<span>${name}</span>${counts[id] ? `<span class="n">${counts[id]}</span>` : ''}</button>`).join('')}
+      <div class="foot">${S.caps.gpu ? esc(S.caps.gpu) : 'On the processor'}<br><a href="#" id="signout" style="color:var(--muted)">Sign out</a></div>
+    </nav><main class="main" id="main"></main></div>`;
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => go(b.dataset.tab));
+  const out = $('#signout'); if (out) out.onclick = async e => { e.preventDefault(); try { await api('/api/logout', {json: {}}); } catch (x) {} login(); };
+  view();
+}
+function go(t) { tab = t; try { localStorage.setItem('vs-tab', t); } catch (e) {} document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t)); view(); }
+function view() { const m = $('#main'); m.innerHTML = ({speak, clone, design, transcribe, voices, books, dub, api: apis})[tab](); bind[tab] && bind[tab](m); }
+function notReady(cap, what) { return S.caps[cap] ? '' : `<div class="banner">${what} isn't installed yet. On the PC: Settings › Home server › Services and AI › Voice Studio › Install.</div>`; }
+function voiceOptions(sel, auto, onlyStable) {
+  const g = (label, list) => list.length ? `<optgroup label="${label}">${list.map(v => `<option value="${esc(v.id)}"${v.id === sel ? ' selected' : ''}>${esc(v.name)}${v.note ? ' · ' + esc(v.note) : ''}</option>`).join('')}</optgroup>` : '';
+  return (auto ? `<option value="auto"${sel === 'auto' ? ' selected' : ''}>A new voice each time</option>` : '') + g('Your voices', S.library) + g('Ready-made', S.presets) + g('Kokoro (fast, on the processor)', S.voices.filter(v => v.kind === 'kokoro'));
+}
+function langOptions(sel, noAuto) { return S.languages.filter(([c]) => !(noAuto && c === 'auto')).map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${n}</option>`).join(''); }
+function audioCard(url, name, extra = '') { return `<div class="player"><audio controls autoplay src="${url}"></audio><div class="row" style="justify-content:space-between"><span class="muted small">${extra}</span><a class="btn sm" href="${url}" download="${esc(name)}">${I('down', 16)} Download</a></div></div>`; }
+
+// ---------------------------------------------------------------- Speak
+function speak() {
+  return `<h1>Speak</h1><p class="lead">Type or paste anything and hear it in any of your voices, in ${S.languages.length - 1}+ languages.</p>${notReady('speak', 'Speech')}
+  <div class="grid2"><div class="card stack"><label class="f">Text<textarea id="t" placeholder="Once upon a time, in a castle by the sea...">${esc(ui.speakText)}</textarea></label>
+    <div class="row"><span class="muted small" id="cnt">${ui.speakText.length} characters</span><button class="btn pri" id="go">${I('play', 16)} Speak</button></div></div>
+  <div class="stack"><div class="card stack">
+    <label class="f">Voice<select id="v">${voiceOptions(ui.speakVoice, true)}</select></label>
+    <label class="f">Language<select id="l">${langOptions(ui.speakLang)}</select></label>
+    <label class="f">Speed <span id="spv">${ui.speed.toFixed(2)}×</span><input id="sp" type="range" min="0.5" max="2" step="0.05" value="${ui.speed}"></label>
+    <label class="f">Download as<select id="fmt">${['mp3', 'wav', 'flac', 'opus'].map(f => `<option${f === ui.fmt ? ' selected' : ''}>${f}</option>`).join('')}</select></label></div>
+    <div id="out"></div></div></div>`;
+}
+const bind = {};
+bind.speak = m => {
+  const t = $('#t', m); t.oninput = () => { ui.speakText = t.value; $('#cnt').textContent = t.value.length + ' characters'; };
+  $('#v', m).onchange = e => ui.speakVoice = e.target.value; $('#l', m).onchange = e => ui.speakLang = e.target.value; $('#fmt', m).onchange = e => ui.fmt = e.target.value;
+  $('#sp', m).oninput = e => { ui.speed = +e.target.value; $('#spv').textContent = ui.speed.toFixed(2) + '×'; };
+  $('#go', m).onclick = async () => {
+    const b = $('#go'); b.disabled = true; b.textContent = 'Speaking…';
+    try { const r = await api('/api/speak', {json: {input: ui.speakText, voice: ui.speakVoice, language: ui.speakLang, speed: ui.speed, response_format: ui.fmt}, blob: true});
+      const url = URL.createObjectURL(await r.blob()); $('#out').innerHTML = audioCard(url, 'speech.' + ui.fmt, esc(S.voices.find(v => v.id === ui.speakVoice)?.name || 'Auto')); }
+    catch (e) { toast(e.message, true); } finally { b.disabled = false; b.innerHTML = I('play', 16) + ' Speak'; }
+  };
+};
+
+// ---------------------------------------------------------------- Clone
+function clone() {
+  const canRec = !!(navigator.mediaDevices && window.MediaRecorder && window.isSecureContext);
+  return `<h1>Clone a voice</h1><p class="lead">A short recording (5 to 15 seconds of one person talking, no music) becomes a voice in your library. It's used by Speak, Audiobooks, Dubbing and apps.</p>${notReady('clone', 'Cloning')}
+  <div class="grid2"><div class="card stack">
+    <div class="k">1 · Record or pick a recording</div>
+    <div class="read" id="read">${READ}</div>
+    <div class="row" style="align-items:center">
+      ${canRec ? `<button class="rec" id="rec" aria-label="Record">${I('mic', 30)}</button><div class="muted small" id="rs" style="flex:2">Press to record yourself reading the text above. Press again to stop.</div>`
+               : `<div class="muted small" style="flex:2">${'On a phone, "Record" opens your voice recorder. (Recording right in the page works on the PC itself.)'}</div>`}
+    </div>
+    <div class="drop${ui.clip ? ' has' : ''}" id="drop">${ui.clip ? `${I('clone', 22)}<b>${esc(ui.clip.name)}</b><span class="small">${size(ui.clip.size)}</span>` : `${I('up', 22)}<span>Drop a recording here, or</span>`}
+      <div class="row" style="justify-content:center"><label class="btn sm">${I('up', 16)} Choose a file<input type="file" id="file" accept="audio/*,video/*" hidden></label>
+      <label class="btn sm">${I('mic', 16)} Record<input type="file" id="cap" accept="audio/*" capture hidden></label></div></div>
+    ${ui.clip ? `<audio controls src="${URL.createObjectURL(ui.clip)}"></audio>` : ''}
+  </div><div class="card stack">
+    <div class="k">2 · Name it</div>
+    <label class="f">Name<input type="text" id="n" maxlength="60" placeholder="Grandpa, My voice, Narrator 2..."></label>
+    <label class="f">Language spoken in the recording<select id="l">${langOptions('auto')}</select></label>
+    <label class="f">The words said in it (optional: found by itself when transcription is installed)<input type="text" id="tx" placeholder="${esc(READ.slice(0, 48))}…"></label>
+    <label class="check"><input type="checkbox" id="ok"><span><b>This is my voice, or I have the person's permission to copy it.</b><br><span class="muted">Copying someone's voice without asking can hurt them and can be against the law. The recording and the voice stay on this PC.</span></span></label>
+    <button class="btn pri" id="make">${I('star', 16)} Make the voice</button></div></div>`;
+}
+bind.clone = m => {
+  const set = f => { if (!f) return; ui.clip = f; view(); };
+  $('#file', m).onchange = e => set(e.target.files[0]); $('#cap', m).onchange = e => set(e.target.files[0]);
+  const d = $('#drop', m); d.ondragover = e => { e.preventDefault(); d.classList.add('has'); }; d.ondrop = e => { e.preventDefault(); set(e.dataTransfer.files[0]); };
+  const r = $('#rec', m);
+  if (r) r.onclick = async () => {
+    if (rec && rec.state === 'recording') { rec.stop(); return; }
+    try { const s = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, noiseSuppression: true}}); recChunks = []; rec = new MediaRecorder(s);
+      rec.ondataavailable = e => recChunks.push(e.data);
+      rec.onstop = () => { s.getTracks().forEach(t => t.stop()); const b = new Blob(recChunks, {type: rec.mimeType || 'audio/webm'}); set(new File([b], 'recording.' + ((rec.mimeType || '').includes('ogg') ? 'ogg' : 'webm'), {type: b.type})); };
+      rec.start(); r.classList.add('on'); r.innerHTML = I('stop', 30); let t0 = Date.now(); const tick = setInterval(() => { if (!rec || rec.state !== 'recording') return clearInterval(tick); $('#rs').textContent = 'Recording… ' + Math.round((Date.now() - t0) / 1000) + ' s (press to stop)'; if (Date.now() - t0 > 20000) rec.stop(); }, 300);
+    } catch (e) { toast('The microphone couldn\'t be used: ' + e.message, true); }
+  };
+  $('#make', m).onclick = async () => {
+    if (!ui.clip) return toast('Record or pick a recording first', true);
+    if (!$('#ok').checked) return toast('Tick the box first: it has to be your voice, or you have permission', true);
+    const b = $('#make'); b.disabled = true; b.textContent = 'Learning the voice…';
+    try { const v = await upload('/api/voices/clone?' + q({name: $('#n').value || 'My voice', language: $('#l').value, text: $('#tx').value, consent: 1}), ui.clip, p => b.textContent = 'Sending… ' + Math.round(p * 100) + '%');
+      toast('"' + v.name + '" is in your voices'); ui.clip = null; ui.speakVoice = v.id; await refresh(); go('voices'); }
+    catch (e) { toast(e.message, true); b.disabled = false; b.innerHTML = I('star', 16) + ' Make the voice'; }
+  };
+};
+
+// ---------------------------------------------------------------- Design
+function design() {
+  const kinds = {gender: 'Who', age: 'Age', pitch: 'Pitch', style: 'Style', accent: 'Accent (English)'};
+  return `<h1>Design a voice</h1><p class="lead">Describe a voice in your own words, or tap what it should be. Hear it, then keep it: a designed voice stays the same person every time.</p>${notReady('design', 'Voice design')}
+  <div class="grid2"><div class="card stack">
+    <label class="f">Describe it<input type="text" id="desc" value="${esc(ui.designText)}" placeholder="An old man with a deep British voice"></label>
+    ${Object.entries(kinds).map(([k, label]) => `<div><div class="k">${label}</div><div class="chips">${S.design[k].map(a => `<button class="chip${ui.design[k] === a ? ' on' : ''}" data-k="${k}" data-a="${esc(a)}">${esc(a.replace(' accent', '').replace(' pitch', ''))}</button>`).join('')}</div></div>`).join('')}
+  </div><div class="stack"><div class="card stack">
+    <label class="f">What it says in the sample<textarea id="st" style="min-height:90px">Hello! This is how I sound. I can read your stories, your messages and your books out loud.</textarea></label>
+    <label class="f">Language<select id="l">${langOptions('auto')}</select></label>
+    <button class="btn" id="hear">${I('play', 16)} Hear it</button>
+    <div id="out"></div>
+    <label class="f">Name<input type="text" id="n" maxlength="60" placeholder="Captain, Fairy, Old king..."></label>
+    <button class="btn pri" id="keep">${I('star', 16)} Keep this voice</button></div></div></div>`;
+}
+function designDesc() { const d = $('#desc').value.trim(); const chips = Object.values(ui.design).filter(Boolean); return chips.length && !d ? chips.join(', ') : [d, ...chips].filter(Boolean).join(', '); }
+bind.design = m => {
+  m.querySelectorAll('.chip').forEach(c => c.onclick = () => { const k = c.dataset.k; ui.design[k] = ui.design[k] === c.dataset.a ? '' : c.dataset.a; ui.designText = $('#desc').value; view(); });
+  $('#desc', m).oninput = e => ui.designText = e.target.value;
+  $('#hear', m).onclick = async () => {
+    const b = $('#hear'); b.disabled = true; b.textContent = 'Making it…';
+    try { const r = await api('/api/design/preview', {json: {description: designDesc(), text: $('#st').value, language: $('#l').value}, blob: true});
+      $('#out').innerHTML = audioCard(URL.createObjectURL(await r.blob()), 'designed-voice.wav', 'Heard as: ' + esc(r.headers.get('X-Instruct') || '')); }
+    catch (e) { toast(e.message, true); } finally { b.disabled = false; b.innerHTML = I('play', 16) + ' Hear it'; }
+  };
+  $('#keep', m).onclick = async () => {
+    const b = $('#keep'); b.disabled = true; b.textContent = 'Keeping it…';
+    try { const v = await api('/api/voices/design', {json: {name: $('#n').value || 'Designed voice', description: designDesc(), text: $('#st').value, language: $('#l').value}});
+      toast('"' + v.name + '" is in your voices'); ui.speakVoice = v.id; await refresh(); go('voices'); }
+    catch (e) { toast(e.message, true); b.disabled = false; b.innerHTML = I('star', 16) + ' Keep this voice'; }
+  };
+};
+
+// ---------------------------------------------------------------- jobs (shared by Transcribe, Audiobooks, Dubbing)
+function jobList(kind) {
+  const js = S.jobs.filter(j => j.kind === kind);
+  if (!js.length) return `<div class="empty">Nothing here yet. Work waits in a queue on the PC and carries on even if it restarts or you start a game.</div>`;
+  return js.map(j => {
+    const outs = (j.outputs || []);
+    const main = outs.find(o => ['video', 'book', 'audio'].includes(o.kind));
+    const url = f => `/api/jobs/${j.id}/files/${encodeURIComponent(f)}`;
+    const sm = j.summary || {};
+    const facts = kind === 'audiobook' ? (sm.chapters ? `${sm.chapters} chapters · ${dur(sm.secs)}` : '') : kind === 'dub' ? (sm.lines ? `${sm.lines} lines · ${sm.speakers} voice${sm.speakers > 1 ? 's' : ''} · ${esc(sm.from)} → ${esc(sm.to)}${sm.background ? ' · background kept' : ''}` : '') : (sm.secs !== undefined ? `${dur(sm.secs)} · ${esc(sm.language)}${sm.speakers ? ' · ' + sm.speakers + ' speakers' : ''}` : '');
+    return `<div class="job"><div class="h"><span class="st ${j.state}">${{queued: 'Waiting', running: 'Working', done: 'Done', failed: 'Stopped', cancelled: 'Cancelled'}[j.state]}</span><b>${esc(j.title)}</b>
+      ${j.state === 'queued' || j.state === 'running' ? `<button class="btn sm" data-j="${j.id}" data-a="cancel">Cancel</button>` : ''}
+      ${j.state === 'failed' || j.state === 'cancelled' ? `<button class="btn sm" data-j="${j.id}" data-a="retry">Try again</button>` : ''}
+      ${j.state !== 'running' ? `<button class="btn sm bad" data-j="${j.id}" data-a="delete" aria-label="Delete">${I('trash', 16)}</button>` : ''}</div>
+      ${j.state === 'running' || j.state === 'queued' ? `<div class="bar"><i style="width:${j.progress || 0}%"></i></div><div class="muted small">${esc(j.step)} · ${j.progress || 0}%</div>` : ''}
+      ${j.error ? `<div class="err">${esc(j.error)}</div>` : ''}${j.note && j.state !== 'done' ? `<div class="muted small">${esc(j.note)}</div>` : ''}
+      ${facts ? `<div class="muted small">${facts}</div>` : ''}
+      ${main && main.kind === 'video' ? `<video controls preload="metadata" src="${url(main.file)}?play=1"></video>` : main ? `<audio controls preload="none" src="${url(main.file)}?play=1"></audio>` : ''}
+      ${sm.preview ? `<div class="code" style="max-height:140px;overflow:auto">${esc(sm.preview)}</div>` : ''}
+      ${outs.length ? `<div class="outs">${outs.filter(o => kind !== 'audiobook' || o.kind !== 'chapter' || outs.length < 14).map(o => `<a class="btn sm" href="${url(o.file)}" download>${I('down', 15)} ${esc(o.label)}</a>`).join('')}</div>` : ''}</div>`;
+  }).join('');
+}
+function renderJobs() { const el = $('#jobs'); if (!el) return; el.innerHTML = jobList(el.dataset.kind); bindJobs(el); }
+function bindJobs(el) { el.querySelectorAll('[data-j]').forEach(b => b.onclick = async () => { if (b.dataset.a === 'delete' && !confirm('Delete this and its files?')) return; try { await api(`/api/jobs/${b.dataset.j}/${b.dataset.a}`, {json: {}}); await refresh(); } catch (e) { toast(e.message, true); } }); }
+async function refresh() { try { S = await api('/api/state'); } catch (e) { return; } if (['transcribe', 'books', 'dub'].includes(tab)) renderJobs(); poll(); }
+function fileDrop(id, f, accept, hint) { return `<div class="drop${f ? ' has' : ''}" id="${id}">${f ? `${I('up', 22)}<b>${esc(f.name)}</b><span class="small">${size(f.size)}</span>` : `${I('up', 22)}<span>${hint}</span>`}<label class="btn sm">${I('up', 16)} Choose a file<input type="file" accept="${accept}" hidden></label></div>`; }
+function bindDrop(m, id, key) { const d = $('#' + id, m); const set = f => { if (f) { ui[key] = f; view(); } }; $('input', d).onchange = e => set(e.target.files[0]); d.ondragover = e => e.preventDefault(); d.ondrop = e => { e.preventDefault(); set(e.dataTransfer.files[0]); }; }
+
+// ---------------------------------------------------------------- Transcribe
+function transcribe() {
+  return `<h1>Transcribe</h1><p class="lead">Audio or video to text, with subtitles (SRT and VTT) and who said what.</p>${notReady('transcribe', 'Transcription')}
+  <div class="grid2"><div class="stack"><div class="card stack">${fileDrop('trd', ui.trFile, 'audio/*,video/*', 'Drop audio or video here')}
+    <div class="row"><label class="f">Language<select id="l">${langOptions('auto')}</select></label>
+    <label class="f">Speaker labels<select id="lb"><option value="1"${S.settings.speakerLabels ? ' selected' : ''}>Speaker 1, Speaker 2…</option><option value="0"${!S.settings.speakerLabels ? ' selected' : ''}>No labels</option></select></label></div>
+    <button class="btn pri" id="go">${I('transcribe', 16)} Transcribe</button></div></div>
+  <div class="jobs" id="jobs" data-kind="transcribe">${jobList('transcribe')}</div></div>`;
+}
+bind.transcribe = m => {
+  bindDrop(m, 'trd', 'trFile'); bindJobs($('#jobs', m));
+  $('#go', m).onclick = async () => {
+    if (!ui.trFile) return toast('Pick a file first', true);
+    const b = $('#go'); b.disabled = true;
+    try { await upload('/api/jobs/transcribe?' + q({name: ui.trFile.name, language: $('#l').value, labels: $('#lb').value}), ui.trFile, p => b.textContent = 'Sending… ' + Math.round(p * 100) + '%'); ui.trFile = null; await refresh(); view(); toast('Added to the queue'); }
+    catch (e) { toast(e.message, true); b.disabled = false; b.innerHTML = I('transcribe', 16) + ' Transcribe'; }
+  };
+};
+
+// ---------------------------------------------------------------- Your voices
+function voices() {
+  const def = S.settings.voice;
+  const mine = S.library.map(v => `<div class="voice"><div class="top"><div class="av" style="background:${colorOf(v.id)}">${esc(v.name.slice(0, 1).toUpperCase())}</div><div class="t"><b>${esc(v.name)}</b><span>${v.kind === 'clone' ? 'Cloned' : 'Designed'} · ${v.language === 'auto' ? 'Any language' : esc(S.languages.find(l => l[0] === v.language)?.[1] || 'Any language')} · ${v.secs || ''} s sample</span></div>${def === v.id ? '<span class="tag def">Default</span>' : ''}</div>
+    ${v.instruct ? `<div class="muted small">${esc(v.instruct)}</div>` : ''}
+    <div class="row" style="gap:6px"><button class="btn sm" data-p="${v.id}">${I('play', 15)} Hear</button><button class="btn sm" data-use="${v.id}">Use</button><button class="btn sm" data-def="${v.id}">${I('star', 15)}</button>
+    <button class="btn sm" data-ren="${v.id}" aria-label="Rename">${I('edit', 15)}</button><button class="btn sm bad" data-del="${v.id}" aria-label="Delete">${I('trash', 15)}</button></div></div>`).join('');
+  const ready = S.presets.map(p => `<div class="voice"><div class="top"><div class="av" style="background:${colorOf(p.id)}">${esc(p.name[0])}</div><div class="t"><b>${esc(p.name)}</b><span>${esc(p.note)}</span></div>${def === p.id ? '<span class="tag def">Default</span>' : '<span class="tag">Ready-made</span>'}</div>
+    <div class="row" style="gap:6px"><button class="btn sm" data-p="${p.id}">${I('play', 15)} Hear</button><button class="btn sm" data-use="${p.id}">Use</button><button class="btn sm" data-def="${p.id}">${I('star', 15)}</button></div></div>`).join('');
+  const missing = def && !S.voices.some(v => v.id === def) ? `<div class="banner">Your default voice isn't in the library anymore, so speech uses the Narrator. Pick another with ${I('star', 14)}.</div>` : '';
+  return `<h1>Your voices</h1><p class="lead">Every voice here works in Speak, Audiobooks, Dubbing and in apps through the API (by its name).</p>${missing}
+    ${S.library.length ? `<div class="voices">${mine}</div>` : `<div class="empty">No voices of your own yet. <a href="#" data-go="clone" style="color:var(--accent)">Clone one</a> from a recording or <a href="#" data-go="design" style="color:var(--accent)">design one</a> from words.</div>`}
+    <h2 style="font-size:16px;margin:24px 0 10px">Ready-made</h2><div class="voices">${ready}</div><div id="pv"></div>`;
+}
+bind.voices = m => {
+  m.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.go); });
+  m.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { b.disabled = true; try { const r = await api(`/api/voices/${b.dataset.p}/preview`, {blob: true}); const a = new Audio(URL.createObjectURL(await r.blob())); a.play(); } catch (e) { toast(e.message, true); } b.disabled = false; });
+  m.querySelectorAll('[data-use]').forEach(b => b.onclick = () => { ui.speakVoice = b.dataset.use; go('speak'); });
+  m.querySelectorAll('[data-def]').forEach(b => b.onclick = async () => { try { await api('/api/settings', {json: {voice: b.dataset.def}}); await refresh(); view(); toast('Default voice saved'); } catch (e) { toast(e.message, true); } });
+  m.querySelectorAll('[data-ren]').forEach(b => b.onclick = async () => { const v = S.library.find(x => x.id === b.dataset.ren); const n = prompt('New name', v.name); if (!n) return; try { await api(`/api/voices/${v.id}/rename`, {json: {name: n}}); await refresh(); view(); } catch (e) { toast(e.message, true); } });
+  m.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const v = S.library.find(x => x.id === b.dataset.del); if (!confirm('Delete "' + v.name + '"? Its recording goes too.')) return; try { await api(`/api/voices/${v.id}/delete`, {json: {}}); await refresh(); view(); toast('Deleted'); } catch (e) { toast(e.message, true); } });
+};
+
+// ---------------------------------------------------------------- Audiobooks
+function books() {
+  return `<h1>Audiobooks</h1><p class="lead">Paste a story or pick a .txt or .epub. Chapters are found by themselves and narrated in the background: one MP3 per chapter, and the whole book as an .m4b with chapters.</p>${notReady('speak', 'Speech')}
+  <div class="grid2"><div class="stack"><div class="card stack">
+    <label class="f">Title<input type="text" id="ti" maxlength="80" placeholder="The Lighthouse Keeper"></label>
+    ${fileDrop('bkd', ui.bookFile, '.txt,.epub,.md,text/plain,application/epub+zip', 'Drop a .txt or .epub here, or paste below')}
+    ${ui.bookFile ? '' : `<label class="f">Or paste the text ("Chapter 1", "Chapter 2"… start new chapters)<textarea id="tx" placeholder="Chapter 1&#10;&#10;It was a dark and stormy night..."></textarea></label>`}
+    <div class="row"><label class="f">Narrator<select id="v">${voiceOptions(S.settings.voice || 'narrator', false)}</select></label><label class="f">Language<select id="l">${langOptions('auto')}</select></label></div>
+    <label class="f">Speed <span id="spv">1.00×</span><input id="sp" type="range" min="0.7" max="1.5" step="0.05" value="1"></label>
+    <button class="btn pri" id="go">${I('books', 16)} Make the audiobook</button></div></div>
+  <div class="jobs" id="jobs" data-kind="audiobook">${jobList('audiobook')}</div></div>`;
+}
+bind.books = m => {
+  bindDrop(m, 'bkd', 'bookFile'); bindJobs($('#jobs', m));
+  $('#sp', m).oninput = e => $('#spv').textContent = (+e.target.value).toFixed(2) + '×';
+  $('#go', m).onclick = async () => {
+    const b = $('#go'); b.disabled = true; const p = {voice: $('#v').value, language: $('#l').value, speed: $('#sp').value, title: $('#ti').value};
+    try {
+      if (ui.bookFile) await upload('/api/jobs/audiobook?' + q(Object.assign({name: ui.bookFile.name}, p)), ui.bookFile);
+      else { const t = $('#tx').value; if (!t.trim()) throw new Error('Paste some text or pick a file first'); await api('/api/jobs/audiobook', {json: Object.assign({text: t}, p)}); }
+      ui.bookFile = null; await refresh(); view(); toast('Added to the queue');
+    } catch (e) { toast(e.message, true); b.disabled = false; }
+  };
+};
+
+// ---------------------------------------------------------------- Video dubbing
+function dub() {
+  return `<h1>Video dubbing</h1><p class="lead">A video in another language: what's said is written down, translated by your AI service, and spoken again in each speaker's own voice, timed to the original. The music and sounds are kept.</p>${notReady('transcribe', 'Dubbing')}
+  <div class="grid2"><div class="stack"><div class="card stack">${fileDrop('dbd', ui.dubFile, 'video/*,audio/*', 'Drop a video here')}
+    <div class="row"><label class="f">Spoken in<select id="src">${langOptions('auto')}</select></label><label class="f">Dub into<select id="tgt">${langOptions('es', true)}</select></label></div>
+    <label class="f">Voices<select id="v"><option value="clone">Each speaker's own voice (cloned from the video)</option>${voiceOptions('', false)}</select></label>
+    <label class="f">Translated by<select id="mdl"><option value="">${S.models.length ? 'The AI service picks (' + esc(S.models[0]) + ')' : 'The AI service (no model downloaded yet)'}</option>${S.models.map(x => `<option${x === S.settings.translateModel ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+    <label class="check" style="background:var(--card2);border-color:var(--line)"><input type="checkbox" id="bg" checked><span><b>Keep the music and sounds</b><br><span class="muted">${S.caps.separate ? 'The voices are lifted out and the rest is kept under the new voices.' : 'Vocal separation isn\'t installed: the original sound stays quietly underneath.'}</span></span></label>
+    <label class="check"><input type="checkbox" id="ok"><span><b>I may copy the voices in this video.</b><br><span class="muted">They're your own, or you have the speakers' permission. Or pick a voice above instead.</span></span></label>
+    <button class="btn pri" id="go">${I('dub', 16)} Dub it</button></div></div>
+  <div class="jobs" id="jobs" data-kind="dub">${jobList('dub')}</div></div>`;
+}
+bind.dub = m => {
+  bindDrop(m, 'dbd', 'dubFile'); bindJobs($('#jobs', m));
+  $('#go', m).onclick = async () => {
+    if (!ui.dubFile) return toast('Pick a video first', true);
+    if ($('#v').value === 'clone' && !$('#ok').checked) return toast('Tick the box to confirm you may copy these voices, or pick a voice', true);
+    const b = $('#go'); b.disabled = true;
+    try { await upload('/api/jobs/dub?' + q({name: ui.dubFile.name, target: $('#tgt').value, source: $('#src').value, voice: $('#v').value, model: $('#mdl').value, keepBackground: $('#bg').checked ? 1 : 0}), ui.dubFile, p => b.textContent = 'Sending… ' + Math.round(p * 100) + '%');
+      ui.dubFile = null; await refresh(); view(); toast('Added to the queue'); }
+    catch (e) { toast(e.message, true); b.disabled = false; b.innerHTML = I('dub', 16) + ' Dub it'; }
+  };
+};
+
+// ---------------------------------------------------------------- Apps & API
+function apis() {
+  const base = location.origin + '/v1';
+  return `<h1>Apps & API</h1><p class="lead">Voice Studio speaks OpenAI's speech API, so the Hearth AI Command Center and other apps can use your voices.</p>
+  <div class="grid2"><div class="card stack">
+    <div class="k">In the Hearth AI Command Center</div>
+    <div>Settings › Voice › Add a speech server: pick <b>OpenAI-compatible speech API</b>, then</div>
+    <label class="f">Address<div class="code">${esc(base.replace('/v1', ''))}</div></label>
+    <label class="f">Key<div class="code" id="key">Shown in Settings › Home server › Voice Studio on the PC</div></label>
+    <div class="muted small">Voices: any name from Your voices or the ready-made ones (OpenAI's names like "nova" work too).</div>
+  </div><div class="card stack"><div class="k">For your own scripts</div>
+    <div class="code">curl ${esc(base)}/audio/speech \\
+  -H "Authorization: Bearer $KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"input":"Hello from Hearth","voice":"Narrator"}' \\
+  -o hello.mp3</div>
+    <div class="code">POST /v1/audio/speech        input, voice, response_format, speed, language, instructions
+POST /v1/audio/transcriptions  file (form), language, response_format json|text|srt|vtt|verbose_json
+POST /v1/audio/translations    file (form): into English
+GET  /v1/audio/voices · GET /v1/models</div></div></div>`;
+}
+
+// ---------------------------------------------------------------- controller and keys
+function focusables() { return [...document.querySelectorAll('button:not([disabled]),select,input:not([type=hidden]):not([hidden]),textarea,a[href],label.btn,audio,video')].filter(e => e.offsetParent !== null); }
+function move(dx, dy) {
+  const all = focusables(); const cur = document.activeElement; if (!all.length) return;
+  if (!cur || !all.includes(cur)) { all[0].focus(); return; }
+  const r = cur.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let best = null, bd = 1e9;
+  for (const e of all) { if (e === cur) continue; const b = e.getBoundingClientRect(); const x = b.left + b.width / 2, y = b.top + b.height / 2; const ddx = x - cx, ddy = y - cy;
+    if ((dx && Math.sign(ddx) !== dx) || (dy && Math.sign(ddy) !== dy) || (dx && Math.abs(ddx) < 4) || (dy && Math.abs(ddy) < 4)) continue;
+    const d = dx ? Math.abs(ddx) + 2.5 * Math.abs(ddy) : Math.abs(ddy) + 2.5 * Math.abs(ddx); if (d < bd) { bd = d; best = e; } }
+  if (best) { best.focus(); best.scrollIntoView({block: 'nearest', behavior: 'smooth'}); }
+}
+function press() { const e = document.activeElement; if (!e) return; if (e.tagName === 'LABEL') { const i = e.querySelector('input'); if (i) i.click(); } else e.click(); }
+function back() { const t = document.querySelector('.tab.on'); if (t) t.focus(); }
+function nextTab(d) { if (!S) return; const i = TABS.findIndex(t => t[0] === tab); go(TABS[(i + d + TABS.length) % TABS.length][0]); document.querySelector('.tab.on')?.focus(); }
+document.addEventListener('keydown', e => {
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && !['checkbox', 'range', 'file'].includes(document.activeElement.type);
+  if (e.key === 'Escape') { back(); return; }
+  if (typing) return;
+  const k = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
+  if (k) { e.preventDefault(); move(...k); }
+  if (e.key === '[') nextTab(-1); if (e.key === ']') nextTab(1);
+});
+let padPrev = {};
+function padLoop() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  for (const g of pads) {
+    const b = i => g.buttons[i] && g.buttons[i].pressed; const was = i => padPrev[g.index + ':' + i];
+    const edge = i => b(i) && !was(i);
+    if (edge(12) || (g.axes[1] < -0.6 && !was('u'))) move(0, -1); if (edge(13) || (g.axes[1] > 0.6 && !was('d'))) move(0, 1);
+    if (edge(14) || (g.axes[0] < -0.6 && !was('l'))) move(-1, 0); if (edge(15) || (g.axes[0] > 0.6 && !was('r'))) move(1, 0);
+    if (edge(0)) press(); if (edge(1)) back(); if (edge(4)) nextTab(-1); if (edge(5)) nextTab(1);
+    for (let i = 0; i < 16; i++) padPrev[g.index + ':' + i] = b(i);
+    padPrev[g.index + ':u'] = g.axes[1] < -0.6; padPrev[g.index + ':d'] = g.axes[1] > 0.6; padPrev[g.index + ':l'] = g.axes[0] < -0.6; padPrev[g.index + ':r'] = g.axes[0] > 0.6;
+  }
+  requestAnimationFrame(padLoop);
+}
+window.addEventListener('gamepadconnected', () => { toast('Controller ready: d-pad moves, A presses, B goes back, LB / RB change tab'); requestAnimationFrame(padLoop); }, {once: true});
+load();
+</script>
+</body>
+</html>

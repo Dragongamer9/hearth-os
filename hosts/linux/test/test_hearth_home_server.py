@@ -615,7 +615,7 @@ class Settings(unittest.TestCase):
         p = hs.apply_payload(d)
         self.assertEqual([s['name'] for s in p['shares']], ['A'])
         self.assertEqual(set(p), {'shares', 'tsOnly', 'tsBoot', 'snapshots', 'keep', 'lightMode', 'people', 'backups', 'receive', 'alerts', 'power',
-                                  'media', 'ai', 'guard', 'pictures', 'voices', 'serverWeb'})
+                                  'media', 'ai', 'guard', 'pictures', 'voices', 'studio', 'serverWeb'})
         self.assertNotIn('password', json.dumps(p))
 
     def test_the_settings_file_is_on_the_persistence_check_list(self):

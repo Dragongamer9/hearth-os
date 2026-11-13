@@ -12,8 +12,9 @@ pub fn file() -> PathBuf {
         .unwrap_or_else(|| dirs::config_dir().unwrap_or_else(std::env::temp_dir).join("hearth-documents").join("state.json"))
 }
 
-pub fn load_from(path: &Path) -> Value {
-    let v: Value = std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null);
+pub fn load_from(path: &Path) -> Value { fill(crate::appfile::read_json(path).unwrap_or(Value::Null)) }
+
+fn fill(v: Value) -> Value {
     let mut o = v.as_object().cloned().unwrap_or_default();
     if !o.get("recent").map(Value::is_array).unwrap_or(false) { o.insert("recent".into(), json!([])); }
     if !o.get("settings").map(Value::is_object).unwrap_or(false) { o.insert("settings".into(), json!({})); }
@@ -21,10 +22,7 @@ pub fn load_from(path: &Path) -> Value {
 }
 
 fn save_to(path: &Path, v: &Value) -> Result<(), String> {
-    if let Some(d) = path.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(v).unwrap_or_default()).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+    crate::appfile::write_json(path, v).map_err(|e| e.to_string())
 }
 
 /// Everything, with each recent document marked as still there or not.

@@ -143,7 +143,85 @@ pub fn list() -> Result<Vec<Drive>, String> {
             .map(|e| e.file_name().to_string_lossy().into_owned()).collect()
     };
     let ctx = udisks::Ctx { uid: unsafe { libc::getuid() }, steam: &steam, usage: &usage, slaves: &slaves };
-    Ok(udisks::parse(&objs, &ctx))
+    let mut drives = udisks::parse(&objs, &ctx);
+    // Hearth's drive letters (read only: opening Disks never hands one out), and whether each file system's resize
+    // tool is installed.
+    let letters = crate::letters::load();
+    for d in drives.iter_mut() {
+        for p in d.partitions.iter_mut().filter(|p| p.kind != "free") {
+            if p.system && p.kind == "hearth" { p.letter = "C".into(); }
+            else if let Some(l) = letters.get(&crate::letters::key(&p.uuid)) { p.letter = l.clone(); }
+            p.resize_tool = resize_tool(&c, &p.fs);
+        }
+    }
+    Ok(drives)
+}
+
+static RESIZE_TOOLS: std::sync::Mutex<Option<HashMap<String, String>>> = std::sync::Mutex::new(None);
+
+/// The tool resizing `fs` needs when udisks2 says it's missing (Manager.CanResize), else "". Asked once per file
+/// system while Disks is open.
+fn resize_tool(c: &Connection, fs: &str) -> String {
+    let (a, b, x, y) = crate::safety::resize_modes(fs);
+    if !(a || b || x || y) { return String::new(); }
+    let key = fs.to_lowercase();
+    let mut g = RESIZE_TOOLS.lock().unwrap_or_else(|p| p.into_inner());
+    let cache = g.get_or_insert_with(HashMap::new);
+    if let Some(t) = cache.get(&key) { return t.clone(); }
+    let t = match call::<_, (bool, u64, String)>(c, MANAGER, "org.freedesktop.UDisks2.Manager", "CanResize", &(key.as_str(),)) {
+        Ok((true, _, _)) => String::new(),
+        Ok((false, _, util)) => if util.is_empty() { format!("a {key} resize tool") } else { util },
+        // An older udisks2 without CanResize: try, and say what went wrong if it doesn't work.
+        Err(_) => String::new(),
+    };
+    cache.insert(key, t.clone());
+    t
+}
+
+/// What's using a volume right now (the names of the programs with files or folders open on it), and "Steam"
+/// when Steam is running and the volume holds games. Only this user's programs can be seen, which is who uses
+/// a games drive.
+pub fn busy_with(p: &Partition) -> Vec<String> {
+    let mounts: Vec<&String> = p.mount_points.iter().filter(|m| !crate::model::is_system_mount(m)).collect();
+    let under = |t: &std::path::Path| mounts.iter().any(|m| t.starts_with(m.as_str()));
+    let me = std::process::id().to_string();
+    let mut names = std::collections::BTreeSet::new();
+    let Ok(rd) = std::fs::read_dir("/proc") else { return vec![] };
+    for e in rd.flatten() {
+        let pid = e.file_name().to_string_lossy().to_string();
+        if pid == me || pid.is_empty() || !pid.chars().all(|c| c.is_ascii_digit()) { continue; }
+        let base = e.path();
+        let comm = std::fs::read_to_string(base.join("comm")).unwrap_or_default().trim().to_string();
+        if p.steam_library && (comm == "steam" || comm == "steamwebhelper" || comm == "reaper") { names.insert("Steam".to_string()); continue; }
+        if mounts.is_empty() { continue; }
+        let mut hit = ["cwd", "exe"].iter().any(|l| std::fs::read_link(base.join(l)).map(|t| under(&t)).unwrap_or(false));
+        if !hit {
+            if let Ok(fds) = std::fs::read_dir(base.join("fd")) {
+                hit = fds.flatten().any(|f| std::fs::read_link(f.path()).map(|t| under(&t)).unwrap_or(false));
+            }
+        }
+        if hit { names.insert(if comm.is_empty() { format!("program {pid}") } else { comm }); }
+    }
+    names.into_iter().collect()
+}
+
+/// Properties › Health's "What the drive reports": its SMART attributes (SATA) or NVMe health log, in plain words.
+pub fn health_lines(d: &Drive) -> Vec<Value> {
+    let Ok(c) = bus() else { return vec![] };
+    let objs = objects(&c).unwrap_or(Value::Null);
+    let o = &objs[d.id.as_str()];
+    if o.get(udisks::ATA).is_some() {
+        type Attr = (u8, String, u16, i32, i32, i32, i64, i32, HashMap<String, OwnedValue>);
+        match call::<_, Vec<Attr>>(&c, &d.id, udisks::ATA, "SmartGetAttributes", &(opts(),)) {
+            Ok(attrs) => udisks::ata_lines(&attrs.into_iter().map(|a| (a.1, a.3, a.5, a.6, a.7)).collect::<Vec<_>>()),
+            Err(_) => vec![],
+        }
+    } else if o.get(udisks::NVME).is_some() {
+        match call::<_, HashMap<String, OwnedValue>>(&c, &d.id, udisks::NVME, "SmartGetAttributes", &(opts(),)) {
+            Ok(m) => { let j: Map<String, Value> = m.iter().map(|(k, v)| (k.clone(), to_json(v))).collect(); udisks::nvme_lines(&j) }
+            Err(_) => vec![],
+        }
+    } else { vec![] }
 }
 
 /// One object's property, freshly read.
@@ -244,13 +322,121 @@ fn format_drive(c: &Connection, d: &Drive, fs: &str, label: &str, step: &dyn Fn(
     create(c, &fresh, MIB, 0, fs, label)
 }
 
-fn format_part(c: &Connection, p: &Partition, fs: &str, label: &str) -> Result<(), String> {
+fn format_part(c: &Connection, p: &Partition, fs: &str, label: &str, full: bool) -> Result<(), String> {
     unmount(c, p)?;
     let mut o = fs_opts(fs, label);
     o.insert("tear-down", V::from(true));
+    // Not a quick format: zeros over all of it first.
+    if full { o.insert("erase", V::from("zero".to_string())); }
     // A file system on the whole drive (no partition table) has no partition type to update.
     if p.number == 0 { o.remove("update-partition-type"); }
     call0(c, &p.id, udisks::BLOCK, "Format", &(fs, o))
+}
+
+/// Opens a folder in Hearth Files (the desktop's file manager).
+fn open_folder(at: &str) -> Result<String, String> {
+    std::process::Command::new("xdg-open").arg(at).spawn().map(|_| String::new()).map_err(|e| format!("Couldn't open it: {e}"))
+}
+
+/// After a volume is made or formatted: its drive letter (when one was picked) and opening it in Files (when
+/// asked). Returns notes for the message; neither stops what was done.
+fn finish_new(c: &Connection, path: &str, o: &Opts) -> String {
+    let mut note = String::new();
+    if !o.letter.is_empty() {
+        let mut uuid = String::new();
+        for _ in 0..40 {
+            uuid = prop(c, path, udisks::BLOCK, "IdUUID").as_str().unwrap_or("").to_string();
+            if !uuid.is_empty() { break; }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        match crate::letters::set(&uuid, &o.letter) {
+            Ok(l) => note.push_str(&format!(" It's {l}:.")),
+            Err(e) => note.push_str(&format!(" It didn't get its letter: {e}")),
+        }
+    }
+    if o.open {
+        let at: Vec<String> = prop(c, path, udisks::FILESYSTEM, "MountPoints").as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        match at.first() {
+            Some(m) => { let _ = open_folder(m); }
+            None => note.push_str(" It isn't mounted, so it couldn't be opened in Files yet."),
+        }
+    }
+    note
+}
+
+/// Extend (into the unallocated space right after it) or Shrink a volume by `amount` bytes, through udisks2:
+/// the partition and its file system are changed in the order that never leaves the file system bigger than its
+/// partition. A file system that can only change unmounted is unmounted (after checking nothing uses it), checked
+/// first and mounted again after. Refused while Steam or another program uses it, or if it isn't clean.
+fn resize(c: &Connection, d: &Drive, p: &Partition, grow: bool, amount: u64, step: &dyn Fn(&str)) -> Result<String, String> {
+    let users = busy_with(p);
+    if !users.is_empty() { return Err(crate::busy_text(&users)); }
+    let (og, fg, os, fs_) = crate::safety::resize_modes(&p.fs);
+    let (online, offline) = if grow { (og, fg) } else { (os, fs_) };
+    let was = p.mounted;
+    let unmount_it = was && !online;
+    let mount_it = !was && !offline;
+    let name = crate::safety::volume_name(p);
+    let room_end = if grow {
+        let f = crate::safety::free_after(d, p).ok_or("There's no unallocated space right after it anymore. Nothing was changed.")?;
+        f.offset + f.size
+    } else { 0 };
+    if mount_it { step("Mounting"); mount(c, &p.id)?; }
+    if unmount_it { step("Unmounting"); unmount(c, p)?; }
+    let back = |c: &Connection| { if unmount_it { let _ = mount(c, &p.id); } };
+    let mounted_during = (was && !unmount_it) || mount_it;
+    if !mounted_during {
+        // It's unmounted now: it must be clean before it changes (resize2fs and ntfsresize want that too).
+        step("Checking the file system");
+        match call::<_, bool>(c, &p.id, udisks::FILESYSTEM, "Check", &(opts(),)) {
+            Ok(true) => {}
+            Ok(false) => { back(c); return Err(format!("{name}'s file system has problems, so it wasn't resized. Choose Properties › Repair first. Nothing was changed.")); }
+            Err(e) => { back(c); return Err(format!("{name} couldn't be checked, so it wasn't resized ({e}). Nothing was changed.")); }
+        }
+        // ext's resize2fs only resizes an unmounted file system checked since it was last mounted: a check that
+        // writes the "checked" mark (on a clean file system it changes nothing else).
+        if p.fs.starts_with("ext") {
+            if let Ok(false) | Err(_) = call::<_, bool>(c, &p.id, udisks::FILESYSTEM, "Repair", &(opts(),)) {
+                back(c);
+                return Err(format!("{name} couldn't be made ready to resize. Nothing was changed."));
+            }
+        }
+    }
+    let r = if grow {
+        let new = (p.size + amount).min(room_end.saturating_sub(p.offset)) / MIB * MIB;
+        step("Making the partition bigger");
+        match call0(c, &p.id, udisks::PARTITION, "Resize", &(new, opts())) {
+            Err(e) => Err(format!("{e} Nothing was changed.")),
+            Ok(()) => {
+                step("Making the file system bigger");
+                call0(c, &p.id, udisks::FILESYSTEM, "Resize", &(0u64, opts()))
+                    .map(|_| format!("{name} is now {}.", crate::model::human(new)))
+                    .map_err(|e| format!("The partition was made bigger, but its file system couldn't grow into it yet ({e}). Your files are fine: choose Extend again to finish."))
+            }
+        }
+    } else {
+        let new = p.size.saturating_sub(amount) / MIB * MIB;
+        if new < 32 * MIB { back(c); return Err("That would leave it too small.".into()); }
+        // The file system a little smaller than the partition will be, then the partition, then the file system
+        // grown to fill it exactly (the partition can come out a little bigger than asked, never smaller).
+        step("Making the file system smaller");
+        match call0(c, &p.id, udisks::FILESYSTEM, "Resize", &(new - 4 * MIB, opts())) {
+            Err(e) => Err(format!("{e} Nothing was changed.")),
+            Ok(()) => {
+                step("Making the partition smaller");
+                match call0(c, &p.id, udisks::PARTITION, "Resize", &(new, opts())) {
+                    Err(e) => Err(format!("Its file system was made smaller, but the partition wasn't ({e}). Your files are fine; the space isn't free yet: choose Shrink again.")),
+                    Ok(()) => {
+                        step("Fitting the file system to the partition");
+                        let _ = call0(c, &p.id, udisks::FILESYSTEM, "Resize", &(0u64, opts()));
+                        Ok(format!("{name} is now {}. The space after it is unallocated.", crate::model::human(new)))
+                    }
+                }
+            }
+        }
+    };
+    back(c);
+    r
 }
 
 /// Mounts it, or mounts it again after a change, where it was (udisks picks /run/media/<you>/<label>).
@@ -336,8 +522,27 @@ fn work(c: &Connection, action: &str, d: &Drive, p: Option<&Partition>, o: &Opts
     let c = c.clone();
     let r = match (action, p) {
         ("open", Some(p)) => {
-            let at = p.mount_points.first().cloned().ok_or("It isn't mounted.")?;
-            std::process::Command::new("xdg-open").arg(&at).spawn().map(|_| String::new()).map_err(|e| format!("Couldn't open it: {e}"))
+            let at = match p.mount_points.first() {
+                Some(m) => m.clone(),
+                // Open mounts it first (never Hearth's own or a start-up partition: safety doesn't offer that).
+                None if p.mountable && !p.system && !p.protected => { step("Mounting"); mount(&c, &p.id)? }
+                None => return Err("It isn't mounted.".into()),
+            };
+            open_folder(&at)
+        }
+        ("letter", Some(p)) => {
+            step("Changing the letter");
+            crate::letters::set(&p.uuid, &o.letter).map(|l| format!("It's {l}: now. Hearth Files and Windows apps use the new letter."))
+        }
+        ("extend", Some(p)) | ("shrink", Some(p)) => resize(&c, d, p, action == "extend", o.size, step),
+        ("selftest", None) => {
+            let objs = objects(&c)?;
+            let me = &objs[d.id.as_str()];
+            step("Starting the check");
+            if me.get(udisks::ATA).is_some() { call0(&c, &d.id, udisks::ATA, "SmartSelftestStart", &("extended", opts()))?; }
+            else if me.get(udisks::NVME).is_some() { call0(&c, &d.id, udisks::NVME, "SmartSelftestStart", &("extended", opts()))?; }
+            else { return Err("This drive can't test itself.".into()); }
+            Ok("The full check has started. It runs inside the drive; Properties › Health shows how far it is and the result.".into())
         }
         ("mount", Some(p)) => { step("Mounting"); mount(&c, &p.id).map(|at| format!("Mounted at {at}.")) }
         ("unmount", Some(p)) => { step("Unmounting"); unmount(&c, p).map(|_| "Unmounted.".to_string()) }
@@ -378,10 +583,10 @@ fn work(c: &Connection, action: &str, d: &Drive, p: Option<&Partition>, o: &Opts
             }
         }
         ("format", Some(p)) => {
-            step("Formatting");
-            format_part(&c, p, &o.fs, &o.label)?;
-            let note = if d.removable { mount_new(&c, &p.id) } else { String::new() };
-            Ok(format!("Formatted.{note}"))
+            step(if o.full { "Formatting (writing zeros over all of it)" } else { "Formatting" });
+            format_part(&c, p, &o.fs, &o.label, o.full)?;
+            let note = if d.removable || o.open { mount_new(&c, &p.id) } else { String::new() };
+            Ok(format!("Formatted.{note}{}", finish_new(&c, &p.id, o)))
         }
         ("delete", Some(p)) => {
             step("Deleting the partition");
@@ -394,8 +599,8 @@ fn work(c: &Connection, action: &str, d: &Drive, p: Option<&Partition>, o: &Opts
             step("Making the partition");
             let size = if o.size == 0 { 0 } else { o.size };
             let path = create(&c, d, p.offset, size, &o.fs, &o.label)?;
-            let note = if d.removable { mount_new(&c, &path) } else { String::new() };
-            Ok(format!("Partition made.{note}"))
+            let note = if d.removable || o.open { mount_new(&c, &path) } else { String::new() };
+            Ok(format!("The new volume is ready.{note}{}", finish_new(&c, &path, o)))
         }
         ("format_drive", None) => {
             let path = format_drive(&c, d, &o.fs, &o.label, step)?;
@@ -407,10 +612,11 @@ fn work(c: &Connection, action: &str, d: &Drive, p: Option<&Partition>, o: &Opts
             let path = match target {
                 None => format_drive(&c, d, &o.fs, &label, step)?,
                 Some(p) if p.kind == "free" => { step("Making the partition"); create(&c, d, p.offset, o.size, &o.fs, &label)? }
-                Some(p) if !crate::safety::games_ready("linux", &p.fs) => { step("Formatting"); format_part(&c, p, &o.fs, &label)?; p.id.clone() }
+                Some(p) if !crate::safety::games_ready("linux", &p.fs) => { step("Formatting"); format_part(&c, p, &o.fs, &label, o.full)?; p.id.clone() }
                 Some(p) => p.id.clone(),
             };
-            setup_games(&c, &path, step)
+            let msg = setup_games(&c, &path, step)?;
+            Ok(format!("{msg}{}", finish_new(&c, &path, o)))
         }
         _ => Err("That can't be done here.".into()),
     };

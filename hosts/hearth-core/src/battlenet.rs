@@ -9,7 +9,11 @@
 //! Faugus too, and Faugus's settings for it (Proton version, options) are what Hearth uses.
 //!
 //! Without Faugus (somewhere it isn't installed), and for Battle.net set up before Faugus (its own Proton prefix in
-//! `~/.local/share/nimbus/battlenet/prefix`, started with umu-run by `run.sh`), Hearth keeps its built-in setup.
+//! `~/.local/share/nimbus/battlenet/prefix`, started by `run.sh`), Hearth keeps its built-in setup. It runs Battle.net
+//! with hearth-proton-run (proton_run.rs: the Proton built into Hearth OS, offline and without Steam); a `run.sh` from
+//! before, which named umu-run, is rewritten to it before Battle.net starts (refresh_runner). Faugus itself is left
+//! alone: it gets its own umu-run and Proton, the way Faugus does. Battle.net's installer and sign-in need the internet
+//! by nature (Blizzard's servers); starting Proton never does.
 //!
 //! Hearth never signs in to Battle.net and never sees the password: you sign in in Battle.net's own window, and buying,
 //! installing and updating Blizzard games happen there too. Hearth only notices the games Battle.net installed (each
@@ -226,7 +230,7 @@ pub fn installer_message(umu: &Path, prefix: &Path, setup: &Path, runner: &str, 
 pub fn dir() -> PathBuf { crate::paths::data_dir().join("battlenet") }
 /// The built-in setup's Proton prefix (umu makes drive_c right in it).
 pub fn prefix() -> PathBuf { dir().join("prefix") }
-/// What the library starts for the built-in setup: a small script that runs Battle.net with umu in its prefix.
+/// What the library starts for the built-in setup: a small script that runs Battle.net with Proton in its prefix.
 pub fn runner() -> PathBuf { dir().join("run.sh") }
 fn drive_c() -> PathBuf { prefix().join("drive_c") }
 fn app_folder() -> PathBuf { drive_c().join("Program Files (x86)").join("Battle.net") }
@@ -332,8 +336,8 @@ pub fn games() -> Vec<crate::library::Game> {
     out
 }
 
-/// The built-in setup's script. `umu` is where umu-run is (the system's, or the one Hearth downloaded).
-fn run_sh(umu: &str) -> String {
+/// The built-in setup's script. `runner` starts Windows programs with Proton (proton_run::command: hearth-proton-run).
+fn run_sh(runner: &str) -> String {
     format!(r#"#!/bin/sh
 # Starts Battle.net for Hearth in its own Proton prefix (made by Hearth; replaced when Battle.net is set up again).
 here="$(dirname "$(readlink -f "$0")")"
@@ -344,8 +348,31 @@ app="$WINEPREFIX/drive_c/Program Files (x86)/Battle.net"
 # A game's Play passes --exec="launch <code>": that's Battle.net.exe's option. Battle.net itself opens through its launcher.
 exe="$app/Battle.net Launcher.exe"
 case "$1" in --exec=*) [ -f "$app/Battle.net.exe" ] && exe="$app/Battle.net.exe" ;; esac
-exec {umu} "$exe" "$@"
-"#, umu = shell_quote(umu), gameid = GAMEID)
+exec {runner} "$exe" "$@"
+"#, runner = shell_quote(runner), gameid = GAMEID)
+}
+
+/// A built-in setup's `run.sh` from before hearth-proton-run (it named umu-run, which downloads itself, the Steam
+/// Runtime and UMU-Proton) is rewritten to start Battle.net with hearth-proton-run, offline. Only Hearth's own script;
+/// nothing when the image has no hearth-proton-run. Called before Battle.net or one of its games starts.
+pub fn refresh_runner() {
+    let Some(runner) = crate::proton_run::offline() else { return };
+    let f = self::runner();
+    let Ok(old) = std::fs::read_to_string(&f) else { return };
+    let new = run_sh(&runner);
+    if !needs_refresh(&old, &new) { return; }
+    let tmp = f.with_extension("sh.tmp");
+    use std::os::unix::fs::PermissionsExt;
+    let ok = std::fs::write(&tmp, &new).is_ok()
+        && std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).is_ok()
+        && std::fs::rename(&tmp, &f).is_ok();
+    if ok { crate::bridge::log("battlenet: run.sh now starts Battle.net with hearth-proton-run (offline, without Steam)"); }
+    else { let _ = std::fs::remove_file(&tmp); }
+}
+
+/// Hearth's own run.sh (its first comment line) that isn't the current one.
+fn needs_refresh(old: &str, new: &str) -> bool {
+    old != new && old.lines().nth(1).map(|l| l.starts_with("# Starts Battle.net for Hearth in its own Proton prefix")).unwrap_or(false)
 }
 
 /// 'text' for sh, with any ' inside kept.
@@ -372,7 +399,7 @@ fn hw_accel_off(prefix: &Path) {
 /// Opens Battle.net once Desktop Mode starts (its first sign-in, where the controller types), like Xodus Nexus.
 pub fn open_in_desktop() -> Result<(), String> {
     let Some(setup) = current() else { return Err("Set up Battle.net first".into()) };
-    if let Setup::Faugus { faugus, gameid, .. } = &setup { write_script(faugus, gameid)?; }
+    if let Setup::Faugus { faugus, gameid, .. } = &setup { write_script(faugus, gameid)?; } else { refresh_runner(); }
     let f = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-open-after");
     std::fs::write(f, setup.script().to_string_lossy().as_bytes()).map_err(|e| e.to_string())
 }
@@ -436,7 +463,7 @@ fn wait_installed(child: &mut std::process::Child, exe: &Path, config: &Path, ma
     let mut seen: Option<Instant> = None;
     loop {
         if child.try_wait().map_err(|e| e.to_string())?.is_some() {
-            // umu waits for every program in the prefix, so the installer closing means it's all over.
+            // Proton (waitforexitandrun) waits for every program in the prefix, so the installer closing means it's all over.
             if exe.is_file() { if let Some(m) = mark { signal_marked(m, "-TERM"); } return Ok(()); }
             return Err("Battle.net's installer closed before Battle.net was installed. Try again; the details are in battlenet/setup.log.".into());
         }
@@ -495,16 +522,17 @@ fn install_faugus(faugus: &Faugus, stage: &dyn Fn(&str)) -> Result<(), String> {
     Ok(())
 }
 
-/// Hearth's built-in setup (no Faugus): umu-launcher (downloaded if needed), Blizzard's installer, Battle.net in its prefix.
+/// Hearth's built-in setup (no Faugus): hearth-proton-run (the built-in Proton, offline), Blizzard's installer, Battle.net
+/// in its prefix.
 fn install_builtin(stage: &dyn Fn(&str)) -> Result<(), String> {
-    stage("Faugus Launcher isn't installed, so Hearth sets Battle.net up itself. Getting Proton (umu-launcher)…");
-    let umu = crate::tools::ensure(&crate::tools::UMU)?;
+    stage("Faugus Launcher isn't installed, so Hearth sets Battle.net up itself with the Proton built into Hearth OS…");
+    let proton = crate::proton_run::command()?;
     std::fs::create_dir_all(prefix()).map_err(|e| e.to_string())?;
     stage("Downloading Blizzard's installer…");
     let setup = dir().join("Battle.net-Setup.exe");
     download_installer(&setup)?;
     use std::os::unix::fs::PermissionsExt;
-    std::fs::write(runner(), run_sh(&umu)).map_err(|e| e.to_string())?;
+    std::fs::write(runner(), run_sh(&proton)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(runner(), std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     stage("Installing Battle.net… It downloads itself, which can take a few minutes.");
     let lang = format!("--lang={}", lang_of(&std::env::var("LANG").unwrap_or_default()));
@@ -512,7 +540,7 @@ fn install_builtin(stage: &dyn Fn(&str)) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     // Its own process group, so the installer and the Battle.net it opens at the end can be stopped together.
     let setup_s = setup.to_string_lossy().to_string();
-    let mut child = std::process::Command::new(&umu)
+    let mut child = std::process::Command::new(&proton)
         .args([setup_s.as_str(), lang.as_str(), "--installpath=C:\\Program Files (x86)\\Battle.net"])
         .env("WINEPREFIX", prefix()).env("GAMEID", GAMEID).env("STORE", "battlenet")
         .stdin(std::process::Stdio::null()).stdout(log.try_clone().map_err(|e| e.to_string())?).stderr(log)
@@ -607,9 +635,12 @@ mod tests {
 
     #[test]
     fn runner_script() {
-        let s = run_sh("/home/me/.local/share/nimbus/tools/umu/umu-run");
+        let s = run_sh("/usr/bin/hearth-proton-run");
         assert!(s.starts_with("#!/bin/sh"));
-        assert!(s.contains("exec '/home/me/.local/share/nimbus/tools/umu/umu-run' \"$exe\" \"$@\""));
+        assert!(s.contains("exec '/usr/bin/hearth-proton-run' \"$exe\" \"$@\""));
+        // A run.sh from before (umu-run) is Hearth's own and gets rewritten; anything else, or the current one, isn't.
+        let old = run_sh("/home/me/.local/share/nimbus/tools/umu/umu-run");
+        assert!(needs_refresh(&old, &s) && !needs_refresh(&s, &s) && !needs_refresh("#!/bin/sh\n# my own script\n", &s));
         assert!(s.contains("export GAMEID=\"${GAMEID:-umu-battlenet}\""));
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
     }

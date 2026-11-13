@@ -110,10 +110,8 @@ fn ring_info(start: tauri::State<Start>) -> Value {
 /// The ringing window's buttons: "snooze" or "dismiss". Closes it (which stops the tone in the service).
 #[tauri::command(async)]
 fn ring_done(app: tauri::AppHandle, start: tauri::State<Start>, action: String) -> Result<(), String> {
-    let mut c = clock::load();
     let now = hearth_time::now_ms();
-    for (kind, id) in &start.ring { clock::after_ring(&mut c, kind, id, &action, now); }
-    let r = store::save(&paths::clock_file(), &c);
+    let r = clock::update(|c| for (kind, id) in &start.ring { clock::after_ring(c, kind, id, &action, now); });
     app.exit(0);
     r
 }
@@ -138,32 +136,26 @@ fn cal_event(id: String) -> Value {
 
 #[tauri::command(async)]
 fn cal_put(event: calendar::Event) -> Result<Value, String> {
-    let mut v = calendar::load();
-    let e = calendar::put_event(&mut v, event)?;
-    calendar::save(&v)?;
+    let e = calendar::update(|v| calendar::put_event(v, event))?;
     Ok(json!(e))
 }
 
 #[tauri::command(async)]
 fn cal_delete(id: String, occ: Option<String>) -> Result<bool, String> {
-    let mut v = calendar::load();
-    let r = calendar::delete_event(&mut v, &id, occ.as_deref());
-    calendar::save(&v)?;
-    Ok(r)
+    calendar::update(|v| Ok(calendar::delete_event(v, &id, occ.as_deref())))
 }
 
 #[tauri::command(async)]
 fn cal_settings(settings: Value) -> Result<(), String> {
-    let mut v = calendar::load();
-    if let (Some(dst), Some(src)) = (v["settings"].as_object_mut(), settings.as_object()) { for (k, x) in src { dst.insert(k.clone(), x.clone()); } }
-    calendar::save(&v)
+    calendar::update(|v| {
+        if let (Some(dst), Some(src)) = (v["settings"].as_object_mut(), settings.as_object()) { for (k, x) in src { dst.insert(k.clone(), x.clone()); } }
+        Ok(())
+    })
 }
 
 #[tauri::command(async)]
 fn cal_import_text(text: String) -> Result<Value, String> {
-    let mut v = calendar::load();
-    let (added, updated) = calendar::import(&mut v, &text)?;
-    calendar::save(&v)?;
+    let (added, updated) = calendar::update(|v| calendar::import(v, &text))?;
     Ok(json!({"added": added, "updated": updated}))
 }
 
@@ -205,36 +197,36 @@ fn cal_export() -> Result<String, String> {
 
 #[tauri::command(async)]
 fn cal_subscribe(url: String, name: String) -> Result<Value, String> {
-    let mut v = calendar::load();
-    let s = calendar::subscribe(&mut v, &url, &name)?;
-    calendar::save(&v)?;
+    // Checked and downloaded on a copy (no lock held while downloading), then added to the latest file.
+    let s = calendar::subscribe(&mut calendar::load(), &url, &name)?;
+    calendar::update(|v| {
+        let list = v["subs"].as_array_mut().ok_or("damaged calendar file")?;
+        if !list.iter().any(|x| x["url"] == s["url"]) { list.push(s.clone()); }
+        Ok(())
+    })?;
     Ok(s)
 }
 
 #[tauri::command(async)]
 fn cal_unsubscribe(id: String) -> Result<(), String> {
-    let mut v = calendar::load();
-    calendar::unsubscribe(&mut v, &id);
-    calendar::save(&v)
+    calendar::update(|v| { calendar::unsubscribe(v, &id); Ok(()) })
 }
 
 #[tauri::command(async)]
 fn cal_sub_set(id: String, hidden: Option<bool>, name: Option<String>) -> Result<(), String> {
-    let mut v = calendar::load();
-    if let Some(s) = v["subs"].as_array_mut().and_then(|l| l.iter_mut().find(|s| s["id"] == id.as_str())) {
-        if let Some(h) = hidden { s["hidden"] = json!(h); }
-        if let Some(n) = name.filter(|n| !n.trim().is_empty()) { s["name"] = json!(n.trim()); }
-    }
-    calendar::save(&v)
+    calendar::update(|v| {
+        if let Some(s) = v["subs"].as_array_mut().and_then(|l| l.iter_mut().find(|s| s["id"] == id.as_str())) {
+            if let Some(h) = hidden { s["hidden"] = json!(h); }
+            if let Some(n) = name.filter(|n| !n.trim().is_empty()) { s["name"] = json!(n.trim()); }
+        }
+        Ok(())
+    })
 }
 
 /// Downloads every subscribed calendar again. Returns the subscriptions (with any errors).
 #[tauri::command(async)]
 fn cal_refresh() -> Result<Value, String> {
-    let mut v = calendar::load();
-    if let Some(subs) = v["subs"].as_array_mut() { for s in subs.iter_mut() { let _ = calendar::refresh_sub(s); } }
-    calendar::save(&v)?;
-    Ok(v["subs"].clone())
+    calendar::refresh_subs(|_| true)
 }
 
 // ---------------------------------------------------------------------------------------------- Notes

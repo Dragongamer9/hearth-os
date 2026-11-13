@@ -57,7 +57,7 @@ pub fn set_folder(path: &str) -> Result<(), String> {
     if !ok || path.contains("..") { return Err("Pick one of the places offered".into()); }
     std::fs::create_dir_all(p).map_err(|e| format!("Couldn't make the folder: {e}"))?;
     std::fs::create_dir_all(dir()).map_err(|e| e.to_string())?;
-    std::fs::write(folder_file(), path).map_err(|e| e.to_string())
+    crate::settings_file::write_text(&folder_file(), path).map(|_| ()).map_err(|e| e.to_string())
 }
 /// Desktop Mode opens Nexus once it starts (its first sign-in, where the controller types).
 pub fn open_in_desktop() -> Result<(), String> {

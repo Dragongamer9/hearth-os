@@ -1100,6 +1100,138 @@ def arm_import(popen=subprocess.Popen):
     return True
 
 
+# ---- Which Game Mode (docs/HEARTH-GAME-MODE.md, Hearth 1.10): Steam Game Mode (this one, the default) or Hearth Game
+# Mode. Hearth OS's own helper keeps the choice (desktop/shell/hearth-game-mode: one line of session.conf, written only
+# when you pick one, atomic, .bak); the plugin only asks it, passes on one of the two names, and asks the session to
+# switch (nimbus-mode). Nothing of Steam's is changed.
+GAME_MODE_HELPERS = ('/usr/share/nimbus/desktop/shell/hearth-game-mode', '/usr/local/share/nimbus/desktop/shell/hearth-game-mode')
+
+
+def game_mode_helper():
+    for p in GAME_MODE_HELPERS:
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def game_mode_call(args, run=subprocess.run):
+    """hearth-game-mode's JSON answer, or {'error': ...}."""
+    h = game_mode_helper()
+    if not h:
+        return {'error': 'This Hearth OS has no Game Mode choice yet (update Hearth OS)'}
+    try:
+        r = run(['python3', h] + list(args), capture_output=True, text=True, timeout=20, env=clean_env())
+    except (OSError, subprocess.SubprocessError) as e:
+        return {'error': str(e)[:200]}
+    out = (r.stdout or '').strip().splitlines()
+    for line in out:
+        if line.startswith('error: '):
+            return {'error': line[7:][:200]}
+    for line in reversed(out):
+        if line.startswith('{'):
+            try:
+                v = json.loads(line)
+                return v if isinstance(v, dict) else {'error': 'unexpected answer'}
+            except ValueError:
+                break
+    return {'error': 'no answer from hearth-game-mode'}
+
+
+def game_mode_set(choice, run=subprocess.run):
+    if choice not in ('steam', 'hearth'):
+        return {'error': 'Pick Steam Game Mode or Hearth Game Mode'}
+    r = game_mode_call(['set', choice], run=run)
+    if 'error' not in r:
+        log('game mode: you picked %s (applies the next time Game Mode starts)' % ('Hearth Game Mode' if choice == 'hearth' else 'Steam Game Mode'))
+    return r
+
+
+def game_mode_switch(to, popen=subprocess.Popen):
+    """Switch now: the session closes Steam properly and opens Hearth Game Mode ("hearth", also Try again) or the Game
+    Mode you picked ("game")."""
+    if to not in ('hearth', 'game'):
+        return False
+    prog = find_program('nimbus-mode')
+    if not prog:
+        return False
+    try:
+        popen([prog, to], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=clean_env(), start_new_session=True)
+    except OSError:
+        return False
+    log('game mode: switching to %s' % ('Hearth Game Mode' if to == 'hearth' else 'the Game Mode you picked'))
+    return True
+
+
+# ---------------------------------------------------------------------- Resources (docs/RESOURCE-MONITOR.md)
+# Quick Access › Resources: the graphics, processor, memory and network meters with temperatures, the game and what
+# else runs, from Resource Monitor's helper (Mantel's desktop/shell/hearth-resmon, read-only). Sampled only while the
+# panel is open (the frontend asks once a second while it's on screen); the sampler is dropped a minute after the last
+# ask. "Pause downloads and backups while I play" uses Hearth's existing pauses only (hearth-resmon pause): never a
+# setting by itself.
+RESMON = '/usr/share/nimbus/desktop/shell/hearth-resmon'
+PAUSE_ACTIONS = ('status', 'on', 'off', 'light-on')
+_RES = {'mod': None, 'sampler': None, 'last': 0.0, 'failed': False}
+
+
+def resmon_path():
+    return os.environ.get('HEARTH_RESMON') or RESMON
+
+
+def _resmon_module():
+    if _RES['mod'] is not None or _RES['failed']:
+        return _RES['mod']
+    path = resmon_path()
+    try:
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader('hearth_resmon', path)
+        spec = importlib.util.spec_from_loader('hearth_resmon', loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        _RES['mod'] = mod
+    except Exception as e:   # not on Hearth OS, or an older one: the subprocess way below
+        _RES['failed'] = True
+        log('resources: the helper could not be loaded (%s); asking it per sample' % type(e).__name__)
+    return _RES['mod']
+
+
+def _resmon_run(args, timeout=10):
+    path = resmon_path()
+    if not os.path.exists(path):
+        return None
+    try:
+        r = subprocess.run(['python3', path] + args, capture_output=True, text=True, timeout=timeout, env=clean_env(), stdin=subprocess.DEVNULL)
+        line = (r.stdout.strip().splitlines() or [''])[-1]
+        return json.loads(line) if line.startswith('{') else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def resources_sample(now=None):
+    """The panel's numbers once (None when Resource Monitor's helper isn't on this system)."""
+    now = time.monotonic() if now is None else now
+    mod = _resmon_module()
+    if mod is None:
+        return _resmon_run(['sample', 'brief'])
+    if _RES['sampler'] is None or now - _RES['last'] > 60:
+        _RES['sampler'] = mod.ResSampler()
+        _RES['sampler'].sample(['procs', 'gpu', 'temps'])
+        time.sleep(0.3)
+    _RES['last'] = now
+    try:
+        return mod.brief(_RES['sampler'])
+    except Exception as e:
+        _RES['sampler'] = None
+        log('resources: a sample failed (%s)' % type(e).__name__)
+        return None
+
+
+def resources_pause(action):
+    if action not in PAUSE_ACTIONS:
+        return None
+    return _resmon_run(['pause', action], timeout=15)
+
+
 class Plugin:
     async def hearth_os(self):
         """Whether this is Hearth OS (the frontend shows the Hearth OS panel instead of the plugin when not)."""
@@ -1107,6 +1239,14 @@ class Plugin:
 
     async def import_scan(self):
         return import_scan()
+
+    async def resources_sample(self):
+        """Quick Access › Resources, once (the panel asks every second while it's open)."""
+        return resources_sample()
+
+    async def resources_pause(self, action):
+        """status | on | off | light-on: Hearth's existing pauses only (light-on only when the person pressed it)."""
+        return resources_pause(str(action))
 
     async def import_state(self):
         return import_state()
@@ -1166,6 +1306,20 @@ class Plugin:
             log('compat: %d Hearth Sync shortcut%s set to start with a compatibility tool (%s): they don\'t start that way; '
                 'turn it off in the game\'s Properties > Compatibility' % (len(r), '' if len(r) == 1 else 's', ', '.join(sorted({x['tool'] for x in r}))))
         return r
+
+    async def game_mode_get(self):
+        return game_mode_call(['get'])
+
+    async def game_mode_set(self, choice):
+        return game_mode_set(str(choice))
+
+    async def game_mode_switch(self, to):
+        return game_mode_switch(str(to))
+
+    async def game_mode_notice(self):
+        """Why Hearth Game Mode didn't start (the session opened Steam Game Mode instead), once: {'text': ...} or {}."""
+        r = game_mode_call(['notice', 'steam'])
+        return r if 'text' in r else {}
 
     async def report(self, line):
         """One line from the frontend for the log (counts and reasons only)."""

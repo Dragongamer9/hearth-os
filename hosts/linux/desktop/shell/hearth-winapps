@@ -64,7 +64,13 @@ PROGRAM_EXTS = ('.exe', '.bat', '.cmd')
 LOG_KEEP = 5                 # last.log and the 4 starts before it
 LOG_MAX = 8 * 1024 * 1024    # per start: more than this of the program's output is counted, not kept
 DEFAULTS = {'name': '', 'id': '', 'exe': '', 'args': [], 'cwd': '', 'icon_from': '', 'proton': '', 'dxvk': True,
-            'vkd3d': True, 'winver': '', 'steam': False, 'source': '', 'installer': False}
+            'vkd3d': True, 'winver': '', 'steam': False, 'source': '', 'installer': False, 'dlls': [], 'fixes': []}
+# The Compatibility tab's common fixes (1.11): Proton's own switches, each remembered per app.
+FIXES = {'noesync': ('PROTON_NO_ESYNC', 'No esync'), 'nofsync': ('PROTON_NO_FSYNC', 'No fsync'),
+         'laa': ('PROTON_FORCE_LARGE_ADDRESS_AWARE', 'More memory for old 32-bit games'),
+         'nvapi': ('PROTON_ENABLE_NVAPI', 'Nvidia features (DLSS)'), 'hidenv': ('PROTON_HIDE_NVIDIA_GPU', 'Hide an Nvidia card'),
+         'oldgl': ('PROTON_OLD_GL_STRING', 'Old OpenGL games that crash at start')}
+DLL_RE = re.compile(r'^[A-Za-z0-9_.-]{1,40}$')
 
 
 def home():
@@ -251,20 +257,13 @@ def ensure_prefix(prefix):
 
 
 def proton_env(a, target=''):
-    """Proton's environment for a Windows app, the way umu-launcher starts Proton outside Steam: UMU_ID makes
-    GE-Proton start the program itself (through its umu.exe) instead of through its steam.exe, which wants the Steam
-    client (lsteamclient) and is for Steam games. No Steam folder is used or needed, so it's the same on a device
-    without Steam (Lenovo laptop, Hearth 1.7.0: "no Steam folder") and works offline."""
-    env = dict(os.environ)
-    env.update({'STEAM_COMPAT_DATA_PATH': a['prefix'], 'WINEPREFIX': a['prefix'],
-                'STEAM_COMPAT_CLIENT_INSTALL_PATH': '', 'STEAM_COMPAT_APP_ID': '0', 'UMU_ID': '0',
-                'SteamAppId': '0', 'SteamGameId': 'hearth-winapp-' + a['id'], 'PROTON_LOG': env.get('PROTON_LOG', '')})
-    env.pop('UMU_USE_STEAM', None)
-    # GE-Proton's protonfixes downloads AMD's FSR4 files at every start of a new prefix ("Downloading upscaler file
-    # amdxcffx64.dll"): Windows apps start offline and don't need them.
-    env.setdefault('PROTONFIXES_DISABLE_UPSCALERS', '1')
-    if target and os.path.isabs(target):
-        env['STEAM_COMPAT_INSTALL_PATH'] = os.path.dirname(target)
+    """Proton's environment for a Windows app, the way umu-launcher starts Proton outside Steam (hearth_proton.offline_env,
+    shared with hearth-proton-run): no Steam folder is used or needed, so it's the same on a device without Steam
+    (Lenovo laptop, Hearth 1.7.0: "no Steam folder") and works offline."""
+    env = hp.offline_env(os.environ, a['prefix'], umu_id='0', app_id='0', game_label='hearth-winapp-' + a['id'],
+                         install_dir=os.path.dirname(target) if target and os.path.isabs(target) else '')
+    env['STEAM_COMPAT_CLIENT_INSTALL_PATH'] = ''
+    env['PROTON_LOG'] = env.get('PROTON_LOG', '')
     if not env['PROTON_LOG']:
         env.pop('PROTON_LOG')
     else:
@@ -273,6 +272,14 @@ def proton_env(a, target=''):
         env['PROTON_USE_WINED3D'] = '1'
     if not a['vkd3d']:
         env['PROTON_NO_D3D12'] = '1'
+    # Compatibility: "Use these files from Windows" (the game's own copy first, as a mod's d3d9.dll or dinput8.dll needs)
+    dlls = [d for d in (a.get('dlls') or []) if DLL_RE.match(d)]
+    if dlls:
+        own = ';'.join('%s=n,b' % d.lower().removesuffix('.dll') for d in dlls)
+        env['WINEDLLOVERRIDES'] = own + (';' + env['WINEDLLOVERRIDES'] if env.get('WINEDLLOVERRIDES') else '')
+    for f in a.get('fixes') or []:
+        if f in FIXES:
+            env[FIXES[f][0]] = '1'
     return env
 
 
@@ -291,7 +298,8 @@ def choose(a, wanted=None):
 
 
 def proton_cmd(path, verb, args):
-    return ['python3', os.path.join(path, 'proton'), verb] + args
+    """Proton's script with a verb, run offline (hearth_proton.proton_argv: Proton's own downloads are switched off)."""
+    return hp.proton_argv(path, verb, args)
 
 
 def win_path(path, prefix):
@@ -884,6 +892,7 @@ def public(a):
     s = state(a)
     return {'id': a['id'], 'name': a['name'], 'exe': a['exe'], 'proton': a['proton'], 'dxvk': a['dxvk'],
             'vkd3d': a['vkd3d'], 'winver': a['winver'], 'steam': a['steam'], 'dir': a['dir'],
+            'dlls': a.get('dlls') or [], 'fixes': a.get('fixes') or [], 'fixNames': {k: v[1] for k, v in FIXES.items()},
             'icon': os.path.join(icon_dir(), a['id'] + '.png') if os.path.isfile(os.path.join(icon_dir(), a['id'] + '.png')) else '',
             'inMenu': os.path.isfile(desktop_path(a['id'])), 'last': s, 'args': a['args'],
             'log': last_log(a) if os.path.isfile(last_log(a)) else '',
@@ -914,6 +923,17 @@ def cmd_set(i, k, v):
         if v not in ('on', 'off'):
             raise Fail('%s is on or off' % k)
         save_app(a['dir'], {k: v == 'on'})
+    elif k == 'dlls':
+        names = [x.strip() for x in re.split(r'[,;\s]+', v) if x.strip()]
+        bad = [x for x in names if not DLL_RE.match(x)]
+        if bad:
+            raise Fail('Not a file name: %s' % bad[0])
+        save_app(a['dir'], {'dlls': names[:20]})
+    elif k.startswith('fix.') and k[4:] in FIXES:
+        if v not in ('on', 'off'):
+            raise Fail('a fix is on or off')
+        cur = [f for f in (a.get('fixes') or []) if f != k[4:]]
+        save_app(a['dir'], {'fixes': cur + ([k[4:]] if v == 'on' else [])})
     elif k == 'winver':
         if v not in WINVERS:
             raise Fail('Windows version: one of %s' % ', '.join(w for w in WINVERS if w))

@@ -128,7 +128,8 @@ async fn bind(port: u16) -> Result<(tokio::net::TcpListener, u16), String> {
 pub async fn start(opts: Options, emit: Emit) -> Result<Arc<Service>, String> {
     std::fs::create_dir_all(&opts.home).map_err(|e| format!("{}: {e}", opts.home.display()))?;
     let id = tls::load_or_create(&opts.home)?;
-    let mut settings: Settings = std::fs::read_to_string(settings_path(&opts)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    // A file a power cut damaged is put back from settings.json.bak instead of starting over with the defaults.
+    let mut settings: Settings = crate::appfile::read_json(&settings_path(&opts)).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
     if let Some(a) = &opts.alias { settings.alias = a.clone(); }
     if settings.alias.trim().is_empty() { settings.alias = crate::host_name(); }
     let (listener, port) = bind(opts.port).await?;
@@ -189,8 +190,8 @@ impl Service {
     pub fn changed(&self) { (self.emit)("state", json!({})); }
 
     pub fn save_settings(&self) -> Result<(), String> {
-        let text = serde_json::to_string_pretty(&*lock(&self.settings)).map_err(|e| e.to_string())?;
-        tls::write_private(&settings_path(&self.opts), text.as_bytes())
+        let v = serde_json::to_value(&*lock(&self.settings)).map_err(|e| e.to_string())?;
+        crate::appfile::write_json_private(&settings_path(&self.opts), &v).map_err(|e| e.to_string())
     }
 
     /// A device announced itself, registered, or answered us.

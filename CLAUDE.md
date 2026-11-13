@@ -42,6 +42,11 @@ in `docs/archive/`). The owner is Dragongamer9.
   3. Commit "X" on bughunt; check both images build with publish=false.
   4. `git checkout -B release-X origin/main && git merge --no-ff <bughunt sha> && git push origin release-X:main`.
      `release.yml` makes the GitHub release; pushes to main publish the images and the website.
+- **ISOs every 5–10 releases** (the owner's rule): the offline USB (Actions › Hearth installer ISO, edition peppermint,
+  Upload and End-to-end ticked) and the Recovery USB (Actions › Hearth Recovery ISO) are rebuilt from main and uploaded
+  to the download site at least every 10 releases, and sooner (from 5) when something in installing or starting changed.
+  The website's Download button and Make a bootable USB use those files. Note in the release's ROADMAP entry which
+  version the ISOs are on. Uploading replaces public downloads, so it needs the owner's go-ahead like a release.
 - Local `origin/*` refs can be stale: check with `git ls-remote origin refs/heads/<branch>` and merge by SHA.
 
 ## CI and logs
@@ -60,4 +65,6 @@ in `docs/archive/`). The owner is Dragongamer9.
   `docs/HEARTH-LINK.md`, `docs/archive/MULTI-SEAT.md`, `docs/STEAM.md`, `docs/RENDERERS.md`, `docs/ARCHIVED.md`.
 - Core: `hosts/hearth-core` (Rust); Game Mode host: `hosts/hearth-rs`; UI: `ui/`; Desktop Mode: `hosts/linux/desktop`;
   shared system files: `os/system_files`; bug-report and counter service: `counter/`.
+- Hearth for Android: `hosts/android` (Kotlin WebView host for `ui/index.html`, plus `ui/android-settings.js`; test
+  device a Samsung Galaxy Tab A9), workflow `android.yml`; docs `docs/ANDROID.md`, `docs/ANDROID-LINUX.md`.
 - Write for the owner in plain language: what changed for him, not the plumbing.

@@ -1,0 +1,19 @@
+# Settings › Home server › Services and AI › Voice Studio (docs/HOME-SERVER.md): Hearth's own voice studio (speak, clone,
+# design, transcribe, audiobooks, video dubbing, an OpenAI-compatible speech API), as you, on this PC's graphics card.
+# Its engines aren't in the Hearth image: Settings installs them only when you ask (hearth-home-server studio-install:
+# a venv under ~/.local/share/nimbus/voice-studio, PyTorch from its own CUDA index, the engines from PyPI). It listens on
+# 127.0.0.1 and this PC's Tailscale address only, behind a PIN (the page) and a key (the API), and its port is in
+# Hearth's Tailscale-only firewall rule while it's on. No install section: started only by its timer (a minute after you
+# sign in, enabled only while it's on) or by Settings; Light mode stops it while you play (its queue is kept on disk and
+# carries on after). Never part of starting the PC, the session or Game Mode: with no engines it doesn't start at all.
+[Unit]
+Description=Hearth home server: Voice Studio
+ConditionPathExists=%h/.local/share/nimbus/voice-studio/venv/bin/python
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-home-server ai-run voicestudio
+Restart=on-failure
+RestartSec=30
+Nice=5
+TimeoutStopSec=30

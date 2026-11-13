@@ -1,4 +1,4 @@
-"""Hearth's KDE apps, the image-side pieces (hosts/hearth-kde): menu entries, the old apps' "(classic)" names, Hearth
+"""Hearth's KDE apps, the image-side pieces (hosts/hearth-kde): menu entries, the old apps' plain names, Hearth
 Storage in KDE's Places, the hearth-files-kde starter and install.sh's list. Run: python3 -m unittest discover -s
 hosts/hearth-kde/tests"""
 import configparser
@@ -71,12 +71,15 @@ class MenuEntries(unittest.TestCase):
         out = hk.rebrand_text(STOCK_DOLPHIN.replace('dolphin', 'konsole'), 'Terminal', 'hearth-terminal')
         self.assertIn('Exec=konsole %u', out)
 
-    def test_classic(self):
-        text = '[Desktop Entry]\nName=Terminal\nExec=hearth-terminal\n\n[Desktop Action new-window]\nName=New window\n'
-        out = hk.classic_text(text)
-        self.assertIn('Name=Terminal (classic)', out)
+    def test_plain_names(self):
+        # No app is called "… (classic)" any more (the owner, Nov 12): the old name comes off, nothing else changes.
+        text = '[Desktop Entry]\nName=Terminal (classic)\nName[de]=Terminal (Classic)\nExec=hearth-terminal\n\n[Desktop Action new-window]\nName=New window\n'
+        out = hk.plain_text(text)
+        self.assertIn('Name=Terminal\n', out)
+        self.assertIn('Name[de]=Terminal\n', out)
         self.assertIn('Name=New window\n', out)
-        self.assertEqual(hk.classic_text(out), out)
+        self.assertNotIn('lassic', out)
+        self.assertEqual(hk.plain_text(out), out)
 
     def test_hearth_entries(self):
         for f in sorted((KDE / 'apps').glob('*.desktop')):

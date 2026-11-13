@@ -29,15 +29,34 @@ const importScan = () => (["import", "import-confirm", "import-waiting", "import
   : { ok: true, target: "/home/you/.local/share/Steam", games: [], skipped: [F("570", "Dota 2", "move", "Steam already has it")] });
 const importState = () => ({ "import-waiting": { pending: true, result: null },
   "import-done": { pending: false, result: { ok: true, counts: { moved: 3, registered: 1, libraries: 1, skipped: 2, failed: 0 } } } }[state()] || { pending: false, result: null });
+// Which Game Mode (src/gamemode.tsx): Steam Game Mode in use by default; "gamemode-fallback" shows Hearth Game Mode picked
+// and the reason it didn't start.
+const gameModeFor = () => (state() === "gamemode-fallback"
+  ? { choice: "hearth", saved: true, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "Hearth's app closed with an error 3 times within 2 minutes (code 1)", paused: "" }
+  : state() === "steam-game" ? { choice: "hearth", saved: true, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "", paused: "", steamGame: "570" }
+  : { choice: "steam", saved: false, hearth: { ok: true, why: "" }, steam: { ok: true, why: "" }, fallback: "", paused: "" });
+// Quick Access › Resources (src/resources.tsx): numbers only in the "resources" pictures (else no section, like a system
+// without Resource Monitor's helper).
+const brief = { gpu: { busy: 72, temp: 64, name: "NVIDIA GeForce RTX 5070", vramUsed: 8482000000, vramTotal: 12884000000, watts: 168 }, cpu: { busy: 46, temp: 71 },
+  mem: { used: 12025000000, total: 33350000000, cache: 15140000000 }, net: { recv: 53477376, send: 409600, kind: "Wi-Fi" },
+  game: { name: "Cyberpunk 2077", cpu: 31, gpu: 68, mem: 7945000000, tag: "Game · Proton" },
+  others: [{ name: "steam", tag: "Steam", color: "steam", cpu: 4, mem: 1181000000, disk: 0 }, { name: "Discord", tag: "", color: "app", cpu: 2, mem: 640000000, disk: 0 },
+           { name: "hearth-home-server", tag: "Home server", color: "home", cpu: 0, mem: 52000000, disk: 0 }] };
+const pauseFor = (a) => ({ backups: { available: true, count: 2, lightMode: state() !== "resources-light-off", resumed: a === "off", paused: a === "off" ? [] : ["backups"], waiting: a !== "off" && state() !== "resources-light-off" },
+  needsOption: state() === "resources-light-off" && a !== "light-on" });
 const handlers = {
+  resources_sample: () => (String(state()).startsWith("resources") ? brief : null),
+  resources_pause: (a) => (String(state()).startsWith("resources") ? pauseFor(a) : null),
   get_games: (force) => (force && state() === "syncing" ? new Promise(() => {}) : { ok: true, error: null, games, signature: "s" }),
   get_status: () => statusFor(), set_status: (s) => s, get_settings: () => settingsFor(), set_settings: (s) => s,
   import_scan: () => importScan(), import_state: () => importState(), import_arm: () => true,
   hearth_os: () => (state() === "not-hearth" ? { ok: false, message: "This plugin is part of Hearth OS. Get Hearth OS at hearthos.fun" } : { ok: true }),
+  game_mode_get: () => gameModeFor(), game_mode_set: (c) => Object.assign(gameModeFor(), { choice: c, saved: true }), game_mode_switch: () => true, game_mode_notice: () => ({}),
   get_shortcuts: () => ({}), set_shortcuts: (m) => m, get_applied: () => ({}), set_applied: (a) => a, get_art: () => null, art_error: () => null, report: () => null,
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export function definePlugin(f) { return f; }
+export const toaster = { toast() {} };
 // Enough of Steam's frontend for Sync now to start (the picture of it syncing).
 window.SteamClient = { Apps: Object.fromEntries(["AddShortcut", "RemoveShortcut", "SetShortcutName", "SetShortcutExe", "SetShortcutStartDir",
   "SetAppLaunchOptions", "SetCustomArtworkForApp", "SetShortcutIcon"].map((n) => [n, async () => 1])) };

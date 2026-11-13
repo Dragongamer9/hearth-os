@@ -140,7 +140,8 @@ class Apps(Base):
         self.assertEqual(a['prefix'], os.path.join(self.home, 'Games', 'Windows apps', 'Notepad++', 'prefix'))
         self.assertTrue(os.path.islink(os.path.join(a['prefix'], 'pfx')))
         cmd, env, cwd = calls[-1]
-        self.assertEqual(cmd[1:4], [os.path.join(self.sys, 'GE-Proton11-3', 'proton'), 'waitforexitandrun', p])
+        self.assertEqual(cmd[1:6], [os.path.join(os.path.realpath(SHELL), 'hearth_proton_run.py'), '--in-proton', os.path.join(self.sys, 'GE-Proton11-3'), 'waitforexitandrun', p],
+                         'Proton runs through hearth_proton_run.py, which switches its downloads off')
         self.assertEqual(env['STEAM_COMPAT_DATA_PATH'], a['prefix'])
         desk = open(self.w.desktop_path(a['id'])).read()
         self.assertIn('Exec=/usr/bin/python3 %s run %s' % (os.path.realpath(os.path.join(SHELL, 'hearth-winapps')), a['id']), desk)
@@ -186,7 +187,7 @@ class Apps(Base):
         p = self.exe('Tool.msi')
         calls, run = self.runner()
         self.w.cmd_open(p, runner=run)
-        self.assertEqual(calls[-1][0][3:6], ['msiexec', '/i', p])
+        self.assertEqual(calls[-1][0][5:8], ['msiexec', '/i', p])
 
     def test_settings_become_proton_env_and_are_kept_safely(self):
         p = self.exe('thing.exe')
@@ -306,7 +307,7 @@ class Installers(Base):
         r = self.w.cmd_open(p, runner=run)
         a = self.w.app(r['id'])
         top = os.path.join(a['prefix'], 'drive_c', 'Program Files (x86)', 'Unigine', 'Heaven Benchmark 4.0')
-        self.assertEqual(calls[0][0][3], p, 'the installer ran first')
+        self.assertEqual(calls[0][0][5], p, 'the installer ran first')
         self.assertEqual(calls[0][2], os.path.dirname(p), 'in its own folder')
         self.assertEqual(a['exe'], os.path.join(top, 'bin', 'browser_x86.exe'), "the shortcut's program, not the biggest .exe")
         self.assertEqual(a['args'], ['-config', '../data/launcher/launcher.xml'])
@@ -316,7 +317,7 @@ class Installers(Base):
         calls.clear()
         self.w.start(a, a['exe'], a['args'], runner=run)
         cmd, env, cwd = calls[-1]
-        self.assertEqual(cmd[3:], [a['exe'], '-config', '../data/launcher/launcher.xml'])
+        self.assertEqual(cmd[5:], [a['exe'], '-config', '../data/launcher/launcher.xml'])
         self.assertEqual(cwd, os.path.join(top, 'bin'), "started in the shortcut's folder")
 
     def test_old_app_that_is_its_installer_is_repaired(self):
@@ -329,7 +330,7 @@ class Installers(Base):
         r = self.w.cmd_open(p, runner=lambda c, e, d, log=None: calls.append(c) or 0)
         a = self.w.app(r['id'])
         self.assertTrue(a['exe'].endswith('/bin/browser_x86.exe'), a['exe'])
-        self.assertEqual(calls[-1][3], a['exe'])
+        self.assertEqual(calls[-1][5], a['exe'])
         self.assertEqual(len(self.w.apps()), 1)
 
     def test_bat_runs_through_cmd(self):
@@ -337,8 +338,8 @@ class Installers(Base):
         calls = []
         r = self.w.cmd_open(p, runner=lambda c, e, d, log=None: calls.append((c, d)) or 0)
         cmd, cwd = calls[-1]
-        self.assertEqual(cmd[3:5], ['cmd', '/c'])
-        self.assertEqual(cmd[5], 'Z:' + p.replace('/', '\\'))
+        self.assertEqual(cmd[5:7], ['cmd', '/c'])
+        self.assertEqual(cmd[7], 'Z:' + p.replace('/', '\\'))
         self.assertEqual(cwd, os.path.dirname(p))
         self.assertTrue(r['new'])
 
@@ -485,6 +486,25 @@ class Wiring(unittest.TestCase):
         for want in ('"detailed"', 'Show log', 'Detailed Proton log for the next start'):
             self.assertIn(want, q)
 
+
+
+class Compatibility(unittest.TestCase):
+    """1.11: the Compatibility section's DLL overrides and common fixes reach Proton's environment."""
+
+    def test_env(self):
+        w = load_helper()
+        a = dict(w.DEFAULTS, id='x', prefix='/tmp/hearth-compat-test', dlls=['d3d9.dll', 'dinput8', 'bad name'], fixes=['laa', 'nope'])
+        env = w.proton_env(a)
+        self.assertTrue(env['WINEDLLOVERRIDES'].startswith('d3d9=n,b;dinput8=n,b'))
+        self.assertNotIn('bad', env['WINEDLLOVERRIDES'])
+        self.assertEqual(env.get('PROTON_FORCE_LARGE_ADDRESS_AWARE'), '1')
+        self.assertNotIn('nope', ' '.join(env))
+
+    def test_page(self):
+        q = read('hosts', 'linux', 'desktop', 'shell', 'SetWinApps.qml')
+        self.assertIn('SetHeader { text: "Compatibility" }', q)
+        self.assertIn('title: "Use these files from Windows"', q)
+        self.assertIn('page.change(xp.a, "fix." + modelData', q)
 
 if __name__ == '__main__':
     unittest.main()

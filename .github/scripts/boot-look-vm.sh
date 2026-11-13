@@ -144,5 +144,53 @@ boot badtheme yes
 healed() { if sudo cmp -s "$M/b/grub2/themes/hearth/theme.txt" "$DEP/usr/share/hearth/grub-theme/theme.txt"; then ann notice "the broken theme on /boot was put back by the running system"; else ann warning "the broken theme on /boot wasn't put back at start"; fi; rewrite_menu ""; }
 with_disk healed
 boot secureboot no secure
+
+# ---- 8. moved from the Fedora edition (1.11, hearth-boot-move): the EFI partition and /boot's menu as an Anatase
+# install left them (Fedora's shim and GRUB with blscfg, put there by Fedora's own bootupd), which still has to start;
+# then hearth-boot-move runs on the started system and powers off; then it has to start through Debian's GRUB.
+fedora_loader() {
+  sudo mkdir -p "$M/t/boot"; sudo mount --bind "$M/b" "$M/t/boot"; sudo mkdir -p "$M/t/boot/efi"; sudo mount "${LOOP}p1" "$M/t/boot/efi"
+  sudo sh -c "rm -rf $M/t/boot/efi/EFI/*"
+  sudo podman run --rm --privileged -v /dev:/dev -v "$M/t:/target" --security-opt label=disable quay.io/fedora/fedora-bootc:43 \
+    bootupctl backend install --src-root / --device "$LOOP" --with-static-configs --write-uuid /target > "$OUT/fedora-loader.log" 2>&1 \
+    || ann error "couldn't put Fedora's boot loader on: $(tail -5 "$OUT/fedora-loader.log")"
+  sudo test -f "$M/t/boot/efi/EFI/fedora/shimx64.efi" && sudo grep -q '^blscfg' "$M/b/grub2/grub.cfg" && note "fedora loader in place" || ann error "the Fedora loader isn't in place"
+  sudo umount "$M/t/boot/efi" "$M/t/boot"
+}
+with_disk fedora_loader
+boot fedora-before yes
+add_move_unit() {
+  sudo mkdir -p "$DEP/etc/systemd/system/multi-user.target.wants"
+  sudo tee "$DEP/etc/systemd/system/hearth-boot-move-test.service" >/dev/null <<'UNIT'
+[Unit]
+Description=CI: hearth-boot-move on a PC moved from the Fedora edition
+After=multi-user.target
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/libexec/nimbus/hearth-boot-move check > /dev/ttyS0 2>&1; /usr/libexec/nimbus/hearth-boot-move run --yes > /dev/ttyS0 2>&1; echo HEARTH-MOVE-DONE > /dev/ttyS0; rm -f /etc/systemd/system/multi-user.target.wants/hearth-boot-move-test.service; systemctl poweroff'
+UNIT
+  sudo ln -sf /etc/systemd/system/hearth-boot-move-test.service "$DEP/etc/systemd/system/multi-user.target.wants/hearth-boot-move-test.service"
+}
+with_disk add_move_unit
+rm -f "$OUT/move-serial.log"
+# shellcheck disable=SC2086
+timeout 1200 qemu-system-x86_64 -m 4096 -smp 2 $kvm -machine q35 -drive if=pflash,format=raw,readonly=on,file="$CODE" -drive if=pflash,format=raw,file="$W/vars.fd" \
+  -drive file="$W/disk.img",format=raw,if=virtio -display none -net none -serial file:"$OUT/move-serial.log"
+if grep -aq '^{"ok": true' "$OUT/move-serial.log" && grep -aq HEARTH-MOVE-DONE "$OUT/move-serial.log"; then
+  ann notice "hearth-boot-move: $(grep -a '^{"ok": true' "$OUT/move-serial.log" | head -1 | cut -c1-600)"
+else
+  FAILED=1; ann error "hearth-boot-move didn't finish: $(tr -d '\r' < "$OUT/move-serial.log" | grep -a 'error:\|{"\|HEARTH-MOVE' | tail -8)"
+fi
+after_move() {
+  sudo mkdir -p "$M/e"; sudo mount "${LOOP}p1" "$M/e"
+  for f in EFI/debian/shimx64.efi EFI/debian/grubx64.efi EFI/debian/grub.cfg EFI/hearth-fedora/shimx64.efi; do
+    sudo test -f "$M/e/$f" || { FAILED=1; ann error "after the move $f is missing"; }
+  done
+  sudo grep -q '^blscfg' "$M/b/grub2/grub.cfg" && { FAILED=1; ann error "after the move /boot/grub2/grub.cfg still says blscfg"; }
+  sudo umount "$M/e"
+}
+with_disk after_move
+boot after-move yes
+boot after-move-secureboot no secure
 note "done (failed=$FAILED)"
 exit $FAILED

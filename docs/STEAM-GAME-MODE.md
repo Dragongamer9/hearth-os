@@ -1,18 +1,22 @@
 # Steam Game Mode
 
-**Hearth OS is Debian + Mantel (Desktop Mode) + Steam Game Mode.** Steam Game Mode is Hearth OS's Game Mode: **Valve's
-own Steam gamepad screens** (Steam Big Picture in gamescope, the way SteamOS, Bazzite and ChimeraOS run it), with
-**Hearth brought into Steam** through Decky Loader and the **Hearth Decky plugin**. The device starts in it, and every
-"Game Mode" button (Mantel's taskbar, power menu, launcher, Quick Access, Steam's own Game Mode switch) opens it.
+**Hearth OS is Debian + Mantel (Desktop Mode) + Steam Game Mode.** Steam Game Mode is Hearth OS's default Game Mode:
+**Valve's own Steam gamepad screens** (Steam Big Picture in gamescope, the way SteamOS, Bazzite and ChimeraOS run it),
+with **Hearth brought into Steam** through Decky Loader and the **Hearth Decky plugin**. The device starts in it, and
+every "Game Mode" button (Mantel's taskbar, power menu, launcher, Quick Access, Steam's own Game Mode switch) opens it.
 
-Hearth's own Game Mode (Hearth fullscreen in gamescope) is **archived**: it's gone from the menus and Settings, and
-runs only for first-time setup on a fresh install (once), as the live USB's installer, and as the very last resort when
-nothing else can run. Its code stays in the repo; `HEARTH_LEGACY_GAME_MODE=1` in `~/.config/nimbus/session.conf` brings
-it back as "Game Mode" (a developer switch, off by default). **Multi-seat and Couch Co-op are dropped for now** (hidden,
-code kept; `HEARTH_LEGACY_MULTIPLAYER=1` brings them back for developers): the sections about them below describe the
-kept code.
+**Hearth Game Mode** (Hearth's own screens in gamescope) is back in 1.10 as a choice: Settings › Gaming › Game Mode
+(also Hearth Sync's Game Mode section in Quick Access). Picked, every "Game Mode" above opens Hearth Game Mode instead,
+and when it can't start the session falls back to Steam Game Mode for that start (then Mantel) and says why:
+[HEARTH-GAME-MODE](HEARTH-GAME-MODE.md). Not picked (the default), nothing on this page changes. It's also the live
+USB's installer, as before. The old developer switch `HEARTH_LEGACY_GAME_MODE=1` now just means "Hearth Game Mode picked".
+**Multi-seat and Couch Co-op are dropped for now** (hidden, code kept; `HEARTH_LEGACY_MULTIPLAYER=1` brings them back
+for developers): the sections about them below describe the kept code.
 
 ## Where the device goes
+
+The table is for Steam Game Mode, the default. With **Hearth Game Mode** picked, "Steam Game Mode" in the first rows
+reads "Hearth Game Mode", and its own fallbacks are in [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md).
 
 | Situation | Where the PC goes |
 | --- | --- |
@@ -26,7 +30,7 @@ kept code.
 | Steam ends with an error within 20 seconds | Desktop Mode, with the reason |
 | Steam closes by itself after a while | Steam Game Mode again (as SteamOS does) |
 | Two failed runs within 10 minutes (errors, or closing by itself within 2 minutes, or starts that hung) | Desktop Mode, and Steam Game Mode is **paused**: every start opens Desktop Mode until you try again |
-| Desktop Mode can't start either | Steam Game Mode if it hasn't just failed, else Hearth's archived Game Mode as the last resort |
+| Desktop Mode can't start either | Steam Game Mode if it hasn't just failed, else Hearth Game Mode as the last resort (not when it failed too) |
 | Live USB / installer | Hearth's app (the installer), as before |
 
 ## When Steam Game Mode can't start
@@ -393,7 +397,7 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
 ## How it's kept safe
 
 - **Always somewhere usable.** Whatever happens, the session ends up in Steam Game Mode or Desktop Mode (and, if
-  neither can run, Hearth's archived Game Mode), never on a black screen of its own making. See "Where the device goes"
+  neither can run, Hearth Game Mode), never on a black screen of its own making. See "Where the device goes"
   above.
 - **Falls back by itself, says why, never loops.** See "When Steam Game Mode can't start" above.
 - **Never touches booting.** Nothing in the boot menu, the login screen, the kernel or ostree changes: this is all the
@@ -481,7 +485,7 @@ plugin is there, the newest lines of its log (`~/homebrew/logs/…`) and the par
 dialog button's background (with `!important`), and the row drew each cover as that button's background. Covers are now
 pictures inside the card, which the look doesn't touch.
 
-## What only Hearth's app has (archived Game Mode)
+## What only Hearth's app has (Hearth Game Mode)
 
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's
 performance and controller pages, the power limit, Hearth Recorder, Pause, Quick Resume for more than the game Steam
@@ -545,7 +549,8 @@ Send logs › "Screen" shows each screen's modes with refresh rates, its EDID, a
 | Steam Game Mode and its fallback | `hosts/linux/session/nimbus-session` (`run_steam_mode`, `steam_mode_failed`, `steam_back`, `resolve_mode`, `setup_pending`, the main loop), `nimbus-mode steam` / `game` |
 | Starting in it, the two-failures pause | `nimbus-session` (`steam_start_mode`, `steam_auto_before` / `_after`, `steam_pause`), `os/system_files/usr/libexec/nimbus/hearth-pad-held` (B / Guide held) |
 | The "didn't start" notice | `hosts/linux/desktop/shell/SteamFallback.qml` (Mantel), `nimbus-session` `steam_notice_other` (Plasma, GNOME, COSMIC), `hosts/linux/desktop/labwc/autostart` (no back and forth) |
-| Archived parts | Hearth's Game Mode (`run_game`, `HEARTH_LEGACY_GAME_MODE`), multi-seat and Couch Co-op (`HEARTH_LEGACY_MULTIPLAYER`, `multiplay.rs`, the plugin's `MULTIPLAYER`), the old Start in Steam Game Mode setting (`steam_mode.rs` `set_default`, the plugin's `get_steam_default` / `set_steam_default`, kept but not offered) |
+| Hearth Game Mode, the choice | `nimbus-session` (the `game mode choice` block: `game_mode_choice`, `hgm_route`, `run_hearth_mode` around `run_game`), `hosts/linux/desktop/shell/hearth-game-mode`, [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md) |
+| Archived parts | multi-seat and Couch Co-op (`HEARTH_LEGACY_MULTIPLAYER`, `multiplay.rs`, the plugin's `MULTIPLAYER`), the old Start in Steam Game Mode setting (`steam_mode.rs` `set_default`, the plugin's `get_steam_default` / `set_steam_default`, kept but not offered) |
 | Settings, power menu, status | `hosts/hearth-core/src/steam_mode.rs`, `power.rs` ("steam"), `ui/index.html` |
 | Playing a Hearth game from Steam | the shortcut's wrapper (`main.py` `WRAPPER`), then `hearth --play-now <id>` (`hosts/hearth-core/src/desktop_games.rs`, `steam_env_scrub`) |
 | Game pictures | `main.py` (`art_bytes`, `picture_url`, `read_art`, `steam_art_file`), `src/model.ts` (`artCandidates`), `src/api.ts` (`useArt`), `src/ui.tsx` (`CoverArt`), `src/row.tsx` |

@@ -3,8 +3,9 @@
 #   exit 0   Nimbus quit on purpose (sign out, switch to desktop): end the session.
 #   exit 75  Nimbus installed an update: start it again right away.
 #   other    a crash: restart it. Three crashes within two minutes roll back a just-installed
-#            update (<app>.old); if there's nothing to roll back, end the session so the
-#            login screen comes back instead of a black screen.
+#            update (<app>.old); if there's nothing to roll back, leave the reason in
+#            $XDG_RUNTIME_DIR/hearth-game-mode-crashed and end, so nimbus-session opens Steam Game Mode
+#            (then Mantel) for this start instead of a black screen.
 
 APP="$1"
 LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
@@ -110,6 +111,10 @@ while :; do
       mv -f "$APP.old" "$APP" && crashes="" && continue
     fi
     echo "$(date) too many crashes, ending the session" >>"$LOG"
+    # For nimbus-session (run_hearth_mode): Hearth Game Mode failed, so this start goes on in Steam Game Mode (then
+    # Mantel) instead of ending the session (which, with automatic sign-in, came straight back here). gamescope's own
+    # exit code doesn't always carry ours, so the reason is left in a file. Never fatal.
+    echo "Hearth's app closed with an error 3 times within 2 minutes (code $code)" >"${XDG_RUNTIME_DIR:-/tmp}/hearth-game-mode-crashed" 2>/dev/null
     exit 1
   fi
   sleep 1

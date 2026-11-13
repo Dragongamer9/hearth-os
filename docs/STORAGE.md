@@ -132,8 +132,68 @@ cache sizes, and an unfinished or last move. No other file names.
 | `diskspace.check` | `{id}` | `{low, free, gb, path}` for where that game would install |
 | `diskspace.setWarn` | `{on, gb}` | `{on, gb}` |
 
+## Disk Management (Hearth Disks)
+
+Hearth Disks (`hosts/hearth-disks`) is laid out like Windows' Disk Management, in Hearth's dark blue look:
+
+* **Menu bar**: File (Rescan disks, Make a bootable USB, Close), Action (the same as the right-click menu for what's
+  selected), View, Help; then Rescan disks, Health (Properties › Health of the selected disk) and Make a bootable USB.
+* **Volume list** (top): Volume, Layout, Type, File system, Status, Capacity, Free space, % Free.
+* **Disk map** (bottom): each disk's label (Disk N, kind, size, online, a health dot) and its partitions as blocks
+  sized by their size, with a stripe: **gold** Hearth runs from it (protected), **green** used for games, **blue** a
+  normal partition, **black** unallocated. The selection is hatched; a legend and a status bar sit below.
+* **Drive letters** are Hearth's own, from `hearth_drive_letters.py` (the ones Hearth Files and Windows apps use):
+  C: is always Hearth. Disks only reads them (opening it writes nothing); Change drive letter… calls `set_letter`.
+* **Controller**: A selects, X shows what can be done, B goes back, Y rescans, Start opens the menu bar, LB/RB turn
+  Properties' pages. Mouse (right-click) and keyboard (arrows, Enter, Menu key or Shift+F10, Alt+Enter, Delete, F5)
+  work too.
+
+The right-click (X) menu depends on what's selected. Everything it can't do is greyed out with why (`blocked`, from
+`safety.rs`):
+
+| Selected | Offered |
+|---|---|
+| Unallocated space | New Simple Volume…, New volume for games…, Extend *the volume before it* into this space…, Properties |
+| A normal volume | Open (in Hearth Files; mounts it first), Change drive letter…, Format…, Extend Volume…, Shrink Volume…, Delete Volume…, Use for games, Unmount / Mount / Safely remove, Properties |
+| Hearth's own (system, EFI, start-up files, swap, and what Hearth is built on through LVM, RAID or encryption), and any start-up or recovery partition | Open and Properties only; the rest greyed out: "Hearth runs from this partition, so it can't be changed or deleted here." |
+| A disk's label | Run a full check, Safely remove, Format the whole drive…, Use the whole drive for games…, Properties, Health |
+
+* **New Simple Volume**: Size, Letter, Format (ext4 "best for Hearth and games", NTFS, exFAT, FAT32 up to 32 GB,
+  Btrfs; a label; allocation unit Default; Quick format; Use it for games; Open it in Files when it's ready), Finish.
+  Only the unallocated space is used.
+* **Format…** shows the capacity, file system, label and Quick format (off: zeros are written over all of it), and in
+  red what will be erased, with the games on it and their size (from Storage's sizes, `diskspace-sizes.json`, and
+  Steam's records on the drive). The Format button stays greyed out until the volume's name is typed exactly.
+  **Delete Volume…** asks for the name the same way.
+* **Extend / Shrink**: Windows' numbers in MB (total before, what can be added or taken away, the amount, total
+  after), a slider and a picture of the disk after the change. Done through udisks2 (`Partition.Resize`,
+  `Filesystem.Resize`), in the order that never leaves a file system bigger than its partition: Extend grows the
+  partition, then the file system; Shrink makes the file system a little smaller than the new size, then the
+  partition, then fits the file system to it. A file system that only changes unmounted (ext4 shrinking, NTFS) is
+  unmounted, checked (`Filesystem.Check`; ext also gets the check resize2fs asks for) and mounted again. Refused
+  while Steam or a program uses the volume, when the file system isn't clean, on the drive Hearth runs from, inside
+  an extended partition, and for exFAT and FAT32 (they can't be resized). A games drive keeps at least 10 GB free.
+  When udisks2 says a resize tool is missing (`Manager.CanResize`, e.g. ntfsresize), the action is greyed out and
+  says which.
+* **Properties**: General (with Rename, Check for problems, Repair), Health (status, temperature, powered on, bad
+  sectors or wear, the drive's SMART or NVMe lines, the last self-test, Run a full check: the drive's extended self-
+  test) and Volumes. **Tell me if this drive starts to fail** is off unless you turn it on; it's kept per drive (by
+  serial) in `~/.config/nimbus/disks.json` (`failAlerts`) through `settings_file.rs`. A user timer, `hearth-disks-health.timer`
+  (daily, and about 10 minutes after signing in, with a random delay; only the timer is enabled, through the image's
+  `timers.target.wants`, and nothing depends on it) runs `hearth-disks --health-watch` (`hearth-disks-health.service`:
+  oneshot, Nice=19, idle I/O, 2 minutes at most). With no drive turned on it ends at once without looking at a drive.
+  It never writes the settings; it sends a notification once per new problem (a drive turning to a warning or
+  failing) and keeps what it has told you in `~/.local/state/nimbus/disks-health.json`.
+* On **Windows** (Ember) Hearth's letters, Extend, Shrink, the full check and the failure notice aren't there.
+
+Every change is checked twice in `safety.rs`: when the menu is drawn and again, from a fresh look at the drives, right
+before it runs; the run is refused when the drive or partition isn't the one that was confirmed (`fingerprint`).
+
 ## Needs testing on a device
 
+* Hearth Disks' Disk Management: Extend and Shrink of a games drive (ext4) with Steam closed and open (refused), an
+  NTFS shrink, New Simple Volume with a letter and "Open it in Files", Change drive letter (Files shows the same),
+  Properties › Health on a SATA drive and an NVMe drive, Run a full check, and the controller.
 * Moving a Steam game to an SD card and back (ext4 and exFAT), with Steam open (closes, comes back hidden) and with
   "Start Steam only when needed"; the game starts from the new place without Steam re-downloading or re-validating,
   its saves (prefix) are there, Steam's Storage page lists it in the right library.

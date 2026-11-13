@@ -8,6 +8,9 @@
   hearth-files letter-set KEY LETTER    Change drive letter… (D to Y; the choice is kept)
   hearth-files installed-apps           Installed apps: Hearth's own, Flatpak, Windows apps, Steam, Hearth Games, Recomps
   hearth-files app-sizes PATH...        add up folders' sizes for Installed apps (cached in ~/.cache/hearth/app-sizes.json)
+  hearth-files cdrive                   Hearth (C:) with Windows folder names: where its folders really are (Users,
+                                        Hearth's own apps, Steam, the Flatpak folders, the real top-level folders).
+                                        Reads only; the view itself is drive-paths.js (nothing on disk moves)
   hearth-files mkdir PATH               a new folder
   hearth-files rename PATH NEWNAME      rename in place
   hearth-files trash PATH...            move to the Trash (gio trash, or the freedesktop Trash spec)
@@ -184,9 +187,13 @@ def allowed(path):
 
 def check_writable(path, allow_root=False):
     """The path we're about to change, if that's allowed; else Fail."""
+    # Hearth (C:)'s view folders (hearth:c/…: Program Files, AppData…) hold nothing of their own: nothing goes in.
+    if isinstance(path, str) and path.startswith('hearth:c'):
+        raise Fail((hdl.view_refusal(path) if hdl else '') or "That's one of Hearth (C:)'s names, not a folder")
     p = norm(path)
     if not any(under(p, r) for r in write_roots()):
-        raise Fail("Hearth Files only changes things in your home folder, on USB drives and SD cards, and in /tmp")
+        why = hdl.view_refusal(p) if hdl and (under(p, '/usr') or under(p, '/var/lib')) else ''
+        raise Fail(why or "Hearth Files only changes things in your home folder, on USB drives and SD cards, and in /tmp")
     if not allow_root and p in write_roots():
         raise Fail("That folder can't be changed")
     return p
@@ -683,8 +690,9 @@ def briefcase_mod():
 
 
 def briefcase_places():
-    """The Briefcases you have (~/Briefcase, even before it's made, and the ones you made or opened that are
-    reachable now), unless one's "Show in navigation pane" is off."""
+    """The Briefcases you made or opened that are reachable now, unless one's "Show in navigation pane" is off.
+    ~/Briefcase is never pinned here by Hearth (a Briefcase is a folder you make): an existing one stays a normal
+    folder in your home folder; a Favorite you added for it yourself (GTK bookmarks) stays as it is."""
     m = briefcase_mod()
     if not m:
         return []
@@ -695,7 +703,7 @@ def briefcase_places():
     out = []
     for b in known:
         look = b.get('look') or {}
-        if look.get('showInNav') is False:
+        if look.get('showInNav') is False or b.get('default') or b.get('missing'):
             continue
         out.append({'id': 'briefcase:' + b['path'], 'label': look.get('name') or b.get('name') or 'Briefcase',
                     'path': b['path'], 'kind': 'briefcase', 'section': 'briefcases', 'missing': bool(b.get('missing')),
@@ -736,6 +744,9 @@ def places():
                     if os.path.isdir(hearth):
                         out.append({'id': 'hearth-shots', 'label': 'Hearth screenshots', 'path': hearth,
                                     'kind': 'pictures', 'section': 'places', 'child': True})
+    saved = os.path.join(h, 'Saved Games')               # 1.11: One C:'s Saved Games, as in Windows' left menu
+    if os.path.isdir(saved):
+        out.append({'id': 'savedgames', 'label': 'Saved Games', 'path': saved, 'kind': 'games', 'section': 'places'})
     games = os.path.join(h, 'Games')
     if os.path.isdir(games):
         out.append({'id': 'games', 'label': 'Games', 'path': games, 'kind': 'games', 'section': 'games'})
@@ -2445,20 +2456,26 @@ def prefs_set(text):
         raise Fail('Settings have to be JSON')
     if not isinstance(new, dict):
         raise Fail('Settings have to be a JSON object')
+    def apply(cur):
+        # "folders" (each folder's view) merges one folder at a time, newest last: a window sends only the folder it
+        # changed, so another window's folder views (and every other key it didn't send) stay as they are.
+        add = new.pop('folders', None)
+        cur.update(new)
+        if isinstance(add, dict):
+            folders = cur.get('folders') if isinstance(cur.get('folders'), dict) else {}
+            for k, v in add.items():
+                folders.pop(k, None)
+                folders[k] = v
+            cur['folders'] = folders
+        folders = cur.get('folders')
+        if isinstance(folders, dict) and len(folders) > 400:     # keep the newest 400 folders' views
+            cur['folders'] = dict(list(folders.items())[-400:])
     if hsio:
         # Read, merged and written under one lock: two Files windows saving at once both keep their change.
-        def apply(cur):
-            cur.update(new)
-            folders = cur.get('folders')
-            if isinstance(folders, dict) and len(folders) > 400:
-                cur['folders'] = dict(list(folders.items())[-400:])
         hsio.update_json(prefs_file(), apply, None)
         return {'ok': True}
     cur = prefs_get()
-    cur.update(new)
-    folders = cur.get('folders')
-    if isinstance(folders, dict) and len(folders) > 400:     # keep the newest 400 folders' views
-        cur['folders'] = dict(list(folders.items())[-400:])
+    apply(cur)
     f = prefs_file()
     os.makedirs(os.path.dirname(f), exist_ok=True)
     with open(f + '.tmp', 'w', encoding='utf-8') as fh:
@@ -3772,6 +3789,7 @@ def installed_apps():
                 if not icon and os.path.isfile(p):
                     icon = p
         out.append({'id': 'flatpak:' + aid, 'appId': aid, 'name': r.get('name') or aid, 'kind': 'flatpak',
+                    'path': os.path.join(inst, 'app', aid),
                     'publisher': flatpak_publisher(inst, aid), 'version': r.get('version') or '',
                     'size': size_from_text(r.get('size')), 'date': date, 'icon': icon, 'desktop': d[0] if d else '',
                     'installation': r.get('installation') or 'user'})
@@ -3824,6 +3842,7 @@ def installed_apps():
         if icon.startswith('file://'):
             icon = urllib.parse.unquote(icon[7:])
         out.append({'id': gid, 'name': g['title'], 'kind': kind, 'publisher': store, 'size': g.get('size') or None,
+                    'path': g.get('path') or '',
                     'date': date, 'icon': icon if icon.startswith('/') else '', 'drive': g.get('drive') or '',
                     'canMove': bool(g.get('canMove')) and kind in ('steam', 'recomp', 'games') and store.lower() in ('steam', 'epic', 'gog', 'recomp', 'recomps', '') ,
                     'moveWhy': g.get('moveWhy') or '', 'uninstall': g.get('uninstall') or (kind == 'steam' and 'steam') or None,
@@ -3882,8 +3901,42 @@ def app_sizes(paths):
     return {'sizes': out}
 
 
+# ------------------------------------- Hearth (C:) with Windows folder names (docs/HEARTH-FILES.md "Hearth (C:) the Windows way")
+def hearth_dir():
+    """Where Hearth's own apps are (Program Files\\Hearth): the shell's install folder on Hearth OS."""
+    for d in ('/usr/share/nimbus', '/usr/share/hearth'):
+        if os.path.isdir(d):
+            return d
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+
+def steam_root():
+    h = home()
+    for root in (os.path.join(h, '.local', 'share', 'Steam'), os.path.join(h, '.steam', 'steam'),
+                 os.path.join(h, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam')):
+        if os.path.isdir(os.path.join(root, 'steamapps')) or os.path.isfile(os.path.join(root, 'steam.sh')):
+            return root
+    return ''
+
+
+def cdrive():
+    """What Hearth (C:)'s view needs besides Installed apps' list. Reads only: nothing is written, created or moved."""
+    h = home()
+    real_home = os.path.realpath(h)
+    users = os.path.dirname(real_home) or '/'
+    flat = [d for d in (os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(h, '.local', 'share'), 'flatpak', 'app'),
+                        '/var/lib/flatpak/app') if os.path.isdir(d)]
+    try:
+        top = sorted(n for n in os.listdir('/') if not n.startswith('.') and os.path.isdir(os.path.join('/', n))
+                     and not os.path.islink(os.path.join('/', n)))
+    except OSError:
+        top = []
+    return {'home': h, 'user': user(), 'users': users, 'hearth': hearth_dir(), 'steam': steam_root(),
+            'flatpak': flat or ['/var/lib/flatpak/app'], 'linux': top}
+
+
 # ---------------------------------------------------------------------- command line
-USAGE = ('usage: hearth-files list PATH [--hidden] | places | this-pc | letter-set KEY LETTER | installed-apps | app-sizes PATH... | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
+USAGE = ('usage: hearth-files list PATH [--hidden] | places | this-pc | letter-set KEY LETTER | installed-apps | app-sizes PATH... | cdrive | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
          'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
          'apps PATH | open PATH [APP_ID] | eject PATH | mount DEVICE | unmount PATH | props PATH... | count PATH... | '
          'checksum ALGO PATH | chmod PATH MODE | set-default PATH APP_ID | conflicts SRC... DEST | new-file PATH | '
@@ -3917,6 +3970,8 @@ def cmd(argv):
         out = letter_set(rest[0], rest[1])
     elif c == 'installed-apps':
         out = installed_apps()
+    elif c == 'cdrive':
+        out = cdrive()
     elif c == 'app-sizes':
         out = app_sizes(rest)
     elif c == 'net-open' and rest:

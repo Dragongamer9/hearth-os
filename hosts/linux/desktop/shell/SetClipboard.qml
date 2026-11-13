@@ -1,5 +1,6 @@
-// Hearth Settings › Clipboard: keep a history of what you copy (text and pictures) to paste again with Super+V,
-// or don't. Kept by cliphist on this device only; Clipboard.qml shows it.
+// Hearth Settings › Clipboard: keep a history of what you copy (text and pictures) to paste again with Super+V, or
+// don't. Off until you turn it on (the same switch is at the top of the Super+V popup). Kept on this device only, in
+// ~/.local/share/hearth/clipboard (hearth-clipboard); Clipboard.qml shows it.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -17,8 +18,8 @@ SetPage {
     SetJob { id: job; helper: "hearth-clipboard" }
 
     SetSwitch {
-        icon: "clipboard"; title: "Keep clipboard history"
-        sub: !page.st ? "Checking…" : !page.st.available ? "Needs cliphist and wl-clipboard, which aren't installed" : "Press Super+V to paste something you copied before. Kept on this device only."
+        icon: "clipboard"; title: "Clipboard history"
+        sub: !page.st ? "Checking…" : !page.st.available ? "Needs wl-clipboard, which isn't installed" : "Keep the last 25 things you copy, and the ones you pin, to paste again with Super+V. Kept on this device only."
         checked: Settings.clipboardHistory
         onToggled: v => { Settings.clipboardHistory = v; page.say(v ? "Clipboard history is on." : "Clipboard history is off. What's already kept stays until you clear it."); }
     }
@@ -29,7 +30,7 @@ SetPage {
     }
     SetRow {
         visible: !!page.st && page.st.available && !page.confirm
-        icon: "trash"; chevron: false; title: "Clear clipboard history…"
+        icon: "trash"; chevron: false; title: "Clear clipboard history…"; sub: "Pinned items stay"
         onActivated: page.confirm = true
     }
     RowLayout {
@@ -38,7 +39,7 @@ SetPage {
         spacing: 8
         SetRow {
             title: "Yes, clear it"; danger: true; chevron: false
-            onActivated: job.run(["wipe"], () => { page.confirm = false; page.say("Clipboard history cleared."); }, e => page.say(e, true))
+            onActivated: job.run(["clear"], r => { page.confirm = false; page.say(r && r.kept ? "Cleared. Your " + r.kept + " pinned item" + (r.kept === 1 ? " stays." : "s stay.") : "Clipboard history cleared."); }, e => page.say(e, true))
         }
         SetRow { title: "Cancel"; chevron: false; onActivated: page.confirm = false }
     }
@@ -50,7 +51,7 @@ SetPage {
     }
     Text {
         Layout.fillWidth: true; Layout.topMargin: 6
-        text: "Passwords copied from password managers that mark them as secret aren't kept."
+        text: "Passwords copied from password managers that mark them as secret are never kept. Super+. opens the emoji picker."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
 }

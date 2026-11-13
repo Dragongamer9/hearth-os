@@ -51,6 +51,9 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
+          # Sub themes (1.10): every one there, readable (WCAG AA) in dark and light, nothing changes after updating, a broken
+          # entry falls back to the look's own, a wallpaper you chose is never replaced (subthemes.js run with node).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_sub_themes.py' -v
           # Bar layouts (the main bar on any edge, the floating dock on or off) and the five app menus.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
           # The right-click menu's four looks (Today by default, never written by itself, today's menu if a look can't load).
@@ -60,12 +63,32 @@ jobs:
           # Task Manager (Windows 11 style): the helper's parsing, heat map, startup writes, settings and the sampler.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_tasks.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_task_manager.py' -v
+          # System Restore and Reliability history (docs/SYSTEM-RESTORE.md): restore points, settings back safely, the version
+          # only through hearth-admin rollback, the journal's crashes, Hearth problems, warnings and the cache.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_restore_reliability.py' -v
+          # Device Manager, Run (Super+R) and the Super+X menu: device groups and problems from a made-up PC, the Run map
+          # (Windows commands, %folders%, C:\ paths), hidden entries, the key bindings, nothing written when opened.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_win_tools.py' -v
+          # Resource Monitor: Your PC's detection on four sample machines, the drawing chosen, tips, the root helper's
+          # memory and slot tables only, the sampler's extras, and no setting written on open.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_resource_monitor.py' -v
           # This PC in Hearth Files: drive letters (stable, kept, never reassigned, your change kept, no defaults written,
           # a bad file kept aside), paths in letters and back (drive-paths.js with node), Windows apps' prefixes.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_this_pc.py' -v
+          # Hearth (C:) with Windows folder names (1.10): C:\ forms and real paths both ways, the view's pages, writes into
+          # them refused, D:/E: unchanged, Windows apps' own C: untouched, nothing written on open, only the changed key.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_cdrive.py' -v
           # The Briefcase in Hearth Files (hearth-briefcase): statuses, updates, Trash, crashes, locks, auto-lock, auto-sync.
           # Locking runs with the real gocryptfs where FUSE can be mounted, else with the stand-in (a ::notice says which).
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_briefcase.py' -v
+          # Bug hunt after 1.8: text for the helpers on stdin (never Process.environment), saves that failed tried again,
+          # the right-click menu scrolling on a small screen, Files saving only what changed.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_bug_hunt_2.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_files.py' 2>&1 | tail -3
+          # Hearth 1.10: the volume mixer's remembered levels, snap layouts' zones and labwc keys, clipboard history's storage.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_shell_extras.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_labwc_rc.py'
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_settings_basics.py'
 
       - name: Start Desktop Mode
         shell: bash
@@ -269,6 +292,38 @@ jobs:
           # (The status card, Update anyway, then Go back: two Downs.)
           wtype -k Right; sleep 1; for i in 1 2; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
           rm -f /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
+          # ---- Which Game Mode (docs/HEARTH-GAME-MODE.md): Settings › Gaming's two picture cards with the controller, picking
+          # Hearth Game Mode (saved as one line of session.conf, nothing else changed), the Switch now row, and the notice
+          # when Hearth Game Mode didn't start. A stand-in gamescope and Hearth app, for these shots only; session.conf is
+          # put back exactly as it was afterwards. (The game-mode-shots job posts two of them as SHOT notices.)
+          mkdir -p shots/hearth-game-mode "$HOME/.config/nimbus"
+          printf '#!/bin/sh\nexit 0\n' > /tmp/fakebin/gamescope; printf '#!/bin/sh\nexit 0\n' > /tmp/hearth-app; chmod +x /tmp/fakebin/gamescope /tmp/hearth-app
+          echo /tmp/hearth-app > "$HOME/.config/nimbus/app-path"
+          SC="$HOME/.config/nimbus/session.conf"
+          if [ -f "$SC" ]; then cp -p "$SC" /tmp/session.conf.before; else rm -f /tmp/session.conf.before; fi
+          gm() { ipc settings close; ipc settings page gaming; sleep 3; grim "shots/hearth-game-mode/$1.png" || true; }
+          gm 01-gaming-steam-game-mode-default
+          # Into the page (the Game Mode card at the top), down to the Steam Game Mode card, Right to Hearth Game Mode, A.
+          wtype -k Right; sleep 1; wtype -k Down; sleep 1; wtype -k Right; sleep 1; grim shots/hearth-game-mode/02-controller-on-hearth-card.png || true
+          wtype -k Return; sleep 4; grim shots/hearth-game-mode/03-picked-hearth-switch-now.png || true
+          if grep -qx 'HEARTH_GAME_MODE_CHOICE=hearth' "$SC" 2>/dev/null; then
+            echo "::notice title=Game Mode choice::picking Hearth Game Mode with the controller saved it ($(grep -c . "$SC") line(s) in session.conf)"
+          else
+            echo "::error title=Game Mode choice::picking Hearth Game Mode with the controller didn't save it: $(head -5 "$SC" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED
+          fi
+          if [ -f /tmp/session.conf.before ] && ! diff <(grep -v '^HEARTH_GAME_MODE_CHOICE=' "$SC") /tmp/session.conf.before >/dev/null; then
+            echo "::error title=Game Mode choice::picking it changed other lines of session.conf"; touch shots/FAILED
+          fi
+          gm 03b-gaming-hearth-game-mode-in-use
+          # Hearth Game Mode didn't start this sign-in (the session opened Steam Game Mode instead): why, with Try again.
+          echo "Hearth's app closed with an error 3 times within 2 minutes (code 1)" > "$XDG_RUNTIME_DIR/hearth-game-mode-failed"
+          gm 04-hearth-game-mode-didnt-start
+          wtype -k Right; sleep 1; for i in 1 2 3 4; do wtype -k Down; done; sleep 1; grim shots/hearth-game-mode/05-try-again-focused.png || true
+          ipc settings close
+          rm -f "$XDG_RUNTIME_DIR/hearth-game-mode-failed" /tmp/fakebin/gamescope /tmp/hearth-app "$HOME/.config/nimbus/app-path"
+          if [ -f /tmp/session.conf.before ]; then cp -p /tmp/session.conf.before "$SC"; else rm -f "$SC"; fi
+          rm -f "$SC.bak"
+          ls -la shots/hearth-game-mode
           # ---- Settings › Home server, stage 1 (docs/HOME-SERVER.md): its pages with two shares, a stand-in Tailscale, and
           # the root helper through a stand-in pkexec (the drives as this runner has them), for these shots only.
           mkdir -p shots/home-server "$HOME/Games" "$HOME/Work" "$HOME/.config/nimbus" /usr/libexec/nimbus
@@ -699,6 +754,121 @@ jobs:
             echo "::error title=Task Manager::$(grep -E 'TaskManager(View)?\.qml|Task Manager: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
           else
             echo "::notice title=Task Manager::$(ls $T/*.png 2>/dev/null | wc -l) pictures in task-manager/"
+          fi
+          # ---- System Restore and Reliability history (docs/SYSTEM-RESTORE.md), in shots/restore/: the points list (two made
+          # here, one setting changed since), every changed setting, the confirm dialog (cancelled), and Reliability history
+          # by days and weeks with a day's Details. Opening either writes no settings file; their QML loads without errors.
+          R=shots/restore; mkdir -p $R; SH="$NIMBUS_SHARE/desktop/shell"
+          python3 "$SH/hearth_settings_io.py" merge "$HOME/.local/share/nimbus/desktop.json" '{"restoreCheck": 0}' || true
+          python3 "$SH/hearth_restore.py" snapshot --kind update --title "Before updating to Hearth 1.10" > $R/snap1.json 2>&1 || true
+          python3 "$SH/hearth_restore.py" snapshot --kind manual > $R/snap2.json 2>&1 || true
+          python3 "$SH/hearth_settings_io.py" merge "$HOME/.local/share/nimbus/desktop.json" '{"restoreCheck": 1}' || true   # one setting changed since
+          set_hash() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" -maxdepth 2 -type f ! -name '*.log' ! -name '.*' -print0 2>/dev/null | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum; }
+          rs_before=$(set_hash)
+          ipc restore open; sleep 3; grim $R/01-restore-points.png || true
+          wtype -k Right 2>/dev/null; wtype -k Return 2>/dev/null; sleep 2; grim $R/02-every-changed-setting.png || true
+          wtype -k Escape 2>/dev/null; wtype -k Left 2>/dev/null; wtype -k Return 2>/dev/null; wtype -k Return 2>/dev/null; sleep 1
+          grim $R/03-confirm.png || true; wtype -k Escape 2>/dev/null; sleep 1
+          ipc restore close
+          python3 "$SH/hearth_restore.py" overview > $R/overview.json 2>&1 || true
+          ipc reliability open; sleep 6; grim $R/04-reliability-days.png || true
+          wtype -k Down 2>/dev/null; wtype -k Return 2>/dev/null; sleep 1; grim $R/05-reliability-details.png || true; wtype -k Escape 2>/dev/null
+          wtype -k Up 2>/dev/null; wtype -k Up 2>/dev/null; wtype -k Right 2>/dev/null; sleep 6; grim $R/06-reliability-weeks.png || true
+          ipc reliability close
+          python3 "$SH/hearth_reliability.py" summary > $R/summary.json 2>&1 || true
+          [ "$(set_hash)" = "$rs_before" ] || { echo "::error title=System Restore::opening System Restore or Reliability history changed a settings file"; touch shots/FAILED; }
+          python3 "$SH/hearth_settings_io.py" merge "$HOME/.local/share/nimbus/desktop.json" '{"restoreCheck": null}' || true
+          grep -E "(Restore|RestoreView|Reliability|ReliabilityView)\.qml" "$LOG" > $R/shell-log.txt 2>/dev/null || true
+          if grep -qE "(Restore|RestoreView|Reliability|ReliabilityView)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot override|Expected token|Syntax)" "$LOG" 2>/dev/null \
+             || grep -qE "(System Restore|Reliability history): its page .* couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=System Restore::$(grep -E '(Restore|Reliability)(View)?\.qml|its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=System Restore::$(ls $R/*.png 2>/dev/null | wc -l) pictures in restore/; $(python3 -c "import json;print(len(json.load(open('$R/overview.json'))['points']))" 2>/dev/null) points; reliability rows: $(python3 -c "import json;print(len(json.load(open('$R/summary.json'))['rows']))" 2>/dev/null)"
+          fi
+          # ---- Device Manager, Run (Super+R) and the Super+X menu (WinTools.qml, docs/DEVICE-MANAGER.md), in shots/win-tools/.
+          # A stand-in Hearth Disks (so Disk Management shows); System Restore and Reliability history aren't here, so
+          # their entries stay hidden. Opening any of them writes nothing (run-history.json only after something opened).
+          W=shots/win-tools; mkdir -p $W
+          printf '#!/bin/sh\necho "$@" >> "$HOME/hearth-disks-args"\n' > /tmp/fakebin/hearth-disks && chmod +x /tmp/fakebin/hearth-disks
+          rh="$HOME/.local/state/nimbus/run-history.json"; wt_before=$(snap | sha256sum); rh_before=$(sha256sum "$rh" 2>/dev/null || echo none)
+          python3 hosts/linux/desktop/shell/hearth-devmgr list > $W/devices.json 2> $W/devices.err || { echo "::error title=Device Manager::hearth-devmgr list failed: $(head -c 300 $W/devices.err)"; touch shots/FAILED; }
+          python3 -c "import json,sys; d=json.load(open('$W/devices.json')); print('::notice title=Device Manager::%d devices on the runner, %d need attention, kernel log readable: %s; groups: %s' % (d['count'], d['problems'], d['kernelLog'], ', '.join('%s %d' % (g['label'], len(g['devices'])) for g in d['groups'])))" || true
+          ipc devices open; sleep 4; grim $W/01-device-manager.png || true
+          ipc devices state > $W/devices-state.json 2>&1 || true
+          grep -q '"loaded":true' $W/devices-state.json || { echo "::error title=Device Manager::its list didn't load: $(head -c 300 $W/devices-state.json)"; touch shots/FAILED; }
+          wtype -k End; sleep 1; wtype -k Right; sleep 1; grim $W/02-device-manager-keys.png || true
+          ipc devices select "Processor"; ipc devices select "Intel"; sleep 1; grim $W/03-device-manager-device.png || true
+          wtype -k Menu; sleep 1; grim $W/04-device-manager-actions.png || true; wtype -k Escape; sleep 1
+          ipc devices scan; sleep 4; ipc devices close
+          ipc run open; sleep 2; grim $W/05-run.png || true
+          ipc run type devmgmt; sleep 1; grim $W/06-run-suggestions.png || true
+          ipc run type "%appdata%"; sleep 1; grim $W/07-run-appdata.png || true
+          ipc run type "C:\\Users"; sleep 1; ipc run state > $W/run-state.json 2>&1 || true
+          ipc run type "rstrui"; ipc run go; sleep 1; grim $W/08-run-not-installed.png || true
+          ipc run state > $W/run-missing.json 2>&1 || true
+          grep -q "isn't installed" $W/run-missing.json || { echo "::error title=Run::rstrui (not installed) didn't say so: $(head -c 300 $W/run-missing.json)"; touch shots/FAILED; }
+          [ "$(sha256sum "$rh" 2>/dev/null || echo none)" = "$rh_before" ] || { echo "::error title=Run::opening Run and typing wrote run-history.json"; touch shots/FAILED; }
+          ipc run type "diskmgmt.msc"; ipc run go; sleep 3
+          [ -e "$HOME/hearth-disks-args" ] || { echo "::error title=Run::diskmgmt.msc didn't open Hearth Disks (the stand-in left no mark)"; touch shots/FAILED; }
+          grep -q 'diskmgmt.msc' "$rh" 2>/dev/null || { echo "::error title=Run::diskmgmt.msc didn't go into the recent entries: $(head -c 300 "$rh" 2>&1)"; touch shots/FAILED; }
+          ipc run open; sleep 2; grim $W/09-run-recent.png || true; ipc run close
+          ipc winx open; sleep 2; grim $W/10-winx.png || true
+          ipc winx state > $W/winx-state.json 2>&1 || true
+          grep -q '"Disk Management"' $W/winx-state.json && ! grep -q 'Reliability history' $W/winx-state.json \
+            || { echo "::error title=Super+X menu::installed/hidden entries are wrong: $(head -c 400 $W/winx-state.json)"; touch shots/FAILED; }
+          wtype -k Down; wtype -k Down; sleep 1; grim $W/11-winx-keys.png || true
+          ipc winx key u; sleep 1; grim $W/12-winx-shut-down-or-sign-out.png || true; wtype -k Escape; wtype -k Escape; sleep 1
+          ipc winx key m; sleep 4; grim $W/13-winx-opened-device-manager.png || true; ipc devices close
+          [ "$(snap | sha256sum)" = "$wt_before" ] || { echo "::error title=Win tools::opening Device Manager, Run or the Super+X menu changed a settings file"; touch shots/FAILED; }
+          grep -E "(WinTools|DeviceManagerView|RunView)\.qml|WinTools|Device Manager: its page|Run: its page" "$LOG" > $W/shell-log.txt 2>/dev/null || true
+          if grep -qE "(WinTools|DeviceManagerView|RunView)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read)" "$LOG" 2>/dev/null \
+             || grep -qE "couldn't load|its page \((DeviceManagerView|RunView)\.qml\)" $W/shell-log.txt 2>/dev/null; then
+            echo "::error title=Win tools::$(sort -u $W/shell-log.txt | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Win tools::$(ls $W/*.png 2>/dev/null | wc -l) pictures in win-tools/"
+          fi
+          # ---- Resource Monitor (docs/RESOURCE-MONITOR.md), in shots/resource-monitor/: Your PC for this runner, then the
+          # board drawn from the four sample machines (the owner's ATX desktop with a memory stick and the graphics card
+          # clicked, dad's FM2A88X, a laptop, a ROG Ally), Overview, Processor, Memory, Disk, Network, Graphics and a
+          # program's actions. Opening it writes no setting; its sampler runs only while it's open.
+          mkdir -p shots/resource-monitor; R=shots/resource-monitor; FX="$PWD/hosts/linux/test/fixtures/resmon"
+          rm_before=$(find "$HOME/.config" "$HOME/.local/share" -type f -newer /proc/1 2>/dev/null | sort | xargs -r sha256sum 2>/dev/null | sha256sum)
+          ipc resmon open; sleep 6; grim $R/01-your-pc-this-runner.png || true
+          ipc resmon fixture "$FX/owner-atx.json"; sleep 5; grim $R/02-owner-board.png || true
+          ipc resmon select dimm1; sleep 2; grim $R/03-owner-memory-stick.png || true
+          ipc resmon select pcie0; sleep 2; grim $R/04-owner-graphics-card.png || true
+          ipc resmon select m2_1; sleep 2; grim $R/05-owner-empty-m2.png || true
+          ipc resmon fixture "$FX/dad-fm2.json"; sleep 5; grim $R/06-dad-board.png || true
+          ipc resmon select sata1; sleep 2; grim $R/07-dad-hdd-tip.png || true
+          ipc resmon fixture "$FX/laptop.json"; sleep 5; grim $R/08-laptop.png || true
+          ipc resmon fixture "$FX/rog-ally.json"; sleep 5; grim $R/09-rog-ally.png || true
+          ipc resmon tab overview; sleep 4; grim $R/10-overview.png || true
+          ipc resmon tab cpu; sleep 3; grim $R/11-processor.png || true
+          ipc resmon tab memory; sleep 3; grim $R/12-memory.png || true
+          ipc resmon tab disk; sleep 3; grim $R/13-disk.png || true
+          ipc resmon tab network; sleep 4; grim $R/14-network.png || true
+          ipc resmon tab gpu; sleep 3; grim $R/15-graphics.png || true
+          ipc resmon tab memory; ipc resmon menu; sleep 1; grim $R/16-actions-menu.png || true; wtype -k Escape 2>/dev/null || true
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call resmon state > $R/state.json 2>&1 || true
+          sp=$(pgrep -f "hearth-resmon serve" 2>/dev/null | head -1 || true)
+          if [ -n "$sp" ]; then
+            a=$(awk '{print $14+$15}' /proc/$sp/stat); sleep 10; b=$(awk '{print $14+$15}' /proc/$sp/stat)
+            echo "::notice title=Resource Monitor::its sampler used $(( (b - a) * 100 / (10 * $(getconf CLK_TCK)) ))% of one core over 10 s on Memory ($(nproc) cores here)"
+          else
+            echo "::error title=Resource Monitor::its sampler (hearth-resmon serve) isn't running while the window is open"; touch shots/FAILED
+          fi
+          ipc resmon close; sleep 2
+          pgrep -f "hearth-resmon serve" >/dev/null && { echo "::error title=Resource Monitor::its sampler kept running after the window closed"; touch shots/FAILED; }
+          python3 hosts/linux/desktop/shell/hearth-resmon pc --no-helper > $R/pc-this-runner.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-resmon sample brief > $R/brief.json 2>&1 || true
+          rm_after=$(find "$HOME/.config" "$HOME/.local/share" -type f -newer /proc/1 2>/dev/null | sort | xargs -r sha256sum 2>/dev/null | sha256sum)
+          [ "$rm_before" = "$rm_after" ] || echo "::warning title=Resource Monitor::files in ~/.config or ~/.local/share changed while it was open (other parts of the desktop may have written them)"
+          grep -E "Resmon|ResourceMonitor|ResmonBoard" "$LOG" > $R/shell-log.txt 2>/dev/null || true
+          if grep -qE "(ResourceMonitor(View)?|ResmonBoard)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read)" "$LOG" 2>/dev/null \
+             || grep -q "Resource Monitor: its page (ResourceMonitorView.qml) couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=Resource Monitor::$(grep -E 'ResourceMonitor|ResmonBoard|Resource Monitor: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Resource Monitor::$(ls $R/*.png 2>/dev/null | wc -l) pictures in resource-monitor/; state $(head -c 300 $R/state.json)"
           fi
           # ---- Right-click menu looks (Settings › Personalization › Bar and dock › Right-click menu, MenuStyles.qml), in
           # shots/menu-styles/: a file's menu and the desktop's menu on the desktop, and Hearth Files' menu, in each look
@@ -1233,6 +1403,68 @@ jobs:
           fi
           grep -q "couldn't load (Files" "$LOG" && { echo "::error title=This PC::$(grep "couldn't load (Files" "$LOG" | head -3 | tr '\n' ' ')"; touch shots/FAILED; }
           ls $P/*.png >/dev/null 2>&1 || { echo "::error title=This PC::no screenshots were taken"; touch shots/FAILED; }
+          # ---- Hearth (C:) with Windows folder names (shots/files-cdrive, docs/HEARTH-FILES.md "Hearth (C:) the Windows way"):
+          # C:\, Program Files, Program Files (x86) with its right-click menu, Properties, your home folder with AppData,
+          # AppData, typed C:\ paths going to the real folders, then the Linux folders switched on (a choice: saved) and
+          # Settings › System › Drives & folders. Opening them changes no settings file (drive-letters.json may appear);
+          # switching the Linux folders on changes only files.json (and its .bak).
+          C=shots/files-cdrive; mkdir -p $C
+          U=$(id -un)
+          snap_cfg > $C/files-before.txt
+          cdrive_shots() {  # dark | light
+            ipc filemanager hearthc ""; sleep 5; grim $C/$1-01-hearth-c.png || true
+            ipc filemanager hearthc "Program Files"; sleep 8; grim $C/$1-02-program-files.png || true
+            ipc filemanager cprops; sleep 2; grim $C/$1-03-program-files-properties.png || true; ipc filemanager close
+            ipc filemanager hearthc "Program Files (x86)"; sleep 6; grim $C/$1-04-program-files-x86.png || true
+            ipc filemanager select "Notepad++"; ipc filemanager menu; sleep 1; grim $C/$1-05-right-click.png || true; ipc filemanager close
+            ipc files open "$HOME"; ipc filemanager select AppData; sleep 3; grim $C/$1-06-home-with-appdata.png || true
+            ipc filemanager activate AppData; sleep 3; grim $C/$1-07-appdata.png || true
+            ipc files close
+          }
+          cdrive_shots dark
+          # Typed C:\ forms go to the real folders (the view moves nothing).
+          ipc filemanager hearthc "Program Files (x86)"; sleep 6
+          for pair in "C:\\Program Files (x86)\\Notepad++|$HOME/Games/Windows apps/Notepad++" "C:\\Users\\$U\\AppData\\Roaming|$HOME/.config" \
+                      "C:\\Users\\$U\\AppData\\Local\\Temp|$HOME/.cache" "C:\\Windows|/usr" "C:\\ProgramData|/var/lib" "C:\\|hearth:c"; do
+            t=${pair%%|*}; want=${pair#*|}
+            ipc filemanager hearthc "$t"; sleep 2
+            got=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call filemanager where 2>/dev/null | grep -v 'WARN' | tail -n 1 | cut -d'|' -f1)
+            if [ "$got" != "$want" ]; then echo "::error title=Hearth (C:)::typing $t went to “$got”, not “$want”"; touch shots/FAILED; fi
+            echo "$t -> $got" >> $C/typed.txt
+          done
+          ipc files close
+          snap_cfg > $C/files-after.txt
+          changed=$(diff $C/files-before.txt $C/files-after.txt | grep '^[<>]' | awk '{print $NF}' | sort -u | grep -v -E '/\.config/hearth/drive-letters\.json(\.bak)?$' | tr '\n' ' ' || true)
+          if [ -n "$changed" ]; then
+            echo "::error title=Hearth (C:)::opening Hearth (C:), Program Files, AppData and Properties changed: $changed"; touch shots/FAILED
+          else
+            echo "::notice title=Hearth (C:)::no settings file changed by opening the view ($(wc -l < $C/files-before.txt) files checked); typed: $(tr '\n' ' ' < $C/typed.txt | head -c 500)"
+          fi
+          # A choice is saved, and only that key: View's "Show the Linux folders too".
+          cp "$HOME/.config/nimbus/files.json" $C/files-json-before.json 2>/dev/null || echo '{}' > $C/files-json-before.json
+          ipc filemanager hearthc ""; sleep 3
+          python3 hosts/linux/desktop/shell/hearth-files prefs-set '{"linuxFolders": true}' > /dev/null
+          ipc files close; ipc filemanager hearthc ""; sleep 4; grim $C/dark-08-linux-folders.png || true
+          python3 - "$C/files-json-before.json" "$HOME/.config/nimbus/files.json" <<'PY' || touch shots/FAILED
+          import json, sys
+          a, b = (json.load(open(p)) for p in sys.argv[1:3])
+          extra = {k: v for k, v in b.items() if a.get(k) != v}
+          lost = [k for k in a if k not in b]
+          if lost or set(extra) - {'linuxFolders'}:
+              print('::error title=Hearth (C:)::files.json changed more than the switch: %s, lost %s' % (extra, lost)); sys.exit(1)
+          print('::notice title=Hearth (C:)::the switch saved only %s' % sorted(extra))
+          PY
+          ipc settings close; ipc settings page drives; sleep 4; grim $C/dark-09-settings-drives.png || true; ipc settings close
+          python3 hosts/linux/desktop/shell/hearth-files prefs-set '{"linuxFolders": false}' > /dev/null
+          set_look steam light "" ""; cdrive_shots light; set_look steam dark "" ""
+          ipc files close
+          python3 hosts/linux/desktop/shell/hearth-files cdrive > $C/cdrive.json 2>&1 || true
+          grep -E "(FilesCDrive|FilesCProps|SetDrives)\.qml|drive-paths\.js" "$LOG" | head -40 > $C/qml-warnings.txt 2>/dev/null || true
+          if grep -q -E "TypeError|ReferenceError|is not a type|non-existent|Cannot assign|is not defined|Expected token|Syntax" $C/qml-warnings.txt; then
+            echo "::error title=Hearth (C:) QML::$(head -c 900 $C/qml-warnings.txt | tr '\n' ' ')"; touch shots/FAILED
+          fi
+          grep -q "couldn't load (FilesC" "$LOG" && { echo "::error title=Hearth (C:)::$(grep "couldn't load (FilesC" "$LOG" | head -3 | tr '\n' ' ')"; touch shots/FAILED; }
+          ls $C/*.png >/dev/null 2>&1 || { echo "::error title=Hearth (C:)::no screenshots were taken"; touch shots/FAILED; }
           # ---- The Briefcase (shots/briefcase, docs/HEARTH-FILES.md › Briefcase): two Briefcases customized differently,
           # files added, one changed on each side and one changed in both, Update All's list of actions, after it ran,
           # and the Customize dialog. hearth-briefcase does the work; Files shows it.
@@ -1326,6 +1558,60 @@ jobs:
           for look in hearth steam gaming zen glass synthwave cabin console; do look_shots "$look" dark; done
           look_shots hearth light
           look_shots glass light
+          # ---- Sub themes (1.10; shots/looks/sub-themes): the desktop and Settings › Personalisation in a few, the Look and
+          # Sub theme dropdowns opened and used with the keys a controller sends (A = Enter, B = Esc, the d-pad = arrows),
+          # and the red flags checked live: picking a sub theme writes only subTheme, never your own wallpaper.
+          st=$o/sub-themes; mkdir -p $st
+          set_sub() {  # look sub mode [wallpaper]
+            python3 - "$D" "$@" <<'PY'
+          import json, sys
+          p, look, sub, mode = sys.argv[1:5]
+          wall = sys.argv[5] if len(sys.argv) > 5 else ""
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          d.update(look=look, mode=mode, accent="", wallpaper=wall, reduceMotion=False)
+          # Written out (the shell keeps what it has for a key that's missing from the file, as it should).
+          d.update(subTheme=sub, wallMatch=True)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+            sleep 4
+          }
+          key() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get(sys.argv[2], "<missing>"))' "$D" "$1" 2>/dev/null; }
+          for c in "hearth rose-quartz dark" "hearth evergreen light" "hearth hazard dark" "hearth traffic-light dark" "steam crimson dark" "steam crimson light" \
+                   "steam black-yellow dark" "gaming toxic dark" "gaming ultraviolet light" "gaming traffic-light dark"; do
+            set -- $c
+            set_sub "$1" "$2" "$3"
+            grim "$st/$1-$2-$3-1-desktop.png" || true
+            ipc settings page appearance; sleep 2; grim "$st/$1-$2-$3-2-personalisation.png" || true; ipc settings close
+          done
+          # The dropdowns with the controller's keys, starting from today's colours (subTheme "").
+          set_sub hearth "" dark
+          ipc settings page appearance; sleep 2; grim "$st/01-personalisation-default.png" || true
+          wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim "$st/02-look-dropdown-open.png" || true
+          wtype -k Escape; sleep 1; wtype -k Down; sleep 1; wtype -k Return; sleep 2; grim "$st/03-sub-theme-dropdown-open.png" || true
+          wtype -k Down; wtype -k Down; sleep 1; grim "$st/04-sub-theme-list-moved.png" || true
+          for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim "$st/05-sub-theme-list-black-set.png" || true
+          wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Up; sleep 1; wtype -k Return; sleep 4; grim "$st/06-sub-theme-picked.png" || true
+          picked=$(key subTheme); wall=$(key wallpaper)
+          if [ "$picked" != "copper-sea" ]; then echo "::error title=Sub themes::A on Copper Sea in the open list didn't pick it (subTheme: $picked); see $st/06-sub-theme-picked.png"; touch shots/FAILED; fi
+          [ -z "$wall" ] || { echo "::error title=Sub themes::picking a sub theme wrote the wallpaper ($wall)"; touch shots/FAILED; }
+          ipc settings close; sleep 3; grim "$st/07-desktop-after-picking.png" || true
+          # Your own wallpaper stays: with one chosen, pick another sub theme (Left/Right on the card steps through them).
+          set_sub hearth rose-quartz dark builtin:slate-dusk
+          ipc settings page appearance; sleep 2; wtype -k Right; sleep 1; wtype -k Down; sleep 1; wtype -k Right; sleep 4
+          grim "$st/08-own-wallpaper-kept.png" || true
+          [ "$(key wallpaper)" = "builtin:slate-dusk" ] || { echo "::error title=Sub themes::a sub theme replaced the wallpaper you chose (now $(key wallpaper))"; touch shots/FAILED; }
+          echo "::notice title=Sub themes::keys picked '$picked'; with your own wallpaper the sub theme went to '$(key subTheme)' and the wallpaper stayed '$(key wallpaper)'"
+          # Changing the look with the keys resets the sub theme to that look's first.
+          wtype -k Up; sleep 1; wtype -k Right; sleep 4; grim "$st/09-look-changed.png" || true
+          [ "$(key subTheme)" = "" ] || { echo "::error title=Sub themes::after changing the look with the keys, subTheme is '$(key subTheme)' (look $(key look))"; touch shots/FAILED; }
+          ipc settings close
+          if grep -E "(subthemes\.js|Theme\.qml|SetDropdown\.qml|SetAppearance\.qml|Wallpaper\.qml).*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Cannot read)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Sub themes QML::$(grep -E "(subthemes\.js|Theme\.qml|SetDropdown\.qml|SetAppearance\.qml|Wallpaper\.qml).*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Cannot read)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          cp "$D" $st/desktop.json 2>/dev/null || true
+          set_sub hearth "" dark
           # The launcher's search finding a Settings page and a game; a notification in the pill.
           set_look hearth dark "" ""; sleep 2
           ipc launcher section apps; wtype "wi" 2>/dev/null || true; sleep 2; grim "$m/search-settings-page.png" || true; ipc launcher close
@@ -1448,6 +1734,107 @@ jobs:
             touch shots/FAILED
           fi
 
+      # Hearth 1.10's Windows-style extras (docs/MANTEL.md "Volume mixer, snap layouts, clipboard and emoji"): Desktop Mode
+      # started again in the Steam-style dark look (the mockups' palette), with stand-in sound for the mixer (no PipeWire
+      # here). The mixer, its "Play on…" menu and outputs; Super+Z's snap layouts snapping a window; clipboard history off
+      # (as on a new install), turned on from its own switch, with copies, a pin and a password manager's copy that must
+      # not be kept. Opening each writes nothing; moving an app's level saves just that app. Shots in shots/shell-extras/.
+      - name: Volume mixer, snap layouts and clipboard history
+        if: always()
+        shell: bash
+        run: |
+          o=shots/shell-extras; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; pkill -x foot || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          export HEARTH_MIXER_FIXTURE="$PWD/hosts/linux/test/fixtures/mixer.json"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"
+          python3 - "$D" <<'PY'
+          import json, sys
+          p = sys.argv[1]
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          d.update(look="steam", mode="dark", accent="", wallpaper="", reduceMotion=True, defaults=2, clipboardHistory=False)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          VOL="$HOME/.config/nimbus/app-volumes.json"; CLIP="$HOME/.local/share/hearth/clipboard"
+          rm -f "$VOL" "$VOL.bak"; rm -rf "$CLIP"; rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          sh hosts/linux/desktop/theme/apply.sh
+          CONF=$(python3 hosts/linux/desktop/shell/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 2; }
+          say() { echo "::notice title=Shell extras::$*"; }
+          bad() { echo "::error title=Shell extras::$*"; touch shots/FAILED; }
+          # ---- Volume mixer
+          # wtype's very first key into a fresh labwc was lost (the mixer's Right did nothing while every later key
+          # worked): a lone Shift first, with nothing open, so the keymap is in place.
+          wtype -k Shift_L; sleep 1
+          ipc mixer open; sleep 1; grim $o/01-mixer.png || true
+          [ -e "$VOL" ] && bad "opening the mixer wrote app-volumes.json" || say "opening the mixer wrote nothing"
+          before=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state 2>/dev/null | tail -1)
+          wtype -k Right; sleep 2; grim $o/02-mixer-first-app-louder.png || true
+          if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d == {"Cyberpunk 2077": 0.95} else 1)' "$VOL" 2>/dev/null; then
+            say "moving Cyberpunk 2077's level saved just that app: $(cat "$VOL" | tr -d '\n ')"
+          else bad "app-volumes.json after Right on the first app: $(cat "$VOL" 2>&1 | tr '\n' ' ') (mixer before the key: $before)"; fi
+          wtype -k Down; wtype -k Return; sleep 1; grim $o/03-mixer-discord-muted.png || true
+          wtype -k x; sleep 1; grim $o/04-mixer-play-on.png || true
+          wtype -k Down; wtype -k Return; sleep 1
+          echo "mixer: $(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state)"
+          wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Return; sleep 1; grim $o/05-mixer-outputs.png || true
+          wtype -k Escape; sleep 0.5; wtype -k Escape; sleep 1
+          ipc settings page sound; sleep 2; grim $o/06-settings-sound.png || true; ipc settings close
+          # ---- Snap layouts: a window to snap, Super+Z (here over IPC), Right to the right half, Enter.
+          (foot -a snaptest -T "Snap test" sh -c 'sleep 120' >/dev/null 2>&1 &) ; sleep 4
+          ipc snap open; sleep 1; grim $o/07-snap-layouts.png || true
+          wtype -k Right; sleep 1; grim $o/08-snap-right-half-lit.png || true
+          st=$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call snap state); echo "snap: $st"
+          case "$st" in *'"zone":"right-half"'*'"window":true'*) say "snap layouts: Right lit the right half, with a window to snap" ;; *) bad "snap state after Right: $st" ;; esac
+          wtype -k Return; sleep 3; grim $o/09-snapped-right.png || true
+          ipc snap open; for k in Down Right; do wtype -k $k; sleep 0.3; done; grim $o/10-snap-quarters.png || true; wtype -k Escape; sleep 1
+          pkill -x foot || true
+          # ---- Clipboard history: off as on a new install; opening writes nothing; its own switch turns it on.
+          ipc clipboard open; sleep 2; grim $o/11-clipboard-off.png || true
+          python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("clipboardHistory") is False else 1)' "$D" && say "clipboard history stays off until you turn it on" || bad "clipboardHistory changed by itself: $(cat "$D" | tr '\n' ' ')"
+          wtype -k Return; sleep 4
+          python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("clipboardHistory") is True else 1)' "$D" && say "the popup's switch turned history on (and saved it)" || bad "the switch didn't save clipboardHistory"
+          echo "clipboard: $(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call clipboard state)"
+          ipc clipboard close
+          printf 'chris-hearth.tail0e2082.ts.net:8188' | wl-copy; sleep 2
+          printf 'sudo apt install -y openjdk-21-jre-headless' | wl-copy; sleep 2
+          grim -g "0,0 960x540" /tmp/clip-shot.png 2>/dev/null && wl-copy --type image/png < /tmp/clip-shot.png; sleep 2
+          printf 'hunter2-not-kept' | wl-copy --type x-kde-passwordManagerHint; sleep 2
+          printf 'Meet at 7 for the raid, bring snacks' | wl-copy; sleep 3
+          ipc clipboard open; sleep 2; wtype -k Down; wtype -k Down; wtype -k Down; wtype -k x; sleep 2
+          grim $o/12-clipboard-history.png || true
+          wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Right; wtype -k Return; sleep 1; grim $o/13-clipboard-clear-confirm.png || true
+          wtype -k Return; sleep 3; grim $o/14-clipboard-cleared-pin-stays.png || true
+          ipc clipboard close
+          ls -la "$CLIP" > $o/clipboard-folder.txt 2>&1 || true
+          cp "$CLIP/index.json" $o/clipboard-index.json 2>/dev/null || true
+          if grep -rq hunter2 "$CLIP" 2>/dev/null; then bad "a password manager's copy was kept"; else say "the password manager's copy wasn't kept"; fi
+          python3 - "$CLIP/index.json" <<'PY' || touch shots/FAILED
+          import json, sys
+          try: items = json.load(open(sys.argv[1]))["items"]
+          except Exception as e: print("::error title=Shell extras::no clipboard index: %s" % e); sys.exit(1)
+          pins = [i for i in items if i.get("pinned")]
+          print("::notice title=Shell extras::clipboard after Clear all: %d item(s), %d pinned: %s" % (len(items), len(pins), [i.get("text", "")[:30] or i["kind"] for i in items]))
+          sys.exit(0 if len(items) == len(pins) == 1 else 1)
+          PY
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(Mixer|SnapLayouts|Clipboard|ExtrasPal)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|(mixer|snap-layouts)\.js" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] || bad "$xbad"
+          pkill -x labwc || true; pkill -f quickshell || true
+
       # Server mode (docs/SERVER-MODE.md): its own labwc folder and dashboard started for real on a virtual screen, with the
       # dashboard's data from a fixture (the mockup's numbers); the AI tile opened, the 5-second switch countdown, a web
       # page's 10-second countdown, "Back in Server mode", the menu, the idle screen, Settings › Home server › Server mode
@@ -1568,3 +1955,43 @@ jobs:
           name: desktop-screenshots
           path: shots
           retention-days: 14
+
+  # Which Game Mode (docs/HEARTH-GAME-MODE.md): two of the Game Mode choice's pictures as notices (a JPEG in base64 pieces,
+  # title "SHOT <which> <n>"), one step each: the desktop job's own notices are many, and a job keeps 50.
+  game-mode-shots:
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in ('02-controller-on-hearth-card', '04-hearth-game-mode-didnt-start', '03-picked-hearth-switch-now'):
+              p = 'shots/hearth-game-mode/%s.png' % name
+              if not os.path.exists(p):
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/hearth-game-mode/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+          ls -la shots/hearth-game-mode || true
+      - name: Picture (gm-cards)
+        run: f=shots/hearth-game-mode/02-controller-on-hearth-card.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-cards $i::$part"; done || true
+      - name: Picture (gm-switch-now)
+        run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
+      - name: Picture (gm-fallback)
+        run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true

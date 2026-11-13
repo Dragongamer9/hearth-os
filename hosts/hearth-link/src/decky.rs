@@ -97,7 +97,7 @@ impl Node {
                 let peer = a["peer"].as_str().unwrap_or("").to_string();
                 let folder = a["folder"].as_str().unwrap_or("").to_string();
                 if !valid_folder(&folder) { return Err("That isn't a Decky plugin Hearth Link copies".into()); }
-                if !crate::lock(&self.peers).is_paired(&peer) { return Err("Not a paired device".into()); }
+                if !crate::lock(&self.peers).is_mine(&peer) { return Err("Not a paired device".into()); }
                 let v = match tokio::time::timeout(Duration::from_secs(110), self.request(&peer, &json!({"op": "decky.plugin", "folder": folder}))).await {
                     Ok(Ok(v)) => v, Ok(Err(e)) => return Err(e), Err(_) => return Err("The other device took too long to answer".into()),
                 };

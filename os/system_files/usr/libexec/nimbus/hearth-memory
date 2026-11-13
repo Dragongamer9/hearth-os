@@ -1,0 +1,870 @@
+#!/usr/bin/python3
+"""hearth-memory: memory and swap on Hearth OS (Task Manager › Memory › Swap & settings, Settings › System › Memory),
+so a full RAM slows the PC down instead of freezing it. 1.11 (the owner's approved mockup, Nov 11–12 2026).
+
+  hearth-memory status            JSON: memory, zram, swaps, the kernel values, pressure, your settings, what's
+                                  recommended for this PC, the limits, the guard's last closes. Works without root
+  hearth-memory apply             put your settings in place (hearth-memory.service runs this at every start, before
+                                  anything heavy; it never holds the start up and never fails it)
+  hearth-memory set [--try] [JSON] the settings you changed, as JSON (an argument, or stdin) (merged into /etc/hearth/memory.json, the
+                                  only place they live; --try applies them until the next restart without saving)
+  hearth-memory recommended       go back to what's recommended for this PC (saved), then apply
+  hearth-memory swapfile GB       the drive swap file /var/swap/swapfile made (or resized) to GB, 0 removes it. Only
+                                  when you press it; always leaves 20 GB free on C:
+  hearth-memory adopt             your test files (/etc/sysctl.d/99-hearth-memory-test.conf, hearth-zram-test.service)
+                                  handed over: their values saved as your settings first, then the files kept as .bak
+                                  and the test service turned off, so nothing you set changes
+  hearth-memory never NAME on|off  one program (its process name) on or off your Never close list (Task Manager's
+                                  right-click "Never close when memory runs out")
+  hearth-memory guard             the memory guard (hearth-memguard.service): when memory really runs out, it closes
+                                  the one program eating it (never one on your Never close list) and tells you which
+
+Settings never change by themselves (docs/SETTINGS-PERSISTENCE.md): the file is written only by set, recommended,
+adopt and the first start's migration (which copies what your test files already set, nothing new). A file that fails
+to parse is kept as .broken and nothing is saved over it. Your own /etc/sysctl.d files win: a value one of them sets is
+left alone and shown as "set by <file>". Booting is never touched.
+"""
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+SETTINGS = os.environ.get('HEARTH_MEMORY_SETTINGS', '/etc/hearth/memory.json')
+STATE = os.environ.get('HEARTH_MEMORY_STATE', '/var/lib/hearth/memory')
+PROC = os.environ.get('HEARTH_PROC', '/proc')
+SYS = os.environ.get('HEARTH_SYS', '/sys')
+SYSCTL_DIRS = ['/etc/sysctl.d', '/run/sysctl.d', '/usr/local/lib/sysctl.d', '/usr/lib/sysctl.d']
+TEST_SYSCTL = '/etc/sysctl.d/99-hearth-memory-test.conf'
+TEST_ZRAM = '/etc/systemd/system/hearth-zram-test.service'
+SWAPFILE = '/var/swap/swapfile'
+HIBERNATE_FILE = '/var/swap/hearth-hibernate'
+GIB = 1024 ** 3
+KEEP_FREE_ON_C = 20 * GIB
+SWAPFILE_MAX_GB = 64
+ZRAM_PRIO, SWAPFILE_PRIO = 100, 10
+ALGOS = ['zstd', 'lz4', 'lz4hc', 'deflate', 'lzo-rle', 'lzo', '842']
+KEEP_CHOICES = ['off', '2gb', '25%', '50%', 'custom']
+DEFAULT_NEVER = ['desktop', 'steam', 'game', 'aicc']
+NEVER_LABEL = {'desktop': 'Desktop', 'steam': 'Steam', 'game': "The game you're playing", 'aicc': 'AI Command Center'}
+NEVER_COMMS = {
+    'desktop': ['labwc', 'quickshell', 'qs', 'nimbus-session', 'Xwayland', 'pipewire', 'pipewire-pulse', 'wireplumber',
+                'dbus-daemon', 'dbus-broker', 'systemd', 'gamescope', 'gamescope-wl', 'hearth-pad', 'kwin_wayland',
+                'plasmashell', 'xdg-desktop-portal', 'polkit-kde-authentication-agent-1', 'hhd'],
+    'steam': ['steam', 'steamwebhelper', 'steam-runtime-launcher-service', 'pressure-vessel-wrap', 'srt-bwrap'],
+    'aicc': ['hearth-ai-command-center', 'hearth-ai-command', 'claude'],
+}
+
+
+def _settings_io():
+    here = os.path.dirname(os.path.realpath(__file__))
+    for d in (os.environ.get('HEARTH_SETTINGS_IO_DIR'),
+              os.path.join(os.environ.get('NIMBUS_SHARE') or '/usr/share/nimbus', 'desktop', 'shell'),
+              os.path.join(here, '..', '..', '..', '..', '..', 'hosts', 'linux', 'desktop', 'shell')):
+        if d and os.path.isfile(os.path.join(d, 'hearth_settings_io.py')):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+            break
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+class Fail(Exception):
+    pass
+
+
+def read(path, default=''):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def run(cmd, timeout=60, inp=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+def sbin(name):
+    for d in ('/usr/sbin', '/sbin', '/usr/bin', '/bin'):
+        if os.path.exists(os.path.join(d, name)):
+            return os.path.join(d, name)
+    return shutil.which(name) or name
+
+
+# ------------------------------------------------------------------ reading the system
+def meminfo(root=None):
+    out = {}
+    for line in read(os.path.join(root or PROC, 'meminfo')).splitlines():
+        m = re.match(r'(\w+):\s+(\d+)', line)
+        if m:
+            out[m.group(1)] = int(m.group(2)) * 1024
+    return out
+
+
+def in_use(mi):
+    """Memory in use the way Windows' Task Manager counts it: total − free − cache (not − MemAvailable, which also
+    subtracts the kernel's reserve and read as "0 free" with a high watermark)."""
+    cache = mi.get('Cached', 0) + mi.get('Buffers', 0) + mi.get('SReclaimable', 0) - mi.get('Shmem', 0)
+    return max(0, mi.get('MemTotal', 0) - mi.get('MemFree', 0) - max(0, cache))
+
+
+def pressure(root=None):
+    """{some: avg10, full: avg10} from /proc/pressure/memory (percent of time stalled)."""
+    out = {'some': 0.0, 'full': 0.0}
+    for line in read(os.path.join(root or PROC, 'pressure', 'memory')).splitlines():
+        m = re.match(r'(some|full)\s+avg10=([\d.]+)', line)
+        if m:
+            out[m.group(1)] = float(m.group(2))
+    return out
+
+
+def pressure_word(p):
+    s = p.get('some', 0)
+    return 'none' if s < 1 else 'light' if s < 10 else 'medium' if s < 30 else 'heavy'
+
+
+def swaps(root=None):
+    out = []
+    for line in read(os.path.join(root or PROC, 'swaps')).splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 5:
+            out.append({'path': f[0], 'type': f[1], 'size': int(f[2]) * 1024, 'used': int(f[3]) * 1024, 'prio': int(f[4])})
+    return out
+
+
+def zram_info(sys_root=None, dev='zram0'):
+    base = os.path.join(sys_root or SYS, 'block', dev)
+    if not os.path.isdir(base):
+        return None
+    algos_raw = read(os.path.join(base, 'comp_algorithm')).strip()
+    cur = re.search(r'\[([\w-]+)\]', algos_raw)
+    mm = read(os.path.join(base, 'mm_stat')).split()
+    num = lambda i: int(mm[i]) if len(mm) > i and mm[i].isdigit() else 0
+    return {'dev': '/dev/' + dev, 'disksize': int(read(os.path.join(base, 'disksize'), '0').strip() or 0),
+            'algo': cur.group(1) if cur else '', 'algos': [a.strip('[]') for a in algos_raw.split()],
+            'orig': num(0), 'compr': num(1), 'mem': num(2)}
+
+
+def kernel_algos(sys_root=None):
+    z = zram_info(sys_root)
+    if z and z['algos']:
+        return [a for a in ALGOS if a in z['algos']] + [a for a in z['algos'] if a not in ALGOS]
+    return ['zstd', 'lz4', 'lz4hc', 'deflate']        # the owner's laptop's kernel (Debian's backports kernel)
+
+
+VM_KEYS = ['swappiness', 'watermark_scale_factor', 'min_free_kbytes', 'page-cluster', 'watermark_boost_factor']
+
+
+def vm_now(root=None):
+    out = {}
+    for k in VM_KEYS:
+        v = read(os.path.join(root or PROC, 'sys', 'vm', k.replace('-', '_') if k != 'page-cluster' else 'page-cluster')).strip()
+        out[k] = int(v) if v.lstrip('-').isdigit() else None
+    return out
+
+
+def sysctl_owners(dirs=None, skip=()):
+    """{key: file} for vm keys set by sysctl.d files other than skip (yours win)."""
+    out = {}
+    for d in dirs or SYSCTL_DIRS:
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(d, n)
+            if not n.endswith('.conf') or p in skip:
+                continue
+            for line in read(p).splitlines():
+                m = re.match(r'\s*-?\s*vm\.([\w-]+)\s*=\s*(\S+)', line)
+                if m:
+                    key = m.group(1).replace('page_cluster', 'page-cluster')
+                    out.setdefault(key, p)
+    return out
+
+
+def parse_sysctl_conf(text):
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r'\s*-?\s*vm\.([\w-]+)\s*=\s*(-?\d+)', line)
+        if m:
+            out[m.group(1).replace('page_cluster', 'page-cluster')] = int(m.group(2))
+    return out
+
+
+def parse_test_zram(text):
+    """Size and algorithm from the owner's hearth-zram-test.service (zramctl --size 12G --algorithm zstd …)."""
+    size = re.search(r'--size\s+(\d+(?:\.\d+)?)\s*([GMgm])', text)
+    algo = re.search(r'--algorithm\s+([\w-]+)', text) or re.search(r'comp_algorithm[^\w]+([\w-]+)', text)
+    gb = None
+    if size:
+        gb = float(size.group(1)) / (1024 if size.group(2).lower() == 'm' else 1)
+    return {'gb': gb, 'algo': algo.group(1) if algo else None}
+
+
+def free_on(path):
+    try:
+        st = os.statvfs(path)
+        return st.f_bavail * st.f_frsize
+    except OSError:
+        return 0
+
+
+# ------------------------------------------------------------------ what's recommended, and the limits
+def recommended(mem):
+    """For this PC (mem in bytes): zram first, sized by memory; 2 GB kept free; the guard gentle."""
+    g = mem / GIB
+    mult = 1.5 if g <= 8.5 else 1.0 if g <= 16.5 else 0.5
+    return {'zram': {'on': True, 'gb': max(1, int(round(g * mult))), 'algo': 'zstd'},
+            'swapfile': {'everyday': True},
+            'keep': {'mode': '2gb', 'mb': 2048},
+            'swappiness': 200,
+            'guard': {'level': 'gentle', 'never': list(DEFAULT_NEVER), 'extra': []}}
+
+
+def limits(mem, var_free):
+    g = mem / GIB
+    return {'zramMaxGb': max(1, int(g * 2)), 'zramMarkGb': max(1, int(round(g * 1.5))),
+            'swapfileMaxGb': max(0, min(SWAPFILE_MAX_GB, int((var_free - KEEP_FREE_ON_C) / GIB)))}
+
+
+def watermark_for(keep, mem):
+    """vm.watermark_scale_factor for 'keep this much free': the high watermark sits ~2×factor/10000 of memory above
+    min, where kswapd works until it's back above high. Off = the kernel's 10."""
+    mode = (keep or {}).get('mode', '2gb')
+    if mode == 'off':
+        return 10
+    if mode == 'custom' and isinstance(keep.get('factor'), int):
+        return max(10, min(3000, keep['factor']))
+    if mode == '25%':
+        want = mem * 0.25
+    elif mode == '50%':
+        want = mem * 0.5
+    elif mode == 'custom':
+        want = max(256, int(keep.get('mb') or 2048)) * 1024 * 1024
+    else:
+        want = 2 * GIB
+    return max(10, min(3000, int(round(want / (2 * mem) * 10000)))) if mem else 10
+
+
+def keep_from_factor(factor, mem):
+    """The Keep memory free choice that a watermark_scale_factor stands for (your test file's 2300 = 50%)."""
+    if factor is None or factor <= 10:
+        return {'mode': 'off'}
+    for mode in ('2gb', '25%', '50%'):
+        if abs(watermark_for({'mode': mode}, mem) - factor) <= max(25, factor * 0.1):
+            return {'mode': mode, 'factor': factor}
+    return {'mode': 'custom', 'factor': int(factor)}
+
+
+def wanted_vm(s, mem, zram_on):
+    keep = s.get('keep') or {}
+    # A factor you had (your test file's 2300) is kept exactly; otherwise it's worked out from the choice.
+    factor = keep.get('factor') if isinstance(keep.get('factor'), int) and keep.get('mode') != 'off' else None
+    out = {'swappiness': int(s.get('swappiness', 200 if zram_on else 100)),
+           'watermark_scale_factor': max(10, min(3000, factor)) if factor else watermark_for(keep, mem),
+           'page-cluster': 0 if zram_on else 3,
+           'watermark_boost_factor': 0,
+           'min_free_kbytes': min(262144, max(67584, int(mem / 1024 * 0.03)))}
+    if not zram_on:
+        out['swappiness'] = min(out['swappiness'], 100)
+    return out
+
+
+def valid(s, mem, var_free=None, algos=None):
+    """The settings checked and cleaned (unknown keys dropped); Fail with plain words."""
+    lim = limits(mem, var_free if var_free is not None else 10 ** 15)
+    algos = algos or kernel_algos()
+    out = {}
+    z = s.get('zram')
+    if z is not None:
+        if not isinstance(z, dict):
+            raise Fail('zram: not a setting')
+        zz = {}
+        if 'on' in z:
+            zz['on'] = bool(z['on'])
+        if 'gb' in z:
+            gb = int(z['gb'])
+            if not 1 <= gb <= lim['zramMaxGb']:
+                raise Fail('Compressed memory can be 1 to %d GB on this PC (twice its memory)' % lim['zramMaxGb'])
+            zz['gb'] = gb
+        if 'algo' in z:
+            if z['algo'] not in algos:
+                raise Fail('This kernel can compress with %s, not %s' % (', '.join(algos), z['algo']))
+            zz['algo'] = z['algo']
+        out['zram'] = zz
+    if 'swapfile' in s:
+        out['swapfile'] = {'everyday': bool((s['swapfile'] or {}).get('everyday', True))}
+    if 'keep' in s:
+        k = s['keep'] or {}
+        if k.get('mode') not in KEEP_CHOICES:
+            raise Fail('Keep memory free: one of Off, 2 GB, 25%, 50% or Custom')
+        kk = {'mode': k['mode']}
+        if k['mode'] == 'custom':
+            if isinstance(k.get('factor'), int):
+                kk['factor'] = max(10, min(3000, k['factor']))
+            else:
+                kk['mb'] = max(256, min(int(mem / 1024 / 1024 * 0.6), int(k.get('mb') or 2048)))
+        out['keep'] = kk
+    if 'swappiness' in s:
+        v = int(s['swappiness'])
+        if not 0 <= v <= 200:
+            raise Fail('Swappiness goes from 0 to 200')
+        out['swappiness'] = v
+    if 'guard' in s:
+        g = s['guard'] or {}
+        gg = {}
+        if 'level' in g:
+            if g['level'] not in ('off', 'gentle', 'strong'):
+                raise Fail('Protection: Off, Gentle or Strong')
+            gg['level'] = g['level']
+        if 'never' in g:
+            gg['never'] = [x for x in g['never'] if x in NEVER_LABEL]
+        if 'extra' in g:
+            gg['extra'] = [str(x)[:64] for x in g['extra'] if re.match(r'^[\w.+-]{1,64}$', str(x))][:24]
+        out['guard'] = gg
+    return out
+
+
+def merged(saved, mem):
+    """Recommended values under what you saved (what's used; nothing is written)."""
+    base = recommended(mem)
+    for k, v in (saved or {}).items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            base[k] = dict(base[k], **v)
+        elif k in base:
+            base[k] = v
+    return base
+
+
+def load_settings():
+    sio = _settings_io()
+    if not os.path.exists(SETTINGS):
+        return {}
+    data = sio.load_json(SETTINGS, None, repair=False)
+    if not isinstance(data, dict):
+        raise Fail('Your memory settings file could not be read; it was kept as it is')
+    return data
+
+
+# ------------------------------------------------------------------ the owner's test files
+def test_files():
+    out = {}
+    if os.path.exists(TEST_SYSCTL):
+        out['sysctl'] = TEST_SYSCTL
+    if os.path.exists(TEST_ZRAM):
+        out['zram'] = TEST_ZRAM
+    return out
+
+
+def from_test_files(mem):
+    """Your test files' values as settings (nothing added): the first start's migration and adopt."""
+    s = {}
+    t = parse_sysctl_conf(read(TEST_SYSCTL))
+    if 'swappiness' in t:
+        s['swappiness'] = max(0, min(200, t['swappiness']))
+    if 'watermark_scale_factor' in t:
+        s['keep'] = keep_from_factor(t['watermark_scale_factor'], mem)
+    z = parse_test_zram(read(TEST_ZRAM))
+    if z['gb'] or z['algo']:
+        s['zram'] = {'on': True}
+        if z['gb']:
+            s['zram']['gb'] = max(1, int(round(z['gb'])))
+        if z['algo']:
+            s['zram']['algo'] = z['algo']
+    return s
+
+
+def test_zram_active():
+    code, out, _ = run(['systemctl', 'is-enabled', 'hearth-zram-test.service'], 10)
+    return code == 0 and out.strip() in ('enabled', 'enabled-runtime')
+
+
+# ------------------------------------------------------------------ applying
+def write_vm(key, value):
+    path = os.path.join(PROC, 'sys', 'vm', key.replace('-', '_') if key != 'page-cluster' else 'page-cluster')
+    try:
+        with open(path, 'w') as f:
+            f.write(str(int(value)))
+        return True
+    except OSError:
+        return False
+
+
+def zram_setup(gb, algo, log):
+    """zram0 at gb with algo, swap at priority 100. Only resized when it can be emptied safely."""
+    run([sbin('modprobe'), 'zram', 'num_devices=1'], 30)
+    z = zram_info()
+    if z is None:
+        log.append('zram: the kernel has no zram here')
+        return False
+    want = int(gb * GIB)
+    active = any(sw['path'] == '/dev/zram0' for sw in swaps())
+    if active and z['disksize'] == want and z['algo'] == algo:
+        return True
+    if active:
+        mi = meminfo()
+        if z['orig'] > mi.get('MemAvailable', 0) * 0.5:
+            log.append('zram: holding too much to change now; the new size applies at the next restart')
+            return False
+        if run([sbin('swapoff'), '/dev/zram0'], 600)[0] != 0:
+            log.append('zram: couldn\'t empty it to change it; applies at the next restart')
+            return False
+    base = os.path.join(SYS, 'block', 'zram0')
+    try:
+        with open(os.path.join(base, 'reset'), 'w') as f:
+            f.write('1')
+    except OSError:
+        pass
+    try:
+        if algo:
+            with open(os.path.join(base, 'comp_algorithm'), 'w') as f:
+                f.write(algo)
+        with open(os.path.join(base, 'disksize'), 'w') as f:
+            f.write(str(want))
+    except OSError as e:
+        log.append('zram: %s' % e)
+        return False
+    if run([sbin('mkswap'), '-q', '/dev/zram0'], 60)[0] != 0 or run([sbin('swapon'), '-p', str(ZRAM_PRIO), '/dev/zram0'], 60)[0] != 0:
+        log.append('zram: couldn\'t turn it on')
+        return False
+    return True
+
+
+def zram_off(log):
+    if any(sw['path'] == '/dev/zram0' for sw in swaps()):
+        z = zram_info() or {'orig': 0}
+        if z['orig'] > meminfo().get('MemAvailable', 0) * 0.5:
+            log.append('zram: holding too much to turn off now; off from the next restart')
+            return
+        run([sbin('swapoff'), '/dev/zram0'], 600)
+    try:
+        with open(os.path.join(SYS, 'block', 'zram0', 'reset'), 'w') as f:
+            f.write('1')
+    except OSError:
+        pass
+
+
+def swapfile_on(everyday, log):
+    """Your drive swap file in use (priority 10, after zram), never made here; off for everyday = hibernation only."""
+    active = {sw['path'] for sw in swaps()}
+    for p in (SWAPFILE,):
+        if not os.path.isfile(p):
+            continue
+        if everyday and p not in active:
+            if run([sbin('swapon'), '-p', str(SWAPFILE_PRIO), p], 60)[0] != 0:
+                log.append('swap file: couldn\'t turn %s on' % p)
+        elif not everyday and p in active:
+            if run([sbin('swapoff'), p], 900)[0] != 0:
+                log.append('swap file: couldn\'t stop using %s now' % p)
+
+
+def apply(s=None, mem=None):
+    """Everything in place from the settings (saved, or the --try ones). Returns what was done and what wasn't."""
+    mem = mem or meminfo().get('MemTotal', 0)
+    saved = load_settings() if s is None else s
+    cur = merged(saved, mem)
+    log = []
+    tests = test_files()
+    if tests.get('zram') and test_zram_active():
+        log.append('zram is set up by your hearth-zram-test.service: left as it is (Use Hearth\'s settings hands it over)')
+        zram_ok = any(sw['path'] == '/dev/zram0' for sw in swaps())
+    elif cur['zram'].get('on'):
+        zram_ok = zram_setup(cur['zram']['gb'], cur['zram'].get('algo', 'zstd'), log)
+    else:
+        zram_off(log)
+        zram_ok = False
+    swapfile_on(bool(cur['swapfile'].get('everyday', True)), log)
+    owners = sysctl_owners(skip=(TEST_SYSCTL,) if not tests.get('sysctl') else ())
+    want = wanted_vm(cur, mem, zram_ok or bool(cur['zram'].get('on')))
+    done = {}
+    for k, v in want.items():
+        if k in owners:
+            log.append('vm.%s is set by %s: yours wins' % (k, owners[k]))
+            continue
+        if write_vm(k, v):
+            done[k] = v
+    return {'ok': True, 'applied': done, 'notes': log}
+
+
+def migrate_once(mem):
+    """First start with 1.11: settings from your test files if you have them (exactly what they set), else nothing is
+    written (recommended values are used without a file, and Settings shows them as recommended)."""
+    if os.path.exists(SETTINGS) or os.path.exists(SETTINGS + '.bak'):
+        return False
+    s = from_test_files(mem)
+    if not s:
+        return False
+    s['_from'] = 'your test files (%s)' % ', '.join(sorted(test_files().values()))
+    sio = _settings_io()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    sio.write_json(SETTINGS, s)
+    return True
+
+
+def set_settings(changes, try_only=False):
+    mem = meminfo().get('MemTotal', 0)
+    clean = valid(changes, mem, free_on('/var'))
+    if try_only:
+        return dict(apply(merged_saved_with(clean), mem), tried=True)
+    sio = _settings_io()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+
+    def change(d):
+        for k, v in clean.items():
+            if isinstance(v, dict) and isinstance(d.get(k), dict) and k != 'keep':     # a new Keep choice replaces the old
+                d[k] = dict(d[k], **v)
+            else:
+                d[k] = v
+        d.pop('_from', None)
+        return d
+    if os.path.exists(SETTINGS) and not isinstance(sio.load_json(SETTINGS, None, repair=False), dict):
+        raise Fail('Your memory settings file could not be read; it was kept as it is and nothing was saved over it')
+    sio.update_json(SETTINGS, change)
+    return apply(None, mem)
+
+
+def merged_saved_with(clean):
+    saved = load_settings()
+    for k, v in clean.items():
+        saved[k] = dict(saved.get(k) or {}, **v) if isinstance(v, dict) and k != 'keep' else v
+    return saved
+
+
+def back_to_recommended():
+    mem = meminfo().get('MemTotal', 0)
+    sio = _settings_io()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    rec = recommended(mem)
+    sio.update_json(SETTINGS, lambda d: rec)
+    return apply(None, mem)
+
+
+def adopt():
+    """Your test files handed over: their values saved (merged over what you saved), then each kept as .bak."""
+    mem = meminfo().get('MemTotal', 0)
+    s = from_test_files(mem)
+    if s:
+        set_settings({k: v for k, v in s.items() if not k.startswith('_')})
+    moved = []
+    if os.path.exists(TEST_ZRAM):
+        run(['systemctl', 'disable', 'hearth-zram-test.service'], 30)
+        os.replace(TEST_ZRAM, TEST_ZRAM + '.bak')
+        moved.append(TEST_ZRAM)
+        run(['systemctl', 'daemon-reload'], 60)
+    if os.path.exists(TEST_SYSCTL):
+        os.replace(TEST_SYSCTL, TEST_SYSCTL + '.bak')
+        moved.append(TEST_SYSCTL)
+    r = apply(None, mem)
+    r['handedOver'] = moved
+    return r
+
+
+# ------------------------------------------------------------------ the drive swap file
+def swapfile_size(gb):
+    gb = int(gb)
+    if gb < 0 or gb > SWAPFILE_MAX_GB:
+        raise Fail('The swap file can be 0 to %d GB' % SWAPFILE_MAX_GB)
+    cur = os.path.getsize(SWAPFILE) if os.path.isfile(SWAPFILE) else 0
+    room = free_on('/var') + cur - KEEP_FREE_ON_C
+    if gb * GIB > room:
+        raise Fail('Not enough room: C: always keeps 20 GB free, so at most %d GB here' % max(0, room // GIB))
+    if os.path.isfile(SWAPFILE):
+        if any(sw['path'] == SWAPFILE for sw in swaps()) and run([sbin('swapoff'), SWAPFILE], 1800)[0] != 0:
+            raise Fail('Couldn\'t stop using the swap file to change it (memory is too full right now)')
+        os.remove(SWAPFILE)
+    fstab = read('/etc/fstab')
+    line = '%s none swap defaults,pri=%d,nofail 0 0' % (SWAPFILE, SWAPFILE_PRIO)
+    lines = [l for l in fstab.splitlines() if not l.split() or l.split()[0] != SWAPFILE]
+    if gb > 0:
+        os.makedirs(os.path.dirname(SWAPFILE), exist_ok=True)
+        code, out, err = run(['btrfs', 'filesystem', 'mkswapfile', '--size', '%dg' % gb, SWAPFILE], 1800) \
+            if run(['stat', '-f', '-c', '%T', os.path.dirname(SWAPFILE)], 10)[1].strip() == 'btrfs' else (1, '', 'not btrfs')
+        if code != 0:
+            for c in (['fallocate', '-l', '%dG' % gb, SWAPFILE], ['chmod', '600', SWAPFILE], [sbin('mkswap'), '-q', SWAPFILE]):
+                code, out, err = run(c, 1800)
+                if code != 0:
+                    if os.path.exists(SWAPFILE):
+                        os.remove(SWAPFILE)
+                    raise Fail('Couldn\'t make the swap file: ' + (err or out).strip()[-160:])
+        for c in (['restorecon', SWAPFILE], ['chcon', '-t', 'swapfile_t', SWAPFILE]):
+            run(c, 30)
+        run([sbin('swapon'), '-p', str(SWAPFILE_PRIO), SWAPFILE], 120)
+        lines.append(line)
+    sio = _settings_io()
+    sio.write_text('/etc/fstab', '\n'.join(lines).rstrip('\n') + '\n')
+    return {'ok': True, 'gb': gb}
+
+
+# ------------------------------------------------------------------ status
+def status():
+    mi = meminfo()
+    mem = mi.get('MemTotal', 0)
+    try:
+        saved, broken = load_settings(), False
+    except Fail:
+        saved, broken = {}, True
+    z = zram_info()
+    sw = swaps()
+    zsw = next((x for x in sw if x['path'] == '/dev/zram0'), None)
+    p = pressure()
+    owners = sysctl_owners(skip=())
+    last = []
+    for line in read(os.path.join(STATE, 'guard.log')).splitlines()[-5:]:
+        try:
+            last.append(json.loads(line))
+        except ValueError:
+            pass
+    return {
+        'memory': {'total': mem, 'inUse': in_use(mi), 'available': mi.get('MemAvailable', 0), 'free': mi.get('MemFree', 0),
+                   'cached': mi.get('Cached', 0) + mi.get('Buffers', 0), 'compressed': (z or {}).get('mem', 0)},
+        'zram': dict(z or {}, active=bool(zsw), used=(zsw or {}).get('used', 0),
+                     ratio=round(z['orig'] / z['compr'], 1) if z and z['compr'] else None) if z else None,
+        'swaps': sw, 'swapfile': {'path': SWAPFILE, 'exists': os.path.isfile(SWAPFILE),
+                                  'gb': round(os.path.getsize(SWAPFILE) / GIB) if os.path.isfile(SWAPFILE) else 0,
+                                  'hibernate': os.path.isfile(HIBERNATE_FILE)},
+        'vm': vm_now(), 'setBy': owners, 'pressure': dict(p, word=pressure_word(p)),
+        'settings': merged(saved, mem), 'saved': bool(saved) and not broken, 'broken': broken,
+        'from': saved.get('_from', ''), 'recommended': recommended(mem), 'limits': limits(mem, free_on('/var')),
+        'algos': kernel_algos(), 'testFiles': test_files(), 'neverLabels': NEVER_LABEL, 'lastClosed': last,
+    }
+
+
+# ------------------------------------------------------------------ the memory guard
+LEVELS = {  # when memory really runs out: available below avail% of RAM, swap almost full, and stalls for `hold` seconds
+    'gentle': {'avail': 0.02, 'swapfree': 0.05, 'psi': 20.0, 'hold': 5},
+    'strong': {'avail': 0.05, 'swapfree': 0.15, 'psi': 10.0, 'hold': 3},
+}
+
+
+def proc_list(root=None):
+    root = root or PROC
+    out = []
+    for d in os.listdir(root):
+        if not d.isdigit():
+            continue
+        st = read(os.path.join(root, d, 'status'))
+        if not st:
+            continue
+        f = {}
+        for line in st.splitlines():
+            k, _, v = line.partition(':')
+            f[k] = v.strip()
+        try:
+            uid = int(f.get('Uid', '0').split()[0])
+            ppid = int(f.get('PPid', '0'))
+        except ValueError:
+            continue
+        kb = lambda k: int((f.get(k) or '0 kB').split()[0]) * 1024
+        out.append({'pid': int(d), 'ppid': ppid, 'uid': uid, 'comm': f.get('Name', ''), 'rss': kb('VmRSS'), 'swap': kb('VmSwap'),
+                    'cgroup': read(os.path.join(root, d, 'cgroup')).strip().split('::')[-1]})
+    return out
+
+
+def is_game(p, root=None):
+    env = read(os.path.join(root or PROC, str(p['pid']), 'environ'))
+    return 'SteamAppId=' in env or 'STEAM_COMPAT_APP_ID=' in env or 'SteamGameId=' in env
+
+
+def protected_pids(procs, never, extra, root=None):
+    """Pids on the Never close list, and their children (an app's helpers and renderers)."""
+    names = set(extra or [])
+    for k in never or []:
+        names.update(NEVER_COMMS.get(k, []))
+    by_pid = {p['pid']: p for p in procs}
+    keep = set()
+    for p in procs:
+        if p['uid'] < 1000 or p['comm'] in names or ('game' in (never or []) and is_game(p, root)):
+            keep.add(p['pid'])
+        elif 'aicc' in (never or []) and 'hearth-ai-command-center' in read(os.path.join(root or PROC, str(p['pid']), 'cmdline')):
+            keep.add(p['pid'])
+    changed = True
+    while changed:
+        changed = False
+        for p in procs:
+            if p['pid'] not in keep and p['ppid'] in keep and by_pid.get(p['ppid'], {}).get('uid', 0) >= 1000:
+                keep.add(p['pid'])
+                changed = True
+    return keep
+
+
+def app_key(p):
+    """One app = its systemd scope (app-…scope) when it has one, else the process."""
+    m = re.search(r'/(app-[^/]+\.(?:scope|service))', p['cgroup'] or '')
+    return m.group(1) if m else 'pid-%d' % p['pid']
+
+
+def pick_victim(procs, keep):
+    groups = {}
+    for p in procs:
+        if p['uid'] < 1000 or p['pid'] in keep:
+            continue
+        g = groups.setdefault(app_key(p), {'pids': [], 'bytes': 0, 'names': {}, 'protected': False})
+        g['pids'].append(p['pid'])
+        g['bytes'] += p['rss'] + p['swap']
+        g['names'][p['comm']] = g['names'].get(p['comm'], 0) + p['rss'] + p['swap']
+    # an app scope with a protected process in it is kept whole
+    for p in procs:
+        if p['pid'] in keep and app_key(p) in groups:
+            groups[app_key(p)]['protected'] = True
+    cands = [(g['bytes'], k, g) for k, g in groups.items() if not g['protected'] and g['bytes'] > 64 * 1024 * 1024]
+    if not cands:
+        return None
+    cands.sort(key=lambda x: -x[0])
+    b, k, g = cands[0]
+    name = max(g['names'].items(), key=lambda x: x[1])[0]
+    return {'key': k, 'pids': g['pids'], 'bytes': b, 'name': name}
+
+
+def out_of_memory(mi, p, level):
+    L = LEVELS.get(level)
+    if not L:
+        return False
+    total = mi.get('MemTotal', 1)
+    swap_total = mi.get('SwapTotal', 0)
+    swap_free_ok = swap_total == 0 or mi.get('SwapFree', 0) < swap_total * L['swapfree']
+    return mi.get('MemAvailable', 0) < total * L['avail'] and swap_free_ok and p.get('full', 0) >= L['psi']
+
+
+def tell(text):
+    """A notification in the signed-in person's session (each local session)."""
+    code, out, _ = run(['loginctl', 'list-sessions', '--no-legend'], 10)
+    for line in out.splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[1].isdigit() and int(f[1]) >= 1000:
+            uid, user = int(f[1]), f[2]
+            env = ['env', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus' % uid, 'XDG_RUNTIME_DIR=/run/user/%d' % uid]
+            run(['runuser', '-u', user, '--'] + env + ['notify-send', '-a', 'Hearth', '-i', 'dialog-warning',
+                                                       'Memory ran out', text], 10)
+
+
+def guard():
+    """The loop: every second; settings read again every 30 s (yours change in Settings)."""
+    os.makedirs(STATE, exist_ok=True)
+    try:
+        with open(os.path.join(PROC, 'self', 'oom_score_adj'), 'w') as f:
+            f.write('-1000')
+    except OSError:
+        pass
+    cfg, cfg_at, since, protect_at = None, 0, None, 0
+    while True:
+        now = time.time()
+        if cfg is None or now - cfg_at > 30:
+            try:
+                cfg = merged(load_settings(), meminfo().get('MemTotal', 0))['guard']
+            except Fail:
+                cfg = recommended(meminfo().get('MemTotal', 0))['guard']
+            cfg_at = now
+        level = cfg.get('level', 'gentle')
+        if level == 'off':
+            time.sleep(5)
+            continue
+        if now - protect_at > 10:          # the kernel's own last resort spares the Never close list too
+            procs = proc_list()
+            for pid in protected_pids(procs, cfg.get('never'), cfg.get('extra')):
+                try:
+                    with open(os.path.join(PROC, str(pid), 'oom_score_adj'), 'w') as f:
+                        f.write('-900')
+                except OSError:
+                    pass
+            protect_at = now
+        mi, p = meminfo(), pressure()
+        if out_of_memory(mi, p, level):
+            since = since or now
+            if now - since >= LEVELS[level]['hold']:
+                procs = proc_list()
+                v = pick_victim(procs, protected_pids(procs, cfg.get('never'), cfg.get('extra')))
+                if v:
+                    for pid in v['pids']:
+                        try:
+                            os.kill(pid, signal.SIGTERM)
+                        except OSError:
+                            pass
+                    time.sleep(5)
+                    for pid in v['pids']:
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except OSError:
+                            pass
+                    rec = {'at': int(now), 'name': v['name'], 'mb': v['bytes'] // (1024 * 1024)}
+                    with open(os.path.join(STATE, 'guard.log'), 'a') as f:
+                        f.write(json.dumps(rec) + '\n')
+                    tell('%s was closed: it was using %.1f GB and memory was full. You can open it again.' % (v['name'], v['bytes'] / GIB))
+                since = None
+                time.sleep(10)
+                continue
+        else:
+            since = None
+        time.sleep(1)
+
+
+# ------------------------------------------------------------------ main
+def out(obj):
+    print(json.dumps(obj))
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        if a == ['status']:
+            out(status())
+        elif a == ['apply']:
+            mem = meminfo().get('MemTotal', 0)
+            try:
+                migrate_once(mem)
+            except (OSError, ValueError) as e:
+                print('hearth-memory: migration skipped (%s)' % e, file=sys.stderr)
+            out(apply(None, mem))
+        elif a and a[0] == 'set' and len(a) <= 3:
+            rest = a[1:]
+            try_only = '--try' in rest
+            rest = [x for x in rest if x != '--try']
+            if len(rest) > 1:
+                raise Fail('set takes one JSON')
+            # The JSON as an argument (pkexec passes no environment), else HEARTH_INPUT or stdin.
+            changes = json.loads(rest[0] if rest else (os.environ.get('HEARTH_INPUT') or sys.stdin.read() or '{}'))
+            if not isinstance(changes, dict):
+                raise Fail('nothing to set')
+            out(set_settings(changes, try_only=try_only))
+        elif a == ['recommended']:
+            out(back_to_recommended())
+        elif len(a) == 2 and a[0] == 'swapfile':
+            out(swapfile_size(a[1]))
+        elif len(a) == 3 and a[0] == 'never' and a[2] in ('on', 'off'):
+            if not re.match(r'^[\w.+-]{1,64}$', a[1]):
+                raise Fail('not a program name: ' + a[1])
+            mem = meminfo().get('MemTotal', 0)
+            extra = list(merged(load_settings(), mem)['guard'].get('extra') or [])
+            if a[2] == 'on' and a[1] not in extra:
+                extra.append(a[1])
+            if a[2] == 'off':
+                extra = [x for x in extra if x != a[1]]
+            r = set_settings({'guard': {'extra': extra}})
+            r['never'] = extra
+            out(r)
+        elif a == ['adopt']:
+            out(adopt())
+        elif a == ['guard']:
+            guard()
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    except (ValueError, TypeError) as e:
+        print('error: %s' % e)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
