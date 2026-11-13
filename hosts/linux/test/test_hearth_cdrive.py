@@ -457,7 +457,7 @@ class Qml(unittest.TestCase):
         s = (SHELL / 'SetDrives.qml').read_text()
         reg = (SHELL / 'settings-pages.js').read_text()
         self.assertIn('{ id: "drives", file: "SetDrives.qml", cat: "system", label: "Drives & folders"', reg)
-        for needle in ('Show Hearth (C:) with Windows folder names', 'Show the Linux folders too', 'The address bar shows', 'Copy path gives',
+        for needle in ('Show Hearth (C:) with Windows folder names', 'Show system folders', 'The address bar shows', 'Copy path gives',
                        '"Always C:"', 'value: "Change letter…"', '"letter-set"'):
             self.assertIn(needle, s)
         # Opening it reads only; save() writes one key, only from a switch or a choice, only when it changed.

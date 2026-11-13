@@ -19,6 +19,7 @@ SetPage {
     property bool linuxFolders: false
     property string addressBar: "windows"
     property string copyPath: "windows"
+    property bool terminalWindows: true
     property bool loaded: false
     property var drives: []
     property var taken: ({})
@@ -33,6 +34,7 @@ SetPage {
             page.linuxFolders = r.linuxFolders === true;
             page.addressBar = r.addressBar === "linux" ? "linux" : "windows";
             page.copyPath = r.copyPath === "linux" ? "linux" : "windows";
+            page.terminalWindows = r.terminalWindows !== false;
             page.loaded = true;
         }, e => SettingsNav.toast(e));
         loadDrives();
@@ -86,8 +88,8 @@ SetPage {
             onToggled: v => page.save("cdrive", v)
         }
         SetSwitch {
-            icon: "folder"; title: "Show the Linux folders too"
-            sub: "etc, usr, var and the rest, under their own heading on Hearth (C:)"
+            icon: "folder"; title: "Show system folders"
+            sub: "/usr, /etc and the other Linux folders in Files and every app's Open and Save window (hidden by default, like macOS)"
             checked: page.linuxFolders
             enabled: page.cdrive
             opacity: page.cdrive ? 1 : 0.5
@@ -101,6 +103,16 @@ SetPage {
             enabled: page.cdrive
             opacity: page.cdrive ? 1 : 0.5
             onChosen: v => page.save("addressBar", v)
+        }
+        SetRow {
+            icon: "window"; title: "Apps you install"; chip: "on"
+            sub: "Apps from apt or Flatpak use Hearth's Open and Save window, with Hearth (C:). Text an app draws itself keeps its own paths."
+        }
+        SetSwitch {
+            icon: "kbd"; title: "Terminal speaks C:\\"
+            sub: "dir, copy, del, cd C:\\Users… in every terminal (Linux commands still work). Applies to new terminal windows"
+            checked: page.terminalWindows
+            onToggled: v => page.save("terminalWindows", v)
         }
         SetChoice {
             icon: "link"; title: "Copy path gives"
