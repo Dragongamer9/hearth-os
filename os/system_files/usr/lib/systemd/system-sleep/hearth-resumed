@@ -19,6 +19,9 @@ case "$1" in
     # its count back to 0, so hibernations never send the next real start to the previous version.
     case "$2" in
       hibernate|hybrid-sleep|suspend-then-hibernate)
+        # Proof that hibernation works on this PC (1.11): the low-battery watch (BatteryWatch.qml) only hibernates
+        # where a hibernation has come back before; elsewhere it shuts down cleanly instead.
+        mkdir -p /var/lib/hearth 2>/dev/null && date -Is > /var/lib/hearth/hibernate-proven 2>/dev/null && chmod 644 /var/lib/hearth/hibernate-proven 2>/dev/null
         [ -x /usr/libexec/nimbus/hearth-boot-guard ] && timeout 20 /usr/libexec/nimbus/hearth-boot-guard resumed 2>&1 | logger -t hearth-boot-guard 2>/dev/null || true
         ;;
     esac

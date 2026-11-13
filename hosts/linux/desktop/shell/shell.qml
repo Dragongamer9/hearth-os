@@ -253,6 +253,7 @@ ShellRoot {
     // 1.11: the shell watches its own memory and CPU (hearth-shell-health) and refreshes itself only while nobody is
     // looking and none of its own windows (Settings, Task Manager, Files) is open.
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
+    Loader { source: "BatteryWatch.qml" }      // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {

@@ -1700,6 +1700,17 @@ systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 # from /etc/hearth/memory.json (recommended values without one), and the memory guard. Neither holds the start up.
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset
 systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service
+# Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts the PC down cleanly (no lost files from a
+# battery that just dies). Hearth's BatteryWatch.qml says so at 10%, 5% and 3%, and hibernates instead where a
+# hibernation has come back before on this PC (/var/lib/hearth/hibernate-proven).
+if [ -f /etc/UPower/UPower.conf ]; then
+  sed -i -E 's/^#?\s*UsePercentageForPolicy=.*/UsePercentageForPolicy=true/; s/^#?\s*PercentageLow=.*/PercentageLow=10.0/;
+    s/^#?\s*PercentageCritical=.*/PercentageCritical=5.0/; s/^#?\s*PercentageAction=.*/PercentageAction=2.0/;
+    s/^#?\s*CriticalPowerAction=.*/CriticalPowerAction=PowerOff/' /etc/UPower/UPower.conf
+  grep -E '^(UsePercentageForPolicy|PercentageLow|PercentageCritical|PercentageAction|CriticalPowerAction)=' /etc/UPower/UPower.conf
+else
+  echo "warning: no /etc/UPower/UPower.conf: UPower keeps its own low-battery levels"
+fi
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
 # packages you added put back after an update, a safe start if your changes stop Hearth from starting.
