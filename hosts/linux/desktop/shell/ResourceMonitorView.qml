@@ -269,6 +269,14 @@ FocusScope {
     property int listIndex: 0
     // Processor tab: the selected program's open files (1.11, mockup resmon-2; hearth-resmon files PID…).
     property var openFiles: []
+    // Network tab: listening ports and open connections (1.11, mockup resmon-5; hearth-resmon ports), every 3 s.
+    property var netPorts: ({ listening: [], connections: [] })
+    Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: v.tab === "network" && v.visible; onTriggered: if (!portsProc.running) portsProc.running = true }
+    Process {
+        id: portsProc
+        command: ["python3", v.helper, "ports"]
+        stdout: StdioCollector { onStreamFinished: { try { v.netPorts = JSON.parse(text.trim().split("\n").pop()); } catch (e) {} } }
+    }
     onSelRowChanged: if (tab === "cpu" && selRow && selRow.g && selRow.g.pids && !filesProc.running) { filesProc.command = ["python3", v.helper, "files"].concat(selRow.g.pids.slice(0, 64).map(String)); filesProc.running = true; }
     Process {
         id: filesProc
@@ -879,6 +887,40 @@ FocusScope {
                             }
                         }
                     }
+                    // Network: listening ports and connections (1.11)
+                    Repeater {
+                        model: v.tab === "network" ? [["listening", "Listening ports", ["Program", "PID", "Port", "Open to"]], ["connections", "Connections (TCP)", ["Program", "PID", "Talking to", "Port"]]] : []
+                        delegate: Rectangle {
+                            id: npBox
+                            required property var modelData
+                            readonly property var rows: (v.netPorts[modelData[0]] || [])
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.min(220, 60 + Math.max(1, rows.length) * 24)
+                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                            Rectangle {
+                                id: npHead; width: parent.width; height: 34; color: v.c.head
+                                Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: npBox.modelData[1] + " (" + npBox.rows.length + ")"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            }
+                            Row {
+                                id: npCols; anchors.top: npHead.bottom; x: 12; height: 24
+                                Repeater { model: npBox.modelData[2]; delegate: Text { required property var modelData; required property int index; width: [220, 80, 260, 200][index]; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
+                            }
+                            ListView {
+                                anchors { left: parent.left; right: parent.right; top: npCols.bottom; bottom: parent.bottom; leftMargin: 12 }
+                                clip: true; boundsBehavior: Flickable.StopAtBounds
+                                model: npBox.rows
+                                delegate: Row {
+                                    required property var modelData
+                                    height: 24
+                                    Text { width: 220; text: modelData.name; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 80; text: modelData.pid ? String(modelData.pid) : "–"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 260; text: npBox.modelData[0] === "listening" ? String(modelData.port) : modelData.remote; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 200; text: npBox.modelData[0] === "listening" ? modelData.openTo : String(modelData.port); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                            }
+                        }
+                    }
+
                     // Processor: the selected program's open files (1.11)
                     Rectangle {
                         visible: v.tab === "cpu" && v.openFiles.length > 0
