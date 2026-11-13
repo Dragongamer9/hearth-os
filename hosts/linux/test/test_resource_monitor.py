@@ -332,7 +332,7 @@ class Sampler(unittest.TestCase):
         self.assertEqual((smi['busy'], smi['watts'], smi['wattsMax'], smi['mhz'], smi['fan'], smi['linkGen'], smi['pci']), (72, 168.2, 250, 2610, 48, 5, '0000:01:00.0'))
 
     def test_memory_bar_adds_up(self):
-        mi = {'MemTotal': 32 * 2 ** 30, 'MemFree': 6 * 2 ** 30, 'MemAvailable': 20 * 2 ** 30, 'Dirty': 2 ** 28, 'Writeback': 0}
+        mi = {'MemTotal': 32 * 2 ** 30, 'MemFree': 6 * 2 ** 30, 'MemAvailable': 20 * 2 ** 30, 'Cached': 14 * 2 ** 30, 'Dirty': 2 ** 28, 'Writeback': 0}
         b = rm.meminfo_breakdown(mi, 32 * 2 ** 30 + 2 ** 29)
         self.assertEqual(b['reserved'], 2 ** 29)
         self.assertEqual(b['inUse'], 12 * 2 ** 30)

@@ -60,8 +60,8 @@ class World:
               'flags\t: fpu vmx sse\n\nprocessor\t: 1\nmodel name\t: Intel(R) Core(TM) i3-N305\nphysical id\t: 0\ncore id\t: 1\nflags\t: fpu vmx\n')
         write(os.path.join(self.proc, 'loadavg'), '0.10 0.20 0.30 2/345 999\n')
         write(os.path.join(self.proc, 'uptime'), '3661.5 100.0\n')
-        write(os.path.join(self.proc, 'meminfo'), 'MemTotal: 8000000 kB\nMemFree: 1000000 kB\nMemAvailable: 6000000 kB\nBuffers: 100 kB\n'
-              'Cached: 2000000 kB\nSReclaimable: 0 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\nCommitted_AS: 3000000 kB\nCommitLimit: 4000000 kB\n')
+        write(os.path.join(self.proc, 'meminfo'), 'MemTotal: 8000000 kB\nMemFree: 1000000 kB\nMemAvailable: 6000000 kB\nBuffers: 0 kB\n'
+              'Cached: 5000000 kB\nSReclaimable: 0 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\nCommitted_AS: 3000000 kB\nCommitLimit: 4000000 kB\n')
         # an Intel graphics chip (busy from its idle residency), an NVMe disk with / on it, a Wi-Fi adapter
         card = os.path.join(self.sys, 'class/drm/card0')
         write(os.path.join(card, 'device/vendor'), '0x8086\n')

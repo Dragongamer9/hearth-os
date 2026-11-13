@@ -942,6 +942,8 @@ FocusScope {
             buttons: [{ id: "run", label: "Run new task", icon: "plus", primary: true }, { id: "resmon", label: "Open Resource Monitor", icon: "cpu" }]
             onButton: id => { if (id === "run") v.askRun(); else if (id === "resmon") Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "resmon", "open"]); }
             readonly property var s: v.sample
+            property string memTab: "overview"
+            readonly property bool memSettings: !!dev && dev.kind === "memory" && memTab === "settings"
             readonly property var devices: {
                 const d = [];
                 if (!s) return d;
@@ -1053,8 +1055,30 @@ FocusScope {
                                 color: Theme.text; font.family: Theme.font; font.pixelSize: 15
                             }
                         }
+                        // Memory: Overview | Swap & settings (1.11, the approved mockup; MemorySettings.qml)
+                        Row {
+                            visible: !!pf.dev && pf.dev.kind === "memory"
+                            spacing: 6
+                            Repeater {
+                                model: [["overview", "Overview"], ["settings", "Swap & settings"]]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    readonly property bool on: pf.memTab === modelData[0]
+                                    width: mt.implicitWidth + 26; height: 32; radius: Theme.r(8)
+                                    color: on ? Theme.panel2 : mtm.containsMouse ? Theme.panel3 : "transparent"
+                                    border.color: on ? Theme.line : "transparent"
+                                    Text { id: mt; anchors.centerIn: parent; text: parent.modelData[1]; color: parent.on ? Theme.text : Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
+                                    MouseArea { id: mtm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pf.memTab = parent.modelData[0] }
+                                }
+                            }
+                        }
+                        MemorySettings {
+                            visible: pf.memSettings
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                        }
                         RowLayout {
-                            visible: !!pf.dev
+                            visible: !!pf.dev && !pf.memSettings
                             Layout.fillWidth: true
                             Text {
                                 text: !pf.dev ? "" : pf.dev.kind === "memory" ? "Memory usage" : pf.dev.kind === "disk" ? "Active time" : pf.dev.kind === "net" ? "Throughput" : pf.dev.kind === "battery" ? "Charge" : "% Utilization"
@@ -1065,7 +1089,7 @@ FocusScope {
                         }
                         Graph {
                             id: big
-                            visible: !!pf.dev
+                            visible: !!pf.dev && !pf.memSettings
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(160, Math.min(330, detail.height * 0.45))
                             values: pf.dev ? (v.hist[pf.dev.key] || []) : []
@@ -1076,7 +1100,7 @@ FocusScope {
                             framed: true
                         }
                         RowLayout {
-                            visible: !!pf.dev
+                            visible: !!pf.dev && !pf.memSettings
                             Layout.fillWidth: true
                             Text { text: "60 seconds"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
                             Item { Layout.fillWidth: true }
@@ -1084,7 +1108,7 @@ FocusScope {
                         }
                         // the classic numbers
                         RowLayout {
-                            visible: !!pf.dev
+                            visible: !!pf.dev && !pf.memSettings
                             Layout.fillWidth: true
                             Layout.topMargin: 8
                             spacing: 24
@@ -1121,7 +1145,7 @@ FocusScope {
                         }
                         // CPU: each core, and the sensors (temperatures, fans) Task Manager has always shown
                         Flow {
-                            visible: !!pf.dev && pf.dev.kind === "cpu" && pf.s.cpu.cores.length > 1
+                            visible: !!pf.dev && !pf.memSettings && pf.dev.kind === "cpu" && pf.s.cpu.cores.length > 1
                             Layout.fillWidth: true
                             Layout.topMargin: 10
                             spacing: 4
@@ -1142,7 +1166,7 @@ FocusScope {
                             }
                         }
                         Text {
-                            visible: !!pf.dev && pf.dev.kind === "cpu" && !!pf.s.sensors && (pf.s.sensors.temps.length > 0 || pf.s.sensors.fans.length > 0)
+                            visible: !!pf.dev && !pf.memSettings && pf.dev.kind === "cpu" && !!pf.s.sensors && (pf.s.sensors.temps.length > 0 || pf.s.sensors.fans.length > 0)
                             Layout.fillWidth: true
                             Layout.topMargin: 8
                             wrapMode: Text.WordWrap

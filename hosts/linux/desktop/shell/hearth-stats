@@ -53,10 +53,13 @@ def memory(meminfo_text):
         m = re.match(r'(\w+):\s+(\d+)', line)
         if m:
             kb[m.group(1)] = int(m.group(2))
-    if 'MemTotal' not in kb or 'MemAvailable' not in kb:
+    if 'MemTotal' not in kb or 'MemFree' not in kb:
         return None
     gb = 1024.0 * 1024.0
-    return round((kb['MemTotal'] - kb['MemAvailable']) / gb, 1), round(kb['MemTotal'] / gb, 1)
+    # In use as Windows counts it: total − free − cache (1.11; total − MemAvailable read 100% with gigabytes free).
+    cache = kb.get('Cached', 0) + kb.get('Buffers', 0) + kb.get('SReclaimable', 0) - kb.get('Shmem', 0)
+    used = max(0, kb['MemTotal'] - kb['MemFree'] - max(0, cache))
+    return round(used / gb, 1), round(kb['MemTotal'] / gb, 1)
 
 
 def gpu_busy(root='/sys/class/drm'):

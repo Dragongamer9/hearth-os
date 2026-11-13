@@ -294,10 +294,11 @@ def meminfo_breakdown(mi, installed=None):
     """The Memory view's bar from /proc/meminfo (bytes): reserved, in use, being saved, cache, free. They add up to
     what's installed (or to MemTotal when that isn't known)."""
     total = mi.get('MemTotal', 0)
-    avail = mi.get('MemAvailable', mi.get('MemFree', 0))
-    free = min(mi.get('MemFree', 0), avail)
-    in_use = max(0, total - avail)
-    cache = max(0, avail - free)
+    # In use as Windows counts it: total − free − cache (not − MemAvailable, which also takes off the kernel's
+    # reserve: "0 free" with Keep memory free set high). 1.11.
+    free = mi.get('MemFree', 0)
+    cache = max(0, mi.get('Cached', 0) + mi.get('Buffers', 0) + mi.get('SReclaimable', 0) - mi.get('Shmem', 0))
+    in_use = max(0, total - free - cache)
     saving = min(cache, mi.get('Dirty', 0) + mi.get('Writeback', 0))
     reserved = max(0, (installed or total) - total)
     return {'installed': installed or total, 'total': total, 'reserved': reserved, 'inUse': in_use, 'saving': saving,

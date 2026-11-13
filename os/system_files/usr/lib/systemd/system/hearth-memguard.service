@@ -1,0 +1,18 @@
+# The memory guard (hearth-memory guard): when memory really runs out, it closes the one program eating the most
+# (never one on your Never close list: the desktop, Steam, the game you're playing, the AI Command Center) and tells
+# you which, instead of the whole PC freezing. Settings: Task Manager › Memory › Swap & settings (Off, Gentle, Strong).
+# Never holds anything up: nothing is ordered after it.
+[Unit]
+Description=Hearth: memory guard (closes the biggest program when memory runs out)
+After=hearth-memory.service
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-memory guard
+Restart=on-failure
+RestartSec=10
+OOMScoreAdjust=-1000
+MemoryMax=96M
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
