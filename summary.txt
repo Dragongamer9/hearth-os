@@ -1,0 +1,4 @@
+boot the USB: root=live:CDLABEL=Hearth-Install rd.live.image enforcing=0 quiet rhgb console=ttyS0,115200 console=tty0 plymouth.ignore-serial-consoles hearth.ci
+install: done in 349 s
+boot the installed system
+installed system: started (login prompt on the serial console)
