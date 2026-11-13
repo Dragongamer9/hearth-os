@@ -653,9 +653,28 @@ def system_upgrade(stage):
             rpm_ostree_upgrade(stage)
 
 
+UPDATE_ROOM = 5 * 1000 ** 3     # what a system update needs free on Hearth's drive (the new version's layers)
+
+
+def update_room(path='/sysroot'):
+    """Free bytes where the new version goes (/sysroot, else /), or None if that can't be read."""
+    for p in (path, '/'):
+        try:
+            st = os.statvfs(p)
+            return st.f_bavail * st.f_frsize
+        except OSError:
+            continue
+    return None
+
+
 def update():
     stage = Stage()
     progress(0, 'Starting')
+    # 1.11: a drive filled up by an update can leave the PC unable to start properly. Stop before downloading.
+    room = update_room()
+    if room is not None and room < UPDATE_ROOM:
+        fail('not enough free space to update safely: %.1f GB free on the drive Hearth OS starts from, about %d GB '
+             'needed. Free up some space (Settings › Storage can clean up) and try again.' % (room / 1e9, UPDATE_ROOM // 10 ** 9))
     print('log: Downloading the system update…', flush=True)
     ensure_podman()
     # Hearth Storage's mirror entry: only while this device updates from a server; an update that fails through it

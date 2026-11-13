@@ -151,6 +151,8 @@ boot secureboot no secure
 fedora_loader() {
   sudo mkdir -p "$M/t/boot"; sudo mount --bind "$M/b" "$M/t/boot"; sudo mkdir -p "$M/t/boot/efi"; sudo mount "${LOOP}p1" "$M/t/boot/efi"
   sudo sh -c "rm -rf $M/t/boot/efi/EFI/*"
+  # A PC switched from the Fedora edition has Fedora's bootupd record, not Debian's: bootupd won't install over one.
+  sudo rm -f "$M/b/bootupd-state.json"
   sudo podman run --rm --privileged -v /dev:/dev -v "$M/t:/target" --security-opt label=disable quay.io/fedora/fedora-bootc:43 \
     bootupctl backend install --src-root / --device "$LOOP" --with-static-configs --write-uuid /target > "$OUT/fedora-loader.log" 2>&1 \
     || ann error "couldn't put Fedora's boot loader on: $(tail -5 "$OUT/fedora-loader.log")"
