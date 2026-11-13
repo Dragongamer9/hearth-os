@@ -79,7 +79,7 @@ class Parsing(unittest.TestCase):
 
     def test_status(self):
         s = ht.parse_status(status_text(1000, anon_kb=10, shmem_kb=2))
-        self.assertEqual(s, {'uid': 1000, 'mem': 12 * 1024, 'kthread': False})
+        self.assertEqual(s, {'uid': 1000, 'mem': 12 * 1024, 'swap': 0, 'kthread': False})
 
     def test_cpu_stat_and_busy(self):
         a = ht.parse_cpu_stat('cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 50 0 50 350 50 0 0 0 0 0\nintr 1 2\n')
@@ -459,6 +459,26 @@ class AutostartRun(unittest.TestCase):
         self.assertIn(['discord'], calls)
         self.assertIn(['sh', '-c', 'sleep "$0"; exec "$@"', '3', 'syncthing'], calls)
 
+
+
+class NewActions(unittest.TestCase):
+    """1.11: Task Manager's new right-click items (End process tree, Set priority, Run on these cores, Limit)."""
+
+    def test_parse_cpus(self):
+        self.assertEqual(ht.parse_cpus('0-3,6', 8), [0, 1, 2, 3, 6])
+        self.assertEqual(ht.parse_cpus(' 4-7 ', 8), [4, 5, 6, 7])
+        for bad in ('', '8', '3-1', 'a', '0-9'):
+            with self.assertRaises(ht.Fail):
+                ht.parse_cpus(bad, 8)
+
+    def test_swap_per_process(self):
+        s = ht.parse_status('Uid:\t1000\t1000\t1000\t1000\nRssAnon:\t 100 kB\nVmSwap:\t 2048 kB\n')
+        self.assertEqual(s['swap'], 2048 * 1024)
+
+    def test_priority_names(self):
+        self.assertEqual(ht.PRIORITY, {'normal': 0, 'below': 10, 'low': 19})
+        with self.assertRaises(ht.Fail):
+            ht.set_priority(os.getpid(), 'realtime')
 
 if __name__ == '__main__':
     unittest.main()
