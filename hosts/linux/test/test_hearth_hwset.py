@@ -67,5 +67,21 @@ class Hw(unittest.TestCase):
         self.assertEqual(hw.apply(), {'ok': True, 'applied': {}})
 
 
+
+class Drives(unittest.TestCase):
+    def test_kinds(self):
+        d = tempfile.mkdtemp()
+        try:
+            for name, rot, disc in (('nvme0n1', '0', '2199023255040'), ('sda', '1', '0'), ('loop0', '0', '0')):
+                put(d, 'block/%s/queue/rotational' % name, rot)
+                put(d, 'block/%s/queue/discard_max_bytes' % name, disc)
+                put(d, 'block/%s/device/model' % name, 'X')
+            with mock.patch.object(hw, 'SYS', d), mock.patch.object(hw, '_timer_times', return_value={'UnitFileState': 'enabled'}):
+                r = hw.drives()
+            self.assertEqual([(x['name'], x['kind'], x['trim']) for x in r['drives']], [('nvme0n1', 'NVMe', True), ('sda', 'Hard drive', False)])
+            self.assertTrue(r['timer']['on'])
+        finally:
+            shutil.rmtree(d)
+
 if __name__ == '__main__':
     unittest.main()
