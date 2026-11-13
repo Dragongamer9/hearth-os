@@ -14,6 +14,8 @@ so a full RAM slows the PC down instead of freezing it. 1.11 (the owner's approv
   hearth-memory adopt             your test files (/etc/sysctl.d/99-hearth-memory-test.conf, hearth-zram-test.service)
                                   handed over: their values saved as your settings first, then the files kept as .bak
                                   and the test service turned off, so nothing you set changes
+  hearth-memory never NAME on|off  one program (its process name) on or off your Never close list (Task Manager's
+                                  right-click "Never close when memory runs out")
   hearth-memory guard             the memory guard (hearth-memguard.service): when memory really runs out, it closes
                                   the one program eating it (never one on your Never close list) and tells you which
 
@@ -836,6 +838,18 @@ def main(argv):
             out(back_to_recommended())
         elif len(a) == 2 and a[0] == 'swapfile':
             out(swapfile_size(a[1]))
+        elif len(a) == 3 and a[0] == 'never' and a[2] in ('on', 'off'):
+            if not re.match(r'^[\w.+-]{1,64}$', a[1]):
+                raise Fail('not a program name: ' + a[1])
+            mem = meminfo().get('MemTotal', 0)
+            extra = list(merged(load_settings(), mem)['guard'].get('extra') or [])
+            if a[2] == 'on' and a[1] not in extra:
+                extra.append(a[1])
+            if a[2] == 'off':
+                extra = [x for x in extra if x != a[1]]
+            r = set_settings({'guard': {'extra': extra}})
+            r['never'] = extra
+            out(r)
         elif a == ['adopt']:
             out(adopt())
         elif a == ['guard']:

@@ -21,7 +21,7 @@ Scope {
     property bool shown: false
     property string page: "processes"
     property string perfDevice: "cpu"
-    readonly property var pageIds: ["processes", "performance", "startup", "details", "services", "settings"]
+    readonly property var pageIds: ["processes", "performance", "startup", "details", "services", "tasks", "users", "settings"]
     readonly property var aliases: ({ apps: "processes", perf: "performance", tasks: "processes", startups: "startup" })
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-tasks").toString().replace(/^file:\/\//, ""))
 

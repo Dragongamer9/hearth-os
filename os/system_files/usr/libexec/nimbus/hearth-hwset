@@ -1,0 +1,194 @@
+#!/usr/bin/python3
+"""hearth-hwset: the hardware settings in Task Manager › Performance (1.11): the processor's turbo boost and top speed,
+and the battery's charge limit. Saved in /etc/hearth/hardware.json (the only place they live; written only when you
+change one) and put back at every start by hearth-hwset.service, which nothing waits for.
+
+  hearth-hwset status             JSON: what this PC offers, what's set, temperatures and throttling. Works without root
+  hearth-hwset set KEY VALUE      cpu.turbo on|off · cpu.maxPct 30-100 · battery.limit 50-100 (100 = no limit). Root
+  hearth-hwset apply              your saved values onto the hardware (the service runs this)
+"""
+import glob
+import json
+import os
+import re
+import sys
+
+SETTINGS = os.environ.get('HEARTH_HWSET_SETTINGS', '/etc/hearth/hardware.json')
+SYS = os.environ.get('HEARTH_SYS', '/sys')
+
+
+class Fail(Exception):
+    pass
+
+
+def _sio():
+    for d in (os.path.join(os.environ.get('NIMBUS_SHARE') or '/usr/share/nimbus', 'desktop', 'shell'),
+              os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', '..', 'hosts', 'linux', 'desktop', 'shell')):
+        if os.path.isfile(os.path.join(d, 'hearth_settings_io.py')):
+            sys.path.insert(0, d)
+            break
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+def read(p, d=''):
+    try:
+        with open(p) as f:
+            return f.read().strip()
+    except OSError:
+        return d
+
+
+def write(p, v):
+    try:
+        with open(p, 'w') as f:
+            f.write(str(v))
+        return True
+    except OSError:
+        return False
+
+
+def turbo_file():
+    """(path, on_value): intel_pstate's no_turbo (1 = off) or cpufreq's boost (1 = on)."""
+    p = os.path.join(SYS, 'devices/system/cpu/intel_pstate/no_turbo')
+    if os.path.exists(p):
+        return p, '0'
+    p = os.path.join(SYS, 'devices/system/cpu/cpufreq/boost')
+    if os.path.exists(p):
+        return p, '1'
+    return None, None
+
+
+def batteries():
+    return sorted(d for d in glob.glob(os.path.join(SYS, 'class/power_supply/*')) if read(os.path.join(d, 'type')) == 'Battery'
+                  and read(os.path.join(d, 'scope')) != 'Device')
+
+
+def throttles():
+    n = 0
+    for f in glob.glob(os.path.join(SYS, 'devices/system/cpu/cpu*/thermal_throttle/core_throttle_count')):
+        v = read(f)
+        n += int(v) if v.isdigit() else 0
+    return n
+
+
+def status():
+    tf, on = turbo_file()
+    pstate = os.path.exists(os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct'))
+    cpufreq = sorted(glob.glob(os.path.join(SYS, 'devices/system/cpu/cpu[0-9]*/cpufreq')))
+    bats = []
+    for b in batteries():
+        full = int(read(os.path.join(b, 'energy_full'), read(os.path.join(b, 'charge_full'), '0')) or 0)
+        design = int(read(os.path.join(b, 'energy_full_design'), read(os.path.join(b, 'charge_full_design'), '0')) or 0)
+        lim = os.path.join(b, 'charge_control_end_threshold')
+        bats.append({'name': os.path.basename(b), 'health': round(100.0 * full / design) if design else None,
+                     'cycles': int(read(os.path.join(b, 'cycle_count'), '0') or 0) or None,
+                     'capacity': int(read(os.path.join(b, 'capacity'), '0') or 0), 'status': read(os.path.join(b, 'status')),
+                     'limit': int(read(lim)) if read(lim).isdigit() else None, 'canLimit': os.path.exists(lim),
+                     'model': read(os.path.join(b, 'model_name')), 'tech': read(os.path.join(b, 'technology'))})
+    saved = {}
+    if os.path.exists(SETTINGS):
+        saved = _sio().load_json(SETTINGS, {}, repair=False) or {}
+    return {'turbo': {'can': bool(tf), 'on': read(tf) == on if tf else None},
+            'maxPct': {'can': pstate or bool(cpufreq), 'value': int(read(os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct'), '100') or 100) if pstate else saved.get('cpu.maxPct', 100)},
+            'throttled': throttles(), 'batteries': bats, 'saved': saved}
+
+
+def set_max_pct(pct):
+    p = os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct')
+    if os.path.exists(p):
+        return write(p, pct)
+    ok = False
+    for d in glob.glob(os.path.join(SYS, 'devices/system/cpu/cpu[0-9]*/cpufreq')):
+        lo, hi = read(os.path.join(d, 'cpuinfo_min_freq')), read(os.path.join(d, 'cpuinfo_max_freq'))
+        if lo.isdigit() and hi.isdigit():
+            ok = write(os.path.join(d, 'scaling_max_freq'), int(int(lo) + (int(hi) - int(lo)) * pct / 100)) or ok
+    return ok
+
+
+def put(key, value):
+    if key == 'cpu.turbo':
+        tf, on = turbo_file()
+        if not tf:
+            raise Fail('this processor has no turbo switch')
+        if not write(tf, on if value else ('1' if on == '0' else '0')):
+            raise Fail("couldn't change turbo boost")
+    elif key == 'cpu.maxPct':
+        if not set_max_pct(value):
+            raise Fail("couldn't change the top speed")
+    elif key == 'battery.limit':
+        done = False
+        for b in batteries():
+            p = os.path.join(b, 'charge_control_end_threshold')
+            if os.path.exists(p):
+                done = write(p, value) or done
+        if not done:
+            raise Fail("this battery can't be told to stop charging early")
+
+
+def parse(key, raw):
+    if key == 'cpu.turbo':
+        if raw not in ('on', 'off'):
+            raise Fail('turbo: on or off')
+        return raw == 'on'
+    if key in ('cpu.maxPct', 'battery.limit'):
+        if not raw.isdigit():
+            raise Fail('a number, please')
+        v = int(raw)
+        lo = 30 if key == 'cpu.maxPct' else 50
+        if not lo <= v <= 100:
+            raise Fail('%s: %d to 100' % (key, lo))
+        return v
+    raise Fail('unknown setting ' + key)
+
+
+def set_one(key, raw):
+    v = parse(key, raw)
+    put(key, v)
+    sio = _sio()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    if os.path.exists(SETTINGS) and not isinstance(sio.load_json(SETTINGS, None, repair=False), dict):
+        raise Fail('the hardware settings file could not be read; it was kept as it is')
+
+    def change(d):
+        d[key] = v
+    sio.update_json(SETTINGS, change)
+    return {'ok': True, key: v}
+
+
+def apply():
+    if not os.path.exists(SETTINGS):
+        return {'ok': True, 'applied': {}}
+    saved = _sio().load_json(SETTINGS, None, repair=False)
+    if not isinstance(saved, dict):
+        return {'ok': False, 'error': 'settings file unreadable; nothing changed'}
+    done = {}
+    for k, v in saved.items():
+        try:
+            put(k, v)
+            done[k] = v
+        except Fail:
+            pass
+    return {'ok': True, 'applied': done}
+
+
+def main(a):
+    try:
+        if a == ['status']:
+            out = status()
+        elif len(a) == 3 and a[0] == 'set':
+            out = set_one(a[1], a[2])
+        elif a == ['apply']:
+            out = apply()
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
