@@ -83,6 +83,14 @@ class Popup(unittest.TestCase):
         self.assertIn('settings.open("storage")', shell)
 
 
+class HearthDisks(unittest.TestCase):
+    def test_disk_management_warns_too(self):
+        ui = open(os.path.join(ROOT, 'hosts/hearth-disks/ui/index.html')).read()
+        self.assertIn('id="fullbar"', ui)
+        self.assertIn("starts from fills up, your PC might not start properly.", ui)
+        self.assertIn("full >= .9 || sp.free < 10e9", ui)
+
+
 class Update(unittest.TestCase):
     def test_update_stops_when_too_full(self):
         src = open(os.path.join(ROOT, 'os/system_files/usr/libexec/nimbus/hearth-admin')).read()
