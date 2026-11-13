@@ -73,7 +73,7 @@ Item {
         id: line
         property string title
         property string sub
-        default property alias right: tail.data
+        default property alias tailItems: tail.data   // not "right": Item.right is FINAL
         Layout.fillWidth: true
         spacing: 12
         ColumnLayout {
