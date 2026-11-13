@@ -235,7 +235,7 @@ FocusScope {
         const gs = groups.slice();
         const by = (k) => gs.sort((a, b) => (b[k] || 0) - (a[k] || 0) || (b.mem || 0) - (a.mem || 0));
         switch (t) {
-        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: pct(g.avg) }));
+        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: priorityName(g.nice) }));
         case "memory": return by("mem").map(g => ({ g: g, a: size(g.mem), b: g.shared !== undefined ? size(g.shared) : "–", c: g.swap ? size(g.swap) : "0" }));
         case "disk": return gs.sort((a, b) => ((b.read || 0) + (b.write || 0)) - ((a.read || 0) + (a.write || 0)) || (b.disk || 0) - (a.disk || 0)).map(g => ({ g: g, a: rate(g.read !== undefined ? g.read : g.disk), b: rate(g.write || 0), c: rate((g.read || 0) + (g.write || 0) || g.disk) }));
         case "network": return gs.sort((a, b) => (b.conns || 0) - (a.conns || 0) || (b.cpu || 0) - (a.cpu || 0)).map(g => ({ g: g, a: g.conns ? String(g.conns) : "0", b: g.remote || "–", c: pct(g.cpu) }));
@@ -243,13 +243,14 @@ FocusScope {
         }
         return [];
     }
-    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"], disk: ["Read", "Write", "Total ↓"],
+    function priorityName(n) { return n === undefined || n === null ? "Normal" : n < -10 ? "High" : n < 0 ? "Above normal" : n === 0 ? "Normal" : n < 19 ? "Below normal" : "Low"; }
+    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Priority"], memory: ["In use ↓", "Shared", "Compressed"], disk: ["Read", "Write", "Total ↓"],
                                       network: ["Connections ↓", "Talking to", "CPU"], gpu: ["GPU ↓", "Video memory", "Using"] })
     readonly property var tableRows: { samples; return rowsFor(tab === "overview" ? "cpu" : tab); }
     // Overview's state: folded sections and the programs you ticked (only while it's open; nothing is saved).
     property var folded: ({ disk: true, network: true, gpu: true })
     property var ticked: ({})
-    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"] })
+    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Compressed"] })
     // The chips on each Overview heading: [[text, tone]] (tone: main, good, warn or "").
     function overviewChips(k) {
         const s = sample || {};
@@ -266,6 +267,21 @@ FocusScope {
         return [];
     }
     property int listIndex: 0
+    // Processor tab: the selected program's open files (1.11, mockup resmon-2; hearth-resmon files PID…).
+    property var openFiles: []
+    // Network tab: listening ports and open connections (1.11, mockup resmon-5; hearth-resmon ports), every 3 s.
+    property var netPorts: ({ listening: [], connections: [] })
+    Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: v.tab === "network" && v.visible; onTriggered: if (!portsProc.running) portsProc.running = true }
+    Process {
+        id: portsProc
+        command: ["python3", v.helper, "ports"]
+        stdout: StdioCollector { onStreamFinished: { try { v.netPorts = JSON.parse(text.trim().split("\n").pop()); } catch (e) {} } }
+    }
+    onSelRowChanged: if (tab === "cpu" && selRow && selRow.g && selRow.g.pids && !filesProc.running) { filesProc.command = ["python3", v.helper, "files"].concat(selRow.g.pids.slice(0, 64).map(String)); filesProc.running = true; }
+    Process {
+        id: filesProc
+        stdout: StdioCollector { onStreamFinished: { try { v.openFiles = JSON.parse(text.trim().split("\n").pop()).files || []; } catch (e) { v.openFiles = []; } } }
+    }
     readonly property var selRow: tableRows[Math.min(listIndex, tableRows.length - 1)] || null
 
     // ================================================ actions (End, Efficiency mode, Open file location, Search online)
@@ -729,11 +745,20 @@ FocusScope {
                     Rectangle {
                         visible: v.tab === "memory"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 150
+                        Layout.preferredHeight: 230
                         radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
                         readonly property var mb: { v.samples; return (v.sample && v.sample.memBar) || null; }
+                        readonly property var zr: { v.samples; return (v.sample && v.sample.zram) || null; }
+                        readonly property var drive: { v.samples; return ((v.sample && v.sample.swaps) || []).filter(x => x.path.indexOf("/dev/zram") !== 0); }
+                        // 1.11 (the approved mockup resmon-3): compressed memory and the swaps in numbers too
+                        readonly property var facts: !mb ? [] : [
+                            ["Zram holds", zr && zr.size ? v.size(zr.orig) + " of " + v.size(zr.size) + (zr.compr ? " (" + (zr.orig / zr.compr).toFixed(1) + ":1)" : "") : "off"],
+                            ["Drive swap", drive.length ? v.size(drive.reduce((a, x) => a + x.used, 0)) + " of " + v.size(drive.reduce((a, x) => a + x.size, 0)) : "none"],
+                            ["Compressed (real size)", zr ? v.size(zr.mem) : "–"],
+                            ["Committed", v.size(mb.committed || 0)]]
                         readonly property var parts: !mb ? [] : [
                             ["Reserved", mb.reserved, "Kept by the hardware and graphics", "#5d7488"], ["In use", mb.inUse, "Programs and games", "#66c0f4"],
+                            ["Compressed", zr ? zr.mem : 0, "Idle memory squeezed into zram", "#3fb8c9"],
                             ["Being saved", mb.saving, "Waiting to be written to the drive", "#ff9a4d"], ["Cache", mb.cache, "Recent files, handed back the moment a game needs it", "#9a7cff"],
                             ["Free", mb.free, "Not used at all", "#2f4a63"]]
                         Column {
@@ -760,10 +785,22 @@ FocusScope {
                                     model: memBox.parts
                                     delegate: Column {
                                         required property var modelData
-                                        width: parent.width / 5; spacing: 3
+                                        width: parent.width / 6; spacing: 3
                                         Row { spacing: 6; Rectangle { width: 10; height: 10; radius: 2; color: modelData[3]; anchors.verticalCenter: parent.verticalCenter } Text { text: modelData[0]; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12 } }
                                         Text { text: v.size(modelData[1]); color: v.c.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
                                         Text { width: parent.width - 10; text: modelData[2]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                                    }
+                                }
+                            }
+                            Grid {
+                                width: parent.width; columns: 4; columnSpacing: 18; rowSpacing: 4
+                                Repeater {
+                                    model: memBox.facts
+                                    delegate: Row {
+                                        required property var modelData
+                                        spacing: 8
+                                        Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
+                                        Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                                     }
                                 }
                             }
@@ -847,6 +884,65 @@ FocusScope {
                                 width: table.width; row: modelData; alt: index % 2 === 0; picked: index === v.listIndex
                                 onClickedRow: v.listIndex = index
                                 onMenuRow: (x, y) => { v.listIndex = index; const pt = mapToItem(v, x, y); v.openMenu(modelData.g, pt.x, pt.y); }
+                            }
+                        }
+                    }
+                    // Network: listening ports and connections (1.11)
+                    Repeater {
+                        model: v.tab === "network" ? [["listening", "Listening ports", ["Program", "PID", "Port", "Open to"]], ["connections", "Connections (TCP)", ["Program", "PID", "Talking to", "Port"]]] : []
+                        delegate: Rectangle {
+                            id: npBox
+                            required property var modelData
+                            readonly property var rows: (v.netPorts[modelData[0]] || [])
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.min(220, 60 + Math.max(1, rows.length) * 24)
+                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                            Rectangle {
+                                id: npHead; width: parent.width; height: 34; color: v.c.head
+                                Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: npBox.modelData[1] + " (" + npBox.rows.length + ")"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            }
+                            Row {
+                                id: npCols; anchors.top: npHead.bottom; x: 12; height: 24
+                                Repeater { model: npBox.modelData[2]; delegate: Text { required property var modelData; required property int index; width: [220, 80, 260, 200][index]; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
+                            }
+                            ListView {
+                                anchors { left: parent.left; right: parent.right; top: npCols.bottom; bottom: parent.bottom; leftMargin: 12 }
+                                clip: true; boundsBehavior: Flickable.StopAtBounds
+                                model: npBox.rows
+                                delegate: Row {
+                                    required property var modelData
+                                    height: 24
+                                    Text { width: 220; text: modelData.name; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 80; text: modelData.pid ? String(modelData.pid) : "–"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 260; text: npBox.modelData[0] === "listening" ? String(modelData.port) : modelData.remote; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { width: 200; text: npBox.modelData[0] === "listening" ? modelData.openTo : String(modelData.port); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                            }
+                        }
+                    }
+
+                    // Processor: the selected program's open files (1.11)
+                    Rectangle {
+                        visible: v.tab === "cpu" && v.openFiles.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(190, 34 + v.openFiles.length * 26)
+                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                        Rectangle {
+                            id: ofHead
+                            width: parent.width; height: 34; color: v.c.head
+                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                                   text: "Open files · " + (v.selRow && v.selRow.g ? v.selRow.g.name : "") + " (" + v.openFiles.length + ")"
+                                   color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        }
+                        ListView {
+                            anchors { left: parent.left; right: parent.right; top: ofHead.bottom; bottom: parent.bottom }
+                            clip: true; boundsBehavior: Flickable.StopAtBounds
+                            model: v.openFiles
+                            delegate: Row {
+                                required property var modelData
+                                width: ListView.view.width; height: 26; spacing: 12; leftPadding: 12
+                                Text { width: 70; text: String(modelData.pid); color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: parent.width - 110; text: modelData.win || modelData.path; elide: Text.ElideMiddle; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
                             }
                         }
                     }

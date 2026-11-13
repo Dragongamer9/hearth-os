@@ -360,6 +360,17 @@ class ResSampler(ht.Sampler):
         if self.installed is None:
             self.installed = installed_memory(self.sys) or 0
         out['memBar'] = meminfo_breakdown(mi, self.installed or None)
+        # Compressed memory and the swaps (1.11, the Memory tab): zram's own numbers, and each swap's use.
+        zb = os.path.join(self.sys, 'block', 'zram0')
+        mm = (read(os.path.join(zb, 'mm_stat'), '') or '').split()
+        if mm and mm[0].isdigit():
+            out['zram'] = {'orig': int(mm[0]), 'compr': int(mm[1]), 'mem': int(mm[2]), 'size': int((read(os.path.join(zb, 'disksize'), '0') or '0').strip() or 0)}
+        sw = []
+        for line in (read(os.path.join(self.root, 'swaps'), '') or '').splitlines()[1:]:
+            f = line.split()
+            if len(f) >= 4 and f[2].isdigit():
+                sw.append({'path': f[0], 'size': int(f[2]) * 1024, 'used': int(f[3]) * 1024})
+        out['swaps'] = sw
         # Memory pressure (1.11, Overview's chip): the share of the last 10 s programs waited for memory.
         pm = re.search(r'some avg10=([\d.]+)', read(os.path.join(self.root, 'pressure', 'memory'), '') or '')
         out['pressure'] = float(pm.group(1)) if pm else None
@@ -1976,9 +1987,125 @@ def open_window(tab=''):
     raise Fail("Hearth's desktop (Mantel) isn't running; open Resource Monitor from Desktop Mode")
 
 
+def open_files(pids, root=None, limit=200):
+    """Processor tab's Open files (1.11, mockup resmon-2): the regular files a program (all its PIDs) has open, yours
+    only (/proc/PID/fd is readable only for your own programs), with the C:\\ form when Hearth (C:) has one."""
+    root = root or ht.PROC
+    seen, out = set(), []
+    try:
+        import hearth_drive_letters as hdl
+        ctx = hdl.c_context()
+    except Exception:  # noqa: BLE001
+        hdl = ctx = None
+    for pid in pids:
+        d = os.path.join(root, str(pid), 'fd')
+        try:
+            fds = os.listdir(d)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                t = os.readlink(os.path.join(d, fd))
+            except OSError:
+                continue
+            if not t.startswith('/') or t.startswith(('/dev/', '/proc/', '/sys/', '/memfd:')) or t in seen or ' (deleted)' in t:
+                continue
+            seen.add(t)
+            win = ''
+            if hdl and ctx:
+                try:
+                    win = hdl.to_c(t, ctx)
+                except Exception:  # noqa: BLE001
+                    win = ''
+            out.append({'pid': pid, 'path': t, 'win': win})
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _hexaddr(h):
+    """'0100007F:1F90' or a 32-hex IPv6 → ('127.0.0.1', 8080)."""
+    import socket
+    import struct
+    a, p = h.split(':')
+    if len(a) == 8:
+        ip = socket.inet_ntop(socket.AF_INET, struct.pack('<I', int(a, 16)))
+    else:
+        b = bytes.fromhex(a)
+        ip = socket.inet_ntop(socket.AF_INET6, b''.join(b[i:i + 4][::-1] for i in range(0, 16, 4)))
+        if ip.startswith('::ffff:'):
+            ip = ip[7:]
+    return ip, int(p, 16)
+
+
+def open_to(ip):
+    if ip in ('127.0.0.1', '::1') or ip.startswith('127.'):
+        return 'This PC only'
+    if ip.startswith('100.') or ip.startswith('fd7a:115c'):
+        return 'Tailscale only'
+    if ip in ('0.0.0.0', '::'):
+        return 'Any network (the firewall decides)'
+    return 'Your network (' + ip + ')'
+
+
+def ports(root=None):
+    """Network tab (1.11, mockup resmon-5): listening ports and open TCP connections, with the program when it's yours
+    (another user's or the system's sockets show without a name)."""
+    root = root or ht.PROC
+    inode_pid = {}
+    for d in os.listdir(root):
+        if not d.isdigit():
+            continue
+        try:
+            for fd in os.listdir(os.path.join(root, d, 'fd')):
+                try:
+                    t = os.readlink(os.path.join(root, d, 'fd', fd))
+                except OSError:
+                    continue
+                if t.startswith('socket:['):
+                    inode_pid[t[8:-1]] = int(d)
+        except OSError:
+            continue
+    names = {}
+
+    def name(pid):
+        if pid not in names:
+            names[pid] = (read(os.path.join(root, str(pid), 'comm'), '') or '').strip()
+        return names[pid]
+    listening, conns, seen = [], [], set()
+    for f in ('tcp', 'tcp6'):
+        for line in (read(os.path.join(root, 'net', f), '') or '').splitlines()[1:]:
+            x = line.split()
+            if len(x) < 10:
+                continue
+            try:
+                lip, lport = _hexaddr(x[1])
+                rip, rport = _hexaddr(x[2])
+            except (ValueError, OSError):
+                continue
+            pid = inode_pid.get(x[9])
+            who = {'pid': pid or 0, 'name': name(pid) if pid else 'system'}
+            if x[3] == '0A':
+                k = (lport, open_to(lip), who['name'])
+                if k in seen:
+                    continue
+                seen.add(k)
+                listening.append(dict(who, port=lport, openTo=open_to(lip)))
+            elif x[3] == '01' and not rip.startswith('127.') and rip != '::1':
+                conns.append(dict(who, remote=rip, port=rport))
+    listening.sort(key=lambda r: r['port'])
+    return {'listening': listening[:100], 'connections': conns[:150]}
+
+
 def cmd(argv):
     c = argv[1] if len(argv) > 1 else 'open'
     rest = argv[2:]
+    if c == 'ports' and not rest:
+        print(json.dumps(ports()))
+        return
+    if c == 'files' and rest and all(x.isdigit() for x in rest):
+        print(json.dumps({'files': open_files([int(x) for x in rest[:64]])}))
+        return
     if c == 'open':
         out = open_window(rest[0] if rest else '')
     elif c == 'serve' and not rest:
