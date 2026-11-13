@@ -15,6 +15,9 @@
   hearth-tasks priority PID normal|below|low   Set priority for one of your apps
   hearth-tasks affinity PID 0-3,6    Run on these cores (until it closes)
   hearth-tasks limit PID CPU% MEMMB  Limit CPU / memory on the app's own scope (0 = no limit; until it closes)
+  hearth-tasks timers                JSON: Scheduled tasks (systemd timers: yours on / off, the system's read only)
+  hearth-tasks timer UNIT on|off     one of your scheduled tasks on or off
+  hearth-tasks users                 JSON: Users: who is signed in and what their programs use
   hearth-tasks services              JSON: your services (start / stop) and the system's (read only)
   hearth-tasks service UNIT start|stop|restart   one of your own services (never one that keeps Hearth running)
   hearth-tasks autostart-run         start the autostart apps that are on (~/.config/autostart, /etc/xdg/autostart),
@@ -2114,6 +2117,86 @@ def set_limit(pid, cpu_pct, mem_mb, root=PROC):
     return {'pid': pid, 'unit': unit, 'cpu': cpu_pct, 'memMb': mem_mb}
 
 
+def _usec_when(us):
+    """systemd's microseconds since the epoch → seconds (0 = never)."""
+    try:
+        us = int(us or 0)
+    except (TypeError, ValueError):
+        return 0
+    return us // 1000000 if us > 0 else 0
+
+
+def timer_list():
+    """Scheduled tasks (1.11): systemd timers, yours (on / off) and the system's (read only), with the next and last run."""
+    out = []
+    for scope in ('user', 'system'):
+        args = ['--user'] if scope == 'user' else []
+        try:
+            r = subprocess.run(['systemctl'] + args + ['list-timers', '--all', '--output=json', '--no-pager'],
+                               capture_output=True, text=True, timeout=10)
+            rows = json.loads(r.stdout or '[]') if r.returncode == 0 else []
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            rows = []
+        for t in rows:
+            unit = t.get('unit') or ''
+            if not unit:
+                continue
+            essential = scope == 'system' or is_essential_unit(unit)
+            out.append({'id': scope + ':' + unit, 'unit': unit, 'scope': scope, 'runs': t.get('activates') or '',
+                        'next': _usec_when(t.get('next')), 'last': _usec_when(t.get('last')),
+                        'hearth': unit.startswith(('hearth', 'nimbus')), 'canChange': not essential})
+    out.sort(key=lambda x: (x['scope'] != 'user', x['unit']))
+    return {'timers': out}
+
+
+def set_timer(unit, on):
+    """A scheduled task of yours on or off (never the system's, never one that keeps Hearth running)."""
+    if not re.match(r'^[\w@.-]+\.timer$', unit) or is_essential_unit(unit):
+        raise Fail("that one keeps Hearth running, so it can't be changed here")
+    systemctl('--user', 'enable' if on else 'disable', '--now', unit, timeout=15)
+    return {'unit': unit, 'on': on}
+
+
+def user_list(root=PROC):
+    """Users (1.11): everyone signed in, and how much CPU and memory their programs use."""
+    import pwd
+    procs = scan(root)
+    st = load_state('users') or {}
+    cur_total = cpu_total(root)[0][1]
+    per = {}
+    for p in procs.values():
+        if p.kthread or p.uid is None or p.uid < 1000:
+            continue
+        u = per.setdefault(p.uid, {'mem': 0, 'jiffies': 0, 'procs': 0})
+        u['mem'] += p.mem
+        u['jiffies'] += p.jiffies
+        u['procs'] += 1
+    prev = st.get('per', {})
+    dt = cur_total - st.get('total', cur_total)
+    sessions = {}
+    try:
+        r = subprocess.run(['loginctl', 'list-sessions', '--no-legend'], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            f = line.split()
+            if len(f) >= 3 and f[1].isdigit():
+                sessions.setdefault(int(f[1]), []).append(f[0])
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    out = []
+    for uid, u in sorted(per.items()):
+        try:
+            pw = pwd.getpwuid(uid)
+            name, full = pw.pw_name, (pw.pw_gecos or '').split(',')[0]
+        except KeyError:
+            name, full = str(uid), ''
+        pj = prev.get(str(uid))
+        cpu = round(100.0 * max(0, u['jiffies'] - pj) / dt, 1) if pj is not None and dt > 0 else 0.0
+        out.append({'uid': uid, 'name': name, 'full': full, 'you': uid == os.getuid(), 'signedIn': uid in sessions,
+                    'sessions': len(sessions.get(uid, [])), 'cpu': cpu, 'mem': u['mem'], 'procs': u['procs']})
+    save_state('users', {'total': cur_total, 'per': {str(k): v['jiffies'] for k, v in per.items()}})
+    return {'users': out}
+
+
 def signal_one(pid, sig, root=PROC):
     """Ends one process (Details' End task), yours only, never a part of Hearth."""
     procs = scan(root)
@@ -2248,6 +2331,12 @@ def cmd(argv):
         out = set_affinity(parse_pid(argv[2]), argv[3])
     elif c == 'limit' and len(argv) == 5:
         out = set_limit(parse_pid(argv[2]), argv[3], argv[4])
+    elif c == 'timers' and len(argv) == 2:
+        out = timer_list()
+    elif c == 'timer' and len(argv) == 4 and argv[3] in ('on', 'off'):
+        out = set_timer(argv[2], argv[3] == 'on')
+    elif c == 'users' and len(argv) == 2:
+        out = user_list()
     elif c == 'services' and len(argv) == 2:
         out = service_list()
     elif c == 'service' and len(argv) == 4:

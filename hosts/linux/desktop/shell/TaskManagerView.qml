@@ -145,7 +145,7 @@ FocusScope {
         function onPageChanged() { v.sendConfig(); v.loadPageData(); v.closeMenu(); }
         function onIntervalChanged() { v.sendConfig(); }
     }
-    onQueryChanged: { buildProcs(); buildDetails(); buildStartup(); buildServices(); }
+    onQueryChanged: { buildProcs(); buildDetails(); buildStartup(); buildServices(); buildTimers(); }
 
     // One-shot helper runs (end, Efficiency mode, startup, services).
     function run(proc, args) {
@@ -158,6 +158,8 @@ FocusScope {
     function loadPageData() {
         if (tm.page === "startup") run(startProc, ["startup"]);
         if (tm.page === "services") run(svcProc, ["services"]);
+        if (tm.page === "tasks") run(timerProc, ["timers"]);
+        if (tm.page === "users") run(userProc, ["users"]);
     }
     Component.onCompleted: loadPageData()
 
@@ -516,6 +518,71 @@ FocusScope {
     }
 
     // ================================================ Services
+    // ================================================ Scheduled tasks and Users (1.11, the approved mockup tm-8)
+    ListModel { id: timerModel }
+    ListModel { id: userModel }
+    property var timerItems: []
+    property var userItems: []
+    property bool timersLoaded: false
+    property bool usersLoaded: false
+    function when(sec) {
+        if (!sec) return "–";
+        const d = new Date(sec * 1000), now = new Date();
+        const same = d.toDateString() === now.toDateString();
+        return same ? Qt.formatTime(d, "h:mm AP") : Qt.formatDateTime(d, "MMM d, h:mm AP");
+    }
+    function buildTimers() {
+        const q = query.trim().toLowerCase();
+        const list = timerItems.filter(t => !q || t.unit.toLowerCase().indexOf(q) >= 0 || t.runs.toLowerCase().indexOf(q) >= 0);
+        const row = t => ({ key: t.id, type: "row", depth: 0, icon: "", tag: t.hearth ? "Part of Hearth" : "", expandable: false, expanded: false, eco: false,
+            name: t.unit.replace(/\.timer$/, ""), unit: t.unit, runs: t.runs, next: t.next, last: t.last, scope: t.scope, canChange: !!t.canChange, label: "" });
+        const sec = (k, l) => ({ key: k, type: "section", depth: 0, icon: "", tag: "", expandable: false, expanded: false, eco: false,
+            name: "", unit: "", runs: "", next: 0, last: 0, scope: "", canChange: false, label: l });
+        const mine = list.filter(t => t.scope === "user"), sys = list.filter(t => t.scope === "system");
+        const rows = [];
+        if (mine.length) { rows.push(sec("s:mine", "Yours (" + mine.length + ")")); mine.forEach(t => rows.push(row(t))); }
+        if (sys.length) { rows.push(sec("s:sys", "The system's (" + sys.length + ")")); sys.forEach(t => rows.push(row(t))); }
+        sync(timerModel, rows);
+    }
+    function timerCell(r, key) {
+        if (key === "next") return { t: r.next ? when(r.next) : "Off", muted: !r.next };
+        if (key === "last") return { t: when(r.last), muted: !r.last };
+        if (key === "runs") return { t: r.runs, muted: true };
+        return { t: String(r[key] === undefined ? "" : r[key]) };
+    }
+    function buildUsers() {
+        const rows = userItems.map(u => ({ key: String(u.uid), type: "row", depth: 0, icon: "", tag: u.you ? "You" : "", expandable: false, expanded: false, eco: false,
+            name: (u.full ? u.full + " (" + u.name + ")" : u.name), status: u.signedIn ? "Signed in" + (u.sessions > 1 ? " · " + u.sessions + " sessions" : "") : "Not signed in",
+            cpu: u.cpu || 0, mem: u.mem || 0, procs: u.procs || 0, label: "" }));
+        sync(userModel, rows);
+    }
+    function userCell(r, key) {
+        if (key === "cpu") return { t: pct1(r.cpu) };
+        if (key === "mem") return { t: mb(r.mem) };
+        if (key === "procs") return { t: String(r.procs) };
+        if (key === "status") return { t: r.status, good: r.status.indexOf("Signed in") === 0, muted: r.status === "Not signed in" };
+        return { t: String(r[key] === undefined ? "" : r[key]) };
+    }
+    Timer { interval: 3000; repeat: true; running: tm.page === "users" && tm.interval > 0; onTriggered: v.run(userProc, ["users"]) }
+    Process {
+        id: timerProc
+        stdout: StdioCollector { onStreamFinished: { const l = v.lastLine(text); try { v.timerItems = JSON.parse(l).timers || []; v.timersLoaded = true; v.buildTimers(); } catch (e) {} } }
+    }
+    Process {
+        id: timerActProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const l = v.lastLine(text);
+                if (l.startsWith("error: ")) v.showSheet("error", "Scheduled tasks", l.slice(7).replace(/^./, c => c.toUpperCase()) + ".", [{ label: "OK", action: "close" }]);
+                v.run(timerProc, ["timers"]);
+            }
+        }
+    }
+    Process {
+        id: userProc
+        stdout: StdioCollector { onStreamFinished: { const l = v.lastLine(text); try { v.userItems = JSON.parse(l).users || []; v.usersLoaded = true; v.buildUsers(); } catch (e) {} } }
+    }
+
     ListModel { id: svcModel }
     property var svcItems: []
     property bool svcLoaded: false
@@ -801,17 +868,19 @@ FocusScope {
                 Layout.fillHeight: true
                 Layout.preferredWidth: tm.railFolded ? 56 : (v.width < 900 ? 196 : 228)
                 Behavior on Layout.preferredWidth { NumberAnimation { duration: Theme.quick; easing.type: Easing.OutCubic } }
-                // -1: ☰, 0..4: the pages, 5: Settings
+                // -1: ☰, 0..6: the pages, 7: Settings (rail.items.length)
                 readonly property var items: [
                     { id: "processes", icon: "grid", label: "Processes" },
                     { id: "performance", icon: "motion", label: "Performance" },
                     { id: "startup", icon: "play", label: "Startup apps" },
                     { id: "details", icon: "list", label: "Details" },
-                    { id: "services", icon: "server", label: "Services" }
+                    { id: "services", icon: "server", label: "Services" },
+                    { id: "tasks", icon: "clock", label: "Scheduled tasks" },
+                    { id: "users", icon: "users", label: "Users" }
                 ]
                 property int cursor: Math.max(0, tm.pageIds.indexOf(tm.page))
                 function step(d) {
-                    cursor = Math.max(-1, Math.min(5, cursor + d));
+                    cursor = Math.max(-1, Math.min(rail.items.length, cursor + d));
                     if (cursor >= 0) tm.go(tm.pageIds[cursor]);
                 }
                 onActiveFocusChanged: if (activeFocus) cursor = Math.max(0, tm.pageIds.indexOf(tm.page))
@@ -852,7 +921,7 @@ FocusScope {
                     RailItem {
                         icon: "gear"; label: "Settings"; folded: tm.railFolded
                         lit: tm.page === "settings"
-                        focusRing: rail.activeFocus && rail.cursor === 5
+                        focusRing: rail.activeFocus && rail.cursor === rail.items.length
                         onClicked: { tm.go("settings"); rail.forceActiveFocus(); }
                     }
                 }
@@ -878,6 +947,7 @@ FocusScope {
                     anchors.leftMargin: 1; anchors.topMargin: 1
                     sourceComponent: tm.page === "performance" ? perfPage : tm.page === "startup" ? startupPage
                         : tm.page === "details" ? detailsPage : tm.page === "services" ? servicesPage
+                        : tm.page === "tasks" ? tasksPage : tm.page === "users" ? usersPage
                         : tm.page === "settings" ? settingsPage : processesPage
                 }
             }
@@ -1283,6 +1353,76 @@ FocusScope {
         }
     }
 
+    Component {
+        id: tasksPage
+        PageFrame {
+            id: tp
+            onLeave: v.toRail()
+            onUpOut: search.forceActiveFocus()
+            title: "Scheduled tasks"
+            subtitle: "What runs by itself at set times, like Windows' Task Scheduler"
+            readonly property var sel: table.currentIndex >= 0 && table.currentIndex < timerModel.count ? timerModel.get(table.currentIndex) : null
+            buttons: [
+                { id: "on", label: "Turn on", enabled: !!tp.sel && tp.sel.canChange && !tp.sel.next, primary: true },
+                { id: "off", label: "Turn off", enabled: !!tp.sel && tp.sel.canChange && !!tp.sel.next }
+            ]
+            onButton: id => { if (sel) v.run(timerActProc, ["timer", sel.unit, id === "on" ? "on" : "off"]); }
+            function focusFirst() { table.focusList(); }
+            DataTable {
+                id: table
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: timerModel
+                tableId: "tasks"
+                rowHeight: 36
+                widths: tm.pref("cols_tasks", ({}))
+                columns: [
+                    { key: "name", title: "Name", flex: true },
+                    { key: "next", title: "Next run", width: 170 },
+                    { key: "last", title: "Last run", width: 170 },
+                    { key: "runs", title: "What it runs", width: 260 }
+                ]
+                cell: (r, k) => v.timerCell(r, k)
+                empty: v.timersLoaded ? "Nothing is scheduled." : "Looking at what's scheduled…"
+                onResized: w => tm.setPref("cols_tasks", w)
+                onUp: tp.toBar()
+                onBack: v.toRail()
+            }
+        }
+    }
+    Component {
+        id: usersPage
+        PageFrame {
+            id: up
+            onLeave: v.toRail()
+            onUpOut: search.forceActiveFocus()
+            title: "Users"
+            subtitle: "Everyone with an account on this PC, and what their programs use"
+            buttons: []
+            function focusFirst() { table.focusList(); }
+            DataTable {
+                id: table
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: userModel
+                tableId: "users"
+                rowHeight: 40
+                widths: tm.pref("cols_users", ({}))
+                columns: [
+                    { key: "name", title: "User", flex: true },
+                    { key: "status", title: "Status", width: 170 },
+                    { key: "cpu", title: "CPU", width: 90, right: true },
+                    { key: "mem", title: "Memory", width: 110, right: true },
+                    { key: "procs", title: "Processes", width: 100, right: true }
+                ]
+                cell: (r, k) => v.userCell(r, k)
+                empty: v.usersLoaded ? "No one else uses this PC." : "Looking at who's signed in…"
+                onResized: w => tm.setPref("cols_users", w)
+                onUp: up.toBar()
+                onBack: v.toRail()
+            }
+        }
+    }
     Component {
         id: startupPage
         PageFrame {
