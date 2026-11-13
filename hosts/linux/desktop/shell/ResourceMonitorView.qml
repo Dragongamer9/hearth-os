@@ -243,13 +243,13 @@ FocusScope {
         }
         return [];
     }
-    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"], disk: ["Read", "Write", "Total ↓"],
+    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Compressed"], disk: ["Read", "Write", "Total ↓"],
                                       network: ["Connections ↓", "Talking to", "CPU"], gpu: ["GPU ↓", "Video memory", "Using"] })
     readonly property var tableRows: { samples; return rowsFor(tab === "overview" ? "cpu" : tab); }
     // Overview's state: folded sections and the programs you ticked (only while it's open; nothing is saved).
     property var folded: ({ disk: true, network: true, gpu: true })
     property var ticked: ({})
-    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"] })
+    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Compressed"] })
     // The chips on each Overview heading: [[text, tone]] (tone: main, good, warn or "").
     function overviewChips(k) {
         const s = sample || {};
@@ -729,11 +729,20 @@ FocusScope {
                     Rectangle {
                         visible: v.tab === "memory"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 150
+                        Layout.preferredHeight: 230
                         radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
                         readonly property var mb: { v.samples; return (v.sample && v.sample.memBar) || null; }
+                        readonly property var zr: { v.samples; return (v.sample && v.sample.zram) || null; }
+                        readonly property var drive: { v.samples; return ((v.sample && v.sample.swaps) || []).filter(x => x.path.indexOf("/dev/zram") !== 0); }
+                        // 1.11 (the approved mockup resmon-3): compressed memory and the swaps in numbers too
+                        readonly property var facts: !mb ? [] : [
+                            ["Zram holds", zr && zr.size ? v.size(zr.orig) + " of " + v.size(zr.size) + (zr.compr ? " (" + (zr.orig / zr.compr).toFixed(1) + ":1)" : "") : "off"],
+                            ["Drive swap", drive.length ? v.size(drive.reduce((a, x) => a + x.used, 0)) + " of " + v.size(drive.reduce((a, x) => a + x.size, 0)) : "none"],
+                            ["Compressed (real size)", zr ? v.size(zr.mem) : "–"],
+                            ["Committed", v.size(mb.committed || 0)]]
                         readonly property var parts: !mb ? [] : [
                             ["Reserved", mb.reserved, "Kept by the hardware and graphics", "#5d7488"], ["In use", mb.inUse, "Programs and games", "#66c0f4"],
+                            ["Compressed", zr ? zr.mem : 0, "Idle memory squeezed into zram", "#3fb8c9"],
                             ["Being saved", mb.saving, "Waiting to be written to the drive", "#ff9a4d"], ["Cache", mb.cache, "Recent files, handed back the moment a game needs it", "#9a7cff"],
                             ["Free", mb.free, "Not used at all", "#2f4a63"]]
                         Column {
@@ -760,10 +769,22 @@ FocusScope {
                                     model: memBox.parts
                                     delegate: Column {
                                         required property var modelData
-                                        width: parent.width / 5; spacing: 3
+                                        width: parent.width / 6; spacing: 3
                                         Row { spacing: 6; Rectangle { width: 10; height: 10; radius: 2; color: modelData[3]; anchors.verticalCenter: parent.verticalCenter } Text { text: modelData[0]; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12 } }
                                         Text { text: v.size(modelData[1]); color: v.c.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
                                         Text { width: parent.width - 10; text: modelData[2]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                                    }
+                                }
+                            }
+                            Grid {
+                                width: parent.width; columns: 4; columnSpacing: 18; rowSpacing: 4
+                                Repeater {
+                                    model: memBox.facts
+                                    delegate: Row {
+                                        required property var modelData
+                                        spacing: 8
+                                        Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
+                                        Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                                     }
                                 }
                             }

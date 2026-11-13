@@ -360,6 +360,17 @@ class ResSampler(ht.Sampler):
         if self.installed is None:
             self.installed = installed_memory(self.sys) or 0
         out['memBar'] = meminfo_breakdown(mi, self.installed or None)
+        # Compressed memory and the swaps (1.11, the Memory tab): zram's own numbers, and each swap's use.
+        zb = os.path.join(self.sys, 'block', 'zram0')
+        mm = (read(os.path.join(zb, 'mm_stat'), '') or '').split()
+        if mm and mm[0].isdigit():
+            out['zram'] = {'orig': int(mm[0]), 'compr': int(mm[1]), 'mem': int(mm[2]), 'size': int((read(os.path.join(zb, 'disksize'), '0') or '0').strip() or 0)}
+        sw = []
+        for line in (read(os.path.join(self.root, 'swaps'), '') or '').splitlines()[1:]:
+            f = line.split()
+            if len(f) >= 4 and f[2].isdigit():
+                sw.append({'path': f[0], 'size': int(f[2]) * 1024, 'used': int(f[3]) * 1024})
+        out['swaps'] = sw
         # Memory pressure (1.11, Overview's chip): the share of the last 10 s programs waited for memory.
         pm = re.search(r'some avg10=([\d.]+)', read(os.path.join(self.root, 'pressure', 'memory'), '') or '')
         out['pressure'] = float(pm.group(1)) if pm else None
