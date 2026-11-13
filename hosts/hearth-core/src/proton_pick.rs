@@ -147,6 +147,9 @@ pub fn fill_in(env: &mut Vec<(String, String)>, store: &str, id: &str) {
     if let Some(p) = auto_for(store, id) {
         crate::bridge::log(&format!("proton: {store}:{id} has no Proton of its own: using {}", p.display()));
         env.push(("PROTONPATH".into(), p.to_string_lossy().into()));
+        // 1.11, the Proton detector: hearth-proton-run notes how this automatic pick went (closed right away → the
+        // next Proton first next time; ran fine → remembered), only for picks Hearth made, never your own.
+        env.push(("HEARTH_PROTON_KEY".into(), format!("{store}:{id}")));
     }
 }
 
