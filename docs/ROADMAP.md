@@ -11,6 +11,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [ ] Smaller, faster updates (instead of 2–3 GB every time): Debian's packages frozen to a set date (moved on purpose, weekly or for a security fix), repeatable builds so unchanged files stay byte for byte the same and aren't downloaded again, Hearth's own apps in small pieces of their own, each build saying how big the update is against what devices have now, and the download done quietly in the background so it's ready at the next restart. A normal update should be about 200–500 MB; the previous version always stays startable
 - [ ] Bring the ARM build (feature/arm64, published as hearth-peppermint-arm64) up to date with the main Hearth OS and keep it there
+- [ ] Server mode › AI team (the owner's choice for 1.12; mockups server-dash / server-detail): a tile with a small live mesh of this PC's AI engines (AI chat, Pictures, Voices, Speech to text) and everything that sends them work around them (your devices, the web page, the pictures queue, the Command Center's AIs through One AI address), each request a pulse that lights its sender; A opens it big with today's counts, the engines and what happens while you play. The same drawing as the Command Center's Live › Mesh
 
 ## Next (unreleased)
 
