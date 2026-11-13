@@ -1338,6 +1338,19 @@ def parse_proc_io(text):
     return total
 
 
+def engine_kind(name):
+    """A DRM engine's name → '3d', 'dec' (video decode), 'enc' (video encode) or '' (copy, compute…).
+    i915: render, video, video-enhance; amdgpu: gfx, dec, enc, enc_1, jpeg; xe: rcs, vcs, vecs; panfrost: fragment."""
+    n = name.lower()
+    if n in ('render', 'gfx', 'rcs', 'fragment', 'vertex-tiler', '3d'):
+        return '3d'
+    if n in ('video', 'dec', 'vcs', 'jpeg', 'vcn', 'uvd') or n.startswith(('dec', 'vcn_dec', 'jpeg')):
+        return 'dec'
+    if n in ('enc', 'video-enhance', 'vecs', 'vce') or n.startswith(('enc', 'vcn_enc')):
+        return 'enc'
+    return ''
+
+
 def parse_fdinfo(text):
     """A DRM file's fdinfo: (client id, {engine: busy ns}) or (None, {}) for anything else."""
     client, engines = None, {}
@@ -1539,6 +1552,7 @@ class Sampler:
         self.drm_fds = {}
         self.drm_scan = 0
         self.client_prev = {}
+        self.drm_engines = {}
         self.layout = None
         self.layout_t = 0
         self.adapters = None
@@ -1637,10 +1651,12 @@ class Sampler:
                 if mine:
                     self.drm_fds[pid] = mine
         out, seen, cur = {}, set(), {}
+        kinds = {}
         for pid, fds in self.drm_fds.items():
             if pid not in procs:
                 continue
             best = 0.0
+            per = {'3d': 0.0, 'dec': 0.0, 'enc': 0.0}
             for fd in fds:
                 client, engines = parse_fdinfo(read(os.path.join(self.root, str(pid), 'fdinfo', fd)))
                 if client is None or client in seen:
@@ -1650,9 +1666,15 @@ class Sampler:
                     cur[(client, e)] = ns
                     prev = self.client_prev.get((client, e))
                     if prev is not None and dt > 0:
-                        best = max(best, 100.0 * max(0, ns - prev) / (dt * 1e9))
+                        busy = 100.0 * max(0, ns - prev) / (dt * 1e9)
+                        best = max(best, busy)
+                        k = engine_kind(e)
+                        if k:
+                            per[k] = min(100.0, max(per[k], busy))
             out[pid] = min(100.0, best)
+            kinds[pid] = per
         self.client_prev = cur
+        self.drm_engines = kinds
         return out
 
     def gpus(self, dt, want_smi):
