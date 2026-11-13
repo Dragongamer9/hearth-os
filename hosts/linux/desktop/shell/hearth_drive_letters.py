@@ -26,8 +26,10 @@ C: stays the prefix's own drive (map_prefix never touches c:).
 
   hearth_drive_letters.py show                 the letters, as JSON
   hearth_drive_letters.py map-prefix PREFIX    what map_prefix would change, then changes it (JSON)
+  hearth_drive_letters.py map-steam [--dry-run]  the same for every Steam game's prefix (One C:, at each sign-in)
   hearth_drive_letters.py c-path TEXT          what a C:\\ form stands for with the view on (JSON: {path} or {error})
 """
+import glob
 import json
 import os
 import re
@@ -44,7 +46,7 @@ SYSTEM = 'C'
 LETTERS = 'DEFGHIJKLMNOPQRSTUVWXY'
 SYSTEM_KEY = 'system'
 USER_FOLDERS = (('DESKTOP', 'Desktop'), ('DOCUMENTS', 'Documents'), ('DOWNLOAD', 'Downloads'),
-                ('PICTURES', 'Pictures'), ('MUSIC', 'Music'), ('VIDEOS', 'Videos'))
+                ('PICTURES', 'Pictures'), ('MUSIC', 'Music'), ('VIDEOS', 'Videos'), ('SAVED', 'Saved Games'))
 
 
 class Fail(Exception):
@@ -284,6 +286,8 @@ def map_prefix(prefix, letters_path=None, dry=False):
     for u in names:
         for key, win in USER_FOLDERS:
             real = xdg.get(key) or os.path.join(home(), win)
+            if key == 'SAVED' and not dry:
+                os.makedirs(real, exist_ok=True)     # One C: (1.11): every Windows game's Saved Games is yours
             if not os.path.isdir(real) or os.path.realpath(real) == os.path.realpath(home()):
                 continue
             p = os.path.join(users, u, win)
@@ -318,6 +322,42 @@ def map_prefix(prefix, letters_path=None, dry=False):
                 json.dump(data, f)
             os.replace(marker + '.tmp', marker)
     return out
+
+
+def steam_prefixes(home_dir=None):
+    """Every Steam game's Wine prefix (steamapps/compatdata/<id>/pfx) in every Steam library."""
+    h = home_dir or home()
+    roots = [os.path.join(h, '.local', 'share', 'Steam'), os.path.join(h, '.steam', 'steam'),
+             os.path.join(h, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam')]
+    libs = []
+    for r in roots:
+        libs.append(r)
+        try:
+            with open(os.path.join(r, 'steamapps', 'libraryfolders.vdf'), encoding='utf-8', errors='replace') as f:
+                libs += [m.replace('\\\\', '\\') for m in re.findall(r'"path"\s+"((?:[^"\\]|\\.)*)"', f.read())]
+        except OSError:
+            pass
+    out, seen = [], set()
+    for lib in libs:
+        for pfx in sorted(glob.glob(os.path.join(lib, 'steamapps', 'compatdata', '*', 'pfx'))):
+            real = os.path.realpath(pfx)
+            if real not in seen and os.path.isdir(os.path.join(real, 'drive_c')):
+                seen.add(real)
+                out.append(pfx)
+    return out
+
+
+def map_steam(dry=False):
+    """One C: for Steam's Windows games too (1.11): the same drive letters and your own Documents, Desktop, Saved
+    Games… in each game's prefix, with the same care as map_prefix (only empty folders and Hearth's own links change,
+    so a game's saves that are already there stay exactly where they are)."""
+    done = {}
+    for pfx in steam_prefixes():
+        try:
+            done[pfx] = map_prefix(pfx, dry=dry)
+        except (OSError, ValueError) as e:
+            done[pfx] = {'error': str(e)}
+    return {'prefixes': len(done), 'changed': sum(1 for r in done.values() if r.get('folders') or r.get('drives')), 'detail': done}
 
 
 # ---------------------------------------------------------------- Hearth (C:) with Windows folder names
@@ -457,6 +497,8 @@ def main(argv):
             r = {'letters': load(), 'file': state_file()}
         elif a[:1] == ['map-prefix'] and len(a) == 2:
             r = map_prefix(a[1])
+        elif a in (['map-steam'], ['map-steam', '--dry-run']):
+            r = map_steam(dry=a[-1] == '--dry-run')
         elif a[:1] == ['c-path'] and len(a) == 2:
             r = from_c(a[1], c_context()) or {'error': 'That isn\'t a C:\\ path'}
         else:
