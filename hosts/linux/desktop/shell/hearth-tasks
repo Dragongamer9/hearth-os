@@ -40,6 +40,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 # Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
@@ -2322,6 +2323,112 @@ def parse_pid(s):
     return int(s)
 
 
+# ====================================================================== App history (1.11, mockup tm-8)
+# Like Windows' App history: how much processor time and disk each app has used since a date you can reset. A small
+# user timer (hearth-app-history.timer) looks every 5 minutes at your programs, grouped into apps the way the
+# Processes page groups them, and adds up what each used since the last look. It writes only
+# ~/.local/state/hearth/app-history.json (a record, never a setting). A program that starts and closes between two
+# looks isn't counted.
+CLK_TCK = os.sysconf('SC_CLK_TCK') if hasattr(os, 'sysconf') else 100
+
+
+def history_file():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'hearth', 'app-history.json')
+
+
+def io_split(text):
+    rd = wr = 0
+    for line in (text or '').splitlines():
+        k, _, v = line.partition(':')
+        try:
+            if k == 'read_bytes':
+                rd = int(v)
+            elif k == 'write_bytes':
+                wr = int(v)
+        except ValueError:
+            pass
+    return rd, wr
+
+
+def proc_usage(root=PROC):
+    """{process key: [app name, processor seconds, bytes read, bytes written]} for your programs now."""
+    procs = scan(root)
+    uid = os.getuid()
+    libs = steam_libraries()
+    out = {}
+    for g in build_groups(procs, uid, os.getpid(), cached_desktop_index(), lambda a: steam_name(a, libs)):
+        if g.get('kind') == 'background' and g.get('protected'):
+            continue
+        for pid in g['pids']:
+            pr = procs.get(pid)
+            if not pr or pr.uid != uid:
+                continue
+            rd, wr = io_split(read(os.path.join(root, str(pid), 'io'), ''))
+            out[str(pr.key)] = [g['name'], round(pr.jiffies / CLK_TCK, 2), rd, wr]
+    return out
+
+
+def history_add(state, now_procs, now):
+    """Adds what each app used since the last look: a process seen before counts its growth, a new one all it has
+    used (it started since)."""
+    last = state.get('procs') or {}
+    apps = state.setdefault('apps', {})
+    for key, (name, cpu, rd, wr) in now_procs.items():
+        prev = last.get(key)
+        if prev:
+            d = [max(0, cpu - prev[1]), max(0, rd - prev[2]), max(0, wr - prev[3])]
+        else:
+            d = [cpu, rd, wr]
+        if not any(d):
+            continue
+        a = apps.setdefault(name, {'cpu': 0.0, 'read': 0, 'write': 0, 'last': 0})
+        a['cpu'] = round(a['cpu'] + d[0], 2)
+        a['read'] += d[1]
+        a['write'] += d[2]
+        a['last'] = int(now)
+    state['procs'] = now_procs
+    state.setdefault('since', int(now))
+    return state
+
+
+def history_write(state):
+    path = history_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.app-history.', dir=os.path.dirname(path))
+    with os.fdopen(fd, 'w') as f:
+        json.dump(state, f, separators=(',', ':'))
+    os.replace(tmp, path)
+
+
+def history_read():
+    try:
+        with open(history_file()) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def history_collect():
+    st = history_add(history_read(), proc_usage(), time.time())
+    history_write(st)
+    return {'ok': True, 'apps': len(st.get('apps') or {})}
+
+
+def history_list():
+    st = history_read()
+    apps = [dict(v, name=k) for k, v in (st.get('apps') or {}).items()]
+    apps.sort(key=lambda a: -a['cpu'])
+    return {'since': st.get('since'), 'apps': apps[:300]}
+
+
+def history_clear():
+    """Delete usage history: starts counting again from now (what's running now counts only from here)."""
+    history_write({'since': int(time.time()), 'apps': {}, 'procs': proc_usage()})
+    return {'ok': True}
+
+
 def cmd(argv):
     c = argv[1] if len(argv) > 1 else ''
     if c == 'list' and len(argv) == 2:
@@ -2359,6 +2466,12 @@ def cmd(argv):
         out = set_timer(argv[2], argv[3] == 'on')
     elif c == 'users' and len(argv) == 2:
         out = user_list()
+    elif c == 'history' and len(argv) == 2:
+        out = history_list()
+    elif c == 'history-collect' and len(argv) == 2:
+        out = history_collect()
+    elif c == 'history-clear' and len(argv) == 2:
+        out = history_clear()
     elif c == 'services' and len(argv) == 2:
         out = service_list()
     elif c == 'service' and len(argv) == 4:

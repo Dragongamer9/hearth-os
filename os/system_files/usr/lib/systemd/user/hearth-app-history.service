@@ -1,0 +1,13 @@
+# Task Manager's App history (1.11): adds up how much processor time and disk each of your apps used since the last
+# look. Reads /proc for your own programs; writes only ~/.local/state/hearth/app-history.json. A user timer, so it
+# can never hold up starting the PC or the session.
+[Unit]
+Description=Hearth: App history for Task Manager
+ConditionPathExists=/usr/share/nimbus/desktop/shell/hearth-tasks
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-tasks history-collect
+TimeoutStartSec=60
+Nice=19
+IOSchedulingClass=idle

@@ -171,6 +171,35 @@ Item {
                     text: "One app taking the whole processor? Right-click it in Processes: Set priority, Run on these cores, or Limit CPU / memory."
                 }
             }
+            // Game cores (1.11, the approved mockup tm-3): off unless you turn it on (hearth-hwset game.cores)
+            Card {
+                visible: ds.kind === "cpu" && !!(ds.hw && ds.hw.gameCores && ds.hw.gameCores.can)
+                readonly property var gc: ds.hw ? ds.hw.gameCores : null
+                readonly property bool on: !!gc && gc.value !== "off"
+                id: gcCard
+                title: "Game cores"; sub: "Give the game you're playing its own cores, so background work never stutters it."
+                Line {
+                    title: "Reserve for games"; sub: "only while a game is running; everything shares every core again after"
+                    Toggle { checked: gcCard.on; onFlipped: ds.hwset("game.cores", checked ? "off" : "on") }
+                }
+                Line {
+                    visible: gcCard.on
+                    title: "Cores for the game"; sub: gcCard.gc ? "of " + gcCard.gc.threads + " (cores 0–" + (gcCard.gc.threads - 1) + ")" : ""
+                    Chips {
+                        readonly property int n: gcCard.gc ? gcCard.gc.threads : 8
+                        options: [[(n - Math.floor(n / 4)) > 0 ? Math.floor(n / 4) + "-" + (n - 1) : "", (n - Math.floor(n / 4)) + " cores"],
+                                  [Math.floor(n / 2) + "-" + (n - 1), (n - Math.floor(n / 2)) + " cores"],
+                                  [Math.floor(3 * n / 4) + "-" + (n - 1), (n - Math.floor(3 * n / 4)) + " cores"]]
+                        value: gcCard.gc ? gcCard.gc.value : ""
+                        onChose: v => ds.hwset("game.cores", v)
+                    }
+                }
+                Line {
+                    visible: gcCard.on
+                    title: "Background work (updates, AI, builds)"; sub: "the system's services run on the other cores while you play"
+                    Value { text: { if (!gcCard.gc) return "–"; const n = gcCard.gc.threads, m = (gcCard.gc.value.match(/^(\d+)/) || [0, n])[1]; return m > 0 ? "Cores 0–" + (m - 1) : "–"; } }
+                }
+            }
 
             // ---- Disk
             Card {
