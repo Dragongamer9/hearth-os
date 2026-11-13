@@ -158,13 +158,14 @@ def parse_stat(text):
     rest = text[b + 2:].split()
     return {'pid': int(text[:a]), 'comm': text[a + 1:b], 'state': rest[0], 'ppid': int(rest[1]),
             'jiffies': int(rest[11]) + int(rest[12]), 'start': int(rest[19]),
-            'nice': int(rest[16]), 'threads': int(rest[17])}
+            'nice': int(rest[16]), 'threads': int(rest[17]),
+            'rt': len(rest) > 38 and rest[38] in ('1', '2')}       # SCHED_FIFO / SCHED_RR: Realtime (1.12)
 
 
 def parse_status(text):
     """/proc/PID/status: the real user id and memory (bytes). Memory is what the process uses itself
     (anonymous + shared memory), so shared libraries aren't counted again for every process."""
-    out = {'uid': None, 'mem': 0, 'swap': 0, 'shared': 0, 'kthread': False}
+    out = {'uid': None, 'mem': 0, 'swap': 0, 'shared': 0, 'kthread': False, 'cpus': ''}
     for line in text.splitlines():
         k, _, v = line.partition(':')
         v = v.split()
@@ -182,6 +183,8 @@ def parse_status(text):
             out['swap'] = int(v[0]) * 1024          # moved to compressed memory (zram) or the swap file (1.11)
         elif k == 'Kthread':
             out['kthread'] = v[0] == '1'
+        elif k == 'Cpus_allowed_list':
+            out['cpus'] = v[0]                      # Details' Cores column (1.12, mockup tm-2)
     return out
 
 
@@ -220,6 +223,25 @@ def parse_meminfo(text):
         if v and v[0].isdigit():
             out[k] = int(v[0]) * 1024
     return out
+
+def cores_label(cpus, n=None):
+    """Cpus_allowed_list as Details shows it: "All" when every core is allowed, else "4–7" / "0,2"."""
+    n = n or os.cpu_count() or 1
+    if not cpus or cpus == ('0-%d' % (n - 1) if n > 1 else '0'):
+        return 'All'
+    return cpus.replace('-', '–')
+
+
+def ai_job(cmd):
+    """An AI agent the Command Center (or you) started: its name for the AI tag (1.12, mockup tm-1)."""
+    base = os.path.basename((cmd or [''])[0]) if cmd else ''
+    if base in ('node', 'python3', 'python', 'bun') and len(cmd) > 1:
+        base = os.path.basename(cmd[1])
+    return base in AI_AGENTS
+
+
+AI_AGENTS = ('claude', 'codex', 'gemini', 'aider', 'freebuff', 'opencode', 'goose', 'ollama')
+
 
 def parse_swaps(text):
     """/proc/swaps split into zram (in memory) and the drive (swap files and partitions), bytes."""
@@ -277,7 +299,7 @@ def parse_cgroup_app(text):
 
 class Proc:
     __slots__ = ('pid', 'ppid', 'comm', 'uid', 'mem', 'jiffies', 'start', 'cmd', 'exe', 'kthread', 'root',
-                 'state', 'nice', 'threads', 'path', 'swap', 'shared')
+                 'state', 'nice', 'threads', 'path', 'swap', 'shared', 'cpus', 'rt')
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -593,13 +615,14 @@ def build_groups(procs, uid, self_pid=None, index=None, game_name=None, cache=No
         exe = next((n for n in (windows_exe(own[x]) for x in order) if n), None)
         if appid:
             g.update(kind='game', name=(game_name(appid) if game_name else None) or exe or 'Steam game ' + appid,
-                     icon='steam_icon_' + appid, appIds=['steam_app_' + appid], tag='Steam', appid=appid)
+                     icon='steam_icon_' + appid, appIds=['steam_app_' + appid], appid=appid,
+                     tag='Game · Proton' if exe else 'Steam')          # the tag in mockup tm-1 (1.12)
         elif entry:
             g.update(kind='app', name=entry['name'], icon=entry['icon'], desktop=entry['id'])
             if exe:
                 g['tag'] = 'Windows app'
         elif exe:
-            g.update(kind='game', name=exe, icon='wine', tag='Windows app')
+            g.update(kind='game', name=exe, icon='wine', tag='Game · Proton' if any('proton' in x.lower() for x in (own[root].cmd or [])[:3]) else 'Windows app')
         else:
             g['name'] = rp.exe or rp.comm or str(root)
         ids = set(g['appIds'])
@@ -1656,9 +1679,9 @@ class Sampler:
                 self.static[key] = info
             kthread = u['kthread'] or s['pid'] == 2 or s['ppid'] == 2
             p = Proc(pid=s['pid'], ppid=s['ppid'], comm=s['comm'], uid=u['uid'], mem=u['mem'], jiffies=s['jiffies'],
-                     start=s['start'], kthread=kthread, root=self.root, cmd=info['cmd'], swap=u.get('swap', 0), shared=u.get('shared', 0),
+                     start=s['start'], kthread=kthread, root=self.root, cmd=info['cmd'], swap=u.get('swap', 0), shared=u.get('shared', 0), cpus=u.get('cpus', ''),
                      exe=os.path.basename(info['path']), path=info['path'], state=s['state'], nice=s['nice'],
-                     threads=s['threads'])
+                     threads=s['threads'], rt=s.get('rt', False))
             procs[p.pid] = p
             threads += s['threads']
         for k in [k for k in self.static if k not in alive]:
@@ -1885,7 +1908,8 @@ class Sampler:
                     rows.append({'pid': p.pid, 'name': p.exe or p.comm, 'status': state_label(p.state), 'user': self.user(p.uid),
                                  'cpu': cpu_of.get(p.pid, 0.0), 'mem': p.mem, 'cmd': ' '.join(p.cmd)[:400] or '[' + p.comm + ']',
                                  'mine': p.uid == self.uid, 'path': p.path, 'threads': p.threads, 'swap': p.swap or 0,
-                                 'nice': p.nice, 'ppid': p.ppid})
+                                 'nice': p.nice, 'ppid': p.ppid, 'cputime': int(p.jiffies / CLK_TCK),
+                                 'cores': cores_label(p.cpus or ''), 'rt': bool(p.rt)})
                 rows.sort(key=lambda r: r['pid'])
                 out['details'] = rows
         else:
@@ -1913,7 +1937,8 @@ class Sampler:
                 p = procs[pid]
                 d = io_now.get(p.key, 0) - io_prev.get(p.key, io_now.get(p.key, 0))
                 disk = int(max(0, d) / dt) if dt > 0 else 0
-                kids.append({'pid': pid, 'name': script_name(p) or p.exe or p.comm, 'cpu': cpu_of.get(pid, 0.0), 'mem': p.mem,
+                kids.append({'pid': pid, 'name': script_name(p) or p.exe or p.comm, 'ai': ai_job(p.cmd),
+                             'bridge': any('bridge' in os.path.basename(x).lower() for x in (p.cmd or [])[:2]), 'cpu': cpu_of.get(pid, 0.0), 'mem': p.mem,
                              'swap': p.swap or 0, 'shared': p.shared or 0, 'disk': disk, 'gpu': round(gpu_of.get(pid, 0.0), 1), 'state': p.state, 'nice': p.nice})
             g['cpu'] = round(sum(k['cpu'] for k in kids), 1)
             g['swap'] = sum(k['swap'] for k in kids)
@@ -2122,6 +2147,21 @@ def set_priority(pid, level, root=PROC):
         if not renice_all(x, PRIORITY[level], root):
             stuck = True
     return {'pid': pid, 'priority': level, 'label': PRIORITY_LABEL[PRIORITY[level]], 'stuck': stuck}
+
+
+def suspend(pid, stop, root=PROC):
+    """Details › Suspend / Resume (1.12, mockup tm-2): stops or continues one of your own processes."""
+    procs = scan(root)
+    p = procs.get(pid)
+    if not p:
+        raise Fail('that process has already closed')
+    if p.uid != os.getuid():
+        raise Fail("that belongs to another user, so it can't be changed here")
+    g = next((g for g in build_groups(procs, os.getuid(), os.getpid()) if pid in g['pids']), None)
+    if g and g['protected']:
+        raise Fail("%s keeps Hearth running, so it can't be suspended" % (g.get('why') or 'this'))
+    os.kill(pid, signal.SIGSTOP if stop else signal.SIGCONT)
+    return {'pid': pid, 'suspended': stop}
 
 
 def parse_cpus(text, n=None):
@@ -2494,6 +2534,8 @@ def cmd(argv):
         out = set_efficiency(parse_pid(argv[2]), argv[3] == 'on')
     elif c == 'end-tree' and len(argv) == 3:
         out = end_tree(parse_pid(argv[2]))
+    elif c in ('suspend', 'resume') and len(argv) == 3:
+        out = suspend(parse_pid(argv[2]), c == 'suspend')
     elif c == 'priority' and len(argv) == 4:
         out = set_priority(parse_pid(argv[2]), argv[3])
     elif c == 'affinity' and len(argv) == 4:

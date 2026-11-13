@@ -15,22 +15,22 @@ Started in 1.11 with parts left out; finished in 1.12. Every part of every pictu
 - [x] Right-click: Limit CPU / memory… — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Limit CPU / memory…\""
 - [x] Right-click: Never close when memory runs out — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Never close when memory runs out\""
 - [ ] Right-click: Keep this running (checkpoint)
-- [ ] Right-click: Go to details shows the PID on the right
-- [ ] Apps & groups / All processes switch at the top
-- [ ] Efficiency mode, Open file location and End task buttons at the top
-- [ ] Tags on rows: AI (an AI job), bridge, Game · Proton, Hearth
-- [ ] Status: Quick Resume ⏸ for a suspended game
-- [ ] Search box: "Type a name, publisher or PID to search" (finds a PID)
+- [x] Right-click: Go to details shows the PID on the right — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Go to details\", icon: \"list\", key: \"PID \" + pid"
+- [x] Apps & groups / All processes switch at the top — hosts/linux/desktop/shell/TaskManagerView.qml: "tabs: [[\"groups\", \"Apps & groups\"], [\"all\", \"All processes\"]]"
+- [x] Efficiency mode, Open file location and End task buttons at the top — hosts/linux/desktop/shell/TaskManagerView.qml: "{ id: \"where\", label: \"Open file location\", icon: \"folder\", enabled: pp.selGroup"
+- [x] Tags on rows: AI (an AI job), bridge, Game · Proton, Hearth — hosts/linux/desktop/shell/TaskManagerView.qml: "tag: c.ai ? \"AI\" : c.bridge ? \"bridge\" : \"\""
+- [x] Status: Quick Resume ⏸ for a suspended game — hosts/linux/desktop/shell/TaskManagerView.qml: "\"Quick Resume \u23f8\""
+- [x] Search box: "Type a name, publisher or PID to search" (finds a PID) — hosts/linux/desktop/shell/TaskManagerView.qml: "Type a name, publisher or PID to search"
 
 ## tm-2 Details
 - [x] Parent, Swapped, Threads, Priority columns — hosts/linux/desktop/shell/TaskManagerView.qml: "title: \"Swapped\""
-- [ ] Subtitle "every process with its number, the Windows way", Columns… and End task buttons
-- [ ] CPU time and Cores columns
-- [ ] Right-click Set priority: Realtime, High, Above normal, Normal, Below normal, Low
+- [x] Subtitle "every process with its number, the Windows way", Columns… and End task buttons — hosts/linux/desktop/shell/TaskManagerView.qml: "subtitle: \"every process with its number, the Windows way\""
+- [x] CPU time and Cores columns — hosts/linux/desktop/shell/TaskManagerView.qml: "{ key: \"cputime\", title: \"CPU time\""
+- [x] Right-click Set priority: Realtime, High, Above normal, Normal, Below normal, Low — hosts/linux/desktop/shell/TaskManagerView.qml: "{ id: \"realtime\", label: \"Realtime\" }, { id: \"high\", label: \"High\""
 - [x] Right-click: Set affinity — hosts/linux/desktop/shell/TaskManagerView.qml: "Set affinity"
-- [ ] Right-click: Suspend / Resume
-- [ ] Right-click: Create dump file
-- [ ] Right-click: Open file location and End process tree
+- [x] Right-click: Suspend / Resume — hosts/linux/desktop/shell/TaskManagerView.qml: "\"Resume\" : \"Suspend\""
+- [x] Right-click: Create dump file — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Create dump file\""
+- [x] Right-click: Open file location and End process tree — hosts/linux/desktop/shell/TaskManagerView.qml: "{ id: \"tree\", label: \"End process tree\", icon: \"close\", enabled: r.mine"
 
 ## tm-3 CPU › Power & settings
 - [ ] The cores strip on top (each core's use, core 0 with its speed) and "name · N cores" on the right
