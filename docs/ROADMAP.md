@@ -33,6 +33,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Saved games (Settings › Gaming), with Ludusavi 0.31.0 (MIT) in the image: every game's saves found (Steam, Proton, Wine, Heroic, Lutris and thousands of others), backed up into your Saved Games folder and put back, all at once or one game at a time, on this PC or another after a reinstall; only when you press it (needs testing on a device)
 - [x] One C: for Windows apps and Steam's Windows games: each keeps its own Windows setup, but its Documents, Desktop, Pictures, Music, Videos, Downloads and a new Saved Games folder are your real folders, and its drives get the same letters as in Hearth (Steam games at every sign-in, in the background). Only empty folders and Hearth's own links change, so saves already inside a game's setup stay exactly where they are (needs testing on a device)
 - [x] A Compatibility section for Windows apps (Settings › Windows apps): Proton version, DXVK, VKD3D and the Windows version together with "Use these files from Windows" (DLL overrides like d3d9 or dinput8, the app's own copy first) and the common fixes (no esync, no fsync, more memory for old 32-bit games, Nvidia DLSS, hide an Nvidia card, old OpenGL games), all remembered per app (needs testing on a device)
+- [x] One Settings › Your devices page: your paired devices at the top (Hearth Link), and on the PC that's the home server a "This PC is the home server" section under them saying what it does (shared folders, backups, people, AI, what's paused while you play), one press to its pages. Hearth Link and the home server stay two services underneath, and every setting stays where it's saved (needs testing on a device)
 ### Planned next
 
 - [ ] Resource Monitor rebuilt to the 6 approved mockups: Overview, Processor, Memory, Disk, Network and Graphics show the right numbers and fit the window; Your PC stays as it is
@@ -63,7 +64,6 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] For the owner: a signing key in the repository's secrets, so each new app installs over the last one (the old 0.2.2 needs uninstalling once: it was signed with a throwaway key)
 - [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
 - [ ] Game saves backed up by Ludusavi (github.com/mtkennerly/ludusavi, MIT) on the home server: its list of where thousands of games keep their saves, Proton and Wine games included, under Hearth's save backups over Tailscale
-- [ ] One Settings › Your devices page: your paired devices at the top (Hearth Link), and on the server PC a "This PC is the home server" section under them; each device's tile says what it does (paired, or home server: archive, backups, AI). Hearth Link and Hearth Server stay two separate services underneath, and every setting stays where it's saved now
 
 ## 1.10 (released 2026-11-09)
 

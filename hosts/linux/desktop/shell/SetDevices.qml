@@ -24,6 +24,20 @@ SetPage {
     // Hearth Files' "Show other devices in Files" (files.json showDevices: on unless you turn it off; only read here
     // until you flip it, then only that key is merged in).
     SetJob { id: filesJob; helper: "hearth-files" }
+    // 1.11: one Your devices page. On the PC that's the home server, a section for it under your devices, saying what
+    // it does (hearth-home-server quick: read only; every setting stays on the Home server pages, where it's saved).
+    SetJob { id: hsJob; helper: "hearth-home-server" }
+    property var hs: null
+    readonly property var hsRoles: {
+        if (!hs || !hs.available) return [];
+        const r = [];
+        if (hs.shares) r.push(hs.shares + " shared folder" + (hs.shares === 1 ? "" : "s"));
+        if (hs.backups && hs.backups.count) r.push("backups");
+        if (hs.people) r.push(hs.people + (hs.people === 1 ? " person" : " people"));
+        if (hs.ai && hs.ai.on) r.push("AI");
+        return r;
+    }
+
     property bool showInFiles: true
 
     function load() {
@@ -31,7 +45,7 @@ SetPage {
         job.run(["devices"], r => { page.err = ""; page.loaded = true; page.replaceList("devices", (r && r.devices) || []); },
                 e => { page.err = e; page.loaded = true; });
     }
-    Component.onCompleted: { load(); filesJob.run(["prefs"], r => page.showInFiles = !(r && r.showDevices === false), () => {}); }
+    Component.onCompleted: { load(); filesJob.run(["prefs"], r => page.showInFiles = !(r && r.showDevices === false), () => {}); hsJob.run(["quick"], r => page.hs = r, () => {}); }
 
     Timer { interval: 15000; repeat: true; running: page.visible; onTriggered: page.load() }
     onVisibleChanged: if (!visible) detail = ""
@@ -86,6 +100,15 @@ SetPage {
             Repeater {
                 model: page.devices
                 delegate: DeviceCard { required property var modelData; dev: modelData; onActivated: { page.detail = modelData.id; Qt.callLater(page.focusFirst); } }
+            }
+        }
+        SetCardGroup {
+            visible: page.hsRoles.length > 0
+            title: "This PC is the home server"
+            SetRow {
+                icon: "server"; title: (page.hs ? page.hs.host : "This PC") + " · home server"; chevron: true
+                sub: page.hsRoles.join(" · ") + (page.hs && page.hs.paused && page.hs.paused.length ? " · paused while you play: " + page.hs.paused.join(", ") : "")
+                onActivated: SettingsNav.openPage("hs-overview")
             }
         }
         SetCardGroup {
