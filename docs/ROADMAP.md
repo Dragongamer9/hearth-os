@@ -24,6 +24,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Task Manager, improved (the approved mockups): Processes with PID, Compressed (memory moved to zram or swap) and Power columns and a Hearth group; right-click End process tree, Set priority (Normal, Below normal, Low), Run on these cores, Limit CPU / memory (a cap on the app's own scope, never closed), Never close when memory runs out, Go to details; Details with Parent, Swapped, Threads and Priority, and Set priority / affinity; each Performance page opens a settings tab: CPU Power & settings (power mode, turbo boost, top speed, temperature, throttling), Disk Health & settings, Network (metered, a mobile hotspot), GPU Tuning (LACT), Battery Health & settings (health, cycles, a charge limit) — remembered in /etc/hearth/hardware.json and put back at every start (needs testing on a device)
 - [x] Task Manager: Scheduled tasks (systemd timers: yours on / off, the system's read only, next and last run) and Users (who is signed in, their CPU, memory and processes) (needs testing on a device)
 - [ ] Task Manager, still to come from the mockups: App history, Game cores (the game you're playing on its own cores), per-app network use
+- [x] Graphics card controls with LACT 0.10.1 (MIT) in the image: Task Manager › Performance › GPU › Tuning opens it, for fan curves, power limits and undervolting on Nvidia, AMD and Intel. Its daemon stays off until you open tuning the first time (one password prompt), so nothing about the card changes by itself (needs testing on a device)
 ### Planned next
 
 - [ ] Resource Monitor rebuilt to the 6 approved mockups: Overview, Processor, Memory, Disk, Network and Graphics show the right numbers and fit the window; Your PC stays as it is
@@ -48,7 +49,6 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
 - [ ] Game saves backed up by Ludusavi (github.com/mtkennerly/ludusavi, MIT) on the home server: its list of where thousands of games keep their saves, Proton and Wine games included, under Hearth's save backups over Tailscale
 - [ ] One Settings › Your devices page: your paired devices at the top (Hearth Link), and on the server PC a "This PC is the home server" section under them; each device's tile says what it does (paired, or home server: archive, backups, AI). Hearth Link and Hearth Server stay two separate services underneath, and every setting stays where it's saved now
-- [ ] Graphics card controls with LACT (github.com/ilya-zlobintsev/LACT, MIT) next to Resource Monitor: fan curves, power limits and undervolting for Nvidia, AMD and Intel; off until you change something, every change remembered and undoable
 
 ## 1.10 (released 2026-11-09)
 
