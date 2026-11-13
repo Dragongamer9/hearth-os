@@ -2275,6 +2275,12 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
+"t": "Restore all saves",
+"p": "savedgames",
+"d": "Puts every backed-up save back where its game looks for it (after a reinstall, or on another PC). What it replaces is kept by Ludusavi.",
+"i": "restart"
+},
+{
 "t": "Use Server mode",
 "p": "hs-server",
 "d": "Show it next to Game Mode and Desktop Mode: in Start in, here and on the dashboard. Off by default; Game Mode stays where your PC starts unless you choose Server mode",

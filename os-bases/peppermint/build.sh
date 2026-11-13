@@ -1491,6 +1491,18 @@ else
 fi
 rm -f /tmp/beacon_amd64.deb
 
+# ------------------------------------------------------------------ Ludusavi: every game's saves (1.11)
+# github.com/mtkennerly/ludusavi (MIT), pinned: Settings › Gaming › Saved games (hearth-saves) backs them up into
+# ~/Saved Games/Backups and puts them back. Only when you press it. Optional.
+LUDU_VER=0.31.0
+if [ "$(uname -m)" = x86_64 ] && curl -fsSL --retry 3 -o /tmp/ludusavi.tar.gz "https://github.com/mtkennerly/ludusavi/releases/download/v${LUDU_VER}/ludusavi-v${LUDU_VER}-linux.tar.gz" \
+   && mkdir -p /tmp/ludusavi && tar -xzf /tmp/ludusavi.tar.gz -C /tmp/ludusavi && install -Dm755 /tmp/ludusavi/ludusavi /usr/bin/ludusavi; then
+  echo "Ludusavi $LUDU_VER installed"
+else
+  echo "warning: couldn't install Ludusavi $LUDU_VER; Saved games stays unavailable"
+fi
+rm -rf /tmp/ludusavi /tmp/ludusavi.tar.gz
+
 # ------------------------------------------------------------------ Xodus Nexus (Xbox PC and PC Game Pass games)
 # Shipped like Beacon: the AppImage in /usr/lib/xodus-nexus (with its version), `xodus-nexus` to start it (the same
 # script hosts/hearth-core/src/xodus.rs writes for a copy it downloads) and xodus-nexus.desktop (in Mantel's launcher

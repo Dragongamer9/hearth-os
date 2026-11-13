@@ -74,6 +74,7 @@ var PAGES = [
 
     // ---- Gaming
     { id: "gaming", file: "SetGaming.qml", cat: "gaming", label: "Gaming", icon: "pad", words: "game mode start in steam", landing: true, ownList: true },
+    { id: "savedgames", file: "SetSavedGames.qml", cat: "gaming", label: "Saved games", icon: "sync", desc: "Every game's saves, backed up and put back (Ludusavi)", words: "saves save games backup restore ludusavi cloud saves appdata documents my games" },
     { id: "steam", file: "SetSteam.qml", cat: "gaming", label: "Steam Game Mode and Decky", icon: "steam", desc: "Steam's big-screen mode, Decky Loader and Hearth Sync", words: "game mode decky plugins steam", old: "Steam Game Mode" },
     { id: "startup-animation", file: "SetBoot.qml", cat: "gaming", label: "Startup animation", icon: "film", desc: "What Steam Game Mode plays while it starts", words: "boot startup movie animation", old: "Boot & startup", props: { part: "animation" } },
     { id: "games", file: "SetGames.qml", cat: "gaming", label: "Games & stores", icon: "store", desc: "Epic Games, GOG and Xbox accounts, library sources, mods and saves", words: "steam stores library epic gog xbox", old: "Games & stores" },
