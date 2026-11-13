@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "id": "1794540808328181",
+      "kind": "text",
+      "file": "1794540808328181.txt",
+      "text": "sudo apt install -y openjdk-21-jre-headless",
+      "app": "Documents – Files",
+      "time": 1794540808.3277907,
+      "pinned": true,
+      "hash": "00f9dd9ce86c32022e33cb1ab4fe68567823032799b2f66d8deb656512301adb",
+      "size": 43,
+      "dims": ""
+    }
+  ],
+  "version": 1
+}
