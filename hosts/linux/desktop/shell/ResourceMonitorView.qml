@@ -246,6 +246,25 @@ FocusScope {
     readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"], disk: ["Read", "Write", "Total ↓"],
                                       network: ["Connections ↓", "Talking to", "CPU"], gpu: ["GPU ↓", "Video memory", "Using"] })
     readonly property var tableRows: { samples; return rowsFor(tab === "overview" ? "cpu" : tab); }
+    // Overview's state: folded sections and the programs you ticked (only while it's open; nothing is saved).
+    property var folded: ({ disk: true, network: true, gpu: true })
+    property var ticked: ({})
+    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Swapped"] })
+    // The chips on each Overview heading: [[text, tone]] (tone: main, good, warn or "").
+    function overviewChips(k) {
+        const s = sample || {};
+        if (k === "cpu") return s.cpu ? [[pct(s.cpu.total) + " used", "main"], [ghz(s.cpu.mhz), ""]].concat(s.cpu.temp ? [[temp(s.cpu.temp), s.cpu.temp > 85 ? "warn" : ""]] : []) : [];
+        if (k === "memory") {
+            const mb = s.memBar || {};
+            const pr = s.pressure !== undefined && s.pressure !== null ? s.pressure : null;
+            return [[size(mb.inUse || 0) + " in use", "main"]].concat(mb.swapUsed ? [[size(mb.swapUsed) + " in swap", ""]] : [])
+                .concat(pr === null ? [] : [["pressure: " + (pr < 1 ? "none" : pr < 10 ? "light" : pr < 30 ? "medium" : "heavy"), pr < 10 ? "good" : "warn"]]);
+        }
+        if (k === "disk") { const d = (s.disks || []).slice().sort((a, b) => b.active - a.active)[0]; return d ? [[d.label + " " + pct(d.active) + " busy", "main"], [rate((s.disks || []).reduce((a, x) => a + x.write, 0)) + " write", ""]] : []; }
+        if (k === "network") { const n = (s.nets || []).filter(x => x.up); return n.length ? [[rate(n.reduce((a, x) => a + x.recv, 0)) + " down", "main"], [rate(n.reduce((a, x) => a + x.send, 0)) + " up", ""]] : [["Not connected", ""]]; }
+        if (k === "gpu") { const g = (s.gpus || [])[0]; return g ? [[(g.vendor || "GPU") + " " + (g.busy === null || g.busy === undefined ? "" : pct(g.busy)), "main"]].concat(g.temp ? [[temp(g.temp), ""]] : []) : [["No graphics card seen", ""]]; }
+        return [];
+    }
     property int listIndex: 0
     readonly property var selRow: tableRows[Math.min(listIndex, tableRows.length - 1)] || null
 
@@ -606,39 +625,70 @@ FocusScope {
                     Layout.fillHeight: true
                     spacing: 10
 
-                    // Overview: Processor, Disk, Network in short
-                    Repeater {
-                        model: v.tab === "overview" ? [["cpu", "Processor", "#66c0f4"], ["disk", "Disk", "#7ccf8a"], ["network", "Network", "#f2c14e"]] : []
-                        delegate: Rectangle {
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 34 + 26 + Math.min(5, secRows.length) * 28
-                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                            readonly property var secRows: { v.samples; return v.rowsFor(modelData[0]).slice(0, 5); }
-                            readonly property string sum1: { v.samples; const s = v.sample || {};
-                                return modelData[0] === "cpu" ? pct(s.cpu ? s.cpu.total : 0) + " used" : modelData[0] === "disk" ? rate((s.disks || []).reduce((a, x) => a + x.read + x.write, 0))
-                                     : rate((s.nets || []).reduce((a, x) => a + x.recv + x.send, 0)); }
-                            readonly property string sum2: { v.samples; const s = v.sample || {};
-                                if (modelData[0] === "cpu") return s.cpu ? (s.cpu.logical + " threads · " + ghz(s.cpu.mhz) + (s.cpu.temp ? " · " + temp(s.cpu.temp) : "")) : "";
-                                if (modelData[0] === "disk") { const d = (s.disks || []).slice().sort((a, b) => b.active - a.active)[0]; return d ? d.label + " busiest · " + pct(d.active) + " active" : ""; }
-                                const n = (s.nets || []).find(x => x.up); return n ? n.kind + (n.speed ? " · " + (n.speed >= 1000 ? (n.speed / 1000).toFixed(1) + " Gbps" : n.speed + " Mbps") + " link" : "") : "Not connected"; }
-                            Column {
-                                anchors.fill: parent
-                                Rectangle {
-                                    width: parent.width; height: 34; color: v.c.head
-                                    Row {
-                                        anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } spacing: 12
-                                        Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; width: 80 }
-                                        Rectangle { width: 10; height: 10; radius: 2; color: modelData[2]; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: sum1; color: v.c.text; font.family: Theme.font; font.pixelSize: 13 }
-                                        Text { text: sum2; color: v.c.muted; font.family: Theme.font; font.pixelSize: 13 }
+                    // Overview (1.11, the approved mockup resmon-1): Processor, Memory, Disk, Network and Graphics, each with its
+                    // own chips and its top programs; click a heading to fold it; tick programs to show only them everywhere.
+                    Flickable {
+                        visible: v.tab === "overview"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        contentHeight: ovCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ColumnLayout {
+                            id: ovCol
+                            width: parent.width
+                            spacing: 10
+                            Repeater {
+                                model: v.tab === "overview" ? [["cpu", "Processor"], ["memory", "Memory"], ["disk", "Disk"], ["network", "Network"], ["gpu", "Graphics"]] : []
+                                delegate: Rectangle {
+                                    id: sec
+                                    required property var modelData
+                                    readonly property string k: modelData[0]
+                                    readonly property bool open: !v.folded[k]
+                                    Layout.fillWidth: true
+                                    implicitHeight: 38 + (open ? 26 + Math.max(1, secRows.length) * 28 : 0)
+                                    radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                                    readonly property var secRows: { v.samples; v.ticked; const r = v.rowsFor(k); const t = Object.keys(v.ticked); return (t.length ? r.filter(x => v.ticked[x.g.id]) : r).slice(0, 5); }
+                                    readonly property var chips: { v.samples; return v.overviewChips(k); }
+                                    Column {
+                                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                                        Rectangle {
+                                            width: parent.width; height: 38; color: v.c.head
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { const f = Object.assign({}, v.folded); f[sec.k] = !f[sec.k]; v.folded = f; } }
+                                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: (sec.open ? "▾ " : "▸ ") + sec.modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                            Row {
+                                                anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                                spacing: 6
+                                                Repeater {
+                                                    model: sec.chips
+                                                    delegate: Rectangle {
+                                                        required property var modelData
+                                                        height: 24; width: chT.implicitWidth + 18; radius: 12; color: "transparent"
+                                                        border.color: modelData[1] === "good" ? v.c.ok : modelData[1] === "warn" ? v.c.warn : modelData[1] === "main" ? v.c.accent : v.c.line
+                                                        Text { id: chT; anchors.centerIn: parent; text: parent.modelData[0]; color: parent.modelData[1] === "good" ? v.c.ok : parent.modelData[1] === "warn" ? v.c.warn : v.c.text; font.family: Theme.font; font.pixelSize: 12 }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        ProgHeader { visible: sec.open; width: parent.width; cols: v.overviewCols[sec.k] || v.colsFor[sec.k] }
+                                        Repeater {
+                                            model: sec.open ? sec.secRows : []
+                                            delegate: ProgRow {
+                                                required property var modelData; required property int index
+                                                width: parent.width; row: modelData; alt: index % 2 === 0; picked: false
+                                                tickable: true; ticked: !!v.ticked[modelData.g.id]
+                                                onTick: { const t = Object.assign({}, v.ticked); if (t[modelData.g.id]) delete t[modelData.g.id]; else t[modelData.g.id] = true; v.ticked = t; }
+                                                onMenuRow: (x, y) => { const pt = mapToItem(v, x, y); v.openMenu(modelData.g, pt.x, pt.y); }
+                                            }
+                                        }
+                                        Text { visible: sec.open && !sec.secRows.length; leftPadding: 12; topPadding: 6; text: "Nothing here right now."; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
                                     }
                                 }
-                                ProgHeader { width: parent.width; cols: v.colsFor[modelData[0]] }
-                                Repeater {
-                                    model: secRows
-                                    delegate: ProgRow { required property var modelData; required property int index; width: parent.width; row: modelData; alt: index % 2 === 0; picked: false }
-                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true; Layout.leftMargin: 4; wrapMode: Text.WordWrap
+                                text: Object.keys(v.ticked).length ? "Showing only the programs you ticked. Untick them to see everything." : "Tick programs to show only them in every section. Click a heading to fold it."
+                                color: v.c.muted; font.family: Theme.font; font.pixelSize: 12
                             }
                         }
                     }
@@ -932,8 +982,11 @@ FocusScope {
         property var row: null
         property bool alt: false
         property bool picked: false
+        property bool tickable: false
+        property bool ticked: false
         signal clickedRow()
         signal menuRow(real x, real y)
+        signal tick()
         readonly property var g: row ? row.g : ({})
         height: 28
         color: picked ? vv.c.sel : (alt ? vv.c.alt : "transparent")
@@ -943,7 +996,13 @@ FocusScope {
                 width: parent.width * 0.42; height: parent.height
                 Row {
                     anchors.verticalCenter: parent.verticalCenter; spacing: 8; width: parent.width - 6
-                    Rectangle { width: 16; height: 16; radius: 4; color: vv.tagColor(pr.g); anchors.verticalCenter: parent.verticalCenter }
+                    Rectangle {
+                        width: 16; height: 16; radius: 4; anchors.verticalCenter: parent.verticalCenter
+                        color: pr.tickable ? (pr.ticked ? vv.tagColor(pr.g) : "transparent") : vv.tagColor(pr.g)
+                        border.width: pr.tickable ? 1 : 0; border.color: vv.c.muted
+                        Text { visible: pr.tickable && pr.ticked; anchors.centerIn: parent; text: "✓"; color: "#10151b"; font.pixelSize: 11; font.bold: true }
+                        MouseArea { enabled: pr.tickable; anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: pr.tick() }
+                    }
                     Text { id: nm; text: (pr.g.name || "") + (pr.g.count > 1 ? " (" + pr.g.count + ")" : ""); color: vv.c.text; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight; width: Math.min(implicitWidth, parent.width - 24 - (tagPill.visible ? tagPill.width + 8 : 0)); anchors.verticalCenter: parent.verticalCenter }
                     Rectangle {
                         id: tagPill
