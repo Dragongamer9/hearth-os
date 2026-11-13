@@ -250,6 +250,7 @@ ShellRoot {
     // either only loses that window. IPC targets "restore" and "reliability" (hearth-restore, hearth-reliability).
     Loader { source: "Restore.qml" }
     Loader { source: "Reliability.qml" }
+    Loader { source: "BatteryWatch.qml" }      // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {
