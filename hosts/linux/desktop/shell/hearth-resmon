@@ -1987,9 +1987,48 @@ def open_window(tab=''):
     raise Fail("Hearth's desktop (Mantel) isn't running; open Resource Monitor from Desktop Mode")
 
 
+def open_files(pids, root=None, limit=200):
+    """Processor tab's Open files (1.11, mockup resmon-2): the regular files a program (all its PIDs) has open, yours
+    only (/proc/PID/fd is readable only for your own programs), with the C:\\ form when Hearth (C:) has one."""
+    root = root or ht.PROC
+    seen, out = set(), []
+    try:
+        import hearth_drive_letters as hdl
+        ctx = hdl.c_context()
+    except Exception:  # noqa: BLE001
+        hdl = ctx = None
+    for pid in pids:
+        d = os.path.join(root, str(pid), 'fd')
+        try:
+            fds = os.listdir(d)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                t = os.readlink(os.path.join(d, fd))
+            except OSError:
+                continue
+            if not t.startswith('/') or t.startswith(('/dev/', '/proc/', '/sys/', '/memfd:')) or t in seen or ' (deleted)' in t:
+                continue
+            seen.add(t)
+            win = ''
+            if hdl and ctx:
+                try:
+                    win = hdl.to_c(t, ctx)
+                except Exception:  # noqa: BLE001
+                    win = ''
+            out.append({'pid': pid, 'path': t, 'win': win})
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def cmd(argv):
     c = argv[1] if len(argv) > 1 else 'open'
     rest = argv[2:]
+    if c == 'files' and rest and all(x.isdigit() for x in rest):
+        print(json.dumps({'files': open_files([int(x) for x in rest[:64]])}))
+        return
     if c == 'open':
         out = open_window(rest[0] if rest else '')
     elif c == 'serve' and not rest:

@@ -235,7 +235,7 @@ FocusScope {
         const gs = groups.slice();
         const by = (k) => gs.sort((a, b) => (b[k] || 0) - (a[k] || 0) || (b.mem || 0) - (a.mem || 0));
         switch (t) {
-        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: pct(g.avg) }));
+        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: priorityName(g.nice) }));
         case "memory": return by("mem").map(g => ({ g: g, a: size(g.mem), b: g.shared !== undefined ? size(g.shared) : "–", c: g.swap ? size(g.swap) : "0" }));
         case "disk": return gs.sort((a, b) => ((b.read || 0) + (b.write || 0)) - ((a.read || 0) + (a.write || 0)) || (b.disk || 0) - (a.disk || 0)).map(g => ({ g: g, a: rate(g.read !== undefined ? g.read : g.disk), b: rate(g.write || 0), c: rate((g.read || 0) + (g.write || 0) || g.disk) }));
         case "network": return gs.sort((a, b) => (b.conns || 0) - (a.conns || 0) || (b.cpu || 0) - (a.cpu || 0)).map(g => ({ g: g, a: g.conns ? String(g.conns) : "0", b: g.remote || "–", c: pct(g.cpu) }));
@@ -243,7 +243,8 @@ FocusScope {
         }
         return [];
     }
-    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Compressed"], disk: ["Read", "Write", "Total ↓"],
+    function priorityName(n) { return n === undefined || n === null ? "Normal" : n < -10 ? "High" : n < 0 ? "Above normal" : n === 0 ? "Normal" : n < 19 ? "Below normal" : "Low"; }
+    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Priority"], memory: ["In use ↓", "Shared", "Compressed"], disk: ["Read", "Write", "Total ↓"],
                                       network: ["Connections ↓", "Talking to", "CPU"], gpu: ["GPU ↓", "Video memory", "Using"] })
     readonly property var tableRows: { samples; return rowsFor(tab === "overview" ? "cpu" : tab); }
     // Overview's state: folded sections and the programs you ticked (only while it's open; nothing is saved).
@@ -266,6 +267,13 @@ FocusScope {
         return [];
     }
     property int listIndex: 0
+    // Processor tab: the selected program's open files (1.11, mockup resmon-2; hearth-resmon files PID…).
+    property var openFiles: []
+    onSelRowChanged: if (tab === "cpu" && selRow && selRow.g && selRow.g.pids && !filesProc.running) { filesProc.command = ["python3", v.helper, "files"].concat(selRow.g.pids.slice(0, 64).map(String)); filesProc.running = true; }
+    Process {
+        id: filesProc
+        stdout: StdioCollector { onStreamFinished: { try { v.openFiles = JSON.parse(text.trim().split("\n").pop()).files || []; } catch (e) { v.openFiles = []; } } }
+    }
     readonly property var selRow: tableRows[Math.min(listIndex, tableRows.length - 1)] || null
 
     // ================================================ actions (End, Efficiency mode, Open file location, Search online)
@@ -868,6 +876,31 @@ FocusScope {
                                 width: table.width; row: modelData; alt: index % 2 === 0; picked: index === v.listIndex
                                 onClickedRow: v.listIndex = index
                                 onMenuRow: (x, y) => { v.listIndex = index; const pt = mapToItem(v, x, y); v.openMenu(modelData.g, pt.x, pt.y); }
+                            }
+                        }
+                    }
+                    // Processor: the selected program's open files (1.11)
+                    Rectangle {
+                        visible: v.tab === "cpu" && v.openFiles.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(190, 34 + v.openFiles.length * 26)
+                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
+                        Rectangle {
+                            id: ofHead
+                            width: parent.width; height: 34; color: v.c.head
+                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                                   text: "Open files · " + (v.selRow && v.selRow.g ? v.selRow.g.name : "") + " (" + v.openFiles.length + ")"
+                                   color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        }
+                        ListView {
+                            anchors { left: parent.left; right: parent.right; top: ofHead.bottom; bottom: parent.bottom }
+                            clip: true; boundsBehavior: Flickable.StopAtBounds
+                            model: v.openFiles
+                            delegate: Row {
+                                required property var modelData
+                                width: ListView.view.width; height: 26; spacing: 12; leftPadding: 12
+                                Text { width: 70; text: String(modelData.pid); color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                Text { width: parent.width - 110; text: modelData.win || modelData.path; elide: Text.ElideMiddle; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
                             }
                         }
                     }
