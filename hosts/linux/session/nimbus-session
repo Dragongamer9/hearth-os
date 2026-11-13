@@ -96,8 +96,15 @@ case ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$dat
 if [ -d /usr/share/hearth/app-kinds/applications ]; then
   case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac
 fi
+# Apps for hardware this PC doesn't have (NVIDIA Settings without an Nvidia card) are hidden from every menu: NoDisplay
+# copies in this sign-in's runtime folder, worked out again at every sign-in (a new card shows them at once). Never
+# holds the session up: 5 seconds at most, and nothing changes when it fails.
+hw_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-hw-apps"
+if [ -x /usr/libexec/hearth-app-kinds ] && XDG_DATA_DIRS="$data_dirs" timeout 5 python3 /usr/libexec/hearth-app-kinds hardware --out "$hw_dir" >/dev/null 2>&1 && [ -d "$hw_dir/applications" ]; then
+  case ":$data_dirs:" in *":$hw_dir:"*) ;; *) data_dirs="$hw_dir:$data_dirs" ;; esac
+fi
 export XDG_DATA_DIRS="$data_dirs"
-unset data_dirs d
+unset data_dirs d hw_dir
 # <<< data dirs
 export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 # gamescope reuses a mode saved in GAMESCOPE_MODE_SAVE_FILE (set by some Steam sessions) whenever -W/-H/-r are
