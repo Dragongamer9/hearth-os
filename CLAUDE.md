@@ -30,6 +30,11 @@ in `docs/archive/`). The owner is Dragongamer9.
 10. **RED FLAG: Every release updates the version on the website.** The hearthos.fun "Out now" line
    (`site/index.html`) and anything else naming the current version must show the release being made, in the same
    release commit. `hosts/linux/test/test_site_version.py` fails when the site lags the newest released ROADMAP version.
+11. **RED FLAG: Every approved mockup is built completely, exactly as shown.** Nothing in it is left out, cut down or
+   swapped for a button that opens another app. Put the picture in `docs/mockups/` and list every part of it in a
+   checklist (`docs/mockups/checklists/*.md`: `- [x] part — file: "proof"` or `- [ ] part`, with `Release: X`). A
+   roadmap item for it is ticked only when its checklist is complete, and names the checklist. Before a release, open
+   each page next to its mockup. `hosts/linux/test/test_mockups.py` fails a release whose mockups have open parts.
 
 ## Branches and releasing
 
@@ -38,6 +43,7 @@ in `docs/archive/`). The owner is Dragongamer9.
   1. Bump `hosts/windows/Nimbus.Host/Nimbus.Host.csproj`, `hosts/hearth-core/Cargo.toml`, `hosts/hearth-rs/Cargo.toml`,
      `hosts/electron/package.json`, `hosts/linux/package.json`.
   2. Add `## X (released)` above the previous release in `docs/ROADMAP.md`, then `python3 tools/build-docs.py site/docs`.
+     Every checklist with `Release: X` in `docs/mockups/checklists` must be complete (red flag 11).
      Update the website's "Out now" version in `site/index.html` to X (red flag 10; the site test checks it).
   3. Commit "X" on bughunt; check both images build with publish=false.
   4. `git checkout -B release-X origin/main && git merge --no-ff <bughunt sha> && git push origin release-X:main`.
