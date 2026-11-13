@@ -5,7 +5,7 @@ Sync** putting your games from other stores into Steam's library, and **Mantel**
 **Ember** is Hearth on Windows 11. Versions are MAJOR.MINOR with a date (docs/UPDATES.md), and the owner picks every
 number. Work lands on `bughunt` and goes out on `main` when it's tested. What's archived: docs/ARCHIVED.md.
 
-## Planned for 1.12 (the owner moved these from 1.11)
+## Planned for 1.12
 
 - [ ] Hearth Recovery USB built from the Debian edition (it's still made from the archived Anatase image, and was last uploaded on 26 October), so the Recovery USB matches what devices run — needs its own port: the Recovery build uses Fedora's live tools (dracut-live, livesys, Titanoboa), so it would be rebuilt on the Debian installer USB's live boot instead
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
