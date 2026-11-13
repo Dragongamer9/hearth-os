@@ -1681,6 +1681,10 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed
 systemctl enable NetworkManager.service bluetooth.service systemd-resolved.service systemd-timesyncd.service \
   fstrim.timer bootc-fetch-apply-updates.timer sddm.service
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+# Memory and swap (1.11, hearth-memory): zram, your swap file and how much memory is kept free, set at every start
+# from /etc/hearth/memory.json (recommended values without one), and the memory guard. Neither holds the start up.
+chmod 755 /usr/libexec/nimbus/hearth-memory
+systemctl enable hearth-memory.service hearth-memguard.service
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
 # packages you added put back after an update, a safe start if your changes stop Hearth from starting.

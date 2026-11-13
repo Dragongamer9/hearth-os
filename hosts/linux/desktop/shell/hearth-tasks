@@ -207,6 +207,13 @@ def parse_meminfo(text):
             out[k] = int(v[0]) * 1024
     return out
 
+def mem_used(mi):
+    """Memory in use as Windows' Task Manager counts it: total − free − cache (page cache, buffers, reclaimable slab;
+    shared memory counts as used). Not total − MemAvailable: MemAvailable also subtracts the kernel's reserve, so with
+    Keep memory free set high it said "100% in use" while gigabytes were free (1.11)."""
+    cache = mi.get('Cached', 0) + mi.get('Buffers', 0) + mi.get('SReclaimable', 0) - mi.get('Shmem', 0)
+    return max(0, mi.get('MemTotal', 0) - mi.get('MemFree', 0) - max(0, cache))
+
 
 def parse_cgroup_app(text):
     """The app a process belongs to, from its systemd unit: Flatpak app id or the app-…scope name."""
@@ -594,7 +601,7 @@ def list_apps(root=PROC):
     groups.sort(key=lambda g: (-g['mem'], g['name'].lower()))
     mi = parse_meminfo(read(os.path.join(root, 'meminfo'), '') or '')
     return {'apps': groups, 'cpu': round(busy_percent((st['total'], st['idle']), total[0][1:]), 1),
-            'mem': {'total': mi.get('MemTotal', 0), 'used': max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0))}}
+            'mem': {'total': mi.get('MemTotal', 0), 'used': mem_used(mi)}}
 
 
 def signal_app(pid, sig, root=PROC):
@@ -804,7 +811,7 @@ def perf(root=PROC, sys_root=SYS):
     return {
         'cpu': {'total': pct[0] if pct else 0, 'cores': pct[1:], 'name': name, 'mhz': mhz,
                 'temp': summary_temp(temps, 'cpu', ('tctl', 'tdie', 'package id 0', 'cpu'))},
-        'mem': {'total': mi.get('MemTotal', 0), 'used': max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0)),
+        'mem': {'total': mi.get('MemTotal', 0), 'used': mem_used(mi),
                 'cached': mi.get('Cached', 0)},
         'swap': {'total': mi.get('SwapTotal', 0), 'used': max(0, mi.get('SwapTotal', 0) - mi.get('SwapFree', 0))},
         'gpus': gl,
@@ -1719,7 +1726,7 @@ class Sampler:
         mi = parse_meminfo(read(os.path.join(self.root, 'meminfo'), '') or '')
         total = mi.get('MemTotal', 0)
         out['mem'] = {'total': total, 'available': mi.get('MemAvailable', 0),
-                      'used': max(0, total - mi.get('MemAvailable', 0)), 'free': mi.get('MemFree', 0),
+                      'used': mem_used(mi), 'free': mi.get('MemFree', 0),
                       'cached': mi.get('Cached', 0) + mi.get('SReclaimable', 0) + mi.get('Buffers', 0),
                       'committed': mi.get('Committed_AS', 0), 'commitLimit': mi.get('CommitLimit', 0),
                       'swapTotal': mi.get('SwapTotal', 0), 'swapUsed': max(0, mi.get('SwapTotal', 0) - mi.get('SwapFree', 0))}

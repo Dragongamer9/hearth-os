@@ -298,7 +298,7 @@ class Hardware(unittest.TestCase):
     def test_perf_sample(self):
         proc = os.path.join(self.tmp.name, 'proc')
         write(os.path.join(proc, 'stat'), 'cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 50 0 50 350 50 0 0 0 0 0\ncpu1 50 0 50 350 50 0 0 0 0 0\n')
-        write(os.path.join(proc, 'meminfo'), 'MemTotal: 8000 kB\nMemAvailable: 2000 kB\nSwapTotal: 1000 kB\nSwapFree: 250 kB\n')
+        write(os.path.join(proc, 'meminfo'), 'MemTotal: 8000 kB\nMemFree: 1000 kB\nMemAvailable: 2000 kB\nCached: 1200 kB\nBuffers: 0 kB\nSReclaimable: 0 kB\nShmem: 200 kB\nSwapTotal: 1000 kB\nSwapFree: 250 kB\n')
         write(os.path.join(proc, 'cpuinfo'), 'model name\t: AMD Ryzen Z1 Extreme\ncpu MHz\t\t: 3000.0\n')
         write(os.path.join(proc, 'uptime'), '123.45 100.0\n')
         old = os.environ.get('XDG_RUNTIME_DIR')
