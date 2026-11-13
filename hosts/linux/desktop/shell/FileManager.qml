@@ -89,6 +89,7 @@ Scope {
     // view (Program Files, C:\ itself) can't be saved into.
     readonly property bool cdriveOn: prefs.cdrive !== false
     readonly property bool cLinux: prefs.linuxFolders === true
+    readonly property bool navShown: prefs.navPane !== false     // View › Navigation pane (1.11, files.json navPane)
     readonly property bool cAddrLinux: prefs.addressBar === "linux"
     readonly property bool cCopyLinux: prefs.copyPath === "linux"
     property var cdata: ({})                   // hearth-files cdrive (read only)
@@ -110,7 +111,7 @@ Scope {
     property var redoStack: []
     // The view as drawn: the Home page is always a list (Quick access tiles above it).
     readonly property string shownView: onHome ? "details" : view
-    readonly property var views: ["large", "grid", "small", "tiles", "compact", "details"]
+    readonly property var views: ["xlarge", "large", "grid", "small", "tiles", "compact", "details"]
     property var prefs: ({})
     property bool prefsLoaded: false
     property string query: ""                  // filters this folder as you type
@@ -1533,7 +1534,7 @@ Scope {
         rememberView();
         makeThumbs();
     }
-    function cycleView() { setView(({ large: "grid", grid: "small", small: "tiles", tiles: "compact", compact: "details", details: "large" })[view]); }
+    function cycleView() { setView(({ xlarge: "large", large: "grid", grid: "small", small: "tiles", tiles: "compact", compact: "details", details: "xlarge" })[view]); }
     readonly property var viewNames: ({ large: "Large icons", grid: "Medium icons", small: "Small icons", tiles: "Tiles", compact: "List", details: "Details" })
     function setShowExt(on) { showExt = on; rememberView(); say(on ? "Showing file name extensions" : "Hiding file name extensions"); }
     function toggleDetails() { detailsPane = !detailsPane; rememberView(); }
@@ -1801,8 +1802,8 @@ Scope {
             if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T", icon: "plus", group: "View" });
             if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W", icon: "close", group: "View" });
             const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
-            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Add to Favorites", key: "Ctrl+D", icon: "pin" });
-            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open terminal here", key: "Shift+F4", icon: "kbd", group: "Open" });
+            if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Pin to the left menu", key: "Ctrl+D", icon: "pin" });
+            if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd", group: "Open" });
             if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
@@ -1929,7 +1930,7 @@ Scope {
     // The view's switches, from its menus and View (the same files.json keys as Settings › System › Drives & folders):
     // saved only when you change them, one key at a time (hearth-files prefs-set merges it under the lock).
     function setFilesPref(k, v) {
-        const now = ({ cdrive: prefs.cdrive !== false, linuxFolders: cLinux, addressBar: cAddrLinux ? "linux" : "windows", copyPath: cCopyLinux ? "linux" : "windows" })[k];
+        const now = ({ cdrive: prefs.cdrive !== false, linuxFolders: cLinux, addressBar: cAddrLinux ? "linux" : "windows", copyPath: cCopyLinux ? "linux" : "windows", navPane: navShown })[k];
         if (now === v) return;                 // already so: nothing is written
         const o = {};
         o[k] = v;
@@ -1940,7 +1941,8 @@ Scope {
         say(({ cdrive: v ? "Hearth (C:) shows Windows folder names" : "Hearth (C:) shows its real folders",
                linuxFolders: v ? "Showing the Linux folders on Hearth (C:) too" : "The Linux folders are hidden on Hearth (C:)",
                addressBar: v === "linux" ? "The address bar shows Linux paths" : "The address bar shows Windows names",
-               copyPath: v === "linux" ? "Copy path gives the Linux path" : "Copy path gives the C:\\ form" })[k] || "Saved");
+               copyPath: v === "linux" ? "Copy path gives the Linux path" : "Copy path gives the C:\\ form",
+               navPane: v ? "Navigation pane shown" : "Navigation pane hidden" })[k] || "Saved");
         if (k === "cdrive" && v && !Object.keys(cdata).length) loadCData(null);
     }
     // Change drive letter… (like Windows' Disk Management): the free letters, D: to Y:. C: is always Hearth.
@@ -2154,6 +2156,7 @@ Scope {
         ].concat(start), mx, my);
         if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
         showMenu("View", [
+            { id: "view:xlarge", label: ck(view === "xlarge") + "Extra large icons", key: "Ctrl+7" },
             { id: "view:large", label: ck(view === "large") + "Large icons", key: "Ctrl+4" },
             { id: "view:grid", label: ck(view === "grid") + "Medium icons", key: "Ctrl+1" },
             { id: "view:small", label: ck(view === "small") + "Small icons", key: "Ctrl+5" },
@@ -2161,6 +2164,7 @@ Scope {
             { id: "view:compact", label: ck(view === "compact") + "List", key: "Ctrl+2" },
             { id: "view:details", label: ck(view === "details") + "Details", key: "Ctrl+3" },
             sep(),
+            { id: "navpane", label: ck(navShown) + "Navigation pane" },
             { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" },
             { id: "exts", label: ck(showExt) + "File name extensions" },
             { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" }
@@ -2311,6 +2315,7 @@ Scope {
         case "hidden": setHidden(!hidden); break;
         case "exts": setShowExt(!showExt); break;
         case "detailspane": toggleDetails(); break;
+        case "navpane": setFilesPref("navPane", !navShown); break;
         case "undo": undo(); break;
         case "redo": redo(); break;
         case "home": navigate(homePage, ""); break;
@@ -3130,6 +3135,7 @@ Scope {
                         case Qt.Key_2: app.setView("compact"); break;
                         case Qt.Key_3: app.setView("details"); break;
                         case Qt.Key_4: app.setView("large"); break;
+                        case Qt.Key_7: app.setView("xlarge"); break;
                         case Qt.Key_5: app.setView("small"); break;
                         case Qt.Key_6: app.setView("tiles"); break;
                         case Qt.Key_Z: if (shift) app.redo(); else app.undo(); break;
@@ -3331,6 +3337,7 @@ Scope {
                 e.accepted = true;
             }
             function toPlaces() {
+                if (!app.navShown) return;       // View › Navigation pane is off
                 const i = app.places.findIndex(p => p.path === app.path);
                 if (i >= 0) app.placeIndex = i;
                 app.zone = "places";
@@ -3763,6 +3770,7 @@ Scope {
                     // (120–360 px, remembered in files.json as navWidth when you let go).
                     Rectangle {
                         id: navPane
+                        visible: app.navShown
                         Layout.fillHeight: true
                         Layout.preferredWidth: app.navW
                         color: Theme.panel
@@ -4071,9 +4079,9 @@ Scope {
                                 interactive: !app.mouseMode
                                 boundsBehavior: Flickable.StopAtBounds
                                 // Large, medium and small icons; List (small icons in columns); Tiles (an icon and two lines).
-                                readonly property int baseW: ({ large: 200, grid: 136, small: 100, compact: 250, tiles: 300 })[app.view] || 136
+                                readonly property int baseW: ({ xlarge: 300, large: 200, grid: 136, small: 100, compact: 250, tiles: 300 })[app.view] || 136
                                 cellWidth: Math.floor(width / Math.max(1, Math.floor(width / baseW)))
-                                cellHeight: ({ large: 224, grid: 156, small: 112, compact: 44, tiles: 78 })[app.view] || 156
+                                cellHeight: ({ xlarge: 320, large: 224, grid: 156, small: 112, compact: 44, tiles: 78 })[app.view] || 156
                                 keyNavigationEnabled: false
                                 cacheBuffer: 600
                                 delegate: Item {
@@ -4085,8 +4093,8 @@ Scope {
                                     readonly property bool cut: app.clip.mode === "cut" && app.clip.paths.indexOf(modelData.path) >= 0
                                     readonly property bool compact: app.view === "compact" || app.view === "tiles"
                                     readonly property bool tiles: app.view === "tiles"
-                                    readonly property real artW: app.view === "large" ? 150 : app.view === "small" ? 54 : 84
-                                    readonly property real artH: app.view === "large" ? 134 : app.view === "small" ? 50 : 76
+                                    readonly property real artW: app.view === "xlarge" ? 250 : app.view === "large" ? 150 : app.view === "small" ? 54 : 84
+                                    readonly property real artH: app.view === "xlarge" ? 226 : app.view === "large" ? 134 : app.view === "small" ? 50 : 76
                                     width: grid.cellWidth
                                     height: grid.cellHeight
                                     opacity: cut ? 0.45 : 1
@@ -4114,7 +4122,7 @@ Scope {
                                             bc: cell.modelData.briefcase || null
                                             bcColor: briefcase.colorOf(cell.modelData.briefcase)
                                             badge: briefcase.badgeFor(cell.modelData)
-                                            size: app.view === "large" ? 112 : app.view === "small" ? 42 : 64
+                                            size: app.view === "xlarge" ? 180 : app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
                                         Rectangle {
                                             anchors.fill: parent
@@ -4125,7 +4133,7 @@ Scope {
                                                 id: thumb
                                                 anchors { fill: parent; margins: 3 }
                                                 source: cell.compact ? "" : app.thumbFor(cell.modelData)
-                                                sourceSize: app.view === "large" ? Qt.size(320, 320) : Qt.size(192, 192)
+                                                sourceSize: app.view === "xlarge" ? Qt.size(512, 512) : app.view === "large" ? Qt.size(320, 320) : Qt.size(192, 192)
                                                 asynchronous: true
                                                 cache: true
                                                 fillMode: Image.PreserveAspectCrop

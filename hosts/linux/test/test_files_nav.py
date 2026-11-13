@@ -57,3 +57,15 @@ class CEverywhere(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ViewMenu1_11(unittest.TestCase):
+    """The approved mockups files-7 and files-8: Extra large icons, Navigation pane, the right-click's words."""
+    def test_view_menu(self):
+        q = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'desktop', 'shell', 'FileManager.qml')).read()
+        self.assertIn('"Extra large icons"', q)
+        self.assertIn('label: ck(navShown) + "Navigation pane"', q)
+        self.assertIn('readonly property bool navShown: prefs.navPane !== false', q)
+        self.assertIn('visible: app.navShown', q)
+        self.assertIn('"Pin to the left menu"', q)
+        self.assertIn('"Open in Terminal"', q)
