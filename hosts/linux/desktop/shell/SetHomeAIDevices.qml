@@ -185,6 +185,17 @@ SetPage {
         value: page.st && page.st.commandCenter ? "Copy" : ""
         onActivated: if (page.st && page.st.commandCenter) { Quickshell.execDetached(["wl-copy", page.st.commandCenter]); page.say("Copied ✓"); }
     }
+    // One AI address (1.11): apps that speak OpenAI's API use this one address, and the server sends each request on
+    // to the best free device (off until you turn it on; Tailscale only, and the share code if you set one)
+    SetSwitch {
+        visible: !!page.cfg && page.cfg.hub
+        icon: "globe"; title: "One AI address"
+        sub: page.cfg && page.cfg.router && page.st && page.st.commandCenter
+             ? "Use " + page.st.commandCenter + "/v1 in any app that speaks OpenAI's API: chat, voices and speech to text go to the first free device in the order below"
+             : "Any app that speaks OpenAI's API uses this server's address, and each request goes to the first free device that has the model"
+        checked: !!page.cfg && !!page.cfg.router
+        onToggled: v => page.set("router", v, v ? "One AI address is on" : "One AI address is off")
+    }
     SetRow {
         visible: page.listShown && (!page.list || lj.busy && !(page.list.devices || []).length)
         icon: "update"; chevron: false; interactive: false; title: "Looking for your devices…"

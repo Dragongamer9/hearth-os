@@ -145,7 +145,7 @@ FocusScope {
         function onPageChanged() { v.sendConfig(); v.loadPageData(); v.closeMenu(); }
         function onIntervalChanged() { v.sendConfig(); }
     }
-    onQueryChanged: { buildProcs(); buildDetails(); buildStartup(); buildServices(); buildTimers(); }
+    onQueryChanged: { buildProcs(); buildDetails(); buildStartup(); buildServices(); buildTimers(); buildHistory(); }
 
     // One-shot helper runs (end, Efficiency mode, startup, services).
     function run(proc, args) {
@@ -160,6 +160,7 @@ FocusScope {
         if (tm.page === "services") run(svcProc, ["services"]);
         if (tm.page === "tasks") run(timerProc, ["timers"]);
         if (tm.page === "users") run(userProc, ["users"]);
+        if (tm.page === "history") run(histProc, ["history"]);
     }
     Component.onCompleted: loadPageData()
 
@@ -583,6 +584,38 @@ FocusScope {
         stdout: StdioCollector { onStreamFinished: { const l = v.lastLine(text); try { v.userItems = JSON.parse(l).users || []; v.usersLoaded = true; v.buildUsers(); } catch (e) {} } }
     }
 
+    // ================================================ App history (1.11, mockup tm-8): processor time and disk per app
+    // since a date, added up every 5 minutes by a small user timer (hearth-tasks history-collect)
+    ListModel { id: histModel }
+    property var histItems: []
+    property var histSince: 0
+    property bool histLoaded: false
+    function cpuTime(sec) {
+        sec = Math.round(sec || 0);
+        if (sec < 60) return sec + " s";
+        const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+        return h ? h + ":" + (m < 10 ? "0" : "") + m + " h" : m + " min";
+    }
+    function bytes(b) { b = b || 0; return b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? Math.round(b / 1e6) + " MB" : b > 0 ? Math.max(1, Math.round(b / 1e3)) + " KB" : "0"; }
+    function buildHistory() {
+        const q = query.trim().toLowerCase();
+        const s = sortPref("history", "cpu", true);
+        const list = sortBy(histItems.filter(a => !q || a.name.toLowerCase().indexOf(q) >= 0), s.key, s.desc, (o, k) => o[k]);
+        sync(histModel, list.map(a => ({ key: "h:" + a.name, type: "row", depth: 0, icon: "", tag: "", expandable: false, expanded: false, eco: false,
+            name: a.name, cpu: a.cpu || 0, read: a.read || 0, write: a.write || 0, last: a.last || 0, label: "" })));
+    }
+    function histCell(r, key) {
+        if (key === "cpu") return { t: cpuTime(r.cpu) };
+        if (key === "read" || key === "write") return { t: bytes(r[key]), muted: !r[key] };
+        if (key === "last") return { t: when(r.last), muted: true };
+        return { t: String(r[key] === undefined ? "" : r[key]) };
+    }
+    Process {
+        id: histProc
+        stdout: StdioCollector { onStreamFinished: { const l = v.lastLine(text); try { const d = JSON.parse(l); v.histItems = d.apps || []; v.histSince = d.since || 0; v.histLoaded = true; v.buildHistory(); } catch (e) {} } }
+    }
+    Process { id: histClearProc; stdout: StdioCollector { onStreamFinished: v.run(histProc, ["history"]) } }
+
     ListModel { id: svcModel }
     property var svcItems: []
     property bool svcLoaded: false
@@ -779,6 +812,7 @@ FocusScope {
             break;
         }
         case "run": runTask(); break;
+        case "histclear": run(histClearProc, ["history-clear"]); closeSheet(); break;
         case "ask": { const t = runInput.text.trim(), f = askThen; askThen = null; runInput.text = ""; closeSheet(); if (f && t !== "") f(t); break; }
         }
     }
@@ -872,6 +906,7 @@ FocusScope {
                 readonly property var items: [
                     { id: "processes", icon: "grid", label: "Processes" },
                     { id: "performance", icon: "motion", label: "Performance" },
+                    { id: "history", icon: "undo", label: "App history" },
                     { id: "startup", icon: "play", label: "Startup apps" },
                     { id: "details", icon: "list", label: "Details" },
                     { id: "services", icon: "server", label: "Services" },
@@ -947,7 +982,7 @@ FocusScope {
                     anchors.leftMargin: 1; anchors.topMargin: 1
                     sourceComponent: tm.page === "performance" ? perfPage : tm.page === "startup" ? startupPage
                         : tm.page === "details" ? detailsPage : tm.page === "services" ? servicesPage
-                        : tm.page === "tasks" ? tasksPage : tm.page === "users" ? usersPage
+                        : tm.page === "tasks" ? tasksPage : tm.page === "users" ? usersPage : tm.page === "history" ? historyPage
                         : tm.page === "settings" ? settingsPage : processesPage
                 }
             }
@@ -1386,6 +1421,44 @@ FocusScope {
                 empty: v.timersLoaded ? "Nothing is scheduled." : "Looking at what's scheduled…"
                 onResized: w => tm.setPref("cols_tasks", w)
                 onUp: tp.toBar()
+                onBack: v.toRail()
+            }
+        }
+    }
+    Component {
+        id: historyPage
+        PageFrame {
+            id: hp
+            onLeave: v.toRail()
+            onUpOut: search.forceActiveFocus()
+            title: "App history"
+            subtitle: v.histSince ? "Resource usage since " + Qt.formatDate(new Date(v.histSince * 1000), "MMMM d, yyyy") + " · counted every 5 minutes" : "Hearth starts counting a few minutes after you sign in"
+            buttons: [{ id: "clear", label: "Delete usage history", enabled: v.histItems.length > 0 }]
+            onButton: id => v.showSheet("error", "Delete usage history?", "Task Manager starts counting again from now. Nothing else changes.",
+                                        [{ label: "Delete", action: "histclear" }, { label: "Cancel", action: "close" }])
+            function focusFirst() { table.focusList(); }
+            DataTable {
+                id: table
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: histModel
+                tableId: "history"
+                rowHeight: 36
+                widths: tm.pref("cols_history", ({}))
+                sortKey: v.sortPref("history", "cpu", true).key
+                sortDesc: v.sortPref("history", "cpu", true).desc
+                columns: [
+                    { key: "name", title: "Name", flex: true },
+                    { key: "cpu", title: "CPU time", width: 120, right: true },
+                    { key: "read", title: "Disk read", width: 120, right: true },
+                    { key: "write", title: "Disk written", width: 130, right: true },
+                    { key: "last", title: "Last used", width: 170 }
+                ]
+                cell: (r, k) => v.histCell(r, k)
+                empty: v.histLoaded ? "Nothing counted yet. Check back in a few minutes." : "Reading the history…"
+                onSortClicked: k => { v.setSort("history", k, k !== "name"); v.buildHistory(); }
+                onResized: w => tm.setPref("cols_history", w)
+                onUp: hp.toBar()
                 onBack: v.toRail()
             }
         }

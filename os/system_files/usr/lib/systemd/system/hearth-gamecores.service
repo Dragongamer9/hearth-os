@@ -1,0 +1,16 @@
+# Game cores (1.11, Task Manager › Performance › CPU): while a game runs, it gets its own cores and the system's
+# services (updates, AI, builds) the others. Off unless you turn it on; it ends at once when it's off. Nothing waits
+# for it, nothing it changes outlives it or a restart (runtime properties only), and stopping it shares every core again.
+[Unit]
+Description=Hearth: Game cores
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset gamecores
+Restart=on-failure
+RestartSec=30
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

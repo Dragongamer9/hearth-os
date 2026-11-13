@@ -1780,8 +1780,9 @@ systemctl enable NetworkManager.service bluetooth.service systemd-resolved.servi
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 # Memory and swap (1.11, hearth-memory): zram, your swap file and how much memory is kept free, set at every start
 # from /etc/hearth/memory.json (recommended values without one), and the memory guard. Neither holds the start up.
-chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset
-systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service
+chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard
+# hearth-diskguard (1.11): frees its 2 GB emergency reserve at start-up when the system drive is nearly full
+systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts the PC down cleanly (no lost files from a
 # battery that just dies). Hearth's BatteryWatch.qml says so at 10%, 5% and 3%, and hibernates instead where a
 # hibernation has come back before on this PC (/var/lib/hearth/hibernate-proven).

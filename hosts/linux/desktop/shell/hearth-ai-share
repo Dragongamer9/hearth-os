@@ -8,6 +8,7 @@ Command Center reads it to pick the best device for each job.
   hearth-ai-share info                   this device's answer (the same JSON as GET /v1/hearth/ai)
   hearth-ai-share devices                every device's AI (the same JSON as GET /v1/hearth/ai/devices)
   hearth-ai-share set KEY on|off         on (Share this device's AI), hub (Let the Command Center find my devices here),
+                                         router (One AI address: OpenAI-style requests sent on to the best device),
                                          lan (also on my home network), pluggedOnly, notWhilePlaying, codeOn,
                                          chat, voice, image, stt (which services to share)
   hearth-ai-share code-set               a share code on stdin (HEARTH_INPUT): 8-64 characters; only its hash is kept
@@ -18,7 +19,10 @@ Command Center reads it to pick the best device for each job.
   hearth-ai-share serve                  the server (hearth-ai-share.service, your own user service)
 
 The server answers on port 8189: GET /v1/hearth/ai (this device) and GET /v1/hearth/ai/devices (every device, when
-"Let the Command Center find my devices here" is on). Read only, no secrets, nothing else. It listens on this device
+"Let the Command Center find my devices here" is on). Read only, no secrets. With **One AI address** on as well
+(router, off until you turn it on, 1.11), the same port takes OpenAI-style requests (POST /v1/chat/completions,
+/v1/completions, /v1/embeddings, /v1/audio/speech, /v1/audio/transcriptions; GET /v1/models) and sends each on to the
+first device in your order that is free and has what it asks for, skipping one that's playing, on battery or off. It listens on this device
 (127.0.0.1) and on its Tailscale address only once Hearth's firewall rule is loaded (hearth-ai-share-helper, the
 nftables table inet hearth_ai_share: lo and tailscale0 let in, everything else dropped on 8189); with "also on my home
 network" on every address. Requests from anywhere but this device and Tailscale are refused unless you chose that.
@@ -67,9 +71,9 @@ APPS_DIR = '/var/lib/hearth/apps'
 UNIT = 'hearth-ai-share.service'
 SYS_ROOT = os.environ.get('HEARTH_AI_SHARE_SYS', '')                          # tests: a stand-in /sys and /proc
 
-DEFAULTS = {'on': False, 'hub': False, 'lan': False, 'pluggedOnly': True, 'notWhilePlaying': True, 'codeOn': False,
+DEFAULTS = {'on': False, 'hub': False, 'router': False, 'lan': False, 'pluggedOnly': True, 'notWhilePlaying': True, 'codeOn': False,
             'share': {'chat': True, 'voice': True, 'image': True, 'stt': True}, 'priority': []}
-BOOL_KEYS = ('on', 'hub', 'lan', 'pluggedOnly', 'notWhilePlaying', 'codeOn')
+BOOL_KEYS = ('on', 'hub', 'router', 'lan', 'pluggedOnly', 'notWhilePlaying', 'codeOn')
 KINDS = ('chat', 'voice', 'image', 'stt')
 NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,62}$')
 TS_NETS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
@@ -748,6 +752,57 @@ def code_matches(given, h):
     return _CODES[key]
 
 
+# ------------------------------------------------------------------ One AI address (1.11)
+ROUTES = {'/v1/chat/completions': 'chat', '/v1/completions': 'chat', '/v1/embeddings': 'chat',
+          '/v1/audio/speech': 'voice', '/v1/audio/transcriptions': 'stt', '/v1/audio/translations': 'stt'}
+MAX_BODY = 64 << 20
+URL_RE = re.compile(r'^http://([A-Za-z0-9.:\[\]-]+):(\d{1,5})(/[A-Za-z0-9/._-]*)?$')
+
+
+def candidates(devs, kind, model=''):
+    """[(device, OpenAI base URL)] in the order to try: each available device's healthy, reachable service of this
+    kind, those that have the model asked for first (a model nobody has: every device, in order)."""
+    have, rest = [], []
+    for d in (devs or {}).get('devices') or []:
+        if not d.get('online') or not d.get('available'):
+            continue
+        for svc in d.get('services') or []:
+            if not isinstance(svc, dict) or svc.get('kind') != kind or not svc.get('healthy') or svc.get('reachable') is False:
+                continue
+            base = svc.get('openai') or ''
+            if not URL_RE.match(base):
+                continue
+            names = [m for m in (svc.get('models') or []) + (svc.get('voices') or []) if isinstance(m, str)]
+            (have if model and model in names else rest).append((d.get('device') or '', base.rstrip('/')))
+            break
+    return have + rest if model else rest
+
+
+def all_models(devs):
+    seen, out = set(), []
+    for d in (devs or {}).get('devices') or []:
+        if not d.get('online') or not d.get('available'):
+            continue
+        for svc in d.get('services') or []:
+            if isinstance(svc, dict) and svc.get('kind') == 'chat' and svc.get('healthy'):
+                for m in svc.get('models') or []:
+                    if isinstance(m, str) and m not in seen:
+                        seen.add(m)
+                        out.append({'id': m, 'object': 'model', 'owned_by': d.get('device') or ''})
+    return {'object': 'list', 'data': out}
+
+
+def model_of(body, ctype):
+    if 'json' not in (ctype or ''):
+        m = re.search(rb'name="model"\r\n\r\n([^\r\n]{1,200})', body or b'')
+        return m.group(1).decode('utf-8', 'replace') if m else ''
+    try:
+        v = json.loads(body or b'{}').get('model')
+        return v if isinstance(v, str) else ''
+    except (ValueError, AttributeError):
+        return ''
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = 'hearth-ai-share'
     sys_version = ''
@@ -773,6 +828,11 @@ class Handler(BaseHTTPRequestHandler):
         if not allowed(client, cfg['lan']):
             return self.send_json(403, {'error': 'Only this device and your Tailscale devices'})
         path = self.path.split('?')[0].rstrip('/') or '/'
+        if path == '/v1/models' and cfg['hub'] and cfg.get('router'):
+            given = self.code_ok_for(cfg, client)
+            if given is None:
+                return self.send_json(401, {'error': 'This device asks for its share code (X-Hearth-Share-Code)', 'protocol': PROTOCOL})
+            return self.send_json(200, all_models(self.routed_devices(cfg, given)))
         if path not in ('/v1/hearth/ai', '/v1/hearth/ai/devices'):
             return self.send_json(404, {'error': 'Not here. GET /v1/hearth/ai or /v1/hearth/ai/devices', 'protocol': PROTOCOL})
         given = self.headers.get('X-Hearth-Share-Code') or ''
@@ -797,10 +857,93 @@ class Handler(BaseHTTPRequestHandler):
             self.cache['devices'] = (time.time(), val, given)
         return self.send_json(200, val)
 
+    def code_ok_for(self, cfg, client):
+        given = self.headers.get('X-Hearth-Share-Code') or ''
+        auth = self.headers.get('Authorization') or ''
+        if not given and auth.lower().startswith('bearer '):
+            given = auth[7:].strip()
+        h = code_hash() if cfg['codeOn'] else ''
+        if h:
+            if len(given) > 64 or not code_matches(given, h):
+                n = self.fails.get(client, 0) + 1
+                self.fails[client] = n
+                time.sleep(min(5, 0.5 * n))
+                return None
+            self.fails.pop(client, None)
+        return given
+
+    def routed_devices(self, cfg, given):
+        at, val, who = self.cache['devices']
+        if val is None or time.time() - at > 10 or who != given:
+            val = devices(cfg, code=given)
+            self.cache['devices'] = (time.time(), val, given)
+        return val
+
+    def do_POST(self):  # noqa: N802
+        """One AI address: the request goes on to the best free device, its answer (streamed) comes back."""
+        cfg = peek()
+        client = self.client_address[0]
+        if not allowed(client, cfg['lan']):
+            return self.send_json(403, {'error': 'Only this device and your Tailscale devices'})
+        path = self.path.split('?')[0].rstrip('/')
+        kind = ROUTES.get(path)
+        if not kind or not (cfg['hub'] and cfg.get('router')):
+            return self.send_json(405 if not kind else 404, {'error': 'One AI address is off (Settings › Home server › AI devices)' if kind else 'GET only'})
+        given = self.code_ok_for(cfg, client)
+        if given is None:
+            return self.send_json(401, {'error': 'This device asks for its share code (X-Hearth-Share-Code)', 'protocol': PROTOCOL})
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            n = -1
+        if n < 0 or n > MAX_BODY:
+            return self.send_json(413, {'error': 'Too big (64 MB at most)'})
+        body = self.rfile.read(n) if n else b''
+        ctype = self.headers.get('Content-Type') or 'application/json'
+        model = model_of(body, ctype)
+        tries = candidates(self.routed_devices(cfg, given), kind, model)
+        if not tries:
+            return self.send_json(503, {'error': 'None of your devices can do that right now (playing, on battery, off or not sharing it)'})
+        last = ''
+        for dev, base in tries[:3]:
+            m = URL_RE.match(base)
+            host, port, pre = m.group(1).strip('[]'), int(m.group(2)), (m.group(3) or '').rstrip('/')
+            sub = path[3:] if pre.endswith('/v1') else path
+            try:
+                c = http.client.HTTPConnection(host, port, timeout=600)
+                c.request('POST', pre + sub, body=body, headers={'Content-Type': ctype, 'Accept': self.headers.get('Accept') or '*/*'})
+                r = c.getresponse()
+            except OSError as e:
+                last = '%s: %s' % (dev, e)
+                continue
+            if r.status >= 500 and dev != tries[-1][0]:
+                last = '%s answered %d' % (dev, r.status)
+                c.close()
+                continue
+            self.send_response(r.status)
+            self.send_header('Content-Type', r.getheader('Content-Type') or 'application/json')
+            self.send_header('X-Hearth-Device', dev)
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            self.close_connection = True
+            try:
+                while True:
+                    chunk = r.read1(65536) if hasattr(r, 'read1') else r.read(65536)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+            except OSError:
+                pass
+            c.close()
+            return None
+        return self.send_json(502, {'error': 'Your devices didn\'t answer (%s)' % last})
+
     def do_HEAD(self):  # noqa: N802
         self.send_json(405, {'error': 'GET only'})
 
-    do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = do_HEAD
+    do_PUT = do_DELETE = do_PATCH = do_OPTIONS = do_HEAD
 
 
 class Server4(ThreadingHTTPServer):

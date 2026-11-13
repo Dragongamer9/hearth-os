@@ -9,12 +9,17 @@ change one) and put back at every start by hearth-hwset.service, which nothing w
   hearth-hwset drives             JSON: Optimize drives: each drive's kind (SSD, NVMe, hard drive) and TRIM's last and
                                   next weekly run. Works without root
   hearth-hwset optimize           Optimize now: TRIM every SSD and NVMe drive (fstrim, never defragmented). Root
+  hearth-hwset gamecores          Game cores (game.cores, off unless you turn it on): while a game runs, it gets its
+                                  own cores and the system's services (updates, AI, builds) run on the others. The
+                                  hearth-gamecores service runs this; nothing is kept after a restart or when it stops
 """
 import glob
 import json
 import os
 import re
+import signal
 import sys
+import time
 
 SETTINGS = os.environ.get('HEARTH_HWSET_SETTINGS', '/etc/hearth/hardware.json')
 SYS = os.environ.get('HEARTH_SYS', '/sys')
@@ -92,7 +97,9 @@ def status():
     saved = {}
     if os.path.exists(SETTINGS):
         saved = _sio().load_json(SETTINGS, {}, repair=False) or {}
-    return {'turbo': {'can': bool(tf), 'on': read(tf) == on if tf else None},
+    gc = saved.get('game.cores', 'off')
+    return {'gameCores': {'can': logical_cpus() >= 4, 'value': gc, 'threads': logical_cpus(), 'suggested': cpu_text(default_game_cores())},
+            'turbo': {'can': bool(tf), 'on': read(tf) == on if tf else None},
             'maxPct': {'can': pstate or bool(cpufreq), 'value': int(read(os.path.join(SYS, 'devices/system/cpu/intel_pstate/max_perf_pct'), '100') or 100) if pstate else saved.get('cpu.maxPct', 100)},
             'throttled': throttles(), 'batteries': bats, 'saved': saved}
 
@@ -119,6 +126,8 @@ def put(key, value):
     elif key == 'cpu.maxPct':
         if not set_max_pct(value):
             raise Fail("couldn't change the top speed")
+    elif key == 'game.cores':
+        pass                    # hearth-gamecores.service does it while a game runs (see gamecores())
     elif key == 'battery.limit':
         done = False
         for b in batteries():
@@ -129,7 +138,58 @@ def put(key, value):
             raise Fail("this battery can't be told to stop charging early")
 
 
+def logical_cpus():
+    return os.cpu_count() or 1
+
+
+def parse_cpus(text, n=None):
+    """'4-7' or '0,2,4-5' → sorted list of CPU numbers (each below n), or raise Fail."""
+    n = n or logical_cpus()
+    out = set()
+    for part in (text or '').split(','):
+        part = part.strip()
+        m = re.fullmatch(r'(\d+)(?:-(\d+))?', part)
+        if not m:
+            raise Fail('cores like 4-7 or 0,2,4')
+        a, b = int(m.group(1)), int(m.group(2) or m.group(1))
+        if a > b or b >= n:
+            raise Fail('this PC has cores 0 to %d' % (n - 1))
+        out.update(range(a, b + 1))
+    return sorted(out)
+
+
+def cpu_text(cpus):
+    """[0,1,2,3,6] → '0-3,6'."""
+    out, run = [], []
+    for c in sorted(cpus):
+        if run and c == run[-1] + 1:
+            run.append(c)
+        else:
+            if run:
+                out.append('%d-%d' % (run[0], run[-1]) if len(run) > 1 else str(run[0]))
+            run = [c]
+    if run:
+        out.append('%d-%d' % (run[0], run[-1]) if len(run) > 1 else str(run[0]))
+    return ','.join(out)
+
+
+def default_game_cores(n=None):
+    """The upper half of the cores (a quad-core keeps 2 for the system)."""
+    n = n or logical_cpus()
+    return list(range(n // 2, n))
+
+
 def parse(key, raw):
+    if key == 'game.cores':
+        if raw == 'off':
+            return 'off'
+        n = logical_cpus()
+        if n < 4:
+            raise Fail('Game cores needs a processor with at least 4 threads')
+        cpus = default_game_cores(n) if raw == 'on' else parse_cpus(raw, n)
+        if len(cpus) >= n:
+            raise Fail('leave at least one core for the system')
+        return cpu_text(cpus)
     if key == 'cpu.turbo':
         if raw not in ('on', 'off'):
             raise Fail('turbo: on or off')
@@ -156,6 +216,9 @@ def set_one(key, raw):
     def change(d):
         d[key] = v
     sio.update_json(SETTINGS, change)
+    if key == 'game.cores':
+        import subprocess
+        subprocess.run(['systemctl', 'restart' if v != 'off' else 'stop', 'hearth-gamecores.service'], capture_output=True, timeout=30)
     return {'ok': True, key: v}
 
 
@@ -244,6 +307,92 @@ def optimize():
     return {'ok': True, 'done': done}
 
 
+# ---------------------------------------------------------------------------------------------- Game cores
+GAME_ENV = (b'SteamGameId=', b'STEAM_COMPAT_APP_ID=', b'HEARTH_PROTON_KEY=', b'HEARTH_GAME=1')
+NOT_GAMES = {'steam', 'steamwebhelper', 'steam-runtime-launcher-service', 'srt-bwrap', 'pressure-vessel-wrap', 'reaper',
+             'pv-adverb', 'gameoverlayui', 'wineserver', 'services.exe', 'winedevice.exe', 'explorer.exe', 'plugplay.exe',
+             'rpcss.exe', 'svchost.exe', 'tabtip.exe', 'conhost.exe', 'start.exe'}
+
+
+def is_game_env(env, comm):
+    """A game's process: Steam, Hearth's Proton or Hearth's launcher marked it, and it isn't one of their helpers."""
+    if comm.lower() in NOT_GAMES:
+        return False
+    return any(m in env for m in GAME_ENV) and b'SteamGameId=0\x00' not in env
+
+
+def game_pids(proc='/proc'):
+    out = []
+    for d in os.listdir(proc):
+        if not d.isdigit():
+            continue
+        try:
+            with open(os.path.join(proc, d, 'environ'), 'rb') as f:
+                env = f.read()
+            comm = read(os.path.join(proc, d, 'comm'))
+        except OSError:
+            continue
+        if is_game_env(env, comm):
+            out.append(int(d))
+    return out
+
+
+def pin(pids, cpus, proc='/proc'):
+    """Every thread of these processes onto `cpus` (new threads inherit it)."""
+    for pid in pids:
+        for t in os.listdir(os.path.join(proc, str(pid), 'task')) if os.path.isdir(os.path.join(proc, str(pid), 'task')) else []:
+            try:
+                if os.sched_getaffinity(int(t)) != set(cpus):
+                    os.sched_setaffinity(int(t), cpus)
+            except OSError:
+                pass
+
+
+def system_cores(cpus_text):
+    """The system's services (system.slice) onto these cores, until the next restart ('' = all of them again)."""
+    import subprocess
+    subprocess.run(['systemctl', 'set-property', '--runtime', 'system.slice', 'AllowedCPUs=' + cpus_text], capture_output=True, timeout=30)
+
+
+def gamecores():
+    """The loop hearth-gamecores.service runs: every 5 seconds, a game running → it gets its cores and the system's
+    services the others; no game → everything back on every core. Stops (and puts everything back) when Game cores
+    is off, the settings can't be read, or the service is stopped."""
+    stop = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
+    active = False
+    try:
+        while not stop:
+            saved = _sio().load_json(SETTINGS, None, repair=False) if os.path.exists(SETTINGS) else {}
+            v = (saved or {}).get('game.cores', 'off') if isinstance(saved, dict) else 'off'
+            if v == 'off':
+                break
+            try:
+                cpus = parse_cpus(v)
+            except Fail:
+                break
+            rest = [c for c in range(logical_cpus()) if c not in cpus]
+            games = game_pids()
+            if games and rest:
+                pin(games, cpus)
+                if not active:
+                    system_cores(cpu_text(rest))
+                    active = True
+                    print('game cores: a game is running; it has cores %s, the system %s' % (cpu_text(cpus), cpu_text(rest)), flush=True)
+            elif active:
+                system_cores('')
+                active = False
+                print('game cores: no game running; every core is shared again', flush=True)
+            for _ in range(5):
+                if stop:
+                    break
+                time.sleep(1)
+    finally:
+        if active:
+            system_cores('')
+    return {'ok': True}
+
+
 def main(a):
     try:
         if a == ['status']:
@@ -256,6 +405,8 @@ def main(a):
             out = drives()
         elif a == ['optimize']:
             out = optimize()
+        elif a == ['gamecores']:
+            out = gamecores()
         else:
             print(__doc__.strip(), file=sys.stderr)
             return 2

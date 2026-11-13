@@ -34,7 +34,7 @@ everything again.
   hearth-home-server seen KIND                  note that KIND (commandCenter, camera, ups) was seen just now
   ---- stage 2
   hearth-home-server set KEY VALUE              also: alertsOn, alertSmart, alertFull, alertBackup, alertMirror,
-                                                alertTailscale, keepAwake, schedule, ups, receiveOn (on|off);
+                                                alertTailscale, keepAwake, schedule, ups, night, powerHistory, receiveOn (on|off);
                                                 alertFullPct (80|85|90|95); sleepIdle (0|30|60|120|240 minutes);
                                                 spinDown (0|10|20|30|60 minutes); sleepAt, wakeAt (HH:MM)
   hearth-home-server person-add NAME            a person (Samba only, no login); their password on stdin (HEARTH_INPUT)
@@ -144,7 +144,8 @@ DEFAULTS = {
     'receive': {'on': False, 'path': '', 'devices': []},   # backups from your other Hearth devices (devices: [{user, name, at}])
     'syncs': [],                # [{id, label, path, peer, device}]: folders kept the same with another Hearth device (Syncthing)
     'alerts': {'on': False, 'smart': True, 'full': True, 'fullPct': 90, 'backup': True, 'mirror': True, 'tailscale': False, 'peers': []},
-    'power': {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False},
+    'power': {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False,
+              'night': False, 'nightAt': '03:30', 'history': False},   # 1.11: night maintenance, the power history
     # ---- stage 3 (every one off or empty until you choose it)
     'media': {'on': False, 'reach': 'home', 'pause': False},     # the media server (Jellyfin)
     'ai': {'on': False, 'unload': True, 'pause': False, 'small': None},   # the AI service (Ollama): Tailscale or this PC only, always;
@@ -170,6 +171,8 @@ NESTED = {
     'sleepIdle': ('power', 'sleepIdle', (0, 30, 60, 120, 240)), 'keepAwake': ('power', 'keepAwake', 'bool'),
     'spinDown': ('power', 'spinDown', (0, 10, 20, 30, 60)), 'schedule': ('power', 'schedule', 'bool'),
     'sleepAt': ('power', 'sleepAt', 'time'), 'wakeAt': ('power', 'wakeAt', 'time'), 'ups': ('power', 'ups', 'bool'),
+    'night': ('power', 'night', 'bool'), 'nightAt': ('power', 'nightAt', ('02:30', '03:30', '04:30', '05:30')),
+    'powerHistory': ('power', 'history', 'bool'),
     'receiveOn': ('receive', 'on', 'bool'),
     # ---- stage 3
     'mediaOn': ('media', 'on', 'bool'), 'mediaReach': ('media', 'reach', ('home', 'tailscale')), 'mediaPause': ('media', 'pause', 'bool'),

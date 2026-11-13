@@ -809,7 +809,7 @@ class Redesign(unittest.TestCase):
     def test_has_it_all(self):
         for needle in ('homePage: "hearth:home"', 'function undo()', 'function redo()', 'case Qt.Key_Z:',
                        'case Qt.Key_Y:', 'Qt.LinkAction', '"link"', '"untrash"', '"recent"',
-                       '["large", "grid", "small", "tiles", "compact", "details"]', 'function shownName(e)',
+                       '["xlarge", "large", "grid", "small", "tiles", "compact", "details"]', 'function shownName(e)',
                        'id: detailsBox', 'id: cmdRow', 'id: quick', 'function command(t, x, y)',
                        'p.showExt = showExt', 'p.detailsPane = detailsPane', 'function dragdemo(',
                        'function typeAhead(ch)', 'function moveTab(from, to)', 'id: tabDrop', 'id: inlineRename',

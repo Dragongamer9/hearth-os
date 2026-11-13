@@ -327,7 +327,8 @@ class Sampler(unittest.TestCase):
                            '# Idx           #    C/G      %      %      %      %      %      %     MB     MB    name\n'
                            '    0       4821     G     68     40      -      -      -      -   6553      0    Cyberpunk2077.exe\n'
                            '    0       2204     G      3      1      -      -      -      -    410      0    gamescope\n')
-        self.assertEqual(pm[4821], {'gpu': 68.0, 'vram': 6553 * 1048576, 'type': 'G'})
+        self.assertEqual({k: pm[4821][k] for k in ('gpu', 'vram', 'type')}, {'gpu': 68.0, 'vram': 6553 * 1048576, 'type': 'G'})
+        self.assertEqual(pm[4821]['3d'], 68.0)
         smi = rm.parse_smi_full('0, NVIDIA GeForce RTX 5070, 72, 8090, 12227, 64, 168.20, 250.00, 2610, 14001, 48, 580.65, 5, 16, 00000000:01:00.0, 98.05\n')[0]
         self.assertEqual((smi['busy'], smi['watts'], smi['wattsMax'], smi['mhz'], smi['fan'], smi['linkGen'], smi['pci']), (72, 168.2, 250, 2610, 48, 5, '0000:01:00.0'))
 

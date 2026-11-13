@@ -671,3 +671,17 @@ folders and a clean up that can be put back, search, fixes and their undo, the f
 Access's word for the AI service; the web server over a real socket (a link's folder, counts, used up, expired,
 stopped, never outside a share or hidden, its password; Files on the web with your name and password; the drop-off
 taking files under safe names and showing nothing); the units, the image's checks and the pages' wiring.
+
+## Night maintenance and Power history (1.11)
+
+Both live in Settings › Home server › Alerts & power and are off until you turn them on; the power timer
+(`hearth-home-server-power.timer`, every 5 minutes) runs while either is on.
+
+- **Night maintenance**: once a night, in the hour after the time you pick (2:30, 3:30, 4:30 or 5:30), only when
+  nobody is using the PC and nothing is busy (Game Mode, a share open, a backup): `fstrim --all`,
+  `journalctl --vacuum-size=1G`, `flatpak update --system`, `apt-get clean`. Each step runs on its own; none touches
+  starting the PC, the system image or a setting. What it did is kept in `/var/lib/hearth/home-server-night.json`.
+- **Power history**: the processor's package power (RAPL's energy counter) and the graphics cards' (nvidia-smi or the
+  amdgpu/xe hwmon), every 5 minutes, 30 days kept in `/var/lib/hearth/power-history.json` (a record, readable by you).
+  The page shows the last 24 hours with the average and kWh a day.
+

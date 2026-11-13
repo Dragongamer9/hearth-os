@@ -1,0 +1,20 @@
+# Keeps the drive Hearth OS starts from from filling up completely (hearth-diskguard, 1.11): frees the 2 GB emergency
+# reserve if the drive is nearly full, so the login screen and the session have room to start; sets it aside again
+# once there's plenty of space. It only deletes or makes one file, takes a moment, never fails the start-up ("-")
+# and gives up after 20 seconds.
+[Unit]
+Description=Hearth: keep room on the system drive
+DefaultDependencies=no
+After=local-fs.target
+Before=display-manager.service shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/var/lib
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-diskguard boot
+TimeoutStartSec=20
+
+[Install]
+WantedBy=multi-user.target
