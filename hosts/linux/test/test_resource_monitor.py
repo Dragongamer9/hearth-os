@@ -318,7 +318,7 @@ class Sampler(unittest.TestCase):
         self.assertEqual(rm.tag_of(g(60), procs), '')
 
     def test_parsers(self):
-        self.assertEqual(rm.parse_status_extra('RssAnon:\t 100 kB\nRssFile:\t 20 kB\nRssShmem:\t 4 kB\nVmSwap:\t 8 kB\n'), {'shared': 24 * 1024, 'swap': 8 * 1024})
+        self.assertEqual(rm.parse_status_extra('RssAnon:\t 100 kB\nRssFile:\t 20 kB\nRssShmem:\t 4 kB\nVmSwap:\t 8 kB\n'), {'shared': 24 * 1024, 'swap': 8 * 1024, 'private': 100 * 1024})
         self.assertEqual(rm.parse_proc_io_split('rchar: 9\nread_bytes: 4096\nwrite_bytes: 512\n'), (4096, 512))
         self.assertEqual(rm.parse_drm_memory('drm-client-id: 3\ndrm-memory-vram:\t131072 KiB\ndrm-memory-gtt: 4 KiB\n'), 131072 * 1024)
         self.assertEqual(rm.hex_addr('0100007F:0050'), '127.0.0.1:80')

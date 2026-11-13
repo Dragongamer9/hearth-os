@@ -56,7 +56,17 @@ FocusScope {
     readonly property int histMax: 60
     property var hist: ({ cpu: [], disk: [], net: [], mem: [], gpu: [], g3d: [], gdec: [], vram: [], gtemp: [], resp: [], ping: [] })
     function push(h, k, val) { const a = (h[k] || []).slice(-(histMax - 1)); a.push(val || 0); h[k] = a; }
+    property bool paused: false            // Pause: the numbers stand still until Resume (nothing else stops)
+    // Tailscale's other devices (Network tab's Tailscale graph)
+    property int tsPeers: -1
+    Process {
+        id: tsProc
+        command: ["sh", "-c", "tailscale status --json 2>/dev/null || true"]
+        stdout: StdioCollector { onStreamFinished: { try { v.tsPeers = Object.keys(JSON.parse(text).Peer || {}).length; } catch (e) { v.tsPeers = -1; } } }
+    }
+    Timer { interval: 30000; repeat: true; triggeredOnStart: true; running: v.tab === "network" && v.visible; onTriggered: if (!tsProc.running) tsProc.running = true }
     function applySample(line) {
+        if (paused) return;
         let d;
         try { d = JSON.parse(line); } catch (e) { return; }
         if (d.error) { sampleError = d.error; return; }
@@ -74,6 +84,15 @@ FocusScope {
         push(h, "vram", ((d.gpus || [])[0] || {}).vramUsed || 0);
         push(h, "gtemp", ((d.gpus || [])[0] || {}).temp || 0);
         push(h, "resp", (d.disks || []).reduce((a, x) => Math.max(a, x.response || 0), 0));
+        // 1.12 (mockups resmon-2, -3, -4, -5): each core, the processor's temperature, compressed memory, memory pressure,
+        // swapping in / out, each drive's busy time and each adapter's traffic
+        ((d.cpu && d.cpu.cores) || []).forEach((x, i) => push(h, "core:" + i, x));
+        push(h, "ctemp", d.cpu && d.cpu.temp ? d.cpu.temp : 0);
+        push(h, "memz", d.zram ? d.zram.mem : 0);
+        push(h, "mempsi", d.pressure || 0);
+        push(h, "swapio", d.swapIO ? d.swapIO.in + d.swapIO.out : 0);
+        (d.disks || []).forEach(x => push(h, "disk:" + x.name, x.active || 0));
+        (d.nets || []).forEach(x => push(h, "net:" + x.name, (x.recv || 0) + (x.send || 0)));
         hist = h;
         sample = d;
         if (d.procs) groups = d.procs;
@@ -83,7 +102,7 @@ FocusScope {
     function wants() {
         switch (tab) {
         case "pc": return ["procs", "gpu", "temps", "disk"];
-        case "overview": return ["procs", "disk", "net", "temps"];
+        case "overview": return ["procs", "disk", "net", "temps", "mem"];
         case "cpu": return ["procs", "temps"];
         case "memory": return ["procs", "mem"];
         case "disk": return ["procs", "disk"];
@@ -241,29 +260,125 @@ FocusScope {
     function rowsFor(t) {
         const gs = groups.slice();
         const by = (k) => gs.sort((a, b) => (b[k] || 0) - (a[k] || 0) || (b.mem || 0) - (a.mem || 0));
+        // the swapped memory on the drive: Linux doesn't say per program, so each gets the PC's zram / drive split
+        const sw = (sample && sample.swaps) || [];
+        const drv = sw.filter(x => x.path.indexOf("/dev/zram") !== 0).reduce((a, x) => a + x.used, 0), all = sw.reduce((a, x) => a + x.used, 0);
+        const driveShare = all ? drv / all : 0;
         switch (t) {
-        case "cpu": return by("cpu").map(g => ({ g: g, a: pct(g.cpu), b: thousands(g.threads), c: priorityName(g.nice) }));
-        case "memory": return by("mem").map(g => ({ g: g, a: size(g.mem), b: g.shared !== undefined ? size(g.shared) : "–", c: g.swap ? size(g.swap) : "0" }));
-        case "disk": return gs.sort((a, b) => ((b.read || 0) + (b.write || 0)) - ((a.read || 0) + (a.write || 0)) || (b.disk || 0) - (a.disk || 0)).map(g => ({ g: g, a: rate(g.read !== undefined ? g.read : g.disk), b: rate(g.write || 0), c: rate((g.read || 0) + (g.write || 0) || g.disk) }));
+        case "cpu": return by("cpu").map(g => ({ g: g, cells: [pct(g.cpu), thousands(g.threads), priorityName(g.nice), g.cores || "All"], ov: [pct(g.cpu), pct(g.avg)] }));
+        case "memory": return by("mem").map(g => ({ g: g, cells: [size(g.mem), g.private !== undefined ? size(g.private) : "–", g.shared !== undefined ? size(g.shared) : "–",
+                                                               size(Math.round((g.swap || 0) * (1 - driveShare))), driveShare ? size(Math.round((g.swap || 0) * driveShare)) : "0", String(g.waits || 0)],
+                                                       ov: [size(g.mem), String(g.waits || 0)] }));
+        case "disk": {
+            const rows = gs.sort((a, b) => ((b.read || 0) + (b.write || 0)) - ((a.read || 0) + (a.write || 0)) || (b.disk || 0) - (a.disk || 0))
+                .map(g => ({ g: g, cells: [rate(g.read !== undefined ? g.read : g.disk), rate(g.write || 0), rate((g.read || 0) + (g.write || 0) || g.disk), priorityName(g.nice)],
+                             ov: [rate(g.read !== undefined ? g.read : g.disk), rate(g.write || 0), rate((g.read || 0) + (g.write || 0) || g.disk)] }));
+            // the file system's own writing (btrfs: committing, compressing), what the drives wrote beyond the programs
+            const dw = ((sample && sample.disks) || []).reduce((a, x) => a + (x.write || 0), 0), pw = gs.reduce((a, g) => a + (g.write || 0), 0);
+            if (dw - pw > 65536) rows.splice(Math.min(rows.length, 3), 0, { g: { id: "sys:fs", name: "btrfs (system)", pid: "", color: "sys" }, cells: ["0", rate(dw - pw), rate(dw - pw), "Normal"], ov: ["0", rate(dw - pw), rate(dw - pw)] });
+            return rows;
+        }
         case "network": {
             // 1.11 (mockup resmon-5): each program's download and upload speed (TCP, from ss), then its connections
             const nr = g => { const r = { down: 0, up: 0 }; for (const p of (g.pids || [])) { const x = (netPorts.apps || {})[String(p)]; if (x) { r.down += x.down || 0; r.up += x.up || 0; } } return r; };
             return gs.map(g => ({ g: g, r: nr(g) })).sort((a, b) => (b.r.down + b.r.up) - (a.r.down + a.r.up) || (b.g.conns || 0) - (a.g.conns || 0))
-                .map(x => ({ g: x.g, a: rate(x.r.down), b: rate(x.r.up), c: (x.r.down + x.r.up) ? rate(x.r.down + x.r.up) : (x.g.conns ? x.g.conns + " conn." : "0") }));
+                .map(x => ({ g: x.g, cells: [rate(x.r.down), rate(x.r.up), (x.r.down + x.r.up) ? rate(x.r.down + x.r.up) : (x.g.conns ? x.g.conns + " conn." : "0")] }))
+                .map(x => Object.assign(x, { ov: x.cells }));
         }
-        case "gpu": return gs.sort((a, b) => ((b.g3d !== undefined && b.g3d !== null ? b.g3d : b.gpu) || 0) - ((a.g3d !== undefined && a.g3d !== null ? a.g3d : a.gpu) || 0) || (b.vram || 0) - (a.vram || 0))
-            .map(g => ({ g: g, a: pct(g.g3d !== undefined && g.g3d !== null ? g.g3d : g.gpu), b: g.gdec !== undefined && g.gdec !== null ? pct(g.gdec) : "–", c: g.vram ? size(g.vram) : "–" }));
+        case "gpu": return gs.filter(g => (g.gpu || 0) > 0 || (g.vram || 0) > 0 || (g.gdec || 0) > 0 || (g.genc || 0) > 0)
+            .sort((a, b) => ((b.g3d !== undefined && b.g3d !== null ? b.g3d : b.gpu) || 0) - ((a.g3d !== undefined && a.g3d !== null ? a.g3d : a.gpu) || 0) || (b.vram || 0) - (a.vram || 0))
+            .map(g => ({ g: g, cells: [pct(g.g3d !== undefined && g.g3d !== null ? g.g3d : g.gpu), g.gdec !== undefined && g.gdec !== null ? pct(g.gdec) : "0", g.genc ? pct(g.genc) : "0", g.vram ? size(g.vram) : "–", g.api || g.gpuUse || ""],
+                         ov: [pct(g.g3d !== undefined && g.g3d !== null ? g.g3d : g.gpu), g.gdec !== undefined && g.gdec !== null ? pct(g.gdec) : "–", g.vram ? size(g.vram) : "–"] }));
         }
         return [];
     }
+    // ---- each tab's sections, as in the mockups resmon-2 … resmon-6: {key, title, chips, kind, cols, rows, facts, …}
+    readonly property var focusGroup: { const t = groups.filter(g => ticked[g.id]); return t.length ? t[0] : (selRow ? selRow.g : null); }
+    function upTime(sec) { const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60); return d ? d + " day" + (d > 1 ? "s" : "") + " " + h + " h" : h ? h + " h " + m + " min" : m + " min"; }
+    function pressWord(p) { return p === null || p === undefined ? "–" : p < 1 ? "none" : p < 10 ? "light" : p < 30 ? "medium" : "heavy"; }
+    function sectionsFor(t) {
+        const s = sample || {}, out = [];
+        const tickedNames = groups.filter(g => ticked[g.id]);
+        const progs = { key: t + ":programs", kind: "programs", cols: colsFor[t] || [], rows: tableRows, chips: [] };
+        if (t === "cpu") {
+            progs.title = "Programs";
+            progs.chips = s.cpu ? [[pct(s.cpu.total) + " used", "main"], [thousands(s.cpu.threads) + " threads", ""], ["Up " + upTime(s.uptime || 0), ""]] : [];
+            out.push(progs);
+            const f = focusGroup;
+            if (f) {
+                out.push({ key: "cpu:banner", banner: "Filtered to <b><font color='#9a7cff'>" + f.name + " (" + f.pid + ")</font></b> · showing its services, open files and libraries" });
+                out.push({ key: "cpu:services", title: "Services", kind: "table", chips: [[services.filter(x => x.status === "Running").length + " running", ""]],
+                           cols: [["Service", 3], ["PID", 1, true], ["Status", 1.4], ["CPU", 1, true], ["What it is", 4]],
+                           rows: services.map(x => [x.name, String(x.pid || "—"), { t: x.status, c: x.status === "Running" ? v.c.ok : "" }, pct((groups.find(g => (g.pids || []).indexOf(x.pid) >= 0) || {}).cpu || 0), x.what]),
+                           empty: "It doesn't run as a service." });
+                out.push({ key: "cpu:files", title: "Open files", kind: "table", chips: [[openFiles.length + " open", ""]],
+                           cols: [["Program", 3], ["PID", 1, true], ["File", 8]], rows: openFiles.slice(0, 40).map(x => [f.name, String(x.pid), x.win || x.path]), empty: "No files open." });
+                out.push({ key: "cpu:libs", title: "Libraries (modules)", kind: "table", chips: [[libs.length + " loaded", ""]], cols: [["Library", 3], ["Where", 8]],
+                           rows: libs.map(x => [x.name, x.path]), empty: "None it shares with others." });
+            }
+        } else if (t === "memory") {
+            const mb = s.memBar || {}, zr = s.zram || null, pr = s.pressure;
+            const drive = (s.swaps || []).filter(x => x.path.indexOf("/dev/zram") !== 0);
+            progs.title = "Programs";
+            progs.chips = [[size(mb.inUse || 0) + " in use", "main"], ["pressure: " + pressWord(pr), pr !== null && pr !== undefined && pr >= 10 ? "warn" : "good"]];
+            out.push(progs);
+            const programs = Math.max(0, (mb.inUse || 0) - (zr ? zr.mem : 0));
+            out.push({ key: "memory:physical", title: "Physical memory", kind: "bar", chips: [[size(mb.installed || mb.total), ""]], total: mb.installed || mb.total || 1,
+                       parts: [["Kept", mb.reserved || 0, "#5d7488", "#e6eef5"], ["In use " + size(programs), programs, "#8b80f9"], ["Compr. " + size(zr ? zr.mem : 0), zr ? zr.mem : 0, "#3fd0e0"],
+                               ["Cached " + size((mb.cache || 0) + (mb.saving || 0)), (mb.cache || 0) + (mb.saving || 0), "#cfc9d8"], ["Free " + size(mb.free), mb.free || 0, "#2f4a63", "#c9d6e2"]],
+                       facts: [["Kept for hardware", size(mb.reserved || 0)], ["In use", size(programs)], ["Compressed (zram real size)", zr ? size(zr.mem) : "off"],
+                               ["Cached", size((mb.cache || 0) + (mb.saving || 0))], ["Free", size(mb.free)], ["Available", size((s.mem && s.mem.available) || 0)],
+                               ["Zram holds", zr && zr.size ? size(zr.orig) + " of " + size(zr.size) + (zr.mem ? " (" + Math.max(1, Math.round(zr.orig / zr.mem)) + ":1)" : "") : "off"],
+                               ["Drive swap", drive.length ? size(drive.reduce((a, x) => a + x.used, 0)) + " of " + size(drive.reduce((a, x) => a + x.size, 0)) : "none"],
+                               ["Committed", size(mb.committed || 0) + (s.mem && s.mem.commitLimit ? " of " + size(s.mem.commitLimit) : "")]] });
+        } else if (t === "disk") {
+            const ds = s.disks || [];
+            progs.title = "Programs using the disk";
+            progs.chips = [[rate(ds.reduce((a, x) => a + (x.write || 0), 0)) + " write", ""], [rate(ds.reduce((a, x) => a + (x.read || 0), 0)) + " read", ""]];
+            out.push(progs);
+            out.push({ key: "disk:files", title: "Files being read and written", kind: "table", cols: [["File", 6], ["Program", 2], ["PID", 1, true], ["Read", 1.2, true], ["Write", 1.2, true]],
+                       rows: busyFiles.slice(0, 20).map(x => { const g = busyNames[x.pid] || {}; return [(x.writing ? "✎ " : "") + (x.win || x.path), g.name || "", String(x.pid), rate(x.read || 0), rate(x.write || 0)]; }),
+                       empty: "Nothing is reading or writing files right now." });
+            out.push({ key: "disk:drives", title: "Drives", kind: "table", cols: [["Drive", 2], ["Type", 2], ["Busy", 1, true], ["Response", 1.2, true], ["Free", 1.2, true], ["Total", 1.2, true], ["Health", 1, true], ["Temp", 1, true]],
+                       rows: driveInfo.map(d => { const h = (driveHealth.drives || {})[String(d.disk || d.name || "").replace(/p?\d+$/, "")] || {}; const live = ds.find(x => x.name === d.disk || x.name === d.name) || {};
+                           return [d.label || d.name, [d.kind, d.fs].filter(x => x).join(" · "), live.active !== undefined ? pct(live.active) : "–", live.response !== null && live.response !== undefined ? live.response + " ms" : "–",
+                                   size(d.free), size(d.total), { t: h.lifeLeft !== null && h.lifeLeft !== undefined ? h.lifeLeft + "%" : h.ok === false ? "Failing" : "–", c: h.ok === false ? v.c.warn : h.lifeLeft >= 80 ? v.c.ok : "" },
+                                   d.temp ? Math.round(d.temp) + "°C" : h.temp ? h.temp + "°C" : "–"]; }) });
+        } else if (t === "network") {
+            const ns = (s.nets || []).filter(x => x.up);
+            progs.title = "Programs using the network";
+            progs.chips = [[rate(ns.reduce((a, x) => a + (x.recv || 0), 0)) + " down", ""], [rate(ns.reduce((a, x) => a + (x.send || 0), 0)) + " up", ""]];
+            out.push(progs);
+            const pick = r => !tickedNames.length || tickedNames.some(g => (g.pids || []).indexOf(r.pid) >= 0);
+            out.push({ key: "net:conns", title: "Connections (TCP)", kind: "table", cols: [["Program", 2.4], ["PID", 1, true], ["Talking to", 4.5], ["Port", 1, true], ["Ping", 1, true], ["State", 1]],
+                       rows: (netPorts.connections || []).filter(pick).slice(0, 30).map(c => [c.name, c.pid ? String(c.pid) : "—", c.host || c.remote, String(c.port), c.ping !== null && c.ping !== undefined ? c.ping + " ms" : "–", c.state || "Open"]) });
+            out.push({ key: "net:listen", title: "Listening ports", kind: "table", chips: [["firewall: " + (netPorts.firewall || "allowed only on your network"), "warn"]],
+                       cols: [["Program", 2.4], ["PID", 1, true], ["Port", 1, true], ["Open to", 2], ["What it is", 4]],
+                       rows: (netPorts.listening || []).filter(pick).slice(0, 30).map(l => [l.name, l.pid ? String(l.pid) : "—", String(l.port), l.openTo, l.what || ""]) });
+        } else if (t === "gpu") {
+            const g = (s.gpus || [])[0] || {}, card = s.card || {};
+            progs.title = "Programs using the graphics card";
+            progs.chips = g.name ? [[(g.vendor === "Intel" ? "Intel graphics" : g.vendor || "GPU") + " " + (g.busy === null || g.busy === undefined ? "" : pct(g.busy)), "main"]].concat(g.temp ? [[Math.round(g.temp) + "°C", ""]] : []) : [];
+            out.push(progs);
+            const games = groups.filter(x => x.kind === "game").map(x => x.name);
+            out.push({ key: "gpu:card", title: "Graphics card", kind: "facts",
+                       facts: [["Name", g.name || "–"], ["Driver", [card.mesa ? "Mesa " + card.mesa : "", card.driver || g.driver || ""].filter(x => x).join(" · ") || "–"],
+                               ["Shared memory", g.gttTotal ? size(g.gttUsed || 0) + " of " + size(g.gttTotal) : g.vramTotal ? size(g.vramUsed || 0) + " of " + size(g.vramTotal) : "–"],
+                               ["Clock", g.mhz ? Math.round(g.mhz) + (g.mhzMax ? " / " + Math.round(g.mhzMax) : "") + " MHz" : "–"], ["Temperature", g.temp ? Math.round(g.temp) + "°C" : "–"],
+                               ["Power", g.watts ? (g.watts < 10 ? g.watts.toFixed(1) : Math.round(g.watts)) + " W" : "–"],
+                               ["Screens", (card.screens || []).length ? card.screens.length + " · " + card.screens.join(", ") : "–"],
+                               ["Vulkan · OpenGL", [card.vulkan || "–", card.opengl || "–"].join(" · ")], ["Games running", games.length ? games.join(", ") : "none"]] });
+        }
+        return out;
+    }
     function priorityName(n) { return n === undefined || n === null ? "Normal" : n < -10 ? "High" : n < 0 ? "Above normal" : n === 0 ? "Normal" : n < 19 ? "Below normal" : "Low"; }
-    readonly property var colsFor: ({ cpu: ["CPU ↓", "Threads", "Priority"], memory: ["In use ↓", "Shared", "Compressed"], disk: ["Read", "Write", "Total ↓"],
-                                      network: ["Down", "Up", "Total ↓"], gpu: ["3D ↓", "Video decode", "Video memory"] })
+    readonly property var colsFor: ({ cpu: ["CPU", "Threads", "Priority", "Cores"], memory: ["In use", "Private", "Shared", "Compressed", "On drive", "Waits / s"],
+                                      disk: ["Read", "Write", "Total", "Priority"], network: ["Down", "Up", "Total"], gpu: ["3D", "Video decode", "Video encode", "Video memory", "Through"] })
     readonly property var tableRows: { samples; return rowsFor(tab === "overview" ? "cpu" : tab); }
     // Overview's state: folded sections and the programs you ticked (only while it's open; nothing is saved).
     property var folded: ({ disk: true, network: true, gpu: true })
     property var ticked: ({})
-    readonly property var overviewCols: ({ cpu: ["CPU ↓", "Threads", "Average"], memory: ["In use ↓", "Shared", "Compressed"] })
+    readonly property var overviewCols: ({ cpu: ["CPU", "Average"], memory: ["In use", "Waits / s"], disk: ["Read", "Write", "Total"], network: ["Down", "Up", "Total"], gpu: ["3D", "Video decode", "Video memory"] })
     // The chips on each Overview heading: [[text, tone]] (tone: main, good, warn or "").
     function overviewChips(k) {
         const s = sample || {};
@@ -271,7 +386,7 @@ FocusScope {
         if (k === "memory") {
             const mb = s.memBar || {};
             const pr = s.pressure !== undefined && s.pressure !== null ? s.pressure : null;
-            return [[size(mb.inUse || 0) + " in use", "main"]].concat(mb.swapUsed ? [[size(mb.swapUsed) + " in swap", ""]] : [])
+            return [[size(mb.inUse || 0) + " in use", "main"]].concat(s.zram && s.zram.mem ? [[size(s.zram.mem) + " compressed", ""]] : mb.swapUsed ? [[size(mb.swapUsed) + " in swap", ""]] : [])
                 .concat(pr === null ? [] : [["pressure: " + (pr < 1 ? "none" : pr < 10 ? "light" : pr < 30 ? "medium" : "heavy"), pr < 10 ? "good" : "warn"]]);
         }
         if (k === "disk") { const d = (s.disks || []).slice().sort((a, b) => b.active - a.active)[0]; return d ? [[d.label + " " + pct(d.active) + " busy", "main"], [rate((s.disks || []).reduce((a, x) => a + x.write, 0)) + " write", ""]] : []; }
@@ -322,7 +437,24 @@ FocusScope {
             const h = Object.assign({}, v.hist); v.push(h, "ping", pings.length ? pings.reduce((a, x) => a + x, 0) / pings.length : 0); v.hist = h;
         } catch (e) {} } }
     }
-    onSelRowChanged: if (tab === "cpu" && selRow && selRow.g && selRow.g.pids && !filesProc.running) { filesProc.command = ["python3", v.helper, "files"].concat(selRow.g.pids.slice(0, 64).map(String)); filesProc.running = true; }
+
+    property var services: []
+    property var libs: []
+    property var driveHealth: ({})
+    property var tempLimit: null
+    readonly property string focusId: focusGroup ? String(focusGroup.id) : ""
+    onFocusIdChanged: lookAtFocus()
+    Timer { interval: 5000; repeat: true; running: v.tab === "cpu" && v.visible; onTriggered: v.lookAtFocus() }
+    function lookAtFocus() { if (tab === "cpu" && focusGroup && focusGroup.pids) {
+        if (!svcProc.running) { svcProc.command = ["python3", v.helper, "services"].concat(focusGroup.pids.slice(0, 64).map(String)); svcProc.running = true; }
+        if (!libsProc.running) { libsProc.command = ["python3", v.helper, "libs", String(focusGroup.pid)]; libsProc.running = true; }
+        if (!filesProc.running) { filesProc.command = ["python3", v.helper, "files"].concat(focusGroup.pids.slice(0, 64).map(String)); filesProc.running = true; }
+    } }
+    Process { id: svcProc; stdout: StdioCollector { onStreamFinished: { try { v.services = JSON.parse(text.trim().split("\n").pop()).services || []; } catch (e) { v.services = []; } } } }
+    Process { id: libsProc; stdout: StdioCollector { onStreamFinished: { try { v.libs = JSON.parse(text.trim().split("\n").pop()).libs || []; } catch (e) { v.libs = []; } } } }
+    Process { id: healthProc; command: ["pkexec", "/usr/libexec/nimbus/hearth-hwset", "disk-health"]; stdout: StdioCollector { onStreamFinished: { try { v.driveHealth = JSON.parse(text.trim().split("\n").pop()) || {}; } catch (e) {} } } }
+    Process { id: limitProc; running: true; command: ["python3", "/usr/libexec/nimbus/hearth-hwset", "status"]; stdout: StdioCollector { onStreamFinished: { try { v.tempLimit = JSON.parse(text.trim().split("\n").pop()).tempLimit || null; } catch (e) {} } } }
+    Timer { interval: 60000; repeat: true; triggeredOnStart: true; running: v.tab === "disk" && v.visible; onTriggered: if (!healthProc.running) healthProc.running = true }
     Process {
         id: filesProc
         stdout: StdioCollector { onStreamFinished: { try { v.openFiles = JSON.parse(text.trim().split("\n").pop()).files || []; } catch (e) { v.openFiles = []; } } }
@@ -455,6 +587,31 @@ FocusScope {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
+        // ---- the title row (1.12, mockups resmon-1 … -6): Live · every second, Pause and Open Task Manager
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            color: v.c.bar
+            Row {
+                anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                spacing: 14
+                Text { text: "🔥 Resource Monitor"; color: v.c.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                Text { text: v.paused ? "Paused" : v.sampleError ? "Paused: " + v.sampleError : "Live · every second"; color: v.paused || v.sampleError ? v.c.warn : v.c.muted; font.family: Theme.font; font.pixelSize: 13 }
+            }
+            Row {
+                anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                spacing: 6
+                Text {
+                    text: v.paused ? "Resume ▶" : "Pause ⏸"; color: pzm.containsMouse ? v.c.text : v.c.muted; font.family: Theme.font; font.pixelSize: 13
+                    MouseArea { id: pzm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: v.paused = !v.paused }
+                }
+                Text { text: "·"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 13 }
+                Text {
+                    text: "Open Task Manager"; color: otm.containsMouse ? v.c.text : v.c.muted; font.family: Theme.font; font.pixelSize: 13
+                    MouseArea { id: otm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: v.ipc(["tasks", "open"]) }
+                }
+            }
+        }
         // ---- the tabs
         Rectangle {
             Layout.fillWidth: true
@@ -478,12 +635,6 @@ FocusScope {
                         MouseArea { id: tabMouse; anchors.fill: parent; hoverEnabled: true; onClicked: if (v.rm) v.rm.tab = modelData[0] }
                     }
                 }
-            }
-            Row {
-                anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-                spacing: 8
-                Rectangle { width: 8; height: 8; radius: 4; anchors.verticalCenter: parent.verticalCenter; color: v.sampleError ? v.c.warn : v.c.ok }
-                Text { text: v.sampleError ? "Paused: " + v.sampleError : "Live · every second"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
             }
         }
 
@@ -709,7 +860,7 @@ FocusScope {
                                     Layout.fillWidth: true
                                     implicitHeight: 38 + (open ? 26 + Math.max(1, secRows.length) * 28 : 0)
                                     radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                                    readonly property var secRows: { v.samples; v.ticked; const r = v.rowsFor(k); const t = Object.keys(v.ticked); return (t.length ? r.filter(x => v.ticked[x.g.id]) : r).slice(0, 5); }
+                                    readonly property var secRows: { v.samples; v.ticked; const r = v.rowsFor(k).map(x => ({ g: x.g, cells: x.ov || x.cells })); const t = Object.keys(v.ticked); return (t.length ? r.filter(x => v.ticked[x.g.id]) : r).slice(0, 5); }
                                     readonly property var chips: { v.samples; return v.overviewChips(k); }
                                     Column {
                                         anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -748,337 +899,162 @@ FocusScope {
                             }
                             Text {
                                 Layout.fillWidth: true; Layout.leftMargin: 4; wrapMode: Text.WordWrap
-                                text: Object.keys(v.ticked).length ? "Showing only the programs you ticked. Untick them to see everything." : "Tick programs to show only them in every section. Click a heading to fold it."
+                                text: Object.keys(v.ticked).length ? "Tick programs to filter every section to just them (here: " + v.groups.filter(g => v.ticked[g.id]).map(g => g.name).join(", ") + "). Click a heading to fold it." : "Tick programs to filter every section to just them. Click a heading to fold it."
                                 color: v.c.muted; font.family: Theme.font; font.pixelSize: 12
                             }
                         }
                     }
 
-                    // Processor, Disk, Network, Graphics: a summary on top
-                    Rectangle {
-                        id: summaryBox
-                        visible: v.tab === "cpu" || v.tab === "disk" || v.tab === "network"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 92
-                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
-                        readonly property var cards: { v.samples; const s = v.sample || {};
-                            if (v.tab === "cpu" && s.cpu) return [["Busy", pct(s.cpu.total), (s.cpu.name || "").replace(/\(R\)|\(TM\)/g, "")], ["Speed", ghz(s.cpu.mhz), s.cpu.base ? "base " + ghz(s.cpu.base) : ""],
-                                ["Temperature", temp(s.cpu.temp) || "–", tempNote(s.cpu.temp)], ["Threads", thousands(s.cpu.threads), thousands(s.cpu.processes) + " processes"], ["Cores", String(s.cpu.coreCount || "–"), s.cpu.logical + " logical"]];
-                            if (v.tab === "disk") return (s.disks || []).slice(0, 5).map(d => [d.label, pct(d.active) + " active", rate(d.read) + " read · " + rate(d.write) + " write"]);
-                            if (v.tab === "network") return (s.nets || []).slice(0, 5).map(n => [n.kind + " (" + n.name + ")", n.up ? rate(n.recv) + " ↓" : "Not connected", n.up ? rate(n.send) + " ↑" + (n.speed ? " · " + n.speed + " Mbps link" : "") : ""]);
-                            return []; }
-                        Row {
-                            anchors { fill: parent; margins: 12 }
-                            spacing: 10
-                            Repeater {
-                                model: summaryBox.cards
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    width: (parent.width - 40) / 5; height: parent.height; radius: 8; color: v.c.head
-                                    Column {
-                                        anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 8; verticalCenter: parent.verticalCenter } spacing: 3
-                                        Text { width: parent.width; text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight }
-                                        Text { width: parent.width; text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                                        Text { width: parent.width; text: modelData[2]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Memory: the bar in plain words
-                    Rectangle {
-                        visible: v.tab === "memory"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 230
-                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
-                        readonly property var mb: { v.samples; return (v.sample && v.sample.memBar) || null; }
-                        readonly property var zr: { v.samples; return (v.sample && v.sample.zram) || null; }
-                        readonly property var drive: { v.samples; return ((v.sample && v.sample.swaps) || []).filter(x => x.path.indexOf("/dev/zram") !== 0); }
-                        // 1.11 (the approved mockup resmon-3): compressed memory and the swaps in numbers too
-                        readonly property var facts: !mb ? [] : [
-                            ["Zram holds", zr && zr.size ? v.size(zr.orig) + " of " + v.size(zr.size) + (zr.compr ? " (" + (zr.orig / zr.compr).toFixed(1) + ":1)" : "") : "off"],
-                            ["Drive swap", drive.length ? v.size(drive.reduce((a, x) => a + x.used, 0)) + " of " + v.size(drive.reduce((a, x) => a + x.size, 0)) : "none"],
-                            ["Compressed (real size)", zr ? v.size(zr.mem) : "–"],
-                            ["Committed", v.size(mb.committed || 0)]]
-                        readonly property var parts: !mb ? [] : [
-                            ["Reserved", mb.reserved, "Kept by the hardware and graphics", "#5d7488"], ["In use", mb.inUse, "Programs and games", "#66c0f4"],
-                            ["Compressed", zr ? zr.mem : 0, "Idle memory squeezed into zram", "#3fb8c9"],
-                            ["Being saved", mb.saving, "Waiting to be written to the drive", "#ff9a4d"], ["Cache", mb.cache, "Recent files, handed back the moment a game needs it", "#9a7cff"],
-                            ["Free", mb.free, "Not used at all", "#2f4a63"]]
-                        Column {
-                            anchors { fill: parent; margins: 14 }
-                            spacing: 12
-                            Row {
-                                spacing: 10
-                                Text { text: "Memory"; color: v.c.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                Text { text: memBox.mb ? v.size(memBox.mb.installed) + " installed · " + v.size(memBox.mb.inUse) + " in use by programs" : ""; color: v.c.muted; font.family: Theme.font; font.pixelSize: 13 }
-                            }
-                            Rectangle {
-                                width: parent.width; height: 28; radius: 6; clip: true; color: v.c.line
-                                Row {
-                                    anchors.fill: parent
-                                    Repeater {
-                                        model: memBox.parts
-                                        delegate: Rectangle { required property var modelData; height: 28; color: modelData[3]; width: memBox.mb && memBox.mb.installed ? parent.width * (modelData[1] || 0) / memBox.mb.installed : 0 }
-                                    }
-                                }
-                            }
-                            Row {
-                                width: parent.width
-                                Repeater {
-                                    model: memBox.parts
-                                    delegate: Column {
-                                        required property var modelData
-                                        width: parent.width / 6; spacing: 3
-                                        Row { spacing: 6; Rectangle { width: 10; height: 10; radius: 2; color: modelData[3]; anchors.verticalCenter: parent.verticalCenter } Text { text: modelData[0]; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12 } }
-                                        Text { text: v.size(modelData[1]); color: v.c.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                        Text { width: parent.width - 10; text: modelData[2]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11; wrapMode: Text.WordWrap }
-                                    }
-                                }
-                            }
-                            Grid {
-                                width: parent.width; columns: 4; columnSpacing: 18; rowSpacing: 4
-                                Repeater {
-                                    model: memBox.facts
-                                    delegate: Row {
-                                        required property var modelData
-                                        spacing: 8
-                                        Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
-                                        Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
-                                    }
-                                }
-                            }
-                        }
-                        id: memBox
-                    }
-
-                    // Graphics: each card
-                    Repeater {
-                        model: v.tab === "gpu" ? ((v.sample && v.sample.gpus) || []).slice(0, 2) : []
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property var g: modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 158
-                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
-                            readonly property var pg: ((v.pc && v.pc.gpus) || []).find(x => (g.pci && x.pci.endsWith(g.pci.slice(-7))) || (g.card && x.card === g.card)) || null
-                            Column {
-                                anchors { fill: parent; margins: 14 }
-                                spacing: 12
-                                Row {
-                                    spacing: 10; width: parent.width
-                                    Text { id: gname; text: g.name; color: v.c.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                    Text {
-                                        width: parent.width - gname.width - 10; elide: Text.ElideRight; color: v.c.muted; font.family: Theme.font; font.pixelSize: 13
-                                        text: [g.driver ? "driver " + g.driver : (pg ? pg.driver : ""), pg && pg.link ? pg.link : (g.linkGen ? "PCIe " + g.linkGen + ".0 x" + g.linkWidth : ""),
-                                               pg ? pg.outputs.filter(o => o.connected).map(o => o.port + (o.monitor ? " to " + o.monitor : "")).join(", ") : ""].filter(x => x).join(" · ")
-                                    }
-                                }
-                                Row {
-                                    width: parent.width; spacing: 10
-                                    Repeater {
-                                        model: [["Busy", pct(g.busy), ""], ["Temperature", temp(g.temp) || "–", tempNote(g.temp)], ["Power", g.watts ? Math.round(g.watts) + " W" : "–", g.wattsMax ? "of " + Math.round(g.wattsMax) + " W" : ""],
-                                                ["Clock", g.mhz ? ghz(g.mhz) : "–", g.memMhz ? "Memory " + Math.round(g.memMhz) + " MHz" : ""], ["Fan", g.fan !== null && g.fan !== undefined ? Math.round(g.fan) + "%" : "–", g.fanRpm ? thousands(g.fanRpm) + " rpm" : ""]]
-                                        delegate: Rectangle {
-                                            required property var modelData
-                                            width: (parent.width - 40) / 5; height: 70; radius: 8; color: v.c.head
-                                            Column {
-                                                anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter } spacing: 3
-                                                Text { text: modelData[0]; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
-                                                Text { text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
-                                                Text { text: modelData[2]; color: modelData[2] === "Normal" ? v.c.ok : v.c.muted; font.family: Theme.font; font.pixelSize: 11 }
-                                            }
-                                        }
-                                    }
-                                }
-                                Column {
-                                    width: parent.width; spacing: 5
-                                    visible: !!g.vramTotal
-                                    Row { width: parent.width; Text { width: parent.width / 2; text: "Video memory"; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12 } Text { width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: v.size(g.vramUsed) + " of " + v.size(g.vramTotal); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12 } }
-                                    Rectangle { width: parent.width; height: 10; radius: 5; color: v.c.line; Rectangle { width: g.vramTotal ? parent.width * Math.min(1, (g.vramUsed || 0) / g.vramTotal) : 0; height: 10; radius: 5; color: v.c.accent } }
-                                }
-                            }
-                        }
-                    }
-                    Rectangle {
-                        visible: v.tab === "gpu" && !((v.sample && v.sample.gpus) || []).length
-                        Layout.fillWidth: true; Layout.preferredHeight: 60; radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
-                        Text { anchors.centerIn: parent; text: v.samples ? "No graphics card reports its numbers here." : "Reading…"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 13 }
-                    }
-
-                    // The table for the tab
-                    Rectangle {
+                    // Processor, Memory, Disk, Network, Graphics (1.12, built completely to the approved mockups
+                    // resmon-2 … resmon-6; red flag 11): foldable sections, each with its chips, Programs first.
+                    Flickable {
+                        id: tabFlick
                         visible: v.tab !== "overview"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                        ProgHeader { id: tHead; width: parent.width; cols: v.colsFor[v.tab] || []; head: true }
-                        ListView {
-                            id: table
-                            anchors { left: parent.left; right: parent.right; top: tHead.bottom; bottom: parent.bottom }
-                            clip: true
-                            model: v.tab === "overview" ? [] : v.tableRows
-                            currentIndex: v.listIndex
-                            highlightFollowsCurrentItem: false
-                            boundsBehavior: Flickable.StopAtBounds
-                            onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
-                            delegate: ProgRow {
-                                required property var modelData
-                                required property int index
-                                width: table.width; row: modelData; alt: index % 2 === 0; picked: index === v.listIndex
-                                onClickedRow: v.listIndex = index
-                                onMenuRow: (x, y) => { v.listIndex = index; const pt = mapToItem(v, x, y); v.openMenu(modelData.g, pt.x, pt.y); }
-                            }
-                        }
-                    }
-                    // Network: listening ports and connections (1.11)
-                    Repeater {
-                        model: v.tab === "network" ? [["connections", "Connections (TCP)", ["Program", "PID", "Talking to", "Port", "Ping"]], ["listening", "Listening ports", ["Program", "PID", "Port", "Open to"]]] : []
-                        delegate: Rectangle {
-                            id: npBox
-                            required property var modelData
-                            readonly property var rows: (v.netPorts[modelData[0]] || [])
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: Math.min(220, 60 + Math.max(1, rows.length) * 24)
-                            radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                            Rectangle {
-                                id: npHead; width: parent.width; height: 34; color: v.c.head
-                                Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: npBox.modelData[1] + " (" + npBox.rows.length + ")"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
-                            }
-                            Row {
-                                id: npCols; anchors.top: npHead.bottom; x: 12; height: 24
-                                Repeater { model: npBox.modelData[2]; delegate: Text { required property var modelData; required property int index; width: [220, 80, 260, 200, 80][index]; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
-                            }
-                            ListView {
-                                anchors { left: parent.left; right: parent.right; top: npCols.bottom; bottom: parent.bottom; leftMargin: 12 }
-                                clip: true; boundsBehavior: Flickable.StopAtBounds
-                                model: npBox.rows
-                                delegate: Row {
-                                    required property var modelData
-                                    height: 24
-                                    Text { width: 220; text: modelData.name; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { width: 80; text: modelData.pid ? String(modelData.pid) : "–"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { width: 260; text: npBox.modelData[0] === "listening" ? String(modelData.port) : modelData.remote; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { width: 200; text: npBox.modelData[0] === "listening" ? modelData.openTo : String(modelData.port); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { visible: npBox.modelData[0] === "connections"; width: 80; text: modelData.ping !== null && modelData.ping !== undefined ? modelData.ping + " ms" : "–"; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                }
-                            }
-                        }
-                    }
-
-                    // Disk (1.11, mockup resmon-4): files the busiest programs have open, and every drive
-                    Rectangle {
-                        id: bfBox
-                        visible: v.tab === "disk" && v.busyFiles.length > 0
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(190, 60 + v.busyFiles.length * 24)
-                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                        Rectangle {
-                            id: bfHead; width: parent.width; height: 34; color: v.c.head
-                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: "Files being read and written"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
-                            Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } text: "open by the busiest programs · ✎ open for writing"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11 }
-                        }
-                        Row {
-                            id: bfCols; anchors.top: bfHead.bottom; x: 12; height: 24
-                            Repeater { model: ["File", "Program", "PID", "Read", "Write"]; delegate: Text { required property var modelData; required property int index; width: [bfBox.width * 0.5, 150, 70, 90, 90][index]; horizontalAlignment: index > 2 ? Text.AlignRight : Text.AlignLeft; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
-                        }
-                        ListView {
-                            anchors { left: parent.left; right: parent.right; top: bfCols.bottom; bottom: parent.bottom; leftMargin: 12 }
-                            clip: true; boundsBehavior: Flickable.StopAtBounds
-                            model: v.busyFiles
-                            delegate: Row {
-                                required property var modelData
-                                readonly property var grp: v.busyNames[modelData.pid] || ({})
-                                height: 24
-                                Text { width: bfBox.width * 0.5; text: (modelData.writing ? "✎ " : "") + (modelData.win || modelData.path); elide: Text.ElideMiddle; color: v.c.text; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                Text { width: 150; text: grp.name || ""; elide: Text.ElideRight; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                Text { width: 70; text: String(modelData.pid); color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                Text { width: 90; horizontalAlignment: Text.AlignRight; text: v.rate(grp.read || 0); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                Text { width: 90; horizontalAlignment: Text.AlignRight; text: v.rate(grp.write || 0); color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                            }
-                        }
-                    }
-                    Rectangle {
-                        id: drBox
-                        visible: v.tab === "disk"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 60 + Math.max(1, v.driveInfo.length) * 26
-                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                        readonly property var widths: [0.2, 0.17, 0.08, 0.11, 0.11, 0.11, 0.1, 0.08]
-                        Rectangle {
-                            id: drHead; width: parent.width; height: 34; color: v.c.head
-                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: "Drives"; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
-                            Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } text: "Health: Hearth Disks › Properties"; color: v.c.muted; font.family: Theme.font; font.pixelSize: 11 }
-                        }
-                        Row {
-                            id: drCols; anchors.top: drHead.bottom; x: 12; width: parent.width - 24; height: 24
-                            Repeater { model: ["Drive", "Type", "Busy", "Response", "Free", "Total", "Full", "Temp"]; delegate: Text { required property var modelData; required property int index; width: drCols.width * drBox.widths[index]; horizontalAlignment: index > 1 ? Text.AlignRight : Text.AlignLeft; text: modelData; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter } }
-                        }
-                        Column {
-                            anchors { left: parent.left; right: parent.right; top: drCols.bottom; leftMargin: 12; rightMargin: 12 }
+                        contentHeight: tabCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ColumnLayout {
+                            id: tabCol
+                            width: parent.width
+                            spacing: 10
                             Repeater {
-                                model: v.driveInfo
-                                delegate: Row {
-                                    id: drRow
+                                model: { v.samples; v.ticked; v.folded; v.services; v.libs; v.openFiles; v.busyFiles; v.driveInfo; v.netPorts; v.driveHealth; return v.tab === "overview" || v.tab === "pc" ? [] : v.sectionsFor(v.tab); }
+                                delegate: Rectangle {
+                                    id: tsec
                                     required property var modelData
-                                    readonly property var live: { v.samples; return ((v.sample && v.sample.disks) || []).find(x => x.name === modelData.name) || ({}); }
-                                    readonly property var cells: [modelData.label + (modelData.model ? " · " + modelData.model : ""), modelData.type + (modelData.fs ? " · " + modelData.fs : ""),
-                                        live.active !== undefined ? v.pct(live.active) : "–", live.response !== undefined && live.response !== null ? live.response + " ms" : "–",
-                                        modelData.free !== null && modelData.free !== undefined ? v.size(modelData.free) : "–", v.size(modelData.total || 0),
-                                        modelData.pct !== null && modelData.pct !== undefined ? Math.round(modelData.pct) + "%" : "–", modelData.temp ? modelData.temp + "°C" : "–"]
-                                    width: parent.width; height: 26
-                                    Repeater {
-                                        model: drRow.cells
-                                        delegate: Text {
-                                            required property var modelData; required property int index
-                                            width: drRow.width * drBox.widths[index]; horizontalAlignment: index > 1 ? Text.AlignRight : Text.AlignLeft; elide: Text.ElideRight
-                                            text: modelData; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter
-                                            color: index === 6 && drRow.modelData.pct >= 90 ? v.c.warn : index === 0 ? v.c.text : v.c.sub
+                                    readonly property var spec: modelData
+                                    readonly property bool open: !v.folded[spec.key]
+                                    Layout.fillWidth: true
+                                    visible: !spec.hidden
+                                    implicitHeight: spec.banner ? 38 : 38 + (open ? tbody.implicitHeight : 0)
+                                    radius: 8; color: spec.banner ? Qt.rgba(0.6, 0.5, 1, 0.12) : v.c.card; border.width: spec.banner ? 0 : 1; border.color: v.c.line; clip: true
+                                    // a line of words (Filtered to …)
+                                    Text {
+                                        visible: !!tsec.spec.banner
+                                        anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                                        textFormat: Text.StyledText
+                                        text: tsec.spec.banner || ""
+                                        color: v.c.sub; font.family: Theme.font; font.pixelSize: 13
+                                    }
+                                    Column {
+                                        visible: !tsec.spec.banner
+                                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                                        Rectangle {
+                                            width: parent.width; height: 38; color: v.c.head
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { const f = Object.assign({}, v.folded); f[tsec.spec.key] = !f[tsec.spec.key]; v.folded = f; } }
+                                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: (tsec.open ? "▾ " : "▸ ") + tsec.spec.title; color: v.c.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                            Row {
+                                                anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                                spacing: 6
+                                                Repeater {
+                                                    model: tsec.spec.chips || []
+                                                    delegate: Rectangle {
+                                                        required property var modelData
+                                                        height: 24; width: tchT.implicitWidth + 18; radius: 12; color: "transparent"
+                                                        border.color: modelData[1] === "good" ? v.c.ok : modelData[1] === "warn" ? v.c.warn : modelData[1] === "main" ? v.c.accent : v.c.line
+                                                        Text { id: tchT; anchors.centerIn: parent; text: parent.modelData[0]; color: parent.modelData[1] === "good" ? v.c.ok : parent.modelData[1] === "warn" ? v.c.warn : v.c.text; font.family: Theme.font; font.pixelSize: 12 }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Column {
+                                            id: tbody
+                                            visible: tsec.open
+                                            width: parent.width
+                                            // the programs: ticks, a picked row, right-click actions
+                                            ProgHeader { visible: tsec.spec.kind === "programs"; width: parent.width; cols: tsec.spec.cols || []; head: true }
+                                            Repeater {
+                                                model: tsec.open && tsec.spec.kind === "programs" ? tsec.spec.rows : []
+                                                delegate: ProgRow {
+                                                    required property var modelData; required property int index
+                                                    width: parent.width; row: modelData; alt: index % 2 === 0; picked: index === v.listIndex
+                                                    tickable: true; ticked: !!v.ticked[modelData.g.id]
+                                                    onTick: { const t = Object.assign({}, v.ticked); if (t[modelData.g.id]) delete t[modelData.g.id]; else t[modelData.g.id] = true; v.ticked = t; }
+                                                    onClickedRow: v.listIndex = index
+                                                    onMenuRow: (x, y) => { v.listIndex = index; const pt = mapToItem(v, x, y); v.openMenu(modelData.g, pt.x, pt.y); }
+                                                }
+                                            }
+                                            // any other table
+                                            GenRow { visible: tsec.spec.kind === "table"; width: parent.width; cols: tsec.spec.cols || []; cells: (tsec.spec.cols || []).map(c => c[0]); head: true }
+                                            Repeater {
+                                                model: tsec.open && tsec.spec.kind === "table" ? tsec.spec.rows : []
+                                                delegate: GenRow { required property var modelData; required property int index; width: parent.width; cols: tsec.spec.cols; cells: modelData; alt: index % 2 === 0 }
+                                            }
+                                            // Memory's Physical memory bar
+                                            Item {
+                                                visible: tsec.spec.kind === "bar"
+                                                width: parent.width; height: visible ? 50 : 0
+                                                Rectangle {
+                                                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 14 }
+                                                    height: 30; radius: 6; clip: true; color: v.c.line
+                                                    Row {
+                                                        anchors.fill: parent
+                                                        Repeater {
+                                                            model: tsec.spec.kind === "bar" ? tsec.spec.parts : []
+                                                            delegate: Rectangle {
+                                                                required property var modelData
+                                                                height: 30; color: modelData[2]
+                                                                width: tsec.spec.total ? parent.width * (modelData[1] || 0) / tsec.spec.total : 0
+                                                                Text { anchors.centerIn: parent; visible: implicitWidth + 8 < parent.width; text: modelData[0]; color: modelData[3] || "#10151b"; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            // facts in three columns
+                                            Grid {
+                                                visible: tsec.spec.kind === "bar" || tsec.spec.kind === "facts"
+                                                width: parent.width - 28; x: 14; columns: 3; columnSpacing: 24; rowSpacing: 6
+                                                topPadding: tsec.spec.kind === "facts" ? 12 : 0; bottomPadding: 12
+                                                Repeater {
+                                                    model: tsec.spec.facts || []
+                                                    delegate: Item {
+                                                        required property var modelData
+                                                        width: (tbody.width - 28 - 48) / 3; height: 20
+                                                        Text { anchors.left: parent.left; text: modelData[0]; color: v.c.sub; font.family: Theme.font; font.pixelSize: 13 }
+                                                        Text { anchors.right: parent.right; text: modelData[1]; color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                                                    }
+                                                }
+                                            }
+                                            Text { visible: tsec.spec.kind !== "bar" && tsec.spec.kind !== "facts" && !(tsec.spec.rows || []).length; leftPadding: 12; topPadding: 8; bottomPadding: 8; text: tsec.spec.empty || "Nothing here right now."; color: v.c.muted; font.family: Theme.font; font.pixelSize: 12 }
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
-
-                    // Processor: the selected program's open files (1.11)
-                    Rectangle {
-                        visible: v.tab === "cpu" && v.openFiles.length > 0
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(190, 34 + v.openFiles.length * 26)
-                        radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line; clip: true
-                        Rectangle {
-                            id: ofHead
-                            width: parent.width; height: 34; color: v.c.head
-                            Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
-                                   text: "Open files · " + (v.selRow && v.selRow.g ? v.selRow.g.name : "") + " (" + v.openFiles.length + ")"
-                                   color: v.c.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
-                        }
-                        ListView {
-                            anchors { left: parent.left; right: parent.right; top: ofHead.bottom; bottom: parent.bottom }
-                            clip: true; boundsBehavior: Flickable.StopAtBounds
-                            model: v.openFiles
-                            delegate: Row {
-                                required property var modelData
-                                width: ListView.view.width; height: 26; spacing: 12; leftPadding: 12
-                                Text { width: 70; text: String(modelData.pid); color: v.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                Text { width: parent.width - 110; text: modelData.win || modelData.path; elide: Text.ElideMiddle; color: v.c.sub; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                Layout.fillWidth: true; Layout.leftMargin: 4; wrapMode: Text.WordWrap
+                                text: "Tick programs to show only them in every section. Click a heading to fold it."
+                                color: v.c.muted; font.family: Theme.font; font.pixelSize: 12
                             }
                         }
                     }
                 }
 
-                // ---- the four live graphs
-                ColumnLayout {
-                    Layout.preferredWidth: 300
+                // ---- the live graphs (Processor: every core, two to a row, and the temperature)
+                GridLayout {
+                    Layout.preferredWidth: v.tab === "cpu" ? 340 : 300
                     Layout.fillHeight: true
-                    spacing: 10
+                    columns: v.tab === "cpu" ? 2 : 1
+                    rowSpacing: 10; columnSpacing: 10
                     Repeater {
                         model: { v.samples; const s = v.sample || {}; const mb = s.memBar || {};
                             const gpu0 = (s.gpus || [])[0] || {};
                             const last = k => (v.hist[k] || []).slice(-1)[0] || 0;
-                            // 1.11 (mockups resmon-4, -5, -6): each tab's own four graphs
+                            // 1.12 (mockups resmon-2 … -5): each tab's own graphs
+                            if (v.tab === "cpu") return ((s.cpu && s.cpu.cores) || []).slice(0, 16).map((x, i) => ["Core " + i, v.pct(x) + ((s.coreMhz || [])[i] ? " · " + ((s.coreMhz[i]) / 1000).toFixed(1) + " GHz" : ""), "#9a7cff", v.hist["core:" + i], 100, "", 1])
+                                .concat([["Temperature", s.cpu && s.cpu.temp ? Math.round(s.cpu.temp) + "°C" + (v.tempLimit ? " · limit " + v.tempLimit + "°C" : "") : "–", "#ff9a4d", v.hist.ctemp, v.tempLimit || 100, "", 2]]);
+                            if (v.tab === "memory") return [["Used memory", mb.total ? v.pct(100 * (mb.inUse || 0) / mb.total) : "–", "#8b80f9", v.hist.mem, mb.total || 1, ""],
+                                ["Compressed (zram)", s.zram ? v.size(s.zram.orig) : "off", "#3fd0e0", v.hist.memz, 0, ""],
+                                ["Memory pressure", v.pct(s.pressure || 0), "#7fe0a4", v.hist.mempsi, 100, ""],
+                                ["Swapping in / out", s.swapIO ? ((s.swapIO.in / 1048576).toFixed(0) + " / " + (s.swapIO.out / 1048576).toFixed(0) + " MB/s") : "0 / 0 MB/s", "#f2c14e", v.hist.swapio, 0, ""]];
+                            if (v.tab === "disk") return (s.disks || []).slice(0, 3).map(x => [x.label, v.pct(x.active) + " busy", "#f2a54e", v.hist["disk:" + x.name], 100, ""])
+                                .concat([["Response time", last("resp") ? last("resp") + " ms" : "–", "#7fe0a4", v.hist.resp, -1, ""]]);
+                            if (v.tab === "network") return (s.nets || []).filter(n => n.up).slice(0, 2).map(n => [n.kind === "Tailscale" ? "Tailscale" : n.kind + (n.ssid ? " " + n.ssid : ""),
+                                    v.rate((n.recv || 0) + (n.send || 0)) + (n.kind === "Tailscale" ? (v.tsPeers >= 0 ? " · " + v.tsPeers + " devices" : "") : n.speed ? " · " + n.speed + " Mbps link" : ""),
+                                    n.kind === "Tailscale" ? "#3fd0e0" : "#7fe0a4", v.hist["net:" + n.name], 0, ""])
+                                .concat([["Ping", last("ping") ? Math.round(last("ping")) + " ms" : "–", "#f2c14e", v.hist.ping, -1, ""]]);
                             if (v.tab === "gpu") return [["3D", v.pct(last("g3d")), "#ff6fb1", v.hist.g3d, 100, gpu0.name || ""],
                                 ["Video decode", v.pct(last("gdec")), "#3fb8c9", v.hist.gdec, 100, "Videos playing through the graphics card"],
                                 ["Video memory", v.size(last("vram")), "#9a7cff", v.hist.vram, gpu0.vramTotal || 0, gpu0.vramTotal ? "of " + v.size(gpu0.vramTotal) : "shared with the system"],
@@ -1101,6 +1077,8 @@ FocusScope {
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.columnSpan: modelData[6] || 1
+                            Layout.preferredWidth: 1
                             radius: 8; color: v.c.card; border.width: 1; border.color: v.c.line
                             Column {
                                 anchors { fill: parent; margins: 10; leftMargin: 12; rightMargin: 12 }
@@ -1189,6 +1167,35 @@ FocusScope {
     }
 
     // ================================================ pieces
+    component GenRow: Rectangle {
+        id: gr
+        property var cols: []
+        property var cells: []
+        property bool head: false
+        property bool alt: false
+        readonly property real total: cols.reduce((a, c) => a + (c[1] || 1), 0) || 1
+        height: head ? 26 : 28
+        color: head ? "#213347" : (alt ? "#1f3042" : "transparent")
+        Row {
+            id: grRow
+            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+            Repeater {
+                model: gr.cols
+                delegate: Text {
+                    required property var modelData
+                    required property int index
+                    readonly property var cell: gr.cells[index]
+                    width: grRow.width * (modelData[1] || 1) / gr.total
+                    horizontalAlignment: modelData[2] ? Text.AlignRight : Text.AlignLeft
+                    rightPadding: modelData[2] ? 12 : 0
+                    elide: index === 0 || !modelData[2] ? Text.ElideMiddle : Text.ElideRight
+                    text: cell && typeof cell === "object" ? (cell.t || "") : String(cell === null || cell === undefined ? "" : cell)
+                    color: gr.head ? "#9fb2c3" : cell && typeof cell === "object" && cell.c ? cell.c : index === 0 ? "#e6eef5" : "#c9d6e2"
+                    font.family: Theme.font; font.pixelSize: gr.head ? 12 : 13; anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+        }
+    }
     component ProgHeader: Rectangle {
         readonly property var vv: ({ c: { head: "#213347", line: "#2f4a63", muted: "#9fb2c3", text: "#e6eef5", sub: "#c9d6e2", sel: "#2a475e", alt: "#1f3042" },
                                      tagColor: g => ({ game: "#f2c14e", steam: "#66c0f4", hearth: "#ff9a4d", app: "#9a7cff", sys: "#5d7488", web: "#7ccf8a", home: "#3fb8c9" })[(g || {}).color] || "#9a7cff" })
@@ -1197,13 +1204,16 @@ FocusScope {
         height: 26
         color: head ? vv.c.head : "transparent"
         Rectangle { visible: !parent.head; anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: vv.c.line }
+        readonly property real nameW: cols.length > 3 ? 0.30 : 0.42
+        readonly property real pidW: cols.length > 3 ? 0.09 : 0.12
         Row {
+            id: phRow
             anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
-            Text { width: parent.width * 0.42; text: "Program"; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-            Text { width: parent.width * 0.12; text: "PID"; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+            Text { width: parent.width * parent.parent.nameW; text: "Program"; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+            Text { width: parent.width * parent.parent.pidW; horizontalAlignment: Text.AlignRight; rightPadding: 12; text: "PID"; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
             Repeater {
                 model: parent.parent.cols
-                delegate: Text { required property var modelData; width: parent.width * 0.4 / 3 + (parent.width * 0.06) / 3; horizontalAlignment: Text.AlignRight; text: modelData; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
+                delegate: Text { required property var modelData; width: phRow.width * (1 - phRow.parent.nameW - phRow.parent.pidW) / Math.max(1, phRow.parent.cols.length); elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; text: modelData; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
             }
         }
     }
@@ -1220,12 +1230,16 @@ FocusScope {
         signal menuRow(real x, real y)
         signal tick()
         readonly property var g: row ? row.g : ({})
+        readonly property var cells: row ? (row.cells || [row.a, row.b, row.c]) : []
+        readonly property real nameW: cells.length > 3 ? 0.30 : 0.42
+        readonly property real pidW: cells.length > 3 ? 0.09 : 0.12
         height: 28
         color: picked ? vv.c.sel : (alt ? vv.c.alt : "transparent")
         Row {
+            id: prRow
             anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
             Item {
-                width: parent.width * 0.42; height: parent.height
+                width: parent.width * pr.nameW; height: parent.height
                 Row {
                     anchors.verticalCenter: parent.verticalCenter; spacing: 8; width: parent.width - 6
                     Rectangle {
@@ -1245,10 +1259,18 @@ FocusScope {
                     Text { visible: !!pr.g.eco; text: "🍃"; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
                 }
             }
-            Text { width: parent.width * 0.12; text: String(pr.g.pid || ""); color: vv.c.muted; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
-            Text { width: parent.width * 0.4 / 3 + (parent.width * 0.06) / 3; horizontalAlignment: Text.AlignRight; text: pr.row ? pr.row.a : ""; color: vv.c.text; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideLeft }
-            Text { width: parent.width * 0.4 / 3 + (parent.width * 0.06) / 3; horizontalAlignment: Text.AlignRight; text: pr.row ? pr.row.b : ""; color: vv.c.sub; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideLeft }
-            Text { width: parent.width * 0.4 / 3 + (parent.width * 0.06) / 3; horizontalAlignment: Text.AlignRight; text: pr.row ? pr.row.c : ""; color: vv.c.sub; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideLeft }
+            Text { width: parent.width * pr.pidW; horizontalAlignment: Text.AlignRight; rightPadding: 12; text: String(pr.g.pid || ""); color: vv.c.muted; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+            Repeater {
+                model: pr.cells
+                delegate: Text {
+                    required property var modelData
+                    required property int index
+                    width: prRow.width * (1 - pr.nameW - pr.pidW) / Math.max(1, pr.cells.length)
+                    horizontalAlignment: Text.AlignRight; elide: Text.ElideRight
+                    text: String(modelData === null || modelData === undefined ? "" : modelData)
+                    color: index === 0 ? vv.c.text : vv.c.sub; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter
+                }
+            }
         }
         MouseArea {
             anchors.fill: parent

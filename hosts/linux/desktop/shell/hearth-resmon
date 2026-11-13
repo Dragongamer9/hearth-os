@@ -135,16 +135,151 @@ def tag_of(g, procs):
 # ====================================================================== the sampler (Task Manager's, plus more)
 def parse_status_extra(text):
     """/proc/PID/status: shared (RssShmem + RssFile) and swapped (VmSwap), bytes."""
-    out = {'shared': 0, 'swap': 0}
+    out = {'shared': 0, 'swap': 0, 'private': 0}
     for line in (text or '').splitlines():
         k, _, v = line.partition(':')
         v = v.split()
         if not v or not v[0].isdigit():
             continue
+        if k == 'RssAnon':
+            out['private'] = int(v[0]) * 1024          # Memory tab's Private (1.12, mockup resmon-3)
         if k in ('RssShmem', 'RssFile'):
             out['shared'] += int(v[0]) * 1024
         elif k == 'VmSwap':
             out['swap'] = int(v[0]) * 1024
+    return out
+
+
+def majflt_of(stat_text):
+    """/proc/PID/stat's major page faults (field 12): waits for memory to come back from swap or the drive."""
+    b = (stat_text or '').rfind(')')
+    f = stat_text[b + 2:].split() if b >= 0 else []
+    return int(f[9]) if len(f) > 9 and f[9].isdigit() else 0
+
+
+def graphics_api(maps):
+    """What a program draws with, from /proc/PID/maps: DXVK / VKD3D (Windows games), Vulkan, OpenGL, VA-API (video)."""
+    has = lambda n: n in maps
+    out = []
+    if has('dxvk') or has('d3d11.dll') or has('d3d9.dll'):
+        out.append('DXVK')
+    elif has('vkd3d') or has('d3d12.dll'):
+        out.append('VKD3D')
+    if has('libvulkan') or out:
+        out.append('Vulkan')
+    if (has('libGLX') or has('libEGL') or has('libGL.so')) and 'Vulkan' not in out:
+        out.append('OpenGL')
+    if has('libva.so') or has('libva-drm'):
+        out.append('VA-API (video)')
+    return ' · '.join(out[:2]) if out else ''
+
+
+def core_mhz(sys_root='/sys'):
+    out = []
+    for d in sorted(glob.glob(os.path.join(sys_root, 'devices/system/cpu/cpu[0-9]*')), key=lambda x: int(re.sub(r'\D', '', os.path.basename(x)) or 0)):
+        v = read(os.path.join(d, 'cpufreq', 'scaling_cur_freq'))
+        out.append(int(v.strip()) // 1000 if v and v.strip().isdigit() else None)
+    return out
+
+
+def _cmd_out(cmd, timeout=6):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout if r.returncode == 0 else ''
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+
+
+def card_static(sys_root='/sys'):
+    """Graphics tab's Graphics card (1.12, mockup resmon-6): driver, Mesa, Vulkan and OpenGL versions, screens."""
+    drv = ''
+    for c in sorted(glob.glob(os.path.join(sys_root, 'class/drm/card[0-9]'))):
+        try:
+            drv = os.path.basename(os.readlink(os.path.join(c, 'device', 'driver')))
+            break
+        except OSError:
+            continue
+    mesa = _cmd_out(['dpkg-query', '-W', '-f=${Version}', 'mesa-vulkan-drivers']) or _cmd_out(['dpkg-query', '-W', '-f=${Version}', 'libgl1-mesa-dri'])
+    mesa = re.sub(r'^\d+:', '', mesa).split('-')[0].split('~')[0]
+    vk = re.search(r'apiVersion\s*=\s*([\d.]+)', _cmd_out(['vulkaninfo', '--summary']))
+    gl = re.search(r'OpenGL (?:core profile )?version string:\s*([\d.]+)', _cmd_out(['eglinfo', '-B']) or _cmd_out(['glxinfo', '-B']))
+    screens = []
+    try:
+        for o in json.loads(_cmd_out(['wlr-randr', '--json']) or '[]'):
+            if not o.get('enabled', True):
+                continue
+            m = next((x for x in o.get('modes', []) if x.get('current')), None)
+            if m:
+                screens.append('%dx%d at %d Hz%s' % (m['width'], m['height'], round(m.get('refresh', 0)), ' · %d%%' % round(100 * o['scale']) if o.get('scale') and o['scale'] != 1 else ''))
+    except ValueError:
+        pass
+    return {'driver': drv, 'mesa': mesa, 'vulkan': '.'.join(vk.group(1).split('.')[:2]) if vk else '', 'opengl': gl.group(1) if gl else '', 'screens': screens}
+
+
+SERVICE_WORDS = {'hearth-link': 'your other Hearth devices', 'sshd': 'remote terminal', 'ssh': 'remote terminal', 'tailscaled': 'Tailscale',
+                 'smbd': 'shared folders', 'cupsd': 'printing', 'avahi-daemon': 'finds devices on your network', 'sunshine': 'game streaming',
+                 'ollama': 'local AI', 'hearth-ai-share': 'sharing this PC\'s AI', 'kdeconnectd': 'your phone', 'syncthing': 'file sync',
+                 'jellyfin': 'media server', 'steam': 'Steam (downloads, Remote Play)', 'python3': 'a Python program', 'node': 'a Node program'}
+
+
+def what_it_is(name):
+    for k, v in SERVICE_WORDS.items():
+        if name == k or name.startswith(k):
+            return v
+    return ''
+
+
+def services_of(pids, root=None):
+    """Processor tab's Services (1.12, mockup resmon-2): the systemd services the picked program runs in or started."""
+    root = root or ht.PROC
+    units = {}
+    want = set(pids)
+    kids = {}
+    for d in os.listdir(root):
+        if d.isdigit():
+            st = read(os.path.join(root, d, 'stat')) or ''
+            b = st.rfind(')')
+            f = st[b + 2:].split() if b >= 0 else []
+            if len(f) > 1 and f[1].isdigit():
+                kids.setdefault(int(f[1]), []).append(int(d))
+    todo = list(want)
+    while todo:
+        p = todo.pop()
+        for k in kids.get(p, []):
+            if k not in want:
+                want.add(k)
+                todo.append(k)
+    for p in want:
+        for line in (read(os.path.join(root, str(p), 'cgroup')) or '').splitlines():
+            m = re.search(r'/([^/]+\.service)$', line)
+            if m and not m.group(1).startswith(('user@', 'session-', 'app-')):
+                units.setdefault(m.group(1), []).append(p)
+    out = []
+    for u, ps in sorted(units.items()):
+        info = {}
+        for scope in (['--user'], []):
+            r = _cmd_out(['systemctl'] + scope + ['show', '-p', 'MainPID', '-p', 'ActiveState', '-p', 'Description', u])
+            if r and 'ActiveState=' in r:
+                info = dict(l.split('=', 1) for l in r.splitlines() if '=' in l)
+                if info.get('ActiveState') not in ('inactive', ''):
+                    break
+        name = u[:-8]
+        pid = int(info.get('MainPID') or 0) or min(ps)
+        out.append({'name': name, 'pid': pid, 'status': 'Running' if info.get('ActiveState') == 'active' else (info.get('ActiveState') or '').capitalize(),
+                    'what': what_it_is(name) or ht.plain_service(u, info.get('Description') or ''), 'pids': ps})
+    return out
+
+
+def libraries_of(pid, root=None):
+    """Processor tab's Libraries (modules): the shared libraries the program has loaded."""
+    root = root or ht.PROC
+    seen, out = set(), []
+    for line in (read(os.path.join(root, str(pid), 'maps')) or '').splitlines():
+        f = line.split(None, 5)
+        if len(f) == 6 and '.so' in f[5] and f[5] not in seen:
+            seen.add(f[5])
+            out.append({'name': os.path.basename(f[5]), 'path': f[5]})
+    out.sort(key=lambda x: x['name'].lower())
     return out
 
 
@@ -352,6 +487,10 @@ class ResSampler(ht.Sampler):
         self.smi_full_t = 0
         self.installed = None
         self.procs_last = {}
+        self.majflt = {}
+        self.vm_prev = None
+        self.api_cache = {}
+        self.card_static = None
 
     def sample(self, want=()):
         self.want = set(want or ())
@@ -377,8 +516,21 @@ class ResSampler(ht.Sampler):
         # Memory pressure (1.11, Overview's chip): the share of the last 10 s programs waited for memory.
         pm = re.search(r'some avg10=([\d.]+)', read(os.path.join(self.root, 'pressure', 'memory'), '') or '')
         out['pressure'] = float(pm.group(1)) if pm else None
+        # 1.12 (mockups resmon-2, -3): each core's speed, and swapping in / out (bytes a second)
+        out['coreMhz'] = core_mhz(self.sys)
+        now = time.monotonic()
+        sp = ht.vm_swap_pages(read(os.path.join(self.root, 'vmstat'), '') or '')
+        if self.vm_prev and now > self.vm_prev[0]:
+            dt = now - self.vm_prev[0]
+            page = os.sysconf('SC_PAGE_SIZE') if hasattr(os, 'sysconf') else 4096
+            out['swapIO'] = {'in': int(max(0, sp[0] - self.vm_prev[1][0]) * page / dt), 'out': int(max(0, sp[1] - self.vm_prev[1][1]) * page / dt)}
+        self.vm_prev = (now, sp)
         if 'gpu' in self.want:
             self.gpu_extra(out.get('gpus') or [])
+        if 'gpuprocs' in self.want:
+            if self.card_static is None or time.monotonic() - self.card_static[0] > 30:
+                self.card_static = (time.monotonic(), card_static(self.sys))
+            out['card'] = self.card_static[1]
         if 'temps' in self.want:
             out['fans'] = fans_by_id(self.sys)
         return out
@@ -426,17 +578,25 @@ class ResSampler(ht.Sampler):
             g['tag'] = tag_of(g, procs)
             g['color'] = TAG_COLOR.get(g['tag'], 'app')
             g['threads'] = sum(procs[p].threads or 0 for p in g['pids'] if p in procs)
+            rp = procs.get(g['pid'])
+            g['cores'] = ht.cores_label(rp.cpus or '') if rp is not None and getattr(rp, 'cpus', None) is not None else 'All'
             h = self.cpu_hist.setdefault(g['id'], [])
             h.append(g['cpu'])
             del h[:-60]
             g['avg'] = round(sum(h) / len(h), 1) if h else 0.0
             if 'mem' in want:
-                sh = sw = 0
+                sh = sw = pv = mf = 0
                 for pid in g['pids']:
                     x = parse_status_extra(read(os.path.join(self.root, str(pid), 'status')))
                     sh += x['shared']
                     sw += x['swap']
-                g['shared'], g['swap'] = sh, sw
+                    pv += x['private']
+                    mf += majflt_of(read(os.path.join(self.root, str(pid), 'stat')))
+                g['shared'], g['swap'], g['private'] = sh, sw, pv
+                # Waits / s: how often its programs had to wait for memory from the drive or zram (major faults)
+                prev = self.majflt.get(g['id'])
+                g['waits'] = int(max(0, mf - prev) / dt) if prev is not None and dt > 0 and mf >= prev else 0
+                self.majflt[g['id']] = mf
             if 'disk' in want:
                 rd = wr = 0
                 for pid in g['pids']:
@@ -467,6 +627,14 @@ class ResSampler(ht.Sampler):
                 for k, key in (('3d', 'g3d'), ('dec', 'gdec'), ('enc', 'genc')):
                     vals = [e[k] for e in eng] + [x.get(k) or 0 for x in nv]
                     g[key] = round(min(100.0, sum(vals)), 1) if vals else None
+                # Through: what it draws with (Vulkan, OpenGL, VA-API video, DXVK), from the libraries it has loaded
+                if (g.get('gpu') or 0) > 0 or g.get('vram') or g.get('gdec'):
+                    k = '%s:%s' % (g['pid'], getattr(procs.get(g['pid']), 'start', 0))
+                    c = self.api_cache.get(k)
+                    if not c or time.monotonic() - c[0] > 30:
+                        c = (time.monotonic(), graphics_api(read(os.path.join(self.root, str(g['pid']), 'maps')) or ''))
+                        self.api_cache[k] = c
+                    g['api'] = c[1]
                 if g.get('gdec') and not g.get('g3d'):
                     g['gpuUse'] = 'Video'
         if 'disk' in want:
@@ -2119,7 +2287,29 @@ def writing_files(pids, root=None, limit=40):
                         break
         except OSError:
             pass
-    files.sort(key=lambda f: not f['writing'])
+    # each file's read / write speed: how far its position moved since the last look (1.12, mockup resmon-4)
+    now = time.time()
+    old = read_cache('resmon-files.json') or {}
+    pos = {}
+    for f in files:
+        try:
+            for fd in os.listdir(os.path.join(root, str(f['pid']), 'fd')):
+                if os.readlink(os.path.join(root, str(f['pid']), 'fd', fd)) == f['path']:
+                    m = re.search(r'pos:\s*(\d+)', read(os.path.join(root, str(f['pid']), 'fdinfo', fd), '') or '')
+                    if m:
+                        key = '%s|%s' % (f['pid'], fd)
+                        pos[key] = int(m.group(1))
+                        prev = (old.get('pos') or {}).get(key)
+                        dt = now - (old.get('t') or now)
+                        moved = int(max(0, pos[key] - prev) / dt) if prev is not None and 0 < dt < 30 else 0
+                        f['write' if f['writing'] else 'read'] = f.get('write' if f['writing'] else 'read', 0) + moved
+                    break
+        except OSError:
+            pass
+        f.setdefault('read', 0)
+        f.setdefault('write', 0)
+    write_cache('resmon-files.json', {'t': now, 'pos': pos})
+    files.sort(key=lambda f: (not f['writing'], -(f['read'] + f['write'])))
     return files[:limit]
 
 
@@ -2252,6 +2442,26 @@ def ports(root=None):
         p = rtt.get((c['remote'], c['port']))
         c['ping'] = round(p) if p is not None else None
     conns.sort(key=lambda c: (c['pid'] == 0, -(rates.get(c['pid'], {}).get('down', 0))))
+    # 1.12 (mockup resmon-5): who each connection talks to by name, and what each listening program is
+    names = read_cache('resmon-hosts.json') or {}
+    import socket
+    socket.setdefaulttimeout(0.3)
+    looked = 0
+    for c in conns[:60]:
+        ip = c['remote']
+        if ip not in names and looked < 12:
+            looked += 1
+            try:
+                names[ip] = socket.gethostbyaddr(ip)[0].rstrip('.')
+            except (OSError, socket.herror, socket.gaierror):
+                names[ip] = ''
+        h = names.get(ip) or ''
+        c['host'] = ('%s (%s)' % (h.split('.')[0], ip) if ip.startswith('100.') and h else h) or ip
+        c['state'] = 'Open'
+    if looked:
+        write_cache('resmon-hosts.json', dict(list(names.items())[-400:]))
+    for l in listening:
+        l['what'] = what_it_is(l['name'])
     return {'listening': listening[:100], 'connections': conns[:150], 'apps': {str(k): v for k, v in rates.items()}}
 
 
@@ -2266,6 +2476,12 @@ def cmd(argv):
         return
     if c == 'writing' and rest and all(x.isdigit() for x in rest):
         print(json.dumps({'files': writing_files([int(x) for x in rest[:64]])}))
+        return
+    if c == 'services' and rest and all(x.isdigit() for x in rest):
+        print(json.dumps({'services': services_of([int(x) for x in rest[:64]])}))
+        return
+    if c == 'libs' and len(rest) == 1 and rest[0].isdigit():
+        print(json.dumps({'libs': libraries_of(int(rest[0]))}))
         return
     if c == 'files' and rest and all(x.isdigit() for x in rest):
         print(json.dumps({'files': open_files([int(x) for x in rest[:64]])}))

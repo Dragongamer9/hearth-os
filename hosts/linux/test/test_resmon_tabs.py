@@ -52,7 +52,7 @@ class Network(unittest.TestCase):
         self.assertEqual(rm.tcp_rates(s, prev, 0), {})
 
     def test_view(self):
-        self.assertIn('network: ["Down", "Up", "Total ↓"]', QML)
+        self.assertIn('network: ["Down", "Up", "Total"]', QML)
         self.assertIn('"Ping"', QML)
 
 
@@ -63,7 +63,7 @@ class Graphics(unittest.TestCase):
             self.assertEqual(ht.engine_kind(e), k, e)
 
     def test_view(self):
-        self.assertIn('gpu: ["3D ↓", "Video decode", "Video memory"]', QML)
+        self.assertIn('gpu: ["3D", "Video decode", "Video encode", "Video memory", "Through"]', QML)
         self.assertIn('["Video decode", v.pct(last("gdec"))', QML)
 
 
@@ -92,8 +92,8 @@ class Disk(unittest.TestCase):
 
     def test_view(self):
         self.assertIn('"Files being read and written"', QML)
-        for col in ('"Drive", "Type", "Busy", "Response", "Free", "Total", "Full", "Temp"',):
-            self.assertIn(col, QML)
+        # the mockup's columns (1.12): Drive, Type, Busy, Response, Free, Total, Health, Temp
+        self.assertIn('cols: [["Drive", 2], ["Type", 2], ["Busy", 1, true], ["Response", 1.2, true], ["Free", 1.2, true], ["Total", 1.2, true], ["Health", 1, true], ["Temp", 1, true]]', QML)
         self.assertIn('["python3", v.helper, "drives"]', QML)
 
 
