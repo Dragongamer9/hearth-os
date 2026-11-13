@@ -83,5 +83,11 @@ class Drives(unittest.TestCase):
         finally:
             shutil.rmtree(d)
 
+
+class Frag(unittest.TestCase):
+    def test_score(self):
+        self.assertEqual(hw.frag_score(' Total/best extents\t\t\t\t1234/1100\n Fragmentation score\t\t\t\t42\n [0-30 no problem: 31-55 a little bit fragmented'), 42)
+        self.assertIsNone(hw.frag_score('nothing'))
+
 if __name__ == '__main__':
     unittest.main()
