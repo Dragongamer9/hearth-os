@@ -579,9 +579,9 @@ var ENTRIES = [
 "i": "drive"
 },
 {
-"t": "Show the Linux folders too",
+"t": "Show system folders",
 "p": "drives",
-"d": "etc, usr, var and the rest, under their own heading on Hearth (C:)",
+"d": "/usr, /etc and the other Linux folders in Files and every app's Open and Save window (hidden by default, like macOS)",
 "i": "folder"
 },
 {
@@ -589,6 +589,18 @@ var ENTRIES = [
 "p": "drives",
 "d": "Typing either kind always works",
 "i": "edit"
+},
+{
+"t": "Apps you install",
+"p": "drives",
+"d": "Apps from apt or Flatpak use Hearth's Open and Save window, with Hearth (C:). Text an app draws itself keeps its own paths.",
+"i": "window"
+},
+{
+"t": "Terminal speaks C:\\\\",
+"p": "drives",
+"d": "dir, copy, del, cd C:\\\\Users… in every terminal (Linux commands still work). Applies to new terminal windows",
+"i": "kbd"
 },
 {
 "t": "Copy path gives",
