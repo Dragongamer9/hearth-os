@@ -359,6 +359,9 @@ class ResSampler(ht.Sampler):
         if self.installed is None:
             self.installed = installed_memory(self.sys) or 0
         out['memBar'] = meminfo_breakdown(mi, self.installed or None)
+        # Memory pressure (1.11, Overview's chip): the share of the last 10 s programs waited for memory.
+        pm = re.search(r'some avg10=([\d.]+)', read(os.path.join(self.root, 'pressure', 'memory'), '') or '')
+        out['pressure'] = float(pm.group(1)) if pm else None
         if 'gpu' in self.want:
             self.gpu_extra(out.get('gpus') or [])
         if 'temps' in self.want:
