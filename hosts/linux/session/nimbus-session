@@ -438,6 +438,10 @@ fi
 
 # The power limit you chose last time (a restart resets it on most handhelds).
 [ -z "$HEARTH_SEAT" ] && [ -x "$SHARE/desktop/shell/hearth-power" ] && (sleep 12; python3 "$SHARE/desktop/shell/hearth-power" restore) >/dev/null 2>&1 &
+# One C: (1.11): every Steam game's Windows setup gets the same drive letters and your own Documents, Desktop, Saved
+# Games… (only empty folders and Hearth's own links change: saves already in a game's folder stay where they are).
+# In the background, at low priority, after the desktop is up; it never holds anything up.
+[ -f "$SHARE/desktop/shell/hearth_drive_letters.py" ] && (sleep 45; nice -n 19 timeout 120 python3 "$SHARE/desktop/shell/hearth_drive_letters.py" map-steam) >/dev/null 2>&1 &
 
 # Aloha Browser, an optional extra (Hearth's own browser is Hearth Browser, Firefox, in the image): when you've
 # installed it from Settings › Web browser, it's checked for updates weekly. (Not on the live USB.)
