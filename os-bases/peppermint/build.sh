@@ -1712,6 +1712,9 @@ else
   echo "warning: no /etc/UPower/UPower.conf: UPower keeps its own low-battery levels"
 fi
 chmod 755 /usr/libexec/nimbus/hearth-boot-move   # 1.11: a PC moved from the Fedora edition gets Hearth's own boot menu (only when asked)
+# Hearth's terminal speaks C:\ (1.11): dir, copy, del, cd C:\Users… in every interactive bash (Linux commands still work).
+grep -q 'hearth/shell/windows-commands.bash' /etc/bash.bashrc 2>/dev/null || \
+  printf '\n# Hearth: the common Windows commands and C:\\ paths (HEARTH_WINDOWS_COMMANDS=0 turns them off)\n[ -r /usr/share/hearth/shell/windows-commands.bash ] && . /usr/share/hearth/shell/windows-commands.bash\n' >> /etc/bash.bashrc
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
 # packages you added put back after an update, a safe start if your changes stop Hearth from starting.
