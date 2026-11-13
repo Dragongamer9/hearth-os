@@ -26,6 +26,7 @@ you asked for, which needs the internet by nature; Proton itself still doesn't.
 """
 import errno
 import os
+import time
 import re
 import sys
 
@@ -242,8 +243,50 @@ def main(argv):
     for line in said:
         log(line)
     prepare_prefix(env['WINEPREFIX'])
-    os.execvpe(cmd[0], cmd, env)
-    return 127
+    key = (os.environ.get('HEARTH_PROTON_KEY') or '').strip()
+    if not key:
+        os.execvpe(cmd[0], cmd, env)
+        return 127
+    return watch(cmd, env, key, hp)
+
+
+QUICK_SECS = 15        # closed this soon with an error: that Proton didn't work for it
+GOOD_SECS = 90         # ran this long: it works
+
+
+def watch(cmd, env, key, hp, now=time.monotonic, popen=None):
+    """The Proton detector (1.11): a game Hearth picked the Proton for is started as a child and watched. Closed right
+    away with an error → noted as failed (the next Proton is tried first next time, and you're told); ran a while →
+    remembered as the one that works. Signals are passed on, and its exit code is the game's."""
+    import signal
+    import subprocess
+    popen = popen or subprocess.Popen
+    name = os.path.basename((env.get('PROTONPATH') or '').rstrip('/'))
+    t0 = now()
+    p = popen(cmd, env=env)
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(sig, lambda s, f: p.send_signal(s))
+        except (ValueError, OSError):
+            pass
+    code = p.wait()
+    took = now() - t0
+    try:
+        if code != 0 and took < QUICK_SECS and name:
+            hp.note_failed(key, name)
+            nxt = next((c['name'] for c in hp.candidates(key) if c['name'] != name and c.get('path')), '')
+            log('%s closed right away with %s (code %s)%s' % (key, name, code, ': next time %s first' % nxt if nxt else ''))
+            try:
+                subprocess.Popen(['notify-send', '-a', 'Hearth', '-i', 'dialog-information', 'The game closed right away',
+                                  'It didn\'t start with %s.%s' % (name, ' Next time Hearth tries %s first. Start it again to try.' % nxt if nxt else '')],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
+        elif took >= GOOD_SECS and name:
+            hp.note_worked(key, name)
+    except Exception as e:  # noqa: BLE001 - noting never changes how the game ended
+        log('proton detector: %s' % e)
+    return code
 
 
 if __name__ == '__main__':
