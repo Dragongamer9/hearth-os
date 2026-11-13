@@ -1681,6 +1681,9 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed
 systemctl enable NetworkManager.service bluetooth.service systemd-resolved.service systemd-timesyncd.service \
   fstrim.timer bootc-fetch-apply-updates.timer sddm.service
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+# Hearth's terminal speaks C:\ (1.11): dir, copy, del, cd C:\Users… in every interactive bash (Linux commands still work).
+grep -q 'hearth/shell/windows-commands.bash' /etc/bash.bashrc 2>/dev/null || \
+  printf '\n# Hearth: the common Windows commands and C:\\ paths (HEARTH_WINDOWS_COMMANDS=0 turns them off)\n[ -r /usr/share/hearth/shell/windows-commands.bash ] && . /usr/share/hearth/shell/windows-commands.bash\n' >> /etc/bash.bashrc
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
 # packages you added put back after an update, a safe start if your changes stop Hearth from starting.
