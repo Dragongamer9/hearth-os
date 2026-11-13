@@ -16,6 +16,7 @@ Item {
     property var hw: null                 // hearth-hwset status
     property var power: null              // hearth-power status
     property var net: null                // {name, metered, hotspot}
+    property var drives: null             // hearth-hwset drives (Optimize drives)
     property string note: ""
     property bool noteBad: false
     implicitHeight: col.implicitHeight
@@ -24,12 +25,14 @@ Item {
         if (!hwProc.running) hwProc.running = true;
         if (kind === "cpu" && !powerProc.running) powerProc.running = true;
         if (kind === "net" && !netProc.running) netProc.running = true;
+        if (kind === "disk" && !drvProc.running) drvProc.running = true;
     }
     onKindChanged: refresh()
     Component.onCompleted: refresh()
     Timer { interval: 5000; repeat: true; running: ds.visible; onTriggered: ds.refresh() }
     function lastJson(t) { try { return JSON.parse(t.trim().split("\n").pop()); } catch (e) { return null; } }
     Process { id: hwProc; command: ["python3", "/usr/libexec/nimbus/hearth-hwset", "status"]; stdout: StdioCollector { onStreamFinished: { const r = ds.lastJson(text); if (r) ds.hw = r; } } }
+    Process { id: drvProc; command: ["python3", "/usr/libexec/nimbus/hearth-hwset", "drives"]; stdout: StdioCollector { onStreamFinished: { const r = ds.lastJson(text); if (r) ds.drives = r; } } }
     Process { id: powerProc; command: ["python3", ds.shellDir + "/hearth-power", "status"]; stdout: StdioCollector { onStreamFinished: { const r = ds.lastJson(text); if (r) ds.power = r; } } }
     Process {
         id: netProc
@@ -175,7 +178,13 @@ Item {
                 title: "This drive"; sub: ds.dev && ds.dev.disk ? (ds.dev.disk.model || ds.dev.disk.name || "") : ""
                 Line { title: "Type"; Value { text: ds.dev && ds.dev.disk ? (ds.dev.disk.kind || ds.dev.disk.type || "–") : "–" } }
                 Line { title: "Health"; sub: "the drive's own self-check, with a warning when it starts to fail"; Btn { text: "Open Hearth Disks"; onClicked: Quickshell.execDetached(["hearth-disks"]) } }
-                Line { title: "TRIM"; sub: "SSDs and NVMe drives are tidied once a week (fstrim), never defragmented"; Value { text: "weekly"; color: "#5fd08a" } }
+                // Optimize drives the Windows way (1.11): SSDs and NVMe drives are TRIMmed weekly, never defragmented.
+                Line {
+                    title: "Optimize"
+                    sub: { const d = ds.drives ? ds.drives.drives.find(x => ds.dev && ds.dev.disk && ds.dev.disk.name && ds.dev.disk.name.indexOf(x.name) === 0) : null;
+                           return (d ? d.kind + " · " + d.what : "TRIM keeps SSDs fast") + (ds.drives && ds.drives.timer.last ? " · last run " + ds.drives.timer.last : ""); }
+                    Btn { text: "Optimize now"; onClicked: ds.run(["pkexec", "/usr/libexec/nimbus/hearth-hwset", "optimize"], "Optimized ✓ (TRIM done)") }
+                }
             }
 
             // ---- Network

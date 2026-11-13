@@ -6,6 +6,9 @@ change one) and put back at every start by hearth-hwset.service, which nothing w
   hearth-hwset status             JSON: what this PC offers, what's set, temperatures and throttling. Works without root
   hearth-hwset set KEY VALUE      cpu.turbo on|off · cpu.maxPct 30-100 · battery.limit 50-100 (100 = no limit). Root
   hearth-hwset apply              your saved values onto the hardware (the service runs this)
+  hearth-hwset drives             JSON: Optimize drives: each drive's kind (SSD, NVMe, hard drive) and TRIM's last and
+                                  next weekly run. Works without root
+  hearth-hwset optimize           Optimize now: TRIM every SSD and NVMe drive (fstrim, never defragmented). Root
 """
 import glob
 import json
@@ -172,6 +175,75 @@ def apply():
     return {'ok': True, 'applied': done}
 
 
+def _timer_times():
+    import subprocess
+    try:
+        r = subprocess.run(['systemctl', 'show', 'fstrim.timer', '-p', 'LastTriggerUSec', '-p', 'NextElapseUSecRealtime', '-p', 'UnitFileState'],
+                           capture_output=True, text=True, timeout=10)
+        return dict(l.split('=', 1) for l in r.stdout.splitlines() if '=' in l)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+
+
+def drives():
+    """Optimize drives (1.11): every real drive and what's done to keep it fast."""
+    out = []
+    for d in sorted(glob.glob(os.path.join(SYS, 'block', '*'))):
+        name = os.path.basename(d)
+        if re.match(r'^(loop|ram|zram|dm-|sr|md)', name) or not os.path.exists(os.path.join(d, 'device')):
+            continue
+        rot = read(os.path.join(d, 'queue', 'rotational')) == '1'
+        disc = int(read(os.path.join(d, 'queue', 'discard_max_bytes'), '0') or 0) > 0
+        kind = 'NVMe' if name.startswith('nvme') else 'Hard drive' if rot else 'SSD'
+        out.append({'name': name, 'kind': kind, 'model': read(os.path.join(d, 'device', 'model')),
+                    'trim': disc and not rot, 'what': 'TRIM weekly (never defragmented)' if disc and not rot else
+                    'Hard drive: Linux file systems keep it tidy themselves; no defragmenting needed' if rot else 'No TRIM support'})
+    t = _timer_times()
+    return {'drives': out, 'timer': {'on': t.get('UnitFileState', '') == 'enabled', 'last': t.get('LastTriggerUSec', ''),
+                                     'next': t.get('NextElapseUSecRealtime', '')}}
+
+
+def hdd_ext4_mounts():
+    """Mount points of ext4 file systems on hard drives (the only place defragmenting helps; never Btrfs or NTFS)."""
+    out = []
+    for line in read('/proc/self/mounts').splitlines():
+        f = line.split()
+        if len(f) < 3 or f[2] != 'ext4' or not f[0].startswith('/dev/'):
+            continue
+        dev = os.path.basename(os.path.realpath(f[0]))
+        disk = re.sub(r'p?\d+$', '', dev)
+        if read(os.path.join(SYS, 'block', disk, 'queue', 'rotational')) == '1':
+            out.append(f[1])
+    return out
+
+
+def frag_score(text):
+    """e4defrag -c's 'Fragmentation score' (0–100; above 30 it says to defragment)."""
+    m = re.search(r'Fragmentation score\s+(\d+)', text or '')
+    return int(m.group(1)) if m else None
+
+
+def optimize():
+    """Optimize now: TRIM every SSD and NVMe drive; on a hard drive's ext4, check fragmentation (e4defrag -c) and
+    defragment only when it really needs it (score above 30)."""
+    import subprocess
+    if os.geteuid() != 0:
+        raise Fail('run as an administrator')
+    r = subprocess.run(['fstrim', '--all', '--verbose'], capture_output=True, text=True, timeout=1800)
+    if r.returncode not in (0, 1, 32, 64):     # 32/64: some file systems don't take TRIM; 1: none to TRIM
+        raise Fail('TRIM didn\'t run: ' + (r.stderr or r.stdout).strip()[-200:])
+    done = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    for mp in hdd_ext4_mounts():
+        c = subprocess.run(['e4defrag', '-c', mp], capture_output=True, text=True, timeout=3600)
+        score = frag_score(c.stdout)
+        if score is not None and score > 30:
+            subprocess.run(['e4defrag', mp], capture_output=True, text=True, timeout=6 * 3600)
+            done.append('%s: defragmented (score was %d)' % (mp, score))
+        elif score is not None:
+            done.append('%s: no need to defragment (score %d)' % (mp, score))
+    return {'ok': True, 'done': done}
+
+
 def main(a):
     try:
         if a == ['status']:
@@ -180,6 +252,10 @@ def main(a):
             out = set_one(a[1], a[2])
         elif a == ['apply']:
             out = apply()
+        elif a == ['drives']:
+            out = drives()
+        elif a == ['optimize']:
+            out = optimize()
         else:
             print(__doc__.strip(), file=sys.stderr)
             return 2
