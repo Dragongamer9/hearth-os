@@ -917,6 +917,11 @@ var ENTRIES = [
 "i": "globe"
 },
 {
+"t": "One AI address",
+"p": "hs-aidevices",
+"i": "globe"
+},
+{
 "t": "Looking for your devices…",
 "p": "hs-aidevices",
 "i": "update"
@@ -1009,6 +1014,27 @@ var ENTRIES = [
 {
 "t": "Spin down idle storage drives after",
 "p": "hs-alerts"
+},
+{
+"t": "Night maintenance",
+"p": "hs-alerts",
+"d": "Once a night: optimize drives (TRIM), tidy the system logs, update apps (Flatpak) and clear downloaded package files. Never while it's used or busy, and never anything that touches starting the PC",
+"i": "clock"
+},
+{
+"t": "Start at",
+"p": "hs-alerts"
+},
+{
+"t": "Last night",
+"p": "hs-alerts",
+"i": "info"
+},
+{
+"t": "Power history",
+"p": "hs-alerts",
+"d": "Keeps what the processor and graphics card draw, every 5 minutes for 30 days, and shows it here",
+"i": "power"
 },
 {
 "t": "Right now",

@@ -329,7 +329,7 @@ class UpdateNow(Base):
             if len(calls) <= fails:
                 raise A.UpgradeFailed('pull failed')
         with mock.patch.multiple(A, mirror_sync=lambda: entry, mirror_disable=lambda why: calls.append('disable'), system_upgrade=upgrade,
-                                 ensure_podman=lambda: None, staged_any=lambda: True, progress=lambda *a: None, bootc_status=lambda: {},
+                                 ensure_podman=lambda: None, staged_any=lambda: True, progress=lambda *a: None, bootc_status=lambda: {}, update_room=lambda: None,
                                  Stage=mock.Mock()), mock.patch.object(A.subprocess, 'run', mock.Mock(return_value=mock.Mock(returncode=1))), \
                 mock.patch('builtins.print'):
             try:
