@@ -237,7 +237,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("os.environ.get('HEARTH_INPUT', '')", hf)                # the password: never argv
         self.assertIn("['/tmp', gvfs_root()]", hf)
         fm = (SHELL / 'FileManager.qml').read_text()
-        self.assertIn('devices: "Your devices"', fm)
+        self.assertIn('label: "Home server"', fm)                            # 1.11: your devices' shares live there
         self.assertIn('if (p.net) return netOpen(p.net);', fm)
         self.assertIn('onStarted: { if (procIn.input !== "") { procIn.write(procIn.input); procIn.input = ""; } }', fm)   # stdin, never argv
         self.assertNotIn('environment:', fm)
