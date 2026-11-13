@@ -1491,6 +1491,21 @@ else
 fi
 rm -f /tmp/beacon_amd64.deb
 
+# ------------------------------------------------------------------ LACT: graphics card tuning (1.11)
+# github.com/ilya-zlobintsev/LACT (MIT): fan curves, power limits and undervolting for Nvidia, AMD and Intel, opened from
+# Task Manager › Performance › GPU › Tuning. Its daemon (lactd) is installed but NOT enabled: nothing about the card
+# changes, and nothing extra starts, until you open GPU tuning and turn it on there. Pinned release; optional.
+LACT_VER=0.10.1
+LACT_DEB="lact-${LACT_VER}-0.amd64.debian-13.deb"
+if [ "$(uname -m)" = x86_64 ] && curl -fsSL --retry 3 -o "/tmp/$LACT_DEB" "https://github.com/ilya-zlobintsev/LACT/releases/download/v${LACT_VER}/$LACT_DEB" \
+   && "${APT[@]}" "/tmp/$LACT_DEB"; then
+  systemctl disable lactd.service 2>/dev/null || true
+  echo "LACT $LACT_VER installed (lactd off until you turn tuning on)"
+else
+  echo "warning: couldn't install LACT $LACT_VER; GPU tuning stays unavailable"
+fi
+rm -f "/tmp/$LACT_DEB"
+
 # ------------------------------------------------------------------ Xodus Nexus (Xbox PC and PC Game Pass games)
 # Shipped like Beacon: the AppImage in /usr/lib/xodus-nexus (with its version), `xodus-nexus` to start it (the same
 # script hosts/hearth-core/src/xodus.rs writes for a copy it downloads) and xodus-nexus.desktop (in Mantel's launcher

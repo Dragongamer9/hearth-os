@@ -210,7 +210,8 @@ Item {
                 Line { title: "Temperature"; Value { text: ds.dev && ds.dev.gpu && ds.dev.gpu.temp ? Math.round(ds.dev.gpu.temp) + "°C" : "–" } }
                 Line {
                     title: "Tuning"; sub: "fan curves, power limits and undervolting (LACT); off until you change something, every change undoable"
-                    Btn { text: "Open GPU tuning"; onClicked: Quickshell.execDetached(["sh", "-c", "command -v lact >/dev/null && exec lact gui || exec flatpak run io.github.ilya_zlobintsev.LACT"]) }
+                    // LACT's daemon is off until you open tuning the first time (it asks for your password once to turn it on).
+                    Btn { text: "Open GPU tuning"; onClicked: Quickshell.execDetached(["sh", "-c", "command -v lact >/dev/null || { notify-send -a Hearth 'GPU tuning' 'LACT isn'\\''t installed on this Hearth.'; exit 0; }; systemctl is-active -q lactd || pkexec systemctl enable --now lactd; exec lact gui"]) }
                 }
             }
 
