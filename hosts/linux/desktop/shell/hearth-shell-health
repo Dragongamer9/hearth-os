@@ -1,0 +1,95 @@
+#!/usr/bin/python3
+"""hearth-shell-health: how much memory and CPU the desktop shell (Quickshell, the process that started this one) uses,
+so a slow leak shows up in Send logs and the shell can refresh itself while nobody is looking (ShellHealth.qml, 1.11).
+The desktop shell reached 1.5 GB and 100% CPU after 25 hours on 1.10 (about 440 MB is normal on the owner's laptop).
+
+  hearth-shell-health sample      one line of JSON: {rss, cpu, uptime, samples, grow, refresh}; the sample is added to
+                                  ~/.local/state/hearth/shell-health.log (the last 2000 kept)
+
+refresh is true when the shell uses more than 1.2 GB (and over twice what it used in its first hour), or more than 60%
+of a CPU core on average over the last 30 minutes. Only reads /proc; never touches a setting.
+"""
+import json
+import os
+import sys
+import time
+
+PROC = os.environ.get('HEARTH_PROC', '/proc')
+MAX_LINES = 2000
+RSS_LIMIT = 1200 * 1024 * 1024
+CPU_LIMIT = 60.0
+
+
+def state_file():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'hearth', 'shell-health.log')
+
+
+def proc_sample(pid, root=PROC):
+    """{rss: bytes, ticks: utime+stime, start: seconds since boot} of pid."""
+    rss = 0
+    for line in open(os.path.join(root, str(pid), 'status')):
+        if line.startswith('VmRSS:'):
+            rss = int(line.split()[1]) * 1024
+    stat = open(os.path.join(root, str(pid), 'stat')).read()
+    f = stat[stat.rindex(')') + 2:].split()
+    return {'rss': rss, 'ticks': int(f[11]) + int(f[12]), 'start': int(f[19]) / os.sysconf('SC_CLK_TCK')}
+
+
+def judge(history, now_rec):
+    """Should the shell refresh itself? history: earlier samples of this same shell (same start), oldest first."""
+    same = [h for h in history if abs(h.get('start', -1) - now_rec['start']) < 2]
+    first_hour = [h['rss'] for h in same if h['uptime'] <= 3600] or [now_rec['rss']]
+    base = min(first_hour)
+    big = now_rec['rss'] > RSS_LIMIT and now_rec['rss'] > 2 * base
+    recent = [h for h in same if now_rec['at'] - h['at'] <= 1800 and h.get('cpu') is not None] + [now_rec]
+    busy = len(recent) >= 4 and sum(h['cpu'] for h in recent if h.get('cpu') is not None) / len(recent) > CPU_LIMIT
+    return big or busy, base
+
+
+def sample(pid=None):
+    pid = pid or os.getppid()
+    s = proc_sample(pid)
+    up = float(open(os.path.join(PROC, 'uptime')).read().split()[0])
+    tck = os.sysconf('SC_CLK_TCK')
+    path = state_file()
+    hist = []
+    try:
+        with open(path) as f:
+            for line in f.readlines()[-200:]:
+                try:
+                    hist.append(json.loads(line))
+                except ValueError:
+                    pass
+    except OSError:
+        pass
+    now = time.time()
+    rec = {'at': int(now), 'pid': pid, 'start': s['start'], 'uptime': int(up - s['start']), 'rss': s['rss'], 'ticks': s['ticks'], 'cpu': None}
+    prev = next((h for h in reversed(hist) if h.get('pid') == pid and abs(h.get('start', -1) - s['start']) < 2), None)
+    if prev and now > prev['at']:
+        rec['cpu'] = round(100.0 * (s['ticks'] - prev['ticks']) / tck / (now - prev['at']), 1)
+    refresh, base = judge(hist, rec)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lines = []
+    try:
+        with open(path) as f:
+            lines = f.readlines()[-(MAX_LINES - 1):]
+    except OSError:
+        pass
+    lines.append(json.dumps(rec) + '\n')
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.writelines(lines)
+    os.replace(tmp, path)
+    return {'rss': rec['rss'], 'cpu': rec['cpu'], 'uptime': rec['uptime'], 'base': base, 'refresh': refresh}
+
+
+if __name__ == '__main__':
+    if sys.argv[1:] == ['sample']:
+        try:
+            print(json.dumps(sample()))
+        except (OSError, ValueError, IndexError) as e:
+            print(json.dumps({'error': str(e), 'refresh': False}))
+        sys.exit(0)
+    print(__doc__.strip(), file=sys.stderr)
+    sys.exit(2)
