@@ -164,7 +164,7 @@ def parse_stat(text):
 def parse_status(text):
     """/proc/PID/status: the real user id and memory (bytes). Memory is what the process uses itself
     (anonymous + shared memory), so shared libraries aren't counted again for every process."""
-    out = {'uid': None, 'mem': 0, 'swap': 0, 'kthread': False}
+    out = {'uid': None, 'mem': 0, 'swap': 0, 'shared': 0, 'kthread': False}
     for line in text.splitlines():
         k, _, v = line.partition(':')
         v = v.split()
@@ -174,6 +174,10 @@ def parse_status(text):
             out['uid'] = int(v[0])
         elif k in ('RssAnon', 'RssShmem'):
             out['mem'] += int(v[0]) * 1024
+            if k == 'RssShmem':
+                out['shared'] += int(v[0]) * 1024
+        elif k == 'RssFile':
+            out['shared'] += int(v[0]) * 1024       # libraries and files mapped, shared with other programs (1.12)
         elif k == 'VmSwap':
             out['swap'] = int(v[0]) * 1024          # moved to compressed memory (zram) or the swap file (1.11)
         elif k == 'Kthread':
@@ -217,6 +221,40 @@ def parse_meminfo(text):
             out[k] = int(v[0]) * 1024
     return out
 
+def parse_swaps(text):
+    """/proc/swaps split into zram (in memory) and the drive (swap files and partitions), bytes."""
+    out = {'zramSize': 0, 'zramUsed': 0, 'driveSize': 0, 'driveUsed': 0}
+    for line in (text or '').splitlines()[1:]:
+        f = line.split()
+        if len(f) < 4 or not f[2].isdigit() or not f[3].isdigit():
+            continue
+        k = 'zram' if '/zram' in f[0] else 'drive'
+        out[k + 'Size'] += int(f[2]) * 1024
+        out[k + 'Used'] += int(f[3]) * 1024
+    return out
+
+
+def parse_psi(text):
+    """/proc/pressure/memory "some" avg10 and avg60: how often programs waited for memory, percent."""
+    m = re.search(r'^some\s+avg10=([\d.]+)\s+avg60=([\d.]+)', text or '', re.M)
+    return {'psi10': float(m.group(1)), 'psi60': float(m.group(2))} if m else {'psi10': None, 'psi60': None}
+
+
+def parse_mm_stat(text):
+    """/sys/block/zram0/mm_stat: what was put in, its compressed size, and the memory zram really uses."""
+    f = (text or '').split()
+    n = lambda i: int(f[i]) if len(f) > i and f[i].isdigit() else 0
+    return {'zramOrig': n(0), 'zramCompr': n(1), 'zramMem': n(2)}
+
+
+def mem_extras(root, sys_root):
+    """Task Manager › Memory's page (1.12, the approved mockup): zram, swap on the drive, memory pressure."""
+    out = parse_swaps(read(os.path.join(root, 'swaps'), '') or '')
+    out.update(parse_psi(read(os.path.join(root, 'pressure', 'memory'), '') or ''))
+    out.update(parse_mm_stat(read(os.path.join(sys_root, 'block', 'zram0', 'mm_stat'), '') or ''))
+    return out
+
+
 def mem_used(mi):
     """Memory in use as Windows' Task Manager counts it: total − free − cache (page cache, buffers, reclaimable slab;
     shared memory counts as used). Not total − MemAvailable: MemAvailable also subtracts the kernel's reserve, so with
@@ -239,7 +277,7 @@ def parse_cgroup_app(text):
 
 class Proc:
     __slots__ = ('pid', 'ppid', 'comm', 'uid', 'mem', 'jiffies', 'start', 'cmd', 'exe', 'kthread', 'root',
-                 'state', 'nice', 'threads', 'path', 'swap')
+                 'state', 'nice', 'threads', 'path', 'swap', 'shared')
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -1618,7 +1656,7 @@ class Sampler:
                 self.static[key] = info
             kthread = u['kthread'] or s['pid'] == 2 or s['ppid'] == 2
             p = Proc(pid=s['pid'], ppid=s['ppid'], comm=s['comm'], uid=u['uid'], mem=u['mem'], jiffies=s['jiffies'],
-                     start=s['start'], kthread=kthread, root=self.root, cmd=info['cmd'], swap=u.get('swap', 0),
+                     start=s['start'], kthread=kthread, root=self.root, cmd=info['cmd'], swap=u.get('swap', 0), shared=u.get('shared', 0),
                      exe=os.path.basename(info['path']), path=info['path'], state=s['state'], nice=s['nice'],
                      threads=s['threads'])
             procs[p.pid] = p
@@ -1762,6 +1800,7 @@ class Sampler:
                       'cached': mi.get('Cached', 0) + mi.get('SReclaimable', 0) + mi.get('Buffers', 0),
                       'committed': mi.get('Committed_AS', 0), 'commitLimit': mi.get('CommitLimit', 0),
                       'swapTotal': mi.get('SwapTotal', 0), 'swapUsed': max(0, mi.get('SwapTotal', 0) - mi.get('SwapFree', 0))}
+        out['mem'].update(mem_extras(self.root, self.sys))
 
         # Disks (the layout every 30 s, the counters every tick)
         if self.layout is None or now - self.layout_t > 30:
@@ -1875,9 +1914,10 @@ class Sampler:
                 d = io_now.get(p.key, 0) - io_prev.get(p.key, io_now.get(p.key, 0))
                 disk = int(max(0, d) / dt) if dt > 0 else 0
                 kids.append({'pid': pid, 'name': script_name(p) or p.exe or p.comm, 'cpu': cpu_of.get(pid, 0.0), 'mem': p.mem,
-                             'swap': p.swap or 0, 'disk': disk, 'gpu': round(gpu_of.get(pid, 0.0), 1), 'state': p.state, 'nice': p.nice})
+                             'swap': p.swap or 0, 'shared': p.shared or 0, 'disk': disk, 'gpu': round(gpu_of.get(pid, 0.0), 1), 'state': p.state, 'nice': p.nice})
             g['cpu'] = round(sum(k['cpu'] for k in kids), 1)
             g['swap'] = sum(k['swap'] for k in kids)
+            g['shared'] = sum(k.get('shared', 0) for k in kids)
             g['nice'] = min((k['nice'] for k in kids), default=0)
             g['disk'] = sum(k['disk'] for k in kids)
             g['gpu'] = round(min(100.0, sum(k['gpu'] for k in kids)), 1)

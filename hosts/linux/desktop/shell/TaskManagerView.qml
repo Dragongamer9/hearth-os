@@ -91,6 +91,10 @@ FocusScope {
         const h = Object.assign({}, hist);
         push(h, "cpu", d.cpu ? d.cpu.total : 0);
         push(h, "memory", d.mem && d.mem.total ? 100 * d.mem.used / d.mem.total : 0);
+        // Memory's page (MemoryOverview.qml): the programs' share, compressed memory (zram) and memory pressure
+        push(h, "memprog", d.mem && d.mem.total ? 100 * Math.max(0, d.mem.used - (d.mem.zramMem || 0)) / d.mem.total : 0);
+        push(h, "memz", d.mem && d.mem.total ? 100 * (d.mem.zramMem || 0) / d.mem.total : 0);
+        push(h, "mempsi", d.mem ? d.mem.psi10 || 0 : 0);
         (d.disks || []).forEach(x => push(h, "disk:" + x.name, x.active));
         (d.nets || []).forEach(x => push(h, "net:" + x.name, x.recv + x.send));
         (d.gpus || []).forEach(x => push(h, "gpu:" + x.index, x.busy));
@@ -103,7 +107,7 @@ FocusScope {
     function wants() {
         switch (tm.page) {
         case "processes": return ["procs"];
-        case "performance": return ["gpu", "temps"];
+        case "performance": return tm.perfDevice === "memory" ? ["gpu", "temps", "procs"] : ["gpu", "temps"];
         case "details": return ["details"];
         default: return [];
         }
@@ -144,6 +148,7 @@ FocusScope {
         target: tm
         function onPageChanged() { v.sendConfig(); v.loadPageData(); v.closeMenu(); }
         function onIntervalChanged() { v.sendConfig(); }
+        function onPerfDeviceChanged() { v.sendConfig(); }
     }
     onQueryChanged: { buildProcs(); buildDetails(); buildStartup(); buildServices(); buildTimers(); buildHistory(); }
 
@@ -1114,6 +1119,7 @@ FocusScope {
             // Overview | <device> & settings (1.11: Memory's Swap & settings, CPU's Power & settings, …)
             property string memTab: "overview"
             readonly property bool memSettings: !!dev && memTab === "settings"
+            readonly property bool memOverview: !!dev && !memSettings && dev.kind === "memory"
             readonly property var settingsLabel: ({ memory: "Swap & settings", cpu: "Power & settings", disk: "Health & settings", net: "Connection & hotspot", gpu: "Tuning", battery: "Health & settings" })
             readonly property var devices: {
                 const d = [];
@@ -1243,6 +1249,14 @@ FocusScope {
                                 }
                             }
                         }
+                        MemoryOverview {
+                            visible: pf.memOverview
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                            view: v
+                            s: pf.s
+                            onOpenSettings: pf.memTab = "settings"
+                        }
                         MemorySettings {
                             visible: pf.memSettings && pf.dev.kind === "memory"
                             Layout.fillWidth: true
@@ -1256,7 +1270,7 @@ FocusScope {
                             sourceComponent: DeviceSettings { kind: pf.dev ? pf.dev.kind : "cpu"; dev: pf.dev; sample: pf.s; width: parent ? parent.width : 600 }
                         }
                         RowLayout {
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Text {
                                 text: !pf.dev ? "" : pf.dev.kind === "memory" ? "Memory usage" : pf.dev.kind === "disk" ? "Active time" : pf.dev.kind === "net" ? "Throughput" : pf.dev.kind === "battery" ? "Charge" : "% Utilization"
@@ -1267,7 +1281,7 @@ FocusScope {
                         }
                         Graph {
                             id: big
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(160, Math.min(330, detail.height * 0.45))
                             values: pf.dev ? (v.hist[pf.dev.key] || []) : []
@@ -1278,7 +1292,7 @@ FocusScope {
                             framed: true
                         }
                         RowLayout {
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Text { text: "60 seconds"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
                             Item { Layout.fillWidth: true }
@@ -1286,7 +1300,7 @@ FocusScope {
                         }
                         // the classic numbers
                         RowLayout {
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Layout.topMargin: 8
                             spacing: 24

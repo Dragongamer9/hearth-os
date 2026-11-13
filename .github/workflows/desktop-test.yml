@@ -748,10 +748,10 @@ jobs:
           python3 hosts/linux/desktop/shell/hearth-tasks services > $T/services.json 2>&1 || true
           python3 hosts/linux/desktop/shell/hearth-tasks startup > $T/startup.json 2>&1 || true
           [ "$(sha256sum "$tmcfg" 2>/dev/null || echo none)" = "$tm_before" ] || { echo "::error title=Task Manager::opening its pages changed taskmgr.json: $(cat "$tmcfg" 2>&1 | head -c 300)"; touch shots/FAILED; }
-          grep -E "TaskManager(View)?\.qml" "$LOG" > $T/shell-log.txt 2>/dev/null || true
-          if grep -qE "TaskManager(View)?\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" 2>/dev/null \
+          grep -E "(TaskManager(View)?|MemoryOverview)\.qml" "$LOG" > $T/shell-log.txt 2>/dev/null || true
+          if grep -qE "(TaskManager(View)?|MemoryOverview)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" 2>/dev/null \
              || grep -q "Task Manager: its page (TaskManagerView.qml) couldn't load" "$LOG" 2>/dev/null; then
-            echo "::error title=Task Manager::$(grep -E 'TaskManager(View)?\.qml|Task Manager: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+            echo "::error title=Task Manager::$(grep -E '(TaskManager(View)?|MemoryOverview)\.qml|Task Manager: its page' "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
           else
             echo "::notice title=Task Manager::$(ls $T/*.png 2>/dev/null | wc -l) pictures in task-manager/"
           fi
