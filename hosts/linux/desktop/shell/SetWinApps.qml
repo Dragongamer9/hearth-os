@@ -138,6 +138,7 @@ SetPage {
                 sub: xp.last.next && xp.last.next.download ? "Downloads it first (about 500 MB), after you say yes" : "Hearth remembers it if it works"
                 onActivated: page.tryNext(xp.a, xp.last.next)
             }
+            SetHeader { text: "Compatibility" }
             SetChoice {
                 title: "Proton"
                 options: page.protonOptions(xp.a)
@@ -159,6 +160,27 @@ SetPage {
                 options: [{ value: "", label: "Automatic" }, { value: "win11", label: "11" }, { value: "win10", label: "10" }, { value: "win7", label: "7" }, { value: "winxp", label: "XP" }]
                 current: xp.a.winver
                 onChosen: v => page.change(xp.a, "winver", v)
+            }
+            // 1.11: "Use these files from Windows" (DLL overrides) and the common fixes, remembered per app.
+            SetRow {
+                icon: "file"; title: "Use these files from Windows"; chevron: true
+                sub: (xp.a.dlls || []).length ? (xp.a.dlls || []).join(", ") + " · the app's own copy first" : "None: Proton's own. For a mod's d3d9.dll, dinput8.dll, dxgi.dll…"
+                onActivated: { dllField.visible = !dllField.visible; if (dllField.visible) dllField.focusInput(); }
+            }
+            SetField {
+                id: dllField
+                visible: false
+                placeholder: "File names, like d3d9, dinput8 (empty: none), then Enter"
+                onSubmitted: t => { page.change(xp.a, "dlls", t); visible = false; }
+            }
+            Repeater {
+                model: Object.keys(xp.a.fixNames || {})
+                delegate: SetSwitch {
+                    required property string modelData
+                    title: xp.a.fixNames[modelData]
+                    checked: (xp.a.fixes || []).indexOf(modelData) >= 0
+                    onToggled: v => page.change(xp.a, "fix." + modelData, v ? "on" : "off")
+                }
             }
             SetSwitch {
                 title: "In Steam"; sub: "Hearth Sync adds it to Steam's library (Game Mode too) the next time it syncs"

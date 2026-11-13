@@ -487,5 +487,24 @@ class Wiring(unittest.TestCase):
             self.assertIn(want, q)
 
 
+
+class Compatibility(unittest.TestCase):
+    """1.11: the Compatibility section's DLL overrides and common fixes reach Proton's environment."""
+
+    def test_env(self):
+        w = load_helper()
+        a = dict(w.DEFAULTS, id='x', prefix='/tmp/hearth-compat-test', dlls=['d3d9.dll', 'dinput8', 'bad name'], fixes=['laa', 'nope'])
+        env = w.proton_env(a)
+        self.assertTrue(env['WINEDLLOVERRIDES'].startswith('d3d9=n,b;dinput8=n,b'))
+        self.assertNotIn('bad', env['WINEDLLOVERRIDES'])
+        self.assertEqual(env.get('PROTON_FORCE_LARGE_ADDRESS_AWARE'), '1')
+        self.assertNotIn('nope', ' '.join(env))
+
+    def test_page(self):
+        q = read('hosts', 'linux', 'desktop', 'shell', 'SetWinApps.qml')
+        self.assertIn('SetHeader { text: "Compatibility" }', q)
+        self.assertIn('title: "Use these files from Windows"', q)
+        self.assertIn('page.change(xp.a, "fix." + modelData', q)
+
 if __name__ == '__main__':
     unittest.main()
