@@ -597,3 +597,26 @@ class Wiring(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OneAddress(unittest.TestCase):
+    """One AI address (1.11): requests go to the first free device that has what they ask for."""
+    def test_candidates(self):
+        import importlib.machinery, importlib.util, pathlib
+        p = pathlib.Path(__file__).resolve().parents[1] / 'desktop' / 'shell' / 'hearth-ai-share'
+        loader = importlib.machinery.SourceFileLoader('hearth_ai_share_router', str(p))
+        spec = importlib.util.spec_from_loader('hearth_ai_share_router', loader)
+        m = importlib.util.module_from_spec(spec)
+        loader.exec_module(m)
+        chat = lambda models: [{'kind': 'chat', 'healthy': True, 'reachable': True, 'openai': 'http://x.ts.net:11434/v1', 'models': models}]
+        devs = {'devices': [
+            {'device': 'ally', 'online': True, 'available': False, 'services': chat(['qwen3:4b'])},     # playing
+            {'device': 'laptop', 'online': True, 'available': True, 'services': chat(['qwen3:4b'])},
+            {'device': 'nvidia-pc', 'online': True, 'available': True, 'services': chat(['qwen3:30b-a3b'])},
+        ]}
+        self.assertEqual([d for d, _ in m.candidates(devs, 'chat', 'qwen3:30b-a3b')], ['nvidia-pc', 'laptop'])
+        self.assertEqual([d for d, _ in m.candidates(devs, 'chat')], ['laptop', 'nvidia-pc'])
+        self.assertEqual(m.candidates(devs, 'voice'), [])
+        self.assertEqual([x['id'] for x in m.all_models(devs)['data']], ['qwen3:4b', 'qwen3:30b-a3b'])
+        self.assertEqual(m.model_of(b'{"model": "qwen3:4b"}', 'application/json'), 'qwen3:4b')
+        self.assertFalse(m.DEFAULTS['router'])
