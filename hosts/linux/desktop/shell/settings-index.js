@@ -2688,6 +2688,11 @@ var ENTRIES = [
 "p": "winapps"
 },
 {
+"t": "Use these files from Windows",
+"p": "winapps",
+"i": "file"
+},
+{
 "t": "In Steam",
 "p": "winapps",
 "d": "Hearth Sync adds it to Steam's library (Game Mode too) the next time it syncs"
