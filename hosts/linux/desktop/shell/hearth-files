@@ -744,6 +744,9 @@ def places():
                     if os.path.isdir(hearth):
                         out.append({'id': 'hearth-shots', 'label': 'Hearth screenshots', 'path': hearth,
                                     'kind': 'pictures', 'section': 'places', 'child': True})
+    saved = os.path.join(h, 'Saved Games')               # 1.11: One C:'s Saved Games, as in Windows' left menu
+    if os.path.isdir(saved):
+        out.append({'id': 'savedgames', 'label': 'Saved Games', 'path': saved, 'kind': 'games', 'section': 'places'})
     games = os.path.join(h, 'Games')
     if os.path.isdir(games):
         out.append({'id': 'games', 'label': 'Games', 'path': games, 'kind': 'games', 'section': 'games'})
