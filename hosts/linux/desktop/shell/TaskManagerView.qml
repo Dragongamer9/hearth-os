@@ -1006,8 +1006,10 @@ FocusScope {
             buttons: [{ id: "run", label: "Run new task", icon: "plus", primary: true }, { id: "resmon", label: "Open Resource Monitor", icon: "cpu" }]
             onButton: id => { if (id === "run") v.askRun(); else if (id === "resmon") Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "resmon", "open"]); }
             readonly property var s: v.sample
+            // Overview | <device> & settings (1.11: Memory's Swap & settings, CPU's Power & settings, …)
             property string memTab: "overview"
-            readonly property bool memSettings: !!dev && dev.kind === "memory" && memTab === "settings"
+            readonly property bool memSettings: !!dev && memTab === "settings"
+            readonly property var settingsLabel: ({ memory: "Swap & settings", cpu: "Power & settings", disk: "Health & settings", net: "Connection & hotspot", gpu: "Tuning", battery: "Health & settings" })
             readonly property var devices: {
                 const d = [];
                 if (!s) return d;
@@ -1119,12 +1121,12 @@ FocusScope {
                                 color: Theme.text; font.family: Theme.font; font.pixelSize: 15
                             }
                         }
-                        // Memory: Overview | Swap & settings (1.11, the approved mockup; MemorySettings.qml)
+                        // Overview | … & settings (1.11, the approved mockups; MemorySettings.qml, DeviceSettings.qml)
                         Row {
-                            visible: !!pf.dev && pf.dev.kind === "memory"
+                            visible: !!pf.dev && !!pf.settingsLabel[pf.dev.kind]
                             spacing: 6
                             Repeater {
-                                model: [["overview", "Overview"], ["settings", "Swap & settings"]]
+                                model: pf.dev ? [["overview", "Overview"], ["settings", pf.settingsLabel[pf.dev.kind] || "Settings"]] : []
                                 delegate: Rectangle {
                                     required property var modelData
                                     readonly property bool on: pf.memTab === modelData[0]
@@ -1137,9 +1139,16 @@ FocusScope {
                             }
                         }
                         MemorySettings {
-                            visible: pf.memSettings
+                            visible: pf.memSettings && pf.dev.kind === "memory"
                             Layout.fillWidth: true
                             Layout.topMargin: 6
+                        }
+                        Loader {
+                            active: pf.memSettings && pf.dev.kind !== "memory"
+                            visible: active
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                            sourceComponent: DeviceSettings { kind: pf.dev ? pf.dev.kind : "cpu"; dev: pf.dev; sample: pf.s; width: parent ? parent.width : 600 }
                         }
                         RowLayout {
                             visible: !!pf.dev && !pf.memSettings
