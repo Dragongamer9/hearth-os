@@ -7,6 +7,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 SetPage {
     id: page
@@ -25,7 +26,22 @@ SetPage {
     function refresh() { job.run(["status"], r => page.st = r, e => page.st = { error: e }); }
     function set(k, v, ok) { act.run(["set", k, v], () => { if (ok) page.say(ok); page.refresh(); }, e => { page.say(e, true); page.refresh(); }); }
     function mins(m) { return m >= 60 ? (m / 60) + (m === 60 ? " hour" : " hours") : m + " minutes"; }
-    Component.onCompleted: { refresh(); }
+    Component.onCompleted: { refresh(); recs.running = true; }
+    // 1.11: the last night's maintenance and the power history (records the root helper keeps, readable by you)
+    property var nightLast: null
+    property var powerPoints: []
+    Timer { interval: 300000; running: page.visible; repeat: true; onTriggered: if (!recs.running) recs.running = true }
+    Process {
+        id: recs
+        command: ["sh", "-c", "cat /var/lib/hearth/home-server-night.json 2>/dev/null || echo null; echo '@@HEARTH@@'; cat /var/lib/hearth/power-history.json 2>/dev/null || echo null"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const parts = text.split("@@HEARTH@@");
+                try { page.nightLast = JSON.parse(parts[0]); } catch (e) { page.nightLast = null; }
+                try { const h = JSON.parse(parts[1] || "null"); page.powerPoints = h && h.points ? h.points : []; } catch (e) { page.powerPoints = []; }
+            }
+        }
+    }
     onUpsShownChanged: if (upsShown && page.pw && page.pw.ups) uj.run(["ups-status"], r => page.ups = r.ups, () => page.ups = null)
     Timer { interval: 8000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-home-server" }
@@ -170,6 +186,72 @@ SetPage {
         options: [{ value: 0, label: "Never" }, { value: 10, label: "10 min" }, { value: 20, label: "20 min" }, { value: 30, label: "30 min" }, { value: 60, label: "1 hour" }]
         current: page.pw ? page.pw.spinDown : 0
         onChosen: v => page.set("spinDown", String(v))
+    }
+    // Night maintenance (1.11): once a night, only when nobody is using the PC and it isn't busy
+    SetSwitch {
+        visible: !!page.pw
+        icon: "clock"; title: "Night maintenance"
+        sub: "Once a night: optimize drives (TRIM), tidy the system logs, update apps (Flatpak) and clear downloaded package files. Never while it's used or busy, and never anything that touches starting the PC"
+        checked: !!page.pw && !!page.pw.night
+        onToggled: v => page.set("night", v ? "on" : "off", v ? "Night maintenance is on" : "Night maintenance is off")
+    }
+    SetChoice {
+        visible: !!page.pw && !!page.pw.night
+        title: "Start at"
+        sub: page.pw && page.pw.schedule ? "It runs only while the PC is awake: pick a time after it wakes (" + page.pw.wakeAt + ") or before it sleeps (" + page.pw.sleepAt + ")" : ""
+        options: [{ value: "02:30", label: "2:30" }, { value: "03:30", label: "3:30" }, { value: "04:30", label: "4:30" }, { value: "05:30", label: "5:30" }]
+        current: page.pw ? (page.pw.nightAt || "03:30") : "03:30"
+        onChosen: v => page.set("nightAt", v)
+    }
+    SetRow {
+        visible: !!page.pw && !!page.pw.night && !!page.nightLast
+        icon: "info"; chevron: false; interactive: false; title: "Last night"
+        sub: page.nightLast ? new Date(page.nightLast.at * 1000).toLocaleString(Qt.locale(), "ddd h:mm AP") + " · "
+             + page.nightLast.steps.map(x => x.step + (x.ok === true ? " ✓" : x.ok === false ? " ✗ " + x.note : " (not here)")).join(" · ") : ""
+    }
+    // The power history (1.11): processor and graphics card watts every 5 minutes, 30 days kept
+    SetSwitch {
+        visible: !!page.pw
+        icon: "power"; title: "Power history"
+        sub: "Keeps what the processor and graphics card draw, every 5 minutes for 30 days, and shows it here"
+        checked: !!page.pw && !!page.pw.history
+        onToggled: v => page.set("powerHistory", v ? "on" : "off")
+    }
+    Rectangle {
+        visible: !!page.pw && !!page.pw.history
+        Layout.fillWidth: true
+        Layout.preferredHeight: 190
+        radius: Theme.r(12); color: Theme.panel2
+        readonly property var pts: page.powerPoints.filter(p => p[0] >= Date.now() / 1000 - 86400)
+        readonly property real avg: { const a = pts.map(p => (p[1] || 0) + (p[2] || 0)); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+        id: powerBox
+        Column {
+            anchors { fill: parent; margins: 14 }
+            spacing: 6
+            Text {
+                text: powerBox.pts.length ? "Last 24 hours · about " + Math.round(powerBox.avg) + " W on average · " + (powerBox.avg * 24 / 1000).toFixed(2) + " kWh a day (processor and graphics card)"
+                                          : "Collecting: the first points show within 5 minutes"
+                color: Theme.text; font.family: Theme.font; font.pixelSize: 13
+            }
+            Canvas {
+                id: powerGraph
+                width: parent.width; height: parent.height - 40
+                property var pts: powerBox.pts
+                onPtsChanged: requestPaint()
+                onPaint: {
+                    const ctx = getContext("2d"); ctx.reset();
+                    const a = pts; if (!a.length) return;
+                    const t0 = Date.now() / 1000 - 86400, mx = Math.max(10, ...a.map(p => (p[1] || 0) + (p[2] || 0))) * 1.15;
+                    const xs = t => (t - t0) / 86400 * width, ys = w => height - w / mx * (height - 2);
+                    for (const [k, col] of [[0, "#66c0f4"], [1, "#ff9a4d"]]) {
+                        ctx.beginPath();
+                        a.forEach((p, i) => { const w = k === 0 ? (p[1] || 0) : (p[1] || 0) + (p[2] || 0); if (i) ctx.lineTo(xs(p[0]), ys(w)); else ctx.moveTo(xs(p[0]), ys(w)); });
+                        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+                    }
+                }
+            }
+            Text { text: "Blue: processor · orange: processor and graphics card together"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
+        }
     }
     SetRow {
         visible: !!page.st && !!page.st.power && !!page.st.power.quietSince
