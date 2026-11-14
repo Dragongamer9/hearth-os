@@ -79,9 +79,10 @@ SetPage {
             required property var modelData
             icon: "store"; chevron: false
             title: modelData.model + (modelData.system ? " (system)" : "")
-            value: !modelData.smart ? "No health data" : modelData.smart.passed === false ? "Failing: back it up" : modelData.smart.passed ? "Good" : "Unknown"
-            danger: !!modelData.smart && modelData.smart.passed === false
+            value: !modelData.smart ? "No health data" : modelData.smart.passed === false ? "Failing: back it up" : modelData.smart.level === "watch" ? "Wearing: back it up soon" : modelData.smart.passed ? "Good" : "Unknown"
+            danger: !!modelData.smart && (modelData.smart.passed === false || modelData.smart.level === "watch")
             sub: [modelData.sizeText + " " + modelData.kind, modelData.smart && modelData.smart.temp ? modelData.smart.temp + " °C" : "",
+                  modelData.smart && modelData.smart.signs && modelData.smart.signs.length ? modelData.smart.signs.join(", ") : "",
                   modelData.total ? page.size(modelData.used) + " of " + page.size(modelData.total) + " used" : (modelData.empty ? "empty" : "not in use"),
                   modelData.system ? "Hearth OS lives here: never shared, formatted or picked" : modelData.mounts.join(", ")].filter(x => x).join(" · ")
         }

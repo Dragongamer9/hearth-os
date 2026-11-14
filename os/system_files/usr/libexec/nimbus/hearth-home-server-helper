@@ -920,10 +920,47 @@ def smart(dev):
         j = json.loads(out)
     except ValueError:
         return None
+    return smart_read(j)
+
+
+# 1.13: signs a drive is wearing out, before its self-check fails: sectors it had to move (5), ones waiting to be
+# moved (197) or that couldn't be read (198, 187), cable errors (199) on SATA drives; on NVMe the drive's own warning,
+# how much of its life is used and its spare blocks. 'level': ok, watch (back up soon) or failing (back up now).
+ATA_WEAR = {5: 'sectors moved to spares', 197: 'sectors waiting to be moved', 198: 'sectors that couldn\'t be read',
+            187: 'errors it couldn\'t fix', 199: 'cable errors'}
+
+
+def smart_read(j):
     st = j.get('smart_status') or {}
     temp = (j.get('temperature') or {}).get('current')
     hours = (j.get('power_on_time') or {}).get('hours')
-    return {'passed': st.get('passed'), 'temp': temp, 'hours': hours}
+    out = {'passed': st.get('passed'), 'temp': temp, 'hours': hours, 'signs': [], 'level': 'ok'}
+    for a in ((j.get('ata_smart_attributes') or {}).get('table') or []):
+        try:
+            aid, raw = int(a.get('id')), int((a.get('raw') or {}).get('value') or 0)
+        except (TypeError, ValueError):
+            continue
+        if aid in ATA_WEAR and raw > 0:
+            out['signs'].append('%d %s' % (raw, ATA_WEAR[aid]))
+    nv = j.get('nvme_smart_health_information_log') or {}
+    if nv:
+        used = nv.get('percentage_used')
+        spare, floor = nv.get('available_spare'), nv.get('available_spare_threshold')
+        if isinstance(used, int):
+            out['lifeUsed'] = used
+            if used >= 90:
+                out['signs'].append('%d%% of its life used' % used)
+        if isinstance(spare, int) and isinstance(floor, int) and spare <= floor + 10:
+            out['signs'].append('only %d%% spare blocks left' % spare)
+        if nv.get('media_errors'):
+            out['signs'].append('%d media errors' % nv['media_errors'])
+        if nv.get('critical_warning'):
+            out['signs'].append('the drive itself is warning')
+    if st.get('passed') is False:
+        out['level'] = 'failing'
+    elif out['signs']:
+        out['level'] = 'watch'
+    return out
 
 
 def size_text(n):
@@ -982,7 +1019,22 @@ def drives():
                     'usb': d.get('tran') == 'usb', 'removable': d.get('rm') in (True, 1, '1'), 'system': d.get('name') in sysd,
                     'mounts': mounts, 'used': used, 'total': total, 'fs': fs, 'empty': not (d.get('children') or d.get('fstype')),
                     'smart': smart(d.get('path')), 'confirm': confirm_text(d), 'token': token(d)})
+    health_record(out)
     return {'ok': True, 'drives': out}
+
+
+DRIVE_HEALTH = '/var/lib/hearth/home-server-drives.json'    # 1.13: each drive's health, for Server mode's tile (0644)
+
+
+def health_record(drives_list, now=None):
+    """What Server mode's Drive health tile shows: names, sizes, kinds and their self-check, never what's on them."""
+    rec = {'at': int(time.time() if now is None else now),
+           'drives': [{'model': d['model'], 'sizeText': d['sizeText'], 'kind': d['kind'], 'system': d['system'], 'usb': d['usb'],
+                       'smart': d['smart']} for d in drives_list]}
+    try:
+        write(DRIVE_HEALTH, json.dumps(rec) + '\n', 0o644)
+    except OSError:
+        pass
 
 
 def find_disk(dev):
@@ -2058,6 +2110,9 @@ def alerts_find(plan, now):
             if sm.get('passed') is False:
                 found.append({'key': 'smart:' + d['token'], 'kind': 'smart',
                               'text': '%s is failing its health check (SMART): copy what\'s on it and replace it' % d['model']})
+            elif sm.get('level') == 'watch':
+                found.append({'key': 'wear:' + d['token'], 'kind': 'wear',
+                              'text': '%s is showing early signs of wearing out (%s): back it up soon' % (d['model'], ', '.join(sm.get('signs')[:3]))})
             elif isinstance(sm.get('temp'), int) and sm['temp'] >= 65:
                 found.append({'key': 'hot:' + d['token'], 'kind': 'smart', 'text': '%s is very hot (%d °C)' % (d['model'], sm['temp'])})
     if a['full']:

@@ -97,7 +97,7 @@
   {
    "id": "voices",
    "title": "Voices",
-   "engine": "Kokoro \u00b7 Voice Studio",
+   "engine": "Kokoro · Voice Studio",
    "icon": "wave",
    "state": "running",
    "chip": "Running",
@@ -163,6 +163,32 @@
    "actions": []
   },
   {
+   "id": "drives",
+   "title": "Drive health",
+   "engine": "Self-check (SMART), every few hours",
+   "icon": "drive",
+   "state": "warn",
+   "chip": "Watch",
+   "big": "3",
+   "unit": "drives",
+   "sub": "Looked at 07:42",
+   "rows": [
+    [
+     "Samsung 990 Pro (system)",
+     "Good · 41 °C · 1 yr 3 mo · 6% life used"
+    ],
+    [
+     "WD Red 4 TB",
+     "Wearing · 44 °C · 3 yr 6 mo"
+    ],
+    [
+     "Crucial MX500",
+     "Good · 36 °C · 2 yr"
+    ]
+   ],
+   "actions": []
+  },
+  {
    "id": "backups",
    "title": "Backups",
    "engine": "2 set up",
@@ -190,13 +216,13 @@
    "boxes": [
     [
      "Processor",
-     "48 \u00b0C",
+     "48 °C",
      "31% busy"
     ],
     [
      "Graphics card",
-     "63 \u00b0C",
-     "RTX 5070 \u00b7 88% busy"
+     "63 °C",
+     "RTX 5070 · 88% busy"
     ],
     [
      "Power now",
@@ -223,17 +249,17 @@
    "list": [
     [
      "Work laptop",
-     "Web page \u00b7 Shared folders \u00b7 AI chat"
+     "Web page · Shared folders · AI chat"
     ],
     [
      "ROG Ally",
-     "Media \u00b7 Shared folders"
+     "Media · Shared folders"
     ]
    ],
    "rows": [
     [
      "Network",
-     "\u2193 4.2 MB/s \u00b7 \u2191 18.6 MB/s"
+     "↓ 4.2 MB/s · ↑ 18.6 MB/s"
     ],
     [
      "Online on Tailscale",
@@ -320,8 +346,14 @@
  "alerts": [
   {
    "level": "warn",
+   "text": "WD Red 4 TB is wearing out (24 sectors moved to spares, 3 sectors waiting to be moved): back it up soon",
+   "sub": "",
+   "at": ""
+  },
+  {
+   "level": "warn",
    "text": "Drive 3 ran warm at noon",
-   "sub": "46 \u00b0C for 20 min, 41 \u00b0C now",
+   "sub": "46 °C for 20 min, 41 °C now",
    "at": "12:20 PM"
   },
   {
@@ -398,13 +430,13 @@
    "id": "comfy",
    "name": "ComfyUI",
    "state": "working",
-   "status": "making 1 \u00b7 3 waiting"
+   "status": "making 1 · 3 waiting"
   },
   {
    "id": "voice",
    "name": "Voices",
    "state": "ready",
-   "status": "Kokoro \u00b7 Voice Studio"
+   "status": "Kokoro · Voice Studio"
   },
   {
    "id": "listen",

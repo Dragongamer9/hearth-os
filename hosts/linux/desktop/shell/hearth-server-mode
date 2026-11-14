@@ -689,6 +689,64 @@ def user_paused():
     return [x for x in v if x in SERVICES] if isinstance(v, list) else []
 
 
+# ---- 1.13: Drive health (the tile): each drive's self-check (SMART), temperature, hours and signs of wear, from the record
+# the home server's root helper keeps (/var/lib/hearth/home-server-drives.json) every time it looks at the drives. When
+# that record is over 6 hours old it's looked at again in the background (smartctl takes a while), at most every 30 min.
+DRIVE_HEALTH = '/var/lib/hearth/home-server-drives.json'
+_drive_look = {'at': 0}
+
+
+def drive_health(now=None, path=None, look=None):
+    now = time.time() if now is None else now
+    rec = rjson(path or DRIVE_HEALTH, {}) if os.path.exists(path or DRIVE_HEALTH) else {}
+    rec = rec if isinstance(rec, dict) else {}
+    if now - (rec.get('at') or 0) > 6 * 3600 and now - _drive_look['at'] > 1800:
+        _drive_look['at'] = now
+        (look or (lambda: threading.Thread(target=lambda: run([sys.executable, os.path.join(HERE, 'hearth-home-server'), 'drives'], 600), daemon=True).start()))()
+    return rec
+
+
+def age_text(hours):
+    if not isinstance(hours, int) or hours <= 0:
+        return ''
+    days = hours // 24
+    if days >= 365:
+        y, m = divmod(days // 30, 12)
+        return '%d yr%s' % (y, ' %d mo' % m if m else '')
+    if days >= 30:
+        return '%d mo' % (days // 30)
+    return '%d days' % days if days else '%d h' % hours
+
+
+def drives_tile(rec, now=None):
+    """The Drive health tile: Healthy, Watch (signs of wear: back up soon) or Failing (back up now), one row a drive."""
+    now = time.time() if now is None else now
+    ds = [d for d in (rec.get('drives') or []) if isinstance(d, dict)]
+    rows, worst, warn = [], 'ok', []
+    for d in ds:
+        sm = d.get('smart') or {}
+        lvl = 'failing' if sm.get('passed') is False else sm.get('level') or ('ok' if sm.get('passed') else 'unknown')
+        if lvl == 'failing' or (lvl == 'watch' and worst != 'failing'):
+            worst = lvl
+        word = {'failing': 'Failing', 'watch': 'Wearing', 'ok': 'Good', 'unknown': 'No data'}.get(lvl, 'No data')
+        bits = [word] + (['%d °C' % sm['temp']] if isinstance(sm.get('temp'), int) else []) + ([age_text(sm.get('hours'))] if age_text(sm.get('hours')) else [])
+        if isinstance(sm.get('lifeUsed'), int):
+            bits.append('%d%% life used' % sm['lifeUsed'])
+        rows.append(['%s%s' % (d.get('model') or 'Drive', ' (system)' if d.get('system') else ''), ' · '.join(bits)])
+        if lvl in ('failing', 'watch'):
+            warn.append({'level': 'warn', 'text': '%s %s' % (d.get('model') or 'A drive', 'is failing its health check: copy what\'s on it now' if lvl == 'failing' else 'is wearing out (%s): back it up soon' % ', '.join((sm.get('signs') or [])[:2])), 'sub': '', 'at': ''})
+        elif isinstance(sm.get('temp'), int) and sm['temp'] >= 65:
+            warn.append({'level': 'warn', 'text': '%s is very hot (%d °C)' % (d.get('model') or 'A drive', sm['temp']), 'sub': '', 'at': ''})
+    at = rec.get('at') or 0
+    tile = {'id': 'drives', 'title': 'Drive health', 'engine': 'Self-check (SMART), every few hours', 'icon': 'drive',
+            'state': 'warn' if worst in ('failing', 'watch') else 'running' if ds else 'off',
+            'chip': {'failing': 'Failing', 'watch': 'Watch'}.get(worst, 'Healthy' if ds else 'Checking'),
+            'big': str(len(ds)) if ds else '—', 'unit': ('drives' if len(ds) != 1 else 'drive') if ds else 'looking at the drives…',
+            'sub': ('Looked at ' + clock(at)) if at else '',
+            'rows': rows[:6], 'actions': []}
+    return tile, warn
+
+
 def dash():
     if FIXTURE:
         d = rjson(FIXTURE, {})
@@ -796,6 +854,9 @@ def dash():
                   'rows': [[str(sh.get('name', '')), str(sh.get('path', ''))] for sh in share_list[:3]]
                           + ([['Free', fmt_tb(max(0, total - used))]] if total else []),
                   'actions': []})
+    # ---- Drive health (1.13)
+    dtile, dwarn = drives_tile(drive_health(now), now)
+    tiles.append(dtile)
     # ---- Backups
     b = q.get('backups') or {}
     bstate = 'warn' if b.get('failed') else 'running'
@@ -906,6 +967,8 @@ def dash():
     running = sum(1 for p in pills if p['state'] == 'running')
     # ---- alerts: the home server's, Steam Game Mode not starting, the web page's sign-ins
     alerts = [{'level': 'warn', 'text': t, 'sub': '', 'at': ''} for t in alerts_hs]
+    # A drive wearing out or failing shows here even when Alerts are off (the same drive once, if Alerts said it too).
+    alerts = [w for w in dwarn if not any(w['text'].split(' is ')[0] in str(t) for t in alerts_hs)] + alerts
     sf = read(STEAM_FAILED, 300).strip()
     if sf:
         alerts.append({'level': 'warn', 'text': 'Steam Game Mode didn\'t start', 'sub': sf, 'at': ''})
