@@ -7,6 +7,7 @@ import QtQuick.Layouts
 Rectangle {
     id: tile
     property var t: ({})
+    property var team: null              // the AI team tile (t.mesh): its live mesh (AiMesh.qml, 1.12)
     property bool focused: false
     property real k: 1
     // Server mode's gold look (the Hearth AI Command Center's): ServerDash passes gold: true.
@@ -43,7 +44,19 @@ Rectangle {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 0
-                Text { text: tile.t.title || ""; color: tile.cText; font.family: Theme.font; font.pixelSize: 18 * tile.k; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                Row {
+                    Layout.fillWidth: true
+                    spacing: 8 * tile.k
+                    Text { text: tile.t.title || ""; color: tile.cText; font.family: Theme.font; font.pixelSize: 18 * tile.k; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                    // NEW on a new tile (the AI team, mockup server-ai-team-dash)
+                    Rectangle {
+                        visible: !!tile.t.new
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: newT.implicitWidth + 10 * tile.k; height: 18 * tile.k; radius: 4 * tile.k
+                        color: "transparent"; border.color: tile.cAcc; border.width: 1
+                        Text { id: newT; anchors.centerIn: parent; text: "NEW"; color: tile.cAcc; font.family: Theme.font; font.pixelSize: 10.5 * tile.k; font.weight: Font.Bold }
+                    }
+                }
                 Text { text: tile.t.engine || ""; color: tile.cMuted; font.family: Theme.font; font.pixelSize: 13 * tile.k; elide: Text.ElideRight; Layout.fillWidth: true }
             }
             Rectangle {
@@ -53,6 +66,14 @@ Rectangle {
                 color: Qt.rgba(c.r, c.g, c.b, 0.16)
                 Text { id: chipText; anchors.centerIn: parent; text: tile.t.chip || ""; color: parent.c; font.family: Theme.font; font.pixelSize: 12.5 * tile.k; font.weight: Font.DemiBold }
             }
+        }
+        // The AI team: its live mesh, small.
+        Rectangle {
+            visible: !!tile.t.mesh
+            Layout.fillWidth: true; Layout.fillHeight: true
+            Layout.topMargin: 4 * tile.k
+            radius: 10 * tile.k; color: tile.cSunk; clip: true
+            AiMesh { anchors.fill: parent; anchors.margins: 4 * tile.k; team: tile.team; k: tile.k; compact: true; visible: !!tile.t.mesh }
         }
         // The big number and its unit ("4 questions a minute", "2.6 TB of 8 TB used").
         Row {
@@ -107,7 +128,7 @@ Rectangle {
                 }
             }
         }
-        Item { Layout.fillHeight: true; visible: !tile.t.boxes }
+        Item { Layout.fillHeight: true; visible: !tile.t.boxes && !tile.t.mesh }
         // A bar (storage used) and the rows at the bottom.
         Rectangle {
             visible: tile.t.bar !== undefined && tile.t.bar !== null
