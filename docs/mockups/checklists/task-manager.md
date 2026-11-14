@@ -14,7 +14,10 @@ Started in 1.11 with parts left out; finished in 1.12. Every part of every pictu
 - [x] Right-click: Run on these cores… — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Run on these cores…\""
 - [x] Right-click: Limit CPU / memory… — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Limit CPU / memory…\""
 - [x] Right-click: Never close when memory runs out — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Never close when memory runs out\""
-- [ ] Right-click: Keep this running (checkpoint)
+- [x] Right-click: Keep this running (checkpoint): frozen and its memory moved to the drive instead of closed, remembered — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Keep this running (checkpoint)\""
+- [x] The memory guard freezes a program on the Keep running list instead of closing it — os/system_files/usr/libexec/nimbus/hearth-memory: "freeze(v, procs)"
+- [x] Right-click: Resume for a paused program; Status "Paused to save memory ⏸" — hosts/linux/desktop/shell/TaskManagerView.qml: "\"Paused to save memory \u23f8\""
+- [x] NEW tags on the menu's new items — hosts/linux/desktop/shell/TaskManagerView.qml: "text: \"NEW\"; color: Theme.ember"
 - [x] Right-click: Go to details shows the PID on the right — hosts/linux/desktop/shell/TaskManagerView.qml: "label: \"Go to details\", icon: \"list\", key: \"PID \" + pid"
 - [x] Apps & groups / All processes switch at the top — hosts/linux/desktop/shell/TaskManagerView.qml: "tabs: [[\"groups\", \"Apps & groups\"], [\"all\", \"All processes\"]]"
 - [x] Efficiency mode, Open file location and End task buttons at the top — hosts/linux/desktop/shell/TaskManagerView.qml: "{ id: \"where\", label: \"Open file location\", icon: \"folder\", enabled: pp.selGroup"

@@ -206,7 +206,7 @@ FocusScope {
     }
     // Processes › Apps & groups (sections, apps that unfold) or All processes (every process, one row each) — mockup tm-1
     property string procView: tm.pref("procView", "groups") === "all" ? "all" : "groups"
-    function statusText(g) { return g.suspended ? (g.kind === "game" ? "Quick Resume ⏸" : "Suspended ⏸") : g.eco ? "Efficiency mode" : ""; }
+    function statusText(g) { return g.suspended ? (g.frozen ? "Paused to save memory ⏸" : g.kind === "game" ? "Quick Resume ⏸" : "Suspended ⏸") : g.eco ? "Efficiency mode" : ""; }
     function groupTag(g) { return g.tag || (g.kind === "system" ? "Hearth" : ""); }
     function buildProcs() {
         const q = query.trim().toLowerCase();
@@ -378,10 +378,12 @@ FocusScope {
                    { id: "tree", label: "End process tree", icon: "close", enabled: !g.protected },
                    { id: "eco", label: "Efficiency mode", icon: "leaf", checked: !!g.eco, enabled: !g.protected },
                    { id: "priority", label: "Set priority ▸", icon: "cpu", enabled: !g.protected },
-                   { id: "cores", label: "Run on these cores…", icon: "cpu", enabled: !g.protected },
-                   { id: "limit", label: "Limit CPU / memory…", icon: "cpu", enabled: !g.protected && !child },
-                   { sep: true },
-                   { id: "never", label: "Never close when memory runs out", icon: "shield", enabled: !g.protected && procName !== "" },
+                   { id: "cores", label: "Run on these cores…", icon: "cpu", enabled: !g.protected, fresh: true },
+                   { id: "limit", label: "Limit CPU / memory…", icon: "cpu", enabled: !g.protected && !child, fresh: true },
+                   { sep: true });
+        if (g.suspended && !child) items.push({ id: "resume", label: "Resume", icon: "play", enabled: !g.protected });
+        items.push({ id: "keep", label: "Keep this running (checkpoint)", icon: "pause", checked: !!g.keepRunning, enabled: !g.protected && procName !== "", fresh: true },
+                   { id: "never", label: "Never close when memory runs out", icon: "shield", enabled: !g.protected && procName !== "", fresh: true },
                    { sep: true });
         if (w) items.push({ id: "window", label: "Switch to", icon: "window" });
         items.push({ id: "details", label: "Go to details", icon: "list", key: "PID " + pid },
@@ -406,6 +408,18 @@ FocusScope {
             case "never": Quickshell.execDetached(["pkexec", "/usr/libexec/nimbus/hearth-memory", "never", procName, "on"]);
                 showSheet("notice", g.name, procName + " is on your Never close list: when memory runs out, Hearth closes something else. Change the list in Memory › Swap & settings.", [{ label: "OK", action: "close" }]);
                 break;
+            case "resume": run(actProc, ["resume-group", String(g.pid)]); break;
+            case "keep": {
+                // Keep this running (checkpoint), 1.12: when memory runs out and this is the one eating it, the memory
+                // guard freezes it and moves its memory to the drive instead of closing it. Saved; pressing it again
+                // takes it off the list.
+                const on = !g.keepRunning;
+                Quickshell.execDetached(["pkexec", "/usr/libexec/nimbus/hearth-memory", "checkpoint", procName, on ? "on" : "off"]);
+                showSheet("notice", g.name, on
+                    ? "When memory runs out and " + g.name + " is the one using it, Hearth pauses it instead of closing it: it's frozen and its memory is moved to the drive, so nothing is lost. Right-click it and choose Resume to carry on where you were. Press this again to take it off the list."
+                    : g.name + " is off your Keep running list: when memory runs out it can be closed again.", [{ label: "OK", action: "close" }]);
+                break;
+            }
             case "details": search.text = String(pid); tm.page = "details"; break;
             case "expand": toggleExpand(g.id); break;
             case "window": { const t = windowFor(g); if (t) { t.minimized = false; t.activate(); } break; }
@@ -1983,13 +1997,22 @@ FocusScope {
                                     Icon { anchors.fill: parent; visible: !!mi.modelData.checked; name: "check"; size: 16; color: Theme.accent }
                                 }
                                 Text {
-                                    Layout.fillWidth: true
+                                    Layout.fillWidth: !mi.modelData.fresh
+                                    Layout.maximumWidth: mi.modelData.fresh ? mi.width - 110 : -1
                                     text: mi.modelData.label || ""
                                     color: !mi.on ? Theme.muted : mi.modelData.danger ? Theme.danger : Theme.text
                                     opacity: mi.on ? 1 : 0.6
                                     font.family: Theme.font; font.pixelSize: 13
                                     elide: Text.ElideRight
                                 }
+                                // NEW on the menu's new items (mockup tm-1)
+                                Rectangle {
+                                    visible: !!mi.modelData.fresh
+                                    implicitWidth: freshText.implicitWidth + 10; implicitHeight: 16; radius: 4
+                                    color: "transparent"; border.color: Theme.ember; border.width: 1
+                                    Text { id: freshText; anchors.centerIn: parent; text: "NEW"; color: Theme.ember; font.family: Theme.font; font.pixelSize: 10; font.bold: true }
+                                }
+                                Item { visible: !!mi.modelData.fresh; Layout.fillWidth: true; implicitHeight: 1 }
                                 Text { visible: !!mi.modelData.key; text: mi.modelData.key || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
                             }
                             MouseArea {
