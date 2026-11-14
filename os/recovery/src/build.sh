@@ -9,8 +9,8 @@ export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold)
 # apt's own error lines go straight to the workflow's summary (the build's log isn't readable from outside).
 apt_in() {
-  local rc
-  "${APT[@]}" "$@" > /tmp/apt.log 2>&1; rc=$?
+  local rc=0
+  "${APT[@]}" "$@" > /tmp/apt.log 2>&1 || rc=$?
   cat /tmp/apt.log
   if [ $rc -ne 0 ]; then
     echo "::error title=Recovery USB apt (${*})::$(grep -E '^(E:| [^ ].* : Depends|  Depends| Breaks)' /tmp/apt.log | tail -12 | tr '\n' '|' | cut -c1-1500)"
