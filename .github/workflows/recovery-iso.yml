@@ -1,6 +1,7 @@
-# Builds the Hearth Recovery ISO (os/recovery): a USB stick that repairs an installed Hearth OS. GRUB on it starts
-# the recovery screen by itself after 3 seconds (no keyboard needed). Manual only (Actions › Hearth Recovery ISO ›
-# Run workflow). The ISO is kept as a download on the run for 14 days and, like the live and installer ISOs, uploaded
+# Builds the Hearth Recovery ISO (os/recovery): a USB stick that repairs an installed Hearth OS, made from Hearth OS
+# on Debian (1.12). GRUB on it starts the recovery screen by itself after 3 seconds (no keyboard needed). Manual
+# only (Actions › Hearth Recovery ISO › Run workflow). Before anything is uploaded the ISO is started in a virtual
+# PC through its own boot menu with Secure Boot on, and the recovery screen has to come up (screenshots on the run). The ISO is kept as a download on the run for 14 days and, like the live and installer ISOs, uploaded
 # to Hearth's Cloudflare R2 bucket under a fixed name (what the website's Recovery USB link points at):
 #   https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso, with a .sha256, and latest.json.
 #   Secrets (Settings › Secrets and variables › Actions): R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
@@ -10,17 +11,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Which Hearth OS on Anatase build it is made from'
+        description: 'Which Hearth OS on Debian build it is made from (hearth-peppermint)'
         type: choice
-        options: [latest, testing]
-        default: latest
+        options: [testing]
+        default: testing
       upload:
         description: 'Upload the ISO to the download site (Cloudflare R2, as hearth-recovery.iso; needs the R2_* secrets)'
         type: boolean
         default: true
 
 permissions:
-  contents: read
+  contents: write
   packages: read
 
 jobs:
@@ -28,8 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
-      IMAGE: ghcr.io/dragongamer9/hearth-os
-      TAG: ${{ inputs.tag || 'latest' }}
+      IMAGE: ghcr.io/dragongamer9/hearth-peppermint
+      TAG: ${{ inputs.tag || 'testing' }}
       HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +43,8 @@ jobs:
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=recovery system::$msg"' ERR
           sudo mkdir -p /mnt/containers /var/lib/containers
           sudo mount --bind /mnt/containers /var/lib/containers
-          digest=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$TAG")
+          digest=$(skopeo inspect --retry-times 3 --format '{{.Digest}}' "docker://$IMAGE:$TAG")
+          echo "::notice title=Recovery USB::made from $IMAGE:$TAG ($digest)"
           sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
             --build-arg BASE="$IMAGE@$digest" -t localhost/hearth-recovery:latest -f os/recovery/Containerfile os
       - name: Make the ISO (Titanoboa)
@@ -73,8 +75,26 @@ jobs:
           compression-level: 0
           retention-days: 14
 
+      # The stick started as a PC starts it: firmware (UEFI, Secure Boot on with Microsoft's keys) → Debian's signed
+      # shim and GRUB on the stick → its kernel and live boot → the recovery screen. A small disk labelled HEARTH-CI
+      # turns on the serial-console report (os/recovery/src/build.sh), so the stick's own boot menu is what's tested.
+      - name: Start the ISO in a virtual PC (Secure Boot on)
+        id: boot
+        timeout-minutes: 30
+        env:
+          ISO: ${{ steps.iso.outputs.dir }}/hearth-recovery.iso
+        run: bash tools/recovery-boot-test.sh "$ISO" recovery-boot
+      - name: Publish the boot test's screenshots and serial log (ci/recovery-boot)
+        if: always() && steps.boot.outcome != 'skipped' && steps.boot.outcome != ''
+        run: |
+          [ -d recovery-boot ] || exit 0
+          mkdir -p /tmp/rb-pub && cp -r recovery-boot/. /tmp/rb-pub/ && cd /tmp/rb-pub && git init -q && git checkout -q -b rb
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Recovery boot test ($GITHUB_RUN_ID)" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/recovery-boot || true
+
       - name: Upload to the download site (Cloudflare R2)
-        if: env.HAVE_R2 == 'true' && inputs.upload
+        if: env.HAVE_R2 == 'true' && inputs.upload && steps.boot.outcome == 'success'
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
