@@ -205,7 +205,7 @@ for i in $(seq 1 40); do
     echo "secureboot: $(dmesg 2>/dev/null | grep -io 'secure boot [a-z]*' | head -1) $(mokutil --sb-state 2>/dev/null | head -1)"
     systemctl is-active hearth-recovery-ui.service | sed 's/^/ui-service: /'
     # (Debian's Quickshell lists the instance first: --newest picks the running screen, and the JSON is its last line.)
-    st=$(timeout 10 quickshell ipc --newest -p /usr/share/hearth-recovery/ui call recovery state 2>&1 | grep -m1 '^{' | cut -c1-3000)
+    st=$(timeout 10 quickshell ipc --any-display --newest -p /usr/share/hearth-recovery/ui call recovery state 2>&1 | grep -m1 '^{' | cut -c1-3000)
     [ -n "$st" ] || st=$(timeout 10 quickshell ipc -p /usr/share/hearth-recovery/ui call recovery state 2>&1 | tr '\n' ' ' | cut -c1-600)
     echo "ui-state: $st"
     tail -n 5 /run/hearth-recovery/ui.log 2>/dev/null | cut -c1-300 | sed 's/^/ui-log: /'
