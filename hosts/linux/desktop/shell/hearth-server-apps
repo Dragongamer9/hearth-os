@@ -30,6 +30,11 @@ settings, handed to Podman in a 0600 env file in your runtime folder (never on a
   hearth-server-apps remove ID [data sure really-sure]   its images go; its data only with both confirmations
   hearth-server-apps run ID | stop ID        what hearth-app@ID.service runs (ExecStart / ExecStop)
   hearth-server-apps job ID                  the install itself (started by install/update)
+  hearth-server-apps worlds                  world backups: the settings and each game server's kept backups
+  hearth-server-apps worlds-set KEY VALUE    on on|off, at HH:MM, keep DAYS (1-90)
+  hearth-server-apps world-backup ID         back up its world now (stopped cleanly first, started again after)
+  hearth-server-apps world-restore ID FILE   roll back to that backup (today's world is kept as one first)
+  hearth-server-apps worlds-run              what hearth-server-worlds.service runs: the nightly backups
   hearth-server-apps ntfy                    phone notifications: settings and the last result
   hearth-server-apps ntfy-set KEY VALUE      on|alerts|apps (on|off); server URL; topic TOPIC|new
   hearth-server-apps ntfy-test               send a test notification now
@@ -186,7 +191,10 @@ CATALOG = {
 
 APP_DEFAULT = {'on': False, 'reach': None, 'eula': False, 'opts': {}}
 NTFY_DEFAULT = {'on': False, 'server': 'https://ntfy.sh', 'topic': '', 'alerts': True, 'apps': True}
-DEFAULTS = {'apps': {}, 'ntfy': NTFY_DEFAULT}
+# 1.13: world backups for the game servers: every night (when any is installed) and before every update, kept for a set
+# number of days (the newest always stays), with Roll back. On unless you turn it off.
+WORLDS_DEFAULT = {'on': True, 'at': '04:30', 'keep': 7}
+DEFAULTS = {'apps': {}, 'ntfy': NTFY_DEFAULT, 'worlds': WORLDS_DEFAULT}
 
 
 def cmd(args, timeout=60, env=None):
@@ -216,6 +224,7 @@ def settings():
     apps = s.get('apps') if isinstance(s.get('apps'), dict) else {}
     s['apps'] = {k: app_cfg(apps.get(k), k) for k in CATALOG}
     s['ntfy'] = sio.with_defaults(s['ntfy'] if isinstance(s.get('ntfy'), dict) else {}, NTFY_DEFAULT)
+    s['worlds'] = worlds_cfg(s.get('worlds'))
     return s
 
 
@@ -334,6 +343,16 @@ def unit_texts():
             '# Settings › Home server › Phone notifications: sends what\'s new to ntfy. Made by hearth-server-apps.\n'
             '[Unit]\nDescription=Hearth home server: phone notifications\n\n'
             '[Service]\nType=oneshot\nExecStart=-/usr/bin/python3 ' + s + ' ntfy-forward\nNice=10\nTimeoutStartSec=120\n'),
+        'hearth-server-worlds.service': (
+            '# Settings › Home server › Server apps › World backups: each game server\'s world, stopped cleanly first and\n'
+            '# started again after. Made by hearth-server-apps.\n'
+            '[Unit]\nDescription=Hearth home server: world backups\n\n'
+            '[Service]\nType=oneshot\nExecStart=-/usr/bin/python3 ' + s + ' worlds-run\nNice=10\nIOSchedulingClass=idle\nTimeoutStartSec=3h\n'),
+        'hearth-server-worlds.timer': (
+            '# Settings › Home server › Server apps › World backups: once a night at your time (and at the next start if the PC\n'
+            '# was off), enabled only while backups are on and a game server is installed.\n'
+            '[Unit]\nDescription=Hearth home server: world backups every night\n\n'
+            '[Timer]\nOnCalendar=*-*-* ' + worlds_cfg(settings_raw_worlds())['at'] + ':00\nPersistent=true\nRandomizedDelaySec=5min\n\n[Install]\nWantedBy=timers.target\n'),
         'hearth-server-ntfy.timer': (
             '# Settings › Home server › Phone notifications: every 5 minutes, enabled only while they\'re on.\n'
             '[Unit]\nDescription=Hearth home server: phone notifications, every 5 minutes\n\n'
@@ -785,6 +804,210 @@ def stop(aid):
     return {'ok': True}
 
 
+# ------------------------------------------------------------------ world backups (1.13)
+# What holds each game server's world (a volume, and a folder in it; the servers' own program files are left out).
+WORLDS = {'minecraft': ('world', ''), 'horizon': ('world', ''), 'valheim': ('config', ''), 'terraria': ('worlds', ''),
+          'palworld': ('server', 'Pal/Saved')}
+TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+BACKUP_RE = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{4})( [a-z -]{1,40})?\.tar\.gz$')
+
+
+def worlds_cfg(v):
+    v = sio.with_defaults(v if isinstance(v, dict) else {}, WORLDS_DEFAULT)
+    v['on'] = v.get('on') is not False
+    v['at'] = v['at'] if isinstance(v.get('at'), str) and TIME_RE.match(v['at']) else WORLDS_DEFAULT['at']
+    v['keep'] = v['keep'] if isinstance(v.get('keep'), int) and 1 <= v['keep'] <= 90 else WORLDS_DEFAULT['keep']
+    return v
+
+
+def settings_raw_worlds():
+    raw = sio.load_json(SETTINGS, {}) if os.path.exists(SETTINGS) else {}
+    return raw.get('worlds') if isinstance(raw, dict) else {}
+
+
+def world_dir(aid):
+    return os.path.join(DATA_ROOT, 'World backups', CATALOG[aid]['name'])
+
+
+def world_source(aid):
+    vol, sub = WORLDS[aid]
+    return data_dir(aid, vol), sub
+
+
+def world_list(aid):
+    d = world_dir(aid)
+    out = []
+    try:
+        names = os.listdir(d)
+    except OSError:
+        names = []
+    for n in names:
+        m = BACKUP_RE.match(n)
+        if not m:
+            continue
+        p = os.path.join(d, n)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        out.append({'file': n, 'at': int(st.st_mtime), 'why': (m.group(2) or '').strip() or 'nightly', 'size': st.st_size})
+    out.sort(key=lambda b: b['at'], reverse=True)
+    return out
+
+
+def world_prune(aid, keep_days, now=None):
+    """Backups older than the days you keep go; the newest always stays, whatever its age."""
+    now = time.time() if now is None else now
+    gone = 0
+    for b in world_list(aid)[1:]:
+        if now - b['at'] > keep_days * 86400:
+            try:
+                os.remove(os.path.join(world_dir(aid), b['file']))
+                gone += 1
+            except OSError:
+                pass
+    return gone
+
+
+def world_stop(aid):
+    """Stopped cleanly (the server saves the world as it stops); True when it was running."""
+    was = unit_state(aid) in ('active', 'activating')
+    if was:
+        cmd(['systemctl', '--user', 'stop', unit(aid)], 120)
+    return was
+
+
+def world_backup(aid, why='nightly', now=None):
+    """The world (stopped cleanly first, started again after) into ~/Server apps/World backups/<game>/."""
+    if aid not in WORLDS:
+        raise Fail('%s has no world to back up' % CATALOG.get(aid, {}).get('name', aid))
+    src, sub = world_source(aid)
+    if not os.path.isdir(os.path.join(src, sub) if sub else src):
+        return {'ok': True, 'skipped': 'no world yet'}
+    now = time.time() if now is None else now
+    os.makedirs(world_dir(aid), exist_ok=True)
+    name_ = time.strftime('%Y-%m-%d %H%M', time.localtime(now)) + ('' if why == 'nightly' else ' ' + re.sub(r'[^a-z -]', '', why.lower())[:40]) + '.tar.gz'
+    dest = os.path.join(world_dir(aid), name_)
+    tmp = dest + '.part'
+    was = world_stop(aid)
+    try:
+        # podman unshare: the server's files belong to its container's users; read them as that container's root.
+        code, o = cmd(['podman', 'unshare', 'tar', '-C', src, '-czf', tmp, sub or '.'], 3 * 3600)
+        if code != 0:
+            raise Fail('the backup of %s didn\'t finish: %s' % (CATALOG[aid]['name'], o.strip()[-160:]))
+        os.replace(tmp, dest)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        if was:
+            cmd(['systemctl', '--user', 'start', unit(aid)], 120)
+    state_set(aid, worldAt=int(now), worldFile=name_)
+    return {'ok': True, 'file': name_}
+
+
+def world_restore(aid, fname):
+    """Roll back: the server stopped cleanly, today's world kept as a backup first, then the one you picked put back."""
+    if aid not in WORLDS:
+        raise Fail('That server has no world')
+    if not BACKUP_RE.match(fname or '') or fname not in [b['file'] for b in world_list(aid)]:
+        raise Fail('That backup isn\'t there any more')
+    path = os.path.join(world_dir(aid), fname)
+    code, listing = cmd(['tar', '-tzvf', path], 600)
+    if code != 0 or not tar_safe(listing):
+        raise Fail('That backup can\'t be read safely, so nothing was changed')
+    world_backup(aid, 'before rollback')
+    src, sub = world_source(aid)
+    was = world_stop(aid)
+    try:
+        target = os.path.join(src, sub) if sub else src
+        code, o = cmd(['podman', 'unshare', 'sh', '-c', 'find "$1" -mindepth 1 -delete', 'sh', target], 1800)
+        if code != 0:
+            raise Fail('the old world couldn\'t be cleared: %s' % o.strip()[-160:])
+        code, o = cmd(['podman', 'unshare', 'tar', '-C', src, '-xzf', path], 3 * 3600)
+        if code != 0:
+            raise Fail('the backup couldn\'t be put back (today\'s world is kept as "before rollback"): %s' % o.strip()[-160:])
+    finally:
+        if was:
+            cmd(['systemctl', '--user', 'start', unit(aid)], 120)
+    return {'ok': True, 'restored': fname}
+
+
+def players_on(aid):
+    """Someone is playing on a TCP game server right now (Minecraft, Horizon, Terraria): the nightly backup waits."""
+    tcp = [p[0] for p in CATALOG[aid]['ports'] if p[1] == 'tcp']
+    if not tcp or not have('ss'):
+        return False
+    code, o = cmd(['ss', '-Htn', 'state', 'established', '( sport = :%d )' % tcp[0]], 10)
+    return code == 0 and bool(o.strip())
+
+
+def worlds_run(now=None):
+    """The nightly run: every installed game server's world (one with players on waits an hour, once), then pruning."""
+    w = settings()['worlds']
+    done, waited = [], []
+    if not w['on']:
+        return {'ok': True, 'done': done, 'off': True}
+    for aid in WORLDS:
+        if not os.path.isdir(data_dir(aid)):
+            continue
+        if players_on(aid):
+            time.sleep(0 if now else 3600)
+            if players_on(aid):
+                waited.append(aid)
+                continue
+        try:
+            r = world_backup(aid, 'nightly', now)
+            if r.get('file'):
+                done.append(aid)
+        except Fail as e:
+            state_set(aid, worldError=str(e))
+        world_prune(aid, w['keep'], now)
+    return {'ok': True, 'done': done, 'waited': waited}
+
+
+def worlds_sync():
+    """The nightly timer on only while backups are on and a game server is installed."""
+    w = settings()['worlds']
+    want = w['on'] and any(os.path.isdir(data_dir(a)) for a in WORLDS)
+    ensure_units()
+    cmd(['systemctl', '--user', 'enable' if want else 'disable', '--now', 'hearth-server-worlds.timer'], 30)
+    return want
+
+
+def worlds_set(key, value):
+    if key == 'on':
+        if value not in ('on', 'off'):
+            raise Fail('on or off')
+        v = value == 'on'
+    elif key == 'at':
+        if not TIME_RE.match(value):
+            raise Fail('a time like 04:30')
+        v = value
+    elif key == 'keep':
+        if not value.isdigit() or not 1 <= int(value) <= 90:
+            raise Fail('1 to 90 days')
+        v = int(value)
+    else:
+        raise Fail('on, at or keep')
+    if settings()['worlds'][key] != v:
+        def change(d):
+            cur = dict(d.get('worlds')) if isinstance(d.get('worlds'), dict) else {}
+            cur[key] = v
+            d['worlds'] = cur
+        sio.update_json(SETTINGS, change)
+    worlds_sync()
+    return worlds_view()
+
+
+def worlds_view():
+    w = settings()['worlds']
+    return {'settings': w, 'servers': [{'id': a, 'name': CATALOG[a]['name'], 'backups': world_list(a)[:30],
+                                        'error': (state().get(a) or {}).get('worldError', '')}
+                                       for a in WORLDS if os.path.isdir(data_dir(a))]}
+
+
 # ------------------------------------------------------------------ install, switch, remove
 
 def install(aid, update=False):
@@ -811,6 +1034,9 @@ def job(aid, update=False):
     a = app_or_fail(aid)
     imgs = a['images']
     try:
+        if update and aid in WORLDS:
+            state_set(aid, step='backing up the world first', progress=0)
+            world_backup(aid, 'before update')
         for i, ref in enumerate(imgs):
             state_set(aid, step='downloading %s' % ref.split('/')[-1], progress=int(100 * i / len(imgs)))
             code, o = cmd(['podman', 'pull', ref], 3 * 3600)
@@ -821,6 +1047,9 @@ def job(aid, update=False):
             ver = engine_install(aid, progress=lambda got, total: state_set(aid, progress=50 + int(45 * got / total)))
             state_set(aid, version=ver)
         state_set(aid, installing=False, progress=100, step='done', error='', installedAt=int(time.time()))
+        if aid in WORLDS:
+            os.makedirs(data_dir(aid), exist_ok=True)
+            worlds_sync()
         if update and settings()['apps'][aid]['on']:
             cmd(['systemctl', '--user', 'restart', unit(aid)], 60)
     except Fail as e:
@@ -1118,6 +1347,16 @@ def main(argv):
         return run(a[1])
     if c == 'stop' and len(a) == 2:
         return stop(a[1])
+    if c == 'worlds':
+        return worlds_view()
+    if c == 'worlds-set' and len(a) == 3:
+        return worlds_set(a[1], a[2])
+    if c == 'world-backup' and len(a) == 2:
+        return world_backup(a[1], 'by hand')
+    if c == 'world-restore' and len(a) == 3:
+        return world_restore(a[1], a[2])
+    if c == 'worlds-run':
+        return worlds_run()
     if c == 'ntfy':
         return ntfy_view()
     if c == 'ntfy-set' and len(a) == 3:
