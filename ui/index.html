@@ -1783,7 +1783,7 @@ const MOCK = (()=>{
     'bazaar.open':async()=>({ok:true, mouse:true}),   // Bazaar, Hearth OS's app store (hearth-core bazaar.rs)
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle',hearth:{available:true,installed:true,own:true,default:false,version:'150.0'}}),
     'browser.hearth':async()=>clone(st.br||{available:true,installed:false,state:'idle',hearth:{available:true,installed:true,own:true,default:true,version:'150.0'}}),
-    'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } return clone(st.br); },
+    'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } if(action==='pick-chrome'||action==='pick-firefox'){ const c=action==='pick-chrome'?'chrome':'firefox'; st.br.choice={browser:c,picked:true,asked:true,chrome:{installed:c==='chrome'||!!(st.br.choice&&st.br.choice.chrome&&st.br.choice.chrome.installed),note:'Must Have For Xodus Nexus'}}; } return clone(st.br); },
     'buttons.get':async()=>clone(Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},{maxVolume:st.btn&&st.btn.overamp?150:100,watching:{devices:['Power Button','AT Translated Set 2 keyboard'],problems:[]}})),
     'buttons.set':async(o)=>{ st.btn=Object.assign({press:'sleep',hold:'menu',overamp:false},st.btn||{},o); if(!st.btn.overamp&&st.audio.volume>100) st.audio.volume=100; return MOCK.call('buttons.get'); },
     'controller.status':async()=>{ const B=[['South','A'],['East','B'],['West','X'],['North','Y'],['LeftBumper','LB'],['RightBumper','RB'],['Select','View'],['Start','Menu'],['Guide','Guide (Xbox)'],['LeftStick','Left stick click'],['RightStick','Right stick click'],['DPadUp','D-pad up'],['DPadDown','D-pad down'],['DPadLeft','D-pad left'],['DPadRight','D-pad right'],['LeftPaddle1','Left back button'],['RightPaddle1','Right back button'],['QuickAccess','Quick Access button']];
@@ -10449,6 +10449,7 @@ function act(el){
     case 'swRestart': return swRestart();
     case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : setupGo(1);
     case 'setupSkip': return setupFinish();
+    case 'setupBrowser': return call('browser.act',{action:d.v==='chrome'?'pick-chrome':'pick-firefox'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'profRetry': PROF.err=null; render('pr-retry',true); return loadProfiles();
     case 'impRetry': IMP.err=null; render('imp-retry',true); return loadImport();
     case 'accRetry': ACC.err=null; render('acc-retry',true); return loadAccounts();
@@ -12882,7 +12883,8 @@ function expiredSheet(store, why){
 // ---------- First start (Hearth OS): Wi-Fi, store accounts, the controller, your games ----------
 // Shown once on a fresh install, instead of dropping straight into the library. Skippable at every step;
 // everything here is also in Settings later.
-const SETUP_STEPS=['controller','welcome','wifi','accounts','controls','games','done'];
+// browser (1.12): Hearth OS (Linux) only, so on other hosts the list is one shorter and B always goes back one step.
+const SETUP_STEPS=['controller','welcome','wifi',...(LINUX?['browser']:[]),'accounts','controls','games','done'];
 // ---------- "Connect a controller": the first screen on the live USB and at first start ----------
 // Waits for a controller (USB, Bluetooth or the device's own), with Skip for a keyboard or mouse.
 function padState(){
@@ -12940,7 +12942,10 @@ function viewLive(){
 }
 function setupGo(d){
   const i=Math.max(0, Math.min(SETUP_STEPS.length-1, (S.setupStep||0)+d));
+  // Leaving the browser step without picking keeps Hearth Browser, and the desktop's "Pick your browser" isn't shown later.
+  if(SETUP_STEPS[S.setupStep||0]==='browser' && d>0 && host && LINUX) call('browser.act',{action:'asked'}).catch(()=>{});
   S.setupStep=i; const st=SETUP_STEPS[i];
+  if(st==='browser') loadBrowser();
   if(st==='wifi'){ wifiScan(); }
   if(st==='accounts') loadAccounts();
   if(st==='games' && host && LINUX) loadImport();
@@ -12970,6 +12975,18 @@ function viewSetup(){
       <h1>Welcome to ${APP}</h1><p class="lead">Let's get you online, sign in to your game stores and bring your games over. It takes a couple of minutes, and you can skip anything.</p>
       <div class="acts">${next('Let\'s go')}${skip}</div></div>`;
   else if(st==='wifi') body=`<h1>Connect to the internet</h1><p class="lead">Store sign-ins, downloads and updates need it.</p><div class="rows" style="max-height:50vh;overflow:auto">${pageWifi()}</div><div class="acts">${next(S.sys.wifi&&S.sys.wifi.ssid?'Next':'Skip for now')}</div>`;
+  else if(st==='browser'){
+    // Your browser (1.12): Hearth Browser (Firefox) or Google Chrome, downloaded from Google when picked.
+    const b=BROWSER.s||{}, ch=b.choice||{}, cur=ch.browser||'firefox', busy=b.state&&b.state!=='idle';
+    const pct=busy&&b.progress!=null?Math.round(b.progress):null;
+    const opt=(v,name,sub,extra='')=>`<button class="row" data-f data-k="setup-br-${v}" data-act="setupBrowser" data-v="${v}"><span class="ricon">${I.globe||I.web||''}</span><div class="rt"><b>${name}</b><small>${sub}</small>${extra}</div><div class="rv">${cur===v&&ch.picked?I.check:''}</div></button>`;
+    body=`<h1>Pick your browser</h1><p class="lead">Links open in it. You can change it any time in Settings › Web browser.</p><div class="rows">
+      ${opt('firefox','Hearth Browser (Firefox)','Comes with Hearth OS. Google sign-in, Netflix and add-ons work')}
+      ${opt('chrome','Google Chrome',ch.chrome&&ch.chrome.installed?'Installed':'Downloaded from Google now (about 120 MB), checked against Google\'s signature','<small style="color:var(--danger,#e5484d);font-weight:600;display:block;margin-top:2px">Must Have For Xodus Nexus</small>')}
+      ${busy?`<div class="row"><div class="rt"><b>${esc(b.line||'Getting Google Chrome…')}${pct!=null?' · '+pct+'%':''}</b><small>Keep this screen open</small></div></div>`:''}
+      ${b.error?`<div class="row"><div class="rt"><b style="color:var(--danger,#e5484d)">${esc(b.error)}</b><small>Pick again, or go on with Hearth Browser</small></div></div>`:''}
+    </div><div class="acts">${next(busy?'Next (it carries on)':'Next')}${skip}</div>`;
+  }
   else if(st==='accounts'){
     const rows=(ACC.list||[]).filter(a=>STORE_INFO[a.store]).map(a=>{ const info=STORE_INFO[a.store];
       const status=ACC.signing===a.store?'Signing in…':a.signedIn?`Signed in${a.name?' as '+a.name:''}`:'Not signed in';

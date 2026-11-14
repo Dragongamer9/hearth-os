@@ -1780,7 +1780,10 @@ impl Bridge {
         let mut s = if helper.exists() {
             let last = if job["state"] == "idle" { helper_run(&helper, &["status"], &mut |_, _| {}).unwrap_or(Value::Null) } else { Value::Null };
             let mut s = if last.is_object() { last } else { json!({}) };
-            s["available"] = json!(true); s
+            s["available"] = json!(true);
+            // Your browser (1.12): Hearth Browser (Firefox) or Google Chrome, and whether you were asked yet.
+            if job["state"] == "idle" { s["choice"] = helper_run(&helper, &["choice"], &mut |_, _| {}).unwrap_or(Value::Null); }
+            s
         } else { json!({"available": false}) };
         for (k, v) in job.as_object().cloned().unwrap_or_default() { s[k] = v; }
         let hb = std::path::Path::new("/usr/bin/hearth-browser").exists();
@@ -1788,13 +1791,15 @@ impl Bridge {
         s
     }
     fn browser_act(&self, what: &str) -> Result<(), String> {
-        if !["install", "update", "default", "remove"].contains(&what) { return Err("Unknown action".into()); }
+        if !["install", "update", "default", "remove", "pick-firefox", "pick-chrome", "asked"].contains(&what) { return Err("Unknown action".into()); }
         let helper = paths::desktop_dir().join("shell/hearth-browser");
-        { let mut j = self.browser.lock().unwrap(); if j["state"] != "idle" { return Ok(()); } *j = json!({"state": what, "progress": if what == "install" || what == "update" { json!(0) } else { Value::Null }, "line": "", "error": null}); }
+        { let mut j = self.browser.lock().unwrap(); if j["state"] != "idle" { return Ok(()); } *j = json!({"state": what, "progress": if what == "install" || what == "update" || what == "pick-chrome" { json!(0) } else { Value::Null }, "line": "", "error": null}); }
         let (job, what) = (self.browser.clone(), what.to_string());
         std::thread::spawn(move || {
             let push = |j: &Value| { let mut s = j.clone(); s["available"] = json!(true); crate::stores::notify(Bridge::event("browser", s)); };
-            let r = helper_run(&helper, &[&what], &mut |p, line| { let mut j = job.lock().unwrap(); j["progress"] = json!(p); j["line"] = json!(line); push(&j); });
+            // pick-firefox / pick-chrome: your browser (Chrome is downloaded from Google first when it isn't here).
+            let args: Vec<&str> = match what.as_str() { "pick-firefox" => vec!["pick", "firefox"], "pick-chrome" => vec!["pick", "chrome"], w => vec![w] };
+            let r = helper_run(&helper, &args, &mut |p, line| { let mut j = job.lock().unwrap(); j["progress"] = json!(p); j["line"] = json!(line); push(&j); });
             let mut j = job.lock().unwrap();
             *j = json!({"state": "idle", "progress": null, "line": "", "error": r.err()});
             push(&j);
