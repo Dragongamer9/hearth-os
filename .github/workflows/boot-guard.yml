@@ -1,5 +1,5 @@
 # Automatic fallback and Hearth Recovery on the device: their tests, with GRUB's own tools checking the menu snippet
-# and the environment block (an update must never stop a device from starting: MILESTONES.md). Also the Hearth
+# and the environment block (an update must never stop a device from starting: docs/MILESTONES.md). Also the Hearth
 # Recovery USB's engine on fake drives (reinstall keeps every version, factory reset never erases another system),
 # and Peppermint's writable system (hearth-unlock): its tests, then the real thing in a privileged Debian 13
 # container (overlay over a read-only /usr, apt, an update with the reapply, rollback, lock/unlock, safe start).
