@@ -25,6 +25,7 @@ mkdir -p "$(realpath /root)"
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/hearth-var.conf || true
 test -e /var/lib/dpkg/status
 mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial /var/log/apt
+mkdir -p /var/tmp && chmod 1777 /var/tmp     # dracut works in /var/tmp
 apt-get update -q
 
 # ---------------------------------------------------------------- live boot (dracut's dmsquash-live)
