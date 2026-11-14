@@ -130,7 +130,7 @@ class Offered(unittest.TestCase):
     def test_everywhere_with_the_red_note(self):
         for f in ('hosts/linux/desktop/shell/SetBrowser.qml', 'hosts/linux/desktop/shell/BrowserPick.qml', 'ui/index.html'):
             self.assertIn('Must Have For Xodus Nexus', self.read(f), f)
-        self.assertIn("'wifi','browser','accounts'", self.read('ui/index.html'))
+        self.assertIn("'wifi',...(LINUX?['browser']:[]),'accounts'", self.read('ui/index.html'))
         self.assertIn('Loader { source: "BrowserPick.qml" }', self.read('hosts/linux/desktop/shell/shell.qml'))
 
 

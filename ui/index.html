@@ -12883,7 +12883,8 @@ function expiredSheet(store, why){
 // ---------- First start (Hearth OS): Wi-Fi, store accounts, the controller, your games ----------
 // Shown once on a fresh install, instead of dropping straight into the library. Skippable at every step;
 // everything here is also in Settings later.
-const SETUP_STEPS=['controller','welcome','wifi','browser','accounts','controls','games','done'];   // browser: 1.12, Hearth OS only
+// browser (1.12): Hearth OS (Linux) only, so on other hosts the list is one shorter and B always goes back one step.
+const SETUP_STEPS=['controller','welcome','wifi',...(LINUX?['browser']:[]),'accounts','controls','games','done'];
 // ---------- "Connect a controller": the first screen on the live USB and at first start ----------
 // Waits for a controller (USB, Bluetooth or the device's own), with Skip for a keyboard or mouse.
 function padState(){
@@ -12940,9 +12941,7 @@ function viewLive(){
       ${HOSTINFO.installer?row('lv-off','power','Turn off','Take out the USB stick after','livePower'):row('lv-try','play','Try Hearth first','Install Hearth OS is in Settings whenever you\'re ready','liveTry')}</div></div>`;
 }
 function setupGo(d){
-  let i=Math.max(0, Math.min(SETUP_STEPS.length-1, (S.setupStep||0)+d));
-  // Your browser is Hearth OS's (Linux) only: elsewhere the step is passed over.
-  if(SETUP_STEPS[i]==='browser' && !(host && LINUX)) i=Math.max(0, Math.min(SETUP_STEPS.length-1, i+(d<0?-1:1)));
+  const i=Math.max(0, Math.min(SETUP_STEPS.length-1, (S.setupStep||0)+d));
   // Leaving the browser step without picking keeps Hearth Browser, and the desktop's "Pick your browser" isn't shown later.
   if(SETUP_STEPS[S.setupStep||0]==='browser' && d>0 && host && LINUX) call('browser.act',{action:'asked'}).catch(()=>{});
   S.setupStep=i; const st=SETUP_STEPS[i];
