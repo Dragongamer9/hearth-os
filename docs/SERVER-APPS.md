@@ -71,3 +71,14 @@ Night maintenance, a power history graph, a self-hosted GitHub Actions runner an
 - `hosts/decky-hearth-link/main.py` (`servers`), `src/index.tsx` (`YourServers`)
 - Tests: `hosts/linux/test/test_hearth_server_apps.py` (Home server workflow); screenshots in desktop-test.yml
   (`shots/home-server/35-…38-…`, `shots/looks/steam-11e-settings-device-server.png`)
+
+## World backups (1.13)
+
+Every game server's world (Minecraft, Horizon, Valheim, Terraria, Palworld) is backed up every night at the time you pick
+(04:30 unless you change it) and before every update, into `~/Server apps/World backups/<game>/`, and kept for the days
+you pick (7 unless you change it; the newest always stays). The server is stopped cleanly first, so the world is saved,
+and started again right after; a TCP server with players on (Minecraft, Horizon, Terraria) waits an hour. Its files are
+read through `podman unshare`, as the container's own users. Roll back (Settings › Home server › Server apps › World
+backups) asks twice, keeps today's world as a "before rollback" backup first, checks the archive is safe, then puts the
+one you picked back. The nightly timer (`hearth-server-worlds.timer`, a user unit) is enabled only while backups are on
+and a game server is installed. Off with one switch.

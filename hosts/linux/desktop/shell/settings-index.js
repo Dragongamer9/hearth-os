@@ -1089,6 +1089,21 @@ var ENTRIES = [
 "i": "file"
 },
 {
+"t": "Back up the worlds every night",
+"p": "hs-apps",
+"d": "Each game server is stopped cleanly, its world copied to Home › Server apps › World backups, then started again. Also before every update. A server with players on waits an hour",
+"i": "cloud"
+},
+{
+"t": "Keep them for",
+"p": "hs-apps"
+},
+{
+"t": "Back up now",
+"p": "hs-apps",
+"i": "cloud"
+},
+{
 "t": "Phone notifications",
 "p": "hs-apps",
 "d": "Hear on your phone (the ntfy app) when an alert comes up or a server app stops",
