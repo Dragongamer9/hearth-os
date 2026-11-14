@@ -244,6 +244,8 @@ ShellRoot {
     // Discord (Discord.qml): the bar's button, its small window and chooser; IPC targets "discord" and "friends". Loaded
     // separately like MediaKeys, so a problem in it only loses Discord, never the shell.
     Loader { source: "Discord.qml" }
+    // "Pick your browser" (1.12): once after updating, Hearth Browser or Google Chrome. Loaded by file name like Discord.
+    Loader { source: "BrowserPick.qml" }
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
     // System Restore and Reliability history (docs/SYSTEM-RESTORE.md): loaded separately like Discord, so a problem in
