@@ -11,6 +11,7 @@ until you press Install, then turn it on.
 | App | What it is | Port(s) | Reach by default |
 |---|---|---|---|
 | Minecraft | Java Edition server (itzg/minecraft-server; Paper, Vanilla or Fabric; memory, players). Needs Mojang's EULA accepted | 25565/tcp | home network and Tailscale |
+| Horizon | Minecraft: Java Edition 26.3 rewritten in Rust (github.com/horizon-rust/horizon), no Java. Its signed server build is downloaded at Install (checked against Horizon's release key: the Nightly for its own date and commit) and run read-only in Debian's small image; the game files come from your own Minecraft, prepared by Horizon's launcher (Hearth Games › Recomps), mounted read-only. Needs Mojang's EULA accepted; world name, Minecraft accounts only. Same port as Minecraft's server: one at a time | 25565/tcp | home network and Tailscale |
 | Valheim | Dedicated server (lloesche/valheim-server; server and world name; a password of 5+ characters) | 2456-2457/udp | home network and Tailscale |
 | Terraria | TShock server (ryshe/terraria; world name and size) | 7777/tcp | home network and Tailscale |
 | Palworld | Dedicated server (thijsvanloef/palworld-server-docker; name, players, optional password) | 8211/udp, 27015/udp | home network and Tailscale |
