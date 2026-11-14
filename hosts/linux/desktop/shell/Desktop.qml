@@ -88,27 +88,18 @@ PanelWindow {
         function onSortByChanged() { soon.restart(); }
     }
 
-    // The folder changed (a download, a file saved there, something deleted): look again.
+    // The folder changed (a download, a file saved there, renamed or deleted, by any app): look again at once
+    // (1.13: hearth-files watch, the same watcher Hearth Files uses; it was a look every 3 seconds).
+    readonly property string filesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-files").toString().replace(/^file:\/\//, ""))
+    readonly property string watchDir: iconsOn ? dir : ""
+    onWatchDirChanged: { deskWatch.running = false; if (watchDir !== "") deskWatchStart.restart(); }
+    Timer { id: deskWatchStart; interval: 50; onTriggered: deskWatch.running = root.watchDir !== "" }
     Process {
-        id: statProc
-        command: ["stat", "-c", "%Y", root.dir]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const s = text.trim() || "missing";
-                if (s !== root.stamp) {
-                    const first = root.stamp === "";
-                    root.stamp = s;
-                    if (!first) root.refresh();
-                }
-            }
-        }
+        id: deskWatch
+        command: ["python3", root.filesHelper, "watch", root.watchDir]
+        stdout: SplitParser { onRead: line => { if (String(line).trim() !== "") deskSettle.restart(); } }
     }
-    Timer {
-        interval: 3000
-        repeat: true
-        running: root.iconsOn && root.dir !== ""
-        onTriggered: if (!root.dragging && !statProc.running) statProc.running = true
-    }
+    Timer { id: deskSettle; interval: 150; onTriggered: if (!root.dragging) root.refresh(); else deskSettle.restart() }
 
     function say(t) { SettingsNav.toast(t); }
 

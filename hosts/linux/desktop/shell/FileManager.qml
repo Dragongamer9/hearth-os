@@ -909,7 +909,62 @@ Scope {
             }
         });
     }
-    Timer { interval: 4000; repeat: true; running: app.shown; onTriggered: app.refreshPlaces() }
+    // 1.13: drives plugged in or taken out show at once (hearth-files watch --mounts); the slow look stays for shares.
+    Timer { interval: 15000; repeat: true; running: app.shown; onTriggered: app.refreshPlaces() }
+    Process {
+        id: mountWatch
+        command: ["python3", app.helper, "watch", "--mounts"]
+        running: app.shown
+        stdout: SplitParser { onRead: line => { if (String(line).trim() === "mounts") mountSettle.restart(); } }
+    }
+    Timer { id: mountSettle; interval: 600; onTriggered: { app.refreshPlaces(); if (app.onThisPc) app.loadThisPc(); } }
+
+    // ------------------------------------------------ 1.13: the open folder updates by itself (like File Explorer)
+    // hearth-files watch says "changed" when anything in the open folder is made, renamed, moved, deleted or written (by
+    // any app, a download, the terminal or another PC on a share), and Files lists it again quietly: the selection,
+    // the marks and where you scrolled stay. While you're renaming something it waits until you're done. "gone": the
+    // folder itself was deleted or moved, so Files goes up to the nearest folder that's still there.
+    readonly property string watchPath: (shown && listing && !listing.error && found === null && !onSpecial && !onHome && path === listing.path) ? listing.path : ""
+    property bool refreshWaiting: false
+    property int quietSeq: 0
+    onWatchPathChanged: { folderWatch.running = false; if (watchPath !== "") watchStart.restart(); }
+    Timer { id: watchStart; interval: 50; onTriggered: folderWatch.running = app.watchPath !== "" }
+    Process {
+        id: folderWatch
+        command: ["python3", app.helper, "watch", app.watchPath]
+        stdout: SplitParser { onRead: line => app.folderEvent(String(line).trim()) }
+    }
+    onRenamingChanged: if (renaming === "" && refreshWaiting) { refreshWaiting = false; refreshQuiet(); }
+    function folderEvent(word) {
+        if (word === "gone") {
+            let up = parentOf(path);
+            say("This folder was moved or deleted");
+            return navigate(up || home, "");
+        }
+        if (word !== "changed") return;
+        if (renaming !== "") { refreshWaiting = true; return; }
+        refreshQuiet();
+    }
+    function refreshQuiet() {
+        if (!listing || listing.error || loading) return;
+        const p = listing.path;
+        const seq = ++quietSeq;
+        const keep = entries[cur] ? entries[cur].path : "";
+        const y1 = grid.contentY, y2 = list.contentY;
+        call(["list", p].concat(hidden ? ["--hidden"] : []), (r, err) => {
+            if (seq !== quietSeq || err || !r || r.path !== p || path !== p || loading || found !== null) return;
+            const sig = l => l.entries.map(e => e.name + "\u0001" + (e.size || 0) + "\u0001" + (e.modified || e.mtime || "")).join("\u0002");
+            if (sig(r) === sig(listing)) return;
+            listing = r;
+            const still = {};
+            for (const e of r.entries) if (marked[e.path]) still[e.path] = true;
+            marked = still;
+            const i = keep ? entries.findIndex(e => e.path === keep) : -1;
+            cur = i >= 0 ? i : Math.max(0, Math.min(cur, entries.length - 1));
+            makeThumbs();
+            Qt.callLater(() => { grid.contentY = y1; list.contentY = y2; });
+        });
+    }
     // The navigation pane, Windows 11-style: Home, Favorites, your folders, Games, then This PC opened out with
     // Hearth (C:) and every lettered drive under it, Network (Hearth Storage and Your devices under it), Installed
     // apps and Trash. This PC's and Network's arrows fold them (for this session).
