@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SESSION = ROOT / 'hosts/linux/session/nimbus-session'
@@ -802,6 +803,19 @@ class DeckyHelper(unittest.TestCase):
         os.environ['HEARTH_DECKY_TEST_HOME'] = self.home
         self.m = load_decky()
         self.user = pwd.getpwuid(os.getuid()).pw_name
+        if os.getuid() < 1000:
+            # Run as root (a container): the helper only ever acts for a person's account, so it sees this one as
+            # an ordinary person (id 1000) here. On GitHub's runner the account already is one.
+            self.user = 'hearth-test-person'
+            fake = pwd.struct_passwd((self.user, 'x', 1000, 1000, '', self.home, '/bin/sh'))
+            real = pwd.getpwnam
+            p = mock.patch.object(self.m.pwd, 'getpwnam', side_effect=lambda n: fake if n == self.user else real(n))
+            p.start()
+            self.addCleanup(p.stop)
+            # (and what it does as the person is done right here, as this account: there's no id 1000 to become)
+            q = mock.patch.object(self.m, 'as_user', side_effect=lambda pw, fn: (fn(), True)[1])
+            q.start()
+            self.addCleanup(q.stop)
 
     def tearDown(self):
         os.environ.clear()
