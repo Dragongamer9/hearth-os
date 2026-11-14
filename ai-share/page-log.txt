@@ -1,0 +1,1 @@
+[32m  INFO[97m qml[0m: AI devices: rows end at 1370 layout 1370 childrenRect 1370 contentHeight 1418 height 771
