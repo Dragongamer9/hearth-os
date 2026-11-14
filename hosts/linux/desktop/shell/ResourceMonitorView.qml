@@ -1213,7 +1213,7 @@ FocusScope {
             Text { width: parent.width * parent.parent.pidW; horizontalAlignment: Text.AlignRight; rightPadding: 12; text: "PID"; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
             Repeater {
                 model: parent.parent.cols
-                delegate: Text { required property var modelData; width: phRow.width * (1 - phRow.parent.nameW - phRow.parent.pidW) / Math.max(1, phRow.parent.cols.length); elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; text: modelData; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
+                delegate: Text { required property var modelData; width: phRow.width * (1 - phRow.parent.nameW - phRow.parent.pidW) / Math.max(1, phRow.parent.cols.length); elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; text: modelData; color: vv.c.muted; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
             }
         }
     }
