@@ -149,6 +149,14 @@ pub fn parse_releases(v: &Value) -> Vec<Value> {
 }
 /// The release to install by default: the newest that isn't a pre-release, or the newest when there are only those.
 pub fn latest(rel: &[Value]) -> Option<Value> { rel.iter().find(|r| r["prerelease"] != true).or(rel.first()).cloned() }
+/// Only the releases an entry installs from: a project that releases several programs (Horizon: `launcher@…` next to
+/// its engine's own releases) names its tag prefix ("tagPrefix" in the catalogue). Others keep every release.
+pub fn for_entry(rel: Vec<Value>, e: &Value) -> Vec<Value> {
+    match e["tagPrefix"].as_str().filter(|p| !p.is_empty()) {
+        Some(p) => rel.into_iter().filter(|r| r["tag"].as_str().map(|t| t.starts_with(p)).unwrap_or(false)).collect(),
+        None => rel,
+    }
+}
 
 /// When GitHub's hourly limit for this connection is used up: Some(time it resets, ms).
 pub fn limited_until() -> Option<u64> { let u = LIMITED_UNTIL.load(Ordering::SeqCst); if u > now() { Some(u) } else { None } }
@@ -706,6 +714,7 @@ impl Recomps {
     pub fn details(id: &str, fresh: bool) -> Result<Value, String> {
         let e = entry(id).ok_or("Hearth Recomps doesn't know that one")?;
         let (rel, stale) = releases(e["repo"].as_str().unwrap_or(""), fresh)?;
+        let rel = for_entry(rel, &e);
         let latest = latest(&rel);
         let pick = latest.as_ref().and_then(|r| pick_asset(r["assets"].as_array().map(|a| a.as_slice()).unwrap_or(&[]), arch(), &e))
             .map(|(a, p)| json!({"asset": a, "platform": p}));
@@ -728,7 +737,7 @@ impl Recomps {
                 if limited_until().is_some() { break; }
                 let Some(e) = entry(&id) else { continue };
                 if let Ok((rel, _)) = releases(e["repo"].as_str().unwrap_or(""), force) {
-                    if let Some(l) = latest(&rel) { ups.lock().unwrap().1.insert(id.clone(), l["tag"].clone()); }
+                    if let Some(l) = latest(&for_entry(rel, &e)) { ups.lock().unwrap().1.insert(id.clone(), l["tag"].clone()); }
                 }
                 std::thread::sleep(Duration::from_millis(800));
             }
@@ -755,6 +764,7 @@ impl Recomps {
             let r = (|| -> Result<String, String> {
                 let repo = e["repo"].as_str().unwrap_or("");
                 let (rel, _) = releases(repo, prev.is_some())?;
+                let rel = for_entry(rel, &e);
                 let want = tag.clone().or_else(|| prev.as_ref().and_then(|s| s["pinned"].as_str().map(str::to_string)));
                 let release = match &want { Some(t) => rel.iter().find(|r| r["tag"] == t.as_str()).cloned().ok_or("That version isn't on GitHub any more")?, None => latest(&rel).ok_or("This project has no releases to install yet")? };
                 let assets = release["assets"].as_array().cloned().unwrap_or_default();
@@ -971,6 +981,12 @@ mod tests {
         assert_eq!(r.len(), 2, "drafts are left out");
         assert_eq!(r[0]["name"], "v1.3.0-rc1", "a release without a name is called by its tag");
         let l = latest(&r).unwrap();
+        // a project with several programs: only its own tag's releases (Horizon's launcher@…)
+        let tagged = vec![json!({"tag": "v2026.11.01"}), json!({"tag": "launcher@0.2.58"}), json!({"tag": "launcher@0.2.57"})];
+        let only = for_entry(tagged.clone(), &json!({"tagPrefix": "launcher@"}));
+        assert_eq!(only.len(), 2);
+        assert_eq!(only[0]["tag"], "launcher@0.2.58");
+        assert_eq!(for_entry(tagged, &json!({})).len(), 3);
         assert_eq!(l["tag"], "v1.2.1");
         assert_eq!(l["notes"], "## Fixes\n- Saves load again");
         assert_eq!(l["assets"][2]["digest"], "sha256:abc");
@@ -1044,6 +1060,11 @@ mod tests {
         let z = list.iter().find(|e| e["id"] == "zelda64").unwrap();
         assert_eq!(z["repo"], "Zelda64Recomp/Zelda64Recomp");
         assert_eq!(z["hash"]["xxh3"][0], "ef18b4a9e2386169");
+        // Horizon (1.12): its launcher's AppImage, only from its launcher@ releases; your own Minecraft account
+        let h = list.iter().find(|e| e["id"] == "horizon").unwrap();
+        assert_eq!((h["repo"].as_str(), h["tagPrefix"].as_str(), h["setup"].as_str()), (Some("horizon-rust/horizon"), Some("launcher@"), Some("in-app")));
+        let assets = vec![json!({"name": "horizon-launcher-linux-x86_64.AppImage"}), json!({"name": "horizon-launcher-linux-x86_64.tar.gz"}), json!({"name": "SHA256SUMS"})];
+        assert_eq!(pick_asset(&assets, "x86_64", h).unwrap().0["name"], "horizon-launcher-linux-x86_64.AppImage");
     }
 
     #[test]

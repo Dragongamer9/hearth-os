@@ -253,12 +253,9 @@ class AlwaysStarts(unittest.TestCase):
             t = code((SHELL / f).read_text())
             self.assertNotRegex(t, r'(?<![\w.])(Frame|Scene|MediaCard|StatsCard|Stats|DeskClock|WallAccent|PerfIsland|MediaPill)\s*\{', f)
 
-    def test_nothing_here_touches_booting_or_sessions(self):
-        out = subprocess.run(['git', 'diff', '--name-only', 'origin/main'], cwd=ROOT, capture_output=True, text=True)
-        if out.returncode != 0 or not out.stdout.strip():
-            self.skipTest('no origin/main to compare with')
-        for f in out.stdout.split():
-            self.assertFalse(re.search(r'hosts/linux/session/|nimbus-session|os-bases/|/boot|grub|systemd', f), f)
+    # (A check that the 2026 Mantel change touched nothing about booting compared with main lived here. It belonged to
+    # that one change and failed on every later branch that touches a service; the Boot guard workflow checks
+    # booting and sessions for every change instead. Retired in the 1.12 tidy-up.)
 
 
 class Stats(unittest.TestCase):

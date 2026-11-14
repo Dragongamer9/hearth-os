@@ -75,7 +75,8 @@ class Popup(unittest.TestCase):
 
     def test_levels(self):
         self.assertIn('if (free < 3e9) return 2;', self.QML)
-        self.assertIn('if (pct >= 90 || free < 10e9) return 1;', self.QML)
+        self.assertIn('if ((warnPct > 0 && pct >= warnPct) || free < 10e9) return 1;', self.QML)
+        self.assertIn('property int warnPct: 90', self.QML)          # Warn when C: is over (Task Manager › Disk, 1.12)
 
     def test_loaded_by_the_shell(self):
         shell = open(os.path.join(SHELL, 'shell.qml')).read()

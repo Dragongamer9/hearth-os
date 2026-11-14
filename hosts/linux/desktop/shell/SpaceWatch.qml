@@ -18,9 +18,11 @@ Scope {
     function gb(b) { return (b / 1e9).toFixed(b < 10e9 ? 1 : 0) + " GB"; }
 
     // 0 fine, 1 almost full (90% or under 10 GB), 2 nearly full (under 3 GB)
+    // "Warn when C: is over" (Task Manager › Disk, 1.12): 80–95% or off; under 10 GB and under 3 GB always warn
+    property int warnPct: 90
     function levelOf(free, pct) {
         if (free < 3e9) return 2;
-        if (pct >= 90 || free < 10e9) return 1;
+        if ((warnPct > 0 && pct >= warnPct) || free < 10e9) return 1;
         return 0;
     }
 
@@ -28,8 +30,14 @@ Scope {
     Timer { id: firstLook; interval: 90000; running: true; onTriggered: if (!probe.running) probe.running = true }   // once the desktop has settled
     Process {
         id: probe
-        command: ["/usr/libexec/nimbus/hearth-diskguard", "status"]
-        stdout: StdioCollector { onStreamFinished: sw.take(text) }
+        command: ["sh", "-c", "/usr/libexec/nimbus/hearth-diskguard status; echo; echo @@HEARTH@@; cat /etc/hearth/hardware.json 2>/dev/null; true"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const parts = text.split("@@HEARTH@@");
+                try { const c = JSON.parse(parts[1] || "{}"); const w = c["disk.warnPct"]; sw.warnPct = w === "off" ? 0 : (parseInt(w) || 90); } catch (e) { sw.warnPct = 90; }
+                sw.take(parts[0].trim());
+            }
+        }
     }
     Process { id: release; command: ["pkexec", "/usr/libexec/nimbus/hearth-diskguard", "release"] }
 

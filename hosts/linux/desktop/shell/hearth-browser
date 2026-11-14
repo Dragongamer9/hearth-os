@@ -12,8 +12,15 @@ stay small) and makes it the default browser.
   hearth-browser update      install a newer Aloha if alohabrowser.com has one
   hearth-browser default     make Aloha the default browser
   hearth-browser remove      uninstall it (and stop installing it by itself)
-  hearth-browser ensure      what the session runs: when it's installed, look for an update once a week (it's
-                             no longer installed by itself: Hearth Browser is the browser that comes with Hearth)
+  hearth-browser ensure      what the session runs: when Aloha or Chrome is installed, look for an update once a week
+                             (neither is installed by itself: Hearth Browser is the browser that comes with Hearth)
+
+Google Chrome (1.12, hearth_chrome.py next to this file): the other choice beside Hearth Browser, for sites that only
+let you sign in with Chrome (Xodus Nexus). Downloaded from Google's signed package site when you pick it.
+  hearth-browser chrome status|install|update|remove   Google Chrome in your home folder
+  hearth-browser choice      JSON: the browser you picked (firefox or chrome), whether you were asked yet, and Chrome
+  hearth-browser pick firefox|chrome   your browser: saved (only that key), made the default, Chrome installed if needed
+  hearth-browser asked       the one-time "Pick your browser" was answered or closed: not shown again
 Progress lines "progress: <0-100> <what>", then one JSON line; failures print "error: ..." and exit 1.
 """
 import glob
@@ -28,6 +35,13 @@ import tarfile
 import tempfile
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_chrome as chrome  # noqa: E402
+try:
+    import hearth_settings_io as sio  # noqa: E402
+except ImportError:
+    sio = None
+
 URL = 'https://alohabrowser.com/pc/download/aloha_setup64.rpm'
 HOME = os.path.expanduser('~')
 DATA = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share'))
@@ -38,6 +52,10 @@ DESKTOP = os.path.join(DATA, 'applications', DESKTOP_ID)
 LAUNCHER = os.path.join(HOME, '.local', 'bin', 'aloha-browser')
 WEEK = 7 * 24 * 3600
 MIME = ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']
+# Your browser choice (a setting: hearth_settings_io, only the key that changes is written, never defaults).
+CHOICE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config'), 'nimbus', 'browser-choice.json')
+HEARTH_DESKTOP = 'hearth-browser.desktop'
+BROWSERS = ('firefox', 'chrome')
 
 
 class Fail(Exception):
@@ -149,11 +167,11 @@ def is_default():
         return False
 
 
-def make_default():
-    if not os.path.exists(DESKTOP):
+def make_default(desktop_id=DESKTOP_ID):
+    if desktop_id == DESKTOP_ID and not os.path.exists(DESKTOP):
         raise Fail('Aloha Browser is not installed')
     ok = False
-    for cmd in [['xdg-settings', 'set', 'default-web-browser', DESKTOP_ID]] + [['xdg-mime', 'default', DESKTOP_ID, m] for m in MIME]:
+    for cmd in [['xdg-settings', 'set', 'default-web-browser', desktop_id]] + [['xdg-mime', 'default', desktop_id, m] for m in MIME]:
         try:
             ok = subprocess.run(cmd, capture_output=True, timeout=15).returncode == 0 or ok
         except (OSError, subprocess.TimeoutExpired):
@@ -170,7 +188,7 @@ def make_default():
         if '[Default Applications]' not in lines:
             lines.append('[Default Applications]')
         i = lines.index('[Default Applications]') + 1
-        lines[i:i] = [m + '=' + DESKTOP_ID for m in MIME]
+        lines[i:i] = [m + '=' + desktop_id for m in MIME]
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
             f.write('\n'.join(lines) + '\n')
@@ -278,8 +296,71 @@ def remove():
     save_state(st)
 
 
+def choice_read():
+    d = {}
+    if os.path.exists(CHOICE):
+        d = (sio.load_json(CHOICE, {}, repair=False) if sio else json.load(open(CHOICE))) or {}
+    if not isinstance(d, dict):
+        d = {}
+    return {'browser': d.get('browser') if d.get('browser') in BROWSERS else 'firefox', 'picked': d.get('browser') in BROWSERS,
+            'asked': d.get('asked') is True, 'chrome': chrome.status()}
+
+
+def choice_set(**kw):
+    """Only the keys that change are written (atomic, .bak, merged under a lock); a file that fails to parse is kept."""
+    os.makedirs(os.path.dirname(CHOICE), exist_ok=True)
+    if sio:
+        if os.path.exists(CHOICE) and not isinstance(sio.load_json(CHOICE, None, repair=False), dict):
+            raise Fail('your browser settings file couldn\'t be read; it was kept as it is and nothing was saved over it')
+        sio.update_json(CHOICE, lambda d: (d.update(kw), d)[1])
+    else:
+        d = choice_read()
+        d = {'browser': d['browser'] if d['picked'] else None, 'asked': d['asked']}
+        d.update(kw)
+        with open(CHOICE + '.tmp', 'w') as f:
+            json.dump({k: v for k, v in d.items() if v is not None}, f)
+        os.replace(CHOICE + '.tmp', CHOICE)
+
+
+def pick(which):
+    if which not in BROWSERS:
+        raise Fail('firefox or chrome')
+    if which == 'chrome' and not chrome.installed():
+        chrome.install(progress)
+    make_default(chrome.DESKTOP_ID if which == 'chrome' else HEARTH_DESKTOP)
+    choice_set(browser=which, asked=True)
+    return choice_read()
+
+
 def main(argv):
     c = argv[1] if len(argv) > 1 else 'status'
+    if c == 'chrome':
+        sub = argv[2] if len(argv) > 2 else 'status'
+        if sub == 'install':
+            chrome.install(progress)
+        elif sub == 'update':
+            if not chrome.installed():
+                raise Fail('Google Chrome is not installed')
+            chrome.update()
+        elif sub == 'remove':
+            chrome.remove()
+            if choice_read()['browser'] == 'chrome':
+                make_default(HEARTH_DESKTOP)
+                choice_set(browser='firefox')
+        elif sub != 'status':
+            raise Fail('chrome status|install|update|remove')
+        print(json.dumps(chrome.status()))
+        return
+    if c == 'choice':
+        print(json.dumps(choice_read()))
+        return
+    if c == 'pick' and len(argv) == 3:
+        print(json.dumps(pick(argv[2])))
+        return
+    if c == 'asked':
+        choice_set(asked=True)
+        print(json.dumps(choice_read()))
+        return
     if c == 'status':
         pass
     elif c == 'install':
@@ -296,6 +377,11 @@ def main(argv):
         st = load_state()
         if os.path.exists(LAUNCHER) and time.time() - (st.get('checkedAt') or 0) > WEEK:
             update()
+        if chrome.installed() and time.time() - (chrome.load_state().get('checkedAt') or 0) > chrome.WEEK:
+            try:
+                chrome.update()
+            except chrome.Fail as e:
+                print('Google Chrome: ' + str(e), file=sys.stderr)
     else:
         print('usage: hearth-browser status|install|update|default|remove|ensure')
         sys.exit(2)
@@ -305,6 +391,6 @@ def main(argv):
 if __name__ == '__main__':
     try:
         main(sys.argv)
-    except (Fail, OSError, subprocess.SubprocessError, tarfile.TarError) as e:
+    except (Fail, chrome.Fail, OSError, subprocess.SubprocessError, tarfile.TarError) as e:
         print('error: ' + str(e))
         sys.exit(1)

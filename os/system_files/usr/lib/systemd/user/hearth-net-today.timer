@@ -1,0 +1,11 @@
+# Every minute, so "Used today" counts most of the day's traffic. A user timer: it can't hold up starting.
+[Unit]
+Description=Hearth: network used today (every minute)
+
+[Timer]
+OnStartupSec=1min
+OnUnitActiveSec=1min
+AccuracySec=20s
+
+[Install]
+WantedBy=timers.target

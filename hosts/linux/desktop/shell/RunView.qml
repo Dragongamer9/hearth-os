@@ -97,7 +97,7 @@ FocusScope {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Type the name of an app, folder or website, and Hearth opens it. Windows commands work too."
+                    text: "Type the name of a program, folder, document or website, and Hearth will open it for you."
                     wrapMode: Text.WordWrap; lineHeight: 1.2
                     color: Theme.text; opacity: 0.85; font.family: Theme.font; font.pixelSize: 13
                 }

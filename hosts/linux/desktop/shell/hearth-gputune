@@ -1,0 +1,290 @@
+#!/usr/bin/python3
+"""hearth-gputune: Task Manager › GPU › Tuning (1.12, the approved mockup tm-6; red flag 11), through LACT's daemon.
+
+  hearth-gputune status            JSON: busy, video memory, temperature, power (of the limit), fan (% and rpm), game
+                                   FPS (when MangoHud logs it), the fan mode and curve, power limit range, undervolt,
+                                   profile, whether LACT's daemon is on
+  hearth-gputune fan auto|quiet|curve [T:S,T:S,…]   fan mode; a curve is temperature °C : speed % points
+  hearth-gputune power WATTS       the power limit
+  hearth-gputune undervolt MV      a voltage offset (0 or negative millivolts; only where the card offers it)
+  hearth-gputune profile quiet|balanced|max   Quiet = 80% of the default power limit, Balanced = the default, Max = the most
+  hearth-gputune reset             Back to default: LACT's settings for this card removed
+
+Off until you change something: the first change turns LACT's daemon on (your password once). Every change goes
+through LACT, which keeps it, puts it back at every start and reverts it by itself if it isn't confirmed.
+"""
+import glob
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+SOCK = os.environ.get('HEARTH_LACT_SOCK', '/run/lactd.sock')
+QUIET_CURVE = {40: 20, 60: 30, 75: 50, 85: 75, 95: 100}
+DEFAULT_CURVE = {30: 20, 50: 30, 65: 45, 75: 65, 90: 100}
+
+
+class Fail(Exception):
+    pass
+
+
+def read(p, d=''):
+    try:
+        with open(p) as f:
+            return f.read().strip()
+    except OSError:
+        return d
+
+
+def lact(command, args=None, timeout=5):
+    """One request to lactd: {"command", "args"} → its data, or Fail with its error."""
+    if not os.path.exists(SOCK):
+        raise Fail('off')
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect(SOCK)
+        req = {'command': command}
+        if args is not None:
+            req['args'] = args
+        s.sendall((json.dumps(req) + '\n').encode())
+        buf = b''
+        while not buf.endswith(b'\n'):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+    except OSError as e:
+        raise Fail('LACT didn\'t answer (%s)' % e)
+    finally:
+        s.close()
+    try:
+        r = json.loads(buf.decode() or '{}')
+    except ValueError:
+        raise Fail('LACT answered something unexpected')
+    if r.get('status') != 'ok':
+        raise Fail(str(r.get('data') or 'LACT said no'))
+    return r.get('data')
+
+
+def first_gpu():
+    devs = lact('list_devices') or []
+    if not devs:
+        raise Fail('LACT found no graphics card')
+    d = devs[0]
+    return d.get('id') if isinstance(d, dict) else d
+
+
+def curve_text(curve):
+    return ','.join('%d:%d' % (int(t), round(float(v) * 100 if float(v) <= 1 else float(v))) for t, v in sorted(curve.items(), key=lambda x: int(x[0])))
+
+
+def parse_curve(text):
+    out = {}
+    for part in (text or '').split(','):
+        m = re.match(r'^\s*(\d{1,3})\s*:\s*(\d{1,3})\s*$', part)
+        if not m:
+            raise Fail('a fan curve: points like 40:30,60:45,80:80 (°C:%)')
+        t, sp = int(m.group(1)), int(m.group(2))
+        if not 20 <= t <= 110 or not 0 <= sp <= 100:
+            raise Fail('temperatures 20–110 °C, speeds 0–100%')
+        out[t] = sp
+    if len(out) < 2:
+        raise Fail('at least two points')
+    speeds = [out[t] for t in sorted(out)]
+    if any(b < a for a, b in zip(speeds, speeds[1:])):
+        raise Fail('the fan must not slow down as it gets hotter')
+    return out
+
+
+def _stats_mod():
+    loader = importlib.machinery.SourceFileLoader('hearth_stats_gt', os.path.join(HERE, 'hearth-stats'))
+    spec = importlib.util.spec_from_loader('hearth_stats_gt', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def sysfs_stats():
+    """Without LACT: power and fan from the card's own hwmon (AMD, Intel) or nvidia-smi."""
+    out = {'power': None, 'powerMax': None, 'fanPct': None, 'fanRpm': None}
+    for h in glob.glob('/sys/class/drm/card*/device/hwmon/hwmon*'):
+        p = read(os.path.join(h, 'power1_average')) or read(os.path.join(h, 'power1_input'))
+        if p.isdigit():
+            out['power'] = round(int(p) / 1e6)
+        c = read(os.path.join(h, 'power1_cap'))
+        if c.isdigit():
+            out['powerMax'] = round(int(c) / 1e6)
+        r = read(os.path.join(h, 'fan1_input'))
+        if r.isdigit():
+            out['fanRpm'] = int(r)
+        pw, mx = read(os.path.join(h, 'pwm1')), read(os.path.join(h, 'pwm1_max'), '255')
+        if pw.isdigit() and mx.isdigit() and int(mx):
+            out['fanPct'] = round(100 * int(pw) / int(mx))
+    if out['power'] is None:
+        try:
+            r = subprocess.run(['nvidia-smi', '--query-gpu=power.draw,power.limit,fan.speed', '--format=csv,noheader,nounits'],
+                               capture_output=True, text=True, timeout=4)
+            f = [x.strip() for x in r.stdout.splitlines()[0].split(',')] if r.returncode == 0 and r.stdout.strip() else []
+            if len(f) >= 3:
+                num = lambda x: round(float(x)) if re.match(r'^[\d.]+$', x) else None
+                out.update(power=num(f[0]), powerMax=num(f[1]), fanPct=num(f[2]))
+        except (OSError, subprocess.SubprocessError, IndexError):
+            pass
+    return out
+
+
+def status():
+    out = {'lact': os.path.exists(SOCK), 'installed': bool(subprocess.run(['sh', '-c', 'command -v lact'], capture_output=True).returncode == 0)}
+    out.update(sysfs_stats())
+    try:
+        out['fps'] = _stats_mod().fps(os.path.expanduser('~'))
+    except Exception:
+        out['fps'] = None
+    out.update({'fanMode': 'auto', 'curve': curve_text(DEFAULT_CURVE), 'powerCap': None, 'powerMin': None, 'powerDefault': None,
+                'undervolt': None, 'canUndervolt': False, 'profile': 'balanced', 'canFan': False, 'canPower': False})
+    if not out['lact']:
+        return out
+    try:
+        gid = first_gpu()
+        st = lact('device_stats', {'id': gid}) or {}
+        cfg = lact('get_gpu_config', {'id': gid}) or {}
+    except Fail as e:
+        out['error'] = str(e)
+        return out
+    pw = st.get('power') or {}
+    fan = st.get('fan') or {}
+    out['power'] = round(pw['average'] or pw.get('current') or 0) if pw.get('average') or pw.get('current') else out['power']
+    out['powerCap'] = pw.get('cap_current')
+    out['powerMax'] = pw.get('cap_max') or out['powerMax']
+    out['powerMin'] = pw.get('cap_min')
+    out['powerDefault'] = pw.get('cap_default')
+    out['canPower'] = bool(pw.get('cap_max'))
+    out['fanRpm'] = fan.get('speed_current') or out['fanRpm']
+    if fan.get('pwm_current') is not None:
+        out['fanPct'] = round(100 * fan['pwm_current'] / 255)
+    out['canFan'] = fan.get('speed_max') is not None or fan.get('pwm_current') is not None or 'control_enabled' in fan
+    fs = cfg.get('fan_control_settings') or {}
+    if cfg.get('fan_control_enabled'):
+        curve = fs.get('curve') or {}
+        out['fanMode'] = 'quiet' if curve and {int(k): round(float(v) * 100) for k, v in curve.items()} == QUIET_CURVE else 'curve'
+        if curve:
+            out['curve'] = curve_text(curve)
+    off = cfg.get('voltage_offset')
+    out['undervolt'] = off
+    out['canUndervolt'] = off is not None or 'voltage_offset' in (st.get('clockspeed') or {})
+    cap, dflt = out['powerCap'], out['powerDefault']
+    if cap and dflt:
+        out['profile'] = 'quiet' if cap <= dflt * 0.85 else 'max' if out['powerMax'] and cap >= out['powerMax'] * 0.98 and out['powerMax'] > dflt else 'balanced'
+    return out
+
+
+def ensure_on():
+    if os.path.exists(SOCK):
+        return
+    r = subprocess.run(['pkexec', 'systemctl', 'enable', '--now', 'lactd.service'], capture_output=True, text=True, timeout=120)
+    for _ in range(20):
+        if os.path.exists(SOCK):
+            return
+        time.sleep(0.5)
+    raise Fail('LACT couldn\'t be turned on' + (': ' + r.stderr.strip()[-120:] if r.stderr.strip() else ''))
+
+
+def change(edit):
+    """get_gpu_config → edit → set_gpu_config → confirm (LACT reverts it by itself if it isn't confirmed)."""
+    ensure_on()
+    gid = first_gpu()
+    cfg = lact('get_gpu_config', {'id': gid}) or {}
+    edit(cfg, gid)
+    lact('set_gpu_config', {'id': gid, 'config': cfg})
+    lact('confirm_pending_config', {'command': 'confirm'})
+    return {'ok': True}
+
+
+def set_fan(mode, curve=None):
+    def edit(cfg, _gid):
+        if mode == 'auto':
+            cfg['fan_control_enabled'] = False
+            return
+        pts = QUIET_CURVE if mode == 'quiet' else curve
+        fs = dict(cfg.get('fan_control_settings') or {})
+        fs.update(mode='curve', curve={str(t): round(v / 100, 2) for t, v in pts.items()})
+        fs.setdefault('temperature_key', 'edge')
+        fs.setdefault('interval_ms', 500)
+        cfg['fan_control_enabled'] = True
+        cfg['fan_control_settings'] = fs
+    return change(edit)
+
+
+def set_power(watts):
+    def edit(cfg, _gid):
+        cfg['power_cap'] = float(watts)
+    return change(edit)
+
+
+def set_undervolt(mv):
+    if mv > 0 or mv < -300:
+        raise Fail('undervolt: 0 to -300 mV')
+
+    def edit(cfg, _gid):
+        cfg['voltage_offset'] = int(mv)
+    return change(edit)
+
+
+def set_profile(p):
+    st = status()
+    d, lo, hi = st.get('powerDefault'), st.get('powerMin'), st.get('powerMax')
+    if not d:
+        raise Fail('this card doesn\'t let LACT change its power limit')
+    w = max(lo or 0, round(d * 0.8)) if p == 'quiet' else (hi or d) if p == 'max' else d
+    return set_power(w)
+
+
+def reset():
+    ensure_on()
+    gid = first_gpu()
+    try:
+        lact('reset_config', {'id': gid})
+    except Fail:
+        lact('set_gpu_config', {'id': gid, 'config': {}})
+    try:
+        lact('confirm_pending_config', {'command': 'confirm'})
+    except Fail:
+        pass
+    return {'ok': True}
+
+
+def main(a):
+    try:
+        if a == ['status']:
+            out = status()
+        elif len(a) >= 2 and a[0] == 'fan' and a[1] in ('auto', 'quiet'):
+            out = set_fan(a[1])
+        elif len(a) == 3 and a[0] == 'fan' and a[1] == 'curve':
+            out = set_fan('curve', parse_curve(a[2]))
+        elif len(a) == 2 and a[0] == 'power' and re.match(r'^\d{1,4}$', a[1]):
+            out = set_power(int(a[1]))
+        elif len(a) == 2 and a[0] == 'undervolt' and re.match(r'^-?\d{1,3}$', a[1]):
+            out = set_undervolt(int(a[1]))
+        elif len(a) == 2 and a[0] == 'profile' and a[1] in ('quiet', 'balanced', 'max'):
+            out = set_profile(a[1])
+        elif a == ['reset']:
+            out = reset()
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

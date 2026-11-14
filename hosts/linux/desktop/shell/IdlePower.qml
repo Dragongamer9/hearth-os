@@ -70,6 +70,13 @@ Scope {
             else root.wantSleep = false;
         }
     }
+    // Scheduled tasks you set to run "When the PC is idle" (Task Manager › + New task, 1.12): after 10 minutes idle,
+    // once per idle stretch (games and videos that keep the screen on count as busy).
+    IdleMonitor {
+        timeout: 600
+        respectInhibitors: true
+        onIsIdleChanged: if (isIdle) Quickshell.execDetached(["python3", Quickshell.shellDir + "/hearth-tasks", "task-trigger", "idle"])
+    }
     // A setting changed while the screen was off: make sure it's on.
     Connections {
         target: Settings

@@ -76,7 +76,8 @@ SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'server-mode.json')
 SESSION_CONF = os.path.join(CONFIG_HOME, 'nimbus', 'session.conf')
 HOME_SERVER = os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')
 WEB_STATE = os.path.join(STATE_HOME, 'nimbus', 'server-mode-web.json')      # the PIN's hash, sign-ins (0600)
-EVENTS = os.path.join(STATE_HOME, 'nimbus', 'server-mode-events.json')      # web page sign-ins, for the dashboard's alerts
+EVENTS = os.path.join(STATE_HOME, 'nimbus', 'server-mode-events.json')
+TEAM = os.path.join(STATE_HOME, 'nimbus', 'ai-team.json')      # today's AI requests per device (hearth-ai-share; numbers only)      # web page sign-ins, for the dashboard's alerts
 RT = os.path.join(RUN, 'hearth-server')
 REQUESTS = os.path.join(RT, 'requests')
 COUNTDOWN = os.path.join(RT, 'countdown.json')
@@ -121,7 +122,7 @@ CHOICE = {'gpuWatts': (80, 100, 120, 150, 200), 'idleMinutes': (5, 10, 20, 30), 
           'off': (0, 5, 10, 20, 30, 60)}
 MODES = ('game', 'desktop', 'server')
 GO_MODES = MODES + ('logout',)
-SERVICES = ('ai', 'pictures', 'voices', 'media', 'aishare', 'remote')
+SERVICES = ('ai', 'pictures', 'voices', 'media', 'aishare', 'remote', 'team')     # team: the AI team (1.12), AI chat + Pictures + Voices
 SERVICE_ACTIONS = ('restart', 'pause', 'resume')
 TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 PIN_RE = re.compile(r'^[0-9]{4,12}$')   # ASCII digits only (Python's \d also takes other scripts' digits)
@@ -857,6 +858,27 @@ def dash():
                   'rows': [['Running', ', '.join(app_run[:3]) or 'none']], 'actions': []})
     # ---- the AIs on this PC, drawn like their cores in the Hearth AI Command Center (same ids, same looks)
     share_active = unit_active('hearth-ai-share.service', True)
+    # ---- the AI team (1.12): the engines, today's senders, what happens while you play
+    team_engines = [
+        {'id': 'chat', 'name': 'AI chat', 'icon': 'chat', 'model': loaded[0] if loaded else '',
+         'state': 'off' if ai_state in ('off', 'stopped') else 'working' if asking and loaded else 'ready',
+         'status': ('%s · %d asking' % (loaded[0], asking) if asking else '%s · loaded' % loaded[0]) if loaded and ai_state == 'running'
+         else 'ready' if ai_state == 'running' else ai_state.replace('-you', '')},
+        {'id': 'pictures', 'name': 'Pictures', 'icon': 'image', 'engine': 'ComfyUI',
+         'state': 'working' if running_q else 'ready' if pic_state == 'running' else 'off',
+         'status': ('making 1 of %d' % (running_q + pending_q)) if running_q else 'ready' if pic_state == 'running' else pic_state.replace('-you', '')},
+        {'id': 'voices', 'name': 'Voices', 'icon': 'vol', 'engine': 'Voice Studio' if studio_active else 'Kokoro',
+         'state': 'ready' if voi_active or studio_active else 'off',
+         'status': ('Voice Studio' if studio_active else 'Kokoro') if voi_active or studio_active else 'off'},
+        {'id': 'stt', 'name': 'Speech to text', 'icon': 'mic', 'engine': 'whisper',
+         'state': 'ready' if studio_active else 'off', 'status': 'whisper · ready' if studio_active else 'off'},
+    ]
+    team = team_view(team_today(now), who, team_engines, {'total': running_q + pending_q, 'making': bool(running_q)},
+                     pauses, share_active, socket.gethostname().split('.')[0], now)
+    tiles.insert(0, {'id': 'team', 'title': 'AI team', 'engine': 'One AI address · %d engines' % sum(1 for e in team_engines if e['state'] != 'off'),
+                     'icon': 'sparkle', 'state': 'paused-you' if 'team' in mine else {'busy': 'running', 'ready': 'running', 'off': 'off'}[team['state']],
+                     'chip': 'Paused' if 'team' in mine else team['chip'],
+                     'new': True, 'mesh': True, 'actions': ['restart', 'pause']})
     cores = [
         {'id': 'gpu', 'name': pretty_model(loaded[0]) if loaded else 'AI chat',
          'state': 'off' if ai_state in ('off', 'stopped') else 'working' if asking and loaded else 'ready',
@@ -891,6 +913,8 @@ def dash():
     for e in reversed(ev[-3:] if isinstance(ev, list) else []):
         if isinstance(e, dict):
             alerts.append({'level': e.get('level', 'info'), 'text': e.get('text', ''), 'sub': '', 'at': clock(e.get('at', now))})
+    if team.get('event'):             # the AI team's latest: "Claude (Command Center) asked for a reply · answered by qwen3"
+        alerts.insert(0, {'level': 'team', 'text': team['event'], 'sub': '', 'at': ''})
     problems = [t for t in tiles if t['state'] in ('warn', 'stopped')]
     level = 'warn' if problems or alerts_hs else 'ok'
     title = 'All good' if level == 'ok' else 'Needs a look'
@@ -914,7 +938,7 @@ def dash():
             'live': {'vram': round(((g or {}).get('memUsed') or 0) / 1024, 1), 'power': (g or {}).get('power'), 'rx': r['rx'], 'tx': r['tx'],
                      'storage': round(100 * used / total) if total else None, 'cpu': r['cpu'], 'cpuTemp': ct,
                      'gpuBusy': (g or {}).get('busy'), 'gpuTemp': (g or {}).get('temp'), 'online': online},
-            'cores': cores, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
+            'cores': cores, 'team': team, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
             'countdown': countdown_view(), 'now': int(now)}
 
 
@@ -928,6 +952,74 @@ def server_apps():
     except ValueError:
         v = {}
     return v if isinstance(v, dict) and isinstance(v.get('apps'), list) else {}
+
+
+def team_today(now=None, path=None):
+    """Today's AI team record (hearth-ai-share writes it; a record from another day counts as empty)."""
+    now = now or time.time()
+    d = rjson(path or TEAM, {})
+    if not isinstance(d, dict) or d.get('day') != time.strftime('%Y-%m-%d', time.localtime(now)):
+        return {'day': time.strftime('%Y-%m-%d', time.localtime(now)), 'total': 0, 'here': 0, 'sent': {}, 'senders': {}}
+    return d
+
+
+def team_web_open(now=None, path=None):
+    """The web page was opened: counted as the "Web page" sender on the AI team (no one's address, just a number)."""
+    path = path or TEAM
+    now = now or time.time()
+    try:
+        d = team_today(now, path)
+        e = (d.get('senders') or {}).get('Web page') or {}
+        d.setdefault('senders', {})['Web page'] = {'n': int(e.get('n') or 0) + 1, 'last': 'opened the dashboard', 'at': int(now), 'kind': 'web', 'via': ''}
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        with open(path + '.tmp', 'w') as f:
+            json.dump(d, f)
+        os.replace(path + '.tmp', path)
+    except (OSError, ValueError):
+        pass
+
+
+def team_view(today, who, engines, pictures, pauses, share_on, host, now=None):
+    """Server mode's AI team (1.12, mockups server-ai-team-dash / -detail): this PC's AI engines in the middle and every
+    device or Command Center AI that sent them work today around them, the ones that just sent something lit."""
+    now = now or time.time()
+    senders = []
+    for name, e in sorted((today.get('senders') or {}).items(), key=lambda x: -int((x[1] or {}).get('n') or 0)):
+        if not isinstance(e, dict):
+            continue
+        senders.append({'name': name, 'n': int(e.get('n') or 0), 'last': e.get('last') or '', 'kind': e.get('kind') or 'chat',
+                        'via': e.get('via') or '', 'active': now - int(e.get('at') or 0) < 90})
+    names = {x['name'] for x in senders}
+    for w in who:                       # connected now but nothing asked today yet (the living-room TV on Jellyfin)
+        if w['name'] not in names:
+            senders.append({'name': w['name'], 'n': 0, 'last': ', '.join(w.get('what') or [])[:40], 'kind': 'idle', 'via': '', 'active': False})
+            names.add(w['name'])
+    if pictures['total']:
+        senders.append({'name': 'Pictures queue', 'n': pictures['total'], 'kind': 'pictures', 'via': '', 'active': pictures['making'],
+                        'last': ('Making picture 1 of %d' % pictures['total']) if pictures['making'] else '%d waiting' % pictures['total']})
+    senders = senders[:10]
+    sent = today.get('sent') or {}
+    sent_rows = []
+    for k, n in sorted(sent.items(), key=lambda x: -x[1]):
+        dev, _, kind = k.partition('|')
+        sent_rows.append([dev, int(n), {'chat': 'AI chat', 'voice': 'voices', 'stt': 'speech to text'}.get(kind, kind)])
+    busiest = max((x for x in senders if x['kind'] not in ('pictures', 'idle', 'web')), key=lambda x: x['n'], default=None)
+    working = any(e['state'] == 'working' for e in engines) or any(x['active'] for x in senders)
+    state = 'off' if not share_on and not any(e['state'] != 'off' for e in engines) else 'busy' if working else 'ready'
+    pic = pauses.get('pictures') == 'stop'
+    ai_play = {'small': 'small model', 'unload': 'model unloaded', 'stop': 'stops', 'keep': 'keeps going'}.get(pauses.get('ai'), 'keeps going')
+    le = today.get('lastEvent') or {}
+    event = ''
+    if le and now - int(le.get('at') or 0) < 3600:
+        event = '%s%s asked for %s · answered by %s' % (le.get('who', ''), ' (%s)' % le['via'] if le.get('via') else '',
+                                                       {'chat': 'a reply', 'voice': 'a voice', 'stt': 'a transcript'}.get(le.get('kind'), 'help'),
+                                                       pretty_model(le['model']).split(' ')[0].lower() if le.get('model') else le.get('dev', 'this PC'))
+    return {'state': state, 'chip': {'busy': 'Busy', 'ready': 'Ready', 'off': 'Off'}[state],
+            'address': 'http://%s:8189/v1' % host, 'engines': engines, 'senders': senders,
+            'today': {'requests': int(today.get('total') or 0), 'here': int(today.get('here') or 0), 'sent': sent_rows[:3],
+                      'busiest': [busiest['name'], busiest['n']] if busiest and busiest['n'] else None},
+            'play': [['AI chat', ai_play], ['Pictures', 'stop, keep the queue' if pic else 'keep going'], ['Other devices', 'take over']],
+            'event': event}
 
 
 def pretty_model(name):
@@ -1282,6 +1374,27 @@ def service(action, name):
     root helper's polkit rule. A pause you make is remembered until you resume it (runtime state, not a setting)."""
     if action not in SERVICE_ACTIONS or name not in SERVICES:
         raise Fail('Unknown service or action')
+    if name == 'team':
+        # The AI team's Pause / Resume / Restart: AI chat, Pictures and Voices together, each only when it's on.
+        hsd = hs_settings()
+        done = []
+        for n in ('ai', 'pictures', 'voices'):
+            if (hsd.get(n) or {}).get('on') is True:
+                try:
+                    service(action, n)
+                    done.append(n)
+                except Fail:
+                    pass
+        mine = user_paused()
+        if action == 'pause' and 'team' not in mine:
+            mine.append('team')
+        elif action == 'resume' and 'team' in mine:
+            mine.remove('team')
+        try:
+            wjson(USER_PAUSED, mine)
+        except OSError:
+            pass
+        return {'ok': True, 'service': 'team', 'action': action, 'done': done}
     sysd = {'ai': 'ollama', 'media': 'jellyfin'}
     user = {'pictures': 'hearth-comfyui.service', 'voices': 'hearth-kokoro.service', 'aishare': 'hearth-ai-share.service'}
     verb = {'restart': 'restart', 'pause': 'stop', 'resume': 'start'}[action]
@@ -1543,6 +1656,7 @@ def make_handler():
                 return
             path = self.path.split('?', 1)[0]
             if path == '/':
+                team_web_open()
                 return self.send(200, page_html(), 'text/html')
             if path == '/api/summary':
                 s = peek()

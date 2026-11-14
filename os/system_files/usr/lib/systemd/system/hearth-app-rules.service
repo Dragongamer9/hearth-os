@@ -1,0 +1,17 @@
+# Per-app limits and network rules (1.12, Task Manager › CPU and Network, mockups tm-3 and tm-5): while any rule is
+# set, each program with one goes into its own box (hearth-app-NAME.scope in hearth-apps.slice) with its limit, and
+# the network rules (nftables table inet hearth_apps) match those boxes. It ends by itself when no rule is left,
+# nothing waits for it, and stopping it removes the network rules.
+[Unit]
+Description=Hearth: per-app limits and network rules
+After=multi-user.target nftables.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-hwset apprules
+Restart=on-failure
+RestartSec=30
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

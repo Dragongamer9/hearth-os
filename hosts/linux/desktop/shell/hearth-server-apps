@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """hearth-server-apps: Settings › Home server › Server apps and Phone notifications (docs/SERVER-APPS.md).
 
-The Server apps catalog: one-click game servers (Minecraft, Valheim, Terraria, Palworld) and self-hosted apps
+The Server apps catalog: one-click game servers (Minecraft, Horizon, Valheim, Terraria, Palworld) and self-hosted apps
 (Vaultwarden, Immich, Navidrome, ntfy). Every one is off and not installed until you ask. Each runs in your own
 rootless Podman as your own user service (hearth-app@<id>.service, systemd --user, no [Install]; its timer starts it
 a minute after you sign in and is enabled only while it's on). Nothing here is part of starting the PC, the session,
@@ -23,7 +23,7 @@ settings, handed to Podman in a 0600 env file in your runtime folder (never on a
   hearth-server-apps install ID | update ID  pull its images (in its own transient unit of yours, at low priority)
   hearth-server-apps set ID on|off           on needs it installed (and Minecraft's EULA accepted)
   hearth-server-apps set ID reach home|tailscale
-  hearth-server-apps set ID eula on|off      Minecraft only
+  hearth-server-apps set ID eula on|off      Minecraft and Horizon (Mojang's EULA)
   hearth-server-apps opt ID KEY VALUE        its options (checked against the catalog's choices)
   hearth-server-apps password ID             its password on stdin (HEARTH_INPUT); empty clears it
   hearth-server-apps logs ID                 the last lines it printed
@@ -97,6 +97,23 @@ CATALOG = {
                  'memory': {'default': '4G', 'choices': ['2G', '4G', '6G', '8G'], 'env': 'MEMORY', 'label': 'Memory'},
                  'players': {'default': '10', 'choices': ['5', '10', '20', '40'], 'env': 'MAX_PLAYERS', 'label': 'Players'}},
         'password': None, 'eula': 'https://aka.ms/MinecraftEULA',
+    },
+    # Horizon (github.com/horizon-rust/horizon, MIT, 1.12): Minecraft: Java Edition 26.3 rewritten in Rust, its headless
+    # server. No image of its own: its signed release (horizon-server-linux-x86_64.tar.gz) is downloaded at Install
+    # into ~/Server apps/Horizon/engine and run, read-only, in Debian's small image. It carries nothing of Mojang's: the
+    # game files come from your own Minecraft, prepared by Horizon's launcher (Hearth Games › Recomps), mounted read-only.
+    'horizon': {
+        'name': 'Horizon', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 200 MB, plus your world',
+        'desc': 'A Horizon server: Minecraft: Java Edition 26.3 rewritten in Rust, no Java needed. It uses the game files Horizon\'s launcher made from your own Minecraft, so open Horizon from Hearth Games once first. Join from Multiplayer with this PC\'s address.',
+        'images': ['docker.io/library/debian:bookworm-slim'],
+        'ports': [(25565, 'tcp')], 'volumes': [('world', '/data')],
+        'env': {'HORIZON_EULA': 'true', 'HORIZON_NO_AUDIO': '1', 'PATH': '/opt/horizon:/usr/local/bin:/usr/bin:/bin',
+                'HOME': '/data'},
+        'opts': {'worldName': {'default': 'Hearth', 'text': True, 'env': 'HORIZON_WORLD', 'label': 'World name'},
+                 'online': {'default': 'on', 'choices': ['on', 'off'], 'env': 'HORIZON_ONLINE', 'map': {'on': 'true', 'off': 'false'},
+                            'label': 'Only Minecraft accounts can join'}},
+        'password': None, 'eula': 'https://aka.ms/MinecraftEULA', 'engine': 'horizon', 'stopTimeout': 180,
+        'args': ['sh', '-c', 'cd /data && { test -f server.toml || horizon-server init --yes || exit 1; } && exec horizon-server run'],
     },
     'valheim': {
         'name': 'Valheim', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 2 GB (it downloads the server on first start)',
@@ -369,7 +386,241 @@ def image_there(ref):
 
 
 def installed(aid):
-    return podman_ok() and all(image_there(r) for r in CATALOG[aid]['images'])
+    return podman_ok() and all(image_there(r) for r in CATALOG[aid]['images']) and engine_ok(aid)
+
+
+# ------------------------------------------------------------------ Horizon's engine (its signed release)
+HORIZON_REPO = 'horizon-rust/horizon'
+HORIZON_ASSET = 'horizon-server-linux-x86_64.tar.gz'
+# Horizon's release public keys (base64 Ed25519), as its own installer has them (packaging/server/install.sh,
+# crates/horizon-release-sign/release-keys.txt). A release whose signed SHA256SUMS doesn't match one isn't installed.
+HORIZON_KEYS = ('MU4oiIQcCxkZvbwSjjXs7SySCuM6ywRQ3nGaJYZG0gw=',)
+HORIZON_HOSTS = ('api.github.com', 'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com')
+ED25519_SPKI = bytes([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00])
+
+
+def engine_dir(aid):
+    return data_dir(aid, 'engine')
+
+
+def engine_ok(aid):
+    if not CATALOG[aid].get('engine'):
+        return True
+    cur = os.path.join(engine_dir(aid), 'current')
+    return all(os.path.isfile(os.path.join(cur, b)) for b in ('horizon-server', 'horizon-engine'))
+
+
+def horizon_game_files(home=None):
+    """The newest game files Horizon's launcher prepared from your own Minecraft: (folder, game version) or (None, None).
+    They're in ~/.local/share/horizon-launcher/versions/<version>/.local/horizon-client/<game version>."""
+    root = os.path.join(home or HOME, '.local', 'share', 'horizon-launcher', 'versions')
+    found = []
+    try:
+        for v in os.listdir(root):
+            base = os.path.join(root, v, '.local', 'horizon-client')
+            for g in (os.listdir(base) if os.path.isdir(base) else []):
+                d = os.path.join(base, g)
+                m = os.path.join(d, 'horizon-resources.json')
+                if os.path.isfile(m):
+                    found.append((os.path.getmtime(m), d, g))
+    except OSError:
+        pass
+    if not found:
+        return None, None
+    found.sort()
+    return found[-1][1], found[-1][2]
+
+
+def _https_get(url, limit, timeout=60, dest=None, progress=None):
+    """An https download from GitHub only (redirects too): bytes, or the file written to dest and its SHA-256."""
+    import hashlib
+    import urllib.parse
+
+    def ok(u):
+        u = urllib.parse.urlparse(u)
+        return u.scheme == 'https' and u.hostname in HORIZON_HOSTS
+
+    class Only(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if not ok(newurl):
+                raise Fail('a download tried to go somewhere else (%s): stopped' % urllib.parse.urlparse(newurl).hostname)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+    if not ok(url):
+        raise Fail('not an allowed address')
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-server-apps', 'Accept': 'application/vnd.github+json'})
+    h = hashlib.sha256()
+    got = 0
+    chunks = []
+    try:
+        with urllib.request.build_opener(Only).open(req, timeout=timeout) as r:
+            total = int(r.headers.get('Content-Length') or 0)
+            f = open(dest, 'wb') if dest else None
+            try:
+                while True:
+                    c = r.read(1 << 20)
+                    if not c:
+                        break
+                    got += len(c)
+                    if got > limit:
+                        raise Fail('the download was bigger than expected')
+                    h.update(c)
+                    if f:
+                        f.write(c)
+                    else:
+                        chunks.append(c)
+                    if progress and total:
+                        progress(got, total)
+            finally:
+                if f:
+                    f.close()
+    except (OSError, urllib.error.URLError) as e:
+        raise Fail('couldn\'t download from %s (%s)' % (url.split('/')[2], e))
+    return h.hexdigest() if dest else b''.join(chunks)
+
+
+def horizon_release(get=None):
+    """Horizon's current server build, as its own installer picks it: the Nightly, else the latest release. Returns
+    {tag, signed_as, url, digest, sums_url, sig_url}."""
+    get = get or (lambda u: _https_get(u, 8 << 20))
+    rel = None
+    for path in ('tags/nightly', 'latest'):
+        try:
+            rel = json.loads(get('https://api.github.com/repos/%s/releases/%s' % (HORIZON_REPO, path)).decode('utf-8', 'replace'))
+            break
+        except (Fail, ValueError):
+            continue
+    if not isinstance(rel, dict) or not rel.get('tag_name'):
+        raise Fail('couldn\'t find Horizon\'s newest release')
+    tag = str(rel['tag_name'])
+    assets = {a.get('name'): a for a in rel.get('assets') or [] if isinstance(a, dict)}
+    a = assets.get(HORIZON_ASSET)
+    if not a:
+        raise Fail('Horizon\'s newest release (%s) has no server build for this PC' % tag[:40])
+    signed_as, sig = tag, 'SHA256SUMS.sig'
+    if tag == 'nightly' or tag.startswith('nightly-'):
+        m = re.match(r'^Nightly (\d{4}-\d{2}-\d{2}) · ([0-9a-f]{7,40})$', str(rel.get('name') or ''))
+        if not m:
+            raise Fail('this Horizon Nightly\'s title doesn\'t name its date and commit, so its signature can\'t be checked')
+        signed_as, sig = 'nightly-%s-%s' % m.groups(), 'SHA256SUMS.v2.sig'
+    dg = str(a.get('digest') or '')
+    return {'tag': signed_as, 'url': a.get('browser_download_url'), 'digest': dg[7:].lower() if dg.startswith('sha256:') else '',
+            'sums_url': (assets.get('SHA256SUMS') or {}).get('browser_download_url'),
+            'sig_url': (assets.get(sig) or {}).get('browser_download_url')}
+
+
+def ed25519_ok(message, sig_lines, keys=None):
+    """Whether one of the signature lines (base64) verifies message with one of Horizon's keys (OpenSSL 3)."""
+    import base64
+    keys = HORIZON_KEYS if keys is None else keys
+    with tempfile.TemporaryDirectory() as t:
+        mf = os.path.join(t, 'message')
+        with open(mf, 'wb') as f:
+            f.write(message)
+        for k in keys:
+            kf = os.path.join(t, 'key.der')
+            with open(kf, 'wb') as f:
+                f.write(ED25519_SPKI + base64.b64decode(k))
+            for line in sig_lines:
+                line = line.strip()
+                if not line:
+                    continue
+                sf = os.path.join(t, 'sig')
+                try:
+                    with open(sf, 'wb') as f:
+                        f.write(base64.b64decode(line))
+                except ValueError:
+                    continue
+                if cmd(['openssl', 'pkeyutl', '-verify', '-rawin', '-pubin', '-keyform', 'DER', '-inkey', kf, '-in', mf,
+                        '-sigfile', sf], 30)[0] == 0:
+                    return True
+    return False
+
+
+def horizon_expected_sha(rel, get=None):
+    """The SHA-256 the server build must have: from Horizon's signed SHA256SUMS (checked against its release key), else
+    nothing: an unsigned build isn't installed."""
+    get = get or (lambda u: _https_get(u, 1 << 20))
+    if not rel.get('sums_url') or not rel.get('sig_url'):
+        raise Fail('Horizon\'s release %s has no signed checksums: not installed' % rel['tag'][:40])
+    if not have('openssl'):
+        raise Fail('OpenSSL isn\'t on this PC, so Horizon\'s release signature can\'t be checked: not installed')
+    sums = get(rel['sums_url'])
+    sig = get(rel['sig_url']).decode('ascii', 'replace').splitlines()
+    if not ed25519_ok(('horizon release %s\n' % rel['tag']).encode() + sums, sig):
+        raise Fail('Horizon\'s SHA256SUMS signature doesn\'t match its release key: not installed')
+    for line in sums.decode('utf-8', 'replace').splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[1].lstrip('*') == HORIZON_ASSET and re.fullmatch(r'[0-9a-f]{64}', f[0]):
+            if rel.get('digest') and rel['digest'] != f[0]:
+                raise Fail('Horizon\'s two checksums for its server build don\'t agree: not installed')
+            return f[0]
+    raise Fail('Horizon\'s signed SHA256SUMS doesn\'t list its server build: not installed')
+
+
+def tar_safe(listing):
+    """An archive listing (tar -tzvf) with nothing outside its own folder and no devices."""
+    for line in (listing or '').splitlines():
+        if not line.strip():
+            continue
+        if line[0] not in '-dlh':
+            return False
+        parts = line.split(None, 5)
+        if len(parts) < 6:
+            return False
+        nm = parts[5].split(' -> ')[0].split(' link to ')[0].strip()
+        if nm.startswith('/') or '..' in nm.split('/'):
+            return False
+        if ' -> ' in parts[5] and (parts[5].split(' -> ', 1)[1].startswith('/') or '..' in parts[5].split(' -> ', 1)[1].split('/')):
+            return False
+    return True
+
+
+def engine_install(aid, progress=None):
+    """Horizon's server build: found, its signature and checksum checked, unpacked beside the old one, then swapped in."""
+    rel = horizon_release()
+    want = horizon_expected_sha(rel)
+    root = engine_dir(aid)
+    os.makedirs(os.path.join(root, 'releases'), exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix='.download-', dir=root)
+    try:
+        f = os.path.join(tmp, HORIZON_ASSET)
+        got = _https_get(rel['url'], 512 << 20, timeout=120, dest=f, progress=progress)
+        if got != want:
+            raise Fail('Horizon\'s download doesn\'t match its signed checksum: not installed')
+        code, listing = cmd(['tar', '-tzvf', f], 300)
+        if code != 0 or not tar_safe(listing):
+            raise Fail('Horizon\'s archive isn\'t safe to unpack: not installed')
+        x = os.path.join(tmp, 'x')
+        os.makedirs(x)
+        code, o = cmd(['tar', '-xzf', f, '-C', x, '--no-same-owner', '--no-same-permissions'], 600)
+        if code != 0:
+            raise Fail('Horizon couldn\'t be unpacked: ' + o.strip()[-160:])
+        src = next((dp for dp, _dn, fn in os.walk(x) if 'horizon-server' in fn), None)
+        if not src or not all(os.path.isfile(os.path.join(src, b)) for b in ('horizon-server', 'horizon-engine')):
+            raise Fail('Horizon\'s archive has no server (horizon-server and horizon-engine)')
+        for b in ('horizon-server', 'horizon-engine', 'horizon-prepare'):
+            if os.path.isfile(os.path.join(src, b)):
+                os.chmod(os.path.join(src, b), 0o755)
+        # Where the game files are mounted (read-only) inside the read-only engine folder.
+        os.makedirs(os.path.join(src, '.local', 'horizon-client'), exist_ok=True)
+        dest = os.path.join(root, 'releases', re.sub(r'[^\w.-]', '_', rel['tag'])[:80])
+        if os.path.isdir(dest):
+            shutil.rmtree(dest)
+        os.rename(src, dest)
+        link = os.path.join(root, 'current')
+        prev = os.path.realpath(link) if os.path.lexists(link) else ''
+        tmp_link = link + '.new'
+        if os.path.lexists(tmp_link):
+            os.remove(tmp_link)
+        os.symlink(os.path.relpath(dest, root), tmp_link)
+        os.replace(tmp_link, link)
+        for old in os.listdir(os.path.join(root, 'releases')):        # the new one and the one before it stay
+            p = os.path.join(root, 'releases', old)
+            if os.path.realpath(p) not in (os.path.realpath(dest), prev):
+                shutil.rmtree(p, ignore_errors=True)
+        return rel['tag']
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def ts_ip4():
@@ -452,7 +703,7 @@ def run_argv(aid, cfg=None, sec=None, ts_ip=None):
     sec = secrets_read().get(aid) or {} if sec is None else sec
     ts_ip = ts_ip4() if ts_ip is None else ts_ip
     argv = ['podman', 'run', '--rm', '--replace', '--name', name(aid), '--pull=never', '--label', 'hearth.app=' + aid,
-            '--security-opt', 'no-new-privileges', '--stop-timeout', '30']
+            '--security-opt', 'no-new-privileges', '--stop-timeout', str(a.get('stopTimeout') or 30)]
     if a.get('pod'):
         argv += ['--pod', name(aid) + '-pod']
     else:
@@ -464,6 +715,12 @@ def run_argv(aid, cfg=None, sec=None, ts_ip=None):
     for k, o in a['opts'].items():
         if o.get('folder'):
             argv += ['-v', '%s:%s:ro' % (os.path.expanduser(cfg['opts'][k]), o['mount'])]
+    if a.get('engine'):
+        # The engine and your own prepared game files, both read-only (Horizon finds them beside its program).
+        argv += ['-v', '%s:/opt/horizon:ro' % os.path.realpath(os.path.join(engine_dir(aid), 'current'))]
+        gf, gv = horizon_game_files()
+        if gf:
+            argv += ['-v', '%s:/opt/horizon/.local/horizon-client/%s:ro' % (gf, gv)]
     argv += ['--env-file', '@ENV@', a['images'][0]] + list(a.get('args') or [])
     if aid == 'terraria':
         w = '/root/.local/share/Terraria/Worlds/%s.wld' % cfg['opts']['worldName'].replace(' ', '_')
@@ -478,8 +735,10 @@ def run(aid):
     cfg = s['apps'][aid]
     if not cfg['on']:
         raise Fail('%s is off (Settings › Home server › Server apps)' % a['name'])
-    if aid == 'minecraft' and not cfg['eula']:
+    if a.get('eula') and not cfg['eula']:
         raise Fail('Accept Minecraft\'s EULA first')
+    if a.get('engine') and not horizon_game_files()[0]:
+        raise Fail('Horizon needs the game files from your own Minecraft: open Horizon once from Hearth Games (it prepares them), then turn this on again')
     sec = secrets_read().get(aid) or {}
     pw = a.get('password')
     if pw and pw.get('required') and len(sec.get('password') or '') < pw['min']:
@@ -557,6 +816,10 @@ def job(aid, update=False):
             code, o = cmd(['podman', 'pull', ref], 3 * 3600)
             if code != 0 or not image_there(ref):
                 raise Fail('the download of %s didn\'t finish: %s' % (ref.split('/')[-1], o.strip()[-160:]))
+        if a.get('engine'):
+            state_set(aid, step='downloading %s' % a['name'], progress=50)
+            ver = engine_install(aid, progress=lambda got, total: state_set(aid, progress=50 + int(45 * got / total)))
+            state_set(aid, version=ver)
         state_set(aid, installing=False, progress=100, step='done', error='', installedAt=int(time.time()))
         if update and settings()['apps'][aid]['on']:
             cmd(['systemctl', '--user', 'restart', unit(aid)], 60)
@@ -572,8 +835,10 @@ def switch(aid, on):
     if on:
         if not installed(aid):
             raise Fail('Install %s first' % a['name'])
-        if aid == 'minecraft' and not cfg['eula']:
+        if a.get('eula') and not cfg['eula']:
             raise Fail('Accept Minecraft\'s EULA first (it\'s Mojang\'s, linked on this page)')
+        if a.get('engine') and not horizon_game_files()[0]:
+            raise Fail('Open Horizon once from Hearth Games first: it prepares the game files from your own Minecraft, which this server uses')
         pw = a.get('password')
         if pw and pw.get('required') and len((secrets_read().get(aid) or {}).get('password') or '') < pw['min']:
             raise Fail('Set a password of at least %d characters first' % pw['min'])
@@ -605,8 +870,8 @@ def set_key(aid, key, value):
             raise Fail('home or tailscale')
         save_app(aid, 'reach', value)
     elif key == 'eula':
-        if aid != 'minecraft' or value not in ('on', 'off'):
-            raise Fail('Only Minecraft has an EULA (on|off)')
+        if not CATALOG[aid].get('eula') or value not in ('on', 'off'):
+            raise Fail('Only Minecraft and Horizon have an EULA (on|off)')
         save_app(aid, 'eula', value == 'on')
         if value == 'off' and settings()['apps'][aid]['on']:
             switch(aid, False)
@@ -696,7 +961,7 @@ def list_apps():
     for aid, a in CATALOG.items():
         cfg = s['apps'][aid]
         ist = st.get(aid) or {}
-        inst = pod and all(image_there(r) for r in a['images'])
+        inst = pod and all(image_there(r) for r in a['images']) and engine_ok(aid)
         us = unit_state(aid) if cfg['on'] else 'inactive'
         pw = a.get('password')
         apps.append({
@@ -705,7 +970,7 @@ def list_apps():
             'installed': inst, 'installing': ist.get('installing') is True, 'progress': ist.get('progress') or 0,
             'step': ist.get('step') or '', 'error': ist.get('error') or '',
             'on': cfg['on'], 'state': us, 'running': us == 'active', 'failed': us == 'failed', 'reach': cfg['reach'],
-            'defaultReach': a['reach'], 'eula': cfg['eula'] if aid == 'minecraft' else None, 'eulaUrl': a.get('eula', ''),
+            'defaultReach': a['reach'], 'eula': cfg['eula'] if a.get('eula') else None, 'eulaUrl': a.get('eula', ''),
             'opts': [{'key': k, 'label': o['label'], 'value': cfg['opts'][k], 'choices': o.get('choices') or [],
                       'text': bool(o.get('text')), 'folder': bool(o.get('folder'))} for k, o in a['opts'].items()],
             'password': None if not pw else {'set': bool((sec.get(aid) or {}).get('password')), 'min': pw['min'], 'required': bool(pw.get('required'))},

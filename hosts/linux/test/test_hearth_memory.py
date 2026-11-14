@@ -187,6 +187,53 @@ class Guard(unittest.TestCase):
         self.assertFalse(hm.out_of_memory(mi, {'full': 99.0}, 'off'))
 
 
+class KeepRunning(unittest.TestCase):
+    """Keep this running (checkpoint), 1.12 (mockup tm-1): frozen and moved to the drive instead of closed."""
+    procs = Guard.procs
+
+    def test_saved_and_checked(self):
+        self.assertEqual(hm.recommended(LAPTOP)['guard']['checkpoint'], [])
+        self.assertEqual(hm.valid({'guard': {'checkpoint': ['firefox', 'bad name;rm']}}, LAPTOP)['guard']['checkpoint'], ['firefox'])
+
+    def test_names_match_the_kernels_15_letters(self):
+        v = {'names': ['hearth-ai-comma']}
+        self.assertTrue(hm.on_list(v, ['hearth-ai-command-center']))
+        self.assertFalse(hm.on_list(v, ['firefox']))
+
+    def test_the_next_biggest_when_it_cant_be_kept(self):
+        ps = self.procs()
+        with mock.patch.object(hm, 'read', side_effect=lambda p, d='': ''):
+            keep = hm.protected_pids(ps, ['desktop', 'steam'], [])
+        v = hm.pick_victim(ps, keep)
+        self.assertEqual(v['key'], 'app-aicc-1.scope')
+        self.assertEqual(hm.pick_victim(ps, keep, {'app-aicc-1.scope'})['key'], 'app-firefox-9.scope')
+
+    def test_frozen_until_resumed_or_closed(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        proc = os.path.join(d, 'proc')
+        for pid, state in ((300, 'T'), (301, 'S')):
+            os.makedirs(os.path.join(proc, str(pid)))
+            with open(os.path.join(proc, str(pid), 'stat'), 'w') as f:
+                f.write('%d (firefox) %s 1 0' % (pid, state))
+        with mock.patch.object(hm, 'STATE', d):
+            hm.frozen_save([{'at': 1, 'name': 'firefox', 'pids': [300, 301, 999], 'mb': 2600}])
+            now = hm.frozen_now([{'pid': 300}, {'pid': 301}], proc)
+        self.assertEqual(now, [{'at': 1, 'name': 'firefox', 'pids': [300], 'mb': 2600}])   # 301 resumed, 999 closed
+
+    def test_the_guard_freezes_instead_of_closing(self):
+        src = open(TOOL).read()
+        g = src[src.index('def guard():'):src.index('# ------------------------------------------------------------------ main')]
+        self.assertIn("on_list(v, cfg.get('checkpoint'))", g)
+        self.assertIn('freeze(v, procs)', g)
+        self.assertIn('keep.update(e[\'pids\'])', g)
+        f = src[src.index('def freeze('):src.index('class CheckpointSwap')]
+        self.assertIn('signal.SIGSTOP', f)
+        self.assertNotIn('SIGKILL', f)
+        self.assertNotIn('SIGTERM', f)
+        self.assertIn("free_on('/var') - KEEP_FREE_ON_C", src[src.index('def room_for('):src.index('def _pageout(')])
+
+
 class Reading(unittest.TestCase):
     def test_in_use_like_windows(self):
         mi = {'MemTotal': 8 * GIB, 'MemFree': GIB, 'Cached': 3 * GIB, 'Buffers': 0, 'SReclaimable': 0, 'Shmem': 0}

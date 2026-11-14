@@ -1,4 +1,5 @@
-// Hearth Settings › Web browser.
+// Hearth Settings › Web browser. Your browser (1.12): Hearth Browser (Firefox) or Google Chrome (downloaded from Google's
+// signed package site when picked, into your home folder: hearth_chrome.py), Chrome marked "Must Have For Xodus Nexus".
 // Hearth Browser: Mozilla's Firefox with Hearth's settings, part of Hearth OS (/usr/bin/hearth-browser, which answers
 // --hearth-status, --hearth-default and --hearth-layout here). Aloha Browser stays an optional extra: downloaded from
 // alohabrowser.com by the hearth-browser helper next to this file (it can't ship inside Hearth's image), installed
@@ -13,6 +14,7 @@ SetPage {
     title: "Web browser"
     property var st: null
     property var hb: null
+    property var ch: null        // hearth-browser choice: {browser, picked, asked, chrome: {installed, version, note}}
     property string busy: ""
     property real progress: -1
     property string line: ""
@@ -22,16 +24,22 @@ SetPage {
 
     function run(cmd) {
         if (proc.running) return;
-        busy = cmd === "status" ? "" : cmd; error = ""; progress = -1; line = "";
-        proc.command = ["python3", helper, cmd];
+        const args = Array.isArray(cmd) ? cmd : [cmd];
+        busy = args[0] === "status" ? "" : args.join(" "); error = ""; progress = -1; line = "";
+        proc.command = ["python3", helper].concat(args);
         proc.running = true;
     }
+    function choice() { if (!chProc.running) { chProc.command = ["python3", helper, "choice"]; chProc.running = true; } }
     function hearth(args) {
         if (hbProc.running) return;
         hbProc.command = [browser].concat(args);
         hbProc.running = true;
     }
-    Component.onCompleted: { run("status"); hearth(["--hearth-status"]); }
+    Component.onCompleted: { run("status"); hearth(["--hearth-status"]); choice(); }
+    Process {
+        id: chProc
+        stdout: SplitParser { onRead: l => { if (l.startsWith("{")) { try { page.ch = JSON.parse(l); } catch (e) {} } } }
+    }
     Process {
         id: proc
         stdout: SplitParser {
@@ -42,7 +50,7 @@ SetPage {
                 else if (l.startsWith("{")) { try { page.st = JSON.parse(l); } catch (e) {} }
             }
         }
-        onExited: { page.busy = ""; page.progress = -1; }
+        onExited: { page.busy = ""; page.progress = -1; page.choice(); page.hearth(["--hearth-status"]); }
     }
     Process {
         id: hbProc
@@ -53,6 +61,37 @@ SetPage {
             }
         }
     }
+    // ---- Your browser (1.12): pick one; links from other apps open in it
+    SetHeader { text: "Your browser" }
+    SetRow {
+        icon: "globe"; title: "Hearth Browser (Firefox)"; chevron: false
+        sub: "Comes with Hearth OS. Google sign-in, Netflix and add-ons work"
+        chip: page.ch && page.ch.browser === "firefox" ? "Your browser" : ""; chipKind: "ok"
+        onActivated: if (page.busy === "") page.run(["pick", "firefox"])
+    }
+    SetRow {
+        icon: "globe"; title: "Google Chrome"; chevron: false
+        sub: !page.ch ? "Checking…" : page.ch.chrome.installed ? "Installed" + (page.ch.chrome.version ? " · version " + page.ch.chrome.version : "") + " · Hearth looks for updates once a week"
+            : "Downloaded from Google when you pick it (about 120 MB), checked against Google's signature, kept in your home folder"
+        chip: page.ch && page.ch.browser === "chrome" ? "Your browser" : ""; chipKind: "ok"
+        onActivated: if (page.busy === "") page.run(["pick", "chrome"])
+    }
+    Text {
+        Layout.fillWidth: true; Layout.leftMargin: 56
+        text: "Must Have For Xodus Nexus"; color: Theme.danger
+        font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
+    }
+    SetRow {
+        visible: !!page.ch && page.ch.chrome.installed && page.busy === ""
+        icon: "restart"; title: "Look for a Chrome update"; sub: "Hearth also checks once a week"; chevron: false
+        onActivated: page.run(["chrome", "update"])
+    }
+    SetRow {
+        visible: !!page.ch && page.ch.chrome.installed && page.busy === ""
+        icon: "close"; danger: true; title: "Remove Google Chrome"; sub: "Your browser goes back to Hearth Browser"; chevron: false
+        onActivated: page.run(["chrome", "remove"])
+    }
+
     SetHeader { text: "Hearth Browser" }
     SetRow {
         icon: "globe"; title: "Open Hearth Browser"

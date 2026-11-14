@@ -1,0 +1,367 @@
+#!/usr/bin/python3
+"""hearth-netinfo: Task Manager › Network › Apps & settings (1.12, the approved mockup tm-5; red flag 11).
+
+  hearth-netinfo info              JSON: ping to the internet (and jitter), used today, IP and Tailscale IP, DNS,
+                                   Wi-Fi details (name, standard, link speed, signal), Wi-Fi power saving
+  hearth-netinfo apps              JSON: every program on the network: down / up now, today, who it's talking to,
+                                   and what you allowed it (Allowed, Limit to … MB/s, Blocked)
+  hearth-netinfo tick              adds the last minute to "used today" (hearth-net-today.timer runs it)
+  hearth-netinfo dns auto|cloudflare|google|quad9      DNS for this connection (NetworkManager)
+  hearth-netinfo powersave on|off  Wi-Fi power saving for this connection (off = lower ping in games)
+  hearth-netinfo speedtest         JSON: download and upload speed and latency (Cloudflare's speed test)
+  hearth-netinfo fix               Fix my connection: looks at each step, resets Wi-Fi and DNS, says what it found
+
+Only "used today" is kept (~/.local/state/hearth/net-today.json, a count, never a setting). Changes only what you press.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+STATE = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state'), 'hearth')
+TODAY = os.path.join(STATE, 'net-today.json')
+DNS = {'cloudflare': '1.1.1.1 1.0.0.1', 'google': '8.8.8.8 8.8.4.4', 'quad9': '9.9.9.9 149.112.112.112'}
+RULES = '/etc/hearth/hardware.json'
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=10):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+def read(p, d=''):
+    try:
+        with open(p) as f:
+            return f.read()
+    except OSError:
+        return d
+
+
+def _sio():
+    sys.path.insert(0, HERE)
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+def parse_ping(text):
+    """ping's summary: (average ms, jitter ms) or (None, None)."""
+    m = re.search(r'= [\d.]+/([\d.]+)/[\d.]+/([\d.]+) ms', text or '')
+    return (round(float(m.group(1))), round(float(m.group(2)))) if m else (None, None)
+
+
+def net_totals(text):
+    """/proc/net/dev: bytes down + up on every interface but loopback and Tailscale (counted on the real one)."""
+    total = 0
+    for line in (text or '').splitlines()[2:]:
+        name, _, rest = line.partition(':')
+        f = rest.split()
+        if name.strip() in ('lo',) or name.strip().startswith(('tailscale', 'docker', 'veth', 'virbr')) or len(f) < 9:
+            continue
+        total += int(f[0]) + int(f[8])
+    return total
+
+
+def boot_id():
+    return read('/proc/sys/kernel/random/boot_id').strip()
+
+
+def today_add(st, total, bid, day):
+    """The day's count: interface totals since the last look (a restart starts the counters again)."""
+    if st.get('day') != day:
+        st = {'day': day, 'bytes': 0, 'apps': {}}
+    last = st.get('last') or {}
+    if last.get('boot') == bid and total >= last.get('total', 0):
+        st['bytes'] = st.get('bytes', 0) + total - last.get('total', 0)
+    st['last'] = {'boot': bid, 'total': total}
+    return st
+
+
+def load_today():
+    try:
+        with open(TODAY) as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_today(st):
+    os.makedirs(STATE, exist_ok=True)
+    _sio().write_json(TODAY, st)
+
+
+def _resmon():
+    loader = importlib.machinery.SourceFileLoader('hearth_resmon_ni', os.path.join(HERE, 'hearth-resmon'))
+    spec = importlib.util.spec_from_loader('hearth_resmon_ni', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def app_name(pid):
+    exe = ''
+    try:
+        exe = os.path.basename(os.readlink('/proc/%d/exe' % pid)).replace(' (deleted)', '')
+    except OSError:
+        pass
+    return exe or read('/proc/%d/comm' % pid).strip() or str(pid)
+
+
+def tick(socks=None):
+    """Used today, for the whole PC and each program (each socket's own byte counts, between looks)."""
+    day = time.strftime('%Y-%m-%d')
+    st = today_add(load_today(), net_totals(read('/proc/net/dev')), boot_id(), day)
+    if socks is None:
+        code, so, _ = run(['ss', '-tinpHO', 'state', 'established'], timeout=4)
+        socks = _resmon().parse_ss(so) if code == 0 else []
+    seen = st.get('socks') or {}
+    now = {}
+    apps = st.setdefault('apps', {})
+    for x in socks:
+        if not x['pid']:
+            continue
+        key = '%s|%s:%s' % (x['local'], x['peer'], x['port'])
+        b = x['recv'] + x['sent']
+        prev = seen.get(key, 0)
+        name = app_name(x['pid'])
+        apps[name] = apps.get(name, 0) + max(0, b - prev if b >= prev else b)
+        now[key] = b
+    st['socks'] = now
+    save_today(st)
+    return st
+
+
+def wifi_link():
+    code, so, _ = run(['iw', 'dev'], timeout=4)
+    dev = re.search(r'Interface (\S+)', so or '')
+    if not dev:
+        return {}
+    code, so, _ = run(['iw', 'dev', dev.group(1), 'link'], timeout=4)
+    if 'Not connected' in so:
+        return {'dev': dev.group(1)}
+    sig = re.search(r'signal: (-?\d+) dBm', so)
+    rate = re.search(r'tx bitrate: ([\d.]+) MBit/s(.*)', so)
+    ssid = re.search(r'SSID: (.+)', so)
+    std = ''
+    if rate:
+        r = rate.group(2)
+        std = 'Wi-Fi 7' if 'EHT' in r else 'Wi-Fi 6' if 'HE-' in r else 'Wi-Fi 5' if 'VHT' in r else 'Wi-Fi 4' if 'MCS' in r else ''
+    s = int(sig.group(1)) if sig else None
+    return {'dev': dev.group(1), 'ssid': ssid.group(1).strip() if ssid else '', 'standard': std,
+            'mbps': round(float(rate.group(1))) if rate else None, 'signal': s,
+            'bars': None if s is None else 4 if s >= -55 else 3 if s >= -67 else 2 if s >= -75 else 1}
+
+
+def active_connection():
+    code, so, _ = run(['nmcli', '-t', '-f', 'NAME,TYPE,DEVICE', 'connection', 'show', '--active'])
+    for line in (so or '').splitlines():
+        f = line.rsplit(':', 2)
+        if len(f) == 3 and f[1] not in ('loopback', 'tun', 'bridge') and not f[2].startswith('tailscale'):
+            return {'name': f[0], 'type': f[1], 'device': f[2]}
+    return {}
+
+
+def info():
+    st = tick()
+    code, so, _ = run(['ping', '-n', '-q', '-c', '5', '-i', '0.25', '-W', '1', '1.1.1.1'], timeout=8)
+    ms, jitter = parse_ping(so)
+    ips = []
+    code, so, _ = run(['ip', '-j', '-4', 'addr'])
+    try:
+        for i in json.loads(so or '[]'):
+            for a in i.get('addr_info', []):
+                if i.get('ifname') != 'lo' and not i.get('ifname', '').startswith('tailscale'):
+                    ips.append(a.get('local'))
+    except ValueError:
+        pass
+    code, so, _ = run(['tailscale', 'ip', '-4'], timeout=4)
+    ts = so.strip().splitlines()[0] if code == 0 and so.strip() else ''
+    con = active_connection()
+    dns_auto, dns, ps = True, [], None
+    if con:
+        code, so, _ = run(['nmcli', '-g', 'ipv4.ignore-auto-dns,ipv4.dns,802-11-wireless.powersave', 'connection', 'show', con['name']])
+        f = (so or '').splitlines()
+        dns_auto = not (f and f[0].strip() == 'yes')
+        dns = [x for x in (f[1].split(',') if len(f) > 1 else []) if x]
+        ps = {'2': False, '3': True}.get(f[2].strip(), None) if len(f) > 2 and con.get('type') == '802-11-wireless' else None
+    code, so, _ = run(['resolvectl', 'dns'], timeout=4)
+    live = sorted(set(re.findall(r'(\d+\.\d+\.\d+\.\d+)', so or '')))
+    choice = 'auto' if dns_auto else next((k for k, v in DNS.items() if v.split()[0] in dns), 'custom')
+    return {'ping': ms, 'jitter': jitter, 'today': st.get('bytes', 0), 'ips': ips, 'tailscale': ts, 'connection': con,
+            'dns': {'choice': choice, 'servers': dns or live}, 'powersave': ps, 'wifi': wifi_link()}
+
+
+def rules():
+    try:
+        d = json.loads(read(RULES) or '{}')
+        return d.get('net.apps') or {} if isinstance(d, dict) else {}
+    except ValueError:
+        return {}
+
+
+def host_of(ip, cache):
+    if ip not in cache:
+        try:
+            socket.setdefaulttimeout(0.4)
+            h = socket.gethostbyaddr(ip)[0]
+            parts = h.split('.')
+            cache[ip] = '.'.join(parts[-2:]) if len(parts) > 2 and len(parts[-1]) > 2 else '.'.join(parts[-3:]) if len(parts) > 2 else h
+        except (OSError, socket.herror, socket.gaierror):
+            cache[ip] = ip
+    return cache[ip]
+
+
+def apps():
+    rm = _resmon()
+    socks, rates = rm.tcp_traffic()
+    st = tick(socks)
+    allow = rules()
+    by = {}
+    cache = {}
+    for x in socks:
+        if not x['pid']:
+            continue
+        n = app_name(x['pid'])
+        a = by.setdefault(n, {'name': n, 'pid': x['pid'], 'down': 0, 'up': 0, 'hosts': []})
+        r = rates.get(x['pid'], {})
+        if x['pid'] not in a.setdefault('_pids', set()):
+            a['_pids'].add(x['pid'])
+            a['down'] += r.get('down', 0)
+            a['up'] += r.get('up', 0)
+        if len(a['hosts']) < 8:
+            h = host_of(x['peer'], cache) if len(cache) < 40 else x['peer']
+            if h not in a['hosts']:
+                a['hosts'].append(h)
+    for n, v in allow.items():
+        by.setdefault(n, {'name': n, 'pid': 0, 'down': 0, 'up': 0, 'hosts': []})
+    out = []
+    for a in by.values():
+        a.pop('_pids', None)
+        a['today'] = (st.get('apps') or {}).get(a['name'], 0)
+        a['allow'] = allow.get(a['name'], 'allow')
+        out.append(a)
+    out.sort(key=lambda a: (-(a['down'] + a['up']), -a['today'], a['name'].lower()))
+    return {'apps': out[:40]}
+
+
+def set_dns(choice):
+    con = active_connection()
+    if not con:
+        raise Fail('not connected')
+    if choice == 'auto':
+        cmd = ['nmcli', 'connection', 'modify', con['name'], 'ipv4.ignore-auto-dns', 'no', 'ipv4.dns', '']
+    elif choice in DNS:
+        cmd = ['nmcli', 'connection', 'modify', con['name'], 'ipv4.ignore-auto-dns', 'yes', 'ipv4.dns', DNS[choice]]
+    else:
+        raise Fail('dns: auto, cloudflare, google or quad9')
+    code, _, err = run(cmd)
+    if code != 0:
+        raise Fail(err.strip()[-160:] or "couldn't change DNS")
+    run(['nmcli', 'device', 'reapply', con['device']])
+    return {'ok': True, 'dns': choice}
+
+
+def set_powersave(on):
+    con = active_connection()
+    if not con or con.get('type') != '802-11-wireless':
+        raise Fail('not on Wi-Fi')
+    code, _, err = run(['nmcli', 'connection', 'modify', con['name'], '802-11-wireless.powersave', '3' if on else '2'])
+    if code != 0:
+        raise Fail(err.strip()[-160:] or "couldn't change it")
+    run(['nmcli', 'device', 'reapply', con['device']])
+    return {'ok': True, 'powersave': on}
+
+
+def speedtest():
+    """Cloudflare's speed test: 25 MB down, 10 MB up, and latency (curl's own timings)."""
+    down = run(['curl', '-s', '-o', '/dev/null', '-w', '%{speed_download} %{time_starttransfer}', '--max-time', '25',
+                'https://speed.cloudflare.com/__down?bytes=25000000'], timeout=30)
+    up = run(['sh', '-c', 'head -c 10000000 /dev/zero | curl -s -o /dev/null -w "%{speed_upload}" --max-time 25 --data-binary @- '
+                          'https://speed.cloudflare.com/__up'], timeout=30)
+    try:
+        d, lat = down[1].split()
+        return {'down': round(float(d) * 8 / 1e6, 1), 'up': round(float(up[1] or 0) * 8 / 1e6, 1), 'latency': round(float(lat) * 1000)}
+    except ValueError:
+        raise Fail("the speed test couldn't reach the internet")
+
+
+def fix():
+    """Fix my connection: each step checked, then Wi-Fi and DNS reset, then checked again; what it found, in words."""
+    found = []
+    con = active_connection()
+    gw = re.search(r'default via (\S+)', run(['ip', 'route'])[1] or '')
+    found.append('Connected to %s' % con['name'] if con else 'Not connected to any network')
+    if gw:
+        ok = run(['ping', '-n', '-q', '-c', '2', '-W', '1', gw.group(1)], timeout=5)[0] == 0
+        found.append('The router (%s) %s' % (gw.group(1), 'answers' if ok else "doesn't answer"))
+    net = run(['ping', '-n', '-q', '-c', '2', '-W', '1', '1.1.1.1'], timeout=5)[0] == 0
+    found.append('The internet %s' % ('answers' if net else "doesn't answer"))
+    try:
+        socket.setdefaulttimeout(3)
+        socket.gethostbyname('hearthos.fun')
+        names = True
+    except OSError:
+        names = False
+    found.append('Names (DNS) %s' % ('work' if names else "don't work"))
+    run(['resolvectl', 'flush-caches'])
+    if con:
+        run(['nmcli', 'connection', 'up', con['name']], timeout=30)
+    time.sleep(2)
+    net2 = run(['ping', '-n', '-q', '-c', '2', '-W', '1', '1.1.1.1'], timeout=5)[0] == 0
+    try:
+        socket.gethostbyname('hearthos.fun')
+        names2 = True
+    except OSError:
+        names2 = False
+    found.append('DNS cache cleared and %s reconnected' % (con['name'] if con else 'the network'))
+    if net2 and names2:
+        found.append('Working now' if not (net and names) else 'Everything looks fine')
+    elif not net2:
+        found.append('Still no internet: restart the router, or try another network')
+    else:
+        found.append('The internet works but names don\'t: try DNS › Cloudflare')
+    return {'ok': net2 and names2, 'found': found}
+
+
+def main(a):
+    try:
+        if a == ['info']:
+            out = info()
+        elif a == ['apps']:
+            out = apps()
+        elif a == ['tick']:
+            st = tick()
+            out = {'ok': True, 'today': st.get('bytes', 0)}
+        elif len(a) == 2 and a[0] == 'dns':
+            out = set_dns(a[1])
+        elif len(a) == 2 and a[0] == 'powersave' and a[1] in ('on', 'off'):
+            out = set_powersave(a[1] == 'on')
+        elif a == ['speedtest']:
+            out = speedtest()
+        elif a == ['fix']:
+            out = fix()
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

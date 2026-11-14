@@ -62,6 +62,9 @@ CACHE_HOME = os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache')
 SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'ai-share.json')
 HOME_SERVER = os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')        # read only: is this a home server?
 STATE = os.path.join(STATE_HOME, 'nimbus', 'ai-share.json')                   # the share code's hash (0600)
+# Server mode's AI team (1.12): today's requests through One AI address, counted per device. Numbers and a few words of
+# what was done only ("Asked qwen3:30b"), never what was asked or answered; a new day starts it again. State, not a setting.
+TEAM = os.path.join(STATE_HOME, 'nimbus', 'ai-team.json')
 SEEN = os.path.join(CACHE_HOME, 'nimbus', 'ai-share-devices.json')            # devices that answered before
 FW_STATE = os.environ.get('HEARTH_AI_SHARE_FW_STATE', '/run/hearth/ai-share-firewall.json')
 FW_FILE = '/etc/hearth/ai-share.nft'
@@ -753,6 +756,67 @@ def code_matches(given, h):
 
 
 # ------------------------------------------------------------------ One AI address (1.11)
+_TEAM_LOCK = threading.Lock()
+
+
+def team_sender(client, ts, body_user=''):
+    """Who sent a request: a Command Center teammate that names itself (OpenAI's `user`), this PC, or the Tailscale
+    device the address belongs to."""
+    u = re.sub(r'[^A-Za-z0-9 ._-]+', '', str(body_user or ''))[:24].strip()
+    if u:
+        return u[:1].upper() + u[1:], 'Command Center'
+    if client in ('127.0.0.1', '::1') or client in (ts.get('ips') or []):
+        return 'This PC', ''
+    for p in ts.get('peers') or []:
+        if client in (p.get('ips') or []):
+            return p.get('name') or short(p.get('dns')) or client, ''
+    return client, ''
+
+
+def team_note(who, via, kind, model, dev, me, path=None, now=None):
+    """One request counted: who sent it, what kind, where it was answered (here or another of your devices)."""
+    path = path or TEAM
+    now = now or time.time()
+    day = time.strftime('%Y-%m-%d', time.localtime(now))
+    what = {'chat': 'Asked ' + (model or 'the AI'), 'voice': 'Spoke a reply', 'stt': 'Transcribed a clip'}.get(kind, kind)
+    lock = _TEAM_LOCK
+    if lock:
+        lock.acquire()
+    try:
+        try:
+            with open(path) as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            d = {}
+        if not isinstance(d, dict) or d.get('day') != day:
+            d = {'day': day, 'total': 0, 'here': 0, 'sent': {}, 'senders': {}}
+        d['total'] = int(d.get('total') or 0) + 1
+        if dev == me:
+            d['here'] = int(d.get('here') or 0) + 1
+        else:
+            sent = d.setdefault('sent', {})
+            k = '%s|%s' % (dev, kind)
+            sent[k] = int(sent.get(k) or 0) + 1
+        snd = d.setdefault('senders', {})
+        e = snd.get(who) if isinstance(snd.get(who), dict) else {}
+        snd[who] = {'n': int(e.get('n') or 0) + 1, 'last': what, 'at': int(now), 'kind': kind, 'via': via}
+        if len(snd) > 40:                  # the 40 most recent senders
+            for k in sorted(snd, key=lambda x: snd[x].get('at', 0))[:len(snd) - 40]:
+                snd.pop(k, None)
+        d['lastEvent'] = {'who': who, 'via': via, 'kind': kind, 'model': model or '', 'dev': dev, 'at': int(now)}
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(d, f)
+        os.replace(tmp, path)
+        return d
+    except OSError:
+        return None
+    finally:
+        if lock:
+            lock.release()
+
+
 ROUTES = {'/v1/chat/completions': 'chat', '/v1/completions': 'chat', '/v1/embeddings': 'chat',
           '/v1/audio/speech': 'voice', '/v1/audio/transcriptions': 'stt', '/v1/audio/translations': 'stt'}
 MAX_BODY = 64 << 20
@@ -920,6 +984,17 @@ class Handler(BaseHTTPRequestHandler):
                 last = '%s answered %d' % (dev, r.status)
                 c.close()
                 continue
+            if r.status < 400:
+                try:
+                    ts = ts_status()
+                    try:
+                        bu = json.loads(body.decode('utf-8', 'replace')).get('user', '') if ctype.startswith('application/json') and body else ''
+                    except (ValueError, AttributeError):
+                        bu = ''
+                    who, via = team_sender(client, ts, bu)
+                    team_note(who, via, kind, model, dev, short(ts.get('dns') or ts.get('name') or socket.gethostname()))
+                except Exception:  # noqa: BLE001 - counting never stops an answer
+                    pass
             self.send_response(r.status)
             self.send_header('Content-Type', r.getheader('Content-Type') or 'application/json')
             self.send_header('X-Hearth-Device', dev)

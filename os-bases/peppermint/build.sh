@@ -239,6 +239,10 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 # plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
 optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
+# gdb's gcore: Task Manager › Details › Create dump file (1.12, mockup tm-2); optional, so a missing gdb never stops the build
+optional gdb
+# dmidecode: Task Manager › Memory's speed and slots (1.12, mockup task-manager-memory)
+optional dmidecode
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
@@ -1711,7 +1715,7 @@ systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 # from /etc/hearth/memory.json (recommended values without one), and the memory guard. Neither holds the start up.
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard
 # hearth-diskguard (1.11): frees its 2 GB emergency reserve at start-up when the system drive is nearly full
-systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service
+systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts the PC down cleanly (no lost files from a
 # battery that just dies). Hearth's BatteryWatch.qml says so at 10%, 5% and 3%, and hibernates instead where a
 # hibernation has come back before on this PC (/var/lib/hearth/hibernate-proven).

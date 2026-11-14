@@ -181,6 +181,7 @@ PanelWindow {
         { icon: "restart", t: "Restart the PC", s: "Server mode comes back if it's your Start in mode", a: () => { dash.overlay = ""; dash.act(["power", "restart"]); } },
         { icon: "power", t: "Turn off", s: "Everything stops until you turn it on", a: () => { dash.overlay = ""; dash.act(["power", "off"]); } }
     ]
+    function teamSettings() { overlay = ""; if (dash.settings) dash.settings.open("hs-aidevices"); }
     function serviceAct(t, a) {
         if (!t || !t.actions || t.actions.indexOf(a === "restart" ? "restart" : "pause") < 0) { say("Nothing to " + a + " here"); return; }
         if (a === "pause") a = t.state === "paused-you" ? "resume" : "pause";
@@ -206,6 +207,14 @@ PanelWindow {
             else if (K === Qt.Key_Up) menuSel = (menuSel + menuItems.length - 1) % menuItems.length;
             else if (enter) menuItems[menuSel].a();
             else if (back || menu) overlay = "";
+            return;
+        }
+        if (overlay === "detail" && cur && cur.id === "team") {
+            // The AI team opened: A pauses or resumes it, X restarts it, Y opens its settings, B goes back.
+            if (back) overlay = "";
+            else if (enter) serviceAct(cur, "pause");
+            else if (x) serviceAct(cur, "restart");
+            else if (y) teamSettings();
             return;
         }
         if (overlay === "detail") {
@@ -235,7 +244,7 @@ PanelWindow {
         if (wasAsleep) return;
         if (ev === "guide") { if (remote) remoteCancel(); else if (overlay === "switch") cancelSwitch(); else play(); }
         else if (ev === "menu") { overlay = overlay === "menu" ? "" : "menu"; menuSel = 0; }
-        else if (ev === "y") { if (overlay === "" || overlay === "detail") serviceAct(cur, "pause"); }
+        else if (ev === "y") { if (overlay === "detail" && cur && cur.id === "team") teamSettings(); else if (overlay === "" || overlay === "detail") serviceAct(cur, "pause"); }
     }
 
     Item {
@@ -440,7 +449,7 @@ PanelWindow {
                         delegate: RowLayout {
                             required property var modelData
                             width: alertCol.width; spacing: 10 * dash.k
-                            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 6 * dash.k; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: 5 * dash.k; color: modelData.level === "warn" ? dash.gWarn : modelData.level === "ok" ? dash.gOk : dash.gMuted }
+                            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 6 * dash.k; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: 5 * dash.k; color: modelData.level === "warn" ? dash.gWarn : modelData.level === "ok" ? dash.gOk : modelData.level === "team" ? "#ff5fae" : dash.gMuted }
                             Text { Layout.fillWidth: true; text: modelData.text + (modelData.sub ? "<font color='" + dash.gMuted + "'> · " + modelData.sub + "</font>" : ""); textFormat: Text.StyledText; color: dash.gText; font.family: Theme.font; font.pixelSize: 15 * dash.k; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
                             Text { Layout.alignment: Qt.AlignTop; text: modelData.at || ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k }
                         }
@@ -538,6 +547,7 @@ PanelWindow {
                             Layout.fillWidth: true; Layout.fillHeight: true
                             Layout.preferredWidth: 1; Layout.preferredHeight: 1
                             t: modelData; k: dash.k * 0.86; focused: dash.sel === index + 1; gold: true
+                            team: dash.d ? dash.d.team : null
                             MouseArea { anchors.fill: parent; onClicked: { dash.sel = index + 1; dash.overlay = "detail"; } }
                         }
                     }
@@ -640,7 +650,12 @@ PanelWindow {
             anchors.centerIn: parent
             width: 1620 * dash.k; height: 860 * dash.k
             radius: 22 * dash.k; color: dash.gPanel; border.color: dash.gLine
-            ServerDetail { anchors.fill: parent; t: dash.cur; d: dash.d; k: dash.k
+            // The AI team's own view (1.12, mockup server-ai-team-detail)
+            AiTeamDetail { anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "team"; team: dash.d ? dash.d.team : null; k: dash.k
+                paused: !!dash.cur && dash.cur.state === "paused-you"
+                onAction: a => a === "settings" ? dash.teamSettings() : dash.serviceAct(dash.cur, a === "resume" ? "pause" : a)
+                onClose: dash.overlay = "" }
+            ServerDetail { anchors.fill: parent; visible: !dash.cur || dash.cur.id !== "team"; t: dash.cur; d: dash.d; k: dash.k
                 onAction: a => a === "unload" ? dash.act(["ai-unload"], "Model unloaded") : dash.serviceAct(dash.cur, a)
                 onClose: dash.overlay = "" }
         }

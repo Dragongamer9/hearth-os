@@ -222,6 +222,29 @@ var ENTRIES = [
 "i": "motion"
 },
 {
+"t": "Hearth Browser (Firefox)",
+"p": "browser",
+"d": "Comes with Hearth OS. Google sign-in, Netflix and add-ons work",
+"i": "globe"
+},
+{
+"t": "Google Chrome",
+"p": "browser",
+"i": "globe"
+},
+{
+"t": "Look for a Chrome update",
+"p": "browser",
+"d": "Hearth also checks once a week",
+"i": "restart"
+},
+{
+"t": "Remove Google Chrome",
+"p": "browser",
+"d": "Your browser goes back to Hearth Browser",
+"i": "close"
+},
+{
 "t": "Open Hearth Browser",
 "p": "browser",
 "i": "globe"

@@ -101,6 +101,7 @@ ports, its source code) was read for what it needs. Fields:
 | `icon` | The project's own icon in its repository (or none: Hearth draws a tile). No store-owned art. |
 | `assets` | Optional patterns for a project whose release files Hearth can't tell apart by name |
 | `experimental`, `featured`, `arm64` | Early ports, featured ports, ports with Arm builds too |
+| `tagPrefix` | Only releases whose tag starts with it (a project that releases several programs: Horizon's `launcher@`) |
 
 **Add a GitHub project** (the archived Game Mode's Store › Recomps) adds any project with releases. It's marked "Added by you: not checked by
 Hearth" and kept in `~/.local/share/nimbus/recomps/custom.json`.
@@ -358,6 +359,16 @@ ports.
 |---|---|---|---|---|---|
 | CannonBall DX (early) | OutRun (arcade) | `Endprodukt/cannonball-dx` | Linux | The OutRun arcade ROM files, in its roms folder (In its folder) | — |
 | Initial D Arcade Stage 3 Recompiled (early) | Initial D Arcade Stage 3 | `distilledorion-sketch/Initial-D-Arcade-Stage-3-Native-SH-4-Recompilation-WIP-` | Windows (Proton) | Your matching game files, in its 'game files' folder (Asked on first start) | — |
+
+### PC (1)
+
+| Port | Game | Project | Build | Your copy | Checked |
+|---|---|---|---|---|---|
+| Horizon | Minecraft: Java Edition 26.3 | `horizon-rust/horizon` (its `launcher@` releases) | Linux (AppImage, x86-64) | Your Microsoft account that owns the game: you sign in inside Horizon's own launcher, and Hearth never sees it | — |
+
+Horizon is a native Rust remake (MIT): no Java needed. It contains no Minecraft code or assets: it reuses an install
+you have, or its launcher downloads 26.3 from Mojang for your account. Hearth Sync puts it in Steam's library like the
+other ports, so it starts from Steam Game Mode. Controllers are a setting in Horizon (Settings › Controls).
 
 ## Checks
 

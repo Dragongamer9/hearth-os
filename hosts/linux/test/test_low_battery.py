@@ -13,12 +13,13 @@ QML = open(os.path.join(ROOT, 'hosts/linux/desktop/shell/BatteryWatch.qml')).rea
 
 class Watch(unittest.TestCase):
     def test_levels(self):
-        self.assertIn('low <= 10 && warned > 10', QML)
-        self.assertIn('low <= 5 && warned > 5', QML)
-        self.assertIn('low <= 3 && !acting', QML)
+        # your levels (Task Manager › Battery, 1.12): 10% and 5% unless you chose others; acting at the last one
+        self.assertIn('String(c["battery.warn"] || "10,5")', QML)
+        self.assertIn('lv !== last && low <= lv && warned > lv', QML)
+        self.assertIn('if (low <= last && !acting)', QML)
 
     def test_hibernates_only_where_proven(self):
-        self.assertIn('if (proven && canHib)', QML)
+        self.assertIn('if (at5 === "hibernate" && proven && canHib)', QML)
         self.assertIn('/var/lib/hearth/hibernate-proven', QML)
         # and only if it's still on battery after the warning
         self.assertRegex(QML, r'sleep 15; \[ .*Discharging \] && systemctl hibernate')

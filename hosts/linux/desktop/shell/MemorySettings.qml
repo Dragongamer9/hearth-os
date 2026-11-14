@@ -285,7 +285,31 @@ Item {
                 sub: "How much the system keeps empty, ready for the next heavy moment. It moves idle memory into zram to keep it."
                 Line {
                     title: "Target"
-                    Chips { options: [["off", "Off"], ["2gb", "2 GB"], ["25%", "25%"], ["50%", "50%"]]; value: ms.keepMode; onChose: v => ms.putKeep(v) }
+                    Chips {
+                        options: [["off", "Off"], ["2gb", "2 GB"], ["25%", "25%"], ["50%", "50%"], ["custom", "Custom"]]; value: ms.keepMode
+                        onChose: v => {
+                            if (v !== "custom") { ms.putKeep(v); return; }
+                            const d = JSON.parse(JSON.stringify(ms.draft));
+                            d.keep = { mode: "custom", factor: ms.cur && ms.cur.keep && ms.cur.keep.factor ? ms.cur.keep.factor : 1000 };
+                            ms.draft = d;
+                        }
+                    }
+                }
+                // Custom (1.12, mockup task-manager-swap-settings): how much to keep free, as a share of memory
+                Line {
+                    visible: ms.keepMode === "custom"
+                    title: "Keep free"; sub: "a share of your memory"
+                    readonly property int factor: ms.draft.keep && ms.draft.keep.factor ? ms.draft.keep.factor : ms.cur && ms.cur.keep && ms.cur.keep.factor ? ms.cur.keep.factor : 1000
+                    Slider { Layout.preferredWidth: 200; from: 1; to: 60; mark: -1; value: Math.round(parent.factor / 50); onMoved: v => { const d = JSON.parse(JSON.stringify(ms.draft)); d.keep = { mode: "custom", factor: Math.max(10, Math.min(3000, v * 50)) }; ms.draft = d; } }
+                    Text { text: Math.round(parent.factor / 50) + "%"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; Layout.preferredWidth: 40; horizontalAlignment: Text.AlignRight }
+                }
+                Line {
+                    visible: !!(ms.st && ms.st.watermarks && ms.st.watermarks.low)
+                    title: "Starts freeing below"; sub: "then frees up to the target"
+                    Text {
+                        text: ms.st && ms.st.watermarks ? Math.max(1, Math.round(100 * ms.st.watermarks.low / Math.max(1, ms.st.memory.total))) + "% free" : ""
+                        color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold
+                    }
                 }
                 Line {
                     title: "Swappiness"; sub: "how readily idle memory is compressed instead of dropping cached files"
@@ -315,7 +339,7 @@ Item {
                     Toggle { checked: ms.val("swapfile", "everyday", true); onFlipped: ms.put("swapfile", "everyday", !checked) }
                 }
                 Line {
-                    title: "Size"; sub: "C: always keeps 20 GB free · at most " + (ms.st ? ms.st.limits.swapfileMaxGb : 0) + " GB here"
+                    title: "Size"; sub: "on C: (/var/swap) · hibernation needs at least your memory size · C: always keeps 20 GB free · at most " + (ms.st ? ms.st.limits.swapfileMaxGb : 0) + " GB here"
                     Chips {
                         options: {
                             if (!ms.st) return [];
@@ -330,6 +354,12 @@ Item {
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
                     text: ms.st && ms.st.swapfile.hibernate ? "Hibernation has its own space (/var/swap/hearth-hibernate), left as it is." : "Changing the size makes the file again when you press Save (it can take a minute)."
+                }
+                Line {
+                    title: "Hibernation"
+                    sub: !ms.st ? "" : ms.st.hibernateChecked ? "works on this laptop · last checked " + new Date(ms.st.hibernateChecked * 1000).toLocaleDateString(Qt.locale(), "MMM d")
+                        : ms.st.swapfile.hibernate ? "set up, not tested on this PC yet" : "not set up"
+                    Text { visible: !!(ms.st && ms.st.hibernateChecked); text: "ready"; color: "#5fd08a"; font.family: Theme.font; font.pixelSize: 12 }
                 }
             }
 
@@ -359,6 +389,58 @@ Item {
                                 }
                             }
                         }
+                        Repeater {
+                            model: ms.val("guard", "extra", [])
+                            delegate: Rectangle {
+                                required property string modelData
+                                width: xt.implicitWidth + 20; height: 28; radius: Theme.r(6)
+                                color: "transparent"; border.color: "#5fd08a"
+                                Text { id: xt; anchors.centerIn: parent; text: parent.modelData + "  ✕"; color: "#5fd08a"; font.family: Theme.font; font.pixelSize: 12 }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ms.put("guard", "extra", ms.val("guard", "extra", []).filter(x => x !== parent.modelData)) }
+                            }
+                        }
+                        // + Add (1.12, mockup task-manager-swap-settings): any program, by its name
+                        Rectangle {
+                            id: addNever
+                            property bool typing: false
+                            width: addNever.typing ? 170 : at.implicitWidth + 20; height: 28; radius: Theme.r(6)
+                            color: "transparent"; border.color: Theme.line; border.width: 1
+                            Text { id: at; visible: !addNever.typing; anchors.centerIn: parent; text: "+ Add"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+                            MouseArea { anchors.fill: parent; enabled: !addNever.typing; cursorShape: Qt.PointingHandCursor; onClicked: { addNever.typing = true; neverIn.forceActiveFocus(); } }
+                            TextInput {
+                                id: neverIn
+                                visible: addNever.typing
+                                anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: Theme.text; font.family: Theme.font; font.pixelSize: 12
+                                Text { anchors.verticalCenter: parent.verticalCenter; visible: parent.text === ""; text: "program name, Enter"; color: Theme.muted; font: parent.font }
+                                onAccepted: {
+                                    const n = text.trim();
+                                    if (/^[\w.+-]{1,64}$/.test(n) && ms.val("guard", "extra", []).indexOf(n) < 0) ms.put("guard", "extra", ms.val("guard", "extra", []).concat([n]));
+                                    text = ""; addNever.typing = false;
+                                }
+                                Keys.onEscapePressed: { text = ""; addNever.typing = false; }
+                            }
+                        }
+                    }
+                }
+                // Keep this running (checkpoint), 1.12: what Task Manager's right-click put on the list; press one to take it off
+                Line {
+                    visible: ms.val("guard", "checkpoint", []).length > 0 || !!(ms.cur && ms.cur.guard && (ms.cur.guard.checkpoint || []).length)
+                    title: "Pause instead of closing"; sub: "frozen, its memory moved to the drive; Resume in Task Manager"
+                    Flow {
+                        Layout.preferredWidth: 300
+                        spacing: 6
+                        Repeater {
+                            model: ms.val("guard", "checkpoint", [])
+                            delegate: Rectangle {
+                                required property string modelData
+                                width: kt.implicitWidth + 20; height: 28; radius: Theme.r(6)
+                                color: "transparent"; border.color: Theme.accent
+                                Text { id: kt; anchors.centerIn: parent; text: parent.modelData + "  ✕"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 12 }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ms.put("guard", "checkpoint", ms.val("guard", "checkpoint", []).filter(x => x !== parent.modelData)) }
+                            }
+                        }
                     }
                 }
                 Line {
@@ -368,7 +450,7 @@ Item {
                 Text {
                     Layout.fillWidth: true; visible: !!(ms.st && ms.st.lastClosed.length); wrapMode: Text.WordWrap
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
-                    text: ms.st && ms.st.lastClosed.length ? "Last closed: " + ms.st.lastClosed.slice(-3).reverse().map(c => c.name + " (" + (c.mb / 1024).toFixed(1) + " GB, " + new Date(c.at * 1000).toLocaleString(Qt.locale(), "MMM d h:mm") + ")").join(", ") : ""
+                    text: ms.st && ms.st.lastClosed.length ? "Last closed: " + ms.st.lastClosed.slice(-3).reverse().map(c => c.name + " (" + (c.paused ? "paused, " : "") + (c.mb / 1024).toFixed(1) + " GB, " + new Date(c.at * 1000).toLocaleString(Qt.locale(), "MMM d h:mm") + ")").join(", ") : ""
                 }
             }
         }

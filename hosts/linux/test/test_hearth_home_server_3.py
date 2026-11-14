@@ -194,13 +194,50 @@ class Installs(Stage3):
             if url.endswith('/amd64/'):
                 return page.encode()
             if url.endswith('jellyfin_10.11.2-amd64.tar.xz.sha256sum'):
+                if not sums:
+                    raise hh.Fail('404')
                 return ('%s  jellyfin_10.11.2-amd64.tar.xz\n' % self.SHA).encode()
+            if url.endswith('jellyfin_10.11.2-amd64.tar.xz?sha256'):
+                return (own + '\n').encode()
             raise AssertionError(url)
         hh.http_get = get
+        own, sums = self.SHA, True
         r = hh.app_resolve('jellyfin')
         self.assertEqual(r['version'], '10.11.2', 'by version, not by text')
         self.assertTrue(r['url'].startswith('https://repo.jellyfin.org/'))
         self.assertEqual(r['sha256'], self.SHA)
+        own = 'ef' * 32                                   # the mirror's checksum file and Jellyfin's own site disagree
+        with self.assertRaises(hh.Fail):
+            hh.app_resolve('jellyfin')
+        own = '<html>not a checksum</html>'               # the site doesn't answer ?sha256: the checksum file is enough
+        self.assertEqual(hh.app_resolve('jellyfin')['sha256'], self.SHA)
+        sums = False                                      # no checksum file (Jellyfin 12's mirrors): ?sha256 alone is enough
+        own = self.SHA
+        self.assertEqual(hh.app_resolve('jellyfin')['sha256'], self.SHA)
+        own = '<html>not a checksum</html>'               # neither: not installed
+        with self.assertRaises(hh.Fail):
+            hh.app_resolve('jellyfin')
+
+    def test_jellyfin_s_two_part_version_numbers(self):
+        # Jellyfin 12 (2026): jellyfin_12.4-amd64.tar.xz, two-part numbers; the older three-part ones still count.
+        page = '<a href="jellyfin_12.4-amd64.tar.gz">a</a><a href="jellyfin_12.4-amd64.tar.xz">b</a><a href="jellyfin_10.11.8-amd64.tar.xz">c</a>'
+
+        def get(url, limit=0, timeout=0):
+            if url.endswith('/amd64/'):
+                return page.encode()
+            if url.endswith('jellyfin_12.4-amd64.tar.xz.sha256sum'):
+                return ('%s  jellyfin_12.4-amd64.tar.xz\n' % self.SHA).encode()
+            if url.endswith('?sha256'):
+                raise hh.Fail('no answer')
+            raise AssertionError(url)
+        hh.http_get = get
+        r = hh.app_resolve('jellyfin')
+        self.assertEqual((r['version'], r['file']), ('12.4', 'jellyfin_12.4-amd64.tar.xz'))
+
+    def test_jellyfin_s_mirrors_are_allowed_for_redirects_only(self):
+        self.assertTrue('nyc1.mirror.jellyfin.org'.endswith(hh.MIRROR_SUFFIXES))
+        self.assertFalse('evilmirror.jellyfin.org.example.com'.endswith(hh.MIRROR_SUFFIXES))
+        self.assertFalse(hh.url_ok('https://nyc1.mirror.jellyfin.org/x'), 'only where a redirect goes, never asked for directly')
 
     def test_downloads_only_over_https_from_the_makers(self):
         for good in ('https://api.github.com/repos/ollama/ollama/releases/latest', 'https://repo.jellyfin.org/files/x',

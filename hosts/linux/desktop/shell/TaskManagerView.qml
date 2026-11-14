@@ -74,6 +74,14 @@ FocusScope {
     property var groupMap: ({})
     property var details: []
     property var hist: ({})                 // device key → the last minute of values
+    // Tailscale's other devices, for its entry in Performance's list (1.12, mockup tm-5)
+    property int tsPeers: -1
+    Process {
+        id: tsProc
+        command: ["sh", "-c", "tailscale status --json 2>/dev/null || true"]
+        stdout: StdioCollector { onStreamFinished: { try { const j = JSON.parse(text); v.tsPeers = Object.keys(j.Peer || {}).length; } catch (e) { v.tsPeers = -1; } } }
+    }
+    Timer { interval: 30000; repeat: true; triggeredOnStart: true; running: tm.page === "performance"; onTriggered: if (!tsProc.running) tsProc.running = true }
     property var expanded: ({})
     property string query: ""
     readonly property int histMax: tm.interval > 0 ? Math.round(60 / tm.interval) + 1 : 61
@@ -91,6 +99,10 @@ FocusScope {
         const h = Object.assign({}, hist);
         push(h, "cpu", d.cpu ? d.cpu.total : 0);
         push(h, "memory", d.mem && d.mem.total ? 100 * d.mem.used / d.mem.total : 0);
+        // Memory's page (MemoryOverview.qml): the programs' share, compressed memory (zram) and memory pressure
+        push(h, "memprog", d.mem && d.mem.total ? 100 * Math.max(0, d.mem.used - (d.mem.zramMem || 0)) / d.mem.total : 0);
+        push(h, "memz", d.mem && d.mem.total ? 100 * (d.mem.zramMem || 0) / d.mem.total : 0);
+        push(h, "mempsi", d.mem ? d.mem.psi10 || 0 : 0);
         (d.disks || []).forEach(x => push(h, "disk:" + x.name, x.active));
         (d.nets || []).forEach(x => push(h, "net:" + x.name, x.recv + x.send));
         (d.gpus || []).forEach(x => push(h, "gpu:" + x.index, x.busy));
@@ -103,7 +115,7 @@ FocusScope {
     function wants() {
         switch (tm.page) {
         case "processes": return ["procs"];
-        case "performance": return ["gpu", "temps"];
+        case "performance": return ["gpu", "temps", "procs"];         // procs: Memory's Biggest users, the settings tabs' programs (1.12)
         case "details": return ["details"];
         default: return [];
         }
@@ -144,6 +156,7 @@ FocusScope {
         target: tm
         function onPageChanged() { v.sendConfig(); v.loadPageData(); v.closeMenu(); }
         function onIntervalChanged() { v.sendConfig(); }
+        function onPerfDeviceChanged() { v.sendConfig(); }
     }
     onQueryChanged: { buildProcs(); buildDetails(); buildStartup(); buildServices(); buildTimers(); buildHistory(); }
 
@@ -189,12 +202,27 @@ FocusScope {
     function procRow(o) {
         return Object.assign({ key: "", type: "group", gid: "", pid: 0, name: "", icon: "", tag: "", depth: 0, expandable: false,
             expanded: false, eco: false, suspended: false, locked: false, count: 0, cpu: 0, mem: 0, swap: 0, disk: 0, gpu: 0,
-            hc: 0, hm: 0, hd: 0, hg: 0, label: "", power: "" }, o);
+            hc: 0, hm: 0, hd: 0, hg: 0, label: "", power: "", status: "" }, o);
     }
+    // Processes › Apps & groups (sections, apps that unfold) or All processes (every process, one row each) — mockup tm-1
+    property string procView: tm.pref("procView", "groups") === "all" ? "all" : "groups"
+    function statusText(g) { return g.suspended ? (g.frozen ? "Paused to save memory ⏸" : g.kind === "game" ? "Quick Resume ⏸" : "Suspended ⏸") : g.eco ? "Efficiency mode" : ""; }
+    function groupTag(g) { return g.tag || (g.kind === "system" ? "Hearth" : ""); }
     function buildProcs() {
         const q = query.trim().toLowerCase();
         const s = sortPref("procs", "", false);
-        const statusOf = g => g.suspended ? "Suspended" : g.eco ? "Efficiency mode" : "";
+        const statusOf = g => statusText(g);
+        if (procView === "all") {
+            const flat = [];
+            groups.forEach(g => (g.children || []).forEach(c => {
+                if (q && String(c.name).toLowerCase().indexOf(q) < 0 && String(c.pid).indexOf(q) !== 0 && String(g.name).toLowerCase().indexOf(q) < 0) return;
+                flat.push(procRow({ key: "a/" + c.pid, type: "child", gid: g.id, pid: c.pid, name: c.name, tag: c.ai ? "AI" : c.bridge ? "bridge" : "", eco: c.nice >= 19,
+                    suspended: c.state === "T", locked: !!g.protected, count: 1, cpu: c.cpu, mem: c.mem, swap: c.swap || 0, disk: c.disk, gpu: c.gpu,
+                    hc: c.heat.cpu, hm: c.heat.mem, hd: c.heat.disk, hg: c.heat.gpu, power: powerOf({ cpu: c.cpu, gpu: c.gpu, suspended: c.state === "T" }) }));
+            }));
+            sync(procModel, s.key && s.key !== "status" ? sortBy(flat, s.key, s.desc) : sortBy(flat, "mem", true));
+            return;
+        }
         const list = groups.filter(g => procMatch(g, q));
         const sorted = s.key ? sortBy(list, s.key, s.desc, (o, k) => k === "status" ? statusOf(o) : o[k]) : list;
         const apps = sorted.filter(g => g.kind === "app" || g.kind === "game");
@@ -203,13 +231,13 @@ FocusScope {
         const rows = [];
         const add = g => {
             const open = !!expanded[g.id] && (g.children || []).length > 1;
-            rows.push(procRow({ key: g.id, gid: g.id, pid: g.pid, name: g.name || String(g.pid), icon: g.icon || "", tag: g.tag || "",
+            rows.push(procRow({ key: g.id, gid: g.id, pid: g.pid, name: g.name || String(g.pid), icon: g.icon || "", tag: groupTag(g), status: statusText(g),
                 expandable: (g.children || []).length > 1, expanded: open, eco: !!g.eco, suspended: !!g.suspended,
                 locked: !!g.protected, count: g.count, cpu: g.cpu || 0, mem: g.mem || 0, swap: g.swap || 0, disk: g.disk || 0, gpu: g.gpu || 0,
                 hc: g.heat.cpu, hm: g.heat.mem, hd: g.heat.disk, hg: g.heat.gpu, power: powerOf(g) }));
             if (open) {
                 const kids = s.key && s.key !== "status" ? sortBy(g.children, s.key, s.desc) : g.children;
-                kids.forEach(c => rows.push(procRow({ key: g.id + "/" + c.pid, type: "child", gid: g.id, pid: c.pid, name: c.name + "  ·  " + c.pid,
+                kids.forEach(c => rows.push(procRow({ key: g.id + "/" + c.pid, type: "child", gid: g.id, pid: c.pid, name: c.name + "  ·  " + c.pid, tag: c.ai ? "AI" : c.bridge ? "bridge" : "",
                     depth: 1, eco: c.nice >= 19, suspended: c.state === "T", locked: !!g.protected, count: 1, cpu: c.cpu, mem: c.mem, swap: c.swap || 0,
                     disk: c.disk, gpu: c.gpu, hc: c.heat.cpu, hm: c.heat.mem, hd: c.heat.disk, hg: c.heat.gpu, power: "" })));
             }
@@ -249,7 +277,7 @@ FocusScope {
     }
     function procCell(r, key) {
         switch (key) {
-        case "status": return { t: r.suspended ? "Suspended" : "", leaf: r.eco };
+        case "status": return { t: r.status || (r.suspended ? "Suspended ⏸" : ""), leaf: r.eco };
         case "pid": return { t: r.pid ? String(r.pid) : "", muted: true };
         case "swap": return { t: r.swap > 0 ? mb(r.swap) : "", muted: r.swap < 50 * 1048576 };
         case "power": return { t: r.power, muted: r.power === "Very low" || r.power === "" };
@@ -350,10 +378,12 @@ FocusScope {
                    { id: "tree", label: "End process tree", icon: "close", enabled: !g.protected },
                    { id: "eco", label: "Efficiency mode", icon: "leaf", checked: !!g.eco, enabled: !g.protected },
                    { id: "priority", label: "Set priority ▸", icon: "cpu", enabled: !g.protected },
-                   { id: "cores", label: "Run on these cores…", icon: "cpu", enabled: !g.protected },
-                   { id: "limit", label: "Limit CPU / memory…", icon: "cpu", enabled: !g.protected && !child },
-                   { sep: true },
-                   { id: "never", label: "Never close when memory runs out", icon: "shield", enabled: !g.protected && procName !== "" },
+                   { id: "cores", label: "Run on these cores…", icon: "cpu", enabled: !g.protected, fresh: true },
+                   { id: "limit", label: "Limit CPU / memory…", icon: "cpu", enabled: !g.protected && !child, fresh: true },
+                   { sep: true });
+        if (g.suspended && !child) items.push({ id: "resume", label: "Resume", icon: "play", enabled: !g.protected });
+        items.push({ id: "keep", label: "Keep this running (checkpoint)", icon: "pause", checked: !!g.keepRunning, enabled: !g.protected && procName !== "", fresh: true },
+                   { id: "never", label: "Never close when memory runs out", icon: "shield", enabled: !g.protected && procName !== "", fresh: true },
                    { sep: true });
         if (w) items.push({ id: "window", label: "Switch to", icon: "window" });
         items.push({ id: "details", label: "Go to details", icon: "list", key: "PID " + pid },
@@ -366,12 +396,7 @@ FocusScope {
             case "end": child ? endPid(row.pid, row.name, false) : endGroup(g.id); break;
             case "tree": run(actProc, ["end-tree", String(pid)]); break;
             case "eco": setEco(g.pid, !g.eco); break;
-            case "priority":
-                showMenu("Set priority · " + g.name, [
-                    { id: "normal", label: "Normal", checked: (g.nice || 0) === 0 },
-                    { id: "below", label: "Below normal", checked: (g.nice || 0) > 0 && (g.nice || 0) < 19 },
-                    { id: "low", label: "Low", checked: (g.nice || 0) >= 19 }], x, y, lvl => run(actProc, ["priority", String(g.pid), lvl]));
-                break;
+            case "priority": priorityMenu(g.pid, g.name, g.nice || 0, x, y); break;
             case "cores":
                 askText("Run on these cores", "Which of this PC's cores " + g.name + " may use, until it closes (cores 0 to " + (v.coreCount - 1) + "). For example 0-3 or 0,2,4.",
                         "0-" + (v.coreCount - 1), t => run(actProc, ["affinity", String(g.pid), t.replace(/\s+/g, "")]));
@@ -383,6 +408,18 @@ FocusScope {
             case "never": Quickshell.execDetached(["pkexec", "/usr/libexec/nimbus/hearth-memory", "never", procName, "on"]);
                 showSheet("notice", g.name, procName + " is on your Never close list: when memory runs out, Hearth closes something else. Change the list in Memory › Swap & settings.", [{ label: "OK", action: "close" }]);
                 break;
+            case "resume": run(actProc, ["resume-group", String(g.pid)]); break;
+            case "keep": {
+                // Keep this running (checkpoint), 1.12: when memory runs out and this is the one eating it, the memory
+                // guard freezes it and moves its memory to the drive instead of closing it. Saved; pressing it again
+                // takes it off the list.
+                const on = !g.keepRunning;
+                Quickshell.execDetached(["pkexec", "/usr/libexec/nimbus/hearth-memory", "checkpoint", procName, on ? "on" : "off"]);
+                showSheet("notice", g.name, on
+                    ? "When memory runs out and " + g.name + " is the one using it, Hearth pauses it instead of closing it: it's frozen and its memory is moved to the drive, so nothing is lost. Right-click it and choose Resume to carry on where you were. Press this again to take it off the list."
+                    : g.name + " is off your Keep running list: when memory runs out it can be closed again.", [{ label: "OK", action: "close" }]);
+                break;
+            }
             case "details": search.text = String(pid); tm.page = "details"; break;
             case "expand": toggleExpand(g.id); break;
             case "window": { const t = windowFor(g); if (t) { t.minimized = false; t.activate(); } break; }
@@ -411,13 +448,16 @@ FocusScope {
         const list = details.filter(d => !q || String(d.pid).indexOf(q) === 0 || d.name.toLowerCase().indexOf(q) >= 0 || d.user.toLowerCase().indexOf(q) >= 0 || d.cmd.toLowerCase().indexOf(q) >= 0);
         const rows = sortBy(list, s.key, s.desc).map(d => ({ key: String(d.pid), type: "row", depth: 0, icon: "", tag: "", expandable: false,
             expanded: false, eco: false, name: d.name, pid: d.pid, status: d.status, user: d.user, cpu: d.cpu, mem: d.mem, cmd: d.cmd,
-            mine: d.mine, path: d.path || "", ppid: d.ppid || 0, swap: d.swap || 0, threads: d.threads || 0, nice: d.nice || 0 }));
+            mine: d.mine, path: d.path || "", ppid: d.ppid || 0, swap: d.swap || 0, threads: d.threads || 0, nice: d.nice || 0,
+            cputime: d.cputime || 0, cores: d.cores || "All", rt: !!d.rt }));
         sync(detModel, rows);
     }
     function detCell(r, key) {
         switch (key) {
         case "pid": return { t: String(r.pid) };
-        case "status": return { t: r.status, muted: r.status === "Running" ? false : false };
+        case "status": return { t: r.status === "Stopped" || r.status === "Suspended" ? "Suspended ⏸" : r.status };
+        case "cputime": return { t: upTime(r.cputime).replace(/^0:/, ""), muted: r.cputime === 0 };
+        case "cores": return { t: r.cores || "All", muted: (r.cores || "All") === "All" };
         case "user": return { t: r.user, muted: !r.mine };
         case "cpu": return { t: r.cpu >= 10 ? Math.round(r.cpu) + "" : r.cpu.toFixed(1) };
         case "mem": return { t: thousands(r.mem / 1024) + " K" };
@@ -425,7 +465,7 @@ FocusScope {
         case "ppid": return { t: r.ppid ? String(r.ppid) : "0", muted: true };
         case "swap": return { t: r.swap > 0 ? mb(r.swap) : "0", muted: r.swap === 0 };
         case "threads": return { t: String(r.threads || 0) };
-        case "nice": return { t: r.nice < -10 ? "High" : r.nice < 0 ? "Above normal" : r.nice === 0 ? "Normal" : r.nice < 19 ? "Below normal" : "Low" };
+        case "nice": return { t: r.rt ? "Realtime" : r.nice < -10 ? "High" : r.nice < 0 ? "Above normal" : r.nice === 0 ? "Normal" : r.nice < 19 ? "Below normal" : "Low" };
         }
         return { t: String(r[key] === undefined ? "" : r[key]) };
     }
@@ -440,6 +480,8 @@ FocusScope {
             { id: "eco", label: "Efficiency mode", icon: "leaf", enabled: r.mine && !!g && !g.protected, checked: !!g && !!g.eco },
             { id: "priority", label: "Set priority ▸", icon: "cpu", enabled: r.mine && !!g && !g.protected },
             { id: "cores", label: "Set affinity…", icon: "cpu", enabled: r.mine && !!g && !g.protected },
+            { id: "suspend", label: /^Suspended|^Stopped/.test(r.status) ? "Resume" : "Suspend", icon: "pause", enabled: r.mine && !(g && g.protected) },
+            { id: "dump", label: "Create dump file", icon: "file" },
             { sep: true },
             { id: "where", label: "Open file location", icon: "folder", enabled: r.path !== "" },
             { id: "web", label: "Search online", icon: "search" },
@@ -449,10 +491,9 @@ FocusScope {
             switch (id) {
             case "end": endPid(r.pid, r.name, false); break;
             case "tree": run(actProc, ["end-tree", String(r.pid)]); break;
-            case "priority":
-                showMenu("Set priority · " + r.name, [{ id: "normal", label: "Normal" }, { id: "below", label: "Below normal" }, { id: "low", label: "Low" }], x, y,
-                         lvl => run(actProc, ["priority", String(r.pid), lvl]));
-                break;
+            case "priority": priorityMenu(r.pid, r.name, r.nice, x, y); break;
+            case "suspend": run(actProc, [/^Suspended|^Stopped/.test(r.status) ? "resume" : "suspend", String(r.pid)]); break;
+            case "dump": createDump(r.pid, r.name); break;
             case "cores":
                 askText("Run on these cores", "Which cores " + r.name + " may use, until it closes (0 to " + (v.coreCount - 1) + "). For example 0-3.", "0-" + (v.coreCount - 1),
                         t => run(actProc, ["affinity", String(r.pid), t.replace(/\s+/g, "")]));
@@ -462,6 +503,40 @@ FocusScope {
             case "web": searchOnline(r.name); break;
             case "props": properties(r.path); break;
             }
+        });
+    }
+
+    // Every priority Windows has (1.12, mockup tm-2). Lower is yours to set; higher needs your password (pkexec renice),
+    // and Realtime asks first, because a busy realtime program can stop the PC from answering.
+    function priorityMenu(pid, name, nice, x, y) {
+        showMenu("Set priority · " + name, [
+            { id: "realtime", label: "Realtime" }, { id: "high", label: "High", checked: nice < -10 }, { id: "above", label: "Above normal", checked: nice < 0 && nice >= -10 },
+            { id: "normal", label: "Normal", checked: nice === 0 }, { id: "below", label: "Below normal", checked: nice > 0 && nice < 19 }, { id: "low", label: "Low", checked: nice >= 19 }], x, y, lvl => {
+            if (lvl === "normal" || lvl === "below" || lvl === "low") run(actProc, ["priority", String(pid), lvl]);
+            else if (lvl === "realtime") {
+                sheetCmd = ["pkexec", "chrt", "-r", "-a", "-p", "1", String(pid)];
+                showSheet("notice", "Realtime priority for " + name + "?",
+                    "A realtime program goes before everything else, even the mouse and keyboard. If it gets busy, the PC can stop answering until it closes. Hearth asks for your password.",
+                    [{ label: "Set Realtime", action: "exec", danger: true }, { label: "Cancel", action: "close" }]);
+            }
+            else Quickshell.execDetached(["pkexec", "renice", "-n", lvl === "high" ? "-10" : "-5", "-p", String(pid)]);
+        });
+    }
+    // A dump file of a process (Windows' Create dump file) on your Desktop: gdb's gcore, with your password.
+    function createDump(pid, name) {
+        const out = Quickshell.env("HOME") + "/Desktop/" + String(name).replace(/[^A-Za-z0-9._-]+/g, "_") + "-" + pid + ".dmp";
+        Quickshell.execDetached(["sh", "-c", "command -v gcore >/dev/null || { notify-send -a 'Task Manager' 'Create dump file' 'gdb isn'\''t installed on this Hearth.'; exit 0; }; "
+            + "pkexec gcore -o \"$1\" \"$2\" >/dev/null 2>&1 && mv \"$1.$2\" \"$1\" 2>/dev/null; [ -s \"$1\" ] && notify-send -a 'Task Manager' 'Dump file made' \"$1\" || notify-send -a 'Task Manager' 'No dump file' 'It was cancelled, or the process closed.'",
+            "sh", out, String(pid)]);
+    }
+    // Columns… : which columns a table shows (remembered; Name always stays).
+    function columnsMenu(table, cols, x, y) {
+        const hide = tm.pref("hide_" + table, []);
+        showMenu("Columns", cols.filter(c => c.key !== "name").map(c => ({ id: c.key, label: c.title, checked: hide.indexOf(c.key) < 0 })), x, y, k => {
+            const h = tm.pref("hide_" + table, []).slice();
+            const i = h.indexOf(k);
+            if (i >= 0) h.splice(i, 1); else h.push(k);
+            tm.setPref("hide_" + table, h);
         });
     }
 
@@ -478,7 +553,7 @@ FocusScope {
         const list = startItems.filter(i => !q || i.name.toLowerCase().indexOf(q) >= 0 || String(i.publisher || "").toLowerCase().indexOf(q) >= 0);
         const rows = sortBy(list.map(i => ({ key: i.id, type: "row", depth: 0, icon: "", tag: "", expandable: false, expanded: false,
             eco: false, name: i.name, publisher: i.publisher || "", status: statusOfStart(i), impact: i.impact || "Not measured",
-            on: !!i.on, canChange: !!i.canChange, sub: i.sub || "", kind: i.kind })), s.key, s.desc);
+            on: !!i.on, canChange: !!i.canChange, sub: i.sub || "", kind: i.kind, added: i.added === null || i.added === undefined ? -1 : i.added, starts: i.starts || "" })), s.key, s.desc);
         sync(startModel, rows);
     }
     function startCell(r, key) {
@@ -488,6 +563,8 @@ FocusScope {
         }
         if (key === "impact") return { t: r.impact, muted: r.impact === "Not measured" || r.impact === "None" };
         if (key === "publisher") return { t: r.publisher || "–", muted: !r.publisher };
+        if (key === "added") return { t: r.added >= 0 ? r.added.toFixed(1) + " s" : "—", muted: r.added < 0 };
+        if (key === "starts") return { t: r.starts || "—", muted: !r.starts };
         return { t: String(r[key] || "") };
     }
     function setStartup(key, on) {
@@ -532,13 +609,31 @@ FocusScope {
         const same = d.toDateString() === now.toDateString();
         return same ? Qt.formatTime(d, "h:mm AP") : Qt.formatDateTime(d, "MMM d, h:mm AP");
     }
+    // + New task (1.12, mockup tm-8): a name, then what to run, then when (a time, at sign-in, every hour or 6 hours,
+    // when idle, when on battery). Yours only; a systemd user timer, or Mantel's idle / battery watch.
+    function newTask(x, y) {
+        askText("New task", "A name for it (for example: Back up game saves).", "", name => {
+            askText("New task · " + name, "What to run: a program or a script, as you'd type it in a terminal.", "", cmd => {
+                showMenu("When should " + name + " run?", [
+                    { id: "daily@03:00", label: "Every day at 3:00" }, { id: "daily@12:00", label: "Every day at 12:00" }, { id: "daily@21:00", label: "Every day at 21:00" },
+                    { id: "hourly", label: "Every hour" }, { id: "every6h", label: "Every 6 hours" }, { id: "signin", label: "At sign-in" },
+                    { id: "idle", label: "When the PC is idle" }, { id: "battery", label: "When it goes on battery" }, { id: "time", label: "Every day at…" }], x, y, w => {
+                    if (w === "time") askText("New task · " + name, "Every day at what time? (24-hour, like 03:30)", "03:00", t => {
+                        const m = t.trim().match(/^(\d{1,2}):(\d{2})$/);
+                        if (m) run(timerActProc, ["task-new", name, "daily@" + (m[1].length < 2 ? "0" : "") + m[1] + ":" + m[2], cmd]);
+                    });
+                    else run(timerActProc, ["task-new", name, w, cmd]);
+                });
+            });
+        });
+    }
     function buildTimers() {
         const q = query.trim().toLowerCase();
         const list = timerItems.filter(t => !q || t.unit.toLowerCase().indexOf(q) >= 0 || t.runs.toLowerCase().indexOf(q) >= 0);
         const row = t => ({ key: t.id, type: "row", depth: 0, icon: "", tag: t.hearth ? "Part of Hearth" : "", expandable: false, expanded: false, eco: false,
-            name: t.unit.replace(/\.timer$/, ""), unit: t.unit, runs: t.runs, next: t.next, last: t.last, scope: t.scope, canChange: !!t.canChange, label: "" });
+            name: t.desc || t.unit.replace(/\.timer$/, ""), unit: t.unit, runs: t.runs, next: t.next, last: t.last, scope: t.scope, canChange: !!t.canChange, label: "", result: t.result || "" });
         const sec = (k, l) => ({ key: k, type: "section", depth: 0, icon: "", tag: "", expandable: false, expanded: false, eco: false,
-            name: "", unit: "", runs: "", next: 0, last: 0, scope: "", canChange: false, label: l });
+            name: "", unit: "", runs: "", next: 0, last: 0, scope: "", canChange: false, label: l, result: "" });
         const mine = list.filter(t => t.scope === "user"), sys = list.filter(t => t.scope === "system");
         const rows = [];
         if (mine.length) { rows.push(sec("s:mine", "Yours (" + mine.length + ")")); mine.forEach(t => rows.push(row(t))); }
@@ -549,6 +644,7 @@ FocusScope {
         if (key === "next") return { t: r.next ? when(r.next) : "Off", muted: !r.next };
         if (key === "last") return { t: when(r.last), muted: !r.last };
         if (key === "runs") return { t: r.runs, muted: true };
+        if (key === "result") return { t: r.result || "—", good: r.result === "OK", bad: !!r.result && r.result !== "OK", muted: !r.result };
         return { t: String(r[key] === undefined ? "" : r[key]) };
     }
     function buildUsers() {
@@ -628,15 +724,16 @@ FocusScope {
         const rows = [];
         const row = i => ({ key: i.id, type: "row", depth: 0, icon: "", tag: i.hearth ? "Part of Hearth" : "", expandable: false, expanded: false,
             eco: false, name: i.name, pid: i.pid || 0, desc: i.desc || "", status: i.status, group: i.group, canChange: !!i.canChange,
-            unit: i.unit, label: "" });
+            unit: i.unit, label: "", starts: i.starts || "" });
         const sec = (k, l) => ({ key: k, type: "section", depth: 0, icon: "", tag: "", expandable: false, expanded: false, eco: false,
-            name: "", pid: 0, desc: "", status: "", group: "", canChange: false, unit: "", label: l });
+            name: "", pid: 0, desc: "", status: "", group: "", canChange: false, unit: "", label: l, starts: "" });
         const mine = pick("Yours"), sys = pick("System");
         if (mine.length) { rows.push(sec("s:yours", "Your services (" + mine.length + ")")); mine.forEach(i => rows.push(row(i))); }
         if (sys.length) { rows.push(sec("s:system", "System services (" + sys.length + ") · read only")); sys.forEach(i => rows.push(row(i))); }
         sync(svcModel, rows);
     }
     function svcCell(r, key) {
+        if (key === "starts") return { t: r.starts || "", muted: r.starts === "Off" };
         if (key === "pid") return { t: r.pid ? String(r.pid) : "", muted: true };
         if (key === "status") return { t: r.status, good: r.status === "Running", bad: r.status === "Failed", muted: r.status === "Stopped" };
         if (key === "desc") return { t: r.desc, muted: true };
@@ -655,8 +752,16 @@ FocusScope {
             { id: "stop", label: "Stop", icon: "pause", enabled: r.canChange && r.status === "Running" },
             { id: "restart", label: "Restart", icon: "restart", enabled: r.canChange && r.status === "Running" },
             { sep: true },
+            { id: "starts", label: "Starts ▸", icon: "clock", enabled: r.canChange },
+            { sep: true },
             { id: "web", label: "Search online", icon: "search" }
-        ], x, y, id => { if (id === "web") searchOnline(r.name + " service"); else svcAct(r, id); });
+        ], x, y, id => {
+            if (id === "web") searchOnline(r.name + " service");
+            else if (id === "starts") showMenu("Starts · " + r.name, [
+                { id: "enable", label: "Automatic", checked: r.starts === "Automatic" },
+                { id: "disable", label: "When needed (or Off)", checked: r.starts !== "Automatic" }], x, y, a => svcAct(r, a));
+            else svcAct(r, id);
+        });
     }
 
     // ---- one-shot helper processes
@@ -780,6 +885,7 @@ FocusScope {
     property var sheetButtons: []
     property int sheetIndex: 0
     property var sheetReturn: null
+    property var sheetCmd: []               // what a sheet's "exec" button runs (Realtime priority)
     function showSheet(mode, t, text, buttons) {
         if (sheetMode === "") sheetReturn = v.Window.activeFocusItem || null;
         sheetMode = mode;
@@ -812,6 +918,7 @@ FocusScope {
             break;
         }
         case "run": runTask(); break;
+        case "exec": if (sheetCmd.length) Quickshell.execDetached(sheetCmd); sheetCmd = []; closeSheet(); break;
         case "histclear": run(histClearProc, ["history-clear"]); closeSheet(); break;
         case "ask": { const t = runInput.text.trim(), f = askThen; askThen = null; runInput.text = ""; closeSheet(); if (f && t !== "") f(t); break; }
         }
@@ -1019,10 +1126,14 @@ FocusScope {
             onLeave: v.toRail()
             onUpOut: search.forceActiveFocus()
             title: "Processes"
+            tabs: [["groups", "Apps & groups"], ["all", "All processes"]]
+            tab: v.procView
+            onTabChose: id => { v.procView = id; tm.setPref("procView", id); v.buildProcs(); }
             buttons: [
                 { id: "run", label: "Run new task", icon: "plus", primary: true },
-                { id: "end", label: "End task", icon: "close", enabled: pp.canEnd },
                 { id: "eco", label: "Efficiency mode", icon: "leaf", enabled: pp.canEnd, checked: pp.isEco },
+                { id: "where", label: "Open file location", icon: "folder", enabled: pp.selGroup !== null && !!pp.selGroup.exe },
+                { id: "end", label: "End task", icon: "close", enabled: pp.canEnd },
                 { id: "view", label: "View", icon: "chevd" }
             ]
             readonly property var selRow: table.currentIndex >= 0 && table.currentIndex < procModel.count ? procModel.get(table.currentIndex) : null
@@ -1035,6 +1146,7 @@ FocusScope {
                 case "run": v.askRun(); break;
                 case "end": if (selRow && selRow.type === "child") v.endPid(selRow.pid, selRow.name, false); else if (selGroup) v.endGroup(selGroup.id); break;
                 case "eco": if (selGroup) v.setEco(selGroup.pid, !selGroup.eco); break;
+                case "where": if (selGroup) v.openLocation(selGroup.exe); break;
                 case "view": {
                     const s = v.sortPref("procs", "", false);
                     const by = (k, l) => ({ id: "sort:" + k, label: l, checked: s.key === k });
@@ -1114,14 +1226,16 @@ FocusScope {
             // Overview | <device> & settings (1.11: Memory's Swap & settings, CPU's Power & settings, …)
             property string memTab: "overview"
             readonly property bool memSettings: !!dev && memTab === "settings"
-            readonly property var settingsLabel: ({ memory: "Swap & settings", cpu: "Power & settings", disk: "Health & settings", net: "Connection & hotspot", gpu: "Tuning", battery: "Health & settings" })
+            readonly property bool memOverview: !!dev && !memSettings && dev.kind === "memory"
+            readonly property var settingsLabel: ({ memory: "Swap & settings", cpu: "Power & settings", disk: "Health & settings", net: "Apps & settings", gpu: "Tuning", battery: "Health & settings" })
             readonly property var devices: {
                 const d = [];
                 if (!s) return d;
                 d.push({ key: "cpu", kind: "cpu", title: "CPU", sub: v.pct(s.cpu.total) + "  " + v.ghz(s.cpu.mhz), max: 100 });
                 d.push({ key: "memory", kind: "memory", title: "Memory", sub: v.sizeOf(s.mem.used, s.mem.total) + " (" + v.pct(100 * s.mem.used / Math.max(1, s.mem.total)) + ")", max: 100 });
                 (s.disks || []).forEach(x => d.push({ key: "disk:" + x.name, kind: "disk", title: x.label, sub: x.type + "  " + v.pct(x.active), max: 100, disk: x }));
-                (s.nets || []).forEach(x => d.push({ key: "net:" + x.name, kind: "net", title: x.kind, sub: x.up ? "S: " + v.kbps(x.send) + "  R: " + v.kbps(x.recv) : "Not connected", max: 0, net: x }));
+                (s.nets || []).forEach(x => d.push({ key: "net:" + x.name, kind: "net", title: x.kind,
+                    sub: x.kind === "Tailscale" ? (v.tsPeers >= 0 ? v.plural(v.tsPeers, "device") : x.up ? "Connected" : "Not connected") : x.up ? "S: " + v.kbps(x.send) + "  R: " + v.kbps(x.recv) : "Not connected", max: 0, net: x }));
                 (s.gpus || []).forEach(x => d.push({ key: "gpu:" + x.index, kind: "gpu", title: "GPU " + x.index, sub: x.name + "  " + (x.busy === null || x.busy === undefined ? "" : v.pct(x.busy)) + (x.temp !== null && x.temp !== undefined ? " (" + v.temp(x.temp) + ")" : ""), max: 100, gpu: x }));
                 if (s.battery) d.push({ key: "battery", kind: "battery", title: "Battery", sub: s.battery.percent + "% · " + s.battery.status, max: 100, battery: s.battery });
                 return d;
@@ -1221,7 +1335,7 @@ FocusScope {
                                 Layout.maximumWidth: dcol.width * 0.6
                                 horizontalAlignment: Text.AlignRight
                                 elide: Text.ElideRight
-                                text: !pf.dev ? "" : pf.dev.kind === "cpu" ? pf.s.cpu.name : pf.dev.kind === "memory" ? v.size(pf.s.mem.total) : pf.dev.kind === "disk" ? (pf.dev.disk.model || pf.dev.disk.name)
+                                text: !pf.dev ? "" : pf.memSettings && devLoader.item && devLoader.item.headline ? devLoader.item.headline : pf.memOverview && memOv.headline ? memOv.headline : pf.dev.kind === "cpu" ? pf.s.cpu.name : pf.dev.kind === "memory" ? v.size(pf.s.mem.total) : pf.dev.kind === "disk" ? (pf.dev.disk.model || pf.dev.disk.name)
                                     : pf.dev.kind === "net" ? pf.dev.net.name : pf.dev.kind === "gpu" ? pf.dev.gpu.name : pf.dev.kind === "battery" ? pf.dev.battery.name : ""
                                 color: Theme.text; font.family: Theme.font; font.pixelSize: 15
                             }
@@ -1243,20 +1357,30 @@ FocusScope {
                                 }
                             }
                         }
+                        MemoryOverview {
+                            id: memOv
+                            visible: pf.memOverview
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                            view: v
+                            s: pf.s
+                            onOpenSettings: pf.memTab = "settings"
+                        }
                         MemorySettings {
                             visible: pf.memSettings && pf.dev.kind === "memory"
                             Layout.fillWidth: true
                             Layout.topMargin: 6
                         }
                         Loader {
+                            id: devLoader
                             active: pf.memSettings && pf.dev.kind !== "memory"
                             visible: active
                             Layout.fillWidth: true
                             Layout.topMargin: 6
-                            sourceComponent: DeviceSettings { kind: pf.dev ? pf.dev.kind : "cpu"; dev: pf.dev; sample: pf.s; width: parent ? parent.width : 600 }
+                            sourceComponent: DeviceSettings { kind: pf.dev ? pf.dev.kind : "cpu"; dev: pf.dev; sample: pf.s; view: v; width: parent ? parent.width : 600 }
                         }
                         RowLayout {
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Text {
                                 text: !pf.dev ? "" : pf.dev.kind === "memory" ? "Memory usage" : pf.dev.kind === "disk" ? "Active time" : pf.dev.kind === "net" ? "Throughput" : pf.dev.kind === "battery" ? "Charge" : "% Utilization"
@@ -1267,7 +1391,7 @@ FocusScope {
                         }
                         Graph {
                             id: big
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(160, Math.min(330, detail.height * 0.45))
                             values: pf.dev ? (v.hist[pf.dev.key] || []) : []
@@ -1278,7 +1402,7 @@ FocusScope {
                             framed: true
                         }
                         RowLayout {
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Text { text: "60 seconds"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
                             Item { Layout.fillWidth: true }
@@ -1286,7 +1410,7 @@ FocusScope {
                         }
                         // the classic numbers
                         RowLayout {
-                            visible: !!pf.dev && !pf.memSettings
+                            visible: !!pf.dev && !pf.memSettings && !pf.memOverview
                             Layout.fillWidth: true
                             Layout.topMargin: 8
                             spacing: 24
@@ -1398,10 +1522,16 @@ FocusScope {
             subtitle: "What runs by itself at set times, like Windows' Task Scheduler"
             readonly property var sel: table.currentIndex >= 0 && table.currentIndex < timerModel.count ? timerModel.get(table.currentIndex) : null
             buttons: [
-                { id: "on", label: "Turn on", enabled: !!tp.sel && tp.sel.canChange && !tp.sel.next, primary: true },
-                { id: "off", label: "Turn off", enabled: !!tp.sel && tp.sel.canChange && !!tp.sel.next }
+                { id: "new", label: "+ New task", icon: "plus", primary: true },
+                { id: "on", label: "Turn on", enabled: !!tp.sel && tp.sel.canChange && !tp.sel.next },
+                { id: "off", label: "Turn off", enabled: !!tp.sel && tp.sel.canChange && !!tp.sel.next },
+                { id: "del", label: "Delete", icon: "trash", enabled: !!tp.sel && /^hearth-task-/.test(tp.sel.unit || "") }
             ]
-            onButton: id => { if (sel) v.run(timerActProc, ["timer", sel.unit, id === "on" ? "on" : "off"]); }
+            onButton: (id, x, y) => {
+                if (id === "new") v.newTask(x, y);
+                else if (id === "del" && sel) v.run(timerActProc, ["task-delete", sel.unit.replace(/^hearth-task-/, "").replace(/\.timer$/, "")]);
+                else if (sel) v.run(timerActProc, ["timer", sel.unit, id === "on" ? "on" : "off"]);
+            }
             function focusFirst() { table.focusList(); }
             DataTable {
                 id: table
@@ -1412,10 +1542,11 @@ FocusScope {
                 rowHeight: 36
                 widths: tm.pref("cols_tasks", ({}))
                 columns: [
-                    { key: "name", title: "Name", flex: true },
-                    { key: "next", title: "Next run", width: 170 },
+                    { key: "name", title: "Task", flex: true },
+                    { key: "next", title: "When (next)", width: 170 },
                     { key: "last", title: "Last run", width: 170 },
-                    { key: "runs", title: "What it runs", width: 260 }
+                    { key: "result", title: "Last result", width: 110 },
+                    { key: "runs", title: "What it runs", width: 240 }
                 ]
                 cell: (r, k) => v.timerCell(r, k)
                 empty: v.timersLoaded ? "Nothing is scheduled." : "Looking at what's scheduled…"
@@ -1503,7 +1634,7 @@ FocusScope {
             onLeave: v.toRail()
             onUpOut: search.forceActiveFocus()
             title: "Startup apps"
-            subtitle: v.bootSeconds !== null && v.bootSeconds !== undefined ? "Last start-up time: " + v.bootSeconds + " seconds" : ""
+            subtitle: v.bootSeconds !== null && v.bootSeconds !== undefined ? "Last start: " + Math.round(v.bootSeconds) + " s (desktop ready)" : ""
             readonly property var sel: table.currentIndex >= 0 && table.currentIndex < startModel.count ? startModel.get(table.currentIndex) : null
             buttons: [
                 { id: "on", label: "Enable", enabled: !!sp.sel && sp.sel.canChange && !sp.sel.on, primary: true },
@@ -1531,7 +1662,9 @@ FocusScope {
                     { key: "name", title: "Name", flex: true },
                     { key: "publisher", title: "Publisher", width: 200 },
                     { key: "status", title: "Status", width: 150 },
-                    { key: "impact", title: "Start-up impact", width: 150 }
+                    { key: "impact", title: "Start-up impact", width: 150 },
+                    { key: "added", title: "Time added to start", width: 160, right: true },
+                    { key: "starts", title: "Starts", width: 180 }
                 ]
                 cell: (r, k) => v.startCell(r, k)
                 empty: v.startLoaded ? "Nothing starts on its own." : "Looking for things that start on their own…"
@@ -1573,9 +1706,30 @@ FocusScope {
             readonly property var sel: table.currentIndex >= 0 && table.currentIndex < detModel.count ? detModel.get(table.currentIndex) : null
             buttons: [
                 { id: "run", label: "Run new task", icon: "plus", primary: true },
+                { id: "cols", label: "Columns…", icon: "list" },
                 { id: "end", label: "End task", icon: "close", enabled: !!dp.sel && dp.sel.mine }
             ]
-            onButton: id => { if (id === "run") v.askRun(); else if (id === "end" && sel) v.endPid(sel.pid, sel.name, false); }
+            subtitle: "every process with its number, the Windows way"
+            onButton: (id, x, y) => {
+                if (id === "run") v.askRun();
+                else if (id === "end" && sel) v.endPid(sel.pid, sel.name, false);
+                else if (id === "cols") v.columnsMenu("details", dp.allColumns, x, y);
+            }
+            readonly property var allColumns: [
+                { key: "name", title: "Name", width: 200 },
+                { key: "pid", title: "PID", width: 72, right: true },
+                { key: "ppid", title: "Parent", width: 72, right: true },
+                { key: "status", title: "Status", width: 110 },
+                { key: "user", title: "User name", width: 110 },
+                { key: "cpu", title: "CPU", width: 60, right: true },
+                { key: "cputime", title: "CPU time", width: 86, right: true },
+                { key: "mem", title: "Memory", width: 100, right: true },
+                { key: "swap", title: "Swapped", width: 90, right: true },
+                { key: "threads", title: "Threads", width: 70, right: true },
+                { key: "nice", title: "Priority", width: 106, right: true },
+                { key: "cores", title: "Cores", width: 64, right: true },
+                { key: "cmd", title: "Command line", flex: true }
+            ]
             function focusFirst() { table.focusList(); }
             Component.onCompleted: v.buildDetails()
             DataTable {
@@ -1588,19 +1742,7 @@ FocusScope {
                 widths: tm.pref("cols_details", ({}))
                 sortKey: v.sortPref("details", "pid", false).key
                 sortDesc: v.sortPref("details", "pid", false).desc
-                columns: [
-                    { key: "name", title: "Name", width: 200 },
-                    { key: "pid", title: "PID", width: 72, right: true },
-                    { key: "ppid", title: "Parent", width: 72, right: true },
-                    { key: "status", title: "Status", width: 96 },
-                    { key: "user", title: "User name", width: 110 },
-                    { key: "cpu", title: "CPU", width: 60, right: true },
-                    { key: "mem", title: "Memory", width: 100, right: true },
-                    { key: "swap", title: "Swapped", width: 90, right: true },
-                    { key: "threads", title: "Threads", width: 70, right: true },
-                    { key: "nice", title: "Priority", width: 100, right: true },
-                    { key: "cmd", title: "Command line", flex: true }
-                ]
+                columns: { const hide = tm.pref("hide_details", []); return dp.allColumns.filter(c => c.key === "name" || hide.indexOf(c.key) < 0); }
                 cell: (r, k) => v.detCell(r, k)
                 empty: v.sampleError !== "" ? v.sampleError : v.details.length === 0 ? (tm.interval === 0 ? "Updates are paused (Settings › Real-time update speed)." : "Reading the process list…") : "Nothing matches “" + v.query + "”."
                 onSortClicked: k => { v.setSort("details", k, k === "cpu" || k === "mem" || k === "swap" || k === "threads"); v.buildDetails(); }
@@ -1651,6 +1793,7 @@ FocusScope {
                     { key: "pid", title: "PID", width: 72, right: true },
                     { key: "desc", title: "Description", flex: true },
                     { key: "status", title: "Status", width: 96 },
+                    { key: "starts", title: "Starts", width: 120 },
                     { key: "group", title: "Group", width: 80 }
                 ]
                 cell: (r, k) => v.svcCell(r, k)
@@ -1854,13 +1997,22 @@ FocusScope {
                                     Icon { anchors.fill: parent; visible: !!mi.modelData.checked; name: "check"; size: 16; color: Theme.accent }
                                 }
                                 Text {
-                                    Layout.fillWidth: true
+                                    Layout.fillWidth: !mi.modelData.fresh
+                                    Layout.maximumWidth: mi.modelData.fresh ? mi.width - 110 : -1
                                     text: mi.modelData.label || ""
                                     color: !mi.on ? Theme.muted : mi.modelData.danger ? Theme.danger : Theme.text
                                     opacity: mi.on ? 1 : 0.6
                                     font.family: Theme.font; font.pixelSize: 13
                                     elide: Text.ElideRight
                                 }
+                                // NEW on the menu's new items (mockup tm-1)
+                                Rectangle {
+                                    visible: !!mi.modelData.fresh
+                                    implicitWidth: freshText.implicitWidth + 10; implicitHeight: 16; radius: 4
+                                    color: "transparent"; border.color: Theme.ember; border.width: 1
+                                    Text { id: freshText; anchors.centerIn: parent; text: "NEW"; color: Theme.ember; font.family: Theme.font; font.pixelSize: 10; font.bold: true }
+                                }
+                                Item { visible: !!mi.modelData.fresh; Layout.fillWidth: true; implicitHeight: 1 }
                                 Text { visible: !!mi.modelData.key; text: mi.modelData.key || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
                             }
                             MouseArea {
@@ -2001,6 +2153,9 @@ FocusScope {
         id: pfr
         property string title
         property string subtitle: ""
+        property var tabs: []              // [[id, label]] next to the title (1.12, mockup tm-1)
+        property string tab: ""
+        signal tabChose(string id)
         property var buttons: []
         property int barIndex: 0
         default property alias content: body.data
@@ -2029,6 +2184,22 @@ FocusScope {
                 Layout.leftMargin: 20; Layout.rightMargin: 14
                 spacing: 18
                 Text { text: pfr.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
+                Row {
+                    visible: pfr.tabs.length > 0
+                    spacing: 6
+                    Repeater {
+                        model: pfr.tabs
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool on: pfr.tab === modelData[0]
+                            width: ptt.implicitWidth + 26; height: 32; radius: Theme.r(8)
+                            color: on ? Theme.panel2 : ptm.containsMouse ? Theme.panel3 : "transparent"
+                            border.color: on ? Theme.line : "transparent"
+                            Text { id: ptt; anchors.centerIn: parent; text: parent.modelData[1]; color: parent.on ? Theme.text : Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
+                            MouseArea { id: ptm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pfr.tabChose(parent.modelData[0]) }
+                        }
+                    }
+                }
                 Text { visible: pfr.subtitle !== ""; text: pfr.subtitle; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                 Item { Layout.fillWidth: true }
                 FocusScope {

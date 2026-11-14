@@ -1294,7 +1294,26 @@ Scope {
         if (m.startsWith("text/") || /json|xml|javascript|shellscript|x-yaml|toml/.test(m)) return "text";
         return "file";
     }
+    readonly property var winTypes: ({ py: "Python file", pdf: "PDF document", jpg: "JPEG image", jpeg: "JPEG image", png: "PNG image", gif: "GIF image",
+        webp: "WebP image", svg: "SVG image", bmp: "Bitmap image", txt: "Text document", md: "Markdown file", json: "JSON file", xml: "XML document",
+        html: "HTML document", htm: "HTML document", css: "CSS file", js: "JavaScript file", sh: "Shell script", zip: "Compressed (zipped) folder",
+        "7z": "7-Zip archive", rar: "RAR archive", gz: "GZ archive", xz: "XZ archive", tar: "TAR archive", exe: "Application", msi: "Windows Installer package",
+        iso: "Disc image file", mp4: "MP4 video", mkv: "MKV video", webm: "WebM video", avi: "AVI video", mov: "QuickTime movie", mp3: "MP3 audio",
+        flac: "FLAC audio", ogg: "OGG audio", wav: "WAV audio", m4a: "M4A audio", odt: "OpenDocument text", ods: "OpenDocument spreadsheet",
+        odp: "OpenDocument presentation", docx: "Microsoft Word document", doc: "Microsoft Word 97–2003 document", xlsx: "Microsoft Excel worksheet",
+        pptx: "Microsoft PowerPoint presentation", csv: "CSV file", deb: "Debian package", appimage: "AppImage app", desktop: "Shortcut", log: "Text document",
+        ini: "Configuration settings", cfg: "Configuration settings", conf: "Configuration settings", ttf: "TrueType font", otf: "OpenType font", qml: "QML file",
+        rs: "Rust source file", c: "C source file", cpp: "C++ source file", h: "C header file", toml: "TOML file", yaml: "YAML file", yml: "YAML file" })
+    // The Type column and the details pane the Windows way (1.12, mockups files-1 … -8, cdrive-1): "File folder", "Python file"
     function kindName(e) {
+        if (!e) return "";
+        if (e.dir) return "File folder";
+        const x0 = extOf(e).toLowerCase();
+        if (winTypes[x0]) return winTypes[x0];
+        if (x0) return x0.toUpperCase() + " file";
+        return "File";
+    }
+    function kindNameOld(e) {
         const k = kindOf(e);
         const x = extOf(e);
         return ({ folder: "Folder", image: "Picture", video: "Video", audio: "Audio", disc: "Disc image", archive: "Archive",
@@ -1735,6 +1754,62 @@ Scope {
         overlay = "menu";
     }
     property bool menuOnFolder: false          // the menu is about the folder itself, not what's picked in it
+    property bool menuFull: false              // Show more options: the whole menu this once (Windows 11's short one first)
+    property real lastMenuX: -1
+    property real lastMenuY: -1
+    // Previous versions (1.12, mockups files-6 and -7): the snapshots of your files (Task Manager › Disk › Snapshots)
+    // that hold this file or folder, newest first; Open one, or Restore it (what's there now goes to the Trash).
+    property var versions: []
+    property string versionsOf: ""
+    Process {
+        id: verProc
+        property bool thenMenu: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                app.versions = text.split("\n").filter(l => l.trim() !== "").sort().reverse();
+                if (verProc.thenMenu) app.versionsMenu();
+            }
+        }
+    }
+    function lookForVersions(path, menu) {
+        if (verProc.running) return;
+        versionsOf = path;
+        verProc.thenMenu = !!menu;
+        verProc.command = ["sh", "-c", "r=$(realpath -- \"$1\" 2>/dev/null) || exit 0; for base in /var/home /home; do case \"$r\" in \"$base\"/*) rel=${r#\"$base\"/}; for d in \"$base\"/.hearth-snapshots/*/; do [ -e \"$d$rel\" ] && echo \"$d$rel\"; done; break;; esac; done; true", "sh", path];
+        verProc.running = true;
+    }
+    function versionName(p) {
+        const m = p.match(/\.hearth-snapshots\/(\d{4})-(\d\d)-(\d\d)_(\d\d)(\d\d)\//);
+        if (!m) return p;
+        const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]), parseInt(m[4]), parseInt(m[5]));
+        return fmtDate(d.getTime() / 1000);
+    }
+    function versionsMenu() {
+        if (!versions.length) return say("No earlier versions of “" + base(versionsOf) + "” yet. Turn on Snapshots of your files in Task Manager › Disk › Health & settings.");
+        showMenu("Previous versions of " + base(versionsOf), versions.slice(0, 30).map((v, i) => ({ id: "ver:" + i, label: versionName(v) + "  ›", icon: "clock" })), lastMenuX, lastMenuY);
+    }
+    function versionMenu(i) {
+        const v = versions[i];
+        if (!v) return;
+        showMenu(base(versionsOf) + " · " + versionName(v), [
+            { id: "veropen:" + i, label: "Open this version", icon: "open" },
+            { id: "verrestore:" + i, label: "Restore it (yours now goes to the Trash)", icon: "undo" },
+            { id: "vercopy:" + i, label: "Copy it next to yours", icon: "copy" }], lastMenuX, lastMenuY);
+    }
+    function versionAct(kind, i) {
+        const v = versions[i], orig = versionsOf;
+        if (!v) return;
+        if (kind === "open") return navigate(parentOf(v), base(v));
+        if (kind === "copy") {
+            const to = parentOf(orig) + "/" + base(orig).replace(/(\.[^.\/]+)?$/, m => " (" + versionName(v).replace(/[\/:]/g, ".") + ")" + m);
+            Quickshell.execDetached(["cp", "-a", "--", v, to]);
+            say("Copied the " + versionName(v) + " version next to it");
+            return Qt.callLater(reload);
+        }
+        Quickshell.execDetached(["sh", "-c", "gio trash -- \"$2\" 2>/dev/null || mv -- \"$2\" \"$2.before-restore\"; cp -a -- \"$1\" \"$2\"", "sh", v, orig]);
+        say("Put back the " + versionName(v) + " version of “" + base(orig) + "” (yours is in the Trash)");
+        Qt.callLater(reload);
+    }
     function openMenu(forFolder, x, y) {
         if (onCView && !picking) return openCMenu(forFolder ? null : current, x, y);
         if (!forFolder && current && current.cv && !markCount && !picking) return openCMenu(current, x, y);
@@ -1752,6 +1827,28 @@ Scope {
             if ((pick.filters || []).length > 1) items.push({ id: "pick-filter", label: "Show: " + pick.filters[pickFilter].name + "  ›" });
             items.push({ id: "pick-cancel", label: "Cancel", key: "Esc" }, sep());
         }
+        if (!picking && !inTrash && !menuFull && e && !briefcase.inBriefcase) {
+            const q = [];
+            if (writable) q.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", icon: "cut", quick: true });
+            q.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C", icon: "copy", quick: true });
+            if (n === 1 && writable) q.push({ id: "rename", label: "Rename…", key: "F2", icon: "edit", quick: true });
+            q.push({ id: "copywin", label: "Copy as path", icon: "share", quick: true });
+            if (writable) q.push({ id: "trash", label: "Move to Trash" + what, short: "Trash", key: "Del", icon: "trash", quick: true });
+            q.push({ id: "open", label: "Open", key: "Enter", icon: "open" });
+            if (e.dir && n === 1) q.push({ id: "newtab", label: "Open in new tab", icon: "plus" });
+            if (!e.dir) q.push({ id: "openwith", label: "Open with  ›", icon: "grid" });
+            if (e.dir && !places.some(p => p.bookmark && p.path === e.path)) q.push({ id: "bookmark", label: "Pin to the left menu", key: "Ctrl+D", icon: "pin" });
+            if (writable && !(n === 1 && isArchive(e))) q.push({ id: "compress", label: "Compress to ZIP", icon: "archive" });
+            if (n === 1 && isArchive(e) && writable) q.push({ id: "extracthere", label: "Extract here", icon: "archive" });
+            if (e.dir && n === 1 && !e.briefcase) q.push({ id: "lockbc", label: "Lock as a Briefcase", icon: "lock" });
+            if (e.dir && n === 1) q.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd" });
+            if (n === 1 && e.path.indexOf("/") === 0) q.push({ id: "prevver", label: "Restore previous versions", icon: "clock" });
+            q.push({ id: "copywin", label: "Copy as path", key: "C:\\…", icon: "link" });
+            q.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" }, { id: "more", label: "Show more options", icon: "menu" });
+            lastMenuX = x === undefined ? -1 : x; lastMenuY = y === undefined ? -1 : y;
+            return showMenu(n > 1 ? plural(n, "item") + " selected" : e.name, q, lastMenuX, lastMenuY);
+        }
+        menuFull = false;
         if (inTrash) {
             if (n) items.push({ id: "restore", label: "Put back" + what, short: "Put back", icon: "undo", quick: true });
             if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del", icon: "trash", quick: true, short: "Delete" });
@@ -2194,6 +2291,13 @@ Scope {
             if (c && c.options[ij[1]]) setChoice(c.id, c.options[ij[1]][0]);
             return;
         }
+        if (id === "more") { menuFull = true; menuOnFolder = onFolder; return openMenu(onFolder, lastMenuX, lastMenuY); }
+        if (id === "lockbc") return e ? briefcase.lockAsBriefcase(e.path) : undefined;
+        if (id === "prevver") return e ? lookForVersions(e.path, true) : undefined;
+        if (id.startsWith("ver:")) return versionMenu(parseInt(id.slice(4), 10));
+        if (id.startsWith("veropen:")) return versionAct("open", parseInt(id.slice(8), 10));
+        if (id.startsWith("verrestore:")) return versionAct("restore", parseInt(id.slice(11), 10));
+        if (id.startsWith("vercopy:")) return versionAct("copy", parseInt(id.slice(8), 10));
         if (id === "pick-accept") return pickAccept(null);
         if (id === "pick-cancel") return close();
         if (id === "pick-filter") return filterMenu();
@@ -4793,15 +4897,17 @@ Scope {
                                         return ar;
                                     }
                                     const rows = [];
-                                    if (!e.dir) rows.push(["Size", app.fmtSize(e.size)]);
+                                    if (!e.dir && app.kindOf(e) === "image" && dimImg.status === Image.Ready && dimImg.implicitWidth) rows.push(["Size", dimImg.implicitWidth + " × " + dimImg.implicitHeight]);
+                                    else if (!e.dir) rows.push(["Size", app.fmtSize(e.size)]);
                                     if (e.mtime) rows.push(["Modified", app.fmtDate(e.mtime)]);
                                     if (e.opened) rows.push(["Opened", app.fmtDate(Date.parse(e.opened) / 1000)]);
                                     // Where it is in drive letters (This PC › Games (D:) › …), and the Linux path for when you need it.
                                     const loc = e.path.indexOf("/") === 0 ? app.letterLocation(app.parentOf(e.path)) : "";
-                                    rows.push(["Location", loc || app.parentOf(e.path)]);
+                                    rows.push(["Where", app.cdriveOn && e.path.indexOf("/") === 0 ? app.winPath(app.parentOf(e.path)) : (loc || app.parentOf(e.path))]);
                                     if (loc && app.cdriveOn && e.path.indexOf("/") === 0) rows.push(["In Hearth", app.winPath(e.path)]);
                                     if (loc) rows.push(["On Linux", e.path]);
                                     if (e.isLink) rows.push(["Link", "Points somewhere else"]);
+                                    if (app.versionsOf === e.path) rows.push(["Previous versions", String(app.versions.length)]);
                                     return rows.concat(briefcase.detailRows(e));
                                 }
                                 delegate: RowLayout {
@@ -4811,6 +4917,32 @@ Scope {
                                     Text { Layout.preferredWidth: 76; Layout.alignment: Qt.AlignTop; visible: modelData[0] !== ""; text: modelData[0]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
                                     Text { Layout.fillWidth: true; text: modelData[1]; color: Theme.text; wrapMode: Text.WrapAnywhere; font.family: Theme.font; font.pixelSize: 13 }
                                 }
+                            }
+                            // Set as wallpaper · Open with ▾ (mockup files-6)
+                            Row {
+                                visible: !!detailsBox.e && !detailsBox.e.dir && !detailsBox.e.pc && !detailsBox.e.app && !detailsBox.e.cv
+                                spacing: 6
+                                Text {
+                                    visible: !!detailsBox.e && app.kindOf(detailsBox.e) === "image"
+                                    text: "Set as wallpaper"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 13
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { keys.forceActiveFocus(); app.runMenu("wallpaper"); } }
+                                }
+                                Text { visible: !!detailsBox.e && app.kindOf(detailsBox.e) === "image"; text: "·"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                                Text {
+                                    text: "Open with ▾"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 13
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { keys.forceActiveFocus(); app.showApps(detailsBox.e, false); } }
+                                }
+                            }
+                            // the picture's own size (read only for the picked picture), and its earlier versions
+                            Image {
+                                id: dimImg
+                                visible: false
+                                asynchronous: true
+                                source: detailsBox.e && !detailsBox.e.dir && detailsBox.e.path && app.kindOf(detailsBox.e) === "image" && app.detailsPane ? "file://" + detailsBox.e.path : ""
+                            }
+                            Connections {
+                                target: detailsBox
+                                function onEChanged() { if (detailsBox.e && detailsBox.e.path && detailsBox.e.path.indexOf("/") === 0 && app.detailsPane) app.lookForVersions(detailsBox.e.path, false); }
                             }
                             Item { Layout.fillHeight: true }
                             RowLayout {

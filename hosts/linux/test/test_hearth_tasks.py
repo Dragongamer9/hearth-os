@@ -79,6 +79,9 @@ class Parsing(unittest.TestCase):
 
     def test_status(self):
         s = ht.parse_status(status_text(1000, anon_kb=10, shmem_kb=2))
+        shared = s.pop('shared')                    # RssFile + RssShmem (1.12, Memory's Biggest users)
+        s.pop('cpus')                               # Cpus_allowed_list (1.12, Details' Cores)
+        self.assertGreaterEqual(shared, 2 * 1024)
         self.assertEqual(s, {'uid': 1000, 'mem': 12 * 1024, 'swap': 0, 'kthread': False})
 
     def test_cpu_stat_and_busy(self):

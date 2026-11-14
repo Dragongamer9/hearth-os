@@ -1,0 +1,12 @@
+# Off unless you choose Weekly or Monthly in Task Manager › Disk › Health & settings (hearth-hwset writes the calendar
+# as a drop-in in /etc). Nothing waits for it.
+[Unit]
+Description=Hearth: check the file system on a schedule
+
+[Timer]
+OnCalendar=monthly
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
