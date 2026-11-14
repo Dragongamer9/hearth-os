@@ -1,0 +1,2 @@
+boot: /mnt/recovery-out/hearth-recovery.iso, Secure Boot on
+boot: the recovery screen came up in 71 s
