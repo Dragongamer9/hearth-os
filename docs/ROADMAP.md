@@ -36,7 +36,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## 1.12 (released 2026-11-14)
 
-ISOs: the offline installer USB stays on 1.11; the Recovery USB is rebuilt from the Debian image right after 1.12 (the owner's go-ahead) and he checks it next.
+ISOs: the offline installer USB stays on 1.11; the Recovery USB is on 1.12, the first one made from the Debian image (rebuilt and uploaded 2026-11-14 with the owner's go-ahead, boot test with Secure Boot passed), and he checks it next.
 
 - [x] Task Manager, Resource Monitor, Hearth Files and C: everywhere built completely to their approved mockups: the parts 1.11 left out, every one listed and ticked in docs/mockups/checklists/task-manager.md, resource-monitor.md, hearth-files.md and c-drive.md (red flag 11), among them Memory's Overview, the Swap & settings page, Details, the CPU, Disk, Network, GPU and Battery settings pages, Startup, Services and Scheduled tasks, Resource Monitor's five tabs, and Keep this running (checkpoint): a program on that list is frozen and its memory moved to the drive instead of closed when memory runs out, and Resume carries on (needs testing on a device)
 - [x] Hearth Recovery USB made from Hearth OS on Debian (it was made from the archived Anatase image): the same kernel, drivers, Handheld Daemon, ostree, bootc and Debian's signed boot loader as the devices it repairs. Every build is started in a virtual PC through its own boot menu with Secure Boot on, and the recovery screen has to come up before it can be uploaded (tools/recovery-boot-test.sh); the old Anatase build is in archive/os/recovery-anatase. Uploaded after 1.12 is out (needs testing on a device)
