@@ -17,7 +17,19 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Horizon (github.com/horizon-rust/horizon, MIT): the native Rust remake of Minecraft: Java Edition 26.3, no Java needed, in Hearth Games with one-press install and updates (its Linux AppImage, x86-64 only), a Hearth Sync shortcut for Steam Game Mode, controller support on and Game Mode friendly; you sign in with your own Microsoft account in Horizon's own launcher (Hearth never handles it), and it uses your copy of the game. Also Horizon's headless server as a choice next to the Minecraft server in Settings › Game servers. Done: in Hearth Games › Recomps (the PC section), its launcher's AppImage from its `launcher@` releases, updates with the others, Hearth Sync as for every port (needs testing on a device). Its server too: Settings › Home server › Server apps › Horizon, its signed server build checked against Horizon's release key, your own prepared game files read-only, Mojang's EULA, one at a time with the Minecraft server (needs testing on a device)
 - [ ] Server mode › AI team (the owner's choice for 1.12; mockups server-dash / server-detail): a tile with a small live mesh of this PC's AI engines (AI chat, Pictures, Voices, Speech to text) and everything that sends them work around them (your devices, the web page, the pictures queue, the Command Center's AIs through One AI address), each request a pulse that lights its sender; A opens it big with today's counts, the engines and what happens while you play. The same drawing as the Command Center's Live › Mesh
 
+## Planned for 1.13
+
+- [ ] Server mode › Game download cache (LANCache): Steam, Epic, Battle.net and Xbox downloads and updates come from the internet once, then every Hearth device at home gets them from the server at home-network speed; a tile with how much it saved; off until you turn it on, and a device always downloads normally when the server isn't there
+- [ ] Server mode › World backups for the game servers (Minecraft, Horizon, Valheim, Terraria, Palworld): on a schedule and before every update, kept for a set number of days, and "Roll back to last night" (or any kept backup) from the server's tile, with the world stopped cleanly first
+- [ ] Server mode › Ad blocker for every Hearth device (AdGuard Home on the server): it blocks ads and trackers for everything on your home Wi-Fi, and your own Hearth devices use it over Tailscale wherever they are (at work, on mobile data); each device has its own switch, and when the server can't be reached a device goes back to normal lookups by itself within seconds, so the internet never stops; "Pause for 5 minutes" when a site breaks
+- [ ] Server mode › Quiet hours and "When this, do that" rules: at the times you pick, fans and power are capped and heavy jobs wait; simple rules such as "AI pictures only when nobody's watching Jellyfin"; every rule off until you make it, and each can be paused
+- [ ] Server mode › AI jobs wait while you play (a switch, on or off): picture batches, transcriptions and Voice Studio's audiobooks and dubs wait in their queue while a game runs on the server and carry on when you stop
+- [ ] Server mode › PC backups for the house (UrBackup): your other PCs, Windows ones too (like your dad's), back up to the server by themselves; restore a file or a whole PC; off until you turn it on
+- [ ] Server mode › Drive health tile: each drive's self-check (SMART), temperature and hours, with a warning on the dashboard and your phone before a drive fails
+
 ## Later
+
+- [ ] Server mode › 3D printer control (OctoPrint or Mainsail/Klipper) for the Anycubic Chiron, with its camera and Hearth CAD's slicer (the owner's list, not now)
 
 - [ ] Task Manager, still to come: per-app network limits and blocking (Allow: Limit to … / Blocked) from mockup tm-5
 - [ ] Resource Monitor, still to come: the Processor tab's services, libraries and per-core graphs (resmon-2); Your PC stays as it is
