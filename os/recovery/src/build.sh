@@ -7,6 +7,16 @@
 set -exo pipefail
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold)
+# apt's own error lines go straight to the workflow's summary (the build's log isn't readable from outside).
+apt_in() {
+  local rc
+  "${APT[@]}" "$@" > /tmp/apt.log 2>&1; rc=$?
+  cat /tmp/apt.log
+  if [ $rc -ne 0 ]; then
+    echo "::error title=Recovery USB apt (${*})::$(grep -E '^(E:| [^ ].* : Depends|  Depends| Breaks)' /tmp/apt.log | tail -12 | tr '\n' '|' | cut -c1-1500)"
+  fi
+  return $rc
+}
 mkdir -p "$(realpath /root)"
 # The Debian image's /var is made at each start from its tmpfiles list (dpkg's record lives in /usr/lib/sysimage/dpkg,
 # apt's folders are made then): make them now so apt works here.
@@ -21,7 +31,12 @@ mapfile -t KDIRS < <(find /usr/lib/modules -mindepth 1 -maxdepth 1 -type d -prin
 [ "${#KDIRS[@]}" -eq 1 ] || { echo "expected one kernel, found: ${KDIRS[*]}"; exit 1; }
 KVER=${KDIRS[0]}
 test -f "/usr/lib/modules/$KVER/vmlinuz"
-"${APT[@]}" dracut-live squashfs-tools
+# dracut-live has to be the same version as the image's own dracut (Debian's or its backport's).
+dv=$(dpkg-query -W -f '${Version}' dracut-core 2>/dev/null || dpkg-query -W -f '${Version}' dracut)
+echo "dracut in the image: $dv"
+apt-cache policy dracut dracut-core dracut-live | head -30 || true
+apt_in "dracut-live=$dv" || apt_in dracut-live
+apt_in squashfs-tools
 # The live boot's initramfs: dmsquash-live finds the stick by its label (root=live:CDLABEL=HearthRecov) and mounts
 # its squashfs with the changes kept in memory (overlayfs). Hearth's splash is in it, as on the devices.
 mods="dmsquash-live plymouth"
@@ -52,7 +67,7 @@ cp -v /boot/efi/EFI/debian/grubx64.efi /boot/efi/EFI/BOOT/grubx64.efi
 [ ! -f /boot/efi/EFI/debian/mmx64.efi ] || cp -v /boot/efi/EFI/debian/mmx64.efi /boot/efi/EFI/BOOT/mmx64.efi
 rm -f /boot/efi/EFI/BOOT/fbx64.efi /boot/efi/EFI/debian/BOOTX64.CSV
 find /boot/efi -type f | sort
-"${APT[@]}" xorriso || true
+apt_in xorriso || true
 
 rm -rf /var/tmp; mkdir -p /var/tmp
 cat >/etc/systemd/system/var-tmp.mount <<'UNIT'
@@ -73,7 +88,7 @@ rm -f /etc/localtime; systemd-firstboot --timezone UTC || true
 # (Most are in the image already; whatever's missing is added, each on its own so one missing name can't stop the rest.)
 for p in ntfs-3g dosfstools exfatprogs e2fsprogs btrfs-progs efibootmgr openssl rsync network-manager python3-evdev \
          smartmontools fdisk gdisk util-linux parted; do
-  dpkg -s "$p" >/dev/null 2>&1 || "${APT[@]}" "$p" || echo "warning: $p isn't available"
+  dpkg -s "$p" >/dev/null 2>&1 || apt_in "$p" || echo "warning: $p isn't available"
 done
 # Reinstalling deploys the edition's image with ostree's container commands (bootc's ostree hooks) and pins every
 # version first; switching versions and the boot menu use ostree admin.
