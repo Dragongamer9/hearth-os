@@ -2494,6 +2494,9 @@ APPS = {
 }
 DOWNLOAD_HOSTS = ('api.github.com', 'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com',
                   'repo.jellyfin.org')
+# Jellyfin's site sends its files on to its own mirrors (Mirrorbits: an HTTP 302 to <place>.mirror.jellyfin.org), the
+# checksum files too. Redirects may go there; the file is still checked against Jellyfin's own published SHA-256.
+MIRROR_SUFFIXES = ('.mirror.jellyfin.org',)
 SHA_RE = re.compile(r'^[0-9a-f]{64}$')
 MEDIA_DEFAULT = {'on': False, 'reach': 'home', 'pause': False}
 AI_DEFAULT = {'on': False, 'unload': True, 'pause': False}
@@ -2553,7 +2556,7 @@ def _opener():
     class Only(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             u = urllib.parse.urlparse(newurl)
-            if u.scheme != 'https' or u.hostname not in DOWNLOAD_HOSTS:
+            if u.scheme != 'https' or not (u.hostname in DOWNLOAD_HOSTS or (u.hostname or '').endswith(MIRROR_SUFFIXES)):
                 raise Fail('a download tried to go somewhere else (%s): stopped' % (u.hostname or '?'))
             return super().redirect_request(req, fp, code, msg, headers, newurl)
     return urllib.request.build_opener(Only)
@@ -2664,6 +2667,14 @@ def app_resolve(name):
     sha = sums_lookup(http_get(url + '.sha256sum').decode('utf-8', 'replace'), fname)
     if not sha:
         raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
+    # The checksum file may come from a mirror: Jellyfin's own site also answers "?sha256" for a file with the
+    # SHA-256 it has for it. When it does, the two must agree.
+    try:
+        own = http_get(url + '?sha256').decode('utf-8', 'replace').strip().lower().split()
+    except Fail:
+        own = []
+    if own and SHA_RE.fullmatch(own[0]) and own[0] != sha:
+        raise Fail('%s\'s mirror and its own site give different checksums: not installing it' % app['label'])
     return {'version': ver, 'url': url, 'file': fname, 'sha256': sha, 'size': 0}
 
 
