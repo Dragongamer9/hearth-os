@@ -3415,6 +3415,185 @@ def remote_open(path):
     return {'ok': True, 'note': 'Copying it to Downloads first (Settings › Hearth Link shows how it goes)'}
 
 
+
+# ---------------------------------------------------------------- 1.13: Files updates by itself
+# `hearth-files watch PATH` runs while a folder is open in Hearth Files (and its Open and Save window) and prints one line,
+# "changed", whenever something in it is made, renamed, moved, deleted or written, by any app, a download, the terminal
+# or another PC: Files then lists it again quietly. A local folder is watched with inotify (no cost while nothing
+# happens); a network share (SMB, NFS, sshfs, Hearth Link) can't tell us, so it's looked at every few seconds instead.
+# `hearth-files watch --mounts` prints "mounts" when a drive is plugged in, taken out, mounted or unmounted (This PC).
+# Bursts (a big copy or a download) come out as at most one line every WATCH_QUIET seconds. It ends when Files does.
+WATCH_QUIET = 0.4
+WATCH_BUSY = 1.0
+WATCH_POLL = 3.0
+REMOTE_FS = {'cifs', 'smb3', 'smbfs', 'nfs', 'nfs4', 'fuse.sshfs', 'fuse.gvfsd-fuse', 'fuse.rclone', 'davfs', 'fuse.davfs2', '9p'}
+IN_MODIFY, IN_ATTRIB, IN_CLOSE_WRITE, IN_MOVED_FROM, IN_MOVED_TO = 0x2, 0x4, 0x8, 0x40, 0x80
+IN_CREATE, IN_DELETE, IN_DELETE_SELF, IN_MOVE_SELF, IN_IGNORED = 0x100, 0x200, 0x400, 0x800, 0x8000
+WATCH_MASK = IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF
+
+
+def fs_type(path):
+    """The file system a path is on (the longest mount point that holds it, from /proc/self/mountinfo)."""
+    best, kind = '', ''
+    try:
+        with open('/proc/self/mountinfo', encoding='utf-8', errors='replace') as f:
+            for line in f:
+                parts = line.split()
+                if ' - ' not in line or len(parts) < 10:
+                    continue
+                mnt = parts[4].replace('\\040', ' ')
+                fstype = line.split(' - ', 1)[1].split()[0]
+                if (path == mnt or path.startswith(mnt.rstrip('/') + '/')) and len(mnt) >= len(best):
+                    best, kind = mnt, fstype
+    except OSError:
+        pass
+    return kind
+
+
+def folder_sig(path, hidden=True):
+    """What the folder holds, cheaply (names, sizes, times): the same while nothing changed."""
+    out = []
+    try:
+        with os.scandir(path) as it:
+            for i, e in enumerate(it):
+                if i > 50000:
+                    break
+                try:
+                    st = e.stat(follow_symlinks=False)
+                    out.append((e.name, st.st_size, int(st.st_mtime)))
+                except OSError:
+                    out.append((e.name, -1, -1))
+    except OSError:
+        return None
+    out.sort()
+    return hash(tuple(out))
+
+
+def watch_print(word):
+    try:
+        print(word, flush=True)
+    except (BrokenPipeError, OSError):
+        sys.exit(0)
+
+
+def watch_poll(path, interval=WATCH_POLL, alive=lambda: True, sleep=None, sig=folder_sig, rounds=None):
+    """A network share: looked at every few seconds; "changed" when it differs, "gone" when the folder went."""
+    import time
+    sleep = sleep or time.sleep
+    last = sig(path)
+    n = 0
+    while alive() and (rounds is None or n < rounds):
+        n += 1
+        sleep(interval)
+        now = sig(path)
+        if now is None and not os.path.isdir(path):
+            watch_print('gone')
+            return
+        if now != last:
+            last = now
+            watch_print('changed')
+
+
+def watch_inotify(path, alive=lambda: True):
+    """A local folder: inotify, through ctypes (nothing to install). Returns False when inotify can't be used."""
+    import ctypes
+    import ctypes.util
+    import select
+    import struct
+    import time
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library('c') or 'libc.so.6', use_errno=True)
+        fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if fd < 0:
+            return False
+        wd = libc.inotify_add_watch(fd, os.fsencode(path), WATCH_MASK)
+        if wd < 0:
+            os.close(fd)
+            return False
+    except (OSError, AttributeError):
+        return False
+    poller = select.poll()
+    poller.register(fd, select.POLLIN)
+    pending_since = None
+    last_out = 0.0
+    burst = 0
+    try:
+        while alive():
+            wait = 1000 if pending_since is None else 100
+            ready = poller.poll(wait)
+            now = time.monotonic()
+            if ready:
+                try:
+                    data = os.read(fd, 65536)
+                except BlockingIOError:
+                    data = b''
+                i = 0
+                gone = False
+                while i + 16 <= len(data):
+                    _wd, mask, _cookie, ln = struct.unpack_from('iIII', data, i)
+                    i += 16 + ln
+                    if mask & (IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED):
+                        gone = True
+                if gone:
+                    watch_print('gone')
+                    return True
+                if pending_since is None:
+                    pending_since = now
+                burst += 1
+            # Quiet for a moment (or a busy burst has gone on a while): one line for all of it.
+            quiet = WATCH_BUSY if burst > 20 else WATCH_QUIET
+            if pending_since is not None and (not ready or now - pending_since >= quiet) and now - last_out >= quiet:
+                watch_print('changed')
+                pending_since = None
+                last_out = now
+                burst = 0
+    finally:
+        os.close(fd)
+    return True
+
+
+def watch_mounts(alive=lambda: True):
+    """Drives plugged in or taken out: /proc/self/mounts wakes poll() whenever the mounts change."""
+    import select
+    try:
+        f = open('/proc/self/mounts', 'rb')
+    except OSError:
+        return
+    poller = select.poll()
+    poller.register(f.fileno(), select.POLLPRI | select.POLLERR)
+    f.read()
+    while alive():
+        if poller.poll(1000):
+            f.seek(0)
+            f.read()
+            watch_print('mounts')
+
+
+def watch(path, alive=None):
+    ppid = os.getppid()
+    alive = alive or (lambda: os.getppid() == ppid)
+    if path == '--mounts':
+        return watch_mounts(alive)
+    p = os.path.abspath(os.path.expanduser(path))
+    if is_remote(path) or not os.path.isdir(p):
+        if not is_remote(path):
+            watch_print('gone')
+            return
+        return watch_poll_remote(path, alive)
+    if fs_type(p) in REMOTE_FS or under(p, gvfs_root()) or not watch_inotify(p, alive):
+        watch_poll(p, alive=alive)
+
+
+def watch_poll_remote(path, alive):
+    """A Hearth Link folder (hearth://): its list asked for every few seconds."""
+    def sig(_p):
+        try:
+            r = remote_list(path)
+        except Exception:  # noqa: BLE001 - the other device is away: keep trying
+            return 0
+        return hash(tuple(sorted((e.get('name'), e.get('size'), e.get('modified')) for e in r.get('entries', []))))
+    watch_poll(path, interval=WATCH_POLL * 2, alive=alive, sig=sig)
+
 def remote_cmd(c, rest):
     """A command about hearth:// addresses, or None when it isn't one."""
     if not any(is_remote(a) for a in rest):
@@ -3952,6 +4131,9 @@ def cmd(argv):
     args = argv[1:]
     c = args[0] if args else ''
     rest = args[1:]
+    if c == 'watch' and len(rest) == 1:
+        watch(rest[0])
+        return
     remote = remote_cmd(c, rest)
     if remote is not None:
         print(json.dumps(remote), flush=True)
