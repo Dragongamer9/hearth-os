@@ -1,0 +1,298 @@
+STEP 1/5: FROM ghcr.io/dragongamer9/hearth-peppermint@sha256:6ac7455a9a79786a35d72b446dd994e8cd3f649468d563ae1d43b90b71706b4e
+Trying to pull ghcr.io/dragongamer9/hearth-peppermint@sha256:6ac7455a9a79786a35d72b446dd994e8cd3f649468d563ae1d43b90b71706b4e...
+Getting image source signatures
+Copying blob sha256:0f1ef3d908a1298d34487024e10c6c3184c4d726f4938a233b4ef1f80cd38d37
+Copying blob sha256:d688531925885067e5ec249ea5d9c2eeefd6feafc329f4669a278bff24e85a73
+Copying blob sha256:234523035fb58b2b90183e19251a62632a9c2e739d9949d69c189ad404b98bff
+Copying blob sha256:41599b110c383b51cb71d844bcfdeb1161fc9f145ef39bfec58fd972e2f1540d
+Copying blob sha256:7ce4a962c0c461598bb27c864a2c623c5c9cb7593e40e7357f879f88ae5a62fb
+Copying blob sha256:060ef65555d64cef9f1be2c13b2115f35353f40a25e7283933fb78afa92611ee
+Copying blob sha256:88a39aa4927c6128a5a0f756c89a7512548ab4216d391af32ce02cc76b5232b8
+Copying blob sha256:539cf03bd7cbdcac69458440512e853da2543e21fc1c2dbcaf3fb34a35624b94
+Copying blob sha256:dc91dd8306f21fc01c790978df4d8bae7edd97e32f1fed904b16104f6d9eaf1d
+Copying blob sha256:8e408d5f3d84bc54c48fd63c9193599a521698f633dfa9cfc10302c1e06fdd88
+Copying blob sha256:c5f6f3799c6bde732249e6fce7fb74e912c79186ab3c7f96884d579d9276cd6f
+Copying blob sha256:5961b078d8c00475cbf8f313ea9bae258283443274a1383febf4096e0c4344dc
+Copying blob sha256:cd995394dc5d21c569a2a1dedd2716547420895462509beef51efbe84f41edc1
+Copying blob sha256:89e9961cbbd7d5ea05710ebfbcb90e2a6ba3751334aad7c8804b78149ccc4f9d
+Copying blob sha256:bcc8334c06a22c5f7112e098d0508123a87daf76f9d4a54f83b1ed658097f0f8
+Copying blob sha256:531a865e8b13dcd01624fc5629359e989eb9ff38ff43986698c6ceba8b970afc
+Copying blob sha256:37e2880372d8edefea1f5f1f146beaa9f3c5d1b56667110cb5c216908e717297
+Copying blob sha256:214adce810be9c6726f4d039bb82572579613b9950ee5c93aaeacb9e383bd403
+Copying blob sha256:da5b2b7add84243dbdbad11b38934a895dd3c5cbb06cdfc96c51f31aae2475aa
+Copying blob sha256:1c6f0cfe1dbf160ad419c11abd5534763e2c854ca0651d5e088e782ad998fe91
+Copying blob sha256:0ed616bfd7544875aabb784132419dfd6370e6cd41b131ce68ab134702dd95a6
+Copying blob sha256:e759a1eb7d2c43f5f45939c4d96446c33bd26a0703b077c8734bc0626c6729ab
+Copying blob sha256:6c2beb1d5c4e8c903688a76ba64388850d2c9157af1a6aaa85deadafc97c9b29
+Copying blob sha256:6e233afb81f0c109a5a56ebb95781b531091e7c672c391de80dbf4e32c20cbd2
+Copying blob sha256:8fb0f570e465d8fbdc1109dee92266642b85c78b62c7e278afc28a4b575bc5b5
+Copying blob sha256:f42a1df2436c674ef029234627732497c6d825692a4897ef4da8bcb22cafbf2b
+Copying blob sha256:e1e561a6054f8cf59bb5ae6c56ff4c73dcb82e5a5c48dab64c3c0783e577b599
+Copying blob sha256:13ba8b54c11774b6a68e3c74998a23564291ac690f60294dbb7e06610460e0aa
+Copying blob sha256:1f2e4670dfa40baecf44937b72d23304ae7818e3dd50077934d5ea262d52c7a0
+Copying blob sha256:643e60632c0c8c6889524525832032b852f4f9ac740ef58e21529c7e845e24b7
+Copying blob sha256:2b935dd7720da9161581f1d1dec49e47fb526776fddb07c1bc5ed42e54b39b93
+Copying blob sha256:63b464f246cf5314caba80de279ef683694b00b327bda3fb103d3fb1e724dde8
+Copying blob sha256:ca8ae8ed1ee2e30cc17d26533f3e829882ee763cdfced4770f5e808b86597a80
+Copying blob sha256:1996d5af8dffd8ab39e94b27716143e41b8f639fb14d1c6b48af04282265cb9f
+Copying blob sha256:887cb73c59c0d985e48d170aec9bcf2acc5cd981840114a7e2e5d88945d67d8a
+Copying blob sha256:1256000a49ea602001ac79ad7804c5c820c5e6759f177ca1938579a64f2a4204
+Copying blob sha256:5b65079a61a8e85661631bb48c3e9e3535ec2cfdb5027ac9723bc376eea1821d
+Copying blob sha256:7a50a3d67a6ce48f1b6edfa4867a39d2fcc0004ffe0c632bfb9cea18da5b959b
+Copying blob sha256:6ba35307b5acae875389ca3fbfc45996a8bbd60e72634eff0e7eda55b145b6c5
+Copying blob sha256:da57cc81ac0ab34fd2d5383401f47e203e3a80062d5be00f4bfd2aca8e416e62
+Copying blob sha256:b09dbe1908fa07561455615e51a3a7d5923e90537de92ae6486f8e8f59003545
+Copying blob sha256:b4a3f5daeaef29c086e6508e8f12881f294050c222ae2db2210e16bc04fe0c13
+Copying blob sha256:67dd85c2954a76bdb75ee4651d14cd4251650ca555562e3f6e1d566ee98b201d
+Copying blob sha256:6f26058489b486b9b15684038160470bed1f82d0e568fde954c4132d68577351
+Copying blob sha256:4ade69e919d793683bdd368685115c8877b9174186bd11615f83c2c9d342ec2b
+Copying blob sha256:a15f49affdb4f9984166a4a739b2e93a077c9fe04175f71e0ccb101224e782d5
+Copying blob sha256:702986b03a6f76c57c9867b17ec4c515a9d270010634c7a821d7119a14d7a538
+Copying blob sha256:277bb9a54fee17743f038460398618b33bec102763617c165c8090fc87855826
+Copying blob sha256:419242bc9a1b35a9e08aa88ee0a19f467c0366e00e80b3838026697f3d1e09c3
+Copying blob sha256:60c2fff6772069b3c8bfe27bf3ff8303d2c14c623c5e1035a23af00daccc7136
+Copying blob sha256:5c39ea572351e11d7d5be4480ba0479845dca559d7220942deb08e3870dfc16a
+Copying blob sha256:4fd7585a5e0a66484a6c5d3f3af00de2b14169e442d5d64637ae3dafd5c70148
+Copying blob sha256:7802a3576047022648e149f791624fa1d900e081c904aa18bac840f2c3075c5d
+Copying blob sha256:d7815b559535e531130f7ed0fe73d47519a91cf937c77fce4a3aef88f8f215f4
+Copying blob sha256:9f0730f1e6b2e583c69c3e69cc3b1b10dec69e6f8930c8dcbc4b7505bff42f23
+Copying blob sha256:78776a8212cf3f4930d71a5769f199caf7983b45868a59ac17fa179b972a9db2
+Copying blob sha256:ac214ebb98aff3cee3364e8439f22d93aa9b64140a38718a51286a2be258889b
+Copying blob sha256:ba268bf7fc839cc1ac1e56e2f22538649a771c5b4f6191cb88c62912b1253aad
+Copying blob sha256:b56aacefcf7910c5d584a1c69f28428ba76307c631ecbc487e1cf9ae6c2b3397
+Copying blob sha256:6594ce868e4dc6bbdf5b1e980685938c1eac83fbcd45800dfcf39955c0d197d7
+Copying blob sha256:4016ec75a8978de2dcb27619adebb78276ed2a3609c7c4aff62e8f49158aadd6
+Copying blob sha256:24d8d08eec8094dbf65f42695b111a36fdb8615b347aefa92e4e26ba01a9a279
+Copying blob sha256:010226e9b3bbca2e36a89179634059b5988bffeec3aaf91d4a7d3d8484d0aaf6
+Copying blob sha256:5976d6b009eaefd22d68c8573b03a6acdf5c0889c0d8643a49a0eff3130b2233
+Copying blob sha256:a0e1b32730cfccaefb849c034ad9d9a438ceac3523aa28a759964f08f86db8f1
+Copying blob sha256:2b70a8dda8b38e75e22d41f9f832f167bc66fa8a9ab9b1430a36de0527ef27c7
+Copying blob sha256:17063cc15ec9cf85b19ea2c87e8b7448d9798bb85ca7447be185830294d14aa3
+Copying blob sha256:486fadd01efa4305bf472db69381482cbc739bb232bb6139795315baa7261cd8
+Copying blob sha256:aa249b9c0e081639653d9843d347840b9b2b76c86cb9d351bf126fa95720cc8c
+Copying blob sha256:790c97112cbba6445c1fccae3a119fd112d1e82189333eda902ee7df1918da04
+Copying blob sha256:4762e62ea7d67a8f4fb1809d64acc390504cfc0afb84266f6c1e872992ae3873
+Copying blob sha256:cdcf0e8ebf65c7b7837245c45c0f6a3ffdb0ba3d394026749fd20dd85706d0f1
+Copying blob sha256:50904361caa14f00dba7a143eab6f5356bcf4d0c6e34f21b0ceeace17ba87f3e
+Copying blob sha256:853f65fd43834aa24d900a595aa0bb9118f8035b84fa8644da43e48f3da3a473
+Copying blob sha256:48a72d91c2382ba498720410aa7d4c77a1ff216e77647fdf6756429b79be4ca3
+Copying blob sha256:418e9407d6bd982b3223117329b6621232016d7e7665341ba0aa24485d9c2069
+Copying blob sha256:1810ce6667d4acc6ef3d7e6c01bf7925f55ca668ba23c5d3d70249969fd4772d
+Copying blob sha256:8cfc7f0b29fc2ddc46c4ea4796c53873efb6a9058811d21497edf30b25cac560
+Copying blob sha256:d9eab5d4ad23f962443c87f86a656c76b32255242c2378d9bda0ac06ec5107f5
+Copying blob sha256:05c971c7f29590985a2613123faf37ca7db8fd982f9527ba270a012b02d1f4f8
+Copying blob sha256:a6f1715c18c28380fa0d45f0795cdd77ca602aeb3fb0b43708026fcec93d6abd
+Copying blob sha256:5926562f798a1fdb08f090405f1ec05bb52b2c8c42b9f0c27b30e5c1f245fe98
+Copying blob sha256:5ac0a2014a1be1c7d170e568e88dbe9442f4655b7813a74de13c57d669b954b9
+Copying blob sha256:2c11213de0dd1f01b9952443b8bd51da100c3d6a4d47c76c3ff922ffb3c9be89
+Copying blob sha256:d8b1167147e74bfbde3f25d6987253d92ead14070f3ff4efc56310f3b36654f1
+Copying blob sha256:1c5b31765f1966f6b89a87f3b1181b2e7005a78fe27e695902ee81e318580855
+Copying blob sha256:215fc5abe3f68f81f99d01cdd2c7dc2b14fb31f9da3de22aa1d8344eda565871
+Copying blob sha256:a5cdefa1dbb3c3b61332914144469b46531acc8e3808a831db5245232e54a98d
+Copying blob sha256:6eb6e3d06676a6f3b75877f30d3fe050566cf486348ed25f83bbbff56b389441
+Copying blob sha256:f52e5961c5e6f2c668b5121eafdca34c39f72fb0caa4c5794b2c0b6901b60b4b
+Copying blob sha256:c33a0a760f7bd3bd317c4840527dc18079d320ee812d0c41a1ccd8ea36999fe0
+Copying blob sha256:12953f4d92bfd5c1e5a543f03c79bfe7e8e84365fcc762e82217812f994a1ebf
+Copying blob sha256:a7518ecc8882c702018ddf671d905fb2fd4779168074aef7ab4dc7835a15a11c
+Copying blob sha256:5fda8a19a08bde8cc50a20149924955b6ed2473c7b4bccee9b7e9903df143514
+Copying blob sha256:a56c9eff207a033b8a35d8e4ffc6708cac25f6bcd39ee56bf58cd2bf631979ec
+Copying blob sha256:7d394b51adc4576011d14f59c34be5c922ac82d5035c4c4ca4d7c1ff7c0a7708
+Copying blob sha256:bbffc98892fba0892f831520ceb83978eab8c2dbb95ab6403b2733eb22af6d68
+Copying blob sha256:be175778ff977597e95bb97f807cd0fb970b5487df5f6b0ebc0330a22e3aefe1
+Copying blob sha256:0671bb3feab73a80fc08f1ea0500a6fe412f9e1af746e1ffdb4d6a97d1a3121d
+Copying blob sha256:c1936a361a89adbb4b1c7cc44c0cd747c88502f3ec1e2e7f94c69b88768d315d
+Copying blob sha256:9af791b096e3ecf65f132415bab3a751457547d9982b595abac2bd013e614c1d
+Copying blob sha256:524bc2153fd00ade19716b68db58030d8b43256eed2bbc93b2e56423b6f7a00b
+Copying blob sha256:a94007a58fd26bfcf7c9b18c22d5af59509df64e5c88e0430aca31f1023f3659
+Copying blob sha256:0a6fa44d44b1404eeec9e5aedb3c8888a9b6d77304d4d2219bad5a39e94c7114
+Copying blob sha256:1c45fc8dfb102984b6722e91a8d6769c51b5302043c3d227861e3ccc6e966060
+Copying blob sha256:3b1b3e5083a571a6c99db928da0ad515e91c9ceb0f8c47ff1e4ef94a00ad5d59
+Copying blob sha256:ae15a664da9c1409a4af98a1586f66788ae3b070611dd8a5db80fff9769ea4a8
+Copying blob sha256:2d8fcce6a104bbc217c5b8f95a28edea09fcb32730c36a411c0724d2a4432f5e
+Copying blob sha256:6cfa871a0e0d5e2b418ab18171f3f3b75631aa09f7f8f22d5b12542d63ad3b98
+Copying blob sha256:fe4018bd9fb5d7ef03b8a0789040b01abf0562a779d25633e89f4b5539ffa6ed
+Copying blob sha256:1ec5290df27e917e864993e1c4f483153a48ca9072baad2b58b23fea14b91ae1
+Copying blob sha256:3aad7477ed7d2be8c4f68006e1623fc211893c61731e4190b2ea3d3dc4790e90
+Copying blob sha256:09c5be6ca9ef884b72a61626beb4dd6741fd949a59623275a7d5708819d9187d
+Copying blob sha256:4d9d55daa5d189e270764c234f7d45db8f2528149773c03b84ccee1254771c56
+Copying blob sha256:9889c45009eba8a37b5e1afd7ba36caca5fe70d00eb71c4901645e8cdac9face
+Copying blob sha256:ab06a228a28025d66190161f7407cd9eac037e92c98f44f9b6f90d0dce4f3044
+Copying blob sha256:40625059bb914e2fd294ea9c79adff6e437677083385e49fc15cc3f7291cc6d2
+Copying blob sha256:5457b4c47eb6c17ceeafcb6ff3f602bfe88f48ee50e388ae59a0ab4e5fc827a0
+Copying blob sha256:9d33557b903391258d877e904e138f679dd166eeaa23d64fd64438a057981427
+Copying blob sha256:e2f81b6d625d6a854af6243b4605a31b5f00024112ca99d32b4ee022e8f3ad2a
+Copying blob sha256:081e97a271c403d59667a188be1ec824746a4d24bfe52aae2b29d01f047c3231
+Copying blob sha256:4792b9227aacaa2e1e131c796a2f2c8faa7ff24a0939c37740caa7c93e700d2d
+Copying blob sha256:0cb9be19c1a1219fa47330c75db710c426cd46675e4d106916e036de67150999
+Copying blob sha256:e4219d4771a78b733e28082247907414f085fc660af53a2e2f660373ed176f04
+Copying blob sha256:815cb722186e21fbd8b17adf2910067e3965833b293677074377336a843de6b4
+Copying blob sha256:453d8841b91efe98fbce9aea3c6c5400f2d27e838e2d38a41830cbed72d222ef
+Copying blob sha256:e962653070242330aa37baf2533443aef61bd700cbc5bb039f9ca7a4e8146fec
+Copying blob sha256:2f82c46ca634ce5bf3d93d13e35c76beae0b11cfcda1bb70c1385d4ca2e3c8c1
+Copying config sha256:5a4edd25505617d6a12cdf475c6d0d32b69dfbcd1d91a3450dfd36e1e1ff8cef
+Writing manifest to image destination
+STEP 2/5: COPY recovery/src /src
+--> e7452a9e64be
+STEP 3/5: COPY live/src/hearth-install live/src/hearth-live-prep /src/installer/
+--> e0896cc106f6
+STEP 4/5: COPY live/src/branding /src/branding
+--> 41316997bf8a
+STEP 5/5: RUN --mount=type=cache,target=/var/cache/apt /src/build.sh && rm -rf /src
++ trap 'echo "::error title=Recovery USB build.sh line $LINENO::$(echo "$BASH_COMMAND" | cut -c1-300)"' ERR
++ export DEBIAN_FRONTEND=noninteractive
++ DEBIAN_FRONTEND=noninteractive
++ APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold)
+++ realpath /root
++ mkdir -p /var/roothome
++ systemd-tmpfiles --create /usr/lib/tmpfiles.d/hearth-var.conf
++ test -e /var/lib/dpkg/status
++ mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial /var/log/apt
++ apt-get update -q
+Get:1 http://deb.debian.org/debian trixie-backports InRelease [54.0 kB]
+Get:2 http://deb.debian.org/debian trixie InRelease [140 kB]
+Get:3 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+Get:4 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+Get:5 http://deb.debian.org/debian trixie-backports/main amd64 Packages [305 kB]
+Get:6 http://deb.debian.org/debian trixie-backports/main i386 Packages [277 kB]
+Get:7 https://pkgs.tailscale.com/stable/debian trixie InRelease
+Get:8 http://deb.debian.org/debian trixie-backports/main Translation-en [237 kB]
+Get:9 http://deb.debian.org/debian trixie-backports/contrib i386 Packages [6388 B]
+Get:10 http://deb.debian.org/debian trixie-backports/contrib amd64 Packages [7976 B]
+Get:11 http://deb.debian.org/debian trixie-backports/contrib Translation-en [7712 B]
+Get:12 http://deb.debian.org/debian trixie-backports/non-free amd64 Packages [7952 B]
+Get:13 http://deb.debian.org/debian trixie-backports/non-free i386 Packages [5512 B]
+Get:14 http://deb.debian.org/debian trixie-backports/non-free Translation-en [6384 B]
+Get:15 http://deb.debian.org/debian trixie-backports/non-free-firmware i386 Packages [7180 B]
+Get:16 http://deb.debian.org/debian trixie-backports/non-free-firmware amd64 Packages [7368 B]
+Get:17 http://deb.debian.org/debian trixie-backports/non-free-firmware Translation-en [4824 B]
+Get:18 http://deb.debian.org/debian trixie/main i386 Packages [9437 kB]
+Get:19 https://pkgs.tailscale.com/stable/debian trixie/main i386 Packages [16.7 kB]
+Get:20 https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64  InRelease [1578 B]
+Get:21 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+Get:22 https://pkgs.tailscale.com/stable/debian trixie/main all Packages [351 B]
+Get:23 https://pkgs.tailscale.com/stable/debian trixie/main amd64 Packages [17.1 kB]
+Get:24 http://deb.debian.org/debian trixie/main Translation-en [6486 kB]
+Get:25 http://deb.debian.org/debian trixie/contrib amd64 Packages [53.9 kB]
+Get:26 http://deb.debian.org/debian trixie/contrib i386 Packages [44.1 kB]
+Get:27 http://deb.debian.org/debian trixie/contrib Translation-en [49.6 kB]
+Get:28 http://deb.debian.org/debian trixie/non-free amd64 Packages [100 kB]
+Get:29 http://deb.debian.org/debian trixie/non-free i386 Packages [72.6 kB]
+Get:30 http://deb.debian.org/debian trixie/non-free Translation-en [67.1 kB]
+Get:31 http://deb.debian.org/debian trixie/non-free-firmware amd64 Packages [6884 B]
+Get:32 http://deb.debian.org/debian trixie/non-free-firmware i386 Packages [6548 B]
+Get:33 http://deb.debian.org/debian trixie/non-free-firmware Translation-en [4704 B]
+Get:34 http://deb.debian.org/debian trixie-updates/main i386 Packages [1108 B]
+Get:35 http://deb.debian.org/debian trixie-updates/main amd64 Packages [1108 B]
+Get:36 http://deb.debian.org/debian trixie-updates/main Translation-en [1032 B]
+Get:37 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [303 kB]
+Get:38 http://deb.debian.org/debian-security trixie-security/main i386 Packages [252 kB]
+Get:39 http://deb.debian.org/debian-security trixie-security/main Translation-en [183 kB]
+Get:40 http://deb.debian.org/debian-security trixie-security/contrib i386 Packages [3156 B]
+Get:41 http://deb.debian.org/debian-security trixie-security/contrib amd64 Packages [3152 B]
+Get:42 http://deb.debian.org/debian-security trixie-security/contrib Translation-en [2564 B]
+Get:43 http://deb.debian.org/debian-security trixie-security/non-free-firmware amd64 Packages [544 B]
+Get:44 http://deb.debian.org/debian-security trixie-security/non-free-firmware i386 Packages [540 B]
+Get:45 http://deb.debian.org/debian-security trixie-security/non-free-firmware Translation-en [352 B]
+Get:46 https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64  Packages [716 kB]
+Fetched 28.7 MB in 1s (23.4 MB/s)
+Reading package lists...
++ mapfile -t KDIRS
+++ find /usr/lib/modules -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
+++ sort -V
++ '[' 1 -eq 1 ']'
++ KVER=7.2.12+deb13-amd64
++ test -f /usr/lib/modules/7.2.12+deb13-amd64/vmlinuz
+++ dpkg-query -W -f '${Version}' dracut-core
++ dv=106-6
++ echo 'dracut in the image: 106-6'
+dracut in the image: 106-6
++ apt-cache policy dracut dracut-core dracut-live
++ head -30
+dracut:
+  Installed: 106-6
+  Candidate: (none)
+  Version table:
+ *** 106-6 -1
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        500 http://deb.debian.org/debian trixie/main i386 Packages
+        100 /usr/lib/sysimage/dpkg/status
+dracut-core:
+  Installed: 106-6
+  Candidate: (none)
+  Version table:
+ *** 106-6 -1
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        100 /usr/lib/sysimage/dpkg/status
+dracut-live:
+  Installed: (none)
+  Candidate: (none)
+  Version table:
+     106-6 -1
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        500 http://deb.debian.org/debian trixie/main i386 Packages
++ apt_in dracut-live=106-6
++ local rc=0
++ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold dracut-live=106-6
++ cat /tmp/apt.log
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Suggested packages:
+  isomd5sum
+Recommended packages:
+  dracut-network
+The following NEW packages will be installed:
+  dracut-live
+0 upgraded, 1 newly installed, 0 to remove and 1 not upgraded.
+Need to get 19.5 kB of archives.
+After this operation, 81.9 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian trixie/main amd64 dracut-live all 106-6 [19.5 kB]
+Fetched 19.5 kB in 0s (225 kB/s)
+Selecting previously unselected package dracut-live.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 142592 files and directories currently installed.)
+Preparing to unpack .../dracut-live_106-6_all.deb ...
+Unpacking dracut-live (106-6) ...
+Setting up dracut-live (106-6) ...
++ '[' 0 -ne 0 ']'
++ return 0
++ apt_in squashfs-tools
++ local rc=0
++ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold squashfs-tools
++ cat /tmp/apt.log
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following NEW packages will be installed:
+  squashfs-tools
+0 upgraded, 1 newly installed, 0 to remove and 1 not upgraded.
+Need to get 194 kB of archives.
+After this operation, 506 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian trixie/main amd64 squashfs-tools amd64 1:4.6.1-1 [194 kB]
+Fetched 194 kB in 0s (2233 kB/s)
+Selecting previously unselected package squashfs-tools.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 142624 files and directories currently installed.)
+Preparing to unpack .../squashfs-tools_1%3a4.6.1-1_amd64.deb ...
+Unpacking squashfs-tools (1:4.6.1-1) ...
+Setting up squashfs-tools (1:4.6.1-1) ...
++ '[' 0 -ne 0 ']'
++ return 0
++ mods='dmsquash-live plymouth'
++ for m in dmsquash-live-autooverlay overlayfs
++ ls -d /usr/lib/dracut/modules.d/90dmsquash-live-autooverlay
++ mods='dmsquash-live plymouth dmsquash-live-autooverlay'
++ for m in dmsquash-live-autooverlay overlayfs
++ ls -d /usr/lib/dracut/modules.d/90overlayfs
++ mods='dmsquash-live plymouth dmsquash-live-autooverlay overlayfs'
++ DRACUT_NO_XATTR=1
++ dracut -v --force --zstd --reproducible --no-hostonly --add 'dmsquash-live plymouth dmsquash-live-autooverlay overlayfs' /usr/lib/modules/7.2.12+deb13-amd64/initramfs.img 7.2.12+deb13-amd64
++ tail -40 /tmp/dracut.log
+realpath: /var/tmp: No such file or directory
+dracut[F]: Invalid tmpdir '/var/tmp'.
+++ grep -iE 'error|fail|cannot|not found' /tmp/dracut.log
+++ tail -10
+++ tr '\n' '|'
+++ cut -c1-1500
+::error title=Recovery USB dracut::
++ echo '::error title=Recovery USB dracut::'
++ exit 1
+Error: building at STEP "RUN --mount=type=cache,target=/var/cache/apt /src/build.sh && rm -rf /src": while running runtime: exit status 1
