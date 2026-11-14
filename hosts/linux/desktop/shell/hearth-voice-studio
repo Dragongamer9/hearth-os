@@ -10,7 +10,8 @@ other apps. Written for Hearth (no code from other voice studios).
                                            this PC's Tailscale address only
   hearth-voice-studio status               JSON for Settings: installed, engines, PIN, API key set, addresses
   hearth-voice-studio set KEY VALUE        language (a code or auto), voice (a voice id or ''), translateModel (an
-                                           Ollama model or ''), speakerLabels (on|off)
+                                           Ollama model or ''), speakerLabels (on|off), waitForGames (on|off: jobs wait while
+                                           you play and carry on after)
   hearth-voice-studio pin-set              the page's PIN on stdin (HEARTH_INPUT; 4-12 digits; only its hash is kept)
   hearth-voice-studio pin-clear            no PIN of its own (Server mode's PIN then works, if one is set)
   hearth-voice-studio key-show             the API key (made the first time; for the Command Center)
@@ -97,7 +98,7 @@ VIDEO_EXT = ('mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v')
 AUDIO_EXT = ('wav', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'webm', 'weba', 'mp4', 'mkv', 'mov', 'm4v', 'avi', '3gp', 'amr')
 FORMATS = {'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'opus': 'audio/ogg', 'flac': 'audio/flac', 'aac': 'audio/aac', 'pcm': 'audio/L16'}
 
-DEFAULTS = {'language': 'auto', 'voice': '', 'translateModel': '', 'speakerLabels': True}
+DEFAULTS = {'language': 'auto', 'voice': '', 'translateModel': '', 'speakerLabels': True, 'waitForGames': True}
 
 LANGS = [('auto', 'Detect'), ('en', 'English'), ('es', 'Spanish'), ('fr', 'French'), ('de', 'German'), ('it', 'Italian'),
          ('pt', 'Portuguese'), ('nl', 'Dutch'), ('pl', 'Polish'), ('ru', 'Russian'), ('uk', 'Ukrainian'), ('tr', 'Turkish'),
@@ -173,6 +174,11 @@ class Paused(Exception):
     pass
 
 
+class GameWait(Exception):
+    """A game started on this PC while AI jobs wait while you play: the job goes back in the queue."""
+    pass
+
+
 def now():
     return int(time.time())
 
@@ -196,6 +202,39 @@ def load():
     return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
 
 
+# 1.13: AI jobs wait while you play (waitForGames, on unless you turn it off): while Game Mode or a game runs on this PC,
+# transcriptions, audiobooks and dubs wait in the queue (the one running stops at its next step and keeps what it made)
+# and carry on by themselves once you stop playing. Looked at no more than every 5 seconds.
+_game = {'at': 0.0, 'on': False}
+
+
+def game_running(now=None):
+    now = time.time() if now is None else now
+    if now - _game['at'] < 5:
+        return _game['on']
+    on = False
+    try:
+        for pid in os.listdir('/proc'):
+            if pid.isdigit():
+                try:
+                    with open('/proc/%s/comm' % pid) as f:
+                        if f.read().strip() in ('gamescope', 'gamescope-wl'):
+                            on = True
+                            break
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    if not on:
+        on = os.path.exists('/run/user/%d/hearth-playing' % os.getuid())
+    _game.update(at=now, on=on)
+    return on
+
+
+def waiting_for_game():
+    return load().get('waitForGames', True) is not False and game_running()
+
+
 def set_key(key, raw):
     """One setting, saved only when it's different from what you have now."""
     if key == 'language':
@@ -210,7 +249,7 @@ def set_key(key, raw):
         if raw and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:/\-]{0,120}', raw):
             raise Fail('an Ollama model name')
         v = raw
-    elif key == 'speakerLabels':
+    elif key in ('speakerLabels', 'waitForGames'):
         if raw not in ('on', 'off'):
             raise Fail('on or off')
         v = raw == 'on'
@@ -1422,6 +1461,8 @@ class Studio:
         return n
 
     def next_job(self):
+        if waiting_for_game():
+            return None
         q = [j for j in (self.job(x) for x in os.listdir(self.jdir)) if j and j.get('state') == 'queued']
         return min(q, key=lambda j: j['created']) if q else None
 
@@ -1437,6 +1478,8 @@ class Studio:
         def progress(pct, step=None):
             if self.stop.is_set():
                 raise Paused()
+            if waiting_for_game():
+                raise GameWait()
             if jid in self.cancel:
                 raise Cancelled()
             kw = {'progress': max(0, min(100, int(pct)))}
@@ -1451,6 +1494,8 @@ class Studio:
             self.job_update(jid, state='cancelled', step='cancelled')
         except Paused:
             self.job_update(jid, state='queued', step='paused: carries on when Voice Studio is back')
+        except GameWait:
+            self.job_update(jid, state='queued', step='waiting while you play: carries on when your game ends')
         except Fail as e:
             self.job_update(jid, state='failed', error=str(e)[:400], step='stopped')
         except Exception as e:  # noqa: BLE001 - an engine's own error, in words
@@ -1754,7 +1799,7 @@ class Studio:
         caps = self.engines.caps()
         return {'caps': caps, 'voices': self.all_voices(), 'library': self.voices(), 'presets': PRESETS, 'languages': LANGS,
                 'design': DESIGN, 'jobs': self.jobs(), 'settings': s, 'host': socket.gethostname().split('.')[0],
-                'models': ollama_models(), 'port': PORT}
+                'models': ollama_models(), 'port': PORT, 'gameWait': waiting_for_game()}
 
 
 # ------------------------------------------------------------------ the web page and the API
