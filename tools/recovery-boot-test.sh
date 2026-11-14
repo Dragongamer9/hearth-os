@@ -51,7 +51,8 @@ while kill -0 $q 2>/dev/null; do
   case $n in 1|2|4|6|8|12|16) shot "screen-$((n * 15))s" ;; esac
   ser=$(tr -d '\r' < "$OUT/serial.log" 2>/dev/null)
   # Up: the screen's service runs and the screen answers with its state, twice in a row.
-  if [ "$(grep -a '^ui-state: {' <<<"$ser" | wc -l)" -ge 2 ] && grep -aq '^ui-service: active' <<<"$ser"; then
+  # (Or the screen's own log saying it has drawn what the scan found, when its state can't be asked for.)
+  if grep -aq '^ui-service: active' <<<"$ser" && { [ "$(grep -a '^ui-state: {' <<<"$ser" | wc -l)" -ge 2 ] || grep -aq 'HEARTH-RECOVERY-UI scanned' <<<"$ser"; }; then
     ok=1; sleep 20; shot screen-up; break
   fi
   grep -aq 'HEARTH-RECOVERY-END' <<<"$ser" && break

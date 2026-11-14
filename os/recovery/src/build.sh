@@ -202,9 +202,12 @@ for i in $(seq 1 40); do
   {
     echo "HEARTH-RECOVERY t=$((i * 15))s"
     echo "cmdline: $(cat /proc/cmdline)"
-    echo "secureboot: $(od -An -t u1 /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d0-aa4b-00e098032b8c 2>/dev/null | awk '{print $NF}')"
+    echo "secureboot: $(dmesg 2>/dev/null | grep -io 'secure boot [a-z]*' | head -1) $(mokutil --sb-state 2>/dev/null | head -1)"
     systemctl is-active hearth-recovery-ui.service | sed 's/^/ui-service: /'
-    echo "ui-state: $(timeout 10 quickshell ipc -p /usr/share/hearth-recovery/ui call recovery state 2>&1 | tail -n1 | cut -c1-3000)"
+    # (Debian's Quickshell lists the instance first: --newest picks the running screen, and the JSON is its last line.)
+    st=$(timeout 10 quickshell ipc --newest -p /usr/share/hearth-recovery/ui call recovery state 2>&1 | grep -m1 '^{' | cut -c1-3000)
+    [ -n "$st" ] || st=$(timeout 10 quickshell ipc -p /usr/share/hearth-recovery/ui call recovery state 2>&1 | tr '\n' ' ' | cut -c1-600)
+    echo "ui-state: $st"
     tail -n 5 /run/hearth-recovery/ui.log 2>/dev/null | cut -c1-300 | sed 's/^/ui-log: /'
     tail -n 5 /run/hearth-recovery/labwc.log 2>/dev/null | cut -c1-300 | sed 's/^/labwc: /'
     if [ "$i" = 2 ] || [ -e /run/hearth-recovery/ci-rescan ]; then
