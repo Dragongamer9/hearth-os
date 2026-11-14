@@ -29,27 +29,31 @@
 </p>
 
 Hearth OS starts straight into **Steam Game Mode**, the same full-screen gamepad interface SteamOS uses. Your games
-from other stores show up in Steam's library too, and **Mantel**, Hearth's own desktop, is one press away.
+from other stores show up in Steam's library too, and **Mantel**, Hearth's own desktop, is one press away. It's built
+on Debian 13, updates as one piece, and always keeps the version before so a bad update can't strand you.
 
-Prefer Hearth's own screens? **Hearth Game Mode** is a choice in Settings › Gaming › Game Mode (from 1.10); Steam Game
-Mode stays the default. See [docs/HEARTH-GAME-MODE.md](docs/HEARTH-GAME-MODE.md).
+## What you get
 
-## What's in 1.0
-
-- **Steam Game Mode** is the Game Mode. Turn the device on and you're in Steam, ready for the controller. If Steam
-  can't start, Mantel opens with the reason and a button to try again.
-- **Hearth Sync**, a small Decky plugin, puts your games from outside Steam into Steam's library with their covers and
-  a collection per store, and keeps them in sync: Epic and GOG through Heroic, Minigalaxy (preinstalled), Epic's Linux
-  launcher, Battle.net, Xbox Cloud Gaming, emulators, recomps, Beacon and games you add yourself.
-- **Mantel**, the desktop (Hearth Classic: labwc + Quickshell), works with a controller or a mouse and keyboard. It
-  has a Steam-style look by default, new wallpapers, accent colours, light and dark modes, the Hearth menu on the
-  Guide button, an on-screen keyboard, Hearth Link and Hearth Storage. Bazaar is the app store (Flathub).
-- **Debian 13 underneath**, image-based (bootc): one image for AMD, Intel and Nvidia. It's a normal writable system
-  (apt and .deb files work) and can be locked in Settings.
-- **Updates that can't strand you.** See below.
+- **Steam Game Mode** as the Game Mode, ready for the controller. If Steam can't start, Mantel opens with the reason
+  and a button to try again. Prefer Hearth's own screens? **Hearth Game Mode** is a choice in Settings › Gaming.
+- **Hearth Sync** (a small Decky plugin) puts your games from outside Steam into Steam's library with their covers:
+  Epic and GOG (Heroic, Minigalaxy), Battle.net, Xbox Cloud Gaming, emulators, recomps, Beacon and your own.
+- **Hearth Games**: free and open games ready to install with one press, offline once they're on your PC.
+- **Mantel**, the desktop (labwc + Quickshell): works with a controller, a mouse and keyboard or touch, with a
+  Steam-style look, accent colours, light and dark, the Hearth menu on the Guide button and an on-screen keyboard.
+- **Windows-like tools**: Hearth Files (tabs, a details pane, previous versions, drive letters with Hearth (C:)
+  everywhere), Task Manager (Processes, Performance with settings for every part, App history, Startup, Services,
+  Scheduled tasks) and Resource Monitor.
+- **Memory that doesn't run out**: compressed memory (zram) sized for each PC, a swap file on the drive when you want
+  one, and a memory guard that closes the one program eating memory instead of freezing the PC.
+- **Server mode**: your PC as a home server (backups, shared folders, media, AI) with a dashboard you can open from
+  your phone; **Hearth Link** pairs all your Hearth devices; **Hearth Storage** shares updates and games between them.
+- **Hearth AI Command Center** and AI sharing: the AIs on your PCs, used from any of your devices.
+- **Debian 13 underneath**, image-based (bootc): one image for AMD, Intel and Nvidia. A normal writable system (apt and
+  .deb files work) that can be locked in Settings.
 
 <p align="center">
-  <img src="docs/img/mantel-quick-access.webp" width="640" alt="Mantel's Quick Access panel">
+  <img src="site/img/s18-task-manager.webp" width="760" alt="Task Manager in Mantel">
 </p>
 
 ## Install
@@ -59,7 +63,7 @@ Hearth Disks, balenaEtcher or Ventoy):
 
 | | | |
 |---|---|---|
-| **Hearth OS USB** (offline installer, Debian) | about 4.3 GB | [hearth-os-peppermint.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256) |
+| **Hearth OS USB** (offline installer, Debian) | about 6 GB | [hearth-os-peppermint.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256) |
 | **Recovery USB** (reinstall keeping your files, copy files off, start the previous version) | about 5 GB | [hearth-recovery.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256) |
 
 The installer needs no internet. Step by step: [hearthos.fun/docs/install.html](https://hearthos.fun/docs/install.html).
@@ -77,10 +81,16 @@ More: [hearthos.fun/docs/updates.html](https://hearthos.fun/docs/updates.html).
 
 ## Version numbers
 
-From 1.0 on, versions are **MAJOR.MINOR** with a release date: Hearth OS 1.0, then 1.1, 1.2 … 1.10, and 2.0 for the
-next big change. Build files and git tags use three parts (`1.0.0`). Details: [docs/UPDATES.md](docs/UPDATES.md).
-What's planned next (1.1: a new Steam-style installer, startup animations, boot splash presets and a GRUB theme) is
-in the [roadmap](docs/ROADMAP.md).
+Versions are **MAJOR.MINOR** with a release date: 1.0, 1.1 … 1.10, 1.11, and 2.0 for the next big change. Build files
+and git tags use three parts (`1.11.0`). The release badge at the top shows the version that's out now; what each
+version brought is in the [release notes](https://hearthos.fun/docs/releases.html), and what's coming next is in the
+[roadmap](docs/ROADMAP.md).
+
+## Hearth on other devices
+
+- **Ember** is Hearth on Windows 11 (below).
+- **Hearth for Android** runs Hearth's screens on a tablet or phone: [docs/ANDROID.md](docs/ANDROID.md).
+- **The ARM build** (`hearth-peppermint-arm64`) is Hearth OS for ARM PCs and boards.
 
 ## Ember (Windows 11)
 
@@ -100,14 +110,17 @@ More: [docs/EMBER.md](docs/EMBER.md).
 os-bases/peppermint/     The Debian image (bootc): Containerfile, build.sh and its own system files
 os/                      Shared system files (os/system_files), the installer USB (os/live), Recovery (os/recovery)
 hosts/linux/             The Linux session and Mantel (desktop/shell: Quickshell QML; desktop/labwc; desktop/theme)
+hosts/linux/test/        The Linux tests (Python), run on every push
 hosts/decky-hearth-sync/ Hearth Sync, the Decky plugin for Steam Game Mode
 hosts/hearth-core/       Rust: library, stores, settings, updates, Hearth Link and the rest of Hearth's core
 hosts/hearth-rs/         Rust: the Hearth app (Tauri); Hearth Game Mode (a choice next to Steam Game Mode)
 hosts/hearth-*/          Hearth's apps (Terminal, Disks, Photos, Text, Tools …)
 hosts/windows/           Ember: .NET 8 + WebView2
+hosts/android/           Hearth for Android (Kotlin, a WebView for ui/)
 ui/                      The web interface shared by Ember and Hearth's own Game Mode
 site/                    hearthos.fun (site/docs is built by tools/build-docs.py)
 docs/                    Design notes and guides; docs/archive holds docs of archived parts
+docs/mockups/            Approved mockups, and a checklist for each (every part must be built before a release)
 archive/                 Archived code, kept so it can come back (see below)
 tools/                   Build, check and release helpers
 ```
