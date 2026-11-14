@@ -5,6 +5,8 @@
 # drivers, Handheld Daemon, ostree, bootc and bootupd as the Debian devices it repairs.
 # (The Anatase-based recipe this replaces: archive/os/recovery-anatase/build.sh.)
 set -exo pipefail
+# Where it stopped goes straight to the workflow's summary (the step's own log isn't readable from outside).
+trap 'echo "::error title=Recovery USB build.sh line $LINENO::$(echo "$BASH_COMMAND" | cut -c1-300)"' ERR
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold)
 # apt's own error lines go straight to the workflow's summary (the build's log isn't readable from outside).
@@ -45,7 +47,12 @@ for m in dmsquash-live-autooverlay overlayfs; do
 done
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
   --add "$mods" \
-  "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
+  "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}" > /tmp/dracut.log 2>&1 || {
+    tail -40 /tmp/dracut.log
+    echo "::error title=Recovery USB dracut::$(grep -iE 'error|fail|cannot|not found' /tmp/dracut.log | tail -10 | tr '\n' '|' | cut -c1-1500)"
+    exit 1
+  }
+tail -5 /tmp/dracut.log
 chmod 0644 "/usr/lib/modules/${KVER}/initramfs.img"
 lsinitrd "/usr/lib/modules/${KVER}/initramfs.img" > /tmp/initrd-files.txt || true
 grep -q 'dmsquash-live-root' /tmp/initrd-files.txt || { echo "the initramfs has no live boot (dmsquash-live)"; exit 1; }
