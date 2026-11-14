@@ -1,0 +1,17 @@
+{
+ "view": "details",
+ "sort": "name",
+ "desc": false,
+ "group": "none",
+ "hidden": false,
+ "showExt": true,
+ "detailsPane": false,
+ "folders": {
+  "/tmp/home/Documents": {
+   "view": "details",
+   "sort": "name",
+   "desc": false,
+   "group": "none"
+  }
+ }
+}
