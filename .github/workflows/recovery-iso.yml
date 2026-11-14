@@ -45,8 +45,16 @@ jobs:
           sudo mount --bind /mnt/containers /var/lib/containers
           digest=$(skopeo inspect --retry-times 3 --format '{{.Digest}}' "docker://$IMAGE:$TAG")
           echo "::notice title=Recovery USB::made from $IMAGE:$TAG ($digest)"
-          sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
-            --build-arg BASE="$IMAGE@$digest" -t localhost/hearth-recovery:latest -f os/recovery/Containerfile os
+          # The build's log goes to a file and its end (with build.sh's own ::error lines) is printed when it fails:
+          # through the step's tee above, the last lines were lost when the build stopped.
+          trap - ERR
+          if ! sudo podman build --pull=newer --cap-add sys_admin --security-opt label=disable \
+            --build-arg BASE="$IMAGE@$digest" -t localhost/hearth-recovery:latest -f os/recovery/Containerfile os > /tmp/build.log 2>&1; then
+            grep -a '^::error' /tmp/build.log | tail -5 || true
+            echo "::error title=recovery system (end of the build)::$(grep -av '^::' /tmp/build.log | tail -40 | cut -c1-200 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          tail -5 /tmp/build.log
       - name: Make the ISO (Titanoboa)
         id: iso
         run: |
