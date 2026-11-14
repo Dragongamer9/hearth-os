@@ -35,6 +35,46 @@ class Detect(unittest.TestCase):
                 bm.run(True)
 
 
+class OldVendor(unittest.TestCase):
+    """1.12, the owner's Nvidia PC: Anatase's build put its loader in EFI/anatase, not EFI/fedora."""
+    def setUp(self):
+        self.efi = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.efi)
+
+    def put(self, d, f='shimx64.efi'):
+        os.makedirs(os.path.join(self.efi, d), exist_ok=True)
+        open(os.path.join(self.efi, d, f), 'w').write('x')
+
+    def test_the_nvidia_pc(self):
+        for f in ('grubx64.efi', 'shim.efi', 'shimx64.efi', 'mmx64.efi'):
+            self.put('anatase', f)
+        self.put('BOOT', 'BOOTX64.EFI')
+        self.assertEqual(bm.old_vendor(self.efi), 'anatase')
+
+    def test_fedora_as_before(self):
+        self.put('fedora')
+        self.put('BOOT', 'BOOTX64.EFI')
+        self.assertEqual(bm.old_vendor(self.efi), 'fedora')
+
+    def test_nothing_guessed(self):
+        with self.assertRaisesRegex(bm.Fail, 'EFI/fedora or EFI/anatase'):
+            bm.old_vendor(self.efi)
+        self.put('ubuntu'); self.put('debian'); self.put('Microsoft', 'bootmgfw.efi')
+        with self.assertRaises(bm.Fail):
+            bm.old_vendor(self.efi)
+        self.put('fedora'); self.put('anatase')
+        with self.assertRaisesRegex(bm.Fail, 'nothing was changed'):
+            bm.old_vendor(self.efi)
+
+    def test_undo_and_the_firmware_entry_follow_the_folder(self):
+        src = open(TOOL).read()
+        self.assertIn("'vendor': vendor", src, 'the copy remembers which folder it was')
+        self.assertIn("info.get('vendor')", src, 'undo puts back the entry for that folder')
+        self.assertNotIn("'\\\\EFI\\\\fedora\\\\shimx64.efi'", src, 'no fixed EFI/fedora path left')
+
+
 class StaticMenu(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
@@ -65,7 +105,8 @@ class StaticMenu(unittest.TestCase):
 class Ci(unittest.TestCase):
     def test_the_virtual_pc_proves_it(self):
         s = open(os.path.join(ROOT, '.github/scripts/boot-look-vm.sh')).read()
-        for want in ('boot fedora-before yes', 'hearth-boot-move run --yes', 'boot after-move yes', 'EFI/hearth-fedora/shimx64.efi'):
+        for want in ('boot fedora-before yes', 'hearth-boot-move run --yes', 'boot after-move yes', 'EFI/hearth-fedora/shimx64.efi',
+                     'EFI/anatase'):
             self.assertIn(want, s)
 
 

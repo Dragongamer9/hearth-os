@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """hearth-boot-move: a PC that came to the Debian edition from the Fedora edition (bootc switch) still starts through
-Fedora's boot menu (shim and GRUB on the EFI partition, "anatase" in `bootupctl status`): it starts, but without
+Fedora's boot menu (shim and GRUB on the EFI partition, in EFI/fedora or, from Anatase's own build, EFI/anatase;
+"anatase" in `bootupctl status`): it starts, but without
 Hearth's themed menu and Hearth's ordering of versions. This moves it to Hearth's own (Debian's signed shim and GRUB),
 the way a fresh install has it. 1.11, only when you run it; never by itself.
 
@@ -32,6 +33,8 @@ STATIC = '/usr/lib/bootupd/grub2-static'
 BLS = '/usr/libexec/nimbus/hearth-bls-grub'
 ESP_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 MNT = '/run/hearth-boot-move/esp'
+# Where the Fedora edition's loader can be: Fedora's own name, and Anatase's (the owner's Nvidia PC, 1.12).
+OLD_VENDORS = ('fedora', 'anatase')
 
 
 class Fail(Exception):
@@ -189,6 +192,23 @@ def entry_for(path_part):
     return next((n for n, l in entries.items() if path_part.lower() in l.lower().replace('/', '\\')), None)
 
 
+def old_vendor(efi):
+    """The folder under EFI/ holding the Fedora edition's shim (EFI/fedora, or EFI/anatase from Anatase's build).
+    Only a folder named in OLD_VENDORS; two of them, or none, stops here (nothing is guessed)."""
+    try:
+        names = os.listdir(efi)
+    except OSError:
+        names = []
+    found = [n for n in names if n.lower() in OLD_VENDORS and os.path.isfile(os.path.join(efi, n, 'shimx64.efi'))]
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise Fail("no Fedora-edition boot loader (EFI/%s/shimx64.efi): this isn't the boot loader this tool knows how to move"
+                   % ' or EFI/'.join(OLD_VENDORS))
+    raise Fail('both %s hold a boot loader: not sure which one starts this PC, so nothing was changed'
+               % ' and '.join('EFI/' + n for n in found))
+
+
 # ------------------------------------------------------------------ the move
 def run(yes):
     if os.geteuid() != 0:
@@ -208,9 +228,8 @@ def run(yes):
     steps = []
     try:
         efi = os.path.join(mp, 'EFI')
-        fed = os.path.join(efi, 'fedora')
-        if not os.path.isfile(os.path.join(fed, 'shimx64.efi')):
-            raise Fail('no EFI/fedora/shimx64.efi: this isn\'t the boot loader this tool knows how to move')
+        vendor = old_vendor(efi)
+        fed = os.path.join(efi, vendor)
         # 1. a copy of everything
         stamp = time.strftime('%Y%m%d-%H%M%S')
         bdir = os.path.join(BACKUPS, stamp)
@@ -221,7 +240,7 @@ def run(yes):
             if os.path.isfile(f):
                 shutil.copy2(f, os.path.join(bdir, os.path.basename(f)))
         with open(os.path.join(bdir, 'info.json'), 'w') as f:
-            json.dump({'at': stamp, 'esp': dev, 'disk': disk, 'part': num, 'grubDir': gdir, 'installed': c['installed'],
+            json.dump({'at': stamp, 'esp': dev, 'disk': disk, 'part': num, 'grubDir': gdir, 'installed': c['installed'], 'vendor': vendor,
                        'efibootmgr': sh(['efibootmgr', '-v'], check=False).stdout}, f, indent=1)
         with open(os.path.join(BACKUPS, 'last'), 'w') as f:
             f.write(stamp + '\n')
@@ -232,7 +251,7 @@ def run(yes):
             shutil.copytree(fed, keep)
         if not entry_for('\\EFI\\hearth-fedora\\shimx64.efi'):
             sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS (old boot menu)', '-l', '\\EFI\\hearth-fedora\\shimx64.efi'], check=False)
-        steps.append("kept Fedora's boot loader as EFI/hearth-fedora")
+        steps.append("kept Fedora's boot loader (EFI/%s) as EFI/hearth-fedora" % vendor)
         # 3. Hearth's menu, and the static grub.cfg both GRUBs read
         sh(['sh', BLS, '--boot', '/boot'], timeout=120)
         if not os.path.isfile(os.path.join(gdir, 'hearth-bls.cfg')) or 'menuentry' not in read(os.path.join(gdir, 'hearth-bls.cfg')):
@@ -262,7 +281,7 @@ def run(yes):
         entries, order = efibootmgr_entries()
         for n, l in entries.items():
             low = l.lower().replace('/', '\\')
-            if '\\efi\\fedora\\' in low:
+            if ('\\efi\\%s\\' % vendor.lower()) in low and not os.path.isfile(os.path.join(fed, 'shimx64.efi')):
                 sh(['efibootmgr', '-q', '-b', n, '-B'], check=False)       # its files are gone
         mine = entry_for('\\EFI\\debian\\shimx64.efi')
         if not mine:
@@ -298,10 +317,12 @@ def undo(yes):
         write_safely(os.path.join(info.get('grubDir') or boot_grub_dir(), 'grub.cfg'), read(os.path.join(bdir, 'grub.cfg')))
         if os.path.isfile(os.path.join(bdir, 'bootupd-state.json')):
             shutil.copy2(os.path.join(bdir, 'bootupd-state.json'), '/boot/bootupd-state.json')
-        fed = entry_for('\\EFI\\fedora\\shimx64.efi')
+        vendor = info.get('vendor') if info.get('vendor') in OLD_VENDORS else 'fedora'
+        path = '\\EFI\\%s\\shimx64.efi' % vendor
+        fed = entry_for(path)
         if not fed:
-            sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', '\\EFI\\fedora\\shimx64.efi'], check=False)
-            fed = entry_for('\\EFI\\fedora\\shimx64.efi')
+            sh(['efibootmgr', '-q', '-c', '-d', disk, '-p', num, '-L', 'Hearth OS', '-l', path], check=False)
+            fed = entry_for(path)
         _, order = efibootmgr_entries()
         if fed:
             sh(['efibootmgr', '-q', '-o', ','.join([fed] + [x for x in order if x != fed])], check=False)
