@@ -2490,7 +2490,7 @@ APPS = {
     'ollama': {'label': 'Ollama', 'repo': 'ollama/ollama', 'assets': ('ollama-linux-amd64.tar.zst', 'ollama-linux-amd64.tgz'),
                'sums': 'sha256sum.txt', 'bin': 'bin/ollama', 'max': 6 << 30},
     'jellyfin': {'label': 'Jellyfin', 'index': 'https://repo.jellyfin.org/files/server/linux/latest-stable/amd64/',
-                 'pattern': r'jellyfin_(\d+\.\d+\.\d+)-amd64\.tar\.xz', 'bin': 'jellyfin/jellyfin', 'max': 1 << 30},
+                 'pattern': r'jellyfin_(\d+(?:\.\d+){1,3})-amd64\.tar\.xz', 'bin': 'jellyfin/jellyfin', 'max': 1 << 30},
 }
 DOWNLOAD_HOSTS = ('api.github.com', 'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com',
                   'repo.jellyfin.org')
@@ -2664,17 +2664,26 @@ def app_resolve(name):
     ver = found[-1]
     fname = re.sub(r'\(.*\)', ver, app['pattern']).replace('\\', '')
     url = app['index'] + fname
-    sha = sums_lookup(http_get(url + '.sha256sum').decode('utf-8', 'replace'), fname)
-    if not sha:
-        raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
-    # The checksum file may come from a mirror: Jellyfin's own site also answers "?sha256" for a file with the
-    # SHA-256 it has for it. When it does, the two must agree.
+    # Its SHA-256 from Jellyfin's own site: the .sha256sum next to the file and the site's "?sha256" answer for it
+    # (Mirrorbits, which sends the downloads to Jellyfin's mirrors). At least one must answer; both, and they must agree.
+    shas = set()
+    try:
+        v = sums_lookup(http_get(url + '.sha256sum').decode('utf-8', 'replace'), fname)
+        if v:
+            shas.add(v)
+    except Fail:
+        pass
     try:
         own = http_get(url + '?sha256').decode('utf-8', 'replace').strip().lower().split()
+        if own and SHA_RE.fullmatch(own[0]):
+            shas.add(own[0])
     except Fail:
-        own = []
-    if own and SHA_RE.fullmatch(own[0]) and own[0] != sha:
-        raise Fail('%s\'s mirror and its own site give different checksums: not installing it' % app['label'])
+        pass
+    if not shas:
+        raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
+    if len(shas) > 1:
+        raise Fail('%s\'s two checksums for the file don\'t agree: not installing it' % app['label'])
+    sha = shas.pop()
     return {'version': ver, 'url': url, 'file': fname, 'sha256': sha, 'size': 0}
 
 
