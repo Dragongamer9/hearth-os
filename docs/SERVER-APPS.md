@@ -19,6 +19,7 @@ until you press Install, then turn it on.
 | Immich | Photo and video backup from your phone (server, Postgres and Valkey in one pod; no machine learning) | 2283/tcp | Tailscale only |
 | Navidrome | Music streaming of your Music folder (read only) to any Subsonic app | 4533/tcp | Tailscale only |
 | ntfy | Your own notification server for Phone notifications | 2586/tcp | Tailscale only |
+| UrBackup | PC backups for the house (1.13): your other PCs, Windows ones too, back up here by themselves; backups go, writable, to the folder you pick | 55414/tcp (its page: always this PC and Tailscale only), 55415/tcp (the PCs' client port) | Home network (the client port) |
 
 How it runs, and why it can't stop the PC from starting:
 
@@ -82,3 +83,14 @@ read through `podman unshare`, as the container's own users. Roll back (Settings
 backups) asks twice, keeps today's world as a "before rollback" backup first, checks the archive is safe, then puts the
 one you picked back. The nightly timer (`hearth-server-worlds.timer`, a user unit) is enabled only while backups are on
 and a game server is installed. Off with one switch.
+
+## PC backups for the house (UrBackup, 1.13)
+
+UrBackup (uroni/urbackup-server) is in the catalog: off and not installed until you ask. Pick **Where backups go**
+first (a big drive; the folder is the only one the app can write, everything else it sees stays read-only). Turn it on,
+open its page (this PC or Tailscale only: it has the admin account, so it's never on the home network), make your admin
+account, set **Settings › Internet › Internet server name** to this server's home-network address, then **Add new
+client › Internet client** and run that installer on each PC (Windows, Linux, macOS): it carries this server's address
+and that PC's own key, and the PC backs up by itself from then on (files every few hours, a whole-PC image now and then,
+over port 55415). Restore a file from the page; a whole PC with UrBackup's restore USB. Removing the app keeps the
+backups unless you confirm twice.
