@@ -16,8 +16,13 @@ so a full RAM slows the PC down instead of freezing it. 1.11 (the owner's approv
                                   and the test service turned off, so nothing you set changes
   hearth-memory never NAME on|off  one program (its process name) on or off your Never close list (Task Manager's
                                   right-click "Never close when memory runs out")
+  hearth-memory checkpoint NAME on|off  one program on or off your Keep running list (Task Manager's right-click
+                                  "Keep this running (checkpoint)", 1.12): when memory runs out and it's the one eating
+                                  it, it's frozen and its memory moved to the drive instead of being closed; it keeps
+                                  its place, and Task Manager's Resume carries on where it was
   hearth-memory guard             the memory guard (hearth-memguard.service): when memory really runs out, it closes
-                                  the one program eating it (never one on your Never close list) and tells you which
+                                  the one program eating it (never one on your Never close list; one on your Keep
+                                  running list is frozen instead) and tells you which
 
 Settings never change by themselves (docs/SETTINGS-PERSISTENCE.md): the file is written only by set, recommended,
 adopt and the first start's migration (which copies what your test files already set, nothing new). A file that fails
@@ -42,6 +47,8 @@ TEST_SYSCTL = '/etc/sysctl.d/99-hearth-memory-test.conf'
 TEST_ZRAM = '/etc/systemd/system/hearth-zram-test.service'
 SWAPFILE = '/var/swap/swapfile'
 HIBERNATE_FILE = '/var/swap/hearth-hibernate'
+CHECKPOINT_SWAP = '/var/swap/hearth-checkpoint'   # made only when a frozen program needs room; removed when it's done
+CHECKPOINT_PRIO = 5
 GIB = 1024 ** 3
 KEEP_FREE_ON_C = 20 * GIB
 SWAPFILE_MAX_GB = 64
@@ -227,7 +234,7 @@ def recommended(mem):
             'swapfile': {'everyday': True},
             'keep': {'mode': '2gb', 'mb': 2048},
             'swappiness': 200,
-            'guard': {'level': 'gentle', 'never': list(DEFAULT_NEVER), 'extra': []}}
+            'guard': {'level': 'gentle', 'never': list(DEFAULT_NEVER), 'extra': [], 'checkpoint': []}}
 
 
 def limits(mem, var_free):
@@ -330,6 +337,8 @@ def valid(s, mem, var_free=None, algos=None):
             gg['never'] = [x for x in g['never'] if x in NEVER_LABEL]
         if 'extra' in g:
             gg['extra'] = [str(x)[:64] for x in g['extra'] if re.match(r'^[\w.+-]{1,64}$', str(x))][:24]
+        if 'checkpoint' in g:
+            gg['checkpoint'] = [str(x)[:64] for x in g['checkpoint'] if re.match(r'^[\w.+-]{1,64}$', str(x))][:24]
         out['guard'] = gg
     return out
 
@@ -569,6 +578,23 @@ def adopt():
 
 
 # ------------------------------------------------------------------ the drive swap file
+def make_swapfile(path, gb, prio):
+    """A swap file of gb GB at path, turned on at prio (btrfs's own mkswapfile, else fallocate + mkswap)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    code, out, err = run(['btrfs', 'filesystem', 'mkswapfile', '--size', '%dg' % gb, path], 1800) \
+        if run(['stat', '-f', '-c', '%T', os.path.dirname(path)], 10)[1].strip() == 'btrfs' else (1, '', 'not btrfs')
+    if code != 0:
+        for c in (['fallocate', '-l', '%dG' % gb, path], ['chmod', '600', path], [sbin('mkswap'), '-q', path]):
+            code, out, err = run(c, 1800)
+            if code != 0:
+                if os.path.exists(path):
+                    os.remove(path)
+                raise Fail('Couldn\'t make the swap file: ' + (err or out).strip()[-160:])
+    for c in (['restorecon', path], ['chcon', '-t', 'swapfile_t', path]):
+        run(c, 30)
+    run([sbin('swapon'), '-p', str(prio), path], 120)
+
+
 def swapfile_size(gb):
     gb = int(gb)
     if gb < 0 or gb > SWAPFILE_MAX_GB:
@@ -585,19 +611,7 @@ def swapfile_size(gb):
     line = '%s none swap defaults,pri=%d,nofail 0 0' % (SWAPFILE, SWAPFILE_PRIO)
     lines = [l for l in fstab.splitlines() if not l.split() or l.split()[0] != SWAPFILE]
     if gb > 0:
-        os.makedirs(os.path.dirname(SWAPFILE), exist_ok=True)
-        code, out, err = run(['btrfs', 'filesystem', 'mkswapfile', '--size', '%dg' % gb, SWAPFILE], 1800) \
-            if run(['stat', '-f', '-c', '%T', os.path.dirname(SWAPFILE)], 10)[1].strip() == 'btrfs' else (1, '', 'not btrfs')
-        if code != 0:
-            for c in (['fallocate', '-l', '%dG' % gb, SWAPFILE], ['chmod', '600', SWAPFILE], [sbin('mkswap'), '-q', SWAPFILE]):
-                code, out, err = run(c, 1800)
-                if code != 0:
-                    if os.path.exists(SWAPFILE):
-                        os.remove(SWAPFILE)
-                    raise Fail('Couldn\'t make the swap file: ' + (err or out).strip()[-160:])
-        for c in (['restorecon', SWAPFILE], ['chcon', '-t', 'swapfile_t', SWAPFILE]):
-            run(c, 30)
-        run([sbin('swapon'), '-p', str(SWAPFILE_PRIO), SWAPFILE], 120)
+        make_swapfile(SWAPFILE, gb, SWAPFILE_PRIO)
         lines.append(line)
     sio = _settings_io()
     sio.write_text('/etc/fstab', '\n'.join(lines).rstrip('\n') + '\n')
@@ -659,6 +673,7 @@ def status():
         'settings': merged(saved, mem), 'saved': bool(saved) and not broken, 'broken': broken,
         'from': saved.get('_from', ''), 'recommended': recommended(mem), 'limits': limits(mem, free_on('/var')),
         'algos': kernel_algos(), 'testFiles': test_files(), 'neverLabels': NEVER_LABEL, 'lastClosed': last,
+        'frozen': frozen_now(proc_list()),
     }
 
 
@@ -726,10 +741,12 @@ def app_key(p):
     return m.group(1) if m else 'pid-%d' % p['pid']
 
 
-def pick_victim(procs, keep):
+def pick_victim(procs, keep, skip=()):
     groups = {}
     for p in procs:
         if p['uid'] < 1000 or p['pid'] in keep:
+            continue
+        if app_key(p) in skip:
             continue
         g = groups.setdefault(app_key(p), {'pids': [], 'bytes': 0, 'names': {}, 'protected': False})
         g['pids'].append(p['pid'])
@@ -745,7 +762,7 @@ def pick_victim(procs, keep):
     cands.sort(key=lambda x: -x[0])
     b, k, g = cands[0]
     name = max(g['names'].items(), key=lambda x: x[1])[0]
-    return {'key': k, 'pids': g['pids'], 'bytes': b, 'name': name}
+    return {'key': k, 'pids': g['pids'], 'bytes': b, 'name': name, 'names': list(g['names'])}
 
 
 def out_of_memory(mi, p, level):
@@ -756,6 +773,155 @@ def out_of_memory(mi, p, level):
     swap_total = mi.get('SwapTotal', 0)
     swap_free_ok = swap_total == 0 or mi.get('SwapFree', 0) < swap_total * L['swapfree']
     return mi.get('MemAvailable', 0) < total * L['avail'] and swap_free_ok and p.get('full', 0) >= L['psi']
+
+
+# ------------------------------------------------------------------ Keep this running (checkpoint), 1.12
+def frozen_load():
+    try:
+        with open(os.path.join(STATE, 'frozen.json')) as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def frozen_save(lst):
+    os.makedirs(STATE, exist_ok=True)
+    tmp = os.path.join(STATE, '.frozen.json.tmp')
+    with open(tmp, 'w') as f:
+        json.dump(lst, f)
+    os.replace(tmp, os.path.join(STATE, 'frozen.json'))
+
+
+def is_stopped(pid, root=None):
+    st = read(os.path.join(root or PROC, str(pid), 'stat'))
+    try:
+        return st.rsplit(')', 1)[1].split()[0] in ('T', 't')
+    except IndexError:
+        return False
+
+
+def frozen_now(procs, root=None):
+    """The programs the guard froze that are still frozen (Resume in Task Manager, or closing them, ends it)."""
+    alive = {p['pid'] for p in procs}
+    out = []
+    for e in frozen_load():
+        pids = [x for x in e.get('pids', []) if x in alive and is_stopped(x, root)]
+        if pids:
+            out.append(dict(e, pids=pids))
+    return out
+
+
+def on_list(v, names):
+    """Whether a picked program is on a list of process names (names are cut to the kernel's 15 letters)."""
+    short = {str(n)[:15] for n in names or []}
+    return any(str(n)[:15] in short for n in v['names'])
+
+
+def room_for(need):
+    """Swap room for need bytes: what's free, else a checkpoint swap file on C: (C: always keeps 20 GB free)."""
+    mi = meminfo()
+    free = mi.get('SwapFree', 0)
+    if free >= need:
+        return True
+    gb = int((need - free) / GIB) + 1
+    if gb * GIB > free_on('/var') - KEEP_FREE_ON_C:
+        return False
+    try:
+        if os.path.exists(CHECKPOINT_SWAP):
+            if any(sw['path'] == CHECKPOINT_SWAP for sw in swaps()):
+                return False                  # already in use and still not enough
+            os.remove(CHECKPOINT_SWAP)
+        make_swapfile(CHECKPOINT_SWAP, gb, CHECKPOINT_PRIO)
+    except (Fail, OSError):
+        return False
+    return any(sw['path'] == CHECKPOINT_SWAP for sw in swaps())
+
+
+def _pageout(pid):
+    """A stopped process's memory pushed out to swap (process_madvise MADV_PAGEOUT, Linux 5.10+)."""
+    import ctypes
+    import platform
+    if platform.machine() not in ('x86_64', 'aarch64'):
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    fd = libc.syscall(ctypes.c_long(434), ctypes.c_long(pid), ctypes.c_long(0))     # pidfd_open
+    if fd < 0:
+        return False
+
+    class Iovec(ctypes.Structure):
+        _fields_ = [('base', ctypes.c_void_p), ('len', ctypes.c_size_t)]
+    try:
+        ranges = []
+        for line in read(os.path.join(PROC, str(pid), 'maps')).splitlines():
+            f = line.split()
+            if len(f) < 2 or 'r' not in f[1] or (len(f) >= 6 and f[5] in ('[vsyscall]', '[vvar]', '[vdso]')):
+                continue
+            a, b = (int(x, 16) for x in f[0].split('-'))
+            ranges.append((a, b - a))
+        for a, n in ranges:                    # one range at a time: one that can't be paged out doesn't stop the rest
+            iov = Iovec(a, n)
+            libc.syscall(ctypes.c_long(440), ctypes.c_long(fd), ctypes.byref(iov), ctypes.c_long(1),
+                         ctypes.c_long(21), ctypes.c_long(0))                          # process_madvise, MADV_PAGEOUT
+    finally:
+        os.close(fd)
+    return True
+
+
+def freeze(v, procs):
+    """Stop every process of the program, then move its memory to swap (its app scope's memory.reclaim when it has
+    one, else page by page). Nothing is closed: SIGCONT carries on exactly where it was."""
+    for pid in v['pids']:
+        try:
+            os.kill(pid, signal.SIGSTOP)
+        except OSError:
+            pass
+    time.sleep(0.3)
+    done = False
+    cg = next((p['cgroup'] for p in procs if p['pid'] in v['pids'] and app_key(p) == v['key'] and p['cgroup']), '')
+    if v['key'].startswith('app-') and cg:
+        try:
+            with open(os.path.join(SYS, 'fs', 'cgroup', cg.lstrip('/'), 'memory.reclaim'), 'w') as f:
+                f.write(str(v['bytes']))
+            done = True
+        except OSError:
+            pass
+    if not done:
+        for pid in v['pids']:
+            try:
+                _pageout(pid)
+            except (OSError, ValueError, AttributeError):
+                pass
+    lst = [e for e in frozen_load() if not set(e.get('pids', [])) & set(v['pids'])]
+    lst.append({'at': int(time.time()), 'name': v['name'], 'pids': v['pids'], 'mb': v['bytes'] // (1024 * 1024)})
+    frozen_save(lst)
+
+
+class CheckpointSwap:
+    """The checkpoint swap file taken away again once nothing frozen needs it and memory has room for what's on it."""
+    def __init__(self):
+        self.off = None
+
+    def tidy(self, frozen):
+        if self.off is not None:
+            if self.off.poll() is None:
+                return
+            self.off = None
+        if frozen or not os.path.exists(CHECKPOINT_SWAP):
+            return
+        sw = next((x for x in swaps() if x['path'] == CHECKPOINT_SWAP), None)
+        if sw is None:
+            try:
+                os.remove(CHECKPOINT_SWAP)
+            except OSError:
+                pass
+            return
+        if meminfo().get('MemAvailable', 0) > sw.get('used', 0) + GIB:
+            try:
+                self.off = subprocess.Popen([sbin('swapoff'), CHECKPOINT_SWAP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
 
 
 def tell(text):
@@ -778,9 +944,16 @@ def guard():
             f.write('-1000')
     except OSError:
         pass
-    cfg, cfg_at, since, protect_at = None, 0, None, 0
+    cfg, cfg_at, since, protect_at, tidy_at = None, 0, None, 0, 0
+    cpswap = CheckpointSwap()
     while True:
         now = time.time()
+        if now - tidy_at > 30:
+            try:
+                cpswap.tidy(frozen_now(proc_list()))
+            except OSError:
+                pass
+            tidy_at = now
         if cfg is None or now - cfg_at > 30:
             try:
                 cfg = merged(load_settings(), meminfo().get('MemTotal', 0))['guard']
@@ -805,7 +978,26 @@ def guard():
             since = since or now
             if now - since >= LEVELS[level]['hold']:
                 procs = proc_list()
-                v = pick_victim(procs, protected_pids(procs, cfg.get('never'), cfg.get('extra')))
+                keep = protected_pids(procs, cfg.get('never'), cfg.get('extra'))
+                for e in frozen_now(procs):        # already frozen: its memory is on the drive, so it's not the one
+                    keep.update(e['pids'])
+                v = pick_victim(procs, keep)
+                skip = set()
+                while v and on_list(v, cfg.get('checkpoint')):
+                    if room_for(v['bytes']):
+                        freeze(v, procs)
+                        rec = {'at': int(now), 'name': v['name'], 'mb': v['bytes'] // (1024 * 1024), 'paused': True}
+                        with open(os.path.join(STATE, 'guard.log'), 'a') as f:
+                            f.write(json.dumps(rec) + '\n')
+                        tell('%s was paused to free memory: %.1f GB of it moved to the drive. It keeps its place. When '
+                             'memory has room, right-click it in Task Manager and choose Resume.' % (v['name'], v['bytes'] / GIB))
+                        v = None
+                        break
+                    skip.add(v['key'])             # no room on the drive to keep it: close the next biggest instead
+                    nxt = pick_victim(procs, keep, skip)
+                    if not nxt:
+                        break                      # it's the only one left: closing it is all that's left
+                    v = nxt
                 if v:
                     for pid in v['pids']:
                         try:
@@ -873,6 +1065,18 @@ def main(argv):
                 extra = [x for x in extra if x != a[1]]
             r = set_settings({'guard': {'extra': extra}})
             r['never'] = extra
+            out(r)
+        elif len(a) == 3 and a[0] == 'checkpoint' and a[2] in ('on', 'off'):
+            if not re.match(r'^[\w.+-]{1,64}$', a[1]):
+                raise Fail('not a program name: ' + a[1])
+            mem = meminfo().get('MemTotal', 0)
+            lst = list(merged(load_settings(), mem)['guard'].get('checkpoint') or [])
+            if a[2] == 'on' and a[1] not in lst:
+                lst.append(a[1])
+            if a[2] == 'off':
+                lst = [x for x in lst if x != a[1]]
+            r = set_settings({'guard': {'checkpoint': lst}})
+            r['checkpoint'] = lst
             out(r)
         elif a == ['adopt']:
             out(adopt())

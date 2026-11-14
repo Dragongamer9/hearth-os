@@ -1134,6 +1134,7 @@ class Sampler:
         io_prev, self.io = self.io, io_now
         gpu_of = self.drm_busy(procs, dt)
         eco = self.eco_marks()
+        keep_running, frozen_pids = memory_marks()
         for g in groups:
             kids = []
             for pid in g['pids']:
@@ -1155,6 +1156,8 @@ class Sampler:
                          if any(e.get(key, 0) >= 0.5 for e in eng)]
             g['exe'] = procs[g['pid']].path
             g['suspended'] = all(k['state'] in ('T', 't') for k in kids)
+            g['frozen'] = g['suspended'] and any(k['pid'] in frozen_pids for k in kids)
+            g['keepRunning'] = any(str(procs[x].comm)[:15] in keep_running for x in g['pids'])
             g['eco'] = g['id'] in eco or all(k['nice'] >= 19 for k in kids)
             g['heat'] = {'cpu': heat_level('cpu', g['cpu']), 'mem': heat_level('mem', 100.0 * g['mem'] / mem_total if mem_total else 0),
                          'disk': heat_level('disk', g['disk'] / 1048576), 'gpu': heat_level('gpu', g['gpu'])}
@@ -1354,6 +1357,52 @@ def set_priority(pid, level, root=PROC):
         if not renice_all(x, PRIORITY[level], root):
             stuck = True
     return {'pid': pid, 'priority': level, 'label': PRIORITY_LABEL[PRIORITY[level]], 'stuck': stuck}
+
+
+MEMORY_SETTINGS = os.environ.get('HEARTH_MEMORY_SETTINGS', '/etc/hearth/memory.json')
+MEMORY_STATE = os.environ.get('HEARTH_MEMORY_STATE', '/var/lib/hearth/memory')
+_mem_marks = {'at': None, 'keep': set()}
+
+
+def memory_marks():
+    """Your Keep running list (process names, cut to 15 letters) and the pids the memory guard froze (1.12)."""
+    try:
+        at = os.path.getmtime(MEMORY_SETTINGS)
+    except OSError:
+        at = None
+    if at != _mem_marks['at']:
+        _mem_marks['at'] = at
+        try:
+            with open(MEMORY_SETTINGS) as f:
+                d = json.load(f)
+            _mem_marks['keep'] = {str(x)[:15] for x in ((d.get('guard') or {}).get('checkpoint') or [])}
+        except (OSError, ValueError, AttributeError):
+            _mem_marks['keep'] = set()
+    frozen = set()
+    try:
+        with open(os.path.join(MEMORY_STATE, 'frozen.json')) as f:
+            for e in json.load(f) or []:
+                frozen.update(x for x in e.get('pids', []) if isinstance(x, int))
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    return _mem_marks['keep'], frozen
+
+
+def resume_group(pid, root=PROC):
+    """Processes › Resume (1.12): every one of your processes in the program carries on where it was."""
+    procs = scan(root)
+    g = next((g for g in build_groups(procs, os.getuid(), os.getpid()) if pid in g['pids']), None)
+    if not g:
+        raise Fail('that program has already closed')
+    n = 0
+    for x in g['pids']:
+        if procs[x].uid == os.getuid():
+            try:
+                os.kill(x, signal.SIGCONT)
+                n += 1
+            except OSError:
+                pass
+    return {'pid': pid, 'resumed': n}
 
 
 def suspend(pid, stop, root=PROC):
@@ -2013,6 +2062,8 @@ def cmd(argv):
         out = set_efficiency(parse_pid(argv[2]), argv[3] == 'on')
     elif c == 'end-tree' and len(argv) == 3:
         out = end_tree(parse_pid(argv[2]))
+    elif c == 'resume-group' and len(argv) == 3:
+        out = resume_group(parse_pid(argv[2]))
     elif c in ('suspend', 'resume') and len(argv) == 3:
         out = suspend(parse_pid(argv[2]), c == 'suspend')
     elif c == 'priority' and len(argv) == 4:

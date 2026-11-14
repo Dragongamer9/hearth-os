@@ -424,6 +424,25 @@ Item {
                         }
                     }
                 }
+                // Keep this running (checkpoint), 1.12: what Task Manager's right-click put on the list; press one to take it off
+                Line {
+                    visible: ms.val("guard", "checkpoint", []).length > 0 || !!(ms.cur && ms.cur.guard && (ms.cur.guard.checkpoint || []).length)
+                    title: "Pause instead of closing"; sub: "frozen, its memory moved to the drive; Resume in Task Manager"
+                    Flow {
+                        Layout.preferredWidth: 300
+                        spacing: 6
+                        Repeater {
+                            model: ms.val("guard", "checkpoint", [])
+                            delegate: Rectangle {
+                                required property string modelData
+                                width: kt.implicitWidth + 20; height: 28; radius: Theme.r(6)
+                                color: "transparent"; border.color: Theme.accent
+                                Text { id: kt; anchors.centerIn: parent; text: parent.modelData + "  ✕"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 12 }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ms.put("guard", "checkpoint", ms.val("guard", "checkpoint", []).filter(x => x !== parent.modelData)) }
+                            }
+                        }
+                    }
+                }
                 Line {
                     title: "Close first"; sub: "the program using the most memory and swap"
                     Text { text: "automatic"; color: "#5fd08a"; font.family: Theme.font; font.pixelSize: 12 }
@@ -431,7 +450,7 @@ Item {
                 Text {
                     Layout.fillWidth: true; visible: !!(ms.st && ms.st.lastClosed.length); wrapMode: Text.WordWrap
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
-                    text: ms.st && ms.st.lastClosed.length ? "Last closed: " + ms.st.lastClosed.slice(-3).reverse().map(c => c.name + " (" + (c.mb / 1024).toFixed(1) + " GB, " + new Date(c.at * 1000).toLocaleString(Qt.locale(), "MMM d h:mm") + ")").join(", ") : ""
+                    text: ms.st && ms.st.lastClosed.length ? "Last closed: " + ms.st.lastClosed.slice(-3).reverse().map(c => c.name + " (" + (c.paused ? "paused, " : "") + (c.mb / 1024).toFixed(1) + " GB, " + new Date(c.at * 1000).toLocaleString(Qt.locale(), "MMM d h:mm") + ")").join(", ") : ""
                 }
             }
         }
