@@ -280,7 +280,7 @@ ColumnLayout {
         readonly property bool drive: (mo.m.driveUsed || 0) > 0
         // swapped memory is in zram or on the drive; Linux doesn't say which per program, so each gets the PC's split
         readonly property real driveShare: drive ? (mo.m.driveUsed || 0) / Math.max(1, (mo.m.driveUsed || 0) + (mo.m.zramUsed || 0)) : 0
-        readonly property var top: (mo.view.groups || []).slice().sort((a, b) => (b.mem || 0) - (a.mem || 0)).slice(0, 6)
+        readonly property var topUsers: (mo.view.groups || []).slice().sort((a, b) => (b.mem || 0) - (a.mem || 0)).slice(0, 6)
         ColumnLayout {
             id: tbl
             x: 14; y: 12
@@ -288,7 +288,7 @@ ColumnLayout {
             spacing: 0
             Text { text: "BIGGEST USERS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1; Layout.bottomMargin: 8 }
             Repeater {
-                model: [{ name: "Program", head: true }].concat(users.top)
+                model: [{ name: "Program", head: true }].concat(users.topUsers)
                 delegate: Rectangle {
                     required property var modelData
                     required property int index
@@ -308,7 +308,7 @@ ColumnLayout {
                     }
                 }
             }
-            Lbl { visible: users.top.length === 0; text: "Looking at what's running…"; Layout.topMargin: 4 }
+            Lbl { visible: users.topUsers.length === 0; text: "Looking at what's running…"; Layout.topMargin: 4 }
         }
     }
 }
