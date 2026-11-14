@@ -8,6 +8,11 @@ set -exo pipefail
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold)
 mkdir -p "$(realpath /root)"
+# The Debian image's /var is made at each start from its tmpfiles list (dpkg's record lives in /usr/lib/sysimage/dpkg,
+# apt's folders are made then): make them now so apt works here.
+systemd-tmpfiles --create /usr/lib/tmpfiles.d/hearth-var.conf || true
+test -e /var/lib/dpkg/status
+mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial /var/log/apt
 apt-get update -q
 
 # ---------------------------------------------------------------- live boot (dracut's dmsquash-live)
