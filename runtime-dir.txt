@@ -1,0 +1,13 @@
+at-spi
+bus
+dbus-1
+dconf
+doc
+hearth
+hearth-clipboard-app
+hearth-files-drag.png
+hearth-tasks-0-apps.json
+nimbus-shell.log
+quickshell
+wayland-0
+wayland-0.lock
