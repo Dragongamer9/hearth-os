@@ -2,7 +2,7 @@
 """hearth-server-apps: Settings › Home server › Server apps and Phone notifications (docs/SERVER-APPS.md).
 
 The Server apps catalog: one-click game servers (Minecraft, Horizon, Valheim, Terraria, Palworld) and self-hosted apps
-(Vaultwarden, Immich, Navidrome, ntfy). Every one is off and not installed until you ask. Each runs in your own
+(Vaultwarden, Immich, Navidrome, ntfy, and UrBackup for PC backups). Every one is off and not installed until you ask. Each runs in your own
 rootless Podman as your own user service (hearth-app@<id>.service, systemd --user, no [Install]; its timer starts it
 a minute after you sign in and is enabled only while it's on). Nothing here is part of starting the PC, the session,
 Game Mode or Steam: a broken app only stops that app (it's tried 4 times in 15 minutes, then left stopped and you're
@@ -186,6 +186,23 @@ CATALOG = {
         'ports': [(2586, 'tcp', 80)], 'volumes': [('cache', '/var/cache/ntfy')],
         'env': {}, 'args': ['serve', '--cache-file', '/var/cache/ntfy/cache.db'],
         'opts': {}, 'password': None, 'web': 'http',
+    },
+    # 1.13: PC backups for the house (UrBackup, uroni/urbackup-server, AGPL). Your other PCs, Windows ones too, back up
+    # to this server by themselves: files every few hours, a whole-PC image now and then. Each PC gets the UrBackup
+    # client from this server's own page (Add new client › Internet client: an installer with this server's address
+    # and that PC's own key built in), so it finds the server through its client port (55415). The page itself (55414)
+    # has your admin account and is only ever on this PC and Tailscale ('private'), even when the app reaches your home
+    # network. Backups go to a folder you pick (a big drive), written by the app ('rw').
+    'urbackup': {
+        'name': 'UrBackup', 'kind': 'app', 'icon': 'drive', 'reach': 'home', 'size': 'about 300 MB, plus your backups',
+        'desc': 'PC backups for the house: your other PCs, Windows ones too, back up to this server by themselves (files every few hours, the whole PC now and then). Open its page, make your admin account, then Add new client › Internet client and run that installer on each PC. Restore a file from its page, or a whole PC with UrBackup\'s restore USB.',
+        'images': ['docker.io/uroni/urbackup-server:latest'],
+        'ports': [(55414, 'tcp'), (55415, 'tcp')], 'private': [55414],
+        'volumes': [('database', '/var/urbackup')],
+        'env': {},
+        'opts': {'store': {'default': '~/Server apps/UrBackup/Backups', 'folder': True, 'rw': True, 'mount': '/backups',
+                           'label': 'Where backups go (pick a big drive)'}},
+        'password': None, 'web': 'http',
     },
 }
 
@@ -671,12 +688,14 @@ def name(aid):
 
 
 def port_args(aid, reach, ts_ip):
-    """-p for each port: everywhere for 'home', 127.0.0.1 and the Tailscale address only for 'tailscale'."""
+    """-p for each port: everywhere for 'home', 127.0.0.1 and the Tailscale address only for 'tailscale' (and always
+    for a 'private' port, such as a page with an admin account)."""
     args = []
+    private = CATALOG[aid].get('private') or []
     for p in CATALOG[aid]['ports']:
         host, proto = p[0], p[1]
         inner = p[2] if len(p) > 2 else host
-        if reach == 'home':
+        if reach == 'home' and host not in private:
             args += ['-p', '%d:%d/%s' % (host, inner, proto)]
         else:
             for a in ['127.0.0.1'] + ([ts_ip] if ts_ip else []):
@@ -733,7 +752,7 @@ def run_argv(aid, cfg=None, sec=None, ts_ip=None):
         argv += ['-v', '%s:%s:Z' % (data_dir(aid, sub), inner)]
     for k, o in a['opts'].items():
         if o.get('folder'):
-            argv += ['-v', '%s:%s:ro' % (os.path.expanduser(cfg['opts'][k]), o['mount'])]
+            argv += ['-v', '%s:%s:%s' % (os.path.expanduser(cfg['opts'][k]), o['mount'], 'rw' if o.get('rw') else 'ro')]
     if a.get('engine'):
         # The engine and your own prepared game files, both read-only (Horizon finds them beside its program).
         argv += ['-v', '%s:/opt/horizon:ro' % os.path.realpath(os.path.join(engine_dir(aid), 'current'))]
@@ -764,6 +783,9 @@ def run(aid):
         raise Fail('%s needs a password of at least %d characters' % (a['name'], pw['min']))
     for sub, _ in a['volumes']:
         os.makedirs(data_dir(aid, sub), exist_ok=True)
+    for k, o in a['opts'].items():
+        if o.get('folder') and o.get('rw'):
+            os.makedirs(os.path.expanduser(cfg['opts'][k]), exist_ok=True)
     ts_ip = ts_ip4()
     argv = run_argv(aid, cfg, sec, ts_ip)
     argv[argv.index('@ENV@')] = env_file(aid, env_for(aid, cfg, sec))
@@ -1172,7 +1194,7 @@ def address(aid, cfg, ts_ip, lan, host):
     web = a.get('web')
     fmt = (lambda h: '%s://%s:%d' % (web, h, port)) if web else (lambda h: '%s:%d' % (h, port))
     addrs = []
-    if cfg['reach'] == 'home' and lan:
+    if cfg['reach'] == 'home' and lan and port not in (a.get('private') or []):
         addrs.append({'where': 'Home network', 'url': fmt(lan)})
     if ts_ip:
         addrs.append({'where': 'Tailscale', 'url': fmt(host or ts_ip)})
