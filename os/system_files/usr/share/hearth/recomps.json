@@ -1,6 +1,6 @@
 {
  "about": "Hearth Recomps' catalogue: native PC ports of console games (recompilations, decompilations and ports). Each entry's GitHub project was checked to exist with releases. You supply your own game file; Hearth never downloads or hosts games. docs/RECOMPS.md explains every field.",
- "updated": "2026-10-31",
+ "updated": "2026-11-14",
  "consoles": {
   "n64": "Nintendo 64",
   "gamecube": "GameCube",
@@ -15,7 +15,8 @@
   "snes": "Super Nintendo",
   "nes": "NES",
   "genesis": "Mega Drive / Genesis",
-  "arcade": "Arcade"
+  "arcade": "Arcade",
+  "pc": "PC"
  },
  "recomps": [
   {
@@ -2039,6 +2040,26 @@
    ],
    "setup": "in-app",
    "experimental": true
+  },
+  {
+   "id": "horizon",
+   "title": "Horizon",
+   "game": "Minecraft: Java Edition 26.3",
+   "console": "pc",
+   "kind": "port",
+   "repo": "horizon-rust/horizon",
+   "tagPrefix": "launcher@",
+   "linux": true,
+   "needs": "Your Microsoft account that owns Minecraft: Java Edition (you sign in inside Horizon's own launcher; Hearth never sees it)",
+   "files": [],
+   "setup": "in-app",
+   "assets": {
+    "linux": "^horizon-launcher-linux-x86_64\\.AppImage$",
+    "windows": "^horizon-launcher-windows-x64\\.zip$"
+   },
+   "saves": "~/.local/share/horizon",
+   "featured": true,
+   "description": "A native Rust remake of Minecraft: Java Edition (MIT): no Java needed, controllers supported, joins vanilla servers."
   }
  ]
 }
