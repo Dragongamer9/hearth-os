@@ -18,6 +18,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] Server mode › AI jobs wait while you play (a switch, on or off): picture batches, transcriptions and Voice Studio's audiobooks and dubs wait in their queue while a game runs on the server and carry on when you stop
 - [ ] Server mode › PC backups for the house (UrBackup): your other PCs, Windows ones too (like your dad's), back up to the server by themselves; restore a file or a whole PC; off until you turn it on
 - [ ] Server mode › Drive health tile: each drive's self-check (SMART), temperature and hours, with a warning on the dashboard and your phone before a drive fails
+- [ ] Hearth Files updates by itself, like Windows' File Explorer: a file or folder made, renamed, moved or deleted (by any app, a download, the terminal or another PC on a share) shows up in the open window at once, with no Refresh; the same in the Open and Save windows, the Desktop and This PC's drives (a drive plugged in or out)
+- [ ] Hearth's own apps made faster: measure each one (start-up time, memory, CPU while idle, how smooth it scrolls) before and after, then fix the slowest first (Hearth Files, Settings, Task Manager, the bar and menu, Game Mode's UI, the services that run all the time); the numbers go in the release notes
 
 ## Later
 
