@@ -182,9 +182,21 @@ PanelWindow {
         { icon: "power", t: "Turn off", s: "Everything stops until you turn it on", a: () => { dash.overlay = ""; dash.act(["power", "off"]); } }
     ]
     function teamSettings() { overlay = ""; if (dash.settings) dash.settings.open("hs-aidevices"); }
+    // 1.13: pausing takes a second press of the same button within 4 seconds (resuming and restarting don't). The AI
+    // team opens with A and pauses with A, so one press too many stopped AI chat, pictures and voices together, and
+    // they stayed stopped (the owner's Nvidia PC: Ithil lost her brain, Ollama).
+    property string pauseArmed: ""
+    Timer { id: pauseArm; interval: 4000; onTriggered: dash.pauseArmed = "" }
     function serviceAct(t, a) {
         if (!t || !t.actions || t.actions.indexOf(a === "restart" ? "restart" : "pause") < 0) { say("Nothing to " + a + " here"); return; }
         if (a === "pause") a = t.state === "paused-you" ? "resume" : "pause";
+        if (a === "pause" && pauseArmed !== t.id) {
+            pauseArmed = t.id;
+            pauseArm.restart();
+            say("Press again to pause " + t.title + (t.id === "team" || t.id === "ai" ? " (AI chat stops, and anything that thinks with it)" : ""));
+            return;
+        }
+        pauseArmed = "";
         act(["service", a, t.id], t.title + ": " + (a === "restart" ? "restarting" : a === "pause" ? "paused" : "resuming"));
     }
     function key(e) {

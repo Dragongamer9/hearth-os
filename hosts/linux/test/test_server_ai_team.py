@@ -82,5 +82,18 @@ class Counting(unittest.TestCase):
         self.assertEqual(d['senders']['Web page']['n'], 2)
 
 
+
+class PauseTakesTwoPresses(unittest.TestCase):
+    """1.13: the AI team opens with A and paused with A, so one press too many stopped Ollama, ComfyUI and Kokoro
+    together (the owner's Nvidia PC, 4:06 PM: Ithil lost her brain). Pausing now takes a second press within 4 s."""
+    def test_pause_is_armed_first(self):
+        q = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'desktop', 'shell', 'ServerDash.qml'), encoding='utf-8').read()
+        f = q[q.index('function serviceAct'):q.index('function key(e)')]
+        self.assertIn('pauseArmed !== t.id', f)
+        self.assertLess(f.index('pauseArm.restart()'), f.index('act(["service"'))
+        self.assertIn('interval: 4000', q)
+        self.assertIn('Press again to pause', f)
+
+
 if __name__ == '__main__':
     unittest.main()
