@@ -214,10 +214,17 @@ class Bridge(private val act: MainActivity) {
         return (if (rescan) null else romList) ?: roms.scan(tree).also { romList = it; Logs.log("roms: ${it.size} games") }
     }
 
+    // "Show all apps": what the person saved, if they ever changed it. Never saved: on when Hearth is built into the
+    // system (Hearth Droid, where Hearth is the whole home screen), off as an ordinary app. Nothing is written here,
+    // so a choice once made never changes by itself.
+    private fun showAllApps(): Boolean =
+        if (store.data.has("showAll")) store.data.optBoolean("showAll")
+        else (act.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+
     private fun library(rescan: Boolean): JSONObject {
         val list = appsNow(rescan)
         val manual = store.list("manual").toSet()
-        val showAll = store.data.optBoolean("showAll")
+        val showAll = showAllApps()
         val games = ArrayList<JSONObject>()
         var nAndroid = 0; var nOther = 0
         for (a in list) {
@@ -516,7 +523,7 @@ class Bridge(private val act: MainActivity) {
                 .put("systems", JSONArray(Roms.SYSTEMS.map { s -> JSONObject().put("dir", s.key).put("name", s.name).put("count", rl.count { it.sys == s }) }))
         }
         val ra = this.roms.retroArch(apps)
-        return JSONObject().put("showAll", store.data.optBoolean("showAll")).put("home", JSONObject().put("isDefault", isDefaultHome()))
+        return JSONObject().put("showAll", showAllApps()).put("home", JSONObject().put("isDefault", isDefaultHome()))
             .put("roms", roms).put("retroarch", if (ra == null) JSONObject.NULL else JSONObject().put("pkg", ra))
             .put("pads", dev.controllers())
     }
