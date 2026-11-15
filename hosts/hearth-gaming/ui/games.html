@@ -11,7 +11,7 @@
 main { grid-template-rows:auto 1fr; gap:.7em; }
 .bar { display:flex; gap:.5em; align-items:center; flex-wrap:wrap; }
 .bar .spacer { flex:1; }
-.bar .inp { width:min(22em, 100%); }
+.bar .inp { width:min(16em, 100%); }
 .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(clamp(130px, 11vw, 210px), 1fr)); gap:1em; align-content:start; }
 .tile { display:flex; flex-direction:column; gap:.4em; border-radius:var(--r); padding:.35em; background:transparent; }
 .tile .cover { position:relative; aspect-ratio:2/3; border-radius:min(12px, var(--corner, 12px)); overflow:hidden; background:linear-gradient(160deg, var(--panel3), var(--panel)); border:1px solid var(--line); display:grid; place-items:center; }
@@ -32,7 +32,19 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
 .card .who b { display:block; }
 .card .who small { color:var(--muted); }
 .storemark { width:2.6em; height:2.6em; border-radius:min(12px, var(--corner, 12px)); display:grid; place-items:center; font-weight:800; font-size:.8em; color:#fff; flex:none; }
-.mark-gog { background:#7c3fb0; } .mark-epic { background:#2a2a2a; border:1px solid #555; } .mark-battlenet { background:#148eff; }
+.mark-gog { background:#7c3fb0; } .mark-epic { background:#2a2a2a; border:1px solid #555; } .mark-battlenet { background:#148eff; } .mark-amazon { background:#1a98ff; text-transform:lowercase; }
+/* Stage two (1.13): a game's cloud saves and DLC on its page */
+.extras { display:grid; grid-template-columns:1fr 1fr; gap:1em; margin:.6em 0 1em; }
+.extras section { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:min(14px, var(--corner, 14px)); padding:.8em 1em; }
+.extras h3 { margin:0 0 .5em; font-size:1em; }
+.extras .line { display:flex; align-items:center; gap:1em; padding:.45em 0; border-top:1px solid rgba(255,255,255,.06); }
+.extras .line:first-of-type { border-top:0; }
+.extras .line > span { flex:1; display:flex; flex-direction:column; }
+.extras .line small { opacity:.7; font-size:.82em; margin-top:.15em; }
+.extras .acts { display:flex; gap:.5em; flex-wrap:wrap; margin-top:.5em; }
+.sw { width:3em; height:1.6em; border-radius:1em; border:1.5px solid rgba(255,255,255,.4); background:transparent; position:relative; flex:none; cursor:pointer; }
+.sw i { position:absolute; top:50%; left:.25em; width:1em; height:1em; margin-top:-.5em; border-radius:50%; background:rgba(255,255,255,.6); transition:left .15s; }
+.sw.on { background:var(--accent, #f0a840); border-color:var(--accent, #f0a840); } .sw.on i { left:calc(100% - 1.25em); background:#1a1206; }
 .dl { display:grid; grid-template-columns:auto 1fr auto; gap:.2em 1em; align-items:center; }
 .dl .thumb { width:4.2em; aspect-ratio:2/3; border-radius:8px; background:var(--panel3) center/cover; grid-row:span 3; }
 .dl .acts { grid-row:span 3; }
