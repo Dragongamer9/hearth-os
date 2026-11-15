@@ -1915,6 +1915,12 @@ jobs:
           else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$XDG_RUNTIME_DIR/hearth-server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
           sleep 6
           ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
+          # If the dashboard doesn't answer, where it's stuck (its threads' stacks, for finding what hangs)
+          if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
+            dnf -y -q install gdb >/dev/null 2>&1 || true
+            for p in $(pgrep -f 'quickshell.*server-mode'); do timeout 120 gdb -p "$p" -batch -ex 'thread apply all bt 40' >> shots/server-mode/stuck-stacks.txt 2>&1 || true; done
+            echo "::warning title=Server mode stuck::$(grep -oE '(QQuick|QV4|QSG|QQml|Q[A-Z][A-Za-z]+Layout|Canvas)[A-Za-z0-9_:]*' shots/server-mode/stuck-stacks.txt | head -30 | tr '\n' ' ')"
+          fi
           timeout 15 grim shots/server-mode/01-dashboard.png || true
           ipc server detail 1; timeout 15 grim shots/server-mode/02-ai-expanded.png || true
           ipc server detail 2; timeout 15 grim shots/server-mode/02b-pictures-expanded.png || true
