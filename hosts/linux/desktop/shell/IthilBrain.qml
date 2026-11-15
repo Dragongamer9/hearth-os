@@ -1,17 +1,17 @@
 // 1.13 (mockups next-update/server-ithil-dash.png, server-ithil-detail.png): Ithil's live 3D / 4D brain in Server
-// mode, drawn from ithil-brain.js (the team's viewer, the same brain as her app's Mind screen). Draw-only: `data` is
+// mode, drawn from ithil-brain.js (the team's viewer, the same brain as her app's Mind screen). Draw-only: `brain` is
 // `hearth-server-mode ithil-brain <hours>` (her real event log, read-only). live: the last seconds, as they happen;
-// otherwise T moves through the window (0..120, the 4th dimension).
+// otherwise tpos moves through the window (0..120, the 4th dimension).
 import QtQuick
 import "ithil-brain.js" as B
 
 Canvas {
     id: cv
-    property var data: null
+    property var brain: null
     property bool compact: false          // the dashboard tile: fewer points, no labels
     property bool live: true
     property bool asleep: false
-    property real T: B.TOTAL
+    property real tpos: B.TOTAL      // where in the window (0..120, the 4th dimension)
     property bool xray: false
     property bool labels: false
     property bool links: true
@@ -25,7 +25,7 @@ Canvas {
     readonly property var parts: B.R
     renderTarget: Canvas.FramebufferObject
     renderStrategy: Canvas.Cooperative
-    onDataChanged: prepared = B.prepare(data)
+    onBrainChanged: prepared = B.prepare(brain)
 
     // The right stick moves the pointer: over her brain it turns it (no click needed); dragging works too.
     MouseArea {
@@ -50,7 +50,7 @@ Canvas {
         onTriggered: {
             const now = Date.now(), dt = Math.min(0.2, (now - last) / 1000); last = now;
             if (cv.autoRot) cv.yaw += dt * 0.18;
-            cv.act = B.activity(cv.prepared, cv.T, now, cv.live, cv.asleep);
+            cv.act = B.activity(cv.prepared, cv.tpos, now, cv.live, cv.asleep);
             cv.requestPaint();
         }
     }
@@ -58,7 +58,7 @@ Canvas {
         const ctx = getContext("2d");
         if (!ctx || width < 2 || height < 2) return;
         B.draw(ctx, { W: width, H: height, dpr: 1, yaw: yaw, pitch: pitch, zoom: zoom, act: act.length ? act : B.R.map(() => 0.08), sel: sel,
-                      xray: xray, labels: labels && !compact, links: links, step: compact ? 3 : 1, data: prepared, T: T, nowMs: Date.now(), live: live });
+                      xray: xray, labels: labels && !compact, links: links, step: compact ? 3 : 1, data: prepared, T: tpos, nowMs: Date.now(), live: live });
     }
     function moodAt(t) { return B.moodAt(prepared, t); }
     function sleepiness(t) { return B.sleepiness(prepared, t); }

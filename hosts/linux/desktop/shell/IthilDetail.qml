@@ -12,7 +12,7 @@ Item {
     property var brain: null              // hearth_ithil.brain(hours)
     property real k: 1
     property string win: "live"           // live | 24 | all
-    property real T: 120
+    property real tpos: 120
     property bool xray: false
     property bool sleepArmed: false
     signal action(string a)
@@ -28,13 +28,13 @@ Item {
     readonly property var i: it || ({})
     readonly property var today: i.today || ({})
 
-    function step(d) { if (win === "live") { win = "24"; want("24"); T = 118; } T = Math.max(0, Math.min(120, T + d)); }
-    function cycle(d) { const w = ["live", "24", "all"]; win = w[(w.indexOf(win) + d + 3) % 3]; T = 120; want(win); }
+    function step(d) { if (win === "live") { win = "24"; want("24"); tpos = 118; } tpos = Math.max(0, Math.min(120, tpos + d)); }
+    function cycle(d) { const w = ["live", "24", "all"]; win = w[(w.indexOf(win) + d + 3) % 3]; tpos = 120; want(win); }
 
     // Not live: the window plays through slowly by itself (120 s), unless you just moved it.
     property double moved: 0
     Timer { interval: 100; repeat: true; running: det.visible && det.win !== "live"
-        onTriggered: { if (Date.now() - det.moved > 4000) det.T = det.T >= 120 ? 0 : det.T + 0.1; } }
+        onTriggered: { if (Date.now() - det.moved > 4000) det.tpos = det.tpos >= 120 ? 0 : det.tpos + 0.1; } }
     onTChanged: strip.requestPaint()
     onBrainChanged: strip.requestPaint()
 
@@ -99,7 +99,7 @@ Item {
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1.35
                 radius: 14 * det.k; clip: true; border.color: det.cLine
                 gradient: Gradient { GradientStop { position: 0; color: "#2a2232" } GradientStop { position: 1; color: "#120d08" } }
-                IthilBrain { id: big; anchors.fill: parent; anchors.bottomMargin: 70 * det.k; data: det.brain; live: det.win === "live"; T: det.T; xray: det.xray
+                IthilBrain { id: big; anchors.fill: parent; anchors.bottomMargin: 70 * det.k; brain: det.brain; live: det.win === "live"; tpos: det.tpos; xray: det.xray
                     asleep: det.i.state === "asleep" }
                 Row {
                     anchors { left: parent.left; top: parent.top; margins: 16 * det.k }
@@ -110,7 +110,7 @@ Item {
                     Pill { t: "X-ray"; on: det.xray; visible: det.xray }
                 }
                 Pill { anchors { right: parent.right; top: parent.top; margins: 16 * det.k }
-                    t: (det.i.state === "asleep" || big.sleepiness(det.T) > 0.5 && det.win !== "live" ? "☾ Asleep" : "Awake") + (det.win === "live" ? " · live" : "") }
+                    t: (det.i.state === "asleep" || big.sleepiness(det.tpos) > 0.5 && det.win !== "live" ? "☾ Asleep" : "Awake") + (det.win === "live" ? " · live" : "") }
                 Column {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 * det.k }
                     spacing: 6 * det.k
@@ -127,10 +127,10 @@ Item {
                         }
                     }
                     Rectangle { width: parent.width; height: 6 * det.k; radius: 3 * det.k; color: "#3a2a19"
-                        Rectangle { width: parent.width * (det.win === "live" ? 1 : det.T / 120); height: parent.height; radius: parent.radius; color: det.cAcc } }
+                        Rectangle { width: parent.width * (det.win === "live" ? 1 : det.tpos / 120); height: parent.height; radius: parent.radius; color: det.cAcc } }
                     Text { color: det.cMuted; font.family: Theme.font; font.pixelSize: 14 * det.k
                         text: "Ⓛ Ⓡ move through time (the 4th dimension) · right stick turns her brain · Ⓥ X-ray" +
-                              (det.win !== "live" && big.prepared.to ? " · " + new Date(big.prepared.from + det.T / 120 * (big.prepared.to - big.prepared.from)).toLocaleString(Qt.locale(), "ddd HH:mm") : "") }
+                              (det.win !== "live" && big.prepared.to ? " · " + new Date(big.prepared.from + det.tpos / 120 * (big.prepared.to - big.prepared.from)).toLocaleString(Qt.locale(), "ddd HH:mm") : "") }
                 }
             }
             ColumnLayout {
