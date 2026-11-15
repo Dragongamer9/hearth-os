@@ -835,6 +835,7 @@ FocusScope {
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredWidth: 10000   // the tables take what the graphs leave (they used to get none: 1.12)
                     spacing: 10
 
                     // Overview (1.11, the approved mockup resmon-1): Processor, Memory, Disk, Network and Graphics, each with its
@@ -1034,7 +1035,14 @@ FocusScope {
 
                 // ---- the live graphs (Processor: every core, two to a row, and the temperature)
                 GridLayout {
-                    Layout.preferredWidth: v.tab === "cpu" ? 340 : 300
+                    id: graphs
+                    // A fixed column: its graphs fill it, but it never takes the tables' room (its cards' fillWidth made
+                    // the whole column fill the window in 1.12, and the tables on the left were squeezed to nothing).
+                    readonly property int colW: v.tab === "cpu" ? Math.max(340, Math.min(520, v.width * 0.3)) : Math.max(300, Math.min(480, v.width * 0.26))
+                    Layout.fillWidth: false
+                    Layout.preferredWidth: colW
+                    Layout.minimumWidth: colW
+                    Layout.maximumWidth: colW
                     Layout.fillHeight: true
                     columns: v.tab === "cpu" ? 2 : 1
                     rowSpacing: 10; columnSpacing: 10
