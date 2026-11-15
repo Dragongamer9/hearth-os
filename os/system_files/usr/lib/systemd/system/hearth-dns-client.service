@@ -1,0 +1,17 @@
+# This Hearth device uses your server's ad blocker and game download cache while the server answers (hearth-dns-client;
+# docs/SERVER-MODE.md). Does nothing until a Hearth server on your Tailscale has one of them on; back to normal lookups
+# within seconds when it doesn't answer, and when this stops. Nothing is saved: NetworkManager's runtime setting only.
+[Unit]
+Description=Hearth: use the home server's ad blocker and game download cache while it answers
+After=NetworkManager.service tailscaled.service
+
+[Service]
+ExecStartPre=/bin/sleep 20
+ExecStart=/usr/libexec/nimbus/hearth-dns-client run
+ExecStopPost=-/usr/libexec/nimbus/hearth-dns-client revert
+Restart=on-failure
+RestartSec=30
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1765,6 +1765,9 @@ grep '^hosts:' /etc/nsswitch.conf || true
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
+# 1.13 (docs/SERVER-MODE.md): this device uses your server's ad blocker and game download cache while the server
+# answers (does nothing until one is on; never in the way of starting: no ordering, runtime-only network settings).
+systemctl enable hearth-dns-client.service
 
 # ------------------------------------------------------------------ name
 # /etc/os-release links to /usr/lib/os-release on Debian. ID stays debian (VERSION_CODENAME trixie) so tools

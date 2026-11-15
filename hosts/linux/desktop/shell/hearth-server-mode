@@ -747,6 +747,72 @@ def drives_tile(rec, now=None):
     return tile, warn
 
 
+# ---- 1.13: the game download cache and the ad blocker (hearth-server-dns, root: their numbers come from the file its
+# watcher writes, readable by everyone; the switches go through pkexec).
+DNS_HELPER = os.environ.get('HEARTH_SERVER_DNS', '/usr/libexec/nimbus/hearth-server-dns')
+DNS_STATUS = os.environ.get('HEARTH_SERVER_DNS_STATUS', '/run/hearth/server-dns/status.json')
+DNS_ACTIONS = {'cache': 2, 'store': 3, 'cache-empty': 2, 'ads': 2, 'ads-pause': 2, 'allow': 2, 'device': 3}
+
+
+def dns_status():
+    st = rjson(DNS_STATUS, None)
+    if isinstance(st, dict) and time.time() - (st.get('at') or 0) < 120:
+        return st
+    rc, o, _ = run([sys.executable, DNS_HELPER, "status"], 20)
+    try:
+        return json.loads(o.strip().splitlines()[-1]) if rc == 0 and o.strip() else {}
+    except (ValueError, IndexError):
+        return {}
+
+
+def gb(b):
+    b = b or 0
+    return ('%.1f' % (b / 1e9)).rstrip('0').rstrip('.') if b < 10e9 else '%d' % round(b / 1e9)
+
+
+def rate_text(bps):
+    return '%d MB/s' % round(bps / 1e6) if bps >= 1e6 else '%d KB/s' % round(bps / 1e3)
+
+
+def dns_tiles(st=None):
+    """The Game download cache and Ad blocker tiles (always there: off until you turn them on, A opens each)."""
+    st = st if st is not None else dns_status()
+    c, a = st.get('cache') or {}, st.get('ads') or {}
+    cv, av = c.get('view') or {}, a.get('view') or {}
+    con, aon = c.get('on') is True, a.get('on') is True
+    rows = [[r['device'] + ' · ' + r['what'], r['from'] + ' · ' + rate_text(r['rate'])] for r in (cv.get('now') or [])[:3]]
+    cache = {'id': 'cache', 'title': 'Game download cache', 'engine': 'LANCache', 'icon': 'update',
+             'state': ('running' if c.get('running') else 'stopped') if con else 'off',
+             'chip': ('On' if c.get('running') else 'Starting') if con else 'Off',
+             'big': gb(cv.get('savedWeek')) if con else '—', 'unit': 'GB saved this week' if con else 'off until you turn it on',
+             'sub': ('%s GB of %s GB for the cache' % (gb(cv.get('used')), c.get('sizeGB', ''))) if con else 'Steam, Epic, Battle.net and Xbox downloads come from the internet once',
+             'rows': rows or ([['Right now', 'nobody downloading']] if con else []), 'actions': [], 'cache': dict(c, view=cv)}
+    today = av.get('today') or {}
+    ads = {'id': 'ads', 'title': 'Ad blocker', 'engine': 'AdGuard Home', 'icon': 'shield',
+           'state': ('running' if a.get('running') else 'stopped') if aon else 'off',
+           'chip': ('Paused' if av.get('pausedUntil') else 'On' if a.get('running') else 'Starting') if aon else 'Off',
+           'big': ('%d %%' % today.get('percent', 0)) if aon and today else '—',
+           'unit': 'of lookups blocked today' if aon else 'off until you turn it on',
+           'sub': ('{:,} ads and trackers stopped'.format(today.get('blocked', 0))) if aon and today else 'Your home Wi-Fi, and your Hearth devices anywhere over Tailscale',
+           'rows': [[t['name'], '{:,}'.format(t['count'])] for t in (av.get('top') or [])[:3]], 'actions': [], 'ads': dict(a, view=av)}
+    return [cache, ads]
+
+
+def dns_act(args):
+    if not args or args[0] not in DNS_ACTIONS or len(args) != DNS_ACTIONS[args[0]]:
+        raise Fail('which change')
+    rc, o, _ = run(["pkexec", DNS_HELPER] + list(args), 120)
+    line = (o.strip().splitlines() or [''])[-1]
+    if line.startswith('error: '):
+        raise Fail(line[7:])
+    if rc != 0:
+        raise Fail(line or 'the change didn\'t go through')
+    try:
+        return json.loads(line)
+    except ValueError:
+        raise Fail(line)
+
+
 def dash():
     if FIXTURE:
         d = rjson(FIXTURE, {})
@@ -857,6 +923,7 @@ def dash():
     # ---- Drive health (1.13)
     dtile, dwarn = drives_tile(drive_health(now), now)
     tiles.append(dtile)
+    tiles += dns_tiles()
     # ---- Backups
     b = q.get('backups') or {}
     bstate = 'warn' if b.get('failed') else 'running'
@@ -1891,6 +1958,8 @@ def main(argv):
             out({'countdown': countdown_view()})
         elif a == ['cancel']:
             out(cancel())
+        elif a and a[0] == 'dns':
+            out(dns_act(a[1:]) if len(a) > 1 else dns_status())
         elif len(a) == 3 and a[0] == 'service':
             out(service(a[1], a[2]))
         elif len(a) == 2 and a[0] == 'power':
