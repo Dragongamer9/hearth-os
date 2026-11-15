@@ -1906,6 +1906,14 @@ jobs:
           HEARTH_SERVER_DASH_FIXTURE= python3 $H dash > shots/server-mode/dash-real.json 2> shots/server-mode/dash-real.err \
             && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("::notice title=Server mode::dash on the runner: %d tiles, %s" % (len(d["tiles"]), d["status"]["title"]))' shots/server-mode/dash-real.json \
             || { echo "::error title=Server mode::hearth-server-mode dash failed: $(head -c 300 shots/server-mode/dash-real.err | tr '\n' ' ')"; touch shots/FAILED; }
+          # The dashboard runs under gdb (as its parent: this container doesn't let gdb attach later), so if it stops
+          # answering, its threads' stacks show where it's stuck.
+          dnf -y -q install gdb >/dev/null 2>&1 || true
+          mkdir -p /tmp/qsw; REALQS=$(command -v quickshell)
+          if command -v gdb >/dev/null; then
+            printf '%s\n' '#!/bin/sh' "if [ \"\$1\" = -p ] && [ \$# -eq 2 ]; then exec gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'handle SIGPIPE SIGUSR1 SIGUSR2 SIG32 SIG33 SIG34 SIG35 nostop noprint pass' -ex run -ex 'thread apply all bt 40' --args $REALQS \"\$@\"; fi" "exec $REALQS \"\$@\"" > /tmp/qsw/quickshell
+            chmod +x /tmp/qsw/quickshell; export PATH=/tmp/qsw:$PATH
+          fi
           HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$QML" labwc -C hosts/linux/desktop/server/labwc > shots/server-mode/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -1917,9 +1925,9 @@ jobs:
           ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
           # If the dashboard doesn't answer, where it's stuck (its threads' stacks, for finding what hangs)
           if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
-            dnf -y -q install gdb >/dev/null 2>&1 || true
-            for p in $(pgrep -f 'quickshell.*server-mode'); do timeout 120 gdb -p "$p" -batch -ex 'thread apply all bt 40' >> shots/server-mode/stuck-stacks.txt 2>&1 || true; done
-            echo "::warning title=Server mode stuck::$(grep -oE '(QQuick|QV4|QSG|QQml|Q[A-Z][A-Za-z]+Layout|Canvas)[A-Za-z0-9_:]*' shots/server-mode/stuck-stacks.txt | head -30 | tr '\n' ' ')"
+            pkill -INT -x quickshell || true; sleep 25
+            grep -E '^Thread|^#' "$XDG_RUNTIME_DIR/hearth-server-dash.log" > shots/server-mode/stuck-stacks.txt || true
+            echo "::warning title=Server mode stuck::$(awk '/^Thread 1 /{f=1} f' shots/server-mode/stuck-stacks.txt | grep -oE ' in [^ ]+' | head -40 | tr '\n' ' ')"
           fi
           timeout 15 grim shots/server-mode/01-dashboard.png || true
           ipc server detail 1; timeout 15 grim shots/server-mode/02-ai-expanded.png || true
