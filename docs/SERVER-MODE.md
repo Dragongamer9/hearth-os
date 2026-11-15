@@ -149,3 +149,37 @@ brain on this PC and where she can be reached from. A talks to her (her app's wi
 X restarts her app, Y puts her to sleep (press twice), ☰ opens her settings. Hearth only reads her files
 (`hearth_ithil.py`; her log is opened read-only) and never shows her key. Mockups: `next-update/server-ithil-*.png`.
 
+
+## Game download cache and ad blocker (1.13)
+
+Two tiles, both off until you turn them on (A on the tile, then A on the page). They share one DNS server on this PC
+(AdGuard Home in a system container, `hearth-server-dns`, `/etc/hearth/server-dns.json`); neither is ever part of
+starting the PC: their units have no `[Install]`, and `hearth-server-dns.timer` (enabled only while one is on) starts
+them a minute after the PC starts.
+
+- **Game download cache**: LANCache (`lancachenet/monolithic`, port 80 on this PC's home-network and Tailscale
+  addresses) keeps each Steam, Epic Games, Battle.net and Xbox / Microsoft Store download (each store has its own
+  switch), so every other device at home gets it from here. The DNS sends only those stores' download names here; the
+  cache itself looks names up on the internet. Its page: saved this week (from LANCache's own log: what came from the
+  cache was saved, what came from the internet came once), the days, who's downloading right now, the stores, the
+  space (the oldest games leave first when it's full) and X Empty the cache (asks twice).
+- **Ad blocker**: AdGuard Home with AdGuard's DNS filter. Your devices: this PC and your Tailscale devices, each with
+  its switch and "Pause for 1 hour" (Y), plus everything else on your Wi-Fi when your router hands this PC out as its
+  DNS server. X allows a site that breaks. Y on the ad blocker itself pauses blocking for an hour.
+- **Every Hearth device** runs `hearth-dns-client`: it finds the server (the one Tailscale device that answers
+  `hearth-dns.hearth`) and has the network card ask it (NetworkManager's runtime setting, never saved) only while it
+  answers; two missed answers in a row (10 seconds) and the card's own settings come back. Nothing waits for the
+  server, and a restart clears everything. Devices ask over Tailscale, so the server knows each one by name.
+
+## Quiet hours and rules (1.13)
+
+`hearth-server-rules` (`/etc/hearth/server-rules.json`; its timer runs every minute only while one of your quiet times
+or rules is on). Quiet hours: at your times and days, fans capped (only fans this PC lets software drive, and never
+while anything is at 75 °C or more: checked every 3 seconds, given back to the firmware at once), the graphics card's
+power capped, AI pictures and dubs wait, downloads from the internet at half the fastest speed this PC has seen
+lately. Rules: When someone is watching Jellyfin, a game runs, a device is connected, a time, a drive is too hot or
+power use is high → AI pictures wait, voices wait, downloads slower, backups wait, fans capped, tell my phone. Each is
+off until you make it and can be paused (Y, an hour). A game running on this PC lifts all of it; things you start
+yourself (Back up now) run anyway. What waits is written to `/run/hearth/server-rules/now.json`, which the home
+server's services (Light mode's own code: ComfyUI's queue kept and put back), Voice Studio's queue and Phone
+notifications read.

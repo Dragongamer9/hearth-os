@@ -288,6 +288,21 @@ PanelWindow {
             else e.accepted = false;
             return;
         }
+        if (overlay === "detail" && cur && (cur.id === "cache" || cur.id === "ads" || cur.id === "rules")) {
+            // 1.13: the game download cache, the ad blocker, quiet hours & rules: ▲ ▼ pick a row, A turns it on or off,
+            // X / Y / ☰ as their pages say, ◀ ▶ a new rule's number, B back (out of a picker or a box first).
+            const v = featureView();
+            if (!v) { if (back) overlay = ""; return; }
+            if (back) { if (!(v.back && v.back())) overlay = ""; }
+            else if (K === Qt.Key_Up || K === Qt.Key_Down) v.pick(K === Qt.Key_Down ? 1 : -1);
+            else if ((K === Qt.Key_Left || K === Qt.Key_Right) && v.adjust) v.adjust(K === Qt.Key_Right ? 1 : -1);
+            else if (enter) v.enter();
+            else if (x) featureKey("x");
+            else if (y) featureKey("y");
+            else if (menu) featureKey("menu");
+            else e.accepted = false;
+            return;
+        }
         if (overlay === "detail" && cur && cur.id === "team") {
             // The AI team opened: A pauses or resumes it, X restarts it, Y opens its settings, B goes back.
             if (back) overlay = "";
@@ -318,11 +333,31 @@ PanelWindow {
         else if (K === Qt.Key_Up) sel = sel === 0 ? 0 : vertical(sel, -1);
         else e.accepted = false;
     }
+    // 1.13: the opened cache, ad blocker or rules page, and what X, Y and ☰ do there.
+    function featureView() { return !cur ? null : cur.id === "cache" ? cacheDet : cur.id === "ads" ? adsDet : cur.id === "rules" ? rulesDet : null; }
+    function featureKey(k) {
+        const id = cur ? cur.id : "";
+        if (id === "cache") { if (k === "x") cacheDet.empty(); else if (k === "y") featureAct(["settings"]); }
+        else if (id === "ads") { if (k === "x") adsDet.startAllow(); else if (k === "y") adsDet.pause(); else featureAct(["settings"]); }
+        else if (id === "rules") { if (k === "x") rulesDet.edit(); else if (k === "y") rulesDet.pauseRule(); else rulesDet.newRule(); }
+    }
+    // Their changes: hearth-server-mode dns … (the cache, the ad blocker) or rules … (quiet hours and rules).
+    function featureAct(args) {
+        if (args[0] === "settings") { Quickshell.execDetached(["hearth-settings", "hs-server"]); say("Opening Settings › Home server…"); return; }
+        const id = cur ? cur.id : "";
+        const what = id === "rules" ? "rules" : "dns";
+        const said = { cache: "Game download cache", store: "Stores", "cache-empty": "The cache is being emptied", ads: "Ad blocker",
+                       "ads-pause": "Ad blocker", allow: "Allowed", device: "Your devices", "quiet-add": "Quiet hours made (off until you turn it on)",
+                       "quiet-set": "Quiet hours", "quiet-remove": "Quiet hours", "rule-add": "Rule made (off until you turn it on)",
+                       "rule-set": "Rule", "rule-pause": "Rule", "rule-remove": "Rule", while: "While quiet" }[args[0]] || "Saved";
+        act([what].concat(args), said + " ✓");
+    }
     // From hearth-pad (server-mode.qml): Guide is Play, ☰ the menu, Y pause / resume.
     function pad(ev) {
         const wasAsleep = screenState !== "on";
         wake();
         if (wasAsleep) return;
+        if (overlay === "detail" && featureView() && (ev === "menu" || ev === "y")) return featureKey(ev);
         if (away && (ev === "guide" || ev === "menu")) { away = false; return; }   // back from her app's window
         if (overlay === "detail" && cur && cur.id === "ithil") {
             if (ev === "menu") return ithilAct("☰");
@@ -751,7 +786,18 @@ PanelWindow {
                 onWant: w => dash.ithilWin = w
                 onAction: a => dash.ithilAct(a)
                 onClose: dash.overlay = "" }
-            ServerDetail { anchors.fill: parent; visible: !dash.cur || (dash.cur.id !== "team" && dash.cur.id !== "ithil"); t: dash.cur; d: dash.d; k: dash.k
+            // 1.13: the game download cache, the ad blocker, quiet hours & rules (mockups server-cache, -adblock, -rules)
+            CacheDetail { id: cacheDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "cache"; t: dash.cur; k: dash.k
+                onAction: a => dash.featureAct(a)
+                onClose: dash.overlay = "" }
+            AdsDetail { id: adsDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "ads"; t: dash.cur; k: dash.k
+                onAction: a => dash.featureAct(a)
+                onClose: dash.overlay = ""
+                onTypingChanged: if (!typing) keys.forceActiveFocus() }
+            RulesDetail { id: rulesDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "rules"; t: dash.cur; k: dash.k
+                onAction: a => dash.featureAct(a)
+                onClose: dash.overlay = "" }
+            ServerDetail { anchors.fill: parent; visible: !dash.cur || ["team", "ithil", "cache", "ads", "rules"].indexOf(dash.cur.id) < 0; t: dash.cur; d: dash.d; k: dash.k
                 onAction: a => a === "unload" ? dash.act(["ai-unload"], "Model unloaded") : dash.serviceAct(dash.cur, a)
                 onClose: dash.overlay = "" }
         }

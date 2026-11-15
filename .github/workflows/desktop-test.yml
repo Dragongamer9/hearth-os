@@ -1938,6 +1938,53 @@ jobs:
           ipc server detail 2; sleep 5; grim shots/server-mode/12-ithil-opened.png || true
           wtype -k Down; sleep 4; grim shots/server-mode/12b-ithil-last-24-hours.png || true
           ipc server close
+          # 1.13 (mockups next-update/server-cache, -adblock, -rules): their tiles and opened pages, with the numbers the
+          # mockups show (the tiles made by hearth-server-mode's own dns_tiles / rules_tile from stand-in status files).
+          python3 - <<'PY'
+          import json, sys, time
+          sys.path.insert(0, 'hosts/linux/desktop/shell')
+          import importlib.machinery as m
+          sm = m.SourceFileLoader('sm', 'hosts/linux/desktop/shell/hearth-server-mode').load_module()
+          G = 1e9
+          day = lambda i: time.strftime('%a', time.localtime(time.time() - (6 - i) * 86400))
+          dns = {'cache': {'on': True, 'running': True, 'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': False}, 'sizeGB': 1000, 'dir': '/var/mnt/games',
+                           'storeNames': {'steam': 'Steam', 'epic': 'Epic Games', 'blizzard': 'Battle.net', 'xbox': 'Xbox / Microsoft Store'},
+                           'view': {'savedWeek': 412 * G, 'internetWeek': 186 * G, 'devicesWeek': 598 * G, 'used': 784 * G, 'drive': 'Games drive',
+                                    'bars': [{'day': day(i), 'saved': v * G} for i, v in enumerate([44, 73, 22, 100, 62, 33, 84])],
+                                    'now': [{'device': 'ROG Ally', 'what': "Baldur's Gate 3 update", 'from': 'from the cache', 'rate': 94e6},
+                                            {'device': 'Living room PC', 'what': 'Halo Infinite', 'from': 'from the internet once', 'rate': 31e6}]}},
+                 'ads': {'on': True, 'running': True, 'pausedUntil': 0, 'allow': [], 'devices': {},
+                         'view': {'today': {'percent': 18, 'blocked': 4812, 'ms': 9}, 'pausedUntil': 0,
+                                  'top': [{'name': 'doubleclick.net', 'count': 1204}, {'name': 'app-measurement.com', 'count': 811}, {'name': 'ads.youtube.com', 'count': 402}, {'name': 'telemetry.example-tv.com', 'count': 377}],
+                                  'devices': [{'id': 'chris-hearth', 'name': 'chris-hearth (this PC)', 'on': True, 'state': 'Using it'},
+                                              {'id': 'rog-ally', 'name': 'ROG Ally · at work, over Tailscale', 'on': True, 'state': 'Using it'},
+                                              {'id': 'work-laptop', 'name': 'Work laptop', 'on': False, 'state': 'Paused 1 h'},
+                                              {'id': 'lan', 'name': 'Everything else on your Wi-Fi', 'on': True, 'state': 'Through the router'}]}}}
+          now = time.time()
+          rules = {'quiet': [{'id': '1', 'name': 'Weeknights', 'from': '23:00', 'to': '07:00', 'days': [0, 1, 2, 3, 4], 'daysText': 'Mon–Fri', 'on': True},
+                             {'id': '2', 'name': 'Sunday lie-in', 'from': '00:00', 'to': '10:00', 'days': [6], 'daysText': 'Sun', 'on': False}],
+                   'while': {'fans': 40, 'powerW': 150, 'jobs': True, 'downloads': True},
+                   'rules': [{'id': '1', 'when': 'jellyfin', 'do': 'pictures', 'on': True, 'whenText': 'someone is watching Jellyfin', 'doText': 'AI pictures wait', 'paused': False},
+                             {'id': '2', 'when': 'game', 'do': 'downloads', 'on': True, 'whenText': 'a game runs on this PC', 'doText': 'downloads at half speed', 'paused': False},
+                             {'id': '3', 'when': 'drive:50', 'do': 'backups', 'on': False, 'whenText': 'the drive is over 50 °C', 'doText': 'backups wait', 'paused': True}],
+                   'now': {'at': int(now), 'quiet': 'Weeknights', 'quietUntil': int(now) + 5 * 3600, 'wait': ['pictures', 'voices'], 'fanSpeed': 34,
+                           'why': ['Weeknights'], 'game': False}}
+          d = json.load(open('/tmp/server-dash.json'))
+          d['tiles'] += sm.dns_tiles(dns) + [sm.rules_tile(rules)]
+          json.dump(d, open('/tmp/server-dash.json', 'w'))
+          print('::notice title=Server mode::the cache, ad blocker and rules tiles are at %s' % ', '.join(str(i + 1) for i, t in enumerate(d['tiles']) if t['id'] in ('cache', 'ads', 'rules')))
+          PY
+          sleep 9; grim shots/server-mode/13-cache-ads-rules-tiles.png || true
+          n=$(python3 -c "import json; t=json.load(open('/tmp/server-dash.json'))['tiles']; print(' '.join(str(i + 1) for i, x in enumerate(t) if x['id'] in ('cache', 'ads', 'rules')))")
+          set -- $n
+          ipc server detail $1; sleep 3; grim shots/server-mode/14-cache-opened.png || true
+          ipc server close
+          ipc server detail $2; sleep 3; grim shots/server-mode/15-adblock-opened.png || true
+          ipc server close
+          ipc server detail $3; sleep 3; grim shots/server-mode/16-rules-opened.png || true
+          wtype -k m; sleep 2; grim shots/server-mode/16b-rules-new-rule.png || true
+          wtype -k Escape; sleep 1
+          ipc server close
           echo "state: $(quickshell ipc -p "$QML" call server state)"
           ipc settings page hs-server; sleep 3; grim shots/server-mode/06-settings-server-mode.png || true
           wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/server-mode/06b-settings-what-pauses.png || true
