@@ -124,7 +124,7 @@ class Image(unittest.TestCase):
         return m.group(1), m.group(2)
 
     def test_the_image_carries_the_same_pinned_engines(self):
-        for const, file in (('GOGDL', 'gogdl'), ('LEGENDARY', 'legendary')):
+        for const, file in (('GOGDL', 'gogdl'), ('LEGENDARY', 'legendary'), ('NILE', 'nile')):
             url, sha = self.tool(const)
             self.assertIn(f'hearth_tool {file} {url} {sha}', BUILD, f'{file}: build.sh and tools.rs differ')
         self.assertIn('/usr/lib/hearth/tools/$1', BUILD)
@@ -150,6 +150,29 @@ class Proton(unittest.TestCase):
         pick = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'proton_pick.rs').read_text()
         self.assertIn('pub fn auto_for(', pick)
         self.assertIn('"/usr/share/steam/compatibilitytools.d"', pick)
+
+
+
+class StageTwo(unittest.TestCase):
+    """1.13: Amazon (nile), a game's cloud saves and DLC: every call the page makes is one the app allows and
+    hearth-core answers."""
+    def test_calls_are_allowed_and_answered(self):
+        bridge = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'bridge.rs').read_text()
+        for c in ('game.saves', 'game.setCloudSaves', 'game.syncSaves', 'game.dlc', 'game.installDlc', 'game.uninstallDlc'):
+            self.assertIn(c, calls())
+            self.assertIn('"%s" =>' % c, bridge)
+            self.assertIn("call('%s'" % c, JS)
+
+    def test_amazon_everywhere_it_needs_to_be(self):
+        stores = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'stores.rs').read_text()
+        lib = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'library.rs').read_text()
+        self.assertIn('"amazon" => crate::amazon::signed_in()', stores)
+        self.assertIn('nimbus-amazon:', stores)
+        self.assertIn('crate::amazon::installed(', lib)
+        self.assertIn('crate::amazon::launch(', lib)
+        self.assertIn('crate::amazon::uninstall(', lib)
+        self.assertIn("['amazon', 'Amazon']", JS)
+        self.assertIn('"amazon" => "https://gaming.amazon.com/"', APP)
 
 
 if __name__ == '__main__':

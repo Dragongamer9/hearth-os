@@ -47,8 +47,7 @@ jobs:
         working-directory: hosts/hearth-core
         run: |
           set -o pipefail
-          cargo test 2>&1 | tee test.log || { echo "::error title=hearth-core tests::$( (grep -E '^error|^---- |panicked' -A10 test.log | head -80) | tr '\n' '|' | cut -c1-3900)"; exit 1; }
-          echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+          "$GITHUB_WORKSPACE/tools/cargo-test-watch.sh" 900 hearth-core
       - name: Build
         working-directory: hosts/hearth-link
         run: |

@@ -19,10 +19,10 @@
 use serde_json::{json, Value};
 
 /// The stores Hearth Games signs in to itself (on the store's own page). Battle.net signs in in its own app.
-pub const STORES: &[&str] = &["gog", "epic"];
+pub const STORES: &[&str] = &["gog", "epic", "amazon"];
 
 /// The library sources Hearth Games shows and works on.
-pub const SOURCES: &[&str] = &["gog", "epic", "battlenet"];
+pub const SOURCES: &[&str] = &["gog", "epic", "amazon", "battlenet"];
 
 /// Every Bridge call the page may make, with the arguments it may carry; anything else is refused.
 pub const CALLS: &[(&str, &[&str])] = &[
@@ -31,6 +31,9 @@ pub const CALLS: &[(&str, &[&str])] = &[
     ("game.install", &["id"]), ("game.cancelInstall", &["id"]), ("game.pauseInstall", &["id"]), ("game.resumeInstall", &["id"]),
     ("game.installFirst", &["id"]), ("game.uninstall", &["id"]), ("game.info", &["id"]),
     ("downloads.pauseAll", &[]), ("downloads.resumeAll", &[]),
+    // Stage two (1.13): a game's cloud saves and DLC (game_extras.rs). dlc: one DLC id, or "" for every one not installed.
+    ("game.saves", &["id"]), ("game.setCloudSaves", &["id", "on"]), ("game.syncSaves", &["id", "direction"]),
+    ("game.dlc", &["id"]), ("game.installDlc", &["id", "dlc"]), ("game.uninstallDlc", &["id", "dlc"]),
     ("battlenet.status", &[]), ("battlenet.install", &[]), ("battlenet.signInDesktop", &[]),
     // Recomps (hearth-core recomps.rs): ids are the catalogue's (zelda64, custom-owner-name), not library ids.
     ("recomps.list", &[]), ("recomps.details", &["id", "fresh"]), ("recomps.places", &[]), ("recomps.checkUpdates", &[]),
@@ -96,13 +99,21 @@ pub fn check(method: &str, args: &Value) -> Result<(String, Value), String> {
     }
     if keys.contains(&"store") {
         let s = out.get("store").and_then(Value::as_str).unwrap_or("");
-        if !STORES.contains(&s) { return Err("Hearth Games signs in to GOG and Epic Games".into()); }
+        if !STORES.contains(&s) { return Err("Hearth Games signs in to GOG, Epic Games and Amazon".into()); }
     }
     let recomp = m.starts_with("recomps.");
     if keys.contains(&"id") {
         let id = out.get("id").and_then(Value::as_str).unwrap_or("");
         if recomp { if !recomp_id_ok(id) { return Err("That isn't one of Hearth Recomps' ports".into()); } }
-        else if !game_id_ok(id) { return Err("That isn't a GOG, Epic or Battle.net game".into()); }
+        else if !game_id_ok(id) { return Err("That isn't a GOG, Epic, Amazon or Battle.net game".into()); }
+    }
+    // A DLC is one of the game's own store's ids (or "": all of them).
+    if let Some(d) = out.get("dlc").and_then(Value::as_str) {
+        let src = out.get("id").and_then(Value::as_str).and_then(|i| i.split_once(':')).map(|x| x.0).unwrap_or("");
+        if !d.is_empty() && !(game_id_ok(d) && d.starts_with(&format!("{src}:"))) { return Err("That isn't one of this game's DLC".into()); }
+    }
+    if let Some(d) = out.get("direction").and_then(Value::as_str) {
+        if d != "up" && d != "down" { return Err("Saves go up or down".into()); }
     }
     // An install goes to this device ("" or none) or a drive Hearth Recomps offers (recomps.places: /run/media, /media).
     if let Some(p) = out.get("place").and_then(Value::as_str) {

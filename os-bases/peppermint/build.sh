@@ -1613,6 +1613,8 @@ hearth_tool() {   # file, url, sha256
 }
 hearth_tool gogdl https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64 cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655
 hearth_tool legendary https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64 dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45
+# 1.13 (Hearth Games stage two): nile for Amazon Games (tools.rs NILE).
+hearth_tool nile https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_linux_x86_64 d73519514df9d52c50c6feec629373cc3a0d9504e087b6c7372a8ca8a95e7bfe
 
 # ------------------------------------------------------------------ GE-Proton, built in (docs/WINDOWS-APPS.md)
 # The newest GE-Proton we could check, in the image, so Windows apps and Hearth Games' Windows games start offline. Only
