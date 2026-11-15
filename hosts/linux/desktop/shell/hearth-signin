@@ -21,7 +21,7 @@ import tempfile
 import time
 
 # crate::stores::STORES, plus Steam (its own window). Kept equal by test_hearth_signin.py.
-STORES = ('epic', 'gog', 'xbox')
+STORES = ('epic', 'gog', 'xbox', 'amazon')
 VALID = STORES + ('steam',)
 MAX_AGE = 600          # 10 minutes
 ROUTE_MAX_AGE = 60
