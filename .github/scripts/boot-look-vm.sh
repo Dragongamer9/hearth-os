@@ -157,6 +157,11 @@ fedora_loader() {
     bootupctl backend install --component EFI --src-root / --device "$LOOP" --with-static-configs --write-uuid /target > "$OUT/fedora-loader.log" 2>&1 \
     || ann error "couldn't put Fedora's boot loader on: $(tail -5 "$OUT/fedora-loader.log")"
   sudo test -f "$M/t/boot/efi/EFI/fedora/shimx64.efi" && sudo grep -q '^blscfg' "$M/b/grub2/grub.cfg" && note "fedora loader in place" || ann error "the Fedora loader isn't in place"
+  # As on the owner's Nvidia PC (1.12): Anatase's build kept that loader in EFI/anatase, and bootupd's record says so.
+  sudo mv "$M/t/boot/efi/EFI/fedora" "$M/t/boot/efi/EFI/anatase"
+  sudo sed -i 's#"fedora/#"anatase/#g' "$M/b/bootupd-state.json"
+  { echo "--- EFI before the move"; sudo find "$M/t/boot/efi/EFI" -type f; echo "--- bootupd-state.json"; sudo head -c 4000 "$M/b/bootupd-state.json"; } > "$OUT/anatase-before.txt" 2>&1
+  sudo test -f "$M/t/boot/efi/EFI/anatase/shimx64.efi" && note "loader in EFI/anatase like the Nvidia PC" || ann error "couldn't put the loader in EFI/anatase"
   sudo umount "$M/t/boot/efi" "$M/t/boot"
 }
 with_disk fedora_loader
@@ -185,6 +190,8 @@ else
 fi
 after_move() {
   sudo mkdir -p "$M/e"; sudo mount "${LOOP}p1" "$M/e"
+  sudo find "$M/e/EFI" -type f > "$OUT/efi-after-move.txt" 2>&1
+  ann notice "EFI after the move: $(sudo find "$M/e/EFI" -type f -printf '%P ' | cut -c1-900)"
   for f in EFI/debian/shimx64.efi EFI/debian/grubx64.efi EFI/debian/grub.cfg EFI/hearth-fedora/shimx64.efi; do
     sudo test -f "$M/e/$f" || { FAILED=1; ann error "after the move $f is missing"; }
   done
