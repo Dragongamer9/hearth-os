@@ -29,3 +29,29 @@ updates between system updates are in `docs/APP-UPDATES.md`. Hearth's Decky plug
   - onto the release notes page (`tools/build-docs.py`).
   Headings without a date (`## 0.6.63 (released)`, every release before 1.0) still work: those versions show just the
   number. `python3 tools/hearth_version.py date 1.0.0` prints the date a build will get.
+
+## Smaller updates (1.13)
+
+An update used to be the whole 2–3 GB image every time: the rechunk step (chunkah) had no way to tell which files
+belong together on Debian, so everything landed in one piece stamped with the build's time, and that piece changed
+with every build. Now:
+
+- **Debian frozen to this week's Monday** (`tools/debian_snapshot.py`, `os-bases/peppermint/apt-snapshot.sh`):
+  the image is built from snapshot.debian.org as Debian was at 00:00 UTC on Monday, so every build in a week gets
+  byte-for-byte the same packages. It moves by itself each week. For a security fix sooner, put a newer date
+  (YYYYMMDD) in `os-bases/peppermint/debian-snapshot`; `live` there turns the freeze off. If snapshot.debian.org
+  doesn't answer, the build goes on from the live repositories and says so (only that update is bigger). A device's
+  own apt (Writable system) always uses Debian's live repositories.
+- **Every file in its own piece** (`os-bases/peppermint/components.py`, the last step of build.sh): a file from a
+  Debian package belongs to its source package ("deb/mesa"), anything else to its folder ("hearth/usr/lib/hearth-office",
+  "hearth/usr/share/nimbus/desktop"), so each Debian package and each Hearth app gets layers of its own.
+- **A fixed time** for files without one of their own (chunkah's `SOURCE_DATE_EPOCH`, the snapshot's), not the
+  build's.
+- **Published exactly as made**: the rechunked image is pushed from chunkah's own output with its layers' digests
+  kept (devices compare digests), not recompressed by podman.
+- **Each build says how big its update is**: the Update size step compares the new image with the published one
+  and with the last build of the same branch (an annotation and the run's summary: MB to download, which pieces).
+- **Downloaded quietly**: the background update (bootc's timer, staged for the next restart, never restarting by
+  itself) runs at the lowest processor and disk priority. The previous version always stays in the boot menu.
+
+The first update in the new layout downloads everything once (every layer is new); the ones after only what changed.
