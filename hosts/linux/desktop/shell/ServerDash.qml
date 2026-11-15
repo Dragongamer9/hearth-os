@@ -48,8 +48,11 @@ PanelWindow {
     Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: !!dash.d && !!dash.d.ithil && !dash.away
         onTriggered: if (!brainReader.running) brainReader.running = true }
     onIthilWinChanged: if (!brainReader.running) brainReader.running = true
-    Timer { id: sleepArm; interval: 4000; onTriggered: { dash.sleepArmed = ""; if (ithilView) ithilView.sleepArmed = false; } }
-    property var ithilView: null
+    Timer { id: sleepArm; interval: 4000; onTriggered: { dash.sleepArmed = ""; } }
+    readonly property var ithilView: ithilL.item
+    readonly property var cacheDet: cacheL.item
+    readonly property var adsDet: adsL.item
+    readonly property var rulesDet: rulesL.item
     function ithilAct(a) {
         if (a === "A" || a === "☰") {
             act(["ithil-talk"].concat(a === "☰" ? ["settings"] : []), "");
@@ -57,8 +60,8 @@ PanelWindow {
             awayTimer.restart();
         } else if (a === "X") act(["ithil-restart"], "Restarting her app");
         else if (a === "Y") {
-            if (sleepArmed !== "ithil") { sleepArmed = "ithil"; sleepArm.restart(); if (ithilView) ithilView.sleepArmed = true; say("Press Y again to put her to sleep"); return; }
-            sleepArmed = ""; if (ithilView) ithilView.sleepArmed = false;
+            if (sleepArmed !== "ithil") { sleepArmed = "ithil"; sleepArm.restart(); say("Press Y again to put her to sleep"); return; }
+            sleepArmed = "";
             act(["ithil-sleep"], "She's going to sleep");
         }
     }
@@ -779,24 +782,29 @@ PanelWindow {
                 paused: !!dash.cur && dash.cur.state === "paused-you"
                 onAction: a => a === "settings" ? dash.teamSettings() : dash.serviceAct(dash.cur, a === "resume" ? "pause" : a)
                 onClose: dash.overlay = "" }
+            // 1.13's pages are made only while open: laid out hidden at start they kept Quickshell busy forever
+            // (nothing drew and it stopped answering), and they'd only slow the dashboard's start anyway.
             // Ithil's own view (1.13, mockup server-ithil-detail)
-            IthilDetail { id: ithilDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "ithil"; it: dash.d ? dash.d.ithil : null
-                brain: dash.ithilBrain; k: dash.k
-                Component.onCompleted: dash.ithilView = ithilDet
-                onWant: w => dash.ithilWin = w
-                onAction: a => dash.ithilAct(a)
-                onClose: dash.overlay = "" }
+            Loader { id: ithilL; anchors.fill: parent; active: parent.visible && dash.cur.id === "ithil"
+                sourceComponent: Component { IthilDetail { it: dash.d ? dash.d.ithil : null
+                    brain: dash.ithilBrain; k: dash.k; sleepArmed: dash.sleepArmed === "ithil"
+                    onWant: w => dash.ithilWin = w
+                    onAction: a => dash.ithilAct(a)
+                    onClose: dash.overlay = "" } } }
             // 1.13: the game download cache, the ad blocker, quiet hours & rules (mockups server-cache, -adblock, -rules)
-            CacheDetail { id: cacheDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "cache"; t: dash.cur; k: dash.k
-                onAction: a => dash.featureAct(a)
-                onClose: dash.overlay = "" }
-            AdsDetail { id: adsDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "ads"; t: dash.cur; k: dash.k
-                onAction: a => dash.featureAct(a)
-                onClose: dash.overlay = ""
-                onTypingChanged: if (!typing) keys.forceActiveFocus() }
-            RulesDetail { id: rulesDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "rules"; t: dash.cur; k: dash.k
-                onAction: a => dash.featureAct(a)
-                onClose: dash.overlay = "" }
+            Loader { id: cacheL; anchors.fill: parent; active: parent.visible && dash.cur.id === "cache"
+                sourceComponent: Component { CacheDetail { t: dash.cur; k: dash.k
+                    onAction: a => dash.featureAct(a)
+                    onClose: dash.overlay = "" } } }
+            Loader { id: adsL; anchors.fill: parent; active: parent.visible && dash.cur.id === "ads"
+                sourceComponent: Component { AdsDetail { t: dash.cur; k: dash.k
+                    onAction: a => dash.featureAct(a)
+                    onClose: dash.overlay = ""
+                    onTypingChanged: if (!typing) keys.forceActiveFocus() } } }
+            Loader { id: rulesL; anchors.fill: parent; active: parent.visible && dash.cur.id === "rules"
+                sourceComponent: Component { RulesDetail { t: dash.cur; k: dash.k
+                    onAction: a => dash.featureAct(a)
+                    onClose: dash.overlay = "" } } }
             ServerDetail { anchors.fill: parent; visible: !dash.cur || ["team", "ithil", "cache", "ads", "rules"].indexOf(dash.cur.id) < 0; t: dash.cur; d: dash.d; k: dash.k
                 onAction: a => a === "unload" ? dash.act(["ai-unload"], "Model unloaded") : dash.serviceAct(dash.cur, a)
                 onClose: dash.overlay = "" }
