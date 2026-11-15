@@ -81,6 +81,7 @@ ShellRoot {
         function play(): void { dash.play(); }
         function menu(): void { dash.overlay = "menu"; dash.menuSel = 0; }
         function detail(n: int): void { dash.sel = n; dash.overlay = "detail"; }
+        function pick(n: int): void { dash.sel = n; }
         function back(): void { dash.backInfo = { back: true, played: 9660 }; dash.overlay = "back"; }
         function close(): void { dash.overlay = ""; dash.cancelSwitch(); }
         function cancel(): void { dash.remoteCancel(); }

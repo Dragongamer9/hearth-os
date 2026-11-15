@@ -395,6 +395,8 @@ PanelWindow {
     readonly property color gOk: "#6fe39a"
     readonly property color gWarn: "#ff8a4c"
     readonly property int cols: 5
+    // 1.13: a tile's height, as in the mockups (the Services area scrolls when they don't all fit)
+    readonly property real tileH: 262 * k
 
     // The last hour, one sample every 30 seconds (only on this screen, never saved).
     property var hist: ({ vram: [], storage: [], power: [], net: [] })
@@ -660,22 +662,46 @@ PanelWindow {
             GPanel {
                 title: "Services"
                 Layout.fillWidth: true; Layout.fillHeight: true
-                GridLayout {
-                    id: grid
+                // 1.13: every tile is as tall as in the mockups (Ithil's fits her brain, mood and needs); when they don't
+                // all fit, the Services area scrolls and follows the picked tile. Widths are worked out in pixels
+                // (sized by ratio, layouts can keep rearranging forever).
+                Flickable {
+                    id: tileFlick
                     anchors.fill: parent
-                    columns: dash.cols; rowSpacing: 12 * dash.k; columnSpacing: 12 * dash.k
-                    Repeater {
-                        model: dash.tiles
-                        delegate: ServerTile {
-                            required property var modelData
-                            required property int index
-                            Layout.fillWidth: true; Layout.fillHeight: true
-                            Layout.preferredWidth: modelData.wide ? 2 : 1; Layout.preferredHeight: 1
-                            Layout.columnSpan: modelData.wide ? 2 : 1
-                            t: modelData; k: dash.k * 0.86; focused: dash.sel === index + 1; gold: true
-                            team: dash.d ? dash.d.team : null
-                            brain: modelData.ithil ? dash.ithilBrain : null
-                            MouseArea { anchors.fill: parent; onClicked: { dash.sel = index + 1; dash.overlay = "detail"; } }
+                    clip: true
+                    contentWidth: width; contentHeight: grid.height
+                    boundsBehavior: Flickable.StopAtBounds
+                    Behavior on contentY { enabled: !Settings.reduceMotion; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                    readonly property real gap: 12 * dash.k
+                    readonly property real colW: Math.max(0, Math.floor((width - gap * (dash.cols - 1)) / dash.cols))
+                    function follow() {
+                        const it = dash.sel >= 1 ? tileRep.itemAt(dash.sel - 1) : null;
+                        if (!it) { if (dash.sel === 0) contentY = 0; return; }
+                        if (it.y < contentY) contentY = it.y;
+                        else if (it.y + it.height > contentY + height) contentY = Math.min(Math.max(0, contentHeight - height), it.y + it.height - height);
+                    }
+                    Connections { target: dash; function onSelChanged() { tileFlick.follow(); } }
+                    GridLayout {
+                        id: grid
+                        width: tileFlick.width
+                        height: implicitHeight
+                        columns: dash.cols; rowSpacing: tileFlick.gap; columnSpacing: tileFlick.gap
+                        Repeater {
+                            id: tileRep
+                            model: dash.tiles
+                            delegate: ServerTile {
+                                required property var modelData
+                                required property int index
+                                readonly property real w: modelData.wide ? tileFlick.colW * 2 + tileFlick.gap : tileFlick.colW
+                                Layout.fillWidth: false; Layout.fillHeight: false
+                                Layout.preferredWidth: w; Layout.minimumWidth: w; Layout.maximumWidth: w
+                                Layout.preferredHeight: dash.tileH; Layout.minimumHeight: dash.tileH; Layout.maximumHeight: dash.tileH
+                                Layout.columnSpan: modelData.wide ? 2 : 1
+                                t: modelData; k: dash.k * 0.86; focused: dash.sel === index + 1; gold: true
+                                team: dash.d ? dash.d.team : null
+                                brain: modelData.ithil ? dash.ithilBrain : null
+                                MouseArea { anchors.fill: parent; onClicked: { dash.sel = index + 1; dash.overlay = "detail"; } }
+                            }
                         }
                     }
                 }

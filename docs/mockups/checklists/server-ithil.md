@@ -8,6 +8,7 @@ the rest of the dashboard in the first picture is the 1.12 gold dashboard as it 
 
 ## The dashboard (server-ithil-dash)
 - [x] Her tile, two tiles wide, right after the AI team — hosts/linux/desktop/shell/hearth-server-mode: "tiles.insert(1, {'id': 'ithil'"
+- [x] Her tile as tall as in the mockup (brain, mood, focus, four needs, last answer all show; the Services area scrolls when the tiles don't all fit) — hosts/linux/desktop/shell/ServerDash.qml: "readonly property real tileH: 262 * k"
 - [x] Moon icon, "Ithil" with NEW, "Her own mind · Hearth AI 0.6" — hosts/linux/desktop/shell/hearth-server-mode: "'Her own mind' + (' · Hearth AI '"
 - [x] Awake / Asleep / Not running chip — hosts/linux/desktop/shell/hearth_ithil.py: "'chip': 'Not running' if not up else 'Asleep' if asleep else 'Awake'"
 - [x] A small live 3D brain lit by her real log — hosts/linux/desktop/shell/ServerTile.qml: "IthilBrain { anchors.fill: parent; compact: true"

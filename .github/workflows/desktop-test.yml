@@ -2008,9 +2008,12 @@ jobs:
           json.dump(d, open('/tmp/server-dash.json', 'w'))
           print('::notice title=Server mode::the cache, ad blocker and rules tiles are at %s' % ', '.join(str(i + 1) for i, t in enumerate(d['tiles']) if t['id'] in ('cache', 'ads', 'rules')))
           PY
-          sleep 9; timeout 15 grim shots/server-mode/13-cache-ads-rules-tiles.png || true
+          sleep 9
           n=$(python3 -c "import json; t=json.load(open('/tmp/server-dash.json'))['tiles']; print(' '.join(str(i + 1) for i, x in enumerate(t) if x['id'] in ('cache', 'ads', 'rules')))")
           set -- $n
+          # The Services area scrolls to the picked tile (1.13): pick the last of them so all three show
+          ipc server pick $3; sleep 1; timeout 15 grim shots/server-mode/13-cache-ads-rules-tiles.png || true
+          ipc server pick 0
           ipc server detail $1; sleep 3; timeout 15 grim shots/server-mode/14-cache-opened.png || true
           stuck "the cache page"
           ipc server close
