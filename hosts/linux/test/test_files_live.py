@@ -85,7 +85,11 @@ class Qml(unittest.TestCase):
         self.assertIn('"watch", "--mounts"', fm)
         self.assertIn('function refreshQuiet()', fm)
         self.assertIn('if (renaming !== "") { refreshWaiting = true; return; }', fm)   # never while renaming
-        self.assertIn('grid.contentY = y1; list.contentY = y2', fm)                  # where you scrolled stays
+        self.assertIn('ui.scrollTo(y)', fm)                                          # where you scrolled stays
+        self.assertIn('function scrollTo(y) { grid.contentY = y[0]; list.contentY = y[1]; }', fm)
+        # the views are inside the window (app.ui): the app itself can't name grid or list (ReferenceError in CI)
+        body = fm.split('function refreshQuiet()')[1].split('\n    }\n')[0]
+        self.assertNotIn('grid.', body); self.assertNotIn('list.', body)
         desk = open(os.path.join(SHELL, 'Desktop.qml'), encoding='utf-8').read()
         self.assertIn('"watch", root.watchDir', desk)
         self.assertNotIn('command: ["stat", "-c", "%Y", root.dir]', desk)

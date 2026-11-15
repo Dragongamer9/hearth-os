@@ -950,7 +950,7 @@ Scope {
         const p = listing.path;
         const seq = ++quietSeq;
         const keep = entries[cur] ? entries[cur].path : "";
-        const y1 = grid.contentY, y2 = list.contentY;
+        const y = ui ? ui.scrollNow() : null;   // the views live in the window (app.ui), not here
         call(["list", p].concat(hidden ? ["--hidden"] : []), (r, err) => {
             if (seq !== quietSeq || err || !r || r.path !== p || path !== p || loading || found !== null) return;
             const sig = l => l.entries.map(e => e.name + "\u0001" + (e.size || 0) + "\u0001" + (e.modified || e.mtime || "")).join("\u0002");
@@ -962,7 +962,7 @@ Scope {
             const i = keep ? entries.findIndex(e => e.path === keep) : -1;
             cur = i >= 0 ? i : Math.max(0, Math.min(cur, entries.length - 1));
             makeThumbs();
-            Qt.callLater(() => { grid.contentY = y1; list.contentY = y2; });
+            if (y) Qt.callLater(() => { if (ui) ui.scrollTo(y); });
         });
     }
     // The navigation pane, Windows 11-style: Home, Favorites, your folders, Games, then This PC opened out with
@@ -3099,6 +3099,8 @@ Scope {
                 if (app.shownView === "details") list.positionViewAtIndex(app.cur, ListView.Contain);
                 else grid.positionViewAtIndex(app.cur, GridView.Contain);
             }
+            function scrollNow() { return [grid.contentY, list.contentY]; }
+            function scrollTo(y) { grid.contentY = y[0]; list.contentY = y[1]; }
             function wheel(ev) {
                 if (app.onSpecial) return;
                 const v = app.shownView === "details" ? list : grid;
