@@ -2385,7 +2385,7 @@ mod tests {
             assert!(info["value"].get(k).is_some(), "host.info is missing {k}");
         }
         let a = b.handle(&json!({"type": "call", "id": 99, "method": "accounts.status", "args": {}})).unwrap();
-        assert_eq!(a["value"]["accounts"].as_array().unwrap().len(), 4);
+        assert_eq!(a["value"]["accounts"].as_array().unwrap().len(), 5);   // Steam and the four stores (Amazon too)
         assert_eq!(b.handle(&json!({"type": "call", "id": 100, "method": "library.downloads", "args": {}})).unwrap()["value"]["active"], json!([]));
     }
 }

@@ -105,7 +105,7 @@ mod tests {
     fn stores_that_can_be_handed_over() {
         for s in crate::stores::STORES { assert!(valid_store(s), "{s}"); }
         assert!(valid_store("steam"));
-        for s in ["", "amazon", "Steam", "epic ", "../epic", "steam;rm"] { assert!(!valid_store(s), "{s:?}"); }
+        for s in ["", "origin", "Steam", "epic ", "../epic", "steam;rm"] { assert!(!valid_store(s), "{s:?}"); }
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod tests {
         assert_eq!(parse(&req("xbox", now + 30), now, MAX_AGE_SECS).as_deref(), Some("xbox"));   // clock a bit ahead
         assert_eq!(parse(&req("xbox", now + 3600), now, MAX_AGE_SECS), None);
         assert_eq!(parse(&format!("{{\"store\":\"epic\",\"at\":{}}}", (now - 5) * 1000), now, MAX_AGE_SECS).as_deref(), Some("epic"));   // milliseconds
-        assert_eq!(parse(&req("amazon", now), now, MAX_AGE_SECS), None);
+        assert_eq!(parse(&req("origin", now), now, MAX_AGE_SECS), None);
         assert_eq!(parse("{\"store\":\"epic\"}", now, MAX_AGE_SECS), None);
         assert_eq!(parse("{\"store\":\"epic\",\"at\":\"soon\"}", now, MAX_AGE_SECS), None);
         assert_eq!(parse("not json", now, MAX_AGE_SECS), None);
@@ -148,7 +148,7 @@ mod tests {
         let a = |v: &[&str]| store_arg(v.iter().map(|s| s.to_string()));
         assert_eq!(a(&["nimbus", "--windowed", "--signin", "epic"]).as_deref(), Some("epic"));
         assert_eq!(a(&["nimbus", "--signin=steam", "--windowed"]).as_deref(), Some("steam"));
-        assert_eq!(a(&["nimbus", "--windowed", "--signin", "amazon"]), None);
+        assert_eq!(a(&["nimbus", "--windowed", "--signin", "origin"]), None);
         assert_eq!(a(&["nimbus", "--windowed", "--signin"]), None);
         assert_eq!(a(&["nimbus", "--windowed"]), None);
     }
