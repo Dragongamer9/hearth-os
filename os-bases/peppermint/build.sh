@@ -1853,6 +1853,13 @@ rm -f /usr/sbin/policy-rc.d
 # The C compiler and kernel headers stay (DKMS's packages need them installed); everything apt downloaded goes.
 apt-get clean
 rm -rf /var/lib/apt/lists/* /boot/*
+# Smaller updates (1.13): the image was built from Debian frozen to one moment (apt-snapshot.sh in the Containerfile);
+# a device's own apt (Writable system) uses Debian's live repositories, with today's security fixes.
+if [ -f /usr/share/hearth/apt-live/debian.sources ]; then
+  cp /usr/share/hearth/apt-live/debian.sources /usr/share/hearth/apt-live/debian-backports.sources /etc/apt/sources.list.d/
+  rm -f /etc/apt/apt.conf.d/80-hearth-snapshot
+  grep -q 'deb.debian.org' /etc/apt/sources.list.d/debian.sources
+fi
 rm -f /etc/dracut.conf.d/00-hearth-build.conf
 if [ "${#OPTIONAL_MISSING[@]}" -gt 0 ]; then echo "Not installed (not in the repositories): ${OPTIONAL_MISSING[*]}"; fi
 
@@ -1968,3 +1975,9 @@ ln -sT ../var/usrlocal /usr/local
 # bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
 # ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
 command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }
+
+# ------------------------------------------------------------------ smaller updates (1.13): each file's piece
+# The last step: every file marked with the piece it belongs to (os-bases/peppermint/components.py), so the rechunk
+# step in base-peppermint.yml gives each Debian package and each Hearth app its own layers and a device downloads only
+# what changed. Never fails the build (unmarked files only make updates bigger).
+python3 /ctx/components.py / /usr/lib/sysimage/dpkg || echo "components: marking files failed; updates stay big"
