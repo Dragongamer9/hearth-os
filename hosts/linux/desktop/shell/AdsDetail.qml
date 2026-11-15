@@ -15,6 +15,8 @@ Item {
     property bool typing: false            // X: the site box is open
     signal action(var args)
     signal close()
+    // The two columns' widths come from the page's width: sized by ratio they kept the layouts busy forever
+    readonly property real colsW: Math.max(0, width - 84 * k)
     readonly property var a: t && t.ads ? t.ads : ({})
     readonly property var v: a.view || ({})
     readonly property var today: v.today || ({})
@@ -50,7 +52,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             spacing: 20 * det.k
             ColumnLayout {
-                Layout.fillWidth: true; Layout.preferredWidth: 1.2; Layout.alignment: Qt.AlignTop
+                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1.2/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.alignment: Qt.AlignTop
                 spacing: 20 * det.k
                 ServerPanel {
                     k: det.k; title: "Today"
@@ -85,7 +87,7 @@ Item {
                 }
             }
             ColumnLayout {
-                Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop
+                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1/2.2); Layout.alignment: Qt.AlignTop
                 spacing: 20 * det.k
                 ServerPanel {
                     k: det.k; title: "Your devices"

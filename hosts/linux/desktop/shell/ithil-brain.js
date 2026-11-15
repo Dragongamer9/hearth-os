@@ -120,16 +120,15 @@ function activity(data, T, nowMs, live, asleep) {
 function moodAt(data, T) { var m = null; for (var i = 0; i < data.moods.length; i++) { if (data.moods[i].t <= T) m = data.moods[i]; else break; } return m; }
 
 var SX = new Float32Array(N), SY = new Float32Array(N), SZ = new Float32Array(N), SPp = new Float32Array(N);
-var order = new Uint32Array(N); for (var oi = 0; oi < N; oi++) order[oi] = oi;
 
 // One frame. v: { W, H, dpr, yaw, pitch, zoom, act, sel, xray, labels, links, step, data, T, nowMs, live }
 function draw(ctx, v) {
     var W = v.W, H = v.H, cyw = Math.cos(v.yaw), syw = Math.sin(v.yaw), cp = Math.cos(v.pitch), sp = Math.sin(v.pitch);
     var sc0 = Math.min(W, H) * 0.36 * v.zoom;
     function proj(x, y, z) { var x1 = x * cyw + z * syw, z1 = -x * syw + z * cyw, y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp, per = 3.2 / (3.2 - z2); return [W / 2 + x1 * sc0 * per, H * 0.5 - (y1 - 0.05) * sc0 * per, z2, per]; }
-    var step = v.step || 1, n = 0, i;
-    for (i = 0; i < N; i += step) { var p = P[i], q = proj(p.x, p.y, p.z); SX[i] = q[0]; SY[i] = q[1]; SZ[i] = q[2]; SPp[i] = q[3]; order[n++] = i; }
-    var ord = order.subarray(0, n); ord.sort(function (a, b) { return SZ[a] - SZ[b]; });
+    var step = v.step || 1, n = 0, i, ord = [];
+    for (i = 0; i < N; i += step) { var p = P[i], q = proj(p.x, p.y, p.z); SX[i] = q[0]; SY[i] = q[1]; SZ[i] = q[2]; SPp[i] = q[3]; ord[n++] = i; }
+    ord.length = n; ord.sort(function (a, b) { return SZ[a] - SZ[b]; });
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, W, H);
     var act = v.act, D = v.dpr || 1, big = step > 1 ? 1.5 : 1;
