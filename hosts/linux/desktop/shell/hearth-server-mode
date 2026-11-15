@@ -68,6 +68,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 import hearth_settings_io as sio  # noqa: E402
+import hearth_ithil  # noqa: E402  (1.13: Ithil, the owner's own AI, on the server)
 
 CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
 STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
@@ -940,6 +941,15 @@ def dash():
                      'icon': 'sparkle', 'state': 'paused-you' if 'team' in mine else {'busy': 'running', 'ready': 'running', 'off': 'off'}[team['state']],
                      'chip': 'Paused' if 'team' in mine else team['chip'],
                      'new': True, 'mesh': True, 'actions': ['restart', 'pause']})
+    # 1.13 (mockup server-ithil-dash): Ithil, two tiles wide beside the AI team, when her app is on this PC.
+    try:
+        ithil = hearth_ithil.view(now)
+    except Exception:          # her files are hers: anything odd in them never stops the dashboard
+        ithil = None
+    if ithil:
+        tiles.insert(1, {'id': 'ithil', 'title': ithil['name'], 'engine': 'Her own mind' + (' · Hearth AI ' + ithil['version'] if ithil['version'] else ''),
+                         'icon': 'moon', 'state': 'running' if ithil['running'] else 'off', 'chip': ithil['chip'],
+                         'new': True, 'wide': True, 'ithil': ithil, 'actions': []})
     cores = [
         {'id': 'gpu', 'name': pretty_model(loaded[0]) if loaded else 'AI chat',
          'state': 'off' if ai_state in ('off', 'stopped') else 'working' if asking and loaded else 'ready',
@@ -955,7 +965,8 @@ def dash():
     # ---- the pills: every service in a word
     smb = bool(shares)
     for name, extra, st in (('Shared folders', ', '.join(shares[:2]), 'running' if smb else 'off'),
-                            ('Media', '', med_state), ('AI chat', '', ai_state), ('Pictures', '', pic_state),
+                            ('Media', '', med_state), ('AI chat', '', ai_state),
+                            ('Ithil', '', ('running' if ithil['running'] else 'stopped') if ithil else 'off'), ('Pictures', '', pic_state),
                             ('Voices', 'Kokoro', state_of('voices', (hsd.get('voices') or {}).get('on') is True,
                                                           unit_active('hearth-kokoro.service', True) if (hsd.get('voices') or {}).get('on') else False,
                                                           'kokoro' in sys_paused)),
@@ -976,6 +987,8 @@ def dash():
     for e in reversed(ev[-3:] if isinstance(ev, list) else []):
         if isinstance(e, dict):
             alerts.append({'level': e.get('level', 'info'), 'text': e.get('text', ''), 'sub': '', 'at': clock(e.get('at', now))})
+    if ithil and ithil.get('sleepLine'):   # "Ithil slept 02:14–02:52 · 41 moments replayed, energy .29 → .88"
+        alerts.insert(0, {'level': 'ithil', 'text': ithil['sleepLine'][0], 'sub': ithil['sleepLine'][1], 'at': ''})
     if team.get('event'):             # the AI team's latest: "Claude (Command Center) asked for a reply · answered by qwen3"
         alerts.insert(0, {'level': 'team', 'text': team['event'], 'sub': '', 'at': ''})
     problems = [t for t in tiles if t['state'] in ('warn', 'stopped')]
@@ -1001,7 +1014,7 @@ def dash():
             'live': {'vram': round(((g or {}).get('memUsed') or 0) / 1024, 1), 'power': (g or {}).get('power'), 'rx': r['rx'], 'tx': r['tx'],
                      'storage': round(100 * used / total) if total else None, 'cpu': r['cpu'], 'cpuTemp': ct,
                      'gpuBusy': (g or {}).get('busy'), 'gpuTemp': (g or {}).get('temp'), 'online': online},
-            'cores': cores, 'team': team, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
+            'cores': cores, 'team': team, 'ithil': ithil, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
             'countdown': countdown_view(), 'now': int(now)}
 
 
@@ -1875,6 +1888,19 @@ def main(argv):
             print(start_mode(a[1]))
         elif a == ['dash']:
             out(dash())
+        # 1.13: Ithil (hearth_ithil.py). Her files are only read; these are the owner's buttons.
+        elif len(a) == 2 and a[0] == 'ithil-brain':
+            out(hearth_ithil.brain(float(a[1]) if a[1].replace('.', '', 1).isdigit() else 24))
+        elif a == ['ithil-start']:
+            out({'started': hearth_ithil.start()})
+        elif a[:1] == ['ithil-talk'] and len(a) <= 2:
+            out({'shown': hearth_ithil.show(a[1] if len(a) == 2 and a[1] in ('talk', 'settings') else 'talk')})
+        elif a == ['ithil-restart']:
+            out({'restarted': hearth_ithil.restart()})
+        elif a == ['ithil-sleep']:
+            if not hearth_ithil.put_to_sleep():
+                raise Fail('She didn\'t answer (is her app running and up to date?)')
+            out({'asleep': True})
         elif a == ['summary']:
             out(summary())
         elif a == ['back']:

@@ -8,6 +8,7 @@ Rectangle {
     id: tile
     property var t: ({})
     property var team: null              // the AI team tile (t.mesh): its live mesh (AiMesh.qml, 1.12)
+    property var brain: null             // Ithil's tile (t.ithil, 1.13): her log for the small live 3D brain
     property bool focused: false
     property real k: 1
     // Server mode's gold look (the Hearth AI Command Center's): ServerDash passes gold: true.
@@ -74,6 +75,46 @@ Rectangle {
             Layout.topMargin: 4 * tile.k
             radius: 10 * tile.k; color: tile.cSunk; clip: true
             AiMesh { anchors.fill: parent; anchors.margins: 4 * tile.k; team: tile.team; k: tile.k; compact: true; visible: !!tile.t.mesh }
+        }
+        // 1.13 (mockup server-ithil-dash): Ithil, two tiles wide: her small live 3D brain, then her mood, what she's
+        // focused on, her four needs and when she last answered you.
+        RowLayout {
+            visible: !!tile.t.ithil
+            Layout.fillWidth: true; Layout.fillHeight: true
+            Layout.topMargin: 4 * tile.k
+            spacing: 18 * tile.k
+            Rectangle {
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
+                radius: 10 * tile.k; clip: true
+                gradient: Gradient { GradientStop { position: 0; color: "#2a2232" } GradientStop { position: 1; color: tile.cSunk } }
+                IthilBrain { anchors.fill: parent; compact: true; visible: !!tile.t.ithil; data: tile.brain
+                    asleep: !!tile.t.ithil && tile.t.ithil.state === "asleep" }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
+                spacing: 4 * tile.k
+                readonly property var it: tile.t.ithil || ({})
+                Text { visible: (parent.it.mood || "") !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.StyledText
+                    text: "<font color='" + tile.cMuted + "'>Mood</font> " + (parent.it.mood || ""); color: tile.cText; font.family: Theme.font; font.pixelSize: 15 * tile.k }
+                Text { visible: (parent.it.focus || "") !== ""; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.StyledText; maximumLineCount: 2; elide: Text.ElideRight
+                    text: "<font color='" + tile.cMuted + "'>Focused on</font> " + (parent.it.focus || ""); color: tile.cText; font.family: Theme.font; font.pixelSize: 15 * tile.k }
+                Repeater {
+                    model: parent.it.needs ? [["Energy", "energy"], ["Social", "social"], ["Curiosity", "curiosity"], ["Stability", "stability"]] : []
+                    delegate: RowLayout {
+                        required property var modelData
+                        readonly property real v: (tile.t.ithil && tile.t.ithil.needs ? tile.t.ithil.needs[modelData[1]] : 0) || 0
+                        Layout.fillWidth: true; spacing: 10 * tile.k
+                        Text { text: modelData[0]; color: tile.cText; font.family: Theme.font; font.pixelSize: 13 * tile.k; Layout.preferredWidth: 78 * tile.k }
+                        Rectangle { Layout.fillWidth: true; height: 7 * tile.k; radius: 4 * tile.k; color: tile.cSunk
+                            Rectangle { width: parent.width * parent.parent.v; height: parent.height; radius: parent.radius; color: "#f472b6" } }
+                        Text { text: parent.v.toFixed(2).replace(/^0/, ""); color: tile.cMuted; font.family: Theme.font; font.pixelSize: 13 * tile.k; Layout.preferredWidth: 34 * tile.k; horizontalAlignment: Text.AlignRight }
+                    }
+                }
+                Item { Layout.fillHeight: true }
+                Text { Layout.fillWidth: true; elide: Text.ElideRight; color: tile.cMuted; font.family: Theme.font; font.pixelSize: 13 * tile.k
+                    text: !parent.it.running ? "Her app isn't running · A to start her"
+                        : (parent.it.brainLoaded ? "Brain loaded" : "Brain not loaded") + (parent.it.answered ? " · answered you " + parent.it.answered : "") }
+            }
         }
         // The big number and its unit ("4 questions a minute", "2.6 TB of 8 TB used").
         Row {

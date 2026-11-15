@@ -1878,7 +1878,8 @@ jobs:
           pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2; pkill -f quickshell || true
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
-          export HEARTH_SERVER_DASH_FIXTURE="$PWD/hosts/linux/test/fixtures/server-dash.json" HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
+          cp hosts/linux/test/fixtures/server-dash.json /tmp/server-dash.json   # (a copy: 1.13 adds Ithil to it later in this step)
+          export HEARTH_SERVER_DASH_FIXTURE=/tmp/server-dash.json HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
           QML="$PWD/hosts/linux/desktop/shell/server-mode.qml"
           H=hosts/linux/desktop/shell/hearth-server-mode
           rm -f "$XDG_RUNTIME_DIR"/wayland-* "$XDG_RUNTIME_DIR/hearth-server-dash-up"
@@ -1915,6 +1916,28 @@ jobs:
           ipc server close
           ipc server idle dim; grim shots/server-mode/09-screen-idle.png || true
           ipc server idle on
+          # 1.13 (mockups next-update/server-ithil-*): Ithil on the server: a stand-in ~/HearthAI, her tile two wide after
+          # the AI team (the fixture gets it the way dash() makes it), then her opened view with the live 3D / 4D brain.
+          python3 hosts/linux/test/fixtures/ithil-home.py "$HOME/HearthAI"
+          python3 - <<'PY'
+          import json, sys
+          sys.path.insert(0, 'hosts/linux/desktop/shell')
+          import hearth_ithil
+          v = hearth_ithil.view()
+          v.update({'running': True, 'state': 'awake', 'chip': 'Awake', 'version': '0.6', 'brainLoaded': True})
+          d = json.load(open('/tmp/server-dash.json'))
+          d['tiles'].insert(1, {'id': 'ithil', 'title': 'Ithil', 'engine': 'Her own mind · Hearth AI 0.6', 'icon': 'moon', 'state': 'running', 'chip': 'Awake',
+                                'new': True, 'wide': True, 'ithil': v, 'actions': []})
+          d['pills'].insert(3, {'name': 'Ithil', 'extra': '', 'state': 'running'})
+          d['alerts'].insert(0, {'level': 'ithil', 'text': v['sleepLine'][0], 'sub': v['sleepLine'][1], 'at': ''})
+          d['ithil'] = v
+          json.dump(d, open('/tmp/server-dash.json.tmp', 'w'))
+          PY
+          mv /tmp/server-dash.json.tmp /tmp/server-dash.json
+          sleep 9; grim shots/server-mode/11-ithil-tile.png || true
+          ipc server detail 2; sleep 5; grim shots/server-mode/12-ithil-opened.png || true
+          wtype -k Down; sleep 4; grim shots/server-mode/12b-ithil-last-24-hours.png || true
+          ipc server close
           echo "state: $(quickshell ipc -p "$QML" call server state)"
           ipc settings page hs-server; sleep 3; grim shots/server-mode/06-settings-server-mode.png || true
           wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/server-mode/06b-settings-what-pauses.png || true

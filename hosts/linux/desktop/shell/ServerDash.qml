@@ -32,6 +32,55 @@ PanelWindow {
     readonly property real k: Math.max(0.55, Math.min(width / 1920, height / 1080))
     readonly property var tiles: d && d.tiles ? d.tiles : []
     readonly property var cur: sel > 0 && sel <= tiles.length ? tiles[sel - 1] : null
+    // 1.13: Ithil (hearth_ithil.py; mockups server-ithil-dash / -detail). Her log for the live 3D brain, the window the
+    // opened view shows (live | 24 | all), and "away": her app's window is up (Talk to her), the dashboard steps aside
+    // until Guide or ☰ brings it back.
+    property var ithilBrain: null
+    property string ithilWin: "live"
+    property bool away: false
+    property string sleepArmed: ""
+    visible: !away
+    Process {
+        id: brainReader
+        command: ["python3", dash.helper, "ithil-brain", dash.ithilWin === "all" ? "0" : "24"]
+        stdout: StdioCollector { onStreamFinished: { try { dash.ithilBrain = JSON.parse(text); } catch (e) { } } }
+    }
+    Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: !!dash.d && !!dash.d.ithil && !dash.away
+        onTriggered: if (!brainReader.running) brainReader.running = true }
+    onIthilWinChanged: if (!brainReader.running) brainReader.running = true
+    Timer { id: sleepArm; interval: 4000; onTriggered: { dash.sleepArmed = ""; if (ithilView) ithilView.sleepArmed = false; } }
+    property var ithilView: null
+    function ithilAct(a) {
+        if (a === "A" || a === "☰") {
+            act(["ithil-talk"].concat(a === "☰" ? ["settings"] : []), "");
+            say("Opening " + (d && d.ithil ? d.ithil.name : "Ithil") + "… Guide brings the dashboard back");
+            awayTimer.restart();
+        } else if (a === "X") act(["ithil-restart"], "Restarting her app");
+        else if (a === "Y") {
+            if (sleepArmed !== "ithil") { sleepArmed = "ithil"; sleepArm.restart(); if (ithilView) ithilView.sleepArmed = true; say("Press Y again to put her to sleep"); return; }
+            sleepArmed = ""; if (ithilView) ithilView.sleepArmed = false;
+            act(["ithil-sleep"], "She's going to sleep");
+        }
+    }
+    Timer { id: awayTimer; interval: 1500; onTriggered: dash.away = true }
+    // Tiles can be two wide (Ithil): where each one sits, for the arrows.
+    function cellsOf() {
+        const out = []; let c = 0, r = 0;
+        for (let i = 0; i < tiles.length; i++) {
+            const w = tiles[i].wide ? 2 : 1;
+            if (c + w > cols) { r++; c = 0; }
+            out.push({ r: r, c: c, w: w }); c += w;
+            if (c >= cols) { r++; c = 0; }
+        }
+        return out;
+    }
+    function vertical(from, d) {
+        const cs = cellsOf(), me = cs[from - 1]; if (!me) return from;
+        const want = me.r + d; let best = -1, bd = 99;
+        for (let i = 0; i < cs.length; i++) if (cs[i].r === want) { const dist = Math.abs(cs[i].c - me.c); if (dist < bd) { bd = dist; best = i; } }
+        return best < 0 ? (d < 0 ? 0 : from) : best + 1;
+    }
+    function lastInRow0() { const cs = cellsOf(); let n = 0; for (let i = 0; i < cs.length; i++) if (cs[i].r === 0) n = i + 1; return n; }
 
     anchors { top: true; bottom: true; left: true; right: true }
     exclusiveZone: -1
@@ -87,6 +136,9 @@ PanelWindow {
         // nimbus-session waits for this mark: without it, labwc is closed and Game Mode opens.
         Quickshell.execDetached(["sh", "-c", ': >"$0"; mkdir -p -m 700 "$1"; [ -e "$1/countdown.json" ] || echo "{}" >"$1/countdown.json"', dash.run + "/hearth-server-dash-up", dash.run + "/hearth-server"]);
         backReader.running = true;
+        // 1.13: Ithil (the owner's own AI app) keeps living in Server mode: her app starts here, inside the session's
+        // display, when it's installed and not running (never waited on; nothing happens when she isn't on this PC).
+        Quickshell.execDetached(["python3", dash.helper, "ithil-start"]);
     }
     Process {
         id: backReader
@@ -188,12 +240,13 @@ PanelWindow {
     property string pauseArmed: ""
     Timer { id: pauseArm; interval: 4000; onTriggered: dash.pauseArmed = "" }
     function serviceAct(t, a) {
+        if (t && t.id === "ithil") return ithilAct(a === "restart" ? "X" : "Y");   // her tile: X restarts her app, Y puts her to sleep (twice)
         if (!t || !t.actions || t.actions.indexOf(a === "restart" ? "restart" : "pause") < 0) { say("Nothing to " + a + " here"); return; }
         if (a === "pause") a = t.state === "paused-you" ? "resume" : "pause";
         if (a === "pause" && pauseArmed !== t.id) {
             pauseArmed = t.id;
             pauseArm.restart();
-            say("Press again to pause " + t.title + (t.id === "team" || t.id === "ai" ? " (AI chat stops, and anything that thinks with it)" : ""));
+            say("Press again to pause " + t.title + (t.id === "team" || t.id === "ai" ? (d && d.ithil && d.ithil.running ? " (AI chat stops, and " + d.ithil.name + "'s brain with it)" : " (AI chat stops, and anything that thinks with it)") : ""));
             return;
         }
         pauseArmed = "";
@@ -221,6 +274,20 @@ PanelWindow {
             else if (back || menu) overlay = "";
             return;
         }
+        if (overlay === "detail" && cur && cur.id === "ithil") {
+            // Ithil opened: A talk, X restart her app, Y sleep (twice), B back; LB / RB (Alt+Tab from the pad) or the
+            // arrows move through time, ▲ ▼ the window, V X-ray.
+            const tab = K === Qt.Key_Tab || K === Qt.Key_Backtab;
+            if (back) overlay = "";
+            else if (enter) ithilAct("A");
+            else if (x) ithilAct("X");
+            else if (y) ithilAct("Y");
+            else if (K === Qt.Key_V && ithilView) ithilView.xray = !ithilView.xray;
+            else if ((K === Qt.Key_Left || K === Qt.Key_Right || tab) && ithilView) { ithilView.moved = Date.now(); ithilView.step((K === Qt.Key_Left || K === Qt.Key_Backtab || (tab && (e.modifiers & Qt.ShiftModifier))) ? -4 : 4); }
+            else if ((K === Qt.Key_Up || K === Qt.Key_Down) && ithilView) ithilView.cycle(K === Qt.Key_Down ? 1 : -1);
+            else e.accepted = false;
+            return;
+        }
         if (overlay === "detail" && cur && cur.id === "team") {
             // The AI team opened: A pauses or resumes it, X restarts it, Y opens its settings, B goes back.
             if (back) overlay = "";
@@ -243,10 +310,12 @@ PanelWindow {
         if (y) return serviceAct(cur, "pause");
         const n = tiles.length;
         // Play sits to the right of the tiles: Right from a row's last tile goes to it, Left from Play to the top row's last.
-        if (K === Qt.Key_Right) sel = sel === 0 ? 0 : (sel % cols === 0 || sel === n) ? 0 : Math.min(n, sel + 1);
-        else if (K === Qt.Key_Left) sel = sel === 0 ? Math.min(n, cols) : Math.max(1, sel - 1);
-        else if (K === Qt.Key_Down) sel = sel === 0 ? Math.min(n, cols) : Math.min(n, sel + cols);
-        else if (K === Qt.Key_Up) sel = sel === 0 ? 0 : sel <= cols ? 0 : sel - cols;
+        // (1.13: Ithil's tile is two wide, so rows are worked out from where each tile sits.)
+        const cs = cellsOf(), me = sel > 0 ? cs[sel - 1] : null;
+        if (K === Qt.Key_Right) sel = sel === 0 ? 0 : (me.c + me.w >= cols || sel === n) ? 0 : Math.min(n, sel + 1);
+        else if (K === Qt.Key_Left) sel = sel === 0 ? lastInRow0() : Math.max(1, sel - 1);
+        else if (K === Qt.Key_Down) sel = sel === 0 ? lastInRow0() : vertical(sel, 1);
+        else if (K === Qt.Key_Up) sel = sel === 0 ? 0 : vertical(sel, -1);
         else e.accepted = false;
     }
     // From hearth-pad (server-mode.qml): Guide is Play, ☰ the menu, Y pause / resume.
@@ -254,6 +323,12 @@ PanelWindow {
         const wasAsleep = screenState !== "on";
         wake();
         if (wasAsleep) return;
+        if (away && (ev === "guide" || ev === "menu")) { away = false; return; }   // back from her app's window
+        if (overlay === "detail" && cur && cur.id === "ithil") {
+            if (ev === "menu") return ithilAct("☰");
+            if (ev === "y") return ithilAct("Y");
+            if (ev === "view") { if (ithilView) ithilView.xray = !ithilView.xray; return; }
+        }
         if (ev === "guide") { if (remote) remoteCancel(); else if (overlay === "switch") cancelSwitch(); else play(); }
         else if (ev === "menu") { overlay = overlay === "menu" ? "" : "menu"; menuSel = 0; }
         else if (ev === "y") { if (overlay === "detail" && cur && cur.id === "team") teamSettings(); else if (overlay === "" || overlay === "detail") serviceAct(cur, "pause"); }
@@ -461,7 +536,7 @@ PanelWindow {
                         delegate: RowLayout {
                             required property var modelData
                             width: alertCol.width; spacing: 10 * dash.k
-                            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 6 * dash.k; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: 5 * dash.k; color: modelData.level === "warn" ? dash.gWarn : modelData.level === "ok" ? dash.gOk : modelData.level === "team" ? "#ff5fae" : dash.gMuted }
+                            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 6 * dash.k; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: 5 * dash.k; color: modelData.level === "warn" ? dash.gWarn : modelData.level === "ok" ? dash.gOk : modelData.level === "team" ? "#ff5fae" : modelData.level === "ithil" ? "#c4b5fd" : dash.gMuted }
                             Text { Layout.fillWidth: true; text: modelData.text + (modelData.sub ? "<font color='" + dash.gMuted + "'> · " + modelData.sub + "</font>" : ""); textFormat: Text.StyledText; color: dash.gText; font.family: Theme.font; font.pixelSize: 15 * dash.k; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
                             Text { Layout.alignment: Qt.AlignTop; text: modelData.at || ""; color: dash.gMuted; font.family: Theme.font; font.pixelSize: 13.5 * dash.k }
                         }
@@ -557,9 +632,11 @@ PanelWindow {
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true; Layout.fillHeight: true
-                            Layout.preferredWidth: 1; Layout.preferredHeight: 1
+                            Layout.preferredWidth: modelData.wide ? 2 : 1; Layout.preferredHeight: 1
+                            Layout.columnSpan: modelData.wide ? 2 : 1
                             t: modelData; k: dash.k * 0.86; focused: dash.sel === index + 1; gold: true
                             team: dash.d ? dash.d.team : null
+                            brain: modelData.ithil ? dash.ithilBrain : null
                             MouseArea { anchors.fill: parent; onClicked: { dash.sel = index + 1; dash.overlay = "detail"; } }
                         }
                     }
@@ -667,7 +744,14 @@ PanelWindow {
                 paused: !!dash.cur && dash.cur.state === "paused-you"
                 onAction: a => a === "settings" ? dash.teamSettings() : dash.serviceAct(dash.cur, a === "resume" ? "pause" : a)
                 onClose: dash.overlay = "" }
-            ServerDetail { anchors.fill: parent; visible: !dash.cur || dash.cur.id !== "team"; t: dash.cur; d: dash.d; k: dash.k
+            // Ithil's own view (1.13, mockup server-ithil-detail)
+            IthilDetail { id: ithilDet; anchors.fill: parent; visible: !!dash.cur && dash.cur.id === "ithil"; it: dash.d ? dash.d.ithil : null
+                brain: dash.ithilBrain; k: dash.k
+                Component.onCompleted: dash.ithilView = ithilDet
+                onWant: w => dash.ithilWin = w
+                onAction: a => dash.ithilAct(a)
+                onClose: dash.overlay = "" }
+            ServerDetail { anchors.fill: parent; visible: !dash.cur || (dash.cur.id !== "team" && dash.cur.id !== "ithil"); t: dash.cur; d: dash.d; k: dash.k
                 onAction: a => a === "unload" ? dash.act(["ai-unload"], "Model unloaded") : dash.serviceAct(dash.cur, a)
                 onClose: dash.overlay = "" }
         }

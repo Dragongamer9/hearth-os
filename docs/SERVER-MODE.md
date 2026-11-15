@@ -138,3 +138,14 @@ playing, e.g. from AI sharing's document.)
   port 8460 in the Tailscale-only rule
 - Tests: `hosts/linux/test/test_hearth_server_mode.py` (Home server workflow); screenshots in desktop-test.yml
   (`shots/server-mode/`)
+
+## Ithil (1.13)
+
+When Hearth AI (Ithil, the owner's own AI app) is installed on the server, she keeps living in Server mode: her app starts
+with the dashboard, and an **Ithil** tile (two tiles wide, after the AI team) shows whether she's awake, her mood, what
+she's focused on, her four needs and a small live 3D brain lit by her real event log. A opens her: the big live 3D / 4D
+brain (Live, Last 24 hours, Her whole life; LB / RB or the arrows move through time, View is X-ray), Right now, Today, her
+brain on this PC and where she can be reached from. A talks to her (her app's window; Guide brings the dashboard back),
+X restarts her app, Y puts her to sleep (press twice), ☰ opens her settings. Hearth only reads her files
+(`hearth_ithil.py`; her log is opened read-only) and never shows her key. Mockups: `next-update/server-ithil-*.png`.
+
