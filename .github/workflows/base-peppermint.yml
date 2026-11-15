@@ -566,16 +566,17 @@ jobs:
           # 1.13: the files' pieces (components.py) and a fixed time (SOURCE_DATE_EPOCH, this week's), written as an OCI
           # folder that's published exactly as made (its layers keep their digests, which is what devices compare).
           sudo rm -rf /mnt/hearth-chunked; sudo mkdir -p /mnt/hearth-chunked
+          # chunkah won't write into a folder that already exists (the mount): it makes /out/img itself.
           if sudo -E podman run --rm --pull=newer --mount=type=image,src=localhost/hearth-peppermint:latest,target=/chunkah \
               -e CHUNKAH_CONFIG_STR -e SOURCE_DATE_EPOCH -v /mnt/hearth-chunked:/out quay.io/coreos/chunkah build \
               -t localhost/hearth-peppermint:chunked \
-              --label ostree.bootable=1 --label containers.bootc=1 --compressed --max-layers 128 -o oci:/out \
-            && sudo skopeo copy -q oci:/mnt/hearth-chunked containers-storage:localhost/hearth-peppermint:chunked \
+              --label ostree.bootable=1 --label containers.bootc=1 --compressed --max-layers 128 -o oci:/out/img 2> >(tee /tmp/chunkah.err >&2) \
+            && sudo skopeo copy -q oci:/mnt/hearth-chunked/img containers-storage:localhost/hearth-peppermint:chunked \
             && sudo podman tag localhost/hearth-peppermint:chunked hearth-peppermint:latest; then
             sudo podman image inspect hearth-peppermint:latest --format '{{len .RootFS.Layers}} layers'
             echo CHUNKED=1 >> "$GITHUB_ENV"
           else
-            echo "::warning title=rechunk::Rechunking failed; publishing the image as built (updates download more)"
+            echo "::warning title=rechunk::Rechunking failed; publishing the image as built (updates download more): $(tail -c 600 /tmp/chunkah.err 2>/dev/null | tr '\n' '|')"
           fi
 
       # 1.13: how big this update is for a device on the published image (warn-only).
@@ -585,16 +586,16 @@ jobs:
         run: |
           skopeo inspect --raw docker://$IMAGE:testing > /tmp/old-manifest.json
           skopeo inspect --config docker://$IMAGE:testing > /tmp/old-config.json || true
-          sudo python3 tools/update_size.py /mnt/hearth-chunked /tmp/old-manifest.json /tmp/old-config.json --github | tee /tmp/update-size.txt
+          sudo python3 tools/update_size.py /mnt/hearth-chunked/img /tmp/old-manifest.json /tmp/old-config.json --github | tee /tmp/update-size.txt
           { echo '### Update size (against the published image)'; echo; echo '```'; head -1 /tmp/update-size.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           # Against the last build of this branch too (its manifest, kept as an artifact): what the next update would be.
           mkdir -p /tmp/update-manifest
-          sudo python3 tools/update_size.py --save /mnt/hearth-chunked /tmp/update-manifest
+          sudo python3 tools/update_size.py --save /mnt/hearth-chunked/img /tmp/update-manifest
           prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=update-manifest&per_page=30" \
             --jq "[.artifacts[] | select(.workflow_run.head_branch == \"${{ github.ref_name }}\" and .workflow_run.id != ${{ github.run_id }} and (.expired | not))][0].id // empty" || true)
           if [ -n "$prev" ]; then
             gh api "repos/${{ github.repository }}/actions/artifacts/$prev/zip" > /tmp/prev.zip && mkdir -p /tmp/prev && unzip -q -o /tmp/prev.zip -d /tmp/prev \
-              && sudo python3 tools/update_size.py /mnt/hearth-chunked /tmp/prev/manifest.json /tmp/prev/config.json --github --label "the last build of ${{ github.ref_name }}" | tee /tmp/update-size-branch.txt \
+              && sudo python3 tools/update_size.py /mnt/hearth-chunked/img /tmp/prev/manifest.json /tmp/prev/config.json --github --label "the last build of ${{ github.ref_name }}" | tee /tmp/update-size-branch.txt \
               && { echo '### Update size (against the last build of this branch)'; echo; echo '```'; head -1 /tmp/update-size-branch.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
         env:
@@ -1067,8 +1068,8 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
-            if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/index.json ]; then
-              sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked "docker://$IMAGE:$tag"
+            if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
+              sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked/img "docker://$IMAGE:$tag"
             else
               sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
             fi

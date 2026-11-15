@@ -33,7 +33,7 @@ WEEKLY = re.compile(r'^(linux(-signed)?(-amd64)?|linux-.*|nvidia-.*|mesa|firmwar
 # Folders whose sub-folders are each their own piece (Hearth's own trees).
 DEEP = {('usr', 'share', 'nimbus'), ('usr', 'share', 'hearth'), ('usr', 'lib', 'nimbus'), ('usr', 'lib', 'hearth'),
         ('usr', 'libexec', 'nimbus'), ('usr', 'lib', 'opt')}
-SKIP_TOP = {'proc', 'sys', 'dev', 'run', 'tmp', 'var', 'sysroot', 'ostree', 'boot'}
+SKIP_TOP = {'proc', 'sys', 'dev', 'run', 'tmp', 'var', 'sysroot', 'ostree', 'boot', 'ctx', 'hearth-debs'}  # ctx, hearth-debs: build-only mounts
 
 
 def packages(admindir):
