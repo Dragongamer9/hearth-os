@@ -265,7 +265,7 @@ impl Bridge {
         let s_dir = crate::steam::steam_path(&self.library.home);
         let s_reason: Option<String> = if !sinstalled { None } else if !s_on { Some("Steam games are turned off in Settings › Library.".into()) }
             else { crate::steam::current_account(&self.library.home).err() };
-        let (eo, ef) = owned("epic"); let (go, gf) = owned("gog"); let (xo, xf) = owned("xbox");
+        let (eo, ef) = owned("epic"); let (go, gf) = owned("gog"); let (xo, xf) = owned("xbox"); let (ao, af) = owned("amazon");
         let (gname, gavatar) = crate::stores::gog::profile();
         let gname = named("gog", gname);
         let xb = crate::stores::xbox::saved().unwrap_or(Value::Null);
@@ -281,6 +281,8 @@ impl Bridge {
                 "toolReady": crate::tools::is_ready(&crate::tools::LEGENDARY), "note": null})),
             with(base("gog"), json!({"signedIn": crate::stores::gog::signed_in(), "name": gname, "avatar": gavatar, "owned": go, "fetched": gf,
                 "toolReady": crate::tools::is_ready(&crate::tools::GOGDL), "note": null})),
+            with(base("amazon"), json!({"signedIn": crate::amazon::signed_in(), "name": named("amazon", crate::amazon::display_name()), "avatar": null, "owned": ao, "fetched": af,
+                "toolReady": crate::tools::is_ready(&crate::tools::NILE), "note": null})),
             with(base("xbox"), json!({"signedIn": !xb.is_null(), "name": xname, "avatar": xb["gamerpic"], "owned": xo, "fetched": xf, "toolReady": true, "note": null})),
         ];
         let bs = &self.library.beacon;
@@ -1094,6 +1096,41 @@ impl Bridge {
                 let home = paths::home();
                 let ach = if let Some(app) = id.strip_prefix("steam:") { crate::gameinfo::achievements(&home, app) } else { Value::Null };
                 Ok(json!({"protondb": crate::gameinfo::protondb(&id, &g.title, g.source), "achievements": ach}))
+            }
+            // Hearth Games stage two (1.13, game_extras.rs): a game's cloud saves and DLC. Slow ones are answered later.
+            "game.saves" => {
+                let id = req("id")?;
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                let on = crate::game_options::get(&self.library.store, &id)["cloudSaves"] != false;
+                self.later(move || Ok(crate::game_extras::saves(&g, on)))
+            }
+            "game.setCloudSaves" => {
+                let id = req("id")?;
+                if !self.library.games.contains_key(&id) { return Err("That game isn't in the library anymore.".into()); }
+                crate::game_options::set(&mut self.library.store, &id, &json!({"cloudSaves": a["on"] == true}))?;
+                Ok(json!({"on": a["on"] == true}))
+            }
+            "game.syncSaves" => {
+                let (id, dir) = (req("id")?, req("direction")?);
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                crate::watchdog::long_task();
+                self.later(move || crate::game_extras::sync_now(&g, &dir))
+            }
+            "game.dlc" => {
+                let id = req("id")?;
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                self.later(move || crate::game_extras::dlc(&g))
+            }
+            "game.installDlc" => {
+                let id = req("id")?;
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                let want: Vec<String> = a["dlc"].as_str().filter(|d| !d.is_empty()).map(|d| vec![d.to_string()]).unwrap_or_default();
+                self.later(move || crate::game_extras::install_dlc(&g, want))
+            }
+            "game.uninstallDlc" => {
+                let (id, dlc) = (req("id")?, req("dlc")?);
+                let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
+                self.later(move || crate::game_extras::uninstall_dlc(&g, &dlc))
             }
             "game.options.get" => self.game_options(&req("id")?),
             // Beacon (beacon.rs): the mod a game starts with (saved in Beacon), and Beacon's own window.

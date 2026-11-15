@@ -183,6 +183,7 @@ async function gameExtras(g, d) {
   const s = d.querySelector('.saves'), l = d.querySelector('.dlcs');
   if (s) s.innerHTML = `<h3>Cloud saves</h3>${savesHtml(g, sv)}`;
   if (l) l.innerHTML = `<h3>DLC</h3>${dlcHtml(g, dl)}`;
+  if (dl.busy && Object.keys(dl.busy).length) dlcPoll(g, d);
 }
 function savesHtml(g, sv) {
   if (sv.error) return `<p class="bad small">${esc(sv.error)}</p>`;
@@ -199,20 +200,31 @@ function dlcHtml(g, dl) {
   if (!list.length) return '<p class="msg small">This game has no DLC on your account.</p>';
   const busy = dl.busy || {};
   const rows = list.map(x => `<div class="line"><span><b>${esc(x.title)}</b><small>${x.installed ? 'Installed' : busy[x.id] ? esc(busy[x.id]) : x.owned === false ? 'Not on your account' : 'Not installed'}${x.sizeBytes ? ` · ${human(x.sizeBytes)}` : ''}</small></span>
-      ${x.installed ? `<button class="btn danger f" data-x="dlc-remove" data-dlc="${esc(x.id)}">Uninstall</button>`
+      ${x.installed ? (x.canUninstall ? `<button class="btn danger f" data-x="dlc-remove" data-dlc="${esc(x.id)}">Uninstall</button>` : '')
         : busy[x.id] ? '' : x.owned === false ? `<button class="btn f" data-x="dlc-shop" data-dlc="${esc(x.id)}">See it in the store</button>`
         : `<button class="btn primary f" data-x="dlc-install" data-dlc="${esc(x.id)}">Install</button>`}</div>`).join('');
   const missing = list.filter(x => !x.installed && x.owned !== false && !busy[x.id]).length;
-  return `${rows}${missing > 1 ? `<div class="acts"><button class="btn f" data-x="dlc-all">Install all ${missing}</button></div>` : ''}`;
+  const note = g.source === 'gog' && list.some(x => x.installed) ? '<p class="note">GOG\'s DLC stays with its game: uninstalling the game removes it.</p>' : '';
+  return `${dl.error ? `<p class="bad small">${esc(dl.error)}</p>` : ''}${rows}${note}${missing > 1 ? `<div class="acts"><button class="btn f" data-x="dlc-all">Install all ${missing}</button></div>` : ''}`;
+}
+// While a DLC installs, the page looks again every few seconds (the answer says what's still busy).
+function dlcPoll(g, d) {
+  clearTimeout(dlcPoll.t);
+  dlcPoll.t = setTimeout(async () => {
+    if (!document.body.contains(d)) return;
+    const dl = await call('game.dlc', { id: g.id }).catch(e => ({ error: KIT.err(e) }));
+    const l = d.querySelector('.dlcs'); if (l) l.innerHTML = `<h3>DLC</h3>${dlcHtml(g, dl)}`;
+    if (dl.busy && Object.keys(dl.busy).length) dlcPoll(g, d);
+  }, 4000);
 }
 async function extraAct(g, d, a, dlc) {
   try {
     if (a === 'saves-on' || a === 'saves-off') await call('game.setCloudSaves', { id: g.id, on: a === 'saves-on' });
     else if (a === 'sync-down' || a === 'sync-up') { KIT.toast(a === 'sync-up' ? 'Sending your saves up…' : 'Bringing your saves down…'); await call('game.syncSaves', { id: g.id, direction: a === 'sync-up' ? 'up' : 'down' }); KIT.toast('Saves synced ✓'); }
-    else if (a === 'dlc-install') { await call('game.installDlc', { id: g.id, dlc: [dlc] }); KIT.toast('Installing the DLC…'); }
-    else if (a === 'dlc-all') { await call('game.installDlc', { id: g.id, dlc: [] }); KIT.toast('Installing every DLC you have…'); }
+    else if (a === 'dlc-install') { await call('game.installDlc', { id: g.id, dlc }); KIT.toast('Installing the DLC…'); }
+    else if (a === 'dlc-all') { await call('game.installDlc', { id: g.id, dlc: '' }); KIT.toast('Installing every DLC you have…'); }
     else if (a === 'dlc-remove') { await call('game.uninstallDlc', { id: g.id, dlc }); KIT.toast('DLC removed'); }
-    else if (a === 'dlc-shop') { await call('store.open', { store: g.source, id: dlc }); }
+    else if (a === 'dlc-shop') { await KIT.invoke('open_store', { store: g.source }); }
   } catch (e) { KIT.toast(KIT.err(e)); }
   gameExtras(g, d);
 }
@@ -367,7 +379,7 @@ if (!KIT.live) {
     G('gog:4', 'Copper Skies', 'gog', 40), G('epic:d', 'Hollow Tide', 'epic', 300), G('gog:5', 'Lantern Road', 'gog', 60),
     G('amazon:1', 'Rivet City', 'amazon', 190, { installed: true, state: 'installed', sizeBytes: 11e9 }), G('amazon:2', 'Paper Fleet', 'amazon', 330),
   ];
-  const DEMO_DLC = { 'gog:1': [{ id: 'gog:11', title: 'Hearts of Stone', sizeBytes: 4.2e9, installed: true }, { id: 'gog:12', title: 'Blood and Wine', sizeBytes: 9.8e9, installed: false },
+  const DEMO_DLC = { 'gog:1': [{ id: 'gog:11', title: 'Hearts of Stone', sizeBytes: 4.2e9, installed: true, canUninstall: false }, { id: 'gog:12', title: 'Blood and Wine', sizeBytes: 9.8e9, installed: false },
     { id: 'gog:13', title: 'New Game Plus', sizeBytes: 2e7, installed: false }, { id: 'gog:14', title: 'Original Soundtrack', installed: false, owned: false }] };
   KIT.demo = (cmd, a) => {
     if (cmd === 'info') return { version: '1.7.0', proton: 'GE-Proton10-25', canPlay: true };
