@@ -814,6 +814,52 @@ def dns_act(args):
         raise Fail(line)
 
 
+# ---- 1.13: quiet hours and "When this, do that" rules (hearth-server-rules, root; status readable by everyone)
+RULES_HELPER = os.environ.get('HEARTH_SERVER_RULES', '/usr/libexec/nimbus/hearth-server-rules')
+RULES_ACTIONS = {'quiet-add': 5, 'quiet-set': 3, 'quiet-remove': 2, 'while': 3, 'rule-add': 3, 'rule-set': 3,
+                 'rule-pause': 3, 'rule-remove': 2}
+
+
+def rules_status():
+    rc, o, _ = run([sys.executable, RULES_HELPER, 'status'], 20)
+    try:
+        return json.loads(o.strip().splitlines()[-1]) if rc == 0 and o.strip() else {}
+    except (ValueError, IndexError):
+        return {}
+
+
+def rules_tile(st=None):
+    st = st if st is not None else rules_status()
+    now = st.get('now') or {}
+    fresh = time.time() - (now.get('at') or 0) < 180
+    quiet = now.get('quiet') if fresh else ''
+    anything = any(q.get('on') for q in st.get('quiet') or []) or any(r.get('on') for r in st.get('rules') or [])
+    rows = [[r['whenText'].capitalize(), ('→ ' + r['doText']) + (' · paused' if r.get('paused') else '' if r.get('on') else ' · off')]
+            for r in (st.get('rules') or [])[:3]]
+    return {'id': 'rules', 'title': 'Quiet hours & rules', 'engine': 'Your times and your rules', 'icon': 'moon',
+            'state': 'running' if anything else 'off',
+            'chip': 'Quiet now' if quiet else 'On' if anything else 'Off',
+            'big': ('until ' + clock(now['quietUntil'])) if quiet and now.get('quietUntil') else str(sum(1 for r in st.get('rules') or [] if r.get('on'))),
+            'unit': quiet if quiet else 'rules on' if anything else 'nothing here is on until you make it',
+            'sub': ' · '.join(now.get('why') or []) if fresh else '',
+            'rows': rows, 'actions': [], 'rules': st,
+            # Your devices on Tailscale, for "When a device is connected" (the picker offers the first).
+            'devices': sorted({(p.get('HostName') or '').split('.')[0] for p in ((ts_status() or {}).get('Peer') or {}).values() if p.get('HostName')})}
+
+
+def rules_act(args):
+    if not args or args[0] not in RULES_ACTIONS or len(args) != RULES_ACTIONS[args[0]]:
+        raise Fail('which change')
+    rc, o, _ = run(['pkexec', RULES_HELPER] + list(args), 120)
+    line = (o.strip().splitlines() or [''])[-1]
+    if line.startswith('error: '):
+        raise Fail(line[7:])
+    try:
+        return json.loads(line)
+    except ValueError:
+        raise Fail(line or 'the change didn\'t go through')
+
+
 def dash():
     if FIXTURE:
         d = rjson(FIXTURE, {})
@@ -925,6 +971,7 @@ def dash():
     dtile, dwarn = drives_tile(drive_health(now), now)
     tiles.append(dtile)
     tiles += dns_tiles()
+    tiles.append(rules_tile())
     # ---- Backups
     b = q.get('backups') or {}
     bstate = 'warn' if b.get('failed') else 'running'
@@ -1984,6 +2031,8 @@ def main(argv):
             out({'countdown': countdown_view()})
         elif a == ['cancel']:
             out(cancel())
+        elif a and a[0] == 'rules':
+            out(rules_act(a[1:]) if len(a) > 1 else rules_status())
         elif a and a[0] == 'dns':
             out(dns_act(a[1:]) if len(a) > 1 else dns_status())
         elif len(a) == 3 and a[0] == 'service':

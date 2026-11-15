@@ -843,6 +843,8 @@ def snapshot_run(now=None):
         return {'ok': True, 'note': 'no plan yet'}
     if wait_for_game(plan):
         return {'ok': True, 'deferred': 'Light mode: waiting until you stop playing'}
+    if rule_wait('backups'):
+        return {'ok': True, 'deferred': 'Quiet hours or a rule: waiting'}
     keep = clean_keep(plan.get('keep'))
     done, dropped, errors = [], [], []
     if plan.get('snapshots'):
@@ -1258,6 +1260,19 @@ def light_resumed(now=None):
     except OSError:
         pass
     return False
+
+
+RULES_NOW = os.environ.get('HEARTH_RULES_NOW', '/run/hearth/server-rules/now.json')
+
+
+def rule_wait(what):
+    """1.13: Server mode's quiet hours and rules say this waits now ("pictures", "voices", "backups";
+    hearth-server-rules writes it every minute; an old file means nothing waits)."""
+    try:
+        d = json.loads(read(RULES_NOW))
+    except (OSError, ValueError):
+        return False
+    return isinstance(d, dict) and time.time() - (d.get('at') or 0) < 180 and what in (d.get('wait') or [])
 
 
 def wait_for_game(plan):
@@ -1827,6 +1842,13 @@ def backup_run(only=None, now_flag=False, now=None):
                     s['pending'] = True
         state_write(BACKUP_STATE, state)
         return {'ok': True, 'deferred': 'Light mode: waiting until you stop playing'}
+    # Quiet hours or a rule ("backups wait"): scheduled backups wait; a Back up now you pressed runs anyway.
+    if rule_wait('backups') and not now_flag:
+        for j in jobs:
+            if only is None or j['id'] == only:
+                js.setdefault(j['id'], {})['waiting'] = 'Quiet hours or a rule: waiting'
+        state_write(BACKUP_STATE, state)
+        return {'ok': True, 'deferred': 'Quiet hours or a rule: waiting'}
     ran = []
     for j in jobs:
         if only is not None and j['id'] != only:
@@ -3191,6 +3213,39 @@ def user_apps_light(plan, playing, paused, did, st=None, now=None):
         st.pop('comfyWait', None)
 
 
+RULE_OF = {'comfyui': 'pictures', 'kokoro': 'voices', 'voicestudio': 'voices'}
+
+
+def rules_light(plan, playing, paused, did, st=None, now=None):
+    """1.13: quiet hours and Server mode's rules: AI pictures (ComfyUI, its queue kept as Light mode keeps it) and AI
+    voices wait while they say so, even with no game running; started again by the code below once nothing asks."""
+    if playing:
+        return                            # Light mode already decided for your game
+    user = plan.get('user')
+    st = {} if st is None else st
+    now = time.time() if now is None else now
+    for name, (key, unit, pdef) in USER_APPS.items():
+        if name == 'voicestudio' or not rule_wait(RULE_OF[name]) or name in paused:
+            continue                      # Voice Studio's own queue waits by itself (it reads the same file)
+        cfg = clean_user_app(plan.get(key), pdef)
+        if not cfg['on'] or user_systemctl(user, 'is-active', unit)[0] != 0:
+            continue
+        if name == 'comfyui':
+            q = comfy_api('GET', '/queue')
+            if q and q.get('queue_running'):
+                since = st.setdefault('comfyWait', int(now))
+                if now - since < COMFY_WAIT:
+                    did.append('waiting for the picture ComfyUI is making')
+                    continue
+            st.pop('comfyWait', None)
+            kept = comfy_queue_save(q)
+            if kept:
+                did.append('kept %d pictures in ComfyUI\'s queue' % kept)
+        user_systemctl(user, 'stop', unit)
+        paused.append(name)
+        did.append('stopped %s: quiet hours or a rule' % name)
+
+
 def mark_seen_sys(kind, device, now):
     st = state_read(SEEN_SYS)
     st[kind] = {'at': int(now * 1000), 'device': (device or '')[:80]}
@@ -3239,6 +3294,7 @@ def services_run(now=None):
         run(['systemctl', 'stop', 'hearth-jellyfin.service'])
         paused.append('jellyfin')
     user_apps_light(plan, playing, paused, did, st, now)
+    rules_light(plan, playing, paused, did, st, now)
     for key, port, pdef in (('voices', KOKORO_PORT, False), ('studio', STUDIO_PORT, True)):
         if not playing and clean_user_app(plan.get(key), pdef)['on']:
             users = ai_clients(port)     # the Command Center's voice settings talking to AI voices or Voice Studio
@@ -3246,7 +3302,11 @@ def services_run(now=None):
                 mark_seen_sys('commandCenter', users[0], now)
                 break
     if not playing and paused:
-        for name in paused:
+        still = []
+        for name in list(paused):
+            if name in USER_APPS and rule_wait(RULE_OF.get(name, '')):
+                still.append(name)        # quiet hours or a rule still want it waiting
+                continue
             if name in USER_APPS:
                 key, unit, pdef = USER_APPS[name]
                 if clean_user_app(plan.get(key), pdef)['on']:
@@ -3259,7 +3319,7 @@ def services_run(now=None):
             if want and os.path.exists(APP_DROPIN % APP_UNITS[name]):
                 run(['systemctl', 'start', APP_UNITS[name] + '.service'])
                 did.append('started ' + name + ' again')
-        paused = []
+        paused = still
     if not playing and (st.get('comfyRestore') or (os.path.exists(COMFY_QUEUE) and 'comfyui' not in paused)):
         n = comfy_queue_restore()
         if n >= 0:

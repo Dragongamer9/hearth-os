@@ -1,0 +1,10 @@
+# Server mode's quiet hours and rules, once (hearth-server-rules tick; docs/SERVER-MODE.md). Run by its timer, which is
+# enabled only while a quiet time or a rule is on. Never part of starting the PC.
+[Unit]
+Description=Hearth server: quiet hours and rules
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-server-rules tick
+Nice=10
+TimeoutStartSec=3min
