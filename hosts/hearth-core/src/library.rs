@@ -258,6 +258,11 @@ impl Library {
             counts.insert("epic".to_string(), list.len());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
+        if self.store.source_on("amazon") {
+            let list = crate::amazon::installed(&Owned::load(crate::amazon::CACHE));
+            counts.insert("amazon".to_string(), list.len());
+            for g in list { all.entry(g.id.clone()).or_insert(g); }
+        }
         if self.store.source_on("gog") {
             let list = gog::installed(&self.store.data["gogInstalls"], &Owned::load(gog::CACHE));
             counts.insert("gog".to_string(), list.len());
@@ -302,8 +307,8 @@ impl Library {
         for g in manual { all.entry(g.id.clone()).or_insert(g); }
         // Wabbajack modlists Hearth Mods installed (hosts/hearth-gaming wabbajack.rs): Mod Organizer 2 through Proton.
         for g in modlist_games() { all.entry(g.id.clone()).or_insert(g); }
-        // Games on your Epic and GOG accounts that aren't installed: shown with an Install button.
-        for s in ["epic", "gog"] {
+        // Games on your Epic, GOG and Amazon accounts that aren't installed: shown with an Install button.
+        for s in ["epic", "gog", "amazon"] {
             if !self.store.source_on(s) || !stores::signed_in(s) { continue; }
             for o in Owned::load(stores::cache_of(s)).games {
                 let Some(oid) = o["id"].as_str() else { continue };
@@ -435,8 +440,8 @@ impl Library {
     }
 
     fn start_install(&mut self, id: &str, title: &str, uri: &str, paused: bool) -> Result<(), String> {
-        let store = if uri.starts_with("nimbus-epic:") { "epic" } else if uri.starts_with("nimbus-gog:") { "gog" } else { return Err("Hearth can't install this game itself.".into()) };
-        if !stores::signed_in(store) { return Err(format!("Sign in to {} first (Library › Stores).", if store == "epic" { "Epic Games" } else { "GOG" })); }
+        let store = if uri.starts_with("nimbus-epic:") { "epic" } else if uri.starts_with("nimbus-gog:") { "gog" } else if uri.starts_with("nimbus-amazon:") { "amazon" } else { return Err("Hearth can't install this game itself.".into()) };
+        if !stores::signed_in(store) { return Err(format!("Sign in to {} first (Library › Stores).", match store { "epic" => "Epic Games", "amazon" => "Amazon", _ => "GOG" })); }
         let job = stores::Job { game_id: id.into(), title: title.into(), uri: uri.into(), root: self.install_root(), paused,
             state: if paused { "paused".into() } else { "queued".into() }, ..Default::default() };
         self.queue.lock().unwrap().add(job)?;
@@ -564,6 +569,7 @@ impl Library {
         if !g.can_uninstall { return Err(format!("Uninstall {} from its store app.", g.title)); }
         match g.source {
             "epic" => epic::uninstall(id.trim_start_matches("epic:"))?,
+            "amazon" => crate::amazon::uninstall(id.trim_start_matches("amazon:"))?,
             "gog" => {
                 let gid = id.trim_start_matches("gog:").to_string();
                 // Only ever delete a folder that is clearly this game's (it holds GOG's goggame-<id>.info).
@@ -815,6 +821,12 @@ impl Library {
             "emu" => {
                 let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home, app_id)?;
                 crate::procs::Track { pid: Some(pid), app_id: Some(app_id), ..Default::default() }
+            }
+            "amazon" if g.can_uninstall => {
+                let opts = crate::game_options::get(&self.store, id);
+                let pid = crate::amazon::launch(id.trim_start_matches("amazon:"), &opts, app_id)?;
+                let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             "epic" | "gog" if g.can_uninstall || g.shared_from.is_some() => {
                 // Installed by Hearth: started directly with Proton, so Hearth can watch it.

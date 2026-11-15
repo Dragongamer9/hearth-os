@@ -1,4 +1,4 @@
-// Hearth Games' page (ui/games.html): your GOG, Epic and Battle.net games. The window's calls go to the Rust side
+// Hearth Games' page (ui/games.html): your GOG, Epic, Amazon and Battle.net games. The window's calls go to the Rust side
 // (src/apps/gamestore.rs), which makes them on Hearth's own store engine (hearth-core: gogdl, legendary, Faugus), so
 // what's installed here is in Hearth's library and in Steam Game Mode (Hearth Sync). Moving around is kit.js's:
 // D-pad / stick / arrows, A chooses, B back, X refreshes, Y searches, LB/RB switch Library, Downloads, Stores and
@@ -12,12 +12,14 @@ const S = {
   filt: 'all', installedOnly: false, q: '', busy: {}, error: '',
 };
 const TABS = ['library', 'downloads', 'stores', 'recomps'];
-const STORE = { gog: 'GOG', epic: 'Epic Games', battlenet: 'Battle.net' };
-const MARK = { gog: 'GOG', epic: 'EPIC', battlenet: 'B.net' };
+const STORE = { gog: 'GOG', epic: 'Epic Games', amazon: 'Amazon', battlenet: 'Battle.net' };
+const MARK = { gog: 'GOG', epic: 'EPIC', amazon: 'prime', battlenet: 'B.net' };
+// Stage two (1.13): each installed game's cloud saves and its DLC (GOG and Epic; Amazon games have neither through nile).
+const EXTRAS = ['gog', 'epic'];
 const game = id => S.games.find(g => g.id === id);
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 const signedIn = s => !!S.acc[s]?.signedIn;
-const anySignedIn = () => signedIn('gog') || signedIn('epic') || !!S.bn.installed;
+const anySignedIn = () => signedIn('gog') || signedIn('epic') || signedIn('amazon') || !!S.bn.installed;
 const downloading = g => g && !g.installed && ['downloading', 'queued', 'paused', 'installing', 'verifying', 'starting'].includes(g.state);
 const pic = g => g.art?.cover || g.art?.square || g.art?.portrait || '';
 const widePic = g => g.art?.hero || g.art?.wide || g.art?.background || '';
@@ -27,7 +29,7 @@ async function loadAll(rescan = false) {
   try {
     const [acc, lib, drives, info] = await Promise.all([call('accounts.status'), call('library.get', { rescan }), KIT.invoke('drives'), S.info.version ? S.info : KIT.invoke('info')]);
     S.info = info || {};
-    S.acc = Object.fromEntries((acc.accounts || []).filter(a => a.store === 'gog' || a.store === 'epic').map(a => [a.store, a]));
+    S.acc = Object.fromEntries((acc.accounts || []).filter(a => ['gog', 'epic', 'amazon'].includes(a.store)).map(a => [a.store, a]));
     S.bn = acc.battlenet || {};
     S.games = (lib.games || []).filter(g => !g.hidden);
     S.drives = drives;
@@ -160,14 +162,71 @@ function openGame(g) {
     <dl class="kv">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${typeof v === 'string' && v.startsWith('<') ? v : esc(v)}</dd>`).join('')}</dl>
     ${g.note ? `<p class="note">${esc(g.note)}</p>` : ''}
     ${!g.installed && !dl && g.installKind !== 'nimbus' && g.source !== 'battlenet' ? '<p class="note">Hearth can\'t install this one itself; its store\'s own app can.</p>' : ''}
+    ${g.installed && EXTRAS.includes(g.source) ? '<div class="extras"><section class="saves"><h3>Cloud saves</h3><p class="msg small">Looking…</p></section><section class="dlcs"><h3>DLC</h3><p class="msg small">Looking…</p></section></div>' : ''}
     <div class="row">${acts.join('')}</div>`, { wide: true });
+  if (g.installed && EXTRAS.includes(g.source)) gameExtras(g, d);
   d.onclick = e => {
+    const x = e.target.closest('[data-x]');
+    if (x) { extraAct(g, d, x.dataset.x, x.dataset.dlc); return; }
     const b = e.target.closest('[data-g]'); if (!b) return;
     const a = b.dataset.g; KIT.close();
     if (a === 'play') play(g); else if (a === 'install') install(g); else if (a === 'uninstall') uninstall(g);
     else if (a === 'pause') dlOp('game.pauseInstall', g.id); else if (a === 'resume') dlOp('game.resumeInstall', g.id);
     else if (a === 'cancel') dlOp('game.cancelInstall', g.id);
   };
+}
+
+// ---------------------------------------------------------------- a game's cloud saves and DLC (stage two)
+async function gameExtras(g, d) {
+  const [sv, dl] = await Promise.all([call('game.saves', { id: g.id }).catch(e => ({ error: KIT.err(e) })),
+                                      call('game.dlc', { id: g.id }).catch(e => ({ error: KIT.err(e) }))]);
+  const s = d.querySelector('.saves'), l = d.querySelector('.dlcs');
+  if (s) s.innerHTML = `<h3>Cloud saves</h3>${savesHtml(g, sv)}`;
+  if (l) l.innerHTML = `<h3>DLC</h3>${dlcHtml(g, dl)}`;
+  if (dl.busy && Object.keys(dl.busy).length) dlcPoll(g, d);
+}
+function savesHtml(g, sv) {
+  if (sv.error) return `<p class="bad small">${esc(sv.error)}</p>`;
+  if (!sv.supported) return `<p class="msg small">${esc(STORE[g.source])} doesn't keep this game's saves in the cloud. Hearth's own save backups still do (Saves).</p>`;
+  const last = sv.last ? `Last synced ${when(sv.last.at)} · ${sv.last.dir === 'up' ? 'sent up after you played' : 'brought down before you played'}${sv.last.ok === false ? ' · it didn\'t work' : ''}` : 'Not synced yet';
+  return `<div class="line"><span><b>Sync with ${esc(STORE[g.source])}</b><small>Before you play, your newest saves come down; after, they go up. ${esc(last)}.</small></span>
+      <button class="sw f ${sv.on ? 'on' : ''}" data-x="saves-${sv.on ? 'off' : 'on'}" aria-label="Cloud saves ${sv.on ? 'on' : 'off'}"><i></i></button></div>
+    ${sv.on ? '<div class="acts"><button class="btn f" data-x="sync-down">Bring saves down now</button><button class="btn f" data-x="sync-up">Send saves up now</button></div>' : ''}
+    ${sv.folder ? `<p class="note">Saves are in <span class="path">${esc(sv.folder)}</span></p>` : ''}`;
+}
+function dlcHtml(g, dl) {
+  if (dl.error) return `<p class="bad small">${esc(dl.error)}</p>`;
+  const list = dl.dlc || [];
+  if (!list.length) return '<p class="msg small">This game has no DLC on your account.</p>';
+  const busy = dl.busy || {};
+  const rows = list.map(x => `<div class="line"><span><b>${esc(x.title)}</b><small>${x.installed ? 'Installed' : busy[x.id] ? esc(busy[x.id]) : x.owned === false ? 'Not on your account' : 'Not installed'}${x.sizeBytes ? ` · ${human(x.sizeBytes)}` : ''}</small></span>
+      ${x.installed ? (x.canUninstall ? `<button class="btn danger f" data-x="dlc-remove" data-dlc="${esc(x.id)}">Uninstall</button>` : '')
+        : busy[x.id] ? '' : x.owned === false ? `<button class="btn f" data-x="dlc-shop" data-dlc="${esc(x.id)}">See it in the store</button>`
+        : `<button class="btn primary f" data-x="dlc-install" data-dlc="${esc(x.id)}">Install</button>`}</div>`).join('');
+  const missing = list.filter(x => !x.installed && x.owned !== false && !busy[x.id]).length;
+  const note = g.source === 'gog' && list.some(x => x.installed) ? '<p class="note">GOG\'s DLC stays with its game: uninstalling the game removes it.</p>' : '';
+  return `${dl.error ? `<p class="bad small">${esc(dl.error)}</p>` : ''}${rows}${note}${missing > 1 ? `<div class="acts"><button class="btn f" data-x="dlc-all">Install all ${missing}</button></div>` : ''}`;
+}
+// While a DLC installs, the page looks again every few seconds (the answer says what's still busy).
+function dlcPoll(g, d) {
+  clearTimeout(dlcPoll.t);
+  dlcPoll.t = setTimeout(async () => {
+    if (!document.body.contains(d)) return;
+    const dl = await call('game.dlc', { id: g.id }).catch(e => ({ error: KIT.err(e) }));
+    const l = d.querySelector('.dlcs'); if (l) l.innerHTML = `<h3>DLC</h3>${dlcHtml(g, dl)}`;
+    if (dl.busy && Object.keys(dl.busy).length) dlcPoll(g, d);
+  }, 4000);
+}
+async function extraAct(g, d, a, dlc) {
+  try {
+    if (a === 'saves-on' || a === 'saves-off') await call('game.setCloudSaves', { id: g.id, on: a === 'saves-on' });
+    else if (a === 'sync-down' || a === 'sync-up') { KIT.toast(a === 'sync-up' ? 'Sending your saves up…' : 'Bringing your saves down…'); await call('game.syncSaves', { id: g.id, direction: a === 'sync-up' ? 'up' : 'down' }); KIT.toast('Saves synced ✓'); }
+    else if (a === 'dlc-install') { await call('game.installDlc', { id: g.id, dlc }); KIT.toast('Installing the DLC…'); }
+    else if (a === 'dlc-all') { await call('game.installDlc', { id: g.id, dlc: '' }); KIT.toast('Installing every DLC you have…'); }
+    else if (a === 'dlc-remove') { await call('game.uninstallDlc', { id: g.id, dlc }); KIT.toast('DLC removed'); }
+    else if (a === 'dlc-shop') { await KIT.invoke('open_store', { store: g.source }); }
+  } catch (e) { KIT.toast(KIT.err(e)); }
+  gameExtras(g, d);
 }
 
 // ---------------------------------------------------------------- drawing
@@ -194,14 +253,14 @@ function shown() {
     .sort((a, b) => (b.installed - a.installed) || (downloading(b) - downloading(a)) || (b.lastPlayed || 0) - (a.lastPlayed || 0) || a.title.localeCompare(b.title));
 }
 function helloHtml() {
-  return `<div class="hello"><h2>Your GOG, Epic and Battle.net games, in one place</h2>
+  return `<div class="hello"><h2>Your GOG, Epic, Amazon and Battle.net games, in one place</h2>
     <p class="msg">Sign in on the store's own page: Hearth never sees your password. Your games show here, install with a press, and show up in Steam's Game Mode too.</p>
-    <div class="acts"><button class="btn primary f" data-act="signin" data-store="gog" data-autofocus>Sign in to GOG</button><button class="btn primary f" data-act="signin" data-store="epic">Sign in to Epic Games</button><button class="btn f" data-act="battlenet">${S.bn.installed ? 'Open Battle.net' : 'Set up Battle.net'}</button></div></div>`;
+    <div class="acts"><button class="btn primary f" data-act="signin" data-store="gog" data-autofocus>Sign in to GOG</button><button class="btn primary f" data-act="signin" data-store="epic">Sign in to Epic Games</button><button class="btn primary f" data-act="signin" data-store="amazon">Sign in to Amazon</button><button class="btn f" data-act="battlenet">${S.bn.installed ? 'Open Battle.net' : 'Set up Battle.net'}</button></div></div>`;
 }
 function libraryHtml() {
   if (!anySignedIn() && !S.games.length) return `<div class="scroll">${helloHtml()}</div>`;
   const list = shown();
-  const chips = [['all', 'All'], ['gog', 'GOG'], ['epic', 'Epic Games'], ['battlenet', 'Battle.net']]
+  const chips = [['all', 'All'], ['gog', 'GOG'], ['epic', 'Epic Games'], ['amazon', 'Amazon'], ['battlenet', 'Battle.net']]
     .map(([k, l]) => `<button class="chip f ${S.filt === k ? 'on' : ''}" data-filt="${k}">${l}</button>`).join('');
   return `<div class="bar">${chips}<button class="chip f ${S.installedOnly ? 'on' : ''}" data-act="installed">Installed</button><span class="spacer"></span>
       <input class="inp f" id="q" placeholder="Search your games" data-osk value="${esc(S.q)}"><button class="btn f" data-act="refresh">Refresh</button></div>
@@ -222,7 +281,7 @@ function downloadsHtml() {
       ${act.length ? '<button class="btn f" data-dl="downloads.pauseAll">Pause all</button><button class="btn f" data-dl="downloads.resumeAll">Carry on with all</button>' : ''}</div>
     <div class="scroll"><div class="list">${rows}</div>
       ${recent.length ? `<h3 style="margin:1.2em 0 .5em">Installed lately</h3><div class="grid">${recent.map(tileHtml).join('')}</div>` : ''}
-      ${S.drives?.installRoot ? `<p class="note" style="margin-top:1.2em">New GOG and Epic games go to <span class="path">${esc(S.drives.installRoot)}</span>. Change it on the Stores tab.</p>` : ''}</div>`;
+      ${S.drives?.installRoot ? `<p class="note" style="margin-top:1.2em">New GOG, Epic and Amazon games go to <span class="path">${esc(S.drives.installRoot)}</span>. Change it on the Stores tab.</p>` : ''}</div>`;
 }
 function storeCard(s) {
   const a = S.acc[s] || {};
@@ -230,10 +289,11 @@ function storeCard(s) {
   const head = `<div class="who"><span class="storemark mark-${s}">${MARK[s]}</span><span><b>${STORE[s]}</b><small>${a.signedIn ? `Signed in${a.name ? ` as ${esc(a.name)}` : ''}` : a.expired ? 'The sign-in ran out' : 'Not signed in'}</small></span></div>`;
   const facts = a.signedIn ? `<p class="msg small">${plural(a.owned || 0, 'game')} on your account · ${a.installed || 0} installed${a.fetched ? ` · looked ${when(a.fetched)}` : ''}${busy ? ' · getting your games…' : ''}</p>` : '';
   const err = a.error ? `<p class="bad small">${esc(a.error)}</p>` : '';
+  const about = s === 'amazon' ? `<p class="msg small">${a.signedIn ? 'The games you claimed with Prime Gaming and the ones you bought on Amazon Games.' : 'Prime Gaming\'s free games you claimed, and games you bought on Amazon Games. Sign in on Amazon\'s own page.'}</p>` : '';
   const acts = a.signedIn
     ? `<button class="btn f" data-act="refresh-store" data-store="${s}" ${busy ? 'disabled' : ''}>Look for new games</button><button class="btn f" data-act="shop" data-store="${s}">Open the store</button><button class="btn danger f" data-act="signout" data-store="${s}">Sign out</button>`
     : `<button class="btn primary f" data-act="signin" data-store="${s}" ${busy ? 'disabled' : ''}>${a.expired ? 'Sign in again' : 'Sign in'}</button><button class="btn f" data-act="shop" data-store="${s}">Open the store</button>`;
-  return `<div class="panel card">${head}${facts}${err}<div class="acts">${acts}</div></div>`;
+  return `<div class="panel card">${head}${facts}${about}${err}<div class="acts">${acts}</div></div>`;
 }
 function battlenetCard() {
   const b = S.bn;
@@ -248,7 +308,7 @@ function battlenetCard() {
 function storesHtml() {
   const drives = S.drives?.drives || [];
   const proton = S.info.proton ? `Windows games start with ${esc(S.info.proton)}, built into Hearth OS, so they work offline.` : 'Windows games start with Proton, downloaded the first time a game needs it.';
-  return `<div class="scroll"><div class="cards">${storeCard('gog')}${storeCard('epic')}${battlenetCard()}
+  return `<div class="scroll"><div class="cards">${storeCard('gog')}${storeCard('epic')}${storeCard('amazon')}${battlenetCard()}
     <div class="panel card"><h3>Where new games go</h3>
       <div class="chips">${drives.map(d => `<button class="chip f ${d.current ? 'on' : ''}" data-drive="${esc(d.mount)}">${esc(driveLabel(d))}<small>${human(d.free)} free</small></button>`).join('') || '<span class="msg">Looking at your drives…</span>'}</div>
       ${S.drives?.installRoot ? `<p class="note">Now: <span class="path">${esc(S.drives.installRoot)}</span></p>` : ''}
@@ -317,14 +377,19 @@ if (!KIT.live) {
     G('battlenet:wow', 'World of Warcraft', 'battlenet', 30, { installed: true, state: 'installed' }),
     G('epic:b', 'Starfall Arena', 'epic', 260), G('gog:3', 'Old Ruins', 'gog', 80), G('epic:c', 'Moss Garden', 'epic', 150),
     G('gog:4', 'Copper Skies', 'gog', 40), G('epic:d', 'Hollow Tide', 'epic', 300), G('gog:5', 'Lantern Road', 'gog', 60),
+    G('amazon:1', 'Rivet City', 'amazon', 190, { installed: true, state: 'installed', sizeBytes: 11e9 }), G('amazon:2', 'Paper Fleet', 'amazon', 330),
   ];
+  const DEMO_DLC = { 'gog:1': [{ id: 'gog:11', title: 'Hearts of Stone', sizeBytes: 4.2e9, installed: true, canUninstall: false }, { id: 'gog:12', title: 'Blood and Wine', sizeBytes: 9.8e9, installed: false },
+    { id: 'gog:13', title: 'New Game Plus', sizeBytes: 2e7, installed: false }, { id: 'gog:14', title: 'Original Soundtrack', installed: false, owned: false }] };
   KIT.demo = (cmd, a) => {
     if (cmd === 'info') return { version: '1.7.0', proton: 'GE-Proton10-25', canPlay: true };
     if (cmd === 'drives') return { installRoot: '/home/you/Games', drives: [{ name: 'This device', kind: 'home', mount: '/', free: 212e9, current: true }, { name: 'Games SSD', kind: 'disk', mount: '/var/mnt/games-1', free: 1.4e12 }] };
     if (cmd === 'call') {
       const m = a.method;
       if (m.startsWith('recomps.')) return rcDemo(m, a.args || {});
-      if (m === 'accounts.status') return { accounts: [{ store: 'gog', signedIn: true, name: 'dragon', owned: 6, installed: 2, fetched: Date.now() - 36e5 }, { store: 'epic', signedIn: true, name: 'dragon', owned: 4, installed: 0, fetched: Date.now() - 72e5 }], battlenet: { installed: true, via: 'faugus', faugus: true, games: 1 } };
+      if (m === 'accounts.status') return { accounts: [{ store: 'gog', signedIn: true, name: 'dragon', owned: 6, installed: 2, fetched: Date.now() - 36e5 }, { store: 'epic', signedIn: true, name: 'dragon', owned: 4, installed: 0, fetched: Date.now() - 72e5 }, { store: 'amazon', signedIn: true, name: 'Chris', owned: 2, installed: 1, fetched: Date.now() - 18e5 }], battlenet: { installed: true, via: 'faugus', faugus: true, games: 1 } };
+      if (m === 'game.saves') return a.args.id === 'gog:1' ? { supported: true, on: true, last: { at: Date.now() - 3e5, dir: 'up', ok: true }, folder: '/home/you/Games/Witcher Tales/saves' } : { supported: false };
+      if (m === 'game.dlc') return { dlc: DEMO_DLC[a.args.id] || [] };
       if (m === 'library.get') return { games };
       if (m === 'library.downloads') return { active: [games[1]], recent: [{ id: 'gog:2' }] };
       return {};
