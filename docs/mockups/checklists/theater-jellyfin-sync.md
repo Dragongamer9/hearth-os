@@ -14,7 +14,7 @@ per device.
 - [x] "24 min left" / "1 h 10 min left" under the title — hosts/hearth-theater/src/jf.rs: "format!(\"{} h {} min left\", m / 60, m % 60)"
 - [x] Episodes named "Show · S2 E5" — hosts/hearth-theater/src/jf.rs: "format!(\"S{s} E{e}\")"
 - [x] the rows: Continue watching, Next up, Recently added, Movies, Shows — hosts/hearth-theater/src/remote.rs: "(\"Continue watching\", &a), (\"Next up\", &bb), (\"Recently added\", &c), (\"Movies\", &d), (\"Shows\", &e)"
-- [x] the row's source shown beside its name (Jellyfin · server) — hosts/hearth-theater/src/remote.rs: "&format!(\"Jellyfin · {server_name}\")"
+- [x] the row's source shown beside its name (Jellyfin · server) — hosts/hearth-theater/src/remote.rs: "format!(\"Jellyfin · {server_name}\")"
 - [x] Episode / Movie badges — hosts/hearth-theater/src/jf.rs: "\"Episode\" => \"episode\""
 - [x] a title opens in Jellyfin's own player, where you stopped — hosts/hearth-theater/src/jf.rs: "web/index.html#/details?id={id}"
 
