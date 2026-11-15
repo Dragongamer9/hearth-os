@@ -38,7 +38,7 @@ jobs:
       - name: Tests
         run: |
           fail=0
-          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_voice_studio.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py test_hearth_ai_share.py test_hearth_server_mode.py test_hearth_server_apps.py test_device_status.py test_settings_redesign.py test_hearth_steam_mode.py test_hearth_mantel_only.py test_netshares.py test_netshares_mount.py; do
+          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_voice_studio.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py test_hearth_ai_share.py test_hearth_server_mode.py test_hearth_server_apps.py test_device_status.py test_settings_redesign.py test_hearth_steam_mode.py test_desktops.py test_netshares.py test_netshares_mount.py; do
             if python3 -m unittest discover -s hosts/linux/test -p "$t" -v > "/tmp/$t.log" 2>&1; then
               echo "::notice title=$t::$(tail -3 "/tmp/$t.log" | tr '\n' ' ')"
             else

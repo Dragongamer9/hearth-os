@@ -1,0 +1,388 @@
+#!/usr/bin/python3
+"""hearth-desktops-helper: KDE Plasma and GNOME for Desktop Mode, downloaded when picked (1.13, docs/DESKTOPS.md).
+
+Run as root through pkexec by hearth-desktops (Settings › System › Your desktop); 49-hearth-memory.rules lets the
+person at the device (local, active, wheel) run it without a password prompt. Each command does one narrow job.
+
+  hearth-desktops-helper install kde|gnome   start downloading and installing it (in the background, as the
+                                             systemd unit hearth-desktop-<name>); prints the status JSON
+  hearth-desktops-helper cancel kde|gnome    stop a download (only while it's downloading: once installing has begun
+                                             it finishes, so nothing is left half done)
+  hearth-desktops-helper remove kde|gnome    take it off again (its packages and what only they needed)
+  hearth-desktops-helper own-apps on|off     each desktop shows only its own apps (on) or every app (off)
+  hearth-desktops-helper status              JSON (also works without root)
+  hearth-desktops-helper run kde|gnome       what the unit runs (not for people)
+
+How: Peppermint is a writable system (hearth-unlock), so a desktop is Debian's own packages, installed with apt
+into this version's layer, from the same frozen Debian date the image was built from ("made for Hearth OS <version>").
+hearth-unlock keeps the record: after an OS update they're put back by themselves (hearth-unlock-reapply.service);
+until then Desktop Mode opens Mantel and says why (nimbus-session). The previous version keeps its own layer, so it
+stays startable as it was. Nothing here touches the boot menu, the kernel or the display manager: GDM is never
+installed (Hearth's login screen stays), and the packages' own login entries are diverted in the image (build.sh), so
+the login screen only offers Hearth's (hearth-kde.desktop, hearth-gnome.desktop: nimbus-session's safe start).
+"""
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+E = os.environ.get
+RUN_DIR = E('HEARTH_DESKTOPS_RUN', '/run/hearth/desktops')
+STATE = E('HEARTH_DESKTOPS_STATE', '/var/lib/hearth/desktops')
+CONF = E('HEARTH_DESKTOPS_CONF', '/etc/hearth/desktops.json')
+APPS = E('HEARTH_DESKTOPS_APPS', '/usr/share/applications')
+UNLOCK = E('HEARTH_DESKTOPS_UNLOCK', '/usr/bin/hearth-unlock')
+APP_KINDS = E('HEARTH_DESKTOPS_APP_KINDS', '/usr/libexec/hearth-app-kinds')
+APT = E('HEARTH_DESKTOPS_APT', 'apt-get')
+SYSTEMD_RUN = E('HEARTH_DESKTOPS_SYSTEMD_RUN', 'systemd-run')
+SYSTEMCTL = E('HEARTH_DESKTOPS_SYSTEMCTL', 'systemctl')
+VERSION_FILE = E('HEARTH_DESKTOPS_VERSION', '/usr/share/nimbus/version')
+ROOT = E('HEARTH_DESKTOPS_ROOT', '')                   # tests: where /usr/bin/... is looked for
+
+# Debian's own packages. KDE: Plasma with KDE's apps (Dolphin, Konsole, System Settings...). GNOME: the shell and
+# GNOME's core apps, without GDM (the trailing '-': apt must not install it; Hearth's login screen stays).
+DESKTOPS = {
+    'kde': {'label': 'KDE Plasma', 'packages': ['kde-plasma-desktop', 'plasma-workspace', 'kwin-wayland', 'systemsettings',
+                                                'dolphin', 'konsole', 'kate', 'ark', 'okular', 'gwenview', 'spectacle',
+                                                'plasma-nm', 'plasma-pa', 'powerdevil', 'bluedevil', 'kscreen'],
+            'check': ['/usr/bin/startplasma-wayland', '/usr/bin/plasmashell'], 'remove': ['kde-plasma-desktop', 'plasma-workspace', 'kwin-wayland', 'systemsettings']},
+    'gnome': {'label': 'GNOME', 'packages': ['gnome-shell', 'gnome-session', 'gnome-control-center', 'gnome-settings-daemon',
+                                             'nautilus', 'gnome-console', 'gnome-text-editor', 'gnome-system-monitor',
+                                             'gnome-shell-extension-prefs', 'gnome-disk-utility', 'loupe', 'evince',
+                                             'gnome-calculator', 'xdg-desktop-portal-gnome', 'gdm3-'],
+              'check': ['/usr/bin/gnome-session', '/usr/bin/gnome-shell'], 'remove': ['gnome-shell', 'gnome-session', 'gnome-control-center']},
+}
+ID_RE = re.compile(r'^[A-Za-z0-9._+-]{1,200}\.desktop$')
+
+
+class Fail(Exception):
+    pass
+
+
+def read_json(path, default=None):
+    try:
+        with open(path, encoding='utf-8') as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else default
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, obj, keep_bak=False):
+    """Atomic, fsynced; with keep_bak the old file is kept as .bak. An unreadable old file is moved aside, never
+    silently replaced by defaults (the caller merged into what was readable)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = '%s.tmp.%d' % (path, os.getpid())
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, indent=1, sort_keys=True)
+        f.write('\n')
+        f.flush()
+        os.fsync(f.fileno())
+    if keep_bak and os.path.exists(path):
+        try:
+            with open(path, 'rb') as a, open(path + '.bak', 'wb') as b:
+                b.write(a.read())
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def conf():
+    """The switches ({ownApps: bool}). A file that doesn't read is kept aside, and the switch stays at its default
+    until the person changes it (never written over)."""
+    try:
+        with open(CONF, encoding='utf-8') as f:
+            raw = f.read()
+    except OSError:
+        return {'ownApps': True}
+    try:
+        v = json.loads(raw)
+        if not isinstance(v, dict):
+            raise ValueError
+    except ValueError:
+        return {'ownApps': True, 'unreadable': True}
+    out = {'ownApps': True}
+    out.update(v)
+    return out
+
+
+def set_conf(key, value):
+    cur = conf()
+    if cur.pop('unreadable', False):
+        aside = '%s.unreadable-%d' % (CONF, int(time.time()))
+        try:
+            os.replace(CONF, aside)
+        except OSError:
+            pass
+        cur = {'ownApps': True}
+    cur[key] = value
+    write_json(CONF, cur, keep_bak=True)
+
+
+def installed(name):
+    return all(os.path.exists(ROOT + p) for p in DESKTOPS[name]['check'])
+
+
+def progress_path(name):
+    return os.path.join(RUN_DIR, name + '.json')
+
+
+def unit(name):
+    return 'hearth-desktop-' + name
+
+
+def running(name):
+    p = read_json(progress_path(name), {}) or {}
+    pid = p.get('pid')
+    if not pid or p.get('state') not in ('downloading', 'installing', 'removing', 'starting'):
+        return None
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError):
+        return None
+    return p
+
+
+def unlock_status():
+    try:
+        r = subprocess.run([UNLOCK, '--status', '--json'], capture_output=True, text=True, timeout=20)
+        return json.loads(r.stdout) if r.returncode == 0 else {}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {}
+
+
+def version():
+    try:
+        with open(VERSION_FILE, encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def status():
+    u = unlock_status()
+    reapply = (u.get('reapply') or {}).get('state') or ''
+    out = {'version': version(), 'writable': bool(u.get('writable')), 'unlock': u.get('state') or 'unavailable',
+           'reapply': reapply, 'ownApps': bool(conf().get('ownApps', True)), 'desktops': {}}
+    for name, d in DESKTOPS.items():
+        p = running(name)
+        last = read_json(progress_path(name), {}) or {}
+        rec = read_json(os.path.join(STATE, name + '.json'), {}) or {}
+        if p:
+            state = p['state']
+        elif installed(name):
+            state = 'downloaded'
+        elif rec.get('wanted') and reapply in ('pending', 'running'):
+            state = 'reapplying'           # an OS update: being put back by hearth-unlock
+        elif rec.get('wanted'):
+            state = 'missing'              # asked for, but not on this version (yet)
+        else:
+            state = 'none'
+        out['desktops'][name] = {'label': d['label'], 'state': state, 'percent': (p or {}).get('percent', 0),
+                                 'what': (p or {}).get('what', ''), 'error': '' if p or state == 'downloaded' else last.get('error', ''),
+                                 'wanted': bool(rec.get('wanted')), 'madeFor': rec.get('version') or out['version']}
+    return out
+
+
+def need_root():
+    if os.geteuid() != 0 and not E('HEARTH_DESKTOPS_TEST'):
+        raise Fail('needs root')
+
+
+def need_name(args):
+    if len(args) != 1 or args[0] not in DESKTOPS:
+        raise Fail('which desktop: kde or gnome')
+    return args[0]
+
+
+# ---------------------------------------------------------------------- installing (the unit runs this)
+def put_progress(name, **kw):
+    cur = read_json(progress_path(name), {}) or {}
+    cur.update(kw)
+    cur['pid'] = os.getpid()
+    cur['at'] = int(time.time())
+    write_json(progress_path(name), cur)
+
+
+def apt_env():
+    env = dict(os.environ, DEBIAN_FRONTEND='noninteractive', LC_ALL='C')
+    return env
+
+
+def apt_run(name, args, phase, lo, hi):
+    """apt-get with its machine-readable progress (APT::Status-Fd) mapped into lo..hi percent."""
+    rfd, wfd = os.pipe()
+    cmd = [APT, '-y', '-q', '-o', 'APT::Status-Fd=%d' % wfd, '-o', 'Dpkg::Options::=--force-confdef',
+           '-o', 'Dpkg::Options::=--force-confold'] + args
+    p = subprocess.Popen(cmd, pass_fds=(wfd,), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=apt_env())
+    os.close(wfd)
+    tail = []
+
+    def logs():
+        for line in p.stdout:
+            line = line.rstrip()
+            if line:
+                tail.append(line)
+                del tail[:-15]
+    t = threading.Thread(target=logs, daemon=True)
+    t.start()
+    with os.fdopen(rfd, encoding='utf-8', errors='replace') as f:
+        for line in f:
+            parts = line.rstrip('\n').split(':', 3)
+            if len(parts) >= 3 and parts[0] in ('dlstatus', 'pmstatus'):
+                try:
+                    pct = float(parts[2])
+                except ValueError:
+                    continue
+                put_progress(name, state=phase, percent=int(lo + (hi - lo) * max(0.0, min(pct, 100.0)) / 100),
+                             what=(parts[3] if len(parts) > 3 else '')[:120])
+    rc = p.wait()
+    t.join(5)
+    if rc != 0:
+        raise Fail('; '.join(tail[-3:]) or ' '.join(cmd) + ' failed')
+
+
+def app_ids():
+    try:
+        return {n for n in os.listdir(APPS) if ID_RE.match(n)}
+    except OSError:
+        return set()
+
+
+def cmd_run(name):
+    need_root()
+    d = DESKTOPS[name]
+    def stop(*_):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, stop)
+    before = app_ids()
+    rec_path = os.path.join(STATE, name + '.json')
+    rec = read_json(rec_path, {}) or {}
+    try:
+        put_progress(name, state='downloading', percent=0, what='Looking for the packages', error='')
+        apt_run(name, ['update'], 'downloading', 0, 3)
+        apt_run(name, ['install', '--download-only'] + d['packages'], 'downloading', 3, 85)
+        # From here it isn't cancelled: dpkg cut off in the middle would leave the system half installed.
+        put_progress(name, state='installing', percent=85, what='Installing')
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        apt_run(name, ['install'] + d['packages'], 'installing', 85, 99)
+    except KeyboardInterrupt:
+        put_progress(name, state='cancelled', percent=0, what='', error='')
+        return {'ok': False, 'cancelled': True}
+    except Fail as e:
+        put_progress(name, state='failed', percent=0, what='', error=str(e)[:400])
+        raise
+    added = sorted((app_ids() - before) | set(rec.get('apps') or []))
+    rec.update({'wanted': True, 'apps': added, 'version': version(), 'at': int(time.time())})
+    write_json(rec_path, rec, keep_bak=True)
+    apply_app_kinds()
+    put_progress(name, state='done', percent=100, what='', error='')
+    return {'ok': True, 'apps': len(added)}
+
+
+def apply_app_kinds():
+    try:
+        subprocess.run([APP_KINDS, 'apply', '--refresh'], capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+# ---------------------------------------------------------------------- the commands
+def cmd_install(name):
+    need_root()
+    if running(name):
+        return status()
+    other = [n for n in DESKTOPS if n != name and running(n)]
+    if other:
+        raise Fail('%s is still downloading; one at a time' % DESKTOPS[other[0]]['label'])
+    u = unlock_status()
+    if u and not u.get('writable'):
+        raise Fail('the system isn\'t writable right now (Settings › Updates & recovery › Your system changes), so %s '
+                   'can\'t be added' % DESKTOPS[name]['label'])
+    put_progress(name, state='starting', percent=0, what='Starting', error='')
+    r = subprocess.run([SYSTEMD_RUN, '--unit', unit(name), '--collect', '--quiet', '--property=Nice=10',
+                        '--property=IOSchedulingClass=idle', os.path.realpath(__file__), 'run', name],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        put_progress(name, state='failed', error=(r.stderr or r.stdout).strip()[:300])
+        raise Fail('couldn\'t start the download: ' + (r.stderr or r.stdout).strip()[:200])
+    return status()
+
+
+def cmd_cancel(name):
+    need_root()
+    p = running(name)
+    if not p:
+        return status()
+    if p.get('state') != 'downloading' and p.get('state') != 'starting':
+        raise Fail('it\'s installing now and finishes by itself in a moment (stopping it halfway would leave the system half done)')
+    subprocess.run([SYSTEMCTL, 'kill', '--signal=SIGTERM', unit(name) + '.service'], capture_output=True, timeout=20)
+    for _ in range(20):
+        if not running(name):
+            break
+        time.sleep(0.5)
+    return status()
+
+
+def cmd_remove(name):
+    need_root()
+    if running(name):
+        raise Fail('wait until it has finished')
+    d = DESKTOPS[name]
+    rec_path = os.path.join(STATE, name + '.json')
+    rec = read_json(rec_path, {}) or {}
+    put_progress(name, state='removing', percent=0, what='Removing', error='')
+    try:
+        apt_run(name, ['remove', '--autoremove'] + d['remove'], 'removing', 0, 100)
+    except Fail as e:
+        put_progress(name, state='failed', error=str(e)[:400])
+        raise
+    finally:
+        rec.update({'wanted': False})
+        write_json(rec_path, rec, keep_bak=True)
+    apply_app_kinds()
+    put_progress(name, state='removed', percent=0, what='')
+    return status()
+
+
+def cmd_own_apps(value):
+    need_root()
+    if value not in ('on', 'off'):
+        raise Fail('on or off')
+    set_conf('ownApps', value == 'on')
+    apply_app_kinds()
+    return status()
+
+
+def main(argv):
+    args = argv[1:]
+    cmd = args[0] if args else ''
+    try:
+        if cmd == 'status':
+            out = status()
+        elif cmd == 'install':
+            out = cmd_install(need_name(args[1:]))
+        elif cmd == 'cancel':
+            out = cmd_cancel(need_name(args[1:]))
+        elif cmd == 'remove':
+            out = cmd_remove(need_name(args[1:]))
+        elif cmd == 'own-apps' and len(args) == 2:
+            out = cmd_own_apps(args[1])
+        elif cmd == 'run':
+            out = cmd_run(need_name(args[1:]))
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e, flush=True)
+        return 1
+    print(json.dumps(out), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

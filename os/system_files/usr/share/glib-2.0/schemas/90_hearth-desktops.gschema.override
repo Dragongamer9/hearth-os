@@ -1,0 +1,5 @@
+# GNOME with Hearth inside (1.13, docs/DESKTOPS.md): Hearth's section in quick settings and the controller, on by
+# default when GNOME is downloaded (glib compiles this once gnome-shell's schemas are installed). You can still turn
+# them off in GNOME's Extensions app; that's yours and stays.
+[org.gnome.shell]
+enabled-extensions=['hearth-quick@hearthos.fun', 'hearth-pad@hearthos.fun']
