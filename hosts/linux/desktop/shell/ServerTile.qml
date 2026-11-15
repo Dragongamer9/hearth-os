@@ -25,6 +25,8 @@ Rectangle {
     readonly property bool off: t.state === "off"
     readonly property bool paused: t.state === "paused" || t.state === "paused-you"
     radius: (gold ? 14 : 18) * k
+    // What doesn't fit stays inside the tile (on a short screen its lower lines spilled over the next row)
+    clip: true
     color: tile.cCard
     border.width: focused ? 3 * k : 1
     border.color: focused ? tile.cAcc : tile.cLine

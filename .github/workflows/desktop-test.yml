@@ -1924,11 +1924,16 @@ jobs:
           sleep 6
           ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
           # If the dashboard doesn't answer, where it's stuck (its threads' stacks, for finding what hangs)
-          if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
-            pkill -INT -x quickshell || true; sleep 25
-            grep -E '^Thread|^#' "$XDG_RUNTIME_DIR/hearth-server-dash.log" > shots/server-mode/stuck-stacks.txt || true
-            echo "::warning title=Server mode stuck::$(awk '/^Thread 1 /{f=1} f' shots/server-mode/stuck-stacks.txt | grep -oE ' in [^ ]+' | head -40 | tr '\n' ' ')"
-          fi
+          stuck() {
+            [ -e /tmp/server-stuck ] && return 0
+            if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
+              touch /tmp/server-stuck shots/FAILED
+              pkill -INT -x quickshell || true; sleep 25
+              grep -E '^Thread|^#' "$XDG_RUNTIME_DIR/hearth-server-dash.log" > shots/server-mode/stuck-stacks.txt || true
+              echo "::error title=Server mode stuck ($1)::$(awk '/^Thread 1 /{f=1} f' shots/server-mode/stuck-stacks.txt | grep -oE ' in [^ ]+' | head -40 | tr '\n' ' ')"
+            fi
+          }
+          stuck "at start"
           timeout 15 grim shots/server-mode/01-dashboard.png || true
           ipc server detail 1; timeout 15 grim shots/server-mode/02-ai-expanded.png || true
           ipc server detail 2; timeout 15 grim shots/server-mode/02b-pictures-expanded.png || true
@@ -2007,10 +2012,13 @@ jobs:
           n=$(python3 -c "import json; t=json.load(open('/tmp/server-dash.json'))['tiles']; print(' '.join(str(i + 1) for i, x in enumerate(t) if x['id'] in ('cache', 'ads', 'rules')))")
           set -- $n
           ipc server detail $1; sleep 3; timeout 15 grim shots/server-mode/14-cache-opened.png || true
+          stuck "the cache page"
           ipc server close
           ipc server detail $2; sleep 3; timeout 15 grim shots/server-mode/15-adblock-opened.png || true
+          stuck "the ad blocker page"
           ipc server close
           ipc server detail $3; sleep 3; timeout 15 grim shots/server-mode/16-rules-opened.png || true
+          stuck "the rules page"
           timeout 10 wtype -k m; sleep 2; timeout 15 grim shots/server-mode/16b-rules-new-rule.png || true
           timeout 10 wtype -k Escape; sleep 1
           ipc server close
