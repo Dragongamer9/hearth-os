@@ -88,6 +88,43 @@ joined, each title once per row, at most 24 rows, 60 titles a row and 400 a site
   after a site is added or its link changes; and with Refresh now.
 - `hearth-theater --read-catalogs` reads every site's catalog without a window, saves it and quits (CI uses it).
 
+## Your Jellyfin
+
+Add a site shows **Your Jellyfin** at the top: the Jellyfin servers Theater finds by itself on your Tailscale (your
+home server's first: the Hearth Storage server Hearth Link knows), on your home network (Jellyfin's own discovery,
+UDP 7359) and on this device (port 8096). **Connect** uses Jellyfin's Quick Connect: Theater shows a 6-digit code,
+you approve it in Jellyfin while signed in there (its page or the Jellyfin app: Settings › Quick Connect; it must be
+turned on in Jellyfin's Dashboard › General), and Theater is signed in. It never sees your password.
+
+- The sign-in (Jellyfin's token for Theater) is kept in `jellyfin/<site>.json`, readable by you only, and never
+  synced: on each of your devices you connect once (a Jellyfin that came from another device shows Connect again in
+  Add a site). Removing the tile forgets it.
+- Its rows come from Jellyfin's own lists through its API, not the page reader: **Continue watching** (with a bar for
+  where you stopped and the time left), **Next up**, **Recently added**, **Movies** and **Shows**. Search asks
+  Jellyfin. Posters are its own pictures, saved like any site's.
+- A title opens in Jellyfin's own web player on that server, so where you stopped is kept by Jellyfin and every
+  device carries on there. The first time, the viewer may ask you to sign in to Jellyfin's page (Quick Connect works
+  there too); after that it stays signed in like any site.
+- Older Jellyfin (10.8) and newer (10.9+) both work: each list is asked for at its new address first, then the old.
+- `src/jf.rs` (no network: addresses, items, rows, time left, finding) and `src/remote.rs` (the talking).
+
+## Sync with your devices
+
+The chip beside Theater's name (**Synced · N devices**) opens **Sync with your devices**. Your sites (name, link,
+shelf, favorite, the rows you hid, Jellyfin or not), favorite titles and Continue go to your other Hearth devices
+through **Hearth Link** (the devices you paired in Settings › Hearth Link; friends' devices never get them). When your
+home server is one of them it carries changes between devices that are never on at the same time, and the dialog
+says "Through <server> (your home server) over Tailscale".
+
+- Pictures and how often you opened something aren't synced (each device gets its own); sign-ins never are.
+- Newest change wins, per site and per title. Removing a site on one device removes it on the others. A site added on
+  two devices separately with the same link stays as the one you already had.
+- Hearth Link reads `sites.json` and `titles.json` and leaves what came from another device in `link-inbox.json`;
+  Theater puts it in place when it starts and every 20 seconds while it runs (both under `link-inbox.lock`), so
+  nothing is ever written over a list Theater holds. **Sync now** asks Hearth Link to sync right away.
+- **The switch is per device.** Off writes `sync-off`: this device's sites stay out of sync and nothing more comes in,
+  and nothing is removed anywhere. On again, it syncs from then on.
+
 ## What it doesn't do, and sites that won't list well
 
 - Theater only lists the links a site's pages show and opens those pages to watch, as a browser does. It never
@@ -105,6 +142,8 @@ joined, each title once per row, at most 24 rows, 60 titles a row and 400 a site
 
 ## Tests
 
+- `tests/jellyfin.mjs` (apps-create.yml): a pretend Jellyfin and the real core: finding it, Quick Connect, its rows
+  with where you stopped, search, opening in Jellyfin's player, and sync's inbox put in place at start.
 - `cargo test --lib`: catalog tidying, rows, search addresses, kept titles and files (`src/lib.rs`).
 - `cargo test --lib` also covers the window app's lookup, the log and the pointer's commands.
 - `node --test electron/rules.test.js`: the user agent, bot-check and captcha addresses, the popup rules, log

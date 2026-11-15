@@ -137,6 +137,11 @@ jobs:
           for f in theater-home theater-pointer theater-pages/home-catalogs theater-pages/home-favorite theater-pages/viewer-keyboard theater-pages/search; do
             echo "::notice title=Theater screenshot ($f)::https://github.com/${{ github.repository }}/blob/$to/$f.png"
           done
+      - name: Theater - Jellyfin (a pretend server) and sync's inbox, against the app's core
+        run: |
+          set -o pipefail
+          export HEARTH_THEATER_DIR="$RUNNER_TEMP/theater-jf"
+          timeout 180 node hosts/hearth-theater/tests/jellyfin.mjs "$CARGO_TARGET_DIR/release/hearth-theater" 2>&1 | tee jellyfin.log
       - name: Fonts lists this machine's fonts; hearth-gamma talks to labwc
         run: |
           set -o pipefail

@@ -68,6 +68,19 @@
   .searchbar .inp { flex:1; }
   .grid-cards { display:flex; flex-wrap:wrap; gap:clamp(10px,1.2vw,18px); padding:6px 4px; }
   .row-switch { display:flex; align-items:center; justify-content:space-between; gap:1em; }
+  /* 1.13: where you stopped (Jellyfin), Sync with your devices, Your Jellyfin */
+  .ct .prog { position:absolute; left:0; right:0; bottom:0; height:4px; background:color-mix(in srgb, var(--bg) 70%, transparent); z-index:2; }
+  .ct .prog i { display:block; height:100%; background:var(--ember); }
+  .ct.wide .badge, .ct .prog ~ .badge { bottom:.75em; }
+  #syncBtn { gap:.45em; } #syncBtn .dot { width:.55em; height:.55em; border-radius:50%; background:#6fe39a; display:inline-block; }
+  #syncBtn.off .dot { background:var(--faint); }
+  .src { display:flex; align-items:center; gap:.9em; padding:.7em .9em; border:1px solid var(--line); border-radius:min(14px, var(--corner, 14px)); background:var(--panel); margin:.4em 0; }
+  .src .jf { width:2.4em; height:2.4em; border-radius:min(10px, var(--corner, 10px)); display:grid; place-items:center; font-weight:800; color:#fff; background:linear-gradient(135deg,#7b4bd6,#2fa3e6); flex:none; }
+  .src .txt { flex:1; min-width:0; } .src .txt small { display:block; color:var(--muted); font-size:.82em; }
+  .code { font-size:2.4em; font-weight:800; letter-spacing:.18em; text-align:center; margin:.3em 0; color:var(--text); }
+  .devs { display:grid; gap:.35em; margin:.6em 0; } .devs div { display:flex; justify-content:space-between; color:var(--muted); }
+  .devs div b { color:var(--text); font-weight:600; }
+  .orline { display:flex; align-items:center; gap:.8em; color:var(--faint); margin:.9em 0 .4em; font-size:.85em; } .orline::before, .orline::after { content:''; flex:1; height:1px; background:var(--line); }
   .menu-list .btn { justify-content:flex-start; }
 </style>
 </head>
@@ -76,6 +89,7 @@
   <header>
     <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v11H3zM8 21h8M12 17v4M10 9.5v4l3.5-2z"/></svg>
     <h1>Theater</h1><span class="sub" id="count"></span>
+    <button class="btn f" id="syncBtn" data-k="sync"></button>
     <div class="spacer"></div>
     <div class="tabs" id="tabs" role="tablist"></div>
     <button class="btn primary f" id="addBtn" data-k="add"></button>
@@ -143,11 +157,11 @@ function card(sid, it, opts = {}) {
   const s = site(sid), t = titleOf(sid, it.url);
   const wide = it.kind === 'episode' || it.kind === 'video';
   const eps = it.episodes ? `${it.episodes} episode${it.episodes === 1 ? '' : 's'}` : '';
-  const sub = [opts.showSite && s ? s.name : '', eps, it.year].filter(Boolean).join(' · ');
+  const sub = [opts.showSite && s ? s.name : '', eps, it.year, it.left].filter(Boolean).join(' · ');
   const pic = it.art || it.image ? `<img class="art" ${it.art ? `data-file="${esc(it.art)}"` : ''} data-src="${esc(it.image || '')}" alt="">` : '';
   const kind = { movie: 'Movie', series: 'Series', episode: 'Episode', video: 'Video' }[it.kind] || '';
   return `<button class="ct f ${wide ? 'wide' : 'poster'}" data-card="${k}" data-k="${k}" title="${esc(it.title)}">
-    <div class="pic"><span class="mono">${esc((it.title || '?').trim().charAt(0).toUpperCase())}</span>${pic}${t?.favorite ? `<span class="fav">${ic('star', 'solid')}</span>` : ''}${kind && opts.badge !== false ? `<span class="badge">${kind}</span>` : ''}</div>
+    <div class="pic"><span class="mono">${esc((it.title || '?').trim().charAt(0).toUpperCase())}</span>${pic}${t?.favorite ? `<span class="fav">${ic('star', 'solid')}</span>` : ''}${kind && opts.badge !== false ? `<span class="badge">${kind}</span>` : ''}${it.progress > 0 ? `<span class="prog"><i style="width:${Math.round(Math.min(1, it.progress) * 100)}%"></i></span>` : ''}</div>
     <div class="cap"><div class="name">${esc(it.title)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div></button>`;
 }
 const skeletons = (n = 6) => Array.from({ length: n }, () => '<div class="ct poster skel" aria-hidden="true"><div class="pic"></div><div class="cap"></div></div>').join('');
@@ -186,6 +200,7 @@ function render() {
   CARDS.clear();
   $('#count').textContent = SITES.length ? `${SITES.length} site${SITES.length === 1 ? '' : 's'}` : '';
   $('#addBtn').innerHTML = `${icon('plus')}Add site`;
+  syncChip();
   renderTabs();
   const wall = $('#wall');
   if (!SITES.length) {
@@ -407,6 +422,7 @@ function editor(s) {
   s = s || { name: '', url: '', category: TAB !== 'All' && TAB !== 'Favorites' ? TAB : 'Other' };
   let cat = s.category, named = !!s.name, ask = 0;
   const d = dialog(`<h2>${adding ? 'Add a site' : 'Edit ' + esc(s.name)}</h2>
+    ${adding ? '<div id="jfFound"></div>' : ''}
     <div class="field"><label for="u">Link</label><div class="row" style="flex-wrap:nowrap"><input class="inp f" id="u" placeholder="example.com/shows" value="${esc(s.url)}" autocomplete="off" spellcheck="false" ${adding ? 'data-autofocus' : ''}>
       <button class="btn f" id="paste" title="Paste">${ic('paste')}Paste</button></div>
       <div class="preview muted" id="pv"></div></div>
@@ -414,6 +430,7 @@ function editor(s) {
     <div class="field"><span class="label">Shelf</span><div class="chips">${CATS.map(c => `<button class="chip f ${c === cat ? 'on' : ''}" data-cat="${c}">${c}</button>`).join('')}</div></div>
     <div class="row end"><button class="btn f" data-a="cancel">Cancel</button><button class="btn primary f" data-a="save">${adding ? 'Add' : 'Save'}</button></div>`, { sticky: true });
   const u = $('#u', d), n = $('#n', d), pv = $('#pv', d);
+  if (adding) jellyfinFound($('#jfFound', d));
   n.addEventListener('input', () => { named = !!n.value.trim(); });
   // What the link's page calls itself fills the name in (unless you typed one).
   let pvTimer = 0;
@@ -459,8 +476,83 @@ function editor(s) {
   H.onDialogBack = () => closeDialog();
 }
 
+// ---------------------------------------------------------------- Your Jellyfin (1.13)
+// Jellyfin servers on your Tailscale and home network (the home server's Jellyfin first). Connect signs in with
+// Jellyfin's own Quick Connect: a code you approve in Jellyfin (its page or app) while signed in there, so Theater
+// never sees your password. Its libraries then show as rows (Continue watching with where you stopped, Next up,
+// Recently added, Movies, Shows), and Jellyfin's own player plays them, so every device carries on where you stopped.
+async function jellyfinFound(box) {
+  if (!box) return;
+  let r; try { r = await invoke('jellyfin_find'); } catch { return; }
+  const list = (r.servers || []).filter(x => !SITES.some(s => s.kind === 'jellyfin' && s.url === x.url && JF[s.id]));
+  if (!list.length) return;
+  box.innerHTML = `<span class="label">Your Jellyfin</span>${list.map((x, i) => `<div class="src"><span class="jf">J</span><span class="txt"><b>${esc(x.name)}</b><small>Jellyfin ${esc(x.version || '')} · ${esc(x.where)}</small></span>
+      <button class="btn primary f" data-jf="${i}" ${i === 0 ? 'data-autofocus' : ''}>Connect</button></div>`).join('')}<div class="orline">or add any video site by its link</div>`;
+  box.addEventListener('click', e => { const b = e.target.closest('[data-jf]'); if (b) { closeDialog(); jellyfinConnect(list[+b.dataset.jf]); } });
+  box.querySelector('[data-jf]')?.focus();
+}
+async function jellyfinConnect(srv) {
+  let st; try { st = await invoke('jellyfin_connect', { url: srv.url }); } catch (e) { toast(String(e)); return; }
+  const d = dialog(`<h2>Connect ${esc(srv.name)}</h2>
+    <p class="muted">In Jellyfin, signed in as you (its page or the Jellyfin app on your phone): <b>Settings › Quick Connect</b>, and enter</p>
+    <div class="code">${esc(st.code)}</div>
+    <p class="muted"><span class="spinner"></span> Waiting for Jellyfin… Theater never sees your password.</p>
+    <div class="field"><span class="label">Shelf</span><div class="chips">${CATS.map(c => `<button class="chip f ${c === 'Movies' ? 'on' : ''}" data-cat="${c}">${c}</button>`).join('')}</div></div>
+    <div class="row end"><button class="btn f" data-a="cancel" data-autofocus>Cancel</button></div>`, { sticky: true });
+  let cat = 'Movies', done = false;
+  d.addEventListener('click', e => {
+    const c = e.target.closest('[data-cat]');
+    if (c) { cat = c.dataset.cat; $$('[data-cat]', d).forEach(x => x.classList.toggle('on', x === c)); return; }
+    if (e.target.closest('[data-a="cancel"]')) { done = true; invoke('jellyfin_cancel', { url: srv.url }).catch(() => {}); closeDialog(); }
+  });
+  H.onDialogBack = () => { done = true; invoke('jellyfin_cancel', { url: srv.url }).catch(() => {}); closeDialog(); };
+  while (!done) {
+    await new Promise(r => setTimeout(r, 1500));
+    if (done) return;
+    let w; try { w = await invoke('jellyfin_wait', { url: srv.url, category: cat }); } catch (e) { closeDialog(); toast(String(e)); return; }
+    if (w.site) { done = true; closeDialog(); JF[w.site.id] = w.user; if (!SITES.some(s => s.id === w.site.id)) SITES.push(w.site); render(); toast(`${srv.name} connected as ${w.user}. Reading your libraries…`); readCatalog(w.site.id, false); }
+  }
+}
+
+// ---------------------------------------------------------------- Sync with your devices (1.13)
+// Your sites, favorites, Continue, hidden rows and shelves follow you to every Hearth device: through your home server
+// over Tailscale (Hearth Link), the newest change winning per site and title, never a sign-in or a cookie. On unless
+// you turn it off (here, on any device).
+let SYNC = null;
+let JF = {};   // connected Jellyfin sites here: id → who Theater is signed in as (a synced one connects once per device)
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
+function syncChip() {
+  const b = $('#syncBtn'); if (!b) return;
+  if (!SYNC) { b.hidden = true; return; }
+  b.hidden = false;
+  const none = !SYNC.server && !SYNC.devices.length;
+  b.classList.toggle('off', !SYNC.on || none);
+  b.innerHTML = `<span class="dot"></span>${!SYNC.on ? 'Not synced' : none ? 'Sync: pair a device first' : `Synced · ${SYNC.devices.length + 1} devices`}`;
+}
+async function loadSync() { try { SYNC = await invoke('sync_status'); } catch { SYNC = null; } syncChip(); }
+function syncDialog() {
+  const s = SYNC || { on: false, devices: [] };
+  const d = dialog(`<h2>Sync with your devices</h2>
+    <div class="menu-list"><button class="btn f row-switch" data-s="toggle" data-autofocus><span>Sync your sites, favorites and Continue</span><span class="switch ${s.on ? 'on' : ''}"></span></button></div>
+    <p class="muted">${s.server ? `Through <b>${esc(s.server)}</b> (your home server) over Tailscale${s.last ? ` · last synced ${esc(ago(s.last))}` : ''}` : s.devices.length ? `With your paired devices, through Hearth Link${s.last ? ` · last synced ${esc(ago(s.last))}` : ''}` : 'Pair your devices first: Settings › Hearth Link.'}</p>
+    ${s.devices.length ? `<div class="devs">${s.devices.map(x => `<div><b>${esc(x.name)}</b><span>${esc(x.state)}</span></div>`).join('')}</div>` : ''}
+    <p class="muted small">What follows you: your sites and their shelves, favorites, Continue and the rows you hid. Sign-ins to sites stay on each device. Jellyfin keeps where you stopped itself, on every device.</p>
+    <div class="row end"><button class="btn f" data-s="now" ${s.on && (s.server || s.devices.length) ? '' : 'disabled'}>${icon('refresh')}Sync now</button><button class="btn f" data-s="close">Done</button></div>`);
+  d.addEventListener('click', async e => {
+    const a = e.target.closest('[data-s]')?.dataset.s; if (!a) return;
+    if (a === 'close') { closeDialog(); return; }
+    try {
+      if (a === 'toggle') SYNC = await invoke('sync_set', { on: !s.on });
+      else { SYNC = await invoke('sync_now'); toast('Synced'); const r = await invoke('init'); SITES = r.sites || SITES; CATALOGS = r.catalogs || CATALOGS; TITLES = r.titles || TITLES; JF = r.jellyfin || JF; }
+    } catch (err) { toast(String(err)); return; }
+    closeDialog(); render(); syncDialog();
+  });
+  H.onDialogBack = () => closeDialog();
+}
+
 // ---------------------------------------------------------------- input
 document.addEventListener('click', e => {
+  if (e.target.closest('#syncBtn')) { syncDialog(); return; }
   const t = e.target.closest('[data-tab]'); if (t) { setTab(t.dataset.tab); return; }
   if (e.target.closest('[data-act="add"], #addBtn')) { editor(); return; }
   const tl = e.target.closest('.tile[data-id]'); if (tl) { watch(tl.dataset.id); return; }
@@ -501,9 +593,10 @@ document.addEventListener('paste', e => {
   try {
     const r = await invoke('init');
     SITES = r.sites || []; CATS = r.categories || CATS; FULL = !!r.fullscreen;
-    CATALOGS = r.catalogs || {}; TITLES = r.titles || []; (r.reading || []).forEach(id => READING.add(id));
+    CATALOGS = r.catalogs || {}; TITLES = r.titles || []; JF = r.jellyfin || {}; (r.reading || []).forEach(id => READING.add(id));
   } catch { /* preview in a plain browser */ }
   render();
+  loadSync();
   // Re-draws wait while a dialog is open or you're typing a search, so focus isn't pulled away.
   const later = () => { if (!H.dialogOpen() && TAB !== 'Search') render(); };
   if (H.T?.event) {
@@ -511,6 +604,8 @@ document.addEventListener('paste', e => {
     H.T.event.listen('closed', later);
     // Catalogs read in the background (and their posters) arrive as they're done.
     H.T.event.listen('catalog-reading', e => { READING.add(e.payload.id); later(); });
+    // Sites and titles from your other devices (Hearth Link).
+    H.T.event.listen('synced', e => { const r = e.payload || {}; SITES = r.sites || SITES; CATALOGS = r.catalogs || CATALOGS; TITLES = r.titles || TITLES; JF = r.jellyfin || JF; loadSync(); later(); });
     H.T.event.listen('catalog', e => { READING.delete(e.payload.id); CATALOGS[e.payload.id] = e.payload.catalog; later(); });
   }
 })();
@@ -522,12 +617,23 @@ window.DEMO = (cmd, a) => {
     { id: 's1', name: 'Crunchyroll', url: 'https://www.crunchyroll.com/', category: 'Anime', favorite: true, opened: Date.now() - 3600e3, art: '', icon: '' },
     { id: 's2', name: 'Tubi', url: 'https://tubitv.com/', category: 'Movies', favorite: false, opened: Date.now() - 86400e3, art: '', icon: '' },
     { id: 's3', name: 'Pluto TV', url: 'https://pluto.tv/', category: 'TV', favorite: false, opened: 0, art: '', icon: '' },
-    { id: 's4', name: 'My Jellyfin', url: 'http://192.168.1.20:8096/', category: 'Other', favorite: true, opened: 0, art: '', icon: '' },
+    { id: 's4', name: 'Jellyfin · chris-hearth', kind: 'jellyfin', url: 'http://chris-hearth:8096/', category: 'Movies', favorite: true, opened: Date.now() - 600e3, art: '', icon: '' },
   ], catalogs: window.__demoCatalogs || {}, titles: [] };
+  if (!window.__demoCatalogs && !D.catalogs.s4) {
+    const P = (h, t) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h},55%,40%)"/><stop offset="1" stop-color="hsl(${(h + 50) % 360},60%,14%)"/></linearGradient></defs><rect width="200" height="300" fill="url(#g)"/><text x="100" y="260" font-family="sans-serif" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">${t}</text></svg>`)}`;
+    const W = h => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h},55%,40%)"/><stop offset="1" stop-color="hsl(${(h + 50) % 360},60%,14%)"/></linearGradient></defs><rect width="320" height="180" fill="url(#g)"/></svg>`)}`;
+    const it = (t, h, x = {}) => ({ title: t, url: 'jf:' + t, image: x.kind === 'episode' ? W(h, '') : P(h, t.split(' ')[0]), kind: 'movie', ...x });
+    D.catalogs.s4 = { updated: Date.now(), rows: [
+      { name: 'Continue watching', items: [it('The Long Road · S2 E5', 20, { kind: 'episode', progress: .62, left: '24 min left' }), it('Iron Valley', 200, { progress: .35, left: '1 h 10 min left' }), it('Small Hours · S1 E3', 300, { kind: 'episode', progress: .15, left: '38 min left' })] },
+      { name: 'Next up', items: [it('The Long Road · S2 E6', 60, { kind: 'episode' }), it('Paper Moons · S3 E1', 140, { kind: 'episode' })] },
+      { name: 'Recently added', items: ['Northwind', 'Glass Harbor', 'Copper Lake', 'The Quiet Field', 'Ember Run', 'Lantern Bay'].map((t, i) => it(t, 30 + i * 47, { year: 2026 - i % 3 })) },
+      { name: 'Shows', items: ['The Long Road', 'Paper Moons', 'Small Hours', 'Driftwood'].map((t, i) => it(t, 90 + i * 60, { kind: 'series', episodes: 10 + i * 6 })) },
+    ], search: 'jellyfin', signin: false, sources: [], error: '' };
+  }
   const empty = () => ({ updated: Date.now(), rows: [], search: '', signin: false, sources: [], error: '' });
   const keep = (site, item) => { let t = D.titles.find(x => x.site === site && x.url === item.url); if (!t) D.titles.push(t = { ...item, site, favorite: false, opened: 0, opens: 0 }); return t; };
   if (cmd === 'init') return { sites: D.sites.map(s => ({ ...s })), categories: ['Anime', 'TV', 'Movies', 'Other'], fullscreen: /full/.test(location.hash),
-    catalogs: Object.fromEntries(D.sites.map(s => [s.id, D.catalogs[s.id] || empty()])), titles: D.titles, reading: [] };
+    catalogs: Object.fromEntries(D.sites.map(s => [s.id, D.catalogs[s.id] || empty()])), titles: D.titles, reading: [], jellyfin: D.sites.some(s => s.id === 's4') ? { s4: 'Chris' } : {} };
   if (cmd === 'preview') return { url: a.url, title: 'Sample site', image: '', host: a.url };
   if (cmd === 'add') { const s = { id: 's' + Date.now(), name: a.name || a.url, url: a.url, category: a.category, favorite: false, opened: 0, art: '', icon: '', hidden: [] }; D.sites.push(s); return { ...s }; }
   if (cmd === 'refresh') return D.sites.find(s => s.id === a.id);
@@ -540,6 +646,10 @@ window.DEMO = (cmd, a) => {
     const res = window.__demoSearch?.[a.id];
     return new Promise(r => setTimeout(() => r(res ? { items: res } : { items: [], nosearch: true }), 150));
   }
+  if (cmd === 'sync_status') return window.__demoSync || { on: true, server: 'chris-hearth', last: Date.now() - 120e3, devices: [{ name: 'ROG Ally', state: 'synced 2 min ago' }, { name: 'Living room PC', state: 'synced yesterday' }] };
+  if (cmd === 'jellyfin_find') return { servers: [{ name: 'chris-hearth', url: 'http://chris-hearth:8096/', version: '10.10', where: 'your home server, over Tailscale' }] };
+  if (cmd === 'jellyfin_connect') return { code: '482913' };
+  if (cmd === 'jellyfin_wait') return {};
   if (cmd === 'favorite' || cmd === 'remove' || cmd === 'open') return null;
   return Promise.reject('preview');
 };

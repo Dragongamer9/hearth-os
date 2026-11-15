@@ -9,6 +9,10 @@
 //!   g/ui/<key>                              appearance, layouts, Made for, controller choices (the UI's own)
 //!   g/input/<file>                          Hearth Input controller layouts (config/input)
 //!   g/beacon/custom                         Beacon's games added by hand (custom-games.json)
+//!   g/theater/site/<id>, g/theater/title/<k> Hearth Theater's sites (name, link, shelf, favorite, hidden rows) and
+//!                                           titles (Continue and favorites); not their pictures or sign-ins (a
+//!                                           Jellyfin connects once per device). Theater applies them itself
+//!                                           (link-inbox.json in its folder); its "sync-off" file keeps them here.
 //!   g/x/<ns>/<key>                          one key of a settings file the Hearth Link Decky plugin shares (prefs.json:
 //!                                           Hearth's look, keyboard, music and button settings, Decky plugins' settings
 //!                                           and which plugins you have; each only while its switch is on, on that device)
@@ -56,12 +60,12 @@ pub struct SyncState {
 
 /// Where the synced things are on this device.
 #[derive(Debug, Clone)]
-pub struct Sources { pub data: PathBuf, pub config: PathBuf, pub link: PathBuf, pub beacon_custom: PathBuf }
+pub struct Sources { pub data: PathBuf, pub config: PathBuf, pub link: PathBuf, pub beacon_custom: PathBuf, pub theater: PathBuf }
 
 impl Sources {
     pub fn here() -> Sources {
         let home = hearth_core::paths::home();
-        Sources { data: hearth_core::paths::data_dir(), config: hearth_core::paths::config_dir(), link: crate::home_dir(), beacon_custom: crate::games::beacon_custom_file(&home) }
+        Sources { data: hearth_core::paths::data_dir(), config: hearth_core::paths::config_dir(), link: crate::home_dir(), beacon_custom: crate::games::beacon_custom_file(&home), theater: theater_dir(&home) }
     }
     fn inbox(&self) -> PathBuf { self.link.join("inbox.json") }
     fn ui(&self) -> PathBuf { self.link.join("ui.json") }
@@ -90,6 +94,50 @@ fn prefs_local(src: &Sources) -> (BTreeMap<String, Value>, BTreeMap<String, u64>
         }
     }
     (vals, times)
+}
+
+/// Hearth Theater's folder (its lib.rs data_dir).
+pub fn theater_dir(home: &Path) -> PathBuf {
+    if let Some(d) = std::env::var_os("HEARTH_THEATER_DIR") { return PathBuf::from(d); }
+    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share")).join("hearth-theater")
+}
+fn theater_on(src: &Sources) -> bool { !src.theater.join("sync-off").exists() }
+
+/// A Theater title's name in sync: FNV-1a of its site and link (the same as Theater's jf.rs title_key).
+pub fn theater_title_key(site: &str, url: &str) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in site.bytes().chain([0u8]).chain(url.bytes()) { h ^= b as u64; h = h.wrapping_mul(0x100000001b3); }
+    format!("{h:016x}")
+}
+
+/// Theater's sites and titles as fields (what jf.rs site_field and title_field keep: no pictures, no counts).
+fn theater_fields(src: &Sources, out: &mut BTreeMap<String, Value>) {
+    for x in read_json(&src.theater.join("sites.json")).as_array().into_iter().flatten() {
+        let Some(id) = x["id"].as_str().filter(|s| valid_part(s) && s.len() <= 40) else { continue };
+        out.insert(format!("g/theater/site/{id}"), json!({"id": id, "name": x["name"], "url": x["url"], "category": x["category"], "favorite": x["favorite"],
+            "hidden": x["hidden"], "added": x["added"], "kind": x["kind"].as_str().unwrap_or("")}));
+    }
+    for t in read_json(&src.theater.join("titles.json")).as_array().into_iter().flatten() {
+        let (Some(site), Some(url)) = (t["site"].as_str(), t["url"].as_str()) else { continue };
+        let mut v = t.clone();
+        if let Some(m) = v.as_object_mut() { m.remove("opens"); m.remove("art"); }
+        out.insert(format!("g/theater/title/{}", theater_title_key(site, url)), v);
+    }
+}
+
+/// Puts Theater's changed fields in its inbox, under its lock (Theater takes it too while it applies them).
+fn theater_inbox_add(src: &Sources, sites: &Map<String, Value>, titles: &Map<String, Value>) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(&src.theater);
+    let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(src.theater.join("link-inbox.lock"));
+    if let Ok(l) = &lock { let _ = l.lock(); }
+    let file = src.theater.join("link-inbox.json");
+    let mut cur = read_json(&file);
+    if !cur.is_object() { cur = json!({}); }
+    for (k, v) in sites { cur["sites"][k] = v.clone(); }
+    for (k, v) in titles { cur["titles"][k] = v.clone(); }
+    let r = crate::write_atomic(&file, serde_json::to_string(&cur).unwrap().as_bytes());
+    if let Ok(l) = &lock { let _ = l.unlock(); }
+    r
 }
 
 pub fn inbox_file() -> PathBuf { crate::home_dir().join("inbox.json") }
@@ -124,6 +172,7 @@ pub fn valid_key(k: &str) -> bool {
         ["g", "ui", x] => valid_part(x) && x.len() <= 60,
         ["g", "input", f] => valid_input_file(f),
         ["g", "beacon", "custom"] => true,
+        ["g", "theater", "site" | "title", x] => valid_part(x) && x.len() <= 40,
         ["g", "x", ns, x] => valid_ns(ns) && valid_part(x),
         _ => false,
     }
@@ -196,6 +245,7 @@ pub fn extract(src: &Sources) -> (String, BTreeMap<String, Value>, BTreeMap<Stri
     }
     let bc = read_json(&src.beacon_custom);
     if !bc.is_null() { out.insert("g/beacon/custom".into(), bc); }
+    if theater_on(src) { theater_fields(src, &mut out); }
     out.extend(prefs_local(src).0);
     let mut stats = BTreeMap::new();
     for (gid, s) in lib["stats"].as_object().into_iter().flatten() {
@@ -276,7 +326,10 @@ impl SyncState {
         }
         // Gone since last time: only this profile's and the device's own (another profile's fields aren't here).
         let mine = format!("p/{pid}/");
-        let gone: Vec<String> = self.shadow.keys().filter(|k| (k.starts_with(&mine) || k.starts_with("g/")) && !cur.contains_key(*k) && !pending.contains(*k)).cloned().collect();
+        // Theater's, while its sync is off on this device, aren't gone either: they're just not looked at.
+        let theater = theater_on(src);
+        let gone: Vec<String> = self.shadow.keys().filter(|k| (k.starts_with(&mine) || k.starts_with("g/")) && !cur.contains_key(*k) && !pending.contains(*k)
+            && (theater || !k.starts_with("g/theater/"))).cloned().collect();
         for k in gone {
             self.shadow.remove(&k);
             if self.fields.get(&k).map(|f| !f.v.is_null()).unwrap_or(false) { self.stamp(&k, Value::Null, me); }
@@ -334,6 +387,8 @@ impl SyncState {
         let mut ui = read_json(&src.ui());
         let mut ui_changed = false;
         let mut prefs: Vec<(String, String, Value, u64)> = Vec::new();
+        let (mut th_sites, mut th_titles) = (Map::new(), Map::new());
+        let theater = theater_on(src);
         for k in changed {
             let Some(f) = self.fields.get(k).cloned() else { continue };
             let parts: Vec<&str> = k.split('/').collect();
@@ -347,6 +402,11 @@ impl SyncState {
                     if !f.v.is_null() { crate::write_atomic(&src.beacon_custom, serde_json::to_string_pretty(&f.v).unwrap().as_bytes())?; }
                 }
                 ["g", "x", ns, key] => prefs.push((ns.to_string(), key.to_string(), f.v.clone(), f.t)),
+                // Theater applies these itself (it keeps its lists in memory); the next scan finds them there.
+                ["g", "theater", what, key] => {
+                    set_shadow = false;
+                    if theater { if *what == "site" { th_sites.insert(key.to_string(), f.v.clone()); } else { th_titles.insert(key.to_string(), f.v.clone()); } }
+                }
                 ["g", "ui", key] => {
                     if !ui.is_object() { ui = json!({}); }
                     ui["remote"][*key] = json!({"v": f.v, "t": f.t});
@@ -384,6 +444,7 @@ impl SyncState {
             patch["profiles"][pid]["last"][g] = json!(last);
             self.applied.insert(pg.clone(), others.max(prev));
         }
+        if !th_sites.is_empty() || !th_titles.is_empty() { theater_inbox_add(src, &th_sites, &th_titles)?; }
         if ui_changed { crate::write_atomic(&src.ui(), serde_json::to_string(&ui).unwrap().as_bytes())?; }
         if !prefs.is_empty() {
             // Under prefs.json's lock (the plugin writes it too): "remote" for the plugin to put in place, and "local"
@@ -418,7 +479,7 @@ mod tests {
 
     fn device(root: &Path, name: &str) -> Sources {
         let base = root.join(name);
-        let s = Sources { data: base.join("data"), config: base.join("config"), link: base.join("data/link"), beacon_custom: base.join("config/beacon/custom-games.json") };
+        let s = Sources { data: base.join("data"), config: base.join("config"), link: base.join("data/link"), beacon_custom: base.join("config/beacon/custom-games.json"), theater: base.join("data/hearth-theater") };
         std::fs::create_dir_all(&s.link).unwrap();
         s
     }
@@ -470,6 +531,42 @@ mod tests {
         a.apply(an, asrc, &c, &g).unwrap();
         a.got.insert(bn.into(), resp["rev"].as_u64().unwrap());
         a.ack.insert(bn.into(), resp["got"].as_u64().unwrap());
+    }
+
+    #[test]
+    fn theater_sites_and_titles() {
+        let root = std::env::temp_dir().join(format!("hl-theater-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (sa, sb) = (device(&root, "a"), device(&root, "b"));
+        let (mut a, mut b) = (SyncState::default(), SyncState::default());
+        write(&sa.theater.join("sites.json"), json!([{"id": "s1", "name": "Pluto TV", "url": "https://pluto.tv/", "category": "TV", "art": "s1-art.png", "opens": 4, "favorite": true, "hidden": [], "added": 5, "kind": ""},
+                                                     {"id": "s2", "name": "Jellyfin · den", "url": "http://den:8096/", "category": "Movies", "kind": "jellyfin", "added": 6}]));
+        write(&sa.theater.join("titles.json"), json!([{"site": "s1", "title": "News", "url": "https://pluto.tv/news", "art": "c-s1/x.jpg", "favorite": true, "opened": 9, "opens": 3}]));
+        exchange(&mut a, "A", &sa, &mut b, "B", &sb);
+        let inbox = read_json(&sb.theater.join("link-inbox.json"));
+        assert_eq!(inbox["sites"]["s1"]["name"], "Pluto TV");
+        assert!(inbox["sites"]["s1"].get("art").is_none() && inbox["sites"]["s1"].get("opens").is_none());
+        assert_eq!(inbox["sites"]["s2"]["kind"], "jellyfin");
+        let k = theater_title_key("s1", "https://pluto.tv/news");
+        assert_eq!(inbox["titles"][&k]["favorite"], true);
+        assert!(inbox["titles"][&k].get("art").is_none());
+        // Theater on B applied it (nothing goes back to A for that); then B removes s2 and A hears of it.
+        write(&sb.theater.join("sites.json"), json!([inbox["sites"]["s1"], inbox["sites"]["s2"]]));
+        let _ = std::fs::remove_file(sb.theater.join("link-inbox.json"));
+        exchange(&mut a, "A", &sa, &mut b, "B", &sb);
+        assert!(!sa.theater.join("link-inbox.json").exists());
+        write(&sb.theater.join("sites.json"), json!([inbox["sites"]["s1"]]));
+        exchange(&mut a, "A", &sa, &mut b, "B", &sb);
+        let ia = read_json(&sa.theater.join("link-inbox.json"));
+        assert!(ia["sites"]["s2"].is_null() && ia["sites"].as_object().unwrap().contains_key("s2"));
+        // Sync off on B: nothing more lands there, and its sites aren't taken as removed.
+        write(&sb.theater.join("sync-off"), json!("off"));
+        write(&sb.theater.join("sites.json"), json!([]));
+        let _ = std::fs::remove_file(sa.theater.join("link-inbox.json"));
+        exchange(&mut a, "A", &sa, &mut b, "B", &sb);
+        assert!(!sa.theater.join("link-inbox.json").exists());
+        assert!(!a.fields["g/theater/site/s1"].v.is_null());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
