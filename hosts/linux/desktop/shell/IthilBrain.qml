@@ -23,7 +23,7 @@ Canvas {
     property var prepared: B.prepare(null)
     property var act: []
     readonly property var parts: B.R
-    renderTarget: Canvas.FramebufferObject
+    // Canvas.Image (the default) on purpose: FramebufferObject is OpenGL-only and left the software-drawn dashboard blank
     renderStrategy: Canvas.Cooperative
     onBrainChanged: prepared = B.prepare(brain)
 

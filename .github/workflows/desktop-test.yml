@@ -1919,7 +1919,7 @@ jobs:
           ipc server detail 1; timeout 15 grim shots/server-mode/02-ai-expanded.png || true
           ipc server detail 2; timeout 15 grim shots/server-mode/02b-pictures-expanded.png || true
           ipc server close
-          timeout 20 quickshell ipc -p "$QML" call server play; sleep 1; timeout 15 grim shots/server-mode/03-switch-to-game-mode.png || true
+          ipc server play; sleep 1; timeout 15 grim shots/server-mode/03-switch-to-game-mode.png || true
           ipc server close
           mkdir -p "$XDG_RUNTIME_DIR/hearth-server"
           python3 -c 'import json,time,sys; json.dump({"action": {"kind": "mode", "to": "game"}, "to": "game", "what": "mode", "deadline": time.time() + 9, "total": 10, "from": "web", "by": "Work laptop"}, open(sys.argv[1], "w"))' "$XDG_RUNTIME_DIR/hearth-server/countdown.json"
@@ -2001,6 +2001,8 @@ jobs:
           timeout 10 wtype -k Escape; sleep 1
           ipc server close
           echo "state: $(timeout 20 quickshell ipc -p "$QML" call server state)"
+          # The dashboard's own log and Quickshell's (what it said if it stopped answering)
+          find "$XDG_RUNTIME_DIR/quickshell" -name '*.log' -newer shots/server-mode/labwc.log -exec tail -c 20000 {} \; > shots/server-mode/quickshell.log 2>/dev/null || true
           ipc settings page hs-server; sleep 3; timeout 15 grim shots/server-mode/06-settings-server-mode.png || true
           timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 12); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/06b-settings-what-pauses.png || true
           for i in $(seq 1 8); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/06c-settings-web-page.png || true
