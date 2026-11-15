@@ -1881,6 +1881,7 @@ jobs:
       # page's 10-second countdown, "Back in Server mode", the menu, the idle screen, Settings › Home server › Server mode
       # and System › Startup (Start in and the schedule) inside Server mode, and the web page at phone and laptop sizes.
       - name: Server mode
+        timeout-minutes: 20
         if: always()
         shell: bash
         run: |
@@ -1913,22 +1914,22 @@ jobs:
           if [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ]; then echo "::notice title=Server mode::the dashboard said it's up after ${i}s (the session waits for this)"
           else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$XDG_RUNTIME_DIR/hearth-server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
           sleep 6
-          ipc() { quickshell ipc -p "$QML" call "$@" || echo "ipc $* failed"; sleep 2; }
-          grim shots/server-mode/01-dashboard.png || true
-          ipc server detail 1; grim shots/server-mode/02-ai-expanded.png || true
-          ipc server detail 2; grim shots/server-mode/02b-pictures-expanded.png || true
+          ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
+          timeout 15 grim shots/server-mode/01-dashboard.png || true
+          ipc server detail 1; timeout 15 grim shots/server-mode/02-ai-expanded.png || true
+          ipc server detail 2; timeout 15 grim shots/server-mode/02b-pictures-expanded.png || true
           ipc server close
-          quickshell ipc -p "$QML" call server play; sleep 1; grim shots/server-mode/03-switch-to-game-mode.png || true
+          timeout 20 quickshell ipc -p "$QML" call server play; sleep 1; timeout 15 grim shots/server-mode/03-switch-to-game-mode.png || true
           ipc server close
           mkdir -p "$XDG_RUNTIME_DIR/hearth-server"
           python3 -c 'import json,time,sys; json.dump({"action": {"kind": "mode", "to": "game"}, "to": "game", "what": "mode", "deadline": time.time() + 9, "total": 10, "from": "web", "by": "Work laptop"}, open(sys.argv[1], "w"))' "$XDG_RUNTIME_DIR/hearth-server/countdown.json"
-          sleep 3; grim shots/server-mode/03b-web-switch-countdown.png || true
+          sleep 3; timeout 15 grim shots/server-mode/03b-web-switch-countdown.png || true
           ipc server cancel; sleep 2
-          ipc server back; grim shots/server-mode/04-back-in-server-mode.png || true
+          ipc server back; timeout 15 grim shots/server-mode/04-back-in-server-mode.png || true
           ipc server close
-          ipc server menu; grim shots/server-mode/05-menu.png || true
+          ipc server menu; timeout 15 grim shots/server-mode/05-menu.png || true
           ipc server close
-          ipc server idle dim; grim shots/server-mode/09-screen-idle.png || true
+          ipc server idle dim; timeout 15 grim shots/server-mode/09-screen-idle.png || true
           ipc server idle on
           # 1.13 (mockups next-update/server-ithil-*): Ithil on the server: a stand-in ~/HearthAI, her tile two wide after
           # the AI team (the fixture gets it the way dash() makes it), then her opened view with the live 3D / 4D brain.
@@ -1948,9 +1949,9 @@ jobs:
           json.dump(d, open('/tmp/server-dash.json.tmp', 'w'))
           PY
           mv /tmp/server-dash.json.tmp /tmp/server-dash.json
-          sleep 9; grim shots/server-mode/11-ithil-tile.png || true
-          ipc server detail 2; sleep 5; grim shots/server-mode/12-ithil-opened.png || true
-          wtype -k Down; sleep 4; grim shots/server-mode/12b-ithil-last-24-hours.png || true
+          sleep 9; timeout 15 grim shots/server-mode/11-ithil-tile.png || true
+          ipc server detail 2; sleep 5; timeout 15 grim shots/server-mode/12-ithil-opened.png || true
+          timeout 10 wtype -k Down; sleep 4; timeout 15 grim shots/server-mode/12b-ithil-last-24-hours.png || true
           ipc server close
           # 1.13 (mockups next-update/server-cache, -adblock, -rules): their tiles and opened pages, with the numbers the
           # mockups show (the tiles made by hearth-server-mode's own dns_tiles / rules_tile from stand-in status files).
@@ -1988,24 +1989,24 @@ jobs:
           json.dump(d, open('/tmp/server-dash.json', 'w'))
           print('::notice title=Server mode::the cache, ad blocker and rules tiles are at %s' % ', '.join(str(i + 1) for i, t in enumerate(d['tiles']) if t['id'] in ('cache', 'ads', 'rules')))
           PY
-          sleep 9; grim shots/server-mode/13-cache-ads-rules-tiles.png || true
+          sleep 9; timeout 15 grim shots/server-mode/13-cache-ads-rules-tiles.png || true
           n=$(python3 -c "import json; t=json.load(open('/tmp/server-dash.json'))['tiles']; print(' '.join(str(i + 1) for i, x in enumerate(t) if x['id'] in ('cache', 'ads', 'rules')))")
           set -- $n
-          ipc server detail $1; sleep 3; grim shots/server-mode/14-cache-opened.png || true
+          ipc server detail $1; sleep 3; timeout 15 grim shots/server-mode/14-cache-opened.png || true
           ipc server close
-          ipc server detail $2; sleep 3; grim shots/server-mode/15-adblock-opened.png || true
+          ipc server detail $2; sleep 3; timeout 15 grim shots/server-mode/15-adblock-opened.png || true
           ipc server close
-          ipc server detail $3; sleep 3; grim shots/server-mode/16-rules-opened.png || true
-          wtype -k m; sleep 2; grim shots/server-mode/16b-rules-new-rule.png || true
-          wtype -k Escape; sleep 1
+          ipc server detail $3; sleep 3; timeout 15 grim shots/server-mode/16-rules-opened.png || true
+          timeout 10 wtype -k m; sleep 2; timeout 15 grim shots/server-mode/16b-rules-new-rule.png || true
+          timeout 10 wtype -k Escape; sleep 1
           ipc server close
-          echo "state: $(quickshell ipc -p "$QML" call server state)"
-          ipc settings page hs-server; sleep 3; grim shots/server-mode/06-settings-server-mode.png || true
-          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/server-mode/06b-settings-what-pauses.png || true
-          for i in $(seq 1 8); do wtype -k Down; done; sleep 1; grim shots/server-mode/06c-settings-web-page.png || true
-          ipc settings close; ipc settings page startup; sleep 3; grim shots/server-mode/07-settings-startup.png || true
-          wtype -k Right; sleep 1; for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim shots/server-mode/07b-settings-schedule.png || true
-          ipc settings close; ipc settings page gaming; sleep 3; grim shots/server-mode/08-gaming-start-in.png || true
+          echo "state: $(timeout 20 quickshell ipc -p "$QML" call server state)"
+          ipc settings page hs-server; sleep 3; timeout 15 grim shots/server-mode/06-settings-server-mode.png || true
+          timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 12); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/06b-settings-what-pauses.png || true
+          for i in $(seq 1 8); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/06c-settings-web-page.png || true
+          ipc settings close; ipc settings page startup; sleep 3; timeout 15 grim shots/server-mode/07-settings-startup.png || true
+          timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 6); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/07b-settings-schedule.png || true
+          ipc settings close; ipc settings page gaming; sleep 3; timeout 15 grim shots/server-mode/08-gaming-start-in.png || true
           ipc settings close
           cp "$XDG_RUNTIME_DIR/hearth-server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
           sbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load|Unable to assign" shots/server-mode/dashboard.log 2>/dev/null | grep -viE "uinput|evdev|DBus|hearth-pad" | head -10 | cut -c1-220 | tr '\n' '|' || true)
