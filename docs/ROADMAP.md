@@ -7,7 +7,6 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Planned for 1.13
 
-- [ ] Recovery checked on a Recovery USB against its approved mockup (docs/mockups/checklists/recovery.md): the owner boots the Debian Recovery USB once it's uploaded after 1.12
 - [ ] Hearth Games, stage two: cloud saves, DLC, Amazon (nile)
 - [x] Server mode: pausing the AI team (or any tile) takes a second press within 4 seconds; the team opens with A and paused with A, so one press too many stopped Ollama, pictures and voices together and they stayed stopped (the Nvidia PC: Ithil lost her brain at 4:06 PM)
 - [x] hearth-boot-move finds the Fedora edition's loader in EFI/anatase too (the Nvidia PC's "no EFI/fedora/shimx64.efi"; nothing was changed): only EFI/fedora or EFI/anatase, never a guess between them; the copy remembers which one, so undo puts back the right firmware entry; the virtual PC now starts from EFI/anatase like the Nvidia PC before the move (needs testing on a device: the Nvidia PC)
@@ -28,6 +27,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Later
 
+- [ ] Recovery checked on a Recovery USB against its approved mockup (docs/mockups/checklists/recovery.md): the owner boots the Debian Recovery USB after 1.13 is out (moved from 1.13, Nov 15)
 - [ ] Server mode › 3D printer control (OctoPrint or Mainsail/Klipper) for the Anycubic Chiron, with its camera and Hearth CAD's slicer (the owner's list, not now)
 
 - [ ] Task Manager, still to come: per-app network limits and blocking (Allow: Limit to … / Blocked) from mockup tm-5
