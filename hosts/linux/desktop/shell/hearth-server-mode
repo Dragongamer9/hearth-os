@@ -775,7 +775,9 @@ def rules_tile(st=None):
             'big': ('until ' + clock(now['quietUntil'])) if quiet and now.get('quietUntil') else str(sum(1 for r in st.get('rules') or [] if r.get('on'))),
             'unit': quiet if quiet else 'rules on' if anything else 'nothing here is on until you make it',
             'sub': ' · '.join(now.get('why') or []) if fresh else '',
-            'rows': rows, 'actions': [], 'rules': st}
+            'rows': rows, 'actions': [], 'rules': st,
+            # Your devices on Tailscale, for "When a device is connected" (the picker offers the first).
+            'devices': sorted({(p.get('HostName') or '').split('.')[0] for p in ((ts_status() or {}).get('Peer') or {}).values() if p.get('HostName')})}
 
 
 def rules_act(args):
