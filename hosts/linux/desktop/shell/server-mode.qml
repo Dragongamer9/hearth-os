@@ -68,6 +68,7 @@ ShellRoot {
                     }
                     else if (m.t === "launcher") { if (settingsApp.shown) settingsApp.close(); else dash.pad("menu"); }
                     else if (m.t === "osk") { if (!settingsApp.shown) dash.pad("y"); }
+                    else if (m.t === "help") { if (!settingsApp.shown) dash.pad("view"); }   // View tapped: X-ray in Ithil's brain (1.13)
                 }
             }
         }
