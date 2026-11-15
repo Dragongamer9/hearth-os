@@ -1,0 +1,16 @@
+# Server mode's ad blocker and the DNS for the game download cache (AdGuard Home, hearth-server-dns; docs/SERVER-MODE.md).
+# Off until you turn it on; never part of starting the PC (no [Install]: hearth-server-dns.timer starts it a minute
+# after the PC starts, only while it's on). Your Hearth devices stop using it within seconds when it doesn't answer.
+[Unit]
+Description=Hearth server: DNS for the ad blocker and the game download cache
+After=network-online.target
+StartLimitIntervalSec=15min
+StartLimitBurst=4
+
+[Service]
+ExecStart=/usr/libexec/nimbus/hearth-server-dns run-dns
+ExecStop=-/usr/bin/podman stop -t 5 hearth-dns
+Restart=on-failure
+RestartSec=15
+Nice=5
+TimeoutStartSec=30min

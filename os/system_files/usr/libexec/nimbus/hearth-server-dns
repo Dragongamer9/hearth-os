@@ -1,0 +1,666 @@
+#!/usr/bin/python3
+"""hearth-server-dns: Server mode's game download cache (LANCache) and ad blocker (AdGuard Home), 1.13
+(docs/SERVER-MODE.md; mockups docs/mockups/next-update/server-cache.png and server-adblock.png).
+
+Both are off until you turn them on, and both run on this PC as system containers (root Podman: they need ports 53
+and 80) that are never part of starting the PC: no [Install] on their units; hearth-server-dns.timer (enabled only
+while one of them is on) starts them a minute after the PC starts. A broken one only stops itself.
+
+One DNS server for both: AdGuard Home answers your Hearth devices (on your home network and over Tailscale) and, if
+your router hands it out, everything else on your Wi-Fi. With the ad blocker on it blocks ads and trackers; with the
+cache on it sends the game stores' download names (Steam, Epic Games, Battle.net, Xbox / Microsoft Store: each with
+its own switch) to LANCache on this PC, which keeps each download and gives it to every other device at home-network
+speed. Your Hearth devices use it only while it answers (hearth-dns-client on each of them: back to normal lookups
+within seconds when this PC can't be reached), so nothing ever waits for the server.
+
+Run through pkexec by hearth-server-mode (49-hearth-memory.rules: the person at the device, no password prompt).
+
+  hearth-server-dns status               JSON: settings, whether each runs, today's numbers (also without root:
+                                         /run/hearth/server-dns/status.json, written by the watcher)
+  hearth-server-dns cache on|off         the game download cache
+  hearth-server-dns store STORE on|off   steam | epic | blizzard | xbox
+  hearth-server-dns cache-place DIR GB   where the cache lives and how big it may get (the oldest games leave first)
+  hearth-server-dns cache-empty SURE     empties it (SURE = "sure": the dashboard asks twice)
+  hearth-server-dns ads on|off           the ad blocker
+  hearth-server-dns ads-pause SECONDS    stop blocking for a while (0: block again now)
+  hearth-server-dns allow DOMAIN         let a site that breaks through (from here or your phone)
+  hearth-server-dns device NAME on|off|pause   one device (by its Tailscale name, or "lan" for everything else on
+                                         your Wi-Fi): blocking on, off, or paused for an hour
+  hearth-server-dns run-dns | run-cache  what hearth-server-dns.service / hearth-lancache.service run
+  hearth-server-dns watch                what hearth-server-dns-watch.service runs: numbers every few seconds
+Output: one JSON line; failures print "error: ..." and exit 1. Settings: /etc/hearth/server-dns.json (atomic, a .bak,
+an unreadable file is kept aside and never written over; only what you change is changed).
+"""
+import datetime
+import ipaddress
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+E = os.environ.get
+CONF = E('HEARTH_DNS_CONF', '/etc/hearth/server-dns.json')
+STATE = E('HEARTH_DNS_STATE', '/var/lib/hearth/server-dns')
+RUN = E('HEARTH_DNS_RUN', '/run/hearth/server-dns')
+PODMAN = E('HEARTH_DNS_PODMAN', 'podman')
+SYSTEMCTL = E('HEARTH_DNS_SYSTEMCTL', 'systemctl')
+TAILSCALE = E('HEARTH_DNS_TAILSCALE', 'tailscale')
+API = E('HEARTH_DNS_API', 'http://127.0.0.1:3053')
+DNS_IMAGE = 'docker.io/adguard/adguardhome:latest'
+CACHE_IMAGE = 'docker.io/lancachenet/monolithic:latest'
+MARKER = 'hearth-dns.hearth'          # answered only by this server: how hearth-dns-client finds it and checks it's up
+UPSTREAM = ['https://dns.quad9.net/dns-query', 'https://cloudflare-dns.com/dns-query', '9.9.9.9', '1.1.1.1']
+BLOCKLIST = 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt'   # AdGuard DNS filter
+
+# The stores' download names (from uklans/cache-domains, the list LANCache itself uses). Only download hosts: sign-in,
+# the stores' pages and Windows Update are never sent to the cache.
+STORES = {
+    'steam': {'label': 'Steam', 'domains': ['lancache.steamcontent.com', '*.steamcontent.com', 'steampipe.akamaized.net',
+                                            'steampipe-kr.akamaized.net', 'steampipe-partner.akamaized.net',
+                                            'cdn.steamstatic.com.8686c.com', 'steamcdn-a.akamaihd.net',
+                                            'edgecast.steamstatic.com', 'clientconfig.akamai.steamstatic.com']},
+    'epic': {'label': 'Epic Games', 'domains': ['download.epicgames.com', 'download2.epicgames.com', 'download3.epicgames.com',
+                                                'download4.epicgames.com', 'egdownload.fastly-edge.com',
+                                                'epicgames-download1.akamaized.net', 'fastly-download.epicgames.com',
+                                                'cloudflare.epicgamescdn.com']},
+    'blizzard': {'label': 'Battle.net', 'domains': ['dist.blizzard.com', 'dist.blizzard.com.edgesuite.net',
+                                                    'blizzard.vo.llnwd.net', 'blzddist1-a.akamaihd.net',
+                                                    'blzddist2-a.akamaihd.net', 'blzddist3-a.akamaihd.net',
+                                                    'level3.blizzard.com', 'level3.ssl.blizzard.com', 'edge.blizzard.top.comcast.net',
+                                                    'cdn.blizzard.com', '*.cdn.blizzard.com']},
+    'xbox': {'label': 'Xbox / Microsoft Store', 'domains': ['assets1.xboxlive.com', 'assets2.xboxlive.com', 'xvcf1.xboxlive.com',
+                                                            'xvcf2.xboxlive.com', 'd1.xboxlive.com', 'd2.xboxlive.com',
+                                                            'dlassets.xboxlive.com', 'dlassets2.xboxlive.com',
+                                                            'assets1.xboxlive.cn', 'assets2.xboxlive.cn']},
+}
+DEFAULTS = {'cache': {'on': False, 'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': False},
+                      'dir': '/var/lib/hearth/server-dns/cache', 'sizeGB': 500},
+            'ads': {'on': False, 'pausedUntil': 0, 'allow': [], 'devices': {}}}
+
+
+class Fail(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------- settings
+def merged(over, base):
+    out = json.loads(json.dumps(base))
+    for k, v in (over or {}).items():
+        out[k] = merged(v, out[k]) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def read_conf():
+    """(settings with defaults filled in, readable). An unreadable file isn't written over (see set_conf)."""
+    try:
+        raw = open(CONF, encoding='utf-8').read()
+    except OSError:
+        return merged({}, DEFAULTS), True
+    try:
+        v = json.loads(raw)
+        if not isinstance(v, dict):
+            raise ValueError
+        return merged(v, DEFAULTS), True
+    except ValueError:
+        return merged({}, DEFAULTS), False
+
+
+def write_json(path, obj, bak=False, mode=0o644):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = '%s.tmp.%d' % (path, os.getpid())
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, indent=1, sort_keys=True)
+        f.write('\n')
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    if bak and os.path.exists(path):
+        try:
+            shutil.copy2(path, path + '.bak')
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def set_conf(change):
+    """Only what changed: read what's there (the file, not the defaults), change that one thing, write it back."""
+    try:
+        raw = open(CONF, encoding='utf-8').read()
+        cur = json.loads(raw)
+        if not isinstance(cur, dict):
+            raise ValueError
+    except OSError:
+        cur = {}
+    except ValueError:
+        os.replace(CONF, '%s.unreadable-%d' % (CONF, int(time.time())))     # kept aside, never written over
+        cur = {}
+    change(cur)
+    write_json(CONF, cur, bak=True)
+    return read_conf()[0]
+
+
+def section(cur, name):
+    cur.setdefault(name, {})
+    return cur[name]
+
+
+# ---------------------------------------------------------------------- this PC's addresses
+def run(cmd, timeout=20, inp=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+
+
+def lan_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('192.0.2.1', 9))           # no packet is sent: only the route's own address
+        ip = s.getsockname()[0]
+        return ip if ipaddress.ip_address(ip).is_private and not ip.startswith('100.') else ''
+    except OSError:
+        return ''
+    finally:
+        s.close()
+
+
+def ts_status():
+    rc, out, _ = run([TAILSCALE, 'status', '--json'], timeout=8)
+    try:
+        return json.loads(out) if rc == 0 else {}
+    except ValueError:
+        return {}
+
+
+def ts_ip(st=None):
+    st = st if st is not None else ts_status()
+    for ip in (st.get('Self') or {}).get('TailscaleIPs') or []:
+        if '.' in ip:
+            return ip
+    return ''
+
+
+# ---------------------------------------------------------------------- AdGuard Home's config (Hearth writes it)
+def yaml_str(s):
+    return json.dumps(str(s))
+
+
+def adguard_rules(conf, names, now=None):
+    """The rules that turn blocking off where you asked: everything (paused or off), a device (its Tailscale address:
+    your Hearth devices always ask over Tailscale, at home too, so each is known by name), or everything else on your
+    Wi-Fi (home-network addresses). Filtering itself stays on so the cache's names keep working."""
+    now = now or time.time()
+    ads = conf['ads']
+    rules = ['@@||%s^' % d for d in ads.get('allow') or []]
+    devs = ads.get('devices') or {}
+    for name, dv in sorted(devs.items()):
+        off = dv.get('on') is False or dv.get('pausedUntil', 0) > now
+        if not off:
+            continue
+        if name == 'lan':
+            rules.append('@@||*^$client=10.0.0.0/8|172.16.0.0/12|192.168.0.0/16')
+            continue
+        for ip in sorted(ip for ip, n in names.items() if n == name) or dv.get('ids') or []:
+            rules.append("@@||*^$client='%s'" % ip)
+    return rules
+
+
+def adguard_yaml(conf, lan, ts, names=None, now=None):
+    """The parts of AdGuardHome.yaml Hearth decides; AdGuard fills in the rest the first time it starts."""
+    now = now or time.time()
+    names = names if names is not None else {}
+    cache, ads = conf['cache'], conf['ads']
+    binds = [ip for ip in (lan, ts) if ip] or ['127.0.0.1']
+    rewrites = [(MARKER, ts or lan or '127.0.0.1')]
+    if lan:
+        rewrites.append(('lan.' + MARKER, lan))
+    if ts:
+        rewrites.append(('ts.' + MARKER, ts))
+    if cache['on'] and lan:
+        for sid, s in STORES.items():
+            if cache['stores'].get(sid):
+                rewrites += [(d, lan) for d in s['domains']]
+    blocking = ads['on'] and ads['pausedUntil'] <= now
+    rules = adguard_rules(conf, names, now)
+    L = ['# Written by Hearth (hearth-server-dns): your choices in Server mode. Changes here are replaced.',
+         'http:', '  address: 127.0.0.1:3053', '  session_ttl: 720h',
+         'users: []', 'dns:', '  bind_hosts:'] + ['    - ' + b for b in binds] + [
+         '  port: 53', '  upstream_dns:'] + ['    - ' + yaml_str(u) for u in UPSTREAM] + [
+         '  bootstrap_dns:', '    - 9.9.9.9', '    - 1.1.1.1', '  cache_size: 4194304', '  ratelimit: 0',
+         '  refuse_any: true', '  use_private_ptr_resolvers: false',
+         'filtering:', '  protection_enabled: true', '  filtering_enabled: true',
+         '  blocking_mode: default', '  blocked_response_ttl: 10', '  rewrites:'] + [
+         '    - domain: %s\n      answer: %s' % (yaml_str(d), yaml_str(a)) for d, a in rewrites] + [
+         'filters:', '  - enabled: %s' % ('true' if blocking else 'false'), '    url: ' + yaml_str(BLOCKLIST),
+         '    name: "AdGuard DNS filter"', '    id: 1'] + (
+         ['user_rules:'] + ['  - ' + yaml_str(r) for r in rules] if rules else ['user_rules: []']) + [
+         'clients:', '  persistent: []',
+         'querylog:', '  enabled: true', '  interval: 24h', 'statistics:', '  enabled: true', '  interval: 24h',
+         'schema_version: 28', '']
+    return '\n'.join(L)
+
+
+def write_adguard(conf):
+    path = os.path.join(STATE, 'adguard', 'conf', 'AdGuardHome.yaml')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.join(STATE, 'adguard', 'work'), exist_ok=True)
+    st = ts_status()
+    text = adguard_yaml(conf, lan_ip(), ts_ip(st), device_names(st))
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+    os.replace(tmp, path)
+    return path
+
+
+# ---------------------------------------------------------------------- starting and stopping
+def unit(cmd, *units):
+    return run([SYSTEMCTL, cmd, '--no-block', *units], timeout=30)[0] == 0
+
+
+def apply(conf):
+    """What runs follows the settings: the DNS server while either is on, LANCache while the cache is on, and the
+    timer (start them again after a restart) only while one is on."""
+    need_dns = conf['cache']['on'] or conf['ads']['on']
+    write_adguard(conf)
+    if need_dns:
+        unit('restart', 'hearth-server-dns.service', 'hearth-server-dns-watch.service')
+        run([SYSTEMCTL, 'enable', 'hearth-server-dns.timer'], timeout=20)
+    else:
+        unit('stop', 'hearth-server-dns.service', 'hearth-server-dns-watch.service')
+        run([SYSTEMCTL, 'disable', 'hearth-server-dns.timer'], timeout=20)
+    if conf['cache']['on']:
+        unit('restart', 'hearth-lancache.service')
+    else:
+        unit('stop', 'hearth-lancache.service')
+
+
+def ensure_image(image):
+    if run([PODMAN, 'image', 'exists', image], timeout=30)[0] == 0:
+        return
+    rc, out, err = run([PODMAN, 'pull', '-q', image], timeout=1800)
+    if rc != 0:
+        raise Fail('couldn\'t download %s: %s' % (image, (err or out).strip()[-200:]))
+
+
+def cmd_run_dns():
+    conf = read_conf()[0]
+    write_adguard(conf)
+    ensure_image(DNS_IMAGE)
+    run([PODMAN, 'rm', '-f', 'hearth-dns'], timeout=60)
+    os.execvp(PODMAN, [PODMAN, 'run', '--rm', '--name', 'hearth-dns', '--network', 'host', '--pull', 'never',
+                       '-v', '%s:/opt/adguardhome/conf:Z' % os.path.join(STATE, 'adguard', 'conf'),
+                       '-v', '%s:/opt/adguardhome/work:Z' % os.path.join(STATE, 'adguard', 'work'),
+                       DNS_IMAGE, '-c', '/opt/adguardhome/conf/AdGuardHome.yaml', '-w', '/opt/adguardhome/work', '--no-check-update'])
+
+
+def cmd_run_cache():
+    conf = read_conf()[0]
+    c = conf['cache']
+    d = c['dir']
+    os.makedirs(os.path.join(d, 'data'), exist_ok=True)
+    os.makedirs(os.path.join(d, 'logs'), exist_ok=True)
+    ensure_image(CACHE_IMAGE)
+    lan, ts = lan_ip(), ts_ip()
+    ports = []
+    for ip in [x for x in (lan, ts) if x] or ['127.0.0.1']:
+        ports += ['-p', '%s:80:80' % ip]
+    run([PODMAN, 'rm', '-f', 'hearth-lancache'], timeout=60)
+    # Its own lookups go straight to the internet (never back to Hearth's DNS, which sends the stores here).
+    os.execvp(PODMAN, [PODMAN, 'run', '--rm', '--name', 'hearth-lancache', '--pull', 'never', *ports,
+                       '-e', 'UPSTREAM_DNS=9.9.9.9 1.1.1.1', '-e', 'CACHE_DISK_SIZE=%dg' % int(c['sizeGB']),
+                       '-e', 'CACHE_INDEX_SIZE=%dm' % max(250, int(c['sizeGB']) // 4), '-e', 'CACHE_MAX_AGE=3650d',
+                       '-v', '%s:/data/cache:Z' % os.path.join(d, 'data'), '-v', '%s:/data/logs:Z' % os.path.join(d, 'logs'),
+                       CACHE_IMAGE])
+
+
+# ---------------------------------------------------------------------- the numbers
+def api(path, body=None):
+    req = urllib.request.Request(API + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=3) as r:
+        data = r.read()
+        return json.loads(data) if data.strip() else {}
+
+
+LOG_RE = re.compile(r'^\[(?P<store>[^\]]+)\]\s+(?P<ip>\S+).*?"(?:GET|HEAD) (?P<path>\S+)[^"]*"\s+(?P<code>\d{3})\s+(?P<bytes>\d+)'
+                    r'\s+"[^"]*"\s+"[^"]*"\s+"(?P<hit>[A-Z-]+)"')        # referer, user agent, then HIT / MISS
+STORE_OF = {'steam': 'Steam', 'epicgames': 'Epic Games', 'blizzard': 'Battle.net', 'xboxlive': 'Xbox',
+            'windowsupdate': 'Xbox', 'wsus': 'Xbox'}
+
+
+def device_names(st=None):
+    st = st if st is not None else ts_status()
+    out = {}
+    for p in list((st.get('Peer') or {}).values()) + [st.get('Self') or {}]:
+        name = (p.get('HostName') or p.get('DNSName') or '').split('.')[0]
+        for ip in p.get('TailscaleIPs') or []:
+            out[ip] = name
+    return out
+
+
+def name_of(ip, names):
+    if ip in names:
+        return names[ip]
+    try:
+        return socket.gethostbyaddr(ip)[0].split('.')[0]
+    except OSError:
+        return ip
+
+
+def steam_game(path, cache):
+    """A Steam download's game, best effort: its depot's app (the store's name for it), remembered."""
+    m = re.match(r'/depot/(\d+)/', path)
+    if not m:
+        return ''
+    depot = int(m.group(1))
+    key = str(depot)
+    if key in cache:
+        return cache[key]
+    name = ''
+    for app in (depot - 1, depot - depot % 10):
+        try:
+            with urllib.request.urlopen('https://store.steampowered.com/api/appdetails?filters=basic&appids=%d' % app, timeout=4) as r:
+                j = json.loads(r.read())
+            d = (j.get(str(app)) or {})
+            if d.get('success'):
+                name = (d.get('data') or {}).get('name') or ''
+                break
+        except (OSError, ValueError):
+            break
+    cache[key] = name
+    return name
+
+
+def cache_tick(stats, conf, names, now=None):
+    """Reads what LANCache wrote since last time: bytes per day (from the cache = saved; from the internet once),
+    and who's downloading right now."""
+    now = now or time.time()
+    path = os.path.join(conf['cache']['dir'], 'logs', 'access.log')
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return stats
+    pos = stats.get('pos', 0)
+    if pos > size:
+        pos = 0                                    # a new log
+    days = stats.setdefault('days', {})
+    live = stats.setdefault('live', {})
+    games = stats.setdefault('games', {})
+    with open(path, 'rb') as f:
+        f.seek(pos)
+        chunk = f.read(32 * 1024 * 1024)
+        stats['pos'] = pos + len(chunk)
+    for raw in chunk.decode('utf-8', 'replace').splitlines():
+        m = LOG_RE.match(raw)
+        if not m:
+            continue
+        b = int(m.group('bytes'))
+        day = datetime.date.fromtimestamp(now).isoformat()
+        rec = days.setdefault(day, {'hit': 0, 'miss': 0})
+        hit = m.group('hit') == 'HIT'
+        rec['hit' if hit else 'miss'] += b
+        k = m.group('ip') + ' ' + m.group('store')
+        lv = live.setdefault(k, {'bytes': [], 'hit': 0, 'miss': 0, 'game': ''})
+        lv['bytes'].append([now, b])
+        lv['hit' if hit else 'miss'] += b
+        lv['at'] = now
+        if m.group('store') == 'steam' and not lv.get('game'):
+            lv['game'] = steam_game(m.group('path'), games)
+    for k in list(live):
+        live[k]['bytes'] = [x for x in live[k]['bytes'] if now - x[0] < 10]
+        if now - live[k].get('at', 0) > 30:
+            del live[k]
+    for d in sorted(days)[:-14]:
+        del days[d]
+    return stats
+
+
+def cache_view(stats, conf, names, now=None):
+    now = now or time.time()
+    today = datetime.date.fromtimestamp(now)
+    week = [(today - datetime.timedelta(days=i)) for i in range(6, -1, -1)]
+    days = stats.get('days') or {}
+    bars = [{'day': d.strftime('%a'), 'saved': (days.get(d.isoformat()) or {}).get('hit', 0)} for d in week]
+    hit = sum((days.get(d.isoformat()) or {}).get('hit', 0) for d in week)
+    miss = sum((days.get(d.isoformat()) or {}).get('miss', 0) for d in week)
+    rows = []
+    for k, lv in (stats.get('live') or {}).items():
+        ip, store = k.split(' ', 1)
+        rate = sum(b for _, b in lv['bytes']) / 10.0
+        rows.append({'device': name_of(ip, names), 'what': lv.get('game') or '%s download' % STORE_OF.get(store, store.title()),
+                     'from': 'from the cache' if lv['hit'] >= lv['miss'] else 'from the internet once', 'rate': rate})
+    rows.sort(key=lambda r: -r['rate'])
+    return {'savedWeek': hit, 'internetWeek': miss, 'devicesWeek': hit + miss, 'bars': bars, 'now': rows[:6],
+            'used': stats.get('used', 0), 'sizeGB': conf['cache']['sizeGB'], 'dir': conf['cache']['dir'],
+            'drive': drive_name(conf['cache']['dir'])}
+
+
+def drive_name(path):
+    rc, out, _ = run(['findmnt', '-n', '-o', 'TARGET,LABEL', '--target', path], timeout=5)
+    p = out.split()
+    if not p:
+        return 'This PC'
+    if len(p) > 1 and p[1]:
+        return p[1]
+    return 'System drive' if p[0] in ('/', '/var', '/sysroot') else os.path.basename(p[0]) or 'This PC'
+
+
+def ads_view(conf, names, now=None):
+    now = now or time.time()
+    out = {'today': None, 'top': [], 'devices': []}
+    try:
+        s = api('/control/stats')
+        q = s.get('num_dns_queries') or 0
+        bl = s.get('num_blocked_filtering') or 0
+        out['today'] = {'percent': round(100.0 * bl / q) if q else 0, 'blocked': bl,
+                        'ms': round((s.get('avg_processing_time') or 0) * 1000)}
+        out['top'] = [{'name': list(x)[0], 'count': list(x.values())[0]} for x in (s.get('top_blocked_domains') or [])[:4]]
+        lan_seen = [list(x)[0] for x in s.get('top_clients') or []]
+    except (OSError, ValueError, AttributeError, IndexError):
+        lan_seen = []
+    devs = conf['ads'].get('devices') or {}
+    me = socket.gethostname().split('.')[0]
+    st = ts_status()
+    rows = [{'id': me, 'name': me + ' (this PC)', 'where': ''}]
+    for p in (st.get('Peer') or {}).values():
+        n = (p.get('HostName') or '').split('.')[0]
+        # Your devices on your Tailscale (phones, laptops, the Ally): each can use it through hearth-dns-client
+        # (Hearth devices) or Tailscale's own DNS setting (others).
+        if n and n != me:
+            rows.append({'id': n, 'name': n + (' · over Tailscale' if p.get('Online') else ''), 'where': ''})
+    for r in rows:
+        dv = devs.get(r['id']) or {}
+        paused = dv.get('pausedUntil', 0) > now
+        r.update({'on': dv.get('on', True) and not paused, 'state': 'Paused %s' % left(dv['pausedUntil'] - now) if paused
+                  else 'Off' if dv.get('on') is False else 'Using it'})
+    lan = devs.get('lan') or {}
+    others = [ip for ip in lan_seen if ipaddress.ip_address(ip).is_private and ip not in names] if lan_seen else []
+    rows.append({'id': 'lan', 'name': 'Everything else on your Wi-Fi', 'on': lan.get('on', True),
+                 'state': 'Through the router' if others else 'Set your router\'s DNS to %s' % (lan_ip() or 'this PC')})
+    out['devices'] = rows
+    out['pausedUntil'] = conf['ads']['pausedUntil'] if conf['ads']['pausedUntil'] > now else 0
+    return out
+
+
+def left(secs):
+    secs = max(0, int(secs))
+    return '%d h' % round(secs / 3600) if secs >= 3000 else '%d min' % max(1, round(secs / 60))
+
+
+def active(u):
+    return run([SYSTEMCTL, 'is-active', u], timeout=8)[1].strip() == 'active'
+
+
+def status(stats=None):
+    conf, readable = read_conf()
+    names = device_names()
+    if stats is None:
+        try:
+            stats = json.load(open(os.path.join(STATE, 'stats.json')))
+        except (OSError, ValueError):
+            stats = {}
+    return {'cache': dict(conf['cache'], running=active('hearth-lancache.service'), view=cache_view(stats, conf, names),
+                          storeNames={k: v['label'] for k, v in STORES.items()}),
+            'ads': dict(conf['ads'], running=active('hearth-server-dns.service'), view=ads_view(conf, names)),
+            'settingsReadable': readable, 'lan': lan_ip(), 'at': int(time.time())}
+
+
+def cmd_watch(once=False):
+    """The numbers, every few seconds, for the dashboard (readable without root) while either is on."""
+    path = os.path.join(STATE, 'stats.json')
+    try:
+        stats = json.load(open(path))
+    except (OSError, ValueError):
+        stats = {}
+    n = 0
+    while True:
+        conf = read_conf()[0]
+        names = device_names()
+        stats = cache_tick(stats, conf, names)
+        if n % 120 == 0 and conf['cache']['on']:
+            rc, out, _ = run(['du', '-sb', os.path.join(conf['cache']['dir'], 'data')], timeout=120)
+            if rc == 0 and out.split():
+                stats['used'] = int(out.split()[0])
+        # The ad blocker's pause, and each device's hour, end by themselves (what they were before comes back).
+        ended = conf['ads']['pausedUntil'] and conf['ads']['pausedUntil'] <= time.time()
+        ended_devs = [k for k, dv in (conf['ads'].get('devices') or {}).items() if dv.get('pausedUntil') and dv['pausedUntil'] <= time.time()]
+        if ended or ended_devs:
+            def back(c):
+                ads = section(c, 'ads')
+                if ended:
+                    ads['pausedUntil'] = 0
+                for k in ended_devs:
+                    section(section(ads, 'devices'), k)['pausedUntil'] = 0
+            set_conf(back)
+            write_adguard(read_conf()[0])
+            unit('restart', 'hearth-server-dns.service')
+        write_json(path, stats)
+        write_json(os.path.join(RUN, 'status.json'), status(stats))
+        if once:
+            return status(stats)
+        n += 1
+        time.sleep(5)
+
+
+# ---------------------------------------------------------------------- the commands
+def need_root():
+    if os.geteuid() != 0 and not E('HEARTH_DNS_TEST'):
+        raise Fail('needs root')
+
+
+def onoff(v):
+    if v not in ('on', 'off'):
+        raise Fail('on or off')
+    return v == 'on'
+
+
+def changed(change):
+    conf = set_conf(change)
+    apply(conf)
+    return status()
+
+
+def main(argv):
+    a = argv[1:]
+    cmd = a[0] if a else ''
+    try:
+        if cmd == 'status':
+            out = status()
+        elif cmd == 'run-dns':
+            need_root()
+            cmd_run_dns()
+            return 0
+        elif cmd == 'run-cache':
+            need_root()
+            cmd_run_cache()
+            return 0
+        elif cmd == 'start':
+            # hearth-server-dns.timer, a minute after the PC starts: what's on starts again (nothing when both are off).
+            need_root()
+            conf = read_conf()[0]
+            if conf['cache']['on'] or conf['ads']['on']:
+                write_adguard(conf)
+                unit('start', 'hearth-server-dns.service', 'hearth-server-dns-watch.service')
+                if conf['cache']['on']:
+                    unit('start', 'hearth-lancache.service')
+            out = {'ok': True}
+        elif cmd == 'watch':
+            need_root()
+            out = cmd_watch(once='--once' in a)
+        else:
+            need_root()
+            if cmd == 'cache' and len(a) == 2:
+                on = onoff(a[1])
+                out = changed(lambda c: section(c, 'cache').update(on=on))
+            elif cmd == 'store' and len(a) == 3 and a[1] in STORES:
+                on = onoff(a[2])
+                out = changed(lambda c: section(section(c, 'cache'), 'stores').update({a[1]: on}))
+            elif cmd == 'cache-place' and len(a) == 3:
+                d = os.path.realpath(a[1])
+                try:
+                    gb = int(a[2])
+                except ValueError:
+                    raise Fail('the size in GB')
+                if not 20 <= gb <= 20000:
+                    raise Fail('between 20 GB and 20 TB')
+                if not d.startswith(('/var/', '/run/media/', '/mnt/', '/media/')) or d.startswith('/var/lib/hearth/server-dns/adguard'):
+                    raise Fail('pick a folder on a drive (under /run/media, /mnt, /media or /var)')
+                out = changed(lambda c: section(c, 'cache').update(dir=d, sizeGB=gb))
+            elif cmd == 'cache-empty' and len(a) == 2 and a[1] == 'sure':
+                conf = read_conf()[0]
+                data = os.path.join(conf['cache']['dir'], 'data')
+                unit('stop', 'hearth-lancache.service')
+                time.sleep(2)
+                if os.path.isdir(data):
+                    for n in os.listdir(data):
+                        p = os.path.join(data, n)
+                        shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
+                if conf['cache']['on']:
+                    unit('start', 'hearth-lancache.service')
+                out = status()
+            elif cmd == 'ads' and len(a) == 2:
+                on = onoff(a[1])
+                out = changed(lambda c: section(c, 'ads').update(on=on, pausedUntil=0))
+            elif cmd == 'ads-pause' and len(a) == 2 and a[1].isdigit():
+                secs = min(int(a[1]), 24 * 3600)
+                out = changed(lambda c: section(c, 'ads').update(pausedUntil=int(time.time()) + secs if secs else 0))
+            elif cmd == 'allow' and len(a) == 2:
+                dom = a[1].strip().lower()
+                dom = re.sub(r'^[a-z]+://', '', dom).split('/')[0]
+                if not re.match(r'^(?=.{3,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$', dom):
+                    raise Fail('a site\'s name, like example.com')
+                out = changed(lambda c: section(c, 'ads').update(allow=sorted(set((section(c, 'ads').get('allow') or []) + [dom]))))
+            elif cmd == 'device' and len(a) == 3 and a[2] in ('on', 'off', 'pause'):
+                name = a[1]
+                if not re.match(r'^[A-Za-z0-9._-]{1,63}$', name):
+                    raise Fail('a device\'s name')
+                ids = [] if name == 'lan' else [ip for ip, n in device_names().items() if n == name]
+
+                def ch(c):
+                    devs = section(section(c, 'ads'), 'devices')
+                    dv = devs.setdefault(name, {})
+                    if ids:
+                        dv['ids'] = ids
+                    dv['on'] = a[2] != 'off'
+                    dv['pausedUntil'] = int(time.time()) + 3600 if a[2] == 'pause' else 0
+                out = changed(ch)
+            else:
+                print(__doc__.strip(), file=sys.stderr)
+                return 2
+    except Fail as e:
+        print('error: %s' % e, flush=True)
+        return 1
+    print(json.dumps(out), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
