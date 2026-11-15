@@ -113,11 +113,7 @@ jobs:
         working-directory: hosts/hearth-core
         run: |
           set -o pipefail
-          if ! cargo test 2>&1 | tee test.log; then
-            echo "::error title=hearth-core::$( (grep -E -A8 '^(error|---- |thread .* panicked)' test.log | head -60; echo ===; tail -25 test.log) | tr '\n' '|' | cut -c1-3900)"
-            exit 1
-          fi
-          echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+          "$GITHUB_WORKSPACE/tools/cargo-test-watch.sh" 900 hearth-core
       - name: WebKit and GTK for the app
         run: |
           sudo apt-get update -qq
