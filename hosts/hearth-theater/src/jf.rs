@@ -239,11 +239,13 @@ pub fn apply_inbox(sites: &mut Vec<Site>, titles: &mut Vec<Title>, inbox: &Value
             if sites.iter().any(|s| &s.id == id) { removed.push(id.clone()); }
             continue;
         }
-        let Ok(url) = crate::normalize_url(v["url"].as_str().unwrap_or("")) else { continue };
+        let kind = if v["kind"] == KIND { KIND.to_string() } else { String::new() };
+        // A Jellyfin's address may be a bare Tailscale name ("http://chris-hearth:8096/"), which web links never are.
+        let url = if kind == KIND { base_url(v["url"].as_str().unwrap_or("")) } else { crate::normalize_url(v["url"].as_str().unwrap_or("")) };
+        let Ok(url) = url else { continue };
         let name = crate::clean_title(v["name"].as_str().unwrap_or(""));
         let name = if name.is_empty() { crate::host_name(&url) } else { name.chars().take(crate::MAX_NAME).collect() };
         let hidden: Vec<String> = v["hidden"].as_array().into_iter().flatten().filter_map(Value::as_str).take(60).map(|s| s.chars().take(80).collect()).collect();
-        let kind = if v["kind"] == KIND { KIND.to_string() } else { String::new() };
         match sites.iter_mut().find(|s| &s.id == id) {
             Some(s) => {
                 s.name = name; s.url = url; s.category = crate::fix_category(v["category"].as_str().unwrap_or(""));
@@ -378,7 +380,7 @@ mod tests {
         let inbox = json!({"sites": {
             "s1": {"name": "A2", "url": "https://a.example/", "category": "Anime", "favorite": true, "hidden": ["News"]},
             "s2": null,
-            "s3": {"name": "Jelly", "url": "http://h:8096/", "category": "Movies", "kind": "jellyfin"},
+            "s3": {"name": "Jelly", "url": "http://chris-hearth:8096/", "category": "Movies", "kind": "jellyfin"},
             "s4": {"name": "Dup", "url": "https://b.example/"},
             "../x": {"name": "bad", "url": "https://c.example/"}},
             "titles": serde_json::Map::from_iter([(key.clone(), title_field(&t))])});

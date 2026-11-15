@@ -347,7 +347,9 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
             Ok(out)
         }
         "edit" => {
-            let (id, url) = (arg(a, "id"), th::normalize_url(&arg(a, "url"))?);
+            let id = arg(a, "id");
+            let jelly = lock(&s.sites).iter().any(|x| x.id == id && x.kind == th::jf::KIND);
+            let url = if jelly { th::jf::base_url(&arg(a, "url"))? } else { th::normalize_url(&arg(a, "url"))? };
             let mut sites = lock(&s.sites);
             if sites.iter().any(|x| x.id != id && th::same_site(&x.url, &url)) { return Err("Another tile already has that link".into()); }
             let x = sites.iter_mut().find(|x| x.id == id).ok_or("That site isn't in Theater")?;

@@ -176,9 +176,11 @@ pub fn wait(url: &str, category: &str) -> Result<Value, String> {
         let site = match sites.iter().position(|x| x.kind == th::jf::KIND && th::same_site(&x.url, &base)) {
             Some(i) => sites[i].clone(),
             None => {
-                let mut x = th::add(&mut sites, &base, &format!("Jellyfin · {server_name}"), category)?;
-                if let Some(y) = sites.iter_mut().find(|y| y.id == x.id) { y.kind = th::jf::KIND.into(); y.url = base.clone(); }
-                x.kind = th::jf::KIND.into(); x.url = base.clone();
+                // Not th::add: a Jellyfin on Tailscale is often just a name ("chris-hearth"), which web links never are.
+                if sites.iter().any(|x| th::same_site(&x.url, &base)) { return Err("That address is already in Theater as a site".into()); }
+                let x = th::Site { id: th::new_id(&sites), name: format!("Jellyfin · {server_name}").chars().take(th::MAX_NAME).collect(), url: base.clone(),
+                    category: th::fix_category(category), added: th::now_ms(), kind: th::jf::KIND.into(), ..Default::default() };
+                sites.push(x.clone());
                 x
             }
         };
