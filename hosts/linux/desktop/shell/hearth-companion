@@ -16,6 +16,9 @@
 # (a lock in $XDG_RUNTIME_DIR); runs only while the desktop's compositor does; never fails in a way that matters:
 # without quickshell, python3, the files or a display it says so and ends, and the desktop goes on without a controller.
 desk="$1"; who="${2:-session}"
+# 1.13: KDE Plasma (docs/DESKTOPS.md) is "kde" in nimbus-session; its controller is the same as Hearth Plasma's.
+want="$desk"
+[ "$desk" = kde ] && desk=plasma
 SHARE_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}"
 SHELL_DIR="$SHARE_DIR/desktop/shell"
 PAD="$SHELL_DIR/hearth-pad"
@@ -26,7 +29,7 @@ case "$desk" in
   plasma) DLOG="$NDIR/plasma.log"; COMP=kwin_wayland; NAME="Hearth Plasma" ;;
   cosmic) DLOG="$NDIR/cosmic.log"; COMP=cosmic-comp; NAME="Hearth COSMIC" ;;
   gnome) DLOG="$NDIR/gnome.log"; COMP=gnome-shell; NAME="Hearth GNOME" ;;
-  *) echo "usage: hearth-companion plasma|gnome|cosmic [who]" >&2; exit 2 ;;
+  *) echo "usage: hearth-companion kde|plasma|gnome|cosmic [who]" >&2; exit 2 ;;
 esac
 note() {
   line="$(date '+%F %T') $NAME controller ($who): $*"
@@ -43,7 +46,7 @@ alive() {
   return 1
 }
 
-if [ "${HEARTH_DESKTOP:-}" != "$desk" ]; then
+if [ "${HEARTH_DESKTOP:-}" != "$want" ]; then
   note "not started: this isn't $NAME (HEARTH_DESKTOP=${HEARTH_DESKTOP:-unset})"
   exit 0
 fi

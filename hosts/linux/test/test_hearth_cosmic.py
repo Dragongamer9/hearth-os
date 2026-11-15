@@ -5,7 +5,7 @@ stand-ins for labwc and COSMIC."""
 import unittest
 # Hearth COSMIC is gone: Mantel is the only desktop (nimbus-session never starts it, Settings has no desktop choice,
 # the image doesn't install it). These tests are for the removed desktop; the file stays for its dispatch-only
-# workflow and history. What replaced it is tested in test_hearth_mantel_only.py.
+# workflow and history. What replaced it is tested in test_desktops.py.
 raise unittest.SkipTest('Hearth COSMIC was removed: Mantel is the only desktop')
 import sys
 sys.dont_write_bytecode = True

@@ -92,6 +92,8 @@ class Base(unittest.TestCase):
             write(os.path.join(self.root, 'usr/share/applications', did), text)
         for p in PROGRAMS:
             write(os.path.join(self.root, p), '')
+        # Each desktop's own apps (1.13) is its own test (OwnAppsTest); off here, so these see the kinds alone.
+        write(os.path.join(self.root, 'etc/hearth/desktops.json'), '{"ownApps": false}')
         write(os.path.join(self.root, 'etc/xdg/nimbus-mimeapps.list'),
               "# Hearth's default apps (hearth-system defaults-system)\n[Default Applications]\n"
               "text/plain=hearth-text-kde.desktop;\napplication/vnd.debian.binary-package=hearth-install-package.desktop;\n")
@@ -123,7 +125,7 @@ class TableTest(unittest.TestCase):
     def test_session_sets_these_names(self):
         s = read(os.path.join(REPO, 'hosts/linux/session/nimbus-session'))
         self.assertIn('XDG_CURRENT_DESKTOP=Nimbus', s)
-        self.assertNotIn('XDG_CURRENT_DESKTOP=KDE', s)               # Mantel is the only desktop now
+        self.assertIn('XDG_CURRENT_DESKTOP=KDE', s)                  # 1.13: KDE Plasma and GNOME again (docs/DESKTOPS.md)
         self.assertIn('/usr/share/hearth/app-kinds', s)              # the copies come first in XDG_DATA_DIRS
 
     def test_mistakes_are_found(self):
@@ -156,18 +158,20 @@ class ApplyTest(Base):
                   'hearth-capture.desktop', 'hearth-calculator-kde.desktop', 'org.kde.kwrite.desktop', 'footclient.desktop',
                   'org.example.Files.desktop'):
             self.assertNotIn(i, nim)
-        # Hearth Plasma: the KDE-based ones, stock KDE duplicates hidden.
-        for i in ('hearth-files-kde.desktop', 'hearth-terminal-kde.desktop', 'hearth-text-kde.desktop', 'hearth-reader.desktop',
-                  'hearth-capture.desktop', 'hearth-calculator-kde.desktop'):
+        # KDE Plasma (1.13): KDE's own apps first (Dolphin, Konsole, Gwenview), Hearth's KDE-based ones where KDE's
+        # isn't installed, stock duplicates hidden.
+        for i in ('org.kde.dolphin.desktop', 'org.kde.konsole.desktop', 'hearth-text-kde.desktop', 'hearth-reader.desktop',
+                  'hearth-capture.desktop', 'hearth-calculator-kde.desktop', 'org.kde.gwenview.desktop'):
             self.assertIn(i, kde)
         for i in ('hearth-files.desktop', 'hearth-terminal.desktop', 'hearth-text.desktop', 'hearth-documents.desktop',
-                  'hearth-calculator.desktop', 'org.kde.dolphin.desktop', 'org.kde.konsole.desktop', 'org.kde.kwrite.desktop',
-                  'org.kde.gwenview.desktop', 'org.kde.elisa.desktop', 'hearth-tasks.desktop', 'org.example.Files.desktop'):
+                  'hearth-calculator.desktop', 'hearth-files-kde.desktop', 'hearth-terminal-kde.desktop', 'org.kde.kwrite.desktop',
+                  'hearth-photos.desktop', 'org.kde.elisa.desktop', 'hearth-tasks.desktop', 'org.example.Files.desktop'):
             self.assertNotIn(i, kde)
         # Apps with no other of their kind: everywhere.
         for d in (nim, kde, gnome):
-            for i in ('hearth-photos.desktop', 'hearth-player.desktop', 'hearth-paint.desktop', 'hearth-settings.desktop'):
+            for i in ('hearth-player.desktop', 'hearth-paint.desktop', 'hearth-settings.desktop'):
                 self.assertIn(i, d)
+        self.assertIn('hearth-photos.desktop', nim)
         # A desktop that hasn't registered its file manager yet keeps the one it has.
         self.assertIn('org.example.Files.desktop', gnome)
         self.assertNotIn('hearth-files.desktop', gnome)
@@ -185,18 +189,17 @@ class ApplyTest(Base):
         f = ak.parse_desktop(read(os.path.join(self.root, 'usr/share/hearth/app-kinds/applications/hearth-photos.desktop')))
         self.assertEqual(f.get('OnlyShowIn'), None)                  # everywhere: unknown desktops (XFCE...) see it too
         g = ak.parse_desktop(read(os.path.join(self.root, 'usr/share/hearth/app-kinds/applications/org.kde.gwenview.desktop')))
-        self.assertEqual(set(g['NotShowIn'].strip(';').split(';')), {'Nimbus', 'KDE', 'GNOME', 'COSMIC', 'Deepin', 'DDE'})
+        self.assertEqual(g.get('OnlyShowIn'), 'KDE;')               # 1.13: KDE Plasma's own image viewer, there only
 
     def test_default_apps_follow_the_desktop(self):
         self.apply()
         self.assertEqual(self.default('Nimbus', 'text/plain'), 'hearth-text.desktop')
         self.assertEqual(self.default('KDE', 'text/plain'), 'hearth-text-kde.desktop')
         self.assertEqual(self.default('Nimbus', 'inode/directory'), 'hearth-files.desktop')
-        self.assertEqual(self.default('KDE', 'inode/directory'), 'hearth-files-kde.desktop')
+        self.assertEqual(self.default('KDE', 'inode/directory'), 'org.kde.dolphin.desktop')
         self.assertEqual(self.default('Nimbus', 'application/pdf'), 'hearth-documents.desktop')
         self.assertEqual(self.default('KDE', 'application/pdf'), 'hearth-reader.desktop')
-        self.assertEqual(self.default('KDE', 'x-scheme-handler/terminal'), 'hearth-terminal-kde.desktop')
-        self.assertEqual(self.default('KDE', 'image/png'), 'hearth-photos.desktop')
+        self.assertEqual(self.default('KDE', 'image/png'), 'org.kde.gwenview.desktop')
         self.assertEqual(self.default('Deepin', 'audio/flac'), 'hearth-player.desktop')
         nim = read(os.path.join(self.root, 'etc/xdg/nimbus-mimeapps.list'))
         self.assertIn("# Hearth's default apps (hearth-system defaults-system)", nim)     # what was there stays
@@ -204,7 +207,7 @@ class ApplyTest(Base):
         self.assertEqual(nim.count('text/plain='), 1)
         self.assertTrue(os.path.exists(os.path.join(self.root, 'etc/xdg/dde-mimeapps.list')))
         self.assertEqual(read(os.path.join(self.root, 'etc/xdg/kde-xdg-terminals.list')).splitlines()[-1],
-                         'hearth-terminal-kde.desktop')
+                         'org.kde.konsole.desktop')
 
     def test_runs_twice_the_same(self):
         self.apply()
@@ -288,14 +291,14 @@ class ApplyTest(Base):
         self.assertIn('org.gnome.Loupe.desktop', gnome)
         self.assertNotIn('hearth-photos.desktop', gnome)              # the native one replaces Hearth's there
         self.assertIn('hearth-photos.desktop', nim)
-        self.assertIn('hearth-photos.desktop', kde)
+        self.assertIn('org.kde.gwenview.desktop', kde)              # KDE's own (1.13)
         self.assertNotIn('org.gnome.Loupe.desktop', nim)
         self.assertNotIn('org.gnome.Loupe.desktop', kde)
         self.assertIn('org.example.Files.desktop', gnome)
         self.assertNotIn('org.example.Files.desktop', kde)
         self.assertEqual(self.default('GNOME', 'image/png'), 'org.gnome.Loupe.desktop')
         self.assertEqual(self.default('GNOME', 'inode/directory'), 'org.example.Files.desktop')
-        self.assertEqual(self.default('KDE', 'image/png'), 'hearth-photos.desktop')
+        self.assertEqual(self.default('KDE', 'image/png'), 'org.kde.gwenview.desktop')
 
     def test_with_keys(self):
         t = '[Desktop Entry]\nName=A\nOnlyShowIn=Nimbus;\nNoDisplay=true\n\n[Desktop Action x]\nName=X\nOnlyShowIn=keep\n'
@@ -346,6 +349,42 @@ class Hardware(unittest.TestCase):
     def test_unknown_hardware_shows_everything(self):
         r = ak.hardware(self.out, self.root, json.load(open(TABLE)))   # no /sys here: can't tell
         self.assertEqual(r['hidden'], [])
+
+
+
+class OwnAppsTest(Base):
+    """1.13 (docs/DESKTOPS.md): each desktop shows only its own apps; yours show everywhere."""
+    def setUp(self):
+        super().setUp()
+        write(os.path.join(self.root, 'etc/hearth/desktops.json'), '{"ownApps": true}')
+        write(os.path.join(self.root, 'var/lib/hearth/desktops/kde.json'),
+              json.dumps({'wanted': True, 'apps': ['org.kde.dolphin.desktop', 'org.kde.konsole.desktop', 'org.kde.systemsettings.desktop']}))
+        write(os.path.join(self.root, 'usr/share/applications/org.kde.systemsettings.desktop'), entry('System Settings', 'Qt;KDE;Settings'))
+        write(os.path.join(self.root, 'usr/share/applications/steam.desktop'), entry('Steam', 'Game'))
+
+    def test_each_desktop_its_own(self):
+        self.assertTrue(self.apply()['ok'])
+        nim, kde, gnome = self.shown('Nimbus'), self.shown('KDE'), self.shown('GNOME')
+        self.assertIn('org.kde.systemsettings.desktop', kde)
+        self.assertNotIn('org.kde.systemsettings.desktop', nim)
+        self.assertNotIn('org.kde.systemsettings.desktop', gnome)
+        self.assertIn('hearth-settings.desktop', nim)
+        self.assertNotIn('hearth-settings.desktop', kde)
+        self.assertNotIn('hearth-settings.desktop', gnome)
+        for d in (nim, kde, gnome):
+            self.assertIn('steam.desktop', d)                    # an app you installed: everywhere
+        self.assertIn('org.kde.dolphin.desktop', kde)            # the kinds still pick it there
+        self.assertIn('hearth-files.desktop', nim)
+
+    def test_off_gives_every_desktop_every_app(self):
+        write(os.path.join(self.root, 'etc/hearth/desktops.json'), '{"ownApps": false}')
+        self.apply()
+        self.assertIn('hearth-settings.desktop', self.shown('KDE'))
+        self.assertIn('org.kde.systemsettings.desktop', self.shown('Nimbus'))
+
+    def test_unreadable_switch_means_on(self):
+        write(os.path.join(self.root, 'etc/hearth/desktops.json'), '{broken')
+        self.assertTrue(ak.own_apps_on(self.root))
 
 
 if __name__ == '__main__':

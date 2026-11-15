@@ -2788,6 +2788,21 @@ var ENTRIES = [
 "p": "winapps"
 },
 {
+"t": "Only show each desktop's own apps",
+"p": "your-desktop",
+"d": "Mantel shows Hearth's apps, KDE shows KDE's, GNOME shows GNOME's. Apps you installed (Bazaar, Flatpak, Steam, .deb) show on every desktop."
+},
+{
+"t": "Pick at the login screen too",
+"p": "your-desktop",
+"d": "Hearth Classic, KDE Plasma and GNOME are listed when you sign in. Game Mode's power menu › Switch to Desktop opens the one picked here."
+},
+{
+"t": "Safe start",
+"p": "your-desktop",
+"d": "If KDE or GNOME doesn't start twice in a row, Hearth opens Mantel and tells you why. Your choice stays saved until you change it."
+},
+{
 "t": "Clean up",
 "p": "home",
 "d": "Old shader caches and finished downloads",

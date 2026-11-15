@@ -396,6 +396,7 @@ def apply(root='/', refresh=False, table=None):
         with open(os.path.join(odir, did), 'w', encoding='utf-8') as f:
             f.write(new)
         written.append(did)
+    written += own_apps(root, table, raw, installed, chosen, seen, odir, written)
     km = {k: members(kind, installed, seen) for k, kind in table['kinds'].items()}
     lists = []
     for d, info in table['desktops'].items():
@@ -423,6 +424,73 @@ def apply(root='/', refresh=False, table=None):
     rep = check(root, table)
     rep.update({'overrides': len(written), 'lists': lists})
     return rep
+
+
+OWN_CONF = 'etc/hearth/desktops.json'                  # Settings › Your desktop: {"ownApps": true}
+OWN_STATE = 'var/lib/hearth/desktops'                  # <desktop>.json {"apps": [ids its packages added]}
+HEARTH_ID = re.compile(r'^(hearth|nimbus|org\.hearth|fun\.hearthos|io\.hearth)', re.I)
+
+
+def own_apps_on(root):
+    try:
+        v = json.loads(read(under(root, OWN_CONF)) or '{}')
+        return bool(v.get('ownApps', True)) if isinstance(v, dict) else True
+    except ValueError:
+        return True
+
+
+def own_apps(root, table, raw, installed, chosen, seen, odir, written):
+    """1.13 (docs/DESKTOPS.md): each desktop shows only its own apps. Mantel (Nimbus) shows Hearth's own apps, KDE
+    only the apps KDE Plasma's add-on brought, GNOME only GNOME's; every other app (yours: Bazaar, Flatpak, Steam,
+    .deb) shows everywhere. An app the table picked as a desktop's app of its kind stays shown there. Off: nothing."""
+    if not own_apps_on(root):
+        return []
+    desks = [d for d in ('Nimbus', 'KDE', 'GNOME') if d in table['desktops']]
+    added = {}
+    for d, key in (('KDE', 'kde'), ('GNOME', 'gnome')):
+        try:
+            rec = json.loads(read(under(root, os.path.join(OWN_STATE, key + '.json'))) or '{}')
+        except ValueError:
+            rec = {}
+        added[d] = set(rec.get('apps') or []) if isinstance(rec, dict) else set()
+    picked = {}
+    for k in chosen:
+        for d, i in chosen[k].items():
+            if i:
+                picked.setdefault(i, set()).add(d)
+    out = []
+    for did, fields in installed.items():
+        home = None
+        if did in added.get('KDE', ()):
+            home = 'KDE'
+        elif did in added.get('GNOME', ()):
+            home = 'GNOME'
+        elif (seen is None or did in seen) and (HEARTH_ID.match(did) or fields.get('Name', '').startswith('Hearth')):
+            home = 'Nimbus'
+        if not home:
+            continue
+        hide = [d for d in desks if d != home and d not in picked.get(did, ())]
+        if not hide:
+            continue
+        path = os.path.join(odir, did)
+        text = read(path) if did in written else raw[did]
+        f = parse_desktop(text)
+        names = [n for d in hide for n in table['desktops'][d]['names']]
+        only = lst(f, 'OnlyShowIn')
+        keys = {MARK: 'true'}
+        if only:
+            left = [n for n in only if n not in names]
+            if left:
+                keys['OnlyShowIn'] = ';'.join(left) + ';'
+            else:
+                keys['NoDisplay'] = 'true'
+        else:
+            keys['NotShowIn'] = ';'.join(sorted(set(lst(f, 'NotShowIn')) | set(names))) + ';'
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(with_keys(text, keys))
+        if did not in written:
+            out.append(did)
+    return out
 
 
 def check(root='/', table=None):

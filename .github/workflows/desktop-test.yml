@@ -126,6 +126,20 @@ jobs:
             '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
           chmod +x /tmp/fakebin/hearth-time
           # ---- end of Hearth Time stand-in
+          # ---- Settings › Your desktop (1.13, docs/DESKTOPS.md) as its mockup: KDE Plasma downloaded, GNOME downloading
+          # (42 %), through the real helpers with their test folders (nothing is downloaded here).
+          D=/tmp/desk-fixture; mkdir -p $D/root/usr/bin $D/run $D/state $D/etc
+          : > $D/root/usr/bin/startplasma-wayland; : > $D/root/usr/bin/plasmashell
+          echo 1.13 > $D/version
+          printf '{"wanted": true, "apps": ["org.kde.dolphin.desktop"], "version": "1.13"}\n' > $D/state/kde.json
+          setsid sleep 100000 </dev/null >/dev/null 2>&1 &
+          printf '{"state": "downloading", "percent": 42, "pid": %d, "what": "Downloading"}\n' $! > $D/run/gnome.json
+          export HEARTH_DESKTOPS_TEST=1 HEARTH_DESKTOPS_ROOT=$D/root HEARTH_DESKTOPS_RUN=$D/run HEARTH_DESKTOPS_STATE=$D/state \
+            HEARTH_DESKTOPS_CONF=$D/etc/desktops.json HEARTH_DESKTOPS_VERSION=$D/version HEARTH_DESKTOPS_UNLOCK=/bin/false \
+            HEARTH_DESKTOPS_HELPER="$PWD/os/system_files/usr/libexec/nimbus/hearth-desktops-helper" \
+            HEARTH_DESKTOPS_APP_KINDS="$PWD/os/system_files/usr/libexec/hearth-app-kinds"
+          chmod +x "$HEARTH_DESKTOPS_HELPER" hosts/linux/desktop/shell/hearth-desktops
+          # ---- end of Your desktop's fixture
           # Discord (Discord.qml): a stand-in "discord" (an X window with Discord's window class, under Xwayland) for the
           # bar's quick window. The real app can't run here; Hearth only places, shows and hides its window anyway.
           cat > /tmp/fakebin/discord <<'FAKE'
