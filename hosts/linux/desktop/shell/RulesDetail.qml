@@ -106,7 +106,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             spacing: 20 * det.k
             ColumnLayout {
-                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2); Layout.minimumWidth: Math.floor(det.colsW * 1/2); Layout.maximumWidth: Math.floor(det.colsW * 1/2); Layout.alignment: Qt.AlignTop
+                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2); Layout.minimumWidth: Math.floor(det.colsW * 1/2); Layout.maximumWidth: Math.floor(det.colsW * 1/2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
                 spacing: 20 * det.k
                 ServerPanel {
                     k: det.k; title: "Quiet hours"
@@ -150,7 +150,7 @@ Item {
                 }
             }
             ColumnLayout {
-                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2); Layout.minimumWidth: Math.floor(det.colsW * 1/2); Layout.maximumWidth: Math.floor(det.colsW * 1/2); Layout.alignment: Qt.AlignTop
+                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2); Layout.minimumWidth: Math.floor(det.colsW * 1/2); Layout.maximumWidth: Math.floor(det.colsW * 1/2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
                 spacing: 20 * det.k
                 ServerPanel {
                     k: det.k; title: det.step === 1 ? "New rule · pick a When" : det.step === 2 ? "New rule · then a Do" : "When this, do that"

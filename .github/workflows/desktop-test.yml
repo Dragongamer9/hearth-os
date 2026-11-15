@@ -1970,7 +1970,7 @@ jobs:
           mv /tmp/server-dash.json.tmp /tmp/server-dash.json
           sleep 9; timeout 15 grim shots/server-mode/11-ithil-tile.png || true
           ipc server detail 2; sleep 5; timeout 15 grim shots/server-mode/12-ithil-opened.png || true
-          timeout 10 wtype -k Down; sleep 4; timeout 15 grim shots/server-mode/12b-ithil-last-24-hours.png || true
+          ipc server press window; sleep 2; timeout 15 grim shots/server-mode/12b-ithil-last-24-hours.png || true
           ipc server close
           # 1.13 (mockups next-update/server-cache, -adblock, -rules): their tiles and opened pages, with the numbers the
           # mockups show (the tiles made by hearth-server-mode's own dns_tiles / rules_tile from stand-in status files).
@@ -2019,7 +2019,7 @@ jobs:
           ipc server close
           ipc server detail $3; sleep 3; timeout 15 grim shots/server-mode/16-rules-opened.png || true
           stuck "the rules page"
-          timeout 10 wtype -k m; sleep 2; timeout 15 grim shots/server-mode/16b-rules-new-rule.png || true
+          ipc server press new; timeout 15 grim shots/server-mode/16b-rules-new-rule.png || true
           timeout 10 wtype -k Escape; sleep 1
           ipc server close
           echo "state: $(timeout 20 quickshell ipc -p "$QML" call server state)"

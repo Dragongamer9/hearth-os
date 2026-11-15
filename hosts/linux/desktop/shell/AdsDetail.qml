@@ -52,20 +52,22 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             spacing: 20 * det.k
             ColumnLayout {
-                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1.2/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.alignment: Qt.AlignTop
+                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1.2/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
                 spacing: 20 * det.k
                 ServerPanel {
                     k: det.k; title: "Today"
-                    RowLayout {
+                    Item {   // the three numbers, a third of the panel each
+                        id: todayRow
                         Layout.fillWidth: true
+                        implicitHeight: 82 * det.k
                         Repeater {
                             model: [[(det.today.percent || 0) + " %", "of lookups blocked"],
                                     [Number(det.today.blocked || 0).toLocaleString(Qt.locale("en_US"), "f", 0), "ads and trackers stopped"],
                                     [(det.today.ms || 0) + " ms", "average answer"]]
-                            delegate: ColumnLayout {
+                            delegate: Column {
                                 required property var modelData
-                                Layout.fillWidth: true
-                                spacing: 0
+                                required property int index
+                                x: index * todayRow.width / 3; width: todayRow.width / 3
                                 Text { text: det.a.on ? modelData[0] : "—"; color: "#fff4df"; font.family: Theme.font; font.pixelSize: 52 * det.k; font.weight: Font.Bold }
                                 Text { text: modelData[1]; color: "#c9b79f"; font.family: Theme.font; font.pixelSize: 15 * det.k }
                             }
@@ -87,7 +89,7 @@ Item {
                 }
             }
             ColumnLayout {
-                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1/2.2); Layout.alignment: Qt.AlignTop
+                Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1/2.2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
                 spacing: 20 * det.k
                 ServerPanel {
                     k: det.k; title: "Your devices"
