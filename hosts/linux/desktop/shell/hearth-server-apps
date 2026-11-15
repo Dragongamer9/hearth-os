@@ -1307,6 +1307,9 @@ def ntfy_send(text, title='Hearth home server', priority='default', tags='house'
     return {'ok': True}
 
 
+RULES_NOW = os.environ.get('HEARTH_RULES_NOW', '/run/hearth/server-rules/now.json')
+
+
 def ntfy_forward(now=None):
     """What's new since last time: Home server alerts (and again after a day while they last), and apps that stopped."""
     now = time.time() if now is None else now
@@ -1326,6 +1329,11 @@ def ntfy_forward(now=None):
             if r['state'] == 'failed':
                 found.append({'key': 'app:' + r['id'], 'text': '%s stopped and couldn\'t start again. Settings › Home server › Server apps shows why.' % r['name'],
                               'urgent': False})
+    # 1.13: Server mode's rules that say "tell my phone" (hearth-server-rules: what fires now), once each time.
+    rules = sio.load_json(RULES_NOW, {}, repair=False) if os.path.exists(RULES_NOW) else {}
+    if isinstance(rules, dict) and now - (rules.get('at') or 0) < 300:
+        for t in rules.get('tell') or []:
+            found.append({'key': 'rule:' + str(t), 'text': str(t), 'urgent': False})
     told = (state().get('ntfy') or {}).get('told') or {}
     keys = {f['key'] for f in found}
     told = {k: t for k, t in told.items() if k in keys}

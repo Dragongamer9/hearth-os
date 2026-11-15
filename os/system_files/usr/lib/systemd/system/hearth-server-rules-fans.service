@@ -1,0 +1,9 @@
+# Fans capped by quiet hours or a rule (hearth-server-rules fans): held only while every temperature is under 75 °C,
+# checked every 3 seconds; given back to the firmware when anything gets hot, when nothing caps them, and when this
+# stops for any reason. No [Install]: started by hearth-server-rules when needed.
+[Unit]
+Description=Hearth server: fans capped for quiet hours
+
+[Service]
+ExecStart=/usr/libexec/nimbus/hearth-server-rules fans
+Restart=no

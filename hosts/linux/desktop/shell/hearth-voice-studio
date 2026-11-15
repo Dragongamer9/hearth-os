@@ -231,8 +231,18 @@ def game_running(now=None):
     return on
 
 
+def rules_wait():
+    """1.13: Server mode's quiet hours or a rule says voices wait now (hearth-server-rules' now.json)."""
+    try:
+        with open(os.environ.get('HEARTH_RULES_NOW', '/run/hearth/server-rules/now.json')) as f:
+            d = json.load(f)
+        return isinstance(d, dict) and time.time() - (d.get('at') or 0) < 180 and 'voices' in (d.get('wait') or [])
+    except (OSError, ValueError):
+        return False
+
+
 def waiting_for_game():
-    return load().get('waitForGames', True) is not False and game_running()
+    return (load().get('waitForGames', True) is not False and game_running()) or rules_wait()
 
 
 def set_key(key, raw):
