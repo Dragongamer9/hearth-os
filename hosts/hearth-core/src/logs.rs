@@ -50,10 +50,10 @@ pub fn without_dump_details(journal: &str) -> String {
     out.join("\n")
 }
 
-/// The other desktops' logs in ~/.local/share/nimbus, written by an earlier Hearth's Plasma / GNOME / COSMIC (gone now:
-/// Mantel is the only desktop); still in a report when an old one is there.
-const DESKTOP_LOGS: [(&str, &str); 4] = [("plasma.log", "Hearth Plasma"), ("gnome.log", "Hearth GNOME"), ("cosmic.log", "Hearth COSMIC"),
-                                         ("cosmic-companion.log", "Hearth COSMIC companion")];
+/// The other desktops' logs in ~/.local/share/nimbus: KDE Plasma and GNOME, downloaded when picked (1.13: the session
+/// writes kde.log and gnome.log), and an earlier Hearth's Plasma / COSMIC (still in a report when an old one is there).
+const DESKTOP_LOGS: [(&str, &str); 5] = [("kde.log", "KDE Plasma"), ("gnome.log", "GNOME"), ("plasma.log", "Hearth Plasma (before 1.13)"),
+                                         ("cosmic.log", "Hearth COSMIC"), ("cosmic-companion.log", "Hearth COSMIC companion")];
 
 /// Steam Game Mode (Decky plugin): whether Decky and its service are installed and running, Hearth Sync's state
 /// (docs/HEARTH-SYNC.md) and whether the older Hearth plugin is still there, and the newest lines of the plugin's log (Decky writes each plugin's log to ~/homebrew/logs/<plugin>/, one
@@ -676,8 +676,10 @@ mod tests {
     #[test]
     fn desktop_logs_are_the_ones_the_session_writes() {
         let session = include_str!("../../linux/session/nimbus-session");
-        // Mantel is the only desktop: the session doesn't write these any more (a report still shows old ones).
-        for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
+        // KDE Plasma and GNOME (1.13) write theirs through the session; the older desktops' aren't written any more
+        // (a report still shows old ones).
+        for f in ["kde.log", "gnome.log"] { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
+        for f in ["plasma.log", "cosmic.log"] { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]
