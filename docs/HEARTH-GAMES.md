@@ -118,4 +118,24 @@ first time, with the same checksum check.
   - The `gamestore` and `proton_pick` unit tests (Recomps: the calls and ids it allows, Use it anyway, Play, `--tab`).
   - `gaming.yml`: the build, `test_hearth_gamestore.py`, and screenshots of Hearth Games on an empty home, including
     the Recomps tab, a port's page and the app opened with `--tab recomps`.
-- **Next stage:** cloud saves (gogdl's and legendary's save sync), DLC, and Amazon Prime Gaming through nile.
+- **Stage two (1.13):** Amazon, cloud saves and DLC (below).
+
+## Stage two (1.13): Amazon, cloud saves and DLC
+
+- **Amazon** (Prime Gaming's free games you claimed and Amazon Games purchases) through **nile**
+  (github.com/imLinguin/nile, GPL-3.0, the tool Heroic uses), pinned in `tools.rs` (`NILE`) with its SHA-256 and
+  carried in the image like gogdl and legendary. Sign in on Amazon's own page (`nile auth --login --non-interactive`
+  makes its address; the page's return to amazon.com carries `openid.oa2.authorization_code`, handed to
+  `nile register`): Hearth never sees your password. Its folder is `~/.local/share/nimbus/nile` (NILE_CONFIG_PATH).
+  Games install under `<drive>/Amazon`, start with Proton from nile's own launch instructions (`nile launch --json`:
+  the program, its arguments and Amazon's SDK variables) and uninstall with `nile uninstall`
+  (`hosts/hearth-core/src/amazon.rs`). The Library has an Amazon filter, Stores an Amazon card.
+- **Cloud saves** on a GOG or Epic game's page: whether the game keeps saves in the cloud, its switch (the game's
+  options' `cloudSaves`, on unless you turn it off; the same switch as Game settings), when it last synced and which
+  way, the folder, and **Bring saves down now** / **Send saves up now**. Syncing before and after playing is as
+  before (`stores.rs`); each sync is noted in `cloud-saves.json` (`game_extras.rs`).
+- **DLC** on a GOG or Epic game's page: what your account has for it, which is installed, **Install**, **Install all
+  N**, **See it in the store** for one you don't have, and (Epic) **Uninstall**. Epic: `legendary info` (owned_dlc) and
+  `legendary install <dlc>`; GOG: `gogdl info` (dlcs) and `gogdl download --with-dlcs --dlcs …` into the game's own
+  folder (GOG's DLC goes with its game: uninstalling the game removes it). One DLC job at a time; the page looks
+  again every few seconds while one runs.
