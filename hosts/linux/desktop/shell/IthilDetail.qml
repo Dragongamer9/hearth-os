@@ -35,7 +35,7 @@ Item {
     property double moved: 0
     Timer { interval: 100; repeat: true; running: det.visible && det.win !== "live"
         onTriggered: { if (Date.now() - det.moved > 4000) det.tpos = det.tpos >= 120 ? 0 : det.tpos + 0.1; } }
-    onTChanged: strip.requestPaint()
+    onTposChanged: strip.requestPaint()
     onBrainChanged: strip.requestPaint()
 
     component Panel: Rectangle {
