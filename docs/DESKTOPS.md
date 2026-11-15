@@ -8,23 +8,28 @@ Hearth puts inside them depends on Mantel.
 
 ## How it's built
 
-1. **Add-on images per release.** `base-peppermint.yml` builds the OS image, then two more stages on top of it with
-   KDE Plasma (`kde-plasma-desktop` + Hearth's tray item) and GNOME (`gnome-shell`, `gnome-session` + Hearth's
-   extension). Only what those stages add under `/usr` is packed as a systemd-sysext image
-   (`hearth-kde-<build>.raw`, `hearth-gnome-<build>.raw`, erofs), with an `extension-release` naming the exact
-   image it was made from. What they add under `/etc` goes into a matching confext. They're published next to the
-   image and only ever fit that one build.
-2. **Downloading.** `hearth-desktops` (root helper, through pkexec like Hearth's others) downloads the add-on for the
-   running build, checks its SHA-256, puts it in `/var/lib/extensions` and runs `systemd-sysext refresh`. Remove
-   takes it out the same way. After an OS update the old add-on no longer fits: it isn't merged, and the new one is
-   downloaded in the background; until then Desktop Mode opens Mantel and says why.
-3. **Starting.** `nimbus-session` starts KDE or GNOME only when it's picked and its add-on is merged; it waits for it
-   to come up and opens Mantel instead if it doesn't (the safe start: twice in a row → Mantel and a notice; the
-   choice stays saved). Game Mode, the switch and Recovery are unchanged; Mantel stays in every image.
-4. **Hearth inside.** KDE: one tray item (`org.hearth.tray`) with Return to Game Mode, controller, keyboard, Hearth
-   notices, home server, Hearth update and Switch desktop. GNOME: a Hearth section in quick settings
-   (`hearth-quick@hearthos.fun`) with the same rows. The controller and on-screen keyboard use Hearth's own pad
-   service in both.
-5. **Each desktop's own apps.** KDE's apps get `OnlyShowIn=KDE;`, GNOME's `OnlyShowIn=GNOME;` (done when the add-on
-   is built), Hearth's own apps `OnlyShowIn=Hearth;`; apps you install are left alone, so they show everywhere. The
-   switch in Settings turns this off by giving each desktop all apps again.
+1. **Debian's own packages, downloaded when picked.** Peppermint is a writable system (hearth-unlock), so KDE Plasma
+   (`kde-plasma-desktop` and KDE's core apps) and GNOME (`gnome-shell`, `gnome-session` and GNOME's core apps, never
+   `gdm3`) are installed with apt into this version's layer, from the same frozen Debian date the image was made from
+   ("made for Hearth OS <version>"). The root helper `/usr/libexec/nimbus/hearth-desktops-helper` (pkexec, no
+   password for the person at the device) runs it as the systemd unit `hearth-desktop-<name>`: download first
+   (Cancel works), then install (not cut off halfway). What it added is noted in `/var/lib/hearth/desktops/<name>.json`.
+   (The first plan was systemd-sysext images; they'd fight hearth-unlock's own overlay on /usr, so apt it is.)
+2. **After an OS update** the new version starts clean and hearth-unlock puts your packages back by itself
+   (hearth-unlock-reapply.service); until then Desktop Mode opens Mantel and Settings says it's coming back. The
+   previous version keeps its own layer, so it stays startable as it was.
+3. **Starting.** `nimbus-session` starts KDE or GNOME only when it's picked and installed; it waits for it to come up
+   and opens Mantel instead if it doesn't (the safe start: twice in a row → Mantel and a notice; the choice stays
+   saved). Game Mode, the switch and Recovery are unchanged; Mantel stays in every image. The login screen lists
+   "KDE Plasma (Hearth)" and "GNOME (Hearth)" once installed (TryExec), both through nimbus-session; KDE's and
+   GNOME's own entries are diverted in the image (build.sh), so they can't skip the safe start.
+4. **Hearth inside.** KDE: KDE's default panel with Hearth's start menu (`org.hearth.kickoff`: KDE's apps and yours,
+   Switch desktop…, Return to Game Mode; `/usr/share/hearth-kde`'s panel layout, first start only) and the tray item
+   `org.hearth.tray` (Return to Game Mode, Controller, Keyboard, Hearth notices, Server at home, Hearth update,
+   Switch desktop). GNOME: a Hearth section in quick settings (`hearth-quick@hearthos.fun`, on by default through
+   `90_hearth-desktops.gschema.override`). Both read `hearth-desktops tray` and act through `hearth-desktops act`.
+   The controller is Hearth's pad service in both (hearth-companion, started once the desktop is up).
+5. **Each desktop's own apps.** `hearth-app-kinds` (docs/APP-KINDS.md) after every apt run: Hearth's own apps show
+   in Mantel, the apps KDE's packages added in KDE, GNOME's in GNOME; apps you install show everywhere. The switch in
+   Settings (`/etc/hearth/desktops.json`, with a .bak) turns it off. The kinds table now prefers KDE's and GNOME's
+   own apps there (Dolphin, Konsole, Kate, Okular, Gwenview; Files, Console, Text Editor, Calculator, Loupe).

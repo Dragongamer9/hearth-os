@@ -12,7 +12,7 @@
    ]
   },
   "KDE": {
-   "label": "Hearth Plasma",
+   "label": "KDE Plasma",
    "names": [
     "KDE"
    ],
@@ -21,7 +21,7 @@
    ]
   },
   "GNOME": {
-   "label": "Hearth GNOME",
+   "label": "GNOME",
    "names": [
     "GNOME"
    ],
@@ -71,8 +71,8 @@
      "hearth-files.desktop"
     ],
     "KDE": [
-     "hearth-files-kde.desktop",
      "org.kde.dolphin.desktop",
+     "hearth-files-kde.desktop",
      "hearth-files.desktop"
     ],
     "GNOME": [
@@ -107,8 +107,8 @@
      "hearth-terminal-kde.desktop"
     ],
     "KDE": [
-     "hearth-terminal-kde.desktop",
      "org.kde.konsole.desktop",
+     "hearth-terminal-kde.desktop",
      "hearth-terminal.desktop"
     ],
     "GNOME": [
@@ -190,8 +190,8 @@
      "hearth-text-kde.desktop"
     ],
     "KDE": [
-     "hearth-text-kde.desktop",
      "org.kde.kate.desktop",
+     "hearth-text-kde.desktop",
      "hearth-text.desktop"
     ],
     "GNOME": [
@@ -218,11 +218,16 @@
      "hearth-calculator-kde.desktop"
     ],
     "KDE": [
-     "hearth-calculator-kde.desktop",
      "org.kde.kcalc.desktop",
+     "hearth-calculator-kde.desktop",
      "hearth-calculator.desktop"
     ],
     "COSMIC": [
+     "hearth-calculator-kde.desktop",
+     "hearth-calculator.desktop"
+    ],
+    "GNOME": [
+     "org.gnome.Calculator.desktop",
      "hearth-calculator-kde.desktop",
      "hearth-calculator.desktop"
     ]
@@ -247,11 +252,17 @@
      "hearth-reader.desktop"
     ],
     "KDE": [
-     "hearth-reader.desktop",
      "org.kde.okular.desktop",
+     "hearth-reader.desktop",
      "hearth-documents.desktop"
     ],
     "COSMIC": [
+     "hearth-reader.desktop",
+     "hearth-documents.desktop"
+    ],
+    "GNOME": [
+     "org.gnome.Papers.desktop",
+     "org.gnome.Evince.desktop",
      "hearth-reader.desktop",
      "hearth-documents.desktop"
     ]
@@ -266,8 +277,8 @@
    "apps": {
     "Nimbus": [],
     "KDE": [
-     "hearth-capture.desktop",
-     "org.kde.spectacle.desktop"
+     "org.kde.spectacle.desktop",
+     "hearth-capture.desktop"
     ],
     "COSMIC": [
      "com.system76.CosmicScreenshot.desktop"
@@ -285,6 +296,10 @@
     ],
     "KDE": [
      "org.kde.plasma-systemmonitor.desktop"
+    ],
+    "GNOME": [
+     "org.gnome.SystemMonitor.desktop",
+     "gnome-system-monitor.desktop"
     ]
    },
    "everywhere": [],
@@ -314,12 +329,20 @@
    "mimes": [
     "image/*"
    ],
-   "apps": {},
+   "apps": {
+    "KDE": [
+     "org.kde.gwenview.desktop",
+     "hearth-photos.desktop"
+    ],
+    "GNOME": [
+     "org.gnome.Loupe.desktop",
+     "hearth-photos.desktop"
+    ]
+   },
    "everywhere": [
     "hearth-photos.desktop"
    ],
    "others": [
-    "org.kde.gwenview.desktop",
     "eog.desktop"
    ]
   },

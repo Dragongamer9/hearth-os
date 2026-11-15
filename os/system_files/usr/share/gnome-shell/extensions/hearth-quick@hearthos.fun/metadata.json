@@ -1,7 +1,7 @@
 {
   "uuid": "hearth-quick@hearthos.fun",
-  "name": "Hearth Quick Access",
-  "description": "Hearth's additions to Quick Settings: Game Mode, Hearth Settings and the power mode (through hearth-power).",
+  "name": "Hearth",
+  "description": "Hearth inside GNOME: a Hearth section in quick settings with Return to Game Mode, the controller, the on-screen keyboard, Hearth notices, the server at home, Hearth updates and Switch desktop.",
   "shell-version": [
     "47",
     "48",

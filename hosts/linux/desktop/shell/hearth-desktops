@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""hearth-desktops: the desktop Desktop Mode opens (1.13, docs/DESKTOPS.md): Mantel (Hearth Classic, built in), KDE
+Plasma or GNOME (downloaded when picked). Settings › System › Your desktop, KDE's Hearth tray item, GNOME's Hearth
+section in quick settings and Hearth's KDE menu use it.
+
+  hearth-desktops status                JSON: the one picked, each desktop's state (downloaded, downloading and its
+                                        percent, ...), why Mantel opened instead last time, the switches
+  hearth-desktops pick classic|kde|gnome
+                                        the one Desktop Mode opens (session.conf's HEARTH_DESKTOP, only that line;
+                                        picking it again also clears "didn't start twice")
+  hearth-desktops login save|once       Pick at the login screen too: the login screen's pick is saved ("This one")
+                                        or only for that sign-in ("Just that time"): session.conf's HEARTH_LOGIN_PICK
+  hearth-desktops install|cancel|remove kde|gnome
+  hearth-desktops own-apps on|off       through the root helper (pkexec /usr/libexec/nimbus/hearth-desktops-helper)
+  hearth-desktops apps kde|gnome        JSON: the apps that desktop shows, each tagged "KDE" / "GNOME" (its own) or
+                                        "installed", with its categories (Hearth's KDE menu)
+  hearth-desktops tray                  JSON: what the Hearth tray item / quick settings section shows
+  hearth-desktops act game|controller|keyboard|notices|server|update|settings|switch DESK
+                                        what their buttons do
+Nothing here changes a setting by itself: only the commands above, each when the person asks.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+E = os.environ.get
+CONFIG_HOME = E('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+STATE_HOME = E('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
+RUN = E('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+SESSION_CONF = os.path.join(CONFIG_HOME, 'nimbus', 'session.conf')
+DESK_STATE = os.path.join(STATE_HOME, 'hearth')
+HELPER = E('HEARTH_DESKTOPS_HELPER', '/usr/libexec/nimbus/hearth-desktops-helper')
+ADMIN = E('HEARTH_DESKTOPS_ADMIN', '/usr/libexec/nimbus/hearth-admin')
+PKEXEC = E('HEARTH_DESKTOPS_PKEXEC', 'pkexec')
+APP_KINDS = E('HEARTH_DESKTOPS_APP_KINDS', '/usr/libexec/hearth-app-kinds')
+NAMES = {'classic': 'Mantel', 'kde': 'KDE Plasma', 'gnome': 'GNOME'}
+XDG_NAMES = {'kde': ['KDE'], 'gnome': ['GNOME'], 'classic': ['Nimbus']}
+CATS = [('Games', ['Game']), ('Graphics', ['Graphics']), ('Internet', ['Network', 'WebBrowser']),
+        ('Multimedia', ['AudioVideo', 'Audio', 'Video']), ('Office', ['Office']), ('Development', ['Development']),
+        ('System', ['System', 'Settings']), ('Utilities', ['Utility'])]
+
+
+class Fail(Exception):
+    pass
+
+
+def conf_value(key):
+    try:
+        text = open(SESSION_CONF, encoding='utf-8').read()
+    except OSError:
+        return ''
+    found = re.findall(r'''^[ \t]*(?:export[ \t]+)?%s=["']?([a-z]*)''' % key, text, re.M)
+    return found[-1] if found else ''
+
+
+def picked():
+    d = conf_value('HEARTH_DESKTOP')
+    return {'kde': 'kde', 'plasma': 'kde', 'gnome': 'gnome'}.get(d, 'classic')
+
+
+def running_now():
+    for d in ('kde', 'gnome'):
+        try:
+            pid = int(open(os.path.join(RUN, 'hearth-%s.pid' % d)).read().strip())
+            os.kill(pid, 0)
+            return d
+        except (OSError, ValueError):
+            pass
+    try:
+        if open(os.path.join(RUN, 'nimbus-mode-now')).read().strip() == 'desktop':
+            return 'classic'
+    except OSError:
+        pass
+    return 'classic' if E('XDG_CURRENT_DESKTOP', '').split(':')[0] == 'Nimbus' else ''
+
+
+def fails(d):
+    try:
+        for line in open(os.path.join(DESK_STATE, 'desktop-fails')):
+            p = line.split()
+            if len(p) == 2 and p[0] == d:
+                return int(p[1])
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def notice():
+    """Why Mantel opened instead of KDE or GNOME (nimbus-session's desk_notice): {desktop, why, at}."""
+    try:
+        p = open(os.path.join(DESK_STATE, 'desktop-notice')).read().split()
+        why = {'missing': "%s isn't downloaded for this Hearth OS version yet, so Mantel opened",
+               'failed': "%s didn't start, so Mantel opened instead",
+               'twice': "%s didn't start twice in a row, so Mantel opens until you pick it again"}.get(p[1], '')
+        return {'desktop': p[0], 'kind': p[1], 'at': int(p[2]), 'text': why % NAMES.get(p[0], p[0]) if why else ''}
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def helper(args, root=False, timeout=60):
+    cmd = ([PKEXEC, HELPER] if root else [HELPER]) + args
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail('the desktops helper didn\'t answer (%s)' % e)
+    lines = [l for l in r.stdout.splitlines() if l.strip()]
+    last = lines[-1] if lines else (r.stderr.strip().splitlines() or [''])[-1]
+    if last.startswith('error: '):
+        raise Fail(last[7:])
+    try:
+        return json.loads(last)
+    except ValueError:
+        raise Fail(last or 'the desktops helper failed (code %d)' % r.returncode)
+
+
+def status():
+    try:
+        s = helper(['status'], timeout=30)
+    except Fail as e:
+        s = {'desktops': {d: {'label': NAMES[d], 'state': 'none', 'percent': 0} for d in ('kde', 'gnome')},
+             'ownApps': True, 'error': str(e)}
+    s['picked'] = picked()
+    s['now'] = running_now()
+    s['loginPick'] = 'once' if conf_value('HEARTH_LOGIN_PICK') == 'once' else 'save'
+    s['notice'] = notice()
+    for d, info in s.get('desktops', {}).items():
+        info['fails'] = fails(d)
+    return s
+
+
+def set_conf(key, value):
+    sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, key, value))
+
+
+def cmd_pick(d):
+    if d not in NAMES:
+        raise Fail('classic, kde or gnome')
+    if d != 'classic':
+        st = (status().get('desktops') or {}).get(d) or {}
+        if st.get('state') != 'downloaded':
+            raise Fail('%s isn\'t downloaded yet' % NAMES[d])
+    set_conf('HEARTH_DESKTOP', d)
+    # Picked again: the safe start's count and its notice start over (nimbus-session's desk_fails).
+    try:
+        path = os.path.join(DESK_STATE, 'desktop-fails')
+        rest = [l for l in open(path) if not l.startswith(d + ' ')]
+        sio.write_text(path, ''.join(rest))
+    except OSError:
+        pass
+    n = notice()
+    if n and n.get('desktop') == d:
+        try:
+            os.remove(os.path.join(DESK_STATE, 'desktop-notice'))
+        except OSError:
+            pass
+    sio.log_event('desktop: %s picked for Desktop Mode' % d)
+    return status()
+
+
+# ---------------------------------------------------------------------- a desktop's own apps (Hearth's KDE menu)
+def cmd_apps(d):
+    sys.path.insert(0, os.path.dirname(APP_KINDS))
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader('hearth_app_kinds', APP_KINDS)
+    spec = importlib.util.spec_from_loader('hearth_app_kinds', loader)
+    ak = importlib.util.module_from_spec(spec)
+    loader.exec_module(ak)
+    extra = [os.path.join(p, 'applications') for p in (E('XDG_DATA_DIRS') or '').split(':') if p.startswith('/')]
+    extra.append(os.path.expanduser('~/.local/share/applications'))
+    eff = ak.effective('/', extra=extra)
+    try:
+        own = set(json.load(open('/var/lib/hearth/desktops/%s.json' % d)).get('apps') or [])
+    except (OSError, ValueError, AttributeError):
+        own = set()
+    out = []
+    for did, f in eff.items():
+        if not ak.usable(f) or not ak.shown_in(f, XDG_NAMES[d]):
+            continue
+        cats = ak.lst(f, 'Categories')
+        cat = next((name for name, keys in CATS if set(keys) & set(cats)), 'Utilities')
+        tag = {'kde': 'KDE', 'gnome': 'GNOME'}[d] if did in own or 'KDE' in cats and d == 'kde' or 'GNOME' in cats and d == 'gnome' else 'installed'
+        out.append({'id': did, 'name': f.get('Name', did[:-8]), 'icon': f.get('Icon', ''), 'comment': f.get('Comment', ''),
+                    'category': cat, 'tag': tag, 'keywords': f.get('Keywords', '')})
+    order = ['org.kde.dolphin.desktop', 'org.kde.konsole.desktop', 'systemsettings.desktop', 'org.kde.systemsettings.desktop',
+             'org.gnome.Nautilus.desktop', 'org.gnome.Console.desktop', 'org.gnome.Settings.desktop',
+             'io.github.kolunmi.Bazaar.desktop', 'steam.desktop', 'firefox-esr.desktop', 'firefox.desktop',
+             'org.mozilla.firefox.desktop', 'hearth-ai-command-center.desktop', 'org.kde.kate.desktop',
+             'org.gnome.TextEditor.desktop']
+    out.sort(key=lambda a: a['name'].lower())
+    fav = [a['id'] for i in order for a in out if a['id'] == i][:8]
+    return {'apps': out, 'favorites': fav, 'categories': [c for c, _ in CATS if any(a['category'] == c for a in out)]}
+
+
+# ---------------------------------------------------------------------- the Hearth tray item / quick settings
+def cached(name, seconds, fn):
+    path = os.path.join(RUN, 'hearth-desktops-%s.json' % name)
+    try:
+        if time.time() - os.path.getmtime(path) < seconds:
+            return json.load(open(path))
+    except (OSError, ValueError):
+        pass
+    v = fn()
+    try:
+        sio.write_json(path, v)
+    except OSError:
+        pass
+    return v
+
+
+def pad_line():
+    name = ''
+    try:
+        blocks = open('/proc/bus/input/devices', encoding='utf-8', errors='replace').read().split('\n\n')
+        for b in blocks:
+            h = re.search(r'H: Handlers=(.*)', b)
+            n = re.search(r'N: Name="([^"]*)"', b)
+            if h and n and any(x.startswith('js') for x in h.group(1).split()):
+                name = n.group(1)
+                break
+    except OSError:
+        pass
+    short = 'Xbox pad' if re.search(r'xbox|x-box|microsoft', name, re.I) else 'PlayStation pad' if re.search(r'sony|dualsense|dualshock|playstation', name, re.I) \
+        else 'Steam Deck' if 'Steam Deck' in name else ('Controller' if name else '')
+    mouse = subprocess.run(['pgrep', '-u', str(os.getuid()), '-f', 'hearth-pad --(plasma|gnome|standalone)'],
+                           capture_output=True).returncode == 0
+    parts = [p for p in (short, 'mouse mode on' if mouse else 'mouse mode off') if p]
+    return ' · '.join(parts) if short else ('no controller' + (' · mouse mode on' if mouse else ''))
+
+
+def notices_new():
+    n = 0
+    since = time.time() - 86400
+    try:
+        for line in open(os.path.join(sio.state_dir(), 'settings-events.log'), encoding='utf-8', errors='replace'):
+            if ' notice: ' in line:
+                try:
+                    if time.mktime(time.strptime(line[:19], '%Y-%m-%d %H:%M:%S')) >= since:
+                        n += 1
+                except ValueError:
+                    pass
+    except OSError:
+        pass
+    return n
+
+
+def server_line():
+    try:
+        hs = json.load(open(os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')))
+    except (OSError, ValueError):
+        hs = {}
+    if not isinstance(hs, dict) or not hs.get('on'):
+        return 'not set up'
+    host = os.uname().nodename
+    return host + ' · all good'
+
+
+def update_line():
+    def get():
+        try:
+            r = subprocess.run([PKEXEC, ADMIN, 'update-status'], capture_output=True, text=True, timeout=20)
+            j = json.loads([l for l in r.stdout.splitlines() if l.strip()][-1])
+        except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+            return {'line': 'Settings › Updates'}
+        staged = j.get('staged') or j.get('downloaded') or {}
+        avail = j.get('available') or {}
+        if staged:
+            v = staged.get('version') if isinstance(staged, dict) else ''
+            return {'line': ((v + ' ') if v else '') + 'ready at restart'}
+        if avail:
+            v = avail.get('version') if isinstance(avail, dict) else ''
+            return {'line': ((v + ' ') if v else 'an update ') + 'to download'}
+        return {'line': 'up to date'}
+    return cached('update', 600, get)['line']
+
+
+def cmd_tray():
+    s = status()
+    here = [d for d in ('classic', 'kde', 'gnome') if d == 'classic' or (s['desktops'].get(d) or {}).get('state') == 'downloaded']
+    n = notices_new()
+    now = s.get('now') or running_now()
+    where = {'kde': "in KDE's notifications", 'gnome': "in GNOME's notifications"}.get(now, 'in notifications')
+    return {'controller': pad_line(), 'keyboard': 'shows when you type',
+            'notices': ('%d new · ' % n if n else '') + where, 'noticesNew': n,
+            'server': server_line(), 'update': update_line(),
+            'desktops': [{'id': d, 'name': {'classic': 'Mantel', 'kde': 'KDE', 'gnome': 'GNOME'}[d]} for d in here],
+            'switch': ' · '.join({'classic': 'Mantel', 'kde': 'KDE', 'gnome': 'GNOME'}[d] for d in here),
+            'now': now, 'picked': s['picked']}
+
+
+def detach(cmd):
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as e:
+        raise Fail('couldn\'t start %s: %s' % (cmd[0], e))
+
+
+def settings(page):
+    detach(['hearth-settings', page] if shutil.which('hearth-settings') else ['nimbus-mode', 'desktop'])
+
+
+def cmd_act(args):
+    a = args[0] if args else ''
+    if a == 'game':
+        detach(['nimbus-mode', 'game'])
+    elif a == 'controller':
+        settings('controller')
+    elif a == 'keyboard':
+        settings('keyboard')
+    elif a == 'notices':
+        settings('notifications')
+    elif a == 'server':
+        settings('hs-overview')
+    elif a == 'update':
+        settings('updates')
+    elif a == 'settings':
+        settings('your-desktop')
+    elif a == 'switch' and len(args) == 2 and args[1] in NAMES:
+        d = args[1]
+        cmd_pick(d)
+        # Desktop Mode again with that one: nimbus-mode ends this desktop and starts the picked one.
+        detach(['nimbus-mode', 'desktop'])
+    else:
+        raise Fail('act game|controller|keyboard|notices|server|update|settings|switch classic|kde|gnome')
+    return {'ok': True}
+
+
+def main(argv):
+    args = argv[1:]
+    cmd = args[0] if args else ''
+    try:
+        if cmd == 'status':
+            out = status()
+        elif cmd == 'pick' and len(args) == 2:
+            out = cmd_pick(args[1])
+        elif cmd == 'login' and len(args) == 2 and args[1] in ('save', 'once'):
+            set_conf('HEARTH_LOGIN_PICK', args[1])
+            out = status()
+        elif cmd in ('install', 'cancel', 'remove') and len(args) == 2 and args[1] in ('kde', 'gnome'):
+            helper([cmd, args[1]], root=True, timeout=120)
+            out = status()
+        elif cmd == 'own-apps' and len(args) == 2 and args[1] in ('on', 'off'):
+            helper(['own-apps', args[1]], root=True, timeout=180)
+            out = status()
+        elif cmd == 'apps' and len(args) == 2 and args[1] in XDG_NAMES:
+            out = cmd_apps(args[1])
+        elif cmd == 'tray':
+            out = cmd_tray()
+        elif cmd == 'act':
+            out = cmd_act(args[1:])
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e, flush=True)
+        return 1
+    print(json.dumps(out), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

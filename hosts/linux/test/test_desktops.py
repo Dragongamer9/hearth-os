@@ -103,6 +103,29 @@ class Desktops(unittest.TestCase):
         self.assertTrue(os.path.exists(self.conf + '.bak'))
         self.assertIn('desktop: gnome picked on the login screen (saved)', log)
 
+    def test_login_screen_pick_just_that_time(self):
+        self.kde(works=True)
+        conf = 'NIMBUS_START_MODE=desktop\nHEARTH_LOGIN_PICK=once\n'
+        r, log = self.session(conf, '--desktop=kde')
+        self.assertEqual(pathlib.Path(self.conf).read_text(), conf)              # not saved
+        self.assertIn('desktop: kde picked on the login screen (this sign-in only)', log)
+        self.assertIn('desktop mode: KDE Plasma', log)
+
+    def test_kde_starts_its_controller_once_up(self):
+        self.kde(works=True)
+        shell = os.path.join(self.share, 'desktop', 'shell')
+        os.makedirs(shell, exist_ok=True)
+        with open(os.path.join(shell, 'hearth-companion'), 'w') as f:
+            f.write('#!/bin/sh\necho "$1 $2 HEARTH_DESKTOP=$HEARTH_DESKTOP" >> "$HOME/companion-ran"\n')
+        r, log = self.session('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=kde\n')
+        self.assertIn('kde: up', log)
+        import time
+        for _ in range(20):
+            if os.path.exists(os.path.join(self.home, 'companion-ran')):
+                break
+            time.sleep(0.2)
+        self.assertEqual(open(os.path.join(self.home, 'companion-ran')).read().split(), ['kde', 'session', 'HEARTH_DESKTOP=kde'])
+
     def test_old_names(self):
         for v, want in (('plasma', 'kde'), ('cosmic', 'classic'), ('deepin', 'classic')):
             with self.subTest(v=v):
