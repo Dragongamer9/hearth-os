@@ -21,6 +21,7 @@
 // "viewer"|"close-viewer"|"quit"}, {"t":"log","text"}.
 
 mod pointer;
+mod remote;
 
 use base64::Engine;
 use hearth_theater as th;
@@ -186,20 +187,27 @@ fn fetch_posters(dir: &std::path::Path, id: &str, cat: &mut th::Catalog, keep: &
 /// Reads a site's catalog again (in the hidden reader), saves it with its posters and tells the main window.
 fn read_catalog(id: &str) -> Result<th::Catalog, String> {
     let s = st();
-    let (url, name) = {
-        let sites = lock(&s.sites);
-        let x = sites.iter().find(|x| x.id == id).ok_or("That site isn't in Theater")?;
-        (x.url.clone(), x.name.clone())
-    };
+    let site = lock(&s.sites).iter().find(|x| x.id == id).cloned().ok_or("That site isn't in Theater")?;
+    let (url, name) = (site.url.clone(), site.name.clone());
     lock(&s.reading).push(id.to_string());
     emit("catalog-reading", json!({"id": id}));
-    let got = read_page(&url, "catalog", Duration::from_secs(75), &|| true)
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).map_err(|e| format!("The reader's answer didn't make sense ({e})")));
-    lock(&s.reading).retain(|x| x != id);
     let old = th::load_catalog(&s.dir, id);
-    let mut cat = match got {
-        Ok(v) => { let mut c = th::sanitize(&v, &url, &name); th::carry_art(&old, &mut c, &s.dir); c }
-        Err(e) => { log(&format!("catalog of {}: {e}", th::log_url(&url))); let mut c = old; c.error = e; c.updated = th::now_ms(); c }
+    let mut cat = if site.kind == th::jf::KIND {
+        // A Jellyfin: its own lists, through its API with Theater's sign-in there (remote.rs).
+        let mut c = remote::catalog(&site);
+        lock(&s.reading).retain(|x| x != id);
+        if !c.error.is_empty() { log(&format!("catalog of {}: {}", th::log_url(&url), c.error)); }
+        if c.rows.is_empty() && !old.rows.is_empty() { let e = c.error; c = old.clone(); c.error = e; c.updated = th::now_ms(); }
+        th::carry_art(&old, &mut c, &s.dir);
+        c
+    } else {
+        let got = read_page(&url, "catalog", Duration::from_secs(75), &|| true)
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).map_err(|e| format!("The reader's answer didn't make sense ({e})")));
+        lock(&s.reading).retain(|x| x != id);
+        match got {
+            Ok(v) => { let mut c = th::sanitize(&v, &url, &name); th::carry_art(&old, &mut c, &s.dir); c }
+            Err(e) => { log(&format!("catalog of {}: {e}", th::log_url(&url))); let mut c = old; c.error = e; c.updated = th::now_ms(); c }
+        }
     };
     let gone = || !lock(&s.sites).iter().any(|x| x.id == id);
     if gone() { return Err("That site was removed".into()); }
@@ -217,8 +225,13 @@ fn read_catalog(id: &str) -> Result<th::Catalog, String> {
 
 fn arg(a: &Value, k: &str) -> String { a.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string() }
 
-fn item_from(v: &Value) -> Result<th::Item, String> {
+fn item_from(v: &Value, site: &str) -> Result<th::Item, String> {
     let mut i = th::sanitize_item(v, None).ok_or("That title can't be opened")?;
+    // A Jellyfin title's link keeps its #part (that's where Jellyfin's page says which title).
+    let raw = v.get("url").and_then(|x| x.as_str()).unwrap_or("");
+    if let Some(x) = lock(&st().sites).iter().find(|x| x.id == site && x.kind == th::jf::KIND) {
+        if th::jf::own_link(&x.url, raw) { i.url = raw.to_string(); }
+    }
     let art = v.get("art").and_then(|x| x.as_str()).unwrap_or("");
     if th::safe_art(art) { i.art = art.to_string(); }
     Ok(i)
@@ -240,7 +253,7 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
             let sites = lock(&s.sites).clone();
             let catalogs: serde_json::Map<String, Value> = sites.iter().map(|x| (x.id.clone(), json!(th::load_catalog(&s.dir, &x.id)))).collect();
             Ok(json!({"sites": sites, "categories": th::CATEGORIES, "fullscreen": s.fullscreen, "titles": *lock(&s.titles),
-                      "catalogs": catalogs, "reading": *lock(&s.reading), "platform": "linux", "pointer": pointer::status()}))
+                      "catalogs": catalogs, "reading": *lock(&s.reading), "platform": "linux", "pointer": pointer::status(), "jellyfin": remote::connected()}))
         }
         // Reads a site's catalog now (Refresh now, and right after a site is added).
         "catalog_refresh" => read_catalog(&arg(a, "id")).map(|c| json!(c)),
@@ -250,11 +263,9 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
             s.search_gen.fetch_max(gen, Ordering::SeqCst);
             let q = arg(a, "query").trim().to_string();
             if q.is_empty() { return Ok(json!({"items": []})); }
-            let (site_url, template) = {
-                let sites = lock(&s.sites);
-                let x = sites.iter().find(|x| x.id == id).ok_or("That site isn't in Theater")?;
-                (x.url.clone(), th::load_catalog(&s.dir, &id).search)
-            };
+            let site = lock(&s.sites).iter().find(|x| x.id == id).cloned().ok_or("That site isn't in Theater")?;
+            if site.kind == th::jf::KIND { return remote::search(&site, &q).map(|items| json!({"items": items})); }
+            let (site_url, template) = (site.url.clone(), th::load_catalog(&s.dir, &id).search);
             if template.is_empty() { return Ok(json!({"items": [], "nosearch": true})); }
             let page = th::search_url(&template, &q);
             let raw = read_page(&page, "search", Duration::from_secs(35), &|| s.search_gen.load(Ordering::SeqCst) <= gen)?;
@@ -264,7 +275,7 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         // Opens a title's page in the viewer and keeps it for Continue.
         "open_title" => {
             let site = arg(a, "site");
-            let item = item_from(a.get("item").unwrap_or(&Value::Null))?;
+            let item = item_from(a.get("item").unwrap_or(&Value::Null), &site)?;
             let t = {
                 let mut titles = lock(&s.titles);
                 let t = th::keep_title(&mut titles, &site, &item);
@@ -281,7 +292,7 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
             Ok(json!(t))
         }
         "fav_title" => {
-            let item = item_from(a.get("item").unwrap_or(&Value::Null))?;
+            let item = item_from(a.get("item").unwrap_or(&Value::Null), &arg(a, "site"))?;
             let mut titles = lock(&s.titles);
             let t = th::keep_title(&mut titles, &arg(a, "site"), &item);
             t.favorite = a.get("on").and_then(|x| x.as_bool()).unwrap_or(false);
@@ -356,6 +367,7 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "remove" => {
             let mut sites = lock(&s.sites);
             th::remove(&s.dir, &mut sites, &arg(a, "id"))?;
+            th::jf::forget_login(&s.dir, &arg(a, "id"));
             th::save(&s.dir, &sites).map(|_| Value::Null)
         }
         // A saved picture as a data: address for an <img>.
@@ -381,6 +393,15 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
             emit("opened", json!({"id": id}));
             Ok(Value::Null)
         }
+        // Jellyfin (remote.rs): servers to connect, Quick Connect, and the sign-ins here.
+        "jellyfin_find" => Ok(remote::find()),
+        "jellyfin_connect" => remote::connect(&arg(a, "url")),
+        "jellyfin_wait" => remote::wait(&arg(a, "url"), &arg(a, "category")),
+        "jellyfin_cancel" => { remote::cancel(&arg(a, "url")); Ok(Value::Null) }
+        // Sync with your other devices (through Hearth Link).
+        "sync_status" => Ok(remote::sync_status()),
+        "sync_set" => remote::sync_set(a.get("on").and_then(|x| x.as_bool()).unwrap_or(true)),
+        "sync_now" => remote::sync_now(),
         "close" => { send(json!({"t": "do", "op": "close-viewer"})); Ok(Value::Null) }
         "quit" => { send(json!({"t": "do", "op": "quit"})); Ok(Value::Null) }
         _ => Err(format!("unknown call {cmd}")),
@@ -402,6 +423,8 @@ fn core(args: &[String]) {
     });
     *lock(&st().titles) = th::load_titles(&st().dir);
     log(&pointer::init());
+    // What Hearth Link brought from your other devices while Theater was closed, and from now on.
+    if !read_all { remote::watch_inbox(); }
     // Catalogs older than six hours are read again in the background, one site at a time (--read-catalogs: every
     // site, then Theater quits).
     std::thread::spawn(move || {

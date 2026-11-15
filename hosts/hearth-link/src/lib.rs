@@ -3,7 +3,8 @@
 //!
 //! 1. keep your Hearth data in sync between them (no Hearth server in the middle): favorites, hidden games,
 //!    collections, play time (each device's own minutes, added up), per-game settings, your profile and its
-//!    pictures, appearance, controller layouts, Beacon's own games list, Quick Resume. Newest change wins per field.
+//!    pictures, appearance, controller layouts, Beacon's own games list, Quick Resume, Theater's sites and favorites. Newest
+//!    change wins per field.
 //!    Store sign-ins are never copied (they're bound to the device, or rotate): a device only shows "sign in once on
 //!    this device" for the stores you're signed in to elsewhere.
 //! 2. copy games from one to another, fast: Steam (with its appmanifest, so Steam sees it installed), GOG, Epic,

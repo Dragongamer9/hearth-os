@@ -484,7 +484,7 @@ function editor(s) {
 async function jellyfinFound(box) {
   if (!box) return;
   let r; try { r = await invoke('jellyfin_find'); } catch { return; }
-  const list = (r.servers || []).filter(x => !SITES.some(s => s.kind === 'jellyfin' && s.url === x.url));
+  const list = (r.servers || []).filter(x => !SITES.some(s => s.kind === 'jellyfin' && s.url === x.url && JF[s.id]));
   if (!list.length) return;
   box.innerHTML = `<span class="label">Your Jellyfin</span>${list.map((x, i) => `<div class="src"><span class="jf">J</span><span class="txt"><b>${esc(x.name)}</b><small>Jellyfin ${esc(x.version || '')} · ${esc(x.where)}</small></span>
       <button class="btn primary f" data-jf="${i}" ${i === 0 ? 'data-autofocus' : ''}>Connect</button></div>`).join('')}<div class="orline">or add any video site by its link</div>`;
@@ -510,7 +510,7 @@ async function jellyfinConnect(srv) {
     await new Promise(r => setTimeout(r, 1500));
     if (done) return;
     let w; try { w = await invoke('jellyfin_wait', { url: srv.url, category: cat }); } catch (e) { closeDialog(); toast(String(e)); return; }
-    if (w.site) { done = true; closeDialog(); SITES.push(w.site); render(); toast(`${srv.name} connected as ${w.user}. Reading your libraries…`); readCatalog(w.site.id, false); }
+    if (w.site) { done = true; closeDialog(); JF[w.site.id] = w.user; if (!SITES.some(s => s.id === w.site.id)) SITES.push(w.site); render(); toast(`${srv.name} connected as ${w.user}. Reading your libraries…`); readCatalog(w.site.id, false); }
   }
 }
 
@@ -519,29 +519,31 @@ async function jellyfinConnect(srv) {
 // over Tailscale (Hearth Link), the newest change winning per site and title, never a sign-in or a cookie. On unless
 // you turn it off (here, on any device).
 let SYNC = null;
+let JF = {};   // connected Jellyfin sites here: id → who Theater is signed in as (a synced one connects once per device)
 const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
 function syncChip() {
   const b = $('#syncBtn'); if (!b) return;
   if (!SYNC) { b.hidden = true; return; }
   b.hidden = false;
-  b.classList.toggle('off', !SYNC.on || !SYNC.server);
-  b.innerHTML = `<span class="dot"></span>${!SYNC.on ? 'Not synced' : !SYNC.server ? 'Sync: no home server yet' : `Synced · ${SYNC.devices.length + 1} devices`}`;
+  const none = !SYNC.server && !SYNC.devices.length;
+  b.classList.toggle('off', !SYNC.on || none);
+  b.innerHTML = `<span class="dot"></span>${!SYNC.on ? 'Not synced' : none ? 'Sync: pair a device first' : `Synced · ${SYNC.devices.length + 1} devices`}`;
 }
 async function loadSync() { try { SYNC = await invoke('sync_status'); } catch { SYNC = null; } syncChip(); }
 function syncDialog() {
   const s = SYNC || { on: false, devices: [] };
   const d = dialog(`<h2>Sync with your devices</h2>
     <div class="menu-list"><button class="btn f row-switch" data-s="toggle" data-autofocus><span>Sync your sites, favorites and Continue</span><span class="switch ${s.on ? 'on' : ''}"></span></button></div>
-    <p class="muted">${s.server ? `Through <b>${esc(s.server)}</b> (your home server) over Tailscale${s.last ? ` · last synced ${esc(ago(s.last))}` : ''}` : 'Needs your home server (Settings › Home server) and Tailscale.'}</p>
+    <p class="muted">${s.server ? `Through <b>${esc(s.server)}</b> (your home server) over Tailscale${s.last ? ` · last synced ${esc(ago(s.last))}` : ''}` : s.devices.length ? `With your paired devices, through Hearth Link${s.last ? ` · last synced ${esc(ago(s.last))}` : ''}` : 'Pair your devices first: Settings › Hearth Link.'}</p>
     ${s.devices.length ? `<div class="devs">${s.devices.map(x => `<div><b>${esc(x.name)}</b><span>${esc(x.state)}</span></div>`).join('')}</div>` : ''}
     <p class="muted small">What follows you: your sites and their shelves, favorites, Continue and the rows you hid. Sign-ins to sites stay on each device. Jellyfin keeps where you stopped itself, on every device.</p>
-    <div class="row end"><button class="btn f" data-s="now" ${s.on && s.server ? '' : 'disabled'}>${icon('refresh')}Sync now</button><button class="btn f" data-s="close">Done</button></div>`);
+    <div class="row end"><button class="btn f" data-s="now" ${s.on && (s.server || s.devices.length) ? '' : 'disabled'}>${icon('refresh')}Sync now</button><button class="btn f" data-s="close">Done</button></div>`);
   d.addEventListener('click', async e => {
     const a = e.target.closest('[data-s]')?.dataset.s; if (!a) return;
     if (a === 'close') { closeDialog(); return; }
     try {
       if (a === 'toggle') SYNC = await invoke('sync_set', { on: !s.on });
-      else { SYNC = await invoke('sync_now'); toast('Synced'); const r = await invoke('init'); SITES = r.sites || SITES; CATALOGS = r.catalogs || CATALOGS; TITLES = r.titles || TITLES; }
+      else { SYNC = await invoke('sync_now'); toast('Synced'); const r = await invoke('init'); SITES = r.sites || SITES; CATALOGS = r.catalogs || CATALOGS; TITLES = r.titles || TITLES; JF = r.jellyfin || JF; }
     } catch (err) { toast(String(err)); return; }
     closeDialog(); render(); syncDialog();
   });
@@ -591,7 +593,7 @@ document.addEventListener('paste', e => {
   try {
     const r = await invoke('init');
     SITES = r.sites || []; CATS = r.categories || CATS; FULL = !!r.fullscreen;
-    CATALOGS = r.catalogs || {}; TITLES = r.titles || []; (r.reading || []).forEach(id => READING.add(id));
+    CATALOGS = r.catalogs || {}; TITLES = r.titles || []; JF = r.jellyfin || {}; (r.reading || []).forEach(id => READING.add(id));
   } catch { /* preview in a plain browser */ }
   render();
   loadSync();
@@ -602,6 +604,8 @@ document.addEventListener('paste', e => {
     H.T.event.listen('closed', later);
     // Catalogs read in the background (and their posters) arrive as they're done.
     H.T.event.listen('catalog-reading', e => { READING.add(e.payload.id); later(); });
+    // Sites and titles from your other devices (Hearth Link).
+    H.T.event.listen('synced', e => { const r = e.payload || {}; SITES = r.sites || SITES; CATALOGS = r.catalogs || CATALOGS; TITLES = r.titles || TITLES; JF = r.jellyfin || JF; loadSync(); later(); });
     H.T.event.listen('catalog', e => { READING.delete(e.payload.id); CATALOGS[e.payload.id] = e.payload.catalog; later(); });
   }
 })();
@@ -629,7 +633,7 @@ window.DEMO = (cmd, a) => {
   const empty = () => ({ updated: Date.now(), rows: [], search: '', signin: false, sources: [], error: '' });
   const keep = (site, item) => { let t = D.titles.find(x => x.site === site && x.url === item.url); if (!t) D.titles.push(t = { ...item, site, favorite: false, opened: 0, opens: 0 }); return t; };
   if (cmd === 'init') return { sites: D.sites.map(s => ({ ...s })), categories: ['Anime', 'TV', 'Movies', 'Other'], fullscreen: /full/.test(location.hash),
-    catalogs: Object.fromEntries(D.sites.map(s => [s.id, D.catalogs[s.id] || empty()])), titles: D.titles, reading: [] };
+    catalogs: Object.fromEntries(D.sites.map(s => [s.id, D.catalogs[s.id] || empty()])), titles: D.titles, reading: [], jellyfin: D.sites.some(s => s.id === 's4') ? { s4: 'Chris' } : {} };
   if (cmd === 'preview') return { url: a.url, title: 'Sample site', image: '', host: a.url };
   if (cmd === 'add') { const s = { id: 's' + Date.now(), name: a.name || a.url, url: a.url, category: a.category, favorite: false, opened: 0, art: '', icon: '', hidden: [] }; D.sites.push(s); return { ...s }; }
   if (cmd === 'refresh') return D.sites.find(s => s.id === a.id);
