@@ -87,7 +87,7 @@ Rectangle {
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
                 radius: 10 * tile.k; clip: true
                 gradient: Gradient { GradientStop { position: 0; color: "#2a2232" } GradientStop { position: 1; color: tile.cSunk } }
-                IthilBrain { anchors.fill: parent; compact: true; visible: !!tile.t.ithil; data: tile.brain
+                IthilBrain { anchors.fill: parent; compact: true; visible: !!tile.t.ithil; brain: tile.brain
                     asleep: !!tile.t.ithil && tile.t.ithil.state === "asleep" }
             }
             ColumnLayout {
