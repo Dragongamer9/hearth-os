@@ -1072,7 +1072,13 @@ jobs:
           for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
             if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
-              sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked/img "docker://$IMAGE:$tag"
+              # 1.13's first publish failed here: skopeo's blob cache tried to reuse a layer from another repository
+              # ("trying to reuse blob … Requesting bearer token: 403"). Without the cache it uploads every layer itself;
+              # if it still fails, the same rechunked image goes up with podman push (hearth-peppermint:latest is it).
+              sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+              sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked/img "docker://$IMAGE:$tag" \
+                || { echo "::warning title=publish::skopeo couldn't publish the rechunked folder for $tag; pushing the same image with podman"; \
+                     sudo podman push hearth-peppermint:latest "$IMAGE:$tag"; }
             else
               sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
             fi
