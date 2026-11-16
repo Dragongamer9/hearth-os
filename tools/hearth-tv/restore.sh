@@ -13,7 +13,7 @@ com.google.android.tvrecommendations com.google.android.leanbacklauncher.recomme
 com.tcl.interactive com.google.android.feedback com.android.tv.feedbackconsent com.tcl.waterfall.overseas com.tcl.dashboard
 com.tcl.tv.tclhome_passive com.tcl.magiconnectfree com.tcl.smartalexa com.tcl.hotelmenu com.tcl.ocean.instructions
 com.tcl.repairguide com.tcl.gamebar com.tcl.usercenter com.google.android.apps.tv.launcherx com.google.android.tvlauncher
-com.google.android.katniss com.google.android.tungsten.setupwraith"
+com.google.android.katniss tv.samba.ssm.ui com.tcl.tv.plus com.google.android.tungsten.setupwraith"
 for p in $PKGS; do
   if sh pm list packages -d | tr -d '\r' | grep -qx "package:$p"; then sh pm enable "$p" >/dev/null && echo "switched back on: $p"; fi
 done
