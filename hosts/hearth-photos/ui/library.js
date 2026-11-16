@@ -220,7 +220,14 @@
   const dur = s => { if (!s && s !== 0) return ''; s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
   let groupsNow = [];
+  /** A mistake while drawing shows on the page and in the app's output (CI's screenshots and log show it). */
   function render() {
+    try { draw(); } catch (e) {
+      content.innerHTML = `<div class="empty"><b>Photos couldn't show this</b><p>${esc(String(e && e.stack || e))}</p></div>`;
+      invoke('log', { line: 'JSERROR library: ' + (e && e.stack || e) }).catch(() => {});
+    }
+  }
+  function draw() {
     renderSide();
     const width = Math.max(300, body.clientWidth - 60);
     const v = shown();
