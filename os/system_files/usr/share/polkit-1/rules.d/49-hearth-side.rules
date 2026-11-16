@@ -1,0 +1,11 @@
+// Hearth 1.14: Steam Game Mode beside the desktop (hearth-side-game@.service, docs/SIDE-BY-SIDE.md). Desktop Mode
+// starts and stops it with no password prompt. Only your own instance (hearth-side-game@<your account>.service), only
+// start and stop, only from the active session at the device. It runs as you (User=%i), never as root.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "hearth-side-game@" + subject.user + ".service" &&
+        ["start", "stop"].indexOf(action.lookup("verb")) >= 0 &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

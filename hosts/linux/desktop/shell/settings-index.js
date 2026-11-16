@@ -2605,6 +2605,12 @@ var ENTRIES = [
 "i": "pad"
 },
 {
+"t": "Keep Steam Game Mode running beside the desktop (test)",
+"p": "steam",
+"d": "Switching only shows the other one: a second or two, and Steam stays open and signed in. It keeps about 1–1.5 GB of memory for Steam. If Steam Game Mode doesn't come up this way, the usual switch happens instead. Still being tried on the Nvidia PC and the Ally.",
+"i": "desktops"
+},
+{
 "t": "Decky Loader and Hearth Sync",
 "p": "steam",
 "i": "store"

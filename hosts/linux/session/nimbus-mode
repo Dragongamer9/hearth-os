@@ -26,6 +26,11 @@ case "$1" in
   game|desktop|logout|steam|server|hearth)
     # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
     # asked for and isn't started again.)
+    # 1.14, Game Mode beside the desktop (off unless you turned it on): from Mantel, Steam Game Mode is shown on its
+    # own screen instead and the desktop keeps running; if it doesn't come up, the usual switch below.
+    side="${HEARTH_SIDE_HELPER:-/usr/libexec/nimbus/hearth-side-by-side}"
+    if [ -n "$LABWC_PID" ] && [ -x "$side" ] && { [ "$1" = steam ] || { [ "$1" = game ] && [ "$(python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-game-mode" choice 2>/dev/null || echo steam)" = steam ]; }; } \
+      && "$side" game >/dev/null 2>&1; then exit 0; fi
     echo "$1" >"$RUN/nimbus-next"
     if [ -n "$LABWC_PID" ]; then
       labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID"
