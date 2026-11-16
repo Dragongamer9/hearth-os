@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Steam's own program files read into memory ahead of Game Mode (1.14, faster switching: the owner, Nov 16).
+
+Started once per sign-in, half a minute into Desktop Mode, at the lowest priority. Asks the system to read Steam's
+client files (its 32- and 64-bit programs and its runtime) into the page cache, so Steam starts from memory when you
+switch to Game Mode. Only a hint: nothing is kept from other apps (the cache gives the memory back as soon as anything
+needs it), at most CAP_MB is asked for, and nothing happens with less than MIN_FREE_MB available, without Steam, or
+when you've turned it off (HEARTH_STEAM_WARM=0). Never writes anything.
+
+  hearth-steam-warm [--dry-run]     prints what it read (or would read) and how much
+"""
+import os
+import sys
+import time
+
+CAP_MB = int(os.environ.get('HEARTH_STEAM_WARM_MB', '700'))
+MIN_FREE_MB = 3072
+PARTS = ('ubuntu12_32', 'ubuntu12_64', 'steamrt64', 'linux64')
+
+
+def mem_available_mb(path='/proc/meminfo'):
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith('MemAvailable:'):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def steam_root(home):
+    for rel in ('.steam/debian-installation', '.local/share/Steam', '.steam/steam'):
+        p = os.path.realpath(os.path.join(home, rel))
+        if os.path.isdir(os.path.join(p, 'ubuntu12_32')):
+            return p
+    return None
+
+
+def files(root):
+    """Steam's program files, the ones a start reads first (programs and libraries), up to the cap."""
+    out, total, cap = [], 0, CAP_MB * 1048576
+    for part in PARTS:
+        base = os.path.join(root, part)
+        for d, dirs, names in os.walk(base):
+            dirs.sort()
+            for n in sorted(names):
+                p = os.path.join(d, n)
+                if os.path.islink(p) or not (n.endswith('.so') or '.so.' in n or os.access(p, os.X_OK) or n.endswith('.pak')):
+                    continue
+                try:
+                    size = os.path.getsize(p)
+                except OSError:
+                    continue
+                if size == 0 or size > 300 * 1048576:
+                    continue
+                if total + size > cap:
+                    return out, total
+                out.append(p)
+                total += size
+    return out, total
+
+
+def warm(paths, pause=0.002):
+    done = 0
+    for p in paths:
+        try:
+            fd = os.open(p, os.O_RDONLY)
+        except OSError:
+            continue
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_WILLNEED)
+            done += 1
+        except (OSError, AttributeError):
+            pass
+        finally:
+            os.close(fd)
+        time.sleep(pause)
+    return done
+
+
+def main(argv):
+    dry = '--dry-run' in argv
+    if os.environ.get('HEARTH_STEAM_WARM') == '0':
+        print('steam warm: turned off'); return 0
+    avail = mem_available_mb()
+    if avail < MIN_FREE_MB:
+        print(f'steam warm: skipped, {avail} MB available (needs {MIN_FREE_MB})'); return 0
+    root = steam_root(os.path.expanduser('~'))
+    if not root:
+        print('steam warm: no Steam here'); return 0
+    paths, total = files(root)
+    n = len(paths) if dry else warm(paths)
+    print(f'steam warm: {"would read" if dry else "asked for"} {n} files, {total // 1048576} MB, from {root}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
