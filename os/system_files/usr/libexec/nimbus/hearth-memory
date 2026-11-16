@@ -14,6 +14,8 @@ so a full RAM slows the PC down instead of freezing it. 1.11 (the owner's approv
   hearth-memory adopt             your test files (/etc/sysctl.d/99-hearth-memory-test.conf, hearth-zram-test.service)
                                   handed over: their values saved as your settings first, then the files kept as .bak
                                   and the test service turned off, so nothing you set changes
+  hearth-memory handover          your own /etc/sysctl.d files that set what these settings set: each kept as .bak and
+                                  written again without those lines, so your saved settings are the ones in use (1.14)
   hearth-memory never NAME on|off  one program (its process name) on or off your Never close list (Task Manager's
                                   right-click "Never close when memory runs out")
   hearth-memory checkpoint NAME on|off  one program on or off your Keep running list (Task Manager's right-click
@@ -577,6 +579,48 @@ def adopt():
     return r
 
 
+def managed_overrides(owners=None, etc='/etc/sysctl.d'):
+    """{key: file} for the values Hearth's memory settings set that a file of yours in /etc/sysctl.d sets instead
+    (1.14: shown as a warning in Swap & settings, with Use these settings). Image files (/usr/lib) aren't counted."""
+    owners = sysctl_owners(skip=(TEST_SYSCTL,)) if owners is None else owners
+    return {k: v for k, v in owners.items() if k in VM_KEYS and v.startswith(etc.rstrip('/') + '/') and v != TEST_SYSCTL}
+
+
+def handover(etc='/etc/sysctl.d'):
+    """Use these settings (1.14, the owner, Nov 16 2026: his laptop kept ~0.5 GB free while Settings said 2 GB, because
+    an old /etc/sysctl.d/90-hearth-swap.conf won). Only when you press it: each of your /etc/sysctl.d files that sets
+    a value Hearth's memory settings set is kept as <file>.bak, and written again without those lines (left out
+    entirely when nothing else is in it). Your saved settings aren't changed; then they're applied. Undo: rename the
+    .bak back."""
+    moved, kept = [], []
+    files = sorted(set(managed_overrides(sysctl_owners([etc], skip=(TEST_SYSCTL,)), etc).values()))
+    for path in files:
+        text = read(path)
+        rest = []
+        for line in text.splitlines():
+            m = re.match(r'\s*-?\s*vm\.([\w-]+)\s*=', line)
+            if m and m.group(1).replace('page_cluster', 'page-cluster') in VM_KEYS:
+                continue
+            rest.append(line)
+        bak = path + '.bak'
+        if os.path.exists(bak):
+            bak = path + '.bak.%d' % int(time.time())
+        shutil.copy2(path, bak)
+        if any(l.strip() and not l.strip().startswith(('#', ';')) for l in rest):
+            tmp = path + '.tmp'
+            with open(tmp, 'w') as f:
+                f.write('\n'.join(rest) + '\n')
+            os.replace(tmp, path)
+            kept.append(path)
+        else:
+            os.remove(path)
+        moved.append({'file': path, 'bak': bak})
+    r = apply(None)
+    r['handedOver'] = moved
+    r['keptOtherLines'] = kept
+    return r
+
+
 # ------------------------------------------------------------------ the drive swap file
 def make_swapfile(path, gb, prio):
     """A swap file of gb GB at path, turned on at prio (btrfs's own mkswapfile, else fallocate + mkswap)."""
@@ -669,7 +713,7 @@ def status():
         'swaps': sw, 'swapfile': {'path': SWAPFILE, 'exists': os.path.isfile(SWAPFILE),
                                   'gb': round(os.path.getsize(SWAPFILE) / GIB) if os.path.isfile(SWAPFILE) else 0,
                                   'hibernate': os.path.isfile(HIBERNATE_FILE)},
-        'vm': vm_now(), 'watermarks': watermarks(), 'hibernateChecked': hibernate_checked(), 'setBy': owners, 'pressure': dict(p, word=pressure_word(p)),
+        'vm': vm_now(), 'watermarks': watermarks(), 'hibernateChecked': hibernate_checked(), 'setBy': owners, 'overridden': managed_overrides(owners), 'pressure': dict(p, word=pressure_word(p)),
         'settings': merged(saved, mem), 'saved': bool(saved) and not broken, 'broken': broken,
         'from': saved.get('_from', ''), 'recommended': recommended(mem), 'limits': limits(mem, free_on('/var')),
         'algos': kernel_algos(), 'testFiles': test_files(), 'neverLabels': NEVER_LABEL, 'lastClosed': last,
@@ -1080,6 +1124,8 @@ def main(argv):
             out(r)
         elif a == ['adopt']:
             out(adopt())
+        elif a == ['handover']:
+            out(handover())
         elif a == ['guard']:
             guard()
         else:
