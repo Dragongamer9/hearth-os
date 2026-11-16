@@ -1,0 +1,17 @@
+# Server mode's game download cache (LANCache, hearth-server-dns; docs/SERVER-MODE.md). Off until you turn it on;
+# never part of starting the PC (no [Install]; hearth-server-dns.timer starts it while it's on).
+[Unit]
+Description=Hearth server: game download cache (LANCache)
+After=network-online.target
+StartLimitIntervalSec=15min
+StartLimitBurst=4
+
+[Service]
+ExecStart=/usr/libexec/nimbus/hearth-server-dns run-cache
+ExecStop=-/usr/bin/podman stop -t 10 hearth-lancache
+Restart=on-failure
+RestartSec=15
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+TimeoutStartSec=30min

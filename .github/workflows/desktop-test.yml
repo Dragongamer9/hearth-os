@@ -1881,6 +1881,7 @@ jobs:
       # page's 10-second countdown, "Back in Server mode", the menu, the idle screen, Settings › Home server › Server mode
       # and System › Startup (Start in and the schedule) inside Server mode, and the web page at phone and laptop sizes.
       - name: Server mode
+        timeout-minutes: 20
         if: always()
         shell: bash
         run: |
@@ -1892,7 +1893,8 @@ jobs:
           pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2; pkill -f quickshell || true
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
-          export HEARTH_SERVER_DASH_FIXTURE="$PWD/hosts/linux/test/fixtures/server-dash.json" HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
+          cp hosts/linux/test/fixtures/server-dash.json /tmp/server-dash.json   # (a copy: 1.13 adds Ithil to it later in this step)
+          export HEARTH_SERVER_DASH_FIXTURE=/tmp/server-dash.json HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
           QML="$PWD/hosts/linux/desktop/shell/server-mode.qml"
           H=hosts/linux/desktop/shell/hearth-server-mode
           rm -f "$XDG_RUNTIME_DIR"/wayland-* "$XDG_RUNTIME_DIR/hearth-server-dash-up"
@@ -1904,6 +1906,14 @@ jobs:
           HEARTH_SERVER_DASH_FIXTURE= python3 $H dash > shots/server-mode/dash-real.json 2> shots/server-mode/dash-real.err \
             && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("::notice title=Server mode::dash on the runner: %d tiles, %s" % (len(d["tiles"]), d["status"]["title"]))' shots/server-mode/dash-real.json \
             || { echo "::error title=Server mode::hearth-server-mode dash failed: $(head -c 300 shots/server-mode/dash-real.err | tr '\n' ' ')"; touch shots/FAILED; }
+          # The dashboard runs under gdb (as its parent: this container doesn't let gdb attach later), so if it stops
+          # answering, its threads' stacks show where it's stuck.
+          dnf -y -q install gdb >/dev/null 2>&1 || true
+          mkdir -p /tmp/qsw; REALQS=$(command -v quickshell)
+          if command -v gdb >/dev/null; then
+            printf '%s\n' '#!/bin/sh' "if [ \"\$1\" = -p ] && [ \$# -eq 2 ]; then exec gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'handle SIGPIPE SIGUSR1 SIGUSR2 SIG32 SIG33 SIG34 SIG35 nostop noprint pass' -ex run -ex 'thread apply all bt 40' --args $REALQS \"\$@\"; fi" "exec $REALQS \"\$@\"" > /tmp/qsw/quickshell
+            chmod +x /tmp/qsw/quickshell; export PATH=/tmp/qsw:$PATH
+          fi
           HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$QML" labwc -C hosts/linux/desktop/server/labwc > shots/server-mode/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -1912,30 +1922,118 @@ jobs:
           if [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ]; then echo "::notice title=Server mode::the dashboard said it's up after ${i}s (the session waits for this)"
           else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$XDG_RUNTIME_DIR/hearth-server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
           sleep 6
-          ipc() { quickshell ipc -p "$QML" call "$@" || echo "ipc $* failed"; sleep 2; }
-          grim shots/server-mode/01-dashboard.png || true
-          ipc server detail 1; grim shots/server-mode/02-ai-expanded.png || true
-          ipc server detail 2; grim shots/server-mode/02b-pictures-expanded.png || true
+          ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
+          # If the dashboard doesn't answer, where it's stuck (its threads' stacks, for finding what hangs)
+          stuck() {
+            [ -e /tmp/server-stuck ] && return 0
+            if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
+              touch /tmp/server-stuck shots/FAILED
+              pkill -INT -x quickshell || true; sleep 25
+              grep -E '^Thread|^#' "$XDG_RUNTIME_DIR/hearth-server-dash.log" > shots/server-mode/stuck-stacks.txt || true
+              echo "::error title=Server mode stuck ($1)::$(awk '/^Thread 1 /{f=1} f' shots/server-mode/stuck-stacks.txt | grep -oE ' in [^ ]+' | head -40 | tr '\n' ' ')"
+            fi
+          }
+          stuck "at start"
+          timeout 15 grim shots/server-mode/01-dashboard.png || true
+          ipc server detail 1; timeout 15 grim shots/server-mode/02-ai-expanded.png || true
+          ipc server detail 2; timeout 15 grim shots/server-mode/02b-pictures-expanded.png || true
           ipc server close
-          quickshell ipc -p "$QML" call server play; sleep 1; grim shots/server-mode/03-switch-to-game-mode.png || true
+          ipc server play; sleep 1; timeout 15 grim shots/server-mode/03-switch-to-game-mode.png || true
           ipc server close
           mkdir -p "$XDG_RUNTIME_DIR/hearth-server"
           python3 -c 'import json,time,sys; json.dump({"action": {"kind": "mode", "to": "game"}, "to": "game", "what": "mode", "deadline": time.time() + 9, "total": 10, "from": "web", "by": "Work laptop"}, open(sys.argv[1], "w"))' "$XDG_RUNTIME_DIR/hearth-server/countdown.json"
-          sleep 3; grim shots/server-mode/03b-web-switch-countdown.png || true
+          sleep 3; timeout 15 grim shots/server-mode/03b-web-switch-countdown.png || true
           ipc server cancel; sleep 2
-          ipc server back; grim shots/server-mode/04-back-in-server-mode.png || true
+          ipc server back; timeout 15 grim shots/server-mode/04-back-in-server-mode.png || true
           ipc server close
-          ipc server menu; grim shots/server-mode/05-menu.png || true
+          ipc server menu; timeout 15 grim shots/server-mode/05-menu.png || true
           ipc server close
-          ipc server idle dim; grim shots/server-mode/09-screen-idle.png || true
+          ipc server idle dim; timeout 15 grim shots/server-mode/09-screen-idle.png || true
           ipc server idle on
-          echo "state: $(quickshell ipc -p "$QML" call server state)"
-          ipc settings page hs-server; sleep 3; grim shots/server-mode/06-settings-server-mode.png || true
-          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/server-mode/06b-settings-what-pauses.png || true
-          for i in $(seq 1 8); do wtype -k Down; done; sleep 1; grim shots/server-mode/06c-settings-web-page.png || true
-          ipc settings close; ipc settings page startup; sleep 3; grim shots/server-mode/07-settings-startup.png || true
-          wtype -k Right; sleep 1; for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim shots/server-mode/07b-settings-schedule.png || true
-          ipc settings close; ipc settings page gaming; sleep 3; grim shots/server-mode/08-gaming-start-in.png || true
+          # 1.13 (mockups next-update/server-ithil-*): Ithil on the server: a stand-in ~/HearthAI, her tile two wide after
+          # the AI team (the fixture gets it the way dash() makes it), then her opened view with the live 3D / 4D brain.
+          python3 hosts/linux/test/fixtures/ithil-home.py "$HOME/HearthAI"
+          python3 - <<'PY'
+          import json, sys
+          sys.path.insert(0, 'hosts/linux/desktop/shell')
+          import hearth_ithil
+          v = hearth_ithil.view()
+          v.update({'running': True, 'state': 'awake', 'chip': 'Awake', 'version': '0.6', 'brainLoaded': True})
+          d = json.load(open('/tmp/server-dash.json'))
+          d['tiles'].insert(1, {'id': 'ithil', 'title': 'Ithil', 'engine': 'Her own mind · Hearth AI 0.6', 'icon': 'moon', 'state': 'running', 'chip': 'Awake',
+                                'new': True, 'wide': True, 'ithil': v, 'actions': []})
+          d['pills'].insert(3, {'name': 'Ithil', 'extra': '', 'state': 'running'})
+          d['alerts'].insert(0, {'level': 'ithil', 'text': v['sleepLine'][0], 'sub': v['sleepLine'][1], 'at': ''})
+          d['ithil'] = v
+          json.dump(d, open('/tmp/server-dash.json.tmp', 'w'))
+          PY
+          mv /tmp/server-dash.json.tmp /tmp/server-dash.json
+          sleep 9; timeout 15 grim shots/server-mode/11-ithil-tile.png || true
+          ipc server detail 2; sleep 5; timeout 15 grim shots/server-mode/12-ithil-opened.png || true
+          ipc server press window; sleep 2; timeout 15 grim shots/server-mode/12b-ithil-last-24-hours.png || true
+          ipc server close
+          # 1.13 (mockups next-update/server-cache, -adblock, -rules): their tiles and opened pages, with the numbers the
+          # mockups show (the tiles made by hearth-server-mode's own dns_tiles / rules_tile from stand-in status files).
+          python3 - <<'PY'
+          import json, sys, time
+          sys.path.insert(0, 'hosts/linux/desktop/shell')
+          import importlib.machinery as m
+          sm = m.SourceFileLoader('sm', 'hosts/linux/desktop/shell/hearth-server-mode').load_module()
+          G = 1e9
+          day = lambda i: time.strftime('%a', time.localtime(time.time() - (6 - i) * 86400))
+          dns = {'cache': {'on': True, 'running': True, 'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': False}, 'sizeGB': 1000, 'dir': '/var/mnt/games',
+                           'storeNames': {'steam': 'Steam', 'epic': 'Epic Games', 'blizzard': 'Battle.net', 'xbox': 'Xbox / Microsoft Store'},
+                           'view': {'savedWeek': 412 * G, 'internetWeek': 186 * G, 'devicesWeek': 598 * G, 'used': 784 * G, 'drive': 'Games drive',
+                                    'bars': [{'day': day(i), 'saved': v * G} for i, v in enumerate([44, 73, 22, 100, 62, 33, 84])],
+                                    'now': [{'device': 'ROG Ally', 'what': "Baldur's Gate 3 update", 'from': 'from the cache', 'rate': 94e6},
+                                            {'device': 'Living room PC', 'what': 'Halo Infinite', 'from': 'from the internet once', 'rate': 31e6}]}},
+                 'ads': {'on': True, 'running': True, 'pausedUntil': 0, 'allow': [], 'devices': {},
+                         'view': {'today': {'percent': 18, 'blocked': 4812, 'ms': 9}, 'pausedUntil': 0,
+                                  'top': [{'name': 'doubleclick.net', 'count': 1204}, {'name': 'app-measurement.com', 'count': 811}, {'name': 'ads.youtube.com', 'count': 402}, {'name': 'telemetry.example-tv.com', 'count': 377}],
+                                  'devices': [{'id': 'chris-hearth', 'name': 'chris-hearth (this PC)', 'on': True, 'state': 'Using it'},
+                                              {'id': 'rog-ally', 'name': 'ROG Ally · at work, over Tailscale', 'on': True, 'state': 'Using it'},
+                                              {'id': 'work-laptop', 'name': 'Work laptop', 'on': False, 'state': 'Paused 1 h'},
+                                              {'id': 'lan', 'name': 'Everything else on your Wi-Fi', 'on': True, 'state': 'Through the router'}]}}}
+          now = time.time()
+          rules = {'quiet': [{'id': '1', 'name': 'Weeknights', 'from': '23:00', 'to': '07:00', 'days': [0, 1, 2, 3, 4], 'daysText': 'Mon–Fri', 'on': True},
+                             {'id': '2', 'name': 'Sunday lie-in', 'from': '00:00', 'to': '10:00', 'days': [6], 'daysText': 'Sun', 'on': False}],
+                   'while': {'fans': 40, 'powerW': 150, 'jobs': True, 'downloads': True},
+                   'rules': [{'id': '1', 'when': 'jellyfin', 'do': 'pictures', 'on': True, 'whenText': 'someone is watching Jellyfin', 'doText': 'AI pictures wait', 'paused': False},
+                             {'id': '2', 'when': 'game', 'do': 'downloads', 'on': True, 'whenText': 'a game runs on this PC', 'doText': 'downloads at half speed', 'paused': False},
+                             {'id': '3', 'when': 'drive:50', 'do': 'backups', 'on': False, 'whenText': 'the drive is over 50 °C', 'doText': 'backups wait', 'paused': True}],
+                   'now': {'at': int(now), 'quiet': 'Weeknights', 'quietUntil': int(now) + 5 * 3600, 'wait': ['pictures', 'voices'], 'fanSpeed': 34,
+                           'why': ['Weeknights'], 'game': False}}
+          d = json.load(open('/tmp/server-dash.json'))
+          d['tiles'] += sm.dns_tiles(dns) + [sm.rules_tile(rules)]
+          json.dump(d, open('/tmp/server-dash.json', 'w'))
+          print('::notice title=Server mode::the cache, ad blocker and rules tiles are at %s' % ', '.join(str(i + 1) for i, t in enumerate(d['tiles']) if t['id'] in ('cache', 'ads', 'rules')))
+          PY
+          sleep 9
+          n=$(python3 -c "import json; t=json.load(open('/tmp/server-dash.json'))['tiles']; print(' '.join(str(i + 1) for i, x in enumerate(t) if x['id'] in ('cache', 'ads', 'rules')))")
+          set -- $n
+          # The Services area scrolls to the picked tile (1.13): pick the last of them so all three show
+          ipc server pick $3; sleep 1; timeout 15 grim shots/server-mode/13-cache-ads-rules-tiles.png || true
+          ipc server pick 0
+          ipc server detail $1; sleep 3; timeout 15 grim shots/server-mode/14-cache-opened.png || true
+          stuck "the cache page"
+          ipc server close
+          ipc server detail $2; sleep 3; timeout 15 grim shots/server-mode/15-adblock-opened.png || true
+          stuck "the ad blocker page"
+          ipc server close
+          ipc server detail $3; sleep 3; timeout 15 grim shots/server-mode/16-rules-opened.png || true
+          stuck "the rules page"
+          ipc server press new; timeout 15 grim shots/server-mode/16b-rules-new-rule.png || true
+          timeout 10 wtype -k Escape; sleep 1
+          ipc server close
+          echo "state: $(timeout 20 quickshell ipc -p "$QML" call server state)"
+          # The dashboard's own log and Quickshell's (what it said if it stopped answering)
+          find "$XDG_RUNTIME_DIR/quickshell" -name '*.log' -newer shots/server-mode/labwc.log -exec tail -c 20000 {} \; > shots/server-mode/quickshell.log 2>/dev/null || true
+          ipc settings page hs-server; sleep 3; timeout 15 grim shots/server-mode/06-settings-server-mode.png || true
+          timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 12); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/06b-settings-what-pauses.png || true
+          for i in $(seq 1 8); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/06c-settings-web-page.png || true
+          ipc settings close; ipc settings page startup; sleep 3; timeout 15 grim shots/server-mode/07-settings-startup.png || true
+          timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 6); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/07b-settings-schedule.png || true
+          ipc settings close; ipc settings page gaming; sleep 3; timeout 15 grim shots/server-mode/08-gaming-start-in.png || true
           ipc settings close
           cp "$XDG_RUNTIME_DIR/hearth-server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
           sbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load|Unable to assign" shots/server-mode/dashboard.log 2>/dev/null | grep -viE "uinput|evdev|DBus|hearth-pad" | head -10 | cut -c1-220 | tr '\n' '|' || true)

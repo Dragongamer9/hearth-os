@@ -1,0 +1,191 @@
+#!/usr/bin/python3
+"""hearth-dns-client: this Hearth device uses your server's ad blocker and game download cache while the server
+answers, and goes back to normal lookups by itself within seconds when it doesn't (1.13, docs/SERVER-MODE.md).
+
+Run by hearth-dns-client.service on every Hearth device (the server too). It does nothing until a Hearth server on
+your Tailscale has the ad blocker or the cache on (hearth-server-dns): it finds it by asking each of your Tailscale
+devices for hearth-dns.hearth, a name only that server answers. Then the network card the internet goes through asks
+the server (its Tailscale address, so the server knows this device by name) through NetworkManager's runtime setting
+(`nmcli device modify`: never saved, gone at the next start), and every 5 seconds it checks the server still answers:
+two misses in a row and the card's own settings come back (`nmcli device reapply`). Nothing waits for the server.
+
+  hearth-dns-client run         the service: forever
+  hearth-dns-client revert      back to normal lookups now (the service's stop does this too)
+  hearth-dns-client status      JSON: on, the server, in use
+Switch: /etc/hearth/dns-client.json {"on": true} (Settings; off: never used).
+"""
+import json
+import os
+import random
+import socket
+import struct
+import subprocess
+import sys
+import time
+
+E = os.environ.get
+CONF = E('HEARTH_DNSC_CONF', '/etc/hearth/dns-client.json')
+RUN = E('HEARTH_DNSC_RUN', '/run/hearth/dns-client.json')
+NMCLI = E('HEARTH_DNSC_NMCLI', 'nmcli')
+TAILSCALE = E('HEARTH_DNSC_TAILSCALE', 'tailscale')
+IP = E('HEARTH_DNSC_IP', 'ip')
+MARKER = 'hearth-dns.hearth'
+EVERY = float(E('HEARTH_DNSC_EVERY', '5'))
+
+
+def run(cmd, timeout=10):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+
+
+def on():
+    try:
+        v = json.load(open(CONF))
+        return bool(v.get('on', True)) if isinstance(v, dict) else True
+    except (OSError, ValueError):
+        return True
+
+
+def ask(server, name=MARKER, timeout=0.8, port=53):
+    """One DNS question (A) over UDP; True when the server answers it with an address."""
+    tid = random.randint(0, 65535)
+    q = struct.pack('>HHHHHH', tid, 0x0100, 1, 0, 0, 0) + b''.join(
+        bytes([len(p)]) + p.encode() for p in name.split('.')) + b'\0' + struct.pack('>HH', 1, 1)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(timeout)
+    try:
+        s.sendto(q, (server, port))
+        data, _ = s.recvfrom(2048)
+        if len(data) < 12:
+            return False
+        rid, flags, _, an = struct.unpack('>HHHH', data[:8])
+        return rid == tid and flags & 0x000F == 0 and an > 0
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def candidates():
+    rc, out = run([TAILSCALE, 'status', '--json'], timeout=8)
+    try:
+        st = json.loads(out) if rc == 0 else {}
+    except ValueError:
+        st = {}
+    out = []
+    for p in [st.get('Self') or {}] + list((st.get('Peer') or {}).values()):
+        if p is not st.get('Self') and not p.get('Online'):
+            continue
+        out += [ip for ip in p.get('TailscaleIPs') or [] if '.' in ip]
+    return out
+
+
+def card():
+    """The network card the internet goes through (not Tailscale's)."""
+    rc, out = run([IP, 'route', 'get', '9.9.9.9'], timeout=5)
+    w = out.split()
+    if 'dev' in w:
+        d = w[w.index('dev') + 1]
+        if not d.startswith(('tailscale', 'lo')):
+            return d
+    return ''
+
+
+def state():
+    try:
+        return json.load(open(RUN))
+    except (OSError, ValueError):
+        return {}
+
+
+def save(s):
+    os.makedirs(os.path.dirname(RUN), exist_ok=True)
+    tmp = RUN + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(s, f)
+    os.replace(tmp, RUN)
+
+
+def use(dev, server):
+    rc, _ = run([NMCLI, 'device', 'modify', dev, 'ipv4.dns', server, 'ipv4.ignore-auto-dns', 'yes',
+                 'ipv6.ignore-auto-dns', 'yes'], timeout=15)
+    return rc == 0
+
+
+def revert():
+    s = state()
+    if s.get('applied'):
+        run([NMCLI, 'device', 'reapply', s['applied']], timeout=15)
+    s.update(applied='', since=0)
+    save(s)
+    return s
+
+
+def step(s, now=None):
+    """One check. s: {server, applied, misses, found}."""
+    now = now or time.time()
+    if not on():
+        if s.get('applied'):
+            s = revert()
+        return s
+    server = s.get('server') or ''
+    if server and ask(server):
+        s['misses'] = 0
+    else:
+        s['misses'] = s.get('misses', 0) + 1
+        if s['misses'] >= 2 or not server:
+            if s.get('applied'):
+                run([NMCLI, 'device', 'reapply', s['applied']], timeout=15)
+                s['applied'] = ''
+            # Look again (not more than once a minute when nothing answered).
+            if now - s.get('looked', 0) >= 60 or server:
+                s['looked'] = now
+                s['server'] = next((ip for ip in candidates() if ask(ip)), '')
+            return s
+    dev = card()
+    if s.get('server') and s['misses'] == 0 and dev:
+        if s.get('applied') != dev:
+            if s.get('applied'):
+                run([NMCLI, 'device', 'reapply', s['applied']], timeout=15)
+            if use(dev, s['server']):
+                s['applied'] = dev
+                s['since'] = now
+    return s
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'revert':
+        print(json.dumps(revert()))
+        return 0
+    if cmd == 'status':
+        s = state()
+        print(json.dumps({'on': on(), 'server': s.get('server', ''), 'inUse': bool(s.get('applied'))}))
+        return 0
+    if cmd == 'run':
+        s = state()
+        s.update(applied=s.get('applied', ''), misses=0)
+        try:
+            while True:
+                s = step(s)
+                save(s)
+                time.sleep(EVERY)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            revert()
+        return 0
+    print(__doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    import signal
+
+    def stop(*_):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, stop)
+    sys.exit(main(sys.argv))

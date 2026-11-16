@@ -1,0 +1,633 @@
+#!/usr/bin/python3
+"""hearth-server-rules: Server mode's quiet hours and "When this, do that" rules (1.13, docs/SERVER-MODE.md; mockup
+docs/mockups/next-update/server-rules.png). Nothing here is on until you make it, and each rule can be paused.
+
+Quiet hours: at the times you pick (each with its own days and switch), the server is quiet: fans capped, the graphics
+card's power capped, AI pictures and dubs wait, downloads from the internet at half speed. Games you play and things you
+start yourself always run at full speed (a game running here lifts all of it while it runs).
+
+Rules: "When <this> → <do that>", each with its switch and a pause. When: someone is watching Jellyfin, a game runs on
+this PC, a device is connected (one of your Tailscale devices online), a time (HH:MM-HH:MM), a drive is over N °C,
+power use is over N W. Do: AI pictures wait, voices wait, downloads slower (half speed), backups wait, fans capped at
+N %, tell my phone (Phone notifications, once each time it starts).
+
+How it acts, and how it lets go (everything is undone the moment nothing asks for it; nothing is saved but your
+settings):
+  - waits: /run/hearth/server-rules/now.json lists what waits ("pictures", "voices", "backups"); the home server's
+    services timer (Light mode's own code: ComfyUI's queue kept and put back) and Voice Studio's queue read it.
+  - power: the graphics card's limit through hearth-home-server-helper gpu-limit (and reset after).
+  - fans: fans this PC lets software drive (hwmon pwm) set to the cap only while every temperature is under 75 °C;
+    hearth-server-rules-fans.service checks every 3 seconds and gives them back to the firmware at once if anything
+    gets hot, when it stops, or when nothing caps them. Fans it can't drive are left alone (the card's power cap is
+    what quiets those).
+  - phone: Phone notifications (Settings › Home server, ntfy) sends "When …" once each time it starts.
+  - downloads: an nftables limit on traffic from the internet (never your home network or Tailscale) at half the
+    fastest download this PC has seen lately; the table is removed when nothing asks for it (and at every start).
+
+  hearth-server-rules status                 JSON: settings, what's on now and why, quiet until when
+  hearth-server-rules quiet-add NAME FROM TO DAYS     DAYS: mon-fri, sat,sun, all…  (off until you turn it on)
+  hearth-server-rules quiet-set ID on|off | quiet-remove ID
+  hearth-server-rules while KEY VALUE        fans 20-100 | powerW 50-600 | jobs on|off | downloads on|off
+  hearth-server-rules rule-add WHEN DO       WHEN: jellyfin | game | device:NAME | time:HH:MM-HH:MM | drive:N | power:N
+                                             DO: pictures | voices | downloads | backups | fans:N | phone
+  hearth-server-rules rule-set ID on|off | rule-pause ID SECONDS | rule-remove ID
+  hearth-server-rules tick                   what hearth-server-rules.timer runs every minute
+  hearth-server-rules fans                   what hearth-server-rules-fans.service runs
+Settings: /etc/hearth/server-rules.json (atomic, a .bak, an unreadable file kept aside and never written over).
+"""
+import datetime
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+E = os.environ.get
+CONF = E('HEARTH_RULES_CONF', '/etc/hearth/server-rules.json')
+STATE = E('HEARTH_RULES_STATE', '/var/lib/hearth/server-rules.json')
+NOW = E('HEARTH_RULES_NOW', '/run/hearth/server-rules/now.json')
+HWMON = E('HEARTH_RULES_HWMON', '/sys/class/hwmon')
+HS_HELPER = E('HEARTH_RULES_HS_HELPER', '/usr/libexec/nimbus/hearth-home-server-helper')
+DRIVES = E('HEARTH_RULES_DRIVES', '/var/lib/hearth/home-server-drives.json')
+SYSTEMCTL = E('HEARTH_RULES_SYSTEMCTL', 'systemctl')
+NFT = E('HEARTH_RULES_NFT', 'nft')
+TAILSCALE = E('HEARTH_RULES_TAILSCALE', 'tailscale')
+HOT = 75
+DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+WHEN_TEXT = {'jellyfin': 'someone is watching Jellyfin', 'game': 'a game runs on this PC', 'device': '%s is connected',
+             'time': 'it\'s %s', 'drive': 'a drive is over %s °C', 'power': 'power use is over %s W'}
+DO_TEXT = {'pictures': 'AI pictures wait', 'voices': 'voices wait', 'downloads': 'downloads at half speed',
+           'backups': 'backups wait', 'fans': 'fans capped at %s %%', 'phone': 'tell my phone'}
+DEFAULTS = {'quiet': [], 'while': {'fans': 40, 'powerW': 150, 'jobs': True, 'downloads': True}, 'rules': []}
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=20, inp=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+
+
+# ---------------------------------------------------------------------- settings (as hearth-server-dns)
+def read_conf():
+    try:
+        v = json.loads(open(CONF, encoding='utf-8').read())
+        if not isinstance(v, dict):
+            raise ValueError
+        ok = True
+    except OSError:
+        v, ok = {}, True
+    except ValueError:
+        v, ok = {}, False
+    out = json.loads(json.dumps(DEFAULTS))
+    out['quiet'] = [q for q in v.get('quiet') or [] if isinstance(q, dict)]
+    out['rules'] = [r for r in v.get('rules') or [] if isinstance(r, dict)]
+    out['while'].update({k: x for k, x in (v.get('while') or {}).items() if k in DEFAULTS['while']})
+    return out, ok
+
+
+def write_json(path, obj, bak=False, mode=0o644):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = '%s.tmp.%d' % (path, os.getpid())
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, indent=1, sort_keys=True)
+        f.write('\n')
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    if bak and os.path.exists(path):
+        try:
+            shutil.copy2(path, path + '.bak')
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def set_conf(change):
+    try:
+        cur = json.loads(open(CONF, encoding='utf-8').read())
+        if not isinstance(cur, dict):
+            raise ValueError
+    except OSError:
+        cur = {}
+    except ValueError:
+        os.replace(CONF, '%s.unreadable-%d' % (CONF, int(time.time())))
+        cur = {}
+    change(cur)
+    write_json(CONF, cur, bak=True)
+    return read_conf()[0]
+
+
+def new_id(items):
+    n = 1
+    ids = {str(i.get('id')) for i in items}
+    while str(n) in ids:
+        n += 1
+    return str(n)
+
+
+def find(items, iid):
+    for i in items:
+        if str(i.get('id')) == str(iid):
+            return i
+    raise Fail('there\'s no %s' % iid)
+
+
+# ---------------------------------------------------------------------- what's true now
+def hm(s):
+    m = re.match(r'^([01]?\d|2[0-3]):([0-5]\d)$', s or '')
+    if not m:
+        raise Fail('a time like 23:00')
+    return int(m.group(1)) * 60 + int(m.group(2))
+
+
+def parse_days(s):
+    s = (s or '').lower().replace(' ', '')
+    if s in ('all', 'every', 'daily'):
+        return list(range(7))
+    out = set()
+    for part in s.split(','):
+        if '-' in part:
+            a, b = part.split('-', 1)
+            if a[:3] not in DAYS or b[:3] not in DAYS:
+                raise Fail('days like mon-fri or sat,sun')
+            i, j = DAYS.index(a[:3]), DAYS.index(b[:3])
+            out.update(range(i, j + 1) if i <= j else list(range(i, 7)) + list(range(0, j + 1)))
+        elif part[:3] in DAYS:
+            out.add(DAYS.index(part[:3]))
+        else:
+            raise Fail('days like mon-fri or sat,sun')
+    return sorted(out)
+
+
+def days_text(days):
+    days = sorted(days)
+    if days == list(range(7)):
+        return 'Every day'
+    if days == list(range(5)):
+        return 'Mon–Fri'
+    if days == [5, 6]:
+        return 'Sat, Sun'
+    runs, i = [], 0
+    while i < len(days):
+        j = i
+        while j + 1 < len(days) and days[j + 1] == days[j] + 1:
+            j += 1
+        runs.append(DAYS[days[i]].title() if i == j else '%s–%s' % (DAYS[days[i]].title(), DAYS[days[j]].title()))
+        i = j + 1
+    return ', '.join(runs)
+
+
+def in_window(frm, to, days, now):
+    """Inside FROM-TO on one of DAYS (a window past midnight belongs to the day it starts)."""
+    t = now.hour * 60 + now.minute
+    a, b = hm(frm), hm(to)
+    wd = now.weekday()
+    if a <= b:
+        return a <= t < b and wd in days
+    return (t >= a and wd in days) or (t < b and (wd - 1) % 7 in days)
+
+
+def window_end(frm, to, now):
+    a, b = hm(frm), hm(to)
+    end = now.replace(hour=b // 60, minute=b % 60, second=0, microsecond=0)
+    if end <= now:
+        end += datetime.timedelta(days=1)
+    return end
+
+
+def game_running():
+    for pid in os.listdir('/proc'):
+        if pid.isdigit():
+            try:
+                if open('/proc/%s/comm' % pid).read().strip() in ('gamescope', 'gamescope-wl'):
+                    return True
+            except OSError:
+                pass
+    try:
+        return any(os.path.exists('/run/user/%s/hearth-playing' % u) for u in os.listdir('/run/user'))
+    except OSError:
+        return False
+
+
+def jellyfin_bytes():
+    """Bytes Jellyfin has sent to other devices (its ports' sockets), for "someone is watching"."""
+    rc, out, _ = run(['ss', '-tinH', 'state', 'established', '( sport = :8096 or sport = :8920 )'], timeout=5)
+    return sum(int(x) for x in re.findall(r'bytes_sent:(\d+)', out)) if rc == 0 else 0
+
+
+def ts_online():
+    rc, out, _ = run([TAILSCALE, 'status', '--json'], timeout=8)
+    try:
+        st = json.loads(out) if rc == 0 else {}
+    except ValueError:
+        st = {}
+    return {(p.get('HostName') or '').split('.')[0].lower() for p in (st.get('Peer') or {}).values() if p.get('Online')}
+
+
+def drive_max():
+    try:
+        d = json.load(open(DRIVES))
+        return max([((x.get('smart') or {}).get('temp') or 0) for x in d.get('drives') or []] or [0])
+    except (OSError, ValueError, AttributeError):
+        return 0
+
+
+def power_now():
+    rc, out, _ = run(['nvidia-smi', '--query-gpu=power.draw', '--format=csv,noheader,nounits'], timeout=8)
+    try:
+        return sum(float(x) for x in out.split()) if rc == 0 else 0
+    except ValueError:
+        return 0
+
+
+def rx_bytes():
+    total = 0
+    try:
+        for line in open('/proc/net/dev').read().splitlines()[2:]:
+            name, rest = line.split(':', 1)
+            if name.strip() in ('lo',) or name.strip().startswith(('tailscale', 'podman', 'veth', 'docker', 'virbr')):
+                continue
+            total += int(rest.split()[0])
+    except (OSError, ValueError, IndexError):
+        pass
+    return total
+
+
+def facts(st, now_ts):
+    """What every rule might look at, measured once per tick."""
+    jb = jellyfin_bytes()
+    last = st.get('jellyfin') or {}
+    rate = (jb - last.get('b', 0)) / max(1.0, now_ts - last.get('at', now_ts - 60)) if last and jb >= last.get('b', 0) else 0
+    st['jellyfin'] = {'b': jb, 'at': now_ts}
+    rx = rx_bytes()
+    lr = st.get('rx') or {}
+    rxrate = (rx - lr.get('b', 0)) / max(1.0, now_ts - lr.get('at', now_ts - 60)) if lr and rx >= lr.get('b', 0) else 0
+    st['rx'] = {'b': rx, 'at': now_ts}
+    # The fastest download lately (kept a week): "half speed" is half of it.
+    best = st.get('rxBest') or {'rate': 0, 'at': 0}
+    if rxrate > best['rate'] or now_ts - best['at'] > 7 * 86400:
+        best = {'rate': rxrate, 'at': now_ts}
+    st['rxBest'] = best
+    return {'watching': rate > 150000, 'game': game_running(), 'online': None, 'drive': drive_max(), 'power': None}
+
+
+def when_true(w, f, now):
+    kind, _, arg = w.partition(':')
+    if kind == 'jellyfin':
+        return f['watching']
+    if kind == 'game':
+        return f['game']
+    if kind == 'device':
+        if f['online'] is None:
+            f['online'] = ts_online()
+        return arg.lower() in f['online']
+    if kind == 'time':
+        a, b = arg.split('-', 1)
+        return in_window(a, b, list(range(7)), now)
+    if kind == 'drive':
+        return f['drive'] > int(arg)
+    if kind == 'power':
+        if f['power'] is None:
+            f['power'] = power_now()
+        return f['power'] > int(arg)
+    return False
+
+
+def when_text(w):
+    kind, _, arg = w.partition(':')
+    t = WHEN_TEXT.get(kind, kind)
+    return t % arg.replace('-', ' – ') if '%s' in t else t
+
+
+def do_text(d):
+    kind, _, arg = d.partition(':')
+    t = DO_TEXT.get(kind, kind)
+    return t % arg if '%s' in t else t
+
+
+def check_when(w):
+    kind, _, arg = w.partition(':')
+    if kind in ('jellyfin', 'game') and not arg:
+        return w
+    if kind == 'device' and re.match(r'^[A-Za-z0-9._-]{1,63}$', arg):
+        return w
+    if kind == 'time' and '-' in arg:
+        a, b = arg.split('-', 1)
+        hm(a), hm(b)
+        return w
+    if kind in ('drive', 'power') and arg.isdigit() and 20 <= int(arg) <= 2000:
+        return w
+    raise Fail('When: jellyfin, game, device:NAME, time:HH:MM-HH:MM, drive:°C or power:W')
+
+
+def check_do(d):
+    kind, _, arg = d.partition(':')
+    if kind in ('pictures', 'voices', 'downloads', 'backups', 'phone') and not arg:
+        return d
+    if kind == 'fans' and arg.isdigit() and 20 <= int(arg) <= 100:
+        return d
+    raise Fail('Do: pictures, voices, downloads, backups, fans:% or phone')
+
+
+# ---------------------------------------------------------------------- deciding
+def decide(conf, f, now, now_ts):
+    """{wait, fans, powerW, downloads, quietUntil, quiet, firing: [rule ids], why}."""
+    out = {'wait': [], 'fans': None, 'powerW': None, 'downloads': False, 'quiet': '', 'quietUntil': 0, 'firing': [], 'why': []}
+    if not f['game']:            # games you play always run at full speed
+        for q in conf['quiet']:
+            if q.get('on') and in_window(q['from'], q['to'], q.get('days') or [], now):
+                w = conf['while']
+                out['quiet'] = q.get('name') or 'Quiet hours'
+                out['quietUntil'] = int(window_end(q['from'], q['to'], now).timestamp())
+                out['fans'] = w['fans']
+                out['powerW'] = w['powerW']
+                if w['jobs']:
+                    out['wait'] += ['pictures', 'voices']
+                out['downloads'] = out['downloads'] or bool(w['downloads'])
+                out['why'].append(out['quiet'])
+                break
+    for r in conf['rules']:
+        if not r.get('on') or (r.get('pausedUntil') or 0) > now_ts:
+            continue
+        if not when_true(r['when'], f, now):
+            continue
+        out['firing'].append(str(r['id']))
+        kind, _, arg = r['do'].partition(':')
+        if kind in ('pictures', 'voices', 'backups'):
+            out['wait'].append(kind)
+        elif kind == 'downloads':
+            out['downloads'] = True
+        elif kind == 'fans' and not f['game']:
+            out['fans'] = min(out['fans'] or 100, int(arg))
+        out['why'].append('%s → %s' % (when_text(r['when']), do_text(r['do'])))
+    if f['game']:
+        out['downloads'] = False          # your game's downloads and updates aren't slowed
+    out['wait'] = sorted(set(out['wait']))
+    return out
+
+
+# ---------------------------------------------------------------------- acting
+def fans_list():
+    out = []
+    for hw in glob.glob(os.path.join(HWMON, 'hwmon*')):
+        for en in glob.glob(os.path.join(hw, 'pwm[0-9]*_enable')):
+            pwm = en[:-len('_enable')]
+            if os.access(pwm, os.W_OK) and os.access(en, os.W_OK):
+                out.append((pwm, en))
+    return out
+
+
+def temps_max():
+    hi = 0
+    for t in glob.glob(os.path.join(HWMON, 'hwmon*', 'temp*_input')):
+        try:
+            hi = max(hi, int(open(t).read().strip()) / 1000.0)
+        except (OSError, ValueError):
+            pass
+    return hi
+
+
+def fans_release(st):
+    for pwm, en in fans_list():
+        prev = (st.get('fanEnable') or {}).get(en)
+        try:
+            with open(en, 'w') as f:
+                f.write(str(prev if prev is not None else 2))
+        except OSError:
+            pass
+    st.pop('fanEnable', None)
+
+
+def fans_cap(st, pct):
+    """Fans at pct % while everything is cool; back to the firmware the moment anything is at HOT °C or more."""
+    if temps_max() >= HOT:
+        if st.get('fanEnable'):
+            fans_release(st)
+        return False
+    saved = st.setdefault('fanEnable', {})
+    for pwm, en in fans_list():
+        try:
+            if en not in saved:
+                saved[en] = int(open(en).read().strip() or 2)
+            with open(en, 'w') as f:
+                f.write('1')
+            with open(pwm, 'w') as f:
+                f.write(str(max(80, round(255 * pct / 100))))    # never below about a third: always some airflow
+        except (OSError, ValueError):
+            pass
+    return bool(saved)
+
+
+NFT_TABLE = 'hearth_rules'
+
+
+def downloads_limit(rate):
+    """At most `rate` bytes a second from the internet (never your home network or Tailscale); None: no limit."""
+    run([NFT, 'delete', 'table', 'inet', NFT_TABLE], timeout=10)
+    if not rate:
+        return
+    mb = max(1, int(rate / 1e6))
+    rules = ('table inet %s {\n chain input {\n  type filter hook input priority -5; policy accept;\n'
+             '  ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.0/8 } accept\n'
+             '  ip6 saddr { fc00::/7, fe80::/10, ::1 } accept\n'
+             '  ct state established limit rate over %d mbytes/second burst %d mbytes drop\n }\n}\n' % (NFT_TABLE, mb, mb * 2))
+    run([NFT, '-f', '-'], timeout=10, inp=rules)
+
+
+def act(d, st, conf):
+    """Do what was decided and undo what isn't asked for any more (only what this did itself)."""
+    # power
+    if d['powerW'] and st.get('power') != d['powerW']:
+        if run([HS_HELPER, 'gpu-limit', str(d['powerW'])], timeout=30)[0] == 0:
+            st['power'] = d['powerW']
+    elif not d['powerW'] and st.get('power'):
+        run([HS_HELPER, 'gpu-limit', 'reset'], timeout=30)
+        st.pop('power', None)
+    # fans: the watcher holds them; it ends (and gives them back) when nothing caps them
+    if d['fans']:
+        run([SYSTEMCTL, 'start', '--no-block', 'hearth-server-rules-fans.service'], timeout=20)
+    elif st.get('fanEnable'):
+        run([SYSTEMCTL, 'stop', '--no-block', 'hearth-server-rules-fans.service'], timeout=20)
+        fans_release(st)
+    # downloads
+    want = int((st.get('rxBest') or {}).get('rate', 0) / 2) if d['downloads'] else 0
+    if want and want < 1e6:
+        want = 0                          # nothing measured yet worth halving
+    if bool(want) != bool(st.get('limit')) or (want and abs(want - st.get('limit', 0)) > 1e6):
+        downloads_limit(want or None)
+        st['limit'] = want
+    # waits: the home server's services run now (it reads now.json; the file is written right after this, so it runs
+    # once more next tick too) whenever something waits or stopped waiting
+    if d['wait'] or st.get('waited'):
+        st['kick'] = True
+    st['waited'] = d['wait']
+    # phone: what's firing now; Phone notifications (hearth-server-apps ntfy-forward) sends each once while it lasts
+    d['tell'] = ['%s on %s' % (when_text(r['when']).capitalize(), os.uname().nodename.split('.')[0])
+                 for r in conf['rules'] if r['do'] == 'phone' and str(r['id']) in d['firing']]
+
+
+def cmd_tick(now_ts=None):
+    now_ts = now_ts or time.time()
+    now = datetime.datetime.fromtimestamp(now_ts)
+    conf = read_conf()[0]
+    try:
+        st = json.load(open(STATE))
+    except (OSError, ValueError):
+        st = {}
+    f = facts(st, now_ts)
+    d = decide(conf, f, now, now_ts)
+    act(d, st, conf)
+    write_json(STATE, st)
+    d.update(at=int(now_ts), fanSpeed=fan_speed(), game=f['game'])
+    write_json(NOW, d)
+    if st.pop('kick', None) and os.path.exists(HS_HELPER):
+        run([HS_HELPER, 'services', 'run'], timeout=120)
+        write_json(STATE, st)
+    # Nothing on at all: the timer goes (it's enabled again when you turn something on).
+    if not any(q.get('on') for q in conf['quiet']) and not any(r.get('on') for r in conf['rules']):
+        run([SYSTEMCTL, 'disable', '--now', 'hearth-server-rules.timer'], timeout=20)
+    return d
+
+
+def fan_speed():
+    """The fans' speed now as % of their top (for "fans 34 %"), when the PC reports it."""
+    best = None
+    for p in glob.glob(os.path.join(HWMON, 'hwmon*', 'pwm[0-9]')):
+        try:
+            v = int(open(p).read().strip())
+            best = max(best or 0, round(100 * v / 255))
+        except (OSError, ValueError):
+            pass
+    return best
+
+
+def cmd_fans():
+    """hearth-server-rules-fans.service: holds the cap while now.json asks for one; gives the fans back on exit."""
+    try:
+        st = json.load(open(STATE))
+    except (OSError, ValueError):
+        st = {}
+    try:
+        while True:
+            try:
+                d = json.load(open(NOW))
+            except (OSError, ValueError):
+                d = {}
+            pct = d.get('fans') if time.time() - (d.get('at') or 0) < 180 else None
+            if not pct:
+                break
+            fans_cap(st, pct)
+            write_json(STATE, st)
+            time.sleep(3)
+    finally:
+        fans_release(st)
+        write_json(STATE, st)
+    return {'ok': True}
+
+
+def status():
+    conf, ok = read_conf()
+    try:
+        now = json.load(open(NOW))
+    except (OSError, ValueError):
+        now = {}
+    for q in conf['quiet']:
+        q['daysText'] = days_text(q.get('days') or [])
+    for r in conf['rules']:
+        r['whenText'], r['doText'] = when_text(r['when']), do_text(r['do'])
+        r['paused'] = (r.get('pausedUntil') or 0) > time.time()
+    return {'quiet': conf['quiet'], 'while': conf['while'], 'rules': conf['rules'], 'now': now, 'settingsReadable': ok,
+            'canFans': bool(fans_list()), 'whens': list(WHEN_TEXT), 'dos': list(DO_TEXT)}
+
+
+def changed(change):
+    conf = set_conf(change)
+    if any(q.get('on') for q in conf['quiet']) or any(r.get('on') for r in conf['rules']):
+        run([SYSTEMCTL, 'enable', '--now', 'hearth-server-rules.timer'], timeout=20)
+    cmd_tick()
+    return status()
+
+
+def need_root():
+    if os.geteuid() != 0 and not E('HEARTH_RULES_TEST'):
+        raise Fail('needs root')
+
+
+def onoff(v):
+    if v not in ('on', 'off'):
+        raise Fail('on or off')
+    return v == 'on'
+
+
+def main(argv):
+    a = argv[1:]
+    cmd = a[0] if a else ''
+    try:
+        if cmd == 'status':
+            out = status()
+        else:
+            need_root()
+            if cmd == 'tick':
+                out = cmd_tick()
+            elif cmd == 'fans':
+                out = cmd_fans()
+            elif cmd == 'quiet-add' and len(a) == 5:
+                name = a[1].strip()[:40] or 'Quiet hours'
+                hm(a[2]), hm(a[3])
+                days = parse_days(a[4])
+
+                def ch(c):
+                    qs = c.setdefault('quiet', [])
+                    qs.append({'id': new_id(qs), 'name': name, 'from': a[2], 'to': a[3], 'days': days, 'on': False})
+                out = changed(ch)
+            elif cmd == 'quiet-set' and len(a) == 3:
+                on = onoff(a[2])
+                out = changed(lambda c: find(c.setdefault('quiet', []), a[1]).update(on=on))
+            elif cmd == 'quiet-remove' and len(a) == 2:
+                out = changed(lambda c: c.update(quiet=[q for q in c.get('quiet') or [] if str(q.get('id')) != a[1]]))
+            elif cmd == 'while' and len(a) == 3 and a[1] in DEFAULTS['while']:
+                k, v = a[1], a[2]
+                if k in ('jobs', 'downloads'):
+                    val = onoff(v)
+                elif v.isdigit() and ((k == 'fans' and 20 <= int(v) <= 100) or (k == 'powerW' and 50 <= int(v) <= 600)):
+                    val = int(v)
+                else:
+                    raise Fail('fans 20-100, powerW 50-600, jobs and downloads on or off')
+                out = changed(lambda c: c.setdefault('while', {}).update({k: val}))
+            elif cmd == 'rule-add' and len(a) == 3:
+                w, d = check_when(a[1]), check_do(a[2])
+
+                def ch(c):
+                    rs = c.setdefault('rules', [])
+                    rs.append({'id': new_id(rs), 'when': w, 'do': d, 'on': False, 'pausedUntil': 0})
+                out = changed(ch)
+            elif cmd == 'rule-set' and len(a) == 3:
+                on = onoff(a[2])
+                out = changed(lambda c: find(c.setdefault('rules', []), a[1]).update(on=on))
+            elif cmd == 'rule-pause' and len(a) == 3 and a[2].isdigit():
+                secs = min(int(a[2]), 7 * 86400)
+                out = changed(lambda c: find(c.setdefault('rules', []), a[1]).update(pausedUntil=int(time.time()) + secs if secs else 0))
+            elif cmd == 'rule-remove' and len(a) == 2:
+                out = changed(lambda c: c.update(rules=[r for r in c.get('rules') or [] if str(r.get('id')) != a[1]]))
+            else:
+                print(__doc__.strip(), file=sys.stderr)
+                return 2
+    except Fail as e:
+        print('error: %s' % e, flush=True)
+        return 1
+    print(json.dumps(out), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

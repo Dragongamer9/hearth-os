@@ -68,6 +68,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 import hearth_settings_io as sio  # noqa: E402
+import hearth_ithil  # noqa: E402  (1.13: Ithil, the owner's own AI, on the server)
 
 CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
 STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
@@ -747,6 +748,118 @@ def drives_tile(rec, now=None):
     return tile, warn
 
 
+# ---- 1.13: the game download cache and the ad blocker (hearth-server-dns, root: their numbers come from the file its
+# watcher writes, readable by everyone; the switches go through pkexec).
+DNS_HELPER = os.environ.get('HEARTH_SERVER_DNS', '/usr/libexec/nimbus/hearth-server-dns')
+DNS_STATUS = os.environ.get('HEARTH_SERVER_DNS_STATUS', '/run/hearth/server-dns/status.json')
+DNS_ACTIONS = {'cache': 2, 'store': 3, 'cache-empty': 2, 'ads': 2, 'ads-pause': 2, 'allow': 2, 'device': 3}
+
+
+def dns_status():
+    st = rjson(DNS_STATUS, None)
+    if isinstance(st, dict) and time.time() - (st.get('at') or 0) < 120:
+        return st
+    rc, o, _ = run([sys.executable, DNS_HELPER, "status"], 20)
+    try:
+        return json.loads(o.strip().splitlines()[-1]) if rc == 0 and o.strip() else {}
+    except (ValueError, IndexError):
+        return {}
+
+
+def gb(b):
+    b = b or 0
+    return ('%.1f' % (b / 1e9)).rstrip('0').rstrip('.') if b < 10e9 else '%d' % round(b / 1e9)
+
+
+def rate_text(bps):
+    return '%d MB/s' % round(bps / 1e6) if bps >= 1e6 else '%d KB/s' % round(bps / 1e3)
+
+
+def dns_tiles(st=None):
+    """The Game download cache and Ad blocker tiles (always there: off until you turn them on, A opens each)."""
+    st = st if st is not None else dns_status()
+    c, a = st.get('cache') or {}, st.get('ads') or {}
+    cv, av = c.get('view') or {}, a.get('view') or {}
+    con, aon = c.get('on') is True, a.get('on') is True
+    rows = [[r['device'] + ' · ' + r['what'], r['from'] + ' · ' + rate_text(r['rate'])] for r in (cv.get('now') or [])[:3]]
+    cache = {'id': 'cache', 'title': 'Game download cache', 'engine': 'LANCache', 'icon': 'update',
+             'state': ('running' if c.get('running') else 'stopped') if con else 'off',
+             'chip': ('On' if c.get('running') else 'Starting') if con else 'Off',
+             'big': gb(cv.get('savedWeek')) if con else '—', 'unit': 'GB saved this week' if con else 'off until you turn it on',
+             'sub': ('%s GB of %s GB for the cache' % (gb(cv.get('used')), c.get('sizeGB', ''))) if con else 'Steam, Epic, Battle.net and Xbox downloads come from the internet once',
+             'rows': rows or ([['Right now', 'nobody downloading']] if con else []), 'actions': [], 'cache': dict(c, view=cv)}
+    today = av.get('today') or {}
+    ads = {'id': 'ads', 'title': 'Ad blocker', 'engine': 'AdGuard Home', 'icon': 'shield',
+           'state': ('running' if a.get('running') else 'stopped') if aon else 'off',
+           'chip': ('Paused' if av.get('pausedUntil') else 'On' if a.get('running') else 'Starting') if aon else 'Off',
+           'big': ('%d %%' % today.get('percent', 0)) if aon and today else '—',
+           'unit': 'of lookups blocked today' if aon else 'off until you turn it on',
+           'sub': ('{:,} ads and trackers stopped'.format(today.get('blocked', 0))) if aon and today else 'Your home Wi-Fi, and your Hearth devices anywhere over Tailscale',
+           'rows': [[t['name'], '{:,}'.format(t['count'])] for t in (av.get('top') or [])[:3]], 'actions': [], 'ads': dict(a, view=av)}
+    return [cache, ads]
+
+
+def dns_act(args):
+    if not args or args[0] not in DNS_ACTIONS or len(args) != DNS_ACTIONS[args[0]]:
+        raise Fail('which change')
+    rc, o, _ = run(["pkexec", DNS_HELPER] + list(args), 120)
+    line = (o.strip().splitlines() or [''])[-1]
+    if line.startswith('error: '):
+        raise Fail(line[7:])
+    if rc != 0:
+        raise Fail(line or 'the change didn\'t go through')
+    try:
+        return json.loads(line)
+    except ValueError:
+        raise Fail(line)
+
+
+# ---- 1.13: quiet hours and "When this, do that" rules (hearth-server-rules, root; status readable by everyone)
+RULES_HELPER = os.environ.get('HEARTH_SERVER_RULES', '/usr/libexec/nimbus/hearth-server-rules')
+RULES_ACTIONS = {'quiet-add': 5, 'quiet-set': 3, 'quiet-remove': 2, 'while': 3, 'rule-add': 3, 'rule-set': 3,
+                 'rule-pause': 3, 'rule-remove': 2}
+
+
+def rules_status():
+    rc, o, _ = run([sys.executable, RULES_HELPER, 'status'], 20)
+    try:
+        return json.loads(o.strip().splitlines()[-1]) if rc == 0 and o.strip() else {}
+    except (ValueError, IndexError):
+        return {}
+
+
+def rules_tile(st=None):
+    st = st if st is not None else rules_status()
+    now = st.get('now') or {}
+    fresh = time.time() - (now.get('at') or 0) < 180
+    quiet = now.get('quiet') if fresh else ''
+    anything = any(q.get('on') for q in st.get('quiet') or []) or any(r.get('on') for r in st.get('rules') or [])
+    rows = [[r['whenText'].capitalize(), ('→ ' + r['doText']) + (' · paused' if r.get('paused') else '' if r.get('on') else ' · off')]
+            for r in (st.get('rules') or [])[:3]]
+    return {'id': 'rules', 'title': 'Quiet hours & rules', 'engine': 'Your times and your rules', 'icon': 'moon',
+            'state': 'running' if anything else 'off',
+            'chip': 'Quiet now' if quiet else 'On' if anything else 'Off',
+            'big': ('until ' + clock(now['quietUntil'])) if quiet and now.get('quietUntil') else str(sum(1 for r in st.get('rules') or [] if r.get('on'))),
+            'unit': quiet if quiet else 'rules on' if anything else 'nothing here is on until you make it',
+            'sub': ' · '.join(now.get('why') or []) if fresh else '',
+            'rows': rows, 'actions': [], 'rules': st,
+            # Your devices on Tailscale, for "When a device is connected" (the picker offers the first).
+            'devices': sorted({(p.get('HostName') or '').split('.')[0] for p in ((ts_status() or {}).get('Peer') or {}).values() if p.get('HostName')})}
+
+
+def rules_act(args):
+    if not args or args[0] not in RULES_ACTIONS or len(args) != RULES_ACTIONS[args[0]]:
+        raise Fail('which change')
+    rc, o, _ = run(['pkexec', RULES_HELPER] + list(args), 120)
+    line = (o.strip().splitlines() or [''])[-1]
+    if line.startswith('error: '):
+        raise Fail(line[7:])
+    try:
+        return json.loads(line)
+    except ValueError:
+        raise Fail(line or 'the change didn\'t go through')
+
+
 def dash():
     if FIXTURE:
         d = rjson(FIXTURE, {})
@@ -857,6 +970,8 @@ def dash():
     # ---- Drive health (1.13)
     dtile, dwarn = drives_tile(drive_health(now), now)
     tiles.append(dtile)
+    tiles += dns_tiles()
+    tiles.append(rules_tile())
     # ---- Backups
     b = q.get('backups') or {}
     bstate = 'warn' if b.get('failed') else 'running'
@@ -940,6 +1055,15 @@ def dash():
                      'icon': 'sparkle', 'state': 'paused-you' if 'team' in mine else {'busy': 'running', 'ready': 'running', 'off': 'off'}[team['state']],
                      'chip': 'Paused' if 'team' in mine else team['chip'],
                      'new': True, 'mesh': True, 'actions': ['restart', 'pause']})
+    # 1.13 (mockup server-ithil-dash): Ithil, two tiles wide beside the AI team, when her app is on this PC.
+    try:
+        ithil = hearth_ithil.view(now)
+    except Exception:          # her files are hers: anything odd in them never stops the dashboard
+        ithil = None
+    if ithil:
+        tiles.insert(1, {'id': 'ithil', 'title': ithil['name'], 'engine': 'Her own mind' + (' · Hearth AI ' + ithil['version'] if ithil['version'] else ''),
+                         'icon': 'moon', 'state': 'running' if ithil['running'] else 'off', 'chip': ithil['chip'],
+                         'new': True, 'wide': True, 'ithil': ithil, 'actions': []})
     cores = [
         {'id': 'gpu', 'name': pretty_model(loaded[0]) if loaded else 'AI chat',
          'state': 'off' if ai_state in ('off', 'stopped') else 'working' if asking and loaded else 'ready',
@@ -955,7 +1079,8 @@ def dash():
     # ---- the pills: every service in a word
     smb = bool(shares)
     for name, extra, st in (('Shared folders', ', '.join(shares[:2]), 'running' if smb else 'off'),
-                            ('Media', '', med_state), ('AI chat', '', ai_state), ('Pictures', '', pic_state),
+                            ('Media', '', med_state), ('AI chat', '', ai_state),
+                            ('Ithil', '', ('running' if ithil['running'] else 'stopped') if ithil else 'off'), ('Pictures', '', pic_state),
                             ('Voices', 'Kokoro', state_of('voices', (hsd.get('voices') or {}).get('on') is True,
                                                           unit_active('hearth-kokoro.service', True) if (hsd.get('voices') or {}).get('on') else False,
                                                           'kokoro' in sys_paused)),
@@ -976,6 +1101,8 @@ def dash():
     for e in reversed(ev[-3:] if isinstance(ev, list) else []):
         if isinstance(e, dict):
             alerts.append({'level': e.get('level', 'info'), 'text': e.get('text', ''), 'sub': '', 'at': clock(e.get('at', now))})
+    if ithil and ithil.get('sleepLine'):   # "Ithil slept 02:14–02:52 · 41 moments replayed, energy .29 → .88"
+        alerts.insert(0, {'level': 'ithil', 'text': ithil['sleepLine'][0], 'sub': ithil['sleepLine'][1], 'at': ''})
     if team.get('event'):             # the AI team's latest: "Claude (Command Center) asked for a reply · answered by qwen3"
         alerts.insert(0, {'level': 'team', 'text': team['event'], 'sub': '', 'at': ''})
     problems = [t for t in tiles if t['state'] in ('warn', 'stopped')]
@@ -1001,7 +1128,7 @@ def dash():
             'live': {'vram': round(((g or {}).get('memUsed') or 0) / 1024, 1), 'power': (g or {}).get('power'), 'rx': r['rx'], 'tx': r['tx'],
                      'storage': round(100 * used / total) if total else None, 'cpu': r['cpu'], 'cpuTemp': ct,
                      'gpuBusy': (g or {}).get('busy'), 'gpuTemp': (g or {}).get('temp'), 'online': online},
-            'cores': cores, 'team': team, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
+            'cores': cores, 'team': team, 'ithil': ithil, 'next': next_change(srv.get('schedule')), 'qr': web_qr(srv['web']['on'] is True),
             'countdown': countdown_view(), 'now': int(now)}
 
 
@@ -1875,6 +2002,19 @@ def main(argv):
             print(start_mode(a[1]))
         elif a == ['dash']:
             out(dash())
+        # 1.13: Ithil (hearth_ithil.py). Her files are only read; these are the owner's buttons.
+        elif len(a) == 2 and a[0] == 'ithil-brain':
+            out(hearth_ithil.brain(float(a[1]) if a[1].replace('.', '', 1).isdigit() else 24))
+        elif a == ['ithil-start']:
+            out({'started': hearth_ithil.start()})
+        elif a[:1] == ['ithil-talk'] and len(a) <= 2:
+            out({'shown': hearth_ithil.show(a[1] if len(a) == 2 and a[1] in ('talk', 'settings') else 'talk')})
+        elif a == ['ithil-restart']:
+            out({'restarted': hearth_ithil.restart()})
+        elif a == ['ithil-sleep']:
+            if not hearth_ithil.put_to_sleep():
+                raise Fail('She didn\'t answer (is her app running and up to date?)')
+            out({'asleep': True})
         elif a == ['summary']:
             out(summary())
         elif a == ['back']:
@@ -1891,6 +2031,10 @@ def main(argv):
             out({'countdown': countdown_view()})
         elif a == ['cancel']:
             out(cancel())
+        elif a and a[0] == 'rules':
+            out(rules_act(a[1:]) if len(a) > 1 else rules_status())
+        elif a and a[0] == 'dns':
+            out(dns_act(a[1:]) if len(a) > 1 else dns_status())
         elif len(a) == 3 and a[0] == 'service':
             out(service(a[1], a[2]))
         elif len(a) == 2 and a[0] == 'power':
