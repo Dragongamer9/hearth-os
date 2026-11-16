@@ -40,8 +40,10 @@ class MainActivity : Activity() {
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            loadWithOverviewMode = true
-            useWideViewPort = true
+            // The page fits itself to the screen (tv.js fit()): no zooming by the WebView.
+            loadWithOverviewMode = false
+            useWideViewPort = false
+            setSupportZoom(false)
             textZoom = 100
         }
         web.webViewClient = object : WebViewClient() {

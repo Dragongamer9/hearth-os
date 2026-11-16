@@ -428,14 +428,17 @@
   };
 
   // ---------- Start ----------
+  // The 1920×1080 stage scaled to whatever the TV's WebView reports (often 960×540 at 2×, or 1280×720).
   function fit() {
-    var st = document.getElementById('stage'), k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    var w = window.innerWidth || document.documentElement.clientWidth, h = window.innerHeight || document.documentElement.clientHeight;
+    if (!w || !h) { setTimeout(fit, 100); return; }
+    var st = document.getElementById('stage'), k = Math.min(w / 1920, h / 1080);
     st.style.transform = 'scale(' + k + ')';
-    st.style.left = ((window.innerWidth - 1920 * k) / 2) + 'px'; st.style.top = ((window.innerHeight - 1080 * k) / 2) + 'px';
+    st.style.left = ((w - 1920 * k) / 2) + 'px'; st.style.top = ((h - 1080 * k) / 2) + 'px';
   }
   T.start = function () {
     app = document.getElementById('app'); layerEl = document.getElementById('layer');
-    fit(); window.addEventListener('resize', fit);
+    fit(); window.addEventListener('resize', fit); setTimeout(fit, 500);
     T.loadSettings();
     fetch('theme/palettes.json').then(function (r) { return r.json(); }).then(function (p) { T.palettes = p; T.applyLook(); if (T.cur) T.render(); }).catch(function () {});
     setInterval(function () { [].forEach.call(document.querySelectorAll('[data-clock]'), function (e) { e.textContent = T.clockText(); }); }, 15000);
