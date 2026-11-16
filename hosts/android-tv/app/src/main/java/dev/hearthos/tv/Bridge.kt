@@ -185,6 +185,9 @@ class Bridge(private val a: MainActivity) {
         if (best != null) { lp.preferredDisplayModeId = best.modeId; a.window.attributes = lp; Logs.add("display: ${best.refreshRate} Hz for $fps fps") }
     }
 
+    @JavascriptInterface fun tailscaleInstalled(): Boolean = Apps.installed(a, Tailscale.PKG)
+    @JavascriptInterface fun tailscaleConnect() { Tailscale.connect(a) }
+
     // Updates (About).
     @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
     @JavascriptInterface fun device(): String = JSONObject().put("model", Build.MODEL).put("maker", Build.MANUFACTURER)
