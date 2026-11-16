@@ -18,6 +18,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] Hearth's own apps made faster (moved from 1.13): Hearth Files opens as slowly warm as cold (0.5 s), and the desktop shell holds about 270 MB with nothing open; fix those first, measured before and after (shots/speed)
 - [ ] Tidy-up (nothing users see changes; moved from 1.13 by the owner): split the biggest files into smaller parts (Hearth Files' FileManager.qml, Game Mode's ui/index.html, hearth-home-server and its root helper, Task Manager's view); subfolders in the desktop shell's 262-file folder (apps, settings pages, helpers); the "nimbus" names inside the code moved toward "Hearth" where it's safe (never paths an installed PC relies on); merged branches deleted (listed for the owner first)
 
+- [ ] Hearth TV 1.0, a Hearth home screen for the owner's TCL Google TV (checklist docs/mockups/checklists/hearth-tv.md, mockups approved Nov 15; docs/HEARTH-TV.md): apps, the PC's library, Theater, TV inputs, every Hearth OS look, TV Cleanup (ads and tracking switched off, never deleted); installed from his laptop. Still open: Send to TV from a PC and from a phone
+
 ## Later
 
 - [ ] Recovery checked on a Recovery USB against its approved mockup (docs/mockups/checklists/recovery.md): the owner boots the Debian Recovery USB after 1.13 is out (moved from 1.13, Nov 15)
