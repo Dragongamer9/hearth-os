@@ -79,8 +79,12 @@ def setup():
     os.makedirs(MODELS, exist_ok=True)
     progress('setup', 0, 4, 'Getting OpenCV (once)…')
     if not py():
-        subprocess.run([sys.executable, '-m', 'venv', VENV], check=True)
-    subprocess.run([py(), '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'opencv-python-headless>=4.9', 'numpy'], check=True)
+        r = subprocess.run([sys.executable, '-m', 'venv', VENV], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError('Python\'s venv is missing here (Debian: python3-venv). ' + (r.stderr or '').strip()[-200:])
+    r = subprocess.run([py(), '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'opencv-python-headless>=4.9', 'numpy'], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError('Getting OpenCV didn\'t work: ' + (r.stderr or r.stdout or '').strip()[-300:])
     for k, (name, url) in enumerate(FILES.items(), 1):
         dest = os.path.join(MODELS, name)
         if os.path.exists(dest):
@@ -267,6 +271,7 @@ if __name__ == '__main__':
             setup()
         except Exception as e:  # pip or a download failed: say so (the page shows it)
             progress('setup', 0, 0, f'Setting up didn\'t work: {e}')
+            print(f'setup failed: {e}', file=sys.stderr)
             sys.exit(1)
     elif cmd == 'run':
         run(sys.argv[2])

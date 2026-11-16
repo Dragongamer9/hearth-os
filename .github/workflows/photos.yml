@@ -133,6 +133,7 @@ jobs:
         continue-on-error: true
         run: |
           export HEARTH_PHOTOS_AI="$RUNNER_TEMP/ai"; echo "HEARTH_PHOTOS_AI=$HEARTH_PHOTOS_AI" >> "$GITHUB_ENV"
+          sudo apt-get install -y -qq python3-venv >/dev/null || true
           python3 ai/hearth_photos_ai.py status
           timeout 900 python3 ai/hearth_photos_ai.py setup | tail -1
           d="$RUNNER_TEMP/aipics"; mkdir -p "$d"
@@ -146,6 +147,17 @@ jobs:
           r = json.load(open(os.path.join(os.environ['HEARTH_PHOTOS_AI'], 'results.json')))
           short = {os.path.basename(k): {'tags': v['tags'], 'faces': len(v['faces'])} for k, v in r['photos'].items()}
           print('::notice title=found in it::%s groups=%d' % (json.dumps(short), len(r['groups'])))
+          PY
+          true
+        # The helper's own errors, when it didn't get that far.
+      - name: Faces helper log
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: |
+          d="$RUNNER_TEMP/ai"; [ -d "$d" ] || exit 0
+          [ -f "$d/results.json" ] || echo "::warning title=faces helper::no results: $(python3 ai/hearth_photos_ai.py status 2>&1 | tail -c 600)"
+          python3 - <<'PY' || true
+          print('ok')
           PY
 
       # 1.14: the library (docs/mockups/next-update/photos-1-library.png) over sample folders: a phone's photos by day,

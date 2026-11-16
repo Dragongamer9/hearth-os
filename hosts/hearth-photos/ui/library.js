@@ -318,9 +318,9 @@
     if (tab === 'collections') {
       h += `<section><h2>Kept up to date by themselves <small>photos go in as they arrive</small></h2><div class="colls">${autoAlbums().map(([v, t, sub, list]) => coll(v, t, sub, list, `data-view="${v}"`)).join('')}</div></section>`;
       h += `<section><h2>Your albums</h2><div class="colls">${albumCards()}</div></section>`;
-      h += `<div class="pair"><section class="box" id="peopleBox">${peopleBox(6)}</section><section class="box" id="placesBox">${placesBox()}</section></div>`;
-    } else if (tab === 'people') h += `<section class="box big">${peopleBox(0)}</section>`;
-    else if (tab === 'places') h += `<section class="box big" id="placesBox">${placesBox(true)}</section>`;
+      h += `<div class="pair"><section class="cbox" id="peopleBox">${peopleBox(6)}</section><section class="cbox" id="placesBox">${placesBox()}</section></div>`;
+    } else if (tab === 'people') h += `<section class="cbox big">${peopleBox(0)}</section>`;
+    else if (tab === 'places') h += `<section class="cbox big" id="placesBox">${placesBox(true)}</section>`;
     else h += foldersHtml();
     content.innerHTML = h;
     renderDates(true);
@@ -557,8 +557,8 @@
       if (recent.length) h += `<section><h2>Today and yesterday</h2><div class="prow">${recent.map(i => bigTile(`data-path="${esc(i.path)}" data-ptile="1"`, i, tileName(i))).join('')}</div></section>`;
       h += `<section><h2>Albums</h2><div class="prow">${padAlbums()}</div></section>`;
     } else if (t === 'albums') h += `<section><h2>Albums</h2><div class="pgrid">${padAlbums()}</div></section>`;
-    else if (t === 'people') h += `<section class="box big">${peopleBox(0)}</section>`;
-    else if (t === 'places') h += `<section class="box big" id="placesBox">${placesBox(true)}</section>`;
+    else if (t === 'people') h += `<section class="cbox big">${peopleBox(0)}</section>`;
+    else if (t === 'places') h += `<section class="cbox big" id="placesBox">${placesBox(true)}</section>`;
     else {
       const list = t === 'videos' ? L.items.filter(i => i.kind === 'video') : L.items;
       for (const g of groups(list)) h += `<section><h2>${esc(g.title)} <small>${esc(g.sub)}</small></h2><div class="pgrid">${g.items.map(i => bigTile(`data-path="${esc(i.path)}" data-ptile="1"`, i, tileName(i))).join('')}</div></section>`;

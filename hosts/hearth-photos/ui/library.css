@@ -150,9 +150,9 @@
 .coll small { color:var(--muted); font-size:.86em; }
 .coll.add .cv { background:transparent; border:1px dashed var(--line); }
 .pair { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:24px; }
-.box { border:1px solid var(--line); border-radius:min(16px, var(--corner, 16px)); padding:20px; background:var(--bg); min-width:0; }
-.box.big { margin-top:22px; }
-.box h2 { font-size:1.15em !important; }
+.cbox { border:1px solid var(--line); border-radius:min(16px, var(--corner, 16px)); padding:20px; background:var(--bg); min-width:0; }
+.cbox.big { margin-top:22px; }
+.cbox h2 { font-size:1.15em !important; }
 .bh { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
 .muted { color:var(--muted); }
 .pad { padding:30px 10px; text-align:center; }
