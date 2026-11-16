@@ -12,6 +12,13 @@
     'com.apple.atve.androidtv.appletv': '#202020', 'com.crunchyroll.crunchyroid': '#5a3010', 'com.valvesoftware.steamlink': '#1b2838', 'com.google.stadia.androidtv': '#3a1f3a'
   };
   T.tileColor = function (pkg) { return TILE[pkg] || 'var(--panel2)'; };
+  /** What goes inside an app's tile: the app's own banner from the TV, or its icon with the name, or just the name. */
+  T.tileInner = function (a, name, size) {
+    if (!a || !a.pkg || !T.N) return name;
+    var src = '/appicon/' + encodeURIComponent(a.pkg);
+    if (a.art === 'banner') return '<img class="tile-art" src="' + src + '" alt="" onerror="this.remove()"><span class="tile-name">' + name + '</span>';
+    return '<span style="display:flex;flex-direction:column;align-items:center;gap:6px"><img src="' + src + '" alt="" style="width:' + (size || 44) + 'px;height:' + (size || 44) + 'px;object-fit:contain" onerror="this.remove()">' + name + '</span>';
+  };
   var DEFAULT_HOME = ['com.netflix.ninja', 'com.google.android.youtube.tv', 'com.disney.disneyplus', 'com.amazon.amazonvideo.livingroom', 'com.hulu.livingroomplus', 'com.spotify.tv.android'];
 
   var H = { hero: 0, keep: [], latest: [], heroes: [], apps: [], loading: false, first: 'resume', toast: 'TV remote or controller · the Home button always comes back here' };
@@ -111,10 +118,10 @@
       if (s.hero !== false) out += heroHtml(); else out += '<div style="height:20px"></div>';
       if (s.rowApps !== false) {
         out += '<section style="padding:24px 64px 0;display:flex;flex-direction:column;gap:14px;flex:none"><div style="display:flex;align-items:baseline;gap:16px"><h2 class="row">Your apps</h2><button data-act="go" data-arg="apps" style="font-size:17px;color:var(--focus)">See all apps</button></div><div class="row-scroll">';
-        var tiles = [{ name: 'My Media', bg: 'var(--panel3)', go: 'media' }, { name: 'Theater', bg: '#3d4f66', go: 'theater' }].concat(H.apps.home.map(function (a) { return { name: a.label, bg: T.tileColor(a.pkg), pkg: a.pkg }; }));
+        var tiles = [{ name: 'My Media', bg: 'var(--panel3)', go: 'media' }, { name: 'Theater', bg: '#3d4f66', go: 'theater' }].concat(H.apps.home.map(function (a) { return { name: a.label, bg: T.tileColor(a.pkg), pkg: a.pkg, app: a }; }));
         if (T.kids()) tiles = tiles.filter(function (t) { return !t.pkg || /kids/i.test(t.pkg); });
         tiles.push({ name: 'All apps', bg: 'var(--panel2)', go: 'apps' });
-        tiles.forEach(function (t, i) { out += '<button class="tile" style="width:186px;height:104px;flex:none;background:' + t.bg + ';font-size:21px" data-f data-key="app' + i + '" data-act="' + (t.go ? 'go' : 'app') + '" data-arg="' + E(t.go || t.pkg) + '">' + E(t.name) + '</button>'; });
+        tiles.forEach(function (t, i) { out += '<button class="tile" style="width:186px;height:104px;flex:none;background:' + t.bg + ';font-size:21px" data-f data-key="app' + i + '" data-act="' + (t.go ? 'go' : 'app') + '" data-arg="' + E(t.go || t.pkg) + '" aria-label="' + E(t.name) + '">' + (t.app ? T.tileInner(t.app, E(t.name), 40) : E(t.name)) + '</button>'; });
         out += '</div></section>';
       }
       var rows = [];
