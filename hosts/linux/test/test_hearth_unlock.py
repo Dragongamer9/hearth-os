@@ -770,3 +770,32 @@ class NativeDebs(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OldNotice(Base):
+    """1.14: an old "Started without your system changes" goes once a start with the changes in use counts as good."""
+
+    def test_safe_start_notice_cleared_after_a_good_start(self):
+        self.touch_upper(A)
+        self.boot(A)
+        self.u.set_notice('safe-start', 'Started without your system changes', 'old')
+        self.mounted = True
+        self.good(A)
+        self.assertEqual(self.u.read_json(self.u.notice_path(), {}), {})
+
+    def test_kept_while_the_changes_are_off(self):
+        self.touch_upper(A)
+        self.boot(A)
+        self.u.update_layer(A, suspended=True)
+        self.u.set_notice('safe-start', 'Started without your system changes', 'now')
+        self.mounted = False
+        self.good(A)
+        self.assertEqual(self.u.read_json(self.u.notice_path(), {}).get('kind'), 'safe-start')
+
+    def test_other_notices_kept(self):
+        self.touch_upper(A)
+        self.boot(A)
+        self.u.set_notice('reapply-failed', 'Some of your packages didn\'t come back', 'x')
+        self.mounted = True
+        self.good(A)
+        self.assertEqual(self.u.read_json(self.u.notice_path(), {}).get('kind'), 'reapply-failed')

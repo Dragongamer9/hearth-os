@@ -592,6 +592,13 @@ def cmd_watch(limit=1200):
             if time.monotonic() - since >= UP_SECONDS:
                 if load_layer(lid).get('pending') and mounted():
                     update_layer(lid, pending=0)
+                # 1.14: a start with your changes in use reached Hearth, so an old "Started without your system
+                # changes" no longer holds (the owner's laptop still showed one from two weeks before).
+                if mounted() and not load_layer(lid).get('suspended') and read_json(notice_path(), {}).get('kind') == 'safe-start':
+                    try:
+                        os.remove(notice_path())
+                    except OSError:
+                        pass
                 return 0
         else:
             since = None
