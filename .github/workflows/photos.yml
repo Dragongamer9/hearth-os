@@ -141,11 +141,12 @@ jobs:
           cp "$RUNNER_TEMP/pics/01-photo.jpg" "$d/"
           [ -f "$d/lena.jpg" ] && cp "$d/lena.jpg" "$d/lena2.jpg"
           python3 -c "import json,os,sys; d=sys.argv[1]; print(json.dumps([{'path': os.path.join(d,f), 'mtime': 1} for f in sorted(os.listdir(d))]))" "$d" > "$RUNNER_TEMP/todo.json"
-          timeout 600 python3 ai/hearth_photos_ai.py run "$RUNNER_TEMP/todo.json" | tail -1
+          timeout 600 python3 ai/hearth_photos_ai.py run "$RUNNER_TEMP/todo.json" > "$RUNNER_TEMP/ai-run.log" 2>&1 || echo "::warning title=faces run::$(tail -c 900 "$RUNNER_TEMP/ai-run.log" | tr '\n' '|')"
           python3 - <<'PY'
           import json, os
           r = json.load(open(os.path.join(os.environ['HEARTH_PHOTOS_AI'], 'results.json')))
           short = {os.path.basename(k): {'tags': v['tags'], 'faces': len(v['faces'])} for k, v in r['photos'].items()}
+          short['errors'] = {os.path.basename(k): v for k, v in r.get('errors', {}).items()}
           print('::notice title=found in it::%s groups=%d' % (json.dumps(short), len(r['groups'])))
           PY
           true
@@ -206,7 +207,9 @@ jobs:
           for v in collections pad; do
             dbus-run-session -- ./target/release/hearth-photos --view $v >> lib.log 2>&1 &
             sleep 9; w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 4
-            shot $v; pkill -f 'target/release/hearth-photos' || true; sleep 1
+            shot $v
+            if [ $v = collections ]; then xdotool mousemove 800 500 click --repeat 12 --delay 60 5; sleep 3; shot collections-low; fi
+            pkill -f 'target/release/hearth-photos' || true; sleep 1
           done
           g=$(ls "$L"/iPhone/2026/11/IMG_${d1}_*.jpg | head -1)
           dbus-run-session -- ./target/release/hearth-photos "$g" >> lib.log 2>&1 &
@@ -232,10 +235,10 @@ jobs:
         if: always()
         working-directory: hosts/hearth-photos
         run: f=shots/pad.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT pad $i::$part"; done || true
-      - name: Screenshot photo-place
+      - name: Screenshot collections-low
         if: always()
         working-directory: hosts/hearth-photos
-        run: f=shots/photo-place.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT photo-place $i::$part"; done || true
+        run: f=shots/collections-low.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT collections-low $i::$part"; done || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
