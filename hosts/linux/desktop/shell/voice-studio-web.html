@@ -301,6 +301,15 @@ bind.design = m => {
 };
 
 // ---------------------------------------------------------------- jobs (shared by Transcribe, Audiobooks, Dubbing)
+// 1.13: AI jobs wait while you play (a switch on every queue): waiting jobs carry on by themselves when the game ends.
+function gameWaitRow() {
+  const on = S.settings.waitForGames !== false;
+  return `<div class="row small" style="align-items:center;gap:10px;margin-bottom:8px">${S.gameWait ? `<b>A game is running: jobs wait and carry on when it ends.</b>` : ''}<label class="f" style="margin-left:auto">While you play<select id="gw"><option value="1"${on ? ' selected' : ''}>Wait (carry on after)</option><option value="0"${!on ? ' selected' : ''}>Keep going</option></select></label></div>`;
+}
+function bindGameWait(m) {
+  const g = $('#gw', m); if (!g) return;
+  g.onchange = async () => { try { await api('/api/settings', {json: {waitForGames: g.value === '1'}}); await refresh(); view(); toast(g.value === '1' ? 'Jobs wait while you play' : 'Jobs keep going while you play'); } catch (e) { toast(e.message, true); } };
+}
 function jobList(kind) {
   const js = S.jobs.filter(j => j.kind === kind);
   if (!js.length) return `<div class="empty">Nothing here yet. Work waits in a queue on the PC and carries on even if it restarts or you start a game.</div>`;
@@ -335,10 +344,10 @@ function transcribe() {
     <div class="row"><label class="f">Language<select id="l">${langOptions('auto')}</select></label>
     <label class="f">Speaker labels<select id="lb"><option value="1"${S.settings.speakerLabels ? ' selected' : ''}>Speaker 1, Speaker 2…</option><option value="0"${!S.settings.speakerLabels ? ' selected' : ''}>No labels</option></select></label></div>
     <button class="btn pri" id="go">${I('transcribe', 16)} Transcribe</button></div></div>
-  <div class="jobs" id="jobs" data-kind="transcribe">${jobList('transcribe')}</div></div>`;
+  ${gameWaitRow()}<div class="jobs" id="jobs" data-kind="transcribe">${jobList('transcribe')}</div></div>`;
 }
 bind.transcribe = m => {
-  bindDrop(m, 'trd', 'trFile'); bindJobs($('#jobs', m));
+  bindDrop(m, 'trd', 'trFile'); bindJobs($('#jobs', m)); bindGameWait(m);
   $('#go', m).onclick = async () => {
     if (!ui.trFile) return toast('Pick a file first', true);
     const b = $('#go'); b.disabled = true;
@@ -380,10 +389,10 @@ function books() {
     <div class="row"><label class="f">Narrator<select id="v">${voiceOptions(S.settings.voice || 'narrator', false)}</select></label><label class="f">Language<select id="l">${langOptions('auto')}</select></label></div>
     <label class="f">Speed <span id="spv">1.00×</span><input id="sp" type="range" min="0.7" max="1.5" step="0.05" value="1"></label>
     <button class="btn pri" id="go">${I('books', 16)} Make the audiobook</button></div></div>
-  <div class="jobs" id="jobs" data-kind="audiobook">${jobList('audiobook')}</div></div>`;
+  ${gameWaitRow()}<div class="jobs" id="jobs" data-kind="audiobook">${jobList('audiobook')}</div></div>`;
 }
 bind.books = m => {
-  bindDrop(m, 'bkd', 'bookFile'); bindJobs($('#jobs', m));
+  bindDrop(m, 'bkd', 'bookFile'); bindJobs($('#jobs', m)); bindGameWait(m);
   $('#sp', m).oninput = e => $('#spv').textContent = (+e.target.value).toFixed(2) + '×';
   $('#go', m).onclick = async () => {
     const b = $('#go'); b.disabled = true; const p = {voice: $('#v').value, language: $('#l').value, speed: $('#sp').value, title: $('#ti').value};
@@ -405,10 +414,10 @@ function dub() {
     <label class="check" style="background:var(--card2);border-color:var(--line)"><input type="checkbox" id="bg" checked><span><b>Keep the music and sounds</b><br><span class="muted">${S.caps.separate ? 'The voices are lifted out and the rest is kept under the new voices.' : 'Vocal separation isn\'t installed: the original sound stays quietly underneath.'}</span></span></label>
     <label class="check"><input type="checkbox" id="ok"><span><b>I may copy the voices in this video.</b><br><span class="muted">They're your own, or you have the speakers' permission. Or pick a voice above instead.</span></span></label>
     <button class="btn pri" id="go">${I('dub', 16)} Dub it</button></div></div>
-  <div class="jobs" id="jobs" data-kind="dub">${jobList('dub')}</div></div>`;
+  ${gameWaitRow()}<div class="jobs" id="jobs" data-kind="dub">${jobList('dub')}</div></div>`;
 }
 bind.dub = m => {
-  bindDrop(m, 'dbd', 'dubFile'); bindJobs($('#jobs', m));
+  bindDrop(m, 'dbd', 'dubFile'); bindJobs($('#jobs', m)); bindGameWait(m);
   $('#go', m).onclick = async () => {
     if (!ui.dubFile) return toast('Pick a video first', true);
     if ($('#v').value === 'clone' && !$('#ok').checked) return toast('Tick the box to confirm you may copy these voices, or pick a voice', true);

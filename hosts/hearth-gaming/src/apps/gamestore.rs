@@ -218,6 +218,7 @@ mod linux {
             "gog" => "https://www.gog.com/",
             "epic" => "https://store.epicgames.com/",
             "battlenet" => "https://shop.battle.net/",
+            "amazon" => "https://gaming.amazon.com/",
             _ => return Err("Unknown store".into()),
         };
         std::process::Command::new("xdg-open").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())

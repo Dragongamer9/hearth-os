@@ -477,6 +477,7 @@ jobs:
     permissions:
       contents: write   # the boot look screenshots (ci/boot-look)
       packages: write
+      actions: read     # the last build's update-manifest artifact (Update size)
     env:
       PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
     steps:
@@ -534,13 +535,24 @@ jobs:
           if [ -f hearth-decky-music.tar ]; then mkdir -p os/nimbus-app/decky-hearth-music && tar -C os/nimbus-app/decky-hearth-music -xf hearth-decky-music.tar || rm -rf os/nimbus-app/decky-hearth-music; fi
           if [ -f hearth-decky-link.tar ]; then mkdir -p os/nimbus-app/decky-hearth-link && tar -C os/nimbus-app/decky-hearth-link -xf hearth-decky-link.tar || rm -rf os/nimbus-app/decky-hearth-link; fi
 
+      # Smaller updates (1.13): Debian frozen to this week's Monday (or a newer date in os-bases/peppermint/debian-snapshot),
+      # and the same fixed time for the rechunk step, so two builds in a week only differ where Hearth changed.
+      - name: Debian snapshot date
+        run: |
+          python3 tools/debian_snapshot.py >> "$GITHUB_ENV"
+          echo "::notice title=debian snapshot::$(python3 tools/debian_snapshot.py --json)"
+
       - name: Build
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" -e "^Get:" -e "^Unpacking " -e "^Setting up " -e "^Selecting previously" -e "^Preparing to unpack" -e "^(Reading database" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
-          sudo podman build --pull=newer -f os-bases/peppermint/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth-peppermint:latest .
+          sudo podman build --pull=newer -f os-bases/peppermint/Containerfile --build-arg NIMBUS_VERSION="$v" \
+            --build-arg DEBIAN_SNAPSHOT="${DEBIAN_SNAPSHOT:-}" -t hearth-peppermint:latest .
+          if grep -q 'HEARTH-SNAPSHOT-FALLBACK' /tmp/step.log; then echo "::warning title=debian snapshot::snapshot.debian.org didn't answer: built from Debian's live repositories (this update is bigger)"; fi
+          comp=$(grep -o 'components: {.*' /tmp/step.log | tail -1 | cut -c1-900 || true)
+          if [ -n "$comp" ]; then echo "::notice title=components::$comp"; else echo "::warning title=components::the files weren't marked with their pieces (updates stay big)"; fi
           # What build.sh couldn't find in the repositories (optional packages): a warning, not a failure.
           missing=$(grep -o 'Not installed (not in the repositories): .*' /tmp/step.log | tail -1 || true)
           if [ -n "$missing" ]; then echo "::warning title=optional packages::$missing"; fi
@@ -551,15 +563,50 @@ jobs:
         run: |
           set -o pipefail
           export CHUNKAH_CONFIG_STR="$(sudo podman inspect hearth-peppermint:latest)"
+          # 1.13: the files' pieces (components.py) and a fixed time (SOURCE_DATE_EPOCH, this week's), written as an OCI
+          # folder that's published exactly as made (its layers keep their digests, which is what devices compare).
+          sudo rm -rf /mnt/hearth-chunked; sudo mkdir -p /mnt/hearth-chunked
+          # chunkah won't write into a folder that already exists (the mount): it makes /out/img itself.
           if sudo -E podman run --rm --pull=newer --mount=type=image,src=localhost/hearth-peppermint:latest,target=/chunkah \
-              -e CHUNKAH_CONFIG_STR quay.io/coreos/chunkah build -t localhost/hearth-peppermint:chunked \
-              --label ostree.bootable=1 --label containers.bootc=1 --compressed --max-layers 128 \
-              | sudo podman load; then
-            sudo podman tag localhost/hearth-peppermint:chunked hearth-peppermint:latest
+              -e CHUNKAH_CONFIG_STR -e SOURCE_DATE_EPOCH -v /mnt/hearth-chunked:/out quay.io/coreos/chunkah build \
+              -t localhost/hearth-peppermint:chunked \
+              --label ostree.bootable=1 --label containers.bootc=1 --compressed --max-layers 128 -o oci:/out/img 2> >(tee /tmp/chunkah.err >&2) \
+            && sudo skopeo copy -q oci:/mnt/hearth-chunked/img containers-storage:localhost/hearth-peppermint:chunked \
+            && sudo podman tag localhost/hearth-peppermint:chunked hearth-peppermint:latest; then
             sudo podman image inspect hearth-peppermint:latest --format '{{len .RootFS.Layers}} layers'
+            echo CHUNKED=1 >> "$GITHUB_ENV"
           else
-            echo "::warning title=rechunk::Rechunking failed; publishing the image as built (updates download more)"
+            echo "::warning title=rechunk::Rechunking failed; publishing the image as built (updates download more): $(tail -c 600 /tmp/chunkah.err 2>/dev/null | tr '\n' '|')"
           fi
+
+      # 1.13: how big this update is for a device on the published image (warn-only).
+      - name: Update size
+        if: env.CHUNKED == '1'
+        continue-on-error: true
+        run: |
+          skopeo inspect --raw docker://$IMAGE:testing > /tmp/old-manifest.json
+          skopeo inspect --config docker://$IMAGE:testing > /tmp/old-config.json || true
+          sudo python3 tools/update_size.py /mnt/hearth-chunked/img /tmp/old-manifest.json /tmp/old-config.json --github | tee /tmp/update-size.txt
+          { echo '### Update size (against the published image)'; echo; echo '```'; head -1 /tmp/update-size.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # Against the last build of this branch too (its manifest, kept as an artifact): what the next update would be.
+          mkdir -p /tmp/update-manifest
+          sudo python3 tools/update_size.py --save /mnt/hearth-chunked/img /tmp/update-manifest
+          prev=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=update-manifest&per_page=30" \
+            --jq "[.artifacts[] | select(.workflow_run.head_branch == \"${{ github.ref_name }}\" and .workflow_run.id != ${{ github.run_id }} and (.expired | not))][0].id // empty" || true)
+          if [ -n "$prev" ]; then
+            gh api "repos/${{ github.repository }}/actions/artifacts/$prev/zip" > /tmp/prev.zip && mkdir -p /tmp/prev && unzip -q -o /tmp/prev.zip -d /tmp/prev \
+              && sudo python3 tools/update_size.py /mnt/hearth-chunked/img /tmp/prev/manifest.json /tmp/prev/config.json --github --label "the last build of ${{ github.ref_name }}" | tee /tmp/update-size-branch.txt \
+              && { echo '### Update size (against the last build of this branch)'; echo; echo '```'; head -1 /tmp/update-size-branch.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        if: env.CHUNKED == '1'
+        continue-on-error: true
+        with:
+          name: update-manifest
+          path: /tmp/update-manifest
+          retention-days: 30
 
       # REQUIRED: a failure here stops the image from being published.
       - name: Check the image
@@ -716,9 +763,12 @@ jobs:
           check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
           check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/nimbus.desktop"
           # ---- Mantel is the only desktop (Hearth Plasma, GNOME and COSMIC are gone)
-          check "Mantel only: the login screen offers Hearth and Hearth Classic, no Plasma / GNOME / COSMIC entries of Hearth's" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && ! ls /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop 2>/dev/null | grep -q ."
-          check "Mantel only: Plasma's and GNOME's sessions aren't installed" "! command -v startplasma-wayland && ! command -v plasmashell && ! command -v gnome-shell && ! command -v gnome-session"
-          check "Mantel only: an old HEARTH_DESKTOP=plasma|gnome|cosmic still means Mantel" "grep -q 'Mantel is the only desktop now' /usr/bin/nimbus-session && grep -q '^desktop_choice() { echo classic; }' /usr/bin/nimbus-session"
+          check "1.13 desktops: the login screen offers Hearth, Hearth Classic, and KDE Plasma / GNOME only once downloaded (TryExec), all through nimbus-session" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && grep -q 'TryExec=/usr/bin/startplasma-wayland' /usr/share/wayland-sessions/hearth-kde.desktop && grep -q 'nimbus-session --desktop=kde' /usr/share/wayland-sessions/hearth-kde.desktop && grep -q 'TryExec=/usr/bin/gnome-session' /usr/share/wayland-sessions/hearth-gnome.desktop && ! ls /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop 2>/dev/null | grep -q ."
+          check "1.13 desktops: KDE's and GNOME's own login entries are diverted (they'd skip Hearth's safe start)" "dpkg-divert --list /usr/share/wayland-sessions/plasma.desktop | grep -q hearth/desktop-sessions && dpkg-divert --list /usr/share/wayland-sessions/gnome.desktop | grep -q hearth/desktop-sessions"
+          check "1.13 desktops: Settings › Your desktop's helpers and Hearth inside KDE and GNOME are in the image" "test -x /usr/libexec/nimbus/hearth-desktops-helper && test -x /usr/share/nimbus/desktop/shell/hearth-desktops && test -f /usr/share/plasma/plasmoids/org.hearth.tray/metadata.json && test -f /usr/share/plasma/plasmoids/org.hearth.kickoff/contents/ui/main.qml && test -f /usr/share/hearth-kde/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js && test -f /usr/share/gnome-shell/extensions/hearth-quick@hearthos.fun/extension.js && test -f /usr/share/gnome-shell/extensions/hearth-pad@hearthos.fun/extension.js && grep -q hearth-desktops-helper /usr/share/polkit-1/rules.d/49-hearth-memory.rules && python3 /usr/libexec/nimbus/hearth-desktops-helper status | grep -q '\"desktops\"'"
+          check "1.13 desktops: no old Hearth Plasma / GNOME look in the image" "! ls -d /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/plasmoids/org.hearth.launcher /usr/share/gnome-shell/extensions/hearth-bar@hearthos.fun 2>/dev/null | grep -q ."
+          check "Mantel is the built-in desktop: Plasma's and GNOME's sessions aren't in the image (they're add-ons, downloaded when picked)" "! command -v startplasma-wayland && ! command -v plasmashell && ! command -v gnome-shell && ! command -v gnome-session"
+          check "1.13 desktops: the session starts KDE or GNOME only when picked and its add-on is here, and opens Mantel otherwise" "grep -q 'its add-on isn.t here' /usr/bin/nimbus-session && grep -q 'run_classic' /usr/bin/nimbus-session && grep -q 'didn.t start twice in a row' /usr/bin/nimbus-session"
           check "Mantel only: the KDE pieces Mantel and Hearth's KDE apps use stay (polkit-kde agent, Breeze)" "ls /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/polkit-kde-authentication-agent-1 2>/dev/null | grep -q . || ls /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 /usr/bin/lxpolkit /usr/bin/lxqt-policykit-agent 2>/dev/null | grep -q ."
           warn "Mantel only: the Breeze Qt style is there (Hearth's look for Qt apps)" "ls -d /usr/lib/*/qt6/plugins/styles/breeze6.so /usr/lib/*/qt6/plugins/styles/breeze*.so 2>/dev/null | grep -q ."
           check "the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
@@ -1020,6 +1070,11 @@ jobs:
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
-            sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
+            # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
+            if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
+              sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked/img "docker://$IMAGE:$tag"
+            else
+              sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
+            fi
           done
           echo "::notice title=published::$IMAGE:testing"

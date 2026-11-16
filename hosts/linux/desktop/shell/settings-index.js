@@ -1089,6 +1089,21 @@ var ENTRIES = [
 "i": "file"
 },
 {
+"t": "Back up the worlds every night",
+"p": "hs-apps",
+"d": "Each game server is stopped cleanly, its world copied to Home › Server apps › World backups, then started again. Also before every update. A server with players on waits an hour",
+"i": "cloud"
+},
+{
+"t": "Keep them for",
+"p": "hs-apps"
+},
+{
+"t": "Back up now",
+"p": "hs-apps",
+"i": "cloud"
+},
+{
 "t": "Phone notifications",
 "p": "hs-apps",
 "d": "Hear on your phone (the ntfy app) when an alert comes up or a server app stops",
@@ -2771,6 +2786,21 @@ var ENTRIES = [
 {
 "t": "Not now",
 "p": "winapps"
+},
+{
+"t": "Only show each desktop's own apps",
+"p": "your-desktop",
+"d": "Mantel shows Hearth's apps, KDE shows KDE's, GNOME shows GNOME's. Apps you installed (Bazaar, Flatpak, Steam, .deb) show on every desktop."
+},
+{
+"t": "Pick at the login screen too",
+"p": "your-desktop",
+"d": "Hearth Classic, KDE Plasma and GNOME are listed when you sign in. Game Mode's power menu › Switch to Desktop opens the one picked here."
+},
+{
+"t": "Safe start",
+"p": "your-desktop",
+"d": "If KDE or GNOME doesn't start twice in a row, Hearth opens Mantel and tells you why. Your choice stays saved until you change it."
 },
 {
 "t": "Clean up",

@@ -1,0 +1,2 @@
+# Debian's packages are frozen to this week's Monday (snapshot.debian.org) by tools/debian_snapshot.py.
+# For a security fix sooner: a newer date below (YYYYMMDD). "live" turns the freeze off.

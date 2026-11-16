@@ -93,7 +93,7 @@ everything again.
   hearth-home-server studio-pin                 the page's PIN on stdin (HEARTH_INPUT); studio-pin-clear for none
                                                 (Server mode's PIN then opens it)
   hearth-home-server studio-key | studio-key-new   the API key for the Command Center (shown, or a new one)
-  hearth-home-server studio-set KEY VALUE       Voice Studio's own choices (language, voice, translateModel, speakerLabels)
+  hearth-home-server studio-set KEY VALUE       Voice Studio's own choices (language, voice, translateModel, speakerLabels, waitForGames)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import concurrent.futures

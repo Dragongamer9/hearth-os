@@ -268,10 +268,14 @@ fi
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Debian-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
-# Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's pieces in the shared system files (still used by other bases):
-# not in this image, where Mantel is the only desktop.
-rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth /usr/share/plasma/plasmoids/org.hearth.* \
-  /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json /usr/share/gnome-shell/extensions/*@hearthos.fun
+# Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's old pieces in the shared system files (still used by other
+# bases): not in this image. 1.13 (docs/DESKTOPS.md): KDE Plasma and GNOME in their own look with Hearth inside keep
+# only Hearth's tray item and start menu (org.hearth.tray, org.hearth.kickoff, /usr/share/hearth-kde's panel) and
+# GNOME's Hearth section and controller (hearth-quick@, hearth-pad@): inert until KDE or GNOME is downloaded.
+rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth \
+  /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json
+for p in /usr/share/plasma/plasmoids/org.hearth.*; do case "$p" in */org.hearth.tray|*/org.hearth.kickoff) ;; *) rm -rf "$p" ;; esac; done
+for e in /usr/share/gnome-shell/extensions/*@hearthos.fun; do case "$e" in */hearth-quick@hearthos.fun|*/hearth-pad@hearthos.fun) ;; *) rm -rf "$e" ;; esac; done
 rm -f /usr/share/applications/hearth-cosmic-*.desktop
 rmdir --ignore-fail-on-non-empty -p /usr/share/plasma/plasmoids /usr/share/plasma/look-and-feel /usr/share/plasma/desktoptheme /usr/share/gnome-shell/modes /usr/share/gnome-shell/extensions 2>/dev/null || true
 chmod 440 /etc/sudoers.d/hearth-wheel
@@ -1035,11 +1039,22 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
-# "Hearth Classic" on the login screen too (Mantel; the only desktop now: no Hearth Plasma / GNOME / COSMIC entries).
+# "Hearth Classic" on the login screen too (Mantel), and 1.13's KDE Plasma and GNOME entries: listed only once that
+# desktop is downloaded (TryExec), and they go through nimbus-session (its safe start: Mantel if it can't start).
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
-rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
+sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-kde.desktop > /usr/share/wayland-sessions/hearth-kde.desktop
+sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-gnome.desktop > /usr/share/wayland-sessions/hearth-gnome.desktop
+rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
+# KDE's and GNOME's own login entries would start them without Hearth's safe start: moved aside (dpkg-divert, so
+# installing their packages later puts them in /usr/share/hearth/desktop-sessions instead).
+mkdir -p /usr/share/hearth/desktop-sessions
+for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop xsessions/plasma.desktop xsessions/plasmax11.desktop \
+         wayland-sessions/gnome.desktop wayland-sessions/gnome-wayland.desktop xsessions/gnome.desktop xsessions/gnome-xorg.desktop \
+         wayland-sessions/gnome-classic.desktop wayland-sessions/gnome-classic-wayland.desktop xsessions/gnome-classic.desktop xsessions/gnome-classic-xorg.desktop; do
+  dpkg-divert --list "/usr/share/$f" | grep -q . || dpkg-divert --local --no-rename --divert "/usr/share/hearth/desktop-sessions/$(echo "$f" | tr / -)" --add "/usr/share/$f"
+done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-desktops /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
@@ -1598,6 +1613,8 @@ hearth_tool() {   # file, url, sha256
 }
 hearth_tool gogdl https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64 cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655
 hearth_tool legendary https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64 dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45
+# 1.13 (Hearth Games stage two): nile for Amazon Games (tools.rs NILE).
+hearth_tool nile https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_linux_x86_64 d73519514df9d52c50c6feec629373cc3a0d9504e087b6c7372a8ca8a95e7bfe
 
 # ------------------------------------------------------------------ GE-Proton, built in (docs/WINDOWS-APPS.md)
 # The newest GE-Proton we could check, in the image, so Windows apps and Hearth Games' Windows games start offline. Only
@@ -1765,6 +1782,9 @@ grep '^hosts:' /etc/nsswitch.conf || true
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
+# 1.13 (docs/SERVER-MODE.md): this device uses your server's ad blocker and game download cache while the server
+# answers (does nothing until one is on; never in the way of starting: no ordering, runtime-only network settings).
+systemctl enable hearth-dns-client.service
 
 # ------------------------------------------------------------------ name
 # /etc/os-release links to /usr/lib/os-release on Debian. ID stays debian (VERSION_CODENAME trixie) so tools
@@ -1853,6 +1873,13 @@ rm -f /usr/sbin/policy-rc.d
 # The C compiler and kernel headers stay (DKMS's packages need them installed); everything apt downloaded goes.
 apt-get clean
 rm -rf /var/lib/apt/lists/* /boot/*
+# Smaller updates (1.13): the image was built from Debian frozen to one moment (apt-snapshot.sh in the Containerfile);
+# a device's own apt (Writable system) uses Debian's live repositories, with today's security fixes.
+if [ -f /usr/share/hearth/apt-live/debian.sources ]; then
+  cp /usr/share/hearth/apt-live/debian.sources /usr/share/hearth/apt-live/debian-backports.sources /etc/apt/sources.list.d/
+  rm -f /etc/apt/apt.conf.d/80-hearth-snapshot
+  grep -q 'deb.debian.org' /etc/apt/sources.list.d/debian.sources
+fi
 rm -f /etc/dracut.conf.d/00-hearth-build.conf
 if [ "${#OPTIONAL_MISSING[@]}" -gt 0 ]; then echo "Not installed (not in the repositories): ${OPTIONAL_MISSING[*]}"; fi
 
@@ -1968,3 +1995,9 @@ ln -sT ../var/usrlocal /usr/local
 # bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
 # ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
 command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }
+
+# ------------------------------------------------------------------ smaller updates (1.13): each file's piece
+# The last step: every file marked with the piece it belongs to (os-bases/peppermint/components.py), so the rechunk
+# step in base-peppermint.yml gives each Debian package and each Hearth app its own layers and a device downloads only
+# what changed. Never fails the build (unmarked files only make updates bigger).
+python3 /ctx/components.py / /usr/lib/sysimage/dpkg || echo "components: marking files failed; updates stay big"

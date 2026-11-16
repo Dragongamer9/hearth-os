@@ -464,6 +464,57 @@ class Queue(Base):
 
 # ---------------------------------------------------------------------------------------------------- text and audio helpers
 
+class GameWait(Base):
+    """1.13: AI jobs wait while you play (waitForGames, on unless you turn it off)."""
+
+    def setUp(self):
+        super().setUp()
+        self._game = vs.game_running
+        self.playing = False
+        vs.game_running = lambda now=None: self.playing
+
+    def tearDown(self):
+        vs.game_running = self._game
+        super().tearDown()
+
+    def test_jobs_wait_while_a_game_runs_and_carry_on_after(self):
+        j = self.studio.new_audiobook('Book', [{'title': 'One', 'text': 'Words.'}], 'narrator')
+        self.playing = True
+        self.assertFalse(self.studio.work_once(), 'nothing starts while you play')
+        self.assertEqual(self.studio.job(j['id'])['state'], 'queued')
+        self.assertTrue(self.studio.state()['gameWait'])
+        self.playing = False
+        self.assertTrue(self.studio.work_once())
+        self.assertEqual(self.studio.job(j['id'])['state'], 'done')
+
+    def test_a_running_job_goes_back_in_the_queue_when_a_game_starts(self):
+        j = self.studio.new_audiobook('Book', [{'title': 'One', 'text': 'Words.'}], 'narrator')
+        self.playing = False
+        orig = self.studio.run_audiobook
+
+        def starts_then_game(job, progress):
+            self.playing = True
+            progress(10, 'narrating')
+        self.studio.run_audiobook = starts_then_game
+        self.studio.work_once()
+        self.studio.run_audiobook = orig
+        self.assertEqual(self.studio.job(j['id'])['state'], 'queued')
+        self.assertIn('waiting while you play', self.studio.job(j['id'])['step'])
+
+    def test_the_switch(self):
+        self.assertTrue(vs.load()['waitForGames'])
+        self.assertTrue(vs.set_key('waitForGames', 'off'))
+        self.playing = True
+        self.assertFalse(vs.waiting_for_game())
+        j = self.studio.new_audiobook('Book', [{'title': 'One', 'text': 'Words.'}], 'narrator')
+        self.assertTrue(self.studio.work_once(), 'switched off: jobs keep going while you play')
+        self.assertEqual(self.studio.job(j['id'])['state'], 'done')
+        with self.assertRaises(vs.Fail):
+            vs.set_key('waitForGames', 'maybe')
+        page = open(SHELL / 'voice-studio-web.html', encoding='utf-8').read()
+        self.assertEqual(page.count('${gameWaitRow()}'), 3)
+
+
 class Helpers(Base):
     def test_text_is_spoken_in_whole_sentences(self):
         t = 'One. Two! Three? ' + 'word ' * 120

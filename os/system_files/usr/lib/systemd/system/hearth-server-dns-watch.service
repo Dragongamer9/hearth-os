@@ -1,0 +1,10 @@
+# The game download cache's and the ad blocker's numbers for Server mode's dashboard, every few seconds, while one of
+# them is on (hearth-server-dns watch). No [Install].
+[Unit]
+Description=Hearth server: download cache and ad blocker numbers
+
+[Service]
+ExecStart=/usr/libexec/nimbus/hearth-server-dns watch
+Restart=on-failure
+RestartSec=30
+Nice=10

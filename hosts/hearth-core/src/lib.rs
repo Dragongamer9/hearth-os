@@ -2,6 +2,7 @@
 //! passes its messages here. Replaces the Electron host (hosts/linux) a part at a time; see docs/RUST.md.
 /// Hearth's version (this crate's, which the owner sets with Hearth's): Hearth Link reports it for device health.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub mod amazon;   // Amazon Games in Hearth Games through nile (stage two, 1.13; docs/HEARTH-GAMES.md)
 pub mod access;   // Settings › Accessibility (desktop/shell/hearth-access)
 pub mod admin;
 pub mod appid;
@@ -29,6 +30,7 @@ pub mod gaming_apps;
 pub mod hearth_mods;
 // ---- end of Hearth's gaming apps
 pub mod game_options;
+pub mod game_extras;   // a game's cloud saves and DLC on Hearth Games' page (stage two, 1.13)
 pub mod proton_run;    // hearth-proton-run: Windows programs with Proton, offline and without Steam (owner's red flag)
 pub mod proton_pick;   // the Proton a game with no pick of its own starts with: the built-in GE-Proton (the Proton detector plugs in here)
 pub mod gameinfo;

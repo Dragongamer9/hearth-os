@@ -1,0 +1,6 @@
+[Unit]
+Description=Hearth server: start the ad blocker and the game download cache if they're on
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-server-dns start

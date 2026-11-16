@@ -18,7 +18,19 @@ SetPage {
     property int removeStep: 0
     property var logLines: ({})
     function say(t, b) { msg = t; bad = !!b; }
-    function refresh() { job.run(["list"], r => page.st = r, e => page.st = { error: e }); }
+    function refresh() { job.run(["list"], r => page.st = r, e => page.st = { error: e }); wj.run(["worlds"], r => page.worlds = r, e => {}); }
+    // 1.13: world backups (each game server's world every night and before every update, kept for days, Roll back).
+    property var worlds: null
+    property string rolling: ""       // "<id>/<file>" while Roll back asks to be pressed again
+    function ago(t) {
+        const d = new Date(t * 1000), n = new Date();
+        const hm = Qt.formatTime(d, "hh:mm");
+        if (d.toDateString() === n.toDateString()) return "today " + hm;
+        const y = new Date(n.getTime() - 86400000);
+        if (d.toDateString() === y.toDateString()) return "last night " + hm;
+        return Qt.formatDate(d, "ddd d MMM") + " " + hm;
+    }
+    function mb(n) { return n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(1, Math.round(n / 1e6)) + " MB"; }
     function act(args, ok) { run.run(args, r => { page.say(ok || (r && r.note) || "Done ✓"); page.refresh(); }, e => { page.say(e, true); page.refresh(); }); }
     function apps(kind) { return st && st.apps ? st.apps.filter(a => a.kind === kind) : []; }
     function line(a) {
@@ -36,6 +48,7 @@ SetPage {
     SetJob { id: job; helper: "hearth-server-apps" }
     SetJob { id: run; helper: "hearth-server-apps" }
     SetJob { id: pick; helper: "hearth-home-server" }
+    SetJob { id: wj; helper: "hearth-server-apps" }
 
     Text {
         Layout.fillWidth: true
@@ -182,6 +195,64 @@ SetPage {
 
     SetHeader { text: "Game servers"; visible: page.apps("game").length > 0 }
     Repeater { model: page.apps("game"); delegate: appCard }
+    // ---- World backups (1.13)
+    SetHeader { text: "World backups"; visible: !!page.worlds && page.apps("game").some(a => a.installed) }
+    SetSwitch {
+        boxed: true
+        visible: !!page.worlds && page.apps("game").some(a => a.installed)
+        icon: "cloud"; title: "Back up the worlds every night"
+        sub: "Each game server is stopped cleanly, its world copied to Home › Server apps › World backups, then started again. Also before every update. A server with players on waits an hour"
+        checked: !!page.worlds && page.worlds.settings.on
+        onToggled: v => page.act(["worlds-set", "on", v ? "on" : "off"], v ? "World backups on" : "World backups off")
+    }
+    SetChoice {
+        visible: !!page.worlds && page.worlds.settings.on && page.apps("game").some(a => a.installed)
+        title: "At"
+        options: ["02:30", "03:30", "04:30", "05:30", "06:30"].map(t => ({ value: t, label: t }))
+        current: page.worlds ? page.worlds.settings.at : "04:30"
+        onChosen: v => page.act(["worlds-set", "at", v], "World backups at " + v)
+    }
+    SetChoice {
+        visible: !!page.worlds && page.worlds.settings.on && page.apps("game").some(a => a.installed)
+        title: "Keep them for"
+        options: [3, 7, 14, 30].map(n => ({ value: String(n), label: n + " days" }))
+        current: page.worlds ? String(page.worlds.settings.keep) : "7"
+        onChosen: v => page.act(["worlds-set", "keep", v], "Kept for " + v + " days (the newest always stays)")
+    }
+    Repeater {
+        model: page.worlds ? page.worlds.servers : []
+        delegate: SetExpander {
+            id: wx
+            required property var modelData
+            icon: "pad"; title: modelData.name + ": world backups"
+            sub: modelData.error ? "The last one didn't finish: " + modelData.error
+                 : modelData.backups.length ? modelData.backups.length + " kept · newest " + page.ago(modelData.backups[0].at) : "None yet"
+            SetRow {
+                icon: "cloud"; title: "Back up now"
+                sub: "Stops " + wx.modelData.name + " cleanly for a moment, then starts it again"
+                onActivated: page.act(["world-backup", wx.modelData.id], "Backing up " + wx.modelData.name + "…")
+            }
+            Repeater {
+                model: wx.modelData.backups
+                delegate: SetRow {
+                    required property var modelData
+                    required property int index
+                    readonly property string key: wx.modelData.id + "/" + modelData.file
+                    icon: "undo"
+                    danger: page.rolling === key
+                    title: page.rolling === key ? "Press again to roll back" : (index === 0 && modelData.why === "nightly" && page.ago(modelData.at).indexOf("last night") === 0 ? "Roll back to last night" : "Roll back to " + page.ago(modelData.at))
+                    sub: (page.rolling === key ? "Today's world is kept as a backup first, then this one is put back · " : "") + modelData.why + " · " + page.mb(modelData.size)
+                    value: "Roll back"
+                    onActivated: {
+                        if (page.rolling !== key) { page.rolling = key; return; }
+                        page.rolling = "";
+                        page.act(["world-restore", wx.modelData.id, modelData.file], wx.modelData.name + " rolled back to " + page.ago(modelData.at) + " ✓");
+                    }
+                }
+            }
+        }
+    }
+
     SetHeader { text: "Your own apps"; visible: page.apps("app").length > 0 }
     Repeater { model: page.apps("app"); delegate: appCard }
 

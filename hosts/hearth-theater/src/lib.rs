@@ -15,6 +15,9 @@
 #[path = "../../hearth-apptheme/appfile.rs"]
 pub mod appfile;
 
+/// Jellyfin servers and sync with your other devices (no network in it).
+pub mod jf;
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -42,6 +45,8 @@ pub struct Site {
     pub opens: u32,
     /// The site's catalog rows you hid (by name).
     pub hidden: Vec<String>,
+    /// "" for a web site, "jellyfin" for a Jellyfin server you connected (jf.rs).
+    pub kind: String,
 }
 
 /// What a page says about itself.
@@ -344,6 +349,9 @@ pub struct Item {
     pub episodes: u32,
     pub year: String,
     pub desc: String,
+    /// How far you watched it (0 to 1; Jellyfin's titles only) and how long is left ("24 min left").
+    pub progress: f64,
+    pub left: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -433,7 +441,8 @@ pub fn sanitize_item(v: &serde_json::Value, base: Option<&url::Url>) -> Option<I
     let episodes = v.get("episodes").and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|t| t.parse().ok()))).unwrap_or(0).min(100_000) as u32;
     let year: String = s("year").chars().filter(char::is_ascii_digit).take(4).collect();
     Some(Item { title, url, image: abs_http(s("image"), base), art: String::new(), kind, episodes,
-        year: if year.len() == 4 { year } else { String::new() }, desc: short(s("desc"), 300) })
+        year: if year.len() == 4 { year } else { String::new() }, desc: short(s("desc"), 300),
+        progress: v.get("progress").and_then(|x| x.as_f64()).filter(|p| p.is_finite()).unwrap_or(0.0).clamp(0.0, 1.0), left: short(s("left"), 40) })
 }
 
 /// What reader.js handed back for a site, made into its catalog: rows named after the site's own sections (or

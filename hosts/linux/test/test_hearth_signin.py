@@ -73,7 +73,7 @@ class Freshness(Base):
 
     def test_only_stores_hearth_knows(self):
         now = 1_800_000_000
-        for bad in ('amazon', 'Steam', 'epic ', '../epic', '', None, 5, ['epic']):
+        for bad in ('origin', 'Steam', 'epic ', '../epic', '', None, 5, ['epic']):
             self.assertIsNone(self.s.parse(json.dumps({'store': bad, 'at': now}), now), bad)
         for text in ('', 'nope', '[]', '"epic"', '{"store": "epic"}', '{"store": "epic", "at": "now"}', '{"store": "epic", "at": true}'):
             self.assertIsNone(self.s.parse(text, now), text)
@@ -102,7 +102,7 @@ class Take(Base):
         p = self.request('gog', time.time() - 3600)
         self.assertIsNone(self.s.take())
         self.assertFalse(os.path.exists(p))
-        p = self.request('amazon', time.time())
+        p = self.request('origin', time.time())
         self.assertIsNone(self.s.take())
         self.assertFalse(os.path.exists(p))
 

@@ -1,0 +1,17 @@
+{
+    "KPackageStructure": "Plasma/LayoutTemplate",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Description": "KDE's default panel with Hearth inside: Hearth's start menu (KDE's apps and yours, Switch desktop, Return to Game Mode) and the Hearth tray item",
+        "Id": "org.kde.plasma.desktop.defaultPanel",
+        "Name": "Default Panel (Hearth)"
+    },
+    "X-Plasma-ContainmentCategories": [
+        "panel"
+    ],
+    "X-Plasma-Shell": "org.kde.plasma.desktop"
+}

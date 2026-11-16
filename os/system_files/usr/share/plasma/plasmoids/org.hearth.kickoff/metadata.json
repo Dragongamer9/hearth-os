@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Category": "Application Launchers",
+        "Description": "KDE's start menu with Hearth inside: KDE's apps and the apps you installed, Switch desktop and Return to Game Mode",
+        "Icon": "start-here-kde",
+        "Id": "org.hearth.kickoff",
+        "License": "GPL-3.0-or-later",
+        "Name": "Application Menu (Hearth)",
+        "Website": "https://hearthos.fun",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-Provides": [
+        "org.kde.plasma.launchermenu"
+    ]
+}

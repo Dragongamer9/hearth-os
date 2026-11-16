@@ -258,6 +258,7 @@ pub mod epic {
         let r = tools::run(&tools::LEGENDARY, &["-y", "sync-saves", app, "--save-path", &save.to_string_lossy(), flag], &env(), None, None, Some(std::time::Duration::from_secs(120)))?;
         if r.code != 0 && check(&r, &b) { return Err(super::expiry::message("epic")); }
         crate::bridge::log(&format!("epic saves: {app} {direction} {}", if r.code == 0 { "ok".into() } else { tools::problem(&r) }));
+        crate::game_extras::note_sync(&format!("epic:{app}"), direction, r.code == 0);
         Ok(r.code == 0)
     }
 }
@@ -298,8 +299,8 @@ pub mod gog {
     const CLIENT_SECRET: &str = "9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9";
     const REDIRECT: &str = "https://embed.gog.com/on_login_success?origin=client";
     pub const CACHE: &str = "gog-owned.json";
-    fn dir() -> PathBuf { data().join("gog") }
-    fn auth() -> PathBuf { dir().join("auth.json") }
+    pub fn dir() -> PathBuf { data().join("gog") }
+    pub fn auth() -> PathBuf { dir().join("auth.json") }
     pub fn signed_in() -> bool { auth().exists() }
     pub fn profile() -> (Option<String>, Option<String>) { let p = read_json(&dir().join("profile.json")); (p["name"].as_str().map(str::to_string), p["avatar"].as_str().map(str::to_string)) }
 
@@ -513,6 +514,7 @@ pub mod gog {
         }
         let _ = crate::paths::write_atomic(&sync_file(), stamps.to_string().as_bytes());
         crate::bridge::log(&format!("gog saves: {id} {direction}: {n} place(s)"));
+        crate::game_extras::note_sync(&format!("gog:{id}"), direction, n > 0);
         Ok(n)
     }
 }
@@ -866,6 +868,7 @@ pub fn pump(queue: Arc<Mutex<Queue>>) {
         crate::bridge::log(&format!("install {id}: starting"));
         let res: Result<Option<String>, String> = if let Some(app) = uri.strip_prefix("nimbus-epic:") { epic::install(app, &root, &job, cancel.clone()).map(|_| None) }
             else if let Some(g) = uri.strip_prefix("nimbus-gog:") { gog::install(g, &root, &job, cancel.clone()).map(Some) }
+            else if let Some(a) = uri.strip_prefix("nimbus-amazon:") { crate::amazon::install(a, &root, &job, cancel.clone()).map(|_| None) }
             else { Err("Hearth can't install this game itself.".into()) };
         let mut q = queue.lock().unwrap();
         let Some(pos) = q.jobs.iter().position(|(j, _)| Arc::ptr_eq(j, &job)) else { continue };
@@ -901,12 +904,12 @@ pub fn notify(v: Value) { if let Some(e) = NOTIFY.get() { e(v); } }
 #[derive(Default)]
 pub struct AccState { pub busy: std::collections::HashSet<String>, pub errors: std::collections::HashMap<String, String> }
 
-pub const STORES: [&str; 3] = ["epic", "gog", "xbox"];
-pub fn signed_in(s: &str) -> bool { match s { "epic" => epic::signed_in(), "gog" => gog::signed_in(), "xbox" => xbox::signed_in(), _ => false } }
-pub fn cache_of(s: &str) -> &'static str { match s { "epic" => epic::CACHE, "gog" => gog::CACHE, _ => xbox::CACHE } }
-pub fn sign_in_page(s: &str) -> Option<SignIn> { match s { "epic" => Some(epic::sign_in()), "gog" => Some(gog::sign_in()), "xbox" => Some(xbox::sign_in()), _ => None } }
+pub const STORES: [&str; 4] = ["epic", "gog", "xbox", "amazon"];
+pub fn signed_in(s: &str) -> bool { match s { "epic" => epic::signed_in(), "gog" => gog::signed_in(), "xbox" => xbox::signed_in(), "amazon" => crate::amazon::signed_in(), _ => false } }
+pub fn cache_of(s: &str) -> &'static str { match s { "epic" => epic::CACHE, "gog" => gog::CACHE, "amazon" => crate::amazon::CACHE, _ => xbox::CACHE } }
+pub fn sign_in_page(s: &str) -> Option<SignIn> { match s { "epic" => Some(epic::sign_in()), "gog" => Some(gog::sign_in()), "xbox" => Some(xbox::sign_in()), "amazon" => Some(crate::amazon::sign_in()), _ => None } }
 pub fn finish_sign_in(s: &str, code: &str) -> Result<(), String> {
-    match s { "epic" => epic::finish_sign_in(code), "gog" => gog::finish_sign_in(code), "xbox" => xbox::finish_sign_in(code), _ => Err("Unknown store".into()) }
+    match s { "epic" => epic::finish_sign_in(code), "gog" => gog::finish_sign_in(code), "xbox" => xbox::finish_sign_in(code), "amazon" => crate::amazon::finish_sign_in(code), _ => Err("Unknown store".into()) }
 }
 pub fn sign_out(s: &str) -> Result<(), String> {
     if !STORES.contains(&s) { return Err("Unknown store".into()); }
@@ -914,7 +917,7 @@ pub fn sign_out(s: &str) -> Result<(), String> {
     // you signed out of (signins.rs).
     crate::signins::backup(&format!("before signing out of {s}"));
     crate::signins::mark_signed_out(s);
-    match s { "epic" => epic::sign_out(), "gog" => gog::sign_out(), "xbox" => xbox::sign_out(), _ => return Err("Unknown store".into()) }
+    match s { "epic" => epic::sign_out(), "gog" => gog::sign_out(), "xbox" => xbox::sign_out(), "amazon" => crate::amazon::sign_out(), _ => return Err("Unknown store".into()) }
     // The store's web sign-in (its sign-in window and Game Mode › Store's store window share it) goes too.
     crate::storefront::reset_web_profile(s);
     expiry::clear(s);
@@ -932,7 +935,7 @@ pub fn refresh(s: &'static str, acc: Arc<Mutex<AccState>>, reply: Value) {
     }
     notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
     std::thread::spawn(move || {
-        let r = match s { "epic" => epic::refresh_owned(), "gog" => gog::refresh_owned(&Owned::load(gog::CACHE)), _ => xbox::refresh_owned() };
+        let r = match s { "epic" => epic::refresh_owned(), "gog" => gog::refresh_owned(&Owned::load(gog::CACHE)), "amazon" => crate::amazon::refresh_owned(), _ => xbox::refresh_owned() };
         let mut a = acc.lock().unwrap();
         a.busy.remove(s);
         match r {

@@ -1,0 +1,11 @@
+# Enabled by hearth-server-dns only while the ad blocker or the game download cache is on: starts them a minute after
+# the PC starts (never in the way of starting it).
+[Unit]
+Description=Hearth server: start the ad blocker and the game download cache after starting
+
+[Timer]
+OnBootSec=60
+Unit=hearth-server-dns-start.service
+
+[Install]
+WantedBy=timers.target

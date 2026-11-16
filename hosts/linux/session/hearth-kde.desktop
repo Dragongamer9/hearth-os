@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=KDE Plasma (Hearth)
+Comment=Hearth OS with KDE Plasma as the desktop (Hearth inside; Mantel if it can't start). Listed once KDE Plasma is downloaded (Settings › Your desktop).
+Exec=/usr/local/bin/nimbus-session --desktop=kde
+TryExec=/usr/bin/startplasma-wayland
+Type=Application
+DesktopNames=KDE

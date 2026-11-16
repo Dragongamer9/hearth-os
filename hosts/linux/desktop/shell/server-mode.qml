@@ -68,6 +68,7 @@ ShellRoot {
                     }
                     else if (m.t === "launcher") { if (settingsApp.shown) settingsApp.close(); else dash.pad("menu"); }
                     else if (m.t === "osk") { if (!settingsApp.shown) dash.pad("y"); }
+                    else if (m.t === "help") { if (!settingsApp.shown) dash.pad("view"); }   // View tapped: X-ray in Ithil's brain (1.13)
                 }
             }
         }
@@ -80,9 +81,16 @@ ShellRoot {
         function play(): void { dash.play(); }
         function menu(): void { dash.overlay = "menu"; dash.menuSel = 0; }
         function detail(n: int): void { dash.sel = n; dash.overlay = "detail"; }
+        function pick(n: int): void { dash.sel = n; }
         function back(): void { dash.backInfo = { back: true, played: 9660 }; dash.overlay = "back"; }
         function close(): void { dash.overlay = ""; dash.cancelSwitch(); }
         function cancel(): void { dash.remoteCancel(); }
+        // An opened page's buttons, for the screenshot test (its keys don't reach the dashboard there): "new" a new rule,
+        // "window" Ithil's next time window
+        function press(b: string): void {
+            if (b === "new" && dash.rulesDet) dash.rulesDet.newRule();
+            else if (b === "window" && dash.ithilView) dash.ithilView.cycle(1);
+        }
         function idle(s: string): void { if (s === "dim" || s === "off" || s === "on") dash.screenState = s; }
         function state(): string { return JSON.stringify({ overlay: dash.overlay, sel: dash.sel, screen: dash.screenState, count: dash.count, remote: !!dash.remote, tiles: dash.tiles.length, settings: settingsApp.shown }); }
     }

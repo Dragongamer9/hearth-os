@@ -13,6 +13,8 @@ pub struct Tool { pub name: &'static str, pub file: &'static str, pub url: &'sta
 
 pub const LEGENDARY: Tool = Tool { name: "legendary", file: "legendary", url: "https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64", sha256: "dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45", tar: false, system: None };
 pub const GOGDL: Tool = Tool { name: "gogdl", file: "gogdl", url: "https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64", sha256: "cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655", tar: false, system: None };
+/// Amazon Games (Hearth Games stage two, 1.13): nile, Heroic's Amazon tool (GPL-3.0), its linux x86_64 build.
+pub const NILE: Tool = Tool { name: "nile", file: "nile", url: "https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_linux_x86_64", sha256: "d73519514df9d52c50c6feec629373cc3a0d9504e087b6c7372a8ca8a95e7bfe", tar: false, system: None };
 pub const UMU: Tool = Tool { name: "umu-launcher", file: "umu/umu-run", url: "https://github.com/Open-Wine-Components/umu-launcher/releases/download/1.4.4/umu-launcher-1.4.4-zipapp.tar", sha256: "eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851", tar: true, system: Some("umu-run") };
 
 pub fn dir() -> PathBuf { crate::paths::data_dir().join("tools") }

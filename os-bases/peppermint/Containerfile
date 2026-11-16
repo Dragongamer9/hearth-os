@@ -14,6 +14,7 @@ ARG BASE_IMAGE=docker.io/library/debian:trixie
 # Files the build script needs, kept out of the final image.
 FROM scratch AS ctx
 COPY os-bases/peppermint/build.sh /build.sh
+COPY os-bases/peppermint/components.py /components.py
 COPY os-bases/peppermint/system_files /peppermint_files
 COPY os/system_files /system_files
 COPY os/branding/wallpapers /wallpapers
@@ -27,7 +28,10 @@ COPY hosts/hearth-kde /hearth-kde
 # All of Debian's components (games need contrib and non-free: Steam, gamescope, firmware, Nvidia), trixie-backports
 # (the newer kernel, Mesa and gamescope handhelds need) and 32-bit packages (Steam).
 FROM ${BASE_IMAGE} AS base
-RUN set -eux; \
+# Smaller updates (1.13): Debian's packages frozen to one moment (tools/debian_snapshot.py; empty: live repositories).
+ARG DEBIAN_SNAPSHOT=
+RUN --mount=type=bind,source=os-bases/peppermint/apt-snapshot.sh,target=/apt-snapshot.sh \
+    set -eux; \
     f=/etc/apt/sources.list.d/debian.sources; \
     sed -i -e 's/^Components: main$/Components: main contrib non-free non-free-firmware/' "$f"; \
     printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: trixie-backports\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
@@ -36,7 +40,9 @@ RUN set -eux; \
     grep -q 'non-free-firmware' "$f"; \
     dpkg --add-architecture i386; \
     rm -f /etc/apt/apt.conf.d/docker-gzip-indexes /etc/apt/apt.conf.d/docker-no-languages; \
-    printf 'APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n' > /etc/apt/apt.conf.d/90-hearth-no-recommends
+    printf 'APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n' > /etc/apt/apt.conf.d/90-hearth-no-recommends; \
+    sh /apt-snapshot.sh "${DEBIAN_SNAPSHOT}"; \
+    apt-get -y upgrade
 
 # ------------------------------------------------------------------ what Debian doesn't package (see builder.sh)
 FROM base AS builder
