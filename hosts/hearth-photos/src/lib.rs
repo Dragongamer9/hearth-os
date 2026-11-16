@@ -6,10 +6,13 @@
 //! without losing quality (orient.rs: JPEGs get a new EXIF orientation, nothing is re-compressed), saving edits
 //! (save.rs) and the system's parts: Trash, clipboard, wallpaper, the file manager (system.rs).
 
+pub mod ai;
 pub mod folder;
 pub mod formats;
 pub mod imaging;
 pub mod info;
+pub mod library;
+pub mod place;
 pub mod orient;
 pub mod save;
 pub mod system;
