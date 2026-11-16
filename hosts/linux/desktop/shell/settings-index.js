@@ -568,6 +568,11 @@ var ENTRIES = [
 "i": "display"
 },
 {
+"t": "Resolution",
+"p": "display",
+"i": "window"
+},
+{
 "t": "Refresh rate",
 "p": "display",
 "d": "Higher is smoother; lower saves battery",
@@ -584,7 +589,7 @@ var ENTRIES = [
 "i": "display"
 },
 {
-"t": "Resolution",
+"t": "Other resolutions",
 "p": "display",
 "d": "Sharper with more pixels",
 "i": "window"
@@ -2278,6 +2283,12 @@ var ENTRIES = [
 "p": "printers",
 "d": "Drivers, paper and other options (Print Settings)",
 "i": "gear"
+},
+{
+"t": "Start in",
+"p": "quick",
+"d": "What this PC opens when it turns on or you sign in",
+"i": "power"
 },
 {
 "t": "Use this PC from anywhere",

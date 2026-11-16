@@ -29,8 +29,8 @@ SetBase {
         y: sl.wide ? (sl.height - height) / 2 : 14
         width: sl.wide ? sl.width - sl.textLeft - bar.width - SetStyle.pad * 2 : sl.width - sl.textLeft - SetStyle.pad
         spacing: 2
-        Text { Layout.fillWidth: true; text: sl.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Medium; elide: Text.ElideRight }
-        Text { visible: sl.sub !== ""; Layout.fillWidth: true; text: sl.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+        Text { Layout.fillWidth: true; text: sl.title; color: Theme.text; font.family: Theme.font; font.pixelSize: SetStyle.titleSize; font.weight: Font.Medium; elide: Text.ElideRight }
+        Text { visible: sl.sub !== ""; Layout.fillWidth: true; text: sl.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: SetStyle.subSize; wrapMode: Text.WordWrap }
     }
     Row {
         id: bar
@@ -61,6 +61,6 @@ SetBase {
                 onPositionChanged: m => { if (pressed) sl.moved(Math.max(0, Math.min(1, m.x / track.width))); }
             }
         }
-        Text { id: valueLabel; anchors.verticalCenter: parent.verticalCenter; text: sl.valueText; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; width: Math.max(implicitWidth, 44); horizontalAlignment: Text.AlignRight }
+        Text { id: valueLabel; anchors.verticalCenter: parent.verticalCenter; text: sl.valueText; color: SetStyle.big ? Theme.accent : Theme.muted; font.family: Theme.font; font.pixelSize: SetStyle.big ? 19 : 14; font.weight: SetStyle.big ? Font.DemiBold : Font.Normal; width: Math.max(implicitWidth, 44); horizontalAlignment: Text.AlignRight }
     }
 }

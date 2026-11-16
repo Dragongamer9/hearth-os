@@ -158,6 +158,7 @@ Scope {
         case "help": help.toggle(); break;
         case "toast": help.toast(m.text); break;
         case "mouse": mouseOn = m.on; break;
+        case "used": SettingsNav.padUsed(); break;
         case "owner": owner = m.app || ""; ownerMouse = m.mouse === true; break;
         }
     }

@@ -77,7 +77,7 @@ class Registry(unittest.TestCase):
         parts = {'SetBase.qml', 'SetRow.qml', 'SetSwitch.qml', 'SetChoice.qml', 'SetSlider.qml', 'SetField.qml', 'SetHeader.qml',
                  'SetPage.qml', 'SetJob.qml', 'SetBootCard.qml', 'SetBootFrames.qml', 'SetBootPreview.qml', 'SetBootVideo.qml',
                  'SetCard.qml', 'SetCardGroup.qml', 'SetExpander.qml', 'SetDropdown.qml', 'SetChip.qml', 'SetBanner.qml', 'SetLinkCard.qml', 'SetButton.qml', 'SetPinPad.qml',
-                 'SetStyle.qml'}
+                 'SetStyle.qml', 'SetChanges.qml', 'SetChangeRow.qml'}
         files = {p['file'] for p in ps.values()}
         for f in SHELL.glob('Set*.qml'):
             if f.name not in parts and not f.name.startswith('Settings'):
@@ -164,7 +164,7 @@ class Search(unittest.TestCase):
 class Frame(unittest.TestCase):
     def test_settings_always_opens(self):
         app = (SHELL / 'SettingsApp.qml').read_text()
-        self.assertIn('setSource(Qt.resolvedUrl("SettingsFrame.qml"), { app: app })', app)
+        self.assertIn('property string want: SettingsNav.input === "pad" && !bFailed ? "SettingsFrameB.qml" : "SettingsFrame.qml"', app)
         self.assertIn('setSource(Qt.resolvedUrl("SettingsSimple.qml"), { app: app })', app)
         self.assertIn('status === Loader.Error && !fellBack', app)
         self.assertIn('title: "Hearth Settings"', app)          # Pad.qml gives this window the controller's keys
@@ -190,7 +190,7 @@ class Frame(unittest.TestCase):
             self.assertIn(want, f)
         self.assertIn('case Qt.Key_Escape: if (base.ownsEscape) base.escaped(); else SettingsNav.back(); break;', (SHELL / 'SetBase.qml').read_text())   # (an open dropdown closes first)
         pad = (SHELL / 'hearth-pad').read_text()
-        self.assertIn("SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),", pad)
+        self.assertIn("SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'x': ('KEY_LEFTCTRL', 'KEY_D'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),", pad)
         self.assertIn("self.keys_why.endswith('Hearth Settings')", pad)
 
     def test_hearth_pad_sends_settings_keys_only_to_settings(self):

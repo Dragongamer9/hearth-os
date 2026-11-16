@@ -14,7 +14,7 @@ SetBase {
     usesLeftRight: true
     Layout.fillWidth: true
     readonly property int textLeft: (inset ? 56 : SetStyle.pad) + (icon !== "" && !inset ? 38 : 0)
-    readonly property bool inline: measure.implicitWidth + textLeft + SetStyle.pad * 2 + 260 <= width
+    readonly property bool inline: SetStyle.big || measure.implicitWidth + textLeft + SetStyle.pad * 2 + 260 <= width
     implicitHeight: inline ? Math.max(SetStyle.cardHeight - (inset ? 10 : 0), txt.implicitHeight + 24)
                            : txt.implicitHeight + segs.implicitHeight + 38
     readonly property int idx: Math.max(0, options.findIndex(o => o.value === current))
@@ -35,10 +35,10 @@ SetBase {
         id: txt
         x: ch.textLeft
         y: ch.inline ? (ch.height - height) / 2 : 14
-        width: ch.inline ? ch.width - ch.textLeft - segs.width - SetStyle.pad * 2 : ch.width - ch.textLeft - SetStyle.pad
+        width: ch.inline ? ch.width - ch.textLeft - (SetStyle.big ? stepper.width : segs.width) - SetStyle.pad * 2 : ch.width - ch.textLeft - SetStyle.pad
         spacing: 2
-        Text { id: titleText; Layout.fillWidth: true; text: ch.title; color: Theme.text; font.family: Theme.font; font.pixelSize: ch.inset ? 14 : 15; font.weight: Font.Medium; elide: Text.ElideRight }
-        Text { visible: ch.sub !== ""; Layout.fillWidth: true; text: ch.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: ch.inset ? 13 : 13; wrapMode: Text.WordWrap }
+        Text { id: titleText; Layout.fillWidth: true; text: ch.title; color: Theme.text; font.family: Theme.font; font.pixelSize: ch.inset ? SetStyle.titleSize - 1 : SetStyle.titleSize; font.weight: Font.Medium; elide: Text.ElideRight }
+        Text { visible: ch.sub !== ""; Layout.fillWidth: true; text: ch.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: SetStyle.subSize; wrapMode: Text.WordWrap }
     }
     // The options at their natural size, to see whether they fit on the right.
     Row {
@@ -48,8 +48,26 @@ SetBase {
         padding: 3
         Repeater { model: ch.options; delegate: Item { required property var modelData; implicitWidth: m.implicitWidth + 28; implicitHeight: 28; Text { id: m; text: modelData.label; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold } } }
     }
+    // The controller look (SetStyle.big): "‹ 2560 × 1440 ›", changed with left and right (settings-B2).
+    Row {
+        id: stepper
+        visible: SetStyle.big
+        x: ch.width - width - SetStyle.pad
+        y: (ch.height - height) / 2
+        spacing: 8
+        Text {
+            text: "‹"; color: ch.idx > 0 ? Theme.accent : SetStyle.tint(Theme.accent, 0.35); font.family: Theme.font; font.pixelSize: 24; font.weight: Font.DemiBold
+            MouseArea { anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.PointingHandCursor; onClicked: { ch.forceActiveFocus(); ch.adjusted(-1); } }
+        }
+        Text { text: (ch.options[ch.idx] || {}).label || ""; color: Theme.accent; font.family: Theme.font; font.pixelSize: 19; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+        Text {
+            text: "›"; color: ch.idx < ch.options.length - 1 ? Theme.accent : SetStyle.tint(Theme.accent, 0.35); font.family: Theme.font; font.pixelSize: 24; font.weight: Font.DemiBold
+            MouseArea { anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.PointingHandCursor; onClicked: { ch.forceActiveFocus(); ch.adjusted(1); } }
+        }
+    }
     Rectangle {
         id: segs
+        visible: !SetStyle.big
         x: ch.inline ? ch.width - width - SetStyle.pad : ch.textLeft
         y: ch.inline ? (ch.height - height) / 2 : txt.y + txt.height + 10
         width: ch.inline ? measure.implicitWidth + 2 : Math.min(measure.implicitWidth + 2, ch.width - ch.textLeft - SetStyle.pad)

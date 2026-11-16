@@ -272,15 +272,72 @@ def update_json(path, change, indent=2):
         return data
 
 
-def merge_json(path, changes):
-    """Set CHANGES' top-level keys (None removes one); every other key stays as it is on disk."""
+def merge_json(path, changes, who=None):
+    """Set CHANGES' top-level keys (None removes one); every other key stays as it is on disk. With WHO ("you",
+    "Hearth"), each key whose value really changed goes into the change history (Settings › Home › Changed lately)."""
+    seen = []
+
     def apply(d):
         for k, v in changes.items():
+            old = d.get(k, None)
             if v is None:
                 d.pop(k, None)
             else:
                 d[k] = v
-    return update_json(path, apply)
+            if who and json.dumps(old, sort_keys=True) != json.dumps(v, sort_keys=True):
+                seen.append((k, old, v))
+    data = update_json(path, apply)
+    if seen:
+        history_add(path, seen, who)
+    return data
+
+
+# ------------------------------------------------------------------ change history (1.14, the new Settings)
+# What changed, from what, to what, who changed it and when: Settings › Home › Changed lately (with Undo) and the
+# help panel's "last changed" read it. Only writers that ask for it are recorded (Settings' own switches), so
+# window sizes and the like never fill it. Kept to the last HISTORY_MAX changes, written like any settings file.
+HISTORY_MAX = 200
+
+
+def history_path():
+    return os.path.join(state_dir(), 'settings-history.json')
+
+
+def history_read():
+    d = load_json(history_path(), {}) if os.path.exists(history_path()) else {}
+    items = d.get('changes') if isinstance(d, dict) else None
+    return [c for c in items if isinstance(c, dict)] if isinstance(items, list) else []
+
+
+def history_add(path, seen, who):
+    os.makedirs(state_dir(), exist_ok=True)
+    now = int(time.time())
+
+    def apply(d):
+        items = d.get('changes') if isinstance(d.get('changes'), list) else []
+        n = int(d.get('next') or 1)
+        for k, old, new in seen:
+            items.append({'id': n, 'file': path, 'key': k, 'from': old, 'to': new, 'who': who, 'at': now})
+            n += 1
+        d['changes'] = items[-HISTORY_MAX:]
+        d['next'] = n
+    try:
+        update_json(history_path(), apply)
+    except OSError as e:
+        log_event('change history not written: %s' % e)
+
+
+def history_undo(cid, who='you'):
+    """Put change CID's old value back. 'ok', 'gone' (not in the history), or 'changed' (it was changed again since:
+    undoing would throw that newer choice away, so nothing is done)."""
+    c = next((c for c in history_read() if c.get('id') == cid), None)
+    if not c:
+        return 'gone'
+    now = load_json(c['file'], {}) if os.path.exists(c['file']) else {}
+    if json.dumps(now.get(c['key']), sort_keys=True) != json.dumps(c.get('to'), sort_keys=True):
+        return 'changed'
+    merge_json(c['file'], {c['key']: c.get('from')}, who=who)
+    return 'ok'
 
 
 # ------------------------------------------------------------------ shell-style KEY=VALUE files (session.conf)
@@ -336,6 +393,21 @@ def main(argv):
             return 2
         merge_json(argv[2], changes)
         return 0
+    if len(argv) == 5 and argv[1] == 'merge' and argv[4] == '--history':
+        changes = json.loads(argv[3])
+        if not isinstance(changes, dict):
+            print('error: merge takes a JSON object', file=sys.stderr)
+            return 2
+        merge_json(argv[2], changes, who=os.environ.get('HEARTH_CHANGED_BY') or 'you')
+        return 0
+    if len(argv) in (2, 3) and argv[1] == 'history':
+        n = int(argv[2]) if len(argv) == 3 else 50
+        print(json.dumps(list(reversed(history_read()))[:max(0, n)], ensure_ascii=False))
+        return 0
+    if len(argv) == 3 and argv[1] == 'undo':
+        r = history_undo(int(argv[2]))
+        print(r)
+        return 0 if r == 'ok' else 1
     if len(argv) == 3 and argv[1] == 'repair':
         if not os.path.exists(argv[2]):
             print('missing')
