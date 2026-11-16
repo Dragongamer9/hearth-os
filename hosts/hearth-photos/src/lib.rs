@@ -10,6 +10,7 @@ pub mod folder;
 pub mod formats;
 pub mod imaging;
 pub mod info;
+pub mod library;
 pub mod orient;
 pub mod save;
 pub mod system;
