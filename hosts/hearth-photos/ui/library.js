@@ -350,7 +350,7 @@
     return `<span class="face" style="width:${size}px;height:${size}px"><img alt="" loading="lazy" src="${url('thumb', c.path, '?s=512')}" style="width:${z}%;height:${z}%;left:${50 - cx * z / 100}%;top:${50 - cy * z / 100}%"></span>`;
   }
   function peopleBox(max) {
-    const head = `<div class="bh"><h2>People <small>faces grouped on this PC · only you see the names</small></h2>${max ? `<button class="link" data-f data-view="people">See all ${n(groupsShown().length)}</button>` : ''}</div>`;
+    const head = `<div class="bh"><h2>People <small>faces grouped on this PC · only you see the names</small></h2>${max && groupsShown().length ? `<button class="link" data-f data-view="people">See all ${n(groupsShown().length)}</button>` : ''}</div>`;
     if (!facesOn()) return head + `<p class="muted">Faces are off. <button class="link" data-f data-lact="facesOn">Turn them on</button> to group photos by who's in them; it's all worked out on this PC.</p>`;
     const st = L.aiStatus || {};
     if (!st.ready) {

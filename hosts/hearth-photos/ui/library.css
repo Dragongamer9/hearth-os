@@ -258,3 +258,5 @@
 .dlg .sw span { display:flex; flex-direction:column; gap:2px; }
 .dlg .sw small { color:var(--muted); }
 #ltop .ib { color:var(--muted); }
+
+#library.pad #lcontent { text-align:left; }
