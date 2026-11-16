@@ -78,6 +78,13 @@ Item {
     Shortcut { sequences: ["Ctrl+PgUp"]; onActivated: frame.stepCategory(-1) }
     Shortcut { sequences: ["Ctrl+F"]; onActivated: search.forceActiveFocus() }
     Shortcut { sequences: ["Ctrl+W"]; onActivated: frame.app.close() }
+    // 1.14: X on the controller (Ctrl+D): the page's own action when it has one (Display: Keep these settings while a
+    // change waits; Quick: Pin to Quick). The hint shows only then.
+    readonly property string xLabel: loader.item && loader.item.xLabel ? loader.item.xLabel : ""
+    Shortcut { sequences: ["Ctrl+D"]; onActivated: if (frame.xLabel !== "" && loader.item.xAction) loader.item.xAction() }
+    function focusSearch() { search.forceActiveFocus(); }
+    // The setting you were on stays picked when Settings changes look (SettingsApp.qml passes its title).
+    function restoreFocus(t) { if (t) { pendingFocus = t; Qt.callLater(enterPage); } }
 
     // ---------------------------------------------------------------- who you are (the card on top)
     property string userName: ""
@@ -358,6 +365,7 @@ Item {
                 Hint { keys: ["A"]; label: "Select" }
                 Hint { keys: ["B"]; label: "Back" }
                 Hint { keys: ["Y"]; label: "Search" }
+                Hint { visible: frame.xLabel !== ""; keys: ["X"]; label: frame.xLabel }
                 Item { Layout.fillWidth: true }
                 Hint { keys: ["LB", "RB"]; square: true; label: "Previous / next category" }
                 Hint { keys: ["☰"]; square: true; label: "Close" }

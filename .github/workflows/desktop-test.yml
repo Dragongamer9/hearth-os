@@ -268,6 +268,24 @@ jobs:
           wtype -k Return; sleep 3; grim shots/settings-redesign/35-search-opened-the-setting.png || true
           rs home 36-home; wtype -M ctrl -k f -m ctrl; sleep 1; wtype appearance 2>/dev/null || true; sleep 2; grim shots/settings-redesign/36-search-old-name.png || true
           wtype -k Escape; wtype -k Escape; ipc settings close
+          # 1.14, the new Settings: the keyboard-and-mouse Home (A1) and Display (A2), then the controller look (B1, B2):
+          # Quick, System › Display, the help panel, LB / RB, X Default asked first, and back to A with the mouse.
+          mkdir -p shots/settings-new
+          rs home a1-home; rs display a2-display
+          ipc settings look pad; sleep 3; grim shots/settings-new/b0-switched-live.png || true
+          rs quick b1-quick; wtype -k Down; sleep 1; grim shots/settings-new/b1-quick-focus.png || true
+          wtype -M ctrl -k d -m ctrl; sleep 2; grim shots/settings-new/b1-pin-to-quick.png || true; wtype -M ctrl -k d -m ctrl
+          rs display b2-display; wtype -k Right; sleep 1; wtype -k Down; sleep 1; grim shots/settings-new/b2-display-help.png || true
+          wtype -M ctrl -k d -m ctrl; sleep 2; grim shots/settings-new/b2-default-asked.png || true; wtype -k Escape
+          wtype -M ctrl -k Next -m ctrl; sleep 2; grim shots/settings-new/b3-rb-network.png || true
+          wtype -M ctrl -k f -m ctrl; sleep 1; wtype sleep 2>/dev/null || true; sleep 2; grim shots/settings-new/b4-search.png || true; wtype -k Escape
+          ipc settings look mouse; sleep 3; grim shots/settings-new/b5-back-to-a.png || true
+          ipc settings close
+          if grep -E "(SettingsFrameB|SetQuick|SetChange[A-Za-z]*|SetDisplay)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=New Settings::$(grep -E "(SettingsFrameB|SetQuick|SetChange[A-Za-z]*|SetDisplay)\.qml" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          ! grep -q "the controller look didn't load" "$LOG" || { echo "::error title=New Settings::the controller look didn't load: $(grep -B6 "the controller look didn't load" "$LOG" | grep -E 'qml' | head -6 | cut -c1-220 | tr '\n' '|')"; touch shots/FAILED; }
           # The handheld layout (1280×800): the same labels, tighter.
           wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; sleep 4
           rs home 40-handheld-home; rs gaming 41-handheld-gaming; rs handheld 42-handheld-gaming-handheld; rs hs-services 43-handheld-services
