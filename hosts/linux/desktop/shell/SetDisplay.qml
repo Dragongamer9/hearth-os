@@ -7,6 +7,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 
 SetPage {
     id: page
@@ -159,6 +160,9 @@ SetPage {
         }
         Qt.callLater(load);
     }
+    // X on the controller (the frame's hint, mockup settings-A2): Keep these settings while a change waits.
+    readonly property string xLabel: countdown > 0 ? "Keep these settings" : ""
+    function xAction() { if (countdown > 0) keep(); }
     Timer { interval: 1000; repeat: true; running: page.countdown > 0; onTriggered: { page.countdown--; if (page.countdown === 0) page.revert(); } }
 
     Rectangle {
@@ -180,6 +184,100 @@ SetPage {
         }
     }
     onCountdownChanged: if (countdown === 15) keepBtn.forceActiveFocus()
+
+    // 1.14 (mockup settings-A2): your screens drawn as they're placed (1, 2…), the picked one lit; its name, mode and
+    // the graphics card it's on; Identify (each screen shows its number for 3 s), Detect (reads the screens again) and
+    // Arrange (to "Where this screen is").
+    property string gpuName: ""
+    Process {
+        running: true
+        command: ["sh", "-c", "g=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1); [ -n \"$g\" ] || g=$(lspci -mm 2>/dev/null | grep -E '\"(VGA|3D|Display)' | head -1 | awk -F'\" \"' '{print $2\" \"$3}'); echo \"$g\""]
+        stdout: StdioCollector { onStreamFinished: {
+            const t = text.trim().replace(/\[|\]/g, " ").replace(/\s+/g, " ");
+            const m = /\b((RTX|GTX|RX|Arc)\s?[A-Z]?\d{3,4}\s?(Ti|SUPER|XT|XTX)?)\b/i.exec(t);
+            page.gpuName = m ? m[1].trim() : /Radeon/i.test(t) ? "Radeon graphics" : /Intel/i.test(t) ? "Intel graphics" : t;
+        } }
+    }
+    readonly property var drawn: {
+        const on = outs.filter(o => o.enabled);
+        if (!on.length) return [];
+        const ls = on.map(o => ({ o: o, p: o.position || { x: 0, y: 0 }, s: logical(o) }));
+        const minX = Math.min(...ls.map(l => l.p.x)), minY = Math.min(...ls.map(l => l.p.y));
+        const maxX = Math.max(...ls.map(l => l.p.x + l.s.w)), maxY = Math.max(...ls.map(l => l.p.y + l.s.h));
+        const k = Math.min(420 / Math.max(1, maxX - minX), 150 / Math.max(1, maxY - minY));
+        return ls.map((l, i) => ({ name: l.o.name, n: i + 1, x: (l.p.x - minX) * k, y: (l.p.y - minY) * k, w: Math.max(40, l.s.w * k - 8), h: Math.max(28, l.s.h * k - 8) }));
+    }
+    property bool identifying: false
+    Timer { id: identifyOff; interval: 3000; onTriggered: page.identifying = false }
+    Variants {
+        model: page.identifying ? Quickshell.screens : []
+        delegate: PanelWindow {
+            required property var modelData
+            screen: modelData
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.namespace: "hearth-identify"
+            anchors { top: true; left: true }
+            margins { top: 40; left: 40 }
+            implicitWidth: 180; implicitHeight: 180
+            color: "transparent"
+            exclusionMode: ExclusionMode.Ignore
+            Rectangle {
+                anchors.fill: parent; radius: 24; color: Theme.panel; border.width: 3; border.color: Theme.accent
+                Text {
+                    anchors.centerIn: parent
+                    text: String(Math.max(1, (page.drawn.find(d => d.name === modelData.name) || { n: Quickshell.screens.indexOf(modelData) + 1 }).n))
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 110; font.weight: Font.Bold
+                }
+            }
+        }
+    }
+    Rectangle {
+        visible: !!page.out
+        Layout.fillWidth: true
+        implicitHeight: Math.max(190, scrInfo.implicitHeight + 50)
+        radius: SetStyle.bigRadius; color: SetStyle.card; border.width: 1; border.color: SetStyle.tint(Theme.text, 0.05)
+        Item {
+            id: scrPic
+            x: 24; y: 22
+            width: Math.max(...page.drawn.map(d => d.x + d.w).concat([120])); height: Math.max(...page.drawn.map(d => d.y + d.h).concat([80]))
+            Repeater {
+                model: page.drawn
+                delegate: Rectangle {
+                    id: scr
+                    required property var modelData
+                    readonly property bool lit: modelData.name === page.picked
+                    x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+                    radius: 8
+                    color: lit ? SetStyle.mix(SetStyle.card2, Theme.accent, 0.12) : SetStyle.card2
+                    border.width: lit ? 3 : 1; border.color: lit ? Theme.accent : Theme.line
+                    Text { anchors.centerIn: parent; text: scr.modelData.n; color: Theme.text; font.family: Theme.font; font.pixelSize: Math.min(44, scr.height * 0.4); font.weight: scr.lit ? Font.Bold : Font.Normal }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { page.picked = scr.modelData.name; page.countdown = 0; page.load(); } }
+                }
+            }
+        }
+        ColumnLayout {
+            id: scrInfo
+            anchors { left: scrPic.right; leftMargin: 32; right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
+            spacing: 6
+            Text {
+                Layout.fillWidth: true
+                text: page.out ? (page.out.model || page.out.description || page.out.name) + (page.drawn.length > 1 && page.drawn[0] && page.drawn[0].name === page.out.name ? " · main display" : page.drawn.length > 1 ? "" : " · main display") : ""
+                color: Theme.text; font.family: Theme.font; font.pixelSize: 19; font.weight: Font.DemiBold; elide: Text.ElideRight
+            }
+            Text {
+                Layout.fillWidth: true
+                text: page.cur ? [page.cur.width + " × " + page.cur.height, Math.round(page.cur.refresh) + " Hz", "HDR off", page.gpuName ? "connected to the " + page.gpuName : ""].filter(x => x).join(" · ") : (page.out && !page.out.enabled ? "Off" : "")
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                spacing: 8
+                Layout.topMargin: 6
+                SetButton { text: "Identify"; onActivated: { page.identifying = true; identifyOff.restart(); } }
+                SetButton { ghost: true; text: "Detect"; onActivated: { page.load(); SettingsNav.toast("Looked for screens again: " + page.outs.length + (page.outs.length === 1 ? " screen" : " screens")); } }
+                SetButton { ghost: true; text: "Arrange"; visible: page.others.length > 0; onActivated: arrangeChoice.forceActiveFocus() }
+            }
+        }
+    }
 
     // Two or more screens: which one these settings are for.
     SetChoice {
@@ -207,6 +305,31 @@ SetPage {
         current: page.out ? page.out.scale : 1
         onChosen: v => page.apply(0, 0, 0, v)
     }
+    // Resolution as a choice (mockups A2 and B2): the screen's own and the next one down, plus Other… for the rest
+    // (the list below); in the controller look every resolution, one after another with ‹ ›.
+    property bool otherRes: false
+    readonly property var resChoices: {
+        const all = resolutions.map(r => ({ value: r.w + "x" + r.h, label: r.w + " × " + r.h }));
+        if (SetStyle.big) return all;
+        const top = all.slice(0, 2);
+        const curK = cur ? cur.width + "x" + cur.height : "";
+        if (curK && !top.some(o => o.value === curK)) top.push({ value: curK, label: cur.width + " × " + cur.height });
+        return all.length > top.length ? top.concat([{ value: "other", label: "Other…" }]) : top;
+    }
+    SetChoice {
+        visible: page.resolutions.length > 0
+        icon: "window"; title: "Resolution"
+        sub: page.resolutions.length ? "Recommended: " + page.resolutions[0].w + " × " + page.resolutions[0].h : ""
+        options: page.resChoices
+        current: page.otherRes ? "other" : page.cur ? page.cur.width + "x" + page.cur.height : ""
+        onChosen: v => {
+            if (v === "other") { page.otherRes = true; return; }
+            page.otherRes = false;
+            const [w, h] = v.split("x").map(Number);
+            const m = page.out.modes.filter(x => x.width === w && x.height === h).sort((a, b) => b.refresh - a.refresh)[0];
+            if (m) page.apply(m.width, m.height, m.refresh, 0);
+        }
+    }
     SetChoice {
         visible: page.rates.length > 1
         icon: "bolt"; title: "Refresh rate"; sub: "Higher is smoother; lower saves battery"
@@ -215,6 +338,7 @@ SetPage {
         onChosen: r => { const m = page.out.modes.find(x => x.width === page.cur.width && x.height === page.cur.height && Math.round(x.refresh) === r); if (m) page.apply(m.width, m.height, m.refresh, 0); }
     }
     SetChoice {
+        id: arrangeChoice
         visible: page.others.length > 0 && !!page.out && page.out.enabled
         icon: "desktops"; title: "Where this screen is"; sub: "Next to " + (page.others.length ? (page.others[0].model || page.others[0].name) : "the other screen") + ", so the pointer goes across where they meet"
         options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "above", label: "Above" }, { value: "below", label: "Below" }]
@@ -229,8 +353,8 @@ SetPage {
         onToggled: v => page.setOn(v)
     }
     SetExpander {
-        visible: page.resolutions.length > 0
-        icon: "window"; title: "Resolution"; sub: "Sharper with more pixels"
+        visible: page.resolutions.length > 0 && page.otherRes && !SetStyle.big
+        icon: "window"; title: "Other resolutions"; sub: "Sharper with more pixels"
         value: page.cur ? page.cur.width + " × " + page.cur.height : ""
         Repeater {
             model: page.resolutions.slice(0, 10)
