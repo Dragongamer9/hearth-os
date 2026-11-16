@@ -21,7 +21,8 @@ object Link {
     private fun runDir(ctx: Context) = File(ctx.filesDir, "run").apply { mkdirs() }
     fun socket(ctx: Context) = File(runDir(ctx), "hearth-link/link.sock")
 
-    fun available(ctx: Context) = bin(ctx).exists()
+    // Built for Android 9 (API 28) and up (it uses syncfs); an older TV has Hearth TV without Hearth Link.
+    fun available(ctx: Context) = android.os.Build.VERSION.SDK_INT >= 28 && bin(ctx).exists()
 
     fun start(ctx: Context) {
         if (!available(ctx)) { Logs.add("link: not in this build"); return }
