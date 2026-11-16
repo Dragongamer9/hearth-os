@@ -9,22 +9,22 @@
   // ---------- Typing a name or a password with the remote ----------
   T.askText = function (title, initial, done, opts) {
     opts = opts || {};
-    var text = initial || '', caps = false;
+    var text = initial || '', caps = false, sym = false;
     T.open({
       id: 'text', first: 'tk' + (opts.digits ? '1' : 'a'),
       render: function () {
         var h = '<div class="dim"><div class="dialog on-panel" style="width:1100px"><span style="font-size:30px;font-weight:700">' + E(title) + '</span>' +
           '<div style="height:72px;border-radius:var(--r);background:var(--bg);border:2px solid var(--focus);display:flex;align-items:center;padding:0 20px;font-size:30px;font-weight:600">' + E(opts.secret ? text.replace(/./g, '●') : text) + '<span style="display:inline-block;width:3px;height:32px;background:var(--focus);margin-left:2px"></span></div>' +
           '<div style="display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:8px">';
-        var chars = opts.digits ? '1234567890' : 'abcdefghijklmnopqrstuvwxyz1234567890-_.@ ';
-        chars.split('').forEach(function (c) { var s = caps ? c.toUpperCase() : c; h += '<button class="key" data-f data-key="tk' + (c === ' ' ? 'sp' : c) + '" data-act="c" data-arg="' + E(s) + '">' + (c === ' ' ? '␣' : E(s)) + '</button>'; });
-        h += '</div><div style="display:flex;gap:12px">' + (opts.digits ? '' : '<button class="btn small" data-f data-key="tkCaps" data-act="caps">' + (caps ? 'abc' : 'ABC') + '</button>') +
+        var chars = opts.digits ? '1234567890' : sym ? '!#$%^&*()+=?,;\'"~`[]{}<>|\\1234567890-_.@:/ ' : 'abcdefghijklmnopqrstuvwxyz1234567890-_.@:/ ';
+        chars.split('').forEach(function (c) { var s = caps ? c.toUpperCase() : c; h += '<button class="key" data-f data-key="tk' + (c === ' ' ? 'sp' : sym ? 's' + chars.indexOf(c) : c) + '" data-act="c" data-arg="' + E(s) + '">' + (c === ' ' ? '␣' : E(s)) + '</button>'; });
+        h += '</div><div style="display:flex;gap:12px">' + (opts.digits ? '' : (sym ? '' : '<button class="btn small" data-f data-key="tkCaps" data-act="caps">' + (caps ? 'abc' : 'ABC') + '</button>') + '<button class="btn small" data-f data-key="tkSym" data-act="sym">' + (sym ? 'abc' : '#+=') + '</button>') +
           '<button class="btn small" data-f data-key="tkDel" data-act="del">⌫ Delete</button><div style="flex:1"></div><button class="btn small" data-f data-key="tkCancel" data-act="close">Cancel</button><button class="btn small primary" data-f data-key="tkOk" data-act="ok">' + E(opts.ok || 'Done') + '</button></div></div></div>';
         return h;
       },
       key: function (k, e) { if (e && k.length === 1) { text += k; T.renderLayer(); return true; } if (e && k === 'Backspace') { text = text.slice(0, -1); T.renderLayer(); return true; } return false; },
       act: function (act, arg) {
-        if (act === 'c') text += arg; else if (act === 'del') text = text.slice(0, -1); else if (act === 'caps') caps = !caps;
+        if (act === 'c') text += arg; else if (act === 'del') text = text.slice(0, -1); else if (act === 'caps') caps = !caps; else if (act === 'sym') sym = !sym;
         else if (act === 'ok') { T.close(); done(text); return true; } else return false;
         T.renderLayer(); return true;
       }
@@ -279,10 +279,10 @@
     T.toast('Looking for Jellyfin on your network…');
     M.jfServers().then(function (servers) {
       var list = servers.map(function (x) { return { id: x.url, label: x.name, desc: x.url }; });
-      list.push({ id: 'type', label: 'Type the address', desc: 'For example http://192.168.1.20:8096' });
+      list.push({ id: 'type', label: 'Type the address', desc: 'Your PC\'s address, for example 192.168.1.20 (http:// and :8096 are added for you)' });
       T.pickFrom('Your PC\'s Jellyfin', list, '', function (x) {
-        var go = function (server) { M.serverName = x.label; signInJellyfin(server.replace(/\/$/, ''), forProfile); };
-        if (x.id === 'type') T.askText('Jellyfin\'s address', 'http://', function (t) { if (t.trim()) go(t.trim()); }); else go(x.id);
+        var go = function (server) { server = server.replace(/\/$/, ''); if (!/^https?:\/\//i.test(server)) server = 'http://' + server; if (!/:\d+$/.test(server.replace(/^https?:\/\//i, '')) && !/^https:/i.test(server)) server += ':8096'; M.serverName = x.label; signInJellyfin(server, forProfile); };
+        if (x.id === 'type') T.askText('Jellyfin\'s address', '', function (t) { if (t.trim()) go(t.trim()); }); else go(x.id);
       });
     });
   }
