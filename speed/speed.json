@@ -1,0 +1,121 @@
+{
+ "idle": {
+  "quickshell shell": {
+   "cpu": 0.07,
+   "mb": 272.7,
+   "n": 3
+  },
+  "hearth-buttons": {
+   "cpu": 0.07,
+   "mb": 23.1,
+   "n": 1
+  },
+  "labwc": {
+   "cpu": 0.0,
+   "mb": 87.9,
+   "n": 1
+  },
+  "python3": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 19
+  },
+  "nimbus": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-disks": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-text": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-portal": {
+   "cpu": 0.0,
+   "mb": 76.4,
+   "n": 2
+  },
+  "perf-measure.py": {
+   "cpu": 0.0,
+   "mb": 16.8,
+   "n": 1
+  }
+ },
+ "Settings (cold)": {
+  "first": 0.37,
+  "ready": 0.62,
+  "mbBefore": 272.7,
+  "mbAfter": 286.9
+ },
+ "Settings \u203a Display (cold)": {
+  "first": 0.27,
+  "ready": 0.27,
+  "mbBefore": 274.8,
+  "mbAfter": 286.1
+ },
+ "Hearth Files (cold)": {
+  "first": 0.52,
+  "ready": 0.52,
+  "mbBefore": 274.1,
+  "mbAfter": 290.8
+ },
+ "Task Manager (cold)": {
+  "first": 0.25,
+  "ready": 0.5,
+  "mbBefore": 280.0,
+  "mbAfter": 307.8
+ },
+ "App menu (cold)": {
+  "first": 0.24,
+  "ready": null,
+  "mbBefore": 300.6,
+  "mbAfter": 310.6
+ },
+ "Quick Access (cold)": {
+  "first": 0.25,
+  "ready": 0.51,
+  "mbBefore": 285.4,
+  "mbAfter": 312.9
+ },
+ "Settings (warm)": {
+  "first": 0.31,
+  "ready": 0.71,
+  "mbBefore": 286.4,
+  "mbAfter": 300.8
+ },
+ "Settings \u203a Display (warm)": {
+  "first": 0.24,
+  "ready": 0.24,
+  "mbBefore": 288.8,
+  "mbAfter": 298.5
+ },
+ "Hearth Files (warm)": {
+  "first": 0.52,
+  "ready": 0.52,
+  "mbBefore": 286.1,
+  "mbAfter": 299.0
+ },
+ "Task Manager (warm)": {
+  "first": 0.24,
+  "ready": 0.51,
+  "mbBefore": 291.2,
+  "mbAfter": 307.8
+ },
+ "App menu (warm)": {
+  "first": 0.23,
+  "ready": null,
+  "mbBefore": 300.4,
+  "mbAfter": 311.5
+ },
+ "Quick Access (warm)": {
+  "first": 0.28,
+  "ready": 0.54,
+  "mbBefore": 285.1,
+  "mbAfter": 312.3
+ }
+}

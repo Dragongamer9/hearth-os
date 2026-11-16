@@ -1,0 +1,12 @@
+2026-11-16 01:05:38.274  INFO: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml"
+2026-11-16 01:05:38.274  INFO: Shell ID: "8cf77242709dae84b05f417b909d0e4c" Path ID "8cf77242709dae84b05f417b909d0e4c"
+2026-11-16 01:05:38.275  WARN: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+2026-11-16 01:05:38.358  WARN: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+2026-11-16 01:05:38.364  INFO: Saving logs to "/tmp/xdg/quickshell/by-id/jgheplkot/log.qslog"
+2026-11-16 01:05:38.645  INFO: Configuration Loaded
+2026-11-16 01:05:38.648  WARN scene: QML FileView at @Theme.qml[128:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+2026-11-16 01:05:38.648  WARN scene: QML FileView at @Theme.qml[181:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+2026-11-16 01:05:38.670  WARN scene: QML FileView at @ServerDash.qml[108:5]: Read of /tmp/xdg/hearth-server/countdown.json failed: File does not exist.
