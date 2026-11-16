@@ -126,7 +126,7 @@ jobs:
           xdotool key ctrl+s; sleep 2; shot edit-save
           xdotool key Escape; sleep 1; xdotool key Escape; sleep 1; shot edit-leave
           pkill -f 'target/release/hearth-photos' || true
-          echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
+
       # 1.14: the library (docs/mockups/next-update/photos-1-library.png) over sample folders: a phone's photos by day,
       # Steam and Game Mode captures, a screenshot and a video; then a photo from it (photos-2).
       - name: The library (screenshots)
@@ -168,7 +168,7 @@ jobs:
           xdotool mousemove 120 260 click 1; sleep 2; shot library-favorites
           pkill -f 'target/release/hearth-photos' || true
           grep -q '"favorites"' "$HEARTH_PHOTOS_STORE" && echo "::notice title=store::$(tr '\n' ' ' < "$HEARTH_PHOTOS_STORE" | cut -c1-600)"
-          echo "::notice title=Library output::$(tail -c 1200 lib.log | tr '\n' '|')"
+          grep -h JSERROR lib.log run.log | sort -u | head -5 | while read -r l; do echo "::warning title=page error::$l"; done
       # The screenshots as notices (artifacts can't be read from here): small copies, one step each.
       - name: Screenshot library (a SHOT notice; one step each, a step keeps 10)
         if: always()

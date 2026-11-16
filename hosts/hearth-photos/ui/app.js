@@ -862,6 +862,10 @@ window.addEventListener('gamepadconnected', () => toast('Controller connected'))
 // Files dropped on the window open there.
 if (T && T.event) T.event.listen('tauri://drag-drop', e => { const p = e.payload && e.payload.paths && e.payload.paths[0]; if (p) openPath(p); }).catch(() => {});
 
+// Mistakes in the page go to the app's output (CI greps for JSERROR).
+window.addEventListener('error', e => { invoke('log', { line: `JSERROR ${e.message} at ${e.filename}:${e.lineno}` }).catch(() => {}); });
+window.addEventListener('unhandledrejection', e => { invoke('log', { line: `JSERROR (promise) ${e.reason && e.reason.stack || e.reason}` }).catch(() => {}); });
+
 // ---------------------------------------------------------------- start
 window.HP = { openList, invoke, url, loadInto, cur, S, toast, dialog, openMenu, closeMenu, move, focusables, back, openPath, extOf, esc, human, then, cssOf, MATS, store,
   afterEditorClose: () => { layout(); stage.focus(); } };
