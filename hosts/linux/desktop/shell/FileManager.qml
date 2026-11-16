@@ -220,49 +220,9 @@ Scope {
     Timer { id: noteTimer; interval: 4500; onTriggered: app.note = "" }
     function say(t, err) { note = t; noteError = !!err; noteTimer.restart(); }
 
-    IpcHandler {
-        target: "filemanager"
-        function view(v: string): void { app.setView(v); }
-        function menu(): void { app.viaPad = false; app.openMenu(!app.current, -1, -1); }
-        function search(q: string): void { app.runSearch(q); }
-        function tab(p: string): void { app.open(""); app.newTab(p); }
-        function select(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) app.cur = i; }
-        function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
-        function close(): void { app.closeOverlay(); }
-        function home(): void { app.open(""); app.navigate(app.homePage, ""); }
-        // This PC and Installed apps (the Desktop Mode test's pictures); letter: the drive with that letter.
-        function thispc(): void { app.open(""); app.navigate(app.thisPcPage, ""); }
-        function installed(): void { app.open(""); app.navigate(app.appsPage, ""); }
-        // Hearth (C:) with Windows folder names: "" for C:\, "Program Files", "Program Files (x86)", or any C:\ form.
-        function hearthc(sub: string): void {
-            app.open("");
-            const r = sub.indexOf(":") === 1 ? app.fromLetters(sub) : { path: app.cRoot + (sub ? "/" + sub : "") };
-            if (r && r.path) app.navigate(r.path, "");
-        }
-        // Properties of the Hearth (C:) page shown (the Desktop Mode test's pictures).
-        function cprops(): void { if (app.onCView) app.showCProps(null); }
-        function letter(l: string): void { const r = app.fromLetters(l + ":\\"); if (r && r.path) { app.open(""); app.navigate(r.path, ""); } }
-        function details(on: string): void { app.detailsPane = on === "on"; app.rememberView(); }
-        function undo(): void { app.undo(); }
-        // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
-        function rename(name: string): void { const e = app.entries.find(x => x.name === name); app.renaming = e ? e.path : ""; }
-        function marks(names: string): void { const m = {}; for (const n of names.split("/")) { const e = app.entries.find(x => x.name === n); if (e) m[e.path] = true; } app.marked = m; }
-        // For checks: the folder shown and the item under the cursor ("" while the window is closed).
-        // A staged drag for the screenshots (CI has no mouse): the picked items' drag picture over the folder `onto`.
-        function dragdemo(onto: string): void {
-            const e = app.entries.find(x => x.name === onto);
-            app.dragHint = e ? e.path : "";
-            app.dragDemo = onto !== "";
-        }
-        // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
-        function section(name: string): void { const i = app.places.findIndex(q => q.section === name); if (i >= 0) { app.zone = "places"; app.placeIndex = i; } }
-        function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
-        // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.
-        function bcUpdate(): void { app.open(""); briefcase.run("bc-update-all", [], null); }
-        function bcApply(): void { if (briefcase.mode === "update") briefcase.runUpdate(); }
-        function bcCustomize(): void { app.open(""); briefcase.run("bc-customize", [], null); }
-        function bcState(): string { return JSON.stringify({ mode: briefcase.mode, st: briefcase.st ? { name: briefcase.st.name, counts: briefcase.st.counts || {}, locked: briefcase.st.locked } : null, rows: briefcase.plan ? briefcase.plan.rows.length : 0 }); }
-    }
+    // The "filemanager" IPC's functions (1.14: Files is made the first time it's used, so the handler itself is in
+    // shell.qml and forwards here, making Files first when needed).
+    readonly property alias bc: briefcase
 
     // ================================================ open / close
     function open(p) {

@@ -267,7 +267,62 @@ ShellRoot {
     // Resource Monitor (docs/RESOURCE-MONITOR.md): loaded by file name, so a problem in it only loses that window, never
     // the shell. IPC target "resmon" (hearth-resmon).
     Loader { source: "ResourceMonitor.qml" }
-    FileManager { id: files }
+    // Hearth Files (1.14, faster apps: a smaller shell): made the first time it's used, not at start, then kept. The
+    // shell, the desktop and the controller reach it through `files` here (open, close, toggle, properties, shown).
+    LazyLoader { id: filesLoader; FileManager {} }
+    QtObject {
+        id: files
+        readonly property bool shown: !!filesLoader.item && filesLoader.item.shown
+        function fm() { if (!filesLoader.item) filesLoader.active = true; return filesLoader.item; }
+        function open(p) { fm().open(p); }
+        function close() { if (filesLoader.item) filesLoader.item.close(); }
+        function toggle() { fm().toggle(); }
+        function properties(paths) { fm().properties(paths); }
+    }
+    IpcHandler {
+        target: "filemanager"
+        // Forwarded to Hearth Files (made the first time it's used: files.fm()).
+        function view(v: string): void { files.fm().setView(v); }
+        function menu(): void { files.fm().viaPad = false; files.fm().openMenu(!files.fm().current, -1, -1); }
+        function search(q: string): void { files.fm().runSearch(q); }
+        function tab(p: string): void { files.fm().open(""); files.fm().newTab(p); }
+        function select(name: string): void { const i = files.fm().entries.findIndex(e => e.name === name); if (i >= 0) files.fm().cur = i; }
+        function activate(name: string): void { if (files.fm().found !== null) files.fm().clearSearch(); const i = files.fm().entries.findIndex(e => e.name === name); if (i >= 0) { files.fm().cur = i; files.fm().activate(files.fm().entries[i]); } }
+        function close(): void { files.fm().closeOverlay(); }
+        function home(): void { files.fm().open(""); files.fm().navigate(files.fm().homePage, ""); }
+        // This PC and Installed apps (the Desktop Mode test's pictures); letter: the drive with that letter.
+        function thispc(): void { files.fm().open(""); files.fm().navigate(files.fm().thisPcPage, ""); }
+        function installed(): void { files.fm().open(""); files.fm().navigate(files.fm().appsPage, ""); }
+        // Hearth (C:) with Windows folder names: "" for C:\, "Program Files", "Program Files (x86)", or any C:\ form.
+        function hearthc(sub: string): void {
+            files.fm().open("");
+            const r = sub.indexOf(":") === 1 ? files.fm().fromLetters(sub) : { path: files.fm().cRoot + (sub ? "/" + sub : "") };
+            if (r && r.path) files.fm().navigate(r.path, "");
+        }
+        // Properties of the Hearth (C:) page shown (the Desktop Mode test's pictures).
+        function cprops(): void { if (files.fm().onCView) files.fm().showCProps(null); }
+        function letter(l: string): void { const r = files.fm().fromLetters(l + ":\\"); if (r && r.path) { files.fm().open(""); files.fm().navigate(r.path, ""); } }
+        function details(on: string): void { files.fm().detailsPane = on === "on"; files.fm().rememberView(); }
+        function undo(): void { files.fm().undo(); }
+        // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
+        function rename(name: string): void { const e = files.fm().entries.find(x => x.name === name); files.fm().renaming = e ? e.path : ""; }
+        function marks(names: string): void { const m = {}; for (const n of names.split("/")) { const e = files.fm().entries.find(x => x.name === n); if (e) m[e.path] = true; } files.fm().marked = m; }
+        // For checks: the folder shown and the item under the cursor ("" while the window is closed).
+        // A staged drag for the screenshots (CI has no mouse): the picked items' drag picture over the folder `onto`.
+        function dragdemo(onto: string): void {
+            const e = files.fm().entries.find(x => x.name === onto);
+            files.fm().dragHint = e ? e.path : "";
+            files.fm().dragDemo = onto !== "";
+        }
+        // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
+        function section(name: string): void { const i = files.fm().places.findIndex(q => q.section === name); if (i >= 0) { files.fm().zone = "places"; files.fm().placeIndex = i; } }
+        function where(): string { const f = filesLoader.item; return f && f.shown ? f.path + "|" + (f.current ? f.current.name : "") : ""; }
+        // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.
+        function bcUpdate(): void { files.fm().open(""); files.fm().bc.run("bc-update-all", [], null); }
+        function bcApply(): void { if (files.fm().bc.mode === "update") files.fm().bc.runUpdate(); }
+        function bcCustomize(): void { files.fm().open(""); files.fm().bc.run("bc-customize", [], null); }
+        function bcState(): string { return JSON.stringify({ mode: files.fm().bc.mode, st: files.fm().bc.st ? { name: files.fm().bc.st.name, counts: files.fm().bc.st.counts || {}, locked: files.fm().bc.st.locked } : null, rows: files.fm().bc.plan ? files.fm().bc.plan.rows.length : 0 }); }
+    }
     VolumeOsd { id: osd }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell
     // without one of these services only loses that.
