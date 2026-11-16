@@ -760,7 +760,7 @@ function back() {
 // ---------------------------------------------------------------- keyboard
 document.addEventListener('keydown', e => {
   S.pad = false;
-  if (window.HPLib && HPLib.visible() && topLayer() === $('#app')) return; // library.js has its own keys
+  if (window.HPLib && HPLib.visible() && topLayer() === $('#app')) { if (!$('#library').contains(document.activeElement)) HPLib.key(e); return; } // library.js has its own keys
   if (!$('#editor').hidden && window.Editor.key(e)) return;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'range';
   const k = e.key, ctrl = e.ctrlKey || e.metaKey;

@@ -413,6 +413,27 @@ pub fn trash_count() -> usize {
     std::fs::read_dir(d).into_iter().flatten().flatten().filter(|e| wanted(&e.path())).count()
 }
 
+/// Puts copies of these pictures in Pictures/Wallpapers, where Hearth's wallpaper picker finds them (the Wallpapers
+/// album). A picture already there isn't copied again.
+pub fn add_to_wallpapers(paths: &[String]) -> Result<String, String> {
+    let dir = dirs::picture_dir().unwrap_or_else(|| home().join("Pictures")).join("Wallpapers");
+    std::fs::create_dir_all(&dir).map_err(|e| crate::friendly_io(&e))?;
+    let mut n = 0;
+    for p in paths {
+        let src = Path::new(p);
+        if !is_picture(src) || src.parent() == Some(dir.as_path()) { continue; }
+        let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Wallpaper".into());
+        let e = ext(src);
+        let first = dir.join(format!("{stem}.{e}"));
+        let same = std::fs::metadata(&first).ok().zip(std::fs::metadata(src).ok()).map(|(a, b)| a.len() == b.len()).unwrap_or(false);
+        if same { continue; }
+        let to = if first.exists() { crate::free_name(&dir, &stem, "copy", &e) } else { first };
+        std::fs::copy(src, &to).map_err(|e| crate::friendly_io(&e))?;
+        n += 1;
+    }
+    Ok(match n { 0 => "Already in Wallpapers".into(), 1 => "Added to Wallpapers: it's in the wallpaper picker now".into(), _ => format!("Added {n} pictures to Wallpapers") })
+}
+
 /// The Trash's pictures and videos (the Trash list), newest first.
 pub fn trash_items() -> Vec<Item> {
     let d = dirs::data_dir().unwrap_or_else(|| home().join(".local/share")).join("Trash/files");

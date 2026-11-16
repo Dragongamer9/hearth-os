@@ -237,7 +237,7 @@ pub fn convert(path: &Path) -> Result<Vec<u8>, String> {
 /// Clears out cached pictures not used in 30 days (run once at start, in the background).
 pub fn tidy_cache() {
     let old = std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 86400);
-    for kind in ["thumbs", "view", "tmp"] {
+    for kind in ["thumbs", "view", "tmp", "tiles"] {
         let Ok(rd) = std::fs::read_dir(cache_dir(kind)) else { continue };
         for e in rd.flatten() {
             let stale = e.metadata().ok().and_then(|m| m.accessed().or_else(|_| m.modified()).ok()).map(|t| t < old).unwrap_or(false);
