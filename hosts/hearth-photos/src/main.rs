@@ -13,7 +13,7 @@ use tauri::http::{header, Response, StatusCode};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 
-struct Startup { target: Option<PathBuf>, slideshow: bool, selftest: bool }
+struct Startup { target: Option<PathBuf>, slideshow: bool, selftest: bool, view: Option<String> }
 
 #[tauri::command]
 fn init(start: tauri::State<Startup>) -> Value {
@@ -21,6 +21,7 @@ fn init(start: tauri::State<Startup>) -> Value {
         "target": start.target.as_ref().map(|p| p.to_string_lossy().into_owned()),
         "slideshow": start.slideshow,
         "selftest": start.selftest,
+        "view": start.view,
         "platform": if cfg!(windows) { "windows" } else { "linux" },
         "version": env!("CARGO_PKG_VERSION"),
         "home": dirs::home_dir(),
@@ -106,6 +107,13 @@ fn library_scan() -> Value {
 #[tauri::command(async)]
 fn library_change(change: Value) -> Result<Value, String> { library::change(&change) }
 
+/// A place's name, for a photo's Place and the Places map.
+#[tauri::command(async)]
+fn place_name(lat: f64, lon: f64) -> Result<String, String> { hearth_photos::place::name(lat, lon) }
+
+#[tauri::command(async)]
+fn add_to_wallpapers(paths: Vec<String>) -> Result<String, String> { library::add_to_wallpapers(&paths) }
+
 #[tauri::command(async)]
 fn library_trash() -> Vec<library::Item> { library::trash_items() }
 
@@ -168,7 +176,7 @@ fn media(uri: &tauri::http::Uri) -> Response<Vec<u8>> {
     let query = uri.query().unwrap_or("");
     let size = query.split('&').find_map(|kv| kv.strip_prefix("s=")).and_then(|s| s.parse().ok()).unwrap_or(256);
     let fail = |status: StatusCode, msg: String| respond(status, "text/plain; charset=utf-8", msg.into_bytes(), false);
-    if !path.is_absolute() { return fail(StatusCode::BAD_REQUEST, "not a full path".into()); }
+    if !path.is_absolute() && route != "tile" { return fail(StatusCode::BAD_REQUEST, "not a full path".into()); }
     match route {
         "raw" => match std::fs::read(&path) {
             Ok(b) => respond(StatusCode::OK, formats::mime(&formats::ext(&path)), b, false),
@@ -178,6 +186,15 @@ fn media(uri: &tauri::http::Uri) -> Response<Vec<u8>> {
             Ok(b) => respond(StatusCode::OK, "image/png", b, false),
             Err(e) => fail(StatusCode::UNSUPPORTED_MEDIA_TYPE, e),
         },
+        // tile/<z>/<x>/<y>: a map picture from OpenStreetMap (kept here).
+        "tile" => {
+            let n: Vec<u32> = path.to_string_lossy().split('/').filter_map(|s| s.trim_end_matches(".png").parse().ok()).collect();
+            match (n.len() == 3).then(|| hearth_photos::place::tile(n[0], n[1], n[2])) {
+                Some(Ok(b)) => respond(StatusCode::OK, "image/png", b, true),
+                Some(Err(e)) => fail(StatusCode::BAD_GATEWAY, e),
+                None => fail(StatusCode::BAD_REQUEST, "tile/z/x/y".into()),
+            }
+        }
         "thumb" => match imaging::thumbnail(&path, size) {
             Ok((b, mime)) => respond(StatusCode::OK, mime, b, true),
             Err(e) => fail(StatusCode::UNSUPPORTED_MEDIA_TYPE, e),
@@ -209,6 +226,7 @@ Usage: hearth-photos [options] [PICTURE or FOLDER]
 
   --fullscreen     start full screen
   --slideshow      start a slideshow of the folder
+  --view NAME      start the library on a list (favorites, videos, collections, places…)
   --info PICTURE   print what Photos knows about a picture (JSON) and quit
   --thumb PICTURE OUT.png   write a thumbnail and quit (for checking)
   --scan           look through the library's folders, print a summary (JSON) and quit
@@ -242,7 +260,9 @@ fn main() {
     }
     let start_fullscreen = args.iter().any(|a| a == "--fullscreen");
     let slideshow = args.iter().any(|a| a == "--slideshow");
-    let target = args.iter().find(|a| !a.starts_with("--")).map(|a| {
+    // --view NAME: start the library on a list (all, favorites, videos, captures, phone, collections, people, places, folders).
+    let view = args.iter().position(|a| a == "--view").and_then(|i| args.get(i + 1)).cloned();
+    let target = args.iter().enumerate().find(|(k, a)| !a.starts_with("--") && (*k == 0 || args[k - 1] != "--view")).map(|(_, a)| a).map(|a| {
         let p = hearth_photos::path_from_arg(a);
         std::fs::canonicalize(&p).unwrap_or(p)
     });
@@ -252,14 +272,14 @@ fn main() {
 
     tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Startup { target, slideshow, selftest: std::env::var_os("HEARTH_PHOTOS_SELFTEST").is_some() })
+        .manage(Startup { target, slideshow, selftest: std::env::var_os("HEARTH_PHOTOS_SELFTEST").is_some(), view })
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             let uri = request.uri().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(media(&uri)));
         })
         .invoke_handler(tauri::generate_handler![
             init, list, file_info, save_turn, save_edit, read_bytes, trash, untrash, copy_image, set_wallpaper,
-            show_in_folder, pick, set_title, library_cached, library_scan, library_change, pick_folder, library_trash, open_video, fullscreen, print, log, quit
+            show_in_folder, pick, set_title, library_cached, library_scan, library_change, pick_folder, library_trash, open_video, place_name, add_to_wallpapers, fullscreen, print, log, quit
         ])
         .setup(move |app| {
             let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

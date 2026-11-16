@@ -48,6 +48,10 @@
       case 'phone': v = v.filter(i => i.src === 'phone'); break;
       case 'album': { const a = albums().find(x => x.id === L.album); const set = new Set(a ? a.items : []); v = v.filter(i => set.has(i.path)); break; }
       case 'folder': v = v.filter(i => dirOf(i.path) === L.folder); break;
+      case 'screenshots': v = v.filter(i => i.kind === 'screenshot'); break;
+      case 'ai': v = v.filter(i => i.kind === 'ai'); break;
+      case 'wallpapers': v = v.filter(i => isWallpaper(i.path)); break;
+      case 'spot': { const set = new Set(L.spot || []); v = v.filter(i => set.has(i.path)); break; }
       case 'trash': v = L.trash || []; break;
     }
     return v.filter(i => matches(i, L.q));
@@ -102,7 +106,7 @@
     <aside id="lside" class="scroll">
       <div class="brand"><span class="logo"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg></span><b>Photos</b></div>
       <nav id="lnav"></nav>
-      <div class="lh">Your albums</div>
+      <button class="lh" data-f data-view="collections" title="All your albums (Collections)">Your albums</button>
       <nav id="lalbums"></nav>
       <span class="sp"></span>
       <div id="phonebox"></div>
@@ -146,7 +150,7 @@
   function renderSide() {
     const c = counts();
     $('#lnav', root).innerHTML = NAV.map(([id, label]) =>
-      `<button class="li${L.view === id ? ' on' : ''}" data-f data-view="${id}"><span>${label}</span><i>${id === 'all' || c[id] ? n(c[id]) : ''}</i></button>`).join('');
+      `<button class="li${L.view === id || (id === 'folders' && L.view === 'folder') ? ' on' : ''}" data-f data-view="${id}"><span>${label}</span><i>${id === 'all' || c[id] ? n(c[id]) : ''}</i></button>`).join('');
     $('#lalbums', root).innerHTML = albums().map(a => {
       const cover = a.cover || (a.items || [])[0];
       return `<button class="li al${L.view === 'album' && L.album === a.id ? ' on' : ''}" data-f data-album="${esc(a.id)}"><span class="sw">${cover ? `<img alt="" loading="lazy" src="${url('thumb', cover, '?s=80')}">` : ''}</span><span>${esc(a.name)}</span></button>`;
@@ -233,8 +237,7 @@
     const v = shown();
     let h = '';
     if (L.view === 'memories') { renderMemoriesPage(); return; }
-    if (L.view === 'folders') { renderFolders(); return; }
-    if (L.view === 'people' || L.view === 'places') { renderSoon(); return; }
+    if (L.view === 'folders' || L.view === 'people' || L.view === 'places' || L.view === 'collections') { renderCollections(); return; }
     if (L.view === 'all' && !L.q) {
       const mem = memories().slice(0, 4);
       if (mem.length) h += `<section class="mem"><h2>Memories <small>made on this PC from your own photos</small></h2><div class="cards">${mem.map((m, k) => memCard(m, k)).join('')}</div></section>`;
@@ -267,19 +270,80 @@
     content.innerHTML = `<section class="mem"><h2>Memories <small>made on this PC from your own photos</small></h2><div class="cards wrap">${mem.map((m, k) => memCard(m, k)).join('')}</div>${mem.length ? '' : '<div class="empty"><b>No memories yet</b><p>They\'re made from your photos as you take more: a year ago today, trips, your game captures, the seasons.</p></div>'}</section>`;
     renderDates(true);
   }
-  function renderFolders() {
+  // ---------------------------------------------------------------- Collections (photos-3): albums, people, places, folders
+  const TABS = [['collections', 'Albums'], ['people', 'People'], ['places', 'Places'], ['folders', 'Folders']];
+  const isWallpaper = p => !!L.wallDir && p.startsWith(L.wallDir + '/');
+  const plural = (k, one, many) => `${n(k)} ${k === 1 ? one : many}`;
+  function albumSub(list) {
+    const v = list.filter(i => i.kind === 'video').length, ph = list.length - v;
+    return [ph ? plural(ph, 'photo', 'photos') : '', v ? plural(v, 'video', 'videos') : ''].filter(Boolean).join(' · ') || 'Empty';
+  }
+  function coll(key, title, sub, items, attrs) {
+    const c = pickCover(items);
+    return `<button class="coll" data-f ${attrs}><span class="cv">${c ? `<img alt="" loading="lazy" src="${url('thumb', c.path, `?s=480&v=${c.mtime}`)}">` : ''}</span><b>${esc(title)}</b><small>${esc(sub)}</small></button>`;
+  }
+  function autoAlbums() {
+    const f = favs(), by = k => L.items.filter(k);
+    const caps = by(i => i.kind === 'capture'), phone = by(i => i.src === 'phone'), shots = by(i => i.kind === 'screenshot');
+    const where = [...new Set(caps.map(i => i.src === 'steam' ? 'Steam' : 'Game Mode'))];
+    if (L.items.some(i => i.kind === 'capture' && i.src === 'gamemode') && shots.length) where.push('Desktop');
+    const shotFrom = [...new Set(shots.map(i => /ally/i.test(i.path) ? 'your Ally' : 'this PC'))];
+    return [
+      ['captures', 'Game captures', [n(caps.length), where.join(', ').replace(/, ([^,]*)$/, ' and $1')].filter(Boolean).join(' · '), caps],
+      ['phone', 'From your phone', `${n(phone.length)} · ${phoneName()}`, phone],
+      ['screenshots', 'Screenshots', [n(shots.length), shotFrom.join(' and ')].filter(Boolean).join(' · '), shots],
+      ['videos', 'Videos', n(by(i => i.kind === 'video').length), by(i => i.kind === 'video')],
+      ['favorites', 'Favorites', n(by(i => f.has(i.path)).length), by(i => f.has(i.path))],
+      ['ai', 'Made by your AI', `${n(by(i => i.kind === 'ai').length)} · ComfyUI pictures`, by(i => i.kind === 'ai')],
+    ];
+  }
+  function albumCards() {
+    const byPath = new Map(L.items.map(i => [i.path, i]));
+    let h = albums().map(a => { const list = (a.items || []).map(p => byPath.get(p)).filter(Boolean); return coll(a.id, a.name, albumSub(list), list, `data-album="${esc(a.id)}"`); }).join('');
+    const walls = L.items.filter(i => isWallpaper(i.path));
+    h += coll('wallpapers', 'Wallpapers', `${n(walls.length)} · used by Hearth's wallpaper picker`, walls, 'data-view="wallpapers"');
+    return h + '<button class="coll add" data-f data-lact="newAlbum"><span class="cv">+ New album</span></button>';
+  }
+  function renderCollections() {
+    const tab = L.view;
+    let h = `<header class="ctop"><h1>Collections</h1><nav class="tabs">${TABS.map(([id, label]) => `<button class="tab${tab === id ? ' on' : ''}" data-f data-view="${id}">${label}</button>`).join('')}</nav><span class="sp"></span><button class="btn primary" data-f data-lact="newAlbum">+ New album</button></header>`;
+    if (tab === 'collections') {
+      h += `<section><h2>Kept up to date by themselves <small>photos go in as they arrive</small></h2><div class="colls">${autoAlbums().map(([v, t, sub, list]) => coll(v, t, sub, list, `data-view="${v}"`)).join('')}</div></section>`;
+      h += `<section><h2>Your albums</h2><div class="colls">${albumCards()}</div></section>`;
+      h += `<div class="pair"><section class="box" id="peopleBox">${peopleBox(6)}</section><section class="box" id="placesBox">${placesBox()}</section></div>`;
+    } else if (tab === 'people') h += `<section class="box big">${peopleBox(0)}</section>`;
+    else if (tab === 'places') h += `<section class="box big" id="placesBox">${placesBox(true)}</section>`;
+    else h += foldersHtml();
+    content.innerHTML = h;
+    renderDates(true);
+    if (tab === 'collections' || tab === 'places') drawPlaces(tab === 'places');
+  }
+  function peopleBox(max) {
+    if (window.HPFaces) return HPFaces.box(max);
+    return `<h2>People <small>faces grouped on this PC · only you see the names</small></h2><p class="muted">No faces grouped yet.</p>`;
+  }
+  function placesBox(big) {
+    return `<div class="bh"><h2>Places <small>where your photos were taken</small></h2>${big ? '' : '<button class="link" data-f data-view="places">Open the map</button>'}</div><div class="mapwrap" id="placesMap"></div>`;
+  }
+  function drawPlaces(big) {
+    const el = $('#placesMap', root);
+    if (!el || !window.HPPlace) return;
+    const withGps = L.items.filter(i => i.gps);
+    if (!withGps.length) { el.innerHTML = '<p class="muted pad">No photos with a place yet. Phones save where a photo was taken when their camera is allowed to.</p>'; return; }
+    const w = Math.max(300, el.clientWidth), h = big ? Math.max(360, body.clientHeight - 180) : 360;
+    L.mapZoom = big && L.mapZoom ? L.mapZoom : HPPlace.fitZoom(withGps.map(i => i.gps), w, h);
+    const groups = HPPlace.clusters(withGps, L.mapZoom, 70);
+    L.spots = groups;
+    const marks = groups.map((g, k) => [g.lat, g.lon, `<button class="spot" data-f data-spot="${k}"><img alt="" loading="lazy" src="${url('thumb', pickCover(g.items).path, '?s=160')}"><b>${n(g.items.length)}</b></button>`]);
+    el.innerHTML = HPPlace.map(marks, w, h, { zoom: L.mapZoom }).html + (big ? '<div class="zoom"><button class="btn" data-f data-lact="mapIn">+</button><button class="btn" data-f data-lact="mapOut">−</button></div>' : '');
+  }
+  function foldersHtml() {
     const by = new Map();
     for (const i of L.items) { const d = dirOf(i.path); (by.get(d) || by.set(d, []).get(d)).push(i); }
     const home = (L.home || '').replace(/\/$/, '');
     const list = [...by.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    content.innerHTML = `<section class="folders"><h2>Folders <small>${list.length} folders</small></h2><div class="grid">${list.map(([d, v]) =>
+    return `<section class="folders"><h2>Folders <small>${list.length} folders</small></h2><div class="grid">${list.map(([d, v]) =>
       `<button class="fold" data-f data-folder="${esc(d)}"><span class="sw"><img alt="" loading="lazy" src="${url('thumb', v[0].path, '?s=200')}"></span><b>${esc(d.split('/').pop())}</b><small>${esc(home && d.startsWith(home) ? '~' + d.slice(home.length) : d)} · ${v.length}</small></button>`).join('')}</div></section>`;
-    renderDates(true);
-  }
-  function renderSoon() {
-    const people = L.view === 'people';
-    content.innerHTML = `<div class="empty"><b>${people ? 'People' : 'Places'}</b><p>${people ? 'Faces are grouped on this PC; names only you see.' : 'Photos with a place, on a map.'}</p></div>`;
-    renderDates(true);
   }
 
   /** The date strip: this year's months, then the years before. */
@@ -335,16 +399,17 @@
   async function chooseAlbum(paths) {
     const list = albums();
     const pick = await dialog(`<h2>Add ${paths.length === 1 ? 'it' : paths.length + ' items'} to an album</h2>
-      <div class="albumpick">${list.map((a, k) => `<button class="btn" data-f data-b2="${k}">${esc(a.name)}</button>`).join('')}</div>
+      <div class="albumpick">${list.map((a, k) => `<button class="btn" data-f data-b2="${k}">${esc(a.name)}</button>`).join('')}<button class="btn" data-f data-b2="walls">Wallpapers</button></div>
       <label class="field">Or a new album <input id="newAlbumName" data-f placeholder="Lake trip 2026"></label>`,
       [{ label: 'Cancel', value: null }, { label: 'Make the new album', kind: 'primary', value: 'new' }],
-      (v, done) => v.addEventListener('click', e => { const b = e.target.closest('[data-b2]'); if (b) done(list[+b.dataset.b2].id); }));
+      (v, done) => v.addEventListener('click', e => { const b = e.target.closest('[data-b2]'); if (b) done(b.dataset.b2 === 'walls' ? 'walls' : list[+b.dataset.b2].id); }));
     if (!pick) return;
+    if (pick === 'walls') { try { toast(await invoke('add_to_wallpapers', { paths })); rescan(); } catch (e) { toast(String(e)); } return; }
     if (pick === 'new') { const name = ($('#newAlbumName') || {}).value || ''; if (name.trim()) await change({ op: 'album.new', name, paths }); return; }
     await change({ op: 'album.add', id: pick, paths });
     toast('Added to the album');
   }
-  window.HPLib = { chooseAlbum, change, favs, albums, get store() { return L.store; }, show, hide, visible: () => !root.hidden, items: () => L.items, phoneName, pad };
+  window.HPLib = { chooseAlbum, change, favs, albums, get store() { return L.store; }, show, hide, visible: () => !root.hidden, key, items: () => L.items, phoneName, pad };
 
   /** A controller in the library: D-pad / stick moves, A opens, B leaves search, X slideshow, Y search, Start Select. */
   function pad(k) {
@@ -397,8 +462,12 @@
     selFav: () => { const p = [...L.picked]; if (p.length) { const all = p.every(x => favs().has(x)); change({ op: 'favorite', paths: p, on: !all }); } },
     selAlbum: () => { const p = [...L.picked]; if (p.length) chooseAlbum(p); },
     selTrash: trashPicked,
+    mapIn: () => { L.mapZoom = Math.min(16, (L.mapZoom || 4) + 1); drawPlaces(true); },
+    mapOut: () => { L.mapZoom = Math.max(2, (L.mapZoom || 4) - 1); drawPlaces(true); },
   };
   root.addEventListener('click', e => {
+    const sp = e.target.closest('[data-spot]');
+    if (sp) { const g = (L.spots || [])[+sp.dataset.spot]; if (g) { L.spot = g.items.map(i => i.path); L.view = 'spot'; render(); body.scrollTop = 0; } return; }
     const t = e.target.closest('[data-lact],[data-view],[data-album],.tile,[data-mem],[data-folder],[data-jump]');
     if (!t) return;
     if (t.dataset.lact) { acts[t.dataset.lact](); return; }
@@ -432,14 +501,18 @@
   window.addEventListener('resize', () => { if (root.hidden) return; clearTimeout(rz); rz = setTimeout(render, 120); });
 
   // Keyboard and controller: arrows move between tiles (and everything else), Enter / A opens.
-  root.addEventListener('keydown', e => {
+  root.addEventListener('keydown', key);
+  /** Keys while the library is showing (app.js sends them here when nothing in the library has focus). */
+  function key(e) {
     if (e.target === q && e.key === 'Escape') { q.value = ''; L.q = ''; render(); e.stopPropagation(); return; }
     if (e.target.tagName === 'INPUT' && e.target.type !== 'range') { if (e.key === 'ArrowDown') { e.preventDefault(); firstTile(); } return; }
     const d = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key];
+    if (d && !root.contains(document.activeElement)) { e.preventDefault(); firstTile(); return; }
     if (d) { e.preventDefault(); e.stopPropagation(); H.move(d, root); const a = document.activeElement; if (a && a.classList.contains('tile')) L.focus = a.dataset.path; return; }
     if (e.key === 'Delete' && document.activeElement?.classList.contains('tile')) { L.picked = new Set([document.activeElement.dataset.path]); trashPicked(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); q.focus(); }
-  });
+    if (e.key === 'Enter' && !root.contains(document.activeElement)) { e.preventDefault(); firstTile(); }
+  }
   function firstTile() { const t = content.querySelector(L.focus ? `.tile[data-path="${CSS.escape(L.focus)}"]` : '.tile') || content.querySelector('.tile'); if (t) { t.focus(); t.classList.add('kf'); } }
 
   // ---------------------------------------------------------------- showing it, and finding the files
@@ -457,7 +530,7 @@
     L.scanning = true; renderSide();
     try { const r = await invoke('library_scan'); take(r); } catch (e) { toast(String(e)); }
     L.scanning = false;
-    if (!root.hidden) render(); else renderSide();
+    if (!root.hidden) { render(); if (!root.contains(document.activeElement)) { const t = content.querySelector('.tile'); if (t) t.focus({ preventScroll: true }); } } else renderSide();
   }
   function take(r) { L.items = r.items || []; L.store = r.store || {}; L.summary = r.summary || {}; L._mem = null; }
 
@@ -465,6 +538,8 @@
   async function boot(init) {
     L.started = true;
     L.home = init.home || '';
+    if (init.view) L.view = init.view;
+    L.wallDir = init.pictures ? init.pictures.replace(/\/$/, '') + '/Wallpapers' : '';
     try { take(await invoke('library_cached')); } catch (_) {}
     L.scanning = true;
     show();
