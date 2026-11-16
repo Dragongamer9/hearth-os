@@ -169,13 +169,31 @@ jobs:
           pkill -f 'target/release/hearth-photos' || true
           grep -q '"favorites"' "$HEARTH_PHOTOS_STORE" && echo "::notice title=store::$(tr '\n' ' ' < "$HEARTH_PHOTOS_STORE" | cut -c1-600)"
           echo "::notice title=Library output::$(tail -c 1200 lib.log | tr '\n' '|')"
-      - name: Screenshots as notices (started by hand with "shots", or a commit saying [shots])
-        if: always() && ((github.event_name == 'workflow_dispatch' && inputs.shots) || contains(github.event.head_commit.message, '[shots]'))
-        run: |
-          for n in viewer info edit-crop library photo library-favorites; do
-            f=shots/$n.png; [ -f "$f" ] || continue
-            convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
-          done
+      # The screenshots as notices (artifacts can't be read from here): small copies, one step each.
+      - name: Screenshot library (a SHOT notice; one step each, a step keeps 10)
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/library.png; [ -f "$f" ] && convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT library $i::$part"; done || true
+      - name: Screenshot photo (a SHOT notice; one step each, a step keeps 10)
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/photo.png; [ -f "$f" ] && convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT photo $i::$part"; done || true
+      - name: Screenshot photo-favorite (a SHOT notice; one step each, a step keeps 10)
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/photo-favorite.png; [ -f "$f" ] && convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT photo-favorite $i::$part"; done || true
+      - name: Screenshot library-favorites (a SHOT notice; one step each, a step keeps 10)
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/library-favorites.png; [ -f "$f" ] && convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT library-favorites $i::$part"; done || true
+      - name: Screenshot info (a SHOT notice; one step each, a step keeps 10)
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/info.png; [ -f "$f" ] && convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT info $i::$part"; done || true
+      - name: Screenshot edit-crop (a SHOT notice; one step each, a step keeps 10)
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/edit-crop.png; [ -f "$f" ] && convert "$f" -resize 560x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT edit-crop $i::$part"; done || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
