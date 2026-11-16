@@ -884,7 +884,7 @@ parent=\$(ps -o comm= -p "\$PPID" 2>/dev/null)
 echo "\$(date '+%F %T') steam game mode: steamos-session-select \$* (from \${parent:-?})" >>"$LOG" 2>/dev/null
 case "\$1" in
   gamescope*|game*) exec nimbus-mode game ;;
-  plasma*|desktop*|*wayland*|*x11*|kde*|gnome*|mantel*|labwc*) exec nimbus-mode desktop ;;
+  plasma*|desktop*|*wayland*|*x11*|kde*|gnome*|mantel*|labwc*) [ "\${HEARTH_SIDE:-}" = 1 ] && exec "\${HEARTH_SIDE_HELPER:-/usr/libexec/nimbus/hearth-side-by-side}" desktop; exec nimbus-mode desktop ;;
   *) echo "\$(date '+%F %T') steam game mode: steamos-session-select: \"\$1\" isn't a session Hearth knows; nothing changed" >>"$LOG" 2>/dev/null; exit 0 ;;
 esac
 SHIM
@@ -923,6 +923,7 @@ SHIM
   steam_wait_network
   decky_ctl start
   echo $$ >"$RUN/hearth-steam-mode.pid"
+  [ "${HEARTH_SIDE:-}" = 1 ] && date +%s >"$RUN/hearth-side-game.up"
   # A Steam game opened from Hearth Game Mode (the steam game block): Steam starts it straight away, and the watcher
   # brings Hearth Game Mode back when it has ended.
   sgarg=""
@@ -1488,6 +1489,20 @@ resolve_mode() {
   esac
 }
 
+# ---- 1.14, Game Mode beside the desktop (Settings › Gaming, off unless you turned it on; docs/SIDE-BY-SIDE.md): this
+# script started a second time by hearth-side-game@<you>.service, on its own screen (tty9), runs Steam Game Mode only,
+# with its own next-mode file so it never changes what the desktop session does. Steam's Switch to Desktop only shows the
+# desktop again (hearth-side-by-side desktop); Steam stays open and signed in. When Steam ends, this session ends and
+# the desktop comes back. Nothing here runs at start-up: the unit has no [Install] and is only started from the desktop.
+if [ "${HEARTH_SIDE:-}" = 1 ]; then
+  NEXT="$RUN/hearth-side-next"; rm -f "$NEXT"
+  log "side by side: Steam Game Mode beside the desktop starting"
+  run_steam_mode
+  log "side by side: Steam Game Mode beside the desktop ended"
+  rm -f "$NEXT" "$RUN/hearth-side-game.up"
+  "${HEARTH_SIDE_HELPER:-/usr/libexec/nimbus/hearth-side-by-side}" desktop >/dev/null 2>&1
+  exit 0
+fi
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
 case "$mode" in desktop|server) ;; *) mode=game ;; esac

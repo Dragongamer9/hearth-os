@@ -1,0 +1,71 @@
+#!/bin/sh
+# Hearth 1.14: Game Mode beside the desktop (docs/SIDE-BY-SIDE.md; Settings › Gaming › Steam Game Mode and Decky, off
+# unless you turned it on). Steam Game Mode runs on its own screen (hearth-side-game@<you>.service, tty9) next to
+# Desktop Mode, so switching only shows the other one: a second or two, Steam stays open and signed in (it keeps about
+# 1–1.5 GB of memory for that). Anything that goes wrong falls back to the usual switch, so Game Mode always comes up.
+#
+#   hearth-side-by-side on|off       the switch (session.conf HEARTH_SIDE_BY_SIDE, only that line, under the lock);
+#                                    off also closes Steam Game Mode beside the desktop if it's running
+#   hearth-side-by-side status       JSON: {on, running, up}
+#   hearth-side-by-side game         from Desktop Mode: show Steam Game Mode (started the first time); exit 1 = it didn't
+#                                    come up within WAIT seconds (nimbus-mode then does the usual switch)
+#   hearth-side-by-side desktop      show Desktop Mode again (Steam Game Mode keeps running beside it)
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf"
+LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
+UNIT="hearth-side-game@$(id -un).service"
+WAIT="${HEARTH_SIDE_WAIT:-25}"
+IO="${HEARTH_SETTINGS_IO:-${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth_settings_io.py}"
+log() { mkdir -p "$(dirname "$LOG")"; echo "$(date '+%F %T') side by side: $*" >>"$LOG" 2>/dev/null; }
+is_on() { grep -Eq '^[[:space:]]*(export[[:space:]]+)?HEARTH_SIDE_BY_SIDE=("?)1\2[[:space:]]*$' "$CONF" 2>/dev/null; }
+running() { systemctl is-active --quiet "$UNIT" 2>/dev/null; }
+# The logind session running on the side screen (its unit's), and the desktop's (noted when the desktop asked).
+side_session() {
+  for s in $(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$(id -u)" '$2 == u {print $1}'); do
+    loginctl show-session "$s" -p Service -p TTY --value 2>/dev/null | tr '\n' ' ' | grep -q "login tty9" && { echo "$s"; return 0; }
+  done
+  return 1
+}
+desktop_session() { cat "$RUN/hearth-side-desktop-session" 2>/dev/null; }
+
+case "$1" in
+  on|off)
+    v=0; [ "$1" = on ] && v=1
+    python3 -c 'import sys; sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0]); import hearth_settings_io as io; io.update_text(sys.argv[2], lambda t: io.conf_set_text(t, "HEARTH_SIDE_BY_SIDE", sys.argv[3]))' "$IO" "$CONF" "$v" || exit 1
+    log "turned $1"
+    [ "$1" = off ] && running && { timeout 8 steam -shutdown >/dev/null 2>&1; systemctl stop "$UNIT" 2>/dev/null; }
+    exit 0 ;;
+  status)
+    on=false; is_on && on=true
+    r=false; running && r=true
+    up=false; [ -f "$RUN/hearth-side-game.up" ] && up=true
+    printf '{"on": %s, "running": %s, "up": %s}\n' "$on" "$r" "$up"
+    exit 0 ;;
+  game)
+    is_on || exit 1
+    [ -n "$XDG_SESSION_ID" ] && echo "$XDG_SESSION_ID" >"$RUN/hearth-side-desktop-session"
+    if ! running; then
+      # Steam open in Desktop Mode would take the side screen's Steam over: it closes first (its settings and cloud
+      # saves), the way a normal switch closes it.
+      if pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; then timeout 8 steam -shutdown >/dev/null 2>&1; sleep 2; fi
+      rm -f "$RUN/hearth-side-game.up"
+      log "starting Steam Game Mode beside the desktop"
+      systemctl start --no-block "$UNIT" 2>>"$LOG" || { log "couldn't start $UNIT; the usual switch"; exit 1; }
+      n=0
+      while [ ! -f "$RUN/hearth-side-game.up" ]; do
+        n=$((n + 1)); [ "$n" -gt "$WAIT" ] && { log "Steam Game Mode beside the desktop didn't start within ${WAIT}s; the usual switch"; systemctl stop "$UNIT" 2>/dev/null; exit 1; }
+        running || { log "Steam Game Mode beside the desktop ended as it started; the usual switch"; exit 1; }
+        sleep 1
+      done
+    fi
+    s=$(side_session) || { log "no screen for Steam Game Mode beside the desktop; the usual switch"; systemctl stop "$UNIT" 2>/dev/null; exit 1; }
+    loginctl activate "$s" 2>>"$LOG" || { log "couldn't show Steam Game Mode's screen; the usual switch"; exit 1; }
+    log "showing Steam Game Mode (session $s)"
+    exit 0 ;;
+  desktop)
+    s=$(desktop_session)
+    [ -n "$s" ] && loginctl activate "$s" 2>>"$LOG" && { log "showing Desktop Mode (session $s)"; exit 0; }
+    log "couldn't show Desktop Mode's screen (session ${s:-unknown})"
+    exit 1 ;;
+  *) sed -n '2,14p' "$0" >&2; exit 2 ;;
+esac
