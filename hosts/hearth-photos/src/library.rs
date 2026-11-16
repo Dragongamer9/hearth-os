@@ -491,7 +491,8 @@ mod tests {
         change(&json!({"op": "favorite", "paths": [phone.path], "on": true})).unwrap();
         let s = change(&json!({"op": "album.new", "name": "Lake trip", "paths": [phone.path]})).unwrap();
         let id = s["albums"][0]["id"].as_str().unwrap().to_string();
-        change(&json!({"op": "album.add", "id": id, "paths": [items[1].path]})).unwrap();
+        let other = items.iter().find(|i| i.src != "phone").unwrap();
+        change(&json!({"op": "album.add", "id": id, "paths": [other.path]})).unwrap();
         let s = change(&json!({"op": "favorite", "paths": [phone.path], "on": true})).unwrap();
         assert_eq!(s["favorites"].as_array().unwrap().len(), 1);
         assert_eq!(s["albums"][0]["items"].as_array().unwrap().len(), 2);
