@@ -244,5 +244,63 @@ class Reading(unittest.TestCase):
         self.assertEqual(hm.parse_sysctl_conf('vm.page-cluster = 0\n# x\nvm.swappiness=200'), {'page-cluster': 0, 'swappiness': 200})
 
 
+class HandOver(unittest.TestCase):
+    """1.14 (the owner, Nov 16): an old /etc/sysctl.d/90-hearth-swap.conf held his laptop at ~0.5 GB free while
+    Settings said 2 GB. Swap & settings now says so, and Use these settings hands it over, keeping a .bak."""
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.etc = os.path.join(self.d, 'sysctl.d')
+        os.makedirs(self.etc)
+
+    def tearDown(self):
+        shutil.rmtree(self.d)
+
+    def put(self, name, text):
+        p = os.path.join(self.etc, name)
+        with open(p, 'w') as f:
+            f.write(text)
+        return p
+
+    def test_shown_as_not_in_use(self):
+        p = self.put('90-hearth-swap.conf', 'vm.swappiness = 150\nvm.watermark_scale_factor = 200\nvm.page-cluster = 0\n')
+        owners = hm.sysctl_owners([self.etc, '/nonexistent'])
+        owners['max_map_count'] = '/usr/lib/sysctl.d/60-hearth-games.conf'
+        over = hm.managed_overrides(owners, self.etc)
+        self.assertEqual(over, {'swappiness': p, 'watermark_scale_factor': p, 'page-cluster': p})
+
+    def test_handed_over_with_a_bak(self):
+        p = self.put('90-hearth-swap.conf', 'vm.swappiness = 150\nvm.watermark_scale_factor = 200\nvm.page-cluster = 0\n')
+        q = self.put('50-mine.conf', '# mine\nvm.swappiness=10\nnet.core.somaxconn = 4096\n')
+        with mock.patch.object(hm, 'apply', return_value={'ok': True, 'applied': {}, 'notes': []}) as ap:
+            r = hm.handover(self.etc)
+        ap.assert_called_once()
+        self.assertFalse(os.path.exists(p))
+        with open(p + '.bak') as f:
+            self.assertIn('vm.swappiness = 150', f.read())
+        with open(q) as f:
+            left = f.read()
+        self.assertNotIn('vm.swappiness', left)
+        self.assertIn('net.core.somaxconn = 4096', left)
+        with open(q + '.bak') as f:
+            self.assertIn('vm.swappiness=10', f.read())
+        self.assertEqual(sorted(h['file'] for h in r['handedOver']), sorted([p, q]))
+        self.assertEqual(r['keptOtherLines'], [q])
+
+    def test_nothing_else_touched(self):
+        p = self.put('70-net.conf', 'net.core.somaxconn = 4096\nvm.max_map_count = 2147483642\n')
+        with mock.patch.object(hm, 'apply', return_value={'ok': True, 'applied': {}, 'notes': []}):
+            r = hm.handover(self.etc)
+        self.assertEqual(r['handedOver'], [])
+        self.assertFalse(os.path.exists(p + '.bak'))
+
+    def test_the_page_says_so_and_has_custom_swap(self):
+        with open(os.path.join(REPO, 'hosts/linux/desktop/shell/MemorySettings.qml')) as f:
+            q = f.read()
+        self.assertIn('ms.run(["handover"])', q)
+        self.assertIn('Saved, but not all in use', q)
+        self.assertIn('["custom", "Custom"]]);', q)
+        self.assertIn('title: "Custom size"', q)
+
+
 if __name__ == '__main__':
     unittest.main()
