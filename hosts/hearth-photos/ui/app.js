@@ -751,7 +751,6 @@ function back() {
   if (!$('#toast').hidden && document.activeElement?.id === 'toastAct') { $('#toast').hidden = true; stage.focus(); return; }
   if (document.activeElement && document.activeElement.closest('#top,#turnbar,#slidectl,#welcome,#viewbar,#info')) { document.activeElement.blur(); stage.focus(); if (S.fs) hideChrome(); return; }
   if (S.slide) { stopSlide(); return; }
-  if (S.infoOpen) { actions.info(); return; }
   if (isZoomed()) { S.z.mode = 'fit'; layout(); return; }
   if (S.fs) { setFullscreen(false); return; }
   if (window.HPLib && S.turn === 1) actions.library();
@@ -868,7 +867,16 @@ window.addEventListener('unhandledrejection', e => { invoke('log', { line: `JSER
 
 // ---------------------------------------------------------------- start
 window.HP = { openList, invoke, url, loadInto, cur, S, toast, dialog, openMenu, closeMenu, move, focusables, back, openPath, extOf, esc, human, then, cssOf, MATS, store,
-  afterEditorClose: () => { layout(); stage.focus(); } };
+  afterEditorClose: () => { layout(); stage.focus(); },
+  /** After an edit from the library: the copy shows next to the original (or the original again, replaced). */
+  afterSaved: async (path, replaced) => {
+    const p = cur();
+    const name = path.split('/').pop();
+    if (replaced && p) { p.mtime = Date.now(); stripRendered = ''; $$('.th').forEach(t => { if (t.dataset.path === p.path) t.remove(); }); await show(S.i, { keepTurn: true }); return; }
+    S.pics.splice(S.i + 1, 0, { ...(p || {}), name, path, mtime: Date.now(), size: 0 });
+    stripRendered = '';
+    await show(S.i + 1);
+  } };
 
 
 // ---------------------------------------------------------------- without the app (a plain browser): sample pictures

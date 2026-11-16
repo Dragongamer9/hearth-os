@@ -269,6 +269,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     pick_drawing();
     std::thread::spawn(imaging::tidy_cache);
+    std::thread::spawn(save::tidy_replaced);
 
     tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
