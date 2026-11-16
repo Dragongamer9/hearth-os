@@ -132,34 +132,49 @@ def run(list_file):
     photos, groups = res.setdefault('photos', {}), res.setdefault('groups', [])
     faces_on = not res.get('facesOff')
     todo = [t for t in todo if photos.get(t['path'], {}).get('mtime') != t.get('mtime')]
+    errors = res.setdefault('errors', {})
     for k, t in enumerate(todo):
         progress('run', k, len(todo), f'Looking at your photos… {k} of {len(todo)}')
-        img = cv2.imread(t.get('thumb') or t['path'])
-        if img is None:
-            photos[t['path']] = {'mtime': t.get('mtime'), 'tags': [], 'faces': []}
-            continue
-        h, w = img.shape[:2]
-        entry = {'mtime': t.get('mtime'), 'faces': [], 'tags': []}
-        if faces_on:
-            det.setInputSize((w, h))
-            _, found = det.detect(img)
-            for fc in (found if found is not None else []):
-                if fc[14] < 0.85 or fc[2] < 24:
-                    continue
-                aligned = rec.alignCrop(img, fc)
-                v = rec.feature(aligned).flatten()
-                v = v / (np.linalg.norm(v) or 1)
-                gid = place_face(groups, v, t['path'])
-                entry['faces'].append({'g': gid, 'box': [round(float(fc[0]) / w, 4), round(float(fc[1]) / h, 4), round(float(fc[2]) / w, 4), round(float(fc[3]) / h, 4)]})
-        entry['tags'] = (ask_ollama(vision, img, cv2) if vision else None) or classify(net, labels, img, cv2, np)
-        entry['by'] = 'gpu' if vision else 'cpu'
-        photos[t['path']] = entry
+        try:
+            photos[t['path']] = look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on)
+            errors.pop(t['path'], None)
+        except Exception as e:  # one odd picture doesn't stop the rest; it's tried again next time
+            errors[t['path']] = str(e)[:200]
+            print(f"{t['path']}: {e}", file=sys.stderr)
         if k % 8 == 7:
             write_json(RESULTS, res)
     # Faces of photos that are gone: their groups' counts come from what's left (the page counts them).
     write_json(RESULTS, res)
     progress(None)
     print(json.dumps({'done': len(todo)}))
+
+
+def look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on):
+    """One picture: its faces (each put in a group) and what's in it."""
+    img = cv2.imread(t.get('thumb') or t['path'])
+    if img is None:
+        return {'mtime': t.get('mtime'), 'tags': [], 'faces': []}
+    h, w = img.shape[:2]
+    # Very big pictures are looked at smaller (faces are found just as well, and it's much quicker).
+    k = min(1.0, 1600 / max(h, w))
+    if k < 1:
+        img = cv2.resize(img, (int(w * k), int(h * k)))
+        h, w = img.shape[:2]
+    entry = {'mtime': t.get('mtime'), 'faces': [], 'tags': []}
+    if faces_on:
+        det.setInputSize((w, h))
+        _, found = det.detect(img)
+        for fc in (found if found is not None else []):
+            if fc[14] < 0.85 or fc[2] < 24:
+                continue
+            aligned = rec.alignCrop(img, fc)
+            v = rec.feature(aligned).flatten()
+            v = v / (np.linalg.norm(v) or 1)
+            gid = place_face(groups, [float(x) for x in v], t['path'])
+            entry['faces'].append({'g': gid, 'box': [round(float(fc[0]) / w, 4), round(float(fc[1]) / h, 4), round(float(fc[2]) / w, 4), round(float(fc[3]) / h, 4)]})
+    entry['tags'] = (ask_ollama(vision, img, cv2) if vision else None) or classify(net, labels, img, cv2, np)
+    entry['by'] = 'gpu' if vision else 'cpu'
+    return entry
 
 
 def place_face(groups, v, path):
