@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hearth TV</string>
+    <string name="home_button">Hearth TV: Home button</string>
+    <string name="home_button_about">Makes the Home button on the remote open Hearth TV. It only sees the Home button and nothing else on screen.</string>
+</resources>
