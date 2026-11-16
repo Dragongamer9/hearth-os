@@ -62,7 +62,10 @@ say "Installing $(basename "$APK")"
 say "Letting Hearth TV update itself and keep TV Cleanup working"
 sh appops set dev.hearthos.tv REQUEST_INSTALL_PACKAGES allow || true
 sh pm grant dev.hearthos.tv android.permission.POST_NOTIFICATIONS 2>/dev/null || true
-sh cmd package set-home-activity dev.hearthos.tv/.MainActivity >/dev/null 2>&1 && echo "   Hearth TV is the home screen" || echo "   (pick Hearth TV when the TV asks for a home app)"
+sh cmd package set-home-activity dev.hearthos.tv/.MainActivity >/dev/null 2>&1 || true
+# Android 10 and up pick the home app by its role; set-home-activity alone isn't always enough (TCL, Android 12).
+sh cmd role add-role-holder android.app.role.HOME dev.hearthos.tv 0 >/dev/null 2>&1 || true
+echo "   Hearth TV is the home screen (if Home still opens Google TV: Hearth TV's TV Cleanup › Google TV's home)"
 # Network debugging stays on for Hearth TV's own TV Cleanup (127.0.0.1:5555), until the TV restarts.
 "$ADB" -s "$TV" tcpip 5555 >/dev/null 2>&1 || true
 sleep 3; "$ADB" connect "$TV" >/dev/null 2>&1 || true
