@@ -590,6 +590,33 @@ fi
 # in particular then hangs, and Game Mode's Hearth (which starts Steam in the background) hangs with it.
 # Give Steam a moment to close by itself (a couple of seconds, not its whole shutdown), then make sure it
 # and the old compositor are gone.
+# 1.14: how long switching takes, in the session log (the owner: switching between the modes NEEDS to be faster).
+# Each mode gets "<mode> mode: running after Ns" once its program is up, and "switch asked for: <next>" the moment
+# Game Mode asks for another mode, so a log shows every step of a switch. Only watches: in the background, gives up
+# after 90 s, and is stopped when the mode ends, so it can never hold a mode up.
+switch_watch() {
+  case "$1" in
+    desktop) want=quickshell ;;
+    game|setup) want="$(basename "${NIMBUS_APP:-nimbus}" | cut -c1-15)" ;;
+    steam) want=steamwebhelper ;;
+    server) want=labwc ;;
+    *) return 0 ;;
+  esac
+  (
+    t0=$(date +%s); i=0; up=0; asked=0
+    while [ $i -lt 7200 ]; do
+      if [ "$up" = 0 ] && pgrep -u "$(id -u)" -x "$want" >/dev/null 2>&1; then
+        up=1; log "$1 mode: running after $(( $(date +%s) - t0 ))s"
+      fi
+      if [ "$asked" = 0 ] && [ -s "$NEXT" ]; then asked=1; log "switch asked for: $(head -c 20 "$NEXT")"; fi
+      [ "$up" = 1 ] && [ "$asked" = 1 ] && exit 0
+      [ "$up" = 0 ] && [ $i -ge 180 ] && { up=1; log "$1 mode: not running after 90s (only noted)"; }
+      sleep 0.5; i=$((i+1))
+    done
+  ) >/dev/null 2>&1 &
+  SWITCH_WATCH=$!
+}
+
 settle() {
   if pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; then
     log "closing Steam left from $1 mode"
@@ -1479,6 +1506,7 @@ while :; do
   # Access the Game Mode way (in gamescope) instead of sending every press to a Desktop Mode that's gone.
   if [ "$mode" = setup ]; then echo game >"$RUN/nimbus-mode-now" 2>/dev/null; else echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null; fi
   steam_only_env
+  SWITCH_WATCH=""; switch_watch "$mode"
   sd=""; [ "$mode" = steam ] && ! live_session && { steam_auto_before; sd=1; }
   # Hearth Game Mode you picked (game_mode_choice): run_hearth_mode, with its fallback (Steam Game Mode, then Mantel).
   if [ "$mode" = game ] && [ -z "$HEARTH_SEAT" ] && ! live_session; then run_hearth_mode; code=$?
@@ -1489,6 +1517,7 @@ while :; do
   elif [ "$mode" = server ]; then run_server; code=$?
   else steam_notice_other; run_desktop; code=$?; fi
   [ -n "$sd" ] && steam_auto_after
+  [ -n "$SWITCH_WATCH" ] && kill "$SWITCH_WATCH" 2>/dev/null
   STEAM_GAME_APPID=""   # a one-game Steam Game Mode is over, whatever comes next
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
