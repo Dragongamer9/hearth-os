@@ -18,9 +18,12 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Send logs: a "Server mode and its services" section: Server mode's log and status, the dashboard's log (this start and the one before), Jellyfin's, Ollama's, ComfyUI's and the voices' state and journal (this start and the one before), what paused or stopped them, and Ithil's brain as the dashboard reads it (the owner, Nov 16: Jellyfin keeps stopping in Server mode and Ithil's brain doesn't load, and reports had nothing about either). Finding the causes comes next, from his next report (needs testing on a device)
 - [x] Fix: "Started without your system changes" stayed in `hearth-unlock --status` (and Settings) for weeks after the changes were back in use (the owner's laptop, Nov 16, showed one from Nov 2): it now goes once a start with your changes in use reaches Hearth; other notices stay until you dismiss them (needs testing on a device)
 - [ ] Hearth's own apps made faster (moved from 1.13): Hearth Files opens as slowly warm as cold (0.5 s), and the desktop shell holds about 270 MB with nothing open; fix those first, measured before and after (shots/speed)
-- [ ] Tidy-up (nothing users see changes; moved from 1.13 by the owner): split the biggest files into smaller parts (Hearth Files' FileManager.qml, Game Mode's ui/index.html, hearth-home-server and its root helper, Task Manager's view); subfolders in the desktop shell's 262-file folder (apps, settings pages, helpers); the "nimbus" names inside the code moved toward "Hearth" where it's safe (never paths an installed PC relies on); merged branches deleted (listed for the owner first)
 
 - [ ] Hearth TV 1.0, a Hearth home screen for the owner's TCL Google TV (checklist docs/mockups/checklists/hearth-tv.md, mockups approved Nov 15; docs/HEARTH-TV.md): apps, the PC's library, Theater, TV inputs, every Hearth OS look, TV Cleanup (ads and tracking switched off, never deleted); installed from his laptop. Still open: Send to TV from a PC and from a phone
+
+## Planned for 1.15
+
+- [ ] Tidy-up (nothing users see changes; moved from 1.13, then to 1.15 by the owner on Nov 16): split the biggest files into smaller parts (Hearth Files' FileManager.qml, Game Mode's ui/index.html, hearth-home-server and its root helper, Task Manager's view); subfolders in the desktop shell's 262-file folder (apps, settings pages, helpers); the "nimbus" names inside the code moved toward "Hearth" where it's safe (never paths an installed PC relies on); merged branches deleted (listed for the owner first)
 
 ## Later
 
