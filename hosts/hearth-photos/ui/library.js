@@ -112,6 +112,7 @@
       <div id="phonebox"></div>
     </aside>
     <main id="lmain">
+      <header id="padtop"></header>
       <header id="ltop">
         <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
           <input id="lq" data-f placeholder='Search: "sunset at the lake", "ROG Ally screenshot"…' spellcheck="false" autocomplete="off">
@@ -126,6 +127,7 @@
         <button class="btn" data-f data-lact="selFav">♥ Favorite</button><button class="btn" data-f data-lact="selAlbum">Add to album</button>
         <button class="btn" data-f data-lact="selTrash">Trash</button><button class="btn primary" data-f data-lact="select">Done</button></div>
       <div id="lbody" class="scroll" tabindex="-1"><div id="lcontent"></div></div>
+      <footer id="padfoot"><span><b>A</b>Open</span><span><b>X</b>Slideshow</span><span><b>Y</b>Search</span><span><b>☰</b>Options</span><span><b>B</b>Back</span><span class="sp"></span><small>Shows like this when a controller is in use · keyboard and mouse get the library</small></footer>
     </main>
     <nav id="ldates"></nav>`;
   document.body.appendChild(root);
@@ -232,6 +234,8 @@
     }
   }
   function draw() {
+    root.classList.toggle('pad', !!L.padLook);
+    if (L.padLook) { drawPad(); return; }
     renderSide();
     const width = Math.max(300, body.clientWidth - 60);
     const v = shown();
@@ -412,14 +416,79 @@
   window.HPLib = { chooseAlbum, change, favs, albums, get store() { return L.store; }, show, hide, visible: () => !root.hidden, key, items: () => L.items, phoneName, pad };
 
   /** A controller in the library: D-pad / stick moves, A opens, B leaves search, X slideshow, Y search, Start Select. */
+  // ---------------------------------------------------------------- the controller look (photos-4)
+  const PTABS = [['foryou', 'For you'], ['all', 'All photos'], ['albums', 'Albums'], ['people', 'People'], ['places', 'Places'], ['videos', 'Videos']];
+  function setPadLook(on) {
+    if (!!L.padLook === on) return;
+    L.padLook = on;
+    if (on && !L.ptab) L.ptab = 'foryou';
+    render();
+    if (on) setTimeout(() => { const f = content.querySelector('[data-f]'); if (f) { f.focus(); f.classList.add('kf'); } }, 20);
+  }
+  // Keyboard or mouse: the library look again (as the new Settings does).
+  document.addEventListener('mousemove', e => { if (L.padLook && (Math.abs(e.movementX) + Math.abs(e.movementY) > 2) && Date.now() - (L.padAt || 0) > 1500) setPadLook(false); });
+  document.addEventListener('keydown', e => { if (L.padLook && !root.hidden && e.isTrusted && Date.now() - (L.padAt || 0) > 1500 && !e.key.startsWith('Arrow') && e.key !== 'Enter' && e.key !== 'Escape') setPadLook(false); }, true);
+  function bigTile(attrs, cover, label) {
+    return `<button class="ptile" data-f ${attrs}>${cover ? `<img alt="" loading="lazy" src="${url('thumb', cover.path, `?s=480&v=${cover.mtime}`)}">` : ''}<span class="shade"></span><b>${esc(label)}</b></button>`;
+  }
+  const tileName = i => i.kind === 'video' ? `Video · ${dur(i.secs)}` : i.kind === 'capture' && i.game ? i.game : i.kind === 'screenshot' ? 'Screenshot' : i.name.replace(/\.[^.]+$/, '');
+  function drawPad() {
+    $('#padtop', root).innerHTML = `<span class="pk">LB</span>${PTABS.map(([id, l]) => `<button class="ptab${L.ptab === id ? ' on' : ''}" data-ptab="${id}">${l}</button>`).join('')}<span class="pk">RB</span><span class="sp"></span><span class="pcount">${n(L.items.length)} photos</span>`;
+    const t = L.ptab;
+    let h = '';
+    if (t === 'foryou') {
+      const m = memories()[0] || (L.items.length ? { kind: 'All photos', title: 'Your photos', items: L.items, cover: pickCover(L.items) } : null);
+      if (m) {
+        const v = m.items.filter(i => i.kind === 'video').length, ph = m.items.length - v, when = fmt(asDate(m.items[0].taken), { month: 'long', year: 'numeric' });
+        h += `<section class="hero" data-f data-mem="0" tabindex="0">${m.cover ? `<img alt="" src="${url('thumb', m.cover.path, `?s=1024&v=${m.cover.mtime}`)}">` : ''}<span class="shade"></span>
+          <div class="ht"><span class="ck">${m === memories()[0] ? 'A memory' : 'Your photos'}</span><h1>${esc(m.title.replace(/ · \d.*$/, ''))}</h1><p>${esc([ph ? plural(ph, 'photo', 'photos') : '', v ? plural(v, 'video', 'videos') : ''].filter(Boolean).join(' and '))} · ${esc(when)}</p>
+          <div class="hb"><button class="btn primary" data-f data-mem="0"><b class="pb">A</b> Play as a slideshow</button><button class="btn" data-f data-lact="browseMem"><b class="pb">X</b> Browse them</button></div></div></section>`;
+      }
+      const recent = L.items.filter(i => daysAgo(asDate(i.taken)) <= 1).slice(0, 12);
+      if (recent.length) h += `<section><h2>Today and yesterday</h2><div class="prow">${recent.map(i => bigTile(`data-path="${esc(i.path)}" data-ptile="1"`, i, tileName(i))).join('')}</div></section>`;
+      h += `<section><h2>Albums</h2><div class="prow">${padAlbums()}</div></section>`;
+    } else if (t === 'albums') h += `<section><h2>Albums</h2><div class="pgrid">${padAlbums()}</div></section>`;
+    else if (t === 'people') h += `<section class="box big">${peopleBox(0)}</section>`;
+    else if (t === 'places') h += `<section class="box big" id="placesBox">${placesBox(true)}</section>`;
+    else {
+      const list = t === 'videos' ? L.items.filter(i => i.kind === 'video') : L.items;
+      for (const g of groups(list)) h += `<section><h2>${esc(g.title)} <small>${esc(g.sub)}</small></h2><div class="pgrid">${g.items.map(i => bigTile(`data-path="${esc(i.path)}" data-ptile="1"`, i, tileName(i))).join('')}</div></section>`;
+      groupsNow = groups(list);
+    }
+    content.innerHTML = h;
+    if (t === 'places') drawPlaces(true);
+    if (t === 'foryou') groupsNow = groups(L.items);
+  }
+  function padAlbums() {
+    const byPath = new Map(L.items.map(i => [i.path, i]));
+    const autos = autoAlbums().filter(a => a[3].length).map(([v, title, , list]) => bigTile(`data-view="${v}"`, pickCover(list), title));
+    const mine = albums().map(a => { const list = (a.items || []).map(p => byPath.get(p)).filter(Boolean); return bigTile(`data-album="${esc(a.id)}"`, pickCover(list), a.name); });
+    const walls = L.items.filter(i => isWallpaper(i.path));
+    return [...autos.slice(0, 2), ...mine, walls.length ? bigTile('data-view="wallpapers"', pickCover(walls), 'Wallpapers') : '', ...autos.slice(2)].join('');
+  }
+  function padOptions() {
+    H.openMenu(null, [
+      { label: 'Search', run: () => { setPadLook(false); q.focus(); } },
+      { label: 'Import a folder…', run: importFolder },
+      { label: 'Select photos', run: () => { setPadLook(false); toggleSelect(); } },
+      { label: 'New album…', run: newAlbum },
+      { label: 'Show the library look', run: () => setPadLook(false) },
+    ]);
+  }
+
+  /** A controller in the library: the controller look comes up; D-pad moves, A opens, B back, X slideshow, Y search,
+   *  LB / RB tabs, ☰ options. */
   function pad(k) {
+    L.padAt = Date.now();
+    if (!L.padLook) { setPadLook(true); return; }
     const dir = { up: 'up', down: 'down', left: 'left', right: 'right' }[k];
-    if (dir) { if (!root.contains(document.activeElement) || document.activeElement === body) { firstTile(); return; } H.move(dir, root); const a = document.activeElement; if (a && a.classList.contains('tile')) L.focus = a.dataset.path; return; }
-    if (k === 'a') { const a = document.activeElement; if (a && root.contains(a) && a.click) a.click(); else firstTile(); return; }
-    if (k === 'b') { if (document.activeElement === q) { firstTile(); return; } if (L.selecting) { toggleSelect(); return; } if (L.view !== 'all') { setView('all'); } return; }
-    if (k === 'x') { acts.slideshow(); return; }
-    if (k === 'y') { q.focus(); return; }
-    if (k === 'lb' || k === 'rb') { const i = NAV.findIndex(x => x[0] === L.view); const nx = NAV[(Math.max(0, i) + (k === 'rb' ? 1 : NAV.length - 1)) % NAV.length]; setView(nx[0]); }
+    if (dir) { if (!root.contains(document.activeElement) || document.activeElement === body) { const f = content.querySelector('[data-f]'); if (f) { f.focus(); f.classList.add('kf'); } return; } H.move(dir, root); const a = document.activeElement; if (a) a.scrollIntoView({ block: 'nearest' }); if (a && a.dataset.path) L.focus = a.dataset.path; return; }
+    if (k === 'a') { const a = document.activeElement; if (a && root.contains(a) && a.click) a.click(); return; }
+    if (k === 'b') { if (L.view !== 'all' && L.ptab !== 'foryou') { L.view = 'all'; } if (L.ptab !== 'foryou') { L.ptab = 'foryou'; render(); } return; }
+    if (k === 'x') { if (L.ptab === 'foryou') acts.browseMem(); else acts.slideshow(); return; }
+    if (k === 'y') { setPadLook(false); q.focus(); return; }
+    if (k === 'start') { padOptions(); return; }
+    if (k === 'lb' || k === 'rb') { const i = PTABS.findIndex(x => x[0] === L.ptab); L.ptab = PTABS[(Math.max(0, i) + (k === 'rb' ? 1 : PTABS.length - 1)) % PTABS.length][0]; render(); const f = content.querySelector('[data-f]'); if (f) { f.focus(); f.classList.add('kf'); } }
   }
 
   async function newAlbum() {
@@ -462,13 +531,17 @@
     selFav: () => { const p = [...L.picked]; if (p.length) { const all = p.every(x => favs().has(x)); change({ op: 'favorite', paths: p, on: !all }); } },
     selAlbum: () => { const p = [...L.picked]; if (p.length) chooseAlbum(p); },
     selTrash: trashPicked,
+    browseMem: () => { const m = memories()[0]; if (m) { L.spot = m.items.map(i => i.path); L.view = 'spot'; L.ptab = 'all'; setPadLook(false); render(); body.scrollTop = 0; } },
     mapIn: () => { L.mapZoom = Math.min(16, (L.mapZoom || 4) + 1); drawPlaces(true); },
     mapOut: () => { L.mapZoom = Math.max(2, (L.mapZoom || 4) - 1); drawPlaces(true); },
   };
   root.addEventListener('click', e => {
+    const pt = e.target.closest('[data-ptab]');
+    if (pt) { L.ptab = pt.dataset.ptab; render(); return; }
+    if (L.padLook && e.target.closest('[data-view],[data-album]') && !e.target.closest('[data-ptile]')) { const el = e.target.closest('[data-view],[data-album]'); if (el.dataset.album) { L.view = 'album'; L.album = el.dataset.album; } else L.view = el.dataset.view; L.ptab = 'all'; setPadLook(false); render(); body.scrollTop = 0; return; }
     const sp = e.target.closest('[data-spot]');
     if (sp) { const g = (L.spots || [])[+sp.dataset.spot]; if (g) { L.spot = g.items.map(i => i.path); L.view = 'spot'; render(); body.scrollTop = 0; } return; }
-    const t = e.target.closest('[data-lact],[data-view],[data-album],.tile,[data-mem],[data-folder],[data-jump]');
+    const t = e.target.closest('[data-lact],[data-view],[data-album],.tile,.ptile,[data-mem],[data-folder],[data-jump]');
     if (!t) return;
     if (t.dataset.lact) { acts[t.dataset.lact](); return; }
     if (t.dataset.view) { setView(t.dataset.view); return; }
@@ -476,6 +549,7 @@
     if (t.dataset.folder) { L.view = 'folder'; L.folder = t.dataset.folder; render(); body.scrollTop = 0; return; }
     if (t.dataset.mem) { const m = (L.view === 'memories' ? memories() : memories().slice(0, 4))[+t.dataset.mem]; if (m) { const v = m.items.filter(i => i.kind !== 'video'); if (v.length) open(v[0].path, { list: v, slideshow: true }); } return; }
     if (t.dataset.jump) { jump(t.dataset.jump, t.dataset.jumpyear); return; }
+    if (t.classList.contains('ptile') && t.dataset.path) { open(t.dataset.path, { list: L.items.filter(i => i.kind !== 'video') }); return; }
     if (t.classList.contains('tile')) {
       const p = t.dataset.path;
       if (L.selecting || e.ctrlKey || e.shiftKey) { if (!L.selecting) toggleSelect(); L.picked.has(p) ? L.picked.delete(p) : L.picked.add(p); t.classList.toggle('picked'); updateSel(); return; }
@@ -538,7 +612,8 @@
   async function boot(init) {
     L.started = true;
     L.home = init.home || '';
-    if (init.view) L.view = init.view;
+    if (init.view === 'pad') { L.padLook = true; L.ptab = 'foryou'; L.view = 'all'; L.padAt = Date.now() + 60000; }
+    else if (init.view) L.view = init.view;
     L.wallDir = init.pictures ? init.pictures.replace(/\/$/, '') + '/Wallpapers' : '';
     try { take(await invoke('library_cached')); } catch (_) {}
     L.scanning = true;

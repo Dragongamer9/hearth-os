@@ -106,9 +106,39 @@ pub fn save_edit(original: &Path, bytes: &[u8], format: &str, quality: u8, encod
     if matches!(format, "jpeg" | "jpg") && is_jpeg(original) {
         if let Ok(orig) = std::fs::read(original) { out = with_exif_of(&orig, out); }
     }
+    // Replacing the original: it goes to the Trash first, as "<name> (before edit)", and stays there 30 days
+    // (tidy_replaced takes it out after that), so a replace can still be undone from the Trash.
+    if overwrite { keep_in_trash(original)?; }
     write_atomic(&target, &out)?;
-    let message = if overwrite { "Saved".to_string() } else { format!("Saved as {}", name(&target)) };
+    let message = if overwrite { "Saved. The original is in the Trash for 30 days".to_string() } else { format!("Saved as {}", name(&target)) };
     Ok(Saved { path: target.to_string_lossy().into(), how: if overwrite { "overwrite".into() } else { "copy".into() }, message })
+}
+
+pub const BEFORE_EDIT: &str = "before edit";
+
+fn keep_in_trash(original: &Path) -> Result<(), String> {
+    let dir = original.parent().unwrap_or(Path::new("."));
+    let ext = crate::formats::ext(original);
+    let copy = free_name(dir, &stem(original), BEFORE_EDIT, &original.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or(ext));
+    std::fs::copy(original, &copy).map_err(|e| format!("Couldn't keep the original: {}", crate::friendly_io(&e)))?;
+    crate::system::trash(&copy).map_err(|e| { let _ = std::fs::remove_file(&copy); e })
+}
+
+/// Empties the originals Photos put in the Trash when you replaced them, once they've been there 30 days (only
+/// those: "<name> (before edit…).<ext>" with their Trash note). Run in the background at start.
+pub fn tidy_replaced() {
+    let Some(trash) = dirs::data_dir().map(|d| d.join("Trash")) else { return };
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 86400);
+    for e in std::fs::read_dir(trash.join("files")).into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        if !n.contains(&format!("({BEFORE_EDIT}")) { continue; }
+        let info = trash.join("info").join(format!("{n}.trashinfo"));
+        let when = std::fs::metadata(&info).ok().and_then(|m| m.modified().ok());
+        if when.map(|t| t < old).unwrap_or(false) {
+            let _ = std::fs::remove_file(e.path());
+            let _ = std::fs::remove_file(&info);
+        }
+    }
 }
 
 /// `jpeg` with `orig`'s EXIF block put in (orientation set to 1, its old preview picture unlinked).
@@ -216,6 +246,8 @@ mod tests {
         let o = save_edit(&orig, &png, "jpeg", 90, false, true).unwrap();
         assert_eq!(PathBuf::from(&o.path), orig);
         assert_eq!(image::open(&orig).unwrap().width(), 50);
+        // The original went to the Trash ("Beach (before edit).jpg"), not left beside it.
+        assert!(!std::fs::read_dir(&d).unwrap().flatten().any(|e| e.file_name().to_string_lossy().contains("before edit")));
         std::fs::remove_dir_all(&d).unwrap();
     }
 }

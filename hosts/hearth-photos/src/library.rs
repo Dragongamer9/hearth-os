@@ -188,6 +188,10 @@ pub fn name_ms(name: &str) -> Option<u64> {
     let digits: String = name.chars().map(|c| if c.is_ascii_digit() { c } else { ' ' }).collect();
     let parts: Vec<&str> = digits.split_whitespace().collect();
     // 8 digits then 6 digits (or more), or y m d h m s as separate groups.
+    // Steam's "20261115193000_1.jpg": all fourteen together.
+    if let Some(p) = parts.iter().find(|p| p.len() == 14 && p.starts_with("20")) {
+        return exif_ms(&format!("{}:{}:{} {}:{}:{}", &p[..4], &p[4..6], &p[6..8], &p[8..10], &p[10..12], &p[12..14]));
+    }
     for w in parts.windows(2) {
         if w[0].len() == 8 && w[1].len() >= 6 {
             let (a, b) = (w[0], &w[1][..6]);
@@ -473,6 +477,7 @@ mod tests {
         assert_eq!(name_ms("PXL_20240601_182205123.jpg"), Some(1_717_266_125_000));
         assert_eq!(name_ms("Screenshot 2024-06-01 18-22-05.png"), Some(1_717_266_125_000));
         assert_eq!(name_ms("holiday.jpg"), None);
+        assert_eq!(name_ms("20240601182205_1.jpg"), Some(1_717_266_125_000));
     }
 
     #[test]

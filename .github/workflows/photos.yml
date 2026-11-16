@@ -170,7 +170,7 @@ jobs:
           xdotool key Escape; sleep 2; shot library-back
           xdotool mousemove 120 260 click 1; sleep 2; shot library-favorites
           pkill -f 'target/release/hearth-photos' || true; sleep 1
-          for v in collections places; do
+          for v in collections pad; do
             dbus-run-session -- ./target/release/hearth-photos --view $v >> lib.log 2>&1 &
             sleep 9; w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 4
             shot $v; pkill -f 'target/release/hearth-photos' || true; sleep 1
@@ -178,7 +178,8 @@ jobs:
           g=$(ls "$L"/iPhone/2026/11/IMG_${d1}_*.jpg | head -1)
           dbus-run-session -- ./target/release/hearth-photos "$g" >> lib.log 2>&1 &
           sleep 9; w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 5
-          shot photo-place; pkill -f 'target/release/hearth-photos' || true
+          shot photo-place
+          xdotool key e; sleep 4; shot edit; pkill -f 'target/release/hearth-photos' || true
           grep -q '"favorites"' "$HEARTH_PHOTOS_STORE" && echo "::notice title=store::$(tr '\n' ' ' < "$HEARTH_PHOTOS_STORE" | cut -c1-600)"
           grep -h JSERROR lib.log run.log | sort -u | head -5 | while read -r l; do echo "::warning title=page error::$l"; done || true
       # The screenshots as notices (artifacts can't be read from here): small copies, one step each (a job keeps 50).
@@ -186,18 +187,18 @@ jobs:
         if: always()
         working-directory: hosts/hearth-photos
         run: f=shots/library.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT library $i::$part"; done || true
-      - name: Screenshot photo
+      - name: Screenshot edit
         if: always()
         working-directory: hosts/hearth-photos
-        run: f=shots/photo.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT photo $i::$part"; done || true
+        run: f=shots/edit.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT edit $i::$part"; done || true
       - name: Screenshot collections
         if: always()
         working-directory: hosts/hearth-photos
         run: f=shots/collections.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT collections $i::$part"; done || true
-      - name: Screenshot places
+      - name: Screenshot pad
         if: always()
         working-directory: hosts/hearth-photos
-        run: f=shots/places.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT places $i::$part"; done || true
+        run: f=shots/pad.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT pad $i::$part"; done || true
       - name: Screenshot photo-place
         if: always()
         working-directory: hosts/hearth-photos
