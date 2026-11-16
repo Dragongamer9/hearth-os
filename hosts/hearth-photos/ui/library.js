@@ -35,7 +35,9 @@
   function matches(i, q) {
     if (!q) return true;
     const d = asDate(i.taken);
-    const hay = kindWords(i) + ' ' + fmt(d, { month: 'long', year: 'numeric' }).toLowerCase() + ' ' + fmt(d, { weekday: 'long' }).toLowerCase() + ' ' + (i.tags || []).join(' ').toLowerCase();
+    const a = aiOf(i.path);
+    const who = a ? a.faces.map(f => personName(f.g)).filter(Boolean).join(' ') : '';
+    const hay = kindWords(i) + ' ' + fmt(d, { month: 'long', year: 'numeric' }).toLowerCase() + ' ' + fmt(d, { weekday: 'long' }).toLowerCase() + ' ' + (a ? a.tags.join(' ') : '').toLowerCase() + ' ' + who.toLowerCase();
     return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w.replace(/s$/, '')));
   }
   function shown() {
@@ -51,6 +53,7 @@
       case 'screenshots': v = v.filter(i => i.kind === 'screenshot'); break;
       case 'ai': v = v.filter(i => i.kind === 'ai'); break;
       case 'wallpapers': v = v.filter(i => isWallpaper(i.path)); break;
+      case 'person': v = v.filter(i => { const a = aiOf(i.path); return a && a.faces.some(f => f.g === L.person); }); break;
       case 'spot': { const set = new Set(L.spot || []); v = v.filter(i => set.has(i.path)); break; }
       case 'trash': v = L.trash || []; break;
     }
@@ -122,6 +125,7 @@
         <button class="btn" data-f data-lact="select" id="lselect">Select</button>
         <button class="btn" data-f data-lact="slideshow">Slideshow</button>
         <label class="size">Size <input type="range" id="lsize" data-f min="110" max="340" step="10"></label>
+        <button class="ib" data-f data-lact="settings" title="Photos settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       </header>
       <div id="lselbar" hidden><b id="lselcount"></b><span class="sp"></span>
         <button class="btn" data-f data-lact="selFav">♥ Favorite</button><button class="btn" data-f data-lact="selAlbum">Add to album</button>
@@ -143,7 +147,7 @@
     return {
       all: L.items.length, memories: memories().length, favorites: L.items.filter(i => f.has(i.path)).length,
       videos: L.items.filter(i => i.kind === 'video').length, captures: L.items.filter(i => i.kind === 'capture').length,
-      people: (L.store.people || []).length || null, places: placeCount() || null, phone: L.items.filter(i => i.src === 'phone').length, folders: null,
+      people: facesOn() ? groupsShown().length || null : null, places: placeCount() || null, phone: L.items.filter(i => i.src === 'phone').length, folders: null,
       trash: L.summary.trash || null,
     };
   }
@@ -322,10 +326,115 @@
     renderDates(true);
     if (tab === 'collections' || tab === 'places') drawPlaces(tab === 'places');
   }
-  function peopleBox(max) {
-    if (window.HPFaces) return HPFaces.box(max);
-    return `<h2>People <small>faces grouped on this PC · only you see the names</small></h2><p class="muted">No faces grouped yet.</p>`;
+  // ---------------------------------------------------------------- faces and what's in a photo (worked out on this PC)
+  const aiOf = p => L.ai && L.ai.photos ? L.ai.photos[p] : null;
+  const facesOn = () => L.store.faces !== false;
+  const tagsOn = () => L.store.tags !== false;
+  const personName = g => (L.store.people || {})[g] || '';
+  /** Groups with at least two photos (one-offs are strangers in the background), biggest first, named ones first. */
+  function groupsShown() {
+    if (!L.ai || !L.ai.groups || !facesOn()) return [];
+    const count = new Map(), cover = new Map(), alive = new Set(L.items.map(i => i.path));
+    for (const [p, a] of Object.entries(L.ai.photos || {})) {
+      if (!alive.has(p)) continue;
+      for (const f of a.faces || []) { count.set(f.g, (count.get(f.g) || 0) + 1); if (!cover.has(f.g) || f.box[2] > cover.get(f.g).box[2]) cover.set(f.g, { path: p, box: f.box }); }
+    }
+    return L.ai.groups.map(g => ({ id: g.id, n: count.get(g.id) || 0, cover: cover.get(g.id), name: personName(g.id) }))
+      .filter(g => g.n >= 2 || g.name).sort((a, b) => (!!b.name - !!a.name) || b.n - a.n);
   }
+  /** A face as a circle: the photo's small copy, zoomed and moved so the face fills it. */
+  function faceCircle(c, size) {
+    if (!c) return `<span class="face" style="width:${size}px;height:${size}px"></span>`;
+    const [x, y, w, h] = c.box, s = Math.max(w, h) * 1.5, z = 100 / s;
+    const cx = (x + w / 2) * 100, cy = (y + h / 2) * 100;
+    return `<span class="face" style="width:${size}px;height:${size}px"><img alt="" loading="lazy" src="${url('thumb', c.path, '?s=512')}" style="width:${z}%;height:${z}%;left:${50 - cx * z / 100}%;top:${50 - cy * z / 100}%"></span>`;
+  }
+  function peopleBox(max) {
+    const head = `<div class="bh"><h2>People <small>faces grouped on this PC · only you see the names</small></h2>${max ? `<button class="link" data-f data-view="people">See all ${n(groupsShown().length)}</button>` : ''}</div>`;
+    if (!facesOn()) return head + `<p class="muted">Faces are off. <button class="link" data-f data-lact="facesOn">Turn them on</button> to group photos by who's in them; it's all worked out on this PC.</p>`;
+    const st = L.aiStatus || {};
+    if (!st.ready) {
+      const pr = st.progress;
+      return head + (pr && pr.kind === 'setup' ? `<p class="muted">${esc(pr.text)}</p>` : `<p class="muted">Photos can group your photos by the faces in them and find what's in each one, all on this PC. It needs a one-time download (OpenCV and three small models, about 70 MB).</p><button class="btn primary" data-f data-lact="aiSetup">Set it up</button>`);
+    }
+    const gs = groupsShown(), list = max ? gs.slice(0, max) : gs;
+    const pr = L.ai && L.ai.progress;
+    return head + `<div class="people">${list.map(g => `<button class="person" data-f data-person="${esc(g.id)}">${faceCircle(g.cover, max ? 88 : 120)}<b>${esc(g.name || 'Add a name')}</b><small>${n(g.n)}</small></button>`).join('')}</div>`
+      + (gs.length ? '' : `<p class="muted">${pr ? esc(pr.text) : 'No faces grouped yet.'}</p>`)
+      + `<p class="muted small">Turn faces off in Settings › Photos and every group is forgotten.${pr && gs.length ? ' · ' + esc(pr.text) : ''}</p>`;
+  }
+  async function loadAi() {
+    try { L.aiStatus = await invoke('ai_status'); } catch (_) { L.aiStatus = {}; }
+    try { L.ai = await invoke('ai_results'); } catch (_) { L.ai = null; }
+  }
+  /** While open: look at new photos now and then; the page picks up what's found. */
+  async function aiTick() {
+    await loadAi();
+    if (L.aiStatus && L.aiStatus.ready && (facesOn() || tagsOn()) && !(L.ai && L.ai.running)) { try { await invoke('ai_run'); } catch (_) {} }
+    if (!root.hidden && ['people', 'collections'].includes(L.view)) render(); else if (!root.hidden) renderSide();
+  }
+  async function namePerson(id) {
+    const g = groupsShown().find(x => x.id === id);
+    const v = await dialog(`<h2>Who is this?</h2><div style="display:flex;justify-content:center;margin:8px 0 14px">${faceCircle(g && g.cover, 120)}</div><label class="field">Name (only you see it) <input id="pname" data-f autofocus value="${esc(personName(id))}" placeholder="Chris"></label>`,
+      [{ label: 'Cancel', value: null }, { label: 'See their photos', value: 'see' }, { label: 'Save the name', kind: 'primary', value: 'save' }]);
+    if (v === 'save') await change({ op: 'person.name', id, name: ($('#pname') || {}).value || '' });
+    if (v === 'see') { L.view = 'person'; L.person = id; render(); body.scrollTop = 0; }
+  }
+  // The photo page's People and Found in it (app.js renderInfo).
+  window.HPFaces = {
+    html(p) {
+      if (!facesOn()) return '';
+      const a = aiOf(p.path);
+      const faces = a ? a.faces : [];
+      return `<div class="isec"><h3>People</h3><div class="chips people-row">${faces.map(f => `<button class="pface" data-f data-person="${esc(f.g)}" title="${esc(personName(f.g) || 'Name this face')}">${faceCircle({ path: p.path, box: f.box }, 48)}</button>`).join('')}`
+        + `<button class="chip add" data-f ${faces.length ? `data-person="${esc((faces.find(f => !personName(f.g)) || faces[0]).g)}"` : 'data-lact="aiExplain"'}>+ Name a face</button></div>`
+        + (a ? '' : `<p class="dsub">${L.aiStatus && L.aiStatus.ready ? 'Not looked at yet.' : 'Set up faces in Collections › People.'}</p>`) + '</div>';
+    },
+  };
+  window.HPTags = {
+    html(p) {
+      if (!tagsOn()) return '';
+      const a = aiOf(p.path);
+      if (!a) return `<div class="isec"><h3>Found in it</h3><p class="dsub">${L.aiStatus && L.aiStatus.ready ? 'Not looked at yet: it\'s worked out in the background.' : 'Set it up in Collections › People: it\'s all worked out on this PC.'}</p></div>`;
+      return `<div class="isec"><h3>Found in it</h3><div class="chips">${a.tags.map(t => `<button class="chip" data-f data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
+        + `<p class="dsub small">Worked out on this PC${a.by === 'gpu' ? ' (your graphics card)' : ''}, so you can search for it</p></div>`;
+    },
+  };
+  // From the photo page: a face opens its name, a tag searches for it.
+  document.addEventListener('click', e => {
+    const f = e.target.closest('#info [data-person]');
+    if (f) { e.stopPropagation(); namePerson(f.dataset.person); return; }
+    const t = e.target.closest('#info [data-tag]');
+    if (t) { e.stopPropagation(); L.q = t.dataset.tag; q.value = L.q; L.view = 'all'; show(); body.scrollTop = 0; return; }
+    if (e.target.closest('#info [data-lact="aiExplain"]')) { e.stopPropagation(); L.view = 'people'; show(); }
+  }, true);
+
+  /** Photos' settings: faces and Found in it, on this PC. */
+  async function settingsDialog() {
+    const v = await dialog(`<h2>Photos settings</h2>
+      <label class="sw"><input type="checkbox" id="setFaces" ${facesOn() ? 'checked' : ''}> <span><b>Faces</b><small>Group photos by who's in them. Off forgets every group and name.</small></span></label>
+      <label class="sw"><input type="checkbox" id="setTags" ${tagsOn() ? 'checked' : ''}> <span><b>Found in it</b><small>What's in each photo, so you can search for it.</small></span></label>
+      <p class="muted small">Both are worked out on this PC${L.aiStatus && L.aiStatus.vision ? ` (your graphics card, with ${esc(L.aiStatus.vision)} in Ollama)` : ''}. Your photos never leave it.</p>`,
+      [{ label: 'Cancel', value: null }, { label: 'Save', kind: 'primary', value: 1 }],
+      d => { d.querySelectorAll('input').forEach(i => { i._v = i.checked; i.addEventListener('change', () => { i._v = i.checked; }); }); L._dlg = d; });
+    if (!v || !L._dlg) return;
+    const faces = L._dlg.querySelector('#setFaces')._v, tags = L._dlg.querySelector('#setTags')._v;
+    if (faces !== facesOn()) await setFaces(faces);
+    if (tags !== tagsOn()) await change({ op: 'set', key: 'tags', value: tags });
+  }
+  async function setFaces(on) {
+    if (!on) {
+      const sure = await dialog('<h2>Turn faces off?</h2><p>Every face group and every name you gave is forgotten. You can turn faces on again later; the photos are looked at again then.</p>',
+        [{ label: 'Keep faces', value: 0, focus: true }, { label: 'Turn off and forget', kind: 'danger', value: 1 }]);
+      if (sure !== 1) return;
+      try { await invoke('ai_faces', { on: false }); } catch (e) { toast(String(e)); }
+      await change({ op: 'people.forget' });
+    } else { try { await invoke('ai_faces', { on: true }); } catch (_) {} }
+    await change({ op: 'set', key: 'faces', value: on });
+    toast(on ? 'Faces on: your photos are looked at again' : 'Faces off: every group was forgotten');
+    aiTick();
+  }
+
   function placesBox(big) {
     return `<div class="bh"><h2>Places <small>where your photos were taken</small></h2>${big ? '' : '<button class="link" data-f data-view="places">Open the map</button>'}</div><div class="mapwrap" id="placesMap"></div>`;
   }
@@ -397,7 +506,7 @@
   const toPic = i => ({ name: i.name, path: i.path, size: i.size, mtime: i.mtime, taken: i.taken, kind: i.kind, game: i.game, src: i.src, gps: i.gps });
 
   async function change(c) {
-    try { L.store = await invoke('library_change', { change: c }); L._mem = null; render(); return true; }
+    try { L.store = await invoke('library_change', { change: c }); L._mem = null; render(); if (!$('#app').hidden && H.renderInfo) { H.renderInfo(); H.renderTitle && H.renderTitle(); } return true; }
     catch (e) { toast(String(e)); return false; }
   }
   async function chooseAlbum(paths) {
@@ -413,7 +522,7 @@
     await change({ op: 'album.add', id: pick, paths });
     toast('Added to the album');
   }
-  window.HPLib = { chooseAlbum, change, favs, albums, get store() { return L.store; }, show, hide, visible: () => !root.hidden, key, items: () => L.items, phoneName, pad };
+  window.HPLib = { chooseAlbum, change, favs, albums, get store() { return L.store; }, show, hide, visible: () => !root.hidden, key, aiOf, personName, facesOn, tagsOn, faceCircle, namePerson, settings: () => settingsDialog(), items: () => L.items, phoneName, pad };
 
   /** A controller in the library: D-pad / stick moves, A opens, B leaves search, X slideshow, Y search, Start Select. */
   // ---------------------------------------------------------------- the controller look (photos-4)
@@ -472,6 +581,7 @@
       { label: 'Import a folder…', run: importFolder },
       { label: 'Select photos', run: () => { setPadLook(false); toggleSelect(); } },
       { label: 'New album…', run: newAlbum },
+      { label: 'Photos settings…', run: settingsDialog },
       { label: 'Show the library look', run: () => setPadLook(false) },
     ]);
   }
@@ -532,10 +642,15 @@
     selAlbum: () => { const p = [...L.picked]; if (p.length) chooseAlbum(p); },
     selTrash: trashPicked,
     browseMem: () => { const m = memories()[0]; if (m) { L.spot = m.items.map(i => i.path); L.view = 'spot'; L.ptab = 'all'; setPadLook(false); render(); body.scrollTop = 0; } },
+    aiSetup: async () => { try { await invoke('ai_setup'); toast('Setting up (once)…'); } catch (e) { toast(String(e)); } const t = setInterval(async () => { await loadAi(); render(); if (L.aiStatus && (L.aiStatus.ready || !(L.aiStatus.progress))) { clearInterval(t); aiTick(); } }, 3000); },
+    facesOn: () => setFaces(true),
+    settings: settingsDialog,
     mapIn: () => { L.mapZoom = Math.min(16, (L.mapZoom || 4) + 1); drawPlaces(true); },
     mapOut: () => { L.mapZoom = Math.max(2, (L.mapZoom || 4) - 1); drawPlaces(true); },
   };
   root.addEventListener('click', e => {
+    const pe = e.target.closest('[data-person]');
+    if (pe) { namePerson(pe.dataset.person); return; }
     const pt = e.target.closest('[data-ptab]');
     if (pt) { L.ptab = pt.dataset.ptab; render(); return; }
     if (L.padLook && e.target.closest('[data-view],[data-album]') && !e.target.closest('[data-ptile]')) { const el = e.target.closest('[data-view],[data-album]'); if (el.dataset.album) { L.view = 'album'; L.album = el.dataset.album; } else L.view = el.dataset.view; L.ptab = 'all'; setPadLook(false); render(); body.scrollTop = 0; return; }
@@ -616,6 +731,9 @@
     else if (init.view) L.view = init.view;
     L.wallDir = init.pictures ? init.pictures.replace(/\/$/, '') + '/Wallpapers' : '';
     try { take(await invoke('library_cached')); } catch (_) {}
+    loadAi().then(() => { if (!root.hidden) render(); });
+    setTimeout(aiTick, 15000);
+    setInterval(() => { if (document.visibilityState === 'visible') aiTick(); }, 60000);
     L.scanning = true;
     show();
     rescan();

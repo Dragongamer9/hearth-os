@@ -107,6 +107,18 @@ fn library_scan() -> Value {
 #[tauri::command(async)]
 fn library_change(change: Value) -> Result<Value, String> { library::change(&change) }
 
+// ------------------------------------------------------------------ faces and what's in a photo (on this PC)
+#[tauri::command(async)]
+fn ai_status() -> Value { hearth_photos::ai::status() }
+#[tauri::command(async)]
+fn ai_setup() -> Result<(), String> { hearth_photos::ai::setup() }
+#[tauri::command(async)]
+fn ai_run() -> Result<Value, String> { hearth_photos::ai::run() }
+#[tauri::command(async)]
+fn ai_results() -> Value { hearth_photos::ai::results() }
+#[tauri::command(async)]
+fn ai_faces(on: bool) -> Result<Value, String> { hearth_photos::ai::faces(on) }
+
 /// A place's name, for a photo's Place and the Places map.
 #[tauri::command(async)]
 fn place_name(lat: f64, lon: f64) -> Result<String, String> { hearth_photos::place::name(lat, lon) }
@@ -280,7 +292,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             init, list, file_info, save_turn, save_edit, read_bytes, trash, untrash, copy_image, set_wallpaper,
-            show_in_folder, pick, set_title, library_cached, library_scan, library_change, pick_folder, library_trash, open_video, place_name, add_to_wallpapers, fullscreen, print, log, quit
+            show_in_folder, pick, set_title, library_cached, library_scan, library_change, pick_folder, library_trash, open_video, place_name, add_to_wallpapers, ai_status, ai_setup, ai_run, ai_results, ai_faces, fullscreen, print, log, quit
         ])
         .setup(move |app| {
             let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

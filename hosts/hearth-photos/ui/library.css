@@ -227,7 +227,7 @@
 .hero:focus, .hero.kf { box-shadow:0 0 0 4px var(--ember); }
 .hero img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 .hero .shade { position:absolute; inset:0; background:linear-gradient(90deg, rgba(10,7,5,.78), rgba(10,7,5,.2) 60%, transparent); }
-.hero .ht { position:relative; padding:0 50px; }
+.hero .ht { position:relative; padding:0 50px; text-align:left; }
 .hero .ck { color:var(--flame); font-weight:650; font-size:1.1em; }
 .hero h1 { margin:6px 0 8px; font-size:3.2em; line-height:1.05; color:#fff; }
 .hero p { margin:0 0 22px; font-size:1.2em; color:#eee; }
@@ -242,3 +242,19 @@
 .ptile b { position:relative; color:#fff; font-size:1.1em; }
 .ptile:focus-visible, .ptile.kf { box-shadow:0 0 0 4px var(--ember) !important; transform:scale(1.03); }
 #library.pad section h2 { font-size:1.45em !important; margin:26px 0 14px !important; }
+
+/* ---------------------------------------------------------------- people and what's in a photo */
+.face { position:relative; display:block; border-radius:50%; overflow:hidden; background:var(--panel3); flex:none; }
+.face img { position:absolute; max-width:none; object-fit:cover; }
+.people { display:flex; flex-wrap:wrap; gap:18px 26px; margin-top:16px; }
+.person { display:flex; flex-direction:column; align-items:center; gap:4px; padding:4px; border-radius:14px; }
+.person b { margin-top:6px; font-weight:600; }
+.person small { color:var(--muted); }
+.pface { border-radius:50%; padding:0; }
+.people-row { align-items:center; }
+.small { font-size:.84em; }
+.dlg .sw { display:flex; gap:12px; align-items:flex-start; margin:12px 0; }
+.dlg .sw input { width:22px; height:22px; accent-color:var(--ember); margin-top:2px; }
+.dlg .sw span { display:flex; flex-direction:column; gap:2px; }
+.dlg .sw small { color:var(--muted); }
+#ltop .ib { color:var(--muted); }
