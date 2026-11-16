@@ -103,7 +103,7 @@ Item {
             chipColor: det.now.quiet || det.quiet.some(q => q.on) || det.rules.some(r => r.on) ? "#6fe39a" : "#c9b79f"
         }
         RowLayout {
-            Layout.fillWidth: true; Layout.fillHeight: true
+            Layout.fillWidth: true; Layout.fillHeight: false   // the panels sit right under the title; the space left goes below them
             spacing: 20 * det.k
             ColumnLayout {
                 Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1/2); Layout.minimumWidth: Math.floor(det.colsW * 1/2); Layout.maximumWidth: Math.floor(det.colsW * 1/2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
@@ -199,6 +199,7 @@ Item {
                 }
             }
         }
+        Item { Layout.fillHeight: true }
         ServerKeys {
             k: det.k; back: "Back"
             keys: [["A", "Turn on or off", "enter"], ["X", "Edit", "edit"], ["Y", "Pause this rule", "pause"], ["☰", "New rule", "new"]]

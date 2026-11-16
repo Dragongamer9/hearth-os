@@ -49,7 +49,7 @@ Item {
             picked: det.sel === 0 && !det.typing
         }
         RowLayout {
-            Layout.fillWidth: true; Layout.fillHeight: true
+            Layout.fillWidth: true; Layout.fillHeight: false   // the panels sit right under the title; the space left goes below them
             spacing: 20 * det.k
             ColumnLayout {
                 Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1.2/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
@@ -131,6 +131,7 @@ Item {
                 }
             }
         }
+        Item { Layout.fillHeight: true }
         ServerKeys {
             k: det.k
             keys: [["A", "Turn on or off", "enter"], ["X", "Allow a site…", "allow"], ["Y", det.sel === 0 ? (det.v.pausedUntil ? "Block again" : "Pause for 1 hour") : "Pause this device for 1 hour", "pause"], ["☰", "Settings", "settings"]]

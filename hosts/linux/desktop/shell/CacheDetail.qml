@@ -45,7 +45,7 @@ Item {
             picked: det.sel === 0
         }
         RowLayout {
-            Layout.fillWidth: true; Layout.fillHeight: true
+            Layout.fillWidth: true; Layout.fillHeight: false   // the panels sit right under the title; the space left goes below them
             spacing: 20 * det.k
             ColumnLayout {   // left
                 Layout.fillWidth: false; Layout.preferredWidth: Math.floor(det.colsW * 1.2/2.2); Layout.minimumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.maximumWidth: Math.floor(det.colsW * 1.2/2.2); Layout.alignment: Qt.AlignTop; Layout.fillHeight: false
@@ -134,6 +134,7 @@ Item {
                 Text { visible: det.askEmpty; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Press X again to empty the cache (your devices download each game from the internet once more)."; color: "#f0c060"; font.family: Theme.font; font.pixelSize: 16 * det.k }
             }
         }
+        Item { Layout.fillHeight: true }
         ServerKeys {
             k: det.k
             keys: [["A", "Turn on or off", "enter"], ["X", "Empty the cache (asks twice)", "empty"], ["Y", "Settings", "settings"]]
