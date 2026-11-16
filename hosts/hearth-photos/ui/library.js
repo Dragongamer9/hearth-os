@@ -91,7 +91,7 @@
       if (h <= target) { out.push({ items: row, h: Math.max(80, h) }); row = []; sum = 0; }
     }
     if (row.length) out.push({ items: row, h: target, last: true });
-    return out.map(r => ({ ...r, cells: r.items.map(i => ({ i, w: ratio(i) * r.h })) }));
+    return out.map(r => ({ ...r, cells: r.items.map(i => ({ i, w: ratio(i) * r.h, h: r.h })) }));
   }
 
   // ---------------------------------------------------------------- the page
