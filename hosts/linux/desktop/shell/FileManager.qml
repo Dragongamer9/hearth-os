@@ -980,6 +980,7 @@ Scope {
     // The left menu the Windows 11 way (1.11, the owner's approved option A, docs/mockups/next-update/files-4-A-narrow.png):
     // Home, Gallery, Home server; your folders; This PC (Hearth (C:) open with Users, Program Files and Windows apps,
     // then the other drives); Network; the Linux folders folded under "Linux" (only with Show the Linux folders).
+    // 1.14: Trash pinned under Home, Gallery and Home server.
     function buildNav(list) {
         const out = [];
         const sorted = sortPlaces(list);
@@ -992,6 +993,11 @@ Scope {
             out.push({ id: "homeserver", label: "Home server", path: "", kind: "netroot", section: "start", tree: "homeserver", open: !!navOpen.homeserver });
             if (navOpen.homeserver) for (const q of devs) out.push(Object.assign({}, q, { section: "start", depth: q.child ? 2 : 1 }));
         }
+        // 1.14 (the owner): Trash pinned in the left menu, under Home, like a Recycle Bin you can always reach (its
+        // count and right-click Empty Trash come with it). Not in Open and Save windows.
+        const trash = sorted.find(q => q.kind === "trash");
+        if (!picking) out.push(Object.assign({ path: home + "/.local/share/Trash/files" }, trash || {},
+                                             { id: "trash", label: "Trash", kind: "trash", section: "start", child: false, depth: 0 }));
         // your folders (Home itself is This PC › Hearth (C:) › Users › you), then pinned ones, briefcases and games
         for (const q of sorted) if (q.section === "places" && q.id !== "home" && !q.child) out.push(Object.assign({}, q, { section: "folders" }));
         for (const q of sorted) if (q.section === "bookmarks" || q.section === "briefcases" || q.section === "games") out.push(Object.assign({}, q, { section: "folders" }));
@@ -1176,7 +1182,7 @@ Scope {
     readonly property bool writable: !!(listing && listing.writable) && found === null
     readonly property bool inTrash: !!(listing && listing.trash)
     readonly property string trashPath: {
-        const t = rawPlaces.find(p => p.kind === "trash");          // Trash isn't in the left menu (the desktop has it)
+        const t = rawPlaces.find(p => p.kind === "trash");          // Trash is pinned in the left menu (1.14)
         return t ? t.path : home + "/.local/share/Trash/files";
     }
     function extOf(e) {
