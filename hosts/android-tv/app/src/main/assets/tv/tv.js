@@ -36,7 +36,7 @@
     cleanup: { watch: true },
     inputs: { names: {}, hidden: {}, button: true, autoSwitch: true, backHome: true, startOn: 'hearth' },
     profiles: [{ id: 'p1', name: 'Me', color: 'steam', kids: false }], pin: '', pinOn: false,
-    media: { app: 'jellyfin', quality: 'original', autoQuality: true, subs: 'off', wake: true, libraries: {} },
+    media: { app: 'jellyfin', quality: 'original', autoQuality: true, subs: 'off', wake: true, tailscale: true, libraries: {} },
     link: { sendTo: true, friends: true },
     saver: { after: 10, pictures: 'media', clock: true },
     player: { frame: true, hdr: 'auto', night: false, dialog: false, out: 'tv', subSize: 'm' },

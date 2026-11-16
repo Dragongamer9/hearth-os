@@ -84,6 +84,7 @@ class MainActivity : Activity() {
     }
 
     override fun onResume() {
+        Tailscale.onStart(this)
         super.onResume()
         TvApp.app.state.merge(JSONObject().put("onInput", JSONObject.NULL))
         event(JSONObject().put("type", "resume"))
