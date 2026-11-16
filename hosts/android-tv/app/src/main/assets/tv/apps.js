@@ -28,7 +28,7 @@
       var others = A.all.filter(function (a) { return home.indexOf(a.pkg) < 0; });
       var tile = function (a, i, onHome) {
         var sel = A.sel === a.pkg;
-        return '<button class="tile" data-f data-key="' + (onHome ? 'h' : 'o') + i + '" data-act="pick" data-arg="' + E(a.pkg) + '" style="height:112px;background:' + T.tileColor(a.pkg) + ';flex-direction:column;gap:4px;padding:0 10px;text-align:center' + (sel ? ';box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--focus)' : '') + '"><span style="font-size:20px;font-weight:700">' + E(a.label) + '</span><span style="font-size:14px;color:#c3ccd4;font-weight:400">' + (onHome ? (i + 1) + ' on Home' : '') + '</span></button>';
+        return '<button class="tile" data-f data-key="' + (onHome ? 'h' : 'o') + i + '" data-act="pick" data-arg="' + E(a.pkg) + '" style="height:112px;background:' + T.tileColor(a.pkg) + ';flex-direction:column;gap:4px;padding:0 10px;text-align:center' + (sel ? ';box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--focus)' : '') + ';position:relative;overflow:hidden" aria-label="' + E(a.label) + '">' + (a.art === 'banner' && T.N ? T.tileInner(a, E(a.label)) + (onHome ? '<span class="tile-badge">' + (i + 1) + '</span>' : '') : '<span style="font-size:20px;font-weight:700">' + T.tileInner(a, E(a.label), 40) + '</span><span style="font-size:14px;color:#c3ccd4;font-weight:400">' + (onHome ? (i + 1) + ' on Home' : '') + '</span>') + '</button>';
       };
       var out = '<div class="screen">' + T.header('apps') + '<div style="flex:1;display:flex;gap:48px;padding:16px 64px 0;min-height:0">';
       out += '<section data-scrolly style="flex:1;display:flex;flex-direction:column;gap:16px;min-width:0;overflow:hidden;padding:8px;margin:-8px">';
@@ -43,7 +43,7 @@
       out += '</div><div style="height:30px;flex:none"></div></section>';
       var a = by[A.sel] || A.all[0] || { label: '', pkg: '' }, idx = home.indexOf(a.pkg);
       out += '<aside aria-label="App options" class="panel on-panel" style="width:460px;flex:none;align-self:flex-start;padding:30px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">' +
-        '<span class="tile" style="width:120px;height:68px;background:' + T.tileColor(a.pkg) + ';font-size:15px">' + E(a.label) + '</span>' +
+        '<span class="tile" style="width:120px;height:68px;background:' + T.tileColor(a.pkg) + ';font-size:15px;position:relative;overflow:hidden">' + T.tileInner(a, E(a.label), 30) + '</span>' +
         '<span style="font-size:30px;font-weight:700;padding-top:4px">' + E(a.label) + '</span><span class="muted" style="font-size:17px;padding-bottom:8px">Installed app' + (a.version ? ' · version ' + E(a.version) : '') + '</span>' +
         '<button class="btn small primary" style="height:58px" data-f data-key="aOpen" data-act="open">Open</button>' +
         '<button class="btn small" data-f data-key="aHome" data-act="toggleHome">' + (idx >= 0 ? 'Remove from Home' : 'Add to Home') + '</button>' +

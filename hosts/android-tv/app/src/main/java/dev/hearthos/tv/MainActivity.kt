@@ -30,7 +30,8 @@ class MainActivity : Activity() {
         current = WeakReference(this)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
+        val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/appicon/", AppIcons.Handler(this)).build()
         web = WebView(this)
         web.setBackgroundColor(0xFF171A21.toInt())
         web.isFocusable = true

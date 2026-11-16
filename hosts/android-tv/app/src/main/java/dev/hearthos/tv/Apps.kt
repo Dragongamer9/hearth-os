@@ -22,7 +22,7 @@ object Apps {
                 if (pkg == ctx.packageName || seen.containsKey(pkg)) continue
                 val ver = try { pm.getPackageInfo(pkg, 0).versionName ?: "" } catch (_: Exception) { "" }
                 seen[pkg] = JSONObject().put("pkg", pkg).put("label", ri.loadLabel(pm).toString()).put("version", ver)
-                    .put("tv", cat == Intent.CATEGORY_LEANBACK_LAUNCHER)
+                    .put("tv", cat == Intent.CATEGORY_LEANBACK_LAUNCHER).put("art", AppIcons.kind(ctx, pkg))
             }
         }
         return JSONArray(seen.values.sortedBy { it.optString("label").lowercase() })
