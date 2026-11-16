@@ -21,9 +21,9 @@ when it sees a controller being used (and back when the mouse or keyboard is use
 
 ## A: a page (settings-A2, System › Display)
 - [x] the page's path as its title (System › Display) — hosts/linux/desktop/shell/SettingsFrame.qml: "Reg.crumbs(entry.id)"
-- [ ] the displays drawn as you have them (1, 2), with the main one's name, resolution, refresh, HDR and graphics card, Identify, Detect, Arrange (drawn, Identify, Detect, Arrange done: SetDisplay.qml "id: scrPic"; still open: HDR is only shown as "HDR off", there is no HDR switch yet)
-- [ ] sections with headings (Brightness & colour, Scale & layout, Related), each setting a row with its icon, name, line under it and its control (switch or choices) (Brightness & colour and Scale & layout done, Resolution now a choice like the mockup; still open: the HDR row and the Related section)
-- [ ] Related links to other pages (Game Mode's resolution and frame limit) (open: Mantel has no page for Game Mode's resolution and frame limit yet; it needs one first)
+- [x] the displays drawn as you have them (1, 2), with the main one's name, resolution, refresh, HDR and graphics card, Identify, Detect, Arrange — hosts/linux/desktop/shell/SetDisplay.qml: "page.gmode && page.gmode.hdr ? \"HDR on in Game Mode\" : \"HDR off\""
+- [x] sections with headings (Brightness & colour, Scale & layout, Related), each setting a row with its icon, name, line under it and its control (switch or choices) — hosts/linux/desktop/shell/SetDisplay.qml: "SetHeader { text: \"Related\" }"
+- [x] Related links to other pages (Game Mode's resolution and frame limit) — hosts/linux/desktop/shell/SetDisplay.qml: "onActivated: SettingsNav.openPage(\"gameperf\")"
 - [x] X Keep these settings on a display change (and the old one back by itself if not kept) — hosts/linux/desktop/shell/SetDisplay.qml: "countdown > 0 ? \"Keep these settings\" : \"\""
 
 ## B: Quick (settings-B1)

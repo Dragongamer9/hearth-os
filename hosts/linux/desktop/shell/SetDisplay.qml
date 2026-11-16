@@ -30,7 +30,11 @@ SetPage {
     }
     readonly property var rates: out && cur ? out.modes.filter(m => m.width === cur.width && m.height === cur.height).map(m => Math.round(m.refresh)).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => b - a) : []
 
-    function load() { randr.running = true; bright.running = true; }
+    function load() { randr.running = true; bright.running = true; gm.run(["get"], r => { page.gmode = r; }, () => {}); }
+    // Game Mode's HDR (gamescope's --hdr-enabled, the same switch as Gaming › Performance): hearth-gamemode-display.
+    property var gmode: null
+    SetJob { id: gm; helper: "hearth-gamemode-display" }
+    readonly property bool hdrOk: !!gmode && !!gmode.screen && gmode.screen.hdr && gmode.has.hdr
     Component.onCompleted: load()
     Process {
         id: randr
@@ -266,7 +270,7 @@ SetPage {
             }
             Text {
                 Layout.fillWidth: true
-                text: page.cur ? [page.cur.width + " × " + page.cur.height, Math.round(page.cur.refresh) + " Hz", "HDR off", page.gpuName ? "connected to the " + page.gpuName : ""].filter(x => x).join(" · ") : (page.out && !page.out.enabled ? "Off" : "")
+                text: page.cur ? [page.cur.width + " × " + page.cur.height, Math.round(page.cur.refresh) + " Hz", page.gmode && page.gmode.hdr ? "HDR on in Game Mode" : "HDR off", page.gpuName ? "connected to the " + page.gpuName : ""].filter(x => x).join(" · ") : (page.out && !page.out.enabled ? "Off" : "")
                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -296,6 +300,14 @@ SetPage {
     }
     // Night light lives here now (it was in Appearance): the same setting (Settings.nightLight), and Quick Access's tile.
     SetSwitch { icon: "moon"; title: "Night light"; sub: "Warmer colours from sunset to sunrise, to help you sleep"; checked: Settings.nightLight; onToggled: v => Settings.nightLight = v }
+    SetSwitch {
+        icon: "sparkle"; title: "HDR"
+        sub: !page.gmode ? "" : !page.gmode.screen.hdr ? "This screen doesn't have HDR" : !page.gmode.has.hdr ? "This PC's gamescope can't do HDR"
+            : "Brighter, more vivid picture in games and videos that have it" + (page.gmode.hdr ? " · in Game Mode" : "")
+        enabled: page.hdrOk
+        checked: !!page.gmode && page.gmode.hdr
+        onToggled: v => gm.run(["set", JSON.stringify({ hdr: v })], r => { page.gmode = r; SettingsNav.toast((v ? "HDR on" : "HDR off") + " · from the next time Game Mode starts"); }, e => SettingsNav.toast(e))
+    }
 
     SetHeader { text: "Scale & layout"; visible: !!page.out }
     SetChoice {
@@ -378,6 +390,12 @@ SetPage {
     FileView { id: nvRead; path: page.nvFile; onLoaded: page.nvDrawing = (text().trim() || "auto"); onLoadFailed: page.nvDrawing = "auto" }
     Process { id: nvProbe; command: ["test", "-d", "/sys/module/nvidia"]; running: true; onExited: code => page.hasNvidia = code === 0 }
     property bool hasNvidia: false
+    SetHeader { text: "Related" }
+    SetRow {
+        icon: "pad"; chevron: true
+        title: "Game Mode's resolution and frame limit"; sub: "Gaming › Performance"
+        onActivated: SettingsNav.openPage("gameperf")
+    }
     SetHeader { text: "Advanced"; visible: page.hasNvidia }
     SetChoice {
         visible: page.hasNvidia
