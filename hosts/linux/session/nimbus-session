@@ -395,6 +395,12 @@ steam_notice_other() { return 0; }
 run_desktop() {
   log "desktop mode"
   end_stopped_games || true
+  # 1.14 (faster switching): Steam's program files read into memory half a minute in, once per sign-in, so the
+  # switch to Game Mode starts Steam from memory (hearth-steam-warm: lowest priority, only with 3 GB free).
+  if [ -z "$HEARTH_SEAT" ] && [ ! -e "$RUN/hearth-steam-warm" ] && [ -f "$SHARE/desktop/shell/hearth-steam-warm" ]; then
+    : >"$RUN/hearth-steam-warm"
+    ( sleep 30; nice -n 19 ionice -c 3 python3 "$SHARE/desktop/shell/hearth-steam-warm" >>"$LOG" 2>&1 ) >/dev/null 2>&1 &
+  fi
   # 1.13: KDE Plasma or GNOME when picked and its add-on is here (merged by systemd-sysext); Mantel otherwise, and
   # whenever it didn't come up (no desktop within 60 s, or it crashed straight away): for the rest of this sign-in.
   # Twice in a row → Mantel until it starts again from Settings, and Settings says why. The pick stays saved.
@@ -617,14 +623,33 @@ switch_watch() {
   SWITCH_WATCH=$!
 }
 
+# 1.14 (faster switching): going to Desktop Mode or Server mode, nothing there needs Steam gone first, so Steam
+# closes in the background while the desktop starts (up to 4 s saved). Only the Steam that was running at the
+# switch is closed (by its process ids), so a Steam you open right away on the desktop is left alone. Going to
+# Game Mode it still waits, as before: the new Game Mode starts its own Steam.
+steam_close_now() {
+  timeout 4 steam -shutdown >/dev/null 2>&1 &
+  i=0; while [ $i -lt 10 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
+  pkill -TERM -u "$(id -u)" -x steam 2>/dev/null; pkill -TERM -u "$(id -u)" -f steamwebhelper 2>/dev/null
+  i=0; while [ $i -lt 6 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
+  pkill -KILL -u "$(id -u)" -x steam 2>/dev/null; pkill -KILL -u "$(id -u)" -f steamwebhelper 2>/dev/null
+}
+steam_close_behind() {
+  pids="$(pgrep -u "$(id -u)" -x steam 2>/dev/null) $(pgrep -u "$(id -u)" -f steamwebhelper 2>/dev/null)"
+  (
+    timeout 4 steam -shutdown >/dev/null 2>&1
+    i=0; while [ $i -lt 10 ] && kill -0 $pids 2>/dev/null; do sleep 0.25; i=$((i+1)); done
+    kill -TERM $pids 2>/dev/null
+    i=0; while [ $i -lt 6 ] && kill -0 $pids 2>/dev/null; do sleep 0.25; i=$((i+1)); done
+    kill -KILL $pids 2>/dev/null
+  ) >/dev/null 2>&1 &
+}
 settle() {
   if pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; then
-    log "closing Steam left from $1 mode"
-    timeout 4 steam -shutdown >/dev/null 2>&1 &
-    i=0; while [ $i -lt 10 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
-    pkill -TERM -u "$(id -u)" -x steam 2>/dev/null; pkill -TERM -u "$(id -u)" -f steamwebhelper 2>/dev/null
-    i=0; while [ $i -lt 6 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
-    pkill -KILL -u "$(id -u)" -x steam 2>/dev/null; pkill -KILL -u "$(id -u)" -f steamwebhelper 2>/dev/null
+    case "${2:-}" in
+      desktop|server) log "closing Steam left from $1 mode (in the background)"; steam_close_behind ;;
+      *) log "closing Steam left from $1 mode"; steam_close_now ;;
+    esac
   fi
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
@@ -1546,7 +1571,7 @@ while :; do
   case "$next" in
     game|desktop|steam|server|hearth)
       to="$next"; [ -z "$HEARTH_SEAT" ] && to="$(resolve_mode "$next")"
-      log "switching to $to"; settle "$mode"; log "starting $to mode"; mode="$to" ;;
+      log "switching to $to"; settle "$mode" "$to"; log "starting $to mode"; mode="$to" ;;
     *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;
   esac
 done
