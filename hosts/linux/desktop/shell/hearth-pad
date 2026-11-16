@@ -123,7 +123,7 @@ for _plain, _shifted in OSK_SHIFTED.items():
 
 ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
 # Hearth Settings' own shortcuts (SettingsFrame.qml): Y search, LB / RB previous / next category, ☰ close.
-SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
+SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'x': ('KEY_LEFTCTRL', 'KEY_D'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
                  'menu': ('KEY_LEFTCTRL', 'KEY_W')}
 # Hearth windows whose tabs LB / RB switch with Ctrl+Page Up / Down (their own shortcuts).
 TAB_WINDOWS = ('Resource Monitor',)
@@ -528,6 +528,10 @@ class Pad:
         if down:
             self.held[name] = now
             self.last_input = now
+            # 1.14: Settings shows its controller look while the controller is what you use (at most once a second).
+            if now - getattr(self, 'used_sent', 0) >= 1.0:
+                self.used_sent = now
+                emit({'type': 'used'})
         else:
             self.held.pop(name, None)
 
@@ -647,7 +651,8 @@ class Pad:
             self.tap('KEY_LEFTCTRL', 'KEY_PAGEDOWN' if name == 'rb' else 'KEY_PAGEUP')
             return
         if self.settings_front() and name in SETTINGS_KEYS:
-            # Hearth Settings: Y searches, LB / RB go to the previous / next category, ☰ closes it (its own shortcuts).
+            # Hearth Settings: Y searches, X does the page's X (Default, Pin to Quick, Keep these settings), LB / RB go to the
+            # previous / next category, ☰ closes it (its own shortcuts).
             self.tap(*SETTINGS_KEYS[name])
             if name == 'y':
                 self.want_osk()               # the keyboard to type the search with

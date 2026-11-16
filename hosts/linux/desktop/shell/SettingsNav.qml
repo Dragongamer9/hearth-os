@@ -47,4 +47,11 @@ Singleton {
         toNav();
     }
     function toast(t) { if (help) help.toast(t); }
+    // 1.14, the new Settings: "pad" while the controller was used last (its look, B), "mouse" while the mouse,
+    // touch or keyboard was (A). hearth-pad says when a controller button is pressed; the pointer moving counts only
+    // when no controller button was pressed in the last 1.5 s (the controller's pointer mode moves it too).
+    property string input: "mouse"
+    property double padAt: 0
+    function padUsed() { padAt = Date.now(); if (input !== "pad") input = "pad"; }
+    function pointerUsed() { if (input !== "mouse" && Date.now() - padAt > 1500) input = "mouse"; }
 }

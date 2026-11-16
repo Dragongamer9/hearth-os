@@ -9,6 +9,7 @@
 // The pages, their categories and the search are one registry: settings-pages.js (adding a page is one entry there).
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import "settings-pages.js" as Reg
@@ -67,18 +68,45 @@ Scope {
             Component.onCompleted: if (app.page === "") app.page = "home"
 
             // The frame, loaded by file name: if it fails, the plain list instead (Settings always opens).
+            // 1.14: the controller look (SettingsFrameB.qml) while a controller is what you use, the keyboard-and-mouse
+            // look (SettingsFrame.qml) otherwise, switching live: the page stays open and the setting you were on stays
+            // picked. If the controller look can't load, the other one stays.
             Loader {
                 id: frameLoader
                 anchors.fill: parent
                 property bool fellBack: false
-                Component.onCompleted: setSource(Qt.resolvedUrl("SettingsFrame.qml"), { app: app })
+                property bool bFailed: false
+                property string want: SettingsNav.input === "pad" && !bFailed ? "SettingsFrameB.qml" : "SettingsFrame.qml"
+                property string keep: ""
+                function focusedTitle() {
+                    for (let it = frameLoader.Window.activeFocusItem; it; it = it.parent)
+                        if (it.title !== undefined && typeof it.title === "string" && it.title !== "" && it.activated !== undefined) return it.title;
+                    return "";
+                }
+                Component.onCompleted: setSource(Qt.resolvedUrl(want), { app: app })
+                onWantChanged: {
+                    if (fellBack) return;
+                    keep = focusedTitle();
+                    setSource(Qt.resolvedUrl(want), { app: app });
+                }
                 onStatusChanged: {
+                    if (status === Loader.Ready && keep !== "" && item && item.restoreFocus) { item.restoreFocus(keep); keep = ""; }
+                    if (status === Loader.Error && want === "SettingsFrameB.qml" && !bFailed) {
+                        bFailed = true;
+                        console.warn("Hearth Settings: the controller look didn't load; using the keyboard-and-mouse look");
+                        return;
+                    }
                     if (status === Loader.Error && !fellBack) {
                         fellBack = true;
                         console.warn("Hearth Settings: the new frame didn't load; using the plain list of pages");
                         setSource(Qt.resolvedUrl("SettingsSimple.qml"), { app: app });
                     }
                 }
+                // Typing on a real keyboard (a key nothing in the page took, with no controller button just before).
+                Keys.onPressed: e => { if (Date.now() - SettingsNav.padAt > 3000) SettingsNav.input = "mouse"; e.accepted = false; }
+                // The mouse or touch: back to the keyboard-and-mouse look (not while the controller moves the pointer).
+                HoverHandler { onPointChanged: SettingsNav.pointerUsed() }
+                TapHandler { onTapped: SettingsNav.pointerUsed() }
             }
         }
     }

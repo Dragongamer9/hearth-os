@@ -29,6 +29,8 @@ var CATEGORIES = [
 var PAGES = [
     // ---- Home
     { id: "home", file: "SetHome.qml", cat: "home", label: "Home", icon: "home", words: "device name rename status recommended start", landing: true },
+    { id: "quick", file: "SetQuick.qml", cat: "home", parent: "home", label: "Quick", icon: "bolt", desc: "Big tiles for the settings you change most; X picks which", words: "quick tiles pin brightness volume wifi" },
+    { id: "changes", file: "SetChangesPage.qml", cat: "home", parent: "home", label: "All changes", icon: "undo", desc: "What was changed in Settings, with Undo", words: "history undo changed lately recent" },
 
     // ---- System
     { id: "system", file: "SetCategory.qml", cat: "system", label: "System", icon: "display", landing: true },
@@ -123,6 +125,41 @@ var PAGES = [
 ];
 
 // Cards that open a page whose one real home is in another category (settings that show up in two places on purpose).
+// 1.14, the new Settings: the controller look's tabs (SettingsFrameB.qml, mockups settings-B1/B2), LB / RB between
+// them. Each tab holds whole categories, so every page is in one tab: Quick is its own page.
+var TABS = [
+    { id: "quick", label: "Quick", cats: [] },
+    { id: "system", label: "System", cats: ["system", "home", "apps", "updates", "a11y"] },
+    { id: "network", label: "Network", cats: ["net"] },
+    { id: "devices", label: "Devices", cats: ["bt", "link"] },
+    { id: "gaming", label: "Gaming", cats: ["gaming"] },
+    { id: "look", label: "Look", cats: ["pers"] },
+    { id: "accounts", label: "Accounts", cats: ["accounts", "privacy"] },
+    { id: "server", label: "Server", cats: ["hs"] }
+];
+function tabOf(pageId) {
+    if (pageId === "quick") return "quick";
+    var p = page(pageId);
+    for (var i = 0; i < TABS.length; i++) if (p && TABS[i].cats.indexOf(p.cat) >= 0) return TABS[i].id;
+    return "quick";
+}
+// A tab's pages for its list on the left: each category's own page first (when it isn't just the category's list of
+// cards), then its pages. Subpages open from their page, as in the other look.
+function tabPages(tabId, live) {
+    var t = null;
+    for (var i = 0; i < TABS.length; i++) if (TABS[i].id === tabId) t = TABS[i];
+    if (!t) return [];
+    var out = [];
+    for (var j = 0; j < t.cats.length; j++) {
+        var c = category(t.cats[j]);
+        var land = c ? page(c.landing) : null;
+        if (land && land.file !== "SetCategory.qml" && out.indexOf(land) < 0) out.push(land);
+        var subs = pagesIn(t.cats[j], live);
+        for (var k = 0; k < subs.length; k++) if (out.indexOf(subs[k]) < 0) out.push(subs[k]);
+    }
+    return out;
+}
+
 var LINKS = {
     net: [],
     hs: [{ page: "hs-tailscale", desc: "Lives in Network & internet now" }],

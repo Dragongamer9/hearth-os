@@ -107,7 +107,7 @@ Singleton {
         o[k] = root[k];
         writer.merge(o);
     }
-    SettingsWriter { id: writer; path: file.path }
+    SettingsWriter { id: writer; path: file.path; history: true }
 
     FileView {
         id: file
