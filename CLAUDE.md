@@ -35,6 +35,11 @@ in `docs/archive/`). The owner is Dragongamer9.
    checklist (`docs/mockups/checklists/*.md`: `- [x] part — file: "proof"` or `- [ ] part`, with `Release: X`). A
    roadmap item for it is ticked only when its checklist is complete, and names the checklist. Before a release, open
    each page next to its mockup. `hosts/linux/test/test_mockups.py` fails a release whose mockups have open parts.
+12. **RED FLAG: Nothing made lives only in the session.** Everything made outside this repo (videos and their sources,
+   mockup sources, renders, research, notes) is pushed to the private repo `Dragongamer9/hearth-workspace` as it's
+   made, with a daily work log there (`log/YYYY-MM-DD.md`: what was made or changed, what the owner decided, where it
+   is, what's waiting), and that repo is kept organized by its own rules (its CLAUDE.md; `tools/check.py` passes before
+   every push). A reset once lost the older videos and their style.
 
 ## Branches and releasing
 
