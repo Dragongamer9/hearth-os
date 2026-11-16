@@ -260,7 +260,7 @@ Item {
                 Hint { keys: ["A"]; label: "Select" }
                 Hint { keys: ["B"]; label: "Back" }
                 Hint { keys: ["Y"]; label: "Search" }
-                Hint { keys: ["X"]; label: frame.xLabel; MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.xAction() } }
+                Hint { keys: ["X"]; label: frame.xLabel; clickable: true; onClicked: frame.xAction() }
                 Item { Layout.fillWidth: true }
                 Hint { keys: ["LB", "RB"]; square: true; label: "Previous / next category" }
                 Hint { keys: ["☰"]; square: true; label: "Close" }
@@ -376,11 +376,18 @@ Item {
         color: "transparent"; border.width: 1.5; border.color: Theme.muted
         Text { id: kt; anchors.centerIn: parent; color: Theme.text; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.Bold }
     }
-    component Hint: Row {
+    component Hint: Item {
         id: hint
         property var keys: []
         property string label
         property bool square: false
+        property bool clickable: false
+        signal clicked()
+        implicitWidth: hintRow.implicitWidth
+        implicitHeight: 28
+        MouseArea { anchors.fill: parent; enabled: hint.clickable; cursorShape: Qt.PointingHandCursor; onClicked: hint.clicked() }
+        Row {
+        id: hintRow
         spacing: 8
         Repeater {
             model: hint.keys
@@ -393,5 +400,6 @@ Item {
             }
         }
         Text { height: 28; verticalAlignment: Text.AlignVCenter; text: hint.label; color: Theme.muted; font.family: Theme.font; font.pixelSize: 17 }
+        }
     }
 }
