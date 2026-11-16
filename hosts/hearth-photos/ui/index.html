@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Photos</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="library.css">
 </head>
 <body>
 <div id="app" class="chrome">
@@ -16,25 +17,27 @@
   </div>
 
   <header id="top">
+    <button class="ib" data-f data-act="library" id="backBtn" title="Back to your photos (Esc)"><svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
     <div class="title"><b id="name">Photos</b><span id="sub"></span></div>
     <span class="sp"></span>
     <div class="tools" id="tools">
-      <button class="ib" data-f data-act="zoomOut" title="Zoom out (−)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>
-      <button class="ib zoomtxt" data-f data-act="zoomCycle" title="Fit, 100%, fill (0, 1)" id="zoomLabel">Fit</button>
-      <button class="ib" data-f data-act="zoomIn" title="Zoom in (+)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
-      <i class="gap"></i>
-      <button class="ib" data-f data-act="rotateLeft" title="Turn left (Shift+R)"><svg viewBox="0 0 24 24"><path d="M4 4v5h5"/><path d="M4.6 9A8 8 0 1 1 6 17.7"/></svg></button>
-      <button class="ib" data-f data-act="rotateRight" title="Turn right (R)"><svg viewBox="0 0 24 24"><path d="M20 4v5h-5"/><path d="M19.4 9A8 8 0 1 0 18 17.7"/></svg></button>
-      <button class="ib" data-f data-act="flipH" title="Mirror (H; V flips top to bottom)"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M8 7 3 17h5zM16 7l5 10h-5z"/></svg></button>
-      <i class="gap"></i>
-      <button class="ib" data-f data-act="edit" title="Edit (E)"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button>
-      <button class="ib" data-f data-act="info" title="Info (I)" id="infoBtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
-      <button class="ib" data-f data-act="slideshow" title="Slideshow (F5)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg></button>
-      <button class="ib" data-f data-act="fullscreen" title="Full screen (F11)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
-      <button class="ib" data-f data-act="trash" title="Move to the Trash (Delete)"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+      <button class="btn" data-f data-act="favorite" id="favBtn" title="Favorite (F)"><span class="heart">♥</span> Favorite</button>
+      <button class="btn primary" data-f data-act="edit" title="Edit (E)">Edit</button>
+      <button class="btn" data-f data-act="share" id="shareBtn" title="Share">Share</button>
+      <button class="btn" data-f data-act="addAlbum" title="Add to album">Add to album</button>
+      <button class="btn" data-f data-act="wallpaper" title="Set as wallpaper">Set as wallpaper</button>
+      <button class="btn" data-f data-act="info" id="infoBtn" title="Info (I)">Info</button>
+      <button class="btn" data-f data-act="trash" title="Move to the Trash (Delete)">Trash</button>
       <button class="ib" data-f data-act="more" title="More (Y)" id="moreBtn"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
     </div>
   </header>
+
+  <div id="viewbar">
+    <button class="vb" data-f data-act="zoomFit" id="zoomFit">Fit</button>
+    <button class="vb" data-f data-act="zoomActual" id="zoomLabel">100 %</button>
+    <button class="vb" data-f data-act="rotateRight" title="Turn right (R; Shift+R turns left)">Turn</button>
+    <button class="vb" data-f data-act="fullscreen" title="Full screen (F11)">Full screen</button>
+  </div>
 
   <div id="turnbar" hidden>
     <span id="turnText">Turned</span>
@@ -46,8 +49,8 @@
   <button class="nav next" data-act="next" title="Next (→)" tabindex="-1"><svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
 
   <aside id="info" hidden>
-    <div class="ihead"><h2>Info</h2><button class="ib" data-f data-act="info" title="Close (I)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div id="infoBody" class="scroll"></div>
+    <div id="infoFoot"></div>
   </aside>
 
   <div id="strip"><div id="stripInner"></div></div>
@@ -85,5 +88,6 @@
 <script src="hearth-gamepad.js"></script>
 <script src="app.js"></script>
 <script src="edit.js"></script>
+<script src="library.js"></script>
 </body>
 </html>

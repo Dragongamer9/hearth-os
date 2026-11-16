@@ -6,7 +6,7 @@
 // Hearth's look (Settings › Appearance), shared by Hearth's apps.
 #[path = "../../hearth-apptheme/apptheme.rs"]
 mod apptheme;
-use hearth_photos::{folder, formats, imaging, info, save, system};
+use hearth_photos::{folder, formats, imaging, info, library, save, system};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tauri::http::{header, Response, StatusCode};
@@ -84,6 +84,44 @@ fn pick(app: tauri::AppHandle, from: Option<String>) -> Option<String> {
     let mut d = app.dialog().file().set_title("Open a picture").add_filter("Pictures", formats::PICTURES);
     if let Some(dir) = from.map(PathBuf::from).and_then(|p| if p.is_dir() { Some(p) } else { p.parent().map(Path::to_path_buf) }) { d = d.set_directory(dir); }
     d.blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
+}
+
+// ------------------------------------------------------------------ the library (1.14)
+
+/// What the library had last time (instant), your choices, and the phone box's numbers.
+#[tauri::command(async)]
+fn library_cached() -> Value {
+    let items = library::cached();
+    json!({"summary": library::summary(&items), "items": items, "store": library::store_read()})
+}
+
+/// Looks through every folder again (new and changed files are read); newest first.
+#[tauri::command(async)]
+fn library_scan() -> Value {
+    let items = library::scan();
+    json!({"summary": library::summary(&items), "items": items, "store": library::store_read()})
+}
+
+/// One change you made (favorite, albums, folders): saved with the settings helper; the whole store comes back.
+#[tauri::command(async)]
+fn library_change(change: Value) -> Result<Value, String> { library::change(&change) }
+
+#[tauri::command(async)]
+fn library_trash() -> Vec<library::Item> { library::trash_items() }
+
+/// A video opens in the system's video player (Hearth Player).
+#[tauri::command(async)]
+fn open_video(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.is_file() || !library::is_video(p) { return Err("That video isn't there any more".into()); }
+    let player = if system::which("hearth-player") { "hearth-player" } else { "xdg-open" };
+    std::process::Command::new(player).arg(p).spawn().map(|_| ()).map_err(|e| format!("Couldn't open the video: {e}"))
+}
+
+/// Import: pick a folder to add to the library.
+#[tauri::command(async)]
+fn pick_folder(app: tauri::AppHandle) -> Option<String> {
+    app.dialog().file().set_title("Add a folder to Photos").blocking_pick_folder().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -173,6 +211,7 @@ Usage: hearth-photos [options] [PICTURE or FOLDER]
   --slideshow      start a slideshow of the folder
   --info PICTURE   print what Photos knows about a picture (JSON) and quit
   --thumb PICTURE OUT.png   write a thumbnail and quit (for checking)
+  --scan           look through the library's folders, print a summary (JSON) and quit
   --version, --help
 ";
 
@@ -194,6 +233,13 @@ fn main() {
             Err(e) => { eprintln!("{e}"); std::process::exit(1); }
         }
     }
+    if args.iter().any(|a| a == "--scan") {
+        let items = library::scan();
+        let mut kinds = std::collections::BTreeMap::new();
+        for i in &items { *kinds.entry(i.kind.clone()).or_insert(0u32) += 1; }
+        println!("{}", serde_json::to_string_pretty(&json!({"summary": library::summary(&items), "kinds": kinds, "first": items.iter().take(5).collect::<Vec<_>>()})).unwrap_or_default());
+        return;
+    }
     let start_fullscreen = args.iter().any(|a| a == "--fullscreen");
     let slideshow = args.iter().any(|a| a == "--slideshow");
     let target = args.iter().find(|a| !a.starts_with("--")).map(|a| {
@@ -213,7 +259,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             init, list, file_info, save_turn, save_edit, read_bytes, trash, untrash, copy_image, set_wallpaper,
-            show_in_folder, pick, set_title, fullscreen, print, log, quit
+            show_in_folder, pick, set_title, library_cached, library_scan, library_change, pick_folder, library_trash, open_video, fullscreen, print, log, quit
         ])
         .setup(move |app| {
             let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
