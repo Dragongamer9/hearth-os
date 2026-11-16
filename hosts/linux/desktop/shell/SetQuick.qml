@@ -67,7 +67,7 @@ SetPage {
                 if (s) { const f = s[1].split(":"); const sig = Number(f[f.length - 1]); f.pop(); page.ssid = f.join(":") + (sig >= 70 ? " · strong" : sig >= 40 ? " · good" : sig > 0 ? " · weak" : ""); } else page.ssid = "";
                 page.wifiOn = !/^radio=disabled/m.test(text);
                 page.btOn = /^bt=on$/m.test(text);
-                const devs = [...text.matchAll(/^dev=(.*)$/mg)].map(m => m[1].trim());
+                const devs = text.split("\n").filter(l => l.indexOf("dev=") === 0).map(l => l.slice(4).trim());
                 page.btText = !page.btOn ? "Off" : devs.length ? devs.slice(0, 2).join(", ") + (devs.length > 2 ? " +" + (devs.length - 2) : "") : "On · nothing connected";
                 const b = /^bl=(.*)$/m.exec(text);
                 const f = b ? b[1].split(",") : [];
