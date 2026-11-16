@@ -132,6 +132,9 @@ PanelWindow {
             }
         }
     }
+    // 1.14: "still drawing" every 10 s (the owner, Nov 16: after a restart Server mode showed only the pointer). The
+    // dashboard's watcher (server/labwc/autostart) restarts a dashboard that stops saying it.
+    Timer { interval: 10000; repeat: true; running: true; triggeredOnStart: true; onTriggered: Quickshell.execDetached(["touch", dash.run + "/hearth-server-dash-alive"]) }
     function say(t) { toast = t; toastTimer.restart(); }
     Timer { id: toastTimer; interval: 4500; onTriggered: dash.toast = "" }
 

@@ -1938,7 +1938,7 @@ jobs:
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
           for i in $(seq 1 40); do [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ] && break; sleep 1; done
           if [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ]; then echo "::notice title=Server mode::the dashboard said it's up after ${i}s (the session waits for this)"
-          else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$XDG_RUNTIME_DIR/hearth-server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
+          else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$HOME/.local/share/nimbus/server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
           sleep 6
           ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
           # If the dashboard doesn't answer, where it's stuck (its threads' stacks, for finding what hangs)
@@ -1947,7 +1947,7 @@ jobs:
             if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
               touch /tmp/server-stuck shots/FAILED
               pkill -INT -x quickshell || true; sleep 25
-              grep -E '^Thread|^#' "$XDG_RUNTIME_DIR/hearth-server-dash.log" > shots/server-mode/stuck-stacks.txt || true
+              grep -E '^Thread|^#' "$HOME/.local/share/nimbus/server-dash.log" > shots/server-mode/stuck-stacks.txt || true
               echo "::error title=Server mode stuck ($1)::$(awk '/^Thread 1 /{f=1} f' shots/server-mode/stuck-stacks.txt | grep -oE ' in [^ ]+' | head -40 | tr '\n' ' ')"
             fi
           }
@@ -2053,7 +2053,7 @@ jobs:
           timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 6); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/07b-settings-schedule.png || true
           ipc settings close; ipc settings page gaming; sleep 3; timeout 15 grim shots/server-mode/08-gaming-start-in.png || true
           ipc settings close
-          cp "$XDG_RUNTIME_DIR/hearth-server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
+          cp "$HOME/.local/share/nimbus/server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
           sbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load|Unable to assign" shots/server-mode/dashboard.log 2>/dev/null | grep -viE "uinput|evdev|DBus|hearth-pad" | head -10 | cut -c1-220 | tr '\n' '|' || true)
           [ -z "$sbad" ] || { echo "::error title=Server mode dashboard::$sbad"; touch shots/FAILED; }
           pkill -x labwc || true; pkill -f quickshell || true
