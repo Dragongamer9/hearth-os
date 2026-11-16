@@ -126,7 +126,7 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
   await ev("hearthTV.set('saver', {after:10, pictures:'wallpapers', clock:true}); hearthTV.go('screensaver')"); await shot('9-screensaver', 1500);
   await ev("hearthTV.back(); hearthTV.set('look','hearth'); hearthTV.applyLook(); hearthTV.go('home')"); await shot('looks-hearth-warm', 1500);
   await ev("hearthTV.set('look','gaming'); hearthTV.set('sub','inferno'); hearthTV.applyLook(); hearthTV.render()"); await shot('looks-gaming-inferno', 900);
-  await ev("hearthTV.set('look','steam'); hearthTV.set('sub',''); hearthTV.applyLook(); hearthTV.go('player'); hearthTV.player.item={id:'mov1',kind:'movie',title:'Sintel',mins:15,pct:0,year:2010,tags:['4K']};hearthTV.render()"); await shot('player', 1200);
+  await ev("hearthTV.set('look','steam'); hearthTV.set('sub',''); hearthTV.applyLook(); hearthTV.play({id:'mov1',kind:'movie',title:'Sintel',mins:15,pct:0,year:2010,tags:['4K']})"); await shot('player', 1200);
 
   await browser.close(); server.close();
   if (errors.length) { console.log('::error title=Hearth TV page::' + errors.slice(0, 15).join(' | ').slice(0, 3900)); process.exit(1); }
