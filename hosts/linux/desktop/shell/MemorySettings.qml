@@ -16,7 +16,8 @@ Item {
     property string note: ""
     property bool noteBad: false
     property bool busy: false
-    property string pendingSwap: ""       // a swap-file size to make after the settings are saved
+    property string pendingSwap: ""
+    property bool swapCustom: false       // Custom picked for the swap file's size (a size not in the list shows its slider)       // a swap-file size to make after the settings are saved
     implicitHeight: col.implicitHeight
     readonly property real gib: 1073741824
     readonly property var cur: st ? st.settings : null
@@ -58,7 +59,10 @@ Item {
                 try { r = JSON.parse(last); } catch (e) {}
                 const notes = (r.notes || []).join(" · ");
                 if (act.then) { const t = act.then; act.then = null; t(r); return; }
-                ms.say((r.tried ? "Tried until the next restart" : "Saved ✓") + (notes ? " · " + notes : ""), false);
+                // 1.14: a value one of your own files sets isn't in use, so it isn't "Saved ✓" for that part
+                const blocked = (r.notes || []).some(n => n.indexOf("yours wins") >= 0);
+                if (r.handedOver) ms.say(r.handedOver.length ? "Your settings are in use now ✓ · kept as " + r.handedOver.map(h => h.bak).join(", ") : "Nothing was in the way ✓", false);
+                else ms.say((r.tried ? "Tried until the next restart" : blocked ? "Saved, but not all in use" : "Saved ✓") + (notes ? " · " + notes : ""), blocked);
                 ms.refresh();
             }
         }
@@ -79,7 +83,7 @@ Item {
     function save(tryOnly) {
         const c = changes();
         const sw = draft.swapGb !== undefined && st && draft.swapGb !== st.swapfile.gb ? String(draft.swapGb) : "";
-        draft = ({});
+        draft = ({}); swapCustom = false;
         const doSet = () => {
             if (Object.keys(c).length) run(["set"].concat(tryOnly ? ["--try"] : []).concat([JSON.stringify(c)]));
             else { say("Saved ✓", false); refresh(); }
@@ -290,7 +294,8 @@ Item {
                         onChose: v => {
                             if (v !== "custom") { ms.putKeep(v); return; }
                             const d = JSON.parse(JSON.stringify(ms.draft));
-                            d.keep = { mode: "custom", factor: ms.cur && ms.cur.keep && ms.cur.keep.factor ? ms.cur.keep.factor : 1000 };
+                            d.keep = { mode: "custom", factor: ms.cur && ms.cur.keep && ms.cur.keep.factor ? ms.cur.keep.factor
+                                : ms.cur && ms.cur.keep && ms.cur.keep.mb && ms.st ? Math.round(ms.cur.keep.mb * 1048576 / (2 * ms.st.memory.total) * 10000) : 1000 };
                             ms.draft = d;
                         }
                     }
@@ -299,7 +304,8 @@ Item {
                 Line {
                     visible: ms.keepMode === "custom"
                     title: "Keep free"; sub: "a share of your memory"
-                    readonly property int factor: ms.draft.keep && ms.draft.keep.factor ? ms.draft.keep.factor : ms.cur && ms.cur.keep && ms.cur.keep.factor ? ms.cur.keep.factor : 1000
+                    readonly property int factor: ms.draft.keep && ms.draft.keep.factor ? ms.draft.keep.factor : ms.cur && ms.cur.keep && ms.cur.keep.factor ? ms.cur.keep.factor
+                        : ms.cur && ms.cur.keep && ms.cur.keep.mb && ms.st ? Math.round(ms.cur.keep.mb * 1048576 / (2 * ms.st.memory.total) * 10000) : 1000
                     Slider { Layout.preferredWidth: 200; from: 1; to: 60; mark: -1; value: Math.round(parent.factor / 50); onMoved: v => { const d = JSON.parse(JSON.stringify(ms.draft)); d.keep = { mode: "custom", factor: Math.max(10, Math.min(3000, v * 50)) }; ms.draft = d; } }
                     Text { text: Math.round(parent.factor / 50) + "%"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; Layout.preferredWidth: 40; horizontalAlignment: Text.AlignRight }
                 }
@@ -316,10 +322,24 @@ Item {
                     Slider { Layout.preferredWidth: 200; from: 0; to: 200; mark: 200; value: ms.swappiness; onMoved: v => { const d = JSON.parse(JSON.stringify(ms.draft)); d.swappiness = v; ms.draft = d; } }
                     Text { text: String(ms.swappiness); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; Layout.preferredWidth: 40; horizontalAlignment: Text.AlignRight }
                 }
-                Text {
-                    Layout.fillWidth: true; visible: !!(ms.st && Object.keys(ms.st.setBy || {}).length); wrapMode: Text.WordWrap
-                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
-                    text: ms.st ? "Set by your own files (yours win): " + Object.keys(ms.st.setBy).map(k => "vm." + k + " in " + ms.st.setBy[k]).join(", ") : ""
+                // 1.14 (the owner, Nov 16): a file of yours that sets these is shown plainly, with a way to use these settings
+                Rectangle {
+                    readonly property var over: ms.st && ms.st.overridden ? ms.st.overridden : ({})
+                    visible: Object.keys(over).length > 0
+                    Layout.fillWidth: true; implicitHeight: ov.implicitHeight + 20; radius: Theme.r(6)
+                    color: "transparent"; border.color: Theme.ember
+                    RowLayout {
+                        id: ov
+                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
+                        spacing: 12
+                        Text {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.ember; font.family: Theme.font; font.pixelSize: 12
+                            text: "Not in use: " + Object.keys(parent.parent.over).map(k => "vm." + k + " = " + (ms.st.vm[k] !== undefined ? ms.st.vm[k] : "?")).join(", ")
+                                + " is set by " + Array.from(new Set(Object.values(parent.parent.over))).join(", ")
+                                + ", so these settings don't apply there. Use these settings keeps that file as .bak (rename it back to undo)."
+                        }
+                        Button { text: "Use these settings"; enabled: !ms.busy; onClicked: ms.run(["handover"]) }
+                    }
                 }
                 Rectangle {
                     visible: ms.keepMode === "50%" || ms.keepMode === "25%"
@@ -345,11 +365,29 @@ Item {
                             if (!ms.st) return [];
                             const max = ms.st.limits.swapfileMaxGb, mem = Math.round(ms.st.memory.total / ms.gib);
                             const sizes = [0, 4, 8, 16, 32, mem, 64, ms.st.swapfile.gb].filter((v, i, a) => v <= Math.max(max, ms.st.swapfile.gb) && a.indexOf(v) === i).sort((a, b) => a - b);
-                            return sizes.map(v => [String(v), v === 0 ? "Off" : v + " GB"]);
+                            return sizes.map(v => [String(v), v === 0 ? "Off" : v + " GB"]).concat([["custom", "Custom"]]);
                         }
-                        value: String(ms.swapGb)
-                        onChose: v => { const d = JSON.parse(JSON.stringify(ms.draft)); d.swapGb = parseInt(v); ms.draft = d; }
+                        value: ms.swapCustom ? "custom" : String(ms.swapGb)
+                        onChose: v => {
+                            const d = JSON.parse(JSON.stringify(ms.draft));
+                            if (v === "custom") { ms.swapCustom = true; d.swapGb = ms.swapGb; }
+                            else { ms.swapCustom = false; d.swapGb = parseInt(v); }
+                            ms.draft = d;
+                        }
                     }
+                }
+                // Custom size (1.14, the owner, Nov 16: "the Custom selection for swap" works like Keep memory free's)
+                Line {
+                    visible: ms.swapCustom
+                    title: "Custom size"; sub: "1 GB up to " + (ms.st ? ms.st.limits.swapfileMaxGb : 0) + " GB"
+                    Slider {
+                        Layout.preferredWidth: 220
+                        from: 1; to: ms.st ? Math.max(1, ms.st.limits.swapfileMaxGb, ms.st.swapfile.gb) : 1
+                        mark: ms.st ? Math.round(ms.st.memory.total / ms.gib) : -1
+                        value: Math.max(1, ms.swapGb)
+                        onMoved: v => { const d = JSON.parse(JSON.stringify(ms.draft)); d.swapGb = v; ms.draft = d; }
+                    }
+                    Text { text: Math.max(1, ms.swapGb) + " GB"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; Layout.preferredWidth: 56; horizontalAlignment: Text.AlignRight }
                 }
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
@@ -469,7 +507,7 @@ Item {
                     text: ms.note !== "" ? ms.note : ms.dirty ? "Not saved yet." : "Changes are saved and kept until you change them. Nothing here changes by itself."
                     color: ms.noteBad ? Theme.danger : ms.dirty ? Theme.flame : Theme.muted; font.family: Theme.font; font.pixelSize: 13
                 }
-                Button { text: "Back to recommended"; onClicked: { ms.draft = ({}); ms.run(["recommended"]); } }
+                Button { text: "Back to recommended"; onClicked: { ms.draft = ({}); ms.swapCustom = false; ms.run(["recommended"]); } }
                 Button { text: "Try until restart"; good: true; visible: ms.dirty; onClicked: ms.save(true) }
                 Button { text: "Save"; primary: true; onClicked: ms.save(false) }
             }
