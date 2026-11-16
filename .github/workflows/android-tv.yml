@@ -40,9 +40,9 @@ jobs:
         run: |
           set -o pipefail
           cargo install cargo-ndk --locked >/dev/null 2>&1 || cargo install cargo-ndk
-          # The runner's own NDK (ANDROID_NDK_ROOT).
+          # The runner's own NDK (ANDROID_NDK_ROOT). Android 9 (API 28) and up: Hearth Link uses syncfs. On an older TV Hearth TV works without Hearth Link.
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
-          if ! cargo ndk -t arm64-v8a -t armeabi-v7a --platform 26 build --release --bin hearth-link 2>&1 | tee build.log; then
+          if ! cargo ndk -t arm64-v8a -t armeabi-v7a --platform 28 build --release --bin hearth-link 2>&1 | tee build.log; then
             echo "::error title=Hearth Link for Android::$( (grep -E -B2 -A12 '^error' build.log | head -80; echo ===; tail -20 build.log) | tr '\n' '|' | cut -c1-3900)"
             exit 1
           fi
