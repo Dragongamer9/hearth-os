@@ -129,3 +129,6 @@
 .th.cur { box-shadow:0 0 0 3px var(--ember); border-color:transparent; }
 #library [data-f]:focus-visible:not(.tile), #library [data-f].kf:not(.tile) { box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--ember); }
 @media (max-width:1250px) { #top .tools .btn:not(.primary) { padding:0 10px; } }
+/* Room under the picture for Fit / 100 % / Turn / Full screen. */
+#app.chrome:not(.fs) #stage { bottom:calc(var(--strip) + var(--foot) + 72px); }
+#app.chrome.noStrip:not(.fs) #stage { bottom:72px; }
