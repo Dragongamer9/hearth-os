@@ -331,6 +331,32 @@ pub fn report(version: &str) -> String {
                        "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
+    // 1.14 (the owner, Nov 16: Jellyfin "keeps stopping" in Server mode, and after a restart Server mode showed only
+    // the mouse pointer): Server mode's own log, its dashboard's log (this start, and the one kept from the start
+    // before), and the home server's services (Jellyfin, Ollama, ComfyUI, the voices) and Ithil's brain, which reports never had.
+    {
+        let mut body = String::new();
+        for (f, name) in [(data.join("server-mode.log"), "server-mode.log"), (data.join("server-dash.log"), "the dashboard, this start"),
+                          (data.join("server-dash.log.old"), "the dashboard, the start before"), (run.join("hearth-server-dash-failed"), "why the dashboard gave up")] {
+            if let Ok(t) = std::fs::read_to_string(&f) { body.push_str(&format!("--- {name}:\n{}\n\n", tail(&t, 200))); }
+        }
+        // Jellyfin, Ollama (AI chat, and Ithil's brain with it), ComfyUI and the voices: each one's state and journal,
+        // this start and the one before; what Server mode paused (yours or its own rules); Ithil's brain as the dashboard
+        // reads it (the owner, Nov 16: "Ithil's brain is not loading").
+        body.push_str(&sh("for u in hearth-jellyfin hearth-ollama hearth-comfyui hearth-kokoro; do \
+              systemctl cat $u.service >/dev/null 2>&1 || continue; echo \"--- $u:\"; \
+              systemctl show $u.service -p ActiveState,SubState,Result,NRestarts,ExecMainStatus,ActiveEnterTimestamp,InactiveEnterTimestamp 2>/dev/null; \
+              echo '(this start)'; journalctl -b -u $u --no-pager -o short-iso 2>/dev/null | grep -v -E '\\[INF\\]|level=INFO' | tail -40; \
+              echo '(the start before)'; journalctl -b -1 -u $u --no-pager -o short-iso 2>/dev/null | grep -v -E '\\[INF\\]|level=INFO' | tail -20; echo; \
+            done; \
+            echo '--- what started, paused or stopped them (this start):'; journalctl -b --no-pager -o short-iso 2>/dev/null | grep -i -E 'jellyfin|ollama|comfyui|kokoro' | grep -v -E 'hearth-(jellyfin|ollama|comfyui|kokoro)\\[|\\[INF\\]|level=INFO' | tail -40"));
+        let helper = "/usr/share/nimbus/desktop/shell/hearth-server-mode";
+        if Path::new(helper).exists() {
+            body.push_str(&format!("\n--- Server mode's status:\n{}\n--- Ithil's brain (what the dashboard reads):\n{}\n",
+                tail(&sh(&format!("timeout 20 python3 {helper} status 2>&1")), 120), tail(&sh(&format!("timeout 20 python3 {helper} ithil-brain 24 2>&1 | head -c 4000")), 60)));
+        }
+        if !body.trim().is_empty() { section("Server mode and its services", body); }
+    }
     // Hearth Plasma, Hearth GNOME and Hearth COSMIC: each desktop's own log (the desktop's messages, and what
     // hearth-companion decided about the controller and why), and whether Quickshell is there (it runs the controller
     // in Plasma and COSMIC).
