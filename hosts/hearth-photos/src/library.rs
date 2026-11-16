@@ -368,7 +368,8 @@ pub fn change(c: &Value) -> Result<Value, String> {
     let path = c["path"].as_str().unwrap_or("").to_string();
     let on = c["on"].as_bool().unwrap_or(true);
     match op {
-        "favorite" | "album.new" | "album.add" | "album.remove" | "album.rename" | "album.delete" | "folder.add" | "folder.remove" => {}
+        "favorite" | "album.new" | "album.add" | "album.remove" | "album.rename" | "album.delete" | "folder.add" | "folder.remove"
+        | "set" | "person.name" | "people.forget" => {}
         _ => return Err(format!("Photos doesn't know how to \"{op}\"")),
     }
     store_update(move |m| {
@@ -405,6 +406,20 @@ pub fn change(c: &Value) -> Result<Value, String> {
                 if !f.iter().any(|v| v.as_str() == Some(&path)) { f.push(json!(path)); }
             }
             "folder.remove" => { arr(m, "folders").retain(|v| v.as_str() != Some(&path)); }
+            // Photos' own switches: faces, tags (Found in it). Only these two, only true / false.
+            "set" => {
+                let key = c["key"].as_str().unwrap_or("");
+                if !["faces", "tags"].contains(&key) { return Err("Photos doesn't have that switch".into()); }
+                let v = c["value"].as_bool().ok_or("On or off")?;
+                m.insert(key.into(), json!(v));
+            }
+            // A face group's name (only you see it). An empty name takes it away.
+            "person.name" => {
+                if !m.get("people").map(Value::is_object).unwrap_or(false) { m.insert("people".into(), json!({})); }
+                let p = m.get_mut("people").and_then(Value::as_object_mut).expect("just made");
+                if name.is_empty() { p.remove(&id); } else { p.insert(id.clone(), json!(name)); }
+            }
+            "people.forget" => { m.remove("people"); }
             _ => {}
         }
         Ok(())

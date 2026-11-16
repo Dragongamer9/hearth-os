@@ -127,6 +127,27 @@ jobs:
           xdotool key Escape; sleep 1; xdotool key Escape; sleep 1; shot edit-leave
           pkill -f 'target/release/hearth-photos' || true
 
+      # 1.14: faces and what's in a photo (ai/hearth_photos_ai.py): the one-time setup (OpenCV and the small models)
+      # and a look at sample pictures, with a face drawn by OpenCV's own test picture when it can be fetched.
+      - name: Faces and Found in it (the helper)
+        continue-on-error: true
+        run: |
+          export HEARTH_PHOTOS_AI="$RUNNER_TEMP/ai"; echo "HEARTH_PHOTOS_AI=$HEARTH_PHOTOS_AI" >> "$GITHUB_ENV"
+          python3 ai/hearth_photos_ai.py status
+          timeout 900 python3 ai/hearth_photos_ai.py setup | tail -1
+          d="$RUNNER_TEMP/aipics"; mkdir -p "$d"
+          for u in https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/messi5.jpg; do curl -sSfL "$u" -o "$d/$(basename $u)" || true; done
+          cp "$RUNNER_TEMP/pics/01-photo.jpg" "$d/"
+          [ -f "$d/lena.jpg" ] && cp "$d/lena.jpg" "$d/lena2.jpg"
+          python3 -c "import json,os,sys; d=sys.argv[1]; print(json.dumps([{'path': os.path.join(d,f), 'mtime': 1} for f in sorted(os.listdir(d))]))" "$d" > "$RUNNER_TEMP/todo.json"
+          timeout 600 python3 ai/hearth_photos_ai.py run "$RUNNER_TEMP/todo.json" | tail -1
+          python3 - <<'PY'
+          import json, os
+          r = json.load(open(os.path.join(os.environ['HEARTH_PHOTOS_AI'], 'results.json')))
+          short = {os.path.basename(k): {'tags': v['tags'], 'faces': len(v['faces'])} for k, v in r['photos'].items()}
+          print('::notice title=found in it::%s groups=%d' % (json.dumps(short), len(r['groups'])))
+          PY
+
       # 1.14: the library (docs/mockups/next-update/photos-1-library.png) over sample folders: a phone's photos by day,
       # Steam and Game Mode captures, a screenshot and a video; then a photo from it (photos-2).
       - name: The library (screenshots)
@@ -179,7 +200,7 @@ jobs:
           dbus-run-session -- ./target/release/hearth-photos "$g" >> lib.log 2>&1 &
           sleep 9; w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 5
           shot photo-place
-          xdotool key e; sleep 4; shot edit; pkill -f 'target/release/hearth-photos' || true
+          xdotool key e; sleep 9; shot edit; pkill -f 'target/release/hearth-photos' || true
           grep -q '"favorites"' "$HEARTH_PHOTOS_STORE" && echo "::notice title=store::$(tr '\n' ' ' < "$HEARTH_PHOTOS_STORE" | cut -c1-600)"
           grep -h JSERROR lib.log run.log | sort -u | head -5 | while read -r l; do echo "::warning title=page error::$l"; done || true
       # The screenshots as notices (artifacts can't be read from here): small copies, one step each (a job keeps 50).

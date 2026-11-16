@@ -866,7 +866,7 @@ window.addEventListener('error', e => { invoke('log', { line: `JSERROR ${e.messa
 window.addEventListener('unhandledrejection', e => { invoke('log', { line: `JSERROR (promise) ${e.reason && e.reason.stack || e.reason}` }).catch(() => {}); });
 
 // ---------------------------------------------------------------- start
-window.HP = { openList, invoke, url, loadInto, cur, S, toast, dialog, openMenu, closeMenu, move, focusables, back, openPath, extOf, esc, human, then, cssOf, MATS, store,
+window.HP = { renderInfo, renderTitle, openList, invoke, url, loadInto, cur, S, toast, dialog, openMenu, closeMenu, move, focusables, back, openPath, extOf, esc, human, then, cssOf, MATS, store,
   afterEditorClose: () => { layout(); stage.focus(); },
   /** After an edit from the library: the copy shows next to the original (or the original again, replaced). */
   afterSaved: async (path, replaced) => {
