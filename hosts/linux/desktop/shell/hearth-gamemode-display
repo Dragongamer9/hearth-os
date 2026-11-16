@@ -1,0 +1,201 @@
+#!/usr/bin/python3
+"""hearth-gamemode-display: Game Mode's resolution, refresh rate, frame limit and HDR, from Desktop Mode (1.14,
+Settings › Gaming › Performance and Settings › Display's HDR row; mockup settings-A2-display-mouse.png).
+
+The one source of truth is NIMBUS_GAMESCOPE_ARGS in ~/.config/nimbus/session.conf, the options Game Mode (Steam's and
+Hearth's) starts gamescope with. Only that line changes, only the options this page owns (-W -H -r
+--framerate-limit --hdr-enabled), every other option and line kept, under the lock, atomically, with .bak
+(hearth_settings_io.update_text). Nothing is written until you pick something. A mode the screen can't show doesn't
+leave the PC stuck: the session checks it before Game Mode starts and, if gamescope still can't start, takes the mode
+options out and starts at the screen's own mode, telling you (nimbus-session strip_mode_args, MODE_ARGS_RE).
+--framerate-limit and --hdr-enabled are only written when this PC's gamescope has them.
+
+  hearth-gamemode-display get           JSON: {w, h, r, limit, hdr, args, screen: {name, model, modes: [{w, h, rates}],
+                                        hdr: bool}, has: {limit, hdr}}
+  hearth-gamemode-display set JSON      {w, h} (0 = the screen's own), {r} (0 = the screen's own), {limit} (0 = none),
+                                        {hdr: true|false}: any of them; prints get's JSON
+"""
+import glob
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as io  # noqa: E402
+
+CONF = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'nimbus', 'session.conf')
+KEY = 'NIMBUS_GAMESCOPE_ARGS'
+LINE = re.compile(r'^\s*(?:export\s+)?NIMBUS_GAMESCOPE_ARGS=(.*)$')
+OWN_VALUE = {'-W', '-H', '-r', '--output-width', '--output-height', '--nested-refresh', '--framerate-limit'}
+OWN_FLAG = {'--hdr-enabled'}
+
+
+def read_args(text):
+    val = None
+    for l in text.splitlines():
+        m = LINE.match(l)
+        if m:
+            val = m.group(1)
+    if val is None:
+        return []
+    try:
+        parts = shlex.split(val)
+        return shlex.split(parts[0]) if len(parts) == 1 else parts
+    except ValueError:
+        return val.strip('"').split()
+
+
+def parse(args):
+    """Our options out of gamescope's: ({w, h, r, limit, hdr}, the rest in order)."""
+    got = {'w': 0, 'h': 0, 'r': 0, 'limit': 0, 'hdr': False}
+    rest, i = [], 0
+    names = {'-W': 'w', '--output-width': 'w', '-H': 'h', '--output-height': 'h', '-r': 'r', '--nested-refresh': 'r', '--framerate-limit': 'limit'}
+    while i < len(args):
+        a = args[i]
+        k, v = (a.split('=', 1) + [None])[:2] if a.startswith('--') and '=' in a else (a, None)
+        if k in OWN_VALUE:
+            if v is None:
+                i += 1
+                v = args[i] if i < len(args) else ''
+            try:
+                got[names[k]] = int(float(v))
+            except ValueError:
+                pass
+        elif k in OWN_FLAG:
+            got['hdr'] = True
+        else:
+            rest.append(a)
+        i += 1
+    return got, rest
+
+
+def build(got, rest, has):
+    out = list(rest)
+    if got.get('w') and got.get('h'):
+        out += ['-W', str(got['w']), '-H', str(got['h'])]
+    if got.get('r'):
+        out += ['-r', str(got['r'])]
+    if got.get('limit') and has.get('limit'):
+        out += ['--framerate-limit', str(got['limit'])]
+    if got.get('hdr') and has.get('hdr'):
+        out.append('--hdr-enabled')
+    return ' '.join(out)
+
+
+def gamescope_has():
+    try:
+        t = subprocess.run(['gamescope', '--help'], capture_output=True, text=True, timeout=5)
+        h = t.stdout + t.stderr
+    except (OSError, subprocess.TimeoutExpired):
+        h = ''
+    return {'limit': '--framerate-limit' in h, 'hdr': '--hdr-enabled' in h}
+
+
+def edid_hdr(raw):
+    """Whether an EDID's CTA extension has an HDR static metadata block (extended tag 6)."""
+    for off in range(128, len(raw), 128):
+        b = raw[off:off + 128]
+        if len(b) < 4 or b[0] != 0x02:
+            continue
+        end = b[2] if 4 <= b[2] <= 127 else 4
+        i = 4
+        while i < end:
+            tag, ln = b[i] >> 5, b[i] & 31
+            if tag == 7 and ln >= 1 and i + 1 < len(b) and b[i + 1] == 6:
+                return True
+            i += 1 + ln
+    return False
+
+
+def edid_name(raw):
+    for d in range(54, 126, 18):
+        blk = raw[d:d + 18]
+        if len(blk) == 18 and blk[:3] == b'\0\0\0' and blk[3] == 0xFC:
+            return blk[5:].split(b'\n')[0].decode('ascii', 'replace').strip(' \x00')
+    return ''
+
+
+def screen():
+    """The screen Game Mode uses: the first connected external one, else the built-in one; its modes from wlr-randr
+    when Desktop Mode has it, else from the kernel's list."""
+    conns = []
+    for st in sorted(glob.glob('/sys/class/drm/card*-*/status')):
+        d = os.path.dirname(st)
+        try:
+            if open(st).read().strip() != 'connected':
+                continue
+            raw = open(os.path.join(d, 'edid'), 'rb').read()
+        except OSError:
+            continue
+        name = os.path.basename(d).split('-', 1)[1]
+        conns.append({'name': name, 'dir': d, 'internal': name.startswith(('eDP', 'LVDS', 'DSI')), 'raw': raw})
+    conns.sort(key=lambda c: c['internal'])
+    c = conns[0] if conns else None
+    out = {'name': c['name'] if c else '', 'model': edid_name(c['raw']) if c else '', 'hdr': edid_hdr(c['raw']) if c else False, 'modes': []}
+    modes = {}
+    try:
+        outs = json.loads(subprocess.run(['wlr-randr', '--json'], capture_output=True, text=True, timeout=5).stdout or '[]')
+        o = next((x for x in outs if c and x.get('name') == c['name']), outs[0] if outs and not c else None)
+        for m in (o or {}).get('modes', []):
+            modes.setdefault((m['width'], m['height']), set()).add(round(m['refresh']))
+    except (OSError, ValueError, subprocess.TimeoutExpired, KeyError):
+        pass
+    if not modes and c:
+        try:
+            for l in open(os.path.join(c['dir'], 'modes')):
+                w, h = l.strip().split('x')[:2]
+                modes.setdefault((int(w), int(re.sub(r'\D.*', '', h))), set())
+        except (OSError, ValueError):
+            pass
+    out['modes'] = [{'w': w, 'h': h, 'rates': sorted(r, reverse=True)} for (w, h), r in sorted(modes.items(), key=lambda x: -x[0][0] * x[0][1])]
+    return out
+
+
+def get():
+    try:
+        text = open(CONF).read()
+    except OSError:
+        text = ''
+    args = read_args(text)
+    got, _ = parse(args)
+    return {**got, 'args': ' '.join(args), 'screen': screen(), 'has': gamescope_has()}
+
+
+def set_(changes):
+    has = gamescope_has()
+    if 'hdr' in changes and changes['hdr'] and not has['hdr']:
+        raise SystemExit("This PC's gamescope can't do HDR")
+    if changes.get('limit') and not has['limit']:
+        raise SystemExit("This PC's gamescope can't limit the frame rate")
+
+    def change(text):
+        got, rest = parse(read_args(text))
+        for k in ('w', 'h', 'r', 'limit'):
+            if k in changes:
+                got[k] = max(0, int(changes[k] or 0))
+        if 'hdr' in changes:
+            got['hdr'] = bool(changes['hdr'])
+        if not (got['w'] and got['h']):
+            got['w'] = got['h'] = 0
+        return io.conf_set_text(text, KEY, '"%s"' % build(got, rest, has))
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    io.update_text(CONF, change)
+    io.log_event('Game Mode display: %s' % json.dumps(changes))
+
+
+def main(argv):
+    if len(argv) >= 2 and argv[1] == 'get':
+        print(json.dumps(get()))
+    elif len(argv) >= 3 and argv[1] == 'set':
+        set_(json.loads(argv[2]))
+        print(json.dumps(get()))
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == '__main__':
+    main(sys.argv)

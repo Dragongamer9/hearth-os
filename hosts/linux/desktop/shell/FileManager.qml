@@ -3028,16 +3028,22 @@ Scope {
     }
 
     // ================================================ the window
+    // 1.14 (faster apps): the window stays made, hidden, for three minutes after it's closed, so opening Files again
+    // is only showing it (a warm open was as slow as a cold one: the whole window was made again every time). After
+    // that it's let go, so the memory comes back.
+    property bool warm: false
+    onShownChanged: { if (shown) warmTimer.stop(); else if (ui) { warm = true; warmTimer.restart(); } }
+    Timer { id: warmTimer; interval: 180000; onTriggered: { if (!app.shown) { app.warm = false; app.ui = null; } } }
     LazyLoader {
-        active: app.shown
+        active: app.shown || app.warm
         FloatingWindow {
             id: win
             title: app.picking ? (app.pick.title || "Choose") + " – Files" : app.path ? app.titleOf(app.path) + " – Files" : "Files"
             implicitWidth: 1180
             implicitHeight: 740
             color: Theme.bg
-            visible: true
-            onVisibleChanged: if (!visible) app.close()
+            visible: app.shown
+            onVisibleChanged: { if (!visible) { if (app.shown) app.close(); } else keys.forceActiveFocus(); }
             Component.onCompleted: {
                 app.ui = win;
                 keys.forceActiveFocus();

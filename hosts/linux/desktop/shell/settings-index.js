@@ -562,6 +562,11 @@ var ENTRIES = [
 "i": "moon"
 },
 {
+"t": "HDR",
+"p": "display",
+"i": "sparkle"
+},
+{
 "t": "Scale",
 "p": "display",
 "d": "Makes text, apps and the bar bigger or smaller",
@@ -593,6 +598,12 @@ var ENTRIES = [
 "p": "display",
 "d": "Sharper with more pixels",
 "i": "window"
+},
+{
+"t": "Game Mode's resolution and frame limit",
+"p": "display",
+"d": "Gaming › Performance",
+"i": "pad"
 },
 {
 "t": "Graphics card (Nvidia): how the Hearth app draws",
@@ -646,6 +657,33 @@ var ENTRIES = [
 "t": "Only names",
 "p": "drives",
 "d": "These only change how Hearth names things. Your files, apps and games stay exactly where they are, and Windows apps keep their own C: inside them.",
+"i": "info"
+},
+{
+"t": "Resolution",
+"p": "gameperf",
+"i": "window"
+},
+{
+"t": "Refresh rate",
+"p": "gameperf",
+"d": "Higher is smoother; lower saves battery",
+"i": "bolt"
+},
+{
+"t": "Frame limit",
+"p": "gameperf",
+"i": "rocket"
+},
+{
+"t": "HDR",
+"p": "gameperf",
+"i": "sparkle"
+},
+{
+"t": "Used the next time Game Mode starts",
+"p": "gameperf",
+"d": "If the screen can't show what you picked, Game Mode starts at the screen's own mode and tells you.",
 "i": "info"
 },
 {
