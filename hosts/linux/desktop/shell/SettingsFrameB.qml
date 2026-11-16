@@ -16,6 +16,9 @@ import "settings-index.js" as Index
 
 Item {
     id: frame
+    // Runs enterPage on the next turn; owned by the frame so it can't fire after the frame is gone
+    // (Qt.callLater on a closed frame gave "evaluate a function in an invalid context").
+    Timer { id: enterLater; interval: 0; onTriggered: frame.enterPage() }
     required property var app
     readonly property var entry: Reg.page(app.page) || Reg.page("quick")
     readonly property string tab: Reg.tabOf(entry.id)
@@ -46,13 +49,13 @@ Item {
         if (loader.item.focusFirst) loader.item.focusFirst();
     }
     // The setting you were on stays picked when Settings changes look (SettingsApp.qml passes its title).
-    function restoreFocus(t) { if (t) { pendingFocus = t; Qt.callLater(enterPage); } }
+    function restoreFocus(t) { if (t) { pendingFocus = t; enterLater.restart(); } }
     function back() {
         const up = Reg.up(entry.id);
         if (up === "" || entry.id === "quick") { list.forceActiveFocus(); return; }
         pendingFocus = entry.label;
         frame.app.open(up);
-        Qt.callLater(frame.enterPage);
+        enterLater.restart();
     }
     function stepTab(d) {
         const i = Math.max(0, Reg.TABS.findIndex(t => t.id === frame.tab));
@@ -110,7 +113,7 @@ Item {
         finder.visible = false;
         pendingFocus = r.isPage ? "" : r.title;
         frame.app.open(r.page);
-        Qt.callLater(frame.enterPage);
+        enterLater.restart();
     }
 
     Rectangle { anchors.fill: parent; color: Theme.bg }
@@ -215,8 +218,8 @@ Item {
                     anchors.fill: parent
                     onStatusChanged: {
                         if (status === Loader.Error) { failed = true; console.warn("Hearth Settings: couldn't load", source); }
-                        if (status === Loader.Ready && frame.pendingFocus !== "") Qt.callLater(frame.enterPage);
-                        if (status === Loader.Ready && frame.tab === "quick") Qt.callLater(frame.enterPage);
+                        if (status === Loader.Ready && frame.pendingFocus !== "") enterLater.restart();
+                        if (status === Loader.Ready && frame.tab === "quick") enterLater.restart();
                     }
                 }
                 SetBanner { visible: loader.failed; width: parent.width; kind: "bad"; title: "This page couldn't open"; sub: "The rest of Settings works." }
@@ -353,7 +356,7 @@ Item {
             SettingsNav.toast(Ch.name(k) + " is back to " + Ch.value(k, Ch.DEFAULTS[k], Theme.palettes.accents || []));
             no();
         }
-        function no() { confirm.visible = false; Qt.callLater(frame.enterPage); }
+        function no() { confirm.visible = false; enterLater.restart(); }
         MouseArea { anchors.fill: parent; onClicked: confirm.no() }
         Rectangle {
             anchors.centerIn: parent

@@ -22,7 +22,8 @@ SetPage {
     function shown(id) { return pinned.indexOf(id) >= 0 && (id !== "lightmode" || !!hsCfg) && (id !== "brightness" || brightness >= 0); }
     // X on the controller (the frame's xAction): Pin to Quick.
     readonly property string xLabel: "Pin to Quick"
-    function xAction() { picking = !picking; if (picking) Qt.callLater(() => pickFirst.forceActiveFocus()); }
+    function xAction() { picking = !picking; if (picking) pickLater.restart(); }
+    Timer { id: pickLater; interval: 0; onTriggered: pickFirst.forceActiveFocus() }
     function togglePin(id) {
         const p = pinned.indexOf(id) >= 0 ? pinned.filter(x => x !== id) : allTiles.filter(x => x === id || pinned.indexOf(x) >= 0);
         pinned = p;
