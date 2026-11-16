@@ -65,7 +65,13 @@ sh pm grant dev.hearthos.tv android.permission.POST_NOTIFICATIONS 2>/dev/null ||
 sh cmd package set-home-activity dev.hearthos.tv/.MainActivity >/dev/null 2>&1 || true
 # Android 10 and up pick the home app by its role; set-home-activity alone isn't always enough (TCL, Android 12).
 sh cmd role add-role-holder android.app.role.HOME dev.hearthos.tv 0 >/dev/null 2>&1 || true
-echo "   Hearth TV is the home screen (if Home still opens Google TV: Hearth TV's TV Cleanup › Google TV's home)"
+# Google TV keeps the Home button for itself: Hearth TV's Home-button helper (an accessibility service that only sees
+# the Home button) takes it. Added to any others already on, never replacing them.
+svc=dev.hearthos.tv/dev.hearthos.tv.HomeButtonService
+cur=$(sh settings get secure enabled_accessibility_services | tr -d '\r')
+case "$cur" in *"$svc"*) ;; ""|null) sh settings put secure enabled_accessibility_services "$svc" ;; *) sh settings put secure enabled_accessibility_services "$cur:$svc" ;; esac
+sh settings put secure accessibility_enabled 1
+echo "   Hearth TV is the home screen, and the Home button opens it"
 # Network debugging stays on for Hearth TV's own TV Cleanup (127.0.0.1:5555), until the TV restarts.
 "$ADB" -s "$TV" tcpip 5555 >/dev/null 2>&1 || true
 sleep 3; "$ADB" connect "$TV" >/dev/null 2>&1 || true

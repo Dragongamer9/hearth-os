@@ -70,7 +70,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (!handleShare(intent) && intent.hasCategory(Intent.CATEGORY_HOME)) event(JSONObject().put("type", "home"))
+        if (!handleShare(intent) && (intent.hasCategory(Intent.CATEGORY_HOME) || intent.getBooleanExtra("home", false))) event(JSONObject().put("type", "home"))
     }
 
     private fun handleShare(i: Intent?): Boolean {
