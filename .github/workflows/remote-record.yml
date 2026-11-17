@@ -66,6 +66,7 @@ jobs:
           dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           # Stand-ins: a keyring (secret-tool) that has a password once one is "stored", and Tailscale's own address.
           printf '%s\n' '#!/bin/sh' 'f="$HOME/.fake-keyring"' 'case "$1" in' '  lookup) [ -f "$f" ] && cat "$f" || exit 1 ;;' \
+            '  search) [ -f "$f" ] || exit 1; echo "[/org/freedesktop/secrets/collection/login/1]"; echo "label = Hearth remote desktop (VNC)"; echo "secret = $(cat "$f")" ;;' \
             '  store) cat > "$f" ;;' '  clear) rm -f "$f" ;;' 'esac' > /tmp/fakebin/secret-tool
           printf '%s\n' '#!/bin/sh' '[ "$1" = status ] && echo "{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"gaming-pc.tail1234.ts.net.\",\"TailscaleIPs\":[\"100.71.12.40\"]}}"' > /tmp/fakebin/tailscale
           chmod +x /tmp/fakebin/*
