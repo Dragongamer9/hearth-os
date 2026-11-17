@@ -61,6 +61,8 @@ Singleton {
         onMinimizedChanged: if (!syncing && hub) hub.send({ op: "minimize", id: wid, on: minimized })
         onMaximizedChanged: if (!syncing && hub) hub.send({ op: "maximize", id: wid, on: maximized })
         onFullscreenChanged: if (!syncing && hub) hub.send({ op: "fullscreen", id: wid, on: fullscreen })
+        readonly property string kwinId: wid      // KWin's own id for the window (Activities keeps windows by it)
+        function setMinimized(on) { minimized = !!on; }
         function activate() { if (hub) hub.send({ op: "activate", id: wid }); }
         function close() { if (hub) hub.send({ op: "close", id: wid }); }
     }

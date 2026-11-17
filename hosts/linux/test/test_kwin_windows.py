@@ -74,6 +74,16 @@ class Shortcuts(unittest.TestCase):
                 self.assertEqual(act.get('name'), 'Execute', s['id'])
                 self.assertEqual(s['run'], act.get('command'), s['id'] + ': not the same command as labwc')
 
+    def test_kwin_only_keys(self):
+        mine = {qt_parts(s['keys']) for s in self.table['shortcuts']}
+        ids = {s['id'] for s in self.table['shortcuts']}
+        for s in self.table.get('kwinOnly', []):
+            self.assertNotIn(qt_parts(s['keys']), mine, s['id'] + ' takes a key Mantel already uses')
+            self.assertNotIn(s['id'], ids)
+            self.assertTrue(s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
+            self.assertEqual(kb.command_for(s['id'], self.table), s['run'])
+        self.assertIn('Hearth activities-next', kb.render().replace('"activities-next"', 'Hearth activities-next'))
+
     def test_window_actions_are_known(self):
         src = (KWIN / 'hearth-windows.js').read_text()
         for s in self.table['shortcuts']:

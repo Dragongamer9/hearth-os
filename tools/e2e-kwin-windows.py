@@ -211,12 +211,6 @@ def main():
 
     # The desktop's right-click menu (labwc's menu.xml entries drawn by Mantel), opened the way the Menu key and the
     # controller do, with the controller's A / B hint row. The windows minimized first so the desktop shows.
-    try:
-        items = json.loads(ipc('deskmenu', 'items') or '[]')
-    except ValueError:
-        items = []
-    want = ['Apps', 'Terminal', 'Files', 'Return to Game Mode', 'Reconfigure', 'Log out']
-    check('the desktop menu has menu.xml\'s entries', [i for i in items if i != '-'] == want, items)
     subprocess.run(['sh', '-c', 'xdotool key Escape 2>/dev/null'], timeout=5)
     for t in ('Test A', 'Test B'):
         ipc('winlist', 'act', t, 'minimize')
@@ -225,6 +219,13 @@ def main():
     ipc('desktop', 'menu')
     time.sleep(1.5)
     shot('desktop-menu')
+    try:
+        items = json.loads(ipc('deskmenu', 'items') or '[]')
+    except ValueError:
+        items = []
+    # Asked once the menu has opened: DesktopMenu is made the first time the desktop menu uses it.
+    want = ['Apps', 'Terminal', 'Files', 'Return to Game Mode', 'Reconfigure', 'Log out']
+    check('the desktop menu has menu.xml\'s entries', [i for i in items if i != '-'] == want, items)
     ipc('desktop', 'close')
 
     for p in procs:
