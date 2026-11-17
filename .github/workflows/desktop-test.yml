@@ -2396,6 +2396,8 @@ jobs:
           ipc leave powermenu; sleep 2; grim $o/power-default.png || true
           st=$(ipc leave state); case "$st" in *'"power":"Restart"'*) say "the power menu opens on the default leave option (Restart)" ;; *) bad "the power menu didn't open on Restart: $st" ;; esac
           ipc leave powerclose; sleep 1
+          # (the Server mode step left a schedule on, which fills the page: off, so the new rows show)
+          python3 $SH/hearth-server-mode set scheduleOn off > $o/schedule-off.txt 2>&1 || true
           sp startup:leave set-leave
           ipc settings close
           merge '{"confirmLogout": null, "leaveDefault": null}'
