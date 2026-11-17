@@ -193,7 +193,7 @@ class Guards(unittest.TestCase):
 
     def test_the_desk_only_hides_mantels_bar_and_dock_while_it_is_up(self):
         for name in ('Islands.qml', 'Dock.qml'):
-            self.assertIn('visible: settingsReady && !remapping && !SettingsNav.fireholdDesk', (SHELL / name).read_text(), name)
+            self.assertIn('visible: settingsReady && !remapping && !SettingsNav.fireholdDesk && !SettingsNav.fireholdCouch', (SHELL / name).read_text(), name)
         d = code((SHELL / 'FireholdDesk.qml').read_text())
         self.assertIn('Component.onCompleted: SettingsNav.fireholdDesk = true', d)
         self.assertIn('Component.onDestruction: SettingsNav.fireholdDesk = false', d)
