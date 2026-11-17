@@ -18,7 +18,7 @@ Singleton {
         for (let p = i; p; p = p.parent) if (!p.visible || p.opacity <= 0.01) return false;
         return true;
     }
-    function candidates() { return items.filter(i => i && i.navigable && i.enabled && i.layer === layer && shown(i)); }
+    function candidates() { return items.filter(i => i && i.navigable && i.enabled && i.navLayer === layer && shown(i)); }
     function centre(i, root) { const p = i.mapToItem(root, i.width / 2, i.height / 2); return { x: p.x, y: p.y }; }
     function first(root) {
         const c = candidates();

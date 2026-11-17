@@ -586,7 +586,7 @@ Item {
                 model: root.menu === "session" ? root.sessions : []
                 delegate: Chip {
                     required property var modelData
-                    layer: "menu"; wide: true
+                    navLayer: "menu"; wide: true
                     name: "Session " + modelData.id
                     text: modelData.name; sub: modelData.sub || ""
                     checked: root.sessionId === modelData.id
@@ -598,7 +598,7 @@ Item {
                 model: root.menu === "power" ? [{ id: "sleep", label: "Sleep" }, { id: "restart", label: "Restart" }, { id: "shutdown", label: "Shut down" }] : []
                 delegate: Chip {
                     required property var modelData
-                    layer: "menu"; wide: true
+                    navLayer: "menu"; wide: true
                     name: "Power " + modelData.id
                     text: modelData.label
                     preferred: modelData.id === "sleep"
@@ -610,7 +610,7 @@ Item {
                 delegate: Chip {
                     required property var modelData
                     required property int index
-                    layer: "menu"; wide: true
+                    navLayer: "menu"; wide: true
                     name: "Layout " + modelData
                     text: modelData.toUpperCase()
                     sub: index === 0 ? "The on-screen keyboard; your keyboard follows the system's layout" : "On-screen keyboard"
@@ -620,30 +620,30 @@ Item {
             }
             Chip {
                 visible: root.menu === "access"
-                layer: "menu"; wide: true; preferred: true
+                navLayer: "menu"; wide: true; preferred: true
                 name: "Bigger text"; text: "Bigger text"; checked: Theme.scale > 1.01
                 onActivated: { Theme.scale = Theme.scale > 1.01 ? 1.0 : 1.3; root.remember(); }
             }
             Chip {
                 visible: root.menu === "access"
-                layer: "menu"; wide: true
+                navLayer: "menu"; wide: true
                 name: "High contrast"; text: "High contrast"; checked: Theme.contrast
                 onActivated: { Theme.contrast = !Theme.contrast; root.remember(); }
             }
             Chip {
                 visible: root.menu === "access" && root.screenReaderThere
-                layer: "menu"; wide: true
+                navLayer: "menu"; wide: true
                 name: "Screen reader"; text: "Screen reader"; sub: "Orca reads the screen aloud"; checked: root.screenReader
                 onActivated: root.setScreenReader(!root.screenReader)
             }
             Chip {
                 visible: root.menu === "access"
-                layer: "menu"; wide: true
+                navLayer: "menu"; wide: true
                 name: "On-screen keyboard (access)"; text: "On-screen keyboard"; checked: root.oskOpen
                 onActivated: { root.closeMenu(); root.oskOpen ? root.closeOsk() : root.openOsk(); }
             }
             Chip {
-                layer: "menu"; wide: true
+                navLayer: "menu"; wide: true
                 name: "Close menu"; text: "Close"
                 onActivated: root.closeMenu()
             }
