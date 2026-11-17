@@ -11,7 +11,8 @@ on:
     branches: [main, 'feature/kwin-*']
     paths: ['hosts/linux/session/**', 'hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/labwc/autostart', '.github/workflows/kwin-test.yml', '.github/scripts/kwin-test.sh',
             'hosts/linux/desktop/shell/hearth-your-desktop', 'hosts/linux/desktop/shell/hearth-lockcheck', 'hosts/linux/desktop/shell/DesktopNotice.qml',
-            'hosts/linux/desktop/shell/hearth-kwin-settings', 'hosts/linux/desktop/shell/SetKeyboard.qml', 'hosts/linux/test/test_kwin_keyboard.py']
+            'hosts/linux/desktop/shell/hearth-kwin-settings', 'hosts/linux/desktop/shell/SetKeyboard.qml', 'hosts/linux/test/test_kwin_keyboard.py',
+            'hosts/linux/desktop/shell/SearchBar.qml', 'hosts/linux/desktop/shell/StoreDrivers.qml', 'hosts/linux/desktop/shell/Activities.qml']
   workflow_dispatch:
 
 concurrency:
@@ -69,7 +70,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shot: [kwin-1-retired-card, kwin-2-desktop, kwin-3-your-desktop, kwin-4-fallback-card, kwin-5-twice-card, kwin-6-your-desktop-paused,
+        shot: [kwin-w3-search-empty, kwin-w3-search-calc, kwin-w3-search-settings, kwin-w3-search-typed-on-desktop, kwin-w3-search-controller,
+               kwin-w3-activities, kwin-w3-store-drivers, kwin-1-retired-card, kwin-2-desktop, kwin-3-your-desktop, kwin-4-fallback-card, kwin-5-twice-card, kwin-6-your-desktop-paused,
                kwin-7-kde-settings-card, kwin-8-keyboard-kde-keys, kwin-9-keyboard-kwin]
     steps:
       - uses: actions/download-artifact@v4

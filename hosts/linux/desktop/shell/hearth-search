@@ -14,6 +14,7 @@ caches, game libraries, build folders and the folders you leave out are never re
 Settings (Settings › Search; ~/.config/hearth/search.json through hearth_settings_io: atomic, .bak, merge-on-write;
 defaults are never written, only what you change):
   indexing (true)  contents (false)  folders (["~"])  exclude ([])  onBattery (false)  pluginsOff ({})  currencyOnline (true)
+  pluginOrder ([]: the search bar's groups in Hearth's order)  typeToSearch (true: typing on the desktop opens the bar)
 
   hearth-search status                 JSON: settings, files indexed, last pass, paused (and why), database size
   hearth-search prefs-set              JSON on stdin (HEARTH_INPUT): only these keys change (null puts a default back)
@@ -65,6 +66,9 @@ ECB = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
 
 DEFAULTS = {'indexing': True, 'contents': False, 'folders': ['~'], 'exclude': [], 'onBattery': False,
             'pluginsOff': {}, 'currencyOnline': True}
+# The search bar (SearchBar.qml, Alt+Space): the order of its groups ([] = Hearth's, search-bar.js DEFAULT_ORDER) and
+# whether typing on the desktop opens it.
+DEFAULTS.update({'pluginOrder': [], 'typeToSearch': True})
 PLUGINS = ['calc', 'units', 'currency', 'web', 'commands', 'emoji', 'recent', 'windows',
            'browser', 'desktops', 'kill', 'worldclock', 'spell', 'chars', 'colours', 'power', 'media', 'store', 'contacts', 'events', 'notes']
 # Never read: build output, caches, game libraries and Windows prefixes (huge, and nothing anyone searches for).
@@ -103,7 +107,7 @@ def clean_change(changes):
             raise Fail('Unknown setting: ' + str(k))
         if v is None:
             ok[k] = None
-        elif k in ('indexing', 'contents', 'onBattery', 'currencyOnline'):
+        elif k in ('indexing', 'contents', 'onBattery', 'currencyOnline', 'typeToSearch'):
             if not isinstance(v, bool):
                 raise Fail(k + ' must be true or false')
             ok[k] = v
@@ -111,6 +115,11 @@ def clean_change(changes):
             if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
                 raise Fail(k + ' must be a list of folders')
             ok[k] = [x.strip() for x in v]
+        elif k == 'pluginOrder':
+            if not isinstance(v, list) or len(v) > 40 or not all(isinstance(x, str) and re.fullmatch(r'[a-z0-9-]{1,24}', x) for x in v) \
+                    or len(set(v)) != len(v):
+                raise Fail('pluginOrder must be a list of plugin names, each once')
+            ok[k] = v
         elif k == 'pluginsOff':
             if not isinstance(v, dict) or any(p not in PLUGINS or not isinstance(b, bool) for p, b in v.items()):
                 raise Fail('pluginsOff must be {plugin: true/false}')

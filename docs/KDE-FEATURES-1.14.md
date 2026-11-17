@@ -206,7 +206,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Search apps, Settings pages and single settings, games — `Launcher.qml`, `menu-search.js`, `settings-index.js`
 - [x] Run box (Super+R) — `WinTools.qml`, `RunView.qml`, `run-map.js`
-- [ ] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help (L)
+- [x] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help — SearchBar.qml "target: \"searchbar\"", search-bar.js "function arrange" / "function helpRows", SetSearch.qml "Search bar (Alt+Space)" (pluginOrder in hearth-search), Pad.qml "deskY" (Y on the desktop, D-pad / A / B); Alt+Space vs the layout switch: hearth-system "rc_with_search_key" (labwc gets a None binding, Alt+F2 still opens it), SearchBar.qml "altSpaceIsLayout", SetKeyboard.qml note; test_search_bar.py; searchbar.yml pictures "sb-01-empty" … "sb-12-keyboard-layout-switch" (needs testing on a device)
 - [x] Plugin: calculator, unit conversion, currency — search/calc.js, search/units.js, search/currency.js (needs testing on a device)
 - [x] Plugin: files and folders by name and content — hearth-search (SQLite FTS5 index) (needs testing on a device)
 - [x] Plugin: recent files and places, bookmarks, browser history — search/recent.js, search/browser.js (Firefox and Chromium-based, read from a copy: hearth-search-sources "read_copy"); test_search_plugins_114.py "test_browser_reads_a_copy_even_while_the_browser_holds_its_lock"; search-plugins.yml picture "01-bookmarks" (needs testing on a device)
@@ -217,7 +217,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Plugin: spell check, dictionary, special characters, emoji, colours — search/spell.js (hunspell; "define" opens Wiktionary), search/chars.js, search/emoji.js, search/colours.js (swatch in Launcher.qml / MenuSearch.qml); test_search_plugins_114.py "test_spell_and_dictionary", "test_special_characters", "test_colours"; search-plugins.yml pictures "06-spell", "07-characters", "08-colour" (needs testing on a device)
 - [x] Plugin: power and session, media control, store results — search/power.js (Restart, Shut down, Log out ask first), search/media.js (MPRIS), search/store.js ("install krita"); test_search_plugins_114.py "test_power_asks_first_where_it_closes_apps", "test_media", "test_store"; search-plugins.yml pictures "09-restart", "10-restart-asks-first", "11-media", "12-store" (needs testing on a device)
 - [x] Plugin: Hearth contacts, calendar events, notes — search/contacts.js, search/events.js, search/notes.js (hearth-search-sources pim: Hearth Contacts' .vcf, hearth-time --events, ~/Documents/Notes); test_search_plugins_114.py "test_contacts_events_notes", "test_pim"; search-plugins.yml pictures "13-contacts", "14-calendar", "15-notes" (needs testing on a device)
-- [ ] Type on the desktop to search (S)
+- [x] Type on the desktop to search — Desktop.qml "SettingsNav.searchBar.openWith(event.text)", Settings › Search "Type on the desktop to search" (typeToSearch); test_search_bar.py "test_type_on_the_desktop"; searchbar.yml picture "sb-10-typed-on-desktop" (needs testing on a device)
 
 ### Notifications
 
@@ -286,13 +286,13 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 ### Activities
 
-- [ ] Activities — partly: Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Left: recent files and privacy per activity; Super+Q is still Close, not the switcher (shortcuts.json "close" Meta+Q); the ROADMAP line is unticked (M)
+- [x] Activities — Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Recent files and privacy per activity (1.14 wave 3): each activity its own list, shared, or "Don't remember" — activities.js RECENT, Activities.setRecent, ActivitySwitcher.qml "Recent files" row, SetRecentFiles.qml "Activities", hearth_files_extras.py activity_mark / activity_tidy / recent_visible; test_store_extras.py "RecentPerActivity", activities-store.yml "Recent on Work" notice, "as-5-recent-activities", "as-6-activity-recent", "as-9-private-dont-remember" (needs testing on a device). Super+Q stays Close (the owner's decision; shortcuts.json "close" Meta+Q) (M)
 
 ### App store and updates
 
 - [x] App store (Flathub, Debian packages) — Bazaar + `SetApps.qml`, `DebInstaller.qml`
 - [x] System updates with the previous version kept — `SetUpdates.qml`, bootc
-- [ ] Discover's extras (update notifications, reviews, permission changes, verified label, links, fonts, drivers) — Hearth's own App store is on feature/search-store (merged) (L)
+- [ ] Discover's extras — partly: reviews and ratings, the verified label and links (SetStore.qml, on feature/search-store, merged); update notifications with Update all, off-able — StoreWatch.qml, hearth_store_extras.py check / prefs-set: "as-1-update-notice", "as-2-store-updates"; permission changes shown and asked before updating (Update all leaves them out) — hearth_store_extras.py new_perms / update_apps, SetStore.qml "Update and allow": "as-3-new-permissions"; drivers (Nvidia, firmware-*, microcode: read-only list, install with a password through hearth-admin driver-install → hearth-unlock --install-package) — StoreDrivers.qml, hearth_store_extras.py drivers: "as-4-drivers"; test_store_extras.py, test_hearth_unlock.py "test_driver_install_only_takes_drivers", polkit-rules.test.js, activities-store.yml (needs testing on a device). Left: fonts (L)
 - [ ] App permissions page (Flatpak overrides) (M)
 - [ ] Firmware updates (fwupd) with a notification — partly: SetFirmware.qml, hearth-firmware, hearth-sysset-admin (parts install after a password; system firmware shown, never installed: red flag 2, docs/SYSTEM-SETTINGS.md); test_system_settings_114.py "test_one_rule_for_system_firmware". Left: a notification when an update is there, the history (S)
 - [x] Firmware security (Secure Boot, TPM, HSI level) — SetFirmware.qml, hearth-firmware; test_system_settings_114.py "test_security_level", "test_secure_boot_words" (needs testing on a device)
@@ -322,7 +322,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [ ] Fingerprint sign-in and enrolling fingers (fprintd) (M)
 - [ ] Cropping the account picture (S)
 - [ ] Login screen settings and Hearth's own login screen — partly: the greetd greeter (os/system_files/usr/share/hearth/greeter, hearth-login-screen, hearth-greetd.service with SDDM coming back by itself), Sign-in options switch with Preview (LoginScreenSwitch.qml), Login screen page with a background (SetLoginScreen.qml); test_hearth_login_screen.py, login-greetd-test.yml. Left: it's off by default and SDDM is still the display manager until it's proven on a device (S)
-- [ ] First-run account setup on pre-installed PCs: check Game Mode's first-time setup covers it (S)
+- [x] First-run account setup on pre-installed PCs — it wasn't covered (no account: nothing signed in and setup never came up; setup had no account step). Now `hearth-oem-account` (+ .service, before nimbus-autologin, never a stop; decides once, and only on a PC with no account anywhere: /etc/passwd, /home, systemd-homed, NSS) makes a stand-in "hearth" account, nimbus-session opens setup for it, and setup's "Make it yours" step (ui/index.html, `hearth-admin oem-finish`, `setup.oemFinish`) sets your name, password and time zone; until then setup comes back at each start, and Game Mode's Settings › Sign-in, Mantel's Settings › Users (SetUsers.qml, with the fields to finish it) and a one-time notification (hearth-oem-notice) say "Finish setting up: your name and password" (needs testing on a device) — test_hearth_oem_setup.py: "test_sets_name_password_and_time_zone_then_removes_the_mark"; tools/ui-check.js "pre-installed PC"
 - [ ] Switch user and the extra log out choices (M)
 
 ### Region, language, time

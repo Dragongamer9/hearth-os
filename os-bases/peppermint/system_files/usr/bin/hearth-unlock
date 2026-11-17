@@ -13,6 +13,8 @@ kept across restarts, while bootc's updates, rollback, Hearth's automatic fallba
   sudo hearth-unlock --dismiss       clear the notice Hearth shows
   sudo hearth-unlock --install-deb FILE.deb | --remove-package NAME
                                      a .deb on the system itself (the Install Package window); progress lines, JSON
+  sudo hearth-unlock --install-package NAME
+                                     a package from Debian's sources (Settings › App store › Drivers); progress, JSON
 
 How it works (docs/BASE-PEPPERMINT.md, "Writable system"):
   - The image's /usr stays read-only underneath. Each OS version (ostree deployment commit) gets its own writable
@@ -69,7 +71,11 @@ STOP_FLAG = E('HEARTH_UNLOCK_STOP', '/run/hearth/unlock-stop')
 UP_PROCS = ('gamescope', 'gamescope-wl', 'labwc', 'sddm-greeter', 'sddm-greeter-qt6', 'plasmashell',
             'kwin_wayland', 'cinnamon', 'gnome-shell', 'xfce4-session')
 UP_SECONDS = 45
-PKG = re.compile(r'^[a-z0-9][a-z0-9+.-]{0,99}(:[a-z0-9-]+)?$')
+PKG = re.compile(r'[a-z0-9][a-z0-9+.-]{0,99}(:[a-z0-9-]+)?')     # always re.fullmatch
+# The boot chain stays the image's (red flag 2): apt's pin for it, and what an install from here may never bring.
+BOOT_PIN = E('HEARTH_UNLOCK_BOOT_PIN', '/etc/apt/preferences.d/hearth-boot-chain')
+BOOT_PIN_IMAGE = E('HEARTH_UNLOCK_BOOT_PIN_IMAGE', '/usr/share/hearth/unlock/boot-chain.pref')
+BOOT_CHAIN_PKG = re.compile(r'linux-.*|dkms|.*-dkms|dracut.*|initramfs-tools.*|grub.*|shim.*|.*-microcode')
 APT_ENV = {'DEBIAN_FRONTEND': 'noninteractive', 'LC_ALL': 'C', 'APT_LISTCHANGES_FRONTEND': 'none'}
 DPKG_OPTS = ['-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold']
 
@@ -287,7 +293,7 @@ def apt_manual():
     code, out = run(['apt-mark', 'showmanual'], timeout=120)
     if code != 0:
         raise Fail('apt-mark showmanual failed: ' + out.strip()[-200:])
-    return {l.strip() for l in out.splitlines() if PKG.match(l.strip())}
+    return {l.strip() for l in out.splitlines() if PKG.fullmatch(l.strip())}
 
 
 def installed_set():
@@ -374,7 +380,7 @@ def deb_fields(path):
     for line in out.splitlines():
         k, _, v = line.partition(':')
         f[k.strip()] = v.strip()
-    return f if code == 0 and PKG.match(f.get('Package', '')) else None
+    return f if code == 0 and PKG.fullmatch(f.get('Package', '')) else None
 
 
 def stash_deb(path):
@@ -950,9 +956,35 @@ def apt_stream(cmd, lo, hi, timeout=3600):
     return p.wait(), tail
 
 
+def boot_chain_pinned():
+    """apt's boot-chain pin is there and the same as the image's: or nothing is installed from here."""
+    try:
+        with open(BOOT_PIN, 'rb') as a, open(BOOT_PIN_IMAGE, 'rb') as b:
+            if a.read() == b.read():
+                return
+    except OSError:
+        pass
+    raise Fail("not installed: the system's protection for the startup files (apt's boot-chain pin, "
+               "/etc/apt/preferences.d/hearth-boot-chain) is missing or changed. Restore Hearth's system files "
+               "(Settings › Updates) and try again")
+
+
+def boot_chain_plan(args, what):
+    """`apt-get install -s` first: refuse when the plan would touch the kernel, initramfs, boot loader or microcode."""
+    code, out = run(['apt-get', 'install', '-s'] + args, timeout=600, env=APT_ENV)
+    if code != 0:
+        raise Fail(f"couldn't plan installing {what} ({(out.strip().splitlines() or ['apt-get failed'])[-1][:200]})")
+    touched = sorted({m.group(1) for m in re.finditer(r'^(?:Inst|Remv|Conf) (\S+)', out, re.M)
+                      if BOOT_CHAIN_PKG.fullmatch(m.group(1).split(':')[0])})
+    if touched:
+        raise Fail(f"not installed: {what} would change how this PC starts ({', '.join(touched[:6])}). Those come "
+                   "only with Hearth OS's updates")
+
+
 def cmd_install_deb(path):
     need_root()
     need_writable()
+    boot_chain_pinned()
     p = os.path.realpath(path)
     if not os.path.isfile(p) or not p.endswith('.deb'):
         raise Fail('that isn\'t a .deb file')
@@ -963,6 +995,7 @@ def cmd_install_deb(path):
     stash_deb(p)
     progress(5, 'Getting Debian\'s list of packages')
     run(['apt-get', 'update'], timeout=600, env=APT_ENV)
+    boot_chain_plan([p], f['Package'])
     code, tail = apt_stream(['apt-get', 'install', '-y'] + DPKG_OPTS + [p], 10, 95)
     if code != 0:
         raise Fail(f'couldn\'t install {f["Package"]} ({tail[-1] if tail else "apt-get failed"})')
@@ -971,10 +1004,29 @@ def cmd_install_deb(path):
     return {'ok': True, 'package': f['Package'], 'version': f.get('Version', ''), 'native': True}
 
 
+def cmd_install_package(name):
+    """A package from the system's sources (Settings › App store › Drivers), recorded like any apt install so it comes
+    back after an update; the version before keeps its own layer (startable as it was)."""
+    need_root()
+    need_writable()
+    if not PKG.fullmatch(name or ''):
+        raise Fail('not a package name')
+    boot_chain_pinned()
+    progress(5, 'Getting Debian\'s list of packages')
+    run(['apt-get', 'update'], timeout=600, env=APT_ENV)
+    boot_chain_plan([name], name)
+    code, tail = apt_stream(['apt-get', 'install', '-y'] + DPKG_OPTS + [name], 10, 95, timeout=3600)
+    if code != 0:
+        raise Fail(f'couldn\'t install {name} ({tail[-1] if tail else "apt-get failed"})')
+    cmd_record(wait=120)
+    progress(100, 'Installed')
+    return {'ok': True, 'package': name, 'native': True}
+
+
 def cmd_remove_package(name):
     need_root()
     need_writable()
-    if not PKG.match(name or ''):
+    if not PKG.fullmatch(name or ''):
         raise Fail('not a package name')
     code, tail = apt_stream(['apt-get', 'remove', '-y'] + DPKG_OPTS + [name], 10, 95, timeout=1800)
     if code != 0:
@@ -1037,6 +1089,9 @@ def main(argv):
             return 0
         if c == '--install-deb' and len(a) == 2:
             print(json.dumps(cmd_install_deb(a[1])))
+            return 0
+        if c == '--install-package' and len(a) == 2:
+            print(json.dumps(cmd_install_package(a[1])))
             return 0
         if c == '--remove-package' and len(a) == 2:
             print(json.dumps(cmd_remove_package(a[1])))
