@@ -90,6 +90,11 @@ impl FullscreenSurface {
         window.clone()
     }
 
+    /// The window as it's held, even one that has gone (game.rs's fullscreen_sweep).
+    pub fn peek(&self) -> Option<WindowElement> {
+        self.0.borrow().clone()
+    }
+
     pub fn clear(&self) -> Option<WindowElement> {
         self.0.borrow_mut().take()
     }
