@@ -436,6 +436,7 @@ jobs:
           ss scan-pdf ss-scan-pdf; ss ink-levels ss-ink-levels
           ss firmware-history ss-firmware-history; ss language-packs ss-language-packs
           ipc settings close; ipc notify unpopAll; ipc inkwatch check; sleep 5; grim shots/system-settings/ss-ink-notice.png || true
+          echo "::notice title=Ink notice::$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call notify history 2>&1 | grep -o '"summary":"[^"]*low[^"]*"' | head -2 | tr '\n' ' ') $(grep -a 'InkWatch' "$LOG" | tail -2 | cut -c1-200 | tr '\n' ' ')"
           ipc notify unpopAll; ipc btreceive test; sleep 2; grim shots/system-settings/ss-bt-receive-ask.png || true
           ipc notify unpopAll
           for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do rm -f "/tmp/fakebin/$f"; done

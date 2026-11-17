@@ -122,8 +122,9 @@ def status():
     for l in ls:
         code, _, land = l.partition('_')
         name = names.get(l) or r.LANGS.get(code, code) + (' (' + r.LANDS.get(land, land) + ')' if land else '')
+        # English needs no translations: apps are written in it.
         out.append({'id': l, 'name': name, 'apps': apps_in(l),
-                    'flatpak': extra is not None and (l in extra or code in extra or l == sys_lang), 'dict': dict_state(l, r)})
+                    'flatpak': extra is not None and (l in extra or code in extra or l == sys_lang or code == 'en'), 'dict': dict_state(l, r)})
     return {'languages': out, 'flatpak': extra is not None, 'extra': extra or []}
 
 
