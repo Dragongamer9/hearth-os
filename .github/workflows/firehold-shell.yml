@@ -208,8 +208,9 @@ jobs:
         run: |
           dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
             foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
-            hicolor-icon-theme ImageMagick wl-clipboard libnotify kmod python3-dbus python3-pillow systemd-udev libinput gtk3 >/dev/null
-          dnf -y install --skip-unavailable aurorae libkscreen kscreen rsms-inter-fonts >/dev/null || true
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify kmod python3-dbus python3-pillow systemd-udev libinput gtk3 \
+            gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel >/dev/null
+          dnf -y install --skip-unavailable aurorae libkscreen kscreen rsms-inter-fonts plasma-wayland-protocols-devel plasma-wayland-protocols >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           for b in kwin_wayland quickshell foot; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
@@ -235,6 +236,13 @@ jobs:
           chmod +x /tmp/fakebin/*
           export PATH="/tmp/fakebin:$PATH" NIMBUS_APP=/tmp/fakebin/nimbus
           python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+          # KWin's pictures of single windows (Everything open) go through hearth-kwin-cast, as on the image: built here,
+          # and it answers hearth-screens only when that's root's and nobody else can change it.
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/helpers-build.log 2>&1 \
+            || echo "::error title=firehold kwin::hearth-kwin-cast didn't build: $(grep -E 'error' shots/helpers-build.log | head -4 | tr '\n' '|' | cut -c1-500)"
+          install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
           modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
           for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
