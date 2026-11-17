@@ -12,7 +12,7 @@
 // Clipboard): "selection" also keeps what you highlight (middle-click pastes it), "sync" puts text you copy on the
 // selection and text you highlight on the clipboard (only while history is on).
 // Loaded by shell.qml through a Loader: a problem here only loses the clipboard popup.
-//   quickshell ipc -p <shell folder> call clipboard toggle|open|close|state|more N|qr N|edit N|back
+//   quickshell ipc -p <shell folder> call clipboard toggle|open|close|state|more N|qr N|edit N|back|choose ROW
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -213,7 +213,7 @@ Scope {
     function back() { sheet = ""; sheetMsg = ""; keys.forceActiveFocus(); }
     function doAction(a) {
         if (!a || !sheetItem) return;
-        if (a.k === "open") { const id = sheetItem.id; close(); job(["open", id, a.app], r => { if (r.error) SettingsNav.toast(r.error); }); }
+        if (a.k === "open") { const id = sheetItem.id; close(); job(["open", id, a.app], r => { if (r.error) { console.warn("clipboard: Open in: " + r.error); SettingsNav.toast(r.error); } }); }
         else if (a.k === "qr") showQr(sheetItem);
         else if (a.k === "edit") startEdit(sheetItem);
     }
@@ -267,6 +267,7 @@ Scope {
         function qr(i: int): void { if (cb.items[i]) cb.showQr(cb.items[i]); }
         function edit(i: int): void { if (cb.items[i]) cb.startEdit(cb.items[i]); }
         function back(): void { cb.back(); }
+        function choose(row: int): void { if (cb.sheet === "more") { cb.sheetRow = row; cb.doAction(cb.actionsFor(cb.sheetItem)[row]); } }
     }
 
     PanelWindow {
