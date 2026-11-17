@@ -128,14 +128,24 @@ def plain_load_json(path):
     return v
 
 
-def saved():
-    raw = hsio.load_json(SAVED, {}) if hsio else {}
-    if not hsio:
+def load_saved():
+    """(your choices, read_ok). read_ok is False when the file is there but couldn't be read (damaged, and no good
+    .bak to put back): that is not "nothing chosen"."""
+    existed = os.path.exists(SAVED)
+    if hsio:
+        raw = hsio.load_json(SAVED, None)
+    else:
         try:
-            raw = json.load(open(SAVED))
+            with open(SAVED, encoding='utf-8') as f:
+                raw = json.load(f)
         except (OSError, ValueError):
-            raw = {}
-    return {k: v for k, v in (raw or {}).items() if k in DEFAULTS}
+            raw = None
+    ok = isinstance(raw, dict) or not existed
+    return {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if k in DEFAULTS}, ok
+
+
+def saved():
+    return load_saved()[0]
 
 
 def effective(s=None):
@@ -330,7 +340,9 @@ def own_file(path, mark):
 
 def apply(s=None):
     """Hand the saved choices on. Only files that are Hearth's (their mark) or the few keys named above change."""
-    s = saved() if s is None else s
+    ok = True
+    if s is None:
+        s, ok = load_saved()
     e = effective(s)
     changed = []
     if shutil.which('gsettings'):
@@ -370,7 +382,8 @@ def apply(s=None):
             changed.append(f)
     for path, text, mark in ((FONTCONF, fontconfig_text(e, s), FC_MARK), (CURSOR_ENV, cursor_env_text(e, s), ENV_MARK)):
         if text is None:
-            if read(path) and own_file(path, mark):
+            # Removed only when you really chose nothing: never because your file couldn't be read (red flag 9).
+            if ok and read(path) and own_file(path, mark):
                 os.remove(path); changed.append(path)
         elif own_file(path, mark) and write(path, text):
             changed.append(path)

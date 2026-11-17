@@ -1,9 +1,10 @@
 // Why Desktop Mode started the way it did, shown once a few seconds after Mantel starts (1.14): 1.13's KDE Plasma or
 // GNOME choice was retired (the owner, Nov 16: a choice that changes must tell the person), or KWin didn't start and
-// Mantel opened on labwc (nimbus-session's safe start; twice in a row: "Use KWin again" turns it back on), or some of
-// your own KDE settings aren't used under KWin (kwin-mine: Hearth's fixed keys, hearth-your-desktop's LOCKED), or (2.0
-// preview) Firehold (Hearth's own compositor) didn't start and Mantel opened on KWin (twice: "Turn Firehold back on"),
-// or the first time on Firehold, how to get out (Ctrl+Alt+Backspace), or that you left it with that key. The session leaves the
+// Mantel opened on labwc (nimbus-session's safe start; twice in a row: "Use KWin again" turns it back on), or (2.0 preview)
+// Firehold (Hearth's own compositor) didn't start and Mantel opened on KWin (twice: "Turn Firehold back on"), or the
+// first time on Firehold, how to get out (Ctrl+Alt+Backspace), or that you left it with that key, or the lock screen is
+// off (kwin-lock), or some of your own KDE settings aren't used under KWin (kwin-mine: Hearth's fixed keys,
+// hearth-your-desktop's LOCKED). The session leaves the
 // notice (nimbus-session's desk_notice); `hearth-your-desktop notice` hands it over once and marks it as shown, and
 // Settings › System › Your desktop keeps showing the last one. Controller: Up/Down and A; B closes it.
 import QtQuick
@@ -28,9 +29,9 @@ PanelWindow {
             : notice.what === "firehold" && notice.kind === "intro"
             ? [{ icon: "check", label: "Got it", sub: "Ctrl+Alt+Backspace: back to the normal desktop", cmd: "" }]
             : [{ icon: "check", label: "Got it", sub: notice.what === "kwin" ? "Mantel works the same on labwc"
-                    : notice.what === "kwin-lock" ? "The screen won't lock until it's fixed"
-                    : notice.what === "kwin-mine" ? "Your own KDE files aren't changed"
-                    : notice.what === "firehold" ? "Mantel works the same on KWin" : "Mantel is your desktop", cmd: "" }])
+                   : notice.what === "firehold" ? "Mantel works the same on KWin"
+                   : notice.what === "kwin-lock" ? "The screen won't lock until it's fixed"
+                   : notice.what === "kwin-mine" ? "Your own KDE files aren't changed" : "Mantel is your desktop", cmd: "" }])
         .concat([{ icon: "desktops", label: "Open Your desktop in Settings", sub: "Settings › System › Your desktop", cmd: "settings" }])
     function pick(i) {
         shown = false;

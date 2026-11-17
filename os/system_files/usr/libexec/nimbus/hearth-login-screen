@@ -72,6 +72,7 @@ FLAG = RUN + '/login-greetd'
 MODE = RUN + '/login-mode.json'
 GREETD_CONF = RUN + '/greetd.toml'
 FELL_BACK = RUN + '/login-fell-back'
+FALLING = RUN + '/login-falling-back'      # a fallback under way (greetd's ExecStopPost then leaves it to that one)
 LOCK = RUN + '/.login-screen.lock'
 SDDM_CONF_DIRS = [P('/usr/lib/sddm/sddm.conf.d'), P('/etc/sddm.conf.d')]
 SDDM_MAIN = P('/etc/sddm.conf')
@@ -320,7 +321,7 @@ def count_failure(st, why, boot):
 
 
 def cmd_select():
-    for p in (FLAG, GREETD_CONF, FELL_BACK):
+    for p in (FLAG, GREETD_CONF, FELL_BACK, FALLING):
         rm(p)
     boot = boot_id()
     if not setting_on():
@@ -401,7 +402,12 @@ def start_sddm(why):
         rm(FLAG)
     except OSError as e:
         log('could not remove %s (%s)' % (FLAG, e))
-    systemctl('stop', UNIT, timeout=40)
+    if os.environ.get('SERVICE_RESULT'):
+        # Run from greetd's own ExecStopPost: greetd is already stopping, and waiting for that stop from inside it
+        # would wait on itself.
+        systemctl('stop', '--no-block', UNIT, timeout=10)
+    else:
+        systemctl('stop', UNIT, timeout=40)
     rc, out = systemctl('start', '--no-block', SDDM_UNIT)
     log('SDDM started instead (%s)%s' % (why, '' if rc == 0 else ': systemctl said ' + out))
 
@@ -417,7 +423,12 @@ def cmd_fallback(why):
         systemctl('start', '--no-block', 'hearth-login-wait.service')
         log('greetd stopped (%s) while someone is signed in: SDDM once that session ends' % why)
         return 0
+    if os.environ.get('SERVICE_RESULT') and os.path.exists(FALLING):
+        # greetd's ExecStopPost while a fallback is already stopping it: that one starts SDDM and counts it.
+        log('greetd ended during a fallback already under way (%s)' % why)
+        return 0
     first = not os.path.exists(FELL_BACK)
+    safe('noting the fallback', write_run, FALLING, why + '\n')
     start_sddm(why)                     # first, always; recording it comes after
     if not first:
         return 0
