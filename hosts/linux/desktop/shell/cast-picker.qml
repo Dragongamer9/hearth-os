@@ -410,7 +410,7 @@ ShellRoot {
                     spacing: 12
                     Text {
                         Layout.fillWidth: true
-                        text: root.tab === "area" ? "Drag on the picture, or 1–6 / [ ]: a ready-made part  ·  Arrows or D-pad: move  ·  Shift+arrows: size  ·  Enter or A: share  ·  Esc or B: cancel"
+                        text: root.tab === "area" ? "Drag on the picture, or 1–6: a ready-made part  ·  D-pad: move  ·  Shift+arrows: size  ·  A: share  ·  B: cancel"
                             : "Arrows or D-pad: choose  ·  Tab: screens / windows" + (root.hasArea ? " / area" : "") + "  ·  Enter or A: " + (root.isShot ? "take" : "share") + "  ·  Esc or B: cancel"
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                         elide: Text.ElideRight

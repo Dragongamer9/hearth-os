@@ -1267,7 +1267,7 @@ def restore():
         if sv.get('desktopsMainOnly'):
             try:
                 main_desktops(True)
-            except Refused as e:
+            except Exception as e:  # noqa: BLE001 (never in the way of Desktop Mode's start)
                 io.log_event('Desktops only on the main screen at start: %s' % e)
     return {'wm': wmname, 'changed': changes, 'leftOut': left_out}
 
@@ -1559,7 +1559,7 @@ def main(argv):
                     if names != list(ch['outputs']) and wmname == 'kwin' and saved().get('desktopsMainOnly'):
                         try:
                             main_desktops(True, live)
-                        except Refused as e:
+                        except Exception as e:  # noqa: BLE001
                             io.log_event('Desktops on the new main screen: %s' % e)
             r = info(wmname, live)
             r['problem'] = problem
