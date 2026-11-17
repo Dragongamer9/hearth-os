@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """hearth-kwin-settings: Hearth Settings' pages for what KWin does when Mantel runs on KWin (docs/KWIN-SETTINGS.md).
 
-The settings live where KWin reads them, one home each: kwinrc (effects, desktops, tiling, edges, Xwayland, tearing),
+The settings live where KWin reads them, one home each: kwinrc (effects, desktops, tiling, edges, window behaviour, Xwayland, tearing),
 kdeglobals [KDE] (animation speed), kaccessrc (sticky, slow and bounce keys, the visual bell), kwinrulesrc (window
 rules), and KWin's own input settings (kcminputrc, written by KWin when Hearth sets a device's property over D-Bus).
 The mouse and touchpad settings stay in Hearth's pointer.json (shared with labwc) and are put on KWin's devices.
@@ -47,7 +47,7 @@ FILES = ('kwinrc', 'kdeglobals', 'kaccessrc', 'kwinrulesrc', 'kcminputrc')
 # What the pages may change in each file (groups; a nested group by its first part).
 ALLOWED = {
     'kwinrc': {'Plugins', 'Windows', 'ElectricBorders', 'TouchEdges', 'EdgeBarrier', 'ScreenEdges', 'Compositing',
-               'TabBox', 'Desktops', 'Tiling', 'Xwayland', 'Wayland'} | {'Effect-' + e for e in (
+               'TabBox', 'Desktops', 'Tiling', 'Xwayland', 'Wayland', 'MouseBindings'} | {'Effect-' + e for e in (
                    'blur', 'translucency', 'wobblywindows', 'diminactive', 'slide', 'shakecursor', 'mouseclick',
                    'trackmouse', 'zoom', 'magnifier', 'overview', 'windowview', 'glide',
                    'magiclamp', 'hidecursor', 'fallapart', 'sheet', 'mousemark', 'thumbnailaside')} | {
@@ -284,6 +284,11 @@ def get_all_files():
 OWNED = {'kwinrc': {'Plugins': {'colorblindnesscorrectionEnabled', 'invertEnabled', 'zoomEnabled', 'magnifierEnabled'},
                     'Effect-zoom': {'ZoomFactor'}, 'Effect-magnifier': {'InitialZoom', 'Width', 'Height'}}}
 
+# Groups the pages may change only some keys of: [MouseBindings] is Window behaviour's title bar and Super+drag
+# choices (SetKwinWindows.qml); its clicks inside windows (CommandWindow*) stay KWin's.
+ONLY_KEYS = {'kwinrc': {'MouseBindings': {'CommandTitlebarWheel', 'CommandActiveTitlebar2', 'CommandInactiveTitlebar2',
+                                          'CommandAllKey', 'CommandAll1', 'CommandAll2', 'CommandAll3', 'CommandAllWheel'}}}
+
 NESTED = {'Tiling', 'ButtonRebinds'}     # groups whose subgroups the pages change ([Tiling][<screen>])
 
 
@@ -305,6 +310,9 @@ def set_file(name, raw):
     for g in changes:
         if not allowed(name, g):
             raise Fail('[%s] in %s is not a setting Hearth changes' % (g, name))
+        only = ONLY_KEYS.get(name, {}).get(g)
+        if only is not None and set(changes[g]) - only:
+            raise Fail('%s in [%s] is not a setting Hearth changes' % (', '.join(sorted(set(changes[g]) - only)), g))
         own = set(changes[g]) & OWNED.get(name, {}).get(g, set())
         if own:
             raise Fail('%s: changed in Settings › Accessibility' % ', '.join(sorted(own)))
