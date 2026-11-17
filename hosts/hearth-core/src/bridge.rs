@@ -421,9 +421,10 @@ impl Bridge {
                 "deviceId": counter_device_id(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
                 "installer": std::path::Path::new("/etc/hearth-installer").exists(),
-                "features": features(), "setupDone": self.setup_done(),
-                // A pre-installed PC's stand-in account (hearth-oem-account): setup asks for your name, password and time zone.
-                "oemSetup": std::path::Path::new("/var/lib/hearth/oem-setup.json").exists(),
+                // A pre-installed PC's stand-in account (hearth-oem-account): setup asks for your name, password and time
+                // zone, and comes back (even after Skip) until that's done.
+                "features": features(), "setupDone": self.setup_done() && !crate::admin::oem_pending(),
+                "oemSetup": crate::admin::oem_pending(),
                 "openInstaller": std::path::Path::new("/etc/hearth-live").exists() && crate::osinstall::handoff(false),
             })),
             "library.get" => {

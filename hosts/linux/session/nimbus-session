@@ -1627,11 +1627,18 @@ steam_game_unwatch() { [ -n "$SG_WATCH_PID" ] && kill "$SG_WATCH_PID" 2>/dev/nul
 # sign-in) and the old Game Mode screens aren't needed: setup is only pending with HEARTH_LEGACY_SETUP=1 in
 # session.conf (a developer switch). Until it's done (or skipped: Hearth writes setupDone in library.json), "game" then
 # means Hearth's app for it (mode "setup"); a setup run that ends without asking for anything goes to Steam Game Mode.
-# A pre-installed PC (hearth-oem-account made the stand-in account and /var/lib/hearth/oem-setup.json) has had no
-# installer, so setup is pending there too: it asks for your name, password and time zone.
+# A pre-installed PC (hearth-oem-account made the stand-in account and /var/lib/hearth/oem-setup.json, a regular file
+# of root's) has had no installer, so setup is pending there until "Make it yours" is done (hearth-admin oem-finish
+# removes the file), even after Skip: setupDone doesn't count while the file is there.
+oem_pending() {
+  local m="${HEARTH_OEM_MARK:-/var/lib/hearth/oem-setup.json}"
+  [ -f "$m" ] && [ ! -L "$m" ] && [ "$(stat -c %u "$m" 2>/dev/null)" = "${HEARTH_OEM_OWNER:-0}" ]
+}
 setup_pending() {
-  [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || [ -e "${HEARTH_OEM_MARK:-/var/lib/hearth/oem-setup.json}" ] || return 1
   [ -z "$HEARTH_SEAT" ] && can_game || return 1
+  # Once a sign-in: skipped (or closed), it goes on to Steam Game Mode and asks again at the next start.
+  oem_pending && [ ! -e "$RUN/nimbus-oem-asked" ] && return 0
+  [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || return 1
   ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
 }
 # What a request for a mode means: "game" is the Game Mode you picked (game_mode_choice: Steam Game Mode unless you
@@ -1709,6 +1716,7 @@ while :; do
   if [ "$mode" = game ] && [ -z "$HEARTH_SEAT" ] && ! live_session; then run_hearth_mode; code=$?
   elif [ "$mode" = game ] || [ "$mode" = setup ]; then
     [ "$mode" = setup ] && log "first-time setup in Hearth's app (once; Steam Game Mode after)"
+    [ "$mode" = setup ] && oem_pending && : > "$RUN/nimbus-oem-asked" 2>/dev/null
     input_start; run_game; code=$?; input_stop
   elif [ "$mode" = steam ]; then run_steam_mode; code=$?
   elif [ "$mode" = server ]; then run_server; code=$?

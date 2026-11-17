@@ -1,17 +1,27 @@
 #!/usr/bin/python3
 """hearth-oem-account: a PC that came with Hearth OS already on it (put on by the maker or a shop with
 `bootc install`, not with Hearth's installer) has no account yet, so nothing could sign in and first-time setup
-never came up. At every start, before nimbus-autologin: when there's no account with uid 1000 on an installed Hearth
-(not the live or installer USB), this makes a stand-in one, "hearth" (shown as "Hearth"), with no password and
-administrator rights, and leaves /var/lib/hearth/oem-setup.json. nimbus-autologin then signs it in, nimbus-session
-sees the file and opens Hearth's first-time setup, and setup's "Make it yours" step (ui/index.html, hearth-admin
-oem-finish) sets your name, password and time zone and removes the file.
+never came up. On the first start only: when there is no account of any kind, this makes a stand-in one, "hearth"
+(shown as "Hearth", uid 1000), with no password and administrator rights, and leaves /var/lib/hearth/oem-setup.json.
+nimbus-autologin then signs it in, nimbus-session sees the file and opens Hearth's first-time setup, and setup's
+"Make it yours" step (ui/index.html, hearth-admin oem-finish) sets your name, password and time zone and removes
+the file.
+
+It must never touch a PC that has a real account, so it decides once (the stamp /var/lib/hearth/oem-account.checked
+is written on the first run, whatever it decides) and only makes the account when all of these say "nobody":
+  1. /etc/passwd itself (no NSS): no uid of 1000 or more other than 65534 (nobody)
+  2. /home (and /var/home) is empty and /var/lib/systemd/home (systemd-homed) has nothing in it
+  3. NSS (userdb, homed, LDAP/sssd where they enumerate): no uid from 1000 up to 2^31 other than 65534, and uid 1000
+     isn't known
+The only later runs that do anything finish what a crash cut short: the marker is written before useradd, so with
+the marker there it makes the account if it's still missing (same checks), or clears the locked password useradd left.
 
 Never stops a start: anything that goes wrong is logged and it exits 0 (the login screen still comes up).
 """
 import json
 import os
 import pwd
+import stat
 import subprocess
 import sys
 import time
@@ -20,10 +30,17 @@ ROOT = os.environ.get('HEARTH_OEM_ROOT', '')          # tests: a pretend / (the 
 USER = 'hearth'
 FULL = 'Hearth'
 UID = 1000
+NOBODY = 65534
+UID_TOP = 2 ** 31
 MARK = '/var/lib/hearth/oem-setup.json'
-LIVE_MARKS = ('/etc/hearth-live', '/etc/hearth-installer')
+STAMP = '/var/lib/hearth/oem-account.checked'
+LIVE_MARKS = ('/etc/hearth-live', '/etc/hearth-installer', '/etc/hearth-recovery')
+HOMES = ('/home', '/var/home')
+HOMED = '/var/lib/systemd/home'
 ADMIN_GROUPS = ('wheel', 'sudo')
 EXTRA_GROUPS = ('video', 'netdev', 'systemd-journal', 'dialout')
+OWNER_UID = 0          # the marker must be root's (tests use their own uid)
+STEP_TIMEOUT = 10
 
 
 def p(path):
@@ -34,12 +51,84 @@ def log(msg):
     print('hearth-oem-account: ' + msg, flush=True)
 
 
-def uid_taken(uid=UID, getpwuid=pwd.getpwuid):
+def passwd_uids(path=None):
+    """uids in /etc/passwd itself, no NSS. None when it can't be read (then: do nothing)."""
     try:
-        getpwuid(uid)
-        return True
+        with open(path or p('/etc/passwd')) as f:
+            out = []
+            for line in f:
+                parts = line.rstrip('\n').split(':')
+                if len(parts) >= 3 and parts[2].isdigit():
+                    out.append((parts[0], int(parts[2])))
+            return out
+    except OSError:
+        return None
+
+
+def person(uid):
+    return uid >= 1000 and uid != NOBODY
+
+
+def file_people(entries):
+    return [n for n, u in entries if person(u)]
+
+
+def homes_in_use():
+    """Anything in /home, /var/home or systemd-homed's folder (a missing folder counts as empty)."""
+    found = []
+    for d in HOMES + (HOMED,):
+        try:
+            found += [os.path.join(d, x) for x in os.listdir(p(d))]
+        except FileNotFoundError:
+            pass
+        except OSError:
+            found.append(d + ' (unreadable)')
+    return found
+
+
+def nss_people(getpwall=None, getpwuid=None):
+    """Accounts NSS knows (uid 1000 up to 2^31, not nobody), and whether uid 1000 is taken. Errors: someone."""
+    getpwall, getpwuid = getpwall or pwd.getpwall, getpwuid or pwd.getpwuid
+    try:
+        out = [u.pw_name for u in getpwall() if person(u.pw_uid) and u.pw_uid < UID_TOP]
+    except Exception:
+        return ['?']
+    try:
+        getpwuid(UID)
+        out.append('uid %d' % UID)
     except KeyError:
+        pass
+    except Exception:
+        out.append('?')
+    return out
+
+
+def nobody_here(getpwall=None, getpwuid=None):
+    """'' when the PC has no account of any kind; otherwise why not (the cheap /etc/passwd check first)."""
+    entries = passwd_uids()
+    if entries is None:
+        return "/etc/passwd can't be read"
+    who = file_people(entries)
+    if who:
+        return 'accounts in /etc/passwd: ' + ', '.join(who[:5])
+    used = homes_in_use()
+    if used:
+        return 'home folders: ' + ', '.join(used[:5])
+    who = nss_people(getpwall, getpwuid)
+    if who:
+        return 'accounts known to the system: ' + ', '.join(who[:5])
+    return ''
+
+
+def trusted(path):
+    """A regular file (not a link) owned by root, in a folder only root can write to."""
+    try:
+        st = os.lstat(path)
+        dst = os.stat(os.path.dirname(path))
+    except OSError:
         return False
+    return (stat.S_ISREG(st.st_mode) and st.st_uid == OWNER_UID and dst.st_uid == OWNER_UID
+            and not dst.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
 
 
 def group_names(path=None):
@@ -50,21 +139,7 @@ def group_names(path=None):
         return set()
 
 
-def people(getpwall=pwd.getpwall):
-    """Accounts people sign in with (uid 1000 up to 59999), whatever made them."""
-    try:
-        return [u.pw_name for u in getpwall() if 1000 <= u.pw_uid < 60000]
-    except Exception:
-        return ['?']   # can't tell: do nothing
-
-
-def plan(getpwuid=pwd.getpwuid, groups=None, getpwall=pwd.getpwall):
-    """What to do at this start: None (nothing) or the useradd arguments for the stand-in account. Only when there's
-    no account at all (uid 1000 free and no other person's account either)."""
-    if any(os.path.exists(p(m)) for m in LIVE_MARKS):
-        return None
-    if uid_taken(UID, getpwuid) or people(getpwall):
-        return None
+def useradd_args(groups=None):
     have = group_names() if groups is None else set(groups)
     extra = [g for g in ADMIN_GROUPS + EXTRA_GROUPS if g in have]
     args = ['useradd', '-m', '-u', str(UID), '-c', FULL, '-s', '/bin/bash']
@@ -73,33 +148,84 @@ def plan(getpwuid=pwd.getpwuid, groups=None, getpwall=pwd.getpwall):
     return args + [USER]
 
 
-def write_mark(user=USER):
-    path = p(MARK)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def password_field(user=USER):
+    """The account's password field in /etc/shadow ('' none, '!'/'*' locked or never set), None when missing."""
+    try:
+        with open(p('/etc/shadow')) as f:
+            for line in f:
+                parts = line.split(':')
+                if parts[0] == user and len(parts) > 1:
+                    return parts[1]
+    except OSError:
+        pass
+    return None
+
+
+def stand_in_there():
+    return any(n == USER and u == UID for n, u in (passwd_uids() or []))
+
+
+def plan(getpwall=None, getpwuid=None):
+    """What to do at this start: a list of steps ('stamp', 'mark', 'useradd', 'nopass') and why."""
+    if any(os.path.exists(p(m)) for m in LIVE_MARKS):
+        return [], 'a live, installer or Recovery USB'
+    if trusted(p(MARK)):
+        # Unfinished first-time setup: finish what a crash cut short, keep the marker.
+        if stand_in_there():
+            pw = password_field()
+            if pw is not None and pw.startswith(('!', '*')):
+                return ['nopass'], 'the stand-in account has no password set yet'
+            return [], 'first-time setup still to do'
+        why = nobody_here(getpwall, getpwuid)
+        if why:
+            return [], 'marker but ' + why
+        return ['useradd', 'nopass'], 'the stand-in account was never made'
+    if os.path.exists(p(STAMP)):
+        return [], 'already checked at an earlier start'
+    why = nobody_here(getpwall, getpwuid)
+    if why:
+        return ['stamp'], why
+    return ['stamp', 'mark', 'useradd', 'nopass'], 'no account yet (a pre-installed PC)'
+
+
+def write_root_file(path, data):
+    d = os.path.dirname(path)
+    if not os.path.isdir(d):
+        os.makedirs(d, exist_ok=True)
+        os.chmod(d, 0o755)
     tmp = path + '.tmp'
     with open(tmp, 'w') as f:
-        json.dump({'user': user, 'uid': UID, 'at': int(time.time())}, f)
+        json.dump(data, f)
         f.flush()
         os.fsync(f.fileno())
+    os.chmod(tmp, 0o644)
     os.replace(tmp, path)
 
 
+def run(args):
+    r = subprocess.run(args, capture_output=True, text=True, timeout=STEP_TIMEOUT)
+    if r.returncode != 0:
+        log('%s failed: %s' % (args[0], (r.stderr or r.stdout).strip()[:300]))
+    return r.returncode == 0
+
+
 def main():
-    args = plan()
-    if args is None:
-        return 0
-    log('no account yet (a pre-installed PC): making the stand-in account "%s" for first-time setup' % USER)
-    r = subprocess.run(args, capture_output=True, text=True, timeout=120)
-    if r.returncode != 0:
-        log('useradd failed: ' + (r.stderr or r.stdout).strip()[:300])
-        return 0
-    # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok), like the
-    # installer's "No password". Setup asks for one.
-    r = subprocess.run(['passwd', '-d', USER], capture_output=True, text=True, timeout=60)
-    if r.returncode != 0:
-        log('passwd -d failed: ' + (r.stderr or r.stdout).strip()[:300])
-    write_mark()
-    log('done; first-time setup asks for your name, password and time zone')
+    steps, why = plan()
+    log(why)
+    for s in steps:
+        if s == 'stamp':
+            write_root_file(p(STAMP), {'at': int(time.time()), 'made': 'mark' in steps, 'why': why})
+        elif s == 'mark':
+            # Before useradd: a crash after it still ends in setup (the next start finishes the account).
+            write_root_file(p(MARK), {'user': USER, 'uid': UID, 'at': int(time.time())})
+        elif s == 'useradd':
+            log('making the stand-in account "%s" for first-time setup' % USER)
+            if not run(useradd_args()):
+                return 0
+        elif s == 'nopass':
+            # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok), like
+            # the installer's "No password". Setup asks for one.
+            run(['passwd', '-d', USER])
     return 0
 
 
