@@ -516,6 +516,7 @@ impl<B: Backend + 'static> HearthState<B> {
         self.minimized.retain(|m| m.window.alive());
         self.lock_tick();
         self.output_management_tick();
+        self.game_tick();
         self.handle_toplevel_requests();
         let infos = self.toplevel_infos();
         let dh = self.display_handle.clone();
@@ -617,6 +618,7 @@ impl<B: Backend + 'static> HearthState<B> {
             "keyboardFocus": self.keyboard_focus_name(),
             "captures": { "wlr": self.captures.taken_wlr, "ext": self.captures.taken_ext },
             "gammaHolders": self.gamma_state.holders(),
+            "game": self.game_status()["game"].clone(),
             "lock": {
                 "locked": self.lock.locked,
                 "client": self.lock.locked && self.lock.client_alive() && !self.lock.client_gone,
@@ -652,6 +654,7 @@ impl<B: Backend + 'static> HearthState<B> {
 
     /// Ending: the status file goes (nothing of the person's is touched).
     pub fn cleanup(&mut self) {
+        self.game_cleanup();
         if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
             let _ = std::fs::remove_file(std::path::Path::new(&dir).join("firehold.json"));
         }

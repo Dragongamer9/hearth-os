@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""hearth-posture: tells Firehold's Couch (Firehold.qml, a hidden preview) when a real mouse, touchpad or keyboard is
+used, so Automatic posture can switch to Desk (the controller's presses come from hearth-pad: Pad.qml).
+
+  hearth-posture watch      one JSON line per use, at most one a second per kind: {"t": "mouse"} or {"t": "keys"}
+  hearth-posture devices    the devices it would watch (one JSON line), for checks
+
+Read only: no device is grabbed (EVIOCGRAB), nothing is written, every event still goes where it went. Hearth's own
+virtual devices (hearth-pad's and hearth-input's "Hearth controller ..." pointer and keyboard, which the controller
+moves) and controllers themselves are left out, so the controller never counts as the mouse. Exit codes: 2
+python3-evdev missing (the shell doesn't restart it then; the Couch still sees the mouse over itself).
+"""
+import json
+import os
+import select
+import sys
+import time
+
+THROTTLE = 1.0
+
+
+def classify(name, caps, ecodes):
+    """'mouse', 'keys' or None for a device: its name and capabilities ({EV_*: [codes]})."""
+    n = (name or '').lower()
+    if n.startswith('hearth ') or 'hearth controller' in n:
+        return None
+    keys = set(caps.get(ecodes.EV_KEY, []))
+    absx = caps.get(ecodes.EV_ABS, [])
+    abs_codes = {a[0] if isinstance(a, tuple) else a for a in absx}
+    gamepad = {getattr(ecodes, 'BTN_SOUTH', 0x130), getattr(ecodes, 'BTN_GAMEPAD', 0x130), getattr(ecodes, 'BTN_JOYSTICK', 0x120)}
+    if keys & gamepad:
+        return None
+    rel = set(caps.get(ecodes.EV_REL, []))
+    if ecodes.BTN_LEFT in keys and (ecodes.REL_X in rel or ecodes.ABS_X in abs_codes or getattr(ecodes, 'ABS_MT_POSITION_X', 0x35) in abs_codes):
+        return 'mouse'
+    letters = {getattr(ecodes, 'KEY_' + c) for c in 'QWERTYASDFZX'}
+    if len(keys & letters) >= 8:
+        return 'keys'
+    return None
+
+
+def counts(kind, etype, code, value, ecodes):
+    """Whether one event is someone using it (a move, a click, a key going down)."""
+    if kind == 'mouse':
+        return etype in (ecodes.EV_REL, ecodes.EV_ABS) or (etype == ecodes.EV_KEY and value == 1)
+    return etype == ecodes.EV_KEY and value == 1
+
+
+def open_devices(evdev):
+    e = evdev.ecodes
+    out = []
+    for path in evdev.list_devices():
+        try:
+            d = evdev.InputDevice(path)
+            k = classify(d.name, d.capabilities(), e)
+        except OSError:
+            continue
+        if k:
+            out.append((d, k))
+        else:
+            d.close()
+    return out
+
+
+def main(argv):
+    what = argv[1] if len(argv) > 1 else ''
+    if what not in ('watch', 'devices'):
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    try:
+        import evdev
+    except ImportError:
+        print('python3-evdev is missing', file=sys.stderr)
+        return 2
+    devs = open_devices(evdev)
+    if what == 'devices':
+        print(json.dumps([{'name': d.name, 'path': d.path, 'kind': k} for d, k in devs]))
+        return 0
+    e = evdev.ecodes
+    last = {}
+    rescan = time.monotonic() + 10
+    while True:
+        fds = {d.fd: (d, k) for d, k in devs}
+        r = []
+        if not fds:
+            time.sleep(5)
+        else:
+            try:
+                r, _, _ = select.select(list(fds), [], [], 5)
+            except (OSError, ValueError):
+                r = []
+        now = time.monotonic()
+        for fd in r:
+            d, k = fds[fd]
+            try:
+                evs = list(d.read())
+            except OSError:
+                devs = [x for x in devs if x[0] is not d]
+                continue
+            if any(counts(k, ev.type, ev.code, ev.value, e) for ev in evs) and now - last.get(k, 0) >= THROTTLE:
+                last[k] = now
+                sys.stdout.write(json.dumps({'t': k}) + '\n')
+                sys.stdout.flush()
+        if now >= rescan:          # a mouse or keyboard plugged in later
+            rescan = now + 10
+            have = {d.path for d, _ in devs}
+            for d, k in open_devices(evdev):
+                if d.path in have:
+                    d.close()
+                else:
+                    devs.append((d, k))
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
