@@ -202,6 +202,7 @@ pub struct HearthState<BackendData: Backend + 'static> {
     pub output_management_state: crate::output_management::OutputManagementState,
     /// Night light and inverted colours (gamma.rs).
     pub gamma_state: crate::gamma::GammaState,
+    pub ext_data_control_state: smithay::wayland::selection::ext_data_control::DataControlState,
 }
 
 #[derive(Debug)]
@@ -293,6 +294,15 @@ impl<BackendData: Backend> DataControlHandler for HearthState<BackendData> {
 }
 
 delegate_data_control!(@<BackendData: Backend + 'static> HearthState<BackendData>);
+
+impl<BackendData: Backend> smithay::wayland::selection::ext_data_control::DataControlHandler
+    for HearthState<BackendData>
+{
+    fn data_control_state(&self) -> &smithay::wayland::selection::ext_data_control::DataControlState {
+        &self.ext_data_control_state
+    }
+}
+smithay::delegate_ext_data_control!(@<BackendData: Backend + 'static> HearthState<BackendData>);
 
 impl<BackendData: Backend> ShmHandler for HearthState<BackendData> {
     fn shm_state(&self) -> &ShmState {
@@ -737,6 +747,13 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
         let captures = crate::screencopy::CaptureState::new::<BackendData>(&dh);
         let output_management_state = crate::output_management::OutputManagementState::new::<BackendData>(&dh);
         let gamma_state = crate::gamma::GammaState::new::<BackendData>(&dh);
+        crate::tearing::init::<BackendData>(&dh);
+        // ext-data-control too (newer clipboard managers and wl-clipboard ask for it), not only wlr's.
+        let ext_data_control_state = smithay::wayland::selection::ext_data_control::DataControlState::new::<Self, _>(
+            &dh,
+            Some(&primary_selection_state),
+            |c| c.get_data::<ClientState>().map_or(true, |s| s.security_context.is_none()),
+        );
         let idle_notifier_state = IdleNotifierState::<Self>::new(&dh, handle.clone());
         IdleInhibitManagerState::new::<Self>(&dh);
         let stop = Arc::new(AtomicBool::new(false));
@@ -813,6 +830,7 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             captures,
             output_management_state,
             gamma_state,
+            ext_data_control_state,
         }
     }
 

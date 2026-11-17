@@ -275,6 +275,25 @@ impl<BackendData: Backend> TouchGrab<HearthState<BackendData>> for TouchMoveSurf
     fn unset(&mut self, _data: &mut HearthState<BackendData>) {}
 }
 
+/// A window's size while resizing counts Hearth's title bar; the app is told the size without it.
+fn client_size(w: &WindowElement, s: Size<i32, Logical>) -> Size<i32, Logical> {
+    if w.decoration_state().is_ssd {
+        (s.w, (s.h - super::ssd::HEADER_BAR_HEIGHT).max(1)).into()
+    } else {
+        s
+    }
+}
+
+/// Where an X11 window's own part goes (under Hearth's title bar, when it has one).
+#[cfg(feature = "xwayland")]
+fn x11_rect(w: &WindowElement, loc: Point<i32, Logical>, s: Size<i32, Logical>) -> Rectangle<i32, Logical> {
+    if w.decoration_state().is_ssd {
+        Rectangle::new(loc + Point::from((0, super::ssd::HEADER_BAR_HEIGHT)), client_size(w, s))
+    } else {
+        Rectangle::new(loc, s)
+    }
+}
+
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct ResizeEdge: u32 {
@@ -420,14 +439,14 @@ impl<BackendData: Backend> PointerGrab<HearthState<BackendData>> for PointerResi
             WindowSurface::Wayland(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);
-                    state.size = Some(self.last_window_size);
+                    state.size = Some(client_size(&self.window, self.last_window_size));
                 });
                 xdg.send_pending_configure();
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
                 let location = data.space.element_location(&self.window).unwrap();
-                x11.configure(Rectangle::new(location, self.last_window_size))
+                x11.configure(x11_rect(&self.window, location, self.last_window_size))
                     .unwrap();
             }
         }
@@ -463,7 +482,7 @@ impl<BackendData: Backend> PointerGrab<HearthState<BackendData>> for PointerResi
                 WindowSurface::Wayland(xdg) => {
                     xdg.with_pending_state(|state| {
                         state.states.unset(xdg_toplevel::State::Resizing);
-                        state.size = Some(self.last_window_size);
+                        state.size = Some(client_size(&self.window, self.last_window_size));
                     });
                     xdg.send_pending_configure();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
@@ -512,7 +531,7 @@ impl<BackendData: Backend> PointerGrab<HearthState<BackendData>> for PointerResi
 
                         data.space.map_element(self.window.clone(), location, true);
                     }
-                    x11.configure(Rectangle::new(location, self.last_window_size))
+                    x11.configure(x11_rect(&self.window, location, self.last_window_size))
                         .unwrap();
 
                     let Some(surface) = self.window.wl_surface() else {
@@ -676,7 +695,7 @@ impl<BackendData: Backend> TouchGrab<HearthState<BackendData>> for TouchResizeSu
             WindowSurface::Wayland(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.unset(xdg_toplevel::State::Resizing);
-                    state.size = Some(self.last_window_size);
+                    state.size = Some(client_size(&self.window, self.last_window_size));
                 });
                 xdg.send_pending_configure();
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
@@ -725,7 +744,7 @@ impl<BackendData: Backend> TouchGrab<HearthState<BackendData>> for TouchResizeSu
 
                     data.space.map_element(self.window.clone(), location, true);
                 }
-                x11.configure(Rectangle::new(location, self.last_window_size))
+                x11.configure(x11_rect(&self.window, location, self.last_window_size))
                     .unwrap();
 
                 let Some(surface) = self.window.wl_surface() else {
@@ -817,14 +836,14 @@ impl<BackendData: Backend> TouchGrab<HearthState<BackendData>> for TouchResizeSu
             WindowSurface::Wayland(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);
-                    state.size = Some(self.last_window_size);
+                    state.size = Some(client_size(&self.window, self.last_window_size));
                 });
                 xdg.send_pending_configure();
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
                 let location = data.space.element_location(&self.window).unwrap();
-                x11.configure(Rectangle::new(location, self.last_window_size))
+                x11.configure(x11_rect(&self.window, location, self.last_window_size))
                     .unwrap();
             }
         }

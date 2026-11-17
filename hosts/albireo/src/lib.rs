@@ -22,6 +22,7 @@ pub mod render;
 pub mod screencopy;
 pub mod shell;
 pub mod state;
+pub mod tearing;
 pub mod theme;
 #[cfg(feature = "udev")]
 pub mod udev;

@@ -102,7 +102,7 @@ mod tests {
         e[12..16].copy_from_slice(&0x0000_0001u32.to_le_bytes());
         // Descriptor 1: a timing (skipped); 2: name; 3: serial.
         e[54] = 0x01;
-        let name = b"Odyssey G5\n   ";
+        let name = b"Odyssey G5\n  ";
         e[72..77].copy_from_slice(&[0, 0, 0, 0xfc, 0]);
         e[77..77 + 13].copy_from_slice(name);
         let sn = b"H4ZR500123\n  ";

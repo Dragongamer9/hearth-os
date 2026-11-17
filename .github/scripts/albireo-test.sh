@@ -11,6 +11,7 @@
 #   albireo-3-window  a window with Hearth's frame, listed on Mantel's taskbar
 #   albireo-4-minimized  minimized through the taskbar protocol, then back
 #   albireo-5-snapped the window dragged to the left edge: the left half
+#   albireo-5b-resized  then made 300 px wider by dragging the right border of Hearth's frame
 #   albireo-6-your-desktop  Settings › System › Your desktop with the preview switch
 #   albireo-7-locked  Mantel's lock screen (ext-session-lock), nothing else on the screen
 #   albireo-8-lock-prompt  the lock screen killed: still locked, the compositor's own prompt after a wrong password
@@ -77,7 +78,8 @@ if command -v wayland-info >/dev/null; then
            zwp_input_method_manager_v2 zwp_text_input_manager_v3 zwp_pointer_constraints_v1 wp_viewporter \
            wp_fractional_scale_manager_v1 wp_presentation xdg_activation_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1 \
            ext_session_lock_manager_v1 zwlr_screencopy_manager_v1 ext_image_copy_capture_manager_v1 \
-           ext_output_image_capture_source_manager_v1 zwlr_output_manager_v1 zwlr_gamma_control_manager_v1; do
+           ext_output_image_capture_source_manager_v1 zwlr_output_manager_v1 zwlr_gamma_control_manager_v1 \
+           wp_tearing_control_manager_v1 ext_data_control_manager_v1; do
     grep -q "$g" shots/wayland-info.txt || fail "protocols" "$g isn't offered"
   done
   note "protocols" "$(grep -o "interface: '[a-z_0-9]*'" shots/wayland-info.txt | cut -d"'" -f2 | tr '\n' ' ' | cut -c1-900)"
@@ -169,6 +171,24 @@ fi
 sleep 2
 shot albireo-5-snapped
 
+# ---- 5b: resized by Hearth's frame: its right border dragged 300 px to the right.
+if command -v xdotool >/dev/null; then
+  read -r x y w h <<<"$(status '"%d %d %d %d" % next((w["x"], w["y"], w["w"], w["h"]) for w in d["windows"] if w["appId"] == "hearth-test-window")')"
+  if [ -n "${w:-}" ]; then
+    bx=$((x + w + 3)); by=$((y + h / 2))
+    xdotool mousemove "$bx" "$by"; sleep 0.5
+    xdotool mousedown 1; sleep 0.3
+    for step in 1 2 3 4 5 6; do xdotool mousemove $((bx + 50 * step)) "$by"; sleep 0.15; done
+    sleep 0.3; xdotool mouseup 1; sleep 2
+    got=$(status '"%d %d" % next((w["w"], w["h"]) for w in d["windows"] if w["appId"] == "hearth-test-window")')
+    note "resize" "the window was ${w}x${h}; after dragging its right border 300 px it's ${got/ /x}"
+    read -r nw nh <<<"$got"
+    [ "$((nw - w))" -ge 240 ] && [ "$((nw - w))" -le 320 ] || fail "resize" "the right border didn't resize it by about 300 px ($w -> $nw)"
+    [ "$nh" -ge "$((h - 2))" ] && [ "$nh" -le "$((h + 2))" ] || fail "resize" "its height changed while dragging only the right border ($h -> $nh)"
+  fi
+fi
+shot albireo-5b-resized
+
 # ---- 6: Settings › System › Your desktop, with the preview switch.
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1 || fail "settings" "Mantel's ipc didn't answer"
 sleep 5
@@ -176,6 +196,19 @@ shot albireo-6-your-desktop
 python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status.json
 grep -q '"wmNow": "albireo"' shots/status.json || fail "Your desktop" "doesn't say Mantel is on Albireo: $(head -c 400 shots/status.json)"
 grep -q '"albireoPreview": true' shots/status.json || fail "Your desktop" "doesn't show the preview as on"
+
+# ---- 6b: the clipboard without a window (data-control: Mantel's clipboard history, wl-copy / wl-paste) and typing
+# through the virtual keyboard (wtype, as hearth-type and the on-screen keyboard do).
+if command -v wl-copy >/dev/null; then
+  W timeout 5 wl-copy "Albireo clipboard $$" 2>shots/clip.err
+  got=$(W timeout 5 wl-paste --no-newline 2>>shots/clip.err)
+  [ "$got" = "Albireo clipboard $$" ] && note "clipboard" "wl-copy / wl-paste through data-control work" \
+    || fail "clipboard" "wl-paste gave '$got' ($(head -c 300 shots/clip.err | tr '\n' ' '))"
+fi
+if command -v wtype >/dev/null; then
+  W timeout 5 wtype "typed by wtype" 2>shots/wtype.err && note "virtual keyboard" "wtype typed" \
+    || fail "virtual keyboard" "wtype failed: $(head -c 300 shots/wtype.err | tr '\n' ' ')"
+fi
 
 # ---- 7: the lock screen (ext-session-lock): Super+L's command locks, and nothing behind it has the keyboard.
 # (This run's compositor waits 120 s before asking Mantel to lock again, so step 8 sees its own prompt.)
@@ -318,7 +351,7 @@ grep -iE "panic|thread .* panicked" shots/albireo.log shots/compositor-alone.log
 grep -E "WARN|ERROR" shots/albireo.log 2>/dev/null | sort | uniq -c | sort -rn | head -6 | cut -c1-300 | while read -r l; do note "compositor log" "$l"; done
 grep -E 'desktop|albireo' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
 ls -la shots
-for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-6-your-desktop \
+for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-5b-resized albireo-6-your-desktop \
          albireo-7-locked albireo-8-lock-prompt albireo-9-unlocked albireo-10-grim albireo-11-display; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done

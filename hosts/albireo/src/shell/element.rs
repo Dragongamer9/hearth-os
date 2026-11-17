@@ -27,7 +27,7 @@ use smithay::{
     wayland::{compositor::SurfaceData as WlSurfaceData, dmabuf::DmabufFeedback, seat::WaylandFocus},
 };
 
-use super::ssd::HEADER_BAR_HEIGHT;
+use super::ssd::{edge_at, BORDER, HEADER_BAR_HEIGHT};
 use crate::{focus::PointerFocusTarget, state::Backend, HearthState};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +39,13 @@ impl WindowElement {
         location: Point<f64, Logical>,
         window_type: WindowSurfaceType,
     ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
+        // Hearth's resize borders, just outside the frame (shell/ssd.rs): the frame's, not the app's.
+        if self.resizable_frame() {
+            let geo = SpaceElement::geometry(self);
+            if edge_at(geo, location).is_some() {
+                return Some((PointerFocusTarget::SSD(SSD(self.clone())), Point::default()));
+            }
+        }
         let state = self.decoration_state();
         if state.is_ssd && location.y < HEADER_BAR_HEIGHT as f64 {
             return Some((PointerFocusTarget::SSD(SSD(self.clone())), Point::default()));
@@ -113,6 +120,22 @@ impl WindowElement {
 
     #[cfg(feature = "xwayland")]
     #[inline]
+    /// A Hearth frame that can be resized by its borders: not maximized or full screen.
+    pub fn resizable_frame(&self) -> bool {
+        if !self.decoration_state().is_ssd {
+            return false;
+        }
+        match self.0.underlying_surface() {
+            WindowSurface::Wayland(t) => {
+                use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State;
+                let st = t.current_state().states;
+                !st.contains(State::Maximized) && !st.contains(State::Fullscreen)
+            }
+            #[cfg(feature = "xwayland")]
+            WindowSurface::X11(x) => !x.is_maximized() && !x.is_fullscreen(),
+        }
+    }
+
     pub fn is_x11(&self) -> bool {
         self.0.is_x11()
     }
@@ -143,6 +166,36 @@ impl IsAlive for WindowElement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SSD(WindowElement);
 
+impl SSD {
+    /// The pointer over the frame: the title bar's hover, or a resize border's arrow.
+    fn hover<BackendData: Backend>(&self, data: &mut HearthState<BackendData>, location: Point<f64, Logical>) {
+        use smithay::input::pointer::{CursorIcon, CursorImageStatus};
+        let geo = SpaceElement::geometry(&self.0);
+        let edge = self.0.resizable_frame().then(|| edge_at(geo, location)).flatten();
+        let mut state = self.0.decoration_state();
+        if state.is_ssd {
+            state.header_bar.pointer_enter(location);
+        }
+        drop(state);
+        let icon = edge.map(|e| {
+            use super::ResizeEdge as E;
+            match e {
+                e if e == E::TOP_LEFT => CursorIcon::NwResize,
+                e if e == E::TOP_RIGHT => CursorIcon::NeResize,
+                e if e == E::BOTTOM_LEFT => CursorIcon::SwResize,
+                e if e == E::BOTTOM_RIGHT => CursorIcon::SeResize,
+                e if e == E::LEFT => CursorIcon::WResize,
+                e if e == E::RIGHT => CursorIcon::EResize,
+                e if e == E::TOP => CursorIcon::NResize,
+                _ => CursorIcon::SResize,
+            }
+        });
+        if !matches!(data.cursor_status, CursorImageStatus::Surface(_)) {
+            data.cursor_status = CursorImageStatus::Named(icon.unwrap_or_default());
+        }
+    }
+}
+
 impl IsAlive for SSD {
     #[inline]
     fn alive(&self) -> bool {
@@ -161,24 +214,18 @@ impl<BackendData: Backend> PointerTarget<HearthState<BackendData>> for SSD {
     fn enter(
         &self,
         _seat: &Seat<HearthState<BackendData>>,
-        _data: &mut HearthState<BackendData>,
+        data: &mut HearthState<BackendData>,
         event: &MotionEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-        }
+        self.hover(data, event.location);
     }
     fn motion(
         &self,
         _seat: &Seat<HearthState<BackendData>>,
-        _data: &mut HearthState<BackendData>,
+        data: &mut HearthState<BackendData>,
         event: &MotionEvent,
     ) {
-        let mut state = self.0.decoration_state();
-        if state.is_ssd {
-            state.header_bar.pointer_enter(event.location);
-        }
+        self.hover(data, event.location);
     }
     fn relative_motion(
         &self,
@@ -193,6 +240,18 @@ impl<BackendData: Backend> PointerTarget<HearthState<BackendData>> for SSD {
         data: &mut HearthState<BackendData>,
         event: &ButtonEvent,
     ) {
+        // On a resize border: pressing starts resizing (after this round of input, like moving).
+        let geo = SpaceElement::geometry(&self.0);
+        let resizable = self.0.resizable_frame();
+        let loc = self.0.decoration_state().header_bar.pointer_loc;
+        if let Some(edges) = loc.filter(|_| resizable).and_then(|l| edge_at(geo, l)) {
+            if event.state == smithay::backend::input::ButtonState::Pressed {
+                let w = self.0.clone();
+                let (serial, button) = (event.serial, event.button);
+                data.handle.insert_idle(move |d| d.start_frame_resize(&w, edges, serial, button));
+            }
+            return;
+        }
         let mut state = self.0.decoration_state();
         if state.is_ssd {
             state.header_bar.clicked(seat, data, &self.0, event);
@@ -209,13 +268,17 @@ impl<BackendData: Backend> PointerTarget<HearthState<BackendData>> for SSD {
     fn leave(
         &self,
         _seat: &Seat<HearthState<BackendData>>,
-        _data: &mut HearthState<BackendData>,
+        data: &mut HearthState<BackendData>,
         _serial: Serial,
         _time: u32,
     ) {
         let mut state = self.0.decoration_state();
         if state.is_ssd {
             state.header_bar.pointer_leave();
+        }
+        drop(state);
+        if matches!(data.cursor_status, smithay::input::pointer::CursorImageStatus::Named(_)) {
+            data.cursor_status = smithay::input::pointer::CursorImageStatus::default_named();
         }
     }
     fn gesture_swipe_begin(
@@ -365,9 +428,16 @@ impl SpaceElement for WindowElement {
         if self.decoration_state().is_ssd {
             bbox.size.h += HEADER_BAR_HEIGHT;
         }
+        if self.resizable_frame() {
+            bbox.loc -= Point::from((BORDER, BORDER));
+            bbox.size += (2 * BORDER, 2 * BORDER).into();
+        }
         bbox
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
+        if self.resizable_frame() && edge_at(SpaceElement::geometry(self), *point).is_some() {
+            return true;
+        }
         if self.decoration_state().is_ssd {
             point.y < HEADER_BAR_HEIGHT as f64
                 || SpaceElement::is_in_input_region(
