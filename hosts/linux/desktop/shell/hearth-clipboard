@@ -338,8 +338,17 @@ def copy(iid):
 
 def press_ctrl_v():
     """Ctrl+V into the window in front: wtype (Wayland's virtual keyboard, what the on-screen keyboard types with),
-    else a short-lived uinput keyboard (python3-evdev; Hearth's controller support already needs /dev/uinput)."""
-    if shutil.which('wtype'):
+    else a short-lived uinput keyboard (python3-evdev; Hearth's controller support already needs /dev/uinput).
+    On KWin (no virtual-keyboard protocol for wtype): hearth-type, Hearth's typing helper (docs/KWIN-INPUT.md)."""
+    if os.environ.get('HEARTH_WM') == 'kwin':
+        ht = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-type')
+        try:
+            r = subprocess.run([sys.executable, ht, '-M', 'ctrl', '-k', 'v', '-m', 'ctrl'], capture_output=True, timeout=8)
+            if r.returncode == 0:
+                return True
+        except (OSError, subprocess.SubprocessError):
+            pass
+    elif shutil.which('wtype'):
         r = subprocess.run(['wtype', '-M', 'ctrl', '-k', 'v', '-m', 'ctrl'], capture_output=True, timeout=5)
         if r.returncode == 0:
             return True

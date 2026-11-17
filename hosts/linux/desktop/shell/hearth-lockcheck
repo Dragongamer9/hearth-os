@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""hearth-lockcheck: can KWin's screen locker show Hearth's lock screen here? (docs/KWIN-INPUT.md)
+
+Lock.qml runs this on KWin before every lock. KWin's locker is fail-safe: when its lock screen can't load it keeps
+the screen covered (its emergency screen), and on a handheld without a keyboard that would be a lockout. So Hearth
+only asks KWin to lock when this says the lock screen will come up; otherwise Lock.qml tells the person and doesn't
+lock.
+
+  hearth-lockcheck          one JSON line {ok, why, greeter, package}; exit 0 if locking is safe, 1 if not
+
+Checks: KWin's greeter (kscreenlocker_greet) is installed; Hearth's lock screen package is where it looks (the Plasma
+shell package named by PLASMA_DEFAULT_SHELL, with X-Plasma-APIVersion 2 or more and lockscreen/LockScreen.qml; or,
+for older lockers, the look-and-feel package of the same name); and once per change (cached in
+<runtime dir>/hearth/lockcheck.json) the greeter itself loads it in a test run off screen: a run that says its lock
+screen QML failed or is outdated fails the check.
+"""
+import glob
+import json
+import os
+import subprocess
+import sys
+
+PACKAGE = 'org.hearth.mantel-lock'
+GREETERS = ['/usr/libexec/kscreenlocker_greet', '/usr/lib64/libexec/kscreenlocker_greet'] + \
+    sorted(glob.glob('/usr/lib/*/libexec/kscreenlocker_greet'))
+FAIL_MARKS = ('Failed to load lockscreen QML', 'Lockscreen QML outdated', 'Failed to load the fallback')
+PROBE_TIME = 8
+
+
+def greeter():
+    for g in ([os.environ['HEARTH_LOCK_GREETER']] if os.environ.get('HEARTH_LOCK_GREETER') else []) + GREETERS:
+        if os.access(g, os.X_OK):
+            return g
+    return ''
+
+
+def data_dirs():
+    home = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    return [home] + [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+
+
+def package(kind):
+    """The package's folder if it's complete (API version 2+, its lock screen QML), else ''."""
+    for d in data_dirs():
+        p = os.path.join(d, 'plasma', kind, PACKAGE)
+        try:
+            with open(os.path.join(p, 'metadata.json'), encoding='utf-8') as f:
+                meta = json.load(f)
+            if int(meta.get('X-Plasma-APIVersion', '1')) >= 2 and \
+                    os.path.isfile(os.path.join(p, 'contents', 'lockscreen', 'LockScreen.qml')):
+                return p
+        except (OSError, ValueError, TypeError):
+            continue
+    return ''
+
+
+def stamp(paths):
+    out = []
+    for p in paths:
+        try:
+            out.append('%s:%d' % (p, os.stat(p).st_mtime_ns))
+        except OSError:
+            out.append(p + ':-')
+    return '|'.join(out)
+
+
+def probe(g, pkg):
+    """The greeter's own test run, off screen: (ok, why). Only a load failure it reports counts as failing."""
+    cache_dir = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth')
+    cache = os.path.join(cache_dir, 'lockcheck.json')
+    key = stamp([g, os.path.join(pkg, 'metadata.json'), os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml')])
+    try:
+        with open(cache, encoding='utf-8') as f:
+            c = json.load(f)
+        if c.get('key') == key:
+            return c['ok'], c['why']
+    except (OSError, ValueError, KeyError):
+        pass
+    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', PLASMA_DEFAULT_SHELL=PACKAGE)
+    try:
+        r = subprocess.run([g, '--testing'], env=env, capture_output=True, text=True, timeout=PROBE_TIME)
+        out = (r.stdout or '') + (r.stderr or '')
+    except subprocess.TimeoutExpired as e:
+        out = ((e.stdout or b'') + (e.stderr or b'')).decode('utf-8', 'replace') if isinstance(e.stdout, bytes) else \
+            (e.stdout or '') + (e.stderr or '')
+    except OSError as e:
+        return False, 'the screen locker won\'t run: %s' % e
+    bad = [m for m in FAIL_MARKS if m in out]
+    ok, why = (False, 'the screen locker can\'t load Hearth\'s lock screen (%s)' % bad[0]) if bad else (True, 'ok')
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        with open(cache + '.part', 'w', encoding='utf-8') as f:
+            json.dump({'key': key, 'ok': ok, 'why': why}, f)
+        os.replace(cache + '.part', cache)
+    except OSError:
+        pass
+    return ok, why
+
+
+def check(run_probe=True):
+    g = greeter()
+    if not g:
+        return {'ok': False, 'why': 'KWin\'s screen locker (kscreenlocker) isn\'t installed', 'greeter': '', 'package': ''}
+    shell = package('shells') if os.environ.get('PLASMA_DEFAULT_SHELL') == PACKAGE else ''
+    pkg = shell or package('look-and-feel')
+    if not pkg:
+        why = 'Hearth\'s lock screen isn\'t where KWin\'s screen locker looks' + (
+            '' if os.environ.get('PLASMA_DEFAULT_SHELL') == PACKAGE else ' (PLASMA_DEFAULT_SHELL isn\'t %s)' % PACKAGE)
+        return {'ok': False, 'why': why, 'greeter': g, 'package': ''}
+    ok, why = probe(g, pkg) if run_probe else (True, 'ok')
+    return {'ok': ok, 'why': why, 'greeter': g, 'package': pkg}
+
+
+def main(argv):
+    if argv[:1] in (['-h'], ['--help']):
+        print(__doc__)
+        return 0
+    res = check('--no-probe' not in argv)
+    print(json.dumps(res))
+    return 0 if res['ok'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

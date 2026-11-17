@@ -2,7 +2,8 @@
 // wakes from sleep (Hearth Settings › Sign-in › Lock when waking). Covers every screen (the compositor keeps
 // everything else hidden until it's unlocked) and checks your password with the system (PAM), like the login
 // screen. It has its own keyboard on screen (tap, or move with the arrow keys / D-pad and press Enter), since
-// the regular on-screen keyboard can't show over a locked screen.
+// the regular on-screen keyboard can't show over a locked screen. On KWin it hands locking to KWin's locker with
+// Hearth's own lock screen in it (desktop/kwin-lock, docs/KWIN-INPUT.md).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -17,8 +18,52 @@ Scope {
     property string typed: ""
     property string message: ""
     property bool busy: false
+    // On KWin (HEARTH_WM=kwin) there's no ext-session-lock-v1, so WlSessionLock would cover nothing: KWin's own
+    // locker locks instead (fail-safe: it stays covered even if its screen crashes), showing Hearth's lock screen
+    // (desktop/kwin-lock). `locked` then follows KWin's locker (org.freedesktop.ScreenSaver ActiveChanged).
+    readonly property bool onKwin: Quickshell.env("HEARTH_WM") === "kwin"
 
-    function lock() { if (!locked) { typed = ""; message = ""; locked = true; } }
+    function lock() {
+        if (onKwin) { kwinLock.running = false; kwinLock.running = true; return; }
+        if (!locked) { typed = ""; message = ""; locked = true; }
+    }
+
+    // KWin: first hearth-lockcheck (is KWin's locker there, and will it show Hearth's lock screen? If it couldn't, KWin
+    // would keep the screen covered by its emergency screen: on a handheld without a keyboard, a lockout). Only then
+    // lock through KWin's locker, and check it really locked. Either failing: say so loudly, never a silent "locked".
+    readonly property string lockcheck: decodeURIComponent(Qt.resolvedUrl("hearth-lockcheck").toString().replace(/^file:\/\//, ""))
+    Process {
+        id: kwinLock
+        command: ["sh", "-c", "out=$(python3 \"$0\") || { echo \"nolock $out\"; exit 0; }; gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.Lock >/dev/null 2>&1; for i in 1 2 3 4 5 6 7 8 9 10; do gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true && { echo locked; exit 0; }; sleep 0.5; done; echo failed", root.lockcheck]
+        stdout: SplitParser {
+            onRead: l => {
+                const line = l.trim();
+                if (line === "locked") { root.locked = true; return; }
+                root.locked = false;
+                let why = "KWin's screen locker didn't answer";
+                if (line.indexOf("nolock ") === 0) {
+                    try { why = JSON.parse(line.slice(7)).why || why; } catch (e) { why = "the lock screen isn't ready"; }
+                    why += ". Hearth didn't lock, so you can't be locked out";
+                }
+                console.warn("Lock: not locked: " + why);
+                SettingsNav.toast("The screen isn't locked: " + why);
+                Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Hearth", "The screen isn't locked",
+                    why + ". Nothing is covering your desktop. Try Lock again, or sign out."]);
+            }
+        }
+    }
+    // Warms hearth-lockcheck's test of the lock screen at start, so the first lock doesn't wait for it.
+    Process { running: root.onKwin; command: ["python3", root.lockcheck] }
+    Process {
+        running: root.onKwin
+        command: ["gdbus", "monitor", "--session", "--dest", "org.freedesktop.ScreenSaver", "--object-path", "/ScreenSaver"]
+        stdout: SplitParser {
+            onRead: l => {
+                if (l.indexOf("ActiveChanged (true") >= 0) root.locked = true;
+                else if (l.indexOf("ActiveChanged (false") >= 0) root.locked = false;
+            }
+        }
+    }
     function tryUnlock() {
         if (busy) return;
         busy = true; message = "";
@@ -53,7 +98,7 @@ Scope {
 
     WlSessionLock {
         id: session
-        locked: root.locked
+        locked: root.locked && !root.onKwin
 
         WlSessionLockSurface {
             id: surface

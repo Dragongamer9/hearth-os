@@ -74,6 +74,7 @@ function info(w) {
         allDesktops: w.onAllDesktops === true,
         output: w.output ? String(w.output.name || "") : "",
         pid: w.pid || 0,
+        frame: { x: Math.round(w.frameGeometry.x), y: Math.round(w.frameGeometry.y), w: Math.round(w.frameGeometry.width), h: Math.round(w.frameGeometry.height) },
         dialog: w.dialog === true,
         parent: parent,
         zone: zoneOf(w)
@@ -225,6 +226,8 @@ function run(c) {
     case "keepAbove": if (w) w.keepAbove = !!c.on; break;
     case "allDesktops": if (w) w.onAllDesktops = !!c.on; break;
     case "snap": snap(w, c.zone); break;
+    // A place and size of Mantel's choosing (Discord's quick window by the bar): x, y, w, h in KWin's coordinates.
+    case "place": if (w && c.w > 0 && c.h > 0) { if (isMax(w)) setMax(w, false); setGeometry(w, { x: c.x, y: c.y, width: c.w, height: c.h }); } break;
     case "desktop": toDesktop(w, c.n); break;
     case "goDesktop": goDesktop(c.n); break;
     case "key": winKey(String(c.key || "")); break;
