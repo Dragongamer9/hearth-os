@@ -8,19 +8,19 @@ import Quickshell
 SetPage {
     id: page
     title: "Info Center"
-    property var data: null
+    property var info: null
     readonly property var tabs: [{ p: "cpu", id: "info-cpu", t: "Processor" }, { p: "gpu", id: "info-gpu", t: "Graphics card" }, { p: "memory", id: "info-memory", t: "Memory" },
         { p: "graphics", id: "info-graphics", t: "Vulkan & OpenGL" }, { p: "pci", id: "info-pci", t: "PCI" }, { p: "usb", id: "info-usb", t: "USB" }, { p: "energy", id: "info-energy", t: "Energy" }]
     readonly property string which: part || "cpu"
     property string find: ""
-    function load() { data = null; job.run([which], r => page.data = r, e => page.data = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
+    function load() { info = null; job.run([which], r => page.info = r, e => page.info = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
     Component.onCompleted: Qt.callLater(load)
     onWhichChanged: Qt.callLater(load)
     SetJob { id: job; helper: "hearth-info" }
     function asText() {
-        if (!data) return "";
-        if (data.items) return data.items.map(i => [i.id, i.kind, i.title, i.sub, i.value].filter(x => x).join(" · ")).join("\n");
-        return data.sections.map(s => s.title + "\n" + (s.rows || []).map(r => "  " + r[0] + ": " + r[1]).join("\n")).join("\n\n");
+        if (!info) return "";
+        if (info.items) return info.items.map(i => [i.id, i.kind, i.title, i.sub, i.value].filter(x => x).join(" · ")).join("\n");
+        return info.sections.map(s => s.title + "\n" + (s.rows || []).map(r => "  " + r[0] + ": " + r[1]).join("\n")).join("\n\n");
     }
 
     Flow {
@@ -38,11 +38,11 @@ SetPage {
             }
         }
     }
-    SetRow { visible: !page.data; interactive: false; icon: "info"; title: "Reading…" }
+    SetRow { visible: !page.info; interactive: false; icon: "info"; title: "Reading…" }
 
     // Sections of name / value rows (cpu, gpu, memory, graphics).
     Repeater {
-        model: page.data && page.data.sections ? page.data.sections : []
+        model: page.info && page.info.sections ? page.info.sections : []
         delegate: SetPanel {
             id: sec
             required property var modelData
@@ -91,12 +91,12 @@ SetPage {
         }
     }
     // Lists (pci, usb).
-    SetField { visible: !!page.data && !!page.data.items; placeholder: "Find a device"; onTextChanged: page.find = text.toLowerCase() }
+    SetField { visible: !!page.info && !!page.info.items; placeholder: "Find a device"; onTextChanged: page.find = text.toLowerCase() }
     SetCardGroup {
-        visible: !!page.data && !!page.data.items
-        title: page.data && page.data.items ? page.data.items.length + " devices" + (page.data.note ? " · " + page.data.note : "") : ""
+        visible: !!page.info && !!page.info.items
+        title: page.info && page.info.items ? page.info.items.length + " devices" + (page.info.note ? " · " + page.info.note : "") : ""
         Repeater {
-            model: page.data && page.data.items ? page.data.items.filter(i => page.find === "" || (i.title + " " + i.sub + " " + i.kind + " " + i.value).toLowerCase().indexOf(page.find) >= 0).slice(0, 80) : []
+            model: page.info && page.info.items ? page.info.items.filter(i => page.find === "" || (i.title + " " + i.sub + " " + i.kind + " " + i.value).toLowerCase().indexOf(page.find) >= 0).slice(0, 80) : []
             delegate: SetRow {
                 required property var modelData
                 interactive: false; chevron: false
@@ -108,7 +108,7 @@ SetPage {
         }
     }
     SetRow {
-        visible: !!page.data
+        visible: !!page.info
         icon: "copy"; chevron: false; title: "Copy this page"; sub: "As text, for a bug report or a forum post"
         onActivated: { Quickshell.execDetached(["sh", "-c", 'printf "%s" "$1" | wl-copy', "sh", page.asText()]); SettingsNav.toast("Copied"); }
     }

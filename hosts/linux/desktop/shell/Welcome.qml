@@ -19,8 +19,8 @@ Scope {
     property string seen: ""
     property bool seenRead: false
     readonly property string statePath: Quickshell.env("HOME") + "/.local/state/nimbus/welcome.json"
-    readonly property string short: { const m = /^(\d+)\.(\d+)/.exec(version); return m ? m[1] + "." + m[2] : version; }
-    readonly property var pg: pages[short] || pages["default"] || { title: "Welcome", sub: "", items: [] }
+    readonly property string shortVer: { const m = /^(\d+)\.(\d+)/.exec(version); return m ? m[1] + "." + m[2] : version; }
+    readonly property var pg: pages[shortVer] || pages["default"] || { title: "Welcome", sub: "", items: [] }
     SettingsWriter { id: writer; path: wl.statePath }
     FileView {
         path: wl.statePath
@@ -38,12 +38,12 @@ Scope {
     }
     Timer { interval: 90000; running: true; onTriggered: wl.maybe() }
     function maybe() {
-        if (!Settings.welcomeAfterUpdates || !seenRead || version === "" || short === seen || Quickshell.env("HEARTH_SEAT")) return;
+        if (!Settings.welcomeAfterUpdates || !seenRead || version === "" || shortVer === seen || Quickshell.env("HEARTH_SEAT")) return;
         shown = true;
     }
     function close() {
         shown = false;
-        if (version !== "" && seen !== short) { seen = short; writer.merge({ seen: short }); }
+        if (version !== "" && seen !== shortVer) { seen = shortVer; writer.merge({ seen: shortVer }); }
     }
     function go(page) { close(); if (settings) settings.open(page); }
     IpcHandler {
@@ -84,7 +84,7 @@ Scope {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
-                        Text { text: "Hearth OS " + wl.short; color: Theme.accent; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                        Text { text: "Hearth OS " + wl.shortVer; color: Theme.accent; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
                         Text { Layout.fillWidth: true; text: wl.pg.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 28; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
                         Text { Layout.fillWidth: true; text: wl.pg.sub || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap }
                     }

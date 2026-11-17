@@ -157,7 +157,9 @@ class SettingsNeverChangeByThemselves(unittest.TestCase):
         # (1.14: an activity with its own wallpaper comes first, Activities.qml; "" there is the desktop's own.)
         self.assertIn('readonly property string wall: activityWall !== "" ? activityWall : Settings.wallpaper !== "" ? Settings.wallpaper : ownWall', t)
         w = (SHELL / 'Wallpaper.qml').read_text()
-        self.assertIn('readonly property string wall: Theme.wall', w)
+        # (1.14: a screen's own picture or the slideshow first, WallShow.qml; else Theme.wall as before.)
+        self.assertIn('readonly property string wall: WallShow.forScreen(root.screen ? root.screen.name : "")', w)
+        self.assertIn('return typeof own === "string" && own !== "" ? own : current !== "" ? current : Theme.wall;', (SHELL / 'WallShow.qml').read_text())
 
     def test_from_wallpaper_only_runs_when_you_ask(self):
         a = code((SHELL / 'SetAppearance.qml').read_text())
