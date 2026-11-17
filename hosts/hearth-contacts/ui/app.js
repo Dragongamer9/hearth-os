@@ -317,12 +317,17 @@ async function doExport() {
   } catch (err) { toast(String(err), true); }
 }
 
-// Accounts (CardDAV).
+// Accounts (CardDAV): Contacts' own, and the address books of Online accounts (Settings › Accounts › Online
+// accounts), which sign in through hearth-accounts and are switched on or off there.
 function showAccounts() {
-  const rows = S.accounts.map(a => `<div class="acct"><div><b>${esc(a.name)}</b> <span class="muted">${esc(a.bookName)}</span><small>${esc(a.username)} · ${esc(a.server)}</small>
-      <small class="${a.lastError ? 'bad' : ''}">${a.lastError ? esc(a.lastError) : a.lastSync ? 'Last synced ' + esc(revText(a.lastSync)) : 'Not synced yet'}</small></div>
-      <div class="acts"><button class="btn small f" data-syncone="${esc(a.id)}">Sync now</button>${a.lastError && /password|keyring/i.test(a.lastError) ? `<button class="btn small f" data-repass="${esc(a.id)}">Sign in again</button>` : ''}<button class="btn small f" data-rmacct="${esc(a.id)}">Remove</button></div></div>`).join('');
-  showDialog(`<h2>Accounts</h2><p class="help">Keep an address book in step with Nextcloud, iCloud, Fastmail or any CardDAV server. Passwords are kept in the system keyring.</p>
+  const rows = S.accounts.map(a => {
+    const fromOnline = !!a.online;
+    const managed = fromOnline && !a.paused;
+    return `<div class="acct"><div><b>${esc(a.name)}</b> <span class="muted">${esc(a.bookName)}</span>${fromOnline ? ' <span class="tag">Online accounts</span>' : ''}<small>${esc(a.username)} · ${esc(a.server)}</small>
+      <small class="${a.lastError ? 'bad' : ''}">${a.lastError ? esc(a.lastError) : a.lastSync ? 'Last synced ' + esc(revText(a.lastSync)) : 'Not synced yet'}</small>${managed ? '<small>Signed in once in Settings › Accounts › Online accounts</small>' : ''}</div>
+      <div class="acts">${a.paused ? '' : `<button class="btn small f" data-syncone="${esc(a.id)}">Sync now</button>`}${!fromOnline && a.lastError && /password|keyring/i.test(a.lastError) ? `<button class="btn small f" data-repass="${esc(a.id)}">Sign in again</button>` : ''}${managed ? '' : `<button class="btn small f" data-rmacct="${esc(a.id)}">Remove</button>`}</div></div>`;
+  }).join('');
+  showDialog(`<h2>Accounts</h2><p class="help">Keep an address book in step with Nextcloud, iCloud, Fastmail or any CardDAV server. Passwords are kept in the system keyring. Accounts you signed in to in Settings › Accounts › Online accounts show here by themselves.</p>
     ${rows || '<p class="muted">No accounts yet. Contacts are kept on this computer only.</p>'}
     <div class="drow">${S.accounts.length ? '<button class="btn f" data-syncall="1">Sync all</button>' : ''}<button class="btn primary f" data-dlg="addacct" data-autofocus>Add an account</button><button class="btn f" data-dlg="close">Close</button></div>`);
 }
@@ -379,6 +384,36 @@ function rePass(id) {
     <div class="drow"><button class="btn f" data-dlg="accounts">Cancel</button><button class="btn primary f" data-dlg="repass">Save and sync</button></div>`);
 }
 
+// Online accounts: their address books show by themselves; one that's also one of Contacts' own accounts is shown
+// once and the person is asked whether to join them (never done without asking).
+async function onlineRefresh() {
+  if (!T) return;
+  try {
+    const r = await invoke('online_refresh');
+    if (!r.available) return;
+    if (r.added.length) { await load(); toast(`From Online accounts: ${r.added.join(', ')}`); }
+    S.mergeOffers = r.duplicates || [];
+    if (S.mergeOffers.length && !$('#layer').firstChild && !S.edit) offerMerge();
+    if (r.errors.length) $('#hint').textContent = `Online accounts: ${r.errors[0]}`;
+  } catch (e) { $('#hint').textContent = `Online accounts: ${e}`; }
+}
+function offerMerge() {
+  const d = S.mergeOffers?.[0]; if (!d) return;
+  showDialog(`<h2>“${esc(d.ownName)}” is in Online accounts too</h2>
+    <p class="help">The address book <b>${esc(d.bookName)}</b> is one of Contacts' own accounts, and it also comes from <b>${esc(d.accountName)}</b> in Settings › Accounts › Online accounts. It's only shown once.</p>
+    <p class="help">Join them, and Contacts signs in through Online accounts from now on: the contacts here stay just as they are. Or keep them apart, and Contacts keeps its own sign-in.</p>
+    <div class="drow"><button class="btn f" data-merge="no" data-autofocus>Keep them apart</button><button class="btn primary f" data-merge="yes">Join them</button></div>`);
+}
+async function answerMerge(yes) {
+  const d = S.mergeOffers.shift(); if (!d) return;
+  try {
+    await invoke(yes ? 'online_merge' : 'online_decline', { own: d.own, account: d.account });
+    toast(yes ? `Joined: ${d.bookName} signs in through Online accounts now` : 'Kept apart');
+  } catch (e) { toast(String(e), true); }
+  closeDialog(); await load();
+  if (S.mergeOffers.length) offerMerge(); else runSync('');
+}
+
 let syncTimer = null;
 function syncSoon(book) { if (S.accounts.some(a => a.id === book)) { clearTimeout(syncTimer); syncTimer = setTimeout(() => runSync(book), 1500); } }
 async function runSync(id = '', loud = false) {
@@ -422,6 +457,7 @@ document.addEventListener('click', async e => {
   if (d.syncall) { await runSync('', true); return; }
   if (d.rmacct) { askRemoveAccount(d.rmacct); return; }
   if (d.repass) { rePass(d.repass); return; }
+  if (d.merge) { answerMerge(d.merge === 'yes'); return; }
   if (d.rmnow) { try { await invoke('remove_account', { id: S.rmAcct, keepCopy: d.rmnow === 'keep' }); S.book = null; await load(); showAccounts(); } catch (err) { toast(String(err), true); } return; }
   if (d.key && b.closest('#osk')) { oskPress(d.key); return; }
   switch (d.dlg) {
@@ -503,6 +539,7 @@ document.addEventListener('keydown', e => {
   if (!typing && !$('#layer').firstChild && !S.edit) {
     if (k === '/' ) { e.preventDefault(); $('#q').focus(); return; }
     if ((k === 'e' || k === 'E') && current()) { e.preventDefault(); startEdit(false); return; }
+    if (k === 'a' || k === 'A') { e.preventDefault(); showAccounts(); return; }
     if (k === 'Delete' && current()) { e.preventDefault(); askDelete(); return; }
   }
   const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
@@ -611,9 +648,11 @@ window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Co
   (document.querySelector('.row.sel') || $('#q')).focus();
   const file = await invoke('launch_file').catch(() => null);
   if (file) startImport(file);
-  if (S.accounts.length) runSync('');
+  await onlineRefresh();
+  // While Contacts asks whether to join an account with Online accounts, nothing syncs (it does after the answer).
+  if (S.accounts.length && !S.mergeOffers?.length) runSync('');
   // Sync every 15 minutes while open.
-  setInterval(() => { if (!S.edit) runSync(''); }, 15 * 60 * 1000);
+  setInterval(async () => { if (!S.edit) { await onlineRefresh(); runSync(''); } }, 15 * 60 * 1000);
 })();
 
 // ---------------------------------------------------------------- without the app (opening the page in a browser): sample contacts

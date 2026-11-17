@@ -9,6 +9,7 @@ on:
   push:
     branches-ignore: ['ci/**']
     paths: ['hosts/linux/desktop/shell/hearth_accounts.py', 'hosts/linux/desktop/shell/SetAccounts.qml',
+            'hosts/linux/desktop/shell/hearth_ical.py', 'hosts/linux/test/test_account_calendars.py', 'hosts/linux/test/fake_dav.py',
             'hosts/linux/test/test_online_accounts.py', 'os/system_files/usr/share/hearth/online-accounts/**',
             '.github/workflows/online-accounts.yml']
   workflow_dispatch:
@@ -28,10 +29,10 @@ jobs:
       - name: Online accounts' tests (fake servers only)
         run: |
           set -o pipefail
-          python3 -m unittest discover -s hosts/linux/test -p 'test_online_accounts.py' -v 2>&1 | tee accounts.log
+          python3 -m unittest discover -s hosts/linux/test -p 'test_*account*.py' -v 2>&1 | tee accounts.log
       - name: Settings' registry and search index, Hearth Files' helper
         run: |
-          python3 -m py_compile hosts/linux/desktop/shell/hearth_accounts.py
+          python3 -m py_compile hosts/linux/desktop/shell/hearth_accounts.py hosts/linux/desktop/shell/hearth_ical.py
           python3 -m unittest discover -s hosts/linux/test -p 'test_settings_redesign.py'
           python3 tools/build-settings-index.py --check
           python3 tools/tidy-check.py
