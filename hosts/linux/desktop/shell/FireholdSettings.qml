@@ -19,6 +19,10 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
+    // The screen's own size from the first frame (a first frame drawn smaller was left in the other buffer and showed
+    // through, shifted, when only part of the page was drawn again).
+    implicitWidth: screen ? screen.width : 1920
+    implicitHeight: screen ? screen.height : 1080
     color: pal.bg
     Component.onCompleted: { fh.settingsPanel = st; keys.forceActiveFocus(); }
     Component.onDestruction: if (fh.settingsPanel === st) fh.settingsPanel = null
