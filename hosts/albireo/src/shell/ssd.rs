@@ -16,7 +16,7 @@ use smithay::{
     },
     desktop::WindowSurface,
     input::{pointer::ButtonEvent, Seat},
-    utils::{Logical, Point, Rectangle, Serial, Transform},
+    utils::{IsAlive, Logical, Point, Rectangle, Serial, Transform},
     wayland::shell::xdg::XdgShellHandler,
 };
 
@@ -66,6 +66,41 @@ pub struct HeaderBar {
 }
 
 pub const HEADER_BAR_HEIGHT: i32 = 34;
+/// The invisible resize border around a Hearth frame (logical pixels), and how far along it a corner reaches.
+pub const BORDER: i32 = 6;
+const CORNER: f64 = 18.0;
+
+/// Which edges a point (relative to the window, its frame included) resizes, if it's on the border around it.
+pub fn edge_at(
+    geo: Rectangle<i32, Logical>,
+    p: Point<f64, Logical>,
+) -> Option<super::ResizeEdge> {
+    use super::ResizeEdge as E;
+    let (x0, y0) = (geo.loc.x as f64, geo.loc.y as f64);
+    let (x1, y1) = (x0 + geo.size.w as f64, y0 + geo.size.h as f64);
+    let b = BORDER as f64;
+    if p.x < x0 - b || p.x >= x1 + b || p.y < y0 - b || p.y >= y1 + b {
+        return None;
+    }
+    let inside = p.x >= x0 && p.x < x1 && p.y >= y0 && p.y < y1;
+    if inside {
+        return None;
+    }
+    let mut e = E::empty();
+    if p.x < x0 + CORNER.min(geo.size.w as f64 / 3.0) && (p.x < x0 || p.y < y0 || p.y >= y1) {
+        e |= E::LEFT;
+    }
+    if p.x >= x1 - CORNER.min(geo.size.w as f64 / 3.0) && (p.x >= x1 || p.y < y0 || p.y >= y1) {
+        e |= E::RIGHT;
+    }
+    if p.y < y0 + CORNER.min(geo.size.h as f64 / 3.0) && (p.y < y0 || p.x < x0 || p.x >= x1) {
+        e |= E::TOP;
+    }
+    if p.y >= y1 - CORNER.min(geo.size.h as f64 / 3.0) && (p.y >= y1 || p.x < x0 || p.x >= x1) {
+        e |= E::BOTTOM;
+    }
+    (!e.is_empty()).then_some(e)
+}
 const BUTTON_WIDTH: i32 = 40;
 
 impl HeaderBar {
@@ -267,6 +302,41 @@ fn start_move<BackendData: Backend + 'static>(
 }
 
 impl<BackendData: Backend + 'static> HearthState<BackendData> {
+    /// Resizing by a Hearth frame's border (the same grab apps start with xdg_toplevel.resize).
+    pub fn start_frame_resize(&mut self, window: &WindowElement, edges: super::ResizeEdge, serial: Serial, button: u32) {
+        use smithay::{input::pointer::{Focus, GrabStartData}, wayland::compositor::with_states};
+        if !window.alive() || self.lock.locked {
+            return;
+        }
+        let Some(loc) = self.space.element_location(window) else { return };
+        let size = smithay::desktop::space::SpaceElement::geometry(window).size;
+        let pointer = self.pointer.clone();
+        if let Some(surface) = window.wl_surface() {
+            with_states(&surface, |states| {
+                if let Some(d) = states.data_map.get::<RefCell<super::SurfaceData>>() {
+                    d.borrow_mut().resize_state = super::ResizeState::Resizing(super::ResizeData {
+                        edges,
+                        initial_window_location: loc,
+                        initial_window_size: size,
+                    });
+                }
+            });
+        }
+        // A snapped window resized by hand isn't snapped any more (dragging it away keeps this size).
+        if let Some(r) = window.user_data().get::<crate::wm::Restore>() {
+            r.0.borrow_mut().take();
+        }
+        let grab = super::PointerResizeSurfaceGrab {
+            start_data: GrabStartData { focus: None, button, location: pointer.current_location() },
+            window: window.clone(),
+            edges,
+            initial_window_location: loc,
+            initial_window_size: size,
+            last_window_size: size,
+        };
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
     pub fn toggle_maximized(&mut self, w: &WindowElement) {
         let maximized = match w.0.underlying_surface() {
             WindowSurface::Wayland(t) => t.current_state().states.contains(
@@ -549,6 +619,20 @@ impl WindowElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resize_borders_and_corners() {
+        use crate::shell::ResizeEdge as E;
+        let g = Rectangle::new((0, 0).into(), (400, 300).into());
+        assert_eq!(edge_at(g, (-3.0, 150.0).into()), Some(E::LEFT));
+        assert_eq!(edge_at(g, (402.0, 150.0).into()), Some(E::RIGHT));
+        assert_eq!(edge_at(g, (200.0, -2.0).into()), Some(E::TOP));
+        assert_eq!(edge_at(g, (200.0, 304.0).into()), Some(E::BOTTOM));
+        assert_eq!(edge_at(g, (-2.0, -2.0).into()), Some(E::TOP_LEFT));
+        assert_eq!(edge_at(g, (403.0, 290.0).into()), Some(E::BOTTOM_RIGHT));
+        assert_eq!(edge_at(g, (200.0, 150.0).into()), None);
+        assert_eq!(edge_at(g, (-20.0, 150.0).into()), None);
+    }
 
     #[test]
     fn a_bar_is_drawn_opaque_in_its_size() {

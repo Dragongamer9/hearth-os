@@ -156,7 +156,7 @@ jobs:
           import base64, io, os
           from PIL import Image
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
-          for name in ('albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-6-your-desktop',
+          for name in ('albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-5b-resized', 'albireo-6-your-desktop',
                        'albireo-7-locked', 'albireo-8-lock-prompt', 'albireo-9-unlocked', 'albireo-10-grim', 'albireo-11-display'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
@@ -186,7 +186,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ['albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-6-your-desktop',
+        name: ['albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-5b-resized', 'albireo-6-your-desktop',
                'albireo-7-locked', 'albireo-8-lock-prompt', 'albireo-9-unlocked', 'albireo-10-grim', 'albireo-11-display']
     steps:
       - uses: actions/download-artifact@v4
