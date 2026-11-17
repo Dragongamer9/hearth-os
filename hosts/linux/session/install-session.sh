@@ -21,7 +21,7 @@ install -Dm755 "$HERE/nimbus-watchdog" /usr/local/lib/nimbus/nimbus-watchdog
 install -Dm644 "$HERE/nimbus.desktop" /usr/share/wayland-sessions/nimbus.desktop
 # "Hearth Classic" (Mantel, the only desktop); older Hearth Plasma / GNOME entries are taken away.
 install -Dm644 "$HERE/hearth-classic.desktop" /usr/share/wayland-sessions/hearth-classic.desktop
-rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop
+rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-kde.desktop
 if [ -d "$HERE/desktop" ]; then
   rm -rf /usr/local/share/nimbus/desktop
   mkdir -p /usr/local/share/nimbus

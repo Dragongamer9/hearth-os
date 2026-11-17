@@ -142,6 +142,8 @@ fn hearth_files() -> Vec<(String, String, PathBuf)> {
         ("shell".into(), "Desktop Mode's taskbar and menus".into(), run.join("nimbus-shell.log")),
         ("pad".into(), "Desktop Mode's controller helper".into(), data.join("pad.log")),
         ("labwc".into(), "Desktop Mode's window manager (labwc)".into(), data.join("labwc.log")),
+        ("kwin".into(), "Desktop Mode's window manager (KWin)".into(), data.join("kwin.log")),
+        ("kwin-bridge".into(), "Mantel's KWin bridge".into(), run.join("hearth-kwin-bridge.log")),
         ("input".into(), "Hearth Input (controller layouts)".into(), data.join("input.log")),
         ("seat".into(), "Multi-seat host".into(), data.join("seat-host.log")),
     ];

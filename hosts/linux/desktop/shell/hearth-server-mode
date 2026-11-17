@@ -1323,6 +1323,8 @@ def go(mode, wait_nudge=True):
     env = dict(os.environ)
     if env.get('HEARTH_SERVER_MODE') != '1':
         env.pop('LABWC_PID', None)      # not the dashboard's own labwc: nimbus-mode finds the mode that's up itself
+        env.pop('HEARTH_DESKTOP_PID', None)
+        env.pop('HEARTH_WM', None)
     code, o, e = run([NIMBUS_MODE, mode], 20, env)
     if code != 0:
         raise Fail('The switch didn\'t start (%s)' % (e.strip() or o.strip() or code)[:120])

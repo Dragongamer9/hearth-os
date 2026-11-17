@@ -228,9 +228,16 @@ touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
-# Mantel (labwc + Quickshell) is Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone, and
-# their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter,
-# gnome-session, gnome-control-center and GNOME's apps; their portals) aren't installed any more. What stays:
+# Mantel (Quickshell) is Hearth's only desktop, on KWin from 1.14 with labwc (above) as its fallback (nimbus-session's
+# run_classic; docs/DESKTOPS.md "Mantel on KWin"). Hearth Plasma, Hearth GNOME, Hearth COSMIC and 1.13's KDE Plasma /
+# GNOME downloads are gone: their sessions (plasma-workspace, plasma-desktop and Plasma's applets; gnome-shell, mutter,
+# gnome-session, gnome-control-center and GNOME's apps) aren't installed. What's here:
+#   kwin-wayland         KWin, Mantel's window manager (required: the build stops without kwin_wayland)
+#   kglobalacceld        KWin's keyboard shortcuts service (optional)
+#   xdg-desktop-portal-kde
+#                        KDE's portal (optional; VNC's remote input under KWin when hearth-portals.conf names it)
+#   libkf6screen-bin / kscreen
+#                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
 #   kde-cli-tools, plasma-integration, qml6-module-org-kde-kirigami
@@ -239,6 +246,14 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 # plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
 optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
+"${APT[@]}" kwin-wayland || true
+if ! command -v kwin_wayland >/dev/null; then
+  echo "::error title=KWin::kwin_wayland isn't installed (package kwin-wayland): Mantel runs on KWin from 1.14"
+  exit 1
+fi
+optional kglobalacceld xdg-desktop-portal-kde
+if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
+command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
 # Capture says so when they're missing
 optional tesseract-ocr tesseract-ocr-eng zbar-tools
@@ -276,13 +291,11 @@ fi
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
 # Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's old pieces in the shared system files (still used by other
-# bases): not in this image. 1.13 (docs/DESKTOPS.md): KDE Plasma and GNOME in their own look with Hearth inside keep
-# only Hearth's tray item and start menu (org.hearth.tray, org.hearth.kickoff, /usr/share/hearth-kde's panel) and
-# GNOME's Hearth section and controller (hearth-quick@, hearth-pad@): inert until KDE or GNOME is downloaded.
+# bases): not in this image. (1.13's KDE Plasma and GNOME choices, with their own Hearth pieces, were retired in 1.14:
+# archive/desktops-kde-gnome, docs/archive/DESKTOPS-KDE-GNOME.md.)
 rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth \
   /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json
-for p in /usr/share/plasma/plasmoids/org.hearth.*; do case "$p" in */org.hearth.tray|*/org.hearth.kickoff) ;; *) rm -rf "$p" ;; esac; done
-for e in /usr/share/gnome-shell/extensions/*@hearthos.fun; do case "$e" in */hearth-quick@hearthos.fun|*/hearth-pad@hearthos.fun) ;; *) rm -rf "$e" ;; esac; done
+rm -rf /usr/share/plasma/plasmoids/org.hearth.* /usr/share/gnome-shell/extensions/*@hearthos.fun
 rm -f /usr/share/applications/hearth-cosmic-*.desktop
 rmdir --ignore-fail-on-non-empty -p /usr/share/plasma/plasmoids /usr/share/plasma/look-and-feel /usr/share/plasma/desktoptheme /usr/share/gnome-shell/modes /usr/share/gnome-shell/extensions 2>/dev/null || true
 chmod 440 /etc/sudoers.d/hearth-wheel
@@ -1053,14 +1066,15 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
-# "Hearth Classic" on the login screen too (Mantel), and 1.13's KDE Plasma and GNOME entries: listed only once that
-# desktop is downloaded (TryExec), and they go through nimbus-session (its safe start: Mantel if it can't start).
+# "Hearth Classic" on the login screen too (Mantel). 1.13's "KDE Plasma (Hearth)" / "GNOME (Hearth)" entries are
+# gone with those choices (retired in 1.14); a login screen that remembers one starts Hearth's first entry instead, and
+# nimbus-session --desktop=kde|gnome still opens Mantel with the notice.
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
-sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-kde.desktop > /usr/share/wayland-sessions/hearth-kde.desktop
-sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-gnome.desktop > /usr/share/wayland-sessions/hearth-gnome.desktop
-rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
-# KDE's and GNOME's own login entries would start them without Hearth's safe start: moved aside (dpkg-divert, so
-# installing their packages later puts them in /usr/share/hearth/desktop-sessions instead).
+rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop \
+  /usr/share/wayland-sessions/hearth-kde.desktop /usr/share/wayland-sessions/hearth-gnome.desktop
+# KDE's and GNOME's own login entries would start them without Hearth's session (a KDE Plasma or GNOME someone
+# downloaded in 1.13 stays in their writable system until they remove it): moved aside (dpkg-divert, so their
+# packages put them in /usr/share/hearth/desktop-sessions instead).
 mkdir -p /usr/share/hearth/desktop-sessions
 for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop xsessions/plasma.desktop xsessions/plasmax11.desktop \
          wayland-sessions/gnome.desktop wayland-sessions/gnome-wayland.desktop xsessions/gnome.desktop xsessions/gnome-xorg.desktop \
@@ -1073,7 +1087,7 @@ mkdir -p /usr/share/hearth/greeter
 cp -a /usr/share/nimbus/desktop/shell/OskBoard.qml /usr/share/nimbus/desktop/shell/OskKey.qml /usr/share/hearth/greeter/
 rm -rf /usr/share/hearth/greeter/osk && mkdir -p /usr/share/hearth/greeter/osk
 cp -a /usr/share/nimbus/desktop/shell/osk/hearth-osk.js /usr/share/hearth/greeter/osk/
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-desktops /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/kwin/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart

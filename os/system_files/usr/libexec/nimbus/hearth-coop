@@ -87,7 +87,7 @@ DEV_PASS = ['dri', 'nvidiactl', 'nvidia-modeset', 'nvidia-uvm', 'nvidia-uvm-tool
 HOME_LINKS = ['.local/share/Steam', '.steam', '.local/share/umu', '.cache/umu', '.local/share/vulkan',
               '.config/MangoHud', '.local/share/fonts', '.fonts', '.config/fontconfig', '.icons', '.local/share/icons']
 # Variables of the outer gamescope / Hearth that must not reach the nested session.
-CONTAINER_UNSET = ['GAMESCOPE_WAYLAND_DISPLAY', 'ENABLE_GAMESCOPE_WSI', 'SDL_VIDEODRIVER', 'LABWC_PID',
+CONTAINER_UNSET = ['GAMESCOPE_WAYLAND_DISPLAY', 'ENABLE_GAMESCOPE_WSI', 'SDL_VIDEODRIVER', 'LABWC_PID', 'HEARTH_DESKTOP_PID', 'HEARTH_WM',
                    'STEAM_GAME', 'SteamAppId', 'SteamGameId', 'MANGOHUD', 'MANGOHUD_CONFIGFILE']
 # Variables the nested gamescope needs but the game inside it must not get.
 GAME_UNSET = ['WAYLAND_DISPLAY', 'SDL_VIDEODRIVER', 'SDL_APP_ID', 'SDL_VIDEO_WAYLAND_WMCLASS', 'SDL_VIDEO_X11_WMCLASS']

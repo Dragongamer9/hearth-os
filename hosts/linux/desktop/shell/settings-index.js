@@ -3003,24 +3003,23 @@ var ENTRIES = [
 "p": "winapps"
 },
 {
-"t": "Only show each desktop's own apps",
+"t": "Window manager",
 "p": "your-desktop",
-"d": "Mantel shows Hearth's apps, KDE shows KDE's, GNOME shows GNOME's. Apps you installed (Bazaar, Flatpak, Steam, .deb) show on every desktop."
+"d": "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
 },
 {
-"t": "KDE and GNOME look like Mantel",
-"p": "your-desktop",
-"d": "Mantel's look, light or dark, accent, wallpaper, font and its bar and dock, each time KDE or GNOME starts. Change the look in Personalization; off leaves KDE's and GNOME's own settings as they are."
-},
-{
-"t": "Pick at the login screen too",
-"p": "your-desktop",
-"d": "Hearth Classic, KDE Plasma and GNOME are listed when you sign in. Game Mode's power menu › Switch to Desktop opens the one picked here."
+"t": "Running now",
+"p": "your-desktop"
 },
 {
 "t": "Safe start",
 "p": "your-desktop",
-"d": "If KDE or GNOME doesn't start twice in a row, Hearth opens Mantel and tells you why. Your choice stays saved until you change it."
+"d": "If KWin doesn't start, Mantel opens on labwc for that sign-in and tells you why. Twice in a row, it stays on labwc until you pick KWin again. Your choice stays saved."
+},
+{
+"t": "KDE Plasma and GNOME",
+"p": "your-desktop",
+"d": "Retired in Hearth 1.14: Mantel is the desktop. A KDE Plasma or GNOME pick from before opens Mantel, and Hearth tells you once."
 },
 {
 "t": "Clean up",

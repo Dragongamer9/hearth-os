@@ -366,7 +366,7 @@ def main():
         system = os.path.join(DESKTOP, 'shell', 'hearth-system')
         if os.path.isdir(rt) and os.path.isfile(system):
             subprocess.run([sys.executable, system, 'labwc-config'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+        if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
             subprocess.run(['labwc', '--reconfigure'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for k, v in (('HEARTH_THEME_DIR', OUT), ('HEARTH_SCHEME', mode), ('HEARTH_GNOME_ACCENT', gnome_accent(m.accent))):
         if "'" not in v:

@@ -634,6 +634,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 # The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
 # Plasma and Hearth GNOME (hidden by their TryExec where they aren't installed).
 for s in hearth-classic hearth-plasma hearth-gnome; do
+  [ -f "/ctx/session/$s.desktop" ] || continue   # hearth-gnome.desktop: archived in 1.14 (archive/desktops-kde-gnome)
   sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
 done
 # Hearth COSMIC (docs/archive/COSMIC.md), hidden by its TryExec if COSMIC didn't install.
