@@ -3146,6 +3146,22 @@ var ENTRIES = [
 "d": "High pops up even with Do not disturb on; Low goes straight to the list"
 },
 {
+"t": "Some are in a locked keyring",
+"p": "passwords",
+"i": "lock"
+},
+{
+"t": "Nothing saved yet",
+"p": "passwords",
+"i": "key"
+},
+{
+"t": "Remove it",
+"p": "passwords",
+"d": "The app forgets this sign-in and asks again next time",
+"i": "trash"
+},
+{
 "t": "Phone link",
 "p": "phone",
 "i": "phone"
@@ -3451,6 +3467,50 @@ var ENTRIES = [
 "i": "restart"
 },
 {
+"t": "Index my files",
+"p": "search",
+"i": "search"
+},
+{
+"t": "Search inside documents",
+"p": "search",
+"i": "doc"
+},
+{
+"t": "Keep indexing on battery",
+"p": "search",
+"d": "Off: the index waits until you plug in",
+"i": "batt"
+},
+{
+"t": "Rebuild the index",
+"p": "search",
+"d": "Start again from nothing (it's made again in the background)",
+"i": "restart"
+},
+{
+"t": "Add a folder…",
+"p": "search",
+"i": "plus"
+},
+{
+"t": "Always left out",
+"p": "search",
+"d": "Hidden folders (your settings and keyrings), caches, game libraries and Windows prefixes, build folders",
+"i": "shield"
+},
+{
+"t": "Leave out a folder…",
+"p": "search",
+"i": "plus"
+},
+{
+"t": "Today's currency rates",
+"p": "search",
+"d": "Once a day, from the European Central Bank, when you're online. Off: the built-in rates only (the answer says how old they are).",
+"i": "cloud"
+},
+{
 "t": "Use Server mode",
 "p": "hs-server",
 "d": "Show it next to Game Mode and Desktop Mode: in Start in, here and on the dashboard. Off by default; Game Mode stays where your PC starts unless you choose Server mode",
@@ -3702,6 +3762,54 @@ var ENTRIES = [
 {
 "t": "Low means less than",
 "p": "storage"
+},
+{
+"t": "Nothing found",
+"p": "store",
+"i": "search"
+},
+{
+"t": "License",
+"p": "store",
+"i": "info"
+},
+{
+"t": "App id",
+"p": "store",
+"i": "box"
+},
+{
+"t": "Website",
+"p": "store",
+"i": "globe"
+},
+{
+"t": "Update all apps",
+"p": "store",
+"i": "update"
+},
+{
+"t": "Your apps are up to date",
+"p": "store",
+"i": "check"
+},
+{
+"t": "Hearth OS updates",
+"p": "store",
+"d": "The system itself: Settings › Updates",
+"i": "update"
+},
+{
+"t": "Firmware",
+"p": "store",
+"d": "Your PC's and devices' firmware: Settings › Firmware",
+"i": "cpu"
+},
+{
+"t": "Add a source…",
+"p": "store",
+"d": "A .flatpakrepo file's https:// address (it carries the key that checks its apps)",
+"i": "plus"
 },
 {
 "t": "No Thunderbolt here",
