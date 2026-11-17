@@ -204,6 +204,40 @@ ipc wayland-hearth settings page users; sleep 5
 shot kwin-w3-users-oem
 ipc wayland-hearth settings close
 [ -n "$OEM_MADE" ] && rm -f "$OEM_M"
+# The App store's app page and Hearth Files' terminal panel (search-store).
+ipc wayland-hearth settings page store:app-org_kde_krita; sleep 12
+shot kwin-w3-store-app
+ipc wayland-hearth settings close
+ipc wayland-hearth filemanager home; sleep 3
+ipc wayland-hearth filemanager terminal on; sleep 3
+shot kwin-w3-files-terminal
+ipc wayland-hearth filemanager terminal off
+ipc wayland-hearth filemanager close
+# The search plugins (w3-search-plugins) under KWin: world clock, kill asks first, a colour, the bar's "?" list, and
+# virtual desktops (KWin's own: WinList.desktops) listed by the desktops plugin.
+cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
+ipc wayland-hearth launcher open; sleep 3; ipc wayland-hearth launcher close
+chk() { got=$(qk launcher answers "$1"); case "$got" in *"$2"*) echo "::notice title=search plugins (KWin)::$1 → $(echo "$got" | cut -c1-200)" ;; *) fail "search plugins (KWin)" "\"$1\" didn't answer $2: $(echo "$got" | cut -c1-300)" ;; esac; }
+chk "3pm london to tokyo" 'in Tokyo'
+chk "#ff8800" 'rgb(255, 136, 0)'
+chk "kill hearth-demo" '"type":"kill"'
+chk "desktop 2" '"type":"desktop"'
+ipc wayland-hearth searchbar type "3pm london to tokyo"; sleep 3
+shot kwin-w3-search-world-clock
+ipc wayland-hearth searchbar type "#ff8800"; sleep 3
+shot kwin-w3-search-colour
+ipc wayland-hearth searchbar type "?"; sleep 3
+qk searchbar state | grep -q '"plugin":"worldclock"' || fail "search plugins (KWin)" "the search bar's ? doesn't list the new plugins: $(qk searchbar state | cut -c1-300)"
+shot kwin-w3-search-help
+ipc wayland-hearth searchbar type "kill hearth-demo"; sleep 3
+ipc wayland-hearth searchbar enter; sleep 2
+shot kwin-w3-search-kill-asks-first
+ipc wayland-hearth searchbar close; sleep 2
+pgrep -f hearth-demo-timer >/dev/null && echo "::notice title=search plugins (KWin)::kill asked first; closing it kept the program running" \
+  || fail "search plugins (KWin)" "kill ended the program without asking"
+pkill -f hearth-demo-timer 2>/dev/null
+grep -E "(Launcher|SearchSources|FilesTerminal|FileManager)\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
+  | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 grep -E "(SearchBar|Activit|StoreDrivers|SetStore)[A-Za-z]*\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
   | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
