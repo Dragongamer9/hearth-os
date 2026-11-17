@@ -24,12 +24,27 @@ Scope {
         // 1.14: vaults set to lock with the screen are locked (hearth-vaults), and the fingerprint (if you turned it on)
         // is asked for next to the password. Leaving the lock screen stops the fingerprint.
         if (locked) { vaultLock.running = false; vaultLock.running = true; fpTries = 0; fpInfo = ""; if (!onKwin) { fpCheck.running = false; fpCheck.running = true; } }
-        else if (fpPam.active) fpPam.abort();
+        else {
+            if (fpPam.active) fpPam.abort();
+            // A vault that couldn't lock with the screen (files open in it): said once you're back, so it's not a surprise.
+            if (vaultProblems.length) {
+                const t = vaultProblems.join(" ");
+                vaultProblems = [];
+                Quickshell.execDetached(["notify-send", "-a", "Hearth", "-i", "dialog-warning", "A vault stayed unlocked", t + " Lock it from the bar's vault button or Settings › Vaults."]);
+            }
+        }
     }
+    property var vaultProblems: []     // what hearth-vaults lock-all --screen couldn't lock
     readonly property string vaultsHelper: decodeURIComponent(Qt.resolvedUrl("hearth-vaults").toString().replace(/^file:\/\//, ""))
     Process {
         id: vaultLock
         command: ["sh", "-c", "[ -e \"$HOME/.config/nimbus/vaults.json\" ] || exit 0; exec python3 \"$0\" lock-all --screen", root.vaultsHelper]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { const o = JSON.parse(text.trim().split("\n").pop() || "{}"); root.vaultProblems = (o && Array.isArray(o.problems)) ? o.problems : []; }
+                catch (e) { root.vaultProblems = []; }
+            }
+        }
     }
 
     // ---- Fingerprint (1.14, docs/FINGERPRINT.md): a second PAM conversation (service hearth-fingerprint) NEXT TO the

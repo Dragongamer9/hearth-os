@@ -11,11 +11,13 @@ and for administrator prompts. **RED FLAG: a fingerprint is never the only way i
   `/etc/nimbus/fingerprint/lock` or `/etc/nimbus/fingerprint/polkit` (root's, through `hearth-admin fingerprint-places`).
   A missing or broken list means "off".
 - **common-auth stays password-only.** libpam-fprintd's own pam-auth-update profile (which would put the reader in front
-  of every password: login, sudo, SDDM) is taken out by the image build, and the build fails if common-auth mentions
-  pam_fprintd.
+  of every password: login, sudo, SDDM) is turned off by the image build (`pam-auth-update --disable`, so a later
+  pam-auth-update never brings it back), and the build fails if common-auth mentions pam_fprintd, right after the
+  setup and again at the very end.
 - **The lock screen** asks for a finger with its own PAM service, `hearth-fingerprint` (KWin's locker: the same file as
   `kde-fingerprint`), at the same time as the password, which keeps its own service. Either unlocks. The fingerprint
-  service has no password line at all, and a few failed fingers make the reader rest until the next lock.
+  service has no password line at all; its "no" comes after 5 seconds (pam_faildelay), so a locker that asks again
+  can't loop, and KWin's lock screen only mentions the finger to people the reader actually asked.
 - **Administrator prompts (polkit)**: one included block, `hearth-fingerprint-polkit`, at the top of polkit-1. Line 1
   skips the reader for anyone not on the list; line 2 is `[success=done default=ignore] pam_fprintd.so max-tries=1
   timeout=10`: any failure (no reader, no fprintd, a wrong finger, a timeout, pam_fprintd missing) carries on to the

@@ -30,7 +30,7 @@ jobs:
         run: |
           set -e
           # build.sh: fprintd's own profile out of common-auth (it would put the reader in front of every password).
-          if [ -e /usr/share/pam-configs/fprintd ]; then DEBIAN_FRONTEND=noninteractive pam-auth-update --package --remove fprintd; fi
+          if [ -e /usr/share/pam-configs/fprintd ]; then DEBIAN_FRONTEND=noninteractive pam-auth-update --package --disable fprintd; fi
           if grep -qs pam_fprintd /etc/pam.d/common-auth; then echo "::error title=PAM::common-auth still asks for a fingerprint"; exit 1; fi
           [ -e /etc/pam.d/polkit-1 ] && echo "::notice title=PAM::/etc/pam.d/polkit-1 is there" || echo "::notice title=PAM::polkit-1 only in /usr/lib/pam.d"
           cp -a /etc/pam.d /tmp/pam.before
@@ -40,6 +40,9 @@ jobs:
           python3 /usr/libexec/nimbus/hearth-fingerprint-pam install
           python3 /usr/libexec/nimbus/hearth-fingerprint-pam check
           echo "::notice title=polkit-1 now::$(grep -v '^#' /etc/pam.d/polkit-1 | grep . | tr '\n' '|' | cut -c1-600)"
+          # --disable keeps it off for good: another pam-auth-update run (any package's) doesn't bring it back.
+          DEBIAN_FRONTEND=noninteractive pam-auth-update --package
+          if grep -qs pam_fprintd /etc/pam.d/common-auth; then echo "::error title=PAM::a later pam-auth-update put fprintd back into common-auth"; exit 1; fi
           useradd -m -s /bin/bash hearthtest
           echo 'hearthtest:Hearth-Test-1' | chpasswd
       - name: The password always works, a wrong one never does

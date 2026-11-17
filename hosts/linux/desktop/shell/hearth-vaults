@@ -170,7 +170,8 @@ def create(req):
     pw = password_of(req)
     if len(pw) < 6:
         raise Fail('use a password of 6 letters or more')
-    idle = idle_of(req, 15)
+    # gocryptfs's idle lock skips a vault with files open; CryFS's doesn't check, so for CryFS it's off unless asked for.
+    idle = idle_of(req, 0 if backend == 'cryfs' else 15)
     vs = load()
     if any((x.get('name') or k).lower() == name.lower() for k, x in vs.items()):
         raise Fail('you already have a vault called %s' % name)

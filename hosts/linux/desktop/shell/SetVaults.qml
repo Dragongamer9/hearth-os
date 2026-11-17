@@ -82,7 +82,7 @@ SetPage {
                         onActivated: job.run(["lock", vr.modelData.id], r => { page.st = r; page.say(vr.modelData.name + " is locked."); }, e => page.say(e, true), "", "lock")
                     }
                     SetChoice {
-                        icon: "clock"; title: "Lock by itself"; sub: "After nobody used its files for a while (from the next unlock)"
+                        icon: "clock"; title: "Lock by itself"; sub: vr.modelData.backend === "cryfs" ? "CryFS doesn't check for open files: save your work before it's due (from the next unlock)" : "After nobody used its files for a while (from the next unlock)"
                         options: [{ value: 5, label: "5 min" }, { value: 15, label: "15 min" }, { value: 60, label: "1 hour" }, { value: 0, label: "Never" }]
                         current: vr.modelData.idle
                         onChosen: v => job.run(["set", vr.modelData.id], r => { page.st = r; page.say("Saved: " + page.idleWord(v) + "."); }, e => page.say(e, true), JSON.stringify({ idle: v }), "set")
@@ -135,10 +135,10 @@ SetPage {
                 options: [{ value: "gocryptfs", label: "gocryptfs", disabled: !page.st || page.st.backends.indexOf("gocryptfs") < 0 },
                           { value: "cryfs", label: "CryFS", disabled: !page.st || page.st.backends.indexOf("cryfs") < 0 }]
                 current: page.backend
-                onChosen: v => page.backend = v
+                onChosen: v => { page.backend = v; page.idle = v === "cryfs" ? 0 : 15; }
             }
             SetChoice {
-                icon: "clock"; title: "Lock by itself"; sub: "After nobody used its files for a while"
+                icon: "clock"; title: "Lock by itself"; sub: page.backend === "cryfs" ? "Off for CryFS: its own auto-lock doesn't check for open files, so a file you're still editing could be cut off" : "After nobody used its files for a while"
                 options: [{ value: 5, label: "5 min" }, { value: 15, label: "15 min" }, { value: 60, label: "1 hour" }, { value: 0, label: "Never" }]
                 current: page.idle
                 onChosen: v => page.idle = v

@@ -5164,7 +5164,6 @@ var ENTRIES = [
 {
 "t": "Lock by itself",
 "p": "vaults",
-"d": "After nobody used its files for a while (from the next unlock)",
 "i": "clock"
 },
 {
