@@ -1,0 +1,114 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/shell.qml"
+[32m  INFO[0m: Shell ID: "46d0510b7d07c529e429b39faef616e5" Path ID "46d0510b7d07c529e429b39faef616e5"
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/hvr20not/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m qt.dbus.integration[0m: QDBusConnection: name 'org.freedesktop.portal.Desktop' had owner '' but we thought it was ':1.6'
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[315:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[288:5]: Read of /tmp/home/.local/state/nimbus/notifications.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[128:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[186:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[45:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[204:5]: Read of /tmp/home/.config/nimbus/notify.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[183:5]: Read of /tmp/xdg/hearth-vnc/clients.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[176:5]: Read of /tmp/xdg/hearth-record/state.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @BarLayout.qml[64:5]: Read of /tmp/home/.config/nimbus/bar.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Launcher.qml[260:5]: Read of /tmp/home/.cache/hearth/search/rates.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Launcher.qml[259:5]: Read of /tmp/home/.config/hearth/search.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[225:5]: Read of /tmp/xdg/hearth-activities-windows.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[183:5]: Read of /tmp/home/.config/nimbus/activities.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[224:5]: Read of /tmp/xdg/hearth-activities-windows.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @WidgetStore.qml[92:5]: Read of /tmp/home/.config/nimbus/widgets.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Mixer.qml[66:5]: Read of /tmp/home/.config/nimbus/app-volumes.json failed: File does not exist.
+[33m  WARN[97m quickshell.service.polkit.listener[0m: failed to create subject for listener: No session for pid 1133
+[33m  WARN[97m quickshell.service.polkit[0m: failed to register listener on path "/org/quickshell/PolkitAgent"
+[33m  WARN[97m qt.qpa.services[0m: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: Connection already associated with an application ID")
+[32m  INFO[97m qml[0m: Mantel's password prompt isn't registered (another agent has this session, or polkit isn't reachable); the classic agent asks
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetQuick.qml[35:5]: Read of /tmp/home/.local/share/nimbus/settings-quick.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @NotifyRules.qml[35:5]: Read of /tmp/home/.config/nimbus/notify-apps.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Sounds.qml[65:5]: Read of /tmp/home/.config/nimbus/sounds.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[178:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[171:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("/usr/bin/hearth-browser", "--hearth-status")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("/usr/bin/hearth-browser", "--hearth-status")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("/usr/libexec/nimbus/hearth-side-by-side", "status")
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[178:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[171:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[178:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[171:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[178:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetKeyboard.qml[171:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyRules.qml[35:5]: Read of /tmp/home/.config/nimbus/notify-apps.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetQuick.qml[35:5]: Read of /tmp/home/.local/share/nimbus/settings-quick.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetQuick.qml[35:5]: Read of /tmp/home/.local/share/nimbus/settings-quick.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetDisplay.qml[548:5]: Read of /tmp/home/.config/nimbus/nvidia-drawing failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[356:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[364:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("/usr/libexec/nimbus/hearth-side-by-side", "status")
+[32m  INFO[97m qml[0m: AI devices: rows end at 1370 layout 1370 childrenRect 1370 contentHeight 1418 height 771
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[356:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[364:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[356:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[364:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @SetChanges.qml[18:5]: Read of /tmp/home/.local/state/nimbus/settings-history.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight", "set", "5%+")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
