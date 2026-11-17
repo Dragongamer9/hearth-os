@@ -303,6 +303,7 @@ Scope {
         if (!it) return;
         winxShown = false;
         if (it.lock) { if (lockScreen) lockScreen.lock(); return; }
+        if ((it.cmd || []).join(" ") === "nimbus-mode logout") { Leave.logout(); return; }   // asks first when Settings › Startup says so
         Quickshell.execDetached(it.cmd);
     }
     function winxKey(letter) {

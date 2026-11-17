@@ -79,6 +79,7 @@ SetPage {
             }
         }
     }
+    SetRow { icon: "share"; chevron: true; title: "Receive files & this PC's name"; sub: "Files from phones, and the name others see"; onActivated: SettingsNav.openPage("bluetooth-receive") }
     Text {
         visible: page.message !== ""
         Layout.fillWidth: true; Layout.leftMargin: 4

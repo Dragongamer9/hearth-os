@@ -37,11 +37,34 @@ nav button.on { background:var(--panel2); opacity:1; }
 main { flex:1; overflow:auto; margin:0 -4px; padding:0 4px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
 h2 { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:6px 2px 6px; font-weight:600; }
 h2:first-child { margin-top:0; }
-.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(38px, 1fr)); gap:4px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--cell, 38px), 1fr)); gap:4px; }
 .grid.wide { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
-.cell { height:38px; border-radius:min(6px, var(--corner, 6px)); border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; outline:none; padding:0;
+.cell { position:relative; height:var(--cell, 38px); border-radius:min(6px, var(--corner, 6px)); border:0; background:transparent; font-size:var(--glyph, 22px); line-height:1; cursor:pointer; outline:none; padding:0;
   font-family:"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif; transition:transform .1s var(--ease), background .1s; }
-.grid.sym .cell { font-family:system-ui, "Noto Sans", "DejaVu Sans", sans-serif; font-size:19px; }
+.grid.sym .cell { font-family:system-ui, "Noto Sans", "DejaVu Sans", sans-serif; font-size:calc(var(--glyph, 22px) - 3px); }
+/* 1.14: Size (the A button, Ctrl + / Ctrl −, LT / RT): small, medium (the default), large */
+.app.size-s { --cell:30px; --glyph:17px; }
+.app.size-l { --cell:52px; --glyph:32px; }
+/* two people who can each have their own skin tone: a small two-dot mark; right-click, a long touch, the menu key or
+   View opens Two skin tones */
+.cell.mix::after { content:''; position:absolute; right:3px; bottom:3px; width:7px; height:4px; border-radius:2px;
+  background:linear-gradient(90deg, #f7d7c4 0 45%, transparent 45% 55%, #8d5524 55%); opacity:.85; }
+.size { all:unset; cursor:pointer; height:28px; padding:0 8px; display:grid; place-items:center; border-radius:min(6px, var(--corner, 6px)); color:var(--muted); font-size:12px; font-weight:600; }
+.size:hover { background:var(--panel2); }
+.pair { position:fixed; inset:0; background:rgba(0,0,0,.5); display:grid; place-items:center; }
+.pair .card { width:min(360px, calc(100% - 24px)); background:var(--panel); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.6); display:flex; flex-direction:column; gap:10px; }
+.pair h3 { margin:0; font-size:14px; }
+.pair .big { font-size:56px; text-align:center; line-height:1.15; font-family:"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif; }
+.pair .who { display:flex; align-items:center; gap:6px; }
+.pair .who span { width:92px; color:var(--muted); font-size:12px; }
+.pair .who.on span { color:var(--text); font-weight:600; }
+.pair .sw { all:unset; cursor:pointer; width:34px; height:34px; border-radius:50%; display:grid; place-items:center; box-shadow:inset 0 0 0 2px transparent; }
+.pair .sw.on { box-shadow:inset 0 0 0 3px var(--ember); }
+.pair .who.on .sw.on { box-shadow:inset 0 0 0 3px var(--ember), 0 0 0 2px var(--text); }
+.pair .sw i { width:22px; height:22px; border-radius:50%; display:block; }
+.pair .acts { display:flex; gap:8px; justify-content:flex-end; }
+.pair .acts button { all:unset; cursor:pointer; padding:7px 14px; border-radius:min(7px, var(--corner, 7px)); background:var(--panel3); }
+.pair .acts button.go { background:var(--ember); color:var(--ink); font-weight:600; }
 .grid.wide .cell { font-size:14px; font-family:system-ui, "Noto Sans CJK JP", "Noto Sans", sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 8px; }
 .cell:hover { background:var(--panel2); }
 .cell:focus { background:var(--panel3); box-shadow:0 0 0 2px var(--ember); }
@@ -68,6 +91,7 @@ footer { display:flex; align-items:center; gap:10px; color:var(--muted); font-si
     <button class="tab" role="tab" data-tab="symbols">Symbols</button>
     <button class="tab" role="tab" data-tab="kaomoji">Kaomoji</button>
     <span class="spacer"></span>
+    <button class="size" id="size" title="Emoji size (Ctrl + / Ctrl −, LT / RT)" aria-label="Emoji size">Medium</button>
     <button class="tone" id="tone" title="Skin tone (Y)" aria-label="Skin tone">✋</button>
     <button class="x" id="close" title="Close (Esc)" aria-label="Close">✕</button>
   </div>
@@ -97,17 +121,40 @@ const CHAR_GROUPS = [['punctuation', 'Punctuation'], ['currency', 'Currency'], [
   ['numbers', 'Numbers and fractions'], ['marks', 'Marks and signs'], ['shapes', 'Shapes and lines']];
 const EMOJI_GROUPS = new Set(EMOJI_CATS.map(c => c[0]));
 const byChar = new Map(DATA.map(d => [d.e, d]));
-const S = { tab: 'emoji', tone: 0, recent: [], most: [], q: '', pad: false, busy: false };
+const S = { tab: 'emoji', tone: 0, size: 0, recent: [], most: [], q: '', pad: false, busy: false };
+// 1.14: sizes (saved as 0 medium, 1 small, 2 large; a file without it is medium) and the order the button goes through
+const SIZES = [['m', 'Medium'], ['s', 'Small'], ['l', 'Large']];
+const SIZE_ORDER = [1, 0, 2];
+// 1.14: two people, each with their own skin tone (Unicode's mixed-tone sequences; a, b: 1-5). The same tone twice is
+// the emoji's own one-tone form where Unicode has one (👭🏽), so it matches what a single tone gives.
+const ZWJ = '\u200D', HEART = '\u2764\uFE0F', T_ = i => TONES[i];
+const MIX = {
+  '🤝': (a, b) => a === b ? '🤝' + T_(a) : '🫱' + T_(a) + ZWJ + '🫲' + T_(b),
+  ['🧑' + ZWJ + '🤝' + ZWJ + '🧑']: (a, b) => '🧑' + T_(a) + ZWJ + '🤝' + ZWJ + '🧑' + T_(b),
+  '👭': (a, b) => a === b ? '👭' + T_(a) : '👩' + T_(a) + ZWJ + '🤝' + ZWJ + '👩' + T_(b),
+  '👫': (a, b) => a === b ? '👫' + T_(a) : '👩' + T_(a) + ZWJ + '🤝' + ZWJ + '👨' + T_(b),
+  '👬': (a, b) => a === b ? '👬' + T_(a) : '👨' + T_(a) + ZWJ + '🤝' + ZWJ + '👨' + T_(b),
+  '💏': (a, b) => a === b ? '💏' + T_(a) : '🧑' + T_(a) + ZWJ + HEART + ZWJ + '💋' + ZWJ + '🧑' + T_(b),
+  '💑': (a, b) => a === b ? '💑' + T_(a) : '🧑' + T_(a) + ZWJ + HEART + ZWJ + '🧑' + T_(b)
+};
+for (const [x, y] of [['👩', '👨'], ['👨', '👨'], ['👩', '👩']]) {
+  MIX[x + ZWJ + HEART + ZWJ + '💋' + ZWJ + y] = (a, b) => x + T_(a) + ZWJ + HEART + ZWJ + '💋' + ZWJ + y + T_(b);
+  MIX[x + ZWJ + HEART + ZWJ + y] = (a, b) => x + T_(a) + ZWJ + HEART + ZWJ + y + T_(b);
+}
+const TONE_COLORS = ['', '#f7d7c4', '#e8b98f', '#c68642', '#8d5524', '#4a2a17'];
+const TONE_NAMES = ['', 'light', 'medium-light', 'medium', 'medium-dark', 'dark'];
 
 function withTone(d) {
+  if (MIX[d.e]) return S.tone ? MIX[d.e](S.tone, S.tone) : d.e;
   if (!d.s || !S.tone) return d.e;
   const cps = [...d.e]; let rest = cps.slice(1);
   if (rest[0] === '️') rest = rest.slice(1);
   return cps[0] + TONES[S.tone] + rest.join('');
 }
 function cellHtml(d, i) {
-  const e = EMOJI_GROUPS.has(d.g) ? withTone(d) : d.e;
-  return `<button class="cell" data-i="${i}" data-e="${esc(e)}" title="${esc(d.n)}" aria-label="${esc(d.n)}">${esc(e)}</button>`;
+  const e = d.picked ? d.e : EMOJI_GROUPS.has(d.g) ? withTone(d) : d.e;
+  const mix = EMOJI_GROUPS.has(d.g) && MIX[d.e];
+  return `<button class="cell${mix ? ' mix' : ''}" data-i="${i}" data-e="${esc(e)}" title="${esc(d.n)}${mix ? ' · right-click for two skin tones' : ''}" aria-label="${esc(d.n)}">${esc(e)}</button>`;
 }
 let shown = [];   // the entries on screen, in order (cells point into it)
 function section(title, list, kind, id) {
@@ -115,7 +162,13 @@ function section(title, list, kind, id) {
   const start = shown.length; shown.push(...list);
   return (title ? `<h2${id ? ` id="sec-${id}"` : ''}>${esc(title)}</h2>` : '') + `<div class="grid ${kind || ''}">${list.map((d, j) => cellHtml(d, start + j)).join('')}</div>`;
 }
-function entryFor(e) { return byChar.get(e) || byChar.get(stripTone(e)) || { e, n: e, g: 'chars' }; }
+function entryFor(e) { return byChar.get(e) || byChar.get(stripTone(e)) || mixedEntry(e) || { e, n: e, g: 'chars' }; }
+// A mixed-tone pick in Most used: shown as picked (its name from its two-person emoji)
+function mixedEntry(e) {
+  for (const base of Object.keys(MIX)) for (let a = 1; a <= 5; a++) for (let b = 1; b <= 5; b++)
+    if (MIX[base](a, b) === e) { const d = byChar.get(base); return d ? { e, n: d.n + ': ' + TONE_NAMES[a] + ' and ' + TONE_NAMES[b] + ' skin tones', g: d.g, picked: true } : null; }
+  return null;
+}
 
 function search(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -175,6 +228,51 @@ function renderCats() {
   $('#cats').innerHTML = EMOJI_CATS.map(([id, icon, label]) => `<button data-cat="${id}" title="${esc(label)}" aria-label="${esc(label)}">${esc(icon)}</button>`).join('');
 }
 function renderTone() { $('#tone').textContent = TONE_SHOW[S.tone]; }
+function renderSize() {
+  const [cls, name] = SIZES[S.size] || SIZES[0];
+  $('#app').classList.remove('size-s', 'size-m', 'size-l'); $('#app').classList.add('size-' + cls);
+  $('#size').textContent = name;
+}
+function setSize(n) {
+  if (n < 0 || n > 2 || n === S.size) return;
+  S.size = n; renderSize(); invoke('set_size', { size: n }).catch(() => {});
+  document.activeElement?.scrollIntoView?.({ block: 'nearest' });
+}
+function stepSize(d) { const i = SIZE_ORDER.indexOf(S.size), j = Math.max(0, Math.min(2, i + d)); setSize(SIZE_ORDER[j]); }
+
+// ---------------------------------------------------------------- Two skin tones (two people, a tone each)
+let pair = null;   // { base, name, a, b, row }
+function mixable(el) { const d = el && el.classList?.contains('cell') ? shown[+el.dataset.i] : null; return d && !d.picked && EMOJI_GROUPS.has(d.g) && MIX[d.e] ? d : null; }
+function openPair(el) {
+  const d = mixable(el); if (!d) return false;
+  pair = { base: d.e, name: d.n, a: S.tone || 1, b: S.tone || 5, row: 0, from: el };
+  const box = document.createElement('div'); box.className = 'pair'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Two skin tones');
+  document.body.appendChild(box); drawPair(); hints(); return true;
+}
+function pairText() { return MIX[pair.base](pair.a, pair.b); }
+function drawPair() {
+  const box = $('.pair'); if (!box || !pair) return;
+  const row = (k, label) => `<div class="who${pair.row === (k === 'a' ? 0 : 1) ? ' on' : ''}"><span>${label}</span>` +
+    [1, 2, 3, 4, 5].map(t => `<button class="sw${pair[k] === t ? ' on' : ''}" data-who="${k}" data-t="${t}" title="${TONE_NAMES[t]}" aria-label="${label}: ${TONE_NAMES[t]}"><i style="background:${TONE_COLORS[t]}"></i></button>`).join('') + '</div>';
+  box.innerHTML = `<div class="card"><h3>Two skin tones · ${esc(pair.name)}</h3><div class="big" id="pairShow">${esc(pairText())}</div>` +
+    row('a', 'First person') + row('b', 'Second person') +
+    '<div class="acts"><button data-pair="cancel">Cancel</button><button data-pair="copy">Copy</button><button class="go" data-pair="type">Type it</button></div></div>';
+}
+function closePair() { const from = pair && pair.from; $('.pair')?.remove(); pair = null; hints(); if (from && document.contains(from)) from.focus({ preventScroll: true }); }
+function pairDo(what) {
+  if (!pair) return;
+  if (what === 'cancel') return closePair();
+  const text = pairText(); closePair();
+  choose({ dataset: { e: text } }, what === 'copy');
+}
+function pairKey(k) {   // the controller and the keyboard in Two skin tones
+  if (k === 'up' || k === 'down') pair.row = k === 'up' ? 0 : 1;
+  else if (k === 'left' || k === 'right') { const w = pair.row ? 'b' : 'a'; pair[w] = Math.max(1, Math.min(5, pair[w] + (k === 'right' ? 1 : -1))); }
+  else if (k === 'a') return pairDo('type');
+  else if (k === 'menu') return pairDo('copy');
+  else if (k === 'b') return closePair();
+  drawPair();
+}
 function setTone(t) { S.tone = t; renderTone(); const f = document.activeElement?.dataset?.i; render(true); if (f != null) $(`.cell[data-i="${f}"]`)?.focus({ preventScroll: true }); invoke('set_tone', { tone: t }).catch(() => {}); }
 function setTab(t) { S.tab = t; S.q = ''; $('#q').value = ''; render(); }
 function stepTab(d) { const i = TABS.indexOf(S.tab); setTab(TABS[(i + d + TABS.length) % TABS.length]); focusFirst(); }
@@ -195,7 +293,8 @@ function describe(el) {
 }
 function hints() {
   $('#app').classList.toggle('pad', S.pad);
-  $('#hints').innerHTML = '<span><i>A</i>Type</span><span><i>Y</i>Tone</span><span><i>X</i>Search</span><span><i>LB RB</i>Tabs</span><span><i>B</i>Close</span>';
+  $('#hints').innerHTML = pair ? '<span><i>↑↓</i>Person</span><span><i>←→</i>Tone</span><span><i>A</i>Type</span><span><i>☰</i>Copy</span><span><i>B</i>Back</span>'
+    : '<span><i>A</i>Type</span><span><i>Y</i>Tone</span><span><i>View</i>Two tones</span><span><i>LT RT</i>Size</span><span><i>X</i>Search</span><span><i>LB RB</i>Tabs</span><span><i>B</i>Close</span>';
 }
 
 let toastTimer = 0;
@@ -242,6 +341,13 @@ document.addEventListener('keydown', e => {
   const inSearch = e.target === $('#q');
   const k = e.key;
   if (oskOpen()) { if (k === 'Escape') { e.preventDefault(); closeOsk(); } return; }
+  if (pair) {
+    const pk = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Escape: 'b', Enter: e.shiftKey || e.ctrlKey ? 'menu' : 'a' }[k];
+    if (pk && !(k === 'Enter' && e.target.closest?.('[data-pair], .sw'))) { e.preventDefault(); pairKey(pk); }
+    return;
+  }
+  if (e.ctrlKey && (k === '+' || k === '=' || k === '-')) { e.preventDefault(); stepSize(k === '-' ? -1 : 1); return; }
+  if (k === 'ContextMenu' || (k === 'F10' && e.shiftKey)) { if (openPair(document.activeElement)) e.preventDefault(); return; }
   if (k === 'Escape') { e.preventDefault(); if (S.q) { S.q = ''; $('#q').value = ''; render(); $('#q').focus(); } else close(); return; }
   if (k === 'Tab') { e.preventDefault(); stepTab(e.shiftKey ? -1 : 1); return; }
   if (inSearch) {
@@ -260,6 +366,13 @@ document.addEventListener('keydown', e => {
 $('#q').addEventListener('input', () => { S.q = $('#q').value; render(); });
 document.addEventListener('focusin', e => describe(e.target));
 document.addEventListener('click', e => {
+  if (pair) {
+    const sw = e.target.closest('.sw'); if (sw) { pair[sw.dataset.who] = +sw.dataset.t; pair.row = sw.dataset.who === 'a' ? 0 : 1; return drawPair(); }
+    const act = e.target.closest('[data-pair]'); if (act) return pairDo(act.dataset.pair);
+    if (!e.target.closest('.pair .card')) return closePair();
+    return;
+  }
+  if (e.target.closest('#size')) return stepSize(S.size === 2 ? -2 : 1);
   const c = e.target.closest('.cell'); if (c) return choose(c, e.shiftKey || e.ctrlKey);
   const tab = e.target.closest('[data-tab]'); if (tab) return setTab(tab.dataset.tab);
   const cat = e.target.closest('[data-cat]'); if (cat) return jumpTo(cat.dataset.cat);
@@ -268,7 +381,8 @@ document.addEventListener('click', e => {
   const o = e.target.closest('.osk button'); if (o) return oskPress(o.dataset.k);
 });
 // Right-click (or long press) copies without typing.
-document.addEventListener('contextmenu', e => { const c = e.target.closest('.cell'); if (c) { e.preventDefault(); choose(c, true); } });
+// For two people who can each have a tone, it opens Two skin tones instead (its Copy button copies).
+document.addEventListener('contextmenu', e => { if (pair) { e.preventDefault(); return; } const c = e.target.closest('.cell'); if (c) { e.preventDefault(); if (!openPair(c)) choose(c, true); } });
 // Clicking another window closes the picker, as on other systems.
 let blurTimer = 0;
 window.addEventListener('blur', () => { if (!T) return; blurTimer = setTimeout(() => { if (!document.hasFocus()) close(); }, 300); });
@@ -308,11 +422,11 @@ const held = {}; let lastMove = 0;
 function pad() {
   const pads = HearthGamepad.pads();
   const now = performance.now();
-  const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, menu: 0 };
+  const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, lt: 0, rt: 0, view: 0, menu: 0 };
   for (const g of pads) {
     const bt = i => g.buttons[i]?.pressed; const ax = g.axes[0] || 0, ay = g.axes[1] || 0;
     st.up ||= bt(12) || ay < -.6; st.down ||= bt(13) || ay > .6; st.left ||= bt(14) || ax < -.6; st.right ||= bt(15) || ax > .6;
-    st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.lb ||= bt(4); st.rb ||= bt(5); st.menu ||= bt(9);
+    st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.lb ||= bt(4); st.rb ||= bt(5); st.lt ||= bt(6); st.rt ||= bt(7); st.view ||= bt(8); st.menu ||= bt(9);
   }
   for (const [k, on] of Object.entries(st)) {
     if (!on) { held[k] = 0; continue; }
@@ -322,6 +436,7 @@ function pad() {
     if (!(first || (repeat && dir))) continue;
     if (!S.pad) { S.pad = true; hints(); }
     lastMove = now;
+    if (pair) { pairKey(k); hints(); continue; }
     if (oskOpen()) {
       if (dir) oskMove(k); else if (k === 'a') oskPress(document.activeElement?.dataset?.k); else if (k === 'b' || k === 'x') closeOsk(); else if (k === 'y') oskPress('back');
       continue;
@@ -332,6 +447,8 @@ function pad() {
     else if (k === 'b') { if (S.q) { S.q = ''; $('#q').value = ''; render(); focusFirst(); } else close(); }
     else if (k === 'x') openOsk();
     else if (k === 'y') setTone((S.tone + 1) % 6);
+    else if (k === 'view') { if (openPair(document.activeElement)) hints(); }
+    else if (k === 'lt' || k === 'rt') stepSize(k === 'lt' ? -1 : 1);
     else if (k === 'lb') stepTab(-1);
     else if (k === 'rb') stepTab(1);
   }
@@ -341,10 +458,16 @@ HearthGamepad.loop(pad);
 // ---------------------------------------------------------------- start
 renderCats(); hints();
 invoke('init').then(r => {
-  S.recent = r.recent || []; S.most = r.most || []; S.tone = r.tone || 0;
-}).catch(() => {}).finally(() => { renderTone(); render(); $('#q').focus(); });
+  S.recent = r.recent || []; S.most = r.most || []; S.tone = r.tone || 0; S.size = r.size > 0 && r.size <= 2 ? r.size : 0;
+}).catch(() => {}).finally(() => { renderTone(); renderSize(); render(); $('#q').focus(); demoView(); });
 
-// Without the app (the page opened in a browser, CI's screenshots): stand-ins.
+// Without the app (the page opened in a browser, CI's screenshots): stand-ins. ?size=large and ?pair=1 show those.
+function demoView() {
+  if (T) return;
+  const q = new URLSearchParams(location.search);
+  if (q.get('size')) setSize(SIZES.findIndex(x => x[1].toLowerCase() === q.get('size')));
+  if (q.get('pair')) { setTab('emoji'); const c = [...document.querySelectorAll('.cell.mix')].find(x => shown[+x.dataset.i].e === '🤝') || $('.cell.mix'); if (c) { c.focus(); openPair(c); pair.a = 2; pair.b = 5; drawPair(); } }
+}
 function demoInvoke(cmd, args) {
   if (cmd === 'init') return Promise.resolve({ recent: ['😂', '❤️', '👍', '🔥', '¯\\_(ツ)_/¯', '→', '€'],
     most: ['🔥', '😂', '👍', '❤️', '🎮', '🐉', '😎', '🙏', '🎉', '💀', '🤔', '👀', '✅', '⚔️', '🚀', '😭', '🍕', '🛡️', '⭐', '🧙', '🏆', '¯\\_(ツ)_/¯', '→', '€'], tone: 0, platform: 'linux' });

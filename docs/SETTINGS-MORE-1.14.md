@@ -40,6 +40,12 @@ Tests: `hosts/linux/test/test_settings_more_114.py`. The master list with what's
 | Devices | USB devices & drives (`usb-devices`) | SetUsbDevices.qml, DeviceWatch.qml | hearth-usbdev | `removable`, `usbNotify`; USBGuard only where it runs |
 | Devices | Touchscreen calibration | KwinCalibrate.qml (feature/kwin-pages) | hearth-kwin-settings | KWin's device setting |
 | Info | Info Center (`info-cpu`, `info-gpu`, `info-memory`, `info-graphics`, `info-pci`, `info-usb`) | SetInfoCenter.qml | hearth-info | nothing |
+| Devices | Receive files & this PC's name (`bluetooth-receive`) | SetBtReceive.qml, BtReceive.qml | hearth-bt-receive | `btReceive` (off by default), `btReceiveFolder`, `btReceiveTrusted`; the name is BlueZ's own |
+| Devices | Scan to PDF (`scan-pdf`) | SetScanPdf.qml | hearth-scan | nothing (pages in $XDG_RUNTIME_DIR until saved to ~/Documents) |
+| Devices | Ink & toner (`ink-levels`) and the low notice | SetInkLevels.qml, InkWatch.qml | hearth-ink | `inkNotify`; told in `~/.local/state/nimbus/ink-told.json` |
+| Info | Temperatures & fans, Kernel modules, Interrupts (`info-sensors`, `info-modules`, `info-interrupts`) | SetInfoCenter.qml | hearth-info | nothing |
+| Updates | Firmware update history (`firmware-history`) | SetFirmwareHistory.qml | hearth-firmware `history` | nothing |
+| Region | Translations & dictionaries (`language-packs`) | SetLanguagePacks.qml | hearth-langpacks | Flatpak's extra-languages for you, `~/.local/share/hunspell` (only what Hearth downloaded is removed) |
 | Info | Out-of-memory notice | OomWatch.qml | — | `oomNotice` |
 | Info | Welcome once per version | Welcome.qml, welcome.json | — | `welcomeAfterUpdates`; seen in `~/.local/state/nimbus/welcome.json` |
 
@@ -58,6 +64,5 @@ Tests: `hosts/linux/test/test_settings_more_114.py`. The master list with what's
 
 ## Left for later
 
-Per-app microphone, hybrid sleep, receiving files over Bluetooth and renaming devices, ink notices and Windows shared
-printers, multi-page scanning, kernel modules / interrupts / Samba / sensors in Info Center, picture of the day and a
-light/dark wallpaper, sub-pixel order, "apps follow Hearth", downloading translations, firmware history.
+Per-app microphone, hybrid sleep, renaming other Bluetooth devices, Windows shared printers, Samba in Info Center, picture of the day and a
+light/dark wallpaper, sub-pixel order, "apps follow Hearth", the system's own apps' translations beyond the image's.

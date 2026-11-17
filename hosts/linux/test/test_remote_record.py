@@ -354,10 +354,11 @@ class VncConversation(Patch):
     def test_reach_back_to_tailscale_disconnects_home_viewers(self):
         v = connect(self.port, 'correct horse')
         self.addCleanup(v.close)
-        for _ in range(50):
+        for _ in range(300):   # up to 15 s: a loaded machine can take a while to register the viewer
             if self.srv.clients:
                 break
             time.sleep(0.05)
+        self.assertTrue(self.srv.clients, 'the viewer never registered')
         c = list(self.srv.clients.values())[0]
         c.via = 'home'
         self.assertEqual(self.srv.apply_settings({'reach': 'tailscale', 'viewOnly': False}), 1)
@@ -625,7 +626,11 @@ class RecorderProcesses(Patch):
             f.write('import time\ntime.sleep(30)\n')
         mine = _subprocess.Popen([sys.executable, fake, 'run'])
         self.addCleanup(mine.kill)
-        time.sleep(0.3)
+        # Its command line is there once the process has started (fast on CI, a while on a loaded machine): up to 10 s.
+        for _ in range(100):
+            if rec.ours(mine.pid):
+                break
+            time.sleep(0.1)
         self.assertTrue(rec.ours(mine.pid))
 
     def test_pid_zero_is_idle_and_stop_signals_nothing(self):

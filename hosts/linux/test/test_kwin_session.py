@@ -641,7 +641,7 @@ class Autostart(Base):
         self.write_bin('hearth-screens-stub', '#!/bin/sh\necho "$*" > "$HOME/screens-ran"\n')
         os.symlink(os.path.join(self.bin, 'hearth-screens-stub'), os.path.join(shell, 'hearth-screens'))
         self.write_bin('wlr-randr', '#!/bin/sh\necho ran >> "$HOME/wlr-randr-ran"\n')
-        self.write_bin('quickshell', '#!/bin/sh\necho "wm=$HEARTH_WM pid=$HEARTH_DESKTOP_PID" >> "$HOME/quickshell-ran"\nsleep 30\n')
+        self.write_bin('quickshell', '#!/bin/sh\necho "wm=$HEARTH_WM pid=$HEARTH_DESKTOP_PID" >> "$HOME/quickshell-ran"\nsleep 120\n')   # longer than the wait below: never restarted
         for b in ('dbus-update-activation-environment', 'systemctl', 'notify-send', 'nimbus-mode', 'hearth-tools'):
             self.write_bin(b, '#!/bin/sh\nexit 0\n')
         p = subprocess.Popen(['sleep', '60'])
