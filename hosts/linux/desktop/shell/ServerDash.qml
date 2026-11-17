@@ -132,6 +132,9 @@ PanelWindow {
             }
         }
     }
+    // 1.14: "still drawing" every 10 s (the owner, Nov 16: after a restart Server mode showed only the pointer). The
+    // dashboard's watcher (server/labwc/autostart) restarts a dashboard that stops saying it.
+    Timer { interval: 10000; repeat: true; running: true; triggeredOnStart: true; onTriggered: Quickshell.execDetached(["touch", dash.run + "/hearth-server-dash-alive"]) }
     function say(t) { toast = t; toastTimer.restart(); }
     Timer { id: toastTimer; interval: 4500; onTriggered: dash.toast = "" }
 
@@ -164,7 +167,7 @@ PanelWindow {
     function wake() {
         lastInput = Date.now();
         if (screenState !== "on") {
-            if (screenState === "off") Quickshell.execDetached(["sh", "-c", 'command -v wlopm >/dev/null && wlopm --on "*"']);
+            if (screenState === "off") Quickshell.execDetached(["sh", "-c", 'exec sh "$0" on', Quickshell.shellDir + "/hearth-screen-power"]);
             screenState = "on";
         }
     }
@@ -174,7 +177,7 @@ PanelWindow {
         if (remote || overlay === "switch") return;
         if (d.idle.off > 0 && idleMin >= d.idle.off && screenState !== "off") {
             screenState = "off";
-            Quickshell.execDetached(["sh", "-c", 'command -v wlopm >/dev/null && wlopm --off "*"']);
+            Quickshell.execDetached(["sh", "-c", 'exec sh "$0" off', Quickshell.shellDir + "/hearth-screen-power"]);
         } else if (d.idle.dim > 0 && idleMin >= d.idle.dim && screenState === "on") {
             screenState = "dim";
         }
@@ -231,7 +234,7 @@ PanelWindow {
         { icon: "desktops", t: "Desktop Mode", s: "The Mantel desktop with windows, files and apps", a: () => dash.goMode("desktop") },
         { icon: "gear", t: "Server mode settings", s: "Power when idle, what pauses, the web page", a: () => { dash.overlay = ""; if (dash.settings) dash.settings.open("hs-server"); } },
         { icon: "gear", t: "Hearth Settings", s: "Everything else", a: () => { dash.overlay = ""; if (dash.settings) dash.settings.open(""); } },
-        { icon: "moon", t: "Screen off", s: "Any button turns it on again", a: () => { dash.overlay = ""; dash.screenState = "off"; Quickshell.execDetached(["sh", "-c", 'command -v wlopm >/dev/null && wlopm --off "*"']); } },
+        { icon: "moon", t: "Screen off", s: "Any button turns it on again", a: () => { dash.overlay = ""; dash.screenState = "off"; Quickshell.execDetached(["sh", "-c", 'exec sh "$0" off', Quickshell.shellDir + "/hearth-screen-power"]); } },
         { icon: "sleep", t: "Sleep", s: "Your devices can't reach the PC while it sleeps", a: () => { dash.overlay = ""; dash.act(["power", "sleep"]); } },
         { icon: "restart", t: "Restart the PC", s: "Server mode comes back if it's your Start in mode", a: () => { dash.overlay = ""; dash.act(["power", "restart"]); } },
         { icon: "power", t: "Turn off", s: "Everything stops until you turn it on", a: () => { dash.overlay = ""; dash.act(["power", "off"]); } }

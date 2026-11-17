@@ -45,8 +45,9 @@ pub fn desktop_size() -> bool {
         cfg!(target_os = "linux"),
         std::env::var("HEARTH_APP_SIZE").ok().as_deref(),
         std::env::args().skip(1).any(|a| a == "--fullscreen"),
-        // Desktop Mode's labwc first (as nimbus-mode decides), in case gamescope's variables were left behind.
+        // Desktop Mode first (labwc or, 1.14, KWin: as nimbus-mode decides), in case gamescope's variables were left behind.
         std::env::var_os("LABWC_PID").is_none()
+            && std::env::var_os("HEARTH_DESKTOP_PID").is_none()
             && (std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some()
                 || std::env::var("XDG_CURRENT_DESKTOP").map(|d| d.to_ascii_lowercase().contains("gamescope")).unwrap_or(false)
                 || std::env::var("SteamGamepadUI").map(|v| v == "1").unwrap_or(false)),

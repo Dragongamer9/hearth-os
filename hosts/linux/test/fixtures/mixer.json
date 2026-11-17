@@ -3,6 +3,12 @@
   "outputs": [{"name": "TCL 55\" TV (HDMI)"}, {"name": "Headset (USB)"}, {"name": "Speakers (Realtek)"}],
   "default": "TCL 55\" TV (HDMI)",
   "system": 0.72,
+  "inputs": [{"name": "Headset microphone (USB)"}, {"name": "Webcam microphone"}, {"name": "Built-in microphone"}],
+  "defaultIn": "Built-in microphone",
+  "recording": [
+    {"name": "Discord", "in": "Headset microphone (USB)"},
+    {"name": "OBS Studio", "in": ""}
+  ],
   "apps": [
     {"name": "Cyberpunk 2077", "volume": 0.9, "out": "TCL 55\" TV (HDMI)"},
     {"name": "Discord", "volume": 0.65, "out": "Headset (USB)"},

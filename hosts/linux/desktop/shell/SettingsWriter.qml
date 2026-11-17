@@ -13,6 +13,9 @@ import Quickshell.Io
 Scope {
     id: w
     property string path: ""
+    // 1.14: true for Settings' own switches: each change goes into the change history (Settings › Home › Changed
+    // lately, with Undo). Off for everything else (window sizes, volumes), so the history only holds your choices.
+    property bool history: false
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth_settings_io.py").toString().replace(/^file:\/\//, ""))
     property var pending: ({})
     property var inflight: ({})
@@ -31,7 +34,7 @@ Scope {
         if (retry.running) return;   // waiting to try a failed save again: everything goes together then
         const keys = Object.keys(pending);
         if (keys.length === 0 || path === "") return;
-        proc.command = ["python3", helper, "merge", path, JSON.stringify(pending)];
+        proc.command = ["python3", helper, "merge", path, JSON.stringify(pending)].concat(history ? ["--history"] : []);
         inflight = pending;
         pending = {};
         proc.running = true;

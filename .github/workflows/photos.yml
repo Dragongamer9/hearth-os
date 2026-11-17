@@ -8,9 +8,9 @@ name: Hearth Photos
 on:
   push:
     branches: [main, linux-host, hearth-photos-docs]
-    paths: ['hosts/hearth-photos/**', '.github/workflows/photos.yml']
+    paths: ['hosts/hearth-photos/**', 'hosts/hearth-core/**', '.github/workflows/photos.yml']
   pull_request:
-    paths: ['hosts/hearth-photos/**', '.github/workflows/photos.yml']
+    paths: ['hosts/hearth-photos/**', 'hosts/hearth-core/**', '.github/workflows/photos.yml']
   workflow_dispatch:
     inputs:
       shots:
@@ -38,11 +38,12 @@ jobs:
         run: |
           node --check ui/app.js
           node --check ui/edit.js
+          node --check ui/library.js
       - name: WebKit and GTK, and tools for the sample pictures
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            xvfb imagemagick x11-utils dbus-x11 xdotool libheif-examples libheif-plugin-x265 libheif-plugin-libde265 >/dev/null || \
+            xvfb imagemagick x11-utils dbus-x11 xdotool ffmpeg libimage-exiftool-perl libheif-examples libheif-plugin-x265 libheif-plugin-libde265 >/dev/null || \
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             xvfb imagemagick x11-utils dbus-x11 xdotool libheif-examples >/dev/null
           echo "::notice title=WebKitGTK::$(dpkg-query -W -f '${Version}' libwebkit2gtk-4.1-0 2>/dev/null)"
@@ -111,8 +112,8 @@ jobs:
           shot() { import -window root "shots/$1.png" || true; }
           shot viewer
           xdotool key Right; sleep 2; shot sideways
-          xdotool key i; sleep 2; shot info
-          xdotool key i; xdotool key Right Right Right Right Right Right; sleep 2; shot moving-gif
+          shot info
+          xdotool key Right Right Right Right Right Right; sleep 2; shot moving-gif
           xdotool key Right; sleep 2; shot svg
           xdotool key Right; sleep 3; shot heic
           xdotool key Home; sleep 2
@@ -125,14 +126,119 @@ jobs:
           xdotool key ctrl+s; sleep 2; shot edit-save
           xdotool key Escape; sleep 1; xdotool key Escape; sleep 1; shot edit-leave
           pkill -f 'target/release/hearth-photos' || true
-          echo "::notice title=App output::$(tail -c 1200 run.log | tr '\n' '|')"
-      - name: Screenshots as notices (started by hand with "shots", or a commit saying [shots])
-        if: always() && ((github.event_name == 'workflow_dispatch' && inputs.shots) || contains(github.event.head_commit.message, '[shots]'))
+
+      # 1.14: faces and what's in a photo (ai/hearth_photos_ai.py): the one-time setup (OpenCV and the small models)
+      # and a look at sample pictures, with a face drawn by OpenCV's own test picture when it can be fetched.
+      - name: Faces and Found in it (the helper)
+        continue-on-error: true
         run: |
-          for n in viewer sideways info heic edit-crop; do
-            f=shots/$n.png; [ -f "$f" ] || continue
-            convert "$f" -resize 720x -quality 50 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done
+          export HEARTH_PHOTOS_AI="$RUNNER_TEMP/ai"; echo "HEARTH_PHOTOS_AI=$HEARTH_PHOTOS_AI" >> "$GITHUB_ENV"
+          sudo apt-get install -y -qq python3-venv >/dev/null || true
+          python3 ai/hearth_photos_ai.py status
+          timeout 900 python3 ai/hearth_photos_ai.py setup | tail -1
+          d="$RUNNER_TEMP/aipics"; mkdir -p "$d"
+          for u in https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/messi5.jpg; do curl -sSfL "$u" -o "$d/$(basename $u)" || true; done
+          cp "$RUNNER_TEMP/pics/01-photo.jpg" "$d/"
+          [ -f "$d/lena.jpg" ] && cp "$d/lena.jpg" "$d/lena2.jpg"
+          python3 -c "import json,os,sys; d=sys.argv[1]; print(json.dumps([{'path': os.path.join(d,f), 'mtime': 1} for f in sorted(os.listdir(d))]))" "$d" > "$RUNNER_TEMP/todo.json"
+          timeout 600 python3 ai/hearth_photos_ai.py run "$RUNNER_TEMP/todo.json" > "$RUNNER_TEMP/ai-run.log" 2>&1 || echo "::warning title=faces run::$(tail -c 900 "$RUNNER_TEMP/ai-run.log" | tr '\n' '|')"
+          python3 - <<'PY'
+          import json, os
+          r = json.load(open(os.path.join(os.environ['HEARTH_PHOTOS_AI'], 'results.json')))
+          short = {os.path.basename(k): {'tags': v['tags'], 'faces': len(v['faces'])} for k, v in r['photos'].items()}
+          short['errors'] = {os.path.basename(k): v for k, v in r.get('errors', {}).items()}
+          print('::notice title=found in it::%s groups=%d' % (json.dumps(short), len(r['groups'])))
+          PY
+          true
+        # The helper's own errors, when it didn't get that far.
+      - name: Faces helper log
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: |
+          d="$RUNNER_TEMP/ai"; [ -d "$d" ] || exit 0
+          [ -f "$d/results.json" ] || echo "::warning title=faces helper::no results: $(python3 ai/hearth_photos_ai.py status 2>&1 | tail -c 600)"
+          python3 - <<'PY' || true
+          print('ok')
+          PY
+
+      # 1.14: the library (docs/mockups/next-update/photos-1-library.png) over sample folders: a phone's photos by day,
+      # Steam and Game Mode captures, a screenshot and a video; then a photo from it (photos-2).
+      - name: The library (screenshots)
+        run: |
+          set -o pipefail
+          L="$RUNNER_TEMP/lib"; P="$RUNNER_TEMP/pics"
+          mkdir -p "$L/iPhone/2026/11" "$L/Screenshots/Hearth" "$L/Screenshots" "$L/Steam/userdata/1/760/remote/1245620/screenshots" "$L/Videos" shots
+          d0=$(date +%Y%m%d); d1=$(date -d yesterday +%Y%m%d); d3=$(date -d '3 days ago' +%Y%m%d); d40=$(date -d '40 days ago' +%Y%m%d); y1=$(date -d '1 year ago' +%Y%m%d)
+          n=0; for f in "$P"/01-photo.jpg "$P"/04-picture.webp "$P"/05-picture.bmp "$P"/02-sideways.jpg "$P"/03-see-through.png; do
+            for d in $d0 $d1 $d3 $d40 $y1; do n=$((n+1)); e="${f##*.}"; convert "$f" -modulate 100,100,$((40 + n * 9 % 160)) "$L/iPhone/2026/11/IMG_${d}_1${n}1010.$e"; done
           done
+          # Places: some phone photos at a lake near Austin, some in New York.
+          for f in "$L"/iPhone/2026/11/IMG_${d1}_*.jpg; do exiftool -q -overwrite_original -GPSLatitude=30.4126 -GPSLatitudeRef=N -GPSLongitude=97.9019 -GPSLongitudeRef=W "$f" || true; done
+          for f in "$L"/iPhone/2026/11/IMG_${d40}_*.jpg; do exiftool -q -overwrite_original -GPSLatitude=40.7812 -GPSLatitudeRef=N -GPSLongitude=73.9665 -GPSLongitudeRef=W "$f" || true; done
+          cp "$P/01-photo.jpg" "$L/Screenshots/Hearth/Screenshot ${d1:0:4}-${d1:4:2}-${d1:6:2} 20-11-00.png" 2>/dev/null || true
+          convert "$P/01-photo.jpg" -modulate 100,60,250 "$L/Steam/userdata/1/760/remote/1245620/screenshots/${d1}193000_1.jpg"
+          convert "$P/04-picture.webp" "$L/Screenshots/Screenshot ${d1:0:4}-${d1:4:2}-${d1:6:2} 12-00-00.png"
+          (ffmpeg -v error -f lavfi -i testsrc=duration=42:size=640x360:rate=10 -pix_fmt yuv420p "$L/Videos/${d0}_120000.mp4" || true)
+          export HEARTH_PHOTOS_ROOTS="$L" HEARTH_PHOTOS_STORE="$RUNNER_TEMP/photos.json" HEARTH_PHOTOS_CACHE="$RUNNER_TEMP/cache2"
+          ./target/release/hearth-photos --scan | tee scan.json
+          python3 - <<'PY'
+          import json
+          s = json.load(open('scan.json'))
+          k = s['kinds']
+          print('::notice title=library scan::%s' % json.dumps({'summary': s['summary'], 'kinds': k}))
+          assert s['summary']['count'] >= 25, s
+          assert k.get('capture', 0) >= 2 and k.get('screenshot', 0) >= 1, k
+          PY
+          # A favorite and an album, the way the page saves them (library_change), so the lists show counts.
+          echo '{"favorites": [], "albums": []}' > "$HEARTH_PHOTOS_STORE"
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          pgrep Xvfb >/dev/null || { Xvfb :99 -screen 0 1920x1080x24 >/dev/null 2>&1 & sleep 2; }
+          dbus-run-session -- ./target/release/hearth-photos > lib.log 2>&1 &
+          sleep 10
+          w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true
+          xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 2
+          shot() { import -window root "shots/$1.png" || true; }
+          shot library
+          xdotool key Down Return; sleep 3; shot photo
+          xdotool key f; sleep 1; shot photo-favorite
+          xdotool key Escape; sleep 2; shot library-back
+          xdotool mousemove 120 260 click 1; sleep 2; shot library-favorites
+          pkill -f 'target/release/hearth-photos' || true; sleep 1
+          for v in collections pad; do
+            dbus-run-session -- ./target/release/hearth-photos --view $v >> lib.log 2>&1 &
+            sleep 9; w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 4
+            shot $v
+            if [ $v = collections ]; then xdotool mousemove 800 500 click --repeat 12 --delay 60 5; sleep 3; shot collections-low; fi
+            pkill -f 'target/release/hearth-photos' || true; sleep 1
+          done
+          g=$(ls "$L"/iPhone/2026/11/IMG_${d1}_*.jpg | head -1)
+          dbus-run-session -- ./target/release/hearth-photos "$g" >> lib.log 2>&1 &
+          sleep 9; w=$(xdotool search --name 'Photos' | tail -1); xdotool windowactivate --sync "$w" 2>/dev/null || true; xdotool windowsize "$w" 1280 800 2>/dev/null || true; sleep 5
+          shot photo-place
+          xdotool key e; sleep 9; shot edit; pkill -f 'target/release/hearth-photos' || true
+          grep -q '"favorites"' "$HEARTH_PHOTOS_STORE" && echo "::notice title=store::$(tr '\n' ' ' < "$HEARTH_PHOTOS_STORE" | cut -c1-600)"
+          grep -h JSERROR lib.log run.log | sort -u | head -5 | while read -r l; do echo "::warning title=page error::$l"; done || true
+      # The screenshots as notices (artifacts can't be read from here): small copies, one step each (a job keeps 50).
+      - name: Screenshot library
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/library.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT library $i::$part"; done || true
+      - name: Screenshot edit
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/edit.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT edit $i::$part"; done || true
+      - name: Screenshot collections
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/collections.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT collections $i::$part"; done || true
+      - name: Screenshot pad
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/pad.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT pad $i::$part"; done || true
+      - name: Screenshot collections-low
+        if: always()
+        working-directory: hosts/hearth-photos
+        run: f=shots/collections-low.png; [ -f "$f" ] && convert "$f" -resize 600x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT collections-low $i::$part"; done || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

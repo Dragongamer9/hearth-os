@@ -1,0 +1,6 @@
+{
+    "KPackageStructure": "Plasma/Shell",
+    "KPlugin": {
+        "Name": "Plasma shell package (Hearth: KWin's lock screen only)"
+    }
+}

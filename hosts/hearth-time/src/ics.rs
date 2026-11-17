@@ -108,7 +108,17 @@ pub fn duration_minutes(s: &str) -> Option<i64> {
 
 /// The events in an .ics file, for calendar `calendar` (their ids are the file's UIDs; repeats of the same UID with a
 /// RECURRENCE-ID, changed single occurrences, are skipped and the main event kept).
-pub fn parse(text: &str, calendar: &str) -> Vec<Event> {
+pub fn parse(text: &str, calendar: &str) -> Vec<Event> { parse_inner(text, calendar, false) }
+
+/// The same, with the changed single times of repeating events too (each with its `recurrence_id`, after the main
+/// events): for Online accounts' calendars (accounts.rs), where they're kept and can be changed.
+pub fn parse_with_overrides(text: &str, calendar: &str) -> Vec<Event> {
+    let mut v = parse_inner(text, calendar, true);
+    v.sort_by_key(|e| e.recurrence_id.is_some());
+    v
+}
+
+fn parse_inner(text: &str, calendar: &str, overrides: bool) -> Vec<Event> {
     let mut out: Vec<Event> = Vec::new();
     let mut cur: Option<Event> = None;
     let mut depth_alarm = false;
@@ -131,7 +141,9 @@ pub fn parse(text: &str, calendar: &str) -> Vec<Event> {
                         };
                     }
                     if e.id.is_empty() { e.id = crate::store::new_id("ics"); }
-                    if !is_override && !e.start.is_empty() && !out.iter().any(|o| o.id == e.id) { out.push(e); }
+                    if is_override {
+                        if overrides && !e.start.is_empty() && e.recurrence_id.is_some() { out.push(e); }
+                    } else if !e.start.is_empty() && !out.iter().any(|o| o.id == e.id && o.recurrence_id.is_none()) { out.push(e); }
                 }
                 continue;
             }
@@ -154,7 +166,7 @@ pub fn parse(text: &str, calendar: &str) -> Vec<Event> {
             "DURATION" => duration = duration_minutes(&value),
             "RRULE" => e.rrule = Some(value.trim().to_string()).filter(|r| crate::rrule::parse(r).is_some()),
             "EXDATE" => for v in value.split(',') { if let Some((s, _, _)) = when(&params, v) { e.exdates.push(s); } },
-            "RECURRENCE-ID" => is_override = true,
+            "RECURRENCE-ID" => { is_override = true; e.recurrence_id = when(&params, &value).map(|(s, _, _)| s); }
             _ => {}
         }
     }
@@ -260,6 +272,19 @@ BEGIN:VEVENT\r\nUID:utc\r\nDTSTART:20261023T120000Z\r\nDURATION:PT45M\r\nSUMMARY
             assert_eq!(a.reminders, b.reminders);
             assert_eq!(a.all_day, b.all_day);
         }
+    }
+
+    #[test]
+    fn changed_single_times() {
+        let ev = parse_with_overrides(SAMPLE, "acct-x");
+        assert_eq!(ev.len(), 4);
+        assert!(ev[..3].iter().all(|e| e.recurrence_id.is_none()));
+        let o = &ev[3];
+        assert_eq!((o.id.as_str(), o.title.as_str()), ("abc@x", "Moved"));
+        assert_eq!(o.recurrence_id.as_deref(), Some("2026-11-05T09:30:00"));
+        assert_eq!(o.start, "2026-11-05T11:00:00");
+        assert_eq!(o.rrule, None);
+        assert_eq!(parse(SAMPLE, "local").len(), 3, "plain parse still leaves them out");
     }
 
     #[test]

@@ -3,6 +3,28 @@
 // {t: title, d: description, i: icon, p: the page it's on}. Don't edit by hand: run the tool again.
 var ENTRIES = [
 {
+"t": "Server mode runs",
+"p": "hs-aiengine",
+"i": "chat"
+},
+{
+"t": "Hearth's own AI uses",
+"p": "hs-aiengine",
+"d": "What Hearth's AI pieces ask first (the AI team, Ithil when she asks Hearth). Ollama unless you change it",
+"i": "desktops"
+},
+{
+"t": "Stop Colibri while you play",
+"p": "hs-aiengine",
+"d": "It holds the graphics card's memory. Stopped when Game Mode or a game starts, started again after",
+"i": "pad"
+},
+{
+"t": "Models folder",
+"p": "hs-aiengine",
+"i": "drive"
+},
+{
 "t": "Resource Monitor",
 "p": "about",
 "d": "See inside this PC: its board, every part and port, and what each program uses, live",
@@ -13,6 +35,12 @@ var ENTRIES = [
 "p": "about",
 "d": "Its name on your network and your other devices · on Home",
 "i": "edit"
+},
+{
+"t": "Info Center",
+"p": "about",
+"d": "Processor, graphics card, memory, Vulkan and OpenGL, PCI and USB devices, energy",
+"i": "cpu"
 },
 {
 "t": "Count me in the player count",
@@ -34,7 +62,6 @@ var ENTRIES = [
 {
 "t": "Zoom in now",
 "p": "accessibility",
-"d": "Super+= zooms in, Super+- zooms out (and off), Super+Esc turns it off or back on. The view follows the pointer",
 "i": "search"
 },
 {
@@ -47,13 +74,135 @@ var ENTRIES = [
 "i": "search"
 },
 {
+"t": "The zoomed view follows the pointer",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Follow the keyboard focus",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Follow the text cursor",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "The pointer while zoomed",
+"p": "accessibility",
+"i": "mouse"
+},
+{
 "t": "Each Super+= or Super+- step",
 "p": "accessibility"
+},
+{
+"t": "How strong",
+"p": "accessibility",
+"i": "palette"
+},
+{
+"t": "Invert one window",
+"p": "accessibility",
+"i": "palette"
 },
 {
 "t": "Screen reader (Orca)",
 "p": "accessibility",
 "i": "vol"
+},
+{
+"t": "Sticky keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Press twice to lock",
+"p": "accessibility",
+"d": "A key pressed twice stays down until pressed again",
+"i": "lock"
+},
+{
+"t": "Turn off when two keys are held together",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "A sound for modifier keys",
+"p": "accessibility",
+"i": "vol"
+},
+{
+"t": "Toggle keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Bounce keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Ignore it for",
+"p": "accessibility",
+"i": "clock"
+},
+{
+"t": "Slow keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Hold for",
+"p": "accessibility",
+"i": "clock"
+},
+{
+"t": "Mouse keys",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Pointer speed with the keys",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Flash the screen for the alert sound",
+"p": "accessibility",
+"i": "bell"
+},
+{
+"t": "Flash",
+"p": "accessibility",
+"i": "bell"
+},
+{
+"t": "Play the alert sound",
+"p": "accessibility",
+"i": "vol"
+},
+{
+"t": "Click by resting the pointer",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Rest for",
+"p": "accessibility",
+"i": "clock"
+},
+{
+"t": "Click",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "How still the pointer has to be",
+"p": "accessibility",
+"d": "For a shaky hand, let it wander a little further",
+"i": "mouse"
 },
 {
 "t": "Text size",
@@ -84,6 +233,40 @@ var ENTRIES = [
 "p": "accessibility",
 "d": "Super+. opens the picker, in any app",
 "i": "kbd"
+},
+{
+"t": "No online accounts yet",
+"p": "online-accounts",
+"d": "Sign in once below, and Hearth's calendar, contacts, files and mail use the account. Passwords stay in this device's keyring.",
+"i": "cloud"
+},
+{
+"t": "Open in Hearth Files",
+"p": "online-accounts",
+"d": "Mounted with gvfs (davs://), like a drive",
+"i": "open"
+},
+{
+"t": "Remove this account",
+"p": "online-accounts",
+"d": "Signs this device out: its password or token is taken out of the keyring",
+"i": "trash"
+},
+{
+"t": "No apps from Flathub yet",
+"p": "app-permissions",
+"d": "Apps from Flathub show here, each with what it may reach",
+"i": "store"
+},
+{
+"t": "App",
+"p": "app-permissions"
+},
+{
+"t": "Reset to what the app asks for",
+"p": "app-permissions",
+"d": "Takes out every change you made for this app",
+"i": "undo"
 },
 {
 "t": "Look",
@@ -127,6 +310,11 @@ var ENTRIES = [
 {
 "t": "Custom accent",
 "p": "appearance"
+},
+{
+"t": "Keyboard lights follow the accent",
+"p": "appearance",
+"i": "kbd"
 },
 {
 "t": "Desktop clock and weather",
@@ -200,9 +388,38 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Nothing starts by itself yet",
+"p": "autostart",
+"d": "Add an app or a command below",
+"i": "info"
+},
+{
+"t": "Add this command",
+"p": "autostart",
+"d": "Runs once each time you sign in",
+"i": "plus"
+},
+{
+"t": "Background services",
+"p": "autostart",
+"d": "Programs that run in the background and Hearth's own parts",
+"i": "gear"
+},
+{
 "t": "Bar style",
 "p": "bar-dock",
 "i": "window"
+},
+{
+"t": "Network speed in the bar",
+"p": "bar-dock",
+"d": "How fast things download and upload right now, next to the network icon",
+"i": "speed"
+},
+{
+"t": "Arrange the bar",
+"p": "bar-dock",
+"i": "grid"
 },
 {
 "t": "Right-click menu",
@@ -211,9 +428,32 @@ var ENTRIES = [
 "i": "menu"
 },
 {
+"t": "This PC has no battery",
+"p": "battery",
+"d": "Batteries of your devices are below",
+"i": "info"
+},
+{
+"t": "Show the last",
+"p": "battery",
+"i": "clock"
+},
+{
+"t": "No other batteries",
+"p": "battery",
+"d": "Wireless mice, keyboards, controllers and headphones show their charge here",
+"i": "bt"
+},
+{
 "t": "Bluetooth",
 "p": "bluetooth",
 "i": "bt"
+},
+{
+"t": "Trust, block, batteries and sending files",
+"p": "bluetooth",
+"d": "Each paired device's settings",
+"i": "gear"
 },
 {
 "t": "Steam's own",
@@ -289,6 +529,57 @@ var ENTRIES = [
 "i": "close"
 },
 {
+"t": "Pair a device first",
+"p": "bluetooth-devices",
+"d": "Bluetooth › Add a device",
+"i": "bt"
+},
+{
+"t": "Trust",
+"p": "bluetooth-devices",
+"d": "Connects by itself when it's near, without asking",
+"i": "check"
+},
+{
+"t": "Block",
+"p": "bluetooth-devices",
+"d": "Never connects, even when it tries",
+"i": "shield"
+},
+{
+"t": "Receive files & this PC's name",
+"p": "bluetooth-devices",
+"d": "Files from phones, and the name others see",
+"i": "share"
+},
+{
+"t": "Put back the usual name",
+"p": "bluetooth-receive",
+"i": "undo"
+},
+{
+"t": "Receive files",
+"p": "bluetooth-receive",
+"d": "Phones and computers you've paired can send you files. You're asked about each one",
+"i": "share"
+},
+{
+"t": "Save them in",
+"p": "bluetooth-receive",
+"i": "folder"
+},
+{
+"t": "Back to Downloads",
+"p": "bluetooth-receive",
+"i": "undo"
+},
+{
+"t": "Take files from trusted devices without asking",
+"p": "bluetooth-receive",
+"d": "Devices you trust in Your Bluetooth devices. Others are still asked about",
+"i": "check"
+},
+{
 "t": "Claude Desktop",
 "p": "claude",
 "i": "info"
@@ -348,6 +639,16 @@ var ENTRIES = [
 "t": "Clipboard history",
 "p": "clipboard",
 "i": "clipboard"
+},
+{
+"t": "Selection history",
+"p": "clipboard",
+"i": "clipboard"
+},
+{
+"t": "Keep the clipboard and selection in step",
+"p": "clipboard",
+"i": "sync"
 },
 {
 "t": "Open clipboard history",
@@ -442,6 +743,18 @@ var ENTRIES = [
 "t": "All regions",
 "p": "datetime",
 "i": "back"
+},
+{
+"t": "Another calendar",
+"p": "datetime",
+"d": "Its date under each day of the month",
+"i": "calendar"
+},
+{
+"t": "Holidays",
+"p": "datetime",
+"d": "Marked on the month, the next one under it",
+"i": "sparkle"
 },
 {
 "t": "Reset to Hearth's default",
@@ -556,10 +869,132 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "Auto-brightness",
+"p": "display",
+"d": "The screen follows the light in the room",
+"i": "sun"
+},
+{
+"t": "How bright",
+"p": "display",
+"d": "Darker or brighter than Auto-brightness picks for the room",
+"i": "sun"
+},
+{
 "t": "Night light",
 "p": "display",
 "d": "Warmer colours from sunset to sunrise, to help you sleep",
 "i": "moon"
+},
+{
+"t": "HDR",
+"p": "display",
+"i": "sparkle"
+},
+{
+"t": "How warm",
+"p": "display",
+"d": "Night light's colour: further right is warmer",
+"i": "moon"
+},
+{
+"t": "When",
+"p": "display",
+"i": "clock"
+},
+{
+"t": "Which one",
+"p": "display",
+"i": "globe"
+},
+{
+"t": "Fade",
+"p": "display",
+"d": "How long the colours take to change",
+"i": "clock"
+},
+{
+"t": "Starts at",
+"p": "display",
+"d": "Night light comes on",
+"i": "moon"
+},
+{
+"t": "Ends at",
+"p": "display",
+"d": "Back to normal colours",
+"i": "sun"
+},
+{
+"t": "HDR on the desktop",
+"p": "display",
+"i": "sparkle"
+},
+{
+"t": "Brightness of everything else",
+"p": "display",
+"d": "Apps, the desktop and videos that aren't HDR, while HDR is on",
+"i": "sun"
+},
+{
+"t": "Colour intensity",
+"p": "display",
+"d": "Ordinary apps and videos while HDR is on: left is accurate, right more vivid",
+"i": "palette"
+},
+{
+"t": "Calibrate HDR",
+"p": "display",
+"i": "sparkle"
+},
+{
+"t": "Extended Dynamic Range",
+"p": "display",
+"d": "HDR videos and games brighter on this screen by turning its backlight up for them",
+"i": "sun"
+},
+{
+"t": "Wide colour",
+"p": "display",
+"i": "palette"
+},
+{
+"t": "Colour profile",
+"p": "display",
+"i": "palette"
+},
+{
+"t": "Colour accuracy",
+"p": "display",
+"d": "Accurate colours cost a little more power and speed",
+"i": "palette"
+},
+{
+"t": "Overscan",
+"p": "display",
+"d": "For a TV that cuts off the picture's edges: shrinks the picture to fit",
+"i": "display"
+},
+{
+"t": "RGB range",
+"p": "display",
+"d": "Washed-out blacks or crushed shadows on a TV? Try Full or Limited",
+"i": "palette"
+},
+{
+"t": "Variable refresh rate (VRR / FreeSync)",
+"p": "display",
+"i": "bolt"
+},
+{
+"t": "Allow tearing in full-screen games",
+"p": "display",
+"i": "pad"
+},
+{
+"t": "Scaling X11 apps",
+"p": "display",
+"i": "window"
 },
 {
 "t": "Scale",
@@ -568,10 +1003,21 @@ var ENTRIES = [
 "i": "display"
 },
 {
+"t": "Resolution",
+"p": "display",
+"i": "window"
+},
+{
 "t": "Refresh rate",
 "p": "display",
 "d": "Higher is smoother; lower saves battery",
 "i": "bolt"
+},
+{
+"t": "Rotation",
+"p": "display",
+"d": "Turn the picture for a screen that's on its side or upside down",
+"i": "restart"
 },
 {
 "t": "Where this screen is",
@@ -579,15 +1025,51 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
+"t": "Make this the main screen",
+"p": "display",
+"i": "display"
+},
+{
 "t": "Use this screen",
 "p": "display",
 "i": "display"
 },
 {
-"t": "Resolution",
+"t": "Sticky edge between screens",
+"p": "display",
+"i": "mouse"
+},
+{
+"t": "Sticky corners",
+"p": "display",
+"i": "mouse"
+},
+{
+"t": "Virtual desktops",
+"p": "display",
+"i": "desktops"
+},
+{
+"t": "Show the same thing on both screens (mirror)",
+"p": "display",
+"i": "desktops"
+},
+{
+"t": "Other resolutions",
 "p": "display",
 "d": "Sharper with more pixels",
 "i": "window"
+},
+{
+"t": "Screen power saving",
+"p": "display",
+"i": "display"
+},
+{
+"t": "Game Mode's resolution and frame limit",
+"p": "display",
+"d": "Gaming › Performance",
+"i": "pad"
 },
 {
 "t": "Graphics card (Nvidia): how the Hearth app draws",
@@ -641,6 +1123,204 @@ var ENTRIES = [
 "t": "Only names",
 "p": "drives",
 "d": "These only change how Hearth names things. Your files, apps and games stay exactly where they are, and Windows apps keep their own C: inside them.",
+"i": "info"
+},
+{
+"t": "Opens in",
+"p": "file-types"
+},
+{
+"t": "Use the system's choice",
+"p": "file-types",
+"i": "undo"
+},
+{
+"t": "Default apps",
+"p": "file-types",
+"d": "The browser, music, pictures and other big kinds in one place",
+"i": "grid"
+},
+{
+"t": "There's no firewall on this system",
+"p": "firewall",
+"d": "Hearth OS doesn't ship one: your router already keeps the internet out. With firewalld or ufw installed (Peppermint unlocked), it's set here",
+"i": "info"
+},
+{
+"t": "Other devices connecting in",
+"p": "firewall",
+"i": "shield"
+},
+{
+"t": "Stop letting this in",
+"p": "firewall",
+"i": "trash"
+},
+{
+"t": "Kind",
+"p": "firewall",
+"i": "link"
+},
+{
+"t": "From",
+"p": "firewall",
+"d": "Anywhere matters only if your router forwards the port",
+"i": "globe"
+},
+{
+"t": "Secure Boot",
+"p": "firmware",
+"i": "lock"
+},
+{
+"t": "Security chip (TPM)",
+"p": "firmware",
+"i": "key"
+},
+{
+"t": "Firmware updates aren't on this system",
+"p": "firmware",
+"d": "fwupd is missing",
+"i": "info"
+},
+{
+"t": "Tell me about firmware updates",
+"p": "firmware",
+"d": "A notification once a day at most when a part of this PC has new firmware",
+"i": "bell"
+},
+{
+"t": "Not installed from Hearth",
+"p": "firmware",
+"d": "System firmware changes how this PC starts. Back up first (Updates & recovery › Backup and help), then use your PC maker's update tool or its firmware setup",
+"i": "info"
+},
+{
+"t": "Cancel",
+"p": "firmware"
+},
+{
+"t": "Update history",
+"p": "firmware",
+"d": "Every firmware update put in, and whether it worked",
+"i": "clock"
+},
+{
+"t": "Restart to finish",
+"p": "firmware",
+"d": "The new firmware goes in while the PC restarts",
+"i": "restart"
+},
+{
+"t": "Font",
+"p": "fonts",
+"d": "Menus, buttons and text in apps",
+"i": "doc"
+},
+{
+"t": "Font size",
+"p": "fonts",
+"i": "doc"
+},
+{
+"t": "Fixed-width font",
+"p": "fonts",
+"d": "Terminals and code",
+"i": "kbd"
+},
+{
+"t": "Fixed-width font size",
+"p": "fonts",
+"i": "kbd"
+},
+{
+"t": "Small and window title fonts",
+"p": "fonts",
+"d": "Tooltips and captions, and the title bars of windows",
+"i": "doc"
+},
+{
+"t": "Small font",
+"p": "fonts",
+"d": "Tooltips, captions and the smallest text"
+},
+{
+"t": "Small font size",
+"p": "fonts"
+},
+{
+"t": "Window title font",
+"p": "fonts",
+"d": "The title bars of windows (Mantel on KWin, KDE and GNOME apps)"
+},
+{
+"t": "Window title size",
+"p": "fonts"
+},
+{
+"t": "Font smoothing and DPI",
+"p": "fonts",
+"d": "For sharp or soft text on your screen",
+"i": "gear"
+},
+{
+"t": "Smoothing",
+"p": "fonts"
+},
+{
+"t": "Sub-pixel order",
+"p": "fonts"
+},
+{
+"t": "Hinting",
+"p": "fonts"
+},
+{
+"t": "Font DPI",
+"p": "fonts",
+"d": "Bigger text without changing the display's scale"
+},
+{
+"t": "Cursor",
+"p": "fonts",
+"i": "mouse"
+},
+{
+"t": "Cursor size",
+"p": "fonts",
+"i": "mouse"
+},
+{
+"t": "Icon theme",
+"p": "fonts",
+"d": "App icons in Qt/KDE and GTK apps (Hearth's own icons stay)",
+"i": "grid"
+},
+{
+"t": "Resolution",
+"p": "gameperf",
+"i": "window"
+},
+{
+"t": "Refresh rate",
+"p": "gameperf",
+"d": "Higher is smoother; lower saves battery",
+"i": "bolt"
+},
+{
+"t": "Frame limit",
+"p": "gameperf",
+"i": "rocket"
+},
+{
+"t": "HDR",
+"p": "gameperf",
+"i": "sparkle"
+},
+{
+"t": "Used the next time Game Mode starts",
+"p": "gameperf",
+"d": "If the screen can't show what you picked, Game Mode starts at the screen's own mode and tells you.",
 "i": "info"
 },
 {
@@ -1868,6 +2548,55 @@ var ENTRIES = [
 "i": "sleep"
 },
 {
+"t": "Share my internet",
+"p": "hotspot",
+"i": "share"
+},
+{
+"t": "Band",
+"p": "hotspot",
+"d": "5 GHz is faster; 2.4 GHz reaches further and works with older devices",
+"i": "wifi"
+},
+{
+"t": "Reading…",
+"p": "info-cpu",
+"i": "info"
+},
+{
+"t": "Copy this page",
+"p": "info-cpu",
+"d": "As text, for a bug report or a forum post",
+"i": "copy"
+},
+{
+"t": "Tell me when ink or toner runs low",
+"p": "ink-levels",
+"d": "One notice per cartridge, again only after it's been filled",
+"i": "bell"
+},
+{
+"t": "Asking the printers…",
+"p": "ink-levels",
+"i": "printer"
+},
+{
+"t": "No printers",
+"p": "ink-levels",
+"i": "printer"
+},
+{
+"t": "Ask again",
+"p": "ink-levels",
+"i": "sync"
+},
+{
+"t": "Type with fcitx5",
+"p": "input-methods",
+"d": "Switch languages with Ctrl+Space. Used from the next sign-in",
+"i": "kbd"
+},
+{
 "t": "Looking for Windows, SteamOS and other systems…",
 "p": "install",
 "i": "update"
@@ -1943,6 +2672,12 @@ var ENTRIES = [
 "d": "Press it to go to the next layout"
 },
 {
+"t": "Remember the layout",
+"p": "keyboard",
+"d": "One layout for everything, or each app or window keeps the one you switched it to",
+"i": "kbd"
+},
+{
 "t": "Wait before a held key repeats",
 "p": "keyboard",
 "i": "kbd"
@@ -1950,6 +2685,18 @@ var ENTRIES = [
 {
 "t": "Repeat speed",
 "p": "keyboard",
+"i": "kbd"
+},
+{
+"t": "Num Lock when Desktop Mode starts",
+"p": "keyboard",
+"d": "Used from the next time Desktop Mode starts",
+"i": "kbd"
+},
+{
+"t": "Compose key",
+"p": "keyboard",
+"d": "Press it, then two keys, to type a letter that isn't on the keyboard: Compose, e, ' types é",
 "i": "kbd"
 },
 {
@@ -2014,6 +2761,682 @@ var ENTRIES = [
 "t": "Clear learned words",
 "p": "keyboard",
 "d": "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"
+},
+{
+"t": "Bring back KDE's own shortcuts",
+"p": "keyboard",
+"i": "undo"
+},
+{
+"t": "How many",
+"p": "kwin-desktops",
+"d": "Super+Ctrl+Left / Right switch between them; three or four fingers sideways on a touchpad",
+"i": "desktops"
+},
+{
+"t": "Rows",
+"p": "kwin-desktops",
+"d": "Desktops laid out in a grid: Super+Ctrl+Up / Down move between rows",
+"i": "grid"
+},
+{
+"t": "Go round",
+"p": "kwin-desktops",
+"d": "From the last desktop, the next one is the first",
+"i": "sync"
+},
+{
+"t": "Animation",
+"p": "kwin-desktops",
+"i": "motion"
+},
+{
+"t": "The wallpaper slides too",
+"p": "kwin-desktops",
+"i": "image"
+},
+{
+"t": "Gap between desktops while sliding",
+"p": "kwin-desktops",
+"i": "desktops"
+},
+{
+"t": "Show the desktop's name when switching",
+"p": "kwin-desktops",
+"i": "info"
+},
+{
+"t": "Switch by pushing against the screen's edge",
+"p": "kwin-desktops",
+"d": "In Screen edges"
+},
+{
+"t": "Desktop cube",
+"p": "kwin-desktops",
+"i": "box"
+},
+{
+"t": "Open the cube now",
+"p": "kwin-desktops",
+"i": "box"
+},
+{
+"t": "How long to push before it happens",
+"p": "kwin-edges",
+"i": "clock"
+},
+{
+"t": "Wait before it can happen again",
+"p": "kwin-edges",
+"i": "clock"
+},
+{
+"t": "Also over full-screen windows",
+"p": "kwin-edges",
+"d": "Off: a game or video in full screen never sets off a corner",
+"i": "display"
+},
+{
+"t": "Switch desktops at the left and right edges",
+"p": "kwin-edges",
+"i": "desktops"
+},
+{
+"t": "Sticky edges between screens",
+"p": "kwin-edges",
+"d": "How far you push the pointer before it crosses to the next screen; 0 is off",
+"i": "display"
+},
+{
+"t": "Corners between screens are sticky too",
+"p": "kwin-edges",
+"i": "display"
+},
+{
+"t": "Animation speed",
+"p": "kwin-effects",
+"d": "How fast windows open, close, move and switch. Reduce motion in Accessibility also stills Mantel's own",
+"i": "motion"
+},
+{
+"t": "When a window opens or closes",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "When a window is minimized",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "When the desktop is shown",
+"p": "kwin-effects",
+"d": "Windows move out of the way, or shrink to the middle of the screen",
+"i": "home"
+},
+{
+"t": "Switching between desktops",
+"p": "kwin-effects",
+"d": "Slide, fade or nothing: in Virtual desktops"
+},
+{
+"t": "Maximize and full screen animate",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Menus and pop-ups fade and slide",
+"p": "kwin-effects",
+"i": "menu"
+},
+{
+"t": "Dialogs slide out of their window",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Windows fall apart when closed",
+"p": "kwin-effects",
+"i": "trash"
+},
+{
+"t": "Fade in when you sign in, fade out when you sign out",
+"p": "kwin-effects",
+"i": "power"
+},
+{
+"t": "Bounce the pointer while an app starts",
+"p": "kwin-effects",
+"i": "rocket"
+},
+{
+"t": "Overview",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Overview: leave out minimized windows",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Overview: typing searches",
+"p": "kwin-effects",
+"d": "Off: typing only filters the windows shown",
+"i": "search"
+},
+{
+"t": "Desktop grid",
+"p": "kwin-effects",
+"d": "Every desktop side by side, to move windows between them: Super+G, or four fingers down. Part of the overview in KWin 6",
+"i": "desktops"
+},
+{
+"t": "Present windows",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Hot corners",
+"p": "kwin-effects",
+"d": "Which corner opens the overview, the grid or every window"
+},
+{
+"t": "Look",
+"p": "kwin-effects",
+"d": "What Alt+Tab shows while you hold it. Alt+` shows only the windows of the app you're on, in the same look",
+"i": "window"
+},
+{
+"t": "Show the window you're on",
+"p": "kwin-effects",
+"d": "The others fade while Alt+Tab is held",
+"i": "eye"
+},
+{
+"t": "Which windows",
+"p": "kwin-effects",
+"i": "desktops"
+},
+{
+"t": "Minimized windows",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Order",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Second switcher's look",
+"p": "kwin-effects",
+"d": "A switcher of its own, set up apart from Alt+Tab",
+"i": "window"
+},
+{
+"t": "Which apps",
+"p": "kwin-effects",
+"d": "Only the app you're on: Super+Tab goes between that app's windows",
+"i": "grid"
+},
+{
+"t": "Blur behind see-through windows",
+"p": "kwin-effects",
+"i": "sparkle"
+},
+{
+"t": "How much blur",
+"p": "kwin-effects",
+"i": "sparkle"
+},
+{
+"t": "Grain in the blur",
+"p": "kwin-effects",
+"d": "A little grain hides banding",
+"i": "sparkle"
+},
+{
+"t": "Keep text readable on glass",
+"p": "kwin-effects",
+"i": "sun"
+},
+{
+"t": "See-through windows",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Wobbly windows",
+"p": "kwin-effects",
+"i": "wave"
+},
+{
+"t": "How wobbly",
+"p": "kwin-effects",
+"i": "wave"
+},
+{
+"t": "Show where a window snaps",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Window you click slides to the front",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "A picture of the window you're on, at the side",
+"p": "kwin-effects",
+"i": "image"
+},
+{
+"t": "Dim windows you're not using",
+"p": "kwin-effects",
+"i": "moon"
+},
+{
+"t": "How much",
+"p": "kwin-effects",
+"i": "moon"
+},
+{
+"t": "Dim the bar and dock too",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Dim the screen when asked for your password",
+"p": "kwin-effects",
+"i": "shield"
+},
+{
+"t": "Grey out apps that stopped answering",
+"p": "kwin-effects",
+"i": "warn"
+},
+{
+"t": "Darken a window while its dialog is open",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Shake the pointer to find it",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "How big it grows",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Show mouse clicks",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Find the pointer with Super+Ctrl",
+"p": "kwin-effects",
+"i": "search"
+},
+{
+"t": "Draw on the screen",
+"p": "kwin-effects",
+"i": "edit"
+},
+{
+"t": "Hide the pointer while you type",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Hide the pointer when the mouse is still",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Show touches on a touchscreen",
+"p": "kwin-effects",
+"i": "pad"
+},
+{
+"t": "Minimize every window with Super+Shift+D",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Video wall",
+"p": "kwin-effects",
+"i": "display"
+},
+{
+"t": "Leave out of Alt+Tab what's left off the taskbar",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Show FPS",
+"p": "kwin-effects",
+"i": "cpu"
+},
+{
+"t": "Show paint",
+"p": "kwin-effects",
+"i": "edit"
+},
+{
+"t": "Allow tearing in full-screen games",
+"p": "kwin-games",
+"d": "Games that ask for it show each frame the moment it's ready: less lag, with a tear line now and then. Others stay smooth",
+"i": "pad"
+},
+{
+"t": "Tearing for one game",
+"p": "kwin-games",
+"d": "A window rule can turn tearing on or off for one app"
+},
+{
+"t": "Screen edges over full-screen games",
+"p": "kwin-games",
+"d": "Off: hot corners never go off while a game is full screen",
+"i": "display"
+},
+{
+"t": "Keys X11 apps can see while you're in another app",
+"p": "kwin-games",
+"d": "For push-to-talk and hotkeys in Discord, OBS and other X11 apps. Wayland apps never see them",
+"i": "kbd"
+},
+{
+"t": "Mouse buttons too",
+"p": "kwin-games",
+"d": "X11 apps also see mouse buttons pressed in other apps",
+"i": "mouse"
+},
+{
+"t": "Scaling X11 apps",
+"p": "kwin-games",
+"i": "display"
+},
+{
+"t": "Use this rule",
+"p": "kwin-rules"
+},
+{
+"t": "Pick the app's window",
+"p": "kwin-rules",
+"i": "search"
+},
+{
+"t": "App (window class)",
+"p": "kwin-rules"
+},
+{
+"t": "Window title",
+"p": "kwin-rules"
+},
+{
+"t": "On a desktop",
+"p": "kwin-rules"
+},
+{
+"t": "Which desktop",
+"p": "kwin-rules"
+},
+{
+"t": "On a screen",
+"p": "kwin-rules"
+},
+{
+"t": "Which screen",
+"p": "kwin-rules"
+},
+{
+"t": "One pointer for the pen and the mouse",
+"p": "kwin-tablet",
+"i": "mouse"
+},
+{
+"t": "Screen it draws on",
+"p": "kwin-tablet",
+"i": "display"
+},
+{
+"t": "Part of the screen",
+"p": "kwin-tablet",
+"i": "image"
+},
+{
+"t": "Part of the tablet used",
+"p": "kwin-tablet",
+"d": "A smaller part means less arm movement",
+"i": "edit"
+},
+{
+"t": "Left-handed (tablet turned round)",
+"p": "kwin-tablet",
+"i": "mouse"
+},
+{
+"t": "Pressure",
+"p": "kwin-tablet",
+"i": "edit"
+},
+{
+"t": "Lightest touch that counts",
+"p": "kwin-tablet",
+"i": "edit"
+},
+{
+"t": "Full pressure at",
+"p": "kwin-tablet",
+"i": "edit"
+},
+{
+"t": "Use this touchscreen",
+"p": "kwin-tablet",
+"i": "pad"
+},
+{
+"t": "Screen it's on",
+"p": "kwin-tablet",
+"d": "With more than one screen, touches go to this one",
+"i": "display"
+},
+{
+"t": "Turned",
+"p": "kwin-tablet",
+"d": "If touches land rotated from your finger",
+"i": "sync"
+},
+{
+"t": "Calibrate",
+"p": "kwin-tablet",
+"i": "search"
+},
+{
+"t": "Undo the calibration",
+"p": "kwin-tablet",
+"i": "undo"
+},
+{
+"t": "Screen",
+"p": "kwin-tiling",
+"i": "display"
+},
+{
+"t": "Start from",
+"p": "kwin-tiling",
+"i": "grid"
+},
+{
+"t": "Gap between tiles",
+"p": "kwin-tiling",
+"i": "grid"
+},
+{
+"t": "Drag a window to a side or corner to tile it",
+"p": "kwin-tiling",
+"d": "Half the screen at a side, a quarter in a corner",
+"i": "window"
+},
+{
+"t": "Drag a window to the top to maximize it",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Size of the corners",
+"p": "kwin-tiling",
+"d": "How much of each edge counts as its corner",
+"i": "grid"
+},
+{
+"t": "Maximized windows have no title bar",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Snap to the screen's edges",
+"p": "kwin-tiling",
+"i": "display"
+},
+{
+"t": "Snap to other windows",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Snap to the middle of the screen",
+"p": "kwin-tiling",
+"i": "grid"
+},
+{
+"t": "Only snap when windows would overlap",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Which window gets the keyboard",
+"p": "kwin-behaviour",
+"i": "kbd"
+},
+{
+"t": "Wait before the focus follows",
+"p": "kwin-behaviour",
+"i": "clock"
+},
+{
+"t": "Raise the window under the pointer",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Raise after",
+"p": "kwin-behaviour",
+"i": "clock"
+},
+{
+"t": "Clicking a window brings it to the front",
+"p": "kwin-behaviour",
+"d": "Off: a window you click in stays where it is in the stack",
+"i": "mouse"
+},
+{
+"t": "The pointer comes first",
+"p": "kwin-behaviour",
+"d": "When a window closes or you switch desktops, the window under the pointer gets the keyboard, not the last one you used",
+"i": "mouse"
+},
+{
+"t": "Stop windows taking the keyboard",
+"p": "kwin-behaviour",
+"i": "pin"
+},
+{
+"t": "Double-click",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Middle-click",
+"p": "kwin-behaviour",
+"i": "mouse"
+},
+{
+"t": "Turning the wheel",
+"p": "kwin-behaviour",
+"i": "mouse"
+},
+{
+"t": "Hold",
+"p": "kwin-behaviour",
+"d": "Pressed on its own, Super still opens the app menu",
+"i": "kbd"
+},
+{
+"t": "Where new windows open",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Just one app's windows",
+"p": "kwin-behaviour",
+"d": "A window rule opens them where, how big and how you want"
+},
+{
+"t": "Choose your languages first",
+"p": "language-packs",
+"d": "Languages in order",
+"i": "globe"
+},
+{
+"t": "The system's apps",
+"p": "language-packs",
+"i": "window"
+},
+{
+"t": "Flatpak apps: translations downloaded",
+"p": "language-packs",
+"d": "Press to stop getting this language's translations for Flatpak apps",
+"i": "close"
+},
+{
+"t": "Remove the downloaded dictionary",
+"p": "language-packs",
+"i": "trash"
+},
+{
+"t": "Languages in order",
+"p": "language-packs",
+"d": "Add or reorder your languages",
+"i": "globe"
+},
+{
+"t": "Apps use the language from Region & language",
+"p": "languages",
+"d": "Add languages below so an app without your first one uses the next, before falling back to English",
+"i": "globe"
+},
+{
+"t": "Language",
+"p": "languages",
+"d": "Added at the end of the list",
+"i": "plus"
+},
+{
+"t": "Sign out now",
+"p": "languages",
+"d": "Apps pick up the new order when you sign in again",
+"i": "logout"
+},
+{
+"t": "Translations & dictionaries",
+"p": "languages",
+"d": "Download what your languages need",
+"i": "update"
 },
 {
 "t": "Share this device's AI",
@@ -2140,6 +3563,61 @@ var ENTRIES = [
 "i": "open"
 },
 {
+"t": "Use Hearth's fireside",
+"p": "login-screen",
+"d": "The login screen's own look",
+"i": "undo"
+},
+{
+"t": "Sign in automatically",
+"p": "login-screen",
+"i": "lock"
+},
+{
+"t": "Accent colour in the frames",
+"p": "look-more",
+"d": "0% keeps the look's own frames. More tints the title bars and edges with your accent",
+"i": "palette"
+},
+{
+"t": "Apps follow Hearth",
+"p": "look-more",
+"i": "palette"
+},
+{
+"t": "Show it now",
+"p": "look-more",
+"d": "A preview: clicks go straight through it",
+"i": "play"
+},
+{
+"t": "Save the name, description, icon and command",
+"p": "menu-editor",
+"i": "check"
+},
+{
+"t": "Menu category",
+"p": "menu-editor",
+"i": "grid"
+},
+{
+"t": "Run in a terminal",
+"p": "menu-editor",
+"d": "For programs that type in a terminal window",
+"i": "kbd"
+},
+{
+"t": "Show in the app menu",
+"p": "menu-editor",
+"d": "Off takes it off the menu and search; it stays installed",
+"i": "eye"
+},
+{
+"t": "Add to the menu",
+"p": "menu-editor",
+"i": "plus"
+},
+{
 "t": "Pointer speed",
 "p": "mouse",
 "i": "mouse"
@@ -2163,6 +3641,21 @@ var ENTRIES = [
 "i": "mouse"
 },
 {
+"t": "Scroll speed",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Middle-click with both buttons",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Paste with the middle button",
+"p": "mouse",
+"i": "mouse"
+},
+{
 "t": "Touchpad speed",
 "p": "mouse",
 "i": "mouse"
@@ -2179,9 +3672,138 @@ var ENTRIES = [
 "i": "mouse"
 },
 {
+"t": "Touchpad scroll speed",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Touchpad acceleration",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Tap and drag",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Pressing the touchpad down",
+"p": "mouse",
+"i": "mouse"
+},
+{
 "t": "Ignore the touchpad while typing",
 "p": "mouse",
 "i": "kbd"
+},
+{
+"t": "Four fingers up: overview · down: desktop grid",
+"p": "mouse",
+"i": "grid"
+},
+{
+"t": "Three or four fingers sideways: next or previous desktop",
+"p": "mouse",
+"i": "desktops"
+},
+{
+"t": "Wired connection",
+"p": "net-details",
+"d": "A second profile for a cable: another address, DNS or 802.1X sign-in",
+"i": "ethernet"
+},
+{
+"t": "For",
+"p": "net-details",
+"i": "ethernet"
+},
+{
+"t": "Mobile broadband",
+"p": "net-details",
+"i": "globe"
+},
+{
+"t": "Use it when roaming",
+"p": "net-details",
+"d": "Abroad or on another network: it can cost more",
+"i": "globe"
+},
+{
+"t": "Enterprise Wi-Fi (802.1X)",
+"p": "net-details",
+"d": "Work, school or eduroam: you sign in with your own account",
+"i": "wifi"
+},
+{
+"t": "How it signs in",
+"p": "net-details",
+"d": "Ask your IT people if you're not sure: PEAP is the usual one (eduroam too)",
+"i": "lock"
+},
+{
+"t": "Inner sign-in",
+"p": "net-details",
+"i": "key"
+},
+{
+"t": "Ask for the password each time",
+"p": "net-details",
+"d": "Off: NetworkManager keeps it, so it connects by itself",
+"i": "lock"
+},
+{
+"t": "Turn 802.1X off for this cable",
+"p": "net-details",
+"i": "close"
+},
+{
+"t": "Connect automatically",
+"p": "net-details",
+"d": "When it's in reach",
+"i": "link"
+},
+{
+"t": "Metered connection",
+"p": "net-details",
+"d": "Updates and big downloads wait on a metered network (phone hotspots)",
+"i": "cloud"
+},
+{
+"t": "MAC address",
+"p": "net-details",
+"d": "What this PC tells the network it is. Random is more private",
+"i": "shield"
+},
+{
+"t": "Automatic DNS",
+"p": "net-details",
+"d": "The DNS servers the network hands out. Off: only yours below",
+"i": "globe"
+},
+{
+"t": "Use these DNS servers",
+"p": "net-details",
+"i": "check"
+},
+{
+"t": "IP address (IPv4)",
+"p": "net-details",
+"i": "gear"
+},
+{
+"t": "Use this address",
+"p": "net-details",
+"i": "check"
+},
+{
+"t": "IPv6",
+"p": "net-details",
+"i": "globe"
+},
+{
+"t": "Use this packet size",
+"p": "net-details",
+"i": "check"
 },
 {
 "t": "Do not disturb",
@@ -2190,13 +3812,184 @@ var ENTRIES = [
 "i": "bell-off"
 },
 {
+"t": "Quiet right now",
+"p": "notifications",
+"i": "moon"
+},
+{
 "t": "Clear the notification list",
 "p": "notifications",
 "i": "bell"
 },
 {
+"t": "While a full-screen app is in front",
+"p": "notifications",
+"d": "Games and videos: pop-ups wait in the list, and you're told how many came in when you leave full screen",
+"i": "pad"
+},
+{
+"t": "While you share or record your screen",
+"p": "notifications",
+"d": "Screen sharing in a call, Hearth's recorder, Remote desktop: nobody else sees your notifications",
+"i": "share"
+},
+{
+"t": "On a schedule",
+"p": "notifications",
+"d": "Every day between the times below. Press Super+Alt+N any time for Do not disturb",
+"i": "clock"
+},
+{
+"t": "From",
+"p": "notifications",
+"i": "moon"
+},
+{
+"t": "Until",
+"p": "notifications",
+"i": "sun"
+},
+{
+"t": "Hearth's own warnings always show",
+"p": "notifications",
+"d": "Low space, a low battery, a settings file put back: they pop up even when it's quiet, and can't be muted",
+"i": "warn"
+},
+{
+"t": "Keep the list after a restart",
+"p": "notifications",
+"d": "The last 100, with their buttons while their app can still answer. Off: the list starts empty each time (what's kept now is cleared)",
+"i": "list"
+},
+{
+"t": "Sounds",
+"p": "notifications",
+"d": "Hearth's own short sounds, the freedesktop set, or none, and which events play one",
+"i": "vol"
+},
+{
+"t": "Notifications",
+"p": "notifications",
+"d": "Off: nothing from this app is shown or kept, urgent ones neither"
+},
+{
+"t": "Always allowed",
+"p": "notifications",
+"d": "Hearth's own messages (warnings, pairing requests, settings put back) can't be turned off; its urgent ones always pop up"
+},
+{
+"t": "Pop-ups",
+"p": "notifications",
+"d": "Off: they only go to the list"
+},
+{
+"t": "Play a sound",
+"p": "notifications"
+},
+{
+"t": "Show on the lock screen",
+"p": "notifications",
+"d": "Its name and the title, nothing more"
+},
+{
+"t": "Priority",
+"p": "notifications",
+"d": "High pops up even with Do not disturb on; Low goes straight to the list"
+},
+{
+"t": "Some are in a locked keyring",
+"p": "passwords",
+"i": "lock"
+},
+{
+"t": "Nothing saved yet",
+"p": "passwords",
+"i": "key"
+},
+{
+"t": "Remove it",
+"p": "passwords",
+"d": "The app forgets this sign-in and asks again next time",
+"i": "trash"
+},
+{
+"t": "Phone link",
+"p": "phone",
+"i": "phone"
+},
+{
+"t": "Decline",
+"p": "phone",
+"i": "close"
+},
+{
+"t": "Open",
+"p": "phone",
+"d": "In your browser",
+"i": "open"
+},
+{
+"t": "Copy",
+"p": "phone",
+"i": "clipboard"
+},
+{
+"t": "Close the phone's files",
+"p": "phone",
+"i": "close"
+},
+{
+"t": "Messages",
+"p": "phone",
+"i": "chat"
+},
+{
+"t": "Dismiss",
+"p": "phone",
+"d": "On the phone too",
+"i": "close"
+},
+{
+"t": "Include what they say",
+"p": "phone",
+"d": "Off: only the app and the title go",
+"i": "doc"
+},
+{
+"t": "Only ones that stay",
+"p": "phone",
+"d": "Leaves out pop-ups that go away by themselves",
+"i": "pin"
+},
+{
+"t": "Which ones",
+"p": "phone",
+"d": "By how urgent the app says it is",
+"i": "warn"
+},
+{
+"t": "Phone not listed?",
+"p": "phone",
+"i": "help"
+},
+{
+"t": "Files from your phone",
+"p": "phone",
+"i": "folder"
+},
+{
+"t": "All conversations",
+"p": "phone-messages",
+"i": "back"
+},
+{
 "t": "Battery",
 "p": "power"
+},
+{
+"t": "Stop charging at",
+"p": "power",
+"i": "batt"
 },
 {
 "t": "Power mode",
@@ -2208,6 +4001,23 @@ var ENTRIES = [
 "t": "Power limit (TDP)",
 "p": "power",
 "i": "power"
+},
+{
+"t": "Plugged in, battery & lid",
+"p": "power",
+"d": "Different times and power mode on battery, and what closing the lid does",
+"i": "batt"
+},
+{
+"t": "Apps keeping it awake",
+"p": "power",
+"i": "sleep"
+},
+{
+"t": "Battery health & history",
+"p": "power",
+"d": "Charge cycles, how much it holds, graphs of charge and power, your devices' batteries",
+"i": "bolt"
 },
 {
 "t": "Turn the screen off after",
@@ -2244,6 +4054,26 @@ var ENTRIES = [
 "i": "sleep"
 },
 {
+"t": "Hibernate",
+"p": "power",
+"i": "moon"
+},
+{
+"t": "Hybrid sleep",
+"p": "power",
+"i": "sleep"
+},
+{
+"t": "Hibernate isn't available",
+"p": "power",
+"i": "moon"
+},
+{
+"t": "Hybrid sleep isn't available",
+"p": "power",
+"i": "sleep"
+},
+{
 "t": "Restart",
 "p": "power",
 "i": "restart"
@@ -2252,6 +4082,68 @@ var ENTRIES = [
 "t": "Shut down",
 "p": "power",
 "i": "power"
+},
+{
+"t": "The PC can sleep and the screen can turn off on time",
+"p": "power-awake",
+"d": "Videos, games and downloads that need it awake show up here while they do",
+"i": "check"
+},
+{
+"t": "Sleep now",
+"p": "power-awake",
+"d": "Puts the PC to sleep even while apps ask to keep it awake",
+"i": "sleep"
+},
+{
+"t": "Screen off after",
+"p": "power-profiles"
+},
+{
+"t": "Sleep after",
+"p": "power-profiles"
+},
+{
+"t": "Power mode",
+"p": "power-profiles"
+},
+{
+"t": "This PC has no battery",
+"p": "power-profiles",
+"d": "The times above are the ones it uses",
+"i": "info"
+},
+{
+"t": "On battery",
+"p": "power-profiles",
+"i": "batt"
+},
+{
+"t": "Plugged in",
+"p": "power-profiles",
+"i": "power"
+},
+{
+"t": "With another screen attached",
+"p": "power-profiles",
+"d": "Docked, or an external monitor plugged in",
+"i": "display"
+},
+{
+"t": "Nothing waiting",
+"p": "print-queue",
+"i": "printer"
+},
+{
+"t": "No printers",
+"p": "print-queue",
+"d": "Add one in Printers",
+"i": "printer"
+},
+{
+"t": "Cancel all mine",
+"p": "print-queue",
+"i": "close"
 },
 {
 "t": "The printing service isn't running",
@@ -2274,10 +4166,146 @@ var ENTRIES = [
 "p": "printers"
 },
 {
+"t": "Print queue",
+"p": "printers",
+"d": "What's waiting to print: hold, go on or cancel",
+"i": "list"
+},
+{
+"t": "Scanners",
+"p": "printers",
+"d": "The scanners found, and a test scan",
+"i": "printer"
+},
+{
+"t": "Scan to PDF",
+"p": "printers",
+"d": "Several pages into one PDF",
+"i": "file"
+},
+{
+"t": "Ink & toner",
+"p": "printers",
+"d": "How full each cartridge is",
+"i": "printer"
+},
+{
 "t": "More printer settings",
 "p": "printers",
 "d": "Drivers, paper and other options (Print Settings)",
 "i": "gear"
+},
+{
+"t": "Use a proxy",
+"p": "proxy",
+"i": "globe"
+},
+{
+"t": "Push to talk",
+"p": "push-to-talk",
+"i": "mic"
+},
+{
+"t": "Key to hold",
+"p": "push-to-talk",
+"d": "A key games and chats don't use. F13 and F14 are on many gaming keyboards and mice",
+"i": "kbd"
+},
+{
+"t": "Start in",
+"p": "quick",
+"d": "What this PC opens when it turns on or you sign in",
+"i": "power"
+},
+{
+"t": "Remember the files I open",
+"p": "recent-files",
+"i": "clock"
+},
+{
+"t": "Keep them for",
+"p": "recent-files",
+"d": "Older ones are forgotten",
+"i": "calendar"
+},
+{
+"t": "Forget the last hour",
+"p": "recent-files",
+"i": "undo"
+},
+{
+"t": "Forget today",
+"p": "recent-files",
+"d": "The last 24 hours",
+"i": "undo"
+},
+{
+"t": "Language",
+"p": "region",
+"d": "Menus, apps and the login screen. Apps that don't have it stay in English",
+"i": "globe"
+},
+{
+"t": "Region",
+"p": "region",
+"d": "How dates, numbers and money are written",
+"i": "globe"
+},
+{
+"t": "Change one of them",
+"p": "region",
+"d": "Numbers, dates, money, measurements or paper from another region",
+"i": "gear"
+},
+{
+"t": "Numbers",
+"p": "region"
+},
+{
+"t": "Dates and times",
+"p": "region"
+},
+{
+"t": "Money",
+"p": "region"
+},
+{
+"t": "Measurement units",
+"p": "region"
+},
+{
+"t": "Paper size",
+"p": "region"
+},
+{
+"t": "Languages in order",
+"p": "region",
+"d": "More than one language: apps try them one after another",
+"i": "globe"
+},
+{
+"t": "Spell check",
+"p": "region",
+"d": "Dictionary, checking as you type, words to leave alone",
+"i": "check"
+},
+{
+"t": "Chinese, Japanese & Korean typing",
+"p": "region",
+"d": "Input methods (fcitx5), off unless you turn them on",
+"i": "kbd"
+},
+{
+"t": "Date & time",
+"p": "region",
+"d": "Time zone, 24-hour clock, setting the time automatically",
+"i": "clock"
+},
+{
+"t": "Sign out now",
+"p": "region",
+"d": "Apps pick up the new language and formats when you sign in again",
+"i": "logout"
 },
 {
 "t": "Use this PC from anywhere",
@@ -2351,9 +4379,176 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
+"t": "Remote desktop",
+"p": "remote-desktop",
+"i": "desktops"
+},
+{
+"t": "Tailscale isn't connected",
+"p": "remote-desktop",
+"d": "Your other devices reach this PC through Tailscale. Sign in here and on the other device",
+"i": "globe"
+},
+{
+"t": "This PC's certificate (SHA-256)",
+"p": "remote-desktop",
+"i": "shield"
+},
+{
+"t": "Reachable",
+"p": "remote-desktop"
+},
+{
+"t": "View only",
+"p": "remote-desktop",
+"i": "eye"
+},
+{
+"t": "Disconnect everyone",
+"p": "remote-desktop",
+"i": "close"
+},
+{
+"t": "Games and low-latency streaming",
+"p": "remote-desktop",
+"d": "For playing this PC's games on a TV, phone or another PC, Remote play (Moonlight) is faster",
+"i": "play"
+},
+{
 "t": "Restore all saves",
 "p": "savedgames",
 "d": "Puts every backed-up save back where its game looks for it (after a reinstall, or on another PC). What it replaces is kept by Ludusavi.",
+"i": "restart"
+},
+{
+"t": "Nothing answered",
+"p": "scan-pdf",
+"d": "Turn the scanner on and plug it in, or put it on the same network",
+"i": "info"
+},
+{
+"t": "Scanner",
+"p": "scan-pdf",
+"i": "printer"
+},
+{
+"t": "Resolution",
+"p": "scan-pdf",
+"d": "150 for reading, 300 for printing again",
+"i": "image"
+},
+{
+"t": "Colour",
+"p": "scan-pdf",
+"i": "palette"
+},
+{
+"t": "From",
+"p": "scan-pdf",
+"i": "doc"
+},
+{
+"t": "Save as PDF",
+"p": "scan-pdf",
+"d": "One PDF of every page, in Documents",
+"i": "file"
+},
+{
+"t": "Open the PDF",
+"p": "scan-pdf",
+"i": "open"
+},
+{
+"t": "Start again",
+"p": "scan-pdf",
+"d": "Clears the pages here (a saved PDF stays)",
+"i": "close"
+},
+{
+"t": "Nothing answered",
+"p": "scanners",
+"d": "Turn the scanner on and plug it in, or put it on the same network. Many printers with a scanner show up here",
+"i": "info"
+},
+{
+"t": "Look again",
+"p": "scanners",
+"i": "sync"
+},
+{
+"t": "Scan to PDF",
+"p": "scanners",
+"d": "Several pages into one PDF",
+"i": "file"
+},
+{
+"t": "Index my files",
+"p": "search",
+"i": "search"
+},
+{
+"t": "Search inside documents",
+"p": "search",
+"i": "doc"
+},
+{
+"t": "Keep indexing on battery",
+"p": "search",
+"d": "Off: the index waits until you plug in",
+"i": "batt"
+},
+{
+"t": "Rebuild the index",
+"p": "search",
+"d": "Start again from nothing (it's made again in the background)",
+"i": "restart"
+},
+{
+"t": "Add a folder…",
+"p": "search",
+"i": "plus"
+},
+{
+"t": "Always left out",
+"p": "search",
+"d": "Hidden folders (your settings and keyrings), caches, game libraries and Windows prefixes, build folders",
+"i": "shield"
+},
+{
+"t": "Leave out a folder…",
+"p": "search",
+"i": "plus"
+},
+{
+"t": "Today's currency rates",
+"p": "search",
+"d": "Once a day, from the European Central Bank, when you're online. Off: the built-in rates only (the answer says how old they are).",
+"i": "cloud"
+},
+{
+"t": "Alt+Space or Alt+F2 opens it at the top of the screen",
+"p": "search",
+"d": "Like KDE's KRunner: everything the app menus find, in the order below. Type ? in it to see what you can type. When Settings › Keyboard switches layouts with Alt+Space, Alt+F2 opens it.",
+"i": "search"
+},
+{
+"t": "Type on the desktop to search",
+"p": "search",
+"d": "With the desktop in front, typing opens the search bar with what you typed",
+"i": "kbd"
+},
+{
+"t": "Move up",
+"p": "search"
+},
+{
+"t": "Move down",
+"p": "search"
+},
+{
+"t": "Hearth's own order",
+"p": "search",
+"d": "Put the groups back in the order Hearth started with",
 "i": "restart"
 },
 {
@@ -2371,6 +4566,12 @@ var ENTRIES = [
 "t": "Startup and schedule",
 "p": "hs-server",
 "i": "power"
+},
+{
+"t": "AI engine",
+"p": "hs-server",
+"d": "Ollama, Colibri or both. Colibri runs much bigger models: the busiest parts on the graphics card, the rest in memory and on your drive",
+"i": "chat"
 },
 {
 "t": "Lower power limits when idle",
@@ -2483,6 +4684,32 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Forget this finger",
+"p": "signin",
+"i": "trash"
+},
+{
+"t": "Add a finger",
+"p": "signin",
+"i": "plus"
+},
+{
+"t": "Start",
+"p": "signin",
+"d": "Then touch the reader again and again with that finger until it's done",
+"i": "fingerprint"
+},
+{
+"t": "Unlock the lock screen with a finger",
+"p": "signin",
+"i": "lock"
+},
+{
+"t": "Use it for administrator prompts",
+"p": "signin",
+"i": "shield"
+},
+{
 "t": "Start in Game Mode or Desktop Mode",
 "p": "signin",
 "d": "Now in Gaming › Start in",
@@ -2515,9 +4742,134 @@ var ENTRIES = [
 "i": "vol"
 },
 {
+"t": "Speakers & balance",
+"p": "sound",
+"d": "Left and right balance, and a test tone from each speaker",
+"i": "vol"
+},
+{
+"t": "Apps' sound",
+"p": "sound",
+"d": "Which speakers or headphones each app plays on, and scrolling on the dock",
+"i": "headphones"
+},
+{
+"t": "Push to talk",
+"p": "sound",
+"i": "mic"
+},
+{
 "t": "Input volume",
 "p": "sound",
 "i": "mic"
+},
+{
+"t": "Play it back",
+"p": "sound",
+"i": "play"
+},
+{
+"t": "No app is playing sound right now",
+"p": "sound-apps",
+"d": "Start a video, a game or music and it shows up here",
+"i": "vol"
+},
+{
+"t": "Plays on",
+"p": "sound-apps"
+},
+{
+"t": "No app is recording right now",
+"p": "sound-apps",
+"d": "Join a call or start recording and it shows up here",
+"i": "mic"
+},
+{
+"t": "Scroll on an app to change its volume",
+"p": "sound-apps",
+"d": "With the mouse over an app's icon in the dock, scroll up for louder and down for quieter",
+"i": "vol"
+},
+{
+"t": "Volume mixer",
+"p": "sound-apps",
+"d": "The same apps in a small window, from the sound icon in the bar",
+"i": "vol"
+},
+{
+"t": "Speakers or headphones",
+"p": "sound-speakers",
+"d": "Which one these settings are for",
+"i": "vol"
+},
+{
+"t": "No speakers or headphones found",
+"p": "sound-speakers",
+"d": "Plug some in, or check Bluetooth",
+"i": "info"
+},
+{
+"t": "Left and right",
+"p": "sound-speakers",
+"d": "Moves the sound towards the left or the right speaker",
+"i": "vol"
+},
+{
+"t": "Centre the balance",
+"p": "sound-speakers",
+"i": "undo"
+},
+{
+"t": "Play each speaker in turn",
+"p": "sound-speakers",
+"d": "A short tone from every speaker, one after another",
+"i": "play"
+},
+{
+"t": "System sounds",
+"p": "sounds",
+"i": "vol"
+},
+{
+"t": "Where they come from",
+"p": "sounds",
+"i": "info"
+},
+{
+"t": "Dictionary",
+"p": "spellcheck",
+"d": "The language words are checked in",
+"i": "globe"
+},
+{
+"t": "Check as you type",
+"p": "spellcheck",
+"d": "Underlines words that look wrong in apps' text boxes",
+"i": "check"
+},
+{
+"t": "On in every new text box",
+"p": "spellcheck",
+"d": "Off: apps turn it on themselves where it helps",
+"i": "check"
+},
+{
+"t": "Guess the language",
+"p": "spellcheck",
+"d": "Checks a sentence in French with the French dictionary, if you have it",
+"i": "globe"
+},
+{
+"t": "Skip words in capitals",
+"p": "spellcheck",
+"d": "Like NASA or HTML",
+"i": "doc"
+},
+{
+"t": "Skip run-together words",
+"p": "spellcheck",
+"d": "Like setupfile",
+"i": "doc"
 },
 {
 "t": "When this PC turns on",
@@ -2530,6 +4882,24 @@ var ENTRIES = [
 "p": "startup",
 "d": "A new change an hour after the last one",
 "i": "plus"
+},
+{
+"t": "Reopen my apps from last time",
+"p": "startup",
+"d": "The apps open when you signed out or left Desktop Mode open again (not games or Steam)",
+"i": "restart"
+},
+{
+"t": "Confirm before logging out",
+"p": "startup",
+"d": "Log out (in the app menu, Super+X and the desktop's menu) asks first, so a stray click can't close your apps",
+"i": "logout"
+},
+{
+"t": "Default leave option",
+"p": "startup",
+"d": "What the power menu has picked when it opens: press the power button twice (or A) to do it",
+"i": "power"
 },
 {
 "t": "If a game is running",
@@ -2554,6 +4924,12 @@ var ENTRIES = [
 "p": "steam",
 "d": "Steam's own gamepad screens, like SteamOS: where the device starts. Back here: Steam's Power › Switch to Desktop.",
 "i": "pad"
+},
+{
+"t": "Keep Steam Game Mode running beside the desktop (test)",
+"p": "steam",
+"d": "Switching only shows the other one: a second or two, and Steam stays open and signed in. It keeps about 1–1.5 GB of memory for Steam. If Steam Game Mode doesn't come up this way, the usual switch happens instead. Still being tried on the Nvidia PC and the Ally.",
+"i": "desktops"
 },
 {
 "t": "Decky Loader and Hearth Sync",
@@ -2585,6 +4961,99 @@ var ENTRIES = [
 {
 "t": "Low means less than",
 "p": "storage"
+},
+{
+"t": "Nothing found",
+"p": "store",
+"i": "search"
+},
+{
+"t": "License",
+"p": "store",
+"i": "info"
+},
+{
+"t": "App id",
+"p": "store",
+"i": "box"
+},
+{
+"t": "Website",
+"p": "store",
+"i": "globe"
+},
+{
+"t": "Tell me when app updates are there",
+"p": "store",
+"i": "bell"
+},
+{
+"t": "Update all apps",
+"p": "store",
+"i": "update"
+},
+{
+"t": "Your apps are up to date",
+"p": "store",
+"i": "check"
+},
+{
+"t": "Hearth OS updates",
+"p": "store",
+"d": "The system itself: Settings › Updates",
+"i": "update"
+},
+{
+"t": "Firmware",
+"p": "store",
+"d": "Your PC's and devices' firmware: Settings › Firmware",
+"i": "cpu"
+},
+{
+"t": "Add a source…",
+"p": "store",
+"d": "A .flatpakrepo file's https:// address (it carries the key that checks its apps)",
+"i": "plus"
+},
+{
+"t": "No Thunderbolt here",
+"p": "thunderbolt",
+"d": "This PC has no Thunderbolt or USB4 ports, or bolt isn't running",
+"i": "info"
+},
+{
+"t": "Security",
+"p": "thunderbolt",
+"i": "shield"
+},
+{
+"t": "Allow this time",
+"p": "thunderbolt",
+"d": "Until it's unplugged",
+"i": "check"
+},
+{
+"t": "Always allow it",
+"p": "thunderbolt",
+"d": "It connects by itself from now on",
+"i": "lock"
+},
+{
+"t": "Forget it",
+"p": "thunderbolt",
+"d": "It waits for you again next time",
+"i": "trash"
+},
+{
+"t": "Shut down when it's done",
+"p": "updates",
+"d": "Downloads the update, then turns the PC off; it starts on the new version next time",
+"i": "power"
+},
+{
+"t": "Shut down and finish updating",
+"p": "updates",
+"i": "power"
 },
 {
 "t": "Update anyway",
@@ -2672,9 +5141,37 @@ var ENTRIES = [
 "i": "restart"
 },
 {
+"t": "Then",
+"p": "usb-devices",
+"i": "drive"
+},
+{
+"t": "Tell me about a USB device plugged in for the first time",
+"p": "usb-devices",
+"d": "Its name and what kind it is, once per device",
+"i": "bell"
+},
+{
+"t": "USBGuard is on",
+"p": "usb-devices",
+"d": "A device it blocks asks you first: Allow once or Allow always below",
+"i": "shield"
+},
+{
+"t": "Zoom",
+"p": "users",
+"i": "search"
+},
+{
 "t": "Remove my picture",
 "p": "users",
 "i": "close"
+},
+{
+"t": "Account type",
+"p": "users",
+"d": "Administrators can install apps, change the system and other accounts. From their next sign-in",
+"i": "shield"
 },
 {
 "t": "Remove this account…",
@@ -2691,9 +5188,130 @@ var ENTRIES = [
 "p": "users"
 },
 {
-"t": "Account type",
-"p": "users",
-"d": "Administrators can change system settings, install system updates and manage accounts"
+"t": "Unlock…",
+"p": "vaults",
+"i": "lock"
+},
+{
+"t": "Open in Files",
+"p": "vaults",
+"i": "folder"
+},
+{
+"t": "Lock by itself",
+"p": "vaults",
+"i": "clock"
+},
+{
+"t": "Lock it when the screen locks",
+"p": "vaults",
+"i": "lock"
+},
+{
+"t": "Take it off the list…",
+"p": "vaults",
+"i": "trash"
+},
+{
+"t": "Make a vault…",
+"p": "vaults",
+"i": "plus"
+},
+{
+"t": "Kind",
+"p": "vaults",
+"i": "vault"
+},
+{
+"t": "Cancel",
+"p": "vaults",
+"i": "close"
+},
+{
+"t": "Disconnect",
+"p": "vpn",
+"i": "close"
+},
+{
+"t": "Details",
+"p": "vpn",
+"d": "DNS, auto-connect and addresses: in Connection details",
+"i": "gear"
+},
+{
+"t": "Remove this VPN…",
+"p": "vpn",
+"i": "trash"
+},
+{
+"t": "Connect with this account",
+"p": "vpn",
+"d": "Handed to NetworkManager only; Hearth doesn't keep it",
+"i": "lock"
+},
+{
+"t": "Add this file",
+"p": "vpn",
+"i": "file"
+},
+{
+"t": "OpenVPN isn't on this system",
+"p": "vpn",
+"d": "WireGuard works. OpenVPN needs NetworkManager's OpenVPN plugin in the image",
+"i": "info"
+},
+{
+"t": "Kind of server",
+"p": "vpn",
+"i": "globe"
+},
+{
+"t": "Your user name and password are asked when you connect",
+"p": "vpn",
+"d": "OpenConnect signs in on the server's own sign-in page each time",
+"i": "info"
+},
+{
+"t": "Slideshow",
+"p": "wallpaper-more",
+"i": "image"
+},
+{
+"t": "Change the picture every",
+"p": "wallpaper-more",
+"i": "clock"
+},
+{
+"t": "Shuffle",
+"p": "wallpaper-more",
+"d": "In a random order instead of by name",
+"i": "sync"
+},
+{
+"t": "Next picture now",
+"p": "wallpaper-more",
+"i": "forward"
+},
+{
+"t": "Picture of the day",
+"p": "wallpaper-more",
+"i": "image"
+},
+{
+"t": "From",
+"p": "wallpaper-more",
+"i": "globe"
+},
+{
+"t": "Look again now",
+"p": "wallpaper-more",
+"d": "Downloaded once a day and kept for a week, so it works offline too",
+"i": "sync"
+},
+{
+"t": "A wallpaper for light and one for dark",
+"p": "wallpaper-more",
+"i": "moon"
 },
 {
 "t": "Wi-Fi",
@@ -2788,19 +5406,23 @@ var ENTRIES = [
 "p": "winapps"
 },
 {
-"t": "Only show each desktop's own apps",
+"t": "Window manager",
 "p": "your-desktop",
-"d": "Mantel shows Hearth's apps, KDE shows KDE's, GNOME shows GNOME's. Apps you installed (Bazaar, Flatpak, Steam, .deb) show on every desktop."
+"d": "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
 },
 {
-"t": "Pick at the login screen too",
-"p": "your-desktop",
-"d": "Hearth Classic, KDE Plasma and GNOME are listed when you sign in. Game Mode's power menu › Switch to Desktop opens the one picked here."
+"t": "Running now",
+"p": "your-desktop"
 },
 {
 "t": "Safe start",
 "p": "your-desktop",
-"d": "If KDE or GNOME doesn't start twice in a row, Hearth opens Mantel and tells you why. Your choice stays saved until you change it."
+"d": "If KWin doesn't start, Mantel opens on labwc for that sign-in and tells you why. Twice in a row, it stays on labwc until you pick KWin again. Your choice stays saved."
+},
+{
+"t": "KDE Plasma and GNOME",
+"p": "your-desktop",
+"d": "Retired in Hearth 1.14: Mantel is the desktop. A KDE Plasma or GNOME pick from before opens Mantel, and Hearth tells you once."
 },
 {
 "t": "Clean up",

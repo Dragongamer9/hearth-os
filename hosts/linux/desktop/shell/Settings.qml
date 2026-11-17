@@ -9,6 +9,16 @@ import Quickshell.Io
 Singleton {
     id: root
     property bool nightLight: false      // warm the screen from sunset to sunrise
+    // Night light's details (Settings › Display, 1.14; wlsunset under labwc, KWin's Night Light under KWin)
+    property int nightTemp: 3700         // how warm (K)
+    property string nightMode: "times"   // "times" (from nightFrom to nightTo) | "location" (sunset to sunrise) | "always"
+    property string nightFrom: "19:30"
+    property string nightTo: "07:00"
+    // "location" mode: sunset to sunrise at nightPlace (picked by name in Settings › Display; "" = none picked yet)
+    property string nightPlace: ""
+    property real nightLat: 0
+    property real nightLon: 0
+    property int nightFade: 30           // minutes the colours take to change
     property string wallpaper: ""        // a picture file; "" = the look's own (Hearth: the animated fireside, Steam-style: Slate Tide); "builtin:<name>" = one of images/wallpapers; "anim:lava" / "anim:aurora" = the other moving ones
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
@@ -51,7 +61,35 @@ Singleton {
     // ---- Sub themes (Settings › Personalisation; palettes.json "subThemes"). Missing = the default, never written by
     // itself: "" is the look's own colours (today's), so nobody's desktop changes until they pick one.
     property string subTheme: ""         // "" (the look's first: Firelight, Steam blue, Cyber…) | a sub theme's id
+    property bool restoreApps: false     // reopen the apps that were open when you signed out (SessionRestore.qml; 1.14)
+    // 1.14 (wave 3). Missing = the default, never written by itself.
+    property bool kbdLights: false       // the keyboard's RGB lights follow the accent (KbdLights.qml, hearth-kbd-lights); Settings › Appearance
+    property bool confirmLogout: false   // Log out asks first (LeaveConfirm.qml); Settings › Startup. Off: today's, logs out at once
+    property string leaveDefault: ""     // what the power menu has picked when it opens: "" (Lock, today's) | "Sleep" | "Restart" | "Shut down" | "Log out" | "Game Mode"; Settings › Startup
+    property bool netSpeed: false        // the network's speed next to its icon in the bar (Settings › Bar and dock; 1.14)
     property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
+    // ---- 1.14, more of KDE System Settings (docs/SETTINGS-MORE-1.14.md). Missing = the default, never written by itself.
+    property bool dockScrollVolume: true // scrolling on an app's dock icon changes that app's volume (Sound › Apps' sound)
+    property bool pttOn: false           // push to talk (Sound › Push to talk; Mantel on KWin)
+    property string pttKey: "f13"        // hearth-ptt's key id
+    property int screenOffBattery: -1    // on battery: turn the screen off after (minutes, 0 never); -1 = as plugged in
+    property int sleepBattery: -1        // on battery: go to sleep after (minutes, 0 never); -1 = as plugged in
+    property var wallScreens: ({})       // a picture per screen: {screen name: path}; a screen not in it shows `wallpaper`
+    property var wallShow: ({})          // slideshow: {on, folder, minutes, shuffle}
+    property var wallPotd: ({})          // picture of the day: {on, source: "bing"|"apod"|"wikimedia"}; off unless you turn it on
+    property var wallPair: ({})          // a light and a dark wallpaper that follow the look: {on, light, dark}
+    property bool appsFollow: true       // Qt, KDE and GTK apps take Hearth's colours (theme/hearth-theme, theme/apply.sh)
+    property int frameTint: 0            // window frames tinted with the accent, 0–100 % (hearth-theme)
+    property string signinSplash: ""     // the splash after signing in: "" (none) | "flame" | "logo" | "plain"
+    property var removable: ({})         // what happens when a drive is plugged in: {storage: "ask"|"open"|"nothing"}
+    property bool usbNotify: true        // a notice when a new USB device is plugged in (Devices › USB devices)
+    property bool firmwareNotify: true   // a notice when firmware updates are there (Firmware & device security)
+    property bool welcomeAfterUpdates: true   // the Welcome screen once after each new version
+    property bool oomNotice: true        // a notice with tips when memory ran out
+    property bool btReceive: false       // receive files over Bluetooth, each asked about (Bluetooth › Receive files)
+    property string btReceiveFolder: ""  // where received files go ("" = ~/Downloads)
+    property bool btReceiveTrusted: false     // take files from trusted devices without asking
+    property bool inkNotify: true        // a notice when ink or toner runs low (Printers › Ink & toner)
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
     // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
@@ -65,7 +103,24 @@ Singleton {
         .concat(["shareStatus"])
         .concat(["menuStyle"])
         .concat(["subTheme", "wallMatch"])
+        .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
+        .concat(["nightPlace", "nightLat", "nightLon", "nightFade"])
+        .concat(["restoreApps"])
+        .concat(["kbdLights", "confirmLogout", "leaveDefault"])
+        .concat(["dockScrollVolume", "pttOn", "pttKey", "screenOffBattery", "sleepBattery", "wallScreens", "wallShow", "frameTint",
+                 "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
+        .concat(["wallPotd", "wallPair", "appsFollow"])
+        .concat(["btReceive", "btReceiveFolder", "btReceiveTrusted", "inkNotify"])
+        .concat(["netSpeed"])
     onNightLightChanged: save("nightLight")
+    onNightTempChanged: save("nightTemp")
+    onNightModeChanged: save("nightMode")
+    onNightFromChanged: save("nightFrom")
+    onNightToChanged: save("nightTo")
+    onNightPlaceChanged: save("nightPlace")
+    onNightLatChanged: save("nightLat")
+    onNightLonChanged: save("nightLon")
+    onNightFadeChanged: save("nightFade")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
     onPointerSpeedChanged: save("pointerSpeed")
@@ -96,6 +151,32 @@ Singleton {
     onMenuStyleChanged: save("menuStyle")
     onSubThemeChanged: save("subTheme")
     onWallMatchChanged: save("wallMatch")
+    onRestoreAppsChanged: save("restoreApps")
+    onKbdLightsChanged: save("kbdLights")
+    onConfirmLogoutChanged: save("confirmLogout")
+    onLeaveDefaultChanged: save("leaveDefault")
+    onDockScrollVolumeChanged: save("dockScrollVolume")
+    onPttOnChanged: save("pttOn")
+    onPttKeyChanged: save("pttKey")
+    onScreenOffBatteryChanged: save("screenOffBattery")
+    onSleepBatteryChanged: save("sleepBattery")
+    onWallScreensChanged: save("wallScreens")
+    onWallShowChanged: save("wallShow")
+    onFrameTintChanged: save("frameTint")
+    onWallPotdChanged: save("wallPotd")
+    onWallPairChanged: save("wallPair")
+    onAppsFollowChanged: save("appsFollow")
+    onSigninSplashChanged: save("signinSplash")
+    onRemovableChanged: save("removable")
+    onUsbNotifyChanged: save("usbNotify")
+    onFirmwareNotifyChanged: save("firmwareNotify")
+    onWelcomeAfterUpdatesChanged: save("welcomeAfterUpdates")
+    onOomNoticeChanged: save("oomNotice")
+    onBtReceiveChanged: save("btReceive")
+    onBtReceiveFolderChanged: save("btReceiveFolder")
+    onBtReceiveTrustedChanged: save("btReceiveTrusted")
+    onInkNotifyChanged: save("inkNotify")
+    onNetSpeedChanged: save("netSpeed")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until
@@ -107,7 +188,7 @@ Singleton {
         o[k] = root[k];
         writer.merge(o);
     }
-    SettingsWriter { id: writer; path: file.path }
+    SettingsWriter { id: writer; path: file.path; history: true }
 
     FileView {
         id: file

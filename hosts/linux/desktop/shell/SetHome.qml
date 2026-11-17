@@ -26,6 +26,17 @@ SetPage {
     property var hs: null             // hearth-home-server status
     property var disk: null           // diskspace.status
     readonly property var hsCfg: hs ? hs.settings : null
+    // "Intel(R) Core(TM) i7-14700F" → "i7-14700F", "AMD Ryzen Z2 Extreme" → "Ryzen Z2 Extreme", "NVIDIA GeForce RTX 5070" → "RTX 5070"
+    function shortCpu(c) {
+        let t = (c || "").replace(/\((R|TM)\)/gi, "").replace(/\s+(CPU|Processor)\b.*$/i, "").replace(/\s+@.*$/, "").replace(/\s+w\/.*$/i, "").trim();
+        const m = /\b(i[3579]-\w+|Core Ultra \d+ \w+|N\d{3,})\b/.exec(t);
+        return m ? m[1] : t.replace(/^(Intel|AMD)\s+/i, "").replace(/\s+\d+-Core$/i, "");
+    }
+    function shortGpu(g) {
+        const t = (g || "").replace(/\[|\]/g, " ").replace(/\s+/g, " ").trim();
+        const m = /\b((RTX|GTX|RX|Arc)\s?[A-Z]?\d{3,4}\s?(Ti|SUPER|XT|XTX)?)\b/i.exec(t);
+        return m ? m[1].trim() : /Radeon/i.test(t) ? "Radeon graphics" : /Intel/i.test(t) ? "Intel graphics" : t.replace(/ Corporation/, "");
+    }
     function shownVersion(v) { const m = /^(\d+)\.(\d+)\.0$/.exec(v || ""); return m && Number(m[1]) >= 1 ? m[1] + "." + m[2] : (v || ""); }
     function size(b) { return b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : b >= 1e9 ? Math.round(b / 1e9) + " GB" : Math.round((b || 0) / 1e6) + " MB"; }
     function refresh() { wifi.running = true; bt.running = true; }
@@ -38,13 +49,17 @@ SetPage {
     }
     Timer { interval: 10000; repeat: true; running: page.visible; onTriggered: page.refresh() }
     HearthCall { id: core }
+    SetChanges { id: changes; running: page.visible }
     SetJob { id: linkJob; helper: "hearth-link-settings" }
     SetJob { id: hsJob; helper: "hearth-home-server" }
     SetJob { id: rename; helper: page.admin; admin: true }
     SetJob { id: upd; helper: page.admin; admin: true }
     Process {
         id: about
-        command: ["sh", "-c", "echo \"host=$(cat /etc/hostname 2>/dev/null || hostname)\"; echo \"hver=$(cat /usr/share/nimbus/version 2>/dev/null)\"; [ -x \"$0\" ] && echo admin=1", page.admin]
+        command: ["sh", "-c", "echo \"host=$(cat /etc/hostname 2>/dev/null || hostname)\"; echo \"hver=$(cat /usr/share/nimbus/version 2>/dev/null)\"; [ -x \"$0\" ] && echo admin=1; "
+            + "echo \"cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | head -1)\"; "
+            + "g=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1); "
+            + "[ -n \"$g\" ] || g=$(lspci -mm 2>/dev/null | grep -E '\"(VGA|3D|Display)' | head -1 | awk -F'\" \"' '{print $2\" \"$3}'); echo \"gpu=$g\"", page.admin]
         stdout: StdioCollector {
             onStreamFinished: {
                 const o = {};
@@ -179,13 +194,18 @@ SetPage {
                     Text { Layout.fillWidth: true; text: page.info.host || "This PC"; color: Theme.text; font.family: Theme.font; font.pixelSize: 24; font.weight: Font.DemiBold; elide: Text.ElideRight }
                     Text {
                         Layout.fillWidth: true; Layout.bottomMargin: 10
-                        text: [page.info.hver && page.info.hver !== "0.0.0" ? "Hearth OS " + page.shownVersion(page.info.hver) : "Hearth OS", "Desktop Mode", Theme.lookLabel + " look"].join(" · ")
+                        text: [page.info.hver && page.info.hver !== "0.0.0" ? "Hearth OS " + page.shownVersion(page.info.hver) : "Hearth OS", "Desktop Mode", page.shortGpu(page.info.gpu), page.shortCpu(page.info.cpu)].filter(x => x).join(" · ")
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
                     }
-                    SetButton {
-                        visible: page.canAdmin && !nameField.visible
-                        icon: "edit"; text: rename.busy ? "Renaming…" : "Rename"
-                        onActivated: { nameField.visible = true; nameField.focusInput(); }
+                    RowLayout {
+                        visible: !nameField.visible
+                        spacing: 8
+                        SetButton {
+                            visible: page.canAdmin
+                            icon: "edit"; text: rename.busy ? "Renaming…" : "Rename"
+                            onActivated: { nameField.visible = true; nameField.focusInput(); }
+                        }
+                        SetButton { ghost: true; icon: "info"; text: "About this PC"; onActivated: SettingsNav.openPage("about") }
                     }
                     SetField {
                         id: nameField
@@ -287,6 +307,20 @@ SetPage {
                     }
                 }
                 SetRow { flat: true; icon: "trash"; title: "Clean up"; sub: "Old shader caches and finished downloads"; chevron: true; onActivated: SettingsNav.openPage("storage") }
+            }
+            // 1.14: Changed lately (the change history, hearth_settings_io.py history): what, from → to, who, when, Undo.
+            HomeCard {
+                icon: "undo"; title: "Changed lately"; linkText: "All changes"; linkTarget: "changes"
+                Text {
+                    visible: changes.items.length === 0
+                    Layout.fillWidth: true; Layout.leftMargin: 12; Layout.topMargin: 6; Layout.bottomMargin: 6
+                    text: "Nothing changed yet. What you change in Settings shows here, with Undo."
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+                }
+                Repeater {
+                    model: changes.items.slice(0, 3)
+                    delegate: SetChangeRow { required property var modelData; change: modelData; onUndone: changes.load() }
+                }
             }
             // Your devices (SetDevices.qml): your paired devices from Hearth Link's status (already read here).
             HomeCard {

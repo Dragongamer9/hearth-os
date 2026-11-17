@@ -4,7 +4,9 @@
 //!     quiet notification) with the ringing window (`hearth-time --ring alarm:<id>`) and the tone until you stop
 //!     or snooze it, or for the clock's "ringMinutes" (then a "missed alarm" notification);
 //!   - shows calendar reminders as notifications (Do not disturb keeps them quiet: the taskbar's rule);
-//!   - downloads subscribed calendars every 6 hours and the weather every 30 minutes (only with a place chosen).
+//!   - downloads subscribed calendars every 6 hours and the weather every 30 minutes (only with a place chosen);
+//!   - sends changes made to Online accounts' calendars and gets them again every 15 minutes (every 2 while a
+//!     change is waiting to be sent), on a thread of its own so a slow server never holds up an alarm.
 //! What has rung is remembered in paths::service_dir()/rang.json, so nothing rings twice, also after a restart.
 //! The Clock app stops a ring with no window (no display at the time) by creating the file "stop" there.
 
@@ -34,13 +36,16 @@ struct State {
     reminders_at: i64,
     last_sub_check: i64,
     last_weather: i64,
+    last_accounts: i64,
 }
+
+static ACCOUNTS_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 impl State {
     fn load() -> State {
         let r = store::load(&rang_file());
         let rang = r.as_object().map(|o| o.iter().filter_map(|(k, v)| v.as_i64().map(|t| (k.clone(), t))).collect()).unwrap_or_default();
-        State { rang, clock: Value::Null, clock_m: -1, cal: Value::Null, cal_m: -1, reminders: vec![], reminders_at: 0, last_sub_check: 0, last_weather: 0 }
+        State { rang, clock: Value::Null, clock_m: -1, cal: Value::Null, cal_m: -1, reminders: vec![], reminders_at: 0, last_sub_check: 0, last_weather: 0, last_accounts: 0 }
     }
     fn mark(&mut self, key: &str, now: i64) {
         self.rang.insert(key.to_string(), now);
@@ -51,7 +56,7 @@ impl State {
     fn refresh_files(&mut self, now: i64) {
         let cm = store::mtime(&paths::clock_file());
         if cm != self.clock_m { self.clock = clock::load(); self.clock_m = cm; }
-        let km = store::mtime(&paths::calendar_file()) + paths::subs_dir().read_dir().into_iter().flatten().flatten().map(|e| store::mtime(&e.path())).sum::<i64>();
+        let km = store::mtime(&paths::calendar_file()) + store::mtime(&paths::accounts_file()) + paths::subs_dir().read_dir().into_iter().flatten().flatten().map(|e| store::mtime(&e.path())).sum::<i64>();
         if km != self.cal_m || now - self.reminders_at > 10 * 60 * 1000 {
             if km != self.cal_m { self.cal = calendar::load(); self.cal_m = km; }
             self.reminders = upcoming_reminders(&self.cal, now);
@@ -154,6 +159,15 @@ fn background_jobs(st: &mut State, now: i64) {
         let due = |s: &Value| now - s["updated"].as_i64().unwrap_or(0) > SUB_EVERY_MS;
         if calendar::load()["subs"].as_array().map(|l| l.iter().any(due)).unwrap_or(false) { let _ = calendar::refresh_subs(due); }
     }
+    // Online accounts' calendars.
+    if now - st.last_accounts > 2 * 60 * 1000 && crate::accounts::program().is_some()
+        && (now - st.last_accounts > 15 * 60 * 1000 || crate::accounts::waiting(&crate::accounts::load()) > 0) {
+        use std::sync::atomic::Ordering;
+        st.last_accounts = now;
+        if !ACCOUNTS_BUSY.swap(true, Ordering::SeqCst) {
+            std::thread::spawn(|| { let _ = crate::accounts::refresh(); ACCOUNTS_BUSY.store(false, Ordering::SeqCst); });
+        }
+    }
     // The weather summary for the taskbar.
     if now - st.last_weather > crate::weather::FRESH_MS {
         st.last_weather = now;
@@ -168,6 +182,7 @@ pub fn run() -> i32 {
     let started = crate::now_ms();
     st.last_sub_check = started - 9 * 60 * 1000;
     st.last_weather = started - crate::weather::FRESH_MS + 60 * 1000;
+    st.last_accounts = started - 14 * 60 * 1000;
     loop {
         let now = crate::now_ms();
         st.refresh_files(now);

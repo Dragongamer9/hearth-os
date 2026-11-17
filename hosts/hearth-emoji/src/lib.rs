@@ -24,6 +24,18 @@ pub struct Saved {
     pub tone: u8,
     /// How many times each was picked (Most used). Files from before 1.10 have none: Most used starts from Recent.
     pub uses: BTreeMap<String, u32>,
+    /// How big the emoji are (1.14): 0 medium (the default, also when the key is missing), 1 small, 2 large.
+    pub size: u8,
+}
+
+pub const SIZE_MAX: u8 = 2;
+
+/// Only the size changes in the saved file (merge-on-write: everything else in it is kept as it is). A file that
+/// can't be read is put back from its .bak first (appfile); with nothing readable it starts from just this key.
+pub fn save_size(size: u8) -> Result<(), String> {
+    let mut v = appfile::read_json(&data_file()).filter(|v| v.is_object()).unwrap_or_else(|| serde_json::json!({}));
+    v["size"] = serde_json::json!(size.min(SIZE_MAX));
+    appfile::write_json(&data_file(), &v).map_err(|e| e.to_string())
 }
 
 pub fn data_file() -> PathBuf {
@@ -53,6 +65,7 @@ pub fn clean(mut s: Saved) -> Saved {
     }
     s.recent = seen;
     if s.tone > 5 { s.tone = 0; }
+    if s.size > SIZE_MAX { s.size = 0; }
     s.uses.retain(|k, v| !k.is_empty() && k.chars().count() <= 40 && *v > 0);
     trim_uses(&mut s.uses);
     s
@@ -136,10 +149,26 @@ pub fn type_command(text: &str, wayland: bool, has_wtype: bool, has_xdotool: boo
     }
 }
 
+/// Hearth's typing helper (hosts/linux/desktop/shell/hearth-type, docs/KWIN-INPUT.md): on KWin, which has no
+/// virtual keyboard for wtype, it types through Hearth's input method (any character) or a uinput keyboard.
+pub const HEARTH_TYPE: &str = "/usr/share/nimbus/desktop/shell/hearth-type";
+
+/// The same as type_command, through hearth-type (wtype's arguments).
+pub fn hearth_type_command(text: &str, helper: &str) -> Vec<String> {
+    vec!["sh".into(), "-c".into(), "sleep 0.35; exec \"$@\"".into(), "sh".into(), "python3".into(), helper.into(),
+         "--".into(), text.into()]
+}
+
 /// Starts typing it (in the background: the picker closes right after). False: it can only be copied here.
 pub fn type_later(text: &str) -> bool {
     let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
-    match type_command(text, wayland, have("wtype"), have("xdotool")) {
+    let kwin = std::env::var("HEARTH_WM").map(|v| v == "kwin").unwrap_or(false);
+    let picked = if wayland && kwin && std::path::Path::new(HEARTH_TYPE).exists() {
+        Some(hearth_type_command(text, HEARTH_TYPE))
+    } else {
+        type_command(text, wayland, have("wtype"), have("xdotool"))
+    };
+    match picked {
         Some(argv) => Command::new(&argv[0]).args(&argv[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().is_ok(),
         None => false,
     }
@@ -200,19 +229,30 @@ mod tests {
         assert!(type_command("é", true, false, false).is_none());
         // The text is an argument, never part of the shell's script.
         assert!(!w[2].contains('é'));
+        let k = hearth_type_command("é 🔥", HEARTH_TYPE);
+        assert_eq!(&k[4..], &["python3", HEARTH_TYPE, "--", "é 🔥"]);
+        assert!(!k[2].contains('é'));
     }
 
     #[test]
     fn saved_file_round_trip() {
         let d = std::env::temp_dir().join(format!("hearth-emoji-test-{}", std::process::id()));
         std::env::set_var("XDG_DATA_HOME", &d);
-        let s = Saved { recent: vec!["🔥".into()], tone: 3, uses: BTreeMap::from([("🔥".to_string(), 2)]) };
+        let s = Saved { recent: vec!["🔥".into()], tone: 3, uses: BTreeMap::from([("🔥".to_string(), 2)]), size: 0 };
         save(&s).unwrap();
         assert_eq!(load(), s);
         // A power cut that left the file empty: the last good copy comes back (the tone isn't reset).
         save(&remember(s.clone(), "🎉")).unwrap();
         std::fs::write(data_file(), b"").unwrap();
         assert_eq!(load(), s);
+        // the size: only that key changes, the rest stays; a file without it is medium
+        save(&s).unwrap();
+        save_size(2).unwrap();
+        assert_eq!(load(), Saved { size: 2, ..s.clone() });
+        save_size(9).unwrap();
+        assert_eq!(load().size, SIZE_MAX);
+        let v: Saved = serde_json::from_str(r#"{"recent":["a"],"tone":1}"#).unwrap();
+        assert_eq!(v.size, 0);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

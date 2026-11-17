@@ -1,0 +1,102 @@
+#!/usr/bin/python3
+"""hearth-loginscreen: Hearth Settings' Login screen page (Accounts), as you. The login screen is SDDM with Hearth's
+theme (os/system_files/usr/share/sddm/themes/hearth): its picture is /var/lib/hearth/login-screen/background, which
+the theme shows over its own fireside and drops whenever the file is missing or can't be read (the fireside is
+always the fallback, so the login screen always comes up). Setting the picture goes through hearth-admin
+login-background (pkexec): the picture's bytes go on its stdin, read here as you, so root never opens a path you name.
+
+  hearth-loginscreen status        JSON: {background: path or "", autologin: bool, theme: "hearth", pictures: [...]}
+  hearth-loginscreen set PATH|""   use this picture (PNG or JPEG, yours) on the login screen; "" back to the fireside
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import subprocess
+import sys
+
+BACKGROUND = os.environ.get('HEARTH_LOGIN_BACKGROUND', '/var/lib/hearth/login-screen/background')
+ADMIN = os.environ.get('HEARTH_ADMIN', '/usr/libexec/nimbus/hearth-admin')
+NO_AUTOLOGIN = '/etc/nimbus/no-autologin'
+PICTURE_MAX = 20 * 1024 * 1024
+HOME = os.path.expanduser('~')
+
+
+class Fail(Exception):
+    pass
+
+
+def picture_kind(data):
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'jpeg'
+    return None
+
+
+def autologin():
+    """Sign in automatically (nimbus-autologin: on unless /etc/nimbus/no-autologin exists)."""
+    return not os.path.exists(NO_AUTOLOGIN)
+
+
+def pictures():
+    out = []
+    for pat in ('Pictures/Wallpapers/*', 'Pictures/*'):
+        for p in sorted(glob.glob(os.path.join(HOME, pat))):
+            if p.lower().endswith(('.png', '.jpg', '.jpeg')) and os.path.isfile(p) and p not in out:
+                out.append(p)
+    here = os.path.dirname(os.path.realpath(__file__))
+    for p in sorted(glob.glob('/usr/share/backgrounds/hearth/*')) + sorted(glob.glob(os.path.join(here, 'images', 'wallpapers', '*.jpg'))):
+        if p.lower().endswith(('.png', '.jpg', '.jpeg')) and p not in out:
+            out.append(p)
+    return out[:40]
+
+
+def status():
+    return {'background': BACKGROUND if os.path.isfile(BACKGROUND) else '', 'autologin': autologin(), 'theme': 'hearth',
+            'pictures': pictures()}
+
+
+def set_(path):
+    data = b''
+    if path:
+        try:
+            with open(path, 'rb') as f:
+                data = f.read(PICTURE_MAX + 1)
+        except OSError:
+            raise Fail("couldn't open that picture")
+        if len(data) > PICTURE_MAX:
+            raise Fail('the picture is too big (20 MB at most)')
+        if not picture_kind(data):
+            raise Fail('use a PNG or JPEG picture')
+    try:
+        p = subprocess.run(['pkexec', ADMIN, 'login-background'], input=data, capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail(str(e))
+    out = p.stdout.decode(errors='replace')
+    for line in out.splitlines():
+        if line.startswith('error: '):
+            raise Fail(line[7:])
+    if p.returncode != 0:
+        raise Fail('not allowed (Hearth\'s polkit rule is missing, or the request was cancelled)')
+    return status()
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['status']:
+            r = status()
+        elif argv[:1] == ['set'] and len(argv) == 2:
+            r = set_(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

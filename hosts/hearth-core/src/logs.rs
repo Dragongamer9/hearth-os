@@ -50,9 +50,9 @@ pub fn without_dump_details(journal: &str) -> String {
     out.join("\n")
 }
 
-/// The other desktops' logs in ~/.local/share/nimbus: KDE Plasma and GNOME, downloaded when picked (1.13: the session
-/// writes kde.log and gnome.log), and an earlier Hearth's Plasma / COSMIC (still in a report when an old one is there).
-const DESKTOP_LOGS: [(&str, &str); 5] = [("kde.log", "KDE Plasma"), ("gnome.log", "GNOME"), ("plasma.log", "Hearth Plasma (before 1.13)"),
+/// The older desktops' logs in ~/.local/share/nimbus: 1.13's KDE Plasma and GNOME (retired in 1.14) and an earlier
+/// Hearth's Plasma / COSMIC. Nothing writes them any more; a report still shows old ones when they're there.
+const DESKTOP_LOGS: [(&str, &str); 5] = [("kde.log", "KDE Plasma (1.13, retired)"), ("gnome.log", "GNOME (1.13, retired)"), ("plasma.log", "Hearth Plasma (before 1.13)"),
                                          ("cosmic.log", "Hearth COSMIC"), ("cosmic-companion.log", "Hearth COSMIC companion")];
 
 /// Steam Game Mode (Decky plugin): whether Decky and its service are installed and running, Hearth Sync's state
@@ -163,6 +163,18 @@ echo "kernel command line: $(cat /proc/cmdline)"
 echo "kernel: $(uname -r)"
 echo "--- kernel messages about screens and HDMI links (this boot)"
 journalctl -k -b --no-pager 2>/dev/null | grep -iE 'frl|hdmi|nvidia-modeset|nvkms|NVRM|link training|edid|drm.*(connector|mode)' | tail -60
+# 1.14 (the owner's i3-N305 laptop froze: "Atomic commit failed: Device or resource busy", an i915_flip worker in D):
+# Screen power saving (PSR) as Hearth set it, the driver's own PSR switch, the kernel's words about flips, PSR and
+# stuck tasks, and how much the memory stalled (a flip can wait on memory being brought back from swap).
+echo "--- screen power saving (PSR, hearth-screen-psr; Settings > Display)"
+[ -x /usr/libexec/nimbus/hearth-screen-psr ] && python3 /usr/libexec/nimbus/hearth-screen-psr status 2>&1 | head -c 4000; echo
+[ -r /sys/module/i915/parameters/enable_psr ] && echo "i915 enable_psr (start option): $(cat /sys/module/i915/parameters/enable_psr)"
+echo "--- kernel messages about flips, PSR and stuck tasks (this boot)"
+journalctl -k -b --no-pager 2>/dev/null | grep -iE 'psr|flip_done|atomic update|vblank wait|hung_task|blocked for more than|i915.*(error|timed out|hang)' | tail -40
+echo "--- memory stalls (PSI) and zram"
+echo "memory: $(tr '\n' ' ' < /proc/pressure/memory 2>/dev/null) | cpu: $(tr '\n' ' ' < /proc/pressure/cpu 2>/dev/null)"
+for z in /sys/block/zram*; do [ -d "$z" ] && echo "${z##*/}: algorithm $(cat "$z/comp_algorithm" 2>/dev/null) | size $(cat "$z/disksize" 2>/dev/null) | mm_stat $(cat "$z/mm_stat" 2>/dev/null)"; done
+tail -n 5 /var/lib/hearth/memory/guard.log 2>/dev/null
 true
 "##;
 
@@ -326,20 +338,60 @@ pub fn report(version: &str) -> String {
     }
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
+                      // 1.14: Mantel on KWin (nimbus-session's run_kwin), and the bridge between them.
+                      (data.join("kwin.log"), "Desktop Mode compositor (KWin)"),
+                      // 2.0 preview on 1.14: Firehold's compositor (nimbus-session's run_firehold).
+                      (data.join("firehold.log"), "Desktop Mode compositor (Firehold preview, firehold-comp)"),
+                      (run.join("hearth-kwin-bridge.log"), "Mantel's KWin bridge (hearth-kwin-bridge)"),
                       (data.join("briefcase.log"), "Hearth Files: Briefcase auto-sync"),
                       (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
                        "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
-    // Hearth Plasma, Hearth GNOME and Hearth COSMIC: each desktop's own log (the desktop's messages, and what
-    // hearth-companion decided about the controller and why), and whether Quickshell is there (it runs the controller
-    // in Plasma and COSMIC).
+    // 1.14 (the owner, Nov 16: Jellyfin "keeps stopping" in Server mode, and after a restart Server mode showed only
+    // the mouse pointer): Server mode's own log, its dashboard's log (this start, and the one kept from the start
+    // before), and the home server's services (Jellyfin, Ollama, ComfyUI, the voices) and Ithil's brain, which reports never had.
+    {
+        let mut body = String::new();
+        for (f, name) in [(data.join("server-mode.log"), "server-mode.log"), (data.join("server-dash.log"), "the dashboard, this start"),
+                          (data.join("server-dash.log.old"), "the dashboard, the start before"), (run.join("hearth-server-dash-failed"), "why the dashboard gave up")] {
+            if let Ok(t) = std::fs::read_to_string(&f) { body.push_str(&format!("--- {name}:\n{}\n\n", tail(&t, 200))); }
+        }
+        // Jellyfin, Ollama (AI chat, and Ithil's brain with it), ComfyUI and the voices: each one's state and journal,
+        // this start and the one before; what Server mode paused (yours or its own rules); Ithil's brain as the dashboard
+        // reads it (the owner, Nov 16: "Ithil's brain is not loading").
+        body.push_str(&sh("for u in hearth-jellyfin hearth-ollama hearth-comfyui hearth-kokoro; do \
+              systemctl cat $u.service >/dev/null 2>&1 || continue; echo \"--- $u:\"; \
+              systemctl show $u.service -p ActiveState,SubState,Result,NRestarts,ExecMainStatus,ActiveEnterTimestamp,InactiveEnterTimestamp 2>/dev/null; \
+              echo '(this start)'; journalctl -b -u $u --no-pager -o short-iso 2>/dev/null | grep -v -E '\\[INF\\]|level=INFO' | tail -40; \
+              echo '(the start before)'; journalctl -b -1 -u $u --no-pager -o short-iso 2>/dev/null | grep -v -E '\\[INF\\]|level=INFO' | tail -20; echo; \
+            done; \
+            echo '--- what started, paused or stopped them (this start):'; journalctl -b --no-pager -o short-iso 2>/dev/null | grep -i -E 'jellyfin|ollama|comfyui|kokoro' | grep -v -E 'hearth-(jellyfin|ollama|comfyui|kokoro)\\[|\\[INF\\]|level=INFO' | tail -40"));
+        // Colibri (1.14, the second AI engine): your own user service, its download and install units, and what
+        // hearth-colibri says (engine, model, download, speed; no keys: Colibri has none here).
+        body.push_str(&sh("if systemctl --user cat hearth-colibri.service >/dev/null 2>&1; then \
+              echo '--- hearth-colibri (your user service):'; \
+              systemctl --user show hearth-colibri.service hearth-colibri.timer -p Id,ActiveState,SubState,Result,NRestarts,ExecMainStatus,UnitFileState,ActiveEnterTimestamp,InactiveEnterTimestamp 2>/dev/null; \
+              echo '(this start)'; journalctl --user -b -u hearth-colibri.service --no-pager -o short-iso 2>/dev/null | tail -60; \
+              echo '(the start before)'; journalctl --user -b -1 -u hearth-colibri.service --no-pager -o short-iso 2>/dev/null | tail -20; \
+              echo '(downloads and installs)'; journalctl --user -b --no-pager -o short-iso 2>/dev/null | grep -E 'hearth-colibri-(download|install)' | tail -30; \
+              echo '(what hearth-colibri says)'; timeout 20 python3 /usr/share/nimbus/desktop/shell/hearth-colibri status 2>&1 | head -c 3000; echo; \
+              tail -n 40 \"${XDG_DATA_HOME:-$HOME/.local/share}/hearth/colibri/setup/logs/install.log\" 2>/dev/null; echo; fi"));
+        let helper = "/usr/share/nimbus/desktop/shell/hearth-server-mode";
+        if Path::new(helper).exists() {
+            body.push_str(&format!("\n--- Server mode's status:\n{}\n--- Ithil's brain (what the dashboard reads):\n{}\n",
+                tail(&sh(&format!("timeout 20 python3 {helper} status 2>&1")), 120), tail(&sh(&format!("timeout 20 python3 {helper} ithil-brain 24 2>&1 | head -c 4000")), 60)));
+        }
+        if !body.trim().is_empty() { section("Server mode and its services", body); }
+    }
+    // The older desktops (1.13's KDE Plasma and GNOME, Hearth Plasma, Hearth GNOME and Hearth COSMIC): each one's own log
+    // if an old one is still there, and whether Quickshell is there.
     {
         let mut body = format!("quickshell: {}\n", sh("command -v quickshell || echo 'not installed'").trim());
         for (f, name) in DESKTOP_LOGS {
             if let Ok(t) = std::fs::read_to_string(data.join(f)) { body.push_str(&format!("\n--- {name} ({f}):\n{}\n", tail(&t, 150))); }
         }
-        section("Desktop Mode: Hearth Plasma, GNOME and COSMIC", body);
+        section("Desktop Mode: the older desktops (KDE Plasma, GNOME, Hearth Plasma, COSMIC)", body);
     }
     // Hearth Theater (docs/THEATER.md): its own log (start, the renderer and graphics it got, pages that loaded or
     // failed, the controller pointer), when it has been opened on this device.
@@ -420,6 +472,10 @@ pub fn report(version: &str) -> String {
     section("Processor and graphics load", sh("top -b -n 1 -w 160 2>/dev/null | head -24 || ps -eo pcpu=,comm= --sort=-pcpu | head -15; \
         [ -e /proc/driver/nvidia/version ] && command -v nvidia-smi >/dev/null && { echo; nvidia-smi --query-gpu=name,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,power.draw --format=csv; echo; nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv; } || true"));
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
+    // 1.14 (the owner's laptop, Nov 16: 3.4 GB free but 23 MB "available", kswapd busy all the time): the kernel's
+    // memory values in use, which files set them, and Hearth's memory settings, so a "keep this much free" that's too
+    // much for the PC shows.
+    section("Memory settings in use", sh("for k in swappiness watermark_scale_factor min_free_kbytes watermark_boost_factor page-cluster; do printf '%s = %s\\n' \"vm.$k\" \"$(cat /proc/sys/vm/$k 2>/dev/null)\"; done; echo; grep -rsH -E 'vm\\.(swappiness|watermark|min_free)' /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d /usr/lib/sysctl.d 2>/dev/null | head -20; echo; cat /etc/hearth/memory.json 2>/dev/null | head -40; echo; grep -E 'MemFree|MemAvailable|SwapCached|Zswap|Shmem:' /proc/meminfo"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
     // Steam: the folders Hearth looks in, the one it uses, its account file's counts (no names or ids), the games'
     // records per library, the owned-games list and Steam's processes (steam::report).
@@ -676,10 +732,15 @@ mod tests {
     #[test]
     fn desktop_logs_are_the_ones_the_session_writes() {
         let session = include_str!("../../linux/session/nimbus-session");
-        // KDE Plasma and GNOME (1.13) write theirs through the session; the older desktops' aren't written any more
-        // (a report still shows old ones).
-        for f in ["kde.log", "gnome.log"] { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
-        for f in ["plasma.log", "cosmic.log"] { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
+        // None of the older desktops' logs is written any more (1.13's KDE Plasma and GNOME were retired in 1.14); a
+        // report still shows old ones.
+        for f in ["kde.log", "gnome.log", "plasma.log", "cosmic.log"] { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
+        // 1.14: KWin's log is written by the session (run_kwin) and is in the report.
+        assert!(session.contains("/kwin.log\""));
+        assert!(include_str!("logs.rs").contains("data.join(\"kwin.log\")"));
+        // The Firehold preview's log too.
+        assert!(session.contains("/firehold.log\""));
+        assert!(include_str!("logs.rs").contains("data.join(\"firehold.log\")"));
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]

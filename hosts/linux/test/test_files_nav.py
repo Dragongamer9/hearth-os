@@ -17,6 +17,13 @@ class Nav(unittest.TestCase):
         cf = cf[:cf.index(']')]
         self.assertEqual(re.findall(r'label: "([^"]+)"', cf), ['Users', 'Program Files', 'Windows apps'])
 
+    def test_trash_pinned(self):
+        # 1.14 (the owner): Trash always in the left menu, under Home server and above your folders; not when picking
+        nav = FM[FM.index('    function buildNav(list) {'):FM.index('    readonly property var linuxNavFolders')]
+        self.assertLess(nav.index('label: "Home server"'), nav.index('label: "Trash"'))
+        self.assertLess(nav.index('label: "Trash"'), nav.index('section: "folders"'))
+        self.assertIn('if (!picking) out.push(Object.assign({ path: home + "/.local/share/Trash/files" }, trash || {}', nav)
+
     def test_narrow_and_resizable(self):
         self.assertIn(': 158', FM[FM.index('property real navW'):][:200])
         self.assertIn('app.navW = Math.max(120, Math.min(360,', FM)

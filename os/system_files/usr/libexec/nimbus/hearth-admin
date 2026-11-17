@@ -26,6 +26,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin deb-install FILE.deb | deb-remove PACKAGE
                                      a .deb on the system itself (Peppermint unlocked; the Install Package
                                      window). Always asks for an administrator's password (49-hearth-admin.rules)
+  hearth-admin driver-install PACKAGE
+                                     a driver from Debian on the system itself (Settings › App store › Drivers;
+                                     Peppermint unlocked): only nvidia-open, nvidia-driver, firmware-*, intel-microcode
+                                     or amd64-microcode (hearth-unlock --install-package: kept across updates, the
+                                     version before stays startable). Always asks for an administrator's password
   hearth-admin decky-install | decky-remove | decky-start | decky-stop
                                      Steam Game Mode's Decky Loader and the Hearth plugin (see hearth-decky,
                                      docs/STEAM-GAME-MODE.md). Decky is built into Hearth OS now (hearth-decky@.service,
@@ -56,6 +61,10 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      (Beta Experimental) hearth-peppermint:testing. Ubuntu and CachyOS are
                                      archived: refused. Download progress like update; the new system
                                      starts at the next restart
+  hearth-admin firewall-status|firewall-on|firewall-off|firewall-allow|firewall-remove|firewall-incoming deny|allow
+                                     Settings › Privacy & security › Firewall (1.14): see hearth-firewall
+  hearth-admin fingerprint-places    stdin {"lock": bool, "polkit": bool}: where your fingerprint is used (1.14):
+                                     see hearth-fingerprint-pam; only your own name in its list files
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
   hearth-admin hibernate-reboot      restart and keep games: save memory to the drive (hibernate), restart by
@@ -65,6 +74,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      the boot splash preset for the next starts (hearth-boot-look; Settings ›
                                      Boot & startup): nothing rebuilt, the boot menu gets plymouth.splash=
   hearth-admin timezone ZONE         the time zone (one from timedatectl list-timezones)
+  hearth-admin oem-finish            first-time setup on a pre-installed PC (hearth-oem-account's stand-in account
+                                     only, while /var/lib/hearth/oem-setup.json is there); stdin: {"full": ...,
+                                     "password": ... | "nopassword": true, "timezone": ...}
   hearth-admin ntp on|off            set the time from the internet, or not
   hearth-admin time-set "YYYY-MM-DD HH:MM"
                                      set the clock by hand (only while automatic time is off)
@@ -79,6 +91,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      add a printer (driverless IPP Everywhere first, then a matching driver)
   hearth-admin printer-remove NAME   remove a printer
   hearth-admin printer-default NAME  the printer everyone prints to unless they pick another
+  hearth-admin firmware-refresh | firmware-update DEVICE_ID | locale KEY=VALUE... | user-type NAME standard|admin
+              | login-background | lid BATTERY AC DOCKED
+                                     Settings › Firmware & security, Region & language, Users' account type, Login
+                                     screen and Power's lid (1.14): see hearth-sysset-admin. firmware-update always asks for an
+                                     administrator's password (49-hearth-admin.rules) and never restarts by itself
   hearth-admin home-repair           your own home folder: the folders Flatpak, Apps and the Debian box write to
                                      given back to you when root or a deleted account owns them, and a container
                                      id range for you (see hearth-home-repair). No arguments: only ever the
@@ -246,6 +263,10 @@ def recovery_next_start():
 
 
 UNLOCK = '/usr/bin/hearth-unlock'
+# Settings › App store › Drivers (hearth_store_extras.py has the same list)
+# Only the firmware packages Settings › Apps › Drivers offers (hearth_store_extras.py's DRIVER_PKG, kept the same);
+# microcode and Nvidia's driver come with Hearth OS's image. Always re.fullmatch.
+DRIVER_PKG = re.compile(r'(firmware-amd-graphics|firmware-intel-graphics|firmware-iwlwifi|firmware-sof-signed|firmware-realtek|firmware-atheros|firmware-mediatek|firmware-brcm80211|firmware-nvidia-graphics|firmware-cirrus|firmware-misc-nonfree)')
 UNLOCK_ACTIONS = {'on': '--unlock', 'off': '--lock', 'resume': '--resume', 'dismiss': '--dismiss',
                   'reapply': '--reapply-later'}
 
@@ -2152,6 +2173,84 @@ def timezone(zone):
     print(json.dumps({'ok': True, 'timezone': zone}))
 
 
+OEM_MARK = '/var/lib/hearth/oem-setup.json'
+OEM_USER, OEM_UID = 'hearth', 1000
+OEM_OWNER = 0
+
+
+def oem_mark_user(path=None):
+    """The user named in hearth-oem-account's marker, only when it's a regular root-owned file (not a link) in a
+    folder only root can write to; None otherwise."""
+    import stat as st_
+    path = path or OEM_MARK
+    try:
+        st = os.lstat(path)
+        dst = os.stat(os.path.dirname(path))
+        if not (st_.S_ISREG(st.st_mode) and st.st_uid == OEM_OWNER and dst.st_uid == OEM_OWNER
+                and not dst.st_mode & (st_.S_IWGRP | st_.S_IWOTH)):
+            return None
+        with open(path) as f:
+            return (json.load(f) or {}).get('user')
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def oem_finish_check(req, mark_user, me, uid=OEM_UID):
+    """First-time setup on a pre-installed PC (hearth-oem-account): what to change, or a message. Only the stand-in
+    account itself ("hearth", uid 1000), only while its marker is there. Returns (full, password or None, zone)."""
+    if mark_user != OEM_USER or me != OEM_USER or uid != OEM_UID:
+        return 'this is only for first-time setup on a pre-installed PC'
+    if not isinstance(req, dict):
+        return 'expected {"full": ..., "password": ..., "timezone": ...}'
+    full = str(req.get('full') or '').strip()
+    if not full or len(full) > 64 or any(c in full for c in ':,\n\r=\\'):
+        return 'type your name (no : , = or \\ in it)'
+    nopass = req.get('nopassword') is True
+    pw = '' if nopass else str(req.get('password') or '')
+    if not nopass and len(pw) < 4:
+        return 'the password needs at least 4 characters (or choose No password)'
+    if '\n' in pw or '\r' in pw:
+        return 'the password can\'t contain line breaks'
+    zone = req.get('timezone') or ''
+    if zone and not (isinstance(zone, str) and TIMEZONE_RE.fullmatch(zone) and '..' not in zone):
+        return 'unknown time zone'
+    return full, (None if nopass else pw), zone
+
+
+def oem_finish():
+    """stdin {"full", "password" | "nopassword": true, "timezone"}: your name shown on the account, its password and
+    the time zone, then the stand-in mark is removed. The account's sign-in name stays (it's signed in right now)."""
+    who = caller()
+    me, uid = who.pw_name, who.pw_uid
+    mark_user = oem_mark_user()
+    try:
+        req = json.loads(sys.stdin.readline() or 'null')
+    except ValueError:
+        req = None
+    got = oem_finish_check(req, mark_user, me, uid)
+    if isinstance(got, str):
+        fail(got)
+    full, pw, zone = got
+    if zone:
+        if not valid_timezone(zone):
+            fail('unknown time zone')
+        code, out = admin_run(['timedatectl', 'set-timezone', zone])
+        if code != 0:
+            fail('couldn\'t change the time zone (%s)' % last_line(out, 'timedatectl failed'))
+    code, out = admin_run(['usermod', '-c', full, me])
+    if code != 0:
+        fail('couldn\'t set your name (%s)' % last_line(out, 'usermod failed'))
+    if pw is not None:
+        code, out = admin_run(['chpasswd'], input=f'{me}:{pw}\n')
+        if code != 0:
+            fail('couldn\'t set the password (%s)' % last_line(out, 'chpasswd failed'))
+    try:
+        os.remove(OEM_MARK)
+    except FileNotFoundError:
+        pass
+    print(json.dumps({'ok': True, 'user': me, 'full': full, 'password': pw is not None, 'timezone': zone}))
+
+
 def ntp(state):
     caller()
     if state not in ('on', 'off'):
@@ -2746,6 +2845,11 @@ def main(argv):
     elif cmd == 'deb-install' and len(argv) == 3:
         caller()
         unlock(['--install-deb', argv[2]])
+    elif cmd == 'driver-install' and len(argv) == 3:
+        caller()
+        if not DRIVER_PKG.fullmatch(argv[2]):
+            fail('only a firmware package Settings › Apps › Drivers offers (processor and Nvidia drivers come with Hearth OS\'s updates)')
+        unlock(['--install-package', argv[2]])
     elif cmd == 'deb-remove' and len(argv) == 3:
         caller()
         unlock(['--remove-package', argv[2]])
@@ -2784,6 +2888,8 @@ def main(argv):
         os.execv(sys.executable, [sys.executable, helper, 'splash', argv[2]])
     elif cmd == 'timezone' and len(argv) == 3:
         timezone(argv[2])
+    elif cmd == 'oem-finish' and len(argv) == 2:
+        oem_finish()
     elif cmd == 'ntp' and len(argv) == 3:
         ntp(argv[2])
     elif cmd == 'time-set' and len(argv) == 3:
@@ -2807,6 +2913,24 @@ def main(argv):
     elif cmd == 'write-file' and len(argv) == 3:
         caller()
         write_file(argv[2])
+    elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background', 'lid'):
+        # Settings' system pages added in 1.14 (firmware, region, account type, the login screen's picture): their own
+        # script checks every argument again.
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-sysset-admin')
+        os.execv(sys.executable, [sys.executable, helper, cmd] + argv[2:])
+    elif cmd in ('firewall-status', 'firewall-on', 'firewall-off', 'firewall-allow', 'firewall-remove', 'firewall-incoming'):
+        # Settings › Privacy & security › Firewall (1.14, hearth-firewall): its own script checks every argument again.
+        # firewall-off, firewall-allow and firewall-incoming always ask for an administrator's password (49-hearth-admin.rules).
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-firewall')
+        sub = 'admin-status' if cmd == 'firewall-status' else cmd[9:]
+        os.execv(sys.executable, [sys.executable, helper, sub] + argv[2:])
+    elif cmd == 'fingerprint-places' and len(argv) == 2:
+        # Settings › Sign-in options › Fingerprint (1.14): where YOUR finger is used (lock screen, admin prompts). Only
+        # the list file of the person who asked; no PAM file is changed (hearth-fingerprint-pam, docs/FINGERPRINT.md).
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-fingerprint-pam')
+        os.execv(sys.executable, [sys.executable, helper, 'places-set', caller().pw_name])
     elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-ventoy', 'usb-finish'):
         # Make a bootable USB (Hearth Disks): its own script checks the drive and does the one step.
         caller()
@@ -2827,7 +2951,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ... | decky-install | decky-remove | decky-start | decky-stop')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | driver-install PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ... | decky-install | decky-remove | decky-start | decky-stop')
 
 
 if __name__ == '__main__':

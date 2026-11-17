@@ -1,0 +1,111 @@
+#!/usr/bin/python3
+"""hearth-session-actions: the power menu's extra choices (1.14, like KDE's Leave screen): Switch user, Hibernate and
+Restart into the PC's firmware setup, each offered only where it works here.
+
+  hearth-session-actions can            JSON {switchUser, otherAccounts, hibernate, firmware}
+  hearth-session-actions switch-user    lock this session, then the login screen for someone else (SDDM / LightDM's
+                                        SwitchToGreeter, org.freedesktop.DisplayManager); you come back to it unlocked
+                                        with your password
+  hearth-session-actions hibernate      logind's Hibernate (only when CanHibernate is yes)
+  hearth-session-actions firmware       restart into the firmware setup (UEFI) once: logind's own one-time flag, the
+                                        boot menu and boot order are untouched (only when CanRebootToFirmwareSetup is yes)
+Nothing here changes a setting or how the PC starts.
+"""
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+
+
+def run(cmd, timeout=10):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def logind_can(method):
+    code, out = run(['busctl', '--system', 'call', 'org.freedesktop.login1', '/org/freedesktop/login1',
+                     'org.freedesktop.login1.Manager', method])
+    return code == 0 and re.search(r'"(yes|challenge)"', out) is not None
+
+
+def seat_path():
+    p = os.environ.get('XDG_SEAT_PATH', '')
+    return p if re.match(r'^/org/freedesktop/DisplayManager/Seat\d+$', p) else ''
+
+
+def can_switch():
+    p = seat_path()
+    if not p:
+        return False
+    code, out = run(['gdbus', 'introspect', '--system', '--dest', 'org.freedesktop.DisplayManager', '--object-path', p])
+    if code != 0 or 'SwitchToGreeter' not in out:
+        return False
+    m = re.search(r'CanSwitch = (true|false)', out)
+    return not m or m.group(1) == 'true'
+
+
+def other_accounts():
+    me = os.getuid()
+    n = 0
+    for u in pwd.getpwall():
+        if 1000 <= u.pw_uid < 60000 and u.pw_uid != me and not u.pw_shell.endswith(('nologin', 'false')):
+            n += 1
+    return n
+
+
+def can():
+    return {'switchUser': can_switch(), 'otherAccounts': other_accounts(), 'hibernate': logind_can('CanHibernate'),
+            'firmware': logind_can('CanRebootToFirmwareSetup')}
+
+
+def switch_user():
+    p = seat_path()
+    if not can_switch():
+        raise SystemExit('error: switching user needs SDDM or LightDM (the login screen here can only show one person)')
+    run(['loginctl', 'lock-session'])
+    code, out = run(['gdbus', 'call', '--system', '--dest', 'org.freedesktop.DisplayManager', '--object-path', p,
+                     '--method', 'org.freedesktop.DisplayManager.Seat.SwitchToGreeter'])
+    if code != 0:
+        raise SystemExit("error: the login screen didn't open (%s)" % out.strip()[-160:])
+    return {'ok': True}
+
+
+def hibernate():
+    if not logind_can('CanHibernate'):
+        raise SystemExit("error: this PC can't hibernate (Settings › Power can make room for it)")
+    code, out = run(['systemctl', 'hibernate'])
+    if code != 0:
+        raise SystemExit("error: " + out.strip()[-160:])
+    return {'ok': True}
+
+
+def firmware():
+    if not logind_can('CanRebootToFirmwareSetup'):
+        raise SystemExit("error: this PC can't be restarted into its firmware setup from here")
+    code, out = run(['systemctl', 'reboot', '--firmware-setup'])
+    if code != 0:
+        raise SystemExit("error: " + out.strip()[-160:])
+    return {'ok': True}
+
+
+def main(argv):
+    cmd = argv[0] if argv else ''
+    try:
+        r = {'can': can, 'switch-user': switch_user, 'hibernate': hibernate, 'firmware': firmware}[cmd]()
+    except KeyError:
+        print('error: usage: hearth-session-actions can | switch-user | hibernate | firmware')
+        return 2
+    except SystemExit as e:
+        print(str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

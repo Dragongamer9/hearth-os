@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+"""hearth-thunderbolt: Hearth Settings' Thunderbolt page (Bluetooth & devices), as you, through boltctl (bolt, the
+Thunderbolt and USB4 device manager): the devices plugged in or remembered, whether each may connect, and allowing
+one once, always (bolt remembers it), or forgetting it. bolt asks polkit itself (an administrator's password where
+its policy wants one); Hearth keeps no file for this.
+
+  hearth-thunderbolt status            JSON: {available, security, devices: [{uuid, name, vendor, type, generation,
+                                       status, connected, authorized, stored, policy}]}
+  hearth-thunderbolt allow UUID once|always
+  hearth-thunderbolt forget UUID
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import re
+import shutil
+import subprocess
+import sys
+
+UUID_RE = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=60):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def parse_list(text):
+    """`boltctl list --all`: a title line (● / ○) per device, then tree lines "key: value"."""
+    devs, cur, section = [], None, ''
+    for raw in text.splitlines():
+        line = re.sub(r'\x1b\[[0-9;]*m', '', raw)
+        m = re.match(r'^\s*[●○•*]\s+(.*\S)\s*$', line)
+        if m:
+            cur = {'title': m.group(1)}
+            devs.append(cur)
+            section = ''
+            continue
+        if cur is None:
+            continue
+        m = re.match(r'^([\s│├└─]*)([a-z][a-z ]*?):\s*(.*)$', line)
+        if not m:
+            continue
+        key, val = m.group(2).strip(), m.group(3).strip()
+        if len(m.group(1)) <= 7:          # "   ├─ key": the device's own; deeper ones belong to the line above
+            section = key
+            cur[key] = val
+        else:
+            cur[section + '.' + key] = val
+    out = []
+    for d in devs:
+        status = d.get('status', '')
+        out.append({'uuid': d.get('uuid', ''), 'name': d.get('name') or d['title'], 'vendor': d.get('vendor', ''),
+                    'type': d.get('type', ''), 'generation': d.get('generation', ''), 'status': status,
+                    'connected': status not in ('disconnected', ''), 'authorized': status.startswith('authorized'),
+                    'stored': d.get('stored', 'no') not in ('no', ''), 'policy': d.get('stored.policy', '')})
+    return [d for d in out if UUID_RE.match(d['uuid'])]
+
+
+def parse_security(text):
+    m = re.search(r'security:\s*(\S+)', text or '')
+    return m.group(1) if m else ''
+
+
+def status():
+    if not shutil.which('boltctl'):
+        return {'available': False, 'security': '', 'devices': []}
+    code, out, err = run(['boltctl', 'list', '--all'])
+    if code != 0:
+        return {'available': False, 'security': '', 'devices': [], 'why': (err or out).strip()[:200]}
+    code2, dom, _ = run(['boltctl', 'domains'])
+    return {'available': True, 'security': parse_security(dom) if code2 == 0 else '', 'devices': parse_list(out)}
+
+
+def check(uuid):
+    if not UUID_RE.match(uuid or ''):
+        raise Fail('not a device id')
+    return uuid
+
+
+def act(cmd):
+    code, out, err = run(cmd, timeout=90)
+    if code != 0:
+        raise Fail(((err or out).strip().splitlines() or ['bolt said no'])[-1][:200])
+    return status()
+
+
+def allow(uuid, how):
+    check(uuid)
+    if how == 'once':
+        return act(['boltctl', 'authorize', uuid])
+    if how == 'always':
+        return act(['boltctl', 'enroll', '--policy', 'auto', uuid])
+    raise Fail('once or always')
+
+
+def forget(uuid):
+    return act(['boltctl', 'forget', check(uuid)])
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['status']:
+            r = status()
+        elif argv[:1] == ['allow'] and len(argv) == 3:
+            r = allow(argv[1], argv[2])
+        elif argv[:1] == ['forget'] and len(argv) == 2:
+            r = forget(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

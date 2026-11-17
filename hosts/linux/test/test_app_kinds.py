@@ -1,9 +1,11 @@
 """Tests for one app of each kind per desktop (os/system_files/usr/libexec/hearth-app-kinds and its table
 os/system_files/usr/share/hearth/app-kinds.json, docs/APP-KINDS.md): the table, the menu-entry copies, each desktop's
 default apps, and the check that stops the image build."""
+import contextlib
 import copy
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -56,7 +58,7 @@ APPS = {
     'hearth-calculator-kde.desktop': entry('Calculator', 'KDE;Utility;Calculator', tryexec='kcalc'),
     'hearth-documents.desktop': entry('Documents', 'Office;Viewer', PDF, '/usr/bin/hearth-documents'),
     'hearth-reader.desktop': entry('Reader', 'KDE;Office;Viewer', PDF, 'okular'),
-    'hearth-capture.desktop': entry('Capture', 'KDE;Utility', tryexec='spectacle',
+    'hearth-capture-kde.desktop': entry('Capture', 'KDE;Utility', tryexec='spectacle',
                                     extra='Actions=area;\n\n[Desktop Action area]\nName=Capture an area\nExec=spectacle --region\n'),
     'hearth-tasks.desktop': entry('Task Manager', 'System;Monitor', extra='OnlyShowIn=Nimbus;\n'),
     'hearth-photos.desktop': entry('Photos', 'Graphics;Viewer', IMAGES, '/usr/bin/hearth-photos'),
@@ -125,7 +127,7 @@ class TableTest(unittest.TestCase):
     def test_session_sets_these_names(self):
         s = read(os.path.join(REPO, 'hosts/linux/session/nimbus-session'))
         self.assertIn('XDG_CURRENT_DESKTOP=Nimbus', s)
-        self.assertIn('XDG_CURRENT_DESKTOP=KDE', s)                  # 1.13: KDE Plasma and GNOME again (docs/DESKTOPS.md)
+        # (1.13's KDE Plasma and GNOME, which set KDE / GNOME, were retired in 1.14: archive/desktops-kde-gnome.)
         self.assertIn('/usr/share/hearth/app-kinds', s)              # the copies come first in XDG_DATA_DIRS
 
     def test_mistakes_are_found(self):
@@ -155,13 +157,13 @@ class ApplyTest(Base):
                   'hearth-documents.desktop', 'hearth-tasks.desktop'):
             self.assertIn(i, nim)
         for i in ('hearth-files-kde.desktop', 'hearth-terminal-kde.desktop', 'hearth-text-kde.desktop', 'hearth-reader.desktop',
-                  'hearth-capture.desktop', 'hearth-calculator-kde.desktop', 'org.kde.kwrite.desktop', 'footclient.desktop',
+                  'hearth-capture-kde.desktop', 'hearth-calculator-kde.desktop', 'org.kde.kwrite.desktop', 'footclient.desktop',
                   'org.example.Files.desktop'):
             self.assertNotIn(i, nim)
         # KDE Plasma (1.13): KDE's own apps first (Dolphin, Konsole, Gwenview), Hearth's KDE-based ones where KDE's
         # isn't installed, stock duplicates hidden.
         for i in ('org.kde.dolphin.desktop', 'org.kde.konsole.desktop', 'hearth-text-kde.desktop', 'hearth-reader.desktop',
-                  'hearth-capture.desktop', 'hearth-calculator-kde.desktop', 'org.kde.gwenview.desktop'):
+                  'hearth-capture-kde.desktop', 'hearth-calculator-kde.desktop', 'org.kde.gwenview.desktop'):
             self.assertIn(i, kde)
         for i in ('hearth-files.desktop', 'hearth-terminal.desktop', 'hearth-text.desktop', 'hearth-documents.desktop',
                   'hearth-calculator.desktop', 'hearth-files-kde.desktop', 'hearth-terminal-kde.desktop', 'org.kde.kwrite.desktop',
@@ -182,7 +184,7 @@ class ApplyTest(Base):
         self.apply()
         for did, text in APPS.items():
             self.assertEqual(read(os.path.join(self.root, 'usr/share/applications', did)), text)
-        copy_ = read(os.path.join(self.root, 'usr/share/hearth/app-kinds/applications/hearth-capture.desktop'))
+        copy_ = read(os.path.join(self.root, 'usr/share/hearth/app-kinds/applications/hearth-capture-kde.desktop'))
         self.assertIn('OnlyShowIn=KDE;', copy_)
         self.assertIn('[Desktop Action area]', copy_)                # actions kept
         self.assertIn('Exec=spectacle --region', copy_)
@@ -251,12 +253,17 @@ class ApplyTest(Base):
         shutil.copy(TABLE, os.path.join(self.root, 'tab.json'))
         os.makedirs(os.path.join(self.root, 'usr/share/hearth'), exist_ok=True)
         shutil.copy(TABLE, os.path.join(self.root, 'usr/share/hearth/app-kinds.json'))
-        self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 0)
-        self.assertEqual(ak.main(['x', 'check', '--root', self.root]), 0)
-        for p in ('usr/bin/hearth-text', 'usr/bin/kate', 'usr/bin/kwrite'):
-            os.unlink(os.path.join(self.root, p))
-        self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 1)
-        self.assertEqual(ak.main(['x', 'apply', '--refresh', '--root', self.root]), 0)   # the apt hook never fails apt
+        # main() prints its problems as `::error` lines for CI; they're caught here, or the run's annotations would show
+        # this test's made-up problems ("Nimbus shows no text-editor app") as if the image had them.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 0)
+            self.assertEqual(ak.main(['x', 'check', '--root', self.root]), 0)
+            for p in ('usr/bin/hearth-text', 'usr/bin/kate', 'usr/bin/kwrite'):
+                os.unlink(os.path.join(self.root, p))
+            self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 1)
+            self.assertEqual(ak.main(['x', 'apply', '--refresh', '--root', self.root]), 0)   # the apt hook never fails apt
+        self.assertIn('::error title=app kinds::Nimbus shows no text-editor app', out.getvalue())
 
     def test_hidden_lists_for_the_launcher(self):
         self.apply()

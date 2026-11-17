@@ -85,8 +85,16 @@
     <keybind key="W-i"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call settings open'" /></keybind>
     <keybind key="W-a"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call quick toggle'" /></keybind>
     <keybind key="W-n"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call calendar toggle'" /></keybind>
+    <!-- 1.14: Do not disturb on or off (Settings › Notifications) -->
+    <keybind key="W-A-n"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call notifications dnd toggle'" /></keybind>
     <keybind key="W-s"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher open'" /></keybind>
     <keybind key="W-r"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call run toggle'" /></keybind>
+    <!-- 1.14: the search bar (SearchBar.qml, like KRunner): Alt+Space and Alt+F2. When Settings › Keyboard switches layouts
+         with Alt+Space, hearth-system labwc-config leaves the Alt+Space line out (the layout switch wins). labwc's own
+         Alt+Space window menu moves to Alt+F3 (as on KDE). -->
+    <keybind key="A-space"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar key'" /></keybind>
+    <keybind key="A-F2"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar toggle'" /></keybind>
+    <keybind key="A-F3"><action name="ShowMenu" menu="client-menu" atCursor="no" /></keybind>
     <keybind key="W-x"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call winx toggle'" /></keybind>
     <keybind key="W-1"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 1'" /></keybind>
     <keybind key="W-2"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 2'" /></keybind>
@@ -165,11 +173,12 @@
     <keybind key="W-A-3"><action name="SendToDesktop" to="3" follow="no" /></keybind>
     <keybind key="W-A-4"><action name="SendToDesktop" to="4" follow="no" /></keybind>
     <!-- Screenshots go to Pictures/Screenshots and the clipboard, with a notification to open them.
-         Print Screen: the whole screen. Shift+Print Screen or Super+Shift+S: drag a box around what you want.
-         Ctrl+Print Screen: the whole screen to the clipboard only. -->
+         Print Screen: the whole screen. Shift+Print Screen: drag a box around what you want. Ctrl+Print Screen: the
+         whole screen to the clipboard only. Super+Shift+S: Hearth Capture's area picker, then its markup editor (1.14;
+         the quick box above when Mantel isn't running). -->
     <keybind key="Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot'" /></keybind>
     <keybind key="S-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
-    <keybind key="W-S-s"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
+    <keybind key="W-S-s"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh capture-region'" /></keybind>
     <keybind key="C-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-clipboard'" /></keybind>
     <!-- ==== Hearth Recorder (hosts/hearth-recorder): Super+Alt+R records the screen and again stops and saves it
          (Videos/Recordings, with a notification); Super+Alt+Shift+R drags a box around an area to record;
@@ -215,6 +224,8 @@
          of the Super+Ctrl+Shift+F1–F11 keys below, each snapping the window to a region above. snap-layouts.js says
          which key is which zone; test_shell_extras.py checks they agree. -->
     <keybind key="W-z"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'" /></keybind>
+    <!-- Super+P: the screen switcher (one screen, extend; ScreenSwitcher.qml) -->
+    <keybind key="W-p"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call screens switcher'" /></keybind>
     <keybind key="W-C-S-F1"><action name="SnapToRegion" region="left-two-thirds" /></keybind>
     <keybind key="W-C-S-F2"><action name="SnapToRegion" region="right-third" /></keybind>
     <keybind key="W-C-S-F3"><action name="SnapToRegion" region="left-third" /></keybind>

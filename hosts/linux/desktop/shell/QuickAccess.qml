@@ -16,7 +16,7 @@ PanelWindow {
     id: root
     property bool shown: false
     property bool mouseOn: true          // controller mouse (from hearth-pad)
-    property bool nightAvailable: false  // wlsunset installed
+    property bool nightAvailable: false  // wlsunset installed (labwc), or KWin's own Night Light
     signal mouseToggled(bool enable)
     signal keyboardRequested()
     signal settingsRequested()
@@ -66,6 +66,8 @@ PanelWindow {
     // Battery and time left (UPower).
     readonly property var battDev: UPower.displayDevice
     readonly property bool hasBatt: battDev && battDev.isLaptopBattery
+    readonly property var devBatts: (UPower.devices ? UPower.devices.values : []).filter(d => d && !d.isLaptopBattery && d.isPresent !== false && d.percentage > 0
+        && d.type !== UPowerDeviceType.LinePower && d.type !== UPowerDeviceType.Ups && d.type !== UPowerDeviceType.Battery).slice(0, 6)
     function hm(sec) { const m = Math.round(sec / 60); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min"; }
     readonly property string battLine: {
         if (!hasBatt) return "";
@@ -77,6 +79,7 @@ PanelWindow {
     property bool hhdOn: false
     Process { id: hhdRead; command: ["sh", "-c", "test -S /run/hhd/api || test -s /tmp/hhd/token"]; onExited: code => root.hhdOn = code === 0 }
     function run(cmd) { Quickshell.execDetached(cmd); }
+    PhoneStatus { id: phoneStatus; active: root.shown }   // Phone link's tile (docs/PHONE-LINK.md)
 
     Process {
         id: brightRead
@@ -120,7 +123,7 @@ PanelWindow {
 
     // ------------------------------------------------------------------ controller / keyboard navigation
     readonly property var navRows: {
-        const rows = [["settings", "lock", "power"], ["game"], ["wifi", "bluetooth"], ["night", "mouse"], ["dnd", "keyboard"], ["volume"]];
+        const rows = [["settings", "lock", "power"], ["game"], ["wifi", "bluetooth"], ["night", "mouse"], ["dnd", "keyboard"], ["activity", "widgets"], ["phone", "theme"], ["volume"]];
         if (brightness >= 0) rows.push(["brightness"]);
         if (profile !== "") rows.push(["power-saver", "balanced", "performance"]);
         const last = [];
@@ -160,6 +163,17 @@ PanelWindow {
         case "settings": shown = false; root.settingsRequested(); break;
         case "handheld": shown = false; root.pageRequested("handheld"); break;
         case "keyboard": shown = false; root.keyboardRequested(); break;
+        case "activity": shown = false; if (SettingsNav.widgets) SettingsNav.widgets.openActivities(); break;   // 1.14: Activities.qml
+        case "widgets": shown = false; if (SettingsNav.widgets) SettingsNav.widgets.openGallery(""); break;  // 1.14: desktop widgets (Widgets.qml)
+        case "phone": phoneStatus.toggle(); break;   // Phone link on / off (PhoneStatus.qml)
+        case "theme": {   // 1.14: light or dark in one press (Settings › Appearance › Mode)
+            const wasAuto = Settings.sunset;
+            const to = Theme.dark ? "light" : "dark";
+            Settings.sunset = false;
+            Settings.mode = to;
+            if (wasAuto) SettingsNav.toast("Auto light and dark is off now: Settings › Appearance › Mode turns it back on");
+            break;
+        }
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
         case "sleep": shown = false; Buttons.sleep("Quick Access"); break;
@@ -244,6 +258,29 @@ PanelWindow {
                     RoundBtn { navId: "power"; icon: "power"; tip: "Power (sleep, restart, shut down)" }
                 }
 
+                // ---- 1.14: your devices' batteries (UPower: Bluetooth mice, keyboards, controllers, headphones), one chip each
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    visible: root.devBatts.length > 0
+                    Repeater {
+                        model: root.devBatts
+                        delegate: Rectangle {
+                            required property var modelData
+                            implicitWidth: chipRow.implicitWidth + 18; implicitHeight: 28; radius: 14
+                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            Row {
+                                id: chipRow
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Icon { anchors.verticalCenter: parent.verticalCenter; size: 14; color: modelData.percentage < 0.15 ? Theme.danger : Theme.muted
+                                    name: modelData.type === UPowerDeviceType.Mouse ? "mouse" : modelData.type === UPowerDeviceType.Keyboard ? "kbd" : modelData.type === UPowerDeviceType.GamingInput ? "pad" : modelData.type === UPowerDeviceType.Headset || modelData.type === UPowerDeviceType.Headphones ? "headphones" : "bt" }
+                                Text { anchors.verticalCenter: parent.verticalCenter; text: (modelData.model || "Device").slice(0, 22) + " · " + Math.round(modelData.percentage * 100) + "%"; color: Theme.text; font.family: Theme.font; font.pixelSize: 12 }
+                            }
+                        }
+                    }
+                }
+
                 // ---- Return to Game Mode: first and biggest
                 Focusable {
                     navId: "game"
@@ -274,10 +311,14 @@ PanelWindow {
                     rowSpacing: 10
                     Tile { navId: "wifi"; icon: "wifi"; label: "Wi-Fi"; detail: !root.wifiKnown ? "Not available" : root.wifiOn ? "On" : "Off"; lit: root.wifiOn; enabled: root.wifiKnown; page: "wifi" }
                     Tile { navId: "bluetooth"; icon: "bt"; label: "Bluetooth"; detail: !root.btPresent ? "No adapter" : !root.btPowered ? "Off" : root.btConnected.length ? root.btConnected.join(", ") : "On"; lit: root.btPresent && root.btPowered; page: "bluetooth" }
-                    Tile { navId: "night"; icon: "moon"; label: "Night light"; detail: root.nightAvailable ? "Sunset to sunrise" : "Not installed"; lit: Settings.nightLight; enabled: root.nightAvailable }
+                    Tile { navId: "night"; icon: "moon"; label: "Night light"; detail: root.nightAvailable ? (Settings.nightMode === "always" ? "All the time" : Settings.nightFrom + " to " + Settings.nightTo) : "Not installed"; lit: Settings.nightLight; enabled: root.nightAvailable }
                     Tile { navId: "mouse"; icon: "mouse"; label: "Controller mouse"; detail: root.mouseOn ? "On" : "Off"; lit: root.mouseOn }
                     Tile { navId: "dnd"; icon: "bell-off"; label: "Do not disturb"; detail: DeskState.dnd ? "On" : "Off"; lit: DeskState.dnd }
                     Tile { navId: "keyboard"; icon: "kbd"; label: "Keyboard"; detail: "On-screen" }
+                    Tile { navId: "activity"; icon: SettingsNav.activityIcon || "desktops"; label: "Activity"; detail: SettingsNav.activitiesMany ? SettingsNav.activityName : "Make one"; lit: SettingsNav.activitiesMany; enabled: SettingsNav.widgets !== null }
+                    Tile { navId: "widgets"; icon: "grid"; label: "Widgets"; detail: "Add or arrange"; enabled: SettingsNav.widgets !== null }
+                    Tile { navId: "phone"; icon: "phone"; label: "Phone"; detail: phoneStatus.line; lit: phoneStatus.on; enabled: phoneStatus.installed; page: "phone" }   // Phone link (PhoneStatus.qml)
+                    Tile { navId: "theme"; icon: Theme.dark ? "moon" : "sun"; label: Theme.dark ? "Dark mode" : "Light mode"; detail: Settings.sunset ? "Auto · press for " + (Theme.dark ? "light" : "dark") : "Press for " + (Theme.dark ? "light" : "dark"); lit: Theme.dark; page: "appearance" }   // 1.14
                 }
 
                 // ---- sliders

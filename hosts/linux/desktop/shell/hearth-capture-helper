@@ -1,0 +1,912 @@
+#!/usr/bin/python3
+"""hearth-capture-helper: the work behind Hearth Capture (Capture.qml), Hearth's own screenshot tool (1.14; it
+replaces KDE's Spectacle in Desktop Mode). The window, the area picker and the markup editor are QML; this takes the
+picture, keeps the recent ones, copies, reads text and QR codes, and opens the folder.
+
+  hearth-capture-helper tools                       JSON: what this PC has (grim, KWin, tesseract, zbarimg, wl-copy, recorder)
+  hearth-capture-helper grab MODE [--screen NAME] [--geometry X,Y,W,H] [--pointer]
+                                                    take a picture: MODE all | screen | window | area. JSON {ok, path}
+                                                    or {ok: false, pick: true} when this compositor can't find the
+                                                    window by itself (labwc): the area picker is used instead
+  hearth-capture-helper grab-each [--pointer] NAME...  the area picker's still pictures: one per screen, JSON {ok, shots}
+  hearth-capture-helper put                         the editor's finished picture (PNG, JPEG or WEBP in base64 on standard
+                                                    input) to a new file of its own: JSON {ok, path, width, height, kind}
+  hearth-capture-helper save SRC [--to PATH] [--replace]
+                                                    keep SRC in Pictures/Screenshots ("Screenshot 2026-11-16 21-04-05.png",
+                                                    " (2)" for a second one that second) or at PATH (Save as: never over
+                                                    a file that's there unless --replace; the picture's kind must match
+                                                    PATH's ending), and in the recent list
+  hearth-capture-helper copy PATH                   the picture to the clipboard (wl-copy)
+  hearth-capture-helper copy-text                   standard input to the clipboard (recognised text, a QR code's text)
+  hearth-capture-helper history                     JSON {items}: recent captures, newest first, only files still there
+  hearth-capture-helper forget PATH                 take one off the recent list (the file stays)
+  hearth-capture-helper trash PATH                  move the file to the Trash and take it off the list
+  hearth-capture-helper ocr PATH [--lang eng]       JSON {ok, text} (tesseract), or {ok: false, missing: "tesseract"}
+  hearth-capture-helper qr PATH                     JSON {ok, codes} (zbarimg), or {ok: false, missing: "zbarimg"}
+  hearth-capture-helper folder PATH                 show the file in Hearth Files
+  hearth-capture-helper record                      start or stop the screen recorder (hearth-record, else Hearth Recorder)
+  hearth-capture-helper clean                       remove the editor's own temporary pictures older than a day
+  hearth-capture-helper scroll --geometry X,Y,W,H [--auto] [--pointer]
+                                                    scrolling capture (1.14): pictures of that area one after another
+                                                    while it scrolls (by itself with --auto: the mouse wheel, through
+                                                    a virtual mouse; or as you scroll it), stitched into one long
+                                                    picture where each new one overlaps the last. Until it reaches the
+                                                    end, `scroll-stop`, or the limits. JSON {ok, path, width, height,
+                                                    frames, why} ({ok: false, cancelled: true} after scroll-stop --cancel)
+  hearth-capture-helper scroll-stop [--cancel]      finish the scrolling capture now (or throw it away)
+  hearth-capture-helper apps                        JSON {apps}: the apps that open pictures, for Share › Open with
+  hearth-capture-helper open-with APP PATH          open the picture in APP (its .desktop id)
+  hearth-capture-helper phones                      JSON {on, phones}: Phone link's connected phones (hearth-phone)
+  hearth-capture-helper send-phone PATH ID          send the picture to phone ID (Phone link's share)
+
+The recent list is state, not a setting: ~/.local/state/nimbus/capture-history.json, written through
+hearth_settings_io (lock, atomic, .bak). Capture's own choices (mode, delay, pointer) are in ~/.config/nimbus/
+capture.json, written by Capture.qml through SettingsWriter, only when you change one.
+
+Taking the picture is one function, grab(), so the way it's done can be swapped in one place:
+  1. hearth-screens (next to this file, from feature/kwin-screens): `grab MODE [--screen N] [--geometry X,Y,W,H]
+     [--pointer] --out FILE`, on both compositors;
+  2. a grim-compatible tool: /usr/bin/hearth-screenshot under KWin (HEARTH_WM=kwin), grim on labwc.
+Output: one JSON line. Nothing here ever reads or keeps a password.
+"""
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import time
+import zlib
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_settings_io as hsio  # noqa: E402  (the safe writer, next to this file)
+import hearth_desktop_apps as apps  # noqa: E402
+
+HISTORY_MAX = 40
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def out(obj):
+    print(json.dumps(obj))
+
+
+def have(cmd):
+    return shutil.which(cmd) is not None
+
+
+def runtime_dir():
+    d = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-capture')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return d
+
+
+def history_path():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'capture-history.json')
+
+
+def pictures_dir():
+    try:
+        r = subprocess.run(['xdg-user-dir', 'PICTURES'], capture_output=True, text=True, timeout=3)
+        p = r.stdout.strip()
+        if r.returncode == 0 and p and p != os.path.expanduser('~'):
+            return p
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.join(os.path.expanduser('~'), 'Pictures')
+
+
+def shots_dir():
+    return os.path.join(pictures_dir(), 'Screenshots')
+
+
+def free_name(folder, when=None):
+    """A free "Screenshot YYYY-MM-DD HH-MM-SS.png" in FOLDER, the way open.sh names them; the file is created here
+    (O_EXCL) so two at the same second can't take the same name."""
+    os.makedirs(folder, exist_ok=True)
+    base = os.path.join(folder, 'Screenshot ' + time.strftime('%Y-%m-%d %H-%M-%S', time.localtime(when)))
+    for n in range(1, 200):
+        p = base + ('.png' if n == 1 else ' (%d).png' % n)
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            os.close(fd)
+            return p
+        except FileExistsError:
+            continue
+    raise OSError('no free name in ' + folder)
+
+
+EXT = {'png': 'png', 'jpeg': 'jpg', 'webp': 'webp'}
+
+
+def picture_kind(head):
+    if head[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'png'
+    if head[:3] == b'\xff\xd8\xff':
+        return 'jpeg'
+    if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+        return 'webp'
+    return ''
+
+
+def kind_for(path):
+    e = os.path.splitext(path)[1].lower()
+    return 'jpeg' if e in ('.jpg', '.jpeg') else 'webp' if e == '.webp' else 'png'
+
+
+def write_new(dest, data, replace=False):
+    """DATA to DEST through a temporary file of its own in the same folder (a unique name: never someone's .part).
+    REPLACE=False: never over a file that's there (a hard link fails if the name is taken; where links aren't
+    possible, the name is taken with O_EXCL first). Returns False when DEST was already there."""
+    import tempfile
+    d = os.path.dirname(dest) or '.'
+    fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(dest) + '.', suffix='.part', dir=d)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if replace:
+            os.replace(tmp, dest)
+            return True
+        try:
+            os.link(tmp, dest)
+        except FileExistsError:
+            return False
+        except OSError:
+            try:
+                os.close(os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
+            except FileExistsError:
+                return False
+            os.replace(tmp, dest)
+            return True
+        os.unlink(tmp)
+        return True
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def save_as_path(path):
+    """A Save as path: ~ expanded, .png added when there's no picture ending."""
+    p = os.path.expanduser(path.strip())
+    if not os.path.isabs(p):
+        p = os.path.join(shots_dir(), p)
+    if not re.search(r'\.(png|jpe?g|webp)$', p, re.I):
+        p += '.png'
+    return p
+
+
+# ------------------------------------------------------------------ taking the picture
+def png_bytes(width, height, rows, channels=4):
+    """A PNG (8-bit RGBA, or RGB with CHANNELS=3) from ROWS, an iterable of byte rows (no filter)."""
+    def chunk(kind, data):
+        c = kind + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    raw = b''.join(b'\x00' + r for r in rows)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6 if channels == 4 else 2, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(raw, 3)) + chunk(b'IEND', b''))
+
+
+def screens_cmd(env=None):
+    """feature/kwin-screens' hearth-screens, next to this file ($NIMBUS_SHARE/desktop/shell, not on PATH): how to run
+    it, or None when it isn't there."""
+    env = env if env is not None else os.environ
+    p = env.get('HEARTH_CAPTURE_SCREENS') or os.path.join(HERE, 'hearth-screens')   # the variable: tests only
+    if not os.path.isfile(p):
+        return None
+    if os.access(p, os.X_OK):
+        return [p]
+    try:
+        with open(p, 'rb') as f:
+            first = f.readline()
+    except OSError:
+        return None
+    return ['python3', p] if b'python' in first else ['sh', p]
+
+
+def grim_tool(env=None):
+    """The grim-compatible tool: /usr/bin/hearth-screenshot under KWin (kwin-screens' own, allowed KWin's screenshot
+    interface), grim elsewhere (or when that isn't installed)."""
+    env = env if env is not None else os.environ
+    if env.get('HEARTH_WM') == 'kwin':
+        for c in ('/usr/bin/hearth-screenshot', 'hearth-screenshot'):
+            if shutil.which(c):
+                return c
+    return 'grim' if have('grim') else ''
+
+
+def grim_args(mode, path, screen='', geometry=None, pointer=False, tool='grim'):
+    a = [tool]
+    if pointer:
+        a.append('-c')
+    if mode == 'screen' and screen:
+        a += ['-o', screen]
+    elif mode == 'area' and geometry:
+        x, y, w, h = geometry
+        a += ['-g', '%d,%d %dx%d' % (x, y, w, h)]
+    return a + [path]
+
+
+def grab(mode, path, screen='', geometry=None, pointer=False, env=None):
+    """THE one place a picture of the screen is taken (swap the way it's done here). Returns (ok, error, pick):
+    pick=True means "this compositor can't find the window itself: let the person draw around it".
+      1. hearth-screens grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE (both compositors; exit 3:
+         it can't find the window here);
+      2. a grim-compatible tool: /usr/bin/hearth-screenshot under KWin, grim on labwc. Never KWin's D-Bus directly
+         (KWin only answers programs it allows)."""
+    env = env if env is not None else os.environ
+    hs = screens_cmd(env)
+    if hs:
+        a = hs + ['grab', mode]
+        if screen:
+            a += ['--screen', screen]
+        if geometry:
+            a += ['--geometry', ','.join(str(int(v)) for v in geometry)]
+        if pointer:
+            a.append('--pointer')
+        try:
+            r = subprocess.run(a + ['--out', path], capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and os.path.isfile(path) and os.path.getsize(path) > 0:
+                return True, '', False
+            if r.returncode == 3:
+                return False, '', True
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if mode == 'window':
+        return False, '', True     # a grim-like tool can't find a window: the area picker draws around it
+    tool = grim_tool(env)
+    if not tool:
+        return False, 'Taking a picture needs grim, which isn\'t installed', False
+    try:
+        r = subprocess.run(grim_args(mode, path, screen, geometry, pointer, tool), capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)[:200], False
+    if r.returncode != 0:
+        return False, (tool_error(r.stdout, r.stderr) or 'Couldn\'t take the picture')[:200], False
+    return True, '', False
+
+
+def tool_error(stdout, stderr):
+    """Why a screenshot tool failed: hearth-screens says it on its output ("error: ..."), grim on its error output."""
+    for line in reversed((stdout or '').splitlines()):
+        if line.startswith('error: '):
+            return line[7:].strip()
+    return (stderr or '').strip().split('\n')[-1]
+
+
+def parse_geometry(s):
+    m = re.match(r'^\s*(-?\d+),(-?\d+),(\d+),(\d+)\s*$', s or '')
+    if not m:
+        return None
+    g = tuple(int(v) for v in m.groups())
+    return g if g[2] > 0 and g[3] > 0 else None
+
+
+# ------------------------------------------------------------------ the recent list
+def history_read():
+    data = hsio.load_json(history_path(), {'items': []})
+    items = data.get('items') if isinstance(data.get('items'), list) else []
+    return [i for i in items if isinstance(i, dict) and isinstance(i.get('path'), str) and os.path.isfile(i['path'])]
+
+
+def history_add(path, w=0, h=0):
+    def change(d):
+        items = [i for i in (d.get('items') or []) if isinstance(i, dict) and i.get('path') != path]
+        items.insert(0, {'path': path, 'time': int(time.time()), 'width': int(w), 'height': int(h)})
+        d['items'] = items[:HISTORY_MAX]
+    os.makedirs(os.path.dirname(history_path()), exist_ok=True)
+    hsio.update_json(history_path(), change)
+
+
+def history_forget(path):
+    def change(d):
+        d['items'] = [i for i in (d.get('items') or []) if isinstance(i, dict) and i.get('path') != path]
+    if os.path.exists(history_path()):
+        hsio.update_json(history_path(), change)
+
+
+def png_size(path):
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(24)
+        if head[:8] == b'\x89PNG\r\n\x1a\n':
+            return struct.unpack('>II', head[16:24])
+    except OSError:
+        pass
+    return 0, 0
+
+
+# ------------------------------------------------------------------ text and QR codes
+def ocr(path, lang='eng'):
+    if not have('tesseract'):
+        return {'ok': False, 'missing': 'tesseract'}
+    lang = lang if re.match(r'^[a-z_+]{2,40}$', lang or '') else 'eng'
+    r = subprocess.run(['tesseract', path, '-', '-l', lang], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 and lang != 'eng':
+        r = subprocess.run(['tesseract', path, '-'], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        return {'ok': False, 'error': (r.stderr.strip().split('\n') or ['tesseract failed'])[-1][:200]}
+    text = re.sub(r'\n{3,}', '\n\n', r.stdout.replace('\f', '')).strip()
+    return {'ok': True, 'text': text}
+
+
+def qr(path):
+    if not have('zbarimg'):
+        return {'ok': False, 'missing': 'zbarimg'}
+    r = subprocess.run(['zbarimg', '-q', '--raw', path], capture_output=True, timeout=60)
+    if r.returncode not in (0, 4):     # 4: no code found
+        return {'ok': False, 'error': (r.stderr.decode('utf-8', 'replace').strip().split('\n') or [''])[-1][:200] or 'zbarimg failed'}
+    text = r.stdout.decode('utf-8', 'replace')
+    codes = [c for c in text.split('\n') if c.strip()] if r.returncode == 0 else []
+    return {'ok': True, 'codes': codes}
+
+
+# ------------------------------------------------------------------ scrolling capture
+def read_ppm(data):
+    """A binary PPM (P6, 8 bits; grim -t ppm) -> (width, height, rgb)."""
+    if data[:2] != b'P6':
+        raise ValueError('not a PPM')
+    fields, i = [], 2
+    while len(fields) < 3:
+        while data[i:i + 1].isspace():
+            i += 1
+        if data[i:i + 1] == b'#':
+            while data[i:i + 1] not in (b'\n', b''):
+                i += 1
+            continue
+        j = i
+        while not data[j:j + 1].isspace():
+            j += 1
+        fields.append(int(data[i:j]))
+        i = j
+    w, h, mx = fields
+    if mx != 255:
+        raise ValueError('only 8-bit PPM')
+    i += 1
+    return w, h, bytes(data[i:i + w * h * 3])
+
+
+def read_png(data):
+    """An 8-bit PNG (grey, RGB, grey+alpha, RGBA; not interlaced) -> (width, height, rgb). Rows written without a
+    filter (KWin's pictures through hearth-screens) are only sliced; the others are undone in Python."""
+    if data[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError('not a PNG')
+    pos, idat, w = 8, [], 0
+    while pos + 8 <= len(data):
+        n, t = struct.unpack('>I4s', data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + n]
+        if t == b'IHDR':
+            w, h, depth, ctype, _c, _f, inter = struct.unpack('>IIBBBBB', body)
+            if depth != 8 or inter != 0 or ctype not in (0, 2, 4, 6):
+                raise ValueError('a PNG kind this can\'t read')
+        elif t == b'IDAT':
+            idat.append(body)
+        elif t == b'IEND':
+            break
+        pos += 12 + n
+    if not w:
+        raise ValueError('a PNG without a header')
+    bpp = {0: 1, 2: 3, 4: 2, 6: 4}[ctype]
+    raw = zlib.decompress(b''.join(idat))
+    stride = w * bpp
+    prev = bytearray(stride)
+    rows = []
+    for y in range(h):
+        f = raw[y * (stride + 1)]
+        line = bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        if f == 1:
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 255
+        elif f == 2:
+            line = bytearray((a + b) & 255 for a, b in zip(line, prev))
+        elif f == 3:
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 255
+        elif f == 4:
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append(line)
+        prev = line
+    px = b''.join(rows)
+    if ctype == 2:
+        return w, h, px
+    out = bytearray(w * h * 3)
+    if ctype == 6:
+        out[0::3], out[1::3], out[2::3] = px[0::4], px[1::4], px[2::4]
+    elif ctype == 4:
+        out[0::3] = out[1::3] = out[2::3] = px[0::2]
+    else:
+        out[0::3] = out[1::3] = out[2::3] = px
+    return w, h, bytes(out)
+
+
+def rgb_png(w, h, rgb):
+    row = w * 3
+    return png_bytes(w, h, (rgb[y * row:(y + 1) * row] for y in range(h)), channels=3)
+
+
+class Frame:
+    """One picture of the area: its rows (packed RGB) and a signature for each (the right edge, where a scroll bar
+    moves, left out)."""
+
+    def __init__(self, w, h, rgb):
+        self.w, self.h = w, h
+        row = w * 3
+        self.rows = [rgb[y * row:(y + 1) * row] for y in range(h)]
+        cut = row - 3 * min(24, w // 10)
+        self.sig = [hash(r[:cut]) for r in self.rows]
+        self.flat = [r[:cut] == r[:3] * (cut // 3) for r in self.rows]    # one colour: nothing to match on
+
+
+def fixed_rows(a, b, from_top):
+    """How many rows at the top (or bottom) are the same in both pictures: a toolbar or footer that doesn't scroll."""
+    n, lim = 0, min(a.h, b.h) // 3
+    while n < lim:
+        i = n if from_top else a.h - 1 - n
+        if a.sig[i] != b.sig[i]:
+            break
+        n += 1
+    return n
+
+
+def find_shift(a, b, top=0, bottom=0):
+    """How far B has scrolled past A (rows), from rows found once in each that aren't one colour; 0 when it hasn't
+    moved, None when there's no overlap to be sure of."""
+    if a.sig == b.sig:
+        return 0
+    lo, hi = top, a.h - bottom
+    if hi - lo < 16:
+        return None
+    count_a, count_b = {}, {}
+    for i in range(lo, hi):
+        if not a.flat[i]:
+            count_a[a.sig[i]] = count_a.get(a.sig[i], 0) + 1
+        if not b.flat[i]:
+            count_b[b.sig[i]] = count_b.get(b.sig[i], 0) + 1
+    pos_a = {a.sig[i]: i for i in range(lo, hi) if not a.flat[i] and count_a[a.sig[i]] == 1}
+    votes = {}
+    for r in range(lo, hi):
+        sg = b.sig[r]
+        if b.flat[r] or count_b.get(sg) != 1 or sg not in pos_a:
+            continue
+        d = pos_a[sg] - r
+        if d > 0:
+            votes[d] = votes.get(d, 0) + 1
+    best = None
+    for d, v in sorted(votes.items(), key=lambda kv: -kv[1]):
+        overlap = (hi - lo) - d
+        if overlap < 8 or v < 3:
+            continue
+        same = sum(1 for r in range(lo, hi - d) if b.sig[r] == a.sig[r + d])
+        if same >= 0.6 * overlap:
+            best = d
+            break
+    return best
+
+
+class Stitcher:
+    """The long picture, built one frame at a time. Each new frame's new rows go in above the rows that don't
+    scroll at the bottom (a footer), which stay last; the ones at the top (a toolbar) are in once, from the first."""
+
+    def __init__(self, first, max_height=16000):
+        self.w = first.w
+        self.rows = list(first.rows)
+        self.last = first
+        self.frames = 1
+        self.max_height = max_height
+        self.full = False
+
+    def add(self, f):
+        """'same' (it hasn't moved), 'added', 'lost' (no overlap: scrolled too far at once) or 'full'."""
+        if f.w != self.w or f.h != self.last.h:
+            return 'lost'
+        top = fixed_rows(self.last, f, True)
+        bottom = fixed_rows(self.last, f, False)
+        d = find_shift(self.last, f, top, bottom)
+        if d == 0:
+            return 'same'
+        if d is None:
+            return 'lost'
+        room = self.max_height - len(self.rows)
+        if room <= 0:
+            self.full = True
+            return 'full'
+        new = f.rows[f.h - bottom - d:f.h - bottom][:room]
+        foot = self.rows[len(self.rows) - bottom:] if bottom else []
+        if bottom:
+            del self.rows[len(self.rows) - bottom:]
+        self.rows.extend(new)
+        self.rows.extend(foot)
+        self.last = f
+        self.frames += 1
+        return 'added'
+
+    def png(self):
+        return png_bytes(self.w, len(self.rows), self.rows, channels=3)
+
+
+def grab_frame(geo, pointer=False, env=None):
+    """One picture of the area (global logical pixels) as a Frame: grim's PPM on labwc (nothing to unpack), Hearth's
+    hearth-screenshot (KWin's own screenshot interface) under KWin."""
+    env = env if env is not None else os.environ
+    x, y, w, h = geo
+    g = '%d,%d %dx%d' % (x, y, w, h)
+    if env.get('HEARTH_WM') == 'kwin':
+        tool = grim_tool(env) or 'hearth-screenshot'
+        cmd = [tool] + (['-c'] if pointer else []) + ['-g', g, '-']
+    else:
+        if not have('grim'):
+            raise OSError('Taking a picture needs grim, which isn\'t installed')
+        cmd = ['grim', '-t', 'ppm'] + (['-c'] if pointer else []) + ['-g', g, '-']
+    r = subprocess.run(cmd, capture_output=True, timeout=30)
+    if r.returncode != 0 or not r.stdout or r.stdout.startswith(b'error: '):
+        why = tool_error(r.stdout[:400].decode('utf-8', 'replace') if r.stdout[:7] == b'error: ' else '', r.stderr.decode('utf-8', 'replace'))
+        raise OSError(why[:200] or 'Couldn\'t take the picture')
+    data = r.stdout
+    fw, fh, rgb = read_ppm(data) if data[:2] == b'P6' else read_png(data)
+    return Frame(fw, fh, rgb)
+
+
+class Wheel:
+    """A virtual mouse that only turns its wheel (python3-evdev and /dev/uinput, the access Hearth's controller support
+    has): it scrolls whatever is under the pointer, on labwc and KWin alike. None when it can't be made."""
+
+    def __init__(self):
+        from evdev import UInput, ecodes as e
+        self.e = e
+        self.ui = UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT], e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL]},
+                         name='hearth-capture-scroll')
+        time.sleep(0.4)            # the compositor picks the new mouse up
+
+    def scroll(self, clicks=3):
+        for _ in range(clicks):
+            self.ui.write(self.e.EV_REL, self.e.REL_WHEEL, -1)
+            self.ui.syn()
+            time.sleep(0.03)
+
+    def close(self):
+        try:
+            self.ui.close()
+        except Exception:
+            pass
+
+
+def scroll_state(st):
+    p = os.path.join(runtime_dir(), 'scroll.json')
+    with open(p + '.tmp', 'w') as f:
+        json.dump(st, f)
+    os.replace(p + '.tmp', p)
+
+
+def scroll_capture(geo, grab=None, wheel=None, stop=None, pause=0.45, max_frames=120, max_height=16000, now=time.time,
+                   sleep=time.sleep, timeout=600):
+    """Pictures of GEO until the end (no change twice after scrolling by itself, or for 20 s as you scroll), a stop,
+    or the limits; stitched. Returns (stitcher or None, why)."""
+    grab = grab or (lambda: grab_frame(geo))
+    stop = stop or (lambda: '')
+    st = Stitcher(grab(), max_height)
+    still, lost, started, last_move = 0, 0, now(), now()
+    why = 'stopped'
+    scroll_state({'frames': 1, 'height': len(st.rows), 'width': st.w, 'auto': bool(wheel)})
+    while True:
+        s = stop()
+        if s:
+            why = s
+            break
+        if st.frames >= max_frames:
+            why = 'limit'
+            break
+        if now() - started > timeout:
+            why = 'limit'
+            break
+        if wheel:
+            wheel.scroll()
+        sleep(pause)
+        res = st.add(grab())
+        if res == 'added':
+            still, lost, last_move = 0, 0, now()
+        elif res == 'same':
+            still += 1
+            if (wheel and still >= 2) or (not wheel and now() - last_move > 20):
+                why = 'end'
+                break
+        elif res == 'lost':
+            lost += 1
+            if wheel or lost >= 8:
+                why = 'lost'
+                break
+        elif res == 'full':
+            why = 'full'
+            break
+        scroll_state({'frames': st.frames, 'height': len(st.rows), 'width': st.w, 'auto': bool(wheel)})
+    scroll_state({'frames': st.frames, 'height': len(st.rows), 'width': st.w, 'auto': bool(wheel), 'done': True})
+    return st, why
+
+
+SCROLL_WHY = {'end': 'It reached the end.', 'stopped': '', 'limit': 'It stopped at its limit (120 pictures).',
+              'full': 'It stopped at 16000 pixels tall.',
+              'lost': 'It moved too far at once to join up, so the picture ends there.'}
+
+
+def cmd_scroll(args):
+    geo = parse_geometry(opt(args, '--geometry'))
+    if not geo:
+        out({'ok': False, 'error': 'a scrolling capture needs --geometry X,Y,W,H'})
+        return 1
+    stop_file = os.path.join(runtime_dir(), 'scroll.stop')
+    try:
+        os.unlink(stop_file)
+    except OSError:
+        pass
+
+    def stop():
+        try:
+            with open(stop_file) as f:
+                return 'cancel' if f.read().strip() == 'cancel' else 'stopped'
+        except OSError:
+            return ''
+    wheel, note = None, ''
+    if '--auto' in args:
+        try:
+            wheel = Wheel()
+        except Exception:
+            note = 'Hearth couldn\'t scroll it by itself here (no access to a virtual mouse): scroll it yourself.'
+    try:
+        st, why = scroll_capture(geo, grab=lambda: grab_frame(geo, '--pointer' in args), wheel=wheel, stop=stop)
+    except (OSError, ValueError, subprocess.SubprocessError, zlib.error) as e:
+        out({'ok': False, 'error': str(e)[:200] or 'Couldn\'t take the pictures'})
+        return 1
+    finally:
+        if wheel:
+            wheel.close()
+    try:
+        os.unlink(stop_file)
+    except OSError:
+        pass
+    if why == 'cancel':
+        out({'ok': False, 'cancelled': True})
+        return 0
+    path = os.path.join(runtime_dir(), 'scroll-%d.png' % int(time.time() * 1000))
+    write_new(path, st.png(), replace=True)
+    out({'ok': True, 'path': path, 'width': st.w, 'height': len(st.rows), 'frames': st.frames,
+         'why': (note + ' ' + SCROLL_WHY.get(why, '')).strip()})
+    return 0
+
+
+# ------------------------------------------------------------------ share
+def phones():
+    """Phone link's paired phones that are connected now (hearth-phone tile), or on: False."""
+    hp = os.path.join(HERE, 'hearth-phone')
+    try:
+        r = subprocess.run([sys.executable, hp, 'tile'], capture_output=True, text=True, timeout=15)
+        j = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else {}
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        j = {}
+    near = [{'id': p['id'], 'name': p['name']} for p in (j.get('phones') or []) if p.get('reachable')]
+    return {'on': bool(j.get('running')), 'phones': near}
+
+
+def send_phone(path, pid):
+    if not os.path.isfile(path):
+        return {'ok': False, 'error': 'The picture is gone'}
+    hp = os.path.join(HERE, 'hearth-phone')
+    try:
+        r = subprocess.run([sys.executable, hp, 'call', 'share'], input=json.dumps({'id': pid, 'paths': [path]}),
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return {'ok': False, 'error': str(e)[:200]}
+    last = (r.stdout.strip().splitlines() or [''])[-1]
+    if r.returncode != 0 or last.startswith('error: '):
+        return {'ok': False, 'error': last[7:] if last.startswith('error: ') else 'Phone link couldn\'t send it'}
+    return {'ok': True}
+
+
+def recorder():
+    if have('hearth-record'):
+        return ['hearth-record', 'toggle']
+    if have('hearth-recorder'):
+        return ['hearth-recorder', '--toggle']
+    return None
+
+
+def tools(env=None):
+    env = env if env is not None else os.environ
+    rec = recorder()
+    return {'grim': bool(grim_tool(env)), 'kwin': env.get('HEARTH_WM') == 'kwin', 'screens': screens_cmd(env) is not None,
+            'tesseract': have('tesseract'), 'zbar': have('zbarimg'), 'wlcopy': have('wl-copy'),
+            'record': rec[0] if rec else '', 'wm': env.get('HEARTH_WM') or 'labwc',
+            'windowPick': screens_cmd(env) is None,
+            'folder': shots_dir()}
+
+
+def opt(args, name, default=''):
+    if name in args:
+        i = args.index(name)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return default
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    cmd, args = argv[0], argv[1:]
+    if cmd == 'tools':
+        out(tools())
+    elif cmd == 'grab':
+        mode = args[0] if args and not args[0].startswith('--') else 'all'
+        if mode not in ('all', 'screen', 'window', 'area'):
+            out({'ok': False, 'error': 'unknown mode ' + mode})
+            return 1
+        geo = parse_geometry(opt(args, '--geometry'))
+        if mode == 'area' and not geo:
+            out({'ok': False, 'error': 'an area needs --geometry X,Y,W,H'})
+            return 1
+        path = os.path.join(runtime_dir(), 'grab-%d-%s.png' % (int(time.time() * 1000), mode))
+        ok, err, pick = grab(mode, path, opt(args, '--screen'), geo, '--pointer' in args)
+        if not ok:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            out({'ok': False, 'error': err, 'pick': pick})
+            return 0 if pick else 1
+        w, h = png_size(path)
+        out({'ok': True, 'path': path, 'width': w, 'height': h})
+    elif cmd == 'grab-each':
+        # The area picker's still pictures: one per screen, taken one after another, before the picker is drawn.
+        names = [a for a in args if not a.startswith('--')]
+        shots = {}
+        for n in names:
+            path = os.path.join(runtime_dir(), 'freeze-%d-%s.png' % (int(time.time() * 1000), re.sub(r'[^A-Za-z0-9_-]', '_', n)))
+            ok, err, _ = grab('screen', path, n, None, '--pointer' in args)
+            if not ok and len(names) == 1:
+                ok, err, _ = grab('all', path, '', None, '--pointer' in args)   # one screen: the whole picture is it
+            if not ok:
+                out({'ok': False, 'error': err or 'Couldn\'t take a picture of ' + n})
+                return 1
+            w, h = png_size(path)
+            shots[n] = {'path': path, 'width': w, 'height': h}
+        out({'ok': True, 'shots': shots})
+    elif cmd == 'put':
+        import base64
+        import binascii
+        try:
+            data = base64.b64decode(sys.stdin.buffer.read(), validate=False)
+        except (binascii.Error, ValueError):
+            data = b''
+        kind = picture_kind(data[:16])
+        if not kind:
+            out({'ok': False, 'error': 'that isn\'t a PNG, JPEG or WEBP picture'})
+            return 1
+        path = os.path.join(runtime_dir(), 'edit-%d.%s' % (int(time.time() * 1000), EXT[kind]))
+        write_new(path, data, replace=True)
+        w, h = png_size(path)
+        out({'ok': True, 'path': path, 'width': w, 'height': h, 'kind': kind})
+    elif cmd == 'save':
+        src = args[0] if args else ''
+        if not os.path.isfile(src):
+            out({'ok': False, 'error': 'The picture to save is gone'})
+            return 1
+        with open(src, 'rb') as f:
+            data = f.read()
+        to = opt(args, '--to')
+        try:
+            if to:
+                dest = save_as_path(to)
+                want = kind_for(dest)
+                have_kind = picture_kind(data[:16])
+                if want != have_kind:
+                    out({'ok': False, 'kind': want, 'error': 'The picture isn\'t a %s (it\'s a %s)' % (want.upper(), (have_kind or '?').upper())})
+                    return 1
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                if not write_new(dest, data, replace='--replace' in args):
+                    out({'ok': False, 'exists': True, 'path': dest, 'error': os.path.basename(dest) + ' is already there'})
+                    return 1
+            else:
+                dest = free_name(shots_dir())       # made empty by us (O_EXCL): ours to replace
+                write_new(dest, data, replace=True)
+        except OSError as e:
+            out({'ok': False, 'error': 'Couldn\'t save it: ' + (e.strerror or str(e))})
+            return 1
+        w, h = png_size(dest)
+        history_add(dest, w, h)
+        out({'ok': True, 'path': dest, 'name': os.path.basename(dest)})
+    elif cmd == 'copy':
+        p = args[0] if args else ''
+        if not have('wl-copy') or not os.path.isfile(p):
+            out({'ok': False, 'error': 'Copying needs wl-clipboard' if not have('wl-copy') else 'The picture is gone'})
+            return 1
+        with open(p, 'rb') as f:
+            kind = picture_kind(f.read(16)) or 'png'
+            f.seek(0)
+            subprocess.Popen(['wl-copy', '--type', 'image/' + kind], stdin=f, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        out({'ok': True})
+    elif cmd == 'copy-text':
+        if not have('wl-copy'):
+            out({'ok': False, 'error': 'Copying needs wl-clipboard'})
+            return 1
+        p = subprocess.Popen(['wl-copy'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        p.stdin.write(sys.stdin.buffer.read())
+        p.stdin.close()
+        out({'ok': True})
+    elif cmd == 'history':
+        out({'items': history_read()})
+    elif cmd == 'forget':
+        history_forget(args[0] if args else '')
+        out({'ok': True})
+    elif cmd == 'trash':
+        p = args[0] if args else ''
+        if os.path.isfile(p):
+            r = subprocess.run(['gio', 'trash', '--', p], capture_output=True, text=True) if have('gio') else None
+            if r is None or r.returncode != 0:
+                out({'ok': False, 'error': 'Couldn\'t move it to the Trash'})
+                return 1
+        history_forget(p)
+        out({'ok': True})
+    elif cmd == 'ocr':
+        out(ocr(args[0] if args else '', opt(args, '--lang', 'eng')))
+    elif cmd == 'qr':
+        out(qr(args[0] if args else ''))
+    elif cmd == 'folder':
+        p = args[0] if args else shots_dir()
+        subprocess.Popen(['sh', os.path.join(os.path.dirname(HERE), 'open.sh'), 'files-at', p],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        out({'ok': True})
+    elif cmd == 'record':
+        rec = recorder()
+        if not rec:
+            out({'ok': False, 'error': 'No screen recorder is installed'})
+            return 1
+        subprocess.Popen(rec, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        out({'ok': True})
+    elif cmd == 'scroll':
+        return cmd_scroll(args)
+    elif cmd == 'scroll-stop':
+        with open(os.path.join(runtime_dir(), 'scroll.stop'), 'w') as f:
+            f.write('cancel' if '--cancel' in args else 'stop')
+        out({'ok': True})
+    elif cmd == 'apps':
+        out({'apps': apps.apps_for('image/png')})
+    elif cmd == 'open-with':
+        if len(args) < 2 or not os.path.isfile(args[1]):
+            out({'ok': False, 'error': 'The picture is gone' if len(args) >= 2 else 'open-with APP PATH'})
+            return 1
+        try:
+            apps.launch(args[0], args[1])
+        except (ValueError, OSError) as e:
+            out({'ok': False, 'error': str(e)})
+            return 1
+        out({'ok': True})
+    elif cmd == 'phones':
+        out(phones())
+    elif cmd == 'send-phone':
+        r = send_phone(args[0] if args else '', args[1] if len(args) > 1 else '')
+        out(r)
+        return 0 if r['ok'] else 1
+    elif cmd == 'clean':
+        d, now, n = runtime_dir(), time.time(), 0
+        for f in os.listdir(d):
+            p = os.path.join(d, f)
+            if f.endswith('.png') and now - os.path.getmtime(p) > 86400:
+                os.unlink(p)
+                n += 1
+        out({'ok': True, 'removed': n})
+    else:
+        print('error: unknown command ' + cmd)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

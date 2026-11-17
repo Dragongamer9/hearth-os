@@ -1,0 +1,412 @@
+# Every KDE Plasma feature in Mantel on KWin: where 1.14 stands
+
+The master checklist (feature/kde-feature-list's KWIN.md, made at 81a2a1e) checked item by item against
+**feature/kwin-1.14 at 00ced87** (Nov 16, 2026), recounted on feature/kwin-1.14 on Nov 17. The owner's rule: everything KDE Plasma 6 has that Mantel lacks is
+written for Hearth from scratch.
+
+**How to read it.**
+
+- `- [x] part — file: "proof"`: built, with a test or CI picture that shows it. "(needs testing on a device)" when only
+  CI has proven it, as in docs/ROADMAP.md.
+- `- [ ] part — partly: …`: some of it is built (what, and where); the line says what's left.
+- `- [ ] part`: not built on feature/kwin-1.14.
+- Sizes for what's left: **S** (a day or less), **M** (a few days), **L** (a week or two), **XL** (several weeks).
+- `feature/kwin-pages` (Settings pages for KWin's own settings) and `feature/search-store` (search, the file index,
+  Passwords, the App store, Files' terminal panel and split view) are merged into feature/kwin-1.14 now; their lines
+  are recounted from the integration branch.
+
+Counts (done · partly · missing), recounted on feature/kwin-1.14: Stage 1 29 · 0 · 0, Stage 2 52 · 6 · 18, Stage 3 96 · 16 · 50.
+
+---
+
+## Stage 1: the KWin base
+
+### Session and safety
+
+- [x] KWin session for Desktop Mode — hosts/linux/session/nimbus-session: "run_kwin … exec "$1" --xwayland $3 $HEARTH_KWIN_ARGS "$2"", hosts/linux/desktop/kwin/autostart; test_kwin_session.py, kwin-test.yml (needs testing on a device)
+- [x] Falls back to labwc if KWin won't start, and to Game Mode if neither does — nimbus-session `desktop_wm` / `run_classic` (missing, ends within 15 s, Mantel not up in 45 s, twice → labwc until turned back on); test_kwin_session.py: "test_kwin_dying_fast_opens_labwc_counts_and_twice_stays", "test_mantel_never_up_ends_kwin_and_opens_labwc" (needs testing on a device)
+- [x] Mantel's bar, dock, panels and desktop as layer-shell surfaces on KWin — they show with their exclusive zones under KWin (kwin-windows.yml pictures "kwin-halves", "kwin-desktop-menu"); keyboard focus on each panel checked with a real keyboard: tools/e2e-kwin-windows.py "typing reaches the app menu", "the arrow keys move along Quick Access", "typing reaches Hearth Settings' search" (shell.qml IpcHandler "focus") (needs testing on a device)
+- [x] **(review, Nov 17)** No lockout or setting change from KDE Plasma's leftovers — kwin/xdg/kscreenlockerrc: "Autolock[$i]=false", kwin/xdg/kwinrc: "InputMethod[$ei]=", kwin/windows/xdg/kwinrc: "Meta[$i]="; hearth-your-desktop `kwin-overrides` (the one-time "Some of your KDE settings aren't used here" card); nimbus-session `kwin_lock_ready`: "hearth-lockcheck --as-kwin", kept per image in kwin-lock-proven; hearth-login-screen: "GOOD_SECS"; hearth-screens `kwinrc_set`: "io.update_text(KWINRC"; SetKeyboard.qml: "Bring back KDE's own shortcuts"; hearth-network / hearth-lookset `plain_write`; test_kwin_session.py "test_the_lock_screen_must_really_load_before_kwins_locker_is_on", "test_your_kde_settings_that_hearth_overrides_are_told_once"; kwin-input.yml lock-debian (KWin 6.3: "KWin didn't lock by itself after 80 s idle"); kwin-test.yml pictures "kwin-7-kde-settings-card", "kwin-8-keyboard-kde-keys" (needs testing on a device)
+- [x] Xwayland apps and games — nimbus-session: "--xwayland"; kwin-windows.yml "KWin's X server for the X11 window" (36d3f1a) (needs testing on a device)
+- [x] Settings › Your desktop says KWin, and Safe start still works — SetYourDesktop.qml: "KWin didn't start this time, so labwc", "Safe start"; hearth-your-desktop; test_kwin_session.py "test_wm_writes_only_its_line_with_a_backup", "test_safe_graphics_is_labwc" (needs testing on a device)
+- [x] **(found in this audit)** Keyboard layouts, key repeat and pointer settings applied under KWin — labwc/autostart: "hearth-kwin-settings\" input-watch"; hearth-kwin-settings `keyboard_apply`: "keyboard_changes(saved", `input_watch`: "keyboard_apply()"; hearth-system `keyboard_set`: "'keyboard-apply'"; test_kwin_keyboard.py "test_writes_kwins_files_once_with_a_backup", "test_input_watch_applies_the_keyboard_first"; kwin-test.sh B: "the layout set in Settings (fr) isn't KWin's active one", picture "kwin-9-keyboard-kwin" (needs testing on a device)
+
+### Windows
+
+- [x] Window list for the taskbar, dock, centre pill, Task Manager, Discord and Snap layouts — WinList.qml, hearth-kwin-bridge, kwin/windows/hearth-windows.js; Dock/TaskStrip/Bar/Islands/TaskManagerView/Discord/SnapLayouts/Pad: "WinList.toplevels"; test_kwin_windows.py "test_script_against_pretend_kwin", "test_no_direct_toplevel_manager"; kwin-windows.yml end to end (needs testing on a device)
+- [x] Window actions from the taskbar (minimize, maximize, close, move to desktop, keep above, on all desktops, fullscreen) — hearth-windows.js `run()`: "case \"keepAbove\"", "case \"allDesktops\"", "case \"fullscreen\"", "case \"desktop\""; Dock.qml: "if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }"; test_kwin_windows.py "test_window_actions_are_known" (needs testing on a device)
+- [x] Window previews on hover in the dock/taskbar — kwin/windows/hearth-previews.qml (KWin declarative script, loaded by hearth-kwin-bridge): "WindowThumbnail"; Dock.qml / TaskStrip.qml: "WinList.preview(btn.previewWins"; kwin-windows.yml: "the previews card shows over the desktop", picture "kwin-preview-zoom" (needs testing on a device)
+- [x] Title bars in Hearth's look — theme/hearth_aurorae.py, kwin/windows/xdg/kwinrc: "theme=__aurorae__svg__hearth"; test_kwin_windows.py "test_aurorae_files", "test_labwcs_colours"; kwin-windows.yml pictures "kwin-frame-active/inactive/maximized/hearth-gold/csd" (needs testing on a device)
+- [x] Title bar right-click menu with Hearth's items — hearth-windows.js: "registerUserActionsMenu … \"Snap layouts…\"" plus each zone; KWin's own menu has Move to desktop, Keep above, Close; kwin-windows.yml picture "kwin-window-menu" (needs testing on a device)
+- [x] Alt+Tab window switcher in Hearth's look — os/system_files/usr/share/kwin/tabbox/org.hearth.switcher (and kwin-wayland/tabbox): "KWin.TabBoxSwitcher"; kwin/windows/xdg/kwinrc: "LayoutName=org.hearth.switcher"; kwin-windows.yml: "Alt+Tab switches to the other window", picture "kwin-alt-tab" (needs testing on a device)
+- [x] Snapping: drag to edges and corners, Super+arrows, halves and quarters — kwin/xdg/kwinrc: "ElectricBorderTiling=true"; shortcuts.json "snap-left … snap-down" (win: left/right/up/down); test_kwin_windows.py "test_zones_match_snap_layouts_and_labwc"; picture "kwin-halves" (needs testing on a device)
+- [x] Snap layouts (Super+Z, Maximize) — Super+Z and the title bar menu as before; resting the pointer on Maximize: hearth-windows.js "onCursor" / "HoverMax", hearth-kwin-bridge "HOVER_WAIT", SnapLayouts.qml "hoverOpen"; kwin-windows.yml: "resting on Maximize opens Snap layouts under the button", picture "kwin-snap-maximize-zoom". (Hover, not right-click: KWin doesn't tell scripts about clicks on its buttons) (needs testing on a device)
+- [x] Virtual desktops: the bar's switcher, Super+Ctrl+arrows/1–4, move window to desktop — kwin/windows/xdg/kwinrc "[Desktops] Number=4"; DeskSwitcher.qml: "if (WinList.kwin) return WinList.desktops…"; shortcuts.json "desktop-1…4", "window-to-desktop-1…4"; test_kwin_windows.py "test_same_keys_and_commands" (needs testing on a device)
+- [x] Show desktop (Super+D) and minimize all (Super+M) — shortcuts.json "show-desktop": "call taskbar showDesktop"; kdeKeys frees KDE's Super+D; test_kwin_windows.py "test_kde_keys_table" (needs testing on a device)
+
+### Shortcuts
+
+- [x] All of Mantel's shortcuts on KWin — kwin/windows/shortcuts.json (66 Hearth keys, registered by hearth-windows.js `registerShortcuts`; KDE's clashing keys freed once, hearth-kwin-bridge `fix_kde_keys`); test_kwin_windows.py "test_every_labwc_key_is_covered", "test_frees_defaults_only_and_gives_hearth_its_keys"; real key presses in kwin-windows.yml (39c6fcc) (needs testing on a device)
+- [x] Super alone opens the launcher — kwin/windows/xdg/kwinrc: "[ModifierOnlyShortcuts] Meta=org.hearth.Windows,…,Launcher"; test_kwin_windows.py "test_extra_ids_and_launcher" (CI only warns: KWin makes no call in the runner, 03c1c2d) (needs testing on a device)
+
+### Screens
+
+- [x] Resolution, refresh rate, scale, position, on/off, keep-or-go-back — hearth-screens (kscreen-doctor under KWin), SetDisplay.qml, docs/SCREENS.md; test_hearth_screens.py (35 tests); desktop-test.yml `kwin-screens` job with the real kscreen-doctor (needs testing on a device)
+- [x] Rotation and orientation, primary screen, mirroring — rotation (hearth-screens, test_hearth_screens.py "test_kwin_command"); the main screen: SetDisplay.qml "Make this the main screen", hearth-screens `priority` ("output.HDMI-A-1.priority.1", every screen's kept), test_hearth_screens.py "test_kwin_commands_for_the_new_keys", "test_keep_and_restore_the_new_keys"; mirroring can't be done by KWin 6.3, shown greyed with why (SetDisplay.qml, Super+P's "Duplicate") (needs testing on a device)
+- [x] Screen off when idle, screen-off for Server mode — hearth-screen-power: KWin's DPMS through "kscreen-doctor --dpms"; IdlePower.qml; kwin-screens job "screen off near the end" (needs testing on a device)
+- [x] Brightness keys and slider — shortcuts.json "brightness-up", "brightness-down" (the same commands as labwc's) (needs testing on a device)
+
+### Lock, typing, screenshots
+
+- [x] Lock screen — kwin-lock/contents/lockscreen/LockScreen.qml, kwin-lock/install.sh, Lock.qml ("hands locking to KWin's locker"), hearth-lockcheck, nimbus-session `kwin_lock_ready` (no lockout: `--no-lockscreen` when it isn't there); kwin-input.yml `lock-debian` locks for real and unlocks through PAM (needs testing on a device)
+- [x] Typing for the on-screen keyboard, clipboard paste, emoji picker, snap layouts and the controller — hearth-type, kwin-helpers/hearth-kwin-im.c, kwin/xdg/kwinrc "InputMethod[$e]=/usr/share/applications/hearth-kwin-im.desktop"; test_kwin_input.py "test_keyboard_types_through_hearth_type_on_kwin", "test_paste_and_magnifier"; kwin-input.yml types into a GTK field (needs testing on a device)
+- [x] Screenshots (Print, Shift+Print, Super+Shift+S, Ctrl+Print) — os/system_files/usr/bin/hearth-screenshot ("under KWin it runs hearth-screens shot"), hearth-screens `grab`, shortcuts.json "screenshot", "screenshot-region", "screenshot-clipboard"; test_hearth_screens.py "test_screenshot_trust_for_kwin"; kwin-screens job picture with KWin's permission check on (needs testing on a device)
+- [x] Screen sharing for browsers, Discord, OBS (the ScreenCast portal) — hearth_screencast.py, cast-picker.qml (Screens, Windows and Area: `{ id: "area", label: "Area", on: root.hasArea }`, KWin's region stream through hearth-kwin-cast "stream region"), PickColor (hearth_screencast.py "self.pick_color(conn, handle, inv)", hearth-kwin-cast "pick": KWin's /ColorPicker), hearth-portals.conf; test_kwin_input.py "test_area_in_desktop_pixels", "test_pick_color"; kwin-input.yml's PipeWire stream; desktop-test.yml kwin-screens picture "kwin-12-area-picker" (needs testing on a device)
+- [x] The controller in Desktop Mode (pointer, View+D-pad snap, View+B close, LB/RB windows) — hearth-pad types KWin's (same) keys through its own uinput keyboard and Pad.qml follows WinList; checked on KWin with a uinput controller: tools/e2e-kwin-windows.py "controller: View + D-pad left snaps the window to the left half", "controller: View + B closes the window in front", "controller: RB switches to the other window", "controller: LB switches back"; the lock screen part in test_hearth_pad.py (needs testing on a device)
+- [x] Night light, colour filters and magnifier keep working on day one — hearth-access: `apply kwin` (apply_filter_kwin, the magnifier and the look under KWin) (needs testing on a device)
+
+---
+
+## Stage 2: what KWin itself can do, with Hearth Settings pages
+
+Most of this section is what **feature/kwin-pages** builds (merged), with the Display parts from feature/kwin-screens.
+
+### Display and colour
+
+- [x] HDR in Desktop Mode (per screen) — HDR switch, SDR brightness, wide colour and colour intensity (SetDisplay.qml "Colour intensity", hearth-screens `sdrGamut`: "output.DP-1.sdrGamut.70"); test_hearth_screens.py "test_kwin_keep_saves_hdr_vrr_and_profile", "test_kwin_reads_the_new_fields"; picture "kwin-7-hdr-colour-intensity" (needs testing on a device)
+- [x] HDR calibration (max/peak brightness wizard) — HdrCalibrate.qml ("Brightest spot", "Brightest across the screen", "Darkest"; Finish goes through Keep: "page.countdown = 15"), hearth-screens `hdrCal` ("output.DP-1.maxBrightnessOverride.800"); test_hearth_screens.py "test_kwin_commands_for_the_new_keys"; picture "kwin-10-hdr-calibrate" (needs testing on a device)
+- [ ] Extended Dynamic Range (HDR content on SDR laptop panels) — partly: SetDisplay.qml "Extended Dynamic Range" (Keep needed), hearth-screens `edr` ("edrPolicy."), shown only when kscreen-doctor reports it (test_hearth_screens.py "test_kwin_reads_the_new_fields"). Left: KWin 6.3 (Debian 13) has no EDR, so the row is hidden there; check the kscreen-doctor wording on a newer KWin (S)
+- [x] Variable refresh rate (Never / Automatic / Always) — hearth-screens, SetDisplay.qml, docs/SCREENS.md "VRR / FreeSync"; test_hearth_screens.py "test_kwin_keep_saves_hdr_vrr_and_profile" (needs testing on a device)
+- [x] Colour profiles — none / the screen's own / an ICC file, and the colour accuracy choice (SetDisplay.qml "Colour accuracy", hearth-screens `colorPower`: "output.DP-1.colorPowerTradeoff.preferEfficiency"); test_hearth_screens.py "test_kwin_commands_for_the_new_keys" (needs testing on a device)
+- [ ] Colour depth limit and RGB range — partly: RGB range (SetDisplay.qml "RGB range", Keep needed; hearth-screens "rgbrange."; picture "kwin-8-picture-signal"). Left: colour depth: KWin 6.3's output management (kscreen-doctor) can't set bits per colour, so it's hidden (hearth-screens `depth` "capable": False) (S)
+- [x] Fractional scaling per screen and the X11 apps' scaling choice — per-screen scale (hearth-screens); SetDisplay.qml "Scaling X11 apps" (kdeglobals [KScreen] XwaylandClientsScale through hearth-kwin-settings set, the same key as SetKwinGames.qml); test_hearth_screens.py "test_kde_files_change_only_their_keys" (needs testing on a device)
+- [x] Night light: by location, custom times, always on, warmth, fade, Quick settings tile — SetDisplay.qml "Sunset to sunrise" (your town by name: hearth-widgets places), "Fade"; Settings.qml nightPlace/nightLat/nightLon/nightFade; KWin `Mode=Location` (hearth-screens "LatitudeFixed"), wlsunset "-l" / "-d"; test_hearth_screens.py "test_night_by_location_and_fade"; kwin-screens job "Night light by location didn't reach kwinrc"; picture "kwin-6-brightness-and-night" (needs testing on a device)
+- [ ] Reduce red tint at low brightness (AMD laptops) — not in KWin 6.3 (Plasma 6.7): hidden (hearth-screens `redTint` "capable": False) until a KWin that has it (S)
+- [x] Automatic brightness from the light sensor — hearth-screens "class ProxyLight" (iio-sensor-proxy ClaimLight / LightLevel), "class AutoBright" (smoothed, small steps, a brightness set by hand pauses it until the light changes), SetDisplay.qml title: "Auto-brightness" and title: "How bright" (off by default, shown only with a sensor); test_hearth_screens.py "test_auto_brightness_loop_with_a_fake_sensor", "test_auto_brightness_reads_iio_sensor_proxy"; CI picture kwin-6-brightness-and-night (needs testing on a device)
+- [x] Brightness for external screens (DDC/CI) — SetDisplay.qml "Brightness · " per screen; hearth-screens `ddc` / `ddc-set` (ddcutil, guarded: missing ddcutil or i2c-dev says why; nothing saved, the screen keeps it) or KWin's own control on a newer KWin (`brightness`); test_hearth_screens.py "test_ddc"; picture "kwin-6-brightness-and-night" (needs testing on a device)
+- [x] Overscan, allow tearing, wide colour gamut — SetDisplay.qml "Overscan" (Keep needed; hearth-screens "overscan."), tearing (kwinrc `[Compositing] AllowTearing`), wide colour (hearth-screens); test_hearth_screens.py "test_kwin_commands_for_the_new_keys"; picture "kwin-8-picture-signal" (needs testing on a device)
+- [ ] Virtual desktops only on the main screen, or per screen — partly: "Main screen only" (SetDisplay.qml "Virtual desktops", hearth-main-desktops.js: the other screens' windows on every desktop, put back when off; screens.json `desktopsMainOnly`, loaded again at start); test_hearth_screens.py "test_main_desktops_script". Left: each screen its own desktops needs a newer KWin than 6.3 (shown greyed) (S)
+- [x] Screen edge barrier and corner barrier between screens — SetDisplay.qml "Sticky edge between screens", "Sticky corners" (kwinrc [EdgeBarrier] through hearth-kwin-settings set, the same keys as SetKwinEdges.qml); test_hearth_screens.py "test_kde_files_change_only_their_keys"; picture "kwin-9-several-screens" (needs testing on a device)
+- [x] Mirror / extend / only one screen quick switcher (Super+P) — ScreenSwitcher.qml ("This screen only", "Duplicate" with why, "Extend", "Second screen only"; Keep or back in 15 s), hearth-screens `plan`, shortcuts.json "screens-switch" Meta+P, labwc rc.xml W-p; test_hearth_screens.py "test_super_p_plans"; picture "kwin-11-super-p" (needs testing on a device)
+
+### Desktop effects (feature/kwin-pages, merged)
+
+- [x] Animation speed (one slider) and Reduced motion respected — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Window open/close: Fade, Glide, Scale, Fall Apart — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Minimize: Magic Lamp, Squash — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Maximize, geometry-change, morphing and sliding popups — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Desktop switch: Slide, Fade, Cube — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Desktop Cube — KWin's cube from trixie's kwin-addons (os-bases/peppermint/build.sh "optional kwin-addons"); SetKwinDesktops.qml "Desktop cube" switch ([Plugins] cubeEnabled; greyed with "the cube comes with the kwin-addons package, which isn't installed" when it's missing) and "Open the cube now" (hearth-kwin-settings shortcut cube, Super+C); test_kwin_effects_extras.py "Cube"; picture "kwin-18-virtual-desktops-cube" (needs testing on a device)
+- [x] Wobbly windows — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Blur and background contrast behind Hearth's panels — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Translucency (moving, inactive, menus) — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Dim inactive windows, dim behind password prompts — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Rounded corners and outlines for windows (Hearth's frames) — hearth_aurorae.py: all four corners rounded (`bottom_radius`, as far as the window's own square corner fits inside the frame), 4 px sides and bottom ("SIDE = 4"), a light 1 px outline all round (`outline_color`); shadow, maximized and live look change kept; test_kwin_windows.py "test_rounded_bottom_corners_and_outline"; kwin-windows.yml: "the frame's bottom corners are rounded", "the frame has a light outline round it", pictures "kwin-frame-shadow-light-corner", "kwin-frame-shadow-dark-corner" (needs testing on a device)
+- [ ] Rounded corners for apps that draw their own frames (Steam, GTK header bars) — needs a KWin effect that clips windows' corners; KWin 6.3 has none built in (M)
+- [x] Peek at desktop / Show desktop animation, login and logout fades — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Mouse click animation, mouse mark, track mouse, touch points — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Shake cursor to find it — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Hide the pointer while typing or after a time — SetKwinEffects.qml "Hide the pointer while you type" and "Hide the pointer when the mouse is still" (Never / 5 s / 10 s / 30 s / 1 min: [Effect-hidecursor] InactivityDuration; turning one on never turns the other on); test_kwin_effects_extras.py "HidePointer"; picture "kwin-17-window-effects-pointer-helpers-developers" (needs testing on a device)
+- [x] Snap helper / window aperture / thumbnail aside / show FPS / show paint — SetKwinEffects.qml "Show where a window snaps", "When the desktop is shown: Move aside", "A picture of the window you're on, at the side", and under "For developers": "Show FPS", "Show paint" (showfps / showpaint); test_kwin_effects_extras.py "Developers"; picture "kwin-17-window-effects-pointer-helpers-developers" (needs testing on a device)
+- [x] Startup feedback (busy pointer or bouncing icon) — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Visual bell — SetAccessibility.qml (kaccessrc Bell), hearth-kwin-settings (needs testing on a device)
+
+### Overview, switcher, desktops
+
+- [x] Overview (Super+W): all windows and desktops, search, drag windows between desktops — KWin's own, in Hearth's KDE colour scheme, opened from Mantel: Dock.qml / TaskStrip.qml Task view button "WinList.effect(\"overview\")", shortcuts.json "overview" (Meta+W, KDE's freed), hearth-pad View + Y; Milou in the image (build.sh "optional milou"); kwin-windows.yml: "Super+W opens the Overview", picture "kwin-overview" (needs testing on a device)
+- [x] Window view / Present windows — KWin's, from the Task view button's menu and Ctrl+F10 (shortcuts.json "present-windows"); kwin-windows.yml picture "kwin-present-windows" (needs testing on a device)
+- [x] Desktop grid — KWin's, from the Task view button's menu and Ctrl+F8 (shortcuts.json "desktop-grid"); kwin-windows.yml picture "kwin-desktop-grid" (needs testing on a device)
+- [x] Window switcher styles (Thumbnail grid, Large icons, … Cover switch, Flip switch) and their settings — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
+- [x] Second switcher (Alt+`, same app's windows) — SetKwinEffects.qml "Second switcher (Super+Tab)": its own look, "Which apps: Every window / One per app / Only the app you're on", which windows, minimized ([TabBoxAlternative]); Alt+` (KWin's, this app's windows) noted under Alt+Tab's "Look"; test_kwin_effects_extras.py "SecondSwitcher"; picture "kwin-16-window-effects-second-switcher" (needs testing on a device)
+- [x] Virtual desktops: add, remove, rename, rows, wrap around, OSD — SetKwinDesktops.qml (needs testing on a device)
+- [ ] Different tile layouts per desktop — needs newer KWin: KWin's tiles are one layout per screen in 6.3 (Debian 13); a layout per virtual desktop came with Plasma 6.4 (KDE bug 466031). Snap layouts' zones (SnapLayouts.qml) are the same on every desktop until then (S)
+
+### Window management
+
+- [x] Tiling editor (Super+T, Shift-drag into tiles) — SetKwinTiling.qml (needs testing on a device)
+- [x] Window behaviour: focus policy, raise on hover, click raises, focus stealing prevention — SetKwinWindows.qml (Personalization › Window behaviour, "Needs Mantel on KWin" under labwc): "Which window gets the keyboard" (click / follows the pointer / under the pointer / strictly under), "Wait before the focus follows", "Raise the window under the pointer" + "Raise after", "Clicking a window brings it to the front", "The pointer comes first", "Stop windows taking the keyboard" (Off…Extreme); kwinrc [Windows] through hearth-kwin-settings; test_kwin_settings.py "test_window_behaviour", "test_window_behaviour_page_writes_only_what_it_may"; desktop-test pictures "kwin-wb-0-labwc-window-behaviour", "kwin-wb-1-window-behaviour" (needs testing on a device)
+- [x] Title bar actions and Super+drag — SetKwinWindows.qml "Title bar": Double-click, Middle-click, Turning the wheel; "Super + drag anywhere in a window": Hold (Super / Alt), left / right / middle button (move, resize, window menu…), wheel; kwinrc [MouseBindings] (hearth-kwin-settings ALLOWED + ONLY_KEYS: only those keys); pictures "kwin-wb-2-window-behaviour-title-bar", "kwin-wb-3-window-behaviour-super-drag" (needs testing on a device)
+- [x] Window placement for new windows — SetKwinWindows.qml "Where new windows open" (middle, least covered, under the pointer, maximized, top-left, anywhere; kwinrc [Windows] Placement) and a link to Window rules for one app; picture "kwin-wb-3-window-behaviour-super-drag" (needs testing on a device)
+- [x] Snap zones: edges stick, gap sizes — SetKwinTiling.qml (needs testing on a device)
+- [x] Window rules page (per app, "Detect window", presets) — SetKwinRules.qml (needs testing on a device)
+- [x] Window menu "More actions" — hearth-windows.js "More actions": "Shade (roll up into the title bar)", "No title bar and frame (Alt+F3 brings this menu)", "Special window settings…" (hearth-kwin-bridge WindowRules → WinList windowRulesAsked → SetKwinRules.qml "Special settings for …" with "Make a rule for it", or its app's rule opened); kwin-windows-mock.js "More actions in Hearth's look"; kwin-windows.yml: "Special window settings opens Window rules for that window", pictures "kwin-window-more-actions", "kwin-window-special-settings", desktop-test "kwin-wb-4-window-rules-for-a-window". KWin puts script entries under its menu's Extensions; KWin's own More Actions stays too (needs testing on a device)
+- [x] Kill a frozen window (Ctrl+Alt+Esc) in Hearth's look — ForceClose.qml ("Click the window that isn't responding", "Force close"), title bar menu "Force close (not responding)…", hearth-kwin-bridge "queryWindowInfo" / "KILL_WAIT" / "killable"; kwin-windows.yml: "Force close ends a frozen window (asked, then made to)", pictures "kwin-force-close-pick", "kwin-force-close". Left: KWin's own automatic "not responding" notice stays KWin's (needs testing on a device)
+- [x] Session restore: reopen apps after restart — SessionRestore.qml, SetStartup.qml "Reopen my apps from last time" (off by default, WinList); test_system_settings_114.py "test_off_by_default_and_only_at_sign_in" (needs testing on a device)
+- [x] Plasma's KWin scripts (Minimize all, Desktop change OSD, video wall, sync skip-switcher) — SetKwinEffects.qml "Window helpers": "Minimize every window with Super+Shift+D", "Video wall", "Leave out of Alt+Tab what's left off the taskbar"; SetKwinDesktops.qml "Show the desktop's name when switching"; hearth-kwin-settings "scripts" (what's installed) and "scripting_start" (KWin loads or unloads them at once); test_kwin_effects_extras.py "Scripts"; picture "kwin-17-window-effects-pointer-helpers-developers" (needs testing on a device)
+- [x] Exclude a window from screen sharing (title bar menu) — hearth-windows.js "Hide from screen sharing" (and KWin's excludeFromCapture where it has it); hearth_screencast.py "hidden_windows"; cast-picker.qml "hidden from sharing and not listed"; kwin-windows.yml: "the screen-sharing picker leaves the hidden window out", pictures "kwin-window-menu-extras", "kwin-cast-hidden" (needs testing on a device)
+- [x] Picture-in-picture windows stay on top under KWin — shortcuts.json "rules": "picture-in-picture" (Firefox's "Picture-in-Picture", Chromium's "Picture in picture", by title and app: Firefox, Firefox ESR, LibreWolf, Chromium, Chrome, Brave, Edge, Vivaldi), hearth-windows.js `ruleMatches`; kwin-windows-mock.js "picture-in-picture windows stay on top", test_kwin_windows.py "test_picture_in_picture_rule"; kwin-windows.yml: "Firefox's picture-in-picture window stays on top", "the picture-in-picture window is still on top with another window in front", picture "kwin-pip-on-top". Hearth Player has no picture-in-picture (WebKitGTK has none) (needs testing on a device)
+
+### Screen edges, gestures, input
+
+- [x] Hot corners / screen edges page — SetKwinEdges.qml (needs testing on a device)
+- [x] Touchpad gestures (3/4-finger swipes, pinch) listed and switchable — SetMouse.qml lists KWin's gestures (switching them isn't possible on KWin 6.3) (needs testing on a device)
+- [x] Touchscreen edge swipes and gestures — SetKwinEdges.qml (needs testing on a device)
+- [x] Touchpad: the missing rows (disable with a mouse, middle-click emulation, scroll speed, edge scrolling, click method) — hearth-kwin-settings pointer-apply, SetMouse.qml (needs testing on a device)
+- [ ] Mouse: acceleration profile, scroll speed, middle-click paste, per-device — partly: acceleration and scroll speed (SetMouse.qml, hearth-kwin-settings pointer-apply), middle-click paste — SetMouse.qml: "EnablePrimarySelection" (kwinrc [Wayland], from the next sign-in); test_kwin_settings.py "test_sync_pointers_and_middle_paste"; picture kwin-21-mouse-on-kwin. Left: per-device settings (S)
+- [x] Mouse buttons: re-map extra buttons — SetMouseButtons.qml: "acceptedButtons: Qt.AllButtons" (press the button in the box; a key or combination in the key box), hearth-kwin-settings `mouse_rebind`: "ButtonRebinds][Mouse" (left and right never changed); test_kwin_settings.py "test_mouse_rebind", "test_mouse_rebind_refuses"; pictures kwin-16-mouse-buttons, kwin-17-mouse-buttons-press (needs testing on a device)
+- [x] Keyboard: Num Lock at start, layouts per window, compose key, typing delay — SetKeyboard.qml: "Num Lock when Desktop Mode starts", "Compose key", "Remember the layout" (KWin only: "visible: page.kwin"), "Wait before a held key repeats"; hearth-kwin-settings: "NUMLOCK = {'on': '0'", "SWITCH_MODES", "'RepeatDelay'"; test_kwin_keyboard.py "test_layouts_switch_compose_mode_repeat_numlock", "test_rows_are_kwin_only"; kwin-test.sh: "kcminputrc has no $l" (needs testing on a device)
+- [x] Touchscreen: which screen, turn it off — SetKwinTablet.qml, KwinCalibrate.qml (needs testing on a device)
+- [x] Drawing tablets — SetKwinTablet.qml, KwinCalibrate.qml (needs testing on a device)
+- [x] Game controllers as regular mouse/keyboard input left off — Hearth's controller mouse (hearth-pad); kwin/xdg/kwinrc: "gamecontrollerEnabled=false" (KWin 6.6's plugin; KWin 6.3 has none, so it only counts on a newer KWin); test_kwin_settings.py "test_game_controllers_left_off_for_newer_kwin"
+- [x] Sync the mouse and stylus pointers — SetKwinTablet.qml: "One pointer for the pen and the mouse" (kcminputrc [Tablet] "SyncWithMouse", KWin 6.7 and newer; greyed with why on 6.3); test_kwin_settings.py "test_sync_pointers_and_middle_paste"; picture kwin-09-tablet-and-touchscreen (needs testing on a device)
+
+### Accessibility (KWin's parts)
+
+- [x] Zoom with Mantel's keys, follow modes, pixel grid — SetAccessibility.qml, hearth-access (needs testing on a device)
+- [x] Magnifier (a lens around the pointer) — SetAccessibility.qml, hearth-access (needs testing on a device)
+- [x] Colour filters in Desktop Mode (greyscale, protanopia, deuteranopia, tritanopia, intensity) — SetAccessibility.qml, hearth-access (needs testing on a device)
+- [x] Invert colours (whole screen, one window) — SetAccessibility.qml: "Invert one window" (Super+Ctrl+U, KWin's InvertWindow), the whole screen through the "Inverted colours" filter; hearth-access apply_filter_kwin (invertWindow keeps KWin's invert effect loaded, unloads it when nothing needs it); test_hearth_dwell.py "InvertOneWindow"; CI kwin-ac-1 (needs testing on a device)
+- [x] Sticky, slow, bounce and toggle keys, mouse keys — SetAccessibility.qml: "Sticky keys", "Slow keys", "Bounce keys", "Mouse keys", "Toggle keys" (kaccessrc [Keyboard] ToggleKeysBeep); test_hearth_dwell.py "test_rows"; CI kwin-ac-2 (needs testing on a device)
+- [x] Dwell click — hearth-dwell (KWin script for where the pointer is, uinput virtual mouse, Esc lent to its cancel action only while the ring fills), Dwell.qml (the ring), SetAccessibility.qml "Click by resting the pointer" (off by default; rest time, click type, how still); test_hearth_dwell.py "Countdown", "Clicks"; CI kwin-ac-3..ac-6 (needs testing on a device; labwc: not offered)
+- [x] Shake cursor and Track mouse on Accessibility — SetAccessibility.qml, hearth-access (needs testing on a device)
+- [x] Activation sounds / visual bell — SetAccessibility.qml: "A sound for modifier keys" (kaccessrc StickyKeysBeep), "Toggle keys" (ToggleKeysBeep), "Flash the screen for the alert sound" (VisibleBell); test_hearth_dwell.py "test_rows"; CI kwin-ac-2 (needs testing on a device)
+
+### Xwayland and gaming
+
+- [x] Xwayland: X11 apps reading keys typed elsewhere (push-to-talk), X11 apps' scaling — SetKwinGames.qml (needs testing on a device)
+- [x] Allow tearing for full-screen games — SetDisplay.qml, hearth-screens (kwinrc `[Compositing] AllowTearing`, `tearing` in screens.json); test_hearth_screens.py; kwin-screens job "tearing last" (needs testing on a device)
+
+### Notifications and OSDs KWin shows
+
+- [x] Caps Lock / Num Lock and keyboard layout OSD — SystemOsd.qml "Caps Lock on", hearth-notifyd (the keyboards' LEDs; KWin's org.kde.keyboard "layoutChanged"; labwc: Settings › Keyboard's list, switched from the bar's layout item); test_notify_widgets_114.py, notify-widgets.yml pictures "08-osd-caps", "09-osd-layout", "kwin-03-layout-osd" (KWin switching itself) (needs testing on a device)
+- [x] Microphone mute OSD and "app tried to use a muted microphone" — SystemOsd.qml "Microphone muted", "The microphone is muted" (NotifyHub.micApps: PipeWire's Stream/Input/Audio while the default mic is muted); notify-widgets.yml pictures "10-osd-mic", "11-osd-mic-wanted" (needs testing on a device)
+
+---
+
+## Stage 3: written from scratch
+
+### Panels and widgets
+
+- [x] Floating panels, auto-hide, dodge windows, panel on any edge — `Islands.qml`, `Dock.qml`, `BarLayoutPicker.qml`, `SetBarDock.qml`
+- [x] App launcher with search, favourites, recent, categories, power actions — `Launcher.qml`, `MenuStyles.qml`
+- [x] Taskbar with pinned apps, grouping, jump lists, middle-click, reorder, Super+1–9 — `Dock.qml`, `TaskStrip.qml`
+- [x] System tray — `Islands.qml`, `Bar.qml`
+- [x] Clock with calendar, notification history and dashboard — `ClockPanel.qml`
+- [x] Media player controls in the bar — `MediaPill.qml`, `MediaCard.qml`, `MenuNowPlaying.qml`
+- [x] Quick settings (volume, Wi-Fi, Bluetooth, battery, brightness, power profile) — `QuickAccess.qml`
+- [x] Desktop clock and weather on the wallpaper — `DeskClock.qml`
+- [x] Show desktop — `Dock.qml`, `hearth-desk`
+- [x] Edit mode: add, move, resize and remove widgets on the desktop and in the bar — Widgets.qml, WidgetGallery.qml, WidgetArrange.qml, WidgetStore.qml, BarWidgets.qml; 1.14 round 2: the bar's own items moved, ordered and hidden (BarArrange.qml, BarLayout.qml, widget-tools.js "barLayout"; right-click the bar or Settings › Bar and dock › Arrange the bar); test_notify_widgets_114.py "test_bar_items_every_one_once_flame_kept_new_ones_in_place"; notify-widgets.yml pictures "19-bar-arranged", "20-arrange-items" (needs testing on a device)
+- [x] More panels (several bars, on several screens, clone a panel) — ExtraPanels.qml, BarArrange.qml "Clone the main bar", BarLayout.qml "p:<id>"; test_notify_widgets_114.py "test_panels"; notify-widgets.yml pictures "21-arrange-panels", "22-panels", "kwin-05-panel" (needs testing on a device)
+- [x] Sticky notes on the desktop — WidgetNotes.qml; widgets-test.yml (needs testing on a device)
+- [x] System monitor sensors on the desktop and in the bar — WidgetMonitor.qml ("hearth-tasks sample"), BarWidgets.qml; widgets-test.yml (needs testing on a device)
+- [x] Analog/binary/fuzzy clocks, world clocks — WidgetClock.qml ("binary", "fuzzy", cities), world clocks in the clock's panel (ClockPanel.qml "zoneTime", Settings › Date & time); test_notify_widgets_114.py "test_clocks"; notify-widgets.yml pictures "w-clock", "w-clock-2", "23-clock-panel-calendars" (needs testing on a device)
+- [x] Alternative calendars and holidays in the calendar — calendars.js (Islamic, Hebrew, Persian, Julian, Indian; ten countries' holidays and Islamic / Jewish / Persian days), WidgetCalendar.qml, ClockPanel.qml, SetDateTime.qml "The clock's panel"; test_notify_widgets_114.py "test_known_dates", "test_holidays"; notify-widgets.yml pictures "w-calendar", "23-clock-panel-calendars" (needs testing on a device)
+- [x] Weather report widget (forecast, °C/°F, place by name) — WidgetWeather.qml, hearth-widgets (Open-Meteo); widgets-test.yml (needs testing on a device)
+- [x] Folder view widget — WidgetFolder.qml; widgets-test.yml (needs testing on a device)
+- [x] Picture frame, web page, timer, calculator, colour picker, keyboard indicator — WidgetPhotos.qml, WidgetTimer.qml, and 1.14 round 2: WidgetWeb.qml (drawn by a browser with no window in a profile of its own, hearth-widgets "webshot"), WidgetCalc.qml (widget-tools.js "calc", never eval), WidgetColour.qml (KWin's picker or slurp + grim), WidgetKeys.qml; test_notify_widgets_114.py; notify-widgets.yml pictures "w-web", "w-calc", "w-colour", "w-keys" (dictionary, disk quota, comic, fifteen puzzle are in "Not for Hearth?") (needs testing on a device)
+- [x] Window list widget, pager with window outlines — WidgetWindowlist.qml, WidgetPager.qml (outlines from KWin's frames; labwc doesn't say which desktop a window is on, so there it shows the one you're on); notify-widgets.yml pictures "w-windowlist", "w-pager" (activity pager: the activity switcher, ActivitySwitcher.qml) (needs testing on a device)
+- [x] Printers queue in the tray — Islands.qml "cPrinters" (hearth-notifyd parse_lpstat, Cancel per job); test_notify_widgets_114.py "test_tray_readers"; notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Disks & devices in the tray — Islands.qml "cDisks" (hearth-notifyd parse_lsblk; Open, Safely remove, Eject through udisksctl); test_notify_widgets_114.py "test_tray_readers"; notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Camera / microphone / screen-recording "in use" indicator — CaptureIndicator.qml (recording, VNC), and 1.14 round 2: Islands.qml "cPrivacy" (the camera: hearth-notifyd camera_users, /dev/video* open; the microphone: PipeWire's recording streams); notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Background apps in the tray — Islands.qml "cBackground" (the portal's org.freedesktop.background.Monitor, else flatpak ps; Quit); notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Quick light/dark tile in Quick settings — QuickAccess.qml "Tile { navId: theme" (Auto off says so); test_notify_widgets_114.py "test_light_dark_tile"; notify-widgets.yml picture "14-quick-access" (needs testing on a device)
+
+### Search (KRunner-style) — the framework and plugins are on feature/search-store (merged)
+
+- [x] Search apps, Settings pages and single settings, games — `Launcher.qml`, `menu-search.js`, `settings-index.js`
+- [x] Run box (Super+R) — `WinTools.qml`, `RunView.qml`, `run-map.js`
+- [x] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help — SearchBar.qml "target: \"searchbar\"", search-bar.js "function arrange" / "function helpRows", SetSearch.qml "Search bar (Alt+Space)" (pluginOrder in hearth-search), Pad.qml "deskY" (Y on the desktop, D-pad / A / B); Alt+Space vs the layout switch: hearth-system "rc_with_search_key" (labwc gets a None binding, Alt+F2 still opens it), SearchBar.qml "altSpaceIsLayout", SetKeyboard.qml note; test_search_bar.py; searchbar.yml pictures "sb-01-empty" … "sb-12-keyboard-layout-switch" (needs testing on a device)
+- [x] Plugin: calculator, unit conversion, currency — search/calc.js, search/units.js, search/currency.js (needs testing on a device)
+- [x] Plugin: files and folders by name and content — hearth-search (SQLite FTS5 index) (needs testing on a device)
+- [x] Plugin: recent files and places, bookmarks, browser history — search/recent.js, search/browser.js (Firefox and Chromium-based, read from a copy: hearth-search-sources "read_copy"); test_search_plugins_114.py "test_browser_reads_a_copy_even_while_the_browser_holds_its_lock"; search-plugins.yml picture "01-bookmarks" (needs testing on a device)
+- [x] Plugin: open windows, virtual desktops, activities by name — search/windows.js, search/desktops.js (KWin desktops, Activities.qml); test_search_plugins_114.py "test_desktops_and_activities"; search-plugins.yml picture "02-activities" (needs testing on a device)
+- [x] Plugin: run a command, terminal command, kill an app — search/commands.js, search/kill.js ("kill <name>", asks first: SearchSources.qml "dialog.confirm"; never Hearth's own programs); test_search_plugins_114.py "test_kill_asks_first_and_never_hearths_own", "test_procs_and_kill"; search-plugins.yml pictures "03-kill", "04-kill-asks-first" (needs testing on a device)
+- [x] Plugin: web search keywords — search/web.js (needs testing on a device)
+- [x] Plugin: time in other cities, time-zone conversion — search/worldclock.js ("time in tokyo", "3pm london to tokyo"; summer time from hearth-search-sources zones); test_search_plugins_114.py "test_world_clock", "test_zones_follow_summer_time"; search-plugins.yml picture "05-world-clock" (needs testing on a device)
+- [x] Plugin: spell check, dictionary, special characters, emoji, colours — search/spell.js (hunspell; "define" opens Wiktionary), search/chars.js, search/emoji.js, search/colours.js (swatch in Launcher.qml / MenuSearch.qml); test_search_plugins_114.py "test_spell_and_dictionary", "test_special_characters", "test_colours"; search-plugins.yml pictures "06-spell", "07-characters", "08-colour" (needs testing on a device)
+- [x] Plugin: power and session, media control, store results — search/power.js (Restart, Shut down, Log out ask first), search/media.js (MPRIS), search/store.js ("install krita"); test_search_plugins_114.py "test_power_asks_first_where_it_closes_apps", "test_media", "test_store"; search-plugins.yml pictures "09-restart", "10-restart-asks-first", "11-media", "12-store" (needs testing on a device)
+- [x] Plugin: Hearth contacts, calendar events, notes — search/contacts.js, search/events.js, search/notes.js (hearth-search-sources pim: Hearth Contacts' .vcf, hearth-time --events, ~/Documents/Notes); test_search_plugins_114.py "test_contacts_events_notes", "test_pim"; search-plugins.yml pictures "13-contacts", "14-calendar", "15-notes" (needs testing on a device)
+- [x] Type on the desktop to search — Desktop.qml "SettingsNav.searchBar.openWith(event.text)", Settings › Search "Type on the desktop to search" (typeToSearch); test_search_bar.py "test_type_on_the_desktop"; searchbar.yml picture "sb-10-typed-on-desktop" (needs testing on a device)
+
+### Notifications
+
+- [x] Popups, history, Do Not Disturb, mute an app, Clear all — `Notifications.qml`, `ClockPanel.qml`, `SetNotifications.qml`
+- [x] History kept across restarts — DeskState.qml (~/.local/state/nimbus/notifications.json, one key per notification, SettingsWriter; Settings › Notifications › Keep the list after a restart); test_notify_widgets_114.py "test_history_kept_atomically_and_buttons_kept"; notify-widgets.yml "restored after it" check, picture "24-history-after-restart" (needs testing on a device)
+- [x] Per-app notification settings (allowed, pop-ups, sound, lock screen, priority) — hearth-notify, NotifyRules.qml, SetNotifications.qml; test_system_settings_114.py "test_only_changes_are_kept_and_merged", "test_the_server_follows_the_rules" (badges on the dock: see below; the lock screen part on labwc's lock only, docs/SYSTEM-SETTINGS.md) (needs testing on a device)
+- [x] Automatic Do Not Disturb in full-screen apps and while screen sharing, with a missed count — NotifyHub.qml "autoReason", Notifications.qml "onQuietEnded"; test_notify_widgets_114.py "test_automatic_quiet_never_touches_your_switch"; notify-widgets.yml "a notification popped up in full screen" check, pictures "04-quiet-fullscreen", "05-quiet-ended" (needs testing on a device)
+- [x] Do Not Disturb on a schedule, and its shortcut — NotifyHub.qml "inSchedule", SetNotifications.qml "On a schedule", Super+Alt+N (labwc rc.xml "W-A-n", shortcuts.json "dnd"); test_notify_widgets_114.py "test_dnd_shortcut_on_both"; notify-widgets.yml picture "12-settings-notifications" (needs testing on a device)
+- [x] Progress of jobs and file transfers (JobViewServer) — hearth-notifyd (org.kde.JobViewServer V1 and V2, only when nobody else has it), Islands.qml "cJobs", ClockPanel.qml (Pause, Cancel), a notification when done; a notification's "value" hint as a bar; test_notify_widgets_114.py "test_jobs_v1_and_v3"; notify-widgets.yml pictures "03-clock-panel-jobs", "kwin-02-clock-panel-jobs" (needs testing on a device)
+- [x] Reply from a notification, actions kept in history — NotifReply.qml; DeskState.qml "invoke" (each notification stays alive while it's in the list; after a restart, Open <app>), ClockPanel.qml; test_notify_widgets_114.py; notify-widgets.yml picture "07-history-with-buttons" (needs testing on a device)
+- [x] Badges and progress on dock icons (Unity launcher API) — hearth-notifyd "com.canonical.Unity.LauncherEntry", Dock.qml "DockBadge" (a running job's progress too); notify-widgets.yml pictures "02c-dock-badge", "kwin-01-popup-job-badge" (needs testing on a device)
+- [x] Notification sounds and a sound theme for system events — Sounds.qml, SetSounds.qml (Settings › Sound › Sounds), desktop/sounds/hearth (Hearth's own, tools/make-hearth-sounds.py, GPL-3.0; the freedesktop set played if installed: desktop/sounds/LICENSES.md); test_notify_widgets_114.py "test_every_event_has_hearths_own_sound_and_the_licences_are_written_down"; notify-widgets.yml picture "13-settings-sounds" (needs testing on a device)
+
+### Clipboard
+
+- [x] Clipboard history, pictures, pinned, Clear all keeping pinned, secrets skipped — `Clipboard.qml`, `hearth-clipboard`, `SetClipboard.qml`
+- [x] Clipboard actions (open a URL in…, QR code, edit an item) — Clipboard.qml "function more(i)" (⋯ on a text item: Open in <each browser>, Show as a QR code, Edit the text), hearth-clipboard "browsers", "open ID APP", "qr ID" (qrencode), "get", "edit ID", hearth_desktop_apps.py; test_clip_capture_114.py "ClipboardActions"; clip-capture.yml pictures "clip-more", "clip-qr", "clip-edit" (the link opened, the QR code read back with zbarimg, the edit saved) (needs testing on a device)
+- [x] Selection (middle-click) history and sync with the clipboard — Clipboard.qml "selWatcher" (wl-paste --primary --watch, only while history is on and you asked), hearth-clipboard "store --primary [--keep] [--sync]" (a selection still being dragged is one item; secrets and pictures never), "def sync" (no bounce); SetClipboard.qml "Selection history", "Keep the clipboard and selection in step" (~/.config/nimbus/clipboard.json through SettingsWriter, off by default); test_clip_capture_114.py "test_sync_puts_text_on_the_other_and_never_bounces"; clip-capture.yml pictures "clip-selection", "clip-settings" (checked with wl-copy --primary / wl-paste) (needs testing on a device)
+
+### Phone link (KDE Connect)
+
+- [x] Pairing, battery, ping, find my phone, clipboard, media, files, notifications with reply, remote input — `hosts/hearth-connect` (needs testing on a device)
+- [x] SMS/MMS: read conversations and send texts — hosts/hearth-connect/src/plugins/sms.rs, SetPhoneMessages.qml; hosts/hearth-connect/tests/test_phone_link.py against a pretend phone; phone-link.yml pictures (needs testing on a device)
+- [x] Phone calls: who's calling, mute ringer, media paused — plugins/telephony.rs; test_phone_link.py (needs testing on a device)
+- [x] Contacts from the phone into Hearth Contacts — plugins/contacts.rs; test_phone_link.py (needs testing on a device)
+- [x] Browse the phone's files (SFTP) — plugins/sftp.rs (sshfs); test_phone_link.py (needs testing on a device)
+- [x] Run commands — plugins/runcommand.rs, SetPhone.qml; test_phone_link.py (needs testing on a device)
+- [x] Phone controls PC volume, lock, presentation remote — hosts/hearth-connect/src/plugins/lock.rs (never unlocks), systemvolume.rs, presenter.rs; test_phone_link.py: "test_20a_lock_this_pc_from_the_phone"; phone-link.yml round2 pictures (needs testing on a device)
+- [x] PC sends its notifications to the phone; PC as a remote keyboard for the phone — plugins/sendnotify.rs (session bus watch, choices in settings.json "notifyOut"), plugins/remote.rs, PhoneRemote.qml; test_phone_link.py: "test_20b_this_pcs_notifications_on_the_phone", "test_20c_this_pc_types_and_points_on_the_phone" (needs testing on a device)
+- [x] Signal report, stop the screensaver while connected, share text and URLs — daemon.rs set_awake (logind idle:sleep inhibitor), plugins/mod.rs share_notice (Copy / Open), "send"; test_phone_link.py: "test_20d_calls_mute_and_staying_awake", "test_20e_text_and_links_both_ways" (needs testing on a device)
+- [ ] Phone as a second screen, Bluetooth link (L) — later, the owner's call
+- [x] Phone tray item and Settings page — PhoneStatus.qml, SetPhone.qml, Quick Access tile; phone-link.yml pictures (needs testing on a device)
+
+### Remote desktop and screen recording
+
+- [x] Use this PC from anywhere (Moonlight through Tailscale, Sunshine) — `hearth-remote-desktop`, `SetRemote.qml`
+- [x] Remote desktop server (the owner dropped RDP for VNC) — hearth-vnc (VeNCrypt TLS only, Tailscale/home network, password in the keyring, lock-out after five tries, view only, Disconnect), SetRemoteDesktop.qml, KWin control through Hearth's RemoteDesktop portal ("Allow control?", hearth-kwin-cast input) with keyboard, pointer and touch (hearth_screencast.py "KEYBOARD | POINTER | TOUCHSCREEN", hearth-kwin-cast "td" / "tm" / "tu" / "tf"); test_remote_record.py, test_kwin_input.py "test_touch_lines", remote-record.yml pictures; docs/ROADMAP.md's "Remote desktop and recording" line ticked (needs testing on a device)
+- [x] Screen recording, instant replay, sound recorder — `hosts/hearth-recorder`
+- [x] Record a window, system sound and the microphone together, choose format and quality — hearth-record and Recorder.qml (a screen or a window through the portal, this PC's sound and the microphone, 30/60 fps, GPU encoder with x264 fallback); 1.14: "format" MP4 / WebM (VP9 on the GPU or VP8, Opus) / MKV / GIF (ffmpeg's palette GIF when you stop, state "converting"), "quality" Best / Good / Smaller file (record.json, only when changed), Recorder.qml "hearth-recording-popup" (Recording · time · Stop · hide; "Show the Recording pop-up"); test_remote_record.py, test_clip_capture_114.py "Recorder"; clip-capture.yml pictures "rec-panel", "rec-popup" (needs testing on a device)
+- [x] Screenshot tool like Spectacle — Hearth Capture (Capture.qml, CaptureEditor.qml, hearth-capture-helper: all / screen / window / area, delay, pointer, arrows, boxes, pen, text, blur, pixelate, numbers, crop, copy/save, OCR with tesseract, QR codes); test_hearth_capture.py, capture-polkit-test.yml pictures. 1.14: scrolling capture (feasible on KWin: hearth-capture-helper "scroll" takes the area again and again through hearth-screenshot / KWin's CaptureArea, or grim -t ppm on labwc, turns the mouse wheel through a virtual mouse or lets you scroll, and stitches by matching rows, a toolbar and footer kept once; Capture.qml "Scrolling", "hearth-capture-scroll" pill with Done / Cancel) and Share (CaptureEditor.qml "function share(": Copy, Save, Open with <apps for pictures>, Send to <phone> through Phone link); test_clip_capture_114.py "Scrolling", "Share"; clip-capture.yml pictures "cap-take-scroll", "cap-scroll-pill", "cap-scroll-result", "cap-share" (a real terminal scrolled and joined in CI) (needs testing on a device)
+
+### Files (Dolphin's features)
+
+- [x] Views, tabs, places, Trash, previews, filter, search, hidden files, archives, batch rename, Open in Terminal, network shares, undo, details, properties — `FileManager.qml`, `hearth-files`, `FileProperties.qml`
+- [x] Split view (F3) — FilesSplitPane.qml (needs testing on a device)
+- [x] Terminal panel (F4) — FilesTerminal.qml (needs testing on a device)
+- [ ] Tags, ratings and comments (M) — partly: tags (user.xdg.tags, Tags › menu, a Tags list in the left menu, find by tag; hearth_files_extras.py, FilesExtras.qml; test_files_extras.py: "test_tags_set_list_find_and_in_listings"; files-extras.yml pictures). Left: ratings and comments (S) — later, the owner's call
+- [x] Group by — FileManager.qml (type, date, size, tag); files-extras.yml "files-x1-tags-grouped" (needs testing on a device)
+- [x] Git status badges — hearth_files_extras.py git_status, FilesMarks.qml; test_files_extras.py: "test_git_status_badges"; files-extras.yml "files-x4-git" (needs testing on a device)
+- [x] Act as administrator — FilesExtras.qml, os/system_files/usr/libexec/nimbus/hearth-files-admin (never /boot, /efi, the image, fstab, kernel/boot settings), its own polkit action fun.hearthos.files-admin (auth_admin_keep for it alone), every name made in a copy or move checked; test_files_extras.py: "test_never_what_starts_the_pc"; files-extras.yml "files-x6-admin" (needs testing on a device)
+- [x] Checksums, permissions and owner tabs in Properties — FileProperties.qml (SHA-512, compare a pasted one, group, whole folder, owner as administrator); test_files_extras.py: "test_chmod_tree_and_groups"; files-extras.yml "files-x7-checksums", "files-x8-permissions" (needs testing on a device)
+- [x] Mount an ISO, MTP phones, PTP cameras — hearth_files_extras.py iso_mount (udisks, read only), portable (gvfs); test_files_extras.py: "test_iso_mount_and_close_through_udisks", "test_phones_and_cameras_from_gio"; files-extras.yml "files-x5-iso-menu", "files-x1-tags-grouped" (needs testing on a device)
+- [x] Service menus — hearth_files_extras.py service_menus / service_run (kio/servicemenus, kservices5/ServiceMenus); test_files_extras.py: "test_service_menus_kde_style"; files-extras.yml "files-x2-menu" (needs testing on a device)
+
+### File search and indexing
+
+- [x] File indexing (names and contents) with folders to skip and battery limits — hearth-search, SetSearch.qml (needs testing on a device)
+- [x] Recent files tracking and "forget recent files" — SetRecentFiles.qml, hearth_files_extras.py recent_*; test_files_extras.py: "test_recent_files_privacy"; files-extras.yml "files-x10-recent-privacy" (needs testing on a device)
+
+### Passwords, wallet, vaults
+
+- [x] Password store (Secret Service, unlocked at login, a manager page) — SetPasswords.qml (needs testing on a device)
+- [x] SSH and GPG passphrases asked in Hearth's look — AskPass.qml, hearth-askpass (SSH_ASKPASS from nimbus-session), pinentry-hearth (the image's pinentry; the classic prompts when Mantel isn't there); test_net_signin_114.py "test_pinentry_speaks_assuan", "test_the_answer_comes_back_through_a_private_fifo", desktop-test picture ss-askpass (needs testing on a device)
+- [ ] Vaults: encrypted folders in the tray, auto-lock, offline-only — partly: SetVaults.qml, hearth-vaults (gocryptfs or CryFS), the bar's vault button (VaultStore.qml), lock after idle and when the screen locks (Lock.qml); test_net_signin_114.py "test_create_unlock_lock_and_the_password_only_on_stdin", desktop-test picture ss-vaults. Left: offline-only (S)
+- [x] Password prompts for admin actions (Polkit agent) in Hearth's look — Mantel's own agent (PolkitPrompt.qml, polkit-actions.js, hearth-polkit-fallback with the classic agent as fallback); test_hearth_polkit_mantel.py, capture-polkit-test.yml pictures; fingerprint next to the password (hearth-fingerprint-polkit, docs/FINGERPRINT.md; fingerprint-pam.yml; picture ss-polkit-finger) (needs testing on a device)
+
+### Activities
+
+- [x] Activities — Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Recent files and privacy per activity (1.14 wave 3): each activity its own list, shared, or "Don't remember" — activities.js RECENT, Activities.setRecent, ActivitySwitcher.qml "Recent files" row, SetRecentFiles.qml "Activities", hearth_files_extras.py activity_mark / activity_tidy / recent_visible; test_store_extras.py "RecentPerActivity", activities-store.yml "Recent on Work" notice, "as-5-recent-activities", "as-6-activity-recent", "as-9-private-dont-remember" (needs testing on a device). Super+Q stays Close (the owner's decision; shortcuts.json "close" Meta+Q) (M)
+
+### App store and updates
+
+- [x] App store (Flathub, Debian packages) — Bazaar + `SetApps.qml`, `DebInstaller.qml`
+- [x] System updates with the previous version kept — `SetUpdates.qml`, bootc
+- [ ] Discover's extras — partly: reviews and ratings, the verified label and links (SetStore.qml, on feature/search-store, merged); update notifications with Update all, off-able — StoreWatch.qml, hearth_store_extras.py check / prefs-set: "as-1-update-notice", "as-2-store-updates"; permission changes shown and asked before updating (Update all leaves them out) — hearth_store_extras.py new_perms / update_apps, SetStore.qml "Update and allow": "as-3-new-permissions"; drivers (Nvidia, firmware-*, microcode: read-only list, install with a password through hearth-admin driver-install → hearth-unlock --install-package) — StoreDrivers.qml, hearth_store_extras.py drivers: "as-4-drivers"; test_store_extras.py, test_hearth_unlock.py "test_driver_install_only_takes_drivers", polkit-rules.test.js, activities-store.yml (needs testing on a device). Left: fonts (L)
+- [x] App permissions page (Flatpak overrides) — SetAppPermissions.qml, hearth-flatpak-perms (flatpak override --user, Reset); test_settings_more_114.py "test_permissions_from_metadata_and_your_overrides"; picture ss-app-permissions (needs testing on a device)
+- [x] Firmware updates (fwupd) with a notification — SetFirmware.qml, hearth-firmware, hearth-sysset-admin (system firmware shown, never installed: red flag 2); the notification (FirmwareWatch.qml); the update history (SetFirmwareHistory.qml, hearth-firmware "history"; test_settings_more_114_b.py "test_history"; picture ss-firmware-history) (needs testing on a device)
+- [x] Firmware security (Secure Boot, TPM, HSI level) — SetFirmware.qml, hearth-firmware; test_system_settings_114.py "test_security_level", "test_secure_boot_words" (needs testing on a device)
+- [x] Shut down or restart after installing updates — SetUpdates.qml "Shut down when it's done" and "Shut down and finish updating" (a minute to cancel); picture ss-updates-shutdown (needs testing on a device)
+- [x] Backups of your files to a drive — reused: Home server › Backups & sync (SetHomeBackups.qml: to a drive, another Hearth device or the cloud), linked from Updates & recovery (settings-pages.js LINKS "updates"); feature/pc-backups (UrBackup for the house's PCs) is already in feature/kwin-1.14 (needs testing on a device)
+
+### Network
+
+- [x] Wi-Fi networks, hidden, forget, properties, hotspot — `SetWifi.qml`, `DeviceSettings.qml`, SetHotspot.qml
+- [x] Tailscale — `SetHomeTailscale.qml`
+- [x] Wired, mobile broadband, editing any connection — SetNetDetails.qml, hearth-network (DNS, metered, MAC, IP by hand, IPv6, auto-connect, MTU, 802.1X PEAP/TTLS/TLS/PWD for Wi-Fi and wired, mobile broadband APN/PIN/roaming, adding wired, mobile and enterprise Wi-Fi); test_net_signin_114.py "test_8021x_is_checked_and_its_password_goes_to_the_editor", "test_mobile_broadband", pictures ss-net-add, ss-net-mobile (needs testing on a device)
+- [x] VPN — SetVpn.qml, hearth-network: WireGuard and OpenVPN from their file; IPsec (strongSwan or Libreswan), L2TP, PPTP, OpenConnect, SSTP and Fortinet by hand, each only with its NetworkManager plugin (a note names the missing package); test_net_signin_114.py "test_vpn_by_hand_puts_the_password_on_stdin_only", "test_a_missing_plugin_says_which_one_and_adds_nothing", picture ss-vpn-add (needs testing on a device)
+- [ ] Wi-Fi QR codes (show one, scan one) — partly: show one (SetNetDetails.qml "Share", hearth-network wifi-qr through qrencode); test_net_signin_114.py "test_wifi_qr_goes_through_qrencodes_stdin", picture ss-net-qr. Left: scan one (S)
+- [x] Proxy settings (none, automatic, by hand) — SetProxy.qml, hearth-network; test_system_settings_114.py "test_proxy_saved_with_settings_io_and_handed_on" (needs testing on a device)
+- [x] Firewall page — SetFirewall.qml, hearth-firewall (firewalld or ufw; SSH and Tailscale kept when it turns on; off, opening a port and letting everything in ask for a password); test_net_signin_114.py "test_turning_on_keeps_ssh_and_tailscale_and_ssh_cant_be_closed", picture ss-firewall (needs testing on a device)
+- [x] Duplicate a connection, network speed in the tray — hearth-network duplicate (SetNetDetails.qml), NetSpeed.qml in Bar.qml and Islands.qml (Settings › Bar and dock, off by default); test_net_signin_114.py "test_duplicate_names_the_copy_and_never_autoconnects", "test_net_speed_is_off_until_turned_on", the bar in every ss-* picture (needs testing on a device)
+- [x] "Share this folder" (SMB) in Files' Properties — FileProperties.qml Sharing tab through hearth-home-server; test_files_extras.py: "test_share_this_folder_through_home_server"; files-extras.yml "files-x9-sharing" (needs testing on a device)
+
+### Online accounts
+
+- [x] Online accounts (Nextcloud, CalDAV/CardDAV, WebDAV, IMAP, Google, Microsoft) for calendars, contacts and files — SetAccounts.qml, hearth_accounts.py, hosts/hearth-contacts/src/online.rs, hosts/hearth-time/src/accounts.rs, docs/ONLINE-ACCOUNTS.md; test_online_accounts.py, test_account_calendars.py, online-accounts.yml (Google/Microsoft need the owner's client ids; no Hearth app reads mail yet) (needs testing on a device)
+
+### Accounts, sign-in, login
+
+- [x] Users: add, remove, account type, picture, password — `SetUsers.qml` (account type: test_system_settings_114.py "test_user_type_plan")
+- [x] Sign in automatically, lock after sleep — `SetSignin.qml`
+- [x] Fingerprint sign-in and enrolling fingers (fprintd) — SetSignin.qml, hearth-fingerprint, hearth-fingerprint-pam, Lock.qml and kwin-lock (next to the password, never instead), docs/FINGERPRINT.md; fingerprint-pam.yml (the password always works, 30 checks), picture ss-signin-finger. The login screen keeps the password only (it unlocks the keyring) (needs testing on a device)
+- [x] Cropping the account picture — SetUsers.qml (drag and zoom in a circle, 512 × 512); picture ss-users-crop (needs testing on a device)
+- [ ] Login screen settings and Hearth's own login screen — partly: the greetd greeter (os/system_files/usr/share/hearth/greeter, hearth-login-screen, hearth-greetd.service with SDDM coming back by itself), Sign-in options switch with Preview (LoginScreenSwitch.qml), Login screen page with a background (SetLoginScreen.qml); test_hearth_login_screen.py, login-greetd-test.yml. Left: it's off by default and SDDM is still the display manager until it's proven on a device (S)
+- [x] First-run account setup on pre-installed PCs — it wasn't covered (no account: nothing signed in and setup never came up; setup had no account step). Now `hearth-oem-account` (+ .service, before nimbus-autologin, never a stop; decides once, and only on a PC with no account anywhere: /etc/passwd, /home, systemd-homed, NSS) makes a stand-in "hearth" account, nimbus-session opens setup for it, and setup's "Make it yours" step (ui/index.html, `hearth-admin oem-finish`, `setup.oemFinish`) sets your name, password and time zone; until then setup comes back at each start, and Game Mode's Settings › Sign-in, Mantel's Settings › Users (SetUsers.qml, with the fields to finish it) and a one-time notification (hearth-oem-notice) say "Finish setting up: your name and password" (needs testing on a device) — test_hearth_oem_setup.py: "test_sets_name_password_and_time_zone_then_removes_the_mark"; tools/ui-check.js "pre-installed PC"
+- [x] Switch user and the extra log out choices — PowerMenu.qml, hearth-session-actions (Switch user through SDDM/LightDM, Hibernate, Restart into firmware setup, Log out; each only where it works), Launcher "More choices…"; test_net_signin_114.py "test_switch_user_needs_a_display_manager_seat", picture ss-power-menu (needs testing on a device)
+
+### Region, language, time
+
+- [x] Date & time — `SetDateTime.qml`
+- [x] Keyboard layouts — `SetKeyboard.qml` (labwc; see Stage 1's audit line for KWin)
+- [x] Language of the system, several in order — language (SetRegion.qml, hearth-region); several in order (SetLanguages.qml; picture ss-languages); downloading translations and dictionaries for them: Flatpak apps' translations (flatpak extra-languages for you) and Hunspell dictionaries into ~/.local/share/hunspell (SetLanguagePacks.qml, hearth-langpacks; the system's own apps come with their translations in the image; test_settings_more_114_b.py "LanguagePacks"; picture ss-language-packs) (needs testing on a device)
+- [x] Formats: numbers, currency, dates, units, paper size — SetRegion.qml, hearth-region "FORMAT_KEYS = ('LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAPER')"; test_system_settings_114.py "test_localectl_parse" (needs testing on a device)
+- [x] Spell check settings for apps — SetSpellcheck.qml, hearth-region "spell-set" (Sonnet.conf [General], only its keys); test_settings_more_114.py "test_spell_keeps_other_lines"; picture ss-spellcheck (needs testing on a device)
+- [x] Input methods for Chinese/Japanese/Korean (fcitx5) — SetInputMethods.qml, hearth-region "im", "im-set", "im-install" (optional: from Flathub when asked; on makes it KWin's input method in your kwinrc only, off gives the on-screen keyboard back); test_settings_more_114.py "test_fcitx_on_and_off_only_touch_its_key"; picture ss-input-methods (needs testing on a device)
+
+### Look
+
+- [x] Dark / light / automatic, accent colour — `SetAppearance.qml`, `Theme.qml`
+- [x] Wallpaper: pictures, moving, your own — `Wallpaper.qml`, `SetAppearance.qml`
+- [x] Boot splash choice — `SetBoot.qml`, `SetBootFrames.qml`
+- [x] Fonts viewer, install and remove — `hosts/hearth-fonts`
+- [x] Wallpaper per screen, slideshow, picture of the day, light/dark wallpaper — a wallpaper per activity (Activities.qml, `Theme.activityWall`); per screen and a slideshow (SetWallpaperMore.qml, WallShow.qml, Wallpaper.qml "WallShow.forScreen"; picture ss-wallpaper-more). picture of the day (hearth-potd: Bing, NASA APOD, Wikimedia Commons, off by default, kept a week; WallShow.qml "potdPath") and a light/dark pair (WallShow.qml "pairWall"); test_settings_bits_114.py "test_downloaded_once_a_day_and_kept", "test_wallshow_order_and_off_by_default"; picture ss-wallpaper-potd (needs testing on a device)
+- [ ] Save your own look as a theme (S)
+- [x] System fonts — UI font and size, fixed-width font, smoothing, hinting, font DPI (SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_set_saves_merges_and_hands_on_only_to_hearths_files"); small and window title fonts (hearth-lookset smallFont/titleFont: kdeglobals smallestReadableFont and [WM] activeFont, GNOME's titlebar-font; test_settings_more_114.py "test_small_and_title_fonts"; picture ss-fonts-small). sub-pixel order (hearth-lookset "subpixel": fontconfig rgba, GNOME font-rgba-order, kdeglobals XftSubPixel; test_settings_bits_114.py "test_handed_on_only_with_subpixel_smoothing"; picture ss-fonts-subpixel) (needs testing on a device)
+- [x] Cursor theme and size — SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_theme_lists" (needs testing on a device)
+- [x] Icon theme choice — SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_theme_lists" (needs testing on a device)
+- [x] App style: window frame colour intensity, "apps follow Hearth" — frame colour intensity (SetLookMore.qml, desktop.json frameTint, hearth_aurorae.py "tint_colors" / "tint_themerc" for KWin and labwc; test_settings_more_114.py "test_frame_tint"; picture ss-look-more). "Apps follow Hearth" (SetLookMore.qml, desktop.json appsFollow, hearth-theme "apps_follow", theme/apply.sh; test_settings_bits_114.py "test_off_and_on_again"; picture ss-look-apps) (needs testing on a device)
+- [x] Splash at sign-in — SigninSplash.qml (flame, logo or plain; clicks go through it, gone after 2.5 s, once per sign-in), SetLookMore.qml; test_settings_more_114.py "test_watchers_are_loaded_by_file_name_and_cant_hold_the_desktop_up"; pictures ss-look-more, ss-signin-splash (needs testing on a device)
+- [x] Keyboard RGB lights follow the accent — hosts/linux/desktop/shell/hearth-kbd-lights (OpenRGB keyboards only, else /sys/class/leds/*kbd_backlight*/multi_intensity; "apply" writes nothing unless desktop.json says kbdLights true), KbdLights.qml: "readonly property bool on: Settings.loaded && Settings.kbdLights", SetAppearance.qml: "Keyboard lights follow the accent" (off by default), 70-hearth-backlight.rules: "TEST==\"multi_intensity\""; test_shell_bits_114.py, desktop-test "Keyboard lights, Log out?, accents by touch (1.14)" (a pretend LED: off writes nothing, on follows #ff7a2f → "255 122 47"), picture "set-kbd-lights" (needs testing on a device)
+
+### Sound
+
+- [x] Volume, mute, over-amplification, devices, per-app mixer — `SetSound.qml`, `Mixer.qml`
+- [x] Device profiles, balance, speaker test — SetSoundSpeakers.qml, hearth-sound "balance", "speaker-test"; test_settings_more_114.py "test_balance_keeps_the_loudest_level_and_leaves_centre_alone", "test_speaker_tone_is_only_in_its_channel"; picture ss-sound-speakers (needs testing on a device)
+- [x] Microphone test and push-to-talk mute shortcut — SetPushToTalk.qml, PushToTalk.qml, hearth-ptt (KWin's global shortcuts, pressed/released; the microphone's mute put back when it stops); test_settings_more_114.py "test_keys_and_only_under_kwin"; picture ss-push-to-talk (needs testing on a device)
+- [x] Move one app's sound to another device, per-app input — each app's output (SetSoundApps.qml "Plays on", Mixer.qml "outOf" / "sendTo"; picture ss-sound-apps). per-app input (SetSoundApps.qml "Apps using a microphone", Mixer.qml "takeFrom", hearth-sound "route"; test_settings_bits_114.py "test_route_is_argument_lists"; picture ss-sound-apps-mic) (needs testing on a device)
+- [x] Scroll on an app's dock icon to change its volume — Dock.qml "wheelVolume", Mixer.qml "stepFor", Settings.dockScrollVolume (switch on SetSoundApps.qml); test_settings_more_114.py "test_settings_keys_saved_one_by_one" (needs testing on a device)
+- [x] Warning when "raise maximum volume" stays on — SetSound.qml: "Louder than 100% can hurt" asked before it turns on, and "The volume is over 100%" while it is (needs testing on a device)
+
+### Power
+
+- [x] Power profiles, timers, power button, low battery — `SetPower.qml`, `IdlePower.qml`, `BatteryWatch.qml`
+- [ ] On AC / on battery / low battery settings, lid action, dim before off (M)
+- [x] Battery charge limit — SetPower.qml through hearth-hwset (/etc/hearth/hardware.json); test_system_settings_114.py "test_charge_limit_through_hwset" (needs testing on a device)
+- [x] Apps blocking sleep, Hibernate and hybrid sleep — SetPowerAwake.qml (logind's inhibitors, hearth-powerset "parse_inhibitors"), Hibernate in SetPower.qml only where hearth-powerset "hibernate_check" says it can (kernel, Secure Boot lockdown, swap on a drive big enough, logind), asked first until it has come back once, booting never changed; test_settings_more_114.py "test_hibernate_is_offered_only_when_everything_allows_it", "test_inhibitors_skip_system_ones"; pictures ss-power-awake, ss-power. Hybrid sleep only where Hibernate is offered and logind agrees, asked first until a hibernate has come back (SetPower.qml, hearth-powerset "hybrid_check"; test_settings_bits_114.py "test_only_where_hibernate_works"; picture ss-power-hybrid) (needs testing on a device)
+- [x] Battery health, cycle count, energy graphs — SetBattery.qml (health ring, cycles, charge and power graphs from UPower's GetHistory), hearth-powerset "history"; test_settings_more_114.py "test_battery_history_and_upower"; picture ss-battery (needs testing on a device)
+- [x] Batteries of Bluetooth devices, mice and controllers in Quick settings — QuickAccess.qml "devBatts", SetBattery.qml "Your devices' batteries", SetBtDevices.qml (needs testing on a device)
+
+### Devices and hardware
+
+- [x] Bluetooth: on/off, pair, connect — `SetBluetooth.qml`
+- [x] Printers — `SetPrinters.qml`
+- [x] Game controllers: test and calibrate — `hosts/hearth-gaming`, `SetController.qml`
+- [x] Bluetooth: send/receive files, battery, rename, trust/block — sending, battery, trust and block (SetBtDevices.qml, hearth-bt); receiving, asked about each file (or taken from trusted devices when you allow it), and renaming this PC (SetBtReceive.qml, BtReceive.qml, hearth-bt-receive: obexd agent, BlueZ system-alias); test_settings_more_114.py "test_bluetooth_info", test_settings_more_114_b.py "Bluetooth"; pictures ss-bluetooth-devices, ss-bluetooth-receive, ss-bt-receive-ask (needs testing on a device)
+- [ ] Printers: queue window, ink notices, Windows shared printers — partly: the print queue (SetPrintQueue.qml, hearth-printq; picture ss-print-queue); ink and toner levels and the low notice (SetInkLevels.qml, InkWatch.qml, hearth-ink: CUPS over IPP; test_settings_more_114_b.py "test_ipp_round_trip"; pictures ss-ink-levels, ss-ink-notice). Left: Windows shared printers (S)
+- [x] Scanners: multi-page PDF and feeders, checked — scanners checked (SetScanners.qml, hearth-printq; picture ss-scanners); Scan to PDF: page after page or the whole feeder, reorder, remove, one PDF in Documents (SetScanPdf.qml, hearth-scan); test_settings_more_114_b.py "Scan"; picture ss-scan-pdf (needs testing on a device)
+- [x] Thunderbolt devices: allow once or always, forget — SetThunderbolt.qml, hearth-thunderbolt; test_system_settings_114.py "test_allow_and_forget", "test_no_bolt" (needs testing on a device)
+- [x] Removable storage: what happens on plug-in — SetUsbDevices.qml (Ask / Open in Files / Nothing: Settings.removable), DeviceWatch.qml "drive" (udev, hearth-files mount); pictures ss-usb-devices, ss-drive-plugged (needs testing on a device)
+- [x] USB device permission prompts — DeviceWatch.qml "usb" (a notice for a new device; where USBGuard blocked it, Allow), SetUsbDevices.qml, hearth-usbdev (never blocks by itself); test_settings_more_114.py "test_usb_devices_from_sysfs"; picture ss-usb-devices (needs testing on a device)
+- [x] Touchscreen calibration — KwinCalibrate.qml, SetKwinTablet.qml (from feature/kwin-pages, merged): four targets, KWin's calibrationMatrix; under KWin only (needs testing on a device)
+
+### Startup, session, defaults
+
+- [x] Default apps per kind — `SetDefaults.qml`
+- [x] Autostart page — SetAutostart.qml, hearth-autostart (add an app or a command, remove yours, turn on/off; a system one never deleted); test_settings_more_114.py "test_a_command_survives_the_round_trip", "test_a_system_one_is_never_deleted"; picture ss-autostart (needs testing on a device)
+- [x] Background services page — SetServices.qml, hearth-services; test_system_settings_114.py "test_a_service_for_everyone_is_masked_for_you" (needs testing on a device)
+- [x] File associations editor — SetFileTypes.qml, hearth-mime (every kind, its endings, the app it opens in, your own endings in mime/packages/hearth-user.xml); test_settings_more_114.py "test_types_set_and_reset", "test_own_endings_file"; picture ss-file-types (needs testing on a device)
+- [x] Desktop session rows — SetStartup.qml: "Reopen my apps from last time", "Confirm before logging out" (Leave.qml / LeaveConfirm.qml: the app menus, Super+X and the desktop menu ask first; off by default, as before), "Default leave option" (PowerMenu.qml: "items.findIndex(x => x.label === Settings.leaveDefault)"); test_shell_bits_114.py, desktop-test checks (asks first, Esc cancels, Enter logs out, the power menu opens on Restart), pictures "set-leave", "leave-confirm", "power-default" (needs testing on a device)
+- [x] Menu editor ("Edit app…") — SetMenuEditor.qml, hearth-menu (your copy of the entry, X-Hearth-Edited, Put back), "Edit app…" in the app menu's right-click (shell.qml); test_settings_more_114.py "test_save_makes_your_copy_and_reset_puts_it_back"; picture ss-menu-editor (needs testing on a device)
+
+### Info and system
+
+- [x] About this PC — `SetAbout.qml`, `ResourceMonitor.qml`, `DeviceManagerView.qml`
+- [x] Task manager — `TaskManager.qml`, `hearth-tasks`
+- [x] Disk manager and SMART — `hosts/hearth-disks`, `SetHomeDrives.qml`
+- [ ] Info Center's technical pages (OpenGL/Vulkan/Wayland, modules, interrupts, PCI/USB, Samba, sensors) — partly: processor, graphics card, memory, Vulkan and OpenGL, PCI, USB, energy, and now temperatures & fans (lm-sensors or /sys/class/hwmon, live), kernel modules and interrupts (SetInfoCenter.qml, hearth-info); test_settings_more_114_b.py "InfoCenter"; pictures ss-info-*, ss-info-sensors, ss-info-modules, ss-info-interrupts. Left: Samba (S)
+- [x] Out-of-memory notification with tips — OomWatch.qml (the kernel's oom_kill count, a notice with tips and Memory settings; memory pressure tip at most every 6 h; Hearth's guard tells its own); picture ss-oom-notice (needs testing on a device)
+- [x] Welcome app once per new version — Welcome.qml, welcome.json ("1.14"), seen kept in ~/.local/state/nimbus/welcome.json; picture ss-welcome (needs testing on a device)
+
+### Hearth-specific extras
+
+- [x] Emoji picker: mixed skin tones, sizes — hosts/hearth-emoji/ui/index.html: "Two skin tones" (13 two-person emoji, right-click / long touch / Shift+F10 / View), Small / Medium / Large (the size button, Ctrl + / Ctrl −, LT / RT), lib.rs "save_size" (only that key changes); test_shell_bits_114.py (Unicode's mixed-tone sequences), lib.rs saved_file_round_trip, apps-create pictures "emoji-two-tones", "emoji-large", "emoji-small" (needs testing on a device)
+- [x] On-screen keyboard press-and-hold for special characters, checked on touch — ui/osk/hearth-osk.js "hoverAlt" and the web page's "pointermove" slide, OskKey.qml: "onPositionChanged … owner.slideTo(owner.altAt(p.x, p.y))" (a long touch opens the accents, slide onto one and lift to type it; holding A on the controller as before); test_shell_bits_114.py, desktop-test (long touch on e, slid to the third accent by its place on screen, lifted: typed "ê"; A held on a), pictures "osk-touch-hold", "osk-touch-slide", "osk-pad-hold" (needs testing on a device)
+
+---
+
+## Not for Hearth? (the owner decides)
+
+The list in feature/kde-feature-list's KWIN.md stands as it is, plus:
+
+- **RDP server (KRdp)**: dropped by the owner (Nov 16, 2026) for the VNC server (hearth-vnc).

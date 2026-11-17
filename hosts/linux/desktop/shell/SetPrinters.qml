@@ -108,6 +108,14 @@ SetPage {
             text: "No printers yet."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
         }
     }
+    // 1.14: the print queue and scanners (KDE's print queue window and scanner check).
+    SetCardGroup {
+        title: "Queue and scanners"
+        SetRow { icon: "list"; title: "Print queue"; sub: "What's waiting to print: hold, go on or cancel"; chevron: true; onActivated: SettingsNav.openPage("print-queue") }
+        SetRow { icon: "printer"; title: "Scanners"; sub: "The scanners found, and a test scan"; chevron: true; onActivated: SettingsNav.openPage("scanners") }
+        SetRow { icon: "file"; title: "Scan to PDF"; sub: "Several pages into one PDF"; chevron: true; onActivated: SettingsNav.openPage("scan-pdf") }
+        SetRow { icon: "printer"; title: "Ink & toner"; sub: "How full each cartridge is"; chevron: true; onActivated: SettingsNav.openPage("ink-levels") }
+    }
     SetCardGroup {
         title: "Add a printer"
         visible: !!page.st && page.st.canAdmin && page.st.cups

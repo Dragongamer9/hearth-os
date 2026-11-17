@@ -1,0 +1,715 @@
+#!/usr/bin/env python3
+"""hearth-notifyd: what Mantel's notifications, tray and on-screen messages hear from the rest of the PC (1.14).
+
+Mantel (NotifyHub.qml) starts it and reads one JSON line per change; it works the same under KWin and labwc:
+
+  hearth-notifyd serve --stdio
+
+  * Job progress: it serves org.kde.JobViewServer (KDE apps' and KIO's copies, downloads, burns: both the old
+    JobViewServer / JobViewV2 interfaces and JobViewServerV2 / JobViewV3), only when nobody else has the name (a real
+    plasmashell keeps it). {"t": "job", "id", "app", "icon", "entry", "title", "info", "percent", "processed", "total",
+    "unit", "speed", "suspended", "state" (running|done|failed|cancelled), "error", "dest", "killable", "suspendable"}.
+  * Badges and progress on dock icons (the Unity launcher API, com.canonical.Unity.LauncherEntry Update):
+    {"t": "badge", "app" (desktop id), "count", "countVisible", "progress", "progressVisible", "urgent"}.
+  * Caps Lock / Num Lock (the keyboards' LEDs in /sys/class/leds, the same under any window manager):
+    {"t": "keys", "caps", "num", "known"}; the keyboard layout (KWin: org.kde.keyboard; labwc: keyboard.json's list):
+    {"t": "layout", "index", "layouts": [{"short", "name"}], "canSwitch"}.
+  * Tray: removable disks (lsblk), print jobs (lpstat), the camera in use (/proc/*/fd on /dev/video*), background apps
+    (the portal's org.freedesktop.background.Monitor, else flatpak ps): {"t": "disks"|"printers"|"camera"|"background", ...}.
+  * {"t": "status", "jobServer": bool, "problem": "..."}.
+
+What the shell asks, one JSON line on stdin: {"op": "cancel"|"suspend"|"resume"|"forget", "id"},
+{"op": "layout", "index"}, {"op": "mount"|"unmount"|"eject", "path"}, {"op": "cancelPrint", "job"},
+{"op": "quitApp", "app"}. It exits when stdin closes (the shell went away). It never writes a settings file.
+
+Checks and tests:
+  hearth-notifyd test-job TITLE [SECONDS]      a pretend KIO copy through JobViewServerV2, for SECONDS (default 30)
+  hearth-notifyd test-job-v1 TITLE [SECONDS]   the same through the old JobViewServer
+  hearth-notifyd test-badge APP COUNT [PROGRESS]   a Unity launcher badge for APP (a desktop id), progress 0-1
+  hearth-notifyd parse-lsblk FILE | parse-lpstat FILE   the tray's readers on a saved output (unit tests)
+HEARTH_NOTIFYD_FIXTURES=DIR: keys.json, disks.json, printers.json, camera.json, background.json, layouts.json are read
+from DIR instead of the PC (CI pictures). Logs go to $XDG_RUNTIME_DIR/hearth/notifyd.log.
+"""
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+import threading
+import time
+
+RUN = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth')
+FIX = os.environ.get('HEARTH_NOTIFYD_FIXTURES') or ''
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+
+JOB_XML = """
+<node>
+  <interface name="org.kde.JobViewServer">
+    <method name="requestView">
+      <arg type="s" name="appName" direction="in"/><arg type="s" name="appIconName" direction="in"/>
+      <arg type="i" name="capabilities" direction="in"/><arg type="o" name="view" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.kde.JobViewServerV2">
+    <method name="requestView">
+      <arg type="s" name="desktopEntry" direction="in"/><arg type="i" name="capabilities" direction="in"/>
+      <arg type="a{sv}" name="hints" direction="in"/><arg type="o" name="view" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.kde.JobViewV2">
+    <method name="terminate"><arg type="s" name="errorMessage" direction="in"/></method>
+    <method name="setSuspended"><arg type="b" name="suspended" direction="in"/></method>
+    <method name="setTotalAmount"><arg type="t" name="amount" direction="in"/><arg type="s" name="unit" direction="in"/></method>
+    <method name="setProcessedAmount"><arg type="t" name="amount" direction="in"/><arg type="s" name="unit" direction="in"/></method>
+    <method name="setPercent"><arg type="u" name="percent" direction="in"/></method>
+    <method name="setSpeed"><arg type="t" name="bytesPerSecond" direction="in"/></method>
+    <method name="setInfoMessage"><arg type="s" name="message" direction="in"/></method>
+    <method name="setDescriptionField">
+      <arg type="u" name="number" direction="in"/><arg type="s" name="name" direction="in"/>
+      <arg type="s" name="value" direction="in"/><arg type="b" name="ok" direction="out"/>
+    </method>
+    <method name="clearDescriptionField"><arg type="u" name="number" direction="in"/></method>
+    <method name="setDestUrl"><arg type="v" name="destUrl" direction="in"/></method>
+    <method name="setError"><arg type="u" name="errorCode" direction="in"/></method>
+    <signal name="suspendRequested"/><signal name="resumeRequested"/><signal name="cancelRequested"/>
+  </interface>
+  <interface name="org.kde.JobViewV3">
+    <method name="terminate">
+      <arg type="u" name="errorCode" direction="in"/><arg type="s" name="errorMessage" direction="in"/>
+      <arg type="a{sv}" name="hints" direction="in"/>
+    </method>
+    <method name="update"><arg type="a{sv}" name="data" direction="in"/></method>
+    <signal name="suspendRequested"/><signal name="resumeRequested"/><signal name="cancelRequested"/>
+  </interface>
+</node>
+"""
+JOB_NAME = 'org.kde.JobViewServer'
+JOB_PATH = '/JobViewServer'
+# Jobs at once: per app (its bus connection) and in all, so one program can't fill the shell with progress bars.
+MAX_JOBS_PER_SENDER = 20
+MAX_JOBS = 200
+KILLABLE, SUSPENDABLE = 1, 2
+OUT_LOCK = threading.Lock()
+
+
+def log(text):
+    try:
+        os.makedirs(RUN, exist_ok=True)
+        with open(os.path.join(RUN, 'notifyd.log'), 'a', encoding='utf-8') as f:
+            f.write('%s %s\n' % (time.strftime('%H:%M:%S'), text))
+    except OSError:
+        pass
+
+
+def emit(obj):
+    line = json.dumps(obj, ensure_ascii=False)
+    with OUT_LOCK:
+        try:
+            sys.stdout.write(line + '\n')
+            sys.stdout.flush()
+        except (BrokenPipeError, ValueError):
+            os._exit(0)
+
+
+def fixture(name):
+    if not FIX:
+        return None
+    try:
+        with open(os.path.join(FIX, name), encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------- jobs (pure: tested without a bus)
+
+def unit_amount(job, amount, unit):
+    """KIO sends bytes, files and directories separately; the bar follows bytes, else files."""
+    unit = unit or 'bytes'
+    job.setdefault('amounts', {}).setdefault(unit, {})
+    return job['amounts'][unit]
+
+
+def job_apply_v2(job, method, args):
+    """One JobViewV2 call on a job (a dict). Returns True when something the shell shows changed."""
+    if method == 'setSuspended':
+        job['suspended'] = bool(args[0])
+    elif method == 'setTotalAmount':
+        unit_amount(job, args[0], args[1])['total'] = int(args[0])
+    elif method == 'setProcessedAmount':
+        unit_amount(job, args[0], args[1])['processed'] = int(args[0])
+    elif method == 'setPercent':
+        job['percent'] = max(0, min(100, int(args[0])))
+    elif method == 'setSpeed':
+        job['speed'] = int(args[0])
+    elif method == 'setInfoMessage':
+        job['info'] = str(args[0])
+    elif method == 'setDescriptionField':
+        n, name, value = int(args[0]), str(args[1]), str(args[2])
+        job.setdefault('fields', {})[str(n)] = [name, value]
+    elif method == 'clearDescriptionField':
+        job.get('fields', {}).pop(str(int(args[0])), None)
+    elif method == 'setDestUrl':
+        job['dest'] = str(args[0])
+    elif method == 'setError':
+        job['errorCode'] = int(args[0])
+    elif method == 'terminate':
+        msg = str(args[0] or '')
+        job['state'] = 'failed' if msg else 'done'
+        job['error'] = msg
+    else:
+        return False
+    return True
+
+
+V3_KEYS = {'title': 'title', 'infoMessage': 'info', 'percent': 'percent', 'speed': 'speed', 'destUrl': 'dest',
+           'suspended': 'suspended'}
+
+
+def job_apply_v3(job, data):
+    for k, v in (data or {}).items():
+        if k in V3_KEYS:
+            if k == 'percent':
+                v = max(0, min(100, int(v)))
+            elif k == 'speed':
+                v = int(v)
+            elif k == 'suspended':
+                v = bool(v)
+            else:
+                v = str(v)
+            job[V3_KEYS[k]] = v
+        elif k in ('processedBytes', 'totalBytes', 'processedFiles', 'totalFiles', 'processedDirectories', 'totalDirectories'):
+            unit = k.replace('processed', '').replace('total', '').lower()
+            unit_amount(job, v, unit)['processed' if k.startswith('processed') else 'total'] = int(v)
+        elif k.startswith('descriptionLabel') or k.startswith('descriptionValue'):
+            n = k[-1]
+            f = job.setdefault('fields', {}).setdefault(n, ['', ''])
+            f[0 if 'Label' in k else 1] = str(v)
+    return True
+
+
+def job_terminate_v3(job, code, message):
+    code = int(code or 0)
+    if code == 0:
+        job['state'] = 'done'
+    elif code == 1:          # KJob::KilledJobError: the person cancelled it
+        job['state'] = 'cancelled'
+    else:
+        job['state'] = 'failed'
+        job['error'] = str(message or 'It stopped with an error')
+
+
+def job_view(job):
+    """What the shell gets for a job."""
+    am = job.get('amounts', {})
+    main = am.get('bytes') if am.get('bytes', {}).get('total') else am.get('files') or am.get('bytes') or {}
+    unit = 'bytes' if main is am.get('bytes') else 'files'
+    pct = job.get('percent')
+    if pct is None and main.get('total'):
+        pct = int(100 * main.get('processed', 0) / max(1, main['total']))
+    fields = job.get('fields', {})
+    # V1 (Dolphin, KIO): the info message is the job's name ("Moving", "Copying"); V2 sends a title of its own
+    info = job.get('info', '')
+    title = job.get('title') or info or (fields.get('0') or ['', ''])[0] or job.get('app') or 'Working'
+    if title == info:
+        info = ''
+    detail = ' → '.join(v for _, v in (fields.get('0', ['', '']), fields.get('1', ['', ''])) if v)
+    return {'t': 'job', 'id': job['id'], 'app': job.get('app', ''), 'icon': job.get('icon', ''), 'entry': job.get('entry', ''),
+            'title': title, 'info': info, 'detail': detail, 'percent': -1 if pct is None else pct,
+            'processed': main.get('processed', 0), 'total': main.get('total', 0), 'unit': unit,
+            'files': am.get('files', {}), 'speed': job.get('speed', 0), 'suspended': bool(job.get('suspended')),
+            'state': job.get('state', 'running'), 'error': job.get('error', ''), 'dest': job.get('dest', ''),
+            'killable': bool(job.get('caps', 0) & KILLABLE), 'suspendable': bool(job.get('caps', 0) & SUSPENDABLE)}
+
+
+# ---------------------------------------------------------------------- the tray's readers (pure)
+
+def parse_lsblk(text):
+    """lsblk -J output → removable / hot-plugged drives people can mount or eject (the system's own disks are left out)."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    out = []
+
+    def walk(dev, parent):
+        rm = dev.get('rm') in (True, 1, '1') or dev.get('hotplug') in (True, 1, '1') or (parent or {}).get('removable')
+        mps = [m for m in (dev.get('mountpoints') or [dev.get('mountpoint')]) if m]
+        if rm and dev.get('fstype') and dev.get('type') in ('part', 'disk', 'crypt') and not any(m in ('/', '/boot', '/boot/efi', '/var', '/home', '/sysroot') or m.startswith('/sysroot') for m in mps):
+            out.append({'path': dev.get('path') or '/dev/' + dev.get('name', ''), 'name': dev.get('label') or dev.get('model') or (parent or {}).get('model') or dev.get('name', ''),
+                        'size': dev.get('size') or '', 'mount': mps[0] if mps else '', 'fstype': dev.get('fstype') or '',
+                        'drive': (parent or {}).get('path') or dev.get('path') or '', 'tran': dev.get('tran') or (parent or {}).get('tran') or ''})
+        for ch in dev.get('children') or []:
+            walk(ch, {'removable': rm, 'model': (dev.get('model') or '').strip() or (parent or {}).get('model'), 'path': dev.get('path'), 'tran': dev.get('tran') or (parent or {}).get('tran')})
+    for d in data.get('blockdevices') or []:
+        walk(d, None)
+    return out
+
+
+def parse_lpstat(text):
+    """lpstat -o → print jobs: [{job, printer, user, size}] (printer-123 user 1024 date…)."""
+    jobs = []
+    for line in (text or '').splitlines():
+        f = line.split()
+        if len(f) >= 3 and '-' in f[0]:
+            printer, _, num = f[0].rpartition('-')
+            if num.isdigit():
+                jobs.append({'job': f[0], 'printer': printer, 'user': f[1], 'size': f[2] if f[2].isdigit() else ''})
+    return jobs
+
+
+def camera_users(proc='/proc'):
+    """Who has a camera (/dev/video*) open: [{pid, name}] (own processes only)."""
+    me = os.getuid()
+    users = {}
+    for d in glob.glob(proc + '/[0-9]*'):
+        try:
+            if os.stat(d).st_uid != me:
+                continue
+            for fd in os.listdir(d + '/fd'):
+                try:
+                    t = os.readlink(d + '/fd/' + fd)
+                except OSError:
+                    continue
+                if t.startswith('/dev/video'):
+                    with open(d + '/comm') as f:
+                        name = f.read().strip()
+                    users[name] = int(os.path.basename(d))
+                    break
+        except OSError:
+            continue
+    return [{'name': n, 'pid': p} for n, p in sorted(users.items())]
+
+
+def leds():
+    """Caps Lock and Num Lock from any keyboard's LEDs: (caps, num, known)."""
+    f = fixture('keys.json')
+    if f is not None:
+        return bool(f.get('caps')), bool(f.get('num')), True
+    caps = num = False
+    known = False
+    for p in glob.glob('/sys/class/leds/*::capslock/brightness') + glob.glob('/sys/class/leds/*::numlock/brightness'):
+        try:
+            with open(p) as fh:
+                on = fh.read().strip() not in ('', '0')
+        except OSError:
+            continue
+        known = True
+        if 'capslock' in p:
+            caps = caps or on
+        else:
+            num = num or on
+    return caps, num, known
+
+
+def labwc_layouts():
+    """labwc: the layouts from Settings › Keyboard (keyboard.json); the first is the one in use."""
+    f = fixture('layouts.json')
+    if f is not None:
+        return f
+    try:
+        with open(os.path.join(CONFIG, 'nimbus', 'keyboard.json'), encoding='utf-8') as fh:
+            k = json.load(fh)
+    except (OSError, ValueError):
+        k = {}
+    lay = k.get('layout') if isinstance(k.get('layout'), str) else os.environ.get('XKB_DEFAULT_LAYOUT', 'us')
+    names = [x.strip() for x in str(lay or 'us').split(',') if x.strip()] or ['us']
+    return {'index': 0, 'layouts': [{'short': n[:3], 'name': n} for n in names], 'canSwitch': False}
+
+
+# ---------------------------------------------------------------------- serving
+
+class Hub:
+    def __init__(self, Gio, GLib):
+        self.Gio, self.GLib = Gio, GLib
+        self.jobs = {}
+        self.regs = {}
+        self.seq = 0
+        self.conn = None
+        self.node = Gio.DBusNodeInfo.new_for_xml(JOB_XML)
+        self.last = {}
+        self.kwin_layouts = None
+
+    # ---- the job server
+    def job_call(self, conn, sender, path, iface, method, params, inv):
+        GLib = self.GLib
+        try:
+            if path == JOB_PATH and method == 'requestView':
+                mine = sum(1 for j in self.jobs.values() if j.get('sender') == sender)
+                if not sender or mine >= MAX_JOBS_PER_SENDER or len(self.jobs) >= MAX_JOBS:
+                    inv.return_dbus_error('org.freedesktop.DBus.Error.LimitsExceeded', 'Too many jobs at once')
+                    return
+                args = params.unpack()
+                self.seq += 1
+                jid = self.seq
+                vpath = '/JobViewServer/JobView_%d' % jid
+                if iface == 'org.kde.JobViewServerV2':
+                    entry, caps, hints = args
+                    # (the shell shows the app's own name from its desktop entry when it has one)
+                    app, icon = (str(entry).rsplit('.', 1)[-1] or 'An app').capitalize(), ''
+                    hint = {k: (v if not hasattr(v, 'unpack') else v.unpack()) for k, v in (hints or {}).items()}
+                else:
+                    app, icon, caps = args
+                    entry, hint = '', {}
+                job = {'id': jid, 'app': str(app), 'icon': str(icon), 'entry': str(entry), 'caps': int(caps), 'state': 'running',
+                       'v3': iface == 'org.kde.JobViewServerV2', 'sender': sender, 'path': vpath}
+                if hint:
+                    job_apply_v3(job, hint)
+                self.jobs[jid] = job
+                info = self.node.lookup_interface('org.kde.JobViewV3' if job['v3'] else 'org.kde.JobViewV2')
+                self.regs[jid] = conn.register_object(vpath, info, self.job_call, None, None)
+                inv.return_value(GLib.Variant('(o)', (vpath,)))
+                emit(job_view(job))
+                return
+            jid = int(path.rsplit('_', 1)[-1]) if '_' in path else 0
+            job = self.jobs.get(jid)
+            if not job:
+                inv.return_dbus_error('org.freedesktop.DBus.Error.UnknownObject', path)
+                return
+            # Only the app that asked for this job view may change or end it.
+            if sender != job.get('sender'):
+                inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'This job belongs to another app')
+                return
+            args = params.unpack() if params is not None else ()
+            if iface == 'org.kde.JobViewV3':
+                if method == 'update':
+                    job_apply_v3(job, args[0])
+                elif method == 'terminate':
+                    job_terminate_v3(job, args[0], args[1])
+                    self.finish(jid)
+                inv.return_value(None)
+            else:
+                job_apply_v2(job, method, args)
+                if method == 'setDescriptionField':
+                    inv.return_value(GLib.Variant('(b)', (True,)))
+                else:
+                    inv.return_value(None)
+                if method == 'terminate':
+                    self.finish(jid)
+            if job.get('state') == 'running':
+                emit(job_view(job))
+        except Exception as e:      # a call we couldn't read: answer it, keep serving
+            log('job call %s.%s failed: %r' % (iface, method, e))
+            try:
+                inv.return_dbus_error('org.freedesktop.DBus.Error.InvalidArgs', str(e))
+            except Exception:
+                pass
+
+    def finish(self, jid):
+        job = self.jobs.get(jid)
+        if not job:
+            return
+        emit(job_view(job))
+        reg = self.regs.pop(jid, None)
+        if reg and self.conn:
+            self.GLib.timeout_add_seconds(1, lambda: (self.conn.unregister_object(reg), False)[1])
+        self.jobs.pop(jid, None)
+
+    def watch_senders(self):
+        """A job whose app quit without saying so ends as failed (else its bar would stay forever)."""
+        bus = self.conn
+        for jid, job in list(self.jobs.items()):
+            try:
+                bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                              self.GLib.Variant('(s)', (job['sender'],)), None, self.Gio.DBusCallFlags.NONE, 2000, None)
+            except Exception:
+                job['state'] = 'failed'
+                job['error'] = 'The app closed before it finished'
+                self.finish(jid)
+        return True
+
+    def signal_job(self, jid, name):
+        job = self.jobs.get(int(jid or 0))
+        if not job or not self.conn:
+            return
+        iface = 'org.kde.JobViewV3' if job['v3'] else 'org.kde.JobViewV2'
+        self.conn.emit_signal(job['sender'], job['path'], iface, name, None)
+
+    # ---- Unity launcher badges
+    def on_unity(self, conn, sender, path, iface, member, params, *_):
+        try:
+            uri, props = params.unpack()
+            app = str(uri)
+            for pre in ('application://', 'file://'):
+                if app.startswith(pre):
+                    app = app[len(pre):]
+            app = os.path.basename(app)
+            if app.endswith('.desktop'):
+                app = app[:-8]
+            p = {k: (v.unpack() if hasattr(v, 'unpack') else v) for k, v in props.items()}
+            prev = self.last.setdefault('badge:' + app, {})
+            prev.update(p)
+            emit({'t': 'badge', 'app': app, 'count': int(prev.get('count', 0) or 0), 'countVisible': bool(prev.get('count-visible', False)),
+                  'progress': float(prev.get('progress', 0) or 0), 'progressVisible': bool(prev.get('progress-visible', False)),
+                  'urgent': bool(prev.get('urgent', False))})
+        except Exception as e:
+            log('badge: %r' % e)
+
+    # ---- KWin's keyboard layouts
+    def kwin_layout_read(self, *_):
+        try:
+            v = self.conn.call_sync('org.kde.keyboard', '/Layouts', 'org.kde.KeyboardLayouts', 'getLayoutsList', None, None,
+                                    self.Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+            i = self.conn.call_sync('org.kde.keyboard', '/Layouts', 'org.kde.KeyboardLayouts', 'getLayout', None, None,
+                                    self.Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+            self.kwin_layouts = True
+            self.send_once('layout', {'t': 'layout', 'index': int(i), 'canSwitch': True,
+                                      'layouts': [{'short': s, 'name': d or l or s} for s, d, l in v]})
+        except Exception:
+            if self.kwin_layouts is None:
+                self.kwin_layouts = False
+                self.send_once('layout', dict(labwc_layouts(), t='layout'))
+
+    def set_layout(self, index):
+        if self.kwin_layouts:
+            try:
+                self.conn.call_sync('org.kde.keyboard', '/Layouts', 'org.kde.KeyboardLayouts', 'setLayout',
+                                    self.GLib.Variant('(u)', (int(index),)), None, self.Gio.DBusCallFlags.NONE, 2000, None)
+            except Exception as e:
+                log('layout: %r' % e)
+        elif FIX:
+            # CI: the pretend layouts change as KWin's would
+            f = fixture('layouts.json') or {}
+            f['index'] = int(index)
+            self.send_once('layout', dict(f, t='layout'))
+
+    # ---- background apps (the portal's monitor, else flatpak ps)
+    def background_read(self, *_):
+        f = fixture('background.json')
+        if f is not None:
+            self.send_once('background', {'t': 'background', 'apps': f.get('apps', [])})
+            return True
+        apps = None
+        try:
+            v = self.conn.call_sync('org.freedesktop.background.Monitor', '/org/freedesktop/background/monitor',
+                                    'org.freedesktop.DBus.Properties', 'Get',
+                                    self.GLib.Variant('(ss)', ('org.freedesktop.background.Monitor', 'BackgroundApps')),
+                                    None, self.Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+            apps = [{'app': str(a.get('app_id', '')), 'message': str(a.get('message', '')), 'instance': str(a.get('instance', ''))} for a in v]
+        except Exception:
+            pass
+        if apps is None and shutil.which('flatpak'):
+            try:
+                out = subprocess.run(['flatpak', 'ps', '--columns=instance,application'], capture_output=True, text=True, timeout=5).stdout
+                apps = [{'app': l.split()[1], 'instance': l.split()[0], 'message': ''} for l in out.splitlines() if len(l.split()) >= 2]
+            except (OSError, subprocess.SubprocessError, IndexError):
+                apps = None
+        self.send_once('background', {'t': 'background', 'apps': apps or []})
+        return True
+
+    def send_once(self, key, obj):
+        s = json.dumps(obj, sort_keys=True)
+        if self.last.get(key) != s:
+            self.last[key] = s
+            emit(obj)
+
+    # ---- polls (cheap; each only when it can tell something)
+    def poll_keys(self):
+        caps, num, known = leds()
+        self.send_once('keys', {'t': 'keys', 'caps': caps, 'num': num, 'known': known})
+        return True
+
+    def poll_slow(self):
+        f = fixture('disks.json')
+        if f is not None:
+            self.send_once('disks', {'t': 'disks', 'disks': f.get('disks', [])})
+        elif shutil.which('lsblk'):
+            try:
+                out = subprocess.run(['lsblk', '-J', '-o', 'NAME,PATH,LABEL,MODEL,SIZE,MOUNTPOINTS,RM,HOTPLUG,TYPE,TRAN,FSTYPE'],
+                                     capture_output=True, text=True, timeout=5).stdout
+                self.send_once('disks', {'t': 'disks', 'disks': parse_lsblk(out)})
+            except (OSError, subprocess.SubprocessError):
+                pass
+        f = fixture('printers.json')
+        if f is not None:
+            self.send_once('printers', {'t': 'printers', 'jobs': f.get('jobs', [])})
+        elif shutil.which('lpstat'):
+            try:
+                out = subprocess.run(['lpstat', '-o'], capture_output=True, text=True, timeout=5).stdout
+                self.send_once('printers', {'t': 'printers', 'jobs': parse_lpstat(out)})
+            except (OSError, subprocess.SubprocessError):
+                pass
+        f = fixture('camera.json')
+        self.send_once('camera', {'t': 'camera', 'apps': f.get('apps', []) if f is not None else camera_users()})
+        if not self.kwin_layouts:
+            self.send_once('layout', dict(labwc_layouts(), t='layout'))
+        return True
+
+    # ---- what the shell asks
+    def on_line(self, line):
+        try:
+            cmd = json.loads(line)
+        except ValueError:
+            return
+        op = cmd.get('op')
+        if op in ('cancel', 'suspend', 'resume'):
+            self.signal_job(cmd.get('id'), {'cancel': 'cancelRequested', 'suspend': 'suspendRequested', 'resume': 'resumeRequested'}[op])
+        elif op == 'layout':
+            self.set_layout(cmd.get('index', 0))
+        elif op in ('mount', 'unmount', 'eject'):
+            path = str(cmd.get('path') or '')
+            if not path.startswith('/dev/'):
+                return
+            argv = {'mount': ['udisksctl', 'mount', '-b', path], 'unmount': ['udisksctl', 'unmount', '-b', path],
+                    'eject': ['udisksctl', 'power-off', '-b', path]}[op]
+            threading.Thread(target=self.run_reply, args=(op, path, argv), daemon=True).start()
+        elif op == 'cancelPrint':
+            job = str(cmd.get('job') or '')
+            if job and not job.startswith('-'):
+                threading.Thread(target=self.run_reply, args=(op, job, ['cancel', job]), daemon=True).start()
+        elif op == 'quitApp':
+            app = str(cmd.get('app') or '')
+            if app and not app.startswith('-'):
+                threading.Thread(target=self.run_reply, args=(op, app, ['flatpak', 'kill', app]), daemon=True).start()
+
+    def run_reply(self, op, what, argv):
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+            ok, err = r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1:] or ['']
+        except (OSError, subprocess.SubprocessError) as e:
+            ok, err = False, [str(e)]
+        emit({'t': 'done', 'op': op, 'what': what, 'ok': ok, 'error': '' if ok else err[0][:200]})
+        self.GLib.idle_add(lambda: (self.poll_slow(), False)[1])
+
+    def run(self):
+        Gio, GLib = self.Gio, self.GLib
+        loop = GLib.MainLoop()
+        self.conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        status = {'jobServer': False, 'problem': ''}
+
+        def got(conn, name):
+            for iface in ('org.kde.JobViewServer', 'org.kde.JobViewServerV2'):
+                conn.register_object(JOB_PATH, self.node.lookup_interface(iface), self.job_call, None, None)
+            status['jobServer'] = True
+            status['problem'] = ''
+            emit(dict(status, t='status'))
+
+        def lost(conn, name):
+            status['jobServer'] = False
+            status['problem'] = 'Another program shows copy and download progress (it has org.kde.JobViewServer)'
+            emit(dict(status, t='status'))
+        Gio.bus_own_name(Gio.BusType.SESSION, JOB_NAME, Gio.BusNameOwnerFlags.NONE, None, got, lost)
+        self.conn.signal_subscribe(None, 'com.canonical.Unity.LauncherEntry', 'Update', None, None,
+                                   Gio.DBusSignalFlags.NONE, self.on_unity)
+        self.conn.signal_subscribe('org.kde.keyboard', 'org.kde.KeyboardLayouts', None, '/Layouts', None,
+                                   Gio.DBusSignalFlags.NONE, self.kwin_layout_read)
+        self.conn.signal_subscribe(None, 'org.freedesktop.DBus.Properties', 'PropertiesChanged',
+                                   '/org/freedesktop/background/monitor', None, Gio.DBusSignalFlags.NONE, self.background_read)
+
+        def stdin_ready(fd, cond):
+            line = sys.stdin.readline()
+            if not line:
+                loop.quit()
+                return False
+            try:
+                self.on_line(line)
+            except Exception as e:
+                log('asked %r: %r' % (line[:200], e))
+            return True
+        GLib.io_add_watch(sys.stdin.fileno(), GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP, stdin_ready)
+        self.kwin_layout_read()
+        self.poll_keys()
+        self.poll_slow()
+        self.background_read()
+        GLib.timeout_add(300, self.poll_keys)
+        GLib.timeout_add_seconds(5, self.poll_slow)
+        GLib.timeout_add_seconds(20, self.background_read)
+        GLib.timeout_add_seconds(15, self.watch_senders)
+        loop.run()
+        return 0
+
+
+def serve():
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import Gio, GLib
+    except Exception as e:     # no GLib for Python: the shell still starts, without these
+        emit({'t': 'status', 'jobServer': False, 'problem': 'python3-gi is missing (%s)' % e})
+        for line in sys.stdin:
+            pass
+        return 0
+    return Hub(Gio, GLib).run()
+
+
+# ---------------------------------------------------------------------- test clients (CI)
+
+def test_job(title, secs, v1=False):
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    def call(path, iface, method, sig=None, args=None, reply=None):
+        return bus.call_sync(JOB_NAME, path, iface, method, GLib.Variant(sig, args) if sig else None,
+                             GLib.VariantType(reply) if reply else None, Gio.DBusCallFlags.NONE, 5000, None)
+    total = 734003200
+    if v1:
+        path = call(JOB_PATH, 'org.kde.JobViewServer', 'requestView', '(ssi)', ('Dolphin', 'system-file-manager', 3), '(o)').unpack()[0]
+        call(path, 'org.kde.JobViewV2', 'setInfoMessage', '(s)', (title,))
+        call(path, 'org.kde.JobViewV2', 'setDescriptionField', '(uss)', (0, 'Source', '~/Videos/holiday.mkv'), '(b)')
+        call(path, 'org.kde.JobViewV2', 'setDescriptionField', '(uss)', (1, 'Destination', '/media/USB STICK'), '(b)')
+        call(path, 'org.kde.JobViewV2', 'setTotalAmount', '(ts)', (total, 'bytes'))
+    else:
+        path = call(JOB_PATH, 'org.kde.JobViewServerV2', 'requestView', '(sia{sv})',
+                    ('org.kde.dolphin', 3, {'title': GLib.Variant('s', title)}), '(o)').unpack()[0]
+        call(path, 'org.kde.JobViewV3', 'update', '(a{sv})', ({'descriptionLabel1': GLib.Variant('s', 'Source'),
+                                                               'descriptionValue1': GLib.Variant('s', '~/Pictures (214 files)'),
+                                                               'descriptionLabel2': GLib.Variant('s', 'Destination'),
+                                                               'descriptionValue2': GLib.Variant('s', '/media/Backup'),
+                                                               'totalBytes': GLib.Variant('t', total), 'totalFiles': GLib.Variant('t', 214)},))
+    start = time.time()
+    while time.time() - start < secs:
+        f = min(0.97, 0.25 + (time.time() - start) / max(1, secs) * 0.6)
+        if v1:
+            call(path, 'org.kde.JobViewV2', 'setProcessedAmount', '(ts)', (int(total * f), 'bytes'))
+            call(path, 'org.kde.JobViewV2', 'setPercent', '(u)', (int(f * 100),))
+            call(path, 'org.kde.JobViewV2', 'setSpeed', '(t)', (48 * 1024 * 1024,))
+        else:
+            call(path, 'org.kde.JobViewV3', 'update', '(a{sv})', ({'processedBytes': GLib.Variant('t', int(total * f)),
+                                                                   'processedFiles': GLib.Variant('t', int(214 * f)),
+                                                                   'percent': GLib.Variant('u', int(f * 100)),
+                                                                   'speed': GLib.Variant('t', 61 * 1024 * 1024)},))
+        time.sleep(1)
+    if v1:
+        call(path, 'org.kde.JobViewV2', 'terminate', '(s)', ('',))
+    else:
+        call(path, 'org.kde.JobViewV3', 'terminate', '(usa{sv})', (0, '', {}))
+    return 0
+
+
+def test_badge(app, count, progress):
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    props = {'count': GLib.Variant('x', int(count)), 'count-visible': GLib.Variant('b', int(count) > 0)}
+    if progress is not None:
+        props['progress'] = GLib.Variant('d', float(progress))
+        props['progress-visible'] = GLib.Variant('b', True)
+    bus.emit_signal(None, '/com/canonical/unity/launcherentry/hearth', 'com.canonical.Unity.LauncherEntry', 'Update',
+                    GLib.Variant('(sa{sv})', ('application://%s.desktop' % app, props)))
+    bus.flush_sync(None)
+    return 0
+
+
+def main(argv):
+    if argv[:2] == ['serve', '--stdio']:
+        return serve()
+    if argv[:1] in (['test-job'], ['test-job-v1']) and len(argv) >= 2:
+        return test_job(argv[1], float(argv[2]) if len(argv) > 2 else 30, v1=argv[0] == 'test-job-v1')
+    if argv[:1] == ['test-badge'] and len(argv) >= 3:
+        return test_badge(argv[1], argv[2], argv[3] if len(argv) > 3 else None)
+    if argv[:1] == ['parse-lsblk'] and len(argv) == 2:
+        print(json.dumps(parse_lsblk(open(argv[1]).read())))
+        return 0
+    if argv[:1] == ['parse-lpstat'] and len(argv) == 2:
+        print(json.dumps(parse_lpstat(open(argv[1]).read())))
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

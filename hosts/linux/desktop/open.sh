@@ -7,6 +7,9 @@
 #   open.sh screenshot             the whole screen (every screen)
 #   open.sh screenshot-region      drag a box around what you want (slurp); Esc cancels
 #   open.sh screenshot-clipboard   the whole screen, to the clipboard only (no file)
+#   open.sh capture [MODE]         Hearth Capture (Mantel's screenshot tool, 1.14): the window, or straight to taking
+#                                  one (area | window | screen | all) and its editor
+#   open.sh capture-region         Hearth Capture's area picker (Super+Shift+S); slurp + grim when Mantel isn't running
 #   open.sh record | record-area | replay-save   Hearth Recorder's shortcuts (see the end)
 # Screenshots are saved in Pictures/Screenshots, copied to the clipboard (wl-copy), and a notification says so
 # (click it to open the picture).
@@ -38,6 +41,16 @@ done_shot() {
   ) >/dev/null 2>&1 &
 }
 
+# The screenshot itself, grim's way (grab [-g "X,Y WxH"] FILE|-): grim under labwc; under Mantel on KWin
+# (HEARTH_WM=kwin) KWin's ScreenShot2 through hearth-screenshot (hearth-screens, through the small helper
+# hearth-kwin-cast that KWin trusts; docs/SCREENS.md), or hearth-screens itself where hearth-screenshot isn't installed.
+grab() {
+  if [ "${HEARTH_WM:-}" = kwin ]; then
+    if have hearth-screenshot; then hearth-screenshot "$@"; else python3 "$(dirname "$0")/shell/hearth-screens" shot "$@"; fi
+  else grim "$@"; fi
+}
+can_grab() { [ "${HEARTH_WM:-}" = kwin ] || have grim; }
+
 fail_shot() { rm -f "$SHOT"; [ -n "$1" ] && notify-send -a Screenshot "Screenshot" "$1" 2>/dev/null; exit 1; }
 
 case "$1" in
@@ -51,28 +64,43 @@ case "$1" in
               first 'quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call files open "$FILE"' \
                     'dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://$FILE" string:""' \
                     'xdg-open "$DIR"' ;;
+  # Hearth Capture (Capture.qml): Mantel's own, in place of KDE's Spectacle.
+  capture)    cap_ipc() { quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call capture "$@" >/dev/null 2>&1; }
+              if [ -n "$2" ]; then cap_ipc take "$2" && exit 0; else cap_ipc open && exit 0; fi
+              notify-send -a Capture "Capture" "Capture is part of Hearth's desktop (Mantel), which isn't running" 2>/dev/null; exit 1 ;;
+  capture-region)
+              quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call capture take area >/dev/null 2>&1 && exit 0
+              exec sh "$0" screenshot-region ;;
   screenshot)
-              if ! have grim; then first "spectacle -b -n"; exit 1; fi    # spectacle names its own files
+              # Nothing to grab with (no grim, not KWin): Hearth Capture takes it, in place of KDE's Spectacle.
+              if ! can_grab; then exec sh "$0" capture all; fi
               new_shot
-              grim "$SHOT" || fail_shot "Couldn't take a screenshot"
+              grab "$SHOT" || fail_shot "Couldn't take a screenshot"
               done_shot ;;
   screenshot-region)
-              have grim || { first "spectacle -b -n -r"; exit 1; }
+              can_grab || exec sh "$0" capture area
               have slurp || { notify-send -a Screenshot "Screenshot" "Choosing an area needs slurp, which isn't installed. Print Screen takes the whole screen." 2>/dev/null; exit 1; }
               # Choose first, then make the file (Esc leaves nothing behind).
               geo=$(slurp -d -b '#00000066' -c '#ff8a3d' -s '#ff8a3d22' -w 2 2>/dev/null) || exit 0
               [ -n "$geo" ] || exit 0
               new_shot
-              grim -g "$geo" "$SHOT" || fail_shot "Couldn't take a screenshot"
+              grab -g "$geo" "$SHOT" || fail_shot "Couldn't take a screenshot"
               done_shot ;;
   screenshot-clipboard)
-              have grim && have wl-copy || exit 1
-              grim - | wl-copy --type image/png
+              can_grab && have wl-copy || exit 1
+              grab - | wl-copy --type image/png
               notify-send -a Screenshot -t 2500 "Screenshot copied" "Paste it into any app" 2>/dev/null ;;
   # ---- Hearth Recorder (hosts/hearth-recorder), from rc.xml's Super+Alt+R / Super+Alt+Shift+R / Super+Alt+G: it says
   # what happened with its own notifications (Recording, Recording saved with Open and Show in folder, Replay saved).
+  # Without the app (or on a desktop wf-recorder can't record, like KWin), Super+Alt+R is the desktop's own Recorder
+  # panel's Start / Stop (Recorder.qml, hearth-record: the screen-sharing portal works on every desktop).
   record|record-area|replay-save)
-              if ! have hearth-recorder; then notify-send -a Recorder "Recorder" "Hearth Recorder isn't installed" 2>/dev/null; exit 1; fi
+              if ! have hearth-recorder; then
+                if [ "$1" = record ] && have quickshell && [ -f "$NIMBUS_SHARE/desktop/shell/Recorder.qml" ]; then
+                  exec quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call record startStop
+                fi
+                notify-send -a Recorder "Recorder" "Hearth Recorder isn't installed" 2>/dev/null; exit 1
+              fi
               case "$1" in
                 record)      exec hearth-recorder --toggle ;;
                 record-area) exec hearth-recorder --toggle --area ;;

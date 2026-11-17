@@ -7,6 +7,9 @@
 // the end shows the desktop (click again: the windows). A running app has a dot, the one in front a long accent dot.
 // Auto-hide (Zen's own, or Settings › Appearance › Bar and dock): hidden until the pointer touches the bottom edge
 // (the small handle), and while the on-screen keyboard is open the dock steps aside.
+// Mantel on KWin only (labwc can't show another app's window or KWin's views, so these aren't there on labwc):
+// resting the pointer on a running app shows live previews of its windows (KWin draws them, hearth-previews.qml),
+// and the Task view button next to the app menu opens KWin's Overview (right-click: Present windows, Desktop grid).
 // Loaded by shell.qml through a Loader: if this file can't load, the classic taskbar (Bar.qml) comes up instead.
 import QtQuick
 import QtQuick.Layouts
@@ -56,7 +59,7 @@ PanelWindow {
     property bool remapping: false
     // Off screen for a moment (not within one frame, or the compositor wouldn't see it go), then back.
     Timer { id: remapTimer; interval: 150; onTriggered: dock.remapping = false }
-    visible: settingsReady && !remapping
+    visible: settingsReady && !remapping && !SettingsNav.fireholdDesk && !SettingsNav.fireholdCouch   // Firehold's Desk has its own dock (FireholdDesk.qml), its Couch none
     property int lastReserved: -1
     onSettingsReadyChanged: refit()
     function refit() {
@@ -87,7 +90,9 @@ PanelWindow {
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);
         }
-        for (const t of ToplevelManager.toplevels.values) {
+        for (const t of WinList.toplevels.values) {
+            // Activities (SettingsNav.activityShows, from feature/widgets): only the activity you're on; without it, all.
+            if (SettingsNav.activityShows) { try { if (!SettingsNav.activityShows(t)) continue; } catch (e) {} }
             const own = ownWindow(t);
             const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
@@ -103,6 +108,12 @@ PanelWindow {
         if (it.entry) return it.entry.name;
         const w = it.windows[0];
         return w ? (w.title || w.appId) : "";
+    }
+    // Scrolling on an app's icon (1.14): that app's volume in the mixer, when it's playing sound and the switch is on.
+    function wheelVolume(it, up) {
+        if (!Settings.dockScrollVolume || !SettingsNav.mixer) return;
+        const names = (it.windows || []).map(w => w.appId).concat([it.id, it.entry ? it.entry.name : "", appName(it)]);
+        SettingsNav.mixer.stepFor(names, up);
     }
     function cycleApp(it) {
         const ws = it.windows;
@@ -132,7 +143,7 @@ PanelWindow {
         if (it) cycleApp(it);
     }
     function toggleShowDesktop() {
-        const open = ToplevelManager.toplevels.values.filter(t => !t.minimized);
+        const open = WinList.toplevels.values.filter(t => !t.minimized);
         if (open.length) {
             const front = open.find(t => t.activated) || null;
             DeskState.shownDesktop = { windows: open, front: front };
@@ -142,7 +153,7 @@ PanelWindow {
         const was = DeskState.shownDesktop;
         DeskState.shownDesktop = null;
         if (!was) return;
-        const still = ToplevelManager.toplevels.values;
+        const still = WinList.toplevels.values;
         was.windows.filter(t => still.indexOf(t) >= 0 && t !== was.front).forEach(t => t.minimized = false);
         if (was.front && still.indexOf(was.front) >= 0) was.front.activate();
     }
@@ -177,6 +188,7 @@ PanelWindow {
         menu.popup(screen, Math.max(8, p.x - menu.cardWidth / 2), (screen ? screen.height : 1080) - dock.height + body.y - 2, { title: title, above: true }, list);
     }
     function moveToDesktop(win, n) {
+        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;
@@ -208,6 +220,12 @@ PanelWindow {
             }
             if (list.length) list.push({ separator: true });
             list.push({ label: "Move to desktop", icon: "desktops", group: "Window", sub: sub });
+            // Move to activity › (SettingsNav.activityMoveItems, from feature/widgets; nothing with one activity).
+            if (SettingsNav.activityMoveItems) {
+                let acts = [];
+                try { acts = SettingsNav.activityMoveItems(win) || []; } catch (e) {}
+                if (acts.length) list.push({ label: "Move to activity", icon: "desktops", group: "Window", sub: acts });
+            }
             if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
             else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });
@@ -264,6 +282,17 @@ PanelWindow {
                     onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(dock.screen, startMenuBtn, "bottom")   // the Super+X menu
                     Image { anchors.centerIn: parent; width: 28; height: 28; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                 }
+                DockButton {   // Task view (KWin): the Overview; right-click for Present windows and the Desktop grid
+                    id: taskViewBtn
+                    visible: !dock.shelf && WinList.kwin
+                    tip: "Task view (Super+W)"
+                    onClicked: WinList.effect("overview")
+                    onRightClicked: dock.popupAt(taskViewBtn, "Task view", [
+                        { label: "Overview", icon: "desktops", short: "Overview", run: () => WinList.effect("overview") },
+                        { label: "Present windows (Ctrl+F10)", icon: "window", run: () => WinList.effect("windows") },
+                        { label: "Desktop grid (Ctrl+F8)", icon: "grid", run: () => WinList.effect("grid") }])
+                    Icon { anchors.centerIn: parent; name: "desktops"; size: 26 }
+                }
                 Rectangle { visible: !dock.shelf; implicitWidth: 1; implicitHeight: dock.tile * 0.6; color: Theme.line }
 
                 Repeater {
@@ -280,12 +309,15 @@ PanelWindow {
                         status: dock.shelf ? dock.statusLine(modelData) : ""
                         active: focused
                         running: wins.length > 0
+                        previewWins: wins
+                        previewKey: modelData.key
                         count: wins.length
                         draggable: modelData.pinned
                         dropMark: dock.dragFrom >= 0 && dock.dragTo === index && dock.dragTo !== dock.dragFrom ? (dock.dragTo < dock.dragFrom ? -1 : 1) : 0
                         onClicked: dock.focusApp(modelData, task)
                         onMiddleClicked: dock.newInstance(modelData)
                         onRightClicked: dock.taskMenu(task, modelData)
+                        onWheeled: up => dock.wheelVolume(modelData, up)
                         onDragStarted: { dock.dragFrom = index; dock.dragTo = index; }
                         onDragMoved: pos => dock.dragTo = dock.dropIndexAt(pos)
                         onDragEnded: dock.finishDrag()
@@ -296,6 +328,13 @@ PanelWindow {
                             source: task.modelData.own ? AppIcons.own(task.wins.length ? task.wins[0].title : "") : ""
                             icon: task.modelData.entry ? (task.modelData.entry.icon || "") : ""
                             appId: task.wins.length ? (task.wins[0].appId || "") : (task.modelData.id || "")
+                        }
+                        // 1.14: the app's badge and progress (the Unity launcher API, or its copy's progress: NotifyHub.qml)
+                        DockBadge {
+                            anchors.fill: parent
+                            info: NotifyHub.badgeFor(task.modelData.id || (task.wins.length ? task.wins[0].appId : ""))
+                            iconSize: dock.iconSize
+                            lift: dock.shelf ? -dock.tile * 0.12 : 0
                         }
                     }
                 }
@@ -385,6 +424,41 @@ PanelWindow {
         MouseArea { id: ca; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ch.picked() }
     }
 
+    // A count in a bubble at the top right of an app's icon, a thin progress bar across its foot, and a glow when the
+    // app asks for attention (urgent). Nothing at all when the app has none.
+    component DockBadge: Item {
+        id: db
+        property var info: null
+        property real iconSize: 40
+        property real lift: 0
+        visible: info !== null
+        Rectangle {   // urgent: a ring round the icon
+            visible: !!db.info && db.info.urgent
+            anchors.centerIn: parent; anchors.verticalCenterOffset: db.lift
+            width: db.iconSize + 10; height: width; radius: Theme.r(width / 3)
+            color: "transparent"; border.width: 2; border.color: Theme.flame
+            // Only while the app asks for attention: a count or a progress bar alone used to keep this pulse (and the
+            // whole dock) redrawing every frame, all the time (1.14, the owner's laptop: the shell at ~13% CPU).
+            SequentialAnimation on opacity { running: db.visible && !!db.info && db.info.urgent === true && !Settings.reduceMotion; loops: Animation.Infinite; NumberAnimation { from: 1; to: 0.35; duration: 700 } NumberAnimation { from: 0.35; to: 1; duration: 700 } }
+        }
+        Rectangle {   // the count
+            visible: !!db.info && db.info.count > 0
+            x: parent.width / 2 + db.iconSize / 2 - width * 0.6
+            y: parent.height / 2 + db.lift - db.iconSize / 2 - height * 0.4
+            width: Math.max(18, cnt.implicitWidth + 8); height: 18; radius: 9
+            color: Theme.danger
+            border.color: Theme.panel; border.width: 1.5
+            Text { id: cnt; anchors.centerIn: parent; text: !db.info ? "" : db.info.count > 99 ? "99+" : String(db.info.count); color: "#ffffff"; font.pixelSize: 10; font.bold: true; font.family: Theme.font }
+        }
+        Rectangle {   // the progress
+            visible: !!db.info && db.info.progress >= 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: parent.height / 2 + db.lift + db.iconSize / 2 - 2
+            width: db.iconSize; height: 5; radius: 2.5
+            color: Qt.rgba(0, 0, 0, 0.55)
+            Rectangle { x: 1; y: 1; height: parent.height - 2; radius: 2; width: (parent.width - 2) * Math.max(0, Math.min(1, db.info ? db.info.progress : 0)); color: Theme.accent }
+        }
+    }
     component DockButton: Item {
         id: btn
         property string tip: ""
@@ -397,6 +471,10 @@ PanelWindow {
         property int dropMark: 0
         property bool dragging: false
         property real dragOffset: 0
+        property var previewWins: []       // KWin: the windows whose live previews show while the pointer rests here
+        property string previewKey: ""
+        readonly property bool previews: WinList.previewsReady && previewWins.length > 0 && !dock.shelf
+        property bool previewShown: false
         default property alias content: holder.data
         signal clicked()
         signal middleClicked()
@@ -404,8 +482,24 @@ PanelWindow {
         signal dragStarted()
         signal dragMoved(real pos)
         signal dragEnded()
+        signal wheeled(bool up)
         z: dragging ? 5 : 0
         transform: Translate { x: btn.dragOffset }
+        // Previews: after a short rest (at once when moving over from another app's), above the dock.
+        function showPreview() {
+            if (!area.containsMouse || btn.dragging || !btn.previews) return;
+            const top = btn.mapToItem(body, 0, 0).y;
+            previewShown = WinList.preview(btn.previewWins, "bottom", top + area.mouseY, btn.width / 2 - area.mouseX, btn.previewKey);
+            if (previewShown) DeskState.previewAt = Date.now();
+        }
+        function endPreview(now) { previewWait.stop(); if (previewShown) { previewShown = false; WinList.previewHide(now); DeskState.previewAt = Date.now(); } }
+        Timer { id: previewWait; interval: Date.now() - DeskState.previewAt < 500 ? 60 : 450; onTriggered: btn.showPreview() }
+        Connections {
+            target: area
+            function onContainsMouseChanged() { if (area.containsMouse && btn.previews) previewWait.restart(); else btn.endPreview(false); }
+            function onPressed() { btn.endPreview(true); }
+        }
+        onPreviewWinsChanged: if (previewShown && previewWins.length === 0) endPreview(true)
         implicitWidth: dock.tile
         implicitHeight: dock.shelf ? dock.tile * 1.18 : dock.tile
         Rectangle {
@@ -460,6 +554,13 @@ PanelWindow {
             }
             onReleased: { if (btn.dragging) { btn.dragging = false; btn.dragOffset = 0; btn.dragEnded(); } }
             onCanceled: { if (btn.dragging) { btn.dragging = false; btn.dragOffset = 0; btn.dragEnded(); } }
+            // 1.14: scrolling on an app changes its volume (Settings › Sound › Apps' sound), one notch at a time.
+            property real wheelSum: 0
+            onWheel: wheel => {
+                wheelSum += wheel.angleDelta.y;
+                if (Math.abs(wheelSum) >= 120) { btn.wheeled(wheelSum > 0); wheelSum = 0; }
+                wheel.accepted = true;
+            }
             onClicked: mouse => {
                 if (dragged) { dragged = false; return; }
                 if (mouse.button === Qt.MiddleButton) btn.middleClicked();
@@ -467,8 +568,8 @@ PanelWindow {
                 else btn.clicked();
             }
         }
-        PopupWindow {   // the hover label above the dock
-            visible: area.containsMouse && btn.tip !== "" && !btn.dragging && !dock.shelf
+        PopupWindow {   // the hover label above the dock (KWin's live previews take its place for a running app)
+            visible: area.containsMouse && btn.tip !== "" && !btn.dragging && !dock.shelf && !btn.previews
             anchor.item: btn
             anchor.rect.x: Math.round(btn.width / 2 - implicitWidth / 2)
             anchor.rect.y: -implicitHeight - 14

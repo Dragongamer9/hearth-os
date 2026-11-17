@@ -229,6 +229,25 @@ def cap_radii(s, cap, pattern):
     return re.sub(pattern, lambda m: m.group(1) + str(min(int(m.group(2)), cap)), s)
 
 
+def write_kdeglobals(kg, cur, scheme):
+    """Hearth's colours into kdeglobals: only the colour scheme's groups and keys are merged in (hearth_kconfig), so
+    everything else in it stays (KWin's animation speed, [KScreen], what KDE apps keep there). The mark stays first."""
+    try:
+        import hearth_kconfig as kc
+    except ImportError:
+        kc = None
+    if kc is None:
+        return write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', scheme))
+    data, _ = kc.parse(re.sub(r'(?m)^#.*\n', '', scheme))
+    changes = {g: dict(kv) for g, kv in data.items() if g != kc.DEFAULT_GROUP and kv}
+    if not cur:
+        write(kg, KDE_MARK + '\n')
+    try:
+        return kc.update(kg, changes)
+    except kc.BadFile:
+        return False        # a file that can't be read is left as it is
+
+
 def write(path, text):
     """Write when different; True if it changed."""
     try:
@@ -243,6 +262,34 @@ def write(path, text):
         f.write(text)
     os.replace(tmp, path)
     return True
+
+
+def write_setting(path, text):
+    """Like write(), through hearth_settings_io's atomic write (a .bak kept) when it's there."""
+    if read(path) == text:
+        return False
+    if hsio is None:
+        return write(path, text)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    hsio.write_text(path, text)
+    return True
+
+
+def title_font(lk):
+    f = lk.get('font')
+    return f if f not in (None, '', 'sans-serif') and ',' not in str(f) else 'Noto Sans'
+
+
+def apps_follow(d):
+    """"Apps follow Hearth" (desktop.json "appsFollow", Settings › Personalization › Window frames & app colours): Qt,
+    KDE and GTK apps take Hearth's colours unless it's false. Missing or anything else = on, as before."""
+    return not (isinstance(d, dict) and d.get('appsFollow') is False)
+
+
+def kde_own_scheme(mode):
+    """With "Apps follow Hearth" off, KDE apps get KDE's own Breeze scheme (only while kdeglobals is Hearth's)."""
+    return '[UiSettings]\nColorScheme=%s\n\n[Icons]\nTheme=%s\n' % (
+        ('BreezeLight', 'breeze') if mode == 'light' else ('BreezeDark', 'breeze-dark'))
 
 
 def read(path):
@@ -326,9 +373,30 @@ def main():
     themerc = m.text(read(os.path.join(DESKTOP, 'labwc', 'themerc-override')), 'labwc')
     themerc = cap_radii(themerc, cap, r'(corner-radius:\s*)(\d+)')
     themerc = themerc.replace('# Hearth colors', '# Written by hearth-theme (%s, %s, accent %s) from Hearth colors' % (look, mode, m.accent), 1)
+    # 1.14: the window frames tinted with the accent (desktop.json "frameTint", 0-100; missing or 0 = as before).
+    desk = load(os.path.join(DATA, 'nimbus', 'desktop.json'), {}) or {}
+    frame_tint = desk.get('frameTint', 0) if isinstance(desk, dict) else 0
+    follow = apps_follow(desk)
+    try:
+        import hearth_aurorae as _ha
+        themerc = _ha.tint_themerc(themerc, m.accent if isinstance(m.accent, str) else hexc(m.accent), frame_tint)
+    except Exception as e:
+        print('hearth-theme: frame tint: %s' % e, file=sys.stderr)
     labwc_changed |= write(os.path.join(OUT, 'themerc-override'), themerc)
     labwc_changed |= write(os.path.join(OUT, 'labwc.json'), json.dumps({'cornerRadius': int(lk.get('windowCorner') or 10),
                                                                          'font': lk.get('font') if lk.get('font') not in (None, 'sans-serif') else 'sans'}) + '\n')
+    # KWin (Mantel on KWin): Hearth's own Aurorae window frames, the same colours, corners and buttons as labwc's
+    # (theme/hearth_aurorae.py), in ~/.local/share/aurorae/themes/hearth only.
+    kwin_changed, kwin_theme = False, ''
+    try:
+        import hearth_aurorae
+        cols = {k: m.color(v) for k, v in hearth_aurorae.themerc_colors(read(os.path.join(DESKTOP, 'labwc', 'themerc-override'))).items()}
+        cols['danger'] = hexc(m.tgt['danger']) if 'danger' in m.tgt else '#e5484d'
+        cols = hearth_aurorae.tint_colors(cols, m.accent if isinstance(m.accent, str) else hexc(m.accent), frame_tint)
+        radius = min(int(lk.get('windowCorner') or 10), cap) if cap else int(lk.get('windowCorner') or 10)
+        kwin_changed, kwin_theme = hearth_aurorae.write_theme(DATA, cols, radius, write_setting)
+    except Exception as e:
+        print('hearth-theme: KWin window frames: %s' % e, file=sys.stderr)
     # Hearth's own apps (hosts/hearth-apptheme): theme.css and theme.json in ~/.config/hearth.
     write_apps(pal, look, mode, accent)
     # Qt / KDE apps through qt6ct / qt5ct.
@@ -358,17 +426,36 @@ def main():
     # the KDE platform theme (Plasma's) when it's used instead of qt6ct.
     # "Hearth" (not HearthLive): KDE matches the scheme by its Name= in older releases and by its file name in newer
     # ones, and color-schemes/Hearth.colors (the live copy written above) has both.
-    if not cur or cur.startswith(KDE_MARK):
-        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde).rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n'
-              '\n[Icons]\nTheme=%s\n' % ('breeze' if mode == 'light' else 'breeze-dark'))
+    # The window title font for KWin's frames (labwc's ActiveWindow font: the look's font, 10 pt, bold), in [WM].
+    kde_wm = re.sub(r'(?m)^\[WM\]\n', '[WM]\nactiveFont=%s,10,-1,5,700,0,0,0,0,0\n' % title_font(lk), kde, count=1)
+    if not follow:
+        if cur.startswith(KDE_MARK):
+            write_kdeglobals(kg, cur, kde_own_scheme(mode))
+    elif not cur or cur.startswith(KDE_MARK):
+        # merged in (kwin-pages: KWin's own keys in kdeglobals stay), with the window title font (kwin-windows)
+        write_kdeglobals(kg, cur, kde_wm.rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n\n[Icons]\nTheme=%s\n' % (
+            'breeze' if mode == 'light' else 'breeze-dark'))
+    if kwin_changed and kwin_theme and os.environ.get('HEARTH_WM') == 'kwin':
+        # KWin keeps a theme it has loaded, so the look's own theme name is picked in ~/.config/kwinrc, only while the
+        # decoration there is Hearth's (or none was chosen: Hearth's KWin defaults pick "hearth"); then KWin reloads.
+        try:
+            import hearth_aurorae
+            rcpath = os.path.join(CONF, 'kwinrc')
+            if hsio is not None:
+                hsio.update_text(rcpath, lambda t: hearth_aurorae.kwinrc_pick(t, kwin_theme) or t)
+        except Exception as e:
+            print('hearth-theme: kwinrc: %s' % e, file=sys.stderr)
+        subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if labwc_changed:
         rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
         system = os.path.join(DESKTOP, 'shell', 'hearth-system')
         if os.path.isdir(rt) and os.path.isfile(system):
             subprocess.run([sys.executable, system, 'labwc-config'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+        if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
             subprocess.run(['labwc', '--reconfigure'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for k, v in (('HEARTH_THEME_DIR', OUT), ('HEARTH_SCHEME', mode), ('HEARTH_GNOME_ACCENT', gnome_accent(m.accent))):
+    for k, v in (('HEARTH_THEME_DIR', OUT), ('HEARTH_SCHEME', mode), ('HEARTH_GNOME_ACCENT', gnome_accent(m.accent)),
+                 ('HEARTH_APPS_FOLLOW', '1' if follow else '0')):
         if "'" not in v:
             print("%s='%s'" % (k, v))
     return 0

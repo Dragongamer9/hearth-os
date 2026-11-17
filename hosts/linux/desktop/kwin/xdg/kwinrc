@@ -1,0 +1,49 @@
+# Hearth's KWin defaults for Mantel (1.14, docs/DESKTOPS.md "Mantel on KWin"). A system default: nimbus-session puts
+# this folder first in XDG_CONFIG_DIRS, under your own ~/.config/kwinrc, so anything you (or KWin's own settings)
+# change there wins and this file is never written to. Except the keys marked [$i] (fixed): Mantel needs them to work
+# (Hearth Settings changes Night Light and tearing in your kwinrc, and those are never fixed here).
+
+[Windows]
+FocusPolicy=ClickToFocus
+# Mantel's bar has its own Show desktop and window list; no hot corners.
+ElectricBorderMaximize=true
+ElectricBorderTiling=true
+
+[ElectricBorders]
+Top=None
+TopRight=None
+Right=None
+BottomRight=None
+Bottom=None
+BottomLeft=None
+Left=None
+TopLeft=None
+
+[TouchEdges]
+Top=None
+Right=None
+Bottom=None
+Left=None
+
+# Window frames: kwin/windows/xdg/kwinrc (Hearth's Aurorae theme). Not set here: this folder comes first in
+# XDG_CONFIG_DIRS, so a [org.kde.kdecoration2] here would win over it.
+
+# Hearth's on-screen keyboard as KWin's input method (feature/kwin-input: hearth-kwin-im.desktop). Fixed ([$i],
+# KConfig's "immutable"): an input method picked in KDE Plasma (1.13) in your own kwinrc would leave Mantel's keyboard
+# unable to type. Hearth's keyboard is chosen in Settings › Keyboard; Hearth tells you once if yours isn't used.
+[Wayland]
+InputMethod[$ei]=/usr/share/applications/hearth-kwin-im.desktop
+VirtualKeyboardEnabled=true
+
+[NightColor]
+Active=false
+
+# Game controllers as a mouse and keyboard: KWin's own (its "gamecontroller" plugin, KWin 6.6 and newer) stays off.
+# Hearth's controller pointer (hearth-pad, Settings › Controller) already does this in Desktop Mode, and with both on a
+# stick would move the pointer twice and A would click twice. Debian's KWin 6.3 has no such plugin, so this line does
+# nothing there; it's here for a newer KWin. Not fixed: your own kwinrc wins.
+[Plugins]
+gamecontrollerEnabled=false
+
+[Xwayland]
+XwaylandEavesdrops=None

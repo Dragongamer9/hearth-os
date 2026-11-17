@@ -15,11 +15,18 @@ MARK="# Written by Hearth Desktop Mode; delete this line to keep your own settin
 # the Qt, GTK, KDE and labwc colours for it to ~/.config/nimbus/theme (and reloads labwc's window decorations).
 # Without python3 or if it fails, Hearth's own files below are used as before.
 HEARTH_THEME_DIR=""; HEARTH_SCHEME=dark; HEARTH_GNOME_ACCENT=orange
+# "Apps follow Hearth" (Settings › Personalization › Window frames & app colours, desktop.json "appsFollow"; on unless you
+# turn it off): off, Qt and GTK apps keep their own colours. Hearth's files below are still written (with its mark), only
+# without Hearth's palette, so turning it back on puts Hearth's colours back.
+HEARTH_APPS_FOLLOW=1
 if command -v python3 >/dev/null 2>&1 && [ -f "$SHARE/desktop/theme/hearth-theme" ]; then
   eval "$(python3 "$SHARE/desktop/theme/hearth-theme" 2>/dev/null | grep -E "^HEARTH_[A-Z_]+='[^']*'\$")"
 fi
 QT_COLORS="$SHARE/desktop/theme/hearth-qt.conf"
 [ -n "$HEARTH_THEME_DIR" ] && [ -f "$HEARTH_THEME_DIR/hearth-qt.conf" ] && QT_COLORS="$HEARTH_THEME_DIR/hearth-qt.conf"
+QT_PALETTE="color_scheme_path=$QT_COLORS
+custom_palette=true"
+[ "$HEARTH_APPS_FOLLOW" = 0 ] && QT_PALETTE="custom_palette=false"
 
 for v in qt6ct qt5ct; do
   f="$CONF/$v/$v.conf"
@@ -28,8 +35,7 @@ for v in qt6ct qt5ct; do
     cat >"$f" <<CONF
 $MARK
 [Appearance]
-color_scheme_path=$QT_COLORS
-custom_palette=true
+$QT_PALETTE
 icon_theme=$( [ "$HEARTH_SCHEME" = light ] && echo breeze || echo breeze-dark )
 standard_dialogs=xdgdesktopportal
 style=Breeze
@@ -58,6 +64,10 @@ for v in 4 3; do
   f="$CONF/gtk-$v.0/gtk.css"
   if [ ! -e "$f" ] || head -n 1 "$f" | grep -qF "$GTK_MARK"; then
     mkdir -p "$CONF/gtk-$v.0"
+    if [ "$HEARTH_APPS_FOLLOW" = 0 ]; then
+      printf '%s */\n/* Apps follow Hearth is off (Settings › Personalization): GTK apps keep their own colours. */\n' "$GTK_MARK" >"$f" 2>/dev/null
+      continue
+    fi
     if [ -n "$HEARTH_THEME_DIR" ] && [ -f "$HEARTH_THEME_DIR/gtk$v.css" ]; then
       cp "$HEARTH_THEME_DIR/gtk$v.css" "$f" 2>/dev/null; continue    # the look and accent are in it already
     fi
@@ -79,7 +89,11 @@ fi
 
 if command -v gsettings >/dev/null 2>&1; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-$HEARTH_SCHEME" 2>/dev/null
-  gsettings set org.gnome.desktop.interface accent-color "$HEARTH_GNOME_ACCENT" 2>/dev/null   # GNOME 47+ apps
+  if [ "$HEARTH_APPS_FOLLOW" = 0 ]; then
+    gsettings reset org.gnome.desktop.interface accent-color 2>/dev/null
+  else
+    gsettings set org.gnome.desktop.interface accent-color "$HEARTH_GNOME_ACCENT" 2>/dev/null   # GNOME 47+ apps
+  fi
   gsettings set org.gnome.desktop.interface cursor-theme breeze_cursors 2>/dev/null
   # GTK 3 apps: the libadwaita-like style when it's installed (Bazzite ships adw-gtk3), which reads gtk.css colours.
   if [ "$HEARTH_SCHEME" = light ]; then
@@ -87,5 +101,10 @@ if command -v gsettings >/dev/null 2>&1; then
   else
     [ -d /usr/share/themes/adw-gtk3-dark ] && gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark 2>/dev/null
   fi
+fi
+# Your fonts, cursor and icon theme (Settings › Personalization › Fonts, cursor & icons): handed on again over what's
+# above, so a look change never undoes them. Nothing happens when you chose none.
+if command -v python3 >/dev/null 2>&1 && [ -f "$SHARE/desktop/shell/hearth-lookset" ]; then
+  python3 "$SHARE/desktop/shell/hearth-lookset" apply >/dev/null 2>&1
 fi
 exit 0

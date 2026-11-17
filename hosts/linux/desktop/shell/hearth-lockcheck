@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""hearth-lockcheck: can KWin's screen locker show Hearth's lock screen here? (docs/KWIN-INPUT.md)
+
+Lock.qml runs this on KWin before every lock. KWin's locker is fail-safe: when its lock screen can't load it keeps
+the screen covered (its emergency screen), and on a handheld without a keyboard that would be a lockout. So Hearth
+only asks KWin to lock when this says the lock screen will come up; otherwise Lock.qml tells the person and doesn't
+lock.
+
+  hearth-lockcheck [--no-probe | --as-kwin]   one JSON line {ok, why, greeter, package}; exit 0 if locking is safe, 1 if not
+
+It goes by the running KWin's own environment (/proc/<KWin>/environ: what KWin's locker will see; when KWin's file
+capability hides it, the environment the KWin session wrote for it, $XDG_RUNTIME_DIR/hearth/kwin.env), never this
+program's: KWin must have PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock (the KWin session sets it). Then: KWin's
+greeter (kscreenlocker_greet) is installed; Hearth's lock screen is a complete Plasma shell package where it looks
+(X-Plasma-APIVersion 2 or more, lockscreen/LockScreen.qml); and the greeter's own test run, off screen and with
+KWin's environment, shows that it LOADED Hearth's lock screen (the screen says "hearth-lock-screen: loaded" when it
+starts): anything else (an error, a fallback, silence) fails. The test run is done once per change (cached in
+<runtime dir>/hearth/lockcheck.json); it ends as soon as the greeter says it loaded (or failed), at most
+HEARTH_LOCK_PROBE_TIME seconds (8). --no-probe: only the files. --as-kwin: this program's environment stands in for
+KWin's (the image build, where no KWin runs, and nimbus-session before it starts KWin: it still runs the greeter's
+test). HEARTH_LOCK_GREETER, HEARTH_LOCK_PKG and HEARTH_LOCK_QT_PLUGINS name the greeter, the package and Qt's plugin
+folders instead of looking for them (checks).
+"""
+import glob
+import json
+import os
+import select
+import signal
+import subprocess
+import sys
+import time
+
+PACKAGE = 'org.hearth.mantel-lock'
+GREETERS = ['/usr/libexec/kscreenlocker_greet', '/usr/lib64/libexec/kscreenlocker_greet'] + \
+    sorted(glob.glob('/usr/lib/*/libexec/kscreenlocker_greet'))
+FAIL_MARKS = ('Failed to load lockscreen QML', 'Lockscreen QML outdated', 'Failed to load the fallback')
+LOADED = 'hearth-lock-screen: loaded'
+try:
+    PROBE_TIME = max(1.0, min(30.0, float(os.environ.get('HEARTH_LOCK_PROBE_TIME') or 8)))
+except ValueError:
+    PROBE_TIME = 8.0
+
+
+def greeter():
+    for g in ([os.environ['HEARTH_LOCK_GREETER']] if os.environ.get('HEARTH_LOCK_GREETER') else []) + GREETERS:
+        if os.access(g, os.X_OK):
+            return g
+    return ''
+
+
+def env_file():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid(), 'hearth', 'kwin.env')
+
+
+def parse_env(raw):
+    env = {}
+    for item in raw.replace(b'\n', b'\0').split(b'\0'):
+        k, sep, v = item.partition(b'=')
+        if sep and k and not k.startswith(b'#'):
+            env[k.decode('utf-8', 'replace')] = v.decode('utf-8', 'replace')
+    return env
+
+
+def kwin_environ():
+    """The environment of this user's running KWin (kwin_wayland), or None when there's none.
+    KWin carries a file capability (CAP_SYS_NICE), which makes its /proc/<pid>/environ readable only by root: then
+    the environment the KWin session wrote when it started KWin ($XDG_RUNTIME_DIR/hearth/kwin.env, NUL- or
+    line-separated KEY=VALUE, yours and not writable by others; the session branch's job) stands in."""
+    uid = os.getuid()
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            with open('/proc/%s/comm' % pid) as f:
+                if f.read().strip() != 'kwin_wayland':
+                    continue
+            with open('/proc/%s/status' % pid) as f:
+                uids = next((l.split()[1:] for l in f if l.startswith('Uid:')), [])
+            if not uids or int(uids[0]) != uid:
+                continue
+        except (OSError, ValueError):
+            continue
+        try:
+            with open('/proc/%s/environ' % pid, 'rb') as f:
+                return parse_env(f.read())
+        except OSError:
+            pass
+        try:
+            st = os.stat(env_file())
+            if st.st_uid == uid and not (st.st_mode & 0o022):
+                with open(env_file(), 'rb') as f:
+                    return parse_env(f.read())
+        except OSError:
+            pass
+        return {}
+    return None
+
+
+def qt_wayland():
+    """What the greeter needs to show itself on KWin, which its off-screen test run can't show: Qt's Wayland platform
+    plugin (qt6-wayland) and its layer-shell integration (layer-shell-qt)."""
+    need = ('platforms/libqwayland*.so', 'wayland-shell-integration/liblayer-shell.so')
+    bases = [b for b in (os.environ.get('HEARTH_LOCK_QT_PLUGINS') or '').split(':') if b] or \
+        glob.glob('/usr/lib/*/qt6/plugins') + ['/usr/lib64/qt6/plugins']
+    return all(any(glob.glob(os.path.join(b, n)) for b in bases) for n in need)
+
+
+def data_dirs(env=None):
+    env = os.environ if env is None else env
+    home = env.get('XDG_DATA_HOME') or os.path.join(env.get('HOME') or os.path.expanduser('~'), '.local', 'share')
+    return [home] + [d for d in (env.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+
+
+def package(env=None):
+    """Hearth's lock screen as a complete Plasma shell package (API version 2+, its lock screen QML), else ''."""
+    fixed = os.environ.get('HEARTH_LOCK_PKG')
+    for p in ([fixed] if fixed else [os.path.join(d, 'plasma', 'shells', PACKAGE) for d in data_dirs(env)]):
+        try:
+            with open(os.path.join(p, 'metadata.json'), encoding='utf-8') as f:
+                meta = json.load(f)
+            if int(meta.get('X-Plasma-APIVersion', '1')) >= 2 and \
+                    os.path.isfile(os.path.join(p, 'contents', 'lockscreen', 'LockScreen.qml')):
+                return p
+        except (OSError, ValueError, TypeError):
+            continue
+    return ''
+
+
+def stamp(paths):
+    out = []
+    for p in paths:
+        try:
+            out.append('%s:%d' % (p, os.stat(p).st_mtime_ns))
+        except OSError:
+            out.append(p + ':-')
+    return '|'.join(out)
+
+
+def run_greeter(g, env, limit=None):
+    """The greeter's test run's output (stdout and stderr together). Ends it as soon as it says it loaded Hearth's lock
+    screen or failed (a test greeter otherwise stays up until it's ended), or after LIMIT seconds."""
+    limit = PROBE_TIME if limit is None else limit
+    p = subprocess.Popen([g, '--testing'], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, start_new_session=True)
+    buf, end = b'', time.monotonic() + limit
+    try:
+        while True:
+            left = end - time.monotonic()
+            if left <= 0:
+                break
+            r, _, _ = select.select([p.stdout], [], [], min(left, 0.5))
+            if r:
+                chunk = os.read(p.stdout.fileno(), 65536)
+                if not chunk:
+                    break                                 # it ended by itself
+                buf += chunk
+                text = buf.decode('utf-8', 'replace')
+                if LOADED in text or any(m in text for m in FAIL_MARKS):
+                    time.sleep(0.2)                       # what it says right after (a failure after loading)
+                    r, _, _ = select.select([p.stdout], [], [], 0)
+                    if r:
+                        buf += os.read(p.stdout.fileno(), 65536)
+                    break
+            elif p.poll() is not None:
+                break
+    finally:
+        if p.poll() is None:
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except OSError:
+                pass
+            try:
+                p.wait(2)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                p.wait()
+        p.stdout.close()
+    return buf.decode('utf-8', 'replace')
+
+
+def probe(g, pkg, kenv):
+    """The greeter's own test run, off screen, with KWin's environment: (ok, why). Only a run that shows Hearth's lock
+    screen loaded passes."""
+    cache_dir = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth')
+    cache = os.path.join(cache_dir, 'lockcheck.json')
+    key = stamp([g, os.path.join(pkg, 'metadata.json'), os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml')]) + \
+        '|' + kenv.get('PLASMA_DEFAULT_SHELL', '') + '|' + kenv.get('XDG_DATA_DIRS', '')
+    try:
+        with open(cache, encoding='utf-8') as f:
+            c = json.load(f)
+        if c.get('key') == key:
+            return c['ok'], c['why']
+    except (OSError, ValueError, KeyError):
+        pass
+    env = dict(kenv, QT_QPA_PLATFORM='offscreen', QT_FORCE_STDERR_LOGGING='1')
+    for k in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY'):
+        env.pop(k, None)
+    try:
+        out = run_greeter(g, env)
+    except OSError as e:
+        return False, 'the screen locker won\'t run: %s' % e
+    bad = [m for m in FAIL_MARKS if m in out]
+    if bad:
+        ok, why = False, 'the screen locker can\'t load Hearth\'s lock screen (%s)' % bad[0]
+    elif LOADED not in out:
+        tail = ' | '.join(l for l in out.splitlines() if 'notify signal' not in l)[-300:]
+        ok, why = False, 'the screen locker\'s test run didn\'t show Hearth\'s lock screen loading (%s)' % (tail or 'no output')
+    else:
+        ok, why = True, 'ok'
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        with open(cache + '.part', 'w', encoding='utf-8') as f:
+            json.dump({'key': key, 'ok': ok, 'why': why}, f)
+        os.replace(cache + '.part', cache)
+    except OSError:
+        pass
+    return ok, why
+
+
+def check(run_probe=True, kenv=None):
+    g = greeter()
+    if not g:
+        return {'ok': False, 'why': 'KWin\'s screen locker (kscreenlocker) isn\'t installed', 'greeter': '', 'package': ''}
+    if run_probe:
+        kenv = kwin_environ() if kenv is None else kenv
+        if kenv is None:
+            return {'ok': False, 'why': 'KWin isn\'t running', 'greeter': g, 'package': ''}
+        if kenv.get('PLASMA_DEFAULT_SHELL') != PACKAGE:
+            return {'ok': False, 'why': 'KWin\'s session doesn\'t name Hearth\'s lock screen (PLASMA_DEFAULT_SHELL=%s in KWin, '
+                    'not %s)' % (kenv.get('PLASMA_DEFAULT_SHELL', ''), PACKAGE), 'greeter': g, 'package': ''}
+    if not qt_wayland():
+        return {'ok': False, 'why': 'Qt\'s Wayland support (qt6-wayland, layer-shell-qt) isn\'t all installed: KWin\'s greeter couldn\'t start',
+                'greeter': g, 'package': ''}
+    pkg = package(kenv)
+    if not pkg:
+        return {'ok': False, 'why': 'Hearth\'s lock screen isn\'t where KWin\'s screen locker looks', 'greeter': g, 'package': ''}
+    ok, why = probe(g, pkg, kenv) if run_probe else (True, 'ok (files only)')
+    return {'ok': ok, 'why': why, 'greeter': g, 'package': pkg}
+
+
+def main(argv):
+    if argv[:1] in (['-h'], ['--help']):
+        print(__doc__)
+        return 0
+    res = check('--no-probe' not in argv, dict(os.environ) if '--as-kwin' in argv else None)
+    print(json.dumps(res))
+    return 0 if res['ok'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

@@ -14,7 +14,8 @@ const H = window.HP;
 const { $, $$ } = { $: (s, el = document) => el.querySelector(s), $$: (s, el = document) => [...el.querySelectorAll(s)] };
 const esc = H.esc;
 
-const RATIOS = [['free', 'Free'], ['orig', 'Original'], ['1:1', 'Square'], ['4:3', '4:3'], ['16:9', '16:9']];
+const RATIOS = [['free', 'Free'], ['orig', 'Original'], ['1:1', 'Square'], ['3:2', '3 : 2'], ['4:3', '4 : 3'], ['16:9', '16 : 9']];
+const ZERO = { b: 0, c: 0, s: 0, w: 0, hi: 0, sh: 0, vg: 0, t: 0 };
 const FILTERS = {
   none: { label: 'Original', a: { b: 0, c: 0, s: 0, w: 0 } },
   bw: { label: 'Black & white', a: { b: 0, c: 12, s: -100, w: 0 } },
@@ -23,13 +24,17 @@ const FILTERS = {
   vivid: { label: 'Vivid', a: { b: 2, c: 22, s: 45, w: 0 } },
   fade: { label: 'Faded', a: { b: 12, c: -30, s: -25, w: 6 } },
 };
-const SLIDERS = [['b', 'Brightness'], ['c', 'Contrast'], ['s', 'Saturation'], ['w', 'Warmth']];
+// 1.14 (photos-5): Light has the seven of the mockup; Color the colour ones (and tint).
+const LIGHT = [['b', 'Brightness'], ['c', 'Contrast'], ['hi', 'Highlights'], ['sh', 'Shadows'], ['w', 'Warmth'], ['s', 'Saturation'], ['vg', 'Vignette']];
+const COLOR = [['w', 'Warmth'], ['t', 'Tint'], ['s', 'Saturation']];
+const TABS = [['light', 'Light'], ['color', 'Color'], ['looks', 'Looks'], ['fix', 'Fix up']];
 const COLORS = ['#ff8a3d', '#ff4d4d', '#ffd166', '#6fd08c', '#4aa3ff', '#ffffff', '#111111'];
 const TOOLS = [['pen', 'Pen'], ['hl', 'Highlighter'], ['arrow', 'Arrow'], ['text', 'Text']];
 
 let E = null; // the open editor
 
-const fresh = o => ({ o, angle: 0, crop: null, ratio: 'free', portrait: false, adj: { b: 0, c: 0, s: 0, w: 0 }, filter: 'none', marks: [], resize: null });
+const fresh = o => ({ o, angle: 0, crop: null, ratio: 'free', portrait: false, adj: { ...ZERO }, filter: 'none', marks: [], resize: null });
+const adjOf = a => ({ ...ZERO, ...a });
 const clone = v => JSON.parse(JSON.stringify(v));
 
 // ---------------------------------------------------------------- drawing
@@ -82,23 +87,50 @@ function render(src, st, { img, k = 1, scale = 1, crop = true, marks = true, adj
 
 // Light and colour: a lookup table per channel for brightness, contrast and warmth, then saturation per pixel.
 function adjustCanvas(cv, a) {
-  if (!a.b && !a.c && !a.s && !a.w) return;
+  a = adjOf(a);
+  if (!a.b && !a.c && !a.s && !a.w && !a.hi && !a.sh && !a.vg && !a.t) return;
   const g = cv.getContext('2d');
   // Big pictures in bands, so the page doesn't hold two copies of a huge picture at once.
   const band = Math.max(1, Math.floor(4e6 / cv.width));
   const C = a.c * 1.28, f = (259 * (C + 255)) / (255 * (259 - C));
-  const luts = [0.6, 0.1, -0.6].map(wk => { const l = new Uint8ClampedArray(256); for (let v = 0; v < 256; v++) l[v] = f * (v + a.b * 1.1 + a.w * wk - 128) + 128; return l; });
+  // Shadows lift (or deepen) the dark end, Highlights the bright end; then brightness, warmth / tint and contrast.
+  const tone = v => { const x = v / 255; return v + a.sh * 0.9 * (1 - x) * (1 - x) + a.hi * 0.9 * x * x; };
+  const luts = [[0.6, 0], [0.1, -0.5], [-0.6, 0]].map(([wk, tk]) => { const l = new Uint8ClampedArray(256); for (let v = 0; v < 256; v++) l[v] = f * (tone(v) + a.b * 1.1 + a.w * wk + a.t * tk - 128) + 128; return l; });
   const [R, G, B] = luts, sat = 1 + a.s / 100;
-  for (let y = 0; y < cv.height; y += band) {
-    const h = Math.min(band, cv.height - y);
-    const id = g.getImageData(0, y, cv.width, h), d = id.data;
-    for (let i = 0; i < d.length; i += 4) {
+  const W = cv.width, Hh = cv.height, cx = W / 2, cy = Hh / 2, rr = 1 / (cx * cx + cy * cy), vg = a.vg / 100;
+  for (let y = 0; y < Hh; y += band) {
+    const h = Math.min(band, Hh - y);
+    const id = g.getImageData(0, y, W, h), d = id.data;
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
       let r = R[d[i]], gg = G[d[i + 1]], b = B[d[i + 2]];
       if (sat !== 1) { const l = 0.2126 * r + 0.7152 * gg + 0.0722 * b; r = l + (r - l) * sat; gg = l + (gg - l) * sat; b = l + (b - l) * sat; }
+      if (vg) { const px = p % W - cx, py = y + Math.floor(p / W) - cy, k = 1 - vg * 0.85 * ((px * px + py * py) * rr) ** 1.4; r *= k; gg *= k; b *= k; }
       d[i] = r; d[i + 1] = gg; d[i + 2] = b;
     }
     g.putImageData(id, 0, y);
   }
+}
+
+/** Auto fix: from the picture's own light, a little brightness, contrast, shadows and highlights, and warmth back
+ * toward neutral when it leans one way. */
+function autoFix() {
+  const c = document.createElement('canvas'), k = Math.min(1, 256 / Math.max(E.proxy.img.width, E.proxy.img.height));
+  c.width = Math.max(1, Math.round(E.proxy.img.width * k)); c.height = Math.max(1, Math.round(E.proxy.img.height * k));
+  const g = c.getContext('2d'); g.drawImage(E.proxy.img, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height).data, L = [];
+  let rs = 0, bs = 0;
+  for (let i = 0; i < d.length; i += 4) { L.push(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]); rs += d[i]; bs += d[i + 2]; }
+  L.sort((x, y) => x - y);
+  const q = p => L[Math.min(L.length - 1, Math.floor(L.length * p))], lo = q(0.02), hi = q(0.98), mid = q(0.5);
+  const clamp = v => Math.max(-60, Math.min(60, Math.round(v)));
+  const a = adjOf(E.st.adj);
+  a.c = clamp((200 - (hi - lo)) / 3);
+  a.b = clamp((118 - mid) / 3);
+  a.sh = clamp(lo > 30 ? 0 : (30 - lo) * 0.8);
+  a.hi = clamp(hi < 230 ? 0 : -(hi - 230) * 0.8);
+  const cast = (rs - bs) / (d.length / 4);
+  a.w = clamp(-cast / 3);
+  E.st.adj = a; E.st.filter = 'custom';
 }
 
 function drawMarks(g, marks, gw, gh, cp) {
@@ -148,17 +180,21 @@ function turnMarks(marks, op, gw, gh) {
 async function open(pic, viewTurn) {
   if (E) return;
   const ed = $('#editor');
-  ed.innerHTML = `<div class="ebar"><h2>Edit</h2><span class="hint" id="eHint">${esc(pic.name)}</span><span class="sp" style="flex:1"></span>
-      <button class="ib" data-f data-e="undo" title="Undo (Ctrl+Z, X)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
-      <button class="ib" data-f data-e="redo" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
-      <button class="btn" data-f data-e="cancel">Cancel</button>
-      <button class="btn primary" data-f data-e="save" title="Save (Ctrl+S, Start)">Save…</button></div>
-    <div id="ecanvasWrap" tabindex="0" data-f><canvas id="ecanvas"></canvas><div id="ecrop" hidden></div><div id="ecursor" hidden></div><div id="eload" style="position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)">Opening…</div></div>
-    <div id="epanel"><div class="etabs">${[['crop', 'Crop'], ['adjust', 'Light'], ['filters', 'Filters'], ['markup', 'Markup'], ['resize', 'Size']].map(([id, l]) => `<button class="etab" data-f data-tab="${id}">${l}</button>`).join('')}</div>
+  const title = pic.name.replace(/\.[^.]+$/, '');
+  ed.innerHTML = `<div class="ebar"><button class="btn" data-f data-e="cancel">Cancel</button><h2>Editing “${esc(title)}”</h2><span class="sp" style="flex:1"></span>
+      <button class="tb" data-f data-e="undo" title="Undo (Ctrl+Z, X)">↶ Undo</button>
+      <button class="tb" data-f data-e="redo" title="Redo (Ctrl+Y, Y)">↷ Redo</button>
+      <button class="btn" data-f data-e="orig" id="eOrig" title="Hold to see the original (or hold O)">Hold to see the original</button>
+      <button class="btn" data-f data-e="replace" id="eReplace" title="Replace the original (asks first)">Replace the original…</button>
+      <button class="btn primary" data-f data-e="save" title="Save as a copy (Ctrl+S, Start)">Save as a copy</button></div>
+    <div id="estage"><div id="ecanvasWrap" tabindex="0" data-f><canvas id="ecanvas"></canvas><div id="ecrop" hidden></div><div id="ecursor" hidden></div><div id="eload" style="position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)">Opening…</div></div>
+      <div id="estraight"></div></div>
+    <div id="epanel"><div class="etabs">${TABS.map(([id, l]) => `<button class="etab" data-f data-tab="${id}">${l}</button>`).join('')}</div>
+      <div class="erow"><button class="btn auto" data-f data-e="auto">✦ Auto fix</button><label class="ecrop">Crop: <select data-f id="eRatio">${RATIOS.map(([id, l]) => `<option value="${id}">${l}</option>`).join('')}<option value="tall">Tall / wide</option></select></label></div>
       <div class="ebody" id="ebody"></div>
-      <div class="efoot"><span class="note" id="eOut"></span></div></div>`;
+      <div class="efoot"><p class="note">The original stays as it is. “Save as a copy” puts the edit next to it; “Replace the original” asks first and keeps the old one in Trash for 30 days.</p><span class="note" id="eOut"></span></div></div>`;
   ed.hidden = false;
-  E = { pic, st: fresh(viewTurn || 1), undo: [], redo: [], tab: 'crop', tool: 'pen', color: COLORS[0], size: 0.006, src: null, dirty: false, cursor: null, drawing: null };
+  E = { pic, st: fresh(viewTurn || 1), undo: [], redo: [], tab: 'light', tool: 'pen', marking: false, color: COLORS[0], size: 0.006, src: null, dirty: false, cursor: null, drawing: null };
   ed.onclick = onClick;
   ed.oninput = onInput;
   ed.onchange = onChange;
@@ -194,10 +230,11 @@ async function open(pic, viewTurn) {
     return;
   }
   E.last = clone(E.st);
-  setTab('crop');
+  setTab('light');
   setupPointer();
+  setupOriginal();
   window.addEventListener('resize', draw);
-  $('[data-tab="crop"]').focus();
+  $('[data-tab="light"]').focus();
 }
 
 function close() {
@@ -263,15 +300,34 @@ function draw() {
   requestAnimationFrame(() => {
     drawQueued = false;
     if (!E) return;
-    const cropTab = E.tab === 'crop';
+    const cropTab = !E.marking;
     const sc = previewScale(!cropTab);
     const cv = $('#ecanvas');
-    render(E.src, E.st, { img: E.proxy.img, k: E.proxy.k, scale: sc.px, crop: !cropTab, into: cv });
+    const st = E.showOrig ? { ...fresh(E.st.o), o: E.st.o } : E.st;
+    render(E.src, st, { img: E.proxy.img, k: E.proxy.k, scale: sc.px, crop: !cropTab, into: cv });
     cv.style.width = (cv.width * sc.css / sc.px) + 'px';
     cv.style.height = (cv.height * sc.css / sc.px) + 'px';
     E.view = { css: sc.css, px: sc.px, crop: !cropTab };
     drawCrop();
+    drawStraight();
   });
+}
+/** Straighten, under the picture: a slider with its angle. */
+function drawStraight() {
+  const el = $('#estraight');
+  if (!el || el.dataset.v === String(E.st.angle)) return;
+  if (document.activeElement && document.activeElement.id === 'es-angle') { $('#eo-angle').textContent = fmtAngle(E.st.angle); el.dataset.v = String(E.st.angle); return; }
+  el.dataset.v = String(E.st.angle);
+  el.innerHTML = `<label for="es-angle">Straighten</label><input type="range" data-f id="es-angle" data-s="angle" min="-45" max="45" step="0.5" value="${E.st.angle}"><output id="eo-angle">${fmtAngle(E.st.angle)}</output>`;
+}
+const fmtAngle = v => `${v > 0 ? '+' : ''}${v}°`;
+/** Hold to see the original: while the button (or O) is held, the picture as it was. */
+function setupOriginal() {
+  const b = $('#eOrig');
+  const on = v => { if (!E || E.showOrig === v) return; E.showOrig = v; b.classList.toggle('on', v); draw(); };
+  b.addEventListener('pointerdown', e => { e.preventDefault(); on(true); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => on(false));
+  E.holdOrig = on;
 }
 
 /** Where on screen a geo point (0..1) is, and back. */
@@ -330,7 +386,7 @@ function resizeCrop(dw, dh) {
 }
 function drawCrop() {
   const box = $('#ecrop');
-  if (!E || E.tab !== 'crop') { box.hidden = true; return; }
+  if (!E || E.marking || E.showOrig) { box.hidden = true; return; }
   box.hidden = false;
   const c = E.st.crop || { x: 0, y: 0, w: 1, h: 1 };
   const [x1, y1] = geoToScreen(c.x, c.y), [x2, y2] = geoToScreen(c.x + c.w, c.y + c.h);
@@ -344,13 +400,13 @@ function setupPointer() {
   let drag = null;
   wrap.addEventListener('pointerdown', e => {
     if (!E || !E.src) return;
-    if (E.tab === 'crop') {
+    if (!E.marking) {
       const t = e.target.closest('[data-drag]');
       if (!t) return;
       wrap.setPointerCapture(e.pointerId);
       drag = { kind: t.dataset.drag, start: screenToGeo(e.clientX, e.clientY), crop: clone(E.st.crop || { x: 0, y: 0, w: 1, h: 1 }) };
       e.preventDefault();
-    } else if (E.tab === 'markup') {
+    } else {
       wrap.setPointerCapture(e.pointerId);
       startMark(screenToGeo(e.clientX, e.clientY), e.clientX, e.clientY);
       e.preventDefault();
@@ -422,8 +478,9 @@ document.addEventListener('input', e => { if (e.target.id === 'etextIn' && E) E.
 function setTab(t) {
   E.tab = t;
   $$('.etab').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
-  $('#ecursor').hidden = t !== 'markup' || !E.cursor;
-  $('#ecanvasWrap').style.cursor = t === 'markup' ? 'crosshair' : '';
+  if (t !== 'fix' && E.marking) { E.marking = false; }
+  $('#ecursor').hidden = !E.marking || !E.cursor;
+  $('#ecanvasWrap').style.cursor = E.marking ? 'crosshair' : '';
   panel();
   draw();
 }
@@ -431,38 +488,32 @@ function slider(id, label, val, min, max, step = 1, unit = '') {
   return `<div class="slider"><label for="es-${id}">${esc(label)}</label><output id="eo-${id}">${val > 0 && min < 0 ? '+' : ''}${val}${unit}</output><input type="range" data-f id="es-${id}" data-s="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
 }
 function panel() {
-  const st = E.st, b = $('#ebody');
-  if (E.tab === 'crop') {
-    b.innerHTML = `<h3>Shape</h3><div class="chips">${RATIOS.map(([id, l]) => `<button class="chip${st.ratio === id ? ' on' : ''}" data-f data-ratio="${id}">${l}</button>`).join('')}
-        <button class="chip${st.portrait ? ' on' : ''}" data-f data-e="portrait" title="Tall instead of wide">Tall</button></div>
-      <h3>Turn</h3><div class="chips">
-        <button class="chip" data-f data-e="left">Turn left</button><button class="chip" data-f data-e="right">Turn right</button>
-        <button class="chip" data-f data-e="flipH">Mirror</button><button class="chip" data-f data-e="flipV">Flip</button></div>
-      <h3>Straighten</h3>${slider('angle', 'Angle', st.angle, -45, 45, 0.5, '°')}
-      <div class="chips"><button class="chip" data-f data-e="resetCrop">Reset crop and turn</button></div>
-      <p class="note">Drag the corners or the middle. Keys: arrows move it, Shift+arrows change its size, [ and ] straighten. Controller: left stick moves, right stick sizes, LT/RT straighten.</p>`;
-  } else if (E.tab === 'adjust') {
-    b.innerHTML = `<h3>Light and colour</h3>${SLIDERS.map(([id, l]) => slider(id, l, st.adj[id], -100, 100)).join('')}
-      <div class="chips"><button class="chip" data-f data-e="resetAdj">Reset</button></div>`;
-  } else if (E.tab === 'filters') {
+  const st = E.st, b = $('#ebody'), a = adjOf(st.adj);
+  const sel = $('#eRatio'); if (sel) sel.value = st.ratio;
+  if (E.tab === 'light') {
+    b.innerHTML = LIGHT.map(([id, l]) => slider(id, l, a[id], -100, 100)).join('') + `<div class="chips"><button class="chip" data-f data-e="resetAdj">Reset</button></div>`;
+  } else if (E.tab === 'color') {
+    b.innerHTML = COLOR.map(([id, l]) => slider(id, l, a[id], -100, 100)).join('') + `<div class="chips"><button class="chip" data-f data-e="resetAdj">Reset</button></div>`;
+  } else if (E.tab === 'looks') {
     b.innerHTML = `<div class="filters">${Object.entries(FILTERS).map(([id, f]) => `<button class="filter${st.filter === id ? ' on' : ''}" data-f data-filter="${id}"><canvas data-fc="${id}"></canvas><span>${esc(f.label)}</span></button>`).join('')}</div>
-      <p class="note">A filter sets Light and colour; change them there afterwards.</p>`;
+      <p class="note">A look sets Light and Color; change them there afterwards.</p>`;
     requestAnimationFrame(filterThumbs);
-  } else if (E.tab === 'markup') {
-    b.innerHTML = `<h3>Tool</h3><div class="chips">${TOOLS.map(([id, l]) => `<button class="chip${E.tool === id ? ' on' : ''}" data-f data-tool="${id}">${l}</button>`).join('')}</div>
-      <h3>Colour</h3><div class="colors">${COLORS.map(c => `<button class="swatch${E.color === c ? ' on' : ''}" data-f data-color="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>
-      <h3>Size</h3>${slider('size', 'Thickness', Math.round(E.size * 1000), 2, 30)}
-      <div class="chips"><button class="chip" data-f data-e="clearMarks" ${st.marks.length ? '' : 'disabled'}>Remove all markup</button></div>
-      <p class="note">Draw on the picture with the mouse or a finger. Controller: the right stick moves the pointer, hold RT to draw (RT places text).</p>`;
-  } else if (E.tab === 'resize') {
+  } else if (E.tab === 'fix') {
     const geo = geoSize(E.src, st), cp = cropPx(st, geo.w, geo.h), o = outSize();
     const pct = Math.round(o.w / cp.w * 100);
-    b.innerHTML = `<h3>Size</h3><p class="note">The cropped picture is ${Math.round(cp.w)} × ${Math.round(cp.h)}.</p>
+    b.innerHTML = `<h3>Turn</h3><div class="chips">
+        <button class="chip" data-f data-e="left">Turn left</button><button class="chip" data-f data-e="right">Turn right</button>
+        <button class="chip" data-f data-e="flipH">Mirror</button><button class="chip" data-f data-e="flipV">Flip</button>
+        <button class="chip" data-f data-e="resetCrop">Reset crop and turn</button></div>
+      <h3>Draw on it</h3><div class="chips"><button class="chip${E.marking ? ' on' : ''}" data-f data-e="marking">${E.marking ? 'Drawing: on' : 'Draw'}</button>${TOOLS.map(([id, l]) => `<button class="chip${E.tool === id ? ' on' : ''}" data-f data-tool="${id}">${l}</button>`).join('')}</div>
+      <div class="colors">${COLORS.map(c => `<button class="swatch${E.color === c ? ' on' : ''}" data-f data-color="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>
+      ${slider('size', 'Thickness', Math.round(E.size * 1000), 2, 30)}
+      <div class="chips"><button class="chip" data-f data-e="clearMarks" ${st.marks.length ? '' : 'disabled'}>Remove all drawing</button></div>
+      <h3>Size</h3><p class="note">The cropped picture is ${Math.round(cp.w)} × ${Math.round(cp.h)}.</p>
       <div class="chips">${[100, 75, 50, 25].map(p => `<button class="chip${pct === p ? ' on' : ''}" data-f data-pct="${p}">${p}%</button>`).join('')}</div>
-      <h3>Pixels</h3><div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-top:8px">
         <input class="inp" data-f id="erw" type="number" min="1" max="30000" value="${o.w}"><span>×</span><input class="inp" data-f id="erh" type="number" min="1" max="30000" value="${o.h}"></div>
-      <label class="note" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="erk" ${E.keepRatio !== false ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--ember)"> Keep the shape</label>
-      ${o.w > cp.w ? '<p class="note">Making a picture bigger than it is doesn\'t add detail.</p>' : ''}`;
+      <label class="note" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="erk" ${E.keepRatio !== false ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--ember)"> Keep the shape</label>`;
   }
   updateBar();
 }
@@ -471,7 +522,7 @@ function filterThumbs() {
   const st = E.st;
   const geo = geoSize(E.src, st), cp = cropPx(st, geo.w, geo.h);
   const scale = Math.min(140 / cp.w, 140 / cp.h);
-  const base = render(E.src, { ...st, adj: { b: 0, c: 0, s: 0, w: 0 }, marks: [] }, { img: E.proxy.img, k: E.proxy.k, scale, adjust: false, marks: false });
+  const base = render(E.src, { ...st, adj: { ...ZERO }, marks: [] }, { img: E.proxy.img, k: E.proxy.k, scale, adjust: false, marks: false });
   for (const c of $$('[data-fc]')) {
     const f = FILTERS[c.dataset.fc];
     c.width = base.width; c.height = base.height;
@@ -492,7 +543,7 @@ function onClick(e) {
   const st = E.st, d = t.dataset;
   if (d.tab) { setTab(d.tab); return; }
   if (d.ratio) { st.ratio = d.ratio; if (d.ratio === 'free') { /* keep the crop */ } else applyRatio(); commit(); panel(); draw(); return; }
-  if (d.filter) { st.filter = d.filter; st.adj = clone(FILTERS[d.filter].a); commit(); panel(); draw(); return; }
+  if (d.filter) { st.filter = d.filter; st.adj = adjOf(FILTERS[d.filter].a); commit(); panel(); draw(); return; }
   if (d.tool) { E.tool = d.tool; panel(); return; }
   if (d.color) { E.color = d.color; panel(); return; }
   if (d.pct) { const geo = geoSize(E.src, st), cp = cropPx(st, geo.w, geo.h); setOutput(cp.w * d.pct / 100, cp.h * d.pct / 100); commit(); panel(); return; }
@@ -507,14 +558,17 @@ function onClick(e) {
     case 'undo': undo(); break;
     case 'redo': redo(); break;
     case 'cancel': back(); break;
-    case 'save': saveDialog(); break;
+    case 'save': saveCopy(); break;
+    case 'replace': replaceOriginal(); break;
+    case 'auto': autoFix(); commit(); panel(); draw(); H.toast('Auto fix: light and colour set from the picture'); break;
+    case 'marking': E.marking = !E.marking; setTab('fix'); break;
     case 'portrait': st.portrait = !st.portrait; applyRatio(); commit(); panel(); draw(); break;
     case 'left': turnBy(8); break;
     case 'right': turnBy(6); break;
     case 'flipH': turnBy(2); break;
     case 'flipV': turnBy(4); break;
     case 'resetCrop': st.crop = null; st.angle = 0; st.ratio = 'free'; st.portrait = false; st.resize = null; commit(); panel(); draw(); break;
-    case 'resetAdj': st.adj = { b: 0, c: 0, s: 0, w: 0 }; st.filter = 'none'; commit(); panel(); draw(); break;
+    case 'resetAdj': st.adj = { ...ZERO }; st.filter = 'none'; commit(); panel(); draw(); break;
     case 'clearMarks': st.marks = []; commit(); panel(); draw(); break;
   }
 }
@@ -525,9 +579,10 @@ function onInput(e) {
     const v = +t.value;
     if (id === 'angle') E.st.angle = v;
     else if (id === 'size') E.size = v / 1000;
-    else { E.st.adj[id] = v; E.st.filter = 'custom'; }
+    else { E.st.adj = adjOf(E.st.adj); E.st.adj[id] = v; E.st.filter = 'custom'; }
     const o = $('#eo-' + id);
     if (o) o.textContent = (v > 0 && t.min < 0 ? '+' : '') + v + (id === 'angle' ? '°' : '');
+    if (id === 'angle') $('#estraight').dataset.v = String(v);
     if (id !== 'size') draw();
     return;
   }
@@ -544,44 +599,33 @@ function onChange(e) {
   if (t.dataset.s && t.dataset.s !== 'size') commit();
   if (t.id === 'erw' || t.id === 'erh') { commit(); }
   if (t.id === 'erk') E.keepRatio = t.checked;
+  if (t.id === 'eRatio') {
+    if (t.value === 'tall') { E.st.portrait = !E.st.portrait; t.value = E.st.ratio; } else E.st.ratio = t.value;
+    if (E.st.ratio !== 'free') applyRatio();
+    commit(); draw();
+  }
 }
 
 // ---------------------------------------------------------------- saving
-async function saveDialog() {
-  if (!E || !E.src) return;
+/** The format an edit is saved in: the original's own when the editor can write it, else JPEG. */
+function saveFormat() {
   const ext = H.extOf(E.pic.path);
-  const origFmt = /^(jpe?g|jpe|jfif)$/.test(ext) ? 'jpeg' : ext === 'png' ? 'png' : ext === 'webp' ? 'webp' : null;
-  const opts = { mode: 'copy', fmt: origFmt || 'jpeg', q: H.store.get('quality', 90) };
-  const o = outSize();
-  const html = () => `<h2>Save the edited picture</h2><p>${o.w} × ${o.h} pixels</p>
-    <div class="field"><label>Where</label><div class="chips">
-      <button class="chip${opts.mode === 'copy' ? ' on' : ''}" data-f data-mode="copy">Save as a copy</button>
-      <button class="chip${opts.mode === 'over' ? ' on' : ''}" data-f data-mode="over" ${origFmt ? '' : 'disabled title="This kind of picture can only be saved as a copy"'}>Overwrite the original</button></div></div>
-    <div class="field"><label>Format</label><div class="chips">${[['jpeg', 'JPEG'], ['png', 'PNG'], ['webp', 'WebP']].map(([id, l]) => `<button class="chip${opts.fmt === id ? ' on' : ''}" data-f data-fmt="${id}" ${opts.mode === 'over' && id !== origFmt ? 'disabled' : ''}>${l}</button>`).join('')}</div></div>
-    <div class="field" ${opts.fmt === 'png' || (opts.fmt === 'webp' && !E.canWebp) ? 'hidden' : ''}><label>Quality: <b id="eqv">${opts.q}</b></label><input type="range" data-f id="eq" min="40" max="100" value="${opts.q}"></div>
-    ${opts.fmt === 'webp' && !E.canWebp ? '<p class="note">WebP is saved without loss here (larger files).</p>' : ''}
-    ${opts.mode === 'over' ? '<p class="note" style="color:var(--flame)">The original is replaced. It can\'t be brought back.</p>' : '<p class="note">The original stays as it is.</p>'}`;
-  const val = await H.dialog(`<div id="esave">${html()}</div>`, [{ label: 'Cancel', value: null }, { label: 'Save', kind: 'primary', value: 'save', focus: true }], v => {
-    v.addEventListener('click', e => {
-      const t = e.target.closest('button');
-      if (!t || t.disabled) return;
-      if (t.dataset.mode) { opts.mode = t.dataset.mode; if (opts.mode === 'over') opts.fmt = origFmt; }
-      else if (t.dataset.fmt) opts.fmt = t.dataset.fmt;
-      else return;
-      const keep = t.dataset.mode ? `[data-mode="${t.dataset.mode}"]` : `[data-fmt="${t.dataset.fmt}"]`;
-      $('#esave', v).innerHTML = html();
-      const again = $(keep, v); if (again) again.focus();
-    });
-    v.addEventListener('input', e => { if (e.target.id === 'eq') { opts.q = +e.target.value; $('#eqv', v).textContent = opts.q; } });
-  });
-  if (val !== 'save') return;
-  H.store.set('quality', opts.q);
-  if (opts.mode === 'over') {
-    const sure = await H.dialog(`<h2>Replace ${esc(E.pic.name)}?</h2><p>The original picture is replaced by the edited one and can't be brought back.</p>`,
-      [{ label: 'Cancel', value: 0, focus: true }, { label: 'Replace it', kind: 'danger', value: 1 }]);
-    if (sure !== 1) return;
-  }
-  await doSave(opts);
+  const own = /^(jpe?g|jpe|jfif)$/.test(ext) ? 'jpeg' : ext === 'png' ? 'png' : ext === 'webp' ? 'webp' : null;
+  return { own, fmt: own || 'jpeg' };
+}
+async function saveCopy() {
+  if (!E || !E.src) return;
+  await doSave({ mode: 'copy', fmt: saveFormat().fmt, q: H.store.get('quality', 90) });
+}
+/** Replace the original…: asks first; the old one goes to the Trash for 30 days. */
+async function replaceOriginal() {
+  if (!E || !E.src) return;
+  const f = saveFormat();
+  if (!f.own) { H.toast('This kind of picture can only be saved as a copy'); return; }
+  const sure = await H.dialog(`<h2>Replace ${esc(E.pic.name)}?</h2><p>The edited picture takes its place. The original goes to the Trash and stays there for 30 days, so you can still get it back.</p>`,
+    [{ label: 'Cancel', value: 0, focus: true }, { label: 'Replace it', kind: 'danger', value: 1 }]);
+  if (sure !== 1) return;
+  await doSave({ mode: 'over', fmt: f.own, q: H.store.get('quality', 90) });
 }
 
 async function doSave(opts) {
@@ -604,7 +648,8 @@ async function doSave(opts) {
     E.dirty = false;
     H.toast(r.message);
     close();
-    await H.openPath(r.path);
+    if (H.S.fromLibrary && H.afterSaved) await H.afterSaved(r.path, opts.mode === 'over');
+    else await H.openPath(r.path);
   } catch (e) { H.toast('Couldn\'t save: ' + e); }
 }
 
@@ -627,10 +672,11 @@ function key(e) {
   const ctrl = e.ctrlKey || e.metaKey, k = e.key;
   if (ctrl && k.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return true; }
   if (ctrl && (k.toLowerCase() === 'y' || (k.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return true; }
-  if (ctrl && k.toLowerCase() === 's') { e.preventDefault(); saveDialog(); return true; }
+  if (ctrl && k.toLowerCase() === 's') { e.preventDefault(); saveCopy(); return true; }
+  if ((k === 'o' || k === 'O') && !e.repeat && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) { E.holdOrig(true); const up = ev => { if (ev.key.toLowerCase() === 'o') { E && E.holdOrig(false); document.removeEventListener('keyup', up, true); } }; document.addEventListener('keyup', up, true); return true; }
   if (k === 'Escape') { e.preventDefault(); back(); return true; }
   const onCanvas = document.activeElement === $('#ecanvasWrap');
-  if (E.tab === 'crop' && onCanvas && k.startsWith('Arrow')) {
+  if (!E.marking && onCanvas && k.startsWith('Arrow')) {
     e.preventDefault();
     const s = 0.01 * (e.altKey ? 0.2 : 1);
     const dx = k === 'ArrowLeft' ? -s : k === 'ArrowRight' ? s : 0, dy = k === 'ArrowUp' ? -s : k === 'ArrowDown' ? s : 0;
@@ -638,7 +684,7 @@ function key(e) {
     drawCrop(); updateBar(); clearTimeout(E.kt); E.kt = setTimeout(commit, 500);
     return true;
   }
-  if (E.tab === 'crop' && (k === '[' || k === ']')) { E.st.angle = Math.max(-45, Math.min(45, E.st.angle + (k === ']' ? 0.5 : -0.5))); panel(); draw(); clearTimeout(E.kt); E.kt = setTimeout(commit, 500); return true; }
+  if (k === '[' || k === ']') { E.st.angle = Math.max(-45, Math.min(45, E.st.angle + (k === ']' ? 0.5 : -0.5))); draw(); clearTimeout(E.kt); E.kt = setTimeout(commit, 500); return true; }
   const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range';
   if (typing) return false;
   const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
@@ -649,12 +695,12 @@ function key(e) {
 function padButton(k) {
   if (!E) return false;
   if ($('#layer .veil')) return false;
-  const tabs = ['crop', 'adjust', 'filters', 'markup', 'resize'];
+  const tabs = TABS.map(t => t[0]);
   const a = document.activeElement;
   if (k === 'lb' || k === 'rb') { setTab(tabs[(tabs.indexOf(E.tab) + (k === 'rb' ? 1 : tabs.length - 1)) % tabs.length]); $(`[data-tab="${E.tab}"]`).focus(); return true; }
   if (k === 'x') { undo(); return true; }
   if (k === 'y') { redo(); return true; }
-  if (k === 'start') { saveDialog(); return true; }
+  if (k === 'start') { saveCopy(); return true; }
   // A range slider with focus: left/right change it.
   if (a && a.type === 'range' && (k === 'left' || k === 'right')) {
     const st = +a.step || 1; a.value = +a.value + (k === 'right' ? st : -st) * (a.max - a.min > 50 ? 5 : 1);
@@ -670,17 +716,17 @@ function padButton(k) {
 /** Every frame while a controller is connected: sticks and triggers. */
 function padFrame(ax, st) {
   if (!E || !E.src || $('#layer .veil')) return;
-  if (E.tab === 'crop') {
+  if (!E.marking) {
     if (ax.lx || ax.ly) { const c = clone(E.st.crop || { x: 0, y: 0, w: 1, h: 1 }); c.x += ax.lx * 0.008; c.y += ax.ly * 0.008; E.st.crop = clampCrop(c); E.padMoved = true; }
     if (ax.rx || ax.ry) { if (Math.abs(ax.rx) > Math.abs(ax.ry)) resizeCrop(ax.rx * 0.008, 0); else resizeCrop(0, ax.ry * 0.008); E.padMoved = true; }
     const t = ax.rt - ax.lt;
     if (Math.abs(t) > 0.1) { E.st.angle = Math.max(-45, Math.min(45, Math.round((E.st.angle + t * 0.25) * 10) / 10)); E.padMoved = 'angle'; draw(); }
     if (E.padMoved) {
       drawCrop(); updateBar();
-      if (E.padMoved === 'angle') { const s = $('#es-angle'); if (s) { s.value = E.st.angle; $('#eo-angle').textContent = E.st.angle + '°'; } }
+      if (E.padMoved === 'angle') { const s = $('#es-angle'); if (s) { s.value = E.st.angle; $('#eo-angle').textContent = fmtAngle(E.st.angle); } }
       E.padMoved = false; clearTimeout(E.kt); E.kt = setTimeout(commit, 600);
     }
-  } else if (E.tab === 'markup') {
+  } else {
     const wrap = $('#ecanvasWrap').getBoundingClientRect(), cur = $('#ecursor');
     if (!E.cursor) E.cursor = [wrap.left + wrap.width / 2, wrap.top + wrap.height / 2];
     if (ax.rx || ax.ry) {

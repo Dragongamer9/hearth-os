@@ -102,7 +102,7 @@ jobs:
           for d in $(lsblk -dno NAME,TYPE | awk '$2=="disk"{print $1}'); do
             size=$(lsblk -dbno SIZE /dev/$d)
             out=$($H usb-raw /dev/$d --expect-size "$size" < /dev/null 2>&1 || true); echo "/dev/$d: $out"
-            echo "$out" | grep -qE "running from this drive|internal drive|NVMe" || { echo "::error title=USB helper::/dev/$d wasn't refused: $out"; exit 1; }
+            echo "$out" | grep -qE "running from this drive|internal drive|NVMe|Only a whole USB drive" || { echo "::error title=USB helper::/dev/$d wasn't refused: $out"; exit 1; }
             out=$($H usb-raw /dev/$d --expect-size "$size" --allow-internal < /dev/null 2>&1 || true)
             if echo " $sys " | grep -q " $d "; then echo "$out" | grep -q "running from this drive" || { echo "::error title=USB helper::the system disk /dev/$d wasn't refused with --allow-internal: $out"; exit 1; }; fi
           done

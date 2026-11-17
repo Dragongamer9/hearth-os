@@ -2,7 +2,8 @@
 // wakes from sleep (Hearth Settings › Sign-in › Lock when waking). Covers every screen (the compositor keeps
 // everything else hidden until it's unlocked) and checks your password with the system (PAM), like the login
 // screen. It has its own keyboard on screen (tap, or move with the arrow keys / D-pad and press Enter), since
-// the regular on-screen keyboard can't show over a locked screen.
+// the regular on-screen keyboard can't show over a locked screen. On KWin it hands locking to KWin's locker with
+// Hearth's own lock screen in it (desktop/kwin-lock, docs/KWIN-INPUT.md).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -13,12 +14,126 @@ import Quickshell.Services.Pam
 Scope {
     id: root
     property bool locked: false
-    onLockedChanged: DeskState.locked = locked
+    onLockedChanged: {
+        if (locked && onKwin) lockedAt = new Date();   // lockedAt: KWin's locker said so
+        DeskState.locked = locked;
+        // logind's LockedHint (what Phone link and other apps read to know it's locked; KWin's locker sets its own).
+        // Only a hint: whatever happens to it, locking itself doesn't depend on it.
+        if (!onKwin) Quickshell.execDetached(["busctl", "call", "--system", "org.freedesktop.login1", "/org/freedesktop/login1/session/auto",
+                                              "org.freedesktop.login1.Session", "SetLockedHint", "b", locked ? "true" : "false"]);
+        // 1.14: vaults set to lock with the screen are locked (hearth-vaults), and the fingerprint (if you turned it on)
+        // is asked for next to the password. Leaving the lock screen stops the fingerprint.
+        if (locked) { vaultLock.running = false; vaultLock.running = true; fpTries = 0; fpInfo = ""; if (!onKwin) { fpCheck.running = false; fpCheck.running = true; } }
+        else {
+            if (fpPam.active) fpPam.abort();
+            // A vault that couldn't lock with the screen (files open in it): said once you're back, so it's not a surprise.
+            if (vaultProblems.length) {
+                const t = vaultProblems.join(" ");
+                vaultProblems = [];
+                Quickshell.execDetached(["notify-send", "-a", "Hearth", "-i", "dialog-warning", "A vault stayed unlocked", t + " Lock it from the bar's vault button or Settings › Vaults."]);
+            }
+        }
+    }
+    property var vaultProblems: []     // what hearth-vaults lock-all --screen couldn't lock
+    readonly property string vaultsHelper: decodeURIComponent(Qt.resolvedUrl("hearth-vaults").toString().replace(/^file:\/\//, ""))
+    Process {
+        id: vaultLock
+        command: ["sh", "-c", "[ -e \"$HOME/.config/nimbus/vaults.json\" ] || exit 0; exec python3 \"$0\" lock-all --screen", root.vaultsHelper]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { const o = JSON.parse(text.trim().split("\n").pop() || "{}"); root.vaultProblems = (o && Array.isArray(o.problems)) ? o.problems : []; }
+                catch (e) { root.vaultProblems = []; }
+            }
+        }
+    }
+
+    // ---- Fingerprint (1.14, docs/FINGERPRINT.md): a second PAM conversation (service hearth-fingerprint) NEXT TO the
+    // password one, never in its place: the password always unlocks. Only when your name is in
+    // /etc/nimbus/fingerprint/lock (Settings › Sign-in options); a few tries, then the reader rests until the next lock.
+    property bool fpOn: false
+    property string fpInfo: ""
+    property int fpTries: 0
+    Process {
+        id: fpCheck
+        command: ["sh", "-c", "grep -qx -- \"$1\" \"$0\" 2>/dev/null && command -v fprintd-list >/dev/null && echo on", "/etc/nimbus/fingerprint/lock", Quickshell.env("USER") || ""]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.fpOn = text.trim() === "on";
+                if (root.fpOn && root.locked && !root.onKwin) root.startFp();
+            }
+        }
+    }
+    function startFp() {
+        if (fpPam.active || !locked) return;
+        fpInfo = "Or touch the fingerprint reader";
+        fpPam.start();
+    }
+    Timer { id: fpRetry; interval: 1500; onTriggered: root.startFp() }
+    PamContext {
+        id: fpPam
+        config: "hearth-fingerprint"
+        onPamMessage: {
+            if (fpPam.responseRequired) fpPam.respond("");      // pam_fprintd asks nothing; never the password here
+            else if (fpPam.message !== "") root.fpInfo = /place|swipe|touch/i.test(fpPam.message) ? "Or touch the fingerprint reader" : fpPam.message;
+        }
+        onCompleted: result => {
+            if (result === PamResult.Success) { root.locked = false; root.typed = ""; root.fpInfo = ""; return; }
+            root.fpTries++;
+            root.fpInfo = root.fpTries < 3 ? "That finger wasn't recognised. Try again, or type your password" : "Type your password (the reader rests until the next lock)";
+            if (root.fpTries < 3 && root.locked) fpRetry.start();
+        }
+        onError: root.fpInfo = ""
+    }
     property string typed: ""
     property string message: ""
     property bool busy: false
+    // On KWin (HEARTH_WM=kwin) there's no ext-session-lock-v1, so WlSessionLock would cover nothing: KWin's own
+    // locker locks instead (fail-safe: it stays covered even if its screen crashes), showing Hearth's lock screen
+    // (desktop/kwin-lock). `locked` then follows KWin's locker (org.freedesktop.ScreenSaver ActiveChanged).
+    readonly property bool onKwin: Quickshell.env("HEARTH_WM") === "kwin"
 
-    function lock() { if (!locked) { typed = ""; message = ""; locked = true; } }
+    property var lockedAt: new Date()     // when it locked (system-settings); KWin's locker: when it said so
+    function lock() {
+        if (onKwin) { kwinLock.running = false; kwinLock.running = true; return; }
+        if (!locked) { typed = ""; message = ""; lockedAt = new Date(); locked = true; }
+    }
+
+    // KWin: first hearth-lockcheck (is KWin's locker there, and will it show Hearth's lock screen? If it couldn't, KWin
+    // would keep the screen covered by its emergency screen: on a handheld without a keyboard, a lockout). Only then
+    // lock through KWin's locker, and check it really locked. Either failing: say so loudly, never a silent "locked".
+    readonly property string lockcheck: decodeURIComponent(Qt.resolvedUrl("hearth-lockcheck").toString().replace(/^file:\/\//, ""))
+    Process {
+        id: kwinLock
+        command: ["sh", "-c", "out=$(python3 \"$0\") || { echo \"nolock $out\"; exit 0; }; gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.Lock >/dev/null 2>&1; for i in 1 2 3 4 5 6 7 8 9 10; do gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true && { echo locked; exit 0; }; sleep 0.5; done; echo failed", root.lockcheck]
+        stdout: SplitParser {
+            onRead: l => {
+                const line = l.trim();
+                if (line === "locked") { root.locked = true; return; }
+                root.locked = false;
+                let why = "KWin's screen locker didn't answer";
+                if (line.indexOf("nolock ") === 0) {
+                    try { why = JSON.parse(line.slice(7)).why || why; } catch (e) { why = "the lock screen isn't ready"; }
+                    why += ". Hearth didn't lock, so you can't be locked out";
+                }
+                console.warn("Lock: not locked: " + why);
+                SettingsNav.toast("The screen isn't locked: " + why);
+                Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Hearth", "The screen isn't locked",
+                    why + ". Nothing is covering your desktop. Try Lock again, or sign out."]);
+            }
+        }
+    }
+    // Warms hearth-lockcheck's test of the lock screen at start, so the first lock doesn't wait for it.
+    Process { running: root.onKwin; command: ["python3", root.lockcheck] }
+    Process {
+        running: root.onKwin
+        command: ["gdbus", "monitor", "--session", "--dest", "org.freedesktop.ScreenSaver", "--object-path", "/ScreenSaver"]
+        stdout: SplitParser {
+            onRead: l => {
+                if (l.indexOf("ActiveChanged (true") >= 0) root.locked = true;
+                else if (l.indexOf("ActiveChanged (false") >= 0) root.locked = false;
+            }
+        }
+    }
     function tryUnlock() {
         if (busy) return;
         busy = true; message = "";
@@ -53,7 +168,7 @@ Scope {
 
     WlSessionLock {
         id: session
-        locked: root.locked
+        locked: root.locked && !root.onKwin
 
         WlSessionLockSurface {
             id: surface
@@ -83,6 +198,23 @@ Scope {
                         onTriggered: { clock.text = Qt.formatTime(new Date(), "h:mm"); date.text = Qt.formatDate(new Date(), "dddd, MMMM d"); } }
                 }
                 Text { id: date; Layout.alignment: Qt.AlignHCenter; color: Theme.muted; font.family: Theme.font; font.pixelSize: 20 }
+                // Notifications from apps you let show here (Settings › Notifications, 1.14; none unless you turn it on
+                // for an app): the three newest since the screen locked, the app's name and the title only.
+                Repeater {
+                    model: root.locked ? DeskState.history.filter(h => h.lock && h.time >= root.lockedAt).slice(0, 3) : []
+                    delegate: Rectangle {
+                        required property var modelData
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: 420; implicitHeight: 52; radius: 12
+                        color: Theme.panel2; border.color: Theme.line
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 14
+                            width: parent.width - 28
+                            Text { text: modelData.app; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight; width: parent.width }
+                            Text { text: modelData.summary; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; elide: Text.ElideRight; width: parent.width }
+                        }
+                    }
+                }
 
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 24
@@ -95,6 +227,13 @@ Scope {
                     }
                 }
                 Text { Layout.alignment: Qt.AlignHCenter; visible: root.message !== ""; text: root.message; color: Theme.danger; font.family: Theme.font; font.pixelSize: 14 }
+                Row {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: root.fpInfo !== ""
+                    spacing: 8
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "fingerprint"; size: 20; color: Theme.accent }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: root.fpInfo; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
+                }
 
                 // Its own keyboard: tap, or arrows / D-pad and Enter.
                 Item {

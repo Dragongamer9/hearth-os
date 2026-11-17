@@ -1,0 +1,463 @@
+#!/usr/bin/python3
+"""hearth-firewall: Hearth Settings › Privacy & security › Firewall (1.14). firewalld or ufw, whichever this system has
+(Hearth OS's image ships neither by default: the page then says so and changes nothing). Status is read as you
+where the firewall allows it (firewalld answers anyone; ufw only root, so its rules come through hearth-admin); every
+change runs as root through hearth-admin (pkexec, 49-hearth-admin.rules: turning it off, opening a port and letting
+everything in always ask for an administrator's password). Programs are always run with argument lists.
+
+  hearth-firewall status                    JSON {backend, installed, on, incoming, rules: [{id, port, proto, from,
+                                            label, hearth}], needsAdmin, ssh, tailscale}
+Root only (through hearth-admin firewall-*):
+  hearth-firewall admin-status              the same, ufw's rules too
+  hearth-firewall on                        turn it on (and on at every start). Guarded: SSH stays reachable when
+                                            this PC's SSH server runs, and Tailscale (tailscale0) stays trusted, so
+                                            turning it on never locks you out of a PC you reach from elsewhere; Hearth
+                                            Link, and Remote desktop (VNC) and Sunshine when they're listening, stay
+                                            open to this home network only
+  hearth-firewall off                       turn it off (and off at start)
+  hearth-firewall allow                     stdin {"port": "8080" | "6000-6010", "proto": "tcp|udp|both",
+                                            "from": "local|any", "label": "..."}: let a port in
+  hearth-firewall remove                    stdin {"id": "<a rule's id from status>"}
+  hearth-firewall incoming deny|allow       ufw's default for incoming connections (firewalld: its zone's)
+Output: one JSON line; "error: ..." and exit 1 on failure. Nothing touches booting: a firewall that fails to start
+leaves the PC starting as before.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+LOCAL_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
+LOCAL_V6 = ['fe80::/10', 'fc00::/7']
+UFW_CONF = os.environ.get('HEARTH_UFW_CONF', '/etc/ufw/ufw.conf')
+UFW_DEFAULT = os.environ.get('HEARTH_UFW_DEFAULT', '/etc/default/ufw')
+PORT_RE = re.compile(r'^([0-9]{1,5})(-([0-9]{1,5}))?$')
+LABEL_RE = re.compile(r'^[A-Za-z0-9 ._()-]{0,40}$')
+HEARTH_LABELS = {'hearth-nearby': 'Nearby Share (while it runs)', 'hearth-connect': 'Hearth Connect (while it runs)',
+                 'hearth-hearth': 'Hearth Link', 'hearth-smb': 'Windows sharing (Hearth Storage)'}
+KNOWN = {'22': 'SSH', '80': 'Web server', '443': 'Web server (https)', '445': 'Windows sharing (SMB)',
+         '1714-1764': 'Hearth Connect / KDE Connect', '47740-47741': 'Hearth Link', '53317': 'Nearby Share',
+         '47984-48010': 'Game streaming (Sunshine)', '5900': 'Remote desktop (VNC)', '8080': 'Web app',
+         '27036': 'Steam Remote Play', '27015': 'Game server (Steam)'}
+SERVICES = {'ssh': 'SSH', 'dhcpv6-client': 'Getting an address (DHCPv6)', 'mdns': 'Finding devices nearby (mDNS)',
+            'samba-client': 'Opening Windows shares', 'samba': 'Windows sharing (SMB)', 'kdeconnect': 'KDE Connect',
+            'cockpit': 'Cockpit'}
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, input=None, timeout=60):
+    """(exit code, output). Tests replace it."""
+    try:
+        p = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def which(name):
+    return shutil.which(name)
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def installed():
+    return [b for b, prog in (('firewalld', 'firewall-cmd'), ('ufw', 'ufw')) if which(prog)]
+
+
+def backend():
+    """The firewall to show: the one running, else the first installed (firewalld before ufw), else none."""
+    have = installed()
+    if 'firewalld' in have and run(['firewall-cmd', '--state'])[0] == 0:
+        return 'firewalld'
+    if 'ufw' in have and ufw_enabled():
+        return 'ufw'
+    return have[0] if have else 'none'
+
+
+def ufw_enabled():
+    t = read(UFW_CONF) or ''
+    return bool(re.search(r'^\s*ENABLED\s*=\s*yes\s*$', t, re.M))
+
+
+def ssh_running():
+    return run(['systemctl', 'is-active', '--quiet', 'ssh.service'])[0] == 0 or \
+        run(['systemctl', 'is-active', '--quiet', 'sshd.service'])[0] == 0
+
+
+def label_for(port, comment=''):
+    if comment in HEARTH_LABELS:
+        return HEARTH_LABELS[comment]
+    if comment and not comment.startswith('hearth-'):
+        return comment
+    return KNOWN.get(port, '')
+
+
+# ------------------------------------------------------------------ firewalld
+def fwd_rules(text_ports, text_services, text_rich):
+    rules = []
+    for s in text_services.split():
+        rules.append({'id': 'service:' + s, 'port': s, 'proto': '', 'from': 'any', 'label': SERVICES.get(s, s), 'hearth': False})
+    for p in text_ports.split():
+        port, _, proto = p.partition('/')
+        rules.append({'id': 'port:' + p, 'port': port, 'proto': proto, 'from': 'any', 'label': label_for(port), 'hearth': False})
+    grouped = {}
+    for line in text_rich.splitlines():
+        m = re.search(r'source address="([^"]+)" port port="([^"]+)" protocol="(\w+)" accept', line)
+        if not m:
+            continue
+        net, port, proto = m.groups()
+        key = (port, proto)
+        g = grouped.setdefault(key, {'id': 'rich:%s/%s' % key, 'port': port, 'proto': proto, 'from': 'local',
+                                     'label': label_for(port), 'hearth': False, 'nets': []})
+        g['nets'].append(net)
+    for g in grouped.values():
+        g['from'] = 'local' if set(g['nets']) <= set(LOCAL_V4 + LOCAL_V6) else ', '.join(g['nets'])
+        del g['nets']
+        rules.append(g)
+    return rules
+
+
+def fwd_status():
+    on = run(['firewall-cmd', '--state'])[0] == 0
+    out = {'on': on, 'incoming': 'deny', 'rules': [], 'zone': '', 'tailscale': False}
+    if not on:
+        return out
+    code, zone = run(['firewall-cmd', '--get-default-zone'])
+    zone = zone.strip() if code == 0 else ''
+    out['zone'] = zone
+    out['incoming'] = 'allow' if zone in ('trusted',) else 'deny'
+    ports = run(['firewall-cmd', '--list-ports'])[1]
+    services = run(['firewall-cmd', '--list-services'])[1]
+    rich = run(['firewall-cmd', '--list-rich-rules'])[1]
+    out['rules'] = fwd_rules(ports.strip(), services.strip(), rich)
+    code, ifs = run(['firewall-cmd', '--zone=trusted', '--list-interfaces'])
+    out['tailscale'] = code == 0 and 'tailscale0' in ifs.split()
+    return out
+
+
+def fwd(args):
+    """A firewalld change now and from the next start (runtime and permanent)."""
+    code, out = run(['firewall-cmd'] + args)
+    if code != 0 and 'ALREADY_ENABLED' not in out and 'NOT_ENABLED' not in out and 'ZONE_ALREADY_SET' not in out:
+        raise Fail('firewalld said no (%s)' % last(out))
+    code, out = run(['firewall-cmd', '--permanent'] + args)
+    if code != 0 and 'ALREADY_ENABLED' not in out and 'NOT_ENABLED' not in out and 'ZONE_ALREADY_SET' not in out:
+        raise Fail('firewalld kept it only until the next start (%s)' % last(out))
+
+
+# ------------------------------------------------------------------ ufw
+UFW_LINE = re.compile(r'^(?:\[\s*(\d+)\]\s+)?(\S+(?: \(v6\))?(?: on \S+)?)\s+(ALLOW|DENY|REJECT|LIMIT)(?: IN)?\s+(.+?)(?:\s+#\s*(.*))?\s*$')
+
+
+def ufw_rules(text):
+    """`ufw status numbered`: one rule a line ([ 1] 22/tcp ALLOW IN Anywhere # comment)."""
+    rules = []
+    for line in text.splitlines():
+        m = UFW_LINE.match(line.strip())
+        if not m or m.group(3) not in ('ALLOW', 'LIMIT'):
+            continue
+        num, to, action, frm, comment = m.groups()
+        if to.startswith('To') or frm.startswith('From'):
+            continue
+        v6 = '(v6)' in to or '(v6)' in frm
+        to = to.replace(' (v6)', '')
+        frm = frm.replace(' (v6)', '').strip()
+        port, _, proto = to.partition('/')
+        port = port.replace(':', '-')
+        comment = (comment or '').strip()
+        rules.append({'id': 'ufw:%s' % (num or len(rules) + 1), 'num': int(num) if num else 0, 'port': port, 'proto': proto,
+                      'from': 'any' if frm.startswith('Anywhere') else ('local' if frm in LOCAL_V4 + LOCAL_V6 else frm),
+                      'label': label_for(port, comment), 'hearth': comment.startswith('hearth-'), 'v6': v6, 'text': line.strip()})
+    # One row for a rule and its IPv6 twin, and one for a port opened to each local network.
+    out, seen = [], {}
+    for r in rules:
+        key = (r['port'], r['proto'], r['from'], r['label'])
+        if key in seen:
+            seen[key]['nums'].append(r['num'])
+            continue
+        r['nums'] = [r['num']]
+        seen[key] = r
+        out.append(r)
+    for r in out:
+        r.pop('v6', None); r.pop('text', None); r.pop('num', None)
+        r['id'] = 'ufw:' + r['port'] + '/' + (r['proto'] or 'any') + '@' + r['from']
+    return out
+
+
+def ufw_incoming():
+    t = read(UFW_DEFAULT) or ''
+    m = re.search(r'^\s*DEFAULT_INPUT_POLICY\s*=\s*"?(\w+)"?', t, re.M)
+    return 'allow' if m and m.group(1).upper() == 'ACCEPT' else 'deny'
+
+
+def ufw_status(root):
+    out = {'on': ufw_enabled(), 'incoming': ufw_incoming(), 'rules': [], 'tailscale': False, 'needsAdmin': not root}
+    if root:
+        code, text = run(['ufw', 'status', 'numbered'])
+        if code == 0:
+            out['rules'] = ufw_rules(text)
+            out['tailscale'] = 'on tailscale0' in text
+    return out
+
+
+def ufw(args):
+    code, out = run(['ufw'] + args)
+    if code != 0:
+        raise Fail('ufw said no (%s)' % last(out))
+    return out
+
+
+# ------------------------------------------------------------------ both
+def last(out):
+    return ((out or '').strip().splitlines() or ['no answer'])[-1][:200]
+
+
+def status(root=False):
+    b = backend()
+    res = {'backend': b, 'installed': installed(), 'on': False, 'incoming': 'deny', 'rules': [], 'needsAdmin': False,
+           'ssh': ssh_running(), 'tailscale': False}
+    if b == 'firewalld':
+        res.update(fwd_status())
+    elif b == 'ufw':
+        res.update(ufw_status(root))
+    return res
+
+
+def need_root():
+    if os.geteuid() != 0:
+        raise Fail('needs root (run through hearth-admin)')
+
+
+# What turning the firewall on keeps open for this home network only (never the internet): Hearth Link always (your
+# Hearth devices find each other with it), and whatever of these is listening right now (Remote desktop's VNC, Sunshine
+# game streaming). Nearby Share and Hearth Connect open their own ports while they run (hearth-link-firewall).
+KEEP_ALWAYS = [('47740-47741', 'udp', 'Hearth Link')]
+KEEP_IF_LISTENING = [
+    ('5900', ['tcp'], [('5900', 'tcp', 'Remote desktop (VNC)')]),
+    ('47989', ['tcp'], [('47984', 'tcp', 'Sunshine'), ('47989', 'tcp', 'Sunshine'), ('48010', 'tcp', 'Sunshine'),
+                        ('47998-48000', 'udp', 'Sunshine')]),
+]
+
+
+def listening(text):
+    """Ports something listens on, from `ss -Hlntu` (Local Address:Port is the 5th field)."""
+    out = set()
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) >= 5:
+            port = f[4].rsplit(':', 1)[-1]
+            if port.isdigit():
+                out.add((port, 'udp' if f[0].startswith('udp') else 'tcp'))
+    return out
+
+
+def keep_list():
+    code, text = run(['ss', '-Hlntu'])
+    now = listening(text) if code == 0 else set()
+    keep = list(KEEP_ALWAYS)
+    for port, protos, rules in KEEP_IF_LISTENING:
+        if any((port, p) in now for p in protos):
+            keep += rules
+    return keep
+
+
+def add_local(port, proto, label, b):
+    if b == 'firewalld':
+        for fam, nets in (('ipv4', LOCAL_V4), ('ipv6', LOCAL_V6)):
+            for net in nets:
+                fwd(['--add-rich-rule=rule family="%s" source address="%s" port port="%s" protocol="%s" accept' % (fam, net, port, proto)])
+    else:
+        for net in LOCAL_V4 + LOCAL_V6:
+            ufw(['allow', 'proto', proto, 'from', net, 'to', 'any', 'port', port.replace('-', ':'), 'comment', label + ' (kept by Hearth)'])
+
+
+def turn_on():
+    need_root()
+    b = backend()
+    if b == 'none':
+        raise Fail("there's no firewall on this system (firewalld or ufw)")
+    ssh = ssh_running()
+    if b == 'firewalld':
+        code, out = run(['systemctl', 'enable', '--now', 'firewalld.service'], timeout=90)
+        if code != 0:
+            raise Fail("firewalld didn't start (%s)" % last(out))
+        # Guards: Tailscale stays trusted, SSH stays open when this PC's SSH server runs.
+        try:
+            fwd(['--zone=trusted', '--add-interface=tailscale0'])
+        except Fail:
+            pass
+        if ssh:
+            fwd(['--add-service=ssh'])
+        for port, proto, label in keep_list():
+            add_local(port, proto, label, b)
+    else:
+        if ssh:
+            ufw(['allow', 'proto', 'tcp', 'from', 'any', 'to', 'any', 'port', '22', 'comment', 'SSH (kept by Hearth)'])
+        ufw(['allow', 'in', 'on', 'tailscale0', 'comment', 'Tailscale (kept by Hearth)'])
+        for port, proto, label in keep_list():
+            add_local(port, proto, label, b)
+        ufw(['--force', 'enable'])
+    return status(True)
+
+
+def turn_off():
+    need_root()
+    b = backend()
+    if b == 'firewalld':
+        code, out = run(['systemctl', 'disable', '--now', 'firewalld.service'], timeout=90)
+        if code != 0:
+            raise Fail("firewalld didn't stop (%s)" % last(out))
+    elif b == 'ufw':
+        ufw(['disable'])
+    return status(True)
+
+
+def check_rule(req):
+    port = str(req.get('port') or '').strip().replace(':', '-')
+    m = PORT_RE.match(port)
+    if not m or not 0 < int(m.group(1)) < 65536 or (m.group(3) and not int(m.group(1)) < int(m.group(3)) < 65536):
+        raise Fail('a port is a number from 1 to 65535, or a range like 6000-6010')
+    proto = req.get('proto') or 'tcp'
+    if proto not in ('tcp', 'udp', 'both'):
+        raise Fail('TCP, UDP or both')
+    frm = req.get('from') or 'local'
+    if frm not in ('local', 'any'):
+        raise Fail('from this home network only, or from anywhere')
+    label = str(req.get('label') or '').strip()
+    if not LABEL_RE.match(label):
+        raise Fail('a name uses letters, numbers and spaces (up to 40)')
+    return port, (['tcp', 'udp'] if proto == 'both' else [proto]), frm, label
+
+
+def allow(req):
+    need_root()
+    port, protos, frm, label = check_rule(req)
+    b = backend()
+    if b == 'firewalld':
+        for proto in protos:
+            if frm == 'any':
+                fwd(['--add-port=%s/%s' % (port, proto)])
+            else:
+                for fam, nets in (('ipv4', LOCAL_V4), ('ipv6', LOCAL_V6)):
+                    for net in nets:
+                        fwd(['--add-rich-rule=rule family="%s" source address="%s" port port="%s" protocol="%s" accept' % (fam, net, port, proto)])
+    elif b == 'ufw':
+        for proto in protos:
+            for net in (['any'] if frm == 'any' else LOCAL_V4 + LOCAL_V6):
+                ufw(['allow', 'proto', proto, 'from', net, 'to', 'any', 'port', port.replace('-', ':')] + (['comment', label] if label else []))
+    else:
+        raise Fail("there's no firewall on this system")
+    return status(True)
+
+
+def remove(req):
+    need_root()
+    rid = str(req.get('id') or '')
+    b = backend()
+    if b == 'firewalld':
+        kind, _, rest = rid.partition(':')
+        if kind == 'service' and re.match(r'^[a-z0-9-]{1,40}$', rest):
+            if rest == 'ssh' and ssh_running():
+                raise Fail("SSH stays open while this PC's SSH server runs (you could be locked out of it)")
+            fwd(['--remove-service=' + rest])
+        elif kind == 'port' and re.match(r'^[0-9-]{1,11}/(tcp|udp)$', rest):
+            fwd(['--remove-port=' + rest])
+        elif kind == 'rich' and re.match(r'^[0-9-]{1,11}/(tcp|udp)$', rest):
+            port, proto = rest.split('/')
+            for fam, nets in (('ipv4', LOCAL_V4), ('ipv6', LOCAL_V6)):
+                for net in nets:
+                    try:
+                        fwd(['--remove-rich-rule=rule family="%s" source address="%s" port port="%s" protocol="%s" accept' % (fam, net, port, proto)])
+                    except Fail:
+                        pass
+        else:
+            raise Fail("that isn't one of the firewall's rules")
+    elif b == 'ufw':
+        code, text = run(['ufw', 'status', 'numbered'])
+        rule = next((r for r in ufw_rules(text) if r['id'] == rid), None)
+        if not rule:
+            raise Fail("that rule isn't there any more")
+        if rule['port'] == '22' and ssh_running():
+            raise Fail("SSH stays open while this PC's SSH server runs (you could be locked out of it)")
+        # Highest number first: deleting one renumbers the ones after it.
+        for n in sorted(rule['nums'], reverse=True):
+            if n > 0:
+                ufw(['--force', 'delete', str(n)])
+    else:
+        raise Fail("there's no firewall on this system")
+    return status(True)
+
+
+def incoming(policy):
+    need_root()
+    if policy not in ('deny', 'allow'):
+        raise Fail('incoming is deny or allow')
+    b = backend()
+    if b == 'ufw':
+        ufw(['default', policy, 'incoming'])
+    elif b == 'firewalld':
+        zone = 'trusted' if policy == 'allow' else 'public'
+        code, out = run(['firewall-cmd', '--set-default-zone=' + zone])
+        if code != 0 and 'ZONE_ALREADY_SET' not in out:
+            raise Fail('firewalld said no (%s)' % last(out))
+    else:
+        raise Fail("there's no firewall on this system")
+    return status(True)
+
+
+def stdin_json():
+    raw = os.environ.pop('HEARTH_INPUT', None)
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read(64 * 1024)
+    if not raw.strip():
+        return {}
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        raise Fail('bad input')
+    if not isinstance(v, dict):
+        raise Fail('bad input')
+    return v
+
+
+def main(argv):
+    cmd, rest = (argv[0] if argv else ''), argv[1:]
+    try:
+        if cmd == 'status' and not rest:
+            r = status(os.geteuid() == 0)
+        elif cmd == 'admin-status' and not rest:
+            need_root()
+            r = status(True)
+        elif cmd == 'on' and not rest:
+            r = turn_on()
+        elif cmd == 'off' and not rest:
+            r = turn_off()
+        elif cmd == 'allow' and not rest:
+            r = allow(stdin_json())
+        elif cmd == 'remove' and not rest:
+            r = remove(stdin_json())
+        elif cmd == 'incoming' and len(rest) == 1:
+            r = incoming(rest[0])
+        else:
+            print('error: usage: hearth-firewall status | admin-status | on | off | allow | remove | incoming deny|allow')
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

@@ -5,6 +5,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 SetPage {
     id: page
@@ -40,6 +41,23 @@ SetPage {
         Layout.fillWidth: true
         text: "Steam Game Mode can't run here: it needs Steam" + (page.st && page.st.gamescope === false ? " and gamescope" : "") + "."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+    }
+
+    // 1.14: Steam Game Mode beside the desktop (hearth-side-by-side, docs/SIDE-BY-SIDE.md), off unless you turn it on.
+    property var side: null
+    Process {
+        id: sideProc
+        property var after: null
+        stdout: StdioCollector { onStreamFinished: { try { page.side = JSON.parse(text.trim().split("\n").pop()); } catch (e) {} } }
+        onExited: code => { if (sideProc.after) { const f = sideProc.after; sideProc.after = null; f(code); } }
+    }
+    function sideRun(args, after) { sideProc.after = after || null; sideProc.command = ["/usr/libexec/nimbus/hearth-side-by-side"].concat(args); sideProc.running = true; }
+    Timer { running: true; interval: 50; onTriggered: page.sideRun(["status"]) }
+    SetSwitch {
+        icon: "desktops"; title: "Keep Steam Game Mode running beside the desktop (test)"
+        sub: "Switching only shows the other one: a second or two, and Steam stays open and signed in. It keeps about 1–1.5 GB of memory for Steam. If Steam Game Mode doesn't come up this way, the usual switch happens instead. Still being tried on the Nvidia PC and the Ally."
+        checked: !!page.side && page.side.on
+        onToggled: v => page.sideRun([v ? "on" : "off"], code => { if (code !== 0) SettingsNav.toast("That didn't work"); else SettingsNav.toast(v ? "On: Steam Game Mode now opens beside the desktop" : "Off: switching is as before"); page.sideRun(["status"]); })
     }
 
     SetHeader { text: "Your other games in Steam" }

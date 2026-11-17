@@ -39,6 +39,7 @@ Scope {
     FileProperties {
         id: propsWin
         helper: app.helper
+        admin: extras.adminHere                // Act as administrator: system files' permissions and owner too
         onApplied: (oldPath, newPath) => {
             if (app.listing) app.load(app.listing.path, app.base(newPath), "none");
             app.refreshPlaces();
@@ -57,6 +58,11 @@ Scope {
     // Customize, auto-sync. Its dialogs are BriefcaseDialog.qml, inside the window.
     readonly property var filesApp: app        // (inside Briefcase { }, "app" would mean its own property)
     Briefcase { id: briefcase; app: filesApp }
+    // 1.14's extras (Dolphin's): tags, git badges, Act as administrator, disc images, phones and cameras, apps'
+    // right-click actions, sharing a folder (FilesExtras.qml, hearth_files_extras.py).
+    FilesExtras { id: extras; app: filesApp }
+    readonly property var fx: extras
+    function propsAt(paths, tab) { properties(paths); if (tab) propsWin.tab = tab; }
 
     // ------------------------------------------------ what's shown
     property string path: ""
@@ -71,6 +77,8 @@ Scope {
     property bool hidden: false
     property bool showExt: true                // View › File name extensions
     property bool detailsPane: false           // the details pane on the right (the Details button, Alt+P)
+    property bool termPanel: false             // the terminal panel under the files (F4; FilesTerminal.qml), this window only
+    property bool splitView: false             // a second folder beside this one (F9; FilesSplitPane.qml), this window only
     readonly property string homePage: "hearth:home"   // the Home page: Quick access and recent files
     readonly property bool onHome: path === homePage
     // This PC (FilesThisPc.qml) and Installed apps (FilesApps.qml): Hearth's own pages, like the Home page.
@@ -137,6 +145,8 @@ Scope {
     // ------------------------------------------------ focus: tabs | toolbar | places | main, plus an overlay on top
     property string zone: "main"
     property int cur: 0
+    onCurChanged: extras.selectionChanged()      // apps' right-click actions for what's picked, looked up ahead
+    onMarkedChanged: extras.selectionChanged()
     property int placeIndex: 0
     property int toolIndex: 0
     property string overlay: ""                // "" | menu | input | confirm | apps | conflict | preview
@@ -220,49 +230,9 @@ Scope {
     Timer { id: noteTimer; interval: 4500; onTriggered: app.note = "" }
     function say(t, err) { note = t; noteError = !!err; noteTimer.restart(); }
 
-    IpcHandler {
-        target: "filemanager"
-        function view(v: string): void { app.setView(v); }
-        function menu(): void { app.viaPad = false; app.openMenu(!app.current, -1, -1); }
-        function search(q: string): void { app.runSearch(q); }
-        function tab(p: string): void { app.open(""); app.newTab(p); }
-        function select(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) app.cur = i; }
-        function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
-        function close(): void { app.closeOverlay(); }
-        function home(): void { app.open(""); app.navigate(app.homePage, ""); }
-        // This PC and Installed apps (the Desktop Mode test's pictures); letter: the drive with that letter.
-        function thispc(): void { app.open(""); app.navigate(app.thisPcPage, ""); }
-        function installed(): void { app.open(""); app.navigate(app.appsPage, ""); }
-        // Hearth (C:) with Windows folder names: "" for C:\, "Program Files", "Program Files (x86)", or any C:\ form.
-        function hearthc(sub: string): void {
-            app.open("");
-            const r = sub.indexOf(":") === 1 ? app.fromLetters(sub) : { path: app.cRoot + (sub ? "/" + sub : "") };
-            if (r && r.path) app.navigate(r.path, "");
-        }
-        // Properties of the Hearth (C:) page shown (the Desktop Mode test's pictures).
-        function cprops(): void { if (app.onCView) app.showCProps(null); }
-        function letter(l: string): void { const r = app.fromLetters(l + ":\\"); if (r && r.path) { app.open(""); app.navigate(r.path, ""); } }
-        function details(on: string): void { app.detailsPane = on === "on"; app.rememberView(); }
-        function undo(): void { app.undo(); }
-        // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
-        function rename(name: string): void { const e = app.entries.find(x => x.name === name); app.renaming = e ? e.path : ""; }
-        function marks(names: string): void { const m = {}; for (const n of names.split("/")) { const e = app.entries.find(x => x.name === n); if (e) m[e.path] = true; } app.marked = m; }
-        // For checks: the folder shown and the item under the cursor ("" while the window is closed).
-        // A staged drag for the screenshots (CI has no mouse): the picked items' drag picture over the folder `onto`.
-        function dragdemo(onto: string): void {
-            const e = app.entries.find(x => x.name === onto);
-            app.dragHint = e ? e.path : "";
-            app.dragDemo = onto !== "";
-        }
-        // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
-        function section(name: string): void { const i = app.places.findIndex(q => q.section === name); if (i >= 0) { app.zone = "places"; app.placeIndex = i; } }
-        function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
-        // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.
-        function bcUpdate(): void { app.open(""); briefcase.run("bc-update-all", [], null); }
-        function bcApply(): void { if (briefcase.mode === "update") briefcase.runUpdate(); }
-        function bcCustomize(): void { app.open(""); briefcase.run("bc-customize", [], null); }
-        function bcState(): string { return JSON.stringify({ mode: briefcase.mode, st: briefcase.st ? { name: briefcase.st.name, counts: briefcase.st.counts || {}, locked: briefcase.st.locked } : null, rows: briefcase.plan ? briefcase.plan.rows.length : 0 }); }
-    }
+    // The "filemanager" IPC's functions (1.14: Files is made the first time it's used, so the handler itself is in
+    // shell.qml and forwards here, making Files first when needed).
+    readonly property alias bc: briefcase
 
     // ================================================ open / close
     function open(p) {
@@ -496,7 +466,8 @@ Scope {
         }
     }
     function call(args, cb) {
-        const p = callComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null });
+        // As administrator (Act as administrator), a change outside your home goes through pkexec (FilesExtras.route).
+        const p = callComp.createObject(app, { command: extras.route(args) || ["python3", helper].concat(args), cb: cb || null });
         p.running = true;
     }
     // The same with text for the helper (a sharing password): written on its stdin, and put in HEARTH_INPUT (the
@@ -542,7 +513,7 @@ Scope {
         view = views.indexOf(f.view) >= 0 ? f.view : (f.view === "list" ? "details" : "grid");
         sort = ["name", "date", "size", "type"].indexOf(f.sort) >= 0 ? f.sort : "name";
         desc = !!f.desc;
-        group = ["none", "type", "date"].indexOf(f.group) >= 0 ? f.group : "none";
+        group = ["none", "type", "date", "size", "tags"].indexOf(f.group) >= 0 ? f.group : "none";
     }
     // Only what you changed goes to the file (hearth-files merges it, one folder's view at a time): it used to send the
     // whole settings object this window had read when it opened, so a setting changed since (Settings › Devices'
@@ -627,6 +598,7 @@ Scope {
             listing = r;
             path = r.path;
             briefcase.opened(r);
+            extras.folderLoaded(r);
             const want = r.select || sel || "";
             const i = want ? entries.findIndex(e => e.name === want) : -1;
             cur = Math.max(0, i >= 0 ? i : (r.path === prev ? Math.min(cur, entries.length - 1) : 0));
@@ -896,6 +868,7 @@ Scope {
             rawPlaces = r.places.map(q => q.kind === "home" && !picking ? Object.assign({}, q, { label: "Home folder" }) : q);
             places = buildNav(rawPlaces);
             placeIndex = Math.min(placeIndex, places.length - 1);
+            extras.refresh();
             // A drive plugged in, taken out, mounted or unmounted while This PC is open: shown at once.
             const sig = l => l.filter(q => q.section === "drives").map(q => q.id + (q.mounted === false ? "-" : "+")).join("|");
             if (onThisPc && sig(old) !== sig(rawPlaces)) loadThisPc();
@@ -980,6 +953,7 @@ Scope {
     // The left menu the Windows 11 way (1.11, the owner's approved option A, docs/mockups/next-update/files-4-A-narrow.png):
     // Home, Gallery, Home server; your folders; This PC (Hearth (C:) open with Users, Program Files and Windows apps,
     // then the other drives); Network; the Linux folders folded under "Linux" (only with Show the Linux folders).
+    // 1.14: Trash pinned under Home, Gallery and Home server.
     function buildNav(list) {
         const out = [];
         const sorted = sortPlaces(list);
@@ -992,9 +966,15 @@ Scope {
             out.push({ id: "homeserver", label: "Home server", path: "", kind: "netroot", section: "start", tree: "homeserver", open: !!navOpen.homeserver });
             if (navOpen.homeserver) for (const q of devs) out.push(Object.assign({}, q, { section: "start", depth: q.child ? 2 : 1 }));
         }
+        // 1.14 (the owner): Trash pinned in the left menu, under Home, like a Recycle Bin you can always reach (its
+        // count and right-click Empty Trash come with it). Not in Open and Save windows.
+        const trash = sorted.find(q => q.kind === "trash");
+        if (!picking) out.push(Object.assign({ path: home + "/.local/share/Trash/files" }, trash || {},
+                                             { id: "trash", label: "Trash", kind: "trash", section: "start", child: false, depth: 0 }));
         // your folders (Home itself is This PC › Hearth (C:) › Users › you), then pinned ones, briefcases and games
         for (const q of sorted) if (q.section === "places" && q.id !== "home" && !q.child) out.push(Object.assign({}, q, { section: "folders" }));
         for (const q of sorted) if (q.section === "bookmarks" || q.section === "briefcases" || q.section === "games") out.push(Object.assign({}, q, { section: "folders" }));
+        if (!picking) for (const q of extras.tagPlaces()) out.push(q);          // your tags (1.14)
         const drives = sorted.filter(q => q.section === "drives");
         const pcOpen = navOpen.thispc !== false;               // open unless you folded it
         out.push({ id: "thispc", label: "This PC", path: thisPcPage, kind: "thispc", section: "pc", tree: "thispc", open: pcOpen });
@@ -1005,6 +985,7 @@ Scope {
                                    sys ? { path: cRoot, tree: "cdrive", open: cOpen } : {}));
             if (sys && cOpen) for (const f of cNavFolders) out.push(f);
         }
+        if (pcOpen) for (const q of extras.portablePlaces()) out.push(q);   // phones and cameras plugged in (MTP, PTP)
         out.push({ id: "netroot", label: "Network", path: "", kind: "netroot", section: "pc", tree: "network", open: !!navOpen.network, empty: !devs.length });
         if (navOpen.network) for (const q of devs) out.push(Object.assign({}, q, { section: "pc", depth: q.child ? 2 : 1 }));
         if (cLinux) {
@@ -1173,10 +1154,10 @@ Scope {
         return keyed.map(k => k.e);
     }
     readonly property var current: entries.length > cur && cur >= 0 ? entries[cur] : null
-    readonly property bool writable: !!(listing && listing.writable) && found === null
+    readonly property bool writable: (!!(listing && listing.writable) || extras.adminHere) && found === null
     readonly property bool inTrash: !!(listing && listing.trash)
     readonly property string trashPath: {
-        const t = rawPlaces.find(p => p.kind === "trash");          // Trash isn't in the left menu (the desktop has it)
+        const t = rawPlaces.find(p => p.kind === "trash");          // Trash is pinned in the left menu (1.14)
         return t ? t.path : home + "/.local/share/Trash/files";
     }
     function extOf(e) {
@@ -1185,8 +1166,17 @@ Scope {
         return i > 0 ? e.name.slice(i + 1).toLowerCase() : "";
     }
     readonly property var kindOrder: ["folder", "doc", "text", "image", "video", "audio", "archive", "app", "disc", "file"]
+    // Group by size (Dolphin's): folders, then tiny to huge. Group by tag: by the first tag, untagged last.
+    function sizeRank(e) {
+        if (e.dir) return 0;
+        const s = e.size || 0;
+        return s < 16384 ? 1 : s < 1048576 ? 2 : s < 134217728 ? 3 : s < 1073741824 ? 4 : 5;
+    }
+    function tagKey(e) { return e.tags && e.tags.length ? e.tags[0] : ""; }
     function groupRank(e, g) {
         if (g === "type") return kindOrder.indexOf(kindOf(e));
+        if (g === "size") return sizeRank(e);
+        if (g === "tags") { const k = tagKey(e); return k ? 1 + (tagOrder[k] || 0) : 100000; }
         const now = new Date();
         const day = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
         const t = e.mtime || 0;
@@ -1201,6 +1191,8 @@ Scope {
         if (!e || group === "none") return "";
         if (group === "type") return ({ folder: "Folders", doc: "Documents", text: "Text", image: "Pictures", video: "Videos", audio: "Music and audio",
             archive: "Archives", app: "Apps and programs", disc: "Disc images", file: "Other files" })[kindOf(e)];
+        if (group === "size") return ["Folders", "Tiny (under 16 KB)", "Small (under 1 MB)", "Medium (under 128 MB)", "Large (under 1 GB)", "Huge (1 GB or more)"][sizeRank(e)];
+        if (group === "tags") return tagKey(e) || "No tag";
         const r = groupRank(e, "date");
         return ["Today", "Yesterday", "Earlier this week", "Earlier this month", "Earlier this year"][r] || String(new Date(e.mtime * 1000).getFullYear());
     }
@@ -1218,7 +1210,16 @@ Scope {
     }
     function groupRankAt(e, g, day) {
         if (g === "type") return kindOrder.indexOf(kindOf(e));
+        if (g === "tags") { const k = tagKey(e); return k ? 1 + (tagOrder[k] || 0) : 100000; }
         return groupRank(e, g);
+    }
+    // The tags of the folder shown, A to Z (for Group by tag; worked out once per listing).
+    readonly property var tagOrder: {
+        const o = {};
+        const names = [];
+        for (const e of (found !== null ? found : (listing ? listing.entries : []))) if (e.tags && e.tags.length && names.indexOf(e.tags[0]) < 0) names.push(e.tags[0]);
+        names.sort((a, b) => a.toLowerCase() < b.toLowerCase() ? -1 : 1).forEach((n, i) => o[n] = i);
+        return o;
     }
     function natural(a, b) {
         const x = a.toLowerCase().split(/(\d+)/), y = b.toLowerCase().split(/(\d+)/);
@@ -1497,13 +1498,26 @@ Scope {
         if (p.net) return netOpen(p.net);
         if (p.kind === "howto") return showHowto(p.howto || []);
         if (p.kind === "briefcase") return briefcase.openPlace(p);
+        if (p.kind === "tag") return extras.openTag(p.tag);
+        if (p.dev) return extras.openPortable(p);
         if (p.kind === "device") {
             if (p.offline && p.wake) ask("Wake “" + p.label + "”?", "It's off or asleep. Hearth can wake it over the network (Wake-on-LAN).", "Wake it", () => netWake(p.device, p.label));
             else say(p.label + ": " + (p.sub || ""));
             return;
         }
         if (!p.path && p.device) return mountPlace(p, true);
+        if (p.account && !p.path) return accountOpen(p);
         navigate(p.path, "");
+    }
+    // An online account's files (Settings › Accounts › Online accounts): mounted with gvfs (davs://), the password
+    // from the keyring (hearth_accounts.py), then opened.
+    function accountOpen(p) {
+        say("Opening “" + p.label + "”…");
+        call(["account-open", p.account], (r, err) => {
+            if (err) return ask("Couldn't open “" + p.label + "”", err, "OK", () => {});
+            refreshPlaces();
+            if (r.path) navigate(r.path, "");
+        });
     }
     // ================================================ your devices' shared folders (hearth_netshares.py)
     // One click: mounted with gvfs and opened (the home name at home, the Tailscale name away). The first time it asks
@@ -1612,6 +1626,20 @@ Scope {
     readonly property var viewNames: ({ large: "Large icons", grid: "Medium icons", small: "Small icons", tiles: "Tiles", compact: "List", details: "Details" })
     function setShowExt(on) { showExt = on; rememberView(); say(on ? "Showing file name extensions" : "Hiding file name extensions"); }
     function toggleDetails() { detailsPane = !detailsPane; rememberView(); }
+    function showTerminal(on) { termPanel = on; }          // the panel takes the typing when it shows (FilesTerminal.qml)
+    // Compare (two files or two folders selected): the same, or what differs (text files: the changed lines in the
+    // read-only text editor). hearth-files compare.
+    function compareTwo(paths) {
+        if (!paths || paths.length !== 2) return;
+        call(["compare", paths[0], paths[1]], (r, err) => {
+            if (err) return say(err, true);
+            if (r.same) return say("“" + base(paths[0]) + "” and “" + base(paths[1]) + "” are the same");
+            if (r.diff) { say(r.changed + (r.changed === 1 ? " line differs" : " lines differ") + ": the differences are open in the text editor"); call(["open-text", r.diff, "--readonly"], () => {}); return; }
+            if (r.differ !== undefined) return say("Different: " + [r.onlyA.length ? r.onlyA.length + " only in “" + base(paths[0]) + "”" : "", r.onlyB.length ? r.onlyB.length + " only in “" + base(paths[1]) + "”" : "",
+                                                                    r.differ.length ? r.differ.length + " changed" : ""].filter(x => x).join(", ") + (r.differ.length ? " (" + r.differ.slice(0, 3).join(", ") + (r.differ.length > 3 ? "…" : "") + ")" : ""));
+            say("They're different (" + r.sizes.map(x => x + " bytes").join(" and ") + ")");
+        });
+    }
     // A file's name as shown: without its extension when View › File name extensions is off (never for folders
     // or names that are only an extension, like .bashrc).
     function shownName(e) {
@@ -1783,6 +1811,21 @@ Scope {
         if (searchProc.running) searchProc.running = false;
         searching = false;
     }
+    // Everything carrying a tag (the Tags list in the left menu): shown like search results.
+    function runTagSearch(tag) {
+        if (!listing) return;
+        stopSearch();
+        foundBuf = [];
+        found = [];
+        foundQuery = "tag: " + tag;
+        query = "";
+        marked = ({});
+        cur = 0;
+        searching = true;
+        zone = "main";
+        searchProc.command = ["python3", helper, "tag-find", tag];
+        searchProc.running = true;
+    }
     function clearSearch() {
         stopSearch();
         found = null;
@@ -1897,8 +1940,10 @@ Scope {
             if (n === 1 && isArchive(e) && writable) q.push({ id: "extracthere", label: "Extract here", icon: "archive" });
             if (e.dir && n === 1 && !e.briefcase) q.push({ id: "lockbc", label: "Lock as a Briefcase", icon: "lock" });
             if (e.dir && n === 1) q.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd" });
+            if (n === 2 && targets().every(p => p.indexOf("/") === 0)) q.push({ id: "compare", label: "Compare", icon: "copy" });
             if (n === 1 && e.path.indexOf("/") === 0) q.push({ id: "prevver", label: "Restore previous versions", icon: "clock" });
             q.push({ id: "copywin", label: "Copy as path", key: "C:\\…", icon: "link" });
+            for (const it of extras.menuItems(e, n, t)) q.push(it);
             q.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" }, { id: "more", label: "Show more options", icon: "menu" });
             lastMenuX = x === undefined ? -1 : x; lastMenuY = y === undefined ? -1 : y;
             return showMenu(n > 1 ? plural(n, "item") + " selected" : e.name, q, lastMenuX, lastMenuY);
@@ -1920,6 +1965,7 @@ Scope {
             if (e && (found !== null || onHome)) items.push({ id: "showin", label: "Show in its folder", icon: "folder", group: "Open" });
             if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space", icon: "eye", group: "Open" });
             for (const it of briefcase.menuItems(e, n, t)) items.push(it);
+            for (const it of extras.menuItems(e, n, t)) items.push(it);
             items.push(sep());
             if (n) items.push({ id: "cut", label: "Cut" + what, key: "Ctrl+X", off: !(n && writable), icon: "cut", quick: true });
             if (n) items.push({ id: "copy", label: "Copy" + what, key: "Ctrl+C", icon: "copy", quick: true });
@@ -1953,9 +1999,12 @@ Scope {
             if (!e) items.push({ id: "hidden", label: hidden ? "Hide hidden files" : "Show hidden files", key: "Ctrl+H", icon: "eye", group: "View" });
             if (!e) items.push({ id: "newtab", label: "New tab", key: "Ctrl+T", icon: "plus", group: "View" });
             if (tabs.length > 1 && !e) items.push({ id: "closetab", label: "Close tab", key: "Ctrl+W", icon: "close", group: "View" });
+            if (!e) for (const it of extras.folderMenuItems()) items.push(it);
             const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
             if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Pin to the left menu", key: "Ctrl+D", icon: "pin" });
             if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd", group: "Open" });
+            if (!e && !picking) items.push({ id: "termpanel", label: termPanel ? "Hide the terminal panel" : "Terminal panel", key: "F4", icon: "kbd", group: "View" },
+                                           { id: "splitview", label: splitView ? "Close split view" : "Split view", key: "F9", icon: "grid", group: "View" });
             if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
@@ -2280,7 +2329,9 @@ Scope {
             sep(),
             { id: "group:none", label: ck(group === "none") + "Don't group" },
             { id: "group:type", label: ck(group === "type") + "Group by type" },
-            { id: "group:date", label: ck(group === "date") + "Group by date modified" }
+            { id: "group:date", label: ck(group === "date") + "Group by date modified" },
+            { id: "group:size", label: ck(group === "size") + "Group by size" },
+            { id: "group:tags", label: ck(group === "tags") + "Group by tag" }
         ], mx, my);
     }
     // Hearth (C:)'s switches, the same as Settings › System › Drives & folders (saved only when you pick one).
@@ -2331,6 +2382,7 @@ Scope {
         const t = onFolder ? [] : targets();
         const e = onFolder ? null : current;
         if (id.startsWith("bc-")) return briefcase.run(id, t, e);
+        if (id.startsWith("x-")) return extras.run(id, t, e);
         if (id.startsWith("tp-") || id.startsWith("ia-") || id.startsWith("letter:")) return runPageMenu(id, e);
         if (id.startsWith("c-")) return runCMenu(id, e);
         if (id.startsWith("cset:")) { const kv = id.slice(5).split("="); return setFilesPref(kv[0], kv[1] === "true" ? true : kv[1] === "false" ? false : kv[1]); }
@@ -2491,6 +2543,9 @@ Scope {
         case "terminal":
             call(["terminal", e && e.dir ? e.path : onHome ? home : listing.path], (r, err) => { if (err) say(err, true); });
             break;
+        case "termpanel": termPanel = !termPanel; break;
+        case "splitview": splitView = !splitView; break;
+        case "compare": compareTwo(targets()); break;
         case "props":
             if (onCView || (e && e.cv)) { showCProps(onFolder ? null : e); break; }
             if (onSpecial) { if (onThisPc && current && current.path.indexOf("/") === 0) properties([current.path]); break; }
@@ -2588,6 +2643,7 @@ Scope {
     }
     function trashPaths(t) {
         if (!t.length) return;
+        if (extras.adminHere && t.some(p => extras.systemPath(p))) return extras.adminDelete(t);
         call(["trash"].concat(t), (r, err) => {
             if (err) return say(err, true);
             pushUndo({ kind: "trash", paths: (r && r.trashed && r.trashed.length) ? r.trashed : t });
@@ -2962,7 +3018,7 @@ Scope {
             done: 0, total: 0, speed: 0, file: "", cancelling: false };
         jobNow = j;
         jobLast = "";
-        jobProc.command = ["python3", helper].concat(cmd);
+        jobProc.command = extras.route(cmd) || ["python3", helper].concat(cmd);
         jobProc.running = true;
     }
     function jobLine(line) {
@@ -3022,16 +3078,22 @@ Scope {
     }
 
     // ================================================ the window
+    // 1.14 (faster apps): the window stays made, hidden, for three minutes after it's closed, so opening Files again
+    // is only showing it (a warm open was as slow as a cold one: the whole window was made again every time). After
+    // that it's let go, so the memory comes back.
+    property bool warm: false
+    onShownChanged: { if (shown) warmTimer.stop(); else if (ui) { warm = true; warmTimer.restart(); } }
+    Timer { id: warmTimer; interval: 180000; onTriggered: { if (!app.shown) { app.warm = false; app.ui = null; } } }
     LazyLoader {
-        active: app.shown
+        active: app.shown || app.warm
         FloatingWindow {
             id: win
             title: app.picking ? (app.pick.title || "Choose") + " – Files" : app.path ? app.titleOf(app.path) + " – Files" : "Files"
             implicitWidth: 1180
             implicitHeight: 740
             color: Theme.bg
-            visible: true
-            onVisibleChanged: if (!visible) app.close()
+            visible: app.shown
+            onVisibleChanged: { if (!visible) { if (app.shown) app.close(); } else keys.forceActiveFocus(); }
             Component.onCompleted: {
                 app.ui = win;
                 keys.forceActiveFocus();
@@ -3319,6 +3381,8 @@ Scope {
                     if (e.key === Qt.Key_F5) { app.reload(); app.refreshPlaces(); e.accepted = true; return; }
                     if (e.key === Qt.Key_F3) { win.focusSearch(); e.accepted = true; return; }
                     if (e.key === Qt.Key_F4 && shift) { app.runMenu("terminal"); e.accepted = true; return; }
+                    if (e.key === Qt.Key_F4 && !app.picking) { app.termPanel = !app.termPanel; if (app.termPanel) Qt.callLater(() => termPane.focusInput()); e.accepted = true; return; }
+                    if (e.key === Qt.Key_F9 && !app.picking) { app.splitView = !app.splitView; e.accepted = true; return; }
                     if (e.key === Qt.Key_Back) { app.goBack(); e.accepted = true; return; }
                     if (e.key === Qt.Key_Forward) { app.goForward(); e.accepted = true; return; }
                     if (app.zone === "places") return win.placesKey(e);
@@ -4105,6 +4169,27 @@ Scope {
                         Layout.fillHeight: true
                         spacing: 0
 
+                        // Act as administrator (1.14): a red bar while it's on, with Stop.
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 44
+                            visible: extras.adminHere
+                            color: Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.16)
+                            Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.danger }
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 16; rightMargin: 12 }
+                                spacing: 10
+                                Icon { name: "shield"; size: 18; color: Theme.danger }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Acting as administrator: changes here affect the whole PC and ask for an administrator's password. What starts the PC stays locked."
+                                    color: Theme.text; elide: Text.ElideRight
+                                    font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                                }
+                                Chip { label: "Stop"; onClicked: extras.setAdmin(false) }
+                            }
+                        }
+
                         // The folder itself.
                         Item {
                             id: folderArea
@@ -4302,6 +4387,7 @@ Scope {
                                                 clip: true
                                             }
                                         }
+                                        FilesMarks { entry: cell.modelData; fx: extras; size: cell.artH }
                                     }
                                     Text {
                                         visible: !cell.compact
@@ -4345,6 +4431,7 @@ Scope {
                                                 sourceSize: cell.tiles ? Qt.size(108, 108) : Qt.size(52, 52)
                                                 asynchronous: true
                                                 fillMode: Image.PreserveAspectCrop
+                                                FilesMarks { entry: cell.modelData; fx: extras; size: cell.tiles ? 54 : 26; visible: cell.compact }
                                                 clip: true
                                             }
                                         }
@@ -4487,6 +4574,7 @@ Scope {
                                                     fillMode: Image.PreserveAspectCrop
                                                     clip: true
                                                 }
+                                                FilesMarks { entry: rowItem.modelData; fx: extras; size: 32 }
                                             }
                                             Text {
                                                 Layout.fillWidth: true
@@ -4724,6 +4812,18 @@ Scope {
                             }
                         }
 
+                        // ------------------------------------------------ the terminal panel (F4, FilesTerminal.qml)
+                        FilesTerminal {
+                            id: termPane
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? Math.max(150, Math.min(260, win.height * 0.28)) : 0
+                            visible: app.termPanel && !app.picking
+                            folder: app.listing && app.listing.path ? app.listing.path : app.home
+                            onCdRequested: p => app.navigate(p, "")
+                            onCloseRequested: { app.termPanel = false; keys.forceActiveFocus(); }
+                            onTerminalRequested: app.call(["terminal", folder], (r, err) => { if (err) app.say(err, true); })
+                        }
+
                         // ------------------------------------------------ bottom bar: status, search, or progress
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
                         Rectangle {
@@ -4750,7 +4850,7 @@ Scope {
                                         }
                                         if (app.clip.paths.length) s += " · " + app.plural(app.clip.paths.length, "item") + (app.clip.mode === "cut" ? " to move" : " copied");
                                         if (app.onCView) s += " · double-click a folder to open it";
-                                        else if (app.listing && !app.listing.writable && !app.listing.error) s += " · read-only";
+                                        else if (app.listing && !app.listing.writable && !app.listing.error) s += extras.adminHere ? " · as administrator" : " · read-only";
                                         return s;
                                     }
                                     color: app.note !== "" && app.noteError ? Theme.danger : app.note !== "" ? Theme.text : Theme.muted
@@ -4761,6 +4861,11 @@ Scope {
                                     visible: app.searching
                                     label: "Stop searching"
                                     onClicked: { keys.forceActiveFocus(); app.stopSearch(); }
+                                }
+                                Text {
+                                    visible: extras.gitLine !== "" && extras.gitOn
+                                    text: extras.gitLine
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                                 }
                                 Text {
                                     visible: briefcase.inBriefcase && (briefcase.syncLine !== "" || briefcase.lockLine !== "")
@@ -4841,6 +4946,23 @@ Scope {
                             onLongPressed: (r, c) => { if (app.oskEngine) app.oskEngine.longPress(r, c); }
                             onAltPicked: i => { if (app.oskEngine) app.oskEngine.pickAlt(i); }
                         }
+                    }
+
+                    // ------------------------------------------------ split view (F9, FilesSplitPane.qml): a second folder
+                    FilesSplitPane {
+                        id: splitPane
+                        visible: app.splitView && !app.picking
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: visible ? Math.round(win.width * 0.36) : 0
+                        helper: app.helper
+                        path: app.listing && app.listing.path ? app.listing.path : app.home
+                        selCount: visible ? app.targets().length : 0
+                        onCopyHere: dest => app.transferTo("copy", app.targets(), dest)
+                        onMoveHere: dest => app.transferTo("move", app.targets(), dest)
+                        onOpenLeft: p => app.navigate(p, "")
+                        onOpenFile: p => app.call(["open", p], (r, err) => { if (err) app.say(err, true); })
+                        onCloseRequested: app.splitView = false
+                        onDroppedHere: drop => app.dropOn(drop, splitPane.path)
                     }
 
                     // ------------------------------------------------ the details pane (the Details button, Alt+P)
@@ -4964,6 +5086,9 @@ Scope {
                                     if (loc && app.cdriveOn && e.path.indexOf("/") === 0) rows.push(["In Hearth", app.winPath(e.path)]);
                                     if (loc) rows.push(["On Linux", e.path]);
                                     if (e.isLink) rows.push(["Link", "Points somewhere else"]);
+                                    if (e.tags && e.tags.length) rows.push(["Tags", e.tags.join(", ")]);
+                                    const gs = extras.gitOf(e);
+                                    if (gs && extras.gitLook[gs]) rows.push(["Git", extras.gitLook[gs].tip + (extras.git.branch ? " · " + extras.git.branch : "")]);
                                     if (app.versionsOf === e.path) rows.push(["Previous versions", String(app.versions.length)]);
                                     return rows.concat(briefcase.detailRows(e));
                                 }
@@ -5748,7 +5873,8 @@ Scope {
         property color tint: Theme.text
         property real size: 20
         readonly property string hearthIcon: kind.startsWith("bc:") ? "bc-" + kind.slice(3)
-            : ({ start: "home", home: "user", games: "pad", device: "desktops", network: "server", netroot: "server", howto: "help", apps: "grid" })[kind] || ""
+            : ({ start: "home", home: "user", games: "pad", device: "desktops", cloud: "cloud", network: "server", netroot: "server", howto: "help", apps: "grid",
+                tag: "pin", phone: "phone", camera: "cam" })[kind] || ""
         readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸", pictures: "▲", music: "♪", desktop: "▭" })[kind] || ""
         // Windows 11-style: your folders in yellow, drives as drive glyphs (WinGlyph.qml draws the big ones).
         readonly property bool yellow: ["documents", "downloads", "videos", "pictures", "music", "desktop", "folder"].indexOf(kind) >= 0

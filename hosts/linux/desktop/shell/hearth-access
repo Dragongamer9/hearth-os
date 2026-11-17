@@ -12,6 +12,14 @@ Game Mode's Settings › Accessibility through hearth-core's access.* calls). On
                   colours or brightness, and the three colour-blindness filters. Valve's own .cube files when
                   gamescope has them, else ones made here. Desktop Mode: labwc has no colour shaders, so only what a
                   gamma ramp can do: inverted colours (hearth-gamma holds the ramp; Night light has to be off).
+                  Mantel on KWin (HEARTH_WM=kwin): KWin's own effects (hearth-kwin-settings writes kwinrc): inverted
+                  colours (the invert effect), the three colour-blindness filters (colorblindnesscorrection) and
+                  greyscale (its Monochrome mode, KWin 6.6 and later). Inverted brightness has no KWin effect.
+                  The magnifier is KWin's zoom (the whole screen) or magnifier (a box) effect, Super+= / Super+-.
+                  Invert one window (invertWindow): the invert effect kept loaded for its Super+Ctrl+U (the window
+                  you're in; again turns it back).
+  Dwell click     Mantel on KWin: rest the pointer and it clicks (dwellClick, dwellDelay, dwellClickType,
+                  dwellTolerance). Saved here; hearth-dwell does it, started by Mantel's Dwell.qml while it's on.
   Screen reader   Orca, in both modes (Super+Alt+S in Desktop Mode). Qt (Mantel) and GTK/WebKit apps talk to it
                   over AT-SPI.
   Text size, high contrast, large pointer
@@ -21,7 +29,7 @@ Game Mode's Settings › Accessibility through hearth-core's access.* calls). On
 
   hearth-access status               JSON: the settings, what this device can do, and which mode this is
   hearth-access set JSON             change some settings ({"filter": "grayscale"} etc.), save and apply them
-  hearth-access apply [game|desktop] apply the saved settings to the mode this runs in (at the start of each mode);
+  hearth-access apply [game|desktop|kwin] apply the saved settings to the mode this runs in (at the start of each mode);
                                      with a mode, only when this is that mode
   hearth-access screen-reader on|off|toggle
   hearth-access magnifier in|out|off Desktop Mode: the same as Super+= / Super+- / Super+Esc
@@ -60,18 +68,28 @@ VALVE_NAMES = {'grayscale': 'grayscale', 'invert': 'invertcolors', 'invert-brigh
                'protanopia': 'cb_prot', 'deuteranopia': 'cb_deut', 'tritanopia': 'cb_trit'}
 # What Desktop Mode can show with a gamma ramp (labwc has nothing else for colours).
 DESKTOP_FILTERS = ['none', 'invert']
+# What Mantel on KWin can show with KWin's effects: colorblindnesscorrection's Mode for each (Monochrome came in 6.6).
+KWIN_MODES = {'protanopia': 0, 'deuteranopia': 1, 'tritanopia': 2, 'grayscale': 3}
+KWIN_GREYSCALE = (6, 6)
 TEXT_SCALES = [1.0, 1.15, 1.3, 1.5]
 DEFAULTS = {
     'magnifierSize': 'full',      # 'full' (the whole screen follows the pointer) or 'lens' (a box around the pointer)
     'magnifierZoom': 2.0,         # where Super+Esc first turns it on (labwc: initScale; Super+= starts at 1 + step)
     'magnifierStep': 0.5,         # how much each Super+= / Super+- changes it
     'gameZoom': 1.0,              # Game Mode: gamescope's zoom (1 = off)
+    'filterStrength': 1.0,        # Mantel on KWin: how strong the colour-blindness / greyscale filter is (0.1..1)
     'filter': 'none',
     'screenReader': False,
     'textScale': 1.0,
     'highContrast': False,
     'largePointer': False,
+    'invertWindow': False,        # Mantel on KWin: Super+Ctrl+U inverts the window you're in (KWin's invert effect)
+    'dwellClick': False,          # Mantel on KWin: rest the pointer to click (hearth-dwell, Dwell.qml)
+    'dwellDelay': 1000,           # how long it rests before the click (ms, 300..3000)
+    'dwellClickType': 'left',     # left, double, right or middle
+    'dwellTolerance': 10,         # how far it may wobble and still count as resting (px, 3..40)
 }
+DWELL_KINDS = ('left', 'double', 'right', 'middle')
 
 
 class Fail(Exception):
@@ -115,7 +133,8 @@ def clean(raw):
         return out
     if raw.get('magnifierSize') in ('full', 'lens'):
         out['magnifierSize'] = raw['magnifierSize']
-    for k, lo, hi in (('magnifierZoom', 1.25, 8.0), ('magnifierStep', 0.1, 2.0), ('gameZoom', 1.0, 4.0)):
+    for k, lo, hi in (('magnifierZoom', 1.25, 8.0), ('magnifierStep', 0.1, 2.0), ('gameZoom', 1.0, 4.0),
+                      ('filterStrength', 0.1, 1.0)):
         v = raw.get(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             out[k] = round(max(lo, min(hi, float(v))), 2)
@@ -124,7 +143,13 @@ def clean(raw):
     v = raw.get('textScale')
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         out['textScale'] = min(TEXT_SCALES, key=lambda s: abs(s - float(v)))
-    for k in ('screenReader', 'highContrast', 'largePointer'):
+    for k, lo, hi in (('dwellDelay', 300, 3000), ('dwellTolerance', 3, 40)):
+        v = raw.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = int(round(max(lo, min(hi, float(v)))))
+    if raw.get('dwellClickType') in DWELL_KINDS:
+        out['dwellClickType'] = raw['dwellClickType']
+    for k in ('screenReader', 'highContrast', 'largePointer', 'invertWindow', 'dwellClick'):
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
     return out
@@ -153,8 +178,11 @@ def save(settings):
 
 
 def mode():
-    """'game' inside gamescope (Game Mode), 'desktop' inside labwc (Desktop Mode), else 'other'."""
-    if os.environ.get('LABWC_PID'):
+    """'game' inside gamescope (Game Mode), 'kwin' for Mantel on KWin, 'desktop' inside Desktop Mode on labwc, else
+    'other'."""
+    if os.environ.get('HEARTH_WM') == 'kwin' and not os.environ.get('GAMESCOPE_WAYLAND_DISPLAY'):
+        return 'kwin'
+    if os.environ.get('HEARTH_DESKTOP_PID') or os.environ.get('LABWC_PID'):
         return 'desktop'
     if os.environ.get('GAMESCOPE_WAYLAND_DISPLAY') or os.environ.get('HEARTH_GAME_MODE'):
         return 'game'
@@ -215,13 +243,18 @@ def reload_labwc():
     rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
     if os.path.isdir(rt):
         run(['python3', os.path.join(here, 'hearth-system'), 'labwc-config'])
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    # labwc only: --reconfigure signals LABWC_PID (never set under KWin, 1.14).
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):
         return run(['labwc', '--reconfigure'])[0] == 0
     return False
 
 
 def gsettings(schema, key, value):
+    """Sets a GNOME setting only when it differs (applying at every start writes nothing when nothing changed)."""
     if shutil.which('gsettings'):
+        code, out = run(['gsettings', 'get', schema, key])
+        if code == 0 and (out or '').strip().strip("'") == value:
+            return
         run(['gsettings', 'set', schema, key, value])
 
 
@@ -344,6 +377,144 @@ def apply_filter_desktop(name):
     return None
 
 
+# ---------------------------------------------------------------------- Mantel on KWin
+def kwin_tool():
+    """hearth-kwin-settings, loaded as a module (it sits next to this file)."""
+    import importlib.machinery
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-kwin-settings')
+    loader = importlib.machinery.SourceFileLoader('hearth_kwin_settings', path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def kwin_version_tuple(k=None):
+    try:
+        v = (k or kwin_tool()).kwin_version()
+    except Exception:
+        v = ''
+    m = re.match(r'(\d+)\.(\d+)', v or '')
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def kwin_filters(version=None):
+    out = ['none', 'invert', 'protanopia', 'deuteranopia', 'tritanopia']
+    if version and version >= KWIN_GREYSCALE:
+        out.insert(1, 'grayscale')
+    return out
+
+
+def kwin_invert_mark():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-kwin-inverted')
+
+
+def kwin_pid(k):
+    """The process id of the KWin running now (its D-Bus name's owner), or 0."""
+    try:
+        return int(k.call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                          'GetConnectionUnixProcessID', '(s)', ('org.kde.KWin',))[0])
+    except Exception:
+        return 0
+
+
+def kwin_inverted(k):
+    """Whether Hearth inverted this KWin's colours. KWin's invert effect has no setting (only a shortcut that switches
+    it), so the mark holds the KWin's process id: a mark left by an earlier KWin (a restart, a new session) is stale."""
+    try:
+        with open(kwin_invert_mark()) as f:
+            return int(f.read().strip() or 0) == kwin_pid(k) != 0
+    except (OSError, ValueError):
+        return False
+
+
+def kwin_changes(k, want):
+    """Only the keys whose value KWin sees now differs from WANT ({group: {key: value}}): nothing is written when
+    nothing changed. Effects' defaults are KWin's own (k.EFFECTS)."""
+    vals, _, _ = k.kc.effective('kwinrc')
+    out = {}
+    for g, kv in want.items():
+        for key, v in kv.items():
+            cur = vals.get(g, {}).get(key)
+            if cur is None and g == 'Plugins' and key.endswith('Enabled'):
+                cur = 'true' if k.EFFECTS.get(key[:-7]) else 'false'
+            if cur != k.kc.to_text(v):
+                out.setdefault(g, {})[key] = v
+    return out
+
+
+def apply_filter_kwin(name, strength=1.0, invert_window=False):
+    """Mantel on KWin: the filter through KWin's effects (Accessibility is the one place that changes these: the
+    generic KWin pages can't write them). Inverted colours are switched with KWin's own shortcut. INVERT_WINDOW: the
+    invert effect stays loaded for its other shortcut, Super+Ctrl+U (one window); with neither, it's unloaded."""
+    try:
+        k = kwin_tool()
+    except (OSError, ImportError, SyntaxError) as e:
+        return 'hearth-kwin-settings is missing (%s)' % e
+    ver = kwin_version_tuple(k)
+    if name not in kwin_filters(ver):
+        if name == 'grayscale':
+            return 'Greyscale needs KWin %d.%d or later (this is %s); it works in Game Mode.' % (
+                KWIN_GREYSCALE + ('.'.join(map(str, ver)) if ver else 'an older KWin',))
+        return 'KWin has no effect for this filter; it works in Game Mode.'
+    m = KWIN_MODES.get(name)
+    want = {'Plugins': {'colorblindnesscorrectionEnabled': m is not None}}
+    if name == 'invert' or invert_window:
+        want['Plugins']['invertEnabled'] = True
+    if m is not None:
+        want['Effect-colorblindnesscorrection'] = {'Mode': m, 'Intensity': round(float(strength), 2)}
+    changes = kwin_changes(k, want)
+    if changes:
+        try:
+            k.write_changes('kwinrc', changes)
+        except k.Fail as e:
+            return str(e)
+        k.reconfigure()
+    want_inv = name == 'invert'
+    if k.kwin_running() and want_inv != kwin_inverted(k):
+        try:
+            k.shortcut('invert')
+        except k.Fail as e:
+            return 'KWin didn\'t switch inverted colours (%s)' % e
+        try:
+            if want_inv:
+                with open(kwin_invert_mark(), 'w') as f:
+                    f.write(str(kwin_pid(k)))
+            else:
+                os.unlink(kwin_invert_mark())
+        except OSError:
+            pass
+    if not want_inv and not invert_window:
+        # Unloaded only after the screen was switched back above (the shortcut needs the effect).
+        off = kwin_changes(k, {'Plugins': {'invertEnabled': False}})
+        if off:
+            try:
+                k.write_changes('kwinrc', off)
+            except k.Fail as e:
+                return str(e)
+            k.reconfigure()
+    return None
+
+
+def apply_magnifier_kwin(s):
+    """The magnifier's size and steps as KWin's zoom (the whole screen) and magnifier (a box) effects."""
+    try:
+        k = kwin_tool()
+        full = s['magnifierSize'] == 'full'
+        changes = kwin_changes(k, {
+            'Plugins': {'zoomEnabled': full, 'magnifierEnabled': not full},
+            'Effect-zoom': {'ZoomFactor': round(1 + s['magnifierStep'], 2)},
+            'Effect-magnifier': {'InitialZoom': s['magnifierZoom'], 'Width': 640, 'Height': 400},
+        })
+        if changes:
+            k.write_changes('kwinrc', changes)
+            k.reconfigure()
+    except Exception as e:
+        return str(e)
+    return None
+
+
 def apply_filter_game(name):
     """Game Mode: gamescope's colour look, set on its X root window."""
     if not os.environ.get('DISPLAY') or not shutil.which('xprop'):
@@ -394,7 +565,11 @@ def screen_reader(on):
 # ---------------------------------------------------------------------- status / set / apply
 def available():
     lv = labwc_version()
+    kv = kwin_version_tuple() if mode() == 'kwin' else None
     return {
+        'kwin': mode() == 'kwin',
+        'kwinVersion': '.'.join(map(str, kv)) if kv else '',
+        'kwinFilters': kwin_filters(kv),
         'orca': bool(shutil.which('orca')),
         'wtype': bool(shutil.which('wtype')),
         'gamma': bool(gamma_tool()),
@@ -403,10 +578,18 @@ def available():
         # labwc's magnifier came in 0.7.3.
         'labwcMagnifier': bool(lv and lv >= (0, 7, 3)),
         'valveLooks': any(os.path.isdir(d) for d in VALVE_LOOKS),
-        'desktopFilters': DESKTOP_FILTERS,
+        'desktopFilters': kwin_filters(kv) if mode() == 'kwin' else DESKTOP_FILTERS,
         'filters': FILTERS,
         'textScales': TEXT_SCALES,
+        # Dwell click (hearth-dwell): Mantel on KWin, with python3-evdev for its virtual mouse.
+        'dwell': mode() == 'kwin' and evdev_there(),
+        'dwellKinds': list(DWELL_KINDS),
     }
+
+
+def evdev_there():
+    import importlib.util
+    return importlib.util.find_spec('evdev') is not None
 
 
 def status(problems=None):
@@ -428,6 +611,18 @@ def apply(s, changed=None, where=None):
             p = apply_zoom_game(s['gameZoom'])
             if p:
                 problems['gameZoom'] = p
+    elif where == 'kwin':
+        if keys & {'filter', 'filterStrength', 'invertWindow'}:
+            p = apply_filter_kwin(s['filter'], s['filterStrength'], s['invertWindow'])
+            if p:
+                problems['filter'] = p
+        # Only when the person changed one: at the start KWin has its own settings already.
+        if changed is not None and keys & {'magnifierSize', 'magnifierZoom', 'magnifierStep'}:
+            p = apply_magnifier_kwin(s)
+            if p:
+                problems['magnifierSize'] = p
+        if keys & {'textScale', 'highContrast', 'largePointer'}:
+            apply_desktop_look(s)
     elif where == 'desktop':
         if 'filter' in keys:
             p = apply_filter_desktop(s['filter'])
@@ -438,7 +633,7 @@ def apply(s, changed=None, where=None):
             reload_labwc()
         if keys & {'textScale', 'highContrast', 'largePointer'}:
             apply_desktop_look(s)
-    if 'screenReader' in keys and where in ('game', 'desktop') and (changed is not None or s['screenReader']):
+    if 'screenReader' in keys and where in ('game', 'desktop', 'kwin') and (changed is not None or s['screenReader']):
         try:
             screen_reader(s['screenReader'])
         except Fail as e:
@@ -467,7 +662,7 @@ def main(argv):
         out = status()
     elif c == 'set' and len(a) <= 1:
         out = set_settings(a[0] if a else sys.stdin.read())
-    elif c == 'apply' and (not a or (len(a) == 1 and a[0] in ('game', 'desktop'))):
+    elif c == 'apply' and (not a or (len(a) == 1 and a[0] in ('game', 'desktop', 'kwin'))):
         # With a mode: only there (Hearth's window asks at every start, also when it's a window in Desktop Mode).
         out = status(apply(saved()) if not a or a[0] == mode() else {})
     elif c == 'screen-reader' and len(a) == 1 and a[0] in ('on', 'off', 'toggle'):
@@ -477,6 +672,19 @@ def main(argv):
         screen_reader(on)
         out = {'screenReader': on}
     elif c == 'magnifier' and len(a) == 1 and a[0] in ('in', 'out', 'off'):
+        if mode() == 'kwin':
+            # KWin's zoom (or magnifier) effect: its own Super+= / Super+- / Super+0 actions (kwin-pages); when KWin
+            # doesn't take the call, the same keys typed by hearth-type (kwin-input).
+            k = kwin_tool()
+            try:
+                k.shortcut({'in': 'zoom-in', 'out': 'zoom-out', 'off': 'zoom-reset'}[a[0]])
+            except k.Fail as e:
+                typer = [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-type')]
+                key = {'in': 'equal', 'out': 'minus', 'off': '0'}[a[0]]
+                if run(typer + ['-M', 'logo', '-k', key, '-m', 'logo'])[0] != 0:
+                    raise Fail(str(e))
+            print(json.dumps({'ok': True}), flush=True)
+            return
         # The same keys labwc has for it (rc.xml), typed: labwc reads keys typed by wtype like real ones.
         if not shutil.which('wtype'):
             raise Fail('wtype isn\'t installed')

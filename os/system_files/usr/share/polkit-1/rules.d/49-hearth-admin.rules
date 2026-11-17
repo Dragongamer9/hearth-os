@@ -13,6 +13,20 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+write-file(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // Hearth Files' "Act as administrator" has its own action (fun.hearthos.files-admin.policy: auth_admin_keep for
+    // that program only). Through hearth-admin, files-* is refused outright, so nothing keeps a password for pkexec.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+files-\S+(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.NO;
+    }
+    // Making an account an administrator (Settings › Users' account type) always asks for an administrator's password,
+    // like installing a .deb.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+user-type(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
         /^\S+\s+usb-\S+(\s[\s\S]*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {
@@ -25,11 +39,33 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+decky-install(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // Firmware updates (Settings › Firmware & security) write new firmware into the PC's parts: always an
+    // administrator's password. Getting the list of firmware (firmware-refresh) doesn't ask.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+firmware-update(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+    // The firewall (Settings › Privacy & security › Firewall, 1.14): turning it off, letting a port in and letting
+    // everything in open this PC up, so they always ask for an administrator's password. Turning it on, removing a
+    // rule and reading it don't ask.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+firewall-(off|allow|incoming)(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
     // root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
         /^\S+\s+deb-(install|remove)(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+    // A driver from Debian (Settings › App store › Drivers: the firmware packages it offers) goes on the system itself
+    // and its scripts run as root: always an administrator's password, like sudo apt.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+driver-install(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
 });

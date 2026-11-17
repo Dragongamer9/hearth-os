@@ -5,6 +5,9 @@
 // windows: a list to pick from), middle-click opens another one, drag a pinned app to move it, right-click (X on
 // the controller) for the app's own actions, Pin / Unpin, Move to desktop, Maximize and Close. Super+1-9 open the
 // app at that place (DeskState.mainBar is this strip while it's in use). The thin strip at the end shows the desktop.
+// Mantel on KWin: resting the pointer on a running app shows live previews of its windows (KWin draws them,
+// hearth-previews.qml), and the Task view button at the start opens KWin's Overview (right-click: Present windows,
+// Desktop grid). Neither is there on labwc, which can't show another app's window or KWin's views.
 // Loaded by Islands.qml through a Loader: if it can't load, the bar still has the app menu button and Game Mode.
 import QtQuick
 import QtQuick.Layouts
@@ -45,7 +48,9 @@ Item {
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);
         }
-        for (const t of ToplevelManager.toplevels.values) {
+        for (const t of WinList.toplevels.values) {
+            // Activities (SettingsNav.activityShows, from feature/widgets): only the activity you're on; without it, all.
+            if (SettingsNav.activityShows) { try { if (!SettingsNav.activityShows(t)) continue; } catch (e) {} }
             const own = ownWindow(t);
             const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
@@ -84,7 +89,7 @@ Item {
     }
     function activateNth(n) { const it = taskItems[n - 1]; if (it) cycleApp(it); }
     function toggleShowDesktop() {
-        const open = ToplevelManager.toplevels.values.filter(t => !t.minimized);
+        const open = WinList.toplevels.values.filter(t => !t.minimized);
         if (open.length) {
             const front = open.find(t => t.activated) || null;
             DeskState.shownDesktop = { windows: open, front: front };
@@ -94,7 +99,7 @@ Item {
         const was = DeskState.shownDesktop;
         DeskState.shownDesktop = null;
         if (!was) return;
-        const still = ToplevelManager.toplevels.values;
+        const still = WinList.toplevels.values;
         was.windows.filter(t => still.indexOf(t) >= 0 && t !== was.front).forEach(t => t.minimized = false);
         if (was.front && still.indexOf(was.front) >= 0) was.front.activate();
     }
@@ -112,6 +117,7 @@ Item {
         else menu.popup(screen, Math.max(8, sx - menu.cardWidth - 22), sy, { title: title, above: false }, list);
     }
     function moveToDesktop(win, n) {
+        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;
@@ -119,6 +125,12 @@ Item {
     Process {
         id: mover
         onExited: code => { if (code === 127) SettingsNav.toast("Moving windows needs wtype. The window's title bar menu can move it too"); }
+    }
+    function viewMenu(btn) {
+        popupAt(btn, "Task view", [
+            { label: "Overview", icon: "desktops", run: () => WinList.effect("overview") },
+            { label: "Present windows (Ctrl+F10)", icon: "window", run: () => WinList.effect("windows") },
+            { label: "Desktop grid (Ctrl+F8)", icon: "grid", run: () => WinList.effect("grid") }]);
     }
     function taskMenu(btn, it) {
         if (!menu) return;
@@ -138,6 +150,12 @@ Item {
             for (let i = 0; i < 4; i++) sub.push({ label: "Desktop " + (i + 1), run: () => moveToDesktop(win, i + 1) });
             if (list.length) list.push({ separator: true });
             list.push({ label: "Move to desktop", icon: "desktops", group: "Window", sub: sub });
+            // Move to activity › (SettingsNav.activityMoveItems, from feature/widgets; nothing with one activity).
+            if (SettingsNav.activityMoveItems) {
+                let acts = [];
+                try { acts = SettingsNav.activityMoveItems(win) || []; } catch (e) {}
+                if (acts.length) list.push({ label: "Move to activity", icon: "desktops", group: "Window", sub: acts });
+            }
             if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
             else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });
@@ -181,6 +199,14 @@ Item {
         columns: strip.vertical ? 1 : -1
         rowSpacing: 4
         columnSpacing: 4
+        TaskButton {   // Task view (KWin): the Overview; right-click for Present windows and the Desktop grid
+            id: taskViewBtn
+            visible: WinList.kwin
+            tip: "Task view (Super+W)"
+            onClicked: WinList.effect("overview")
+            onRightClicked: strip.viewMenu(taskViewBtn)
+            Icon { anchors.centerIn: parent; name: "desktops"; size: Math.round(strip.side * 0.5) }
+        }
         Repeater {
             id: taskRepeater
             model: strip.taskItems
@@ -193,6 +219,8 @@ Item {
                 active: wins.some(w => w.activated)
                 running: wins.length > 0
                 count: wins.length
+                previewWins: wins
+                previewKey: modelData.key
                 draggable: modelData.pinned
                 dropMark: strip.dragFrom >= 0 && strip.dragTo === index && strip.dragTo !== strip.dragFrom ? (strip.dragTo < strip.dragFrom ? -1 : 1) : 0
                 onClicked: strip.focusApp(modelData, task)
@@ -231,6 +259,10 @@ Item {
         property int dropMark: 0
         property bool dragging: false
         property real dragOffset: 0
+        property var previewWins: []       // KWin: the windows whose live previews show while the pointer rests here
+        property string previewKey: ""
+        readonly property bool previews: WinList.previewsReady && previewWins.length > 0
+        property bool previewShown: false
         default property alias content: holder.data
         signal clicked()
         signal middleClicked()
@@ -239,6 +271,23 @@ Item {
         signal dragMoved(real pos)
         signal dragEnded()
         z: dragging ? 5 : 0
+        // Previews: after a short rest (at once when moving over from another app's), on the screen side of the bar.
+        function showPreview() {
+            if (!area.containsMouse || btn.dragging || !btn.previews) return;
+            const mx = area.mouseX, my = area.mouseY, e = strip.edge;
+            const near = e === "top" ? btn.height - my : e === "left" ? btn.width - mx : e === "right" ? mx : my;
+            const along = e === "left" || e === "right" ? btn.height / 2 - my : btn.width / 2 - mx;
+            previewShown = WinList.preview(btn.previewWins, e, near + 6, along, btn.previewKey);
+            if (previewShown) DeskState.previewAt = Date.now();
+        }
+        function endPreview(now) { previewWait.stop(); if (previewShown) { previewShown = false; WinList.previewHide(now); DeskState.previewAt = Date.now(); } }
+        Timer { id: previewWait; interval: Date.now() - DeskState.previewAt < 500 ? 60 : 450; onTriggered: btn.showPreview() }
+        Connections {
+            target: area
+            function onContainsMouseChanged() { if (area.containsMouse && btn.previews) previewWait.restart(); else btn.endPreview(false); }
+            function onPressed() { btn.endPreview(true); }
+        }
+        onPreviewWinsChanged: if (previewShown && previewWins.length === 0) endPreview(true)
         transform: Translate { x: strip.vertical ? 0 : btn.dragOffset; y: strip.vertical ? btn.dragOffset : 0 }
         implicitWidth: strip.side
         implicitHeight: strip.side
@@ -293,8 +342,8 @@ Item {
                 else btn.clicked();
             }
         }
-        PopupWindow {   // the hover label, toward the screen
-            visible: area.containsMouse && btn.tip !== "" && !btn.dragging
+        PopupWindow {   // the hover label, toward the screen (KWin's live previews take its place for a running app)
+            visible: area.containsMouse && btn.tip !== "" && !btn.dragging && !btn.previews
             anchor.item: btn
             anchor.rect.x: strip.edge === "left" ? btn.width + 10 : strip.edge === "right" ? -implicitWidth - 10 : Math.round(btn.width / 2 - implicitWidth / 2)
             anchor.rect.y: strip.edge === "top" ? btn.height + 10 : strip.edge === "bottom" ? -implicitHeight - 10 : Math.round(btn.height / 2 - implicitHeight / 2)

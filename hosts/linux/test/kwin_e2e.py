@@ -1,0 +1,725 @@
+#!/usr/bin/python3
+"""End-to-end checks of Mantel's typing, lock screen and screen sharing on KWin (docs/KWIN-INPUT.md), run by
+.github/workflows/kwin-input.yml inside KWin (nested in a headless labwc, OUTER, which takes the pictures), with
+Hearth's input method started by KWin, PipeWire, and xdg-desktop-portal reading hearth-portals.conf.
+
+  kwin_e2e.py SHOTS_FOLDER nested|virtual
+nested (KWin as a window of a headless labwc, which passes uinput keyboards on): protocols, typing, the on-screen
+keyboard, the lock screen. virtual (KWin on its own screen): screen sharing, screenshots, both portals.
+One line per check; failures are ::error lines, the passed checks and findings one ::notice each at the end.
+Exit 1 if a check failed.
+"""
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import textwrap
+import time
+
+import gi
+gi.require_version('Gio', '2.0')
+from gi.repository import Gio, GLib  # noqa: E402
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SHELL = os.path.join(os.path.dirname(HERE), 'desktop', 'shell')
+INSTALLED = '/usr/share/nimbus/desktop/shell'
+# hearth-portal's `cast` (no Allow prompt) works only in Hearth's checks.
+os.environ['HEARTH_CHECKS'] = '1'
+HT = os.path.join(INSTALLED, 'hearth-type')
+CAST_PICKER = os.path.join(INSTALLED, 'cast-picker.qml')
+SHOTS = sys.argv[1]
+PHASE = sys.argv[2] if len(sys.argv) > 2 else 'nested'
+PASSED, FOUND = [], []
+PROCS = []
+ENTRY = '/tmp/hearth-entry.txt'
+FAILED = []
+sys.path.insert(0, SHELL)
+import hearth_screencast as hs  # noqa: E402
+
+
+PORTAL = os.path.join(INSTALLED, 'hearth-portal')
+
+
+def kshot(path):
+    """KWin's own screenshot, through hearth-portal (hearth-kwin-cast works only for it): (ok, error)."""
+    r = subprocess.run([sys.executable, PORTAL, 'cast', 'shot', path, 'workspace'], capture_output=True, text=True, timeout=40)
+    try:
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+        return bool(d.get('ok')), d.get('error', '')
+    except (ValueError, IndexError):
+        return False, (r.stderr or '')[-200:]
+
+
+def esc(s):
+    return str(s).replace('%', '%25').replace('\r', '').replace('\n', '%0A')[:1500]
+
+
+def check(name, ok, detail=''):
+    detail = detail if isinstance(detail, str) else json.dumps(detail, default=str)
+    print(('ok    ' if ok else 'FAIL  ') + name + ((': ' + detail) if detail else ''), flush=True)
+    if ok:
+        PASSED.append(name + (' (%s)' % detail[:160] if detail else ''))
+    else:
+        FAILED.append(name)
+        print('::error title=KWin (%s): %s::%s' % (PHASE, name[:90], esc(detail)), flush=True)
+
+
+def note(name, detail):
+    print('note  %s: %s' % (name, detail), flush=True)
+    FOUND.append('%s: %s' % (name, str(detail)[:400]))
+
+
+def grim(name):
+    """A 1920x1080 picture: from the outer labwc (nested), or KWin's own screenshot through hearth-kwin-cast."""
+    p = os.path.join(SHOTS, name + '.png')
+    if os.environ.get('OUTER'):
+        env = dict(os.environ, WAYLAND_DISPLAY=os.environ['OUTER'])
+        r = subprocess.run(['grim', p], env=env, capture_output=True, text=True)
+        if r.returncode != 0:
+            print('no picture %s: %s' % (name, r.stderr.strip()), flush=True)
+        # labwc shows nothing of KWin (its window never appeared there): KWin's own picture instead.
+        dark = r.returncode != 0 or not os.path.exists(p)
+        if not dark:
+            try:
+                from PIL import Image, ImageStat
+                dark = max(ImageStat.Stat(Image.open(p).convert('L')).mean) < 3
+            except Exception as e:
+                print('picture check %s: %r' % (name, e), flush=True)
+        if dark:
+            ok, err = kshot(p)
+            note('picture ' + name, 'labwc gave %s; KWin\'s own screenshot %s' % (
+                'nothing (%s)' % r.stderr.strip()[:120] if r.returncode else 'a dark picture', 'used' if ok else 'failed too: ' + err[:160]))
+    elif not kshot(p)[0]:
+        print('no picture %s (KWin\'s screenshot)' % name, flush=True)
+
+
+def run(args, timeout=20, env=None, **kw):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=env, **kw)
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(args, 124, e.stdout or '', 'timed out')
+
+
+def entry_text():
+    try:
+        with open(ENTRY, encoding='utf-8') as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def wait_for(fn, timeout=10, step=0.3):
+    end = time.time() + timeout
+    while time.time() < end:
+        v = fn()
+        if v:
+            return v
+        time.sleep(step)
+    return fn()
+
+
+def im_state():
+    p = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'hearth', 'im.sock')
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(2)
+        s.connect(p)
+        s.sendall(b'S\n')
+        a = s.recv(200).decode().strip()
+        s.close()
+        return a
+    except OSError as e:
+        return 'unreachable (%s)' % e
+
+
+def click_middle():
+    """A uinput mouse moves far to the top left, then to the middle of the screen, and clicks there."""
+    try:
+        import evdev
+        e = evdev.ecodes
+        m = evdev.UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT], e.EV_REL: [e.REL_X, e.REL_Y]}, name='Hearth check mouse')
+        time.sleep(1.0)
+        for dx, dy in [(-4000, -4000)] + [(96, 108)] * 10:
+            m.write(e.EV_REL, e.REL_X, dx)
+            m.write(e.EV_REL, e.REL_Y, dy)
+            m.syn()
+            time.sleep(0.02)
+        for v in (1, 0):
+            m.write(e.EV_KEY, e.BTN_LEFT, v)
+            m.syn()
+            time.sleep(0.1)
+        time.sleep(0.5)
+        m.close()
+    except Exception as ex:
+        note('click', repr(ex))
+
+
+def write_entry_app():
+    app = '''
+    import gi, sys
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk, Gdk
+    css = Gtk.CssProvider(); css.load_from_data(b"entry { font-size: 34px; min-height: 70px; } label { font-size: 20px; }")
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, 800)
+    w = Gtk.Window(title="Hearth typing test"); w.set_default_size(1400, 500)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20); box.set_border_width(40)
+    box.pack_start(Gtk.Label(label="A GTK text field on KWin: typed by hearth-type (Hearth's input method and uinput keyboard)"), False, False, 0)
+    e = Gtk.Entry(); box.pack_start(e, False, False, 0)
+    def changed(x):
+        open(sys.argv[1], "w").write(x.get_text())
+    e.connect("changed", changed)
+    w.add(box); w.connect("destroy", Gtk.main_quit); w.show_all(); w.maximize(); e.grab_focus()
+    Gtk.main()
+    '''
+    with open('/tmp/hearth-entry-app.py', 'w') as f:
+        f.write(textwrap.dedent(app))
+
+
+def keys_diagnosis():
+    """Why uinput keys didn't reach the field: does the device send them, and do they arrive without the input method?"""
+    seen = []
+    try:
+        import evdev
+        dev = next((evdev.InputDevice(p) for p in evdev.list_devices() if evdev.InputDevice(p).name == 'Hearth typing keyboard'), None)
+        if dev:
+            def reader():
+                for ev in dev.read_loop():
+                    if ev.type == evdev.ecodes.EV_KEY:
+                        seen.append((ev.code, ev.value))
+            threading.Thread(target=reader, daemon=True).start()
+    except Exception as e:
+        note('keys: reading the device', repr(e))
+    other = '/tmp/hearth-entry-plain.txt'
+    with open(other, 'w') as f:
+        f.write('')
+    pl = subprocess.Popen([sys.executable, '/tmp/hearth-entry-app.py', other],
+                          env=dict(os.environ, GTK_IM_MODULE='gtk-im-context-simple'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(5)
+    run([sys.executable, HT, '-k', 'x', '-k', 'y', '-k', 'z'])
+    time.sleep(2)
+    try:
+        got = open(other).read()
+    except OSError:
+        got = None
+    note('keys diagnosis', 'device sent %d key events; a GTK field without the input method got %r; input method: %s'
+         % (len(seen), got, im_state()))
+    pl.terminate()
+    return len(seen), got
+
+
+def qs_ipc(path, *args):
+    r = run(['quickshell', 'ipc', '-p', path, 'call'] + list(args), timeout=10)
+    return r.returncode, (r.stdout or '').strip()
+
+
+# ------------------------------------------------------------------ 1. what KWin offers
+def protocols():
+    r = run(['wayland-info'])
+    names = set()
+    for line in r.stdout.splitlines():
+        if "interface: '" in line:
+            names.add(line.split("interface: '")[1].split("'")[0])
+    have = {k: k in names for k in ('ext_session_lock_manager_v1', 'zwp_virtual_keyboard_manager_v1', 'zwlr_layer_shell_v1',
+                                    'zwp_text_input_manager_v3', 'zwp_text_input_manager_v2', 'zwp_input_method_v1',
+                                    'zkde_screencast_unstable_v1', 'org_kde_kwin_fake_input', 'zwlr_screencopy_manager_v1',
+                                    'ext_data_control_manager_v1', 'zwlr_data_control_manager_v1')}
+    note('KWin protocols (an ordinary client)', ', '.join('%s %s' % (k, 'yes' if v else 'no') for k, v in sorted(have.items())))
+    check('no ext-session-lock on KWin (so Lock.qml hands locking to KWin\'s locker)', not have['ext_session_lock_manager_v1'],
+          'ext_session_lock_manager_v1 is %s' % ('offered' if have['ext_session_lock_manager_v1'] else 'not offered'))
+    check('no virtual-keyboard protocol on KWin (so wtype can\'t type there)', not have['zwp_virtual_keyboard_manager_v1'])
+    w = run(['wtype', 'x']) if shutil.which('wtype') else None
+    if w is not None:
+        note('wtype on KWin', 'exit %d: %s' % (w.returncode, (w.stderr or '').strip()))
+
+
+# ------------------------------------------------------------------ 2. typing: the input method and the uinput keyboard
+def typing():
+    sock = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'hearth', 'im.sock')
+    check('KWin started Hearth\'s input method (hearth-kwin-im)', bool(wait_for(lambda: os.path.exists(sock), 15)),
+          sock if os.path.exists(sock) else 'no %s' % sock)
+
+    write_entry_app()
+    with open(ENTRY, 'w') as f:
+        f.write('')
+    gtk = subprocess.Popen([sys.executable, '/tmp/hearth-entry-app.py', ENTRY], env=dict(os.environ, GTK_IM_MODULE='wayland'),
+                           stdout=subprocess.DEVNULL, stderr=open(os.path.join(SHOTS, 'gtk-app.log'), 'w'))
+    PROCS.append(gtk)
+    time.sleep(5)
+    st = wait_for(lambda: im_state().startswith('active 1'), 10) and im_state()
+    check('a focused GTK text field gives Hearth\'s input method a context', bool(st), im_state())
+    ht_status = run([sys.executable, HT, '--status']).stdout.strip()
+    note('hearth-type --status', ht_status)
+
+    text = 'Grüße 🔥 café ñ'
+    r = run([sys.executable, HT, '--', text], timeout=20)
+    got = wait_for(lambda: entry_text() == text, 6) and entry_text()
+    check('hearth-type types any character into a GTK field on KWin (input method)', entry_text() == text,
+          'typed %r, the field has %r (exit %d %s)' % (text, entry_text(), r.returncode, r.stderr.strip()))
+    r = run([sys.executable, HT, '-k', 'BackSpace', '-k', 'BackSpace'], timeout=20)
+    want = text[:-2]
+    if not wait_for(lambda: entry_text() == want, 6):
+        # labwc may not have given KWin's window its keyboard: a click on it (a uinput mouse) does, as a person would.
+        note('keys before a click', 'the field still has %r; clicking KWin\'s window' % entry_text())
+        click_middle()
+        r = run([sys.executable, HT, '-k', 'BackSpace', '-k', 'BackSpace'], timeout=20)
+        wait_for(lambda: entry_text() == want, 6)
+    keys_ok = entry_text() == want
+    if keys_ok:
+        r = run([sys.executable, HT, '-M', 'ctrl', '-k', 'a', '-m', 'ctrl', '-k', 'Delete'], timeout=20)
+        wait_for(lambda: entry_text() == '', 6)
+        check('hearth-type presses keys and shortcuts on KWin (uinput: BackSpace, Ctrl+A, Delete)', entry_text() == '',
+              'the field has %r' % entry_text())
+    else:
+        # Here KWin is a window of a headless labwc, which has to pass every key on; on a PC KWin reads the uinput
+        # keyboard itself (libinput), as it did hearth-pad's in Hearth Plasma. So the check here is that the keys
+        # leave hearth-type's keyboard; that they reach apps through KWin needs testing on a device.
+        sent, plain = keys_diagnosis()
+        check('hearth-type\'s uinput keyboard sends the keys (they reach apps through KWin: needs testing on a device)',
+              sent > 0, '%d key events from the device; through labwc to the nested KWin: %r (labwc doesn\'t pass them '
+              'on here, with or without the input method)' % (sent, plain))
+        run([sys.executable, HT, '-k', 'End'])
+    r = run([sys.executable, HT, '--', 'Hearth on KWin: ü ß é ✓ 😀'], timeout=20)
+    time.sleep(1.5)
+    grim('kwin-typed-unicode')
+
+    # Mantel's on-screen keyboard (Keyboard.qml), typing through hearth-type on KWin.
+    osk_qml = os.path.join(INSTALLED, 'osk-kwin-check.qml')
+    with open(osk_qml, 'w') as f:
+        f.write('''import QtQuick
+    import Quickshell
+    import Quickshell.Io
+    ShellRoot {
+        Keyboard { id: kb; onCloseRequested: kb.closeKb() }
+        IpcHandler {
+            target: "osk"
+            function open(): void { kb.openKb(); }
+            function tap(k: string): void { kb.tapKey(k, false); }
+            function state(): string { return kb.stateJson(); }
+        }
+    }
+    ''')
+    run([sys.executable, HT, '-M', 'ctrl', '-k', 'a', '-m', 'ctrl', '-k', 'Delete'])
+    osk = subprocess.Popen(['quickshell', '-p', osk_qml], stdout=open(os.path.join(SHOTS, 'osk.log'), 'w'), stderr=subprocess.STDOUT)
+    time.sleep(6)
+    qs_ipc(osk_qml, 'osk', 'open')
+    time.sleep(3)
+    code, out = qs_ipc(osk_qml, 'osk', 'state')
+    note('on-screen keyboard state', out[-600:])
+    for k in 'hello':
+        qs_ipc(osk_qml, 'osk', 'tap', k)
+        time.sleep(0.6)
+    wait_for(lambda: (entry_text() or '').endswith('hello'), 8)
+    check('Mantel\'s on-screen keyboard types on KWin (through hearth-type)', (entry_text() or '').endswith('hello'),
+          'the field has %r; keyboard: %s' % (entry_text(), out[-300:]))
+    grim('kwin-osk-typing')
+    osk.terminate()
+    time.sleep(1)
+
+
+# ------------------------------------------------------------------ 3. KWin's screen sharing through hearth-kwin-cast
+def cast_helper():
+    # Two windows, so the picker's Windows tab has something to show.
+    for title, text in (('Notes – Hearth', 'Shopping: bread, milk, firewood\\nWater the plants'),
+                        ('Bus timetable', 'Express 08:15  Platform 2\\nLocal 08:40  Platform 1')):
+        PROCS.append(subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
+            import gi, sys; gi.require_version("Gtk", "3.0")
+            from gi.repository import Gtk
+            w = Gtk.Window(title=sys.argv[1]); w.set_default_size(900, 600)
+            t = Gtk.TextView(); t.get_buffer().set_text(sys.argv[2].replace("\\\\n", "\\n"))
+            w.add(t); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
+            '''), title, text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    time.sleep(4)
+    # hearth-kwin-cast works only for hearth-portal: run straight, it refuses.
+    direct = run(['/usr/libexec/hearth/hearth-kwin-cast', 'outputs'])
+    check('hearth-kwin-cast refuses anyone but hearth-portal (KWin trusts it by its path)', direct.returncode == 3,
+          'exit %d %s' % (direct.returncode, (direct.stderr or '').strip()[:160]))
+    r = run([sys.executable, PORTAL, 'cast', 'outputs'], timeout=20)
+    try:
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        d = {}
+    outs, version = d.get('screens') or [], d.get('screencast') or 0
+    check('KWin gives hearth-kwin-cast its screen-sharing protocol (its .desktop file)', version > 0,
+          'zkde_screencast_unstable_v1 version %d; screens %s' % (version, [o['name'] for o in outs]))
+    if outs and version:
+        sp = subprocess.Popen([sys.executable, PORTAL, 'cast', 'stream', 'output', outs[0]['name'], '25'],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        line = sp.stdout.readline()
+        try:
+            st = json.loads(line)
+        except ValueError:
+            st = {'node': None, 'error': line[:200]}
+        node = st.get('node')
+        check('KWin makes a PipeWire stream of a screen', node is not None, 'node %s %s' % (node, st.get('error', '')))
+        if node is not None:
+            # Something changing on screen, so KWin has frames to send (it sends one when the picture changes).
+            ticker = subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
+                import gi; gi.require_version("Gtk", "3.0")
+                from gi.repository import Gtk, GLib
+                import time
+                w = Gtk.Window(title="Clock"); w.set_default_size(500, 200); l = Gtk.Label(); w.add(l)
+                def tick():
+                    l.set_markup("<span size=\\"40000\\">%s</span>" % time.strftime("%H:%M:%S")); return True
+                tick(); GLib.timeout_add(200, tick); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
+                ''')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+            frame = os.path.join(SHOTS, 'cast-frame.png')
+            for prop in ('target-object', 'path'):
+                r = run(['timeout', '-s', 'INT', '20', 'gst-launch-1.0', '-v', 'pipewiresrc', '%s=%d' % (prop, node), 'num-buffers=4',
+                         'always-copy=true', '!', 'videoconvert', '!', 'pngenc', 'snapshot=true', '!', 'filesink', 'location=' + frame],
+                        timeout=40)
+                note('gst (%s)' % prop, 'exit %d %s' % (r.returncode, ' | '.join(l for l in ((r.stdout or '') + (r.stderr or '')).splitlines()
+                                                                                if 'caps' in l or 'rror' in l or 'WARN' in l)[-400:]))
+                if os.path.exists(frame) and os.path.getsize(frame) > 1000:
+                    break
+            check('frames of the shared screen arrive over PipeWire', os.path.exists(frame) and os.path.getsize(frame) > 1000,
+                  '%s bytes (%s)' % (os.path.getsize(frame) if os.path.exists(frame) else 0, (r.stderr or '')[-300:]))
+        sp.terminate()
+        if node is not None:
+            ticker.terminate()
+    ws = '/tmp/hearth-workspace.png'
+    ok, err = kshot(ws)
+    check('KWin gives hearth-kwin-cast screenshots (ScreenShot2, its .desktop file)', ok,
+          '%s bytes %s' % (os.path.getsize(ws) if os.path.exists(ws) else 0, err))
+    # The portal backend answers only xdg-desktop-portal: an app calling it straight is refused.
+    r = run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.impl.portal.desktop.hearth', '--object-path',
+             '/org/freedesktop/portal/desktop', '--method', 'org.freedesktop.impl.portal.Screenshot.Screenshot',
+             '/org/freedesktop/portal/desktop/request/1_1/x', 'evil', '', '{}'])
+    check('Hearth\'s portal backend refuses calls that don\'t come from xdg-desktop-portal', r.returncode != 0 and 'AccessDenied' in (r.stderr or ''),
+          (r.stderr or r.stdout or '').strip()[:200])
+
+
+
+# ------------------------------------------------------------------ 4. the portals, as an app uses them
+def portals():
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    sender = bus.get_unique_name()[1:].replace('.', '_')
+    counter = [0]
+
+
+    def portal(iface, method, args_fmt, args, drive=None, timeout=90):
+        """A portal call that answers with a Request's Response; returns (response, results) or ('error', text)."""
+        counter[0] += 1
+        token = 'hearthkwin%d' % counter[0]
+        handle = '/org/freedesktop/portal/desktop/request/%s/%s' % (sender, token)
+        got = {}
+        loop = GLib.MainLoop()
+
+        def on_response(conn, snd, path, i, sig, params, *a):
+            got['r'] = params.unpack()
+            loop.quit()
+        sub = bus.signal_subscribe('org.freedesktop.portal.Desktop', 'org.freedesktop.portal.Request', 'Response', handle,
+                                   None, Gio.DBusSignalFlags.NO_MATCH_RULE, on_response)
+        args = list(args)
+        args[-1] = dict(args[-1], handle_token=GLib.Variant('s', token))
+
+        def called(conn, res):
+            try:
+                conn.call_finish(res)
+            except GLib.Error as e:
+                got['error'] = str(e)
+                loop.quit()
+        bus.call('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', iface, method,
+                 GLib.Variant(args_fmt, tuple(args)), GLib.VariantType('(o)'), Gio.DBusCallFlags.NONE, timeout * 1000, None, called)
+        if drive:
+            threading.Thread(target=drive, daemon=True).start()
+        GLib.timeout_add_seconds(timeout, loop.quit)
+        loop.run()
+        bus.signal_unsubscribe(sub)
+        if 'error' in got:
+            return ('error', got['error'])
+        return got.get('r')
+
+
+    def picker_up(timeout=30):
+        end = time.time() + timeout
+        while time.time() < end:
+            code, out = qs_ipc(CAST_PICKER, 'cast', 'state')
+            if code == 0 and out.startswith('{'):
+                try:
+                    return json.loads(out.splitlines()[-1])
+                except ValueError:
+                    pass
+            time.sleep(0.5)
+        return None
+
+
+    SC = 'org.freedesktop.portal.ScreenCast'
+    r = portal(SC, 'CreateSession', '(a{sv})', [{'session_handle_token': GLib.Variant('s', 'hearthsess')}])
+    session = r[1].get('session_handle') if r and r[0] == 0 else None
+    check('ScreenCast portal: a session (Hearth\'s backend)', bool(session), r)
+    seen = {}
+    if session:
+        r = portal(SC, 'SelectSources', '(oa{sv})', [session, {'types': GLib.Variant('u', 3), 'cursor_mode': GLib.Variant('u', 2),
+                                                              'persist_mode': GLib.Variant('u', 2)}])
+        check('ScreenCast portal: choosing screens and windows', bool(r) and r[0] == 0, r)
+
+        def drive_cast():
+            st = picker_up()
+            seen['first'] = st
+            if not st:
+                return
+            time.sleep(3)
+            grim('cast-picker-screens')
+            qs_ipc(CAST_PICKER, 'cast', 'tab', 'windows')
+            time.sleep(2)
+            seen['windows'] = qs_ipc(CAST_PICKER, 'cast', 'state')[1]
+            grim('cast-picker-windows')
+            qs_ipc(CAST_PICKER, 'cast', 'tab', 'screens')
+            time.sleep(0.5)
+            qs_ipc(CAST_PICKER, 'cast', 'share')
+        r = portal(SC, 'Start', '(osa{sv})', [session, '', {}], drive_cast)
+        check('the picker came up for the app (cast-picker.qml)', bool(seen.get('first')), seen)
+        streams = r[1].get('streams') if r and r[0] == 0 else None
+        check('ScreenCast portal: the app gets a PipeWire stream of the screen it was shown', bool(streams), r)
+        if streams:
+            note('ScreenCast streams', streams)
+            check('ScreenCast portal: "remember this" (the app gets a restore token for next time)', 'restore_token' in r[1], list(r[1].keys()))
+            try:
+                res, fds = bus.call_with_unix_fd_list_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', SC,
+                                                           'OpenPipeWireRemote', GLib.Variant('(oa{sv})', (session, {})),
+                                                           GLib.VariantType('(h)'), Gio.DBusCallFlags.NONE, 10000, None, None)
+                check('ScreenCast portal: the app can open PipeWire for it', fds is not None and fds.get_length() == 1)
+            except GLib.Error as e:
+                check('ScreenCast portal: the app can open PipeWire for it', False, str(e))
+        bus.call_sync('org.freedesktop.portal.Desktop', session, 'org.freedesktop.portal.Session', 'Close', None, None,
+                      Gio.DBusCallFlags.NONE, 10000, None)
+        time.sleep(2)
+        left = run(['pgrep', '-f', 'hearth-kwin-cast stream']).stdout.strip()
+        check('closing the session stops the stream', left == '', left)
+
+    SS = 'org.freedesktop.portal.Screenshot'
+    # The first screenshot asks "Allow?" (xdg-desktop-portal's Access, Hearth's access-prompt.qml): it's answered
+    # Allow the way a person would, then the screenshot is taken.
+    access_qml = os.path.join(INSTALLED, 'access-prompt.qml')
+    asked = {}
+
+    def drive_access():
+        end = time.time() + 30
+        while time.time() < end:
+            code, out = qs_ipc(access_qml, 'access', 'state')
+            if code == 0 and out.startswith('{'):
+                asked['st'] = out
+                time.sleep(2)
+                grim('access-prompt')
+                qs_ipc(access_qml, 'access', 'grant')
+                return
+            time.sleep(0.5)
+    r = portal(SS, 'Screenshot', '(sa{sv})', ['', {'interactive': GLib.Variant('b', False)}], drive_access)
+    check('Hearth asks "Allow?" before an app\'s first screenshot (Access, Hearth-drawn)', bool(asked.get('st')), asked)
+    uri = r[1].get('uri', '') if r and r[0] == 0 else ''
+    path = uri[7:] if uri.startswith('file://') else ''
+    from urllib.parse import unquote  # noqa: E402
+    check('Screenshot portal: the whole desktop, saved in Pictures/Screenshots', bool(path) and os.path.exists(unquote(path)), r)
+    shot_seen = {}
+
+
+    def drive_shot():
+        st = picker_up()
+        shot_seen['st'] = st
+        if st:
+            time.sleep(3)
+            grim('shot-picker')
+            qs_ipc(CAST_PICKER, 'cast', 'select', '0')
+            qs_ipc(CAST_PICKER, 'cast', 'share')
+    r = portal(SS, 'Screenshot', '(sa{sv})', ['', {'interactive': GLib.Variant('b', True)}], drive_shot)
+    check('Screenshot portal: "interactive" shows Hearth\'s picker and takes what was picked',
+          bool(shot_seen.get('st')) and bool(r) and r[0] == 0, {'picker': shot_seen.get('st'), 'answer': r})
+
+
+# ------------------------------------------------------------------ 4b. remote control (RemoteDesktop), as VNC uses it
+def remote():
+    write_entry_app()
+    rd_entry = '/tmp/hearth-entry-rd.txt'
+    open(rd_entry, 'w').close()
+    app = subprocess.Popen([sys.executable, '/tmp/hearth-entry-app.py', rd_entry], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    PROCS.append(app)
+    time.sleep(5)
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    sender = bus.get_unique_name()[1:].replace('.', '_')
+    RD = 'org.freedesktop.portal.RemoteDesktop'
+
+    def call(method, fmt, args, token, drive=None, timeout=60):
+        handle = '/org/freedesktop/portal/desktop/request/%s/%s' % (sender, token)
+        got, loop = {}, GLib.MainLoop()
+
+        def on_response(conn, snd, path, i, sig, params, *a):
+            got['r'] = params.unpack()
+            loop.quit()
+        sub = bus.signal_subscribe('org.freedesktop.portal.Desktop', 'org.freedesktop.portal.Request', 'Response', handle,
+                                   None, Gio.DBusSignalFlags.NO_MATCH_RULE, on_response)
+        args = list(args)
+        args[-1] = dict(args[-1], handle_token=GLib.Variant('s', token))
+        try:
+            bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, method,
+                          GLib.Variant(fmt, tuple(args)), GLib.VariantType('(o)'), Gio.DBusCallFlags.NONE, timeout * 1000, None)
+        except GLib.Error as e:
+            bus.signal_unsubscribe(sub)
+            return ('error', str(e))
+        if drive:
+            threading.Thread(target=drive, daemon=True).start()
+        GLib.timeout_add_seconds(timeout, loop.quit)
+        loop.run()
+        bus.signal_unsubscribe(sub)
+        return got.get('r')
+
+    r = call('CreateSession', '(a{sv})', [{'session_handle_token': GLib.Variant('s', 'hearthrd')}], 'rd1')
+    session = r[1].get('session_handle') if r and r[0] == 0 else None
+    check('RemoteDesktop portal: a session (Hearth\'s backend)', bool(session), r)
+    if not session:
+        return
+    r = call('SelectDevices', '(oa{sv})', [session, {'types': GLib.Variant('u', 3)}], 'rd2')
+    check('RemoteDesktop portal: keyboard and pointer', bool(r) and r[0] == 0, r)
+    access_qml = os.path.join(INSTALLED, 'access-prompt.qml')
+    asked = {}
+
+    def drive():
+        end = time.time() + 30
+        while time.time() < end:
+            code, out = qs_ipc(access_qml, 'access', 'state')
+            if code == 0 and out.startswith('{'):
+                asked['st'] = out
+                time.sleep(2)
+                grim('remote-control-prompt')
+                qs_ipc(access_qml, 'access', 'grant')
+                return
+            time.sleep(0.5)
+    r = call('Start', '(osa{sv})', [session, '', {}], 'rd3', drive)
+    check('RemoteDesktop portal: Hearth asks "Allow control?" first (Hearth-drawn)', 'control' in asked.get('st', ''), asked)
+    check('RemoteDesktop portal: allowed, the app gets the keyboard and the pointer', bool(r) and r[0] == 0 and r[1].get('devices') == 3, r)
+    if not (r and r[0] == 0):
+        return
+    time.sleep(1)
+    for code in (35, 18, 38, 38, 24):          # h e l l o (kernel key codes, as VNC sends them)
+        for state in (1, 0):
+            bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, 'NotifyKeyboardKeycode',
+                          GLib.Variant('(oa{sv}iu)', (session, {}, code, state)), None, Gio.DBusCallFlags.NONE, 5000, None)
+    for sym, state in ((0x21, 1), (0x21, 0)):   # ! as a keysym (Shift + 1)
+        bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, 'NotifyKeyboardKeysym',
+                      GLib.Variant('(oa{sv}iu)', (session, {}, sym, state)), None, Gio.DBusCallFlags.NONE, 5000, None)
+    bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, 'NotifyPointerMotion',
+                  GLib.Variant('(oa{sv}dd)', (session, {}, 5.0, 5.0)), None, Gio.DBusCallFlags.NONE, 5000, None)
+    got = wait_for(lambda: open(rd_entry).read() == 'hello!', 8) and open(rd_entry).read()
+    check('RemoteDesktop portal: keys from the app reach the window in front (KWin\'s fake input)', open(rd_entry).read() == 'hello!',
+          'the field has %r' % open(rd_entry).read())
+    grim('remote-control-typed')
+    bus.call_sync('org.freedesktop.portal.Desktop', session, 'org.freedesktop.portal.Session', 'Close', None, None,
+                  Gio.DBusCallFlags.NONE, 10000, None)
+    time.sleep(2)
+    check('closing the session ends remote control', run(['pgrep', '-f', 'hearth-kwin-cast input']).stdout.strip() == '')
+
+
+# ------------------------------------------------------------------ 5. the lock screen
+def lock():
+    greeter = next((g for g in ('/usr/libexec/kscreenlocker_greet', '/usr/lib64/libexec/kscreenlocker_greet',
+                                '/usr/lib/x86_64-linux-gnu/libexec/kscreenlocker_greet') if os.path.exists(g)), None)
+    check('KWin\'s screen locker is installed (kscreenlocker)', bool(greeter))
+    if greeter:
+        glog = os.path.join(SHOTS, 'greeter.log')
+        g = subprocess.Popen([greeter, '--testing'], env=dict(os.environ, PLASMA_DEFAULT_SHELL='org.hearth.mantel-lock'),
+                             stdout=open(glog, 'w'), stderr=subprocess.STDOUT)
+        time.sleep(8)
+        grim('lock-greeter')
+        run([sys.executable, HT, '--', 'not-the-password'])
+        run([sys.executable, HT, '-k', 'Return'])
+        time.sleep(5)
+        grim('lock-wrong-password')
+        alive = g.poll() is None
+        g.terminate()
+        time.sleep(1)
+        with open(glog, errors='replace') as f:
+            gl = f.read()
+        bad = [l for l in gl.splitlines() if 'LockScreen.qml' in l and ('rror' in l or 'is not' in l or 'Cannot' in l)]
+        note('greeter: its first lines', ' | '.join(gl.splitlines()[:14])[:1500])
+        h = run([greeter, '--help'])
+        note('greeter: --help', ' | '.join((h.stdout + h.stderr).splitlines())[:900])
+        st = run(['sh', '-c', 'strings "$0" | grep -iE "shell|theme|lookandfeel|lockscreenmainscript|APIVersion|plasmashellrc|kdeglobals" | sort -u | head -40', greeter])
+        print('::notice title=greeter strings::%s' % esc(' | '.join(st.stdout.splitlines())), flush=True)
+        print('::notice title=greeter help::%s' % esc(' | '.join((h.stdout + h.stderr).splitlines())), flush=True)
+        check('Hearth\'s lock screen loads in KWin\'s locker without QML errors', alive and not bad,
+              ('still running; ' if alive else 'it ended; ') + ' | '.join(bad[:5]) + ' | ' + gl[-400:])
+
+    lock_qml = os.path.join(INSTALLED, 'lock-kwin-check.qml')
+    with open(lock_qml, 'w') as f:
+        f.write('''import QtQuick
+    import Quickshell
+    import Quickshell.Io
+    ShellRoot {
+        Lock { id: l }
+        IpcHandler {
+            target: "lock"
+            function lock(): void { l.lock(); }
+            function state(): string { return JSON.stringify({ locked: l.locked, onKwin: l.onKwin }); }
+        }
+    }
+    ''')
+
+    def active():
+        r = run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.ScreenSaver', '--object-path', '/ScreenSaver',
+                 '--method', 'org.freedesktop.ScreenSaver.GetActive'])
+        return 'true' in r.stdout
+
+    lcheck = run([sys.executable, os.path.join(INSTALLED, 'hearth-lockcheck')], timeout=30)
+    check('hearth-lockcheck: KWin\'s locker will show Hearth\'s lock screen here', lcheck.returncode == 0, lcheck.stdout.strip())
+    # Where Hearth's lock screen isn't there, Lock.qml must not lock (no lockout) and must say so.
+    pkg = '/usr/share/plasma/shells/org.hearth.mantel-lock'
+    os.rename(pkg, pkg + '.away')
+    try:
+        bad = subprocess.Popen(['quickshell', '-p', lock_qml], stdout=open(os.path.join(SHOTS, 'lock-refused.log'), 'w'),
+                               stderr=subprocess.STDOUT)
+        time.sleep(5)
+        qs_ipc(lock_qml, 'lock', 'lock')
+        time.sleep(8)
+        st_bad = qs_ipc(lock_qml, 'lock', 'state')[1]
+        bad.terminate()
+        time.sleep(1)
+    finally:
+        os.rename(pkg + '.away', pkg)
+    with open(os.path.join(SHOTS, 'lock-refused.log'), errors='replace') as f:
+        refused_log = f.read()
+    check('without Hearth\'s lock screen, Lock.qml doesn\'t lock and says why', not active() and '"locked":false' in st_bad.replace(' ', '')
+          and 'not locked' in refused_log, 'ScreenSaver active %s; Lock.qml %s; %s' % (active(), st_bad, refused_log[-300:]))
+    lk = subprocess.Popen(['quickshell', '-p', lock_qml], stdout=open(os.path.join(SHOTS, 'lock.log'), 'w'), stderr=subprocess.STDOUT)
+    time.sleep(5)
+    qs_ipc(lock_qml, 'lock', 'lock')
+
+
+    ok = wait_for(active, 20)
+    time.sleep(4)
+    st = qs_ipc(lock_qml, 'lock', 'state')[1]
+    grim('lock-real')
+    try:
+        klog = open(os.path.join(SHOTS, 'kwin-nested.log'), errors='replace').read()
+        tail = klog[klog.rfind('Locked at'):] if 'Locked at' in klog else klog[-3000:]
+        note('KWin log while locked (before the check ends KWin)', ' | '.join(l for l in tail.splitlines()
+             if 'notify signal' not in l and ('greet' in l.lower() or 'lock' in l.lower()))[:900])
+    except OSError:
+        pass
+    check('Lock.qml on KWin locks with KWin\'s locker (and knows it)', ok and '"locked":true' in st.replace(' ', ''),
+          'ScreenSaver active %s; Lock.qml %s' % (ok, st))
+    lk.terminate()
+
+
+def summary():
+    if PASSED:
+        print('::notice title=KWin (%s): %d checks passed::%s' % (PHASE, len(PASSED), esc(' · '.join(PASSED))), flush=True)
+    if FOUND:
+        print('::notice title=KWin (%s): findings::%s' % (PHASE, esc(' · '.join(FOUND))), flush=True)
+
+
+STEPS = {'nested': ['protocols', 'typing', 'lock'], 'virtual': ['protocols', 'cast_helper', 'portals', 'remote']}
+for step in STEPS[PHASE]:
+    try:
+        globals()[step]()
+    except Exception as e:      # one broken part doesn't hide the others' results
+        import traceback
+        traceback.print_exc()
+        check('%s ran to the end' % step, False, repr(e))
+for pr in PROCS:
+    pr.terminate()
+summary()
+print('%d failed: %s' % (len(FAILED), ', '.join(FAILED)), flush=True)
+sys.exit(1 if FAILED else 0)

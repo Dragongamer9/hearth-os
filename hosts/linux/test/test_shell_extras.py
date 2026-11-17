@@ -97,7 +97,9 @@ class MixerWiring(unittest.TestCase):
         self.assertEqual(len(re.findall(r'writer\.merge\(', q)), 1)
         self.assertIn('if (save) remember(key, v);', q)
         calls = re.findall(r'setVol\([^;]*?, true\)', q)
-        self.assertEqual(len(calls), 2, calls)
+        # (1.14: and scrolling on the app's dock icon, Dock.qml through stepFor: a press too.)
+        self.assertEqual(len(calls), 3, calls)
+        self.assertIn('setVol(k, volOf(k) + (up ? 0.05 : -0.05), true)', q)
         self.assertIn('onMoved: v => { mx.current = app.index + 2; mx.setVol(app.modelData, v, true); }', q)
         self.assertIn('setVol(k, M.step(volOf(k), d), true)', q)
         # Opening, reading the file and putting a level back never save.
@@ -362,8 +364,9 @@ class ClipboardWiring(unittest.TestCase):
         q = code((SHELL / 'Clipboard.qml').read_text())
         # The watcher runs only while history is on; the switch is only ever changed by you.
         self.assertIn('readonly property bool wanted: tools && isOn', q)
-        self.assertIn('onWantedChanged: { watcher.running = wanted; noteApp(); }', q)
-        self.assertIn('command: ["wl-paste", "--watch", "python3", cb.helper, "store"]', q)
+        self.assertIn('onWantedChanged: { watcher.running = wanted; selWatcher.running = selWanted; noteApp(); }', q)
+        self.assertIn('command: ["wl-paste", "--watch", "python3", cb.helper, "store"].concat(cb.syncOn ? ["--sync"] : [])', q)
+        self.assertIn('readonly property bool selWanted: wanted && prefsRead', q)     # the selection (1.14): only while on too
         self.assertEqual(len(re.findall(r'Settings\.clipboardHistory\s*=', q)), 1)
         self.assertIn('function setOn(v) { Settings.clipboardHistory = v;', q)
         for caller in re.findall(r'[^\n]*setOn\([^)]*\)[^\n]*', q):

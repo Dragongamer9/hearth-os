@@ -1,0 +1,366 @@
+#!/usr/bin/env python3
+"""hearth-desktop-look: KDE Plasma and GNOME look like Mantel and follow it (1.14, the owner, Nov 16: "make KDE and
+Gnome look exactly like Mantel", everything including the bar, always following).
+
+Mantel writes what it shows (MantelLookExport.qml: ~/.local/state/hearth/mantel-look.json, and the wallpaper as shown
+in mantel-wallpaper.png beside it). nimbus-session runs this when KDE or GNOME starts:
+
+  hearth-desktop-look kde-pre       before Plasma: its colour scheme (Mantel's, from hearth-theme), font, icons, dark
+                                    or light (kdeglobals keys only, through kwriteconfig6)
+  hearth-desktop-look kde-post      once Plasma is up: the wallpaper, the colour scheme applied, and the panels laid
+                                    out like Mantel's bar and dock (rebuilt only when Mantel's layout changed)
+  hearth-desktop-look gnome-pre     before GNOME: dark or light, the accent, font, wallpaper, and the bar: the top bar
+                                    and Dash to Dock (Mantel's top bar and floating dock), or Dash to Panel (Mantel's
+                                    One main bar), in Mantel's colours
+  hearth-desktop-look status        JSON: on, what Mantel shows, what was last applied
+  hearth-desktop-look on|off        the switch (session.conf HEARTH_DESKTOP_LOOK; on unless you turn it off; Settings ›
+                                    System › Your desktop): off leaves KDE's and GNOME's own settings as they are
+
+Only Hearth's keys are written, each time it starts (that's "follow"); with the switch off nothing is touched. Every
+step is time-limited and never stops the desktop from starting (red flag 2): a failure is logged and skipped.
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as io  # noqa: E402
+
+E = os.environ.get
+HOME = os.path.expanduser('~')
+CONF = E('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+DATA = E('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+STATE = os.path.join(E('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state'), 'hearth')
+LOOK = os.path.join(STATE, 'mantel-look.json')
+APPLIED = os.path.join(STATE, 'desktop-look-applied.json')
+SESSION_CONF = os.path.join(CONF, 'nimbus', 'session.conf')
+THEME = os.path.join(os.path.dirname(HERE), 'theme', 'hearth-theme')
+LOG = os.path.join(DATA, 'nimbus', 'session.log')
+SCHEMES = os.path.join(DATA, 'color-schemes')
+
+
+def log(msg):
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        with open(LOG, 'a') as f:
+            f.write('%s desktop look: %s\n' % (time.strftime('%F %T'), msg))
+    except OSError:
+        pass
+
+
+def run(cmd, timeout=15, env=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        if r.returncode != 0:
+            log('%s: %s' % (' '.join(cmd[:3]), (r.stderr or r.stdout).strip()[:200]))
+        return r.returncode == 0, r.stdout
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log('%s: %s' % (cmd[0], e))
+        return False, ''
+
+
+def is_on():
+    try:
+        text = open(SESSION_CONF).read()
+    except OSError:
+        return True
+    v = None
+    for l in text.splitlines():
+        m = re.match(r'^\s*(?:export\s+)?HEARTH_DESKTOP_LOOK=("?)(\d)\1\s*$', l)
+        if m:
+            v = m.group(2)
+    return v != '0'
+
+
+def mantel():
+    """What Mantel shows (its last record), with the colours from hearth-theme when Mantel hasn't run yet."""
+    m = io.load_json(LOOK, {}) if os.path.exists(LOOK) else {}
+    if not m.get('colors'):
+        try:
+            show = json.loads(subprocess.run([sys.executable, THEME, '--show'], capture_output=True, text=True, timeout=20).stdout or '{}')
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            show = {}
+        c = show.get('colors') or {}
+        m.setdefault('mode', show.get('mode', 'dark'))
+        m.setdefault('accent', show.get('accent') or c.get('ember') or '#ff8a3d')
+        m['colors'] = {k: c.get(k) for k in ('bg', 'panel', 'line', 'text', 'muted', 'ember')} if c else {}
+        m['colors']['accent'] = m['accent']
+    m.setdefault('mode', 'dark')
+    m.setdefault('font', 'sans-serif')
+    m.setdefault('oneBar', False)
+    m.setdefault('barEdge', 'top')
+    m.setdefault('dockFloats', True)
+    m.setdefault('dockAutoHide', False)
+    wp = m.get('wallpaper') or os.path.join(STATE, 'mantel-wallpaper.png')
+    m['wallpaper'] = wp if os.path.exists(wp) else ''
+    return m
+
+
+def rgb(h):
+    h = (h or '#000000').lstrip('#')
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) if len(h) == 6 else (0, 0, 0)
+
+
+def font_family(m):
+    f = (m.get('font') or '').split(',')[0].strip().strip('"\'')
+    return '' if f in ('', 'sans-serif', 'sans') else f
+
+
+def applied():
+    return io.load_json(APPLIED, {}) if os.path.exists(APPLIED) else {}
+
+
+def note(**kw):
+    a = applied()
+    a.update(kw)
+    a['at'] = int(time.time())
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        io.write_json(APPLIED, a)
+    except OSError:
+        pass
+
+
+def layout_key(m):
+    return '%s/%s/%s/%s' % ('one' if m['oneBar'] else 'two', m['barEdge'], 'dock' if m['dockFloats'] else 'nodock', 'hide' if m['dockAutoHide'] else 'show')
+
+
+# ---------------------------------------------------------------------------------------------------------- KDE
+def kw(file, group, key, value):
+    tool = shutil.which('kwriteconfig6') or shutil.which('kwriteconfig5')
+    if not tool:
+        return False
+    return run([tool, '--file', file, '--group', group, '--key', key, str(value)])[0]
+
+
+def kde_scheme(m):
+    """Mantel's KDE colour scheme (hearth-theme writes HearthLive.colors) under a name that changes with its colours,
+    so Plasma really applies a new one (it skips a name it already has)."""
+    run([sys.executable, THEME], timeout=30)
+    src = os.path.join(SCHEMES, 'HearthLive.colors')
+    if not os.path.exists(src):
+        return ''
+    digest = hashlib.sha1(open(src, 'rb').read()).hexdigest()[:8]
+    name = 'HearthMantel-' + digest
+    dst = os.path.join(SCHEMES, name + '.colors')
+    if not os.path.exists(dst):
+        text = open(src, encoding='utf-8').read()
+        text = re.sub(r'(?m)^Name=.*$', 'Name=Hearth (Mantel)', text) if 'Name=' in text else text.replace('[General]', '[General]\nName=Hearth (Mantel)', 1)
+        io.write_text(dst, text)
+    for f in os.listdir(SCHEMES):
+        if f.startswith('HearthMantel-') and f != name + '.colors':
+            try:
+                os.remove(os.path.join(SCHEMES, f))
+            except OSError:
+                pass
+    return name
+
+
+def kde_pre():
+    if not is_on():
+        return {'ok': True, 'skipped': 'off'}
+    m = mantel()
+    name = kde_scheme(m)
+    dark = m['mode'] != 'light'
+    if name:
+        kw('kdeglobals', 'General', 'ColorScheme', name)
+    kw('kdeglobals', 'KDE', 'LookAndFeelPackage', 'org.kde.breezedark.desktop' if dark else 'org.kde.breeze.desktop')
+    kw('kdeglobals', 'Icons', 'Theme', 'breeze-dark' if dark else 'breeze')
+    fam = font_family(m)
+    if fam:
+        kw('kdeglobals', 'General', 'font', '%s,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1' % fam)
+    # Window corners and colours: Breeze follows the scheme; the accent comes from it too (not from the wallpaper).
+    kw('kdeglobals', 'General', 'accentColorFromWallpaper', 'false')
+    note(kde={'scheme': name, 'mode': m['mode']})
+    log('KDE: Mantel\'s look (%s, %s)' % (m.get('label') or m.get('look') or '?', m['mode']))
+    return {'ok': True, 'scheme': name}
+
+
+def plasma_script(m):
+    """Plasma's own scripting (evaluateScript): the panels laid out as Mantel's bar and dock."""
+    edge = m['barEdge'] if m['oneBar'] else 'top'
+    vertical = edge in ('left', 'right')
+    tasks = 'org.kde.plasma.icontasks'
+    lines = ['var old = panels(); for (var i = 0; i < old.length; i++) old[i].remove();']
+    # The main bar: Hearth's start menu, (one bar: your apps), the tray and the clock.
+    lines += ['var p = new Panel; p.location = "%s"; p.height = %d; p.floating = %s; p.hiding = "%s";'
+              % (edge, 44 if not vertical else 56, 'true' if m['oneBar'] and m['dockFloats'] else 'false',
+                 'autohide' if m['oneBar'] and m['dockAutoHide'] else 'none'),
+              'p.addWidget("org.hearth.kickoff");']
+    if m['oneBar'] or not m['dockFloats']:
+        lines += ['p.addWidget("%s");' % tasks]
+    else:
+        lines += ['p.addWidget("org.kde.plasma.panelspacer");']
+    lines += ['p.addWidget("org.kde.plasma.systemtray"); p.addWidget("org.hearth.tray"); p.addWidget("org.kde.plasma.digitalclock");']
+    # The floating dock: your apps in the middle at the bottom, fitting their icons.
+    if not m['oneBar'] and m['dockFloats']:
+        lines += ['var d = new Panel; d.location = "bottom"; d.height = 60; d.floating = true; d.lengthMode = "fit"; d.alignment = "center";'
+                  ' d.hiding = "%s"; d.addWidget("%s");' % ('dodgewindows' if m['dockAutoHide'] else 'none', tasks)]
+    return '\n'.join(lines)
+
+
+def kde_post():
+    if not is_on():
+        return {'ok': True, 'skipped': 'off'}
+    m = mantel()
+    qdbus = shutil.which('qdbus6') or shutil.which('qdbus')
+    # Plasma's shell takes a moment after its window comes up.
+    up = False
+    for _ in range(40):
+        if qdbus and run([qdbus, 'org.kde.plasmashell', '/PlasmaShell'], timeout=5)[0]:
+            up = True
+            break
+        time.sleep(1)
+    if not up:
+        log('KDE: Plasma didn\'t answer; its look is left as it is this time')
+        return {'ok': False}
+    a = applied().get('kde') or {}
+    name = a.get('scheme') or ''
+    if name and shutil.which('plasma-apply-colorscheme'):
+        run(['plasma-apply-colorscheme', name], timeout=20)
+    if m['wallpaper'] and shutil.which('plasma-apply-wallpaperimage'):
+        # A copy named by its contents, so Plasma takes a new one (it keeps a path it already shows).
+        digest = hashlib.sha1(open(m['wallpaper'], 'rb').read()).hexdigest()[:8]
+        wp = os.path.join(STATE, 'mantel-wallpaper-%s.png' % digest)
+        if not os.path.exists(wp):
+            shutil.copyfile(m['wallpaper'], wp)
+        for f in os.listdir(STATE):
+            if f.startswith('mantel-wallpaper-') and os.path.join(STATE, f) != wp:
+                try:
+                    os.remove(os.path.join(STATE, f))
+                except OSError:
+                    pass
+        run(['plasma-apply-wallpaperimage', wp], timeout=20)
+    key = layout_key(m)
+    if qdbus and a.get('layout') != key:
+        ok, _ = run([qdbus, 'org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', plasma_script(m)], timeout=20)
+        if ok:
+            a['layout'] = key
+            log('KDE: panels laid out like Mantel\'s (%s)' % key)
+    note(kde=a)
+    return {'ok': True}
+
+
+# -------------------------------------------------------------------------------------------------------- GNOME
+GNOME_ACCENTS = {'blue': '#3584e4', 'teal': '#2190a4', 'green': '#3a944a', 'yellow': '#c88800', 'orange': '#ed5b00',
+                 'red': '#e62d42', 'pink': '#d56199', 'purple': '#9141ac', 'slate': '#6f8396'}
+
+
+def nearest_accent(h):
+    r, g, b = rgb(h)
+    return min(GNOME_ACCENTS, key=lambda k: sum((x - y) ** 2 for x, y in zip(rgb(GNOME_ACCENTS[k]), (r, g, b))))
+
+
+def gs(schema, key, value):
+    if not shutil.which('gsettings'):
+        return False
+    return run(['gsettings', 'set', schema, key, value])[0]
+
+
+def gs_get(schema, key):
+    ok, out = run(['gsettings', 'get', schema, key]) if shutil.which('gsettings') else (False, '')
+    return out.strip() if ok else ''
+
+
+def gv(s):
+    """A GVariant string."""
+    return "'" + s.replace('\\', '\\\\').replace("'", "\\'") + "'"
+
+
+DOCK = 'dash-to-dock@micxgx.gmail.com'
+PANEL = 'dash-to-panel@jderose9.github.com'
+
+
+def extensions_with(on, off):
+    cur = gs_get('org.gnome.shell', 'enabled-extensions')
+    try:
+        lst = json.loads(cur.replace("'", '"').replace('@as ', '')) if cur.startswith(('[', '@as')) else []
+    except ValueError:
+        lst = []
+    lst = [x for x in lst if x not in off]
+    for x in on:
+        if x not in lst:
+            lst.append(x)
+    return '[' + ', '.join(gv(x) for x in lst) + ']'
+
+
+def gnome_pre():
+    if not is_on():
+        return {'ok': True, 'skipped': 'off'}
+    m = mantel()
+    run([sys.executable, THEME], timeout=30)        # GTK apps' colours (~/.config/gtk-3.0 and gtk-4.0)
+    dark = m['mode'] != 'light'
+    c = m.get('colors') or {}
+    gs('org.gnome.desktop.interface', 'color-scheme', gv('prefer-dark' if dark else 'default'))
+    gs('org.gnome.desktop.interface', 'accent-color', gv(nearest_accent(m.get('accent'))))
+    fam = font_family(m)
+    if fam:
+        gs('org.gnome.desktop.interface', 'font-name', gv(fam + ' 11'))
+    if m['wallpaper']:
+        uri = 'file://' + m['wallpaper']
+        gs('org.gnome.desktop.background', 'picture-uri', gv(uri))
+        gs('org.gnome.desktop.background', 'picture-uri-dark', gv(uri))
+        gs('org.gnome.desktop.background', 'picture-options', gv('zoom'))
+    panel_bg = c.get('panel') or '#1c1512'
+    if m['oneBar']:
+        # One main bar: Dash to Panel on Mantel's edge, in Mantel's colours.
+        gs('org.gnome.shell', 'enabled-extensions', extensions_with([PANEL], [DOCK]))
+        sch = 'org.gnome.shell.extensions.dash-to-panel'
+        gs(sch, 'panel-positions', gv(json.dumps({'0': m['barEdge'].upper()})))
+        gs(sch, 'panel-sizes', gv(json.dumps({'0': 48})))
+        gs(sch, 'trans-use-custom-bg', 'true')
+        gs(sch, 'trans-bg-color', gv(panel_bg))
+        gs(sch, 'trans-use-custom-opacity', 'true')
+        gs(sch, 'trans-panel-opacity', '0.92')
+        gs(sch, 'intellihide', 'true' if m.get('barAutoHide') else 'false')
+        gs(sch, 'dot-color-1', gv(m.get('accent') or '#ff8a3d'))
+    else:
+        # Mantel's top bar and floating dock: GNOME's own top bar, and Dash to Dock floating at the bottom.
+        gs('org.gnome.shell', 'enabled-extensions', extensions_with([DOCK] if m['dockFloats'] else [], [PANEL] + ([] if m['dockFloats'] else [DOCK])))
+        sch = 'org.gnome.shell.extensions.dash-to-dock'
+        gs(sch, 'dock-position', gv('BOTTOM'))
+        gs(sch, 'extend-height', 'false')
+        gs(sch, 'dock-fixed', 'false' if m['dockAutoHide'] else 'true')
+        gs(sch, 'intellihide', 'true' if m['dockAutoHide'] else 'false')
+        gs(sch, 'dash-max-icon-size', '48')
+        gs(sch, 'custom-background-color', 'true')
+        gs(sch, 'background-color', gv(panel_bg))
+        gs(sch, 'transparency-mode', gv('FIXED'))
+        gs(sch, 'background-opacity', '0.92')
+        gs(sch, 'custom-theme-shrink', 'true')
+        gs(sch, 'running-indicator-style', gv('DOTS'))
+        gs(sch, 'apply-custom-theme', 'false')
+    note(gnome={'mode': m['mode'], 'accent': nearest_accent(m.get('accent')), 'layout': layout_key(m)})
+    log('GNOME: Mantel\'s look (%s, %s, %s)' % (m.get('label') or m.get('look') or '?', m['mode'], layout_key(m)))
+    return {'ok': True}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'status'
+    if cmd in ('on', 'off'):
+        io.update_text(SESSION_CONF, lambda t: io.conf_set_text(t, 'HEARTH_DESKTOP_LOOK', '1' if cmd == 'on' else '0'))
+        io.log_event('desktop look: KDE and GNOME follow Mantel: %s' % cmd)
+        cmd = 'status'
+    if cmd == 'status':
+        print(json.dumps({'on': is_on(), 'mantel': mantel(), 'applied': applied()}))
+        return 0
+    fn = {'kde-pre': kde_pre, 'kde-post': kde_post, 'gnome-pre': gnome_pre}.get(cmd)
+    if not fn:
+        sys.exit(__doc__)
+    try:
+        print(json.dumps(fn()))
+    except Exception as e:  # never stops the desktop from starting
+        log('%s didn\'t finish: %s' % (cmd, e))
+        print(json.dumps({'ok': False, 'error': str(e)}))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

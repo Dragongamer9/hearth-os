@@ -64,6 +64,7 @@ while :; do
   # Hearth's output goes here for the whole sign-in: a long one (or a chatty crash loop) would grow it without end.
   [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 8000000 ] && mv -f "$LOG" "$LOG.old"
   start=0; [ -f "$LOG" ] && start=$(wc -c <"$LOG")
+  now0=$(date +%s)
   "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1 &
   pid=$!
   chk=""
@@ -82,8 +83,29 @@ while :; do
     ) &
     chk=$!
   fi
+  # 1.14 (the owner, Nov 16: leaving Game Mode on the Ally took 2 to 6 minutes): once Hearth has asked for another
+  # mode (nimbus-next, written as it starts to close), it gets 10 s to finish closing; then it's closed for it, so the
+  # switch never waits on it. Everything Hearth keeps is saved as it changes (atomic, .bak), never only at the end.
+  NEXT_F="${XDG_RUNTIME_DIR:-/tmp}/nimbus-next"
+  (
+    while kill -0 "$pid" 2>/dev/null; do
+      if [ -s "$NEXT_F" ] && [ "$(stat -c %Y "$NEXT_F" 2>/dev/null || echo 0)" -ge "$now0" ]; then
+        i=0; while [ $i -lt 20 ] && kill -0 "$pid" 2>/dev/null; do sleep 0.5; i=$((i + 1)); done
+        if kill -0 "$pid" 2>/dev/null; then
+          echo "$(date) Hearth asked for $(head -c 20 "$NEXT_F" | tr -d '\n') but was still closing after 10 s: closing it" >>"$LOG"
+          kill -TERM "$pid" 2>/dev/null; sleep 3; kill -KILL "$pid" 2>/dev/null
+        fi
+        exit 0
+      fi
+      sleep 1
+    done
+  ) >/dev/null 2>&1 &
+  quitwatch=$!
   wait "$pid"
   code=$?
+  kill "$quitwatch" 2>/dev/null
+  # Closed for it after asking to switch: that's a normal close, not a crash.
+  [ "$code" -ne 0 ] && [ -s "$NEXT_F" ] && [ "$(stat -c %Y "$NEXT_F" 2>/dev/null || echo 0)" -ge "$now0" ] && code=0
   [ -n "$chk" ] && kill "$chk" 2>/dev/null
   if [ -z "$WEBKIT_DISABLE_DMABUF_RENDERER" ] && [ -f "$FLAG" ]; then export WEBKIT_DISABLE_DMABUF_RENDERER=1; continue; fi
   now=$(date +%s)

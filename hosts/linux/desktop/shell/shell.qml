@@ -8,9 +8,11 @@
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <processes|performance[:cpu|memory|disk|net|gpu]|startup|details|services|settings>|close|toggle   files open <path>|home|toggle|close
 //   devices open|close|toggle|scan   run open|close|toggle   winx open|close|toggle (WinTools.qml)
+//   searchbar toggle|open|close|key|type <text>|state (SearchBar.qml, Alt+Space)
 //   resmon open|tab <pc|overview|cpu|memory|disk|network|gpu>|select <part>|close|toggle (ResourceMonitor.qml)
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
+//   record open|close|toggle|start|stop|startStop|state (Recorder.qml)
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -141,6 +143,7 @@ ShellRoot {
     Launcher {
         id: launcher
         popMenu: popMenu
+        dialog: deskDialog
         onSettingsRequested: settings.open("")
         onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {
@@ -152,6 +155,8 @@ ShellRoot {
             list.push({ separator: true });
             list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
             list.push({ label: "Add to desktop", short: "To desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            // 1.14: the menu editor (Settings › Apps › App menu editor) opened at this app.
+            list.push({ label: "Edit app…", icon: "edit", run: () => { launcher.shown = false; SettingsNav.menuEdit = entry.id; settings.open("menu-editor"); } });
             // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.
@@ -177,10 +182,11 @@ ShellRoot {
     Binding { target: DeskState; property: "overlayShown"; value: popMenu.shown || deskDialog.shown || calendar.shown }
     // ---- end taskbar & desktop
     Notifications {}
+    SessionRestore {}
     QuickAccess {
         id: quick
         mouseOn: pad.mouseOn
-        nightAvailable: night.available
+        nightAvailable: night.available || night.kwin
         onMouseToggled: enable => pad.setMouse(enable)
         onKeyboardRequested: pad.openKeyboard()
         onSettingsRequested: settings.open("")
@@ -192,6 +198,11 @@ ShellRoot {
     Keyboard { id: keyboard }
     Help { id: help }
     SettingsApp { id: settings }
+    // Mantel on KWin: a window menu's More actions › "Special window settings…" opens Window rules for that window.
+    Connections {
+        target: WinList
+        function onWindowRulesAsked(info) { settings.openWindowRules(info); }
+    }
     // ---- Bazaar (Hearth OS's app store; Hearth's own store, AppStore.qml, is archived: docs/ARCHIVED.md) and
     // clipboard history (Super+V). The IPC target "apps" (older Apps links, keybinds) opens Bazaar; "clipboard" is inside.
     Scope {
@@ -241,6 +252,14 @@ ShellRoot {
     Loader { source: "Clipboard.qml" }
     Loader { source: "Mixer.qml" }
     Loader { source: "SnapLayouts.qml" }
+    // Force close a frozen window (Ctrl+Alt+Esc, KWin only): loaded by file name like the rest here.
+    Loader { source: "ForceClose.qml" }
+    Loader { source: "ScreenSwitcher.qml" }   // Super+P (1.14)
+    // Recording the screen (Recorder.qml, hearth-record) and the capture dot that shows whenever the screen is being
+    // recorded or someone is connected with Remote desktop (CaptureIndicator.qml, hearth-vnc). Loaded by file name: a
+    // problem in either only loses it.
+    Loader { source: "Recorder.qml" }
+    Loader { source: "CaptureIndicator.qml" }
     // Discord (Discord.qml): the bar's button, its small window and chooser; IPC targets "discord" and "friends". Loaded
     // separately like MediaKeys, so a problem in it only loses Discord, never the shell.
     Loader { source: "Discord.qml" }
@@ -252,11 +271,34 @@ ShellRoot {
     // either only loses that window. IPC targets "restore" and "reliability" (hearth-restore, hearth-reliability).
     Loader { source: "Restore.qml" }
     Loader { source: "Reliability.qml" }
+    // 1.14: Hearth Capture (Hearth's own screenshot tool, in place of Spectacle) and Hearth's own password prompt (its
+    // polkit agent; hearth-polkit-fallback starts the classic one when this isn't registered). Loaded by file name, so a
+    // problem in either (or a Quickshell without its Polkit module) only loses that one.
+    Loader { source: "Capture.qml" }
+    // 1.14: SSH and GPG passphrases in Hearth's look (hearth-askpass, pinentry-hearth): by file name too; without it
+    // they ask the classic way.
+    Loader { source: "AskPass.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the SSH/GPG passphrase prompt (AskPass.qml) couldn't load; the classic askpass and pinentry ask") }
+    Loader { active: Quickshell.env("HEARTH_POLKIT") !== "classic"; source: "PolkitPrompt.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the password prompt (PolkitPrompt.qml) couldn't load; the classic agent asks (hearth-polkit-fallback)") }
     // 1.11: the shell watches its own memory and CPU (hearth-shell-health) and refreshes itself only while nobody is
     // looking and none of its own windows (Settings, Task Manager, Files) is open.
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
     Loader { source: "SpaceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.openStorage = () => settings.open("storage"); } }   // 1.11: main drive almost full
-    Loader { source: "BatteryWatch.qml" }      // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
+    Loader { source: "StoreWatch.qml"; onLoaded: item.openStore = part => settings.open("store:" + part) }   // 1.14: app updates notice
+    Loader { source: "BatteryWatch.qml" }   // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
+    // 1.14: once the desktop has settled, tells you once if Screen power saving was turned off by itself on this laptop
+    // (hearth-screen-psr notice: Alder Lake-N / Twin Lake screens can freeze with it; Settings › Display turns it back on).
+    Timer { interval: 45000; running: true; onTriggered: Quickshell.execDetached(["sh", "-c", "[ -x /usr/libexec/nimbus/hearth-screen-psr ] && exec python3 /usr/libexec/nimbus/hearth-screen-psr notice >/dev/null 2>&1 || true"]) }
+    // 1.14, more of KDE's System Settings (docs/SETTINGS-MORE-1.14.md): push to talk, firmware and out-of-memory notices,
+    // drives and USB devices plugged in, the Welcome screen after an update, the splash after signing in. Each loaded by
+    // file name, so a problem in one only loses that one; none of them can hold the desktop up.
+    Loader { source: "PushToTalk.qml" }
+    Loader { source: "FirmwareWatch.qml"; onLoaded: item.settings = settings }
+    Loader { source: "OomWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; } }
+    Loader { source: "DeviceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; item.openFiles = p => files.open(p); } }
+    Loader { source: "Welcome.qml"; onLoaded: item.settings = settings }
+    Loader { source: "SigninSplash.qml" }
+    Loader { source: "BtReceive.qml"; onLoaded: item.settings = settings }   // 1.14: receiving files over Bluetooth (off until you turn it on)
+    Loader { source: "InkWatch.qml"; onLoaded: item.settings = settings }    // 1.14: ink or toner running low
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {
@@ -264,19 +306,51 @@ ShellRoot {
         onLoaded: item.wire({ tasks: tasks, files: files, settings: settings, launcher: launcher, lockScreen: lockScreen })
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Device Manager, Run and the Super+X menu (WinTools.qml) couldn't load")
     }
+    // The search bar (1.14, Alt+Space, like KRunner: SearchBar.qml): loaded by file name, so a problem in it only loses
+    // the bar, never the shell. IPC target "searchbar".
+    Loader {
+        source: "SearchBar.qml"
+        onLoaded: item.wire({ launcher: launcher })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the search bar (SearchBar.qml) couldn't load")
+    }
     // Resource Monitor (docs/RESOURCE-MONITOR.md): loaded by file name, so a problem in it only loses that window, never
     // the shell. IPC target "resmon" (hearth-resmon).
     Loader { source: "ResourceMonitor.qml" }
+    // Desktop widgets and Activities (1.14, docs/WIDGETS.md): loaded by file name, so a problem in them only loses
+    // widgets and activities, never the shell. IPC targets "widgets" and "activities".
+    Loader { source: "Widgets.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: desktop widgets (Widgets.qml) couldn't load") }
+    // Firehold (a hidden preview of the 2.0 desktop: Couch and Desk, Firehold.qml): nothing of it shows or runs until it's
+    // unlocked. Loaded by file name, so a problem in it only loses Firehold, never Desktop Mode or Game Mode.
+    Loader {
+        source: "Firehold.qml"
+        onLoaded: item.wire({ pad: pad, quick: quick, settingsApp: settings, keyboard: keyboard })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Firehold (Firehold.qml) couldn't load")
+    }
     FileManager { id: files }
+    FilesIpc { get: () => files; peek: () => files }
     VolumeOsd { id: osd }
+    // 1.14: Caps Lock, Num Lock, the keyboard layout and the microphone (SystemOsd.qml), and Arrange the bar with the
+    // extra panels (BarArrange.qml, ExtraPanels.qml): loaded by file name, so a problem in one only loses it.
+    Loader { source: "SystemOsd.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the keyboard and microphone messages (SystemOsd.qml) couldn't load") }
+    // Dwell click's ring (Settings › Accessibility, hearth-dwell): only does anything on KWin while it's turned on.
+    Loader { source: "Dwell.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: dwell click (Dwell.qml) couldn't load") }
+    Loader { source: "BarArrange.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Arrange the bar (BarArrange.qml) couldn't load") }
+    Loader { source: "ExtraPanels.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: extra panels (ExtraPanels.qml) couldn't load") }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell
     // without one of these services only loses that.
     Loader { source: "MediaKeys.qml" }
     Loader { source: "IdlePower.qml" }
     PowerMenu { id: powerMenu }
+    // 1.14: the keyboard's lights following the accent (off unless you turn it on) and "Log out?" (Settings › Startup):
+    // loaded by file name, so a problem in one only loses it (Log out then works as before).
+    Loader { id: kbdLights; source: "KbdLights.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: keyboard lights (KbdLights.qml) couldn't load") }
+    Loader { source: "LeaveConfirm.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Log out? (LeaveConfirm.qml) couldn't load") }
     Lock { id: lockScreen }
     LiveWelcome { id: liveWelcome; settingsApp: settings }
     SteamFallback { id: steamFallback }   // "Steam Game Mode didn't start" with "Try Steam Game Mode again"
+    // Why Desktop Mode started the way it did (1.14: KDE Plasma / GNOME retired), once; loaded by file name, so a
+    // problem in it never costs the shell.
+    Loader { source: "DesktopNotice.qml"; onLoaded: item.settingsApp = settings }
     Pad {
         id: pad
         settings: settings
@@ -292,22 +366,56 @@ ShellRoot {
         help: help
     }
 
-    // Night light: warm the screen from sunset to sunrise (wlsunset, if installed).
+    // Night light: warm the screen in the evening (Settings › Display: on/off, how warm, when; Settings is the one
+    // source of truth). Under labwc wlsunset does it (if installed); under KWin (HEARTH_WM=kwin) KWin's own Night
+    // Light, set from the same settings by hearth-screens night (docs/SCREENS.md).
     Scope {
         id: night
+        readonly property bool kwin: Quickshell.env("HEARTH_WM") === "kwin"
         property bool available: false
         Process {
             command: ["sh", "-c", "command -v wlsunset"]
-            running: true
+            running: !night.kwin
             onExited: code => night.available = code === 0
         }
         Process {
-            running: night.available && Settings.nightLight
-            command: ["wlsunset", "-t", "3700", "-T", "6500", "-S", "07:00", "-s", "19:30", "-d", "1800"]
+            running: !night.kwin && night.available && Settings.nightLight
+            // Sunset to sunrise at your place (-l/-L); otherwise your times; -d the fade (Settings.nightFade minutes).
+            command: Settings.nightMode === "always"
+                ? ["wlsunset", "-t", String(Settings.nightTemp), "-T", String(Settings.nightTemp + 1), "-S", "00:00", "-s", "00:01", "-d", "60"]
+                : Settings.nightMode === "location" && Settings.nightPlace !== ""
+                ? ["wlsunset", "-t", String(Settings.nightTemp), "-T", "6500", "-l", String(Settings.nightLat), "-L", String(Settings.nightLon), "-d", String(Math.max(1, Settings.nightFade) * 60)]
+                : ["wlsunset", "-t", String(Settings.nightTemp), "-T", "6500", "-S", Settings.nightTo, "-s", Settings.nightFrom, "-d", String(Math.max(1, Settings.nightFade) * 60)]
         }
+        // KWin: whenever one of them changes (and once Settings has loaded), KWin's Night Light is set to match.
+        readonly property string want: [Settings.loaded, Settings.nightLight, Settings.nightTemp, Settings.nightMode, Settings.nightFrom, Settings.nightTo,
+            Settings.nightPlace, Settings.nightLat, Settings.nightLon, Settings.nightFade].join("|")
+        onWantChanged: if (kwin && Settings.loaded) kwinNight.restart()
+        Timer { id: kwinNight; interval: 400; onTriggered: Quickshell.execDetached(["python3", Quickshell.shellDir + "/hearth-screens", "night",
+            JSON.stringify({ nightLight: Settings.nightLight, nightTemp: Settings.nightTemp, nightMode: Settings.nightMode, nightFrom: Settings.nightFrom, nightTo: Settings.nightTo,
+                             nightPlace: Settings.nightPlace, nightLat: Settings.nightLat, nightLon: Settings.nightLon, nightFade: Settings.nightFade })]) }
+    }
+
+    // Auto-brightness (Settings › Display, a laptop with a light sensor; off until turned on): hearth-screens autobright
+    // reads iio-sensor-proxy while screens.json says so and ends by itself when it's turned off or can't (logged).
+    // Nothing at start depends on it.
+    Scope {
+        id: autoBright
+        property bool on: false
+        FileView {
+            path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/screens.json"
+            watchChanges: true
+            onFileChanged: reload()
+            onLoaded: { try { autoBright.on = JSON.parse(text()).autoBrightness === true; } catch (e) { autoBright.on = false; } }
+            onLoadFailed: autoBright.on = false
+        }
+        Process { running: autoBright.on; command: ["python3", Quickshell.shellDir + "/hearth-screens", "autobright"] }
     }
 
     Component.onCompleted: { SettingsNav.pad = pad; SettingsNav.help = help; }
+    // 1.14: "Mantel is up", for nimbus-session's safe start on KWin (run_kwin waits for $XDG_RUNTIME_DIR/hearth-shell-up and
+    // opens Mantel on labwc instead when it doesn't come): written once the shell has been running for 3 seconds.
+    Timer { interval: 3000; running: true; onTriggered: Quickshell.execDetached(["sh", "-c", ': > "${XDG_RUNTIME_DIR:-/tmp}/hearth-shell-up"']) }
     // labwc's key bindings for the volume and power keys (a backup for what hearth-buttons can't read).
     IpcHandler {
         target: "buttons"
@@ -319,6 +427,15 @@ ShellRoot {
     IpcHandler {
         target: "lock"
         function lock(): void { lockScreen.lock(); }
+    }
+    // Where the keys go (checks: kwin-windows.yml types into each panel with a real keyboard).
+    IpcHandler {
+        target: "focus"
+        function state(): string {
+            return JSON.stringify({ launcher: { shown: launcher.shown, typed: launcher.typedText || "" },
+                                    quick: { shown: quick.shown, current: quick.current || "" },
+                                    settings: { shown: settings.shown, query: settings.query || "" } });
+        }
     }
     IpcHandler {
         target: "brightness"
@@ -345,8 +462,15 @@ ShellRoot {
         target: "settings"
         function open(): void { settings.open(""); }
         function page(name: string): void { settings.open(name); }
+        // Window rules for a window's app, as its menu's "Special window settings…" opens them (checks).
+        function windowRules(wmclass: string, title: string): void { settings.openWindowRules({ wmclass: wmclass, title: title }); }
+        function state(): string { return JSON.stringify({ shown: settings.shown, page: settings.page, ruleFor: SettingsNav.ruleFor }); }
         function close(): void { settings.close(); }
         function toggle(): void { settings.toggle(); }
+        // 1.14: which look Settings shows, as if the controller (pad) or the mouse (mouse) was used last (checks).
+        // One tap on Settings › About's version (SettingsNav.tapVersion: seven in a row unlock the hidden preview).
+        function tapversion(): void { SettingsNav.tapVersion(); }
+        function look(kind: string): void { if (kind === "pad") SettingsNav.padUsed(); else { SettingsNav.padAt = 0; SettingsNav.input = "mouse"; } }
     }
     IpcHandler {
         target: "tasks"
@@ -373,6 +497,10 @@ ShellRoot {
         function section(name: string): void { launcher.openTab(name === "games" ? "games" : "apps"); }
         // For checks (CI's Desktop Mode test): the ids of the apps it lists, one per line.
         function listed(): string { return launcher.apps.map(a => a.id).join("\n"); }
+        // The search with this text typed (the Hearth menu; the other menus get their search field focused), and,
+        // for checks, what the search plugins answer for a text (search/runners.js) as JSON.
+        function query(text: string): void { launcher.searchFor(text); }
+        function answers(text: string): string { return JSON.stringify(launcher.answersFor(text).map(a => ({ plugin: a.plugin, title: a.title, action: a.action }))); }
     }
     // App icons (AppIcons.qml), for checks: what an Icon= value and/or a window's app id resolve to ("" = nothing
     // found), and which desktop entry a window's app id belongs to.
@@ -402,9 +530,26 @@ ShellRoot {
         function hold(b: string, ms: int): void { keyboard.holdButton(b, ms); }
         function tap(key: string): void { keyboard.tapKey(key); }
         function select(key: string): void { keyboard.tapKey(key, true); }
+        // a long touch on a key (its accents open), the finger slid onto accent n, lifted (types it)
+        function touchhold(key: string): void { keyboard.touchHold(key); }
+        function touchslide(n: int): int { return keyboard.touchSlide(n); }
+        function touchlift(): int { return keyboard.touchLift(); }
         function stick(x: real, y: real): void { keyboard.padAxes(x, y, 0, 0); }
         function setting(key: string, value: string): void { keyboard.setSetting(key, value); }
         function state(): string { return keyboard.stateJson(); }
+    }
+    // For checks (desktop-test.yml): what the keyboard lights last did, and Log out as the menus do it
+    IpcHandler {
+        target: "kbdlights"
+        function state(): string { const k = kbdLights.item; return JSON.stringify({ loaded: !!k, on: !!k && k.on, color: k ? k.color : "", sent: k ? k.sent : "", last: k ? k.last : "" }); }
+    }
+    IpcHandler {
+        target: "leave"
+        function logout(): void { Leave.logout(); }
+        function state(): string { return JSON.stringify({ canAsk: Leave.canAsk, confirm: Settings.confirmLogout, leaveDefault: Settings.leaveDefault, power: powerMenu.shown ? (powerMenu.items[powerMenu.sel] || {}).label : "" }); }
+        // the power menu as the power button opens it (its picked entry: Settings › Startup › Default leave option)
+        function powermenu(): void { powerMenu.open(); }
+        function powerclose(): void { powerMenu.shown = false; }
     }
     IpcHandler {
         target: "help"

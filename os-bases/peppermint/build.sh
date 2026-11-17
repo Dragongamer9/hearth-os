@@ -22,6 +22,21 @@ optional() {
     if have_pkg "$p"; then "${APT[@]}" "$p" || OPTIONAL_MISSING+=("$p(failed)"); else OPTIONAL_MISSING+=("$p"); fi
   done
 }
+# What a package would bring with it, said before it's installed (the image check's notices): the new packages, their
+# size, and a warning if that is a Plasma session or a login manager. Never stops the build.
+pkg_cost() {
+  local new kb s p
+  have_pkg "$1" || return 0
+  new=$(apt-get install -s "${APT[@]:3}" "$1" 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ' || true)
+  kb=0
+  for p in $new; do s=$(apt-cache show "$p" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}' || true); kb=$((kb + ${s:-0})); done
+  echo "::notice title=$1::$(echo $new | wc -w) new package(s), $((kb / 1024)) MB installed: $(echo "$new" | cut -c1-3000)" || true
+  case " $new " in
+    *" plasma-workspace "*|*" plasma-desktop "*|*" plasma-session"*|*" sddm "*|*" kde-plasma-desktop "*|*" plasma-workspace-wayland "*)
+      echo "::warning title=$1::it brings a Plasma session or a login manager: $(echo "$new" | tr ' ' '\n' | grep -E '^(plasma|sddm|kde-plasma)' | tr '\n' ' ')";;
+  esac
+  return 0
+}
 
 # No services start during the build (there's no running system to start them in).
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
@@ -78,6 +93,9 @@ KVER=$(basename "${KDIRS[0]}")
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
   python3-pyroute2 libusb-1.0-0 \
   shim-signed grub-efi-amd64-signed
+# Settings 1.14: Thunderbolt and USB4 devices (bolt, Bluetooth & devices › Thunderbolt), OpenVPN files in Network &
+# internet › VPN (NetworkManager's plugin), and the sound a notification can play (Settings › Notifications).
+optional bolt network-manager-openvpn sound-theme-freedesktop
 optional power-profiles-daemon fonts-inter fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
 
 # ------------------------------------------------------------------ graphics and Steam (AMD, Intel; Nvidia below)
@@ -177,6 +195,14 @@ systemctl enable hhd.service
 "${APT[@]}" libglib2.0-bin gvfs gvfs-backends gvfs-fuse libsecret-tools
 # avahi-browse finds other computers sharing at home (a missing one only means they aren't listed).
 optional avahi-utils
+# Search and Hearth Files (1.14): pdftotext lets the file index read PDFs (Settings › Search › Search inside
+# documents) and pdftoppm draws PDFs' first page as their preview in Files (poppler-utils, about 1 MB). Optional:
+# without it PDFs are found by name and shown with their icon.
+optional poppler-utils
+# Auto-brightness (Settings › Display, 1.14): iio-sensor-proxy reads a laptop's or handheld's light sensor for
+# hearth-screens (net.hadess.SensorProxy, as KDE and GNOME use it). udev starts it only on a PC with a sensor; off in
+# Settings until you turn it on. Optional: without it the kernel's sensor files are read instead.
+optional iio-sensor-proxy
 command -v gio secret-tool
 # Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
 # (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.
@@ -228,9 +254,18 @@ touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
-# Mantel (labwc + Quickshell) is Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone, and
-# their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter,
-# gnome-session, gnome-control-center and GNOME's apps; their portals) aren't installed any more. What stays:
+# Mantel (Quickshell) is Hearth's only desktop, on KWin from 1.14 with labwc (above) as its fallback (nimbus-session's
+# run_classic; docs/DESKTOPS.md "Mantel on KWin"). Hearth Plasma, Hearth GNOME, Hearth COSMIC and 1.13's KDE Plasma /
+# GNOME downloads are gone: their sessions (plasma-workspace, plasma-desktop and Plasma's applets; gnome-shell, mutter,
+# gnome-session, gnome-control-center and GNOME's apps) aren't installed. What's here:
+#   kwin-wayland         KWin, Mantel's window manager (required: the build stops without kwin_wayland)
+#   kglobalacceld        KWin's keyboard shortcuts service (optional)
+#   xdg-desktop-portal-kde
+#                        KDE's portal (optional; not picked for ScreenCast or RemoteDesktop: hearth-portals.conf
+#                        names Hearth's own. In 1.14 Remote desktop (hearth-vnc) types and clicks under KWin through its
+#                        uinput fallback; a RemoteDesktop in Hearth's portal backend comes later)
+#   libkscreen-bin / kscreen
+#                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
 #   kde-cli-tools, plasma-integration, qml6-module-org-kde-kirigami
@@ -239,6 +274,32 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 # plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
 optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
+"${APT[@]}" kwin-wayland || true
+if ! command -v kwin_wayland >/dev/null; then
+  echo "::error title=KWin::kwin_wayland isn't installed (package kwin-wayland): Mantel runs on KWin from 1.14"
+  exit 1
+fi
+# Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
+# falls back to Breeze's frames (still works, just not Hearth's look).
+# Debian packages it as kwin-style-aurorae (the source is aurorae).
+if have_pkg kwin-style-aurorae; then optional kwin-style-aurorae; else optional aurorae; fi
+[ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
+  || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
+optional kglobalacceld xdg-desktop-portal-kde
+# KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
+# (org.kde.milou): without it they don't open (Present windows still does).
+optional milou
+# The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
+# cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
+# The image check says what it brings with it (packages, size) and warns if that is a Plasma session or a login manager.
+pkg_cost kwin-addons
+optional kwin-addons
+# kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
+if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
+command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkscreen-bin / kscreen): screens under KWin need it"
+# Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
+# Capture says so when they're missing
+optional tesseract-ocr tesseract-ocr-eng zbar-tools
 # gdb's gcore: Task Manager › Details › Create dump file (1.12, mockup tm-2); optional, so a missing gdb never stops the build
 optional gdb
 # dmidecode: Task Manager › Memory's speed and slots (1.12, mockup task-manager-memory)
@@ -251,6 +312,19 @@ optional dmidecode
 optional qml6-module-qtquick-virtualkeyboard qml6-module-qtmultimedia
 # AMD's X driver for the login screen's X server (it came with the Xfce session before that went off by default).
 optional xserver-xorg-video-amdgpu
+# Hearth's own login screen (1.14, a test, off by default: hearth-login-screen): greetd signs in, cage shows Hearth's
+# greeter (Quickshell). Optional: without them hearth-login-select keeps SDDM. Installed before the display-manager
+# link below, so SDDM stays the display manager whatever greetd's package does (checked at the end of this file).
+optional greetd cage
+# HEARTH-PAM-KEYRING: signing in at the login screen with your password unlocks the password store (GNOME Keyring,
+# Settings › Passwords). Debian's sddm file usually has these lines already; add them only when missing. "-" and
+# "optional": a missing or failing module never stops anyone signing in (autologin has no password: the session's
+# own unprotected Hearth keyring stays, nimbus-session).
+for f in /etc/pam.d/sddm; do
+  [ -f "$f" ] || continue
+  grep -Eq '^-?auth[[:space:]]+optional[[:space:]]+pam_gnome_keyring\.so' "$f" || printf '%s\n' '-auth     optional  pam_gnome_keyring.so' >> "$f"
+  grep -Eq '^-?session[[:space:]]+optional[[:space:]]+pam_gnome_keyring\.so' "$f" || printf '%s\n' '-session  optional  pam_gnome_keyring.so auto_start' >> "$f"
+done
 
 # ------------------------------------------------------------------ Xfce session (optional, off by default)
 # Hearth OS is Debian-based now; the Xfce session (a plain fallback desktop on the login screen) is off by default
@@ -269,13 +343,11 @@ fi
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
 # Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's old pieces in the shared system files (still used by other
-# bases): not in this image. 1.13 (docs/DESKTOPS.md): KDE Plasma and GNOME in their own look with Hearth inside keep
-# only Hearth's tray item and start menu (org.hearth.tray, org.hearth.kickoff, /usr/share/hearth-kde's panel) and
-# GNOME's Hearth section and controller (hearth-quick@, hearth-pad@): inert until KDE or GNOME is downloaded.
+# bases): not in this image. (1.13's KDE Plasma and GNOME choices, with their own Hearth pieces, were retired in 1.14:
+# archive/desktops-kde-gnome, docs/archive/DESKTOPS-KDE-GNOME.md.)
 rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth \
   /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json
-for p in /usr/share/plasma/plasmoids/org.hearth.*; do case "$p" in */org.hearth.tray|*/org.hearth.kickoff) ;; *) rm -rf "$p" ;; esac; done
-for e in /usr/share/gnome-shell/extensions/*@hearthos.fun; do case "$e" in */hearth-quick@hearthos.fun|*/hearth-pad@hearthos.fun) ;; *) rm -rf "$e" ;; esac; done
+rm -rf /usr/share/plasma/plasmoids/org.hearth.* /usr/share/gnome-shell/extensions/*@hearthos.fun
 rm -f /usr/share/applications/hearth-cosmic-*.desktop
 rmdir --ignore-fail-on-non-empty -p /usr/share/plasma/plasmoids /usr/share/plasma/look-and-feel /usr/share/plasma/desktoptheme /usr/share/gnome-shell/modes /usr/share/gnome-shell/extensions 2>/dev/null || true
 chmod 440 /etc/sudoers.d/hearth-wheel
@@ -526,6 +598,11 @@ fi
 # and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
 # tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
 optional sane-utils sane-airscan traceroute iputils-tracepath iw
+# 1.14: a dictionary for spell checking in KDE and GTK apps (Settings › Region & language › Spell check).
+optional hunspell-en-us
+# 1.14: Info Center's Temperatures & fans names the sensors with lm-sensors (it reads /sys/class/hwmon without it).
+pkg_cost lm-sensors
+optional lm-sensors
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
@@ -547,6 +624,8 @@ command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/nu
 # notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
 # (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
 optional playerctl wl-clipboard wtype libnotify-bin
+# Phone link (docs/PHONE-LINK.md): sshfs opens the phone's files (KDE Connect's SFTP); wireplumber's wpctl is the volume.
+optional sshfs
 for app in hearth-nearby hearth-connect; do
   if [ -x "/ctx/nimbus-app/$app" ]; then
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
@@ -621,19 +700,23 @@ systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev
 # checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
 HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
          nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-colibri.timer; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
 # AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): user services with no [Install] (only their timers, off here,
 # or Settings start them), and nothing of theirs in the image: no ComfyUI for new accounts, no Kokoro image in Podman's storage.
-for u in hearth-comfyui.service hearth-kokoro.service; do
+for u in hearth-comfyui.service hearth-kokoro.service hearth-colibri.service; do
   if grep -q '^\[Install\]' "/usr/lib/systemd/user/$u" 2>/dev/null; then echo "::error::$u has an [Install] section: only its timer may start it"; exit 1; fi
 done
+# Colibri (1.14, docs/SERVER-MODE.md): its engine and models are downloaded only when the owner asks, into his Home.
+if [ -e /etc/skel/.local/share/hearth/colibri ] || [ -e /etc/skel/colibri-models ] || ls /etc/systemd/user/*.wants/hearth-colibri.* >/dev/null 2>&1; then
+  echo "::error::Colibri is in the image: it's installed only when the owner asks"; exit 1
+fi
 if [ -e /etc/skel/ComfyUI ] || ls /etc/systemd/user/*.wants/hearth-comfyui.* /etc/systemd/user/*.wants/hearth-kokoro.* >/dev/null 2>&1 \
    || grep -qs kokoro /var/lib/containers/storage/overlay-images/images.json; then
   echo "::error::ComfyUI or Kokoro is in the image: they're installed only when the owner asks"; exit 1
@@ -688,13 +771,16 @@ Type=Application
 Categories=Network;Utility;
 Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
 DESKTOP
-  # The background service that keeps the phone linked. Off until the person opens Hearth Connect (which turns it on
-  # for their account), so nothing listens on the network before they ask for it.
+  # The background service that keeps the phone linked, at every sign-in in both modes, but only while the person has
+  # turned Phone link on (Settings › Phone, Quick Access, or the Hearth Connect window): ExecCondition checks first
+  # (off: the unit is skipped, not failed), and the service exits at once if it's off anyway. Nothing listens on the
+  # network before they ask for it, and a skipped user unit can't hold up the session.
   cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
 [Unit]
 Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
 
 [Service]
+ExecCondition=/usr/bin/hearth-connect --enabled-check
 ExecStart=/usr/bin/hearth-connect --daemon
 Restart=on-failure
 RestartSec=5
@@ -702,6 +788,8 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
+  systemctl --global enable hearth-connect.service 2>/dev/null \
+    || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-connect.service /etc/systemd/user/default.target.wants/hearth-connect.service; }
 fi
 # ---- end of Nearby Share and Hearth Connect
 
@@ -1039,14 +1127,15 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
-# "Hearth Classic" on the login screen too (Mantel), and 1.13's KDE Plasma and GNOME entries: listed only once that
-# desktop is downloaded (TryExec), and they go through nimbus-session (its safe start: Mantel if it can't start).
+# "Hearth Classic" on the login screen too (Mantel). 1.13's "KDE Plasma (Hearth)" / "GNOME (Hearth)" entries are
+# gone with those choices (retired in 1.14); a login screen that remembers one starts Hearth's first entry instead, and
+# nimbus-session --desktop=kde|gnome still opens Mantel with the notice.
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
-sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-kde.desktop > /usr/share/wayland-sessions/hearth-kde.desktop
-sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-gnome.desktop > /usr/share/wayland-sessions/hearth-gnome.desktop
-rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
-# KDE's and GNOME's own login entries would start them without Hearth's safe start: moved aside (dpkg-divert, so
-# installing their packages later puts them in /usr/share/hearth/desktop-sessions instead).
+rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop \
+  /usr/share/wayland-sessions/hearth-kde.desktop /usr/share/wayland-sessions/hearth-gnome.desktop
+# KDE's and GNOME's own login entries would start them without Hearth's session (a KDE Plasma or GNOME someone
+# downloaded in 1.13 stays in their writable system until they remove it): moved aside (dpkg-divert, so their
+# packages put them in /usr/share/hearth/desktop-sessions instead).
 mkdir -p /usr/share/hearth/desktop-sessions
 for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop xsessions/plasma.desktop xsessions/plasmax11.desktop \
          wayland-sessions/gnome.desktop wayland-sessions/gnome-wayland.desktop xsessions/gnome.desktop xsessions/gnome-xorg.desktop \
@@ -1054,14 +1143,36 @@ for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop 
   dpkg-divert --list "/usr/share/$f" | grep -q . || dpkg-divert --local --no-rename --divert "/usr/share/hearth/desktop-sessions/$(echo "$f" | tr / -)" --add "/usr/share/$f"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-desktops /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+# 1.14: Hearth's own system sounds (desktop/sounds, GPL-3.0 like Hearth) as a freedesktop sound theme other apps can use too.
+mkdir -p /usr/share/sounds && ln -sfn /usr/share/nimbus/desktop/sounds/hearth /usr/share/sounds/hearth || echo "warning: couldn't link Hearth's sound theme"
+# Hearth's own login screen uses Mantel's on-screen keyboard: its board, keys and engine, copied next to the greeter.
+mkdir -p /usr/share/hearth/greeter
+cp -a /usr/share/nimbus/desktop/shell/OskBoard.qml /usr/share/nimbus/desktop/shell/OskKey.qml /usr/share/hearth/greeter/
+rm -rf /usr/share/hearth/greeter/osk && mkdir -p /usr/share/hearth/greeter/osk
+cp -a /usr/share/nimbus/desktop/shell/osk/hearth-osk.js /usr/share/hearth/greeter/osk/
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/kwin/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
-chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/shell/hearth-colibri /usr/share/nimbus/desktop/server/labwc/autostart
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
+# Screens and screenshots on both of Mantel's compositors (1.14, docs/SCREENS.md): hearth-screens (Settings › Display,
+# restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
+# KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
+# .desktop file lists it, found by the program's executable: hearth-screens takes its screenshots through the small
+# helper hearth-kwin-cast (hearth-kwin-cast.desktop), which answers only hearth-portal and hearth-screens. (1.14
+# before this trusted a copy of Python, hearth-shot-python: any script it ran could take screenshots; it's gone.)
+optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
+rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop
+# Online accounts (docs/ONLINE-ACCOUNTS.md): `hearth-accounts` for Hearth's apps (list, token, events, mount). Nothing
+# runs by itself; Google/Microsoft stay off until the owner's client ids are in /etc/hearth/online-accounts.json.
+if [ -f /usr/share/nimbus/desktop/shell/hearth_accounts.py ]; then
+  chmod 755 /usr/share/nimbus/desktop/shell/hearth_accounts.py
+  ln -sfn /usr/share/nimbus/desktop/shell/hearth_accounts.py /usr/bin/hearth-accounts
+fi
 # Hearth OS's player count (desktop/shell/hearth-counter): the anonymous "I'm here" the Hearth app sent while it ran,
 # 20 seconds after signing in and every 10 minutes, in Steam Game Mode and Desktop Mode alike. Off in Settings › About ›
 # Privacy (countMe in desktop.json). docs/SETTINGS-MOVE.md.
@@ -1176,7 +1287,12 @@ DESKTOP
 if [ -x /ctx/nimbus-app/hearth-text ]; then
   install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
   # An editor that can't start is worse than none: then text files open in whatever else is installed.
-  if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
+  if ldd /usr/bin/hearth-text | grep 'not found'; then
+    echo "::warning title=Hearth Text::it needs libraries this image doesn't have, so it's left out: $(ldd /usr/bin/hearth-text | grep 'not found' | tr -s ' \t' ' ' | tr '\n' '|' | cut -c1-400)"
+    rm -f /usr/bin/hearth-text
+  fi
+else
+  echo "::warning title=Hearth Text::the Hearth app's build didn't carry hearth-text (os/nimbus-app), so the image has no Hearth Text"
 fi
 if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
@@ -1376,6 +1492,39 @@ for d in /usr/lib64/firefox /usr/lib/firefox /usr/lib/firefox-esr; do
 done
 command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 # ---- end of Hearth Files as the file chooser
+
+# ---- Mantel on KWin: typing, the lock screen, screen sharing (docs/KWIN-INPUT.md)
+# hearth-kwin-im and hearth-kwin-cast come from the builder (/usr/libexec/hearth), their .desktop files (which KWin
+# reads to give them its input-method and screencast protocols) from os/system_files. hearth-type (the on-screen
+# keyboard's, clipboard paste's and the magnifier's typing on KWin) needs python3-evdev and /dev/uinput (installed
+# for hearth-pad). KWin's own screen locker locks Mantel on KWin (fail-safe), showing Hearth's lock screen: the
+# Plasma shell package org.hearth.mantel-lock (desktop/kwin-lock; only a lock screen, KWin's locker
+# reads lockscreen/LockScreen.qml from a Plasma/Shell package with X-Plasma-APIVersion 2; the KWin session sets
+# PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock so it picks this one). On labwc nothing changes:
+# wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
+test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
+# KWin's screen locker, the package type it reads Hearth's lock screen as, and the lock screen itself (shell and
+# no look-and-feel copy): desktop/kwin-lock/install.sh, the same steps kwin-input.yml checks. Fails the build if any
+# is missing (a lock screen that can't show would be a lockout).
+bash /usr/share/nimbus/desktop/kwin-lock/install.sh /usr/share/nimbus/desktop/kwin-lock
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-lockcheck
+# The lock screen must be complete where the greeter looks (never a lock that can't show its screen: red flag 2).
+# With the greeter's own test run (off screen): it must load Hearth's lock screen, or the image isn't built.
+PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck --as-kwin
+rm -rf /usr/share/nimbus/desktop/kwin-helpers
+# For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
+# screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.
+cat > /usr/share/xdg-desktop-portal/hearth-portals.conf <<PORTALS
+[preferred]
+default=gtk
+org.freedesktop.impl.portal.FileChooser=hearth
+org.freedesktop.impl.portal.ScreenCast=hearth
+org.freedesktop.impl.portal.Screenshot=hearth
+org.freedesktop.impl.portal.Access=hearth
+org.freedesktop.impl.portal.RemoteDesktop=hearth
+PORTALS
+# ---- end of Mantel on KWin: typing, the lock screen, screen sharing
 
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
 # Built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
@@ -1697,17 +1846,64 @@ for u in sunshine.service app-dev.lizardbyte.app.Sunshine.service; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (Sunshine) is on in the image: it stays off until the owner turns it on"; exit 1; fi
 done
 if [ -e /etc/hearth/remote-desktop.nft ]; then echo "::error::a remote desktop firewall rule is in the image"; exit 1; fi
+# Settings › Remote desktop (hearth-vnc, a VNC server through the desktop's screen-sharing portal) and the Recorder
+# panel (hearth-record): GStreamer's PipeWire plugin (above, with the recorder apps), openssl for this PC's own
+# certificate, secret-tool for the password in the keyring, python3-evdev for the virtual keyboard and mouse where the
+# portal can't type (labwc). hearth-vnc.service has no [Install]: off in the image, started only by its switch.
+optional openssl libsecret-tools python3-evdev gstreamer1.0-pipewire
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-vnc /usr/share/nimbus/desktop/shell/hearth-record 2>/dev/null || true
+systemctl --global disable hearth-vnc.service 2>/dev/null || true
+if [ "$(systemctl --global is-enabled hearth-vnc.service 2>/dev/null)" = enabled ]; then echo "::error::hearth-vnc.service (Remote desktop) is on in the image: it stays off until the owner turns it on"; exit 1; fi
 # The streamed players' address as a QR code in Settings (optional), and the udev helper that gives each streamed
 # player their own virtual controllers (copied in with system_files; executable to be sure).
 optional qrencode
 chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
+
+# ------------------------------------------------------------------ 1.14: network, sign-in and vaults (docs/FINGERPRINT.md)
+# NetworkManager's VPN plugins for Settings › VPN's "Set up a VPN by hand" (each kind shows only when its plugin is here),
+# fprintd for fingerprints, CryFS as the second kind of vault (gocryptfs is required above). All optional: a missing
+# one only hides that choice.
+optional network-manager-strongswan network-manager-l2tp network-manager-pptp network-manager-openconnect \
+  network-manager-sstp network-manager-fortisslvpn fprintd libpam-fprintd cryfs
+# NetworkManager starts its own IPsec and L2TP daemons when a VPN connects: the system-wide ones the plugins bring stay
+# off, so nothing listens on the network at start.
+systemctl disable strongswan-starter.service strongswan.service ipsec.service xl2tpd.service 2>/dev/null || true
+# RED FLAG: a fingerprint is never the only way in. libpam-fprintd's own pam-auth-update profile would put the reader in
+# front of EVERY password (login, sudo, SDDM): take it out, so common-auth stays password-only, and use Hearth's
+# guarded setup instead (hearth-fingerprint-pam: the lock screen's own service next to the password, and one
+# never-blocking block in polkit-1; turned on per person in Settings). Checked again here and in fingerprint-pam.yml.
+if [ -e /usr/share/pam-configs/fprintd ] && command -v pam-auth-update >/dev/null; then
+  # --disable, not --remove: it stays "seen" and off, so a later pam-auth-update (another package) never puts it back.
+  DEBIAN_FRONTEND=noninteractive pam-auth-update --package --disable fprintd || echo "::warning::pam-auth-update couldn't turn fprintd's profile off"
+fi
+if grep -qs pam_fprintd /etc/pam.d/common-auth; then
+  echo "::error::common-auth asks for a fingerprint: that would put the reader in front of every password"; exit 1
+fi
+FP=/usr/libexec/nimbus/hearth-fingerprint-pam
+if [ -x "$FP" ] && [ -e /usr/lib/x86_64-linux-gnu/security/pam_fprintd.so -o -e /lib/x86_64-linux-gnu/security/pam_fprintd.so ]; then
+  if python3 "$FP" install && python3 "$FP" check; then echo "fingerprint: polkit-1 and kde-fingerprint set up (off for everyone until turned on)"
+  else echo "::warning::fingerprint: setup didn't check out, taken out again (passwords only)"; python3 "$FP" uninstall || true; fi
+else
+  echo "fingerprint: fprintd's PAM module isn't here, so no fingerprint setup (passwords only)"
+fi
+# GnuPG's passphrase prompt in Hearth's look (pinentry-hearth: the classic pinentry when Mantel isn't there).
+if update-alternatives --query pinentry >/dev/null 2>&1; then
+  update-alternatives --install /usr/bin/pinentry pinentry /usr/libexec/nimbus/pinentry-hearth 95 || echo "::warning::pinentry-hearth wasn't made the pinentry"
+fi
 
 # ------------------------------------------------------------------ system settings Bazzite/Fedora came with
 # Hearth's administrators group (the installer puts the first account in it; the polkit rules use it). In
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.
 getent group wheel >/dev/null || groupadd -r wheel
 getent group netdev >/dev/null || groupadd -r netdev   # Wi-Fi and network changes (49-hearth-network.rules, hearth-groups)
-sed -i 's/^#\s*\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen && locale-gen
+# Settings › Region & language (1.14) offers the languages and formats made here (/usr is read-only afterwards, so
+# none can be added on the device): English first, then the most used ones. A missing line is only skipped.
+for l in en_US en_GB en_CA en_AU en_IE en_NZ en_IN en_ZA de_DE de_AT de_CH fr_FR fr_CA fr_BE fr_CH es_ES es_MX es_AR \
+         es_US it_IT pt_PT pt_BR nl_NL nl_BE sv_SE da_DK nb_NO fi_FI pl_PL cs_CZ sk_SK hu_HU ro_RO bg_BG el_GR \
+         ru_RU uk_UA tr_TR he_IL ar_EG ar_SA ja_JP ko_KR zh_CN zh_TW zh_HK th_TH vi_VN id_ID ms_MY hi_IN; do
+  sed -i "s/^#\s*\($l.UTF-8 UTF-8\)/\1/" /etc/locale.gen
+done
+locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
 # Flathub for system apps (Hearth's updates update them).
@@ -1733,6 +1929,11 @@ systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard
 # hearth-diskguard (1.11): frees its 2 GB emergency reserve at start-up when the system drive is nearly full
 systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
+# Screen power saving (1.14, hearth-screen-psr, Settings › Display): Intel laptops' Panel Self Refresh switched at
+# runtime through the driver's own switch (Auto: off on Alder Lake-N / Twin Lake, where it can stall the screen).
+# Never a start option or the boot menu; a simple service nothing waits for.
+chmod 755 /usr/libexec/nimbus/hearth-screen-psr
+systemctl enable hearth-screen-psr.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts the PC down cleanly (no lost files from a
 # battery that just dies). Hearth's BatteryWatch.qml says so at 10%, 5% and 3%, and hibernates instead where a
 # hibernation has come back before on this PC (/var/lib/hearth/hibernate-proven).
@@ -1764,7 +1965,17 @@ if [ -d /etc/X11 ]; then echo /usr/bin/sddm > /etc/X11/default-display-manager; 
 
 # ------------------------------------------------------------------ boot straight into Hearth
 systemctl enable nimbus-autologin.service
+# A pre-installed PC (bootc install, no Hearth installer) has no account: a stand-in one for first-time setup, made
+# before the autologin (hearth-oem-account; does nothing once there's an account, never a stop).
+chmod 755 /usr/libexec/nimbus/hearth-oem-account
+systemctl enable hearth-oem-account.service
+systemctl --global enable hearth-oem-notice.service   # and tells you once after you sign in, until it's done
 systemctl enable hearth-greeter-pad.service
+# Hearth's own login screen (1.14, a test): inert unless turned on in Settings (hearth-login-select picks SDDM by
+# default and whenever anything is missing; SDDM stays display-manager.service).
+chmod 755 /usr/libexec/nimbus/hearth-login-screen /usr/libexec/nimbus/hearth-greeter /usr/libexec/nimbus/hearth-session-start /usr/share/hearth/greeter/greeter-info
+systemctl enable hearth-login-select.service hearth-greetd.service
+systemctl --global enable hearth-login-notice.service
 systemctl enable hearth-boot-first.service
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)
 systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache folders yours, container id ranges
@@ -1925,6 +2136,15 @@ ls -la /etc/kernel/*.d 2>/dev/null || true
 # The display manager stays Hearth's when a package brings another (gdm3, lightdm): debconf's answer, kept in the
 # image and copied to /var/cache/debconf at the first start (tmpfiles, below).
 echo "sddm shared/default-x-display-manager select sddm" | debconf-set-selections
+# SDDM is still the display manager after everything above (Hearth's own login screen never takes its place).
+test "$(readlink /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service
+if [ -f /etc/X11/default-display-manager ]; then grep -qx /usr/bin/sddm /etc/X11/default-display-manager; fi
+# Debian's own greetd.service never runs at start-up (it would take a screen from SDDM or Hearth's hearth-greetd):
+# turned off if the package turned it on, and the build stops if it still is.
+if [ -e /usr/lib/systemd/system/greetd.service ]; then
+  systemctl disable greetd.service >/dev/null 2>&1 || true
+  if systemctl is-enabled --quiet greetd.service 2>/dev/null; then echo "build: Debian's greetd.service is enabled" >&2; exit 1; fi
+fi
 mkdir -p /usr/share/hearth/debconf && cp -a /var/cache/debconf/. /usr/share/hearth/debconf/
 # The core of the system stays at the image's own versions (apt can't swap them under Hearth: systemd, udev, glibc,
 # D-Bus, Mesa), generated from what's installed (systemd-boot is left to the boot-chain pin: never from apt).
@@ -2000,4 +2220,9 @@ command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and boo
 # The last step: every file marked with the piece it belongs to (os-bases/peppermint/components.py), so the rechunk
 # step in base-peppermint.yml gives each Debian package and each Hearth app its own layers and a device downloads only
 # what changed. Never fails the build (unmarked files only make updates bigger).
+# RED FLAG (docs/FINGERPRINT.md), once more at the very end: common-auth (login, sudo, SDDM) never asks for a
+# fingerprint, whatever ran pam-auth-update after the fingerprint setup above.
+if grep -qs pam_fprintd /etc/pam.d/common-auth; then
+  echo "::error::common-auth asks for a fingerprint at the end of the build: that would put the reader in front of every password"; exit 1
+fi
 python3 /ctx/components.py / /usr/lib/sysimage/dpkg || echo "components: marking files failed; updates stay big"

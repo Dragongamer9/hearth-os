@@ -54,7 +54,7 @@ SetBase {
                     Layout.fillWidth: row.badge === ""
                     Layout.maximumWidth: row.badge !== "" ? Math.max(40, parent.width - 90) : Number.POSITIVE_INFINITY
                     text: row.title; color: row.danger ? Theme.danger : Theme.text
-                    font.family: Theme.font; font.pixelSize: row.inset ? 14 : 15; font.weight: Font.Medium
+                    font.family: Theme.font; font.pixelSize: row.inset ? SetStyle.titleSize - 1 : SetStyle.titleSize; font.weight: Font.Medium
                     elide: Text.ElideRight
                 }
                 SetChip { visible: row.badge !== ""; text: row.badge; kind: "new" }
@@ -62,12 +62,12 @@ SetBase {
             }
             Text {
                 Layout.fillWidth: true; visible: row.sub !== ""; text: row.sub
-                color: Theme.muted; font.family: Theme.font; font.pixelSize: row.inset ? 13 : 13
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: SetStyle.subSize
                 wrapMode: Text.WordWrap; lineHeight: 1.08
             }
         }
         SetChip { visible: row.chip !== ""; text: row.chip; kind: row.chipKind }
         Text { visible: row.value !== ""; text: row.value; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; Layout.maximumWidth: 300; elide: Text.ElideRight }
-        Icon { visible: row.chevron && row.interactive; name: row.chevronIcon; size: 18; color: Theme.muted; opacity: 0.8 }
+        Icon { visible: row.chevron && row.interactive; name: row.chevronIcon; size: SetStyle.big ? 22 : 18; color: SetStyle.big ? Theme.accent : Theme.muted; opacity: SetStyle.big ? 1 : 0.8 }
     }
 }

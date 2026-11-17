@@ -1,0 +1,1184 @@
+#!/usr/bin/python3
+"""hearth-colibri: Colibri, the second AI engine in Server mode next to Ollama (docs/SERVER-MODE.md, "Colibri").
+
+Colibri (https://github.com/JustVugg/colibri, Apache-2.0, by Vincenzo Fornaro) runs very large mixture-of-experts
+models on a normal PC: the hot experts on the graphics card, warm ones in RAM, cold ones streamed from the NVMe drive.
+It speaks the OpenAI API (/v1/chat/completions, /v1/models) and Anthropic's (/v1/messages).
+
+Nothing of it is in the image and nothing is downloaded until you ask:
+  - the engine: Colibri's own release COLIBRI_TAG (about 14 MB), its SHA-256 checked against the one Hearth pins AND
+    the release's SHA256SUMS.txt, its archive checked, unpacked into ~/.local/share/hearth/colibri/engine (as you);
+  - each model: only the one you pick, by Colibri's own setup (coli setup: resumable, every file checked against its
+    checksum), into your models folder (~/colibri-models unless you choose another drive), after a free-space check.
+It runs as your own user service hearth-colibri.service (no [Install]; its timer is enabled only while it's on, like
+AI pictures), on 127.0.0.1:COLIBRI_PORT and, while Tailscale is up, this PC's Tailscale address only (that port is
+in Hearth's Tailscale-only firewall rule while it's on). Light mode stops it while you play (it holds the graphics
+card) and starts it again after. If it fails, nothing else is touched: Ollama, Server mode and Game Mode go on.
+
+  hearth-colibri status              JSON for Settings and the dashboard (reads only; writes nothing)
+  hearth-colibri catalog             every model Colibri's catalog offers (coli setup --list --all --json), each with
+                                     its download size, the disk it needs and an honest fit / speed for this PC
+  hearth-colibri plan ID             a downloaded model's real plan on this PC (coli plan --json, coli doctor --json)
+  hearth-colibri install             the engine, in its own unit (only when you ask); install-run is that unit
+  hearth-colibri download ID         one model, in its own unit, after a free-space check; download-run is that unit
+  hearth-colibri cancel              stop a download (what's there stays: running it again continues)
+  hearth-colibri use ID [FOLDER]     the model Colibri serves (a downloaded one, or FOLDER: one another app made with
+                                     coli setup or coli import, e.g. Hearth AI's "Install & use"); restarts it if running
+  hearth-colibri set KEY VALUE       engine (ollama|colibri|both: Settings › Home server's switches), default
+                                     (ollama|colibri: what Hearth's AI pieces use first), modelsDir (a folder)
+  hearth-colibri remove-model ID sure   delete a downloaded model's files
+  hearth-colibri remove              the engine goes (your models stay)
+  hearth-colibri run                 hearth-colibri.service: coli serve for the model you picked
+  hearth-colibri folders             where models could go (your Home and your drives, with free space)
+
+Settings are ai-engines.json's (hearth_ai_engines.py) and home-server.json's (on / pause), never a copy here. Install
+and download progress is state: ~/.local/state/nimbus/colibri.json. Output: one JSON line; failures print
+"error: ..." and exit 1. Nothing here goes through a shell.
+"""
+import hashlib
+import ipaddress
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tarfile
+import threading
+import time
+import urllib.parse
+import urllib.request
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+import hearth_ai_engines as eng  # noqa: E402
+
+# ---- the pinned release (Hearth moves this pin with its updates; the SHA-256 is the one Colibri's release publishes)
+COLIBRI_TAG = 'v2.1.0'
+COLIBRI_ASSET = 'colibri-%s-linux-x86_64.tar.gz' % COLIBRI_TAG
+COLIBRI_SHA256 = 'd54b4c57c12417fc9e784b649249ac1aa3480eec44ece2777d4cbc639a25e66a'
+COLIBRI_URL = 'https://github.com/JustVugg/colibri/releases/download/%s/%s' % (COLIBRI_TAG, COLIBRI_ASSET)
+COLIBRI_SUMS = 'https://github.com/JustVugg/colibri/releases/download/%s/SHA256SUMS.txt' % COLIBRI_TAG
+ARCHIVE_MAX = 64 << 20
+DOWNLOAD_HOSTS = ('github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com')
+# The uncensored group's GGUF files: Hugging Face and its own file servers (*.hf.co, *.huggingface.co), https only.
+HF_HOSTS = ('huggingface.co',)
+HF_SUFFIXES = ('.hf.co', '.huggingface.co')
+# Every model Hearth offers for Colibri, in two groups (standard: Colibri's own catalog; uncensored: GGUF builds on
+# Hugging Face of models Colibri runs). Also read by Hearth AI (Ithil). The live catalog from coli wins for "standard".
+AI_MODELS = os.environ.get('HEARTH_AI_MODELS') or next(
+    (p for p in ('/usr/share/hearth/ai-models.json',
+                 os.path.join(HERE, '..', '..', '..', '..', 'os', 'system_files', 'usr', 'share', 'hearth', 'ai-models.json'))
+     if os.path.isfile(p)), '/usr/share/hearth/ai-models.json')
+# The GGUF architectures Colibri's `coli import` takes (its docs/gguf.md, v2.1.0); anything else is left out of the list.
+GGUF_ARCHS = ('qwen35moe', 'qwen35', 'qwen3moe', 'qwen3', 'flint', 'muse-spark', 'lfm3', 'qwen4exp', 'deepseek4', 'deepseek41',
+              'inkling', 'glm5-next', 'glm-dsa', 'mistral-large4', 'mimo2', 'olmoe', 'kimi-k3')
+HF_REPO_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$')
+HF_FILE_RE = re.compile(r'^(?:[A-Za-z0-9][A-Za-z0-9_.-]{0,100}/)?[A-Za-z0-9][A-Za-z0-9_.-]{0,200}\.gguf$')
+COLIBRI_PORT = eng.COLIBRI_PORT
+UNIT = 'hearth-colibri.service'
+TIMER = 'hearth-colibri.timer'
+DL_UNIT = 'hearth-colibri-download'
+
+HOME = os.path.expanduser('~')
+DATA_HOME = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+DATA = os.path.join(DATA_HOME, 'hearth', 'colibri')
+ENGINE = os.path.join(DATA, 'engine')                 # the unpacked release: coli, the engines, shaders/
+SETUP_HOME = os.path.join(DATA, 'setup')              # COLI_SETUP_HOME: coli setup's own files (setup.json, logs)
+STATE = os.path.join(STATE_HOME, 'nimbus', 'colibri.json')
+FIXTURE = os.environ.get('HEARTH_COLIBRI_FIXTURE', '')   # tests and CI screenshots only
+TS_NETS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
+ID_RE = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}$')
+GB = 1_000_000_000
+
+# What Colibri's README publishes as measured (decode tokens per second, on the machines it names: not this PC). Shown
+# beside Hearth's own estimate so nothing is promised; a model with no measurement says so. After the first answer the
+# dashboard shows this PC's own speed.
+MEASURED = {
+    'qwen36-35b': '6 tok/s on a CPU, 9.9 with Vulkan on an integrated GPU, 30 with CUDA',
+    'qwen3-coder-30b': '8.5-9.6 tok/s with every expert in RAM (CPU)',
+    'deepseek-v4-flash': '0.9-1.2 tok/s on 32-63 GB PCs (CPU); 1.5-1.6 with an RTX 5080 and two NVMe drives',
+    'mimo-v2.6-flash': '2.3-3.4 tok/s (CPU)',
+    'qwen38-flash-next': '1.9-2.6 tok/s (CPU)',
+    'glm-5.2': '0.05-0.1 tok/s on a 25 GB laptop; 1.8 on a 128 GB PC',
+    'mimo-v2.6-pro': '0.66-0.79 tok/s (CPU)',
+    'inkling': '0.25 tok/s (187 GB of RAM, RTX A6000)',
+    'kimi-k3': 'about 9.4 s per token',
+    'qwen-image-2.1': 'one 768x512 picture in about 2 min 40 s (CPU)',
+}
+
+
+# What each fit means, in words (Hearth's rough estimate; this PC's real speed shows after the first answer).
+EXPECT = {'good': 'expect roughly 10 to 30 tokens a second', 'slow': 'expect a few tokens a second',
+          'very-slow': 'expect about one token a second or less', 'no-ram': '', 'no-disk': ''}
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ small helpers (tests replace cmd, http_*, hardware)
+
+def cmd(args, timeout=60, env=None, cwd=None):
+    """(exit code, output) of a command as you; never a shell."""
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd, stdin=subprocess.DEVNULL)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def http_json(url, timeout=1.5):
+    """A local JSON answer (Colibri on this PC), or None."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            data = r.read(4 << 20)
+        v = json.loads(data.decode('utf-8', 'replace'))
+        return v if isinstance(v, (dict, list)) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _opener():
+    class Only(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            u = urllib.parse.urlparse(newurl)
+            if u.scheme != 'https' or u.hostname not in DOWNLOAD_HOSTS:
+                raise Fail('a download tried to go somewhere else (%s): stopped' % (u.hostname or '?'))
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+    return urllib.request.build_opener(Only)
+
+
+def url_ok(url):
+    u = urllib.parse.urlparse(url or '')
+    return u.scheme == 'https' and u.hostname in DOWNLOAD_HOSTS
+
+
+def hf_ok(url):
+    u = urllib.parse.urlparse(url or '')
+    h = u.hostname or ''
+    return u.scheme == 'https' and (h in HF_HOSTS or h.endswith(HF_SUFFIXES))
+
+
+def _hf_opener():
+    class Only(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if not hf_ok(newurl):
+                raise Fail('a download tried to go somewhere else (%s): stopped' % (urllib.parse.urlparse(newurl).hostname or '?'))
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+    return urllib.request.build_opener(Only)
+
+
+def hf_json(url):
+    """A small JSON answer from Hugging Face's API (a repository's file list, with each file's size and SHA-256)."""
+    if not hf_ok(url):
+        raise Fail('not an allowed address')
+    try:
+        with _hf_opener().open(urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS'}), timeout=30) as r:
+            return json.loads(r.read(8 << 20).decode('utf-8', 'replace'))
+    except (OSError, ValueError) as e:
+        raise Fail('couldn\'t reach Hugging Face (%s)' % e)
+
+
+def hf_download(url, dest, size, progress=None):
+    """A big file to DEST, carrying on from DEST.part (resume); its SHA-256 (hex). Never more than SIZE bytes."""
+    if not hf_ok(url):
+        raise Fail('not an allowed address')
+    part = dest + '.part'
+    h = hashlib.sha256()
+    got = 0
+    if os.path.exists(part):
+        with open(part, 'rb') as f:
+            for chunk in iter(lambda: f.read(8 << 20), b''):
+                h.update(chunk)
+                got += len(chunk)
+        if got > size:
+            os.remove(part)
+            h, got = hashlib.sha256(), 0
+    headers = {'User-Agent': 'Hearth-OS'}
+    if got:
+        headers['Range'] = 'bytes=%d-' % got
+    t0, g0 = time.time(), got
+    try:
+        with _hf_opener().open(urllib.request.Request(url, headers=headers), timeout=60) as r:
+            if got and r.status != 206:          # the server sent the whole file again: start over
+                h, got = hashlib.sha256(), 0
+                mode = 'wb'
+            else:
+                mode = 'ab' if got else 'wb'
+            with open(part, mode) as f:
+                last = 0
+                while True:
+                    chunk = r.read(4 << 20)
+                    if not chunk:
+                        break
+                    got += len(chunk)
+                    if got > size:
+                        raise Fail('the download is bigger than Hugging Face says the file is')
+                    h.update(chunk)
+                    f.write(chunk)
+                    if progress and time.time() - last > 1:
+                        last = time.time()
+                        progress(got, size, (got - g0) / max(0.1, time.time() - t0))
+    except OSError as e:
+        raise Fail('the download stopped (%s); download again to continue' % e)
+    if got != size:
+        raise Fail('the download stopped at %s of %s; download again to continue' % (gb(got / GB), gb(size / GB)))
+    os.replace(part, dest)
+    return h.hexdigest()
+
+
+def http_get(url, limit=1 << 20):
+    """A small https answer from Colibri's release (its checksum file)."""
+    if not url_ok(url):
+        raise Fail('not an allowed address')
+    try:
+        with _opener().open(urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS'}), timeout=30) as r:
+            data = r.read(limit + 1)
+    except OSError as e:
+        raise Fail('couldn\'t reach Colibri\'s release (%s)' % e)
+    if len(data) > limit:
+        raise Fail('the answer was too big')
+    return data
+
+
+def download(url, dest, limit, progress=None):
+    """The archive to DEST; its SHA-256 (hex)."""
+    if not url_ok(url):
+        raise Fail('not an allowed address')
+    h, got = hashlib.sha256(), 0
+    try:
+        with _opener().open(urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS'}), timeout=60) as r, open(dest, 'wb') as f:
+            total = int(r.headers.get('Content-Length') or 0)
+            if total > limit:
+                raise Fail('the download is bigger than expected')
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                got += len(chunk)
+                if got > limit:
+                    raise Fail('the download is bigger than expected')
+                h.update(chunk)
+                f.write(chunk)
+                if progress and total:
+                    progress(got, total)
+    except OSError as e:
+        raise Fail('the download stopped (%s)' % e)
+    return h.hexdigest()
+
+
+def sums_lookup(text, name):
+    for line in (text or '').splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and re.fullmatch(r'[0-9a-f]{64}', parts[0].lower()) and parts[-1].lstrip('*').lstrip('./') == name:
+            return parts[0].lower()
+    return ''
+
+
+def state():
+    v = sio.load_json(STATE, {}, repair=False) if os.path.exists(STATE) else {}
+    return v if isinstance(v, dict) else {}
+
+
+def state_set(**kw):
+    """Install and download progress, what's downloaded: state, never a setting (merged under the lock)."""
+    def change(d):
+        for k, v in kw.items():
+            if v is None:
+                d.pop(k, None)
+            else:
+                d[k] = v
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    sio.update_json(STATE, change)
+
+
+def unit_active(unit):
+    return cmd(['systemctl', '--user', 'is-active', '--quiet', unit], 10)[0] == 0
+
+
+def coli_path():
+    return os.path.join(ENGINE, 'coli')
+
+
+def installed():
+    return os.path.isfile(coli_path()) and os.path.isfile(os.path.join(ENGINE, 'colibri'))
+
+
+# The engine settings a model's setup may pass to Colibri (its own COLI_*, ggml's and llama.cpp's, thread counts and
+# which graphics card): nothing else. Never what changes which code runs (LD_PRELOAD, LD_LIBRARY_PATH, PYTHON*, PATH,
+# a library or plugin folder), even from a hand-edited state file.
+ENV_PREFIXES = ('COLI_', 'GGML_', 'LLAMA_', 'OMP_', 'OPENBLAS_', 'MKL_')
+ENV_NAMES = ('CUDA_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES', 'GPU_DEVICE_ORDINAL')
+ENV_REFUSED_PARTS = ('PATH', 'LIB', 'PRELOAD', 'DIR', 'HOME', 'PLUGIN', 'MODULE', 'ICD', 'LAYER')
+
+
+def env_name_ok(k):
+    k = str(k)
+    if not re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', k) or k == 'COLI_SETUP_HOME':
+        return False
+    if any(part in k for part in ENV_REFUSED_PARTS):
+        return False
+    return k in ENV_NAMES or k.startswith(ENV_PREFIXES)
+
+
+def safe_env(d):
+    """D (a model's env) with only the names Colibri may be given (env_name_ok); values as short single-line text."""
+    if not isinstance(d, dict):
+        return {}
+    return {str(k): str(v)[:200] for k, v in d.items()
+            if env_name_ok(k) and '\n' not in str(v) and '\0' not in str(v)}
+
+
+def coli_env(extra=None):
+    env = dict(os.environ)
+    env['COLI_SETUP_HOME'] = SETUP_HOME
+    env.pop('PYTHONPATH', None)
+    env.update(extra or {})
+    return env
+
+
+def coli(args, timeout=120, env=None):
+    """(code, output) of Colibri's own launcher, from the pinned release."""
+    if not installed():
+        raise Fail('Install Colibri first')
+    return cmd([sys.executable or 'python3', coli_path()] + args, timeout, env=coli_env(env), cwd=ENGINE)
+
+
+def last_json(out):
+    """The JSON a coli command printed (it may say other things first)."""
+    out = out or ''
+    for start in [m.start() for m in re.finditer(r'^[\[{]', out, re.M)]:
+        try:
+            return json.loads(out[start:])
+        except ValueError:
+            continue
+    return None
+
+
+# ------------------------------------------------------------------ this PC
+
+def meminfo_gb():
+    try:
+        with open('/proc/meminfo') as f:
+            for line in f:
+                if line.startswith('MemTotal:'):
+                    return round(int(line.split()[1]) * 1024 / GB, 1)
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0.0
+
+
+def gpu():
+    """{name, vramGb} of the graphics card, or {}."""
+    if shutil.which('nvidia-smi'):
+        code, out = cmd(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], 6)
+        if code == 0 and out.strip():
+            try:
+                name, mem = [x.strip() for x in out.strip().splitlines()[0].split(',')[:2]]
+                return {'name': name.replace('NVIDIA GeForce ', ''), 'vramGb': round(float(mem) / 1024, 1)}
+            except ValueError:
+                pass
+    drm = '/sys/class/drm'
+    for card in sorted(os.listdir(drm)) if os.path.isdir(drm) else []:
+        p = os.path.join(drm, card, 'device', 'mem_info_vram_total')
+        try:
+            with open(p) as f:
+                return {'name': 'Graphics card', 'vramGb': round(int(f.read().strip()) / (1 << 30), 1)}
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
+def free_bytes(path):
+    """Free space where PATH is (or would be: its nearest folder that exists)."""
+    p = path
+    while p and not os.path.isdir(p):
+        p = os.path.dirname(p)
+    try:
+        st = os.statvfs(p or '/')
+        return st.f_bavail * st.f_frsize
+    except OSError:
+        return 0
+
+
+def dir_bytes(path):
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def hardware(models=None):
+    models = models or eng.models_dir()
+    g = gpu()
+    return {'ramGb': meminfo_gb(), 'vramGb': g.get('vramGb', 0.0), 'gpu': g.get('name', ''), 'modelsDir': models,
+            'diskFreeGb': round(free_bytes(models) / GB, 1)}
+
+
+# ------------------------------------------------------------------ the catalog, with an honest fit for this PC
+
+def fit_for(m, hw, have):
+    """(fit, label, why) for one catalog model on this PC: good | slow | very-slow | no-ram | no-disk.
+    Small models run from RAM; large ones stream their experts from the drive, so the share of the model that fits in
+    RAM decides how often a token waits for the drive."""
+    ram, vram, free = hw.get('ramGb') or 0, hw.get('vramGb') or 0, hw.get('diskFreeGb') or 0
+    dl = float(m.get('download_gb') or 0)
+    need = disk_needed_gb(dl)
+    rmin, rgood, dense = float(m.get('ram_min_gb') or 0), float(m.get('ram_good_gb') or 0), float(m.get('dense_gb') or 0)
+    small = 'from RAM' in str(m.get('runs') or '')
+    if not have and free and need > free:
+        return 'no-disk', 'Not enough disk space', 'needs %s free, %s free in %s' % (gb(need), gb(free), 'your models folder')
+    if ram and ram * 1.05 < rmin:        # "32 GB" of RAM shows a little under 32 once the firmware and graphics take theirs
+        return 'no-ram', 'Won\'t run here: needs %s of memory' % gb(rmin), 'this PC has %s' % gb(ram)
+    gpu_note = (' · hot experts on the %s GB graphics card' % (('%g' % vram))) if vram >= 6 else ''
+    if small:
+        if ram >= rgood:
+            return 'good', 'Runs well', 'every expert fits in RAM' + gpu_note
+        return 'slow', 'Slow', 'only part of its experts fit in RAM (%s of the %s it likes)' % (gb(ram), gb(rgood))
+    share = max(0.0, ram - dense) / dl if dl else 0
+    if ram >= rgood and share >= 0.4:
+        return 'slow', 'Slow', 'streams its cold experts from the drive; about %d%% of it fits in RAM' % round(100 * min(1, share)) + gpu_note
+    return 'very-slow', 'Very slow — streams from disk', 'about %d%% of it fits in RAM; most tokens wait for the drive' % round(100 * min(1, share))
+
+
+def disk_needed_gb(download_gb):
+    """The download plus room for Colibri's own files and the drive not running full (5%, at least 5 GB)."""
+    return round(download_gb + max(5.0, download_gb * 0.05), 1)
+
+
+def gb(v):
+    v = float(v or 0)
+    return ('%.2f TB' % (v / 1000)) if v >= 1000 else ('%d GB' % round(v)) if v >= 10 else ('%.1f GB' % v)
+
+
+def downloaded():
+    st = state().get('models') or {}
+    out = {}
+    for mid, rec in st.items() if isinstance(st, dict) else []:
+        if isinstance(rec, dict) and ID_RE.fullmatch(mid or '') and os.path.isdir(rec.get('dir') or ''):
+            out[mid] = rec
+    return out
+
+
+def catalog():
+    """Every model in Colibri's own catalog (nothing hidden, nothing hand-picked), with this PC's fit."""
+    if FIXTURE:
+        return (sio.load_json(FIXTURE, {}, repair=False).get('catalog') or {})
+    models = eng.models_dir()
+    hw = hardware(models)
+    code, out = coli(['setup', '--list', '--all', '--json', '--dir', models], 120)
+    rows = last_json(out) if code == 0 else None
+    if not isinstance(rows, list):
+        raise Fail('Colibri didn\'t list its models: %s' % (out.strip().splitlines() or ['no answer'])[-1][:200])
+    have = downloaded()
+    cfg = eng.load()
+    dl = state().get('download') or {}
+    res = []
+    for r in rows:
+        if not isinstance(r, dict) or not ID_RE.fullmatch(str(r.get('id') or '')):
+            continue
+        mid = r['id']
+        fit, label, why = fit_for(r, hw, mid in have)
+        expect = EXPECT.get(fit, '')
+        res.append({'id': mid, 'name': str(r.get('name') or mid)[:80], 'family': str(r.get('family') or '')[:40],
+                    'kind': 'image' if r.get('kind') == 'image' else 'text', 'summary': str(r.get('summary') or '')[:200],
+                    'downloadGb': float(r.get('download_gb') or 0), 'diskGb': disk_needed_gb(float(r.get('download_gb') or 0)),
+                    'ramMinGb': r.get('ram_min_gb'), 'ramGoodGb': r.get('ram_good_gb'), 'runs': str(r.get('runs') or ''),
+                    'fit': fit, 'fitLabel': label, 'why': why, 'expect': expect, 'measured': MEASURED.get(mid, 'no speed published yet'),
+                    'colibriSays': str(r.get('reason') or '')[:200], 'recommended': r.get('recommended') is True,
+                    'license': str(r.get('license_note') or '')[:120], 'have': mid in have, 'chosen': mid == cfg['colibri']['model'],
+                    'downloading': dl.get('id') == mid and dl.get('running') is True})
+    for m in res:
+        m['group'] = 'standard'
+    for e in extra_models():
+        mid = e['id']
+        row = {'download_gb': e['downloadGb'], 'ram_min_gb': e['ramMinGb'], 'ram_good_gb': e['ramGoodGb'],
+               'dense_gb': e.get('denseGb') or 0, 'runs': e['runs']}
+        fit, label, why = fit_for(row, hw, mid in have)
+        res.append({'id': mid, 'name': e['name'][:80], 'family': e.get('family', ''), 'familyName': e.get('familyName', ''),
+                    'group': 'uncensored', 'kind': 'text', 'summary': e.get('goodAt', '')[:200], 'quant': e.get('quant', ''),
+                    'quantNote': e.get('quantNote', ''), 'architecture': e.get('architecture', ''),
+                    'repo': e['source']['repo'], 'files': e['source']['files'],
+                    'downloadGb': e['downloadGb'], 'diskGb': disk_needed_gb(e['downloadGb']),
+                    'ramMinGb': e['ramMinGb'], 'ramGoodGb': e['ramGoodGb'], 'runs': e['runs'],
+                    'fit': fit, 'fitLabel': label, 'why': why, 'expect': EXPECT.get(fit, ''),
+                    'measured': 'no speed published for this build (its Qwen original: %s)' % MEASURED.get(
+                        'qwen38-flash-next' if 'qwen3.8' in mid else 'qwen3-coder-30b' if 'coder' in mid else 'qwen36-35b', 'none'),
+                    'colibriSays': '', 'recommended': e.get('recommended') is True, 'license': e.get('licence', '')[:120],
+                    'have': mid in have, 'chosen': mid == cfg['colibri']['model'],
+                    'downloading': dl.get('id') == mid and dl.get('running') is True})
+    return {'hardware': hw, 'models': res, 'source': 'Colibri %s catalog' % COLIBRI_TAG,
+            'groups': [{'id': 'standard', 'label': 'Standard (filtered)'}, {'id': 'uncensored', 'label': 'Uncensored'}]}
+
+
+def extra_models(ram_gb=None):
+    """The uncensored group from Hearth's model list (ai-models.json, Hearth AI's shape: a model with its quants), one
+    entry per model and quant. An entry that isn't well formed is left out, never guessed at."""
+    d = sio.load_json(AI_MODELS, {}, repair=False) if os.path.isfile(AI_MODELS) else {}
+    d = d if isinstance(d, dict) else {}
+    ram = meminfo_gb() if ram_gb is None else ram_gb
+    rec = next(((r.get('model'), r.get('quant')) for r in d.get('recommend') or [] if isinstance(r, dict)
+                and ram * 1.05 >= float(r.get('min_ram_gb') or 0)), (None, None))
+    out = []
+    for m in d.get('models') or []:
+        try:
+            if m.get('group', 'uncensored') != 'uncensored' or not ID_RE.fullmatch(m['id']) or not HF_REPO_RE.fullmatch(m['repo']):
+                continue
+            if m.get('arch') not in GGUF_ARCHS:
+                continue
+            for q in m['quants']:
+                files, sizes = list(q['files']), [int(b) for b in q.get('bytes') or []]
+                if not files or not all(HF_FILE_RE.fullmatch(f) and '..' not in f for f in files) or len(sizes) != len(files):
+                    continue
+                if not all(0 < b < 4 << 40 for b in sizes):
+                    continue
+                qid = '%s-%s' % (m['id'], re.sub(r'[^a-z0-9._-]+', '-', q['quant'].lower()).strip('-'))
+                if not ID_RE.fullmatch(qid):
+                    continue
+                out.append({'id': qid, 'name': '%s · %s' % (m['name'], q['quant']), 'family': m['id'], 'familyName': m['name'],
+                            'group': 'uncensored', 'quant': q['quant'], 'quantNote': str(q.get('note') or ''), 'architecture': m['arch'],
+                            'goodAt': str(m.get('summary') or ''), 'licence': str(m.get('license') or ''),
+                            'source': {'kind': 'hf-gguf', 'repo': m['repo'], 'files': files, 'bytes': sizes, 'revision': 'main'},
+                            'downloadGb': float(q['download_gb']), 'ramMinGb': float(q['ram_min_gb']), 'ramGoodGb': float(q['ram_good_gb']),
+                            'denseGb': 0.0, 'runs': 'streams experts from the SSD' if m.get('size') == 'large' else 'from RAM',
+                            'recommended': (m['id'], q['quant']) == rec})
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return out
+
+
+def plan(mid):
+    """A downloaded model's real plan on this PC (Colibri's planner and its read-only doctor)."""
+    if FIXTURE:
+        return (sio.load_json(FIXTURE, {}, repair=False).get('plan') or {})
+    rec = downloaded().get(mid)
+    if not rec:
+        raise Fail('Download it first')
+    code, out = coli(['plan', '--json', '--model', rec['dir']], 120)
+    p = last_json(out) if code == 0 else None
+    code2, out2 = coli(['doctor', '--json', '--model', rec['dir']], 180)
+    d = last_json(out2)
+    res = {'id': mid}
+    if isinstance(p, dict):
+        t = p.get('tiers') or {}
+        res.update({'vramGb': round(((t.get('vram') or {}).get('hot_expert_bytes') or 0) / GB + ((t.get('vram') or {}).get('trunk_bytes') or 0) / GB, 1),
+                    'ramGb': round(((t.get('ram') or {}).get('budget_bytes') or 0) / GB, 1),
+                    'diskGb': round(((t.get('disk') or {}).get('model_bytes') or 0) / GB, 1),
+                    'bottleneck': str(p.get('expected_bottleneck') or '')[:120],
+                    'hitRate': p.get('projected_hit_rate'), 'warnings': [str(w)[:160] for w in (p.get('warnings') or [])[:5]]})
+    if isinstance(d, dict):
+        res['doctor'] = d.get('status')
+        res['problems'] = [str(c.get('summary') or '')[:160] for c in d.get('checks') or [] if isinstance(c, dict) and c.get('status') == 'fail'][:5]
+    return res
+
+
+# ------------------------------------------------------------------ status
+
+def server_view():
+    base = 'http://127.0.0.1:%d' % COLIBRI_PORT
+    health = http_json(base + '/health')
+    if not isinstance(health, dict):
+        return {'health': 'down'}
+    out = {'health': 'ready' if health.get('status') == 'ok' else str(health.get('status') or 'starting')[:20]}
+    models = http_json(base + '/v1/models') or {}
+    data = models.get('data') if isinstance(models, dict) else None
+    if data and isinstance(data[0], dict):
+        out['modelId'] = str(data[0].get('id') or '')[:80]
+    prof = http_json(base + '/profile') or {}
+    turns = prof.get('turns') if isinstance(prof, dict) else None
+    if turns and isinstance(turns[-1], dict):
+        t = turns[-1]
+        wall, toks = t.get('wall_s') or 0, t.get('completion_tokens') or 0
+        if wall and toks:
+            out['tokensPerSecond'] = round(toks / wall, 1)
+        out['answers'] = len(turns)
+    return out
+
+
+def status():
+    if FIXTURE:
+        return (sio.load_json(FIXTURE, {}, repair=False).get('status') or {})
+    st = state()
+    cfg = eng.load()
+    hs = sio.load_json(eng.HOME_SERVER, {}, repair=False) if os.path.exists(eng.HOME_SERVER) else {}
+    hs = hs if isinstance(hs, dict) else {}
+    c = hs.get('colibri') if isinstance(hs.get('colibri'), dict) else {}
+    on = c.get('on') is True
+    active = unit_active(UNIT) if on else False
+    srv = server_view() if active else {'health': 'off' if not on else 'stopped'}
+    have = downloaded()
+    dl = dict(st.get('download') or {})
+    if dl.get('running') and not dl.get('total'):
+        prog = sio.load_json(os.path.join(SETUP_HOME, 'install-state.json'), {}, repair=False)
+        if isinstance(prog, dict) and prog.get('phase') == 'download' and prog.get('total'):
+            dl.update({'done': prog.get('done', 0), 'total': prog['total'], 'rate': prog.get('rate'),
+                       'pct': round(100.0 * (prog.get('done') or 0) / prog['total'], 1)})
+        elif isinstance(prog, dict) and prog.get('phase'):
+            dl['phase'] = str(prog['phase'])[:30]
+        if not unit_active(dl.get('unit') or DL_UNIT):
+            dl['running'] = False
+            dl.setdefault('error', 'stopped')
+    inst = st.get('install') or {}
+    model = cfg['colibri']['model']
+    return {'installed': installed(), 'version': inst.get('version', '') if installed() else '', 'pinned': COLIBRI_TAG,
+            'installing': inst.get('running') is True, 'progress': inst.get('progress', 0), 'error': inst.get('error', ''),
+            'on': on, 'pause': c.get('pause', True) is not False, 'active': active, 'model': model,
+            'modelDownloaded': model in have, 'downloaded': sorted(have), 'download': dl, 'server': srv,
+            'port': COLIBRI_PORT, 'openai': 'http://127.0.0.1:%d/v1' % COLIBRI_PORT,
+            'listen': (st.get('listen') or []) if active else [],
+            'ollamaOn': (hs.get('ai') or {}).get('on') is True if isinstance(hs.get('ai'), dict) else False,
+            'engine': engine_choice(hs), 'default': cfg['default'], 'modelsDir': eng.models_dir(cfg)}
+
+
+def engine_choice(hs):
+    a = isinstance(hs.get('ai'), dict) and hs['ai'].get('on') is True
+    c = isinstance(hs.get('colibri'), dict) and hs['colibri'].get('on') is True
+    return 'both' if a and c else 'colibri' if c else 'ollama' if a else 'none'
+
+
+# ------------------------------------------------------------------ install the engine
+
+def safe_members(tf):
+    """The archive's members, or why it isn't safe: no absolute paths, nothing climbing out, no links out, no devices."""
+    out = []
+    for m in tf.getmembers():
+        n = m.name
+        if n.startswith('/') or '..' in n.split('/'):
+            raise Fail('Colibri\'s archive has a path outside its folder (%s)' % n[:80])
+        if not (m.isfile() or m.isdir() or m.issym()):
+            raise Fail('Colibri\'s archive has a special file (%s)' % n[:80])
+        if m.issym():
+            t = os.path.normpath(os.path.join(os.path.dirname(n), m.linkname))
+            if m.linkname.startswith('/') or t.startswith('..'):
+                raise Fail('Colibri\'s archive has a link outside its folder (%s)' % n[:80])
+        out.append(m)
+    return out
+
+
+def install_run():
+    """The install itself (in its own unit): the pinned archive, both checksums, unpacked beside the old one, swapped.
+    Anything wrong: nothing changes and you're told why."""
+    state_set(install={'running': True, 'progress': 0, 'error': '', 'started': int(time.time())})
+    work = os.path.join(DATA, '.download')
+    new = os.path.join(DATA, '.engine.new')
+    try:
+        if os.uname().machine not in ('x86_64', 'amd64'):
+            raise Fail('Colibri\'s release is for x86-64 PCs')
+        os.makedirs(DATA, exist_ok=True)
+        if free_bytes(DATA) < 4 * ARCHIVE_MAX:
+            raise Fail('not enough free space in your Home for Colibri (about 256 MB)')
+        sums = sums_lookup(http_get(COLIBRI_SUMS).decode('utf-8', 'replace'), COLIBRI_ASSET)
+        if sums != COLIBRI_SHA256:
+            raise Fail('Colibri\'s published checksum isn\'t the one this Hearth pins: not installing it')
+        for p in (work, new):
+            shutil.rmtree(p, ignore_errors=True)
+        os.makedirs(work, 0o700)
+        f = os.path.join(work, COLIBRI_ASSET)
+        got = download(COLIBRI_URL, f, ARCHIVE_MAX, lambda g, t: state_set(install={'running': True, 'progress': int(g * 90 / t), 'error': '',
+                                                                                       'started': int(time.time())}))
+        if got != COLIBRI_SHA256:
+            raise Fail('the download doesn\'t match Colibri\'s checksum: not installed')
+        os.makedirs(new, 0o755)
+        with tarfile.open(f, 'r:gz') as tf:
+            members = safe_members(tf)
+            try:
+                tf.extractall(new, members=members, filter='data')
+            except TypeError:          # Python without extraction filters: the members were checked above
+                tf.extractall(new, members=members)
+        for exe in ('coli', 'colibri'):
+            if not os.path.isfile(os.path.join(new, exe)):
+                raise Fail('Colibri\'s archive doesn\'t have %s where it should be' % exe)
+        for name in os.listdir(new):
+            p = os.path.join(new, name)
+            if os.path.isfile(p) and '.' not in name:
+                os.chmod(p, 0o755)
+        old = os.path.join(DATA, '.engine.old')
+        shutil.rmtree(old, ignore_errors=True)
+        if os.path.isdir(ENGINE):
+            os.rename(ENGINE, old)
+        os.rename(new, ENGINE)
+        shutil.rmtree(old, ignore_errors=True)
+        state_set(install={'running': False, 'progress': 100, 'error': '', 'version': COLIBRI_TAG, 'sha256': got, 'at': int(time.time())})
+        eng.refresh_listing()
+        if unit_active(UNIT):
+            cmd(['systemctl', '--user', 'restart', UNIT], 30)
+        return {'installed': True, 'version': COLIBRI_TAG}
+    except (Fail, OSError, tarfile.TarError) as e:
+        state_set(install={'running': False, 'progress': 0, 'error': str(e)[:240]})
+        raise Fail(str(e))
+    finally:
+        for p in (work, new):
+            shutil.rmtree(p, ignore_errors=True)
+
+
+def start_unit(name, args):
+    code, out = cmd(['systemd-run', '--user', '--unit=%s' % name, '--collect', '--property=Nice=10',
+                     '--property=IOSchedulingClass=idle', '--property=RuntimeMaxSec=48h',
+                     sys.executable or 'python3', os.path.realpath(__file__)] + args, 30)
+    if code != 0:
+        raise Fail('Couldn\'t start it: %s' % out.strip()[-200:])
+
+
+def install():
+    st = state().get('install') or {}
+    if st.get('running') and time.time() - (st.get('started') or 0) < 3600:
+        return {'started': False, 'note': 'already installing'}
+    state_set(install={'running': True, 'progress': 0, 'error': '', 'started': int(time.time())})
+    try:
+        start_unit('hearth-colibri-install-%d' % int(time.time()), ['install-run'])
+    except Fail as e:
+        state_set(install={'running': False, 'progress': 0, 'error': str(e)})
+        raise
+    return {'started': True}
+
+
+def remove():
+    cmd(['systemctl', '--user', 'disable', TIMER], 30)
+    cmd(['systemctl', '--user', 'stop', UNIT], 60)
+    if os.path.isdir(ENGINE) and os.path.realpath(ENGINE).startswith(os.path.realpath(DATA) + os.sep):
+        shutil.rmtree(ENGINE)
+    state_set(install=None)
+    return {'removed': True, 'modelsKept': True}
+
+
+# ------------------------------------------------------------------ models
+
+def catalog_row(mid):
+    code, out = coli(['setup', '--list', '--all', '--json', '--dir', eng.models_dir()], 120)
+    rows = last_json(out) if code == 0 else None
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict) and r.get('id') == mid:
+            return r
+    raise Fail('%s isn\'t in Colibri\'s catalog' % mid)
+
+
+def download_start(mid):
+    """One model, only when you ask: free space checked first; Colibri's setup downloads it (resumable, checked)."""
+    if not ID_RE.fullmatch(mid or ''):
+        raise Fail('not a Colibri model id')
+    if not installed():
+        raise Fail('Install Colibri first')
+    dl = state().get('download') or {}
+    if dl.get('running') and unit_active(dl.get('unit') or DL_UNIT):
+        raise Fail('Already downloading %s: wait for it or cancel it' % dl.get('id'))
+    extra = next((e for e in extra_models() if e['id'] == mid), None)
+    row = {'download_gb': extra['downloadGb'], 'name': extra['name']} if extra else catalog_row(mid)
+    models = eng.models_dir()
+    target = os.path.join(models, mid)
+    present = dir_bytes(target) if os.path.isdir(target) else 0
+    if extra:
+        for f in extra['source']['files']:
+            p = os.path.join(models, 'gguf', mid, os.path.basename(f))
+            present += os.path.getsize(p) if os.path.isfile(p) else os.path.getsize(p + '.part') if os.path.isfile(p + '.part') else 0
+    need = disk_needed_gb(float(row.get('download_gb') or 0)) * GB - present
+    free = free_bytes(models)
+    if need > free:
+        raise Fail('Not enough disk space: %s needs %s free in %s, and %s is free. Pick another drive for your models '
+                   'or make room' % (row.get('name') or mid, gb(need / GB), models, gb(free / GB)))
+    unit = '%s-%d' % (DL_UNIT, int(time.time()))
+    state_set(download={'id': mid, 'name': str(row.get('name') or mid)[:80], 'running': True, 'unit': unit,
+                        'started': int(time.time()), 'error': '', 'dir': target})
+    try:
+        start_unit(unit, ['download-run', mid])
+    except Fail as e:
+        state_set(download={'id': mid, 'running': False, 'error': str(e)})
+        raise
+    return {'started': True, 'id': mid, 'needGb': round(need / GB, 1), 'freeGb': round(free / GB, 1)}
+
+
+def gguf_run(e, models):
+    """An uncensored build: its GGUF file(s) from Hugging Face (https, resumed; each file's size and SHA-256 as Hugging
+    Face lists them checked, a wrong one deleted), then `coli import` of the first part writes the model folder beside
+    them (the engine reads the GGUF in place)."""
+    src = e['source']
+    listing = hf_json('https://huggingface.co/api/models/%s/tree/%s?recursive=true' % (src['repo'], src.get('revision') or 'main'))
+    listing = {f.get('path'): f for f in listing if isinstance(f, dict)} if isinstance(listing, list) else {}
+    gdir = os.path.join(models, 'gguf', e['id'])
+    os.makedirs(gdir, exist_ok=True)
+    total = sum(src['bytes'])
+    before = 0
+    dests = []
+    for f, want in zip(src['files'], src['bytes']):
+        info = listing.get(f)
+        if not info:
+            raise Fail('%s isn\'t in %s any more' % (f, src['repo']))
+        size = int(info.get('size') or 0)
+        sha = str(((info.get('lfs') or {}).get('oid') or '')).lower()
+        if size != want:
+            raise Fail('%s on Hugging Face isn\'t the size Hearth expects (%s, not %s): not downloading it' % (f, gb(size / GB), gb(want / GB)))
+        dest = os.path.join(gdir, os.path.basename(f))
+        dests.append(dest)
+        if not os.path.isfile(dest):
+            def prog(got, _t, rate, base=before):
+                d = dict(state().get('download') or {})
+                d.update({'done': base + got, 'total': total, 'rate': rate, 'pct': round(100.0 * (base + got) / total, 1), 'phase': 'download'})
+                state_set(download=d)
+            url = 'https://huggingface.co/%s/resolve/%s/%s' % (src['repo'], src.get('revision') or 'main', urllib.parse.quote(f))
+            got = hf_download(url, dest, size, prog)
+            if re.fullmatch(r'[0-9a-f]{64}', sha) and got != sha:
+                os.remove(dest)
+                raise Fail('%s doesn\'t match the SHA-256 Hugging Face publishes for it: deleted, not used' % os.path.basename(f))
+        before += want
+    out_dir = os.path.join(models, e['id'])
+    d = dict(state().get('download') or {})
+    d['phase'] = 'import'
+    state_set(download=d)
+    code, out = coli(['import', dests[0], '--out', out_dir], 3600)
+    if code != 0 or not os.path.isfile(os.path.join(out_dir, 'config.json')):
+        raise Fail('coli import didn\'t take it: %s' % ((out or '').strip().splitlines() or ['no answer'])[-1][:200])
+    env = {'COLI_VULKAN': '1'} if gpu() else {}
+    return {'dir': out_dir, 'backend': 'vulkan' if env else 'cpu', 'env': env}
+
+
+def download_run(mid):
+    """In its own unit: Colibri's own setup for this one model (or, for an uncensored build, its GGUF and coli import),
+    not started afterwards (Hearth starts it)."""
+    models = eng.models_dir()
+    os.makedirs(models, exist_ok=True)
+    extra = next((e for e in extra_models() if e['id'] == mid), None)
+    if extra:
+        try:
+            r = gguf_run(extra, models)
+        except (Fail, OSError) as ex:
+            dl = dict(state().get('download') or {})
+            dl.update({'running': False, 'error': str(ex)[:240]})
+            state_set(download=dl)
+            raise Fail(str(ex))
+        models_st = dict(state().get('models') or {})
+        models_st[mid] = {'dir': r['dir'], 'at': int(time.time()), 'backend': r['backend'], 'env': r['env'], 'gguf': mid}
+        dl = dict(state().get('download') or {})
+        dl.update({'running': False, 'error': '', 'done': True})
+        state_set(models=models_st, download=dl)
+        return {'downloaded': mid, 'dir': r['dir']}
+    code, out = coli(['setup', '--model', mid, '--dir', models, '--backend', 'auto', '--no-start', '--yes', '--no-browser',
+                      '--json'], 48 * 3600)
+    dl = dict(state().get('download') or {})
+    res = last_json(out)
+    if code != 0 or not isinstance(res, dict):
+        lines = [l.strip() for l in (out or '').splitlines() if l.strip()]
+        msg = next((l for l in lines if l.startswith(('setup stopped', 'download stopped'))), lines[-1] if lines else 'it stopped')[:240]
+        dl.update({'running': False, 'error': msg})
+        state_set(download=dl)
+        raise Fail(msg)
+    conf = res.get('config') if isinstance(res.get('config'), dict) else {}
+    mdir = conf.get('model_dir') or os.path.join(models, mid)
+    models_st = dict(state().get('models') or {})
+    models_st[mid] = {'dir': mdir, 'at': int(time.time()), 'backend': str(conf.get('backend') or '')[:20],
+                      'env': safe_env(conf.get('env'))}
+    dl.update({'running': False, 'error': '', 'done': True})
+    state_set(models=models_st, download=dl)
+    return {'downloaded': mid, 'dir': mdir}
+
+
+def cancel():
+    dl = state().get('download') or {}
+    if dl.get('unit'):
+        cmd(['systemctl', '--user', 'stop', dl['unit']], 60)
+    dl.update({'running': False, 'error': 'cancelled (what was downloaded stays: download again to continue)'})
+    state_set(download=dl)
+    return {'cancelled': True}
+
+
+def adopt(mid):
+    """A model another app downloaded with Colibri's own setup (Hearth AI / Ithil's "Install & use" runs
+    `coli setup --model ID --no-start`): found in Hearth's setup folder or Colibri's own, or in a models folder, and
+    noted as downloaded so `use` can serve it. Only a folder named after the model with Colibri's config.json in it."""
+    if not ID_RE.fullmatch(mid or ''):
+        return None
+    homes = [SETUP_HOME, os.path.join(DATA_HOME, 'colibri')]
+    for h in homes:
+        cfg = sio.load_json(os.path.join(h, 'setup.json'), {}, repair=False) if os.path.exists(os.path.join(h, 'setup.json')) else {}
+        if isinstance(cfg, dict) and (cfg.get('model') or {}).get('id') == mid and cfg.get('status') == 'ready':
+            d = cfg.get('model_dir') or ''
+            if os.path.isfile(os.path.join(d, 'config.json')):
+                return d, cfg
+    for root in (eng.models_dir(), os.path.join(HOME, 'colibri-models')):
+        d = os.path.join(root, mid)
+        man = sio.load_json(os.path.join(d, '.colibri-download.json'), {}, repair=False) \
+            if os.path.isfile(os.path.join(d, '.colibri-download.json')) else {}
+        if os.path.isfile(os.path.join(d, 'config.json')) and isinstance(man, dict) and man.get('complete') is True:
+            return d, {}      # Colibri's own download manifest says every file is there
+    return None
+
+
+def use(mid, folder=''):
+    """The model Colibri serves. FOLDER: a model folder another app made (`coli import --out FOLDER`, or coli setup's),
+    under your Home or a drive you can write to, with Colibri's config.json in it."""
+    if folder:
+        f = os.path.realpath(folder)
+        if not ID_RE.fullmatch(mid or '') or not os.path.isfile(os.path.join(f, 'config.json')) or \
+                not (os.path.isfile(os.path.join(f, 'gguf.json')) or os.path.isfile(os.path.join(f, '.colibri-download.json'))):
+            raise Fail('That folder isn\'t a Colibri model (no config.json with gguf.json or Colibri\'s download record)')
+        models_st = dict(state().get('models') or {})
+        models_st[mid] = {'dir': f, 'at': int(time.time()), 'backend': 'vulkan' if gpu() else 'cpu', 'adopted': True,
+                          'env': {'COLI_VULKAN': '1'} if gpu() else {}}
+        state_set(models=models_st)
+    if mid not in downloaded():
+        found = adopt(mid)
+        if not found:
+            raise Fail('Download it first')
+        d, cfg = found
+        models_st = dict(state().get('models') or {})
+        models_st[mid] = {'dir': d, 'at': int(time.time()), 'backend': str(cfg.get('backend') or '')[:20], 'adopted': True,
+                          'env': safe_env(cfg.get('env'))}
+        state_set(models=models_st)
+    eng.set_key('colibriModel', mid)
+    if unit_active(UNIT):
+        cmd(['systemctl', '--user', 'restart', UNIT], 30)
+    return {'model': mid}
+
+
+def remove_model(mid):
+    rec = downloaded().get(mid)
+    if not rec:
+        raise Fail('That model isn\'t downloaded')
+    d = os.path.realpath(rec['dir'])
+    if os.path.basename(d) != mid or d in ('/', os.path.realpath(HOME)):
+        raise Fail('That folder doesn\'t look like a Colibri model')
+    if eng.load()['colibri']['model'] == mid and unit_active(UNIT):
+        cmd(['systemctl', '--user', 'stop', UNIT], 60)
+    shutil.rmtree(d)
+    if rec.get('gguf') == mid:
+        g = os.path.join(os.path.dirname(d), 'gguf', mid)
+        if os.path.isdir(g) and not os.path.islink(g):
+            shutil.rmtree(g)
+    models_st = dict(state().get('models') or {})
+    models_st.pop(mid, None)
+    state_set(models=models_st)
+    return {'removed': mid}
+
+
+def folders():
+    """Your Home and every mounted drive you can write to, with free space (where models could go)."""
+    out = [{'path': os.path.join(HOME, 'colibri-models'), 'label': 'Your Home', 'freeGb': round(free_bytes(HOME) / GB, 1)}]
+    seen = {os.stat(HOME).st_dev} if os.path.isdir(HOME) else set()
+    user = os.environ.get('USER') or ''
+    for base in ('/run/media/' + user, '/media/' + user, '/mnt', '/srv'):
+        for name in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+            p = os.path.join(base, name)
+            try:
+                if not os.path.ismount(p) or not os.access(p, os.W_OK) or os.stat(p).st_dev in seen:
+                    continue
+                seen.add(os.stat(p).st_dev)
+            except OSError:
+                continue
+            out.append({'path': os.path.join(p, 'colibri-models'), 'label': name, 'freeGb': round(free_bytes(p) / GB, 1)})
+    return {'folders': out, 'current': eng.models_dir()}
+
+
+# ------------------------------------------------------------------ settings (only you change them)
+
+def home_server(args):
+    """Settings › Home server's own switches (home-server.json, one source of truth: on, pause)."""
+    code, out = cmd([sys.executable or 'python3', os.path.join(HERE, 'hearth-home-server')] + args, 120)
+    line = (out.strip().splitlines() or [''])[-1]
+    if code != 0 or line.startswith('error: '):
+        raise Fail(line[7:] if line.startswith('error: ') else line or 'that didn\'t work')
+    try:
+        return json.loads(line)
+    except ValueError:
+        return {}
+
+
+def set_key(key, value):
+    if key == 'engine':
+        if value not in ('ollama', 'colibri', 'both'):
+            raise Fail('ollama, colibri or both')
+        if value in ('colibri', 'both') and not installed():
+            raise Fail('Install Colibri first')
+        res = {}
+        # The engine you add first, the one you leave second: never a moment with neither when you asked for one.
+        want_ai, want_co = value in ('ollama', 'both'), value in ('colibri', 'both')
+        if want_co:
+            res['colibri'] = home_server(['set', 'colibriOn', 'on'])
+        if want_ai:
+            res['ollama'] = home_server(['set', 'aiOn', 'on'])
+        if not want_ai:
+            res['ollama'] = home_server(['set', 'aiOn', 'off'])
+        if not want_co:
+            res['colibri'] = home_server(['set', 'colibriOn', 'off'])
+        eng.refresh_listing()
+        if eng.load()['default'] == 'colibri' and not want_co:
+            eng.set_key('default', 'ollama')
+            res['defaultBack'] = 'Hearth\'s AI uses Ollama again (Colibri is off now)'
+        return res
+    if key == 'default':
+        if value == 'colibri' and not eng.home_server_on().get('colibri'):
+            raise Fail('Turn Colibri on first')
+        return eng.set_key('default', value)
+    if key == 'modelsDir':
+        if not value.startswith('/'):
+            raise Fail('a folder on this PC')
+        return eng.set_key('colibriModelsDir', value)
+    if key == 'pause':
+        return home_server(['set', 'colibriPause', value])
+    raise Fail('engine, default, modelsDir or pause')
+
+
+# ------------------------------------------------------------------ the service
+
+def ts_ip4():
+    if not shutil.which('tailscale'):
+        return ''
+    code, out = cmd(['tailscale', 'ip', '-4'], 8)
+    ip = out.strip().splitlines()[0].strip() if code == 0 and out.strip() else ''
+    return ip if re.fullmatch(r'100\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip) else ''
+
+
+def from_tailscale(ip):
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(a in n for n in TS_NETS)
+
+
+def forward(listen_ip, port, stop):
+    """This PC's Tailscale address → Colibri on 127.0.0.1 (coli serve listens on one address). Only Tailscale's own
+    addresses get an answer; Hearth's firewall rule lets only Tailscale reach the port too."""
+    try:
+        srv = socket.create_server((listen_ip, port), reuse_port=False)
+    except OSError as e:
+        print('hearth-colibri: not on Tailscale (%s)' % e, flush=True)
+        return
+    srv.settimeout(1.0)
+
+    def pump(a, b):
+        try:
+            while True:
+                data = a.recv(1 << 16)
+                if not data:
+                    break
+                b.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for s in (a, b):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    while not stop.is_set():
+        try:
+            c, addr = srv.accept()
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        if not from_tailscale(addr[0]):
+            c.close()
+            continue
+        try:
+            up = socket.create_connection(('127.0.0.1', port), timeout=5)
+            up.settimeout(None)
+        except OSError:
+            c.close()
+            continue
+        threading.Thread(target=pump, args=(c, up), daemon=True).start()
+        threading.Thread(target=pump, args=(up, c), daemon=True).start()
+    srv.close()
+
+
+def run_argv(mid, rec, allowed=()):
+    argv = [sys.executable or 'python3', coli_path(), 'serve', '--model', rec['dir'], '--host', '127.0.0.1',
+            '--port', str(COLIBRI_PORT), '--model-id', mid, '--auto-tier']
+    for h in allowed:
+        argv += ['--allowed-host', h]
+    env = safe_env(rec.get('env'))
+    if rec.get('backend') == 'vulkan':
+        env.setdefault('COLI_VULKAN', '1')
+    return argv, env
+
+
+def run():
+    """hearth-colibri.service. No model yet, or not downloaded: it ends quietly (exit 0, so it isn't restarted)."""
+    cfg = eng.load()
+    mid = cfg['colibri']['model']
+    rec = downloaded().get(mid)
+    if not installed():
+        print('hearth-colibri: Colibri isn\'t installed', flush=True)
+        return 0
+    if not mid or not rec:
+        print('hearth-colibri: no model picked and downloaded yet (Settings › Home server › AI engine)', flush=True)
+        return 0
+    ip = ts_ip4()
+    host = socket.gethostname().split('.')[0]
+    argv, env = run_argv(mid, rec, [ip, host] if ip else [])
+    try:
+        state_set(listen=['127.0.0.1'] + ([ip] if ip else []))
+    except OSError:
+        pass
+    child = subprocess.Popen(argv, env=coli_env(env), cwd=ENGINE, stdin=subprocess.DEVNULL)
+    stop = threading.Event()
+
+    def end(signum, _frame):
+        stop.set()
+        try:
+            child.send_signal(signal.SIGTERM)
+        except OSError:
+            pass
+    signal.signal(signal.SIGTERM, end)
+    signal.signal(signal.SIGINT, end)
+    if ip:
+        threading.Thread(target=forward, args=(ip, COLIBRI_PORT, stop), daemon=True).start()
+    code = child.wait()
+    stop.set()
+    return code
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    try:
+        a = argv
+        if a == ['status']:
+            res = status()
+        elif a == ['catalog']:
+            res = catalog()
+        elif len(a) == 2 and a[0] == 'plan':
+            res = plan(a[1])
+        elif a == ['install']:
+            res = install()
+        elif a == ['install-run']:
+            res = install_run()
+        elif len(a) == 2 and a[0] == 'download':
+            res = download_start(a[1])
+        elif len(a) == 2 and a[0] == 'download-run':
+            res = download_run(a[1])
+        elif a == ['cancel']:
+            res = cancel()
+        elif len(a) in (2, 3) and a[0] == 'use':
+            res = use(a[1], a[2] if len(a) == 3 else '')
+        elif len(a) == 3 and a[0] == 'set':
+            res = set_key(a[1], a[2])
+        elif len(a) == 3 and a[0] == 'remove-model' and a[2] == 'sure':
+            res = remove_model(a[1])
+        elif a == ['remove']:
+            res = remove()
+        elif a == ['folders']:
+            res = folders()
+        elif a == ['run']:
+            return run()
+        else:
+            raise Fail('status | catalog | plan ID | install | download ID | cancel | use ID | set KEY VALUE | '
+                       'remove-model ID sure | remove | folders | run')
+        print(json.dumps(res))
+        return 0
+    except (Fail, eng.Fail, OSError, ValueError) as e:
+        print('error: %s' % e, flush=True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

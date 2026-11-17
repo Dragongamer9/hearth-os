@@ -3,7 +3,10 @@
 // on-screen keyboard (Hearth's shared one, docs/OSK.md: ~/.config/nimbus/osk.json, the same file as Game Mode's
 // Settings › Keyboard).
 // Saved by hearth-system to ~/.config/labwc/environment (XKB_DEFAULT_LAYOUT etc.) and ~/.config/nimbus/keyboard.json;
-// labwc reloads them (labwc --reconfigure).
+// labwc reloads them (labwc --reconfigure). With Mantel on KWin the same file goes into KWin's kxkbrc [Layout] and
+// kcminputrc [Keyboard] (hearth-kwin-settings keyboard-apply, also at every KWin start), and three more rows show:
+// Num Lock at start, the compose key, and one layout for everything or per app / per window (KWin only; labwc has
+// none of them, so they're hidden there).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -21,6 +24,11 @@ SetPage {
     property string switchKey: ""
     property int delay: 600
     property int rate: 25
+    readonly property bool kwin: !!(st && st.kwin)
+    // KWin only; null = never picked (not sent, so KWin's own counts).
+    property var numlock: null
+    property var compose: null
+    property var switchMode: null
     property string message: ""
     property bool messageBad: false
     readonly property var switchChoices: [
@@ -39,16 +47,34 @@ SetPage {
             page.switchKey = r.switch || "";
             page.delay = r.delay || 600;
             page.rate = r.rate || 25;
+            page.numlock = r.numlock === undefined ? null : r.numlock;
+            page.compose = r.compose === undefined ? null : r.compose;
+            page.switchMode = r.switchMode === undefined ? null : r.switchMode;
         });
     }
     Component.onCompleted: {
         load();
         job.run(["keyboard-layouts"], r => page.all = r.layouts || []);
-        job.run(["shortcuts"], r => page.shortcuts = r.shortcuts || []);
+        job.run(["shortcuts"], r => { page.shortcuts = r.shortcuts || []; if (SettingsNav.pageAnchor === "shortcuts") toShortcuts.restart(); });
+        kdeJob.run(["keys", "changed"], r => {                               // reads only
+            page.kdeKeys = r.count || 0;
+            // "keyboard:kde-keys" (the bridge's notice points here): scrolled to the button once it's there.
+            if (SettingsNav.pageAnchor === "kde-keys") { SettingsNav.pageAnchor = ""; if (page.kdeKeys > 0) kdeGo.restart(); }
+        });
+    }
+    // "keyboard:shortcuts": Settings opened at the shortcuts. Under KWin (Mantel on KWin) they're Hearth's KWin keys:
+    // the Overview, Present windows, Desktop grid, force closing... which come last, so it goes to the end of the list.
+    Timer {
+        id: toShortcuts
+        interval: 400
+        onTriggered: { SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, page.contentHeight - page.height); }
     }
     SetJob { id: job; helper: "hearth-system" }
     function apply() {
         const req = { layouts: layouts.map(l => ({ layout: l.layout, variant: l.variant })), switch: switchKey, delay: delay, rate: rate };
+        if (numlock !== null) req.numlock = numlock;
+        if (compose !== null) req.compose = compose;
+        if (switchMode !== null) req.switchMode = switchMode;
         job.run(["keyboard-set"], r => page.say(r.reloaded ? "Saved and in use." : "Saved. It's used from the next time you sign in to Desktop Mode."),
             e => page.say(e, true), JSON.stringify(req), "save");
     }
@@ -122,6 +148,21 @@ SetPage {
         current: page.switchKey
         onChosen: v => { page.switchKey = v; page.apply(); }
     }
+    // 1.14: Alt+Space is also the search bar's (SearchBar.qml); the layout switch wins, the bar keeps Alt+F2.
+    Text {
+        visible: page.layouts.length > 1 && page.switchKey === "grp:alt_space_toggle"
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "Alt+Space switches layouts now, so the search bar opens with Alt+F2."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+    SetChoice {
+        visible: page.kwin && page.layouts.length > 1
+        icon: "kbd"
+        title: "Remember the layout"; sub: "One layout for everything, or each app or window keeps the one you switched it to"
+        options: [{ value: "Global", label: "Everywhere" }, { value: "WinClass", label: "Per app" }, { value: "Window", label: "Per window" }]
+        current: page.switchMode === null ? "Global" : page.switchMode
+        onChosen: v => { page.switchMode = v; page.apply(); }
+    }
 
     SetHeader { text: "Typing" }
     SetSlider {
@@ -135,6 +176,23 @@ SetPage {
         value: (page.rate - 5) / 55
         valueText: page.rate + " per second"
         onMoved: v => { page.rate = Math.round(5 + v * 55); later.restart(); }
+    }
+    SetChoice {
+        visible: page.kwin
+        icon: "kbd"
+        title: "Num Lock when Desktop Mode starts"; sub: "Used from the next time Desktop Mode starts"
+        options: [{ value: "on", label: "On" }, { value: "off", label: "Off" }, { value: "keep", label: "As it was" }]
+        current: page.numlock === null ? "keep" : page.numlock
+        onChosen: v => { page.numlock = v; page.apply(); }
+    }
+    SetChoice {
+        visible: page.kwin
+        icon: "kbd"
+        title: "Compose key"; sub: "Press it, then two keys, to type a letter that isn't on the keyboard: Compose, e, ' types é"
+        options: [{ value: "", label: "None" }, { value: "compose:ralt", label: "Right Alt" }, { value: "compose:rwin", label: "Right Super" },
+            { value: "compose:menu", label: "Menu" }, { value: "compose:rctrl", label: "Right Ctrl" }, { value: "compose:caps", label: "Caps Lock" }]
+        current: page.compose === null ? "" : page.compose
+        onChosen: v => { page.compose = v; page.apply(); }
     }
     SetField { placeholder: "Try typing here" }
     Text {
@@ -287,7 +345,7 @@ SetPage {
         SetRow { title: "Clear learned words"; sub: "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"; danger: true; chevron: false; onActivated: { oskWords.setText("{}"); page.say("Learned words cleared."); } }
     }
 
-    SetHeader { text: "Keyboard shortcuts"; visible: page.shortcuts.length > 0 }
+    SetHeader { text: "Keyboard shortcuts"; visible: page.shortcuts.length > 0 || page.kdeKeys > 0 }
     Repeater {
         model: page.shortcuts
         delegate: SetRow {
@@ -296,5 +354,43 @@ SetPage {
             title: modelData.keys
             sub: modelData.action
         }
+    }
+    // KDE's own shortcuts that hearth-kwin-bridge changed once so Mantel's keys work on KWin (its fix_kde_keys; the
+    // notice it gives points here). Put back with one button, not only from a terminal (red flag 9: anything Hearth
+    // changes by itself is reversible from Settings). Reading what changed writes nothing.
+    property int kdeKeys: 0
+    property string kdeMsg: ""
+    property bool kdeMsgBad: false
+    SetJob { id: kdeJob; helper: "hearth-kwin-bridge" }
+    Timer {
+        id: kdeGo
+        interval: 400
+        onTriggered: {
+            const y = kdeRow.mapToItem(page.contentItem, 0, 0).y;
+            page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - page.height / 2));
+            kdeRow.forceActiveFocus();
+        }
+    }
+    SetRow {
+        id: kdeRow
+        visible: page.kdeKeys > 0
+        icon: "undo"
+        title: "Bring back KDE's own shortcuts"
+        sub: (kdeJob.busy ? "Putting them back… " : "")
+            + "Hearth moved " + page.kdeKeys + " of KDE's shortcuts (Super+arrows, Super+D, Super+G, Print…) so Mantel's own work on KWin. This gives them back to KDE; Mantel's shortcuts on those keys then stop working."
+        onActivated: kdeJob.run(["keys", "restore", "--json"], r => {
+            page.kdeKeys = r.count || 0;
+            const n = (r.back || []).length;
+            page.kdeMsgBad = n === 0 || page.kdeKeys > 0;
+            page.kdeMsg = n === 0 ? "None could be put back right now. Try again in Desktop Mode on KWin."
+                : page.kdeKeys > 0 ? n + " put back; " + page.kdeKeys + " couldn't be yet. Try again in Desktop Mode on KWin."
+                : "KDE's shortcuts are back. Hearth won't change them again.";
+        }, e => { page.kdeMsg = e; page.kdeMsgBad = true; }, "", "kde-keys")
+    }
+    Text {
+        visible: page.kdeMsg !== ""
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: page.kdeMsg; color: page.kdeMsgBad ? Theme.danger : Theme.flame
+        font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 }

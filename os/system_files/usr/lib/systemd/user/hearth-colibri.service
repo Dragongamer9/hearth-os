@@ -1,0 +1,21 @@
+# Settings › Home server › AI engine (docs/SERVER-MODE.md, "Colibri"): Colibri, the second AI engine next to Ollama, as
+# you, on this PC's graphics card, RAM and NVMe drive. Colibri isn't in the Hearth image: Settings installs its pinned
+# release only when you ask (hearth-colibri install: SHA-256 checked) into ~/.local/share/hearth/colibri/engine, and
+# downloads only the model you pick. coli serve listens on 127.0.0.1:11440 (and hearth-colibri passes on this PC's
+# Tailscale address only, whose port is in Hearth's Tailscale-only firewall rule while it's on). No install section:
+# started only by its timer (a minute after you sign in, enabled only while it's on) or by Settings; Light mode stops
+# it while you play. Never part of starting the PC, the session, Server mode or Game Mode: with no engine it doesn't
+# start; with no model picked it ends at once; if it fails it's left stopped and nothing else is touched.
+[Unit]
+Description=Hearth home server: AI engine (Colibri)
+ConditionPathExists=%h/.local/share/hearth/colibri/engine/coli
+After=network.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-colibri run
+Restart=on-failure
+RestartSec=30
+Nice=5
+TimeoutStopSec=30

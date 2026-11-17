@@ -7,7 +7,8 @@
 //   desktop (moved when they're on the same drive, else copied; on a folder icon, into that folder).
 //   Right-click (X, or press and hold) for Open, Open with, Cut, Copy, Rename, Move to Trash, Properties.
 //   Keyboard: arrows, Enter opens, F2 renames, Delete moves to the Trash (Shift+Delete deletes for good, after
-//   asking), Ctrl+A / C / X / V, F5 looks again, the Menu key opens the menu.
+//   asking), Ctrl+A / C / X / V, F5 looks again, the Menu key opens the menu. Typing letters opens the search bar
+//   with them (SearchBar.qml; Settings › Search › Type on the desktop to search).
 //   Background: right-click for New folder, New text file and your Templates, Paste, Sort by, Line up icons,
 //   wallpaper, display settings, Files, and showing or hiding the icons.
 // hearth-desk lists the folder and keeps the places (~/.config/nimbus/desk.json) and the clipboard (wl-clipboard,
@@ -18,6 +19,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
+import "search-bar.js" as SB
 
 PanelWindow {
     id: root
@@ -348,10 +350,20 @@ PanelWindow {
         }
         list.push({ label: "Show desktop icons", group: "View", checked: DeskState.desktopIcons, run: () => DeskState.setDesktopIcons(!DeskState.desktopIcons) });
         list.push({ separator: true });
+        // ---- 1.14: desktop widgets and activities (Widgets.qml, Activities.qml)
+        const wg = SettingsNav.widgets;
+        if (wg) {
+            list.push({ label: "Add widgets…", short: "Widgets", icon: "plus", group: "Widgets", run: () => wg.openGallery(screen ? screen.name : "") });
+            list.push({ label: "Arrange widgets", icon: "grid", group: "Widgets", run: () => wg.startArrange(screen ? screen.name : "") });
+            list.push({ label: "Activities…", icon: "desktops", group: "Widgets", run: () => wg.openActivities() });
+        }
+        // ---- end widgets
         list.push({ label: "Change wallpaper", short: "Wallpaper", icon: "palette", quick: true, run: () => { if (settingsApp) settingsApp.open("appearance"); } });
         list.push({ label: "Display settings", icon: "display", group: "Settings", run: () => { if (settingsApp) settingsApp.open("display"); } });
         list.push({ label: "Open in Files", icon: "folder", group: "Open", run: () => { if (filesApp) filesApp.open(dir || home); } });
         list.push({ label: "Open a terminal here", icon: "kbd", group: "Open", run: () => Quickshell.execDetached(["sh", "-c", "cd \"$1\" && exec sh \"$2\" terminal", "sh", dir || home, Quickshell.env("NIMBUS_SHARE") + "/desktop/open.sh"]) });
+        // KWin: labwc's own desktop menu (menu.xml: Apps, Terminal, Files, Game Mode, Reconfigure, Log out) too.
+        if (WinList.kwin) for (const it of DesktopMenu.items()) list.push(it);
         menu.popup(screen, x, y, { title: "Desktop" }, list);
         // Your templates, for next time the menu opens (cheap: one small folder).
         DeskState.call(["templates"], (r, err) => { if (!err && r) templates = r.templates || []; });
@@ -405,7 +417,11 @@ PanelWindow {
             case Qt.Key_F5: root.refresh(); break;
             case Qt.Key_Delete: root.trash(root.targets()); break;
             case Qt.Key_Escape: root.clearPicks(); break;
-            default: return;
+            default:
+                // 1.14: type on the desktop to search: the search bar (SearchBar.qml) opens with what was typed.
+                if (SettingsNav.searchBar && SB.startsSearch(event.text, ctrl, event.modifiers & Qt.AltModifier, event.modifiers & Qt.MetaModifier)
+                    && SettingsNav.searchBar.openWith(event.text)) break;
+                return;
             }
             event.accepted = true;
         }

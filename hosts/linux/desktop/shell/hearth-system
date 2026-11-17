@@ -7,8 +7,9 @@ change as you (no root). The parts that need root go through /usr/libexec/nimbus
   hearth-system keyboard             JSON: your layouts (in order), the switch shortcut, repeat delay and rate
   hearth-system keyboard-layouts     JSON: every keyboard layout and variant the system knows
   hearth-system keyboard-set         stdin: {"layouts": [{"layout", "variant"}], "switch": "grp:...", "delay": ms,
-                                     "rate": per second}. Writes ~/.config/labwc/environment (XKB_DEFAULT_*) and
-                                     ~/.config/nimbus/keyboard.json, then asks labwc to reload
+                                     "rate": per second, and on KWin "numlock", "compose", "switchMode"}. Writes
+                                     ~/.config/labwc/environment (XKB_DEFAULT_*) and ~/.config/nimbus/keyboard.json
+                                     (merged), then asks labwc to reload, or KWin (hearth-kwin-settings keyboard-apply)
   hearth-system pointer              JSON: mouse and touchpad settings (speed, natural scrolling, tap to click...)
                                      and whether there's a touchpad
   hearth-system pointer-set          stdin: {"mouse": {...}, "touchpad": {...}} (see POINTER_KEYS). Writes
@@ -66,12 +67,16 @@ LABWC_ENV = os.path.join(CONFIG, 'labwc', 'environment')
 KEYBOARD_JSON = os.path.join(CONFIG, 'nimbus', 'keyboard.json')
 POINTER_JSON = os.path.join(CONFIG, 'nimbus', 'pointer.json')
 # Mouse and touchpad settings: name -> (kind, labwc <libinput><device> element). Speed is -1..1 (0 = normal).
+# A None element: only Mantel on KWin uses it (hearth-kwin-settings pointer-apply puts these on KWin's devices); labwc's
+# rc.xml stays as it was. Those have no default: KWin's own counts until the person picks one.
 POINTER_KEYS = {
     'mouse': {'speed': ('speed', 'pointerSpeed'), 'natural': ('bool', 'naturalScroll'),
-              'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), 'accelProfile')},
+              'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), 'accelProfile'),
+              'scrollSpeed': ('factor', None), 'middle': ('bool', None)},
     'touchpad': {'speed': ('speed', 'pointerSpeed'), 'natural': ('bool', 'naturalScroll'), 'tap': ('bool', 'tap'),
                  'dwt': ('bool', 'disableWhileTyping'), 'scroll': (('twofinger', 'edge'), 'scrollMethod'),
-                 'leftHanded': ('bool', 'leftHanded')},
+                 'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), None),
+                 'scrollSpeed': ('factor', None), 'tapDrag': ('bool', None), 'click': (('areas', 'fingers'), None)},
 }
 POINTER_DEFAULT = {'mouse': {'speed': 0.0, 'natural': False, 'leftHanded': False, 'accel': 'adaptive'},
                    'touchpad': {'speed': 0.0, 'natural': False, 'tap': True, 'dwt': True, 'scroll': 'twofinger',
@@ -84,6 +89,13 @@ VARIANT_RE = re.compile(r'^[A-Za-z0-9_-]{0,48}$')
 SWITCH_OPTIONS = ['', 'grp:alt_shift_toggle', 'grp:ctrl_shift_toggle', 'grp:win_space_toggle', 'grp:alt_space_toggle',
                   'grp:caps_toggle']
 REPEAT_DEFAULT = {'delay': 600, 'rate': 25}
+# Mantel on KWin only (hearth-kwin-settings keyboard-apply puts them in KWin's kxkbrc / kcminputrc; labwc doesn't use
+# them): Num Lock when Desktop Mode starts, the compose key, and whether the layout is one for everything or kept per
+# app or per window. Not in keyboard.json until the person picks one (then KWin's own counts).
+NUMLOCK_OPTIONS = ['keep', 'on', 'off']
+COMPOSE_OPTIONS = ['', 'compose:ralt', 'compose:rwin', 'compose:menu', 'compose:rctrl', 'compose:caps']
+SWITCH_MODES = ['Global', 'WinClass', 'Window']
+KEYBOARD_EXTRAS = {'numlock': NUMLOCK_OPTIONS, 'compose': COMPOSE_OPTIONS, 'switchMode': SWITCH_MODES}
 USERNAME_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 PRINTER_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$')
 
@@ -259,9 +271,13 @@ def keyboard_status():
     names = {(l['layout'], l['variant']): l['name'] for l in keyboard_layouts()['layouts']}
     for l in lays:
         l['name'] = names.get((l['layout'], l['variant'])) or names.get((l['layout'], '')) or l['layout']
-    return {'layouts': lays, 'switch': switch, 'switchOptions': SWITCH_OPTIONS,
-            'delay': int(saved.get('delay') or REPEAT_DEFAULT['delay']), 'rate': int(saved.get('rate') or REPEAT_DEFAULT['rate']),
-            'live': bool(os.environ.get('LABWC_PID')), 'configDir': runtime_dir() if os.path.isdir(runtime_dir()) else ''}
+    if not isinstance(saved, dict):
+        saved = {}
+    extras = {k: (saved.get(k) if saved.get(k) in opts_ else None) for k, opts_ in KEYBOARD_EXTRAS.items()}
+    return dict(extras, layouts=lays, switch=switch, switchOptions=SWITCH_OPTIONS, kwin=os.environ.get('HEARTH_WM') == 'kwin',
+            composeOptions=COMPOSE_OPTIONS,
+            delay=int(saved.get('delay') or REPEAT_DEFAULT['delay']), rate=int(saved.get('rate') or REPEAT_DEFAULT['rate']),
+            live=bool(os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin'), configDir=runtime_dir() if os.path.isdir(runtime_dir()) else '')
 
 
 def keyboard_request(req, known):
@@ -294,6 +310,17 @@ def keyboard_request(req, known):
     if not 150 <= delay <= 2000 or not 1 <= rate <= 80:
         raise Fail('the repeat delay is 150–2000 ms and the rate 1–80 per second')
     return out, switch, delay, rate
+
+
+def keyboard_extras(req):
+    """The KWin-only keys in keyboard-set's request ({} for those not in it); raises Fail on an unknown value."""
+    out = {}
+    for k, opts in KEYBOARD_EXTRAS.items():
+        if k in req and req[k] is not None:
+            if req[k] not in opts:
+                raise Fail('unknown %s: %s' % (k, req[k]))
+            out[k] = req[k]
+    return out
 
 
 def env_text(old, values):
@@ -367,6 +394,8 @@ def pointer_clean(raw):
             v = got.get(k)
             if kind == 'speed' and isinstance(v, (int, float)) and not isinstance(v, bool):
                 out[dev][k] = round(max(-1.0, min(1.0, float(v))), 2)
+            elif kind == 'factor' and isinstance(v, (int, float)) and not isinstance(v, bool):
+                out[dev][k] = round(max(0.1, min(5.0, float(v))), 2)
             elif kind == 'bool' and isinstance(v, bool):
                 out[dev][k] = v
             elif isinstance(kind, tuple) and v in kind:
@@ -402,6 +431,8 @@ def libinput_xml(settings):
     for dev in ('mouse', 'touchpad'):
         lines.append('    <device category="%s">' % LABWC_CATEGORY[dev])
         for k, (kind, tag) in POINTER_KEYS[dev].items():
+            if tag is None or k not in settings[dev]:
+                continue     # Mantel on KWin only (hearth-kwin-settings)
             v = settings[dev][k]
             text = ('%.2f' % v) if kind == 'speed' else ('yes' if v else 'no') if kind == 'bool' else v
             lines.append('      <%s>%s</%s>' % (tag, text, tag))
@@ -436,8 +467,12 @@ def pointer_set(raw):
         labwc_config()
         live = True
     reloaded = False
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
         reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    elif os.environ.get('HEARTH_WM') == 'kwin':
+        # Mantel on KWin: the same settings put on KWin's mouse and touchpad devices now.
+        code, out = run(['python3', os.path.join(HERE, 'hearth-kwin-settings'), 'pointer-apply'])
+        reloaded = live = code == 0 and '"kwin": true' in (out or '')
     return dict(settings, ok=True, reloaded=reloaded and live, hasTouchpad=has_touchpad())
 
 
@@ -478,12 +513,25 @@ def labwc_config(src=None, dest=None):
     if os.path.exists(POINTER_JSON):
         rc = rc_with_pointer(rc, pointer_saved())
     rc = rc_with_theme(rc)
+    rc = rc_with_search_key(rc, parse_env(env))
     # ---- Accessibility: the magnifier's size and steps, window titles at your text size
     if access:
         rc = access.rc_with_access(rc)
     # ---- end Accessibility
     write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
+
+
+def rc_with_search_key(text, env):
+    """rc.xml text with the search bar's Alt+Space line made "None" when Alt+Space switches keyboard layouts (Settings ›
+    Keyboard: grp:alt_space_toggle in XKB_DEFAULT_OPTIONS, only there with two or more layouts): the layout switch
+    wins, and Alt+F2 still opens the search bar (SearchBar.qml)."""
+    opts = [o.strip() for o in env.get('XKB_DEFAULT_OPTIONS', '').split(',')]
+    if 'grp:alt_space_toggle' not in opts:
+        return text
+    # "None" takes the key from labwc altogether (its own default Alt+Space window menu too), so xkb gets it.
+    return re.sub(r'<keybind key="A-space"><action name="Execute" command="[^"]*call searchbar key\'" /></keybind>',
+                  '<keybind key="A-space"><action name="None" /></keybind>', text)
 
 
 def rc_with_theme(text):
@@ -528,17 +576,27 @@ def keyboard_set(raw):
         raise Fail('expected JSON on stdin')
     known = {(l['layout'], l['variant']) for l in keyboard_layouts()['layouts']}
     lays, switch, delay, rate = keyboard_request(req, known if len(known) > 1 else None)
+    extras = keyboard_extras(req)
     old = read(LABWC_ENV)
     values = xkb_values(lays, switch, parse_env(old).get('XKB_DEFAULT_OPTIONS', ''))
-    write_atomic(LABWC_ENV, env_text(old, values))
-    write_atomic(KEYBOARD_JSON, json.dumps({'layouts': lays, 'switch': switch, 'delay': delay, 'rate': rate}, indent=2) + '\n')
+    if env_text(old, values) != old:
+        write_atomic(LABWC_ENV, env_text(old, values))
+    mine = dict({'layouts': lays, 'switch': switch, 'delay': delay, 'rate': rate}, **extras)
+    if hsio:
+        hsio.merge_json(KEYBOARD_JSON, mine)        # merged into the latest file: the other keys stay as they are
+    else:
+        write_atomic(KEYBOARD_JSON, json.dumps(mine, indent=2) + '\n')
     live = False
     if os.path.isdir(runtime_dir()):
         labwc_config()
         live = True
     reloaded = False
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
         reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    elif os.environ.get('HEARTH_WM') == 'kwin':
+        # Mantel on KWin: the same settings in KWin's kxkbrc / kcminputrc, and KWin takes them now.
+        code, out = run(['python3', os.path.join(HERE, 'hearth-kwin-settings'), 'keyboard-apply'])
+        reloaded = live = code == 0 and '"kwin": true' in (out or '')
     return {'ok': True, 'reloaded': reloaded and live, 'needsSignIn': not (reloaded and live)}
 
 
@@ -568,6 +626,7 @@ COMMAND_WORDS = [
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
     (r'call clipboard toggle', 'Clipboard history'), (r'call snap ', 'Snap layouts'), (r'call mixer ', 'Volume mixer'),
     (r'call settings', 'Open Settings'),
+    (r'call searchbar', 'Search bar: apps, Settings, files, sums, the web (like KRunner)'),
     (r'call run toggle', 'Run: open an app, folder, website or Windows command'), (r'call winx toggle', 'Quick links menu (like Windows\' Win+X)'),
     (r'call devices', 'Open Device Manager'),
     (r'call apps', 'Open Bazaar (app store)'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
@@ -652,13 +711,59 @@ def parse_keybinds(text):
         if not key or not actions:
             continue
         seen.add(key)
+        if all(a.get('name') == 'None' for a in actions):      # a key taken away (the layout switch's Alt+Space)
+            continue
         out.append({'key': key, 'keys': key_words(key), 'action': ', then '.join(action_words(a) for a in actions)})
     if kb.find('default') is not None:
-        out += [{'key': k, 'keys': key_words(k), 'action': w} for k, w in LABWC_DEFAULTS if k not in seen]
+        low = {k.lower() for k in seen}      # labwc's key names don't care about case (A-Space is A-space)
+        out += [{'key': k, 'keys': key_words(k), 'action': w} for k, w in LABWC_DEFAULTS if k.lower() not in low]
+    return out
+
+
+def kwin_shortcuts(path=None):
+    """Mantel on KWin: Hearth's keys as the KWin script registers them (desktop/kwin/windows/shortcuts.json: the same
+    as labwc's, the KWin-only ones like the Overview and force closing, and KWin's own that do the same job). Shown
+    with Hearth's default keys; a key changed in KWin's own shortcut settings is KWin's to show."""
+    path = path or os.path.normpath(os.path.join(HERE, '..', 'kwin', 'windows', 'shortcuts.json'))
+    try:
+        with open(path, encoding='utf-8') as f:
+            t = json.load(f)
+    except (OSError, ValueError):
+        return []
+
+    def words(seq):
+        parts = seq.split('+')
+        if seq.endswith('++'):
+            parts = seq[:-2].split('+') + ['+']
+        return '+'.join({'Meta': 'Super', 'Esc': 'Esc', 'Del': 'Delete'}.get(p, p) for p in parts)
+    out, seen = [], set()
+    for s in t.get('shortcuts', []) + t.get('kwinOnly', []):
+        if not s.get('keys') or s['keys'] in seen:
+            continue
+        seen.add(s['keys'])
+        out.append({'key': s['keys'], 'keys': words(s['keys']), 'action': re.sub(r' \((Super|Ctrl)[^)]*\)$', '', s.get('title', ''))})
+    # KWin's own actions that do these jobs, in plain words.
+    own = [('Alt+Tab', 'Switch windows (Hearth\'s switcher)'), ('Alt+Shift+Tab', 'Switch windows, back the other way')]
+    plain = {'Walk Through Windows Alternative': 'Switch windows', 'Walk Through Windows Alternative (Reverse)': 'Switch windows, back the other way',
+             'Window One Screen to the Left': 'Move the window to the screen on the left',
+             'Window One Screen to the Right': 'Move the window to the screen on the right',
+             'Switch One Desktop to the Left': 'Go to the desktop on the left', 'Switch One Desktop to the Right': 'Go to the desktop on the right',
+             'Window One Desktop to the Left': 'Move the window to the desktop on the left',
+             'Window One Desktop to the Right': 'Move the window to the desktop on the right',
+             'view_zoom_in': 'Zoom in', 'view_zoom_out': 'Zoom out', 'view_actual_size': 'Zoom back to normal'}
+    for s in t.get('kwinOwn', []):
+        name = re.sub(r' \((KWin|Meta)[^)]*\)$', '', s.get('kwin', ''))
+        own.append((s.get('keys') or '', plain.get(name, name)))
+    for k, what in own:
+        if k and k not in seen:
+            seen.add(k)
+            out.append({'key': k, 'keys': words(k), 'action': what})
     return out
 
 
 def shortcuts():
+    if os.environ.get('HEARTH_WM') == 'kwin':
+        return {'shortcuts': kwin_shortcuts(), 'file': 'kwin', 'wm': 'kwin'}
     path = os.path.join(runtime_dir(), 'rc.xml')
     if not os.path.exists(path):
         path = os.path.join(LABWC_DIR, 'rc.xml')
@@ -1270,7 +1375,35 @@ def users():
         u['picture'] = pic
     out.sort(key=lambda u: (not u['me'], u['player'], u['name']))
     meinfo = next((u for u in out if u['me']), None)
-    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK)}
+    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK),
+            'oemSetup': oem_pending() and oem_user() == me}
+
+
+OEM_MARK = '/var/lib/hearth/oem-setup.json'
+OEM_OWNER = 0
+
+
+def oem_pending(path=None):
+    """A pre-installed PC's first-time setup still to do (hearth-oem-account's marker): only a regular file of root's
+    (not a link) in a folder only root can write to, as hearth-admin and Hearth's core check it."""
+    import stat as st_
+    path = path or OEM_MARK
+    try:
+        st = os.lstat(path)
+        dst = os.stat(os.path.dirname(path))
+    except OSError:
+        return False
+    return (st_.S_ISREG(st.st_mode) and st.st_uid == OEM_OWNER and dst.st_uid == OEM_OWNER
+            and not dst.st_mode & (st_.S_IWGRP | st_.S_IWOTH))
+
+
+def oem_user(path=None):
+    """The stand-in account the marker names ("hearth"): the notice is only for it."""
+    try:
+        with open(path or OEM_MARK) as f:
+            return (json.load(f) or {}).get('user')
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def picture_kind(data):

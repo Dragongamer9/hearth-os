@@ -1,0 +1,1203 @@
+#!/usr/bin/python3
+"""hearth_screencast: screen sharing and screenshots for apps on KWin, Hearth's own (docs/KWIN-INPUT.md).
+
+xdg-desktop-portal's ScreenCast (browsers' and Discord's "share your screen", OBS) and Screenshot backends,
+served by hearth-portal (D-Bus name org.freedesktop.impl.portal.desktop.hearth, next to Hearth Files' FileChooser):
+
+  * The app asks to share → Hearth's picker (cast-picker.qml, drawn like the rest of Mantel: your screens and your
+    windows, each with a picture of what it shows now) → the chosen screen or window comes from KWin as a PipeWire
+    stream (zkde_screencast_unstable_v1, through hearth-kwin-cast) → xdg-desktop-portal hands the app that stream.
+    The stream ends when the app stops sharing (the portal closes the session) or the app goes away.
+  * "Remember this choice" (apps that ask to restore it, persist_mode): the same screen next time without asking,
+    while that screen is still there. Nothing is saved by Hearth: the app keeps the restore data.
+  * "Area" in the picker (1.14): a part of a screen you draw (or pick: a half, a quarter, the middle), shared as KWin's
+    region stream (zkde_screencast v3).
+  * Screenshot: without questions, the whole desktop (what KWin shows), saved in Pictures/Screenshots; with
+    "interactive", the same picker (a screen, a window or the whole desktop).
+  * PickColor (an app's "pick a colour from the screen"): KWin's own colour picker (org.kde.KWin /ColorPicker), through
+    hearth-kwin-cast; the pointer becomes a crosshair until you click.
+  * RemoteDesktop: keyboard, pointer and touch (1.14) through KWin's fake input, after "Allow control?".
+
+KWin gives its screen-sharing protocol and screenshot interface only to a program whose .desktop file asks for
+them, so the calls go through the small helper /usr/libexec/hearth/hearth-kwin-cast (HEARTH_KWIN_CAST overrides).
+The window list comes from a KWin script (callDBus back to this service). Only on KWin: on labwc screen sharing
+stays xdg-desktop-portal-wlr's (nimbus-portals.conf).
+
+Hidden from screen sharing (a window's title bar menu, "Hide from screen sharing": hearth-windows.js): those windows
+are never offered here (not in the picker's Windows, not shared by id, not in a screenshot of a window); the bridge's
+list ($XDG_RUNTIME_DIR/hearth/windows.json, noShare) says which. KWin itself paints them out of whole screens too when
+it can (its excludeFromCapture); the picker says when it can't.
+
+  python3 hearth_screencast.py outputs | shot FILE.png [screen NAME | window ID | workspace] | picker REQUEST.json | pick
+  (checks)
+"""
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import zlib
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PICKER_QML = os.path.join(HERE, 'cast-picker.qml')
+HELPER_DEFAULT = '/usr/libexec/hearth/hearth-kwin-cast'
+SC_IFACE = 'org.freedesktop.impl.portal.ScreenCast'
+SS_IFACE = 'org.freedesktop.impl.portal.Screenshot'
+SESSION_IFACE = 'org.freedesktop.impl.portal.Session'
+ACCESS_IFACE = 'org.freedesktop.impl.portal.Access'
+RD_IFACE = 'org.freedesktop.impl.portal.RemoteDesktop'
+RD_VERSION = 2
+KEYBOARD, POINTER, TOUCHSCREEN = 1, 2, 4
+ACCESS_QML = os.path.join(HERE, 'access-prompt.qml')
+REQ_IFACE = 'org.freedesktop.impl.portal.Request'
+WIN_IFACE = 'org.hearth.KWinWindows'
+WIN_PATH = '/org/hearth/KWinWindows'
+SC_VERSION = 5
+SS_VERSION = 2
+MONITOR, WINDOW, VIRTUAL = 1, 2, 4
+CURSOR_HIDDEN, CURSOR_EMBEDDED, CURSOR_METADATA = 1, 2, 4
+STREAM_WAIT = 8.0          # s for KWin to make a stream
+MAX_THUMBS = 16            # windows with a picture in the picker (the rest: their icon)
+RESTORE_VENDOR = 'hearth'
+RESTORE_VERSION = 1
+
+_REQ_METHOD = '<arg type="o" name="handle" direction="in"/><arg type="o" name="session_handle" direction="in"/>' \
+              '<arg type="s" name="app_id" direction="in"/>'
+_N = '<arg type="o" name="session_handle" direction="in"/><arg type="a{sv}" name="options" direction="in"/>'
+RD_XML = '''<interface name="%s">
+  <method name="CreateSession">%s<arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="SelectDevices">%s<arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="Start">%s<arg type="s" name="parent_window" direction="in"/><arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="NotifyPointerMotion">%s<arg type="d" name="dx" direction="in"/><arg type="d" name="dy" direction="in"/></method>
+  <method name="NotifyPointerMotionAbsolute">%s<arg type="u" name="stream" direction="in"/><arg type="d" name="x" direction="in"/><arg type="d" name="y" direction="in"/></method>
+  <method name="NotifyPointerButton">%s<arg type="i" name="button" direction="in"/><arg type="u" name="state" direction="in"/></method>
+  <method name="NotifyPointerAxis">%s<arg type="d" name="dx" direction="in"/><arg type="d" name="dy" direction="in"/></method>
+  <method name="NotifyPointerAxisDiscrete">%s<arg type="u" name="axis" direction="in"/><arg type="i" name="steps" direction="in"/></method>
+  <method name="NotifyKeyboardKeycode">%s<arg type="i" name="keycode" direction="in"/><arg type="u" name="state" direction="in"/></method>
+  <method name="NotifyKeyboardKeysym">%s<arg type="i" name="keysym" direction="in"/><arg type="u" name="state" direction="in"/></method>
+  <method name="NotifyTouchDown">%s<arg type="u" name="stream" direction="in"/><arg type="u" name="slot" direction="in"/><arg type="d" name="x" direction="in"/><arg type="d" name="y" direction="in"/></method>
+  <method name="NotifyTouchMotion">%s<arg type="u" name="stream" direction="in"/><arg type="u" name="slot" direction="in"/><arg type="d" name="x" direction="in"/><arg type="d" name="y" direction="in"/></method>
+  <method name="NotifyTouchUp">%s<arg type="u" name="slot" direction="in"/></method>
+  <property name="AvailableDeviceTypes" type="u" access="read"/>
+  <property name="version" type="u" access="read"/>
+</interface>''' % ((RD_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD) + (_N,) * 10)
+XML = ('''<node>
+<interface name="%s">
+  <method name="CreateSession">%s<arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="SelectSources">%s<arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="Start">%s<arg type="s" name="parent_window" direction="in"/><arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <property name="AvailableSourceTypes" type="u" access="read"/>
+  <property name="AvailableCursorModes" type="u" access="read"/>
+  <property name="version" type="u" access="read"/>
+</interface>
+<interface name="%s">
+  <method name="Screenshot"><arg type="o" name="handle" direction="in"/><arg type="s" name="app_id" direction="in"/>
+    <arg type="s" name="parent_window" direction="in"/><arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="PickColor"><arg type="o" name="handle" direction="in"/><arg type="s" name="app_id" direction="in"/>
+    <arg type="s" name="parent_window" direction="in"/><arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <property name="version" type="u" access="read"/>
+</interface>
+<interface name="%s">
+  <method name="AccessDialog"><arg type="o" name="handle" direction="in"/><arg type="s" name="app_id" direction="in"/>
+    <arg type="s" name="parent_window" direction="in"/><arg type="s" name="title" direction="in"/>
+    <arg type="s" name="subtitle" direction="in"/><arg type="s" name="body" direction="in"/>
+    <arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+</interface>
+<!--RD-->
+<interface name="%s"><method name="Close"/><signal name="Closed"/><property name="version" type="u" access="read"/></interface>
+<interface name="%s"><method name="Close"/></interface>
+<interface name="%s"><method name="Report"><arg type="s" name="token" direction="in"/><arg type="s" name="windows" direction="in"/></method></interface>
+</node>''' % (SC_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD, SS_IFACE, ACCESS_IFACE, SESSION_IFACE, REQ_IFACE, WIN_IFACE)).replace('<!--RD-->', RD_XML)
+
+WINDOW_SCRIPT = r'''
+var out = [];
+var ws = workspace.windowList ? workspace.windowList() : workspace.clientList();
+for (var i = 0; i < ws.length; i++) {
+    var w = ws[i];
+    if (!w || !w.normalWindow || w.skipTaskbar || w.deleted) continue;
+    if (w.excludeFromCapture === true) continue;      // hidden from screen sharing (KWin's own)
+    var g = w.frameGeometry;
+    out.push({id: String(w.internalId), title: String(w.caption || ""), app: String(w.resourceClass || ""),
+              desktop: String(w.desktopFileName || ""), minimized: !!w.minimized, active: w === workspace.activeWindow,
+              x: g.x, y: g.y, w: g.width, h: g.height});
+}
+callDBus("%(name)s", "%(path)s", "%(iface)s", "Report", "%(token)s", JSON.stringify(out));
+'''
+
+
+def log(msg):
+    sys.stderr.write('hearth-screencast: %s\n' % msg)
+    sys.stderr.flush()
+
+
+def helper():
+    return os.environ.get('HEARTH_KWIN_CAST') or HELPER_DEFAULT
+
+
+# ---------------------------------------------------------------------- what KWin has
+
+def parse_outputs(text):
+    """hearth-kwin-cast outputs → [{name, desc, x, y, w, h, scale}], and the screencast protocol's version."""
+    outs, version = [], 0
+    for line in text.splitlines():
+        if line.startswith('output '):
+            f = line[7:].split('\t')
+            if len(f) >= 7:
+                try:
+                    outs.append({'name': f[0], 'desc': f[1], 'x': int(f[2]), 'y': int(f[3]), 'w': int(f[4]),
+                                 'h': int(f[5]), 'scale': int(f[6])})
+                except ValueError:
+                    pass
+        elif line.startswith('screencast '):
+            try:
+                version = int(line.split()[1])
+            except (IndexError, ValueError):
+                pass
+    outs.sort(key=lambda o: (o['x'], o['y'], o['name']))
+    return outs, version
+
+
+def list_outputs():
+    try:
+        r = subprocess.run([helper(), 'outputs'], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError) as e:
+        log('no screens: %s' % e)
+        return [], 0
+    return parse_outputs(r.stdout)
+
+
+def to_png(raw_header, data):
+    """KWin's raw picture (hearth-kwin-cast shot) → PNG bytes."""
+    w, h, stride, fmt = (int(x) for x in raw_header.split()[:4])
+    if len(data) < stride * h:
+        raise ValueError('picture cut short')
+    # Qt's formats: 4 RGB32, 5 ARGB32, 6 ARGB32 premultiplied (B G R A in memory), 16-18 RGBX/RGBA8888 (R G B A).
+    bgra = fmt in (4, 5, 6)
+    if not bgra and fmt not in (16, 17, 18):
+        raise ValueError('unknown picture format %d' % fmt)
+    row = w * 4
+    src = data if stride == row else b''.join(data[y * stride:y * stride + row] for y in range(h))
+    src = bytes(src[:row * h])
+    px = bytearray(src)
+    if bgra:
+        px[0::4], px[2::4] = src[2::4], src[0::4]
+    if fmt in (4, 16):
+        px[3::4] = b'\xff' * (w * h)
+    raw = b''.join(b'\x00' + bytes(px[y * row:(y + 1) * row]) for y in range(h))
+
+    def chunk(kind, body):
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body) & 0xffffffff)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) +
+            chunk(b'IDAT', zlib.compress(raw, 3)) + chunk(b'IEND', b''))
+
+
+LAST_ERROR = ['']
+
+
+def shot(target, path, cursor=False):
+    """A screenshot as a PNG file. target: ('screen', name) | ('window', id) | ('workspace',). True if it worked
+    (LAST_ERROR[0] says why not)."""
+    LAST_ERROR[0] = ''
+    try:
+        r = subprocess.run([helper(), 'shot'] + list(target) + ['1' if cursor else '0'], capture_output=True,
+                           timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        log('screenshot failed: %s' % e)
+        return False
+    if r.returncode != 0:
+        LAST_ERROR[0] = r.stderr.decode('utf-8', 'replace').strip()
+        log('screenshot of %s failed: %s' % (' '.join(target), LAST_ERROR[0]))
+        return False
+    head, _, data = r.stdout.partition(b'\n')
+    try:
+        png = to_png(head.decode(), data)
+    except ValueError as e:
+        log('screenshot of %s unreadable: %s' % (' '.join(target), e))
+        return False
+    tmp = path + '.part'
+    with open(tmp, 'wb') as f:
+        f.write(png)
+    os.replace(tmp, path)
+    return True
+
+
+class WindowLister:
+    """KWin's window list: a short KWin script reports it back over D-Bus (Report)."""
+
+    def __init__(self, bus_name):
+        self.bus_name = bus_name
+        self.waiting = {}
+
+    def report(self, token, text):
+        ev = self.waiting.get(token)
+        if ev is not None:
+            try:
+                ev[1] = json.loads(text)
+            except ValueError:
+                ev[1] = []
+            ev[0].set()
+
+    def list(self, timeout=4.0):
+        token = 'w%d%d' % (os.getpid(), int(time.monotonic() * 1000))
+        ev = [threading.Event(), None]
+        self.waiting[token] = ev
+        fd, path = tempfile.mkstemp(prefix='hearth-windows-', suffix='.js')
+        name = 'hearth-windows-' + token
+        try:
+            with os.fdopen(fd, 'w') as f:
+                f.write(WINDOW_SCRIPT % {'name': self.bus_name, 'path': WIN_PATH, 'iface': WIN_IFACE, 'token': token})
+            sid = dbus_kwin(['org.kde.kwin.Scripting.loadScript', path, name], '/Scripting')
+            if sid is None:
+                return []
+            # KWin 6: /Scripting/Script<id>; KWin 5: /<id>.
+            if dbus_kwin(['org.kde.kwin.Script.run'], '/Scripting/Script%s' % sid) is None:
+                dbus_kwin(['org.kde.kwin.Script.run'], '/%s' % sid)
+            ev[0].wait(timeout)
+            return ev[1] or []
+        finally:
+            self.waiting.pop(token, None)
+            dbus_kwin(['org.kde.kwin.Scripting.unloadScript', name], '/Scripting')
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
+def hidden_windows():
+    """(ids hidden from screen sharing, whether KWin paints them out of whole screens too) from the bridge's list."""
+    path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth', 'windows.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return set(), False
+    return {w.get('id') for w in d.get('windows', []) if w.get('noShare')}, d.get('captureHide') is True
+
+
+def shareable(wins):
+    """The windows that may be shared (not hidden from screen sharing), and how many were left out."""
+    hidden, _ = hidden_windows()
+    keep = [w for w in wins if w.get('id') not in hidden]
+    return keep, len(wins) - len(keep)
+
+
+def dbus_kwin(method_and_args, path):
+    """gdbus call to KWin; the answer's first number (a script id) or '' on success, None on failure."""
+    try:
+        r = subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.kde.KWin', '--object-path', path,
+                            '--method'] + method_and_args, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    import re
+    m = re.search(r'-?\d+', r.stdout)
+    return m.group(0) if m else ''
+
+
+# ---------------------------------------------------------------------- the picker
+
+def quickshell():
+    return shutil.which('quickshell') or shutil.which('qs')
+
+
+def logical_sizes(outputs):
+    """Each screen's size on the desktop (its mode over its scale): hearth-screens knows KWin's fractional scale;
+    hearth-kwin-cast's whole-number wl_output scale is the fallback."""
+    scales = {}
+    try:
+        r = subprocess.run([sys.executable, os.path.join(HERE, 'hearth-screens'), 'get'], capture_output=True, text=True, timeout=8)
+        for o in json.loads(r.stdout or '[]'):
+            scales[o.get('name')] = float(o.get('scale') or 1)
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        pass
+    return {o['name']: (round(o['w'] / (scales.get(o['name']) or o.get('scale') or 1)),
+                        round(o['h'] / (scales.get(o['name']) or o.get('scale') or 1))) for o in outputs}
+
+
+def area_target(choice, outputs, sizes):
+    """The picker's area ({name, fx, fy, fw, fh}: parts of that screen, 0–1) → KWin's region (desktop pixels)."""
+    o = next((x for x in outputs if x['name'] == choice.get('name')), None)
+    if not o:
+        return None
+    lw, lh = sizes.get(o['name']) or (o['w'], o['h'])
+
+    def part(k, lo=0.0):
+        try:
+            return max(lo, min(1.0, float(choice.get(k, 0))))
+        except (TypeError, ValueError):
+            return lo
+    fx, fy = part('fx'), part('fy')
+    fw, fh = min(part('fw', 0.02), 1 - fx), min(part('fh', 0.02), 1 - fy)
+    x, y = o['x'] + round(fx * lw), o['y'] + round(fy * lh)
+    w, h = max(16, round(fw * lw)), max(16, round(fh * lh))
+    return x, y, w, h
+
+
+def build_request(kind, app_id, types, multiple, outputs, windows, thumbs_dir, with_thumbs=True, version=0):
+    """What the picker shows. kind: 'cast' (ScreenCast) or 'shot' (an interactive screenshot). Windows hidden from
+    screen sharing are left out (hiddenCount says how many; screensShowHidden: KWin can't paint them out of a screen).
+    An area of a screen for sharing when KWin's screencast protocol has region streams (version 3)."""
+    windows, left_out = shareable(windows)
+    _, painted_out = hidden_windows()
+    req = {'kind': kind, 'app': app_id or '', 'multiple': bool(multiple), 'screens': [], 'windows': [],
+           'desktop': kind == 'shot', 'hiddenCount': left_out, 'screensShowHidden': bool(left_out) and not painted_out,
+           'area': kind == 'cast' and bool(types & MONITOR) and version >= 3}
+    if types & MONITOR or kind == 'shot':
+        for i, o in enumerate(outputs):
+            t = os.path.join(thumbs_dir, 'screen-%d.png' % i)
+            ok = with_thumbs and shot(('screen', o['name']), t)
+            req['screens'].append({'name': o['name'], 'label': o['desc'] or o['name'], 'w': o['w'], 'h': o['h'],
+                                   'thumb': t if ok else ''})
+    if types & WINDOW or kind == 'shot':
+        n = 0
+        for w in windows:
+            t = ''
+            if with_thumbs and not w.get('minimized') and n < MAX_THUMBS:
+                p = os.path.join(thumbs_dir, 'window-%d.png' % n)
+                if shot(('window', w['id']), p):
+                    t = p
+                n += 1
+            req['windows'].append({'id': w['id'], 'title': w.get('title') or w.get('app') or 'Window',
+                                   'app': w.get('desktop') or w.get('app') or '', 'thumb': t,
+                                   'minimized': bool(w.get('minimized'))})
+    return req
+
+
+def picker_log():
+    """~/.local/share/nimbus/cast-picker.log (kept small), for Send logs."""
+    d = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus')
+    try:
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, 'cast-picker.log')
+        if os.path.exists(p) and os.path.getsize(p) > 500000:
+            os.replace(p, p + '.old')
+        return open(p, 'ab')
+    except OSError:
+        return subprocess.DEVNULL
+
+
+def run_picker(req, holder=None, env=None):
+    """cast-picker.qml in its own Quickshell until it answers: {kind: screen|window|desktop, name|id} or None."""
+    qs = quickshell()
+    if not qs:
+        log('Quickshell is missing: no picker')
+        return None
+    tmp = tempfile.mkdtemp(prefix='hearth-cast-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+    rq, rs = os.path.join(tmp, 'request.json'), os.path.join(tmp, 'result.json')
+    try:
+        with open(rq, 'w') as f:
+            json.dump(req, f)
+        e = dict(env or os.environ)
+        e.update({'HEARTH_CAST_REQUEST': rq, 'HEARTH_CAST_RESULT': rs})
+        out = picker_log()
+        proc = subprocess.Popen([qs, '-p', PICKER_QML], env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                start_new_session=True)
+        if out is not subprocess.DEVNULL:
+            out.close()
+        if holder is not None:
+            holder['proc'] = proc
+        try:
+            proc.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+        try:
+            with open(rs) as f:
+                res = json.load(f)
+        except (OSError, ValueError):
+            return None
+        return None if not isinstance(res, dict) or res.get('cancel') else res
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def run_access(req, holder=None, env=None):
+    """access-prompt.qml in its own Quickshell until it answers: True (Allow), False (Don't allow or closed)."""
+    qs = quickshell()
+    if not qs:
+        log('Quickshell is missing: no question, so nothing is allowed')
+        return False
+    tmp = tempfile.mkdtemp(prefix='hearth-access-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+    rq, rs = os.path.join(tmp, 'request.json'), os.path.join(tmp, 'result.json')
+    try:
+        with open(rq, 'w') as f:
+            json.dump(req, f)
+        e = dict(env or os.environ)
+        e.update({'HEARTH_ACCESS_REQUEST': rq, 'HEARTH_ACCESS_RESULT': rs})
+        out = picker_log()
+        proc = subprocess.Popen([qs, '-p', ACCESS_QML], env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                start_new_session=True)
+        if out is not subprocess.DEVNULL:
+            out.close()
+        if holder is not None:
+            holder['proc'] = proc
+        try:
+            proc.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+        try:
+            with open(rs) as f:
+                return json.load(f).get('grant') is True
+        except (OSError, ValueError, AttributeError):
+            return False
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def access_request(app_id, title, subtitle, body, options):
+    """What the Allow? question shows (the portal's own words; the app's name when it has one)."""
+    def text(v, limit):
+        return str(v or '')[:limit]
+    return {'app': text(app_id, 200), 'title': text(title, 300), 'subtitle': text(subtitle, 500), 'body': text(body, 1500),
+            'grant': text(options.get('grant_label'), 60), 'deny': text(options.get('deny_label'), 60)}
+
+
+# ---------------------------------------------------------------------- streams
+
+class Stream:
+    """One hearth-kwin-cast stream: its PipeWire node while it runs."""
+
+    def __init__(self, target, cursor):
+        self.target, self.cursor, self.node, self.error = target, cursor, None, ''
+        args = [helper(), 'stream'] + list(target) + [str(cursor)]
+        self.proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     start_new_session=True)
+
+    def wait_node(self, timeout=STREAM_WAIT):
+        import select
+        end = time.monotonic() + timeout
+        buf = b''
+        while time.monotonic() < end:
+            r, _, _ = select.select([self.proc.stdout], [], [], max(0.05, end - time.monotonic()))
+            if not r:
+                continue
+            c = os.read(self.proc.stdout.fileno(), 4096)
+            if not c:
+                break
+            buf += c
+            for line in buf.decode('utf-8', 'replace').splitlines():
+                if line.startswith('node '):
+                    try:
+                        self.node = int(line.split()[1])
+                        return self.node
+                    except (IndexError, ValueError):
+                        pass
+                elif line.startswith('failed'):
+                    self.error = line[7:]
+                    return None
+        self.error = self.error or 'KWin made no stream'
+        return None
+
+    def stop(self):
+        if self.proc.poll() is None:
+            try:
+                self.proc.stdin.close()
+            except OSError:
+                pass
+            try:
+                self.proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.proc.terminate()
+
+
+def cursor_mode(asked):
+    """The portal's cursor mode → KWin's (the same numbers); embedded when nothing sensible was asked."""
+    for m in (CURSOR_METADATA, CURSOR_EMBEDDED, CURSOR_HIDDEN):
+        if asked == m:
+            return m
+    return CURSOR_EMBEDDED
+
+
+def restore_target(restore, outputs):
+    """Restore data from an earlier "remember this" → the same screen, if it's still there."""
+    try:
+        vendor, version, data = restore
+        if vendor != RESTORE_VENDOR or version != RESTORE_VERSION:
+            return None
+        name = data.get('screen') if isinstance(data, dict) else None
+    except (TypeError, ValueError):
+        return None
+    return {'kind': 'screen', 'name': name} if name and any(o['name'] == name for o in outputs) else None
+
+
+def stream_results(streams, choice, outputs, persist, region=None):
+    """Start's results: the streams (node, position, size, source type) and restore data when it's to be kept."""
+    out = []
+    for s in streams:
+        props = {'source_type': ('u', WINDOW if choice['kind'] == 'window' else MONITOR), 'id': ('s', str(s.node))}
+        if choice['kind'] == 'area' and region:
+            props['position'] = ('(ii)', (region[0], region[1]))
+            props['size'] = ('(ii)', (region[2], region[3]))
+        if choice['kind'] == 'screen':
+            o = next((o for o in outputs if o['name'] == choice['name']), None)
+            if o:
+                props['position'] = ('(ii)', (o['x'], o['y']))
+                props['size'] = ('(ii)', (o['w'], o['h']))
+        out.append((s.node, props))
+    res = {'streams': out}
+    if persist and choice['kind'] == 'screen':
+        res['persist_mode'] = ('u', persist)
+        res['restore_data'] = ('(suv)', (RESTORE_VENDOR, RESTORE_VERSION, ('a{sv}', {'screen': ('s', choice['name'])})))
+    return res
+
+
+def screenshot_path(now=None):
+    pics = ''
+    try:
+        pics = subprocess.run(['xdg-user-dir', 'PICTURES'], capture_output=True, text=True, timeout=2).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    home = os.path.expanduser('~')
+    if not pics or pics == home:
+        pics = os.path.join(home, 'Pictures')
+    d = os.path.join(pics, 'Screenshots')
+    os.makedirs(d, exist_ok=True)
+    stamp = time.strftime('%Y-%m-%d %H-%M-%S', time.localtime(now))
+    p = os.path.join(d, 'Screenshot from %s.png' % stamp)
+    n = 2
+    while os.path.exists(p):
+        p = os.path.join(d, 'Screenshot from %s (%d).png' % (stamp, n))
+        n += 1
+    return p
+
+
+# ---------------------------------------------------------------------- remote control (RemoteDesktop)
+
+# X keysyms that aren't characters → kernel keys.
+KEYSYMS = {0xff08: 'KEY_BACKSPACE', 0xff09: 'KEY_TAB', 0xff0d: 'KEY_ENTER', 0xff8d: 'KEY_KPENTER', 0xff1b: 'KEY_ESC',
+           0xffff: 'KEY_DELETE', 0xff63: 'KEY_INSERT', 0xff50: 'KEY_HOME', 0xff57: 'KEY_END', 0xff55: 'KEY_PAGEUP',
+           0xff56: 'KEY_PAGEDOWN', 0xff51: 'KEY_LEFT', 0xff52: 'KEY_UP', 0xff53: 'KEY_RIGHT', 0xff54: 'KEY_DOWN',
+           0xffe1: 'KEY_LEFTSHIFT', 0xffe2: 'KEY_RIGHTSHIFT', 0xffe3: 'KEY_LEFTCTRL', 0xffe4: 'KEY_RIGHTCTRL',
+           0xffe9: 'KEY_LEFTALT', 0xffea: 'KEY_RIGHTALT', 0xfe03: 'KEY_RIGHTALT', 0xffeb: 'KEY_LEFTMETA',
+           0xffec: 'KEY_RIGHTMETA', 0xffe5: 'KEY_CAPSLOCK', 0xff67: 'KEY_COMPOSE', 0xff61: 'KEY_SYSRQ', 0x20: 'KEY_SPACE'}
+for _i in range(12):
+    KEYSYMS[0xffbe + _i] = 'KEY_F%d' % (_i + 1)
+# Kernel key codes for when python3-evdev isn't there (the rest of the letters, digits and signs come from it).
+KEYCODES = {'KEY_ESC': 1, 'KEY_BACKSPACE': 14, 'KEY_TAB': 15, 'KEY_ENTER': 28, 'KEY_LEFTCTRL': 29, 'KEY_LEFTSHIFT': 42,
+            'KEY_RIGHTSHIFT': 54, 'KEY_LEFTALT': 56, 'KEY_SPACE': 57, 'KEY_CAPSLOCK': 58, 'KEY_KPENTER': 96,
+            'KEY_RIGHTCTRL': 97, 'KEY_SYSRQ': 99, 'KEY_RIGHTALT': 100, 'KEY_HOME': 102, 'KEY_UP': 103, 'KEY_PAGEUP': 104,
+            'KEY_LEFT': 105, 'KEY_RIGHT': 106, 'KEY_END': 107, 'KEY_DOWN': 108, 'KEY_PAGEDOWN': 109, 'KEY_INSERT': 110,
+            'KEY_DELETE': 111, 'KEY_LEFTMETA': 125, 'KEY_RIGHTMETA': 126, 'KEY_COMPOSE': 127, 'KEY_F11': 87, 'KEY_F12': 88}
+for _i in range(10):
+    KEYCODES['KEY_F%d' % (_i + 1)] = 59 + _i
+
+
+def keycode(name):
+    if name in KEYCODES:
+        return KEYCODES[name]
+    try:
+        from evdev import ecodes
+        return getattr(ecodes, name, None)
+    except ImportError:
+        return None
+
+
+_HT = []
+
+
+def keysym_keys(sym):
+    """An X keysym → the kernel keys that type it on a US layout (modifiers first), or None."""
+    if sym in KEYSYMS:
+        return [KEYSYMS[sym]]
+    ch = chr(sym) if 0x20 < sym < 0x100 else (chr(sym - 0x1000000) if sym > 0x1000000 else None)
+    if not ch:
+        return None
+    if not _HT:
+        try:
+            import importlib.machinery
+            import importlib.util
+            loader = importlib.machinery.SourceFileLoader('hearth_type', os.path.join(HERE, 'hearth-type'))
+            spec = importlib.util.spec_from_loader('hearth_type', loader)
+            mod = importlib.util.module_from_spec(spec)
+            loader.exec_module(mod)
+            _HT.append(mod)
+        except Exception as e:
+            log('no hearth-type tables: %r' % e)
+            return None
+    return _HT[0].char_keys(ch, 'us')
+
+
+class RemoteInput:
+    """hearth-kwin-cast input: KWin's fake input for one RemoteDesktop session."""
+
+    def __init__(self):
+        self.proc = subprocess.Popen([helper(), 'input'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, text=True, bufsize=1, start_new_session=True)
+        line = self.proc.stdout.readline().strip()
+        self.ok = line == 'ready'
+        self.error = '' if self.ok else (line or 'no answer')
+        self.held = set()
+        self.touches = set()
+
+    def touch(self, kind, slot, x=0.0, y=0.0):
+        """A finger down (d), moving (m) or up (u) on the touchscreen (KWin's fake input, then a frame)."""
+        if not 0 <= slot < 64:
+            return False
+        if kind == 'u':
+            self.touches.discard(slot)
+            ok = self.send('tu %d' % slot)
+        else:
+            if kind == 'd':
+                self.touches.add(slot)
+            ok = self.send('t%s %d %f %f' % (kind, slot, x, y))
+        return ok and self.send('tf')
+
+    def send(self, line):
+        if self.proc.poll() is not None:
+            return False
+        try:
+            self.proc.stdin.write(line + '\n')
+            self.proc.stdin.flush()
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def key(self, code, down):
+        if not isinstance(code, int) or not 0 < code < 0x300:
+            return False
+        (self.held.add if down else self.held.discard)(code)
+        return self.send('k %d %d' % (code, 1 if down else 0))
+
+    def stop(self):
+        for c in list(self.held):
+            self.send('k %d 0' % c)
+        for t in list(self.touches):
+            self.touch('u', t)
+        if self.proc.poll() is None:
+            try:
+                self.proc.stdin.close()
+                self.proc.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                self.proc.terminate()
+
+
+# ---------------------------------------------------------------------- D-Bus
+
+def variant(GLib, sig, val):
+    if sig == 'a{sv}':
+        return GLib.Variant('a{sv}', {k: variant(GLib, s, v) for k, (s, v) in val.items()})
+    if sig == '(suv)':
+        vendor, version, (isig, ival) = val
+        return GLib.Variant('(suv)', (vendor, version, variant(GLib, isig, ival)))
+    return GLib.Variant(sig, val)
+
+
+def results_variant(GLib, res):
+    out = {}
+    for k, v in res.items():
+        if k == 'streams':
+            out[k] = GLib.Variant('a(ua{sv})', [(node, {pk: variant(GLib, ps, pv) for pk, (ps, pv) in props.items()})
+                                                for node, props in v])
+        else:
+            out[k] = variant(GLib, v[0], v[1])
+    return out
+
+
+def unpack_restore(v):
+    """restore_data as GLib gives it (vendor, version, inner) → plain Python."""
+    try:
+        vendor, version, inner = v
+        if hasattr(inner, 'unpack'):
+            inner = inner.unpack()
+        return vendor, version, inner
+    except (TypeError, ValueError):
+        return None
+
+
+class Portal:
+    """ScreenCast and Screenshot on the hearth-portal connection. busy(n): sessions and requests in flight (the
+    service doesn't end while one lasts)."""
+
+    def __init__(self, Gio, GLib, bus_name, busy):
+        self.Gio, self.GLib, self.busy = Gio, GLib, busy
+        node = Gio.DBusNodeInfo.new_for_xml(XML)
+        self.sc_info = node.lookup_interface(SC_IFACE)
+        self.ss_info = node.lookup_interface(SS_IFACE)
+        self.session_info = node.lookup_interface(SESSION_IFACE)
+        self.access_info = node.lookup_interface(ACCESS_IFACE)
+        self.rd_info = node.lookup_interface(RD_IFACE)
+        self.req_info = node.lookup_interface(REQ_IFACE)
+        self.win_info = node.lookup_interface(WIN_IFACE)
+        self.windows = WindowLister(bus_name)
+        self.frontend = None
+        self.sessions = {}
+
+    def register(self, conn, path):
+        conn.register_object(path, self.sc_info, self.on_call, self.get_prop, None)
+        conn.register_object(path, self.ss_info, self.on_call, self.get_prop, None)
+        conn.register_object(path, self.access_info, self.on_call, None, None)
+        conn.register_object(path, self.rd_info, self.on_call, self.get_prop, None)
+        conn.register_object(WIN_PATH, self.win_info, self.on_windows, None, None)
+
+    def get_prop(self, conn, sender, path, iface, prop):
+        GLib = self.GLib
+        if iface == SC_IFACE:
+            return GLib.Variant('u', {'AvailableSourceTypes': MONITOR | WINDOW, 'AvailableCursorModes': 7,
+                                      'version': SC_VERSION}.get(prop, 0))
+        if iface == RD_IFACE:
+            return GLib.Variant('u', {'AvailableDeviceTypes': KEYBOARD | POINTER | TOUCHSCREEN, 'version': RD_VERSION}.get(prop, 0))
+        if iface == SS_IFACE and prop == 'version':
+            return GLib.Variant('u', SS_VERSION)
+        if iface == SESSION_IFACE and prop == 'version':
+            return GLib.Variant('u', 1)
+        return None
+
+    def on_windows(self, conn, sender, path, iface, method, params, inv):
+        try:
+            kwin = conn.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                                  self.GLib.Variant('(s)', ('org.kde.KWin',)), None, self.Gio.DBusCallFlags.NONE, 2000,
+                                  None).unpack()[0]
+        except Exception:
+            kwin = None
+        if sender != kwin:
+            inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only KWin reports windows here')
+            return
+        if method == 'Report':
+            token, text = params.unpack()
+            self.windows.report(token, text)
+        inv.return_value(None)
+
+    def from_frontend(self, conn, sender):
+        """Only xdg-desktop-portal itself may ask (an app talks to it, never to this backend straight: otherwise any
+        program could start sharing or take screenshots without the picker or the Allow? question)."""
+        if sender and sender == self.frontend:
+            return True
+        try:
+            r = conn.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                               self.GLib.Variant('(s)', ('org.freedesktop.portal.Desktop',)), None,
+                               self.Gio.DBusCallFlags.NONE, 2000, None)
+            self.frontend = r.unpack()[0]
+        except Exception:
+            self.frontend = None
+        return bool(sender) and sender == self.frontend
+
+    def on_call(self, conn, sender, path, iface, method, params, inv):
+        GLib = self.GLib
+        if not self.from_frontend(conn, sender):
+            log('refused %s.%s from %s: only xdg-desktop-portal may ask' % (iface, method, sender))
+            inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
+            return
+        try:
+            if iface == RD_IFACE:
+                return self.on_remote(conn, method, params, inv)
+            if iface == SC_IFACE and method == 'CreateSession':
+                handle, session_handle, app_id, options = params.unpack()
+                self.create_session(conn, session_handle, app_id)
+                inv.return_value(GLib.Variant('(ua{sv})', (0, {'session_id': GLib.Variant('s', session_handle)})))
+            elif iface == SC_IFACE and method == 'SelectSources':
+                handle, session_handle, app_id, options = params.unpack()
+                s = self.sessions.get(session_handle)
+                if not s:
+                    inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
+                    return
+                s['cast'] = True
+                s['types'] = int(options.get('types', MONITOR)) or MONITOR
+                s['multiple'] = bool(options.get('multiple', False))
+                s['cursor'] = cursor_mode(int(options.get('cursor_mode', CURSOR_EMBEDDED)))
+                s['persist'] = int(options.get('persist_mode', 0))
+                s['restore'] = unpack_restore(options['restore_data']) if 'restore_data' in options else None
+                inv.return_value(GLib.Variant('(ua{sv})', (0, {})))
+            elif iface == SC_IFACE and method == 'Start':
+                handle, session_handle, app_id, parent, options = params.unpack()
+                self.start(conn, handle, session_handle, app_id, inv)
+            elif iface == SS_IFACE and method == 'Screenshot':
+                handle, app_id, parent, options = params.unpack()
+                self.screenshot(conn, handle, app_id, bool(options.get('interactive', False)), inv)
+            elif iface == ACCESS_IFACE and method == 'AccessDialog':
+                handle, app_id, parent, title, subtitle, body, options = params.unpack()
+                self.access(conn, handle, access_request(app_id, title, subtitle, body, options), inv)
+            elif iface == SS_IFACE and method == 'PickColor':
+                handle, app_id, parent, options = params.unpack()
+                self.pick_color(conn, handle, inv)
+            else:
+                inv.return_dbus_error('org.freedesktop.DBus.Error.UnknownMethod', method)
+        except Exception as e:      # never leave an app waiting
+            log('%s failed: %r' % (method, e))
+            inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
+
+    # ---- sessions
+    def create_session(self, conn, session_handle, app_id):
+        s = {'app': app_id, 'streams': [], 'types': MONITOR, 'cursor': CURSOR_EMBEDDED, 'persist': 0,
+             'restore': None, 'multiple': False, 'conn': conn, 'cast': False, 'devices': 0, 'input': None,
+             'positions': {}}
+
+        def on_session(c, sender, path, iface, method, params, inv):
+            if not self.from_frontend(c, sender):
+                inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
+                return
+            if method == 'Close':
+                self.close_session(session_handle, signal=False)
+                inv.return_value(None)
+            else:
+                inv.return_dbus_error('org.freedesktop.DBus.Error.UnknownMethod', method)
+        s['reg'] = conn.register_object(session_handle, self.session_info, on_session, self.get_prop, None)
+        self.sessions[session_handle] = s
+        self.busy(1)
+
+    def close_session(self, session_handle, signal=True):
+        s = self.sessions.pop(session_handle, None)
+        if not s:
+            return
+        for st in s['streams']:
+            st.stop()
+        if s.get('input'):
+            s['input'].stop()
+        if signal:
+            try:
+                s['conn'].emit_signal(None, session_handle, SESSION_IFACE, 'Closed', None)
+            except Exception:
+                pass
+        try:
+            s['conn'].unregister_object(s['reg'])
+        except Exception:
+            pass
+        self.busy(-1)
+
+    def watch_streams(self, session_handle):
+        """A stream KWin ended by itself (the window closed, the screen was unplugged) ends the session."""
+        s = self.sessions.get(session_handle)
+        if not s:
+            return False
+        if s['streams'] and all(st.proc.poll() is not None for st in s['streams']):
+            self.close_session(session_handle)
+            return False
+        return True
+
+    def request_object(self, conn, handle, holder):
+        if self.req_info is None:
+            return 0
+
+        def on_close(c, sender, path, iface, m, p, i):
+            if not self.from_frontend(c, sender):
+                i.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
+                return
+            holder['closed'] = True
+            pr = holder.get('proc')
+            if pr and pr.poll() is None:
+                pr.terminate()
+            i.return_value(None)
+        try:
+            return conn.register_object(handle, self.req_info, on_close, None, None)
+        except Exception:
+            return 0
+
+    def start(self, conn, handle, session_handle, app_id, inv):
+        s = self.sessions.get(session_handle)
+        if not s:
+            inv.return_value(self.GLib.Variant('(ua{sv})', (2, {})))
+            return
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp, res = 2, {}
+            try:
+                resp, res = self.cast(s, app_id, holder, session_handle)
+            except Exception as e:
+                log('sharing failed: %r' % e)
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, results_variant(self.GLib, res))))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def cast(self, s, app_id, holder, session_handle):
+        """The picker (or the remembered screen), then KWin's stream: (response, results)."""
+        outputs, version = list_outputs()
+        choice = restore_target(s['restore'], outputs) if s.get('restore') else None
+        if choice is None:
+            wins = self.windows.list() if s['types'] & WINDOW else []
+            thumbs = tempfile.mkdtemp(prefix='hearth-cast-thumbs-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+            try:
+                req = build_request('cast', app_id, s['types'], s['multiple'], outputs, wins, thumbs, version=version)
+                choice = run_picker(req, holder)
+            finally:
+                shutil.rmtree(thumbs, ignore_errors=True)
+        if holder['closed'] or choice is None:
+            return 1, {}
+        if choice['kind'] == 'window' and choice.get('id') in hidden_windows()[0]:
+            log('a window hidden from screen sharing was asked for: not shared')
+            return 2, {}
+        region = None
+        if choice['kind'] == 'area':
+            region = area_target(choice, outputs, logical_sizes(outputs))
+            if not region:
+                return 2, {}
+            target = ('region',) + tuple(str(v) for v in region)
+        else:
+            target = ('output', choice['name']) if choice['kind'] == 'screen' else ('window', choice['id'])
+        st = Stream(target, s['cursor'])
+        if st.wait_node() is None:
+            log('KWin didn\'t share %s: %s' % (' '.join(target), st.error))
+            st.stop()
+            return 2, {}
+        s['streams'].append(st)
+        if choice['kind'] == 'screen':
+            o = next((o for o in outputs if o['name'] == choice['name']), None)
+            if o:
+                s['positions'][st.node] = (o['x'], o['y'])
+        elif region:
+            s['positions'][st.node] = (region[0], region[1])
+        self.GLib.timeout_add_seconds(2, self.watch_streams, session_handle)
+        return 0, stream_results([st], choice, outputs, s['persist'], region)
+
+    # ---- remote control (RemoteDesktop: VNC, remote help apps)
+    def on_remote(self, conn, method, params, inv):
+        GLib = self.GLib
+        if method == 'CreateSession':
+            handle, session_handle, app_id, options = params.unpack()
+            self.create_session(conn, session_handle, app_id)
+            return inv.return_value(GLib.Variant('(ua{sv})', (0, {'session_id': GLib.Variant('s', session_handle)})))
+        if method == 'SelectDevices':
+            handle, session_handle, app_id, options = params.unpack()
+            s = self.sessions.get(session_handle)
+            if not s:
+                return inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
+            s['devices'] = (int(options.get('types', KEYBOARD | POINTER)) or KEYBOARD | POINTER) & (KEYBOARD | POINTER | TOUCHSCREEN)
+            return inv.return_value(GLib.Variant('(ua{sv})', (0, {})))
+        if method == 'Start':
+            handle, session_handle, app_id, parent, options = params.unpack()
+            return self.remote_start(conn, handle, session_handle, app_id, inv)
+        # Notify*: (session_handle, options, ...) from xdg-desktop-portal, for a session that was allowed.
+        args = params.unpack()
+        s = self.sessions.get(args[0])
+        ri = s.get('input') if s else None
+        if not ri:
+            return inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'This session has no remote control')
+        if method == 'NotifyPointerMotion' and s['devices'] & POINTER:
+            ri.send('m %f %f' % (args[2], args[3]))
+        elif method == 'NotifyPointerMotionAbsolute' and s['devices'] & POINTER:
+            ox, oy = s['positions'].get(args[2], (0, 0))
+            ri.send('a %f %f' % (ox + args[3], oy + args[4]))
+        elif method == 'NotifyPointerButton' and s['devices'] & POINTER:
+            ri.send('b %d %d' % (args[2], 1 if args[3] else 0))
+        elif method == 'NotifyPointerAxis' and s['devices'] & POINTER:
+            if args[3]:
+                ri.send('x 0 %f' % args[3])
+            if args[2]:
+                ri.send('x 1 %f' % args[2])
+        elif method == 'NotifyPointerAxisDiscrete' and s['devices'] & POINTER:
+            ri.send('x %d %f' % (1 if args[2] else 0, args[3] * 15.0))
+        elif method == 'NotifyKeyboardKeycode' and s['devices'] & KEYBOARD:
+            ri.key(args[2], bool(args[3]))
+        elif method == 'NotifyKeyboardKeysym' and s['devices'] & KEYBOARD:
+            keys = keysym_keys(args[2]) or []
+            for name in (keys if args[3] else list(reversed(keys))):
+                ri.key(keycode(name), bool(args[3]))
+        elif method in ('NotifyTouchDown', 'NotifyTouchMotion') and s['devices'] & TOUCHSCREEN:
+            # (session, options, stream, slot, x, y): x, y inside that stream's screen (or area).
+            ox, oy = s['positions'].get(args[2], (0, 0))
+            ri.touch('d' if method == 'NotifyTouchDown' else 'm', int(args[3]), ox + args[4], oy + args[5])
+        elif method == 'NotifyTouchUp' and s['devices'] & TOUCHSCREEN:
+            ri.touch('u', int(args[2]))
+        elif method.startswith('NotifyTouch'):
+            return inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Touch wasn\'t allowed for this session')
+        inv.return_value(None)
+
+    def remote_start(self, conn, handle, session_handle, app_id, inv):
+        s = self.sessions.get(session_handle)
+        if not s:
+            return inv.return_value(self.GLib.Variant('(ua{sv})', (2, {})))
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp, res = 2, {}
+            try:
+                name = (app_id or '').replace('.desktop', '').split('.')[-1] or 'An app'
+                what = ', '.join(w for b, w in ((KEYBOARD, 'the keyboard'), (POINTER, 'the mouse'), (TOUCHSCREEN, 'the touchscreen'))
+                                 if s['devices'] & b) or 'the keyboard and the mouse'
+                what = ' and '.join(what.rsplit(', ', 1))
+                ok = run_access({'app': app_id or '', 'title': 'Allow %s to control this computer?' % (name[:1].upper() + name[1:]),
+                                 'subtitle': 'It can use %s as if it were you, until it stops.' % what,
+                                 'body': 'Only allow apps you trust, like your own remote desktop.',
+                                 'grant': 'Allow control', 'deny': "Don't allow"}, holder)
+                if holder['closed'] or not ok:
+                    resp = 1
+                    return
+                res = {}
+                if s.get('cast'):
+                    resp, res = self.cast(s, app_id, holder, session_handle)
+                    if resp != 0:
+                        return
+                ri = RemoteInput()
+                if not ri.ok:
+                    log('KWin didn\'t give remote control: %s' % ri.error)
+                    ri.stop()
+                    resp, res = 2, {}
+                    return
+                s['input'] = ri
+                res['devices'] = ('u', s['devices'] or (KEYBOARD | POINTER))
+                resp = 0
+            except Exception as e:
+                log('remote control failed: %r' % e)
+                resp, res = 2, {}
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, results_variant(self.GLib, res))))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---- Allow? (xdg-desktop-portal asks before an app's first screenshot, and for other permissions)
+    def access(self, conn, handle, req, inv):
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp = 2
+            try:
+                granted = run_access(req, holder)
+                resp = 1 if holder['closed'] else (0 if granted else 1)
+            except Exception as e:
+                log('the Allow? question failed: %r' % e)
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, {})))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---- PickColor (KWin's colour picker: click a spot, Esc cancels)
+    def pick_color(self, conn, handle, inv):
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp, res = 2, {}
+            try:
+                got = pick_color()
+                if got == 'cancel' or holder['closed']:
+                    resp = 1
+                elif got:
+                    resp, res = 0, {'color': ('(ddd)', got)}
+            except Exception as e:
+                log('colour picker failed: %r' % e)
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, results_variant(self.GLib, res))))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---- screenshots
+    def screenshot(self, conn, handle, app_id, interactive, inv):
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp, res = 2, {}
+            try:
+                target = ('workspace',)
+                if interactive:
+                    outputs, _ = list_outputs()
+                    wins = self.windows.list()
+                    thumbs = tempfile.mkdtemp(prefix='hearth-shot-thumbs-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+                    try:
+                        choice = run_picker(build_request('shot', app_id, MONITOR | WINDOW, False, outputs, wins, thumbs), holder)
+                    finally:
+                        shutil.rmtree(thumbs, ignore_errors=True)
+                    if choice is None or holder['closed']:
+                        target = None
+                        resp = 1
+                    elif choice['kind'] == 'screen':
+                        target = ('screen', choice['name'])
+                    elif choice['kind'] == 'window':
+                        # A window hidden from screen sharing is never taken (the picker doesn't offer it).
+                        target = ('window', choice['id']) if choice.get('id') not in hidden_windows()[0] else None
+                if target:
+                    p = screenshot_path()
+                    if shot(target, p):
+                        import urllib.parse
+                        resp, res = 0, {'uri': ('s', 'file://' + urllib.parse.quote(p))}
+            except Exception as e:
+                log('screenshot failed: %r' % e)
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, results_variant(self.GLib, res))))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+
+def parse_pick(text):
+    """hearth-kwin-cast pick → (r, g, b) from 0 to 1, 'cancel', or None."""
+    for line in text.splitlines():
+        f = line.split()
+        if f[:1] == ['color'] and len(f) == 4:
+            try:
+                return tuple(max(0.0, min(1.0, float(v))) for v in f[1:])
+            except ValueError:
+                return None
+        if f[:1] == ['cancelled']:
+            return 'cancel'
+    return None
+
+
+def pick_color():
+    try:
+        r = subprocess.run([helper(), 'pick'], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        log('colour picker: %s' % e)
+        return None
+    got = parse_pick(r.stdout)
+    if got is None:
+        log('colour picker failed: %s' % (r.stdout + r.stderr).strip()[:200])
+    return got
+
+
+def main(argv):
+    if argv[:1] == ['pick']:
+        print(json.dumps(pick_color()))
+        return 0
+    if argv[:1] == ['outputs']:
+        outs, v = list_outputs()
+        print(json.dumps({'screens': outs, 'screencast': v}))
+        return 0 if outs else 1
+    if argv[:1] == ['shot'] and len(argv) >= 2:
+        target = tuple(argv[2:]) or ('workspace',)
+        return 0 if shot(target, argv[1]) else 1
+    if argv[:1] == ['picker'] and len(argv) == 2:
+        with open(argv[1]) as f:
+            print(json.dumps(run_picker(json.load(f))))
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

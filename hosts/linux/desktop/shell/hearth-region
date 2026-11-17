@@ -1,0 +1,435 @@
+#!/usr/bin/python3
+"""hearth-region: Hearth Settings' Region & language page (System), as you (no root). Reads the system's language and
+formats (localectl status) and the languages this system has (locale -a, named from /usr/share/i18n/locales), and shows
+how each looks (numbers, dates, money, measurement, paper). Changing them goes through /usr/libexec/nimbus/hearth-admin
+locale KEY=VALUE... (localectl set-locale): the whole device, from the next sign-in, like the login screen.
+
+  hearth-region status             JSON: {lang, formats: {LC_NUMERIC...}, locales: [{id, name, language, territory}]}
+  hearth-region preview LOCALE     JSON: {number, date, time, money, metric, paper} as LOCALE writes them
+1.14, as you (your own files only, never the system's):
+  hearth-region languages          JSON: {languages: [ids]}: the languages apps try in order (LANGUAGE)
+  hearth-region languages-set      stdin {"languages": ["de_DE", "fr", "en_US"]}; [] = the system's language only.
+                                   ~/.config/environment.d/60-hearth-language.conf and plasma-localerc's [Translations]
+  hearth-region spell              JSON: {dictionaries: [{id, name}], settings}: spell checking (KDE's Sonnet)
+  hearth-region spell-set          stdin {"defaultLanguage", "autodetect", "checkerEnabledByDefault",
+                                   "backgroundCheckerEnabled", "skipUppercase", "skipRunTogether", "ignore": [...]}
+                                   (~/.config/KDE/Sonnet.conf [General], only those keys)
+  hearth-region im                 JSON: {installed, flatpak, on, kwin}: typing Chinese, Japanese and Korean (fcitx5)
+  hearth-region im-set on|off      fcitx5 as KWin's input method in ~/.config/kwinrc [Wayland] (off: the key taken out,
+                                   so Hearth's on-screen keyboard is KWin's again) and its variables for apps
+  hearth-region im-install         fcitx5 with Mozc (Japanese), Chinese and Hangul (Korean) from Flathub, for you
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import datetime
+import json
+import locale
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+I18N = os.environ.get('HEARTH_I18N_DIR', '/usr/share/i18n/locales')
+FORMAT_KEYS = ('LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAPER')
+SAMPLE = datetime.datetime(2026, 12, 24, 18, 30)
+
+
+# Names for when /usr/share/i18n/locales isn't there (or has no language line): the languages the image builds.
+LANGS = {'en': 'English', 'de': 'German', 'fr': 'French', 'es': 'Spanish', 'it': 'Italian', 'pt': 'Portuguese',
+         'nl': 'Dutch', 'sv': 'Swedish', 'da': 'Danish', 'nb': 'Norwegian Bokmål', 'fi': 'Finnish', 'pl': 'Polish',
+         'cs': 'Czech', 'sk': 'Slovak', 'hu': 'Hungarian', 'ro': 'Romanian', 'bg': 'Bulgarian', 'el': 'Greek',
+         'ru': 'Russian', 'uk': 'Ukrainian', 'tr': 'Turkish', 'he': 'Hebrew', 'ar': 'Arabic', 'ja': 'Japanese',
+         'ko': 'Korean', 'zh': 'Chinese', 'th': 'Thai', 'vi': 'Vietnamese', 'id': 'Indonesian', 'ms': 'Malay',
+         'hi': 'Hindi'}
+LANDS = {'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia', 'IE': 'Ireland',
+         'NZ': 'New Zealand', 'IN': 'India', 'ZA': 'South Africa', 'DE': 'Germany', 'AT': 'Austria', 'CH': 'Switzerland',
+         'FR': 'France', 'BE': 'Belgium', 'ES': 'Spain', 'MX': 'Mexico', 'AR': 'Argentina', 'IT': 'Italy',
+         'PT': 'Portugal', 'BR': 'Brazil', 'NL': 'Netherlands', 'SE': 'Sweden', 'DK': 'Denmark', 'NO': 'Norway',
+         'FI': 'Finland', 'PL': 'Poland', 'CZ': 'Czechia', 'SK': 'Slovakia', 'HU': 'Hungary', 'RO': 'Romania',
+         'BG': 'Bulgaria', 'GR': 'Greece', 'RU': 'Russia', 'UA': 'Ukraine', 'TR': 'Türkiye', 'IL': 'Israel',
+         'EG': 'Egypt', 'SA': 'Saudi Arabia', 'JP': 'Japan', 'KR': 'South Korea', 'CN': 'China', 'TW': 'Taiwan',
+         'HK': 'Hong Kong', 'TH': 'Thailand', 'VN': 'Vietnam', 'ID': 'Indonesia', 'MY': 'Malaysia'}
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, env=None, timeout=20):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+    return p.returncode, p.stdout
+
+
+def parse_localectl(text):
+    """`localectl status`: the System Locale lines (LANG=..., LC_TIME=...)."""
+    out, on = {}, False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('System Locale:'):
+            on = True
+            s = s.split(':', 1)[1].strip()
+        elif on and re.match(r'^[A-Z_]+=', s) is None:
+            on = False
+        if on:
+            m = re.match(r'^([A-Z_]+)=(\S+)$', s)
+            if m:
+                out[m.group(1)] = m.group(2)
+    return out
+
+
+def parse_locale_conf(text):
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r'^\s*([A-Z_]+)=["\']?([^"\'\s]+)', line)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def norm(v):
+    """en_US.utf8 / en_US.UTF-8 -> en_US.UTF-8 (the form localectl writes)."""
+    return re.sub(r'\.utf-?8', '.UTF-8', v, flags=re.I)
+
+
+def identification(base):
+    """language and territory from /usr/share/i18n/locales/<base>."""
+    lang = terr = ''
+    try:
+        with open(os.path.join(I18N, base), errors='replace') as f:
+            text = f.read(20000)
+    except OSError:
+        return '', ''
+    m = re.search(r'^language\s+"([^"]*)"', text, re.M)
+    if m:
+        lang = m.group(1)
+    m = re.search(r'^territory\s+"([^"]*)"', text, re.M)
+    if m:
+        terr = m.group(1)
+    return lang, terr
+
+
+def locales(text):
+    out, seen = [], set()
+    for l in text.splitlines():
+        l = l.strip()
+        if not l or l in ('C', 'POSIX') or not re.search(r'\.utf-?8', l, re.I):
+            continue
+        n = norm(l)
+        if n in seen:
+            continue
+        seen.add(n)
+        base = n.split('.')[0]
+        lang, terr = identification(base)
+        code, _, land = base.partition('_')
+        lang = lang or LANGS.get(code, '')
+        terr = terr or LANDS.get(land, land)
+        if n == 'C.UTF-8':
+            lang, terr = 'Computer default', ''
+        name = lang + (' (' + terr + ')' if terr else '') if lang else base
+        out.append({'id': n, 'name': name, 'language': lang or base.split('_')[0], 'territory': terr})
+    out.sort(key=lambda x: (x['id'] == 'C.UTF-8', x['name'].lower()))
+    return out
+
+
+def status():
+    code, out = run(['localectl', 'status'])
+    cur = parse_localectl(out) if code == 0 else {}
+    if not cur:
+        for p in ('/etc/locale.conf', '/etc/default/locale'):
+            try:
+                cur = parse_locale_conf(open(p).read())
+            except OSError:
+                continue
+            if cur:
+                break
+    lang = norm(cur.get('LANG', 'C.UTF-8'))
+    code, out = run(['locale', '-a'])
+    ls = locales(out if code == 0 else '')
+    formats = {k: norm(cur[k]) for k in FORMAT_KEYS if cur.get(k)}
+    # What's in use is always listed, even when this system can't make it any more (it says so).
+    for v in [lang] + list(formats.values()):
+        if not any(l['id'] == v for l in ls):
+            base = v.split('.')[0]
+            c, _, land = base.partition('_')
+            name = (LANGS.get(c, base) + (' (' + LANDS.get(land, land) + ')' if land else '')) + ' · not on this system'
+            ls.append({'id': v, 'name': name, 'language': c, 'territory': land, 'missing': True})
+    return {'lang': lang, 'formats': formats, 'locales': ls, 'look': look(lang, formats)}
+
+
+def look(lang, formats):
+    """How the formats in use write things; each part from its own setting, or plain C when that can't be shown."""
+    def pv(key):
+        for loc in (formats.get(key) or lang, lang, 'C.UTF-8'):
+            try:
+                return preview(loc)
+            except Fail:
+                continue
+        return {}
+    n, t, m, u, p = (pv(k) for k in FORMAT_KEYS)
+    return {'number': n.get('number', ''), 'date': t.get('longDate', ''), 'time': t.get('time', ''),
+            'money': m.get('money', ''), 'metric': u.get('metric', True), 'paper': p.get('paper', '')}
+
+
+def keyword(loc, cat, key):
+    env = dict(os.environ, LC_ALL=loc)
+    code, out = run(['locale', '-k', cat], env=env)
+    m = re.search(r'^%s=(.*)$' % re.escape(key), out, re.M)
+    return m.group(1).strip('"') if m else ''
+
+
+def preview(loc):
+    if not re.match(r'^[A-Za-z]{1,3}(_[A-Z]{2})?(\.[A-Za-z0-9-]+)?(@[a-z]+)?$', loc or ''):
+        raise Fail('not a language')
+    try:
+        locale.setlocale(locale.LC_ALL, loc)
+    except locale.Error:
+        raise Fail("%s isn't on this system" % loc)
+    try:
+        number = locale.format_string('%.2f', 1234567.89, grouping=True)
+        try:
+            money = locale.currency(1234.5, grouping=True)
+        except ValueError:
+            money = ''
+        date = SAMPLE.strftime('%x')
+        long_date = SAMPLE.strftime('%A %d %B %Y')
+        time_ = SAMPLE.strftime('%X')
+    finally:
+        locale.setlocale(locale.LC_ALL, 'C')
+    metric = keyword(loc, 'LC_MEASUREMENT', 'measurement') != '2'
+    height = keyword(loc, 'LC_PAPER', 'height')
+    paper = 'Letter' if height == '279' else 'A4' if height in ('297', '') else height + ' mm'
+    return {'number': number, 'money': money, 'date': date, 'longDate': long_date, 'time': time_,
+            'metric': metric, 'paper': paper}
+
+
+# ------------------------------------------------------------------ 1.14: languages in order, spell check, CJK input
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+LANG_ENV = os.path.join(CONFIG, 'environment.d', '60-hearth-language.conf')
+LOCALERC = os.path.join(CONFIG, 'plasma-localerc')
+SONNET = os.path.join(CONFIG, 'KDE', 'Sonnet.conf')
+KWINRC = os.path.join(CONFIG, 'kwinrc')
+IM_ENV = os.path.join(CONFIG, 'environment.d', '60-hearth-input-method.conf')
+MARK = '# Written by Hearth Settings › Region & language; delete this file to keep your own.'
+LANG_RE = re.compile(r'^[a-z]{2,3}(_[A-Z]{2})?(@[a-z]+)?$')
+FCITX_SYSTEM = '/usr/share/applications/org.fcitx.Fcitx5.desktop'
+FCITX_FLATPAK = ('org.fcitx.Fcitx5', 'org.fcitx.Fcitx5.Addon.Mozc', 'org.fcitx.Fcitx5.Addon.ChineseAddons',
+                 'org.fcitx.Fcitx5.Addon.Hangul')
+SPELL_BOOL = ('autodetect', 'checkerEnabledByDefault', 'backgroundCheckerEnabled', 'skipUppercase', 'skipRunTogether')
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+
+def hsio():
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+def read(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def ini_set(text, section, values):
+    """hearth-lookset's INI setter (every other line kept; None removes a key)."""
+    import importlib.machinery
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-lookset')
+    loader = importlib.machinery.SourceFileLoader('hearth_lookset', path)
+    spec = importlib.util.spec_from_loader('hearth_lookset', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m.ini_set(text, section, values)
+
+
+def ini_get(text, section, key):
+    sec = None
+    for line in text.splitlines():
+        st = line.strip()
+        if st.startswith('[') and st.endswith(']'):
+            sec = st[1:-1]
+        elif sec == section and '=' in st and st.split('=', 1)[0].strip() == key:
+            return st.split('=', 1)[1].strip()
+    return None
+
+
+def languages():
+    m = re.search(r'(?m)^LANGUAGE=(.*)$', read(LANG_ENV))
+    v = m.group(1).strip().strip('"') if m else (ini_get(read(LOCALERC), 'Translations', 'LANGUAGE') or '')
+    return {'languages': [x for x in v.split(':') if LANG_RE.match(x)]}
+
+
+def languages_set(req):
+    ls = req.get('languages') if isinstance(req, dict) else None
+    if not isinstance(ls, list) or len(ls) > 12 or not all(isinstance(x, str) and LANG_RE.match(x) for x in ls):
+        raise Fail('languages look like de_DE or fr (up to 12)')
+    ls = list(dict.fromkeys(ls))
+    io = hsio()
+    if ls:
+        io.update_text(LANG_ENV, lambda t: '%s\nLANGUAGE=%s\n' % (MARK, ':'.join(ls)) if (not t or t.startswith(MARK)) else re.sub(r'(?m)^LANGUAGE=.*$', 'LANGUAGE=' + ':'.join(ls), t))
+    elif os.path.exists(LANG_ENV) and read(LANG_ENV).startswith(MARK):
+        os.remove(LANG_ENV)
+    io.update_text(LOCALERC, lambda t: ini_set(t, 'Translations', {'LANGUAGE': ':'.join(ls) if ls else None}))
+    return {'ok': True, 'languages': ls}
+
+
+def dictionaries():
+    out, seen = [], set()
+    home = os.path.expanduser('~')
+    for d in ('/usr/share/hunspell', '/usr/share/myspell', '/usr/share/myspell/dicts', os.path.join(home, '.local', 'share', 'hunspell')):
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            if n.endswith('.dic') and os.path.exists(os.path.join(d, n[:-4] + '.aff')):
+                i = n[:-4]
+                if i in seen or i.startswith('hyph_'):
+                    continue
+                seen.add(i)
+                c, _, land = i.replace('-', '_').partition('_')
+                out.append({'id': i, 'name': LANGS.get(c, c) + (' (' + LANDS.get(land, land) + ')' if land else '')})
+    return out
+
+
+def spell():
+    t = read(SONNET)
+    st = {'defaultLanguage': ini_get(t, 'General', 'defaultLanguage') or '',
+          'ignore': [w for w in (ini_get(t, 'General', 'ignore_' + (ini_get(t, 'General', 'defaultLanguage') or 'en_US')) or '').split(',') if w]}
+    defaults = {'autodetect': True, 'checkerEnabledByDefault': False, 'backgroundCheckerEnabled': True,
+                'skipUppercase': True, 'skipRunTogether': True}
+    for k in SPELL_BOOL:
+        v = ini_get(t, 'General', k)
+        st[k] = defaults[k] if v is None else v.lower() == 'true'
+    return {'dictionaries': dictionaries(), 'settings': st}
+
+
+def spell_set(req):
+    if not isinstance(req, dict):
+        raise Fail('bad input')
+    vals = {}
+    for k, v in req.items():
+        if k in SPELL_BOOL:
+            vals[k] = 'true' if v else 'false'
+        elif k == 'defaultLanguage':
+            if not isinstance(v, str) or not re.match(r'^[A-Za-z]{2,3}([_-][A-Za-z0-9]{2,8})*$', v):
+                raise Fail('not a dictionary')
+            vals[k] = v
+        elif k == 'ignore':
+            if not isinstance(v, list) or len(v) > 500 or not all(isinstance(w, str) and re.match(r"^[^\s,=\[\]]{1,60}$", w) for w in v):
+                raise Fail('words to ignore: no spaces or commas')
+            lang = req.get('defaultLanguage') or spell()['settings']['defaultLanguage'] or 'en_US'
+            vals['ignore_' + lang] = ','.join(v)
+        else:
+            raise Fail('unknown setting ' + k)
+    hsio().update_text(SONNET, lambda t: ini_set(t, 'General', vals))
+    return spell()
+
+
+def flatpak_has(app):
+    if not shutil.which('flatpak'):
+        return False
+    code, out = run(['flatpak', 'info', '--show-ref', app])
+    return code == 0
+
+
+def fcitx_desktop():
+    if os.path.exists(FCITX_SYSTEM):
+        return FCITX_SYSTEM
+    for d in (os.path.join(os.path.expanduser('~'), '.local', 'share', 'flatpak', 'exports', 'share', 'applications'),
+              '/var/lib/flatpak/exports/share/applications'):
+        p = os.path.join(d, 'org.fcitx.Fcitx5.desktop')
+        if os.path.exists(p):
+            return p
+    return ''
+
+
+def im():
+    cur = ini_get(read(KWINRC), 'Wayland', 'InputMethod') or ''
+    path = fcitx_desktop()
+    return {'installed': bool(path), 'system': path == FCITX_SYSTEM, 'flatpak': bool(path) and path != FCITX_SYSTEM,
+            'on': 'fcitx' in cur.lower(), 'kwin': os.environ.get('HEARTH_WM') == 'kwin',
+            'addons': [a for a in FCITX_FLATPAK[1:] if flatpak_has(a)] if path and path != FCITX_SYSTEM else []}
+
+
+def im_set(on):
+    if on not in ('on', 'off'):
+        raise Fail('on or off')
+    io = hsio()
+    path = fcitx_desktop()
+    if on == 'on':
+        if not path:
+            raise Fail("fcitx5 isn't installed yet")
+        io.update_text(KWINRC, lambda t: ini_set(t, 'Wayland', {'InputMethod': path}))
+        io.update_text(IM_ENV, lambda t: '%s\nXMODIFIERS=@im=fcitx\n' % MARK if (not t or t.startswith(MARK)) else t)
+    else:
+        io.update_text(KWINRC, lambda t: ini_set(t, 'Wayland', {'InputMethod': None}) if 'fcitx' in (ini_get(t, 'Wayland', 'InputMethod') or '').lower() else t)
+        if read(IM_ENV).startswith(MARK):
+            os.remove(IM_ENV)
+    if os.environ.get('HEARTH_WM') == 'kwin' and shutil.which('dbus-send'):
+        run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'])
+    return im()
+
+
+def im_install():
+    if not shutil.which('flatpak'):
+        raise Fail("Flatpak isn't on this system")
+    print('progress: 5 Downloading fcitx5 from Flathub', flush=True)
+    try:
+        p = subprocess.run(['flatpak', 'install', '--user', '--noninteractive', '-y', 'flathub'] + list(FCITX_FLATPAK),
+                           capture_output=True, text=True, timeout=1800)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail('the download stopped (%s)' % e)
+    if p.returncode != 0:
+        raise Fail((p.stderr or p.stdout).strip().splitlines()[-1][:200] if (p.stderr or p.stdout).strip() else 'Flathub said no')
+    print('progress: 100 Installed', flush=True)
+    return im()
+
+
+def stdin_json():
+    raw = os.environ.get('HEARTH_INPUT')
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read()
+    try:
+        return json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('bad input')
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['status']:
+            r = status()
+        elif argv[:1] == ['preview'] and len(argv) == 2:
+            r = preview(argv[1])
+        elif argv[:1] == ['languages']:
+            r = languages()
+        elif argv[:1] == ['languages-set']:
+            r = languages_set(stdin_json())
+        elif argv[:1] == ['spell']:
+            r = spell()
+        elif argv[:1] == ['spell-set']:
+            r = spell_set(stdin_json())
+        elif argv[:1] == ['im']:
+            r = im()
+        elif argv[:1] == ['im-set'] and len(argv) == 2:
+            r = im_set(argv[1])
+        elif argv[:1] == ['im-install']:
+            r = im_install()
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

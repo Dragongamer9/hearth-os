@@ -6,7 +6,13 @@
 SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
 QML="${HEARTH_SERVER_QML:-$SHARE/desktop/shell/server-mode.qml}"
-DASH_LOG="$RUN/hearth-server-dash.log"
+# The dashboard's log is kept in your data folder (the one from the start before as .old), so a report sent after a
+# restart still shows what happened before it.
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus"
+mkdir -p "$DATA" 2>/dev/null
+DASH_LOG="$DATA/server-dash.log"
+[ -f "$DASH_LOG" ] && mv -f "$DASH_LOG" "$DATA/server-dash.log.old" 2>/dev/null
+ALIVE="$RUN/hearth-server-dash-alive"
 
 { dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS NIMBUS_SHARE
   systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service; } >/dev/null 2>&1 &
@@ -30,7 +36,20 @@ else
       # Server mode ended (labwc gone): stop watching.
       if [ -n "$LABWC_PID" ] && ! kill -0 "$LABWC_PID" 2>/dev/null; then exit 0; fi
       started=$(date +%s)
-      quickshell -p "$QML" >>"$DASH_LOG" 2>&1
+      rm -f "$ALIVE"
+      quickshell -p "$QML" >>"$DASH_LOG" 2>&1 &
+      qpid=$!
+      # 1.14: a dashboard that's still running but stopped drawing (no "alive" mark for 45 s once it had one) is
+      # closed, so the loop starts it again. Never more often than that; it only watches.
+      while kill -0 "$qpid" 2>/dev/null; do
+        sleep 5
+        if [ -e "$ALIVE" ] && [ $(( $(date +%s) - $(stat -c %Y "$ALIVE" 2>/dev/null || date +%s) )) -gt 45 ]; then
+          echo "--- $(date '+%F %T') the dashboard stopped drawing (no alive mark for 45 s): restarting it" >>"$DASH_LOG"
+          kill -TERM "$qpid" 2>/dev/null; sleep 3; kill -KILL "$qpid" 2>/dev/null
+          started=0    # not a quick close: it ran
+        fi
+      done
+      wait "$qpid" 2>/dev/null
       if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
       if [ "$fails" -ge 3 ]; then give_up "Server mode's dashboard keeps closing right after it starts."; exit 0; fi
       echo "--- restarting the dashboard" >>"$DASH_LOG"

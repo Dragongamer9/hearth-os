@@ -10,12 +10,18 @@ on:
   pull_request:
     paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**']
   workflow_dispatch:
+    inputs:
+      kwin_only:
+        description: "Only the KWin screens job (kwin-screens)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write    # the screenshots branch
 
 jobs:
   desktop:
+    if: ${{ !inputs.kwin_only }}
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:44
     steps:
@@ -42,6 +48,8 @@ jobs:
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
+          # 1.14's Info Center and Spell check pictures: Vulkan (lavapipe) and OpenGL answers, lsusb, a dictionary.
+          dnf -y install vulkan-tools mesa-vulkan-drivers mesa-demos usbutils hunspell-en-US >/dev/null 2>&1 || true
 
       - uses: actions/checkout@v4
 
@@ -49,6 +57,10 @@ jobs:
       - name: Looks and apps theme tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+          # Mantel on KWin's Settings pages' helper (hearth-kwin-settings: merge-on-write, rebinds, what it may change).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py' -v
+          # Screens on labwc and KWin (hearth-screens, docs/SCREENS.md): parse/build, saved settings never lost.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_screens.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
           # Sub themes (1.10): every one there, readable (WCAG AA) in dark and light, nothing changes after updating, a broken
@@ -89,6 +101,20 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_shell_extras.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_labwc_rc.py'
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_settings_basics.py'
+          # 1.14, KDE System Settings' areas: VPN, hotspot, proxy, connection details, firmware, region, fonts, services,
+          # login screen (fake nmcli / fwupdmgr / localectl / systemctl answers; secrets only on stdin).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_system_settings_114.py' -v
+          # 1.14, network and sign-in (KDE's missing parts): VPNs by hand, 802.1X, mobile broadband, Wi-Fi QR codes,
+          # Duplicate, the firewall, fingerprint sign-in's PAM side, Vaults, SSH/GPG passphrases, the power menu's choices.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_net_signin_114.py' -v
+          # 1.14, Window effects' and Virtual desktops' extras: second switcher, hide the pointer after a time, show FPS /
+          # paint, KWin's scripts, the Desktop Cube.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_effects_extras.py' -v
+          # 1.14, Accessibility's KWin parts: dwell click (hearth-dwell), one window inverted, toggle keys and the modifier
+          # keys' sound; with hearth-access's own tests and the KWin pages' (which check its filters on KWin).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_dwell.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_access.py'
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py'
 
       - name: Start Desktop Mode
         shell: bash
@@ -103,6 +129,8 @@ jobs:
           printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          # Hearth's checks: stand-in answers some helpers take only in tests (hearth-powerset's preview file).
+          export HEARTH_CHECKS=1
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
           # ---- Hearth Files as every app's file chooser: the portal backend and FileChooser=hearth for Nimbus, the way
           # the images install them (os/system_files, base-*.yml), with the backend run from this checkout.
@@ -126,19 +154,9 @@ jobs:
             '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
           chmod +x /tmp/fakebin/hearth-time
           # ---- end of Hearth Time stand-in
-          # ---- Settings › Your desktop (1.13, docs/DESKTOPS.md) as its mockup: KDE Plasma downloaded, GNOME downloading
-          # (42 %), through the real helpers with their test folders (nothing is downloaded here).
-          D=/tmp/desk-fixture; mkdir -p $D/root/usr/bin $D/run $D/state $D/etc
-          : > $D/root/usr/bin/startplasma-wayland; : > $D/root/usr/bin/plasmashell
-          echo 1.13 > $D/version
-          printf '{"wanted": true, "apps": ["org.kde.dolphin.desktop"], "version": "1.13"}\n' > $D/state/kde.json
-          setsid sleep 100000 </dev/null >/dev/null 2>&1 &
-          printf '{"state": "downloading", "percent": 42, "pid": %d, "what": "Downloading"}\n' $! > $D/run/gnome.json
-          export HEARTH_DESKTOPS_TEST=1 HEARTH_DESKTOPS_ROOT=$D/root HEARTH_DESKTOPS_RUN=$D/run HEARTH_DESKTOPS_STATE=$D/state \
-            HEARTH_DESKTOPS_CONF=$D/etc/desktops.json HEARTH_DESKTOPS_VERSION=$D/version HEARTH_DESKTOPS_UNLOCK=/bin/false \
-            HEARTH_DESKTOPS_HELPER="$PWD/os/system_files/usr/libexec/nimbus/hearth-desktops-helper" \
-            HEARTH_DESKTOPS_APP_KINDS="$PWD/os/system_files/usr/libexec/hearth-app-kinds"
-          chmod +x "$HEARTH_DESKTOPS_HELPER" hosts/linux/desktop/shell/hearth-desktops
+          # ---- Settings › Your desktop (1.14): someone who had 1.13's KDE Plasma picked, the notice already shown once
+          # (desktop-notice.shown: the banner on the page, not the card over the desktop).
+          mkdir -p "$HOME/.local/state/hearth" && echo "kde retired $(date +%s)" > "$HOME/.local/state/hearth/desktop-notice.shown"
           # ---- end of Your desktop's fixture
           # Discord (Discord.qml): a stand-in "discord" (an X window with Discord's window class, under Xwayland) for the
           # bar's quick window. The real app can't run here; Hearth only places, shows and hides its window anyway.
@@ -206,6 +224,9 @@ jobs:
           # Desktop Mode's settings file there from the start (the shell watches it once it exists: the keyboard looks'
           # light-mode pictures below change it while the shell runs).
           mkdir -p "$HOME/.local/share/nimbus"; [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md) in their preview: their test devices and screen. Only
+          # used once $XDG_RUNTIME_DIR/hearth-kwin-preview exists (below); until then they show "Needs Mantel on KWin".
+          export HEARTH_KWIN_FIXTURE="$PWD/hosts/linux/test/fixtures/kwin-preview.json"
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -268,12 +289,408 @@ jobs:
           wtype -k Return; sleep 3; grim shots/settings-redesign/35-search-opened-the-setting.png || true
           rs home 36-home; wtype -M ctrl -k f -m ctrl; sleep 1; wtype appearance 2>/dev/null || true; sleep 2; grim shots/settings-redesign/36-search-old-name.png || true
           wtype -k Escape; wtype -k Escape; ipc settings close
+          # ---- 1.14, System Settings' areas (test_system_settings_114.py): each new page at 1920x1080 with stand-in
+          # NetworkManager, fwupd, localectl and systemd --user answers (in /tmp/fakebin only for these pictures; anything
+          # else goes to the real program), then everything put back. The system-settings-shots job posts them as SHOT notices.
+          mkdir -p shots/system-settings
+          dnf -y install glibc-langpack-de glibc-langpack-fr >/dev/null 2>&1 || true
+          cat > /tmp/fakebin/nmcli <<'FAKE'
+          #!/bin/sh
+          W=0f5d6a3e-1b2c-4d5e-8f90-123456789abc; V=22222222-2222-3333-4444-555555555555; G=33333333-2222-3333-4444-555555555555; H=44444444-2222-3333-4444-555555555555; M=66666666-2222-3333-4444-555555555555
+          case "$*" in
+            *"NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT connection show"*)
+              printf 'Home Wi-Fi:%s:802-11-wireless:wlan0:yes:yes\nWired connection 1:55555555-2222-3333-4444-555555555555:802-3-ethernet::no:yes\nWork VPN:%s:vpn::no:no\nhome-wg:%s:wireguard:home-wg:yes:no\nHearth Hotspot:%s:802-11-wireless::no:no\nPhone plan:%s:gsm::no:yes\n' $W $V $G $H $M ;;
+            *"DEVICE,TYPE,STATE device"*) printf 'wlan0:wifi:connected\neth0:ethernet:unavailable\nhome-wg:wireguard:connected\ncdc-wdm0:gsm:disconnected\n' ;;
+            *"802-11-wireless-security.psk connection show uuid $W"*) echo firelight-2026 ;;
+            *"-t connection show uuid $M"*) printf 'connection.id:Phone plan\nconnection.type:gsm\nconnection.autoconnect:yes\nconnection.metered:yes\nipv4.method:auto\nipv4.addresses:\nipv4.gateway:--\nipv4.dns:\nipv4.ignore-auto-dns:no\nipv6.method:auto\nipv6.dns:\ngsm.apn:fast.t-mobile.com\ngsm.username:\ngsm.home-only:yes\nGENERAL.DEVICES:\n' ;;
+            *"vpn.service-type"*) echo org.freedesktop.NetworkManager.openvpn ;;
+            *"802-11-wireless.mode connection show uuid $H"*) echo ap ;;
+            *"802-11-wireless.mode"*) echo infrastructure ;;
+            *"WIFI-PROPERTIES.AP"*) echo yes ;;
+            *"connection.type"*) echo 802-11-wireless ;;
+            *"-t connection show uuid $H"*) printf '802-11-wireless.ssid:Hearth Den\n802-11-wireless.band:a\n' ;;
+            *"-t connection show uuid"*) printf 'connection.id:Home Wi-Fi\nconnection.type:802-11-wireless\n802-11-wireless.ssid:Home Wi-Fi\n802-11-wireless-security.key-mgmt:wpa-psk\nconnection.autoconnect:yes\nconnection.metered:no\nipv4.method:auto\nipv4.addresses:\nipv4.gateway:--\nipv4.dns:1.1.1.1,9.9.9.9\nipv4.ignore-auto-dns:no\nipv6.method:auto\nipv6.dns:\n802-11-wireless.cloned-mac-address:stable\nGENERAL.DEVICES:wlan0\nIP4.ADDRESS[1]:192.168.1.42/24\nIP4.GATEWAY:192.168.1.1\nIP4.DNS[1]:1.1.1.1\nIP4.DNS[2]:9.9.9.9\nIP6.ADDRESS[1]:fd00::42/64\n' ;;
+            *) [ -x /usr/bin/nmcli ] && exec /usr/bin/nmcli "$@" ;;
+          esac
+          FAKE
+          cat > /tmp/fakebin/fwupdmgr <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            get-devices) echo '{"Devices":[{"Name":"System Firmware","DeviceId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","Vendor":"Framework","Version":"3.05","Plugin":"uefi_capsule","Flags":["internal","updatable","needs-reboot"]},{"Name":"Unifying Receiver","DeviceId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Vendor":"Logitech","Version":"RQR12.10","Plugin":"logitech_hidpp","Flags":["updatable"]},{"Name":"Samsung SSD 980 PRO 1TB","DeviceId":"cccccccccccccccccccccccccccccccccccccccc","Vendor":"Samsung","Version":"5B2QGXA7","Plugin":"nvme","Flags":["internal","updatable"]}]}' ;;
+            get-updates) echo '{"Devices":[{"Name":"Unifying Receiver","DeviceId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Releases":[{"Version":"RQR12.11","Summary":"Firmware for the Logitech Unifying receiver","Description":"<p>This release fixes a security problem.</p>","Urgency":"high","Size":66000}]}]}' ;;
+            security) echo '{"HostSecurityId":"HSI:1! (v2.0.8)","SecurityAttributes":[{"AppstreamId":"org.fwupd.hsi.Tpm.Version20","Name":"TPM v2.0","HsiLevel":1,"HsiResult":"found","Flags":["success"]},{"AppstreamId":"org.fwupd.hsi.Uefi.SecureBoot","Name":"UEFI secure boot","HsiLevel":1,"HsiResult":"enabled","Flags":["success"]},{"AppstreamId":"org.fwupd.hsi.Iommu","Name":"IOMMU","HsiLevel":2,"HsiResult":"not-found","Flags":[]}]}' ;;
+            *) exit 2 ;;
+          esac
+          FAKE
+          printf '#!/bin/sh\necho "SecureBoot enabled"\n' > /tmp/fakebin/mokutil
+          printf '#!/bin/sh\nprintf "   System Locale: LANG=en_US.UTF-8\\n                  LC_TIME=de_DE.UTF-8\\n       VC Keymap: us\\n"\n' > /tmp/fakebin/localectl
+          cat > /tmp/fakebin/systemctl <<'FAKE'
+          #!/bin/sh
+          if [ "$1" = --user ] && [ "$2" = list-unit-files ]; then
+            printf 'syncthing.service enabled enabled\nmpd.service disabled enabled\nopentabletdriver.service disabled enabled\nhearth-companion.service enabled enabled\npipewire.service enabled enabled\nwireplumber.service enabled enabled\nxdg-desktop-portal.service static -\n'; exit 0
+          fi
+          if [ "$1" = --user ] && [ "$2" = show ]; then
+            printf 'Id=syncthing.service\nDescription=Syncthing - Open Source Continuous File Synchronization\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=mpd.service\nDescription=Music Player Daemon\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n\nId=opentabletdriver.service\nDescription=OpenTabletDriver Daemon\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n\nId=hearth-companion.service\nDescription=Hearth companion\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=pipewire.service\nDescription=PipeWire Multimedia Service\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=wireplumber.service\nDescription=Multimedia Service Session Manager\nActiveState=active\nSubState=running\nUnitFileState=enabled\n'; exit 0
+          fi
+          exec /usr/bin/systemctl "$@"
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/systemctl
+          chmod +x /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/mokutil /tmp/fakebin/localectl /tmp/fakebin/systemctl
+          # A proxy set by hand, for its picture (removed again below).
+          PX="$HOME/.config/nimbus/proxy.json"; [ -e "$PX" ] && cp -p "$PX" /tmp/proxy.json.before
+          printf '{"mode": "manual", "http": "proxy.lan:3128", "https": "proxy.lan:3128", "socks": "", "ignore": "localhost, 127.0.0.0/8, ::1, .lan"}\n' > "$PX"
+          ss() { ipc settings close; ipc settings page "$1"; sleep 5; grim "shots/system-settings/$2.png" || true; }
+          ss vpn ss-vpn; ss hotspot ss-hotspot; ss proxy ss-proxy; ss net-details ss-net-details; ss firmware ss-firmware
+          ss region ss-region; ss fonts ss-fonts; ss services ss-services; ss login-screen ss-login-screen
+          # Settings › Users on a pre-installed PC (hearth-oem-account's marker, naming this account for the picture):
+          # "Finish setting up: your name and password". The marker is taken away again.
+          OEM_M=/var/lib/hearth/oem-setup.json; OEM_MADE=""
+          if [ ! -e "$OEM_M" ]; then mkdir -p /var/lib/hearth && chmod 755 /var/lib/hearth && printf '{"user": "%s", "at": 1}\n' "$(id -un)" > "$OEM_M" && OEM_MADE=1; fi
+          ss users ss-users-oem
+          [ -n "$OEM_MADE" ] && rm -f "$OEM_M"
+          # Thunderbolt (a dock allowed always, a drive waiting), Power with a battery that has a charge limit (a stand-in
+          # /sys for hearth-hwset), Notifications with three apps (Discord with a sound and on the lock screen), and
+          # Startup's Reopen my apps switch.
+          printf '#!/bin/sh\ncase "$1" in list) cat "%s/hosts/linux/test/fixtures/boltctl-list.txt" ;; domains) printf " ● d0\\n   ├─ security:    user\\n" ;; *) exit 1 ;; esac\n' "$PWD" > /tmp/fakebin/boltctl
+          chmod +x /tmp/fakebin/boltctl
+          FS=/tmp/fake-sys/class/power_supply/BAT0; mkdir -p "$FS"
+          printf 'Battery\n' > $FS/type; printf '73\n' > $FS/capacity; printf 'Discharging\n' > $FS/status; printf '80\n' > $FS/charge_control_end_threshold
+          printf '52000000\n' > $FS/energy_full; printf '57000000\n' > $FS/energy_full_design; printf '212\n' > $FS/cycle_count
+          HW=/usr/libexec/nimbus/hearth-hwset; HW_MADE=""; if [ ! -e "$HW" ]; then mkdir -p /usr/libexec/nimbus; HW_MADE=1
+            printf '#!/usr/bin/python3\nimport os, runpy, sys\nos.environ["HEARTH_SYS"] = "/tmp/fake-sys"\nos.environ["HEARTH_HWSET_SETTINGS"] = "/tmp/fake-sys/hardware.json"\nsys.argv[0] = "%s"\nrunpy.run_path(sys.argv[0], run_name="__main__")\n' "$PWD/os/system_files/usr/libexec/nimbus/hearth-hwset" > "$HW"; chmod +x "$HW"; fi
+          NA="$HOME/.config/nimbus/notify-apps.json"; [ -e "$NA" ] && cp -p "$NA" /tmp/notify-apps.json.before
+          printf '{"apps": {"Discord": {"sound": true, "lockScreen": true}, "Thunderbird": {"priority": "high"}}}\n' > "$NA"
+          for a in Discord Thunderbird Steam; do notify-send -a "$a" "A message from $a" "For Settings › Notifications" 2>/dev/null || true; done
+          sleep 9
+          ss thunderbolt ss-thunderbolt; ss power ss-power; ss notifications ss-notifications; ss startup ss-startup
+          ipc settings close
+          rm -f /tmp/fakebin/boltctl "$NA"; [ -n "$HW_MADE" ] && rm -f "$HW"; rm -rf /tmp/fake-sys
+          [ -e /tmp/notify-apps.json.before ] && mv -f /tmp/notify-apps.json.before "$NA"
+          ipc settings close
+          # ---- 1.14, network and sign-in (test_net_signin_114.py): VPN plugins (only their .name files: l2tp, OpenConnect and
+          # strongSwan here; PPTP, SSTP and Fortinet show their "not on this system" note), qrencode for the Wi-Fi code, a
+          # stand-in fingerprint reader (fprintd-list / fprintd-enroll), firewalld (firewall-cmd), two vaults, a picture
+          # to crop, the network speed in the bar. Everything put back afterwards.
+          dnf -y install qrencode >/dev/null 2>&1 || true
+          VD=/usr/lib/NetworkManager/VPN; mkdir -p "$VD"; VMADE=""
+          for n in l2tp openconnect strongswan; do [ -e "$VD/nm-$n-service.name" ] || { printf '[VPN Connection]\nname=%s\nservice=org.freedesktop.NetworkManager.%s\n' $n $n > "$VD/nm-$n-service.name"; VMADE="$VMADE $VD/nm-$n-service.name"; }; done
+          printf '#!/bin/sh\nprintf "Using device /net/reactivated/Fprint/Device/0\\nFingerprints for user %%s on Goodix MOC Fingerprint Sensor (press):\\n - #0: right-index-finger\\n" "$1"\n' > /tmp/fakebin/fprintd-list
+          printf '#!/bin/sh\necho "Using device /net/reactivated/Fprint/Device/0"; echo "Enrolling left-index-finger finger."\nfor i in 1 2 3 4; do sleep 0.6; echo "Enroll result: enroll-stage-passed"; done\nsleep 90\n' > /tmp/fakebin/fprintd-enroll
+          cat > /tmp/fakebin/firewall-cmd <<'FAKE'
+          #!/bin/sh
+          case "$*" in
+            --state) echo running ;;
+            --get-default-zone) echo public ;;
+            --list-ports) echo "25565/tcp 8080/tcp" ;;
+            --list-services) echo "ssh dhcpv6-client mdns" ;;
+            --list-rich-rules) for n in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do echo "rule family=\"ipv4\" source address=\"$n\" port port=\"1714-1764\" protocol=\"tcp\" accept"; done ;;
+            "--zone=trusted --list-interfaces") echo tailscale0 ;;
+            *) exit 2 ;;
+          esac
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/firewall-cmd
+          chmod +x /tmp/fakebin/fprintd-list /tmp/fakebin/fprintd-enroll /tmp/fakebin/firewall-cmd
+          FWMADE=""; if [ ! -e /usr/libexec/nimbus/hearth-firewall ]; then mkdir -p /usr/libexec/nimbus; cp os/system_files/usr/libexec/nimbus/hearth-firewall /usr/libexec/nimbus/; FWMADE=1; fi
+          FPMADE=""; if [ ! -e /etc/nimbus/fingerprint/lock ]; then mkdir -p /etc/nimbus/fingerprint; id -un > /etc/nimbus/fingerprint/lock; FPMADE=1; fi
+          PMADE=""; for f in hearth-fingerprint hearth-fingerprint-polkit; do [ -e /etc/pam.d/$f ] || { cp os-bases/peppermint/system_files/etc/pam.d/$f /etc/pam.d/; PMADE="$PMADE /etc/pam.d/$f"; }; done
+          VJ="$HOME/.config/nimbus/vaults.json"; [ -e "$VJ" ] && cp -p "$VJ" /tmp/vaults.json.before
+          printf '{"vaults": {"private": {"name": "Private", "backend": "gocryptfs", "idle": 15, "lockOnLock": true}, "taxes": {"name": "Taxes 2026", "backend": "cryfs", "idle": 60, "lockOnLock": true}}}\n' > "$VJ"
+          mkdir -p "$HOME/Pictures"; cp hosts/linux/desktop/shell/images/wallpapers/slate-dusk.jpg "$HOME/Pictures/aaa-hearth-crop-test.jpg" 2>/dev/null || true
+          DJ="$HOME/.local/share/nimbus/desktop.json"; python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$DJ" '{"netSpeed": true}' >/dev/null || true
+          # Some traffic for the bar's speed (a download thrown away), then the vault button and the speed have been read.
+          ( curl -sL -o /dev/null --max-time 60 --limit-rate 3M https://download.fedoraproject.org/pub/fedora/linux/releases/42/Everything/x86_64/os/images/install.img || true ) &
+          sleep 16
+          ss vpn:add-l2tp ss-vpn-add; ss net-details:qr ss-net-qr; ss net-details:add-enterprise ss-net-add; ss net-details:mobile ss-net-mobile
+          ss firewall ss-firewall; ss signin:enroll ss-signin-finger; pkill -f fprintd-enroll || true
+          ss users:crop ss-users-crop; ss vaults:new ss-vaults
+          ipc settings close
+          ipc powermenu demo; sleep 2; grim shots/system-settings/ss-power-menu.png || true; ipc powermenu close
+          ipc askpass demo; sleep 2; grim shots/system-settings/ss-askpass.png || true; ipc askpass close
+          ipc polkit demoFinger; sleep 2; grim shots/system-settings/ss-polkit-finger.png || true; ipc polkit close
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$DJ" '{"netSpeed": null}' >/dev/null || true
+          rm -f "$VJ" "$HOME/Pictures/aaa-hearth-crop-test.jpg" /tmp/fakebin/fprintd-list /tmp/fakebin/fprintd-enroll /tmp/fakebin/firewall-cmd $VMADE $PMADE
+          [ -e /tmp/vaults.json.before ] && mv -f /tmp/vaults.json.before "$VJ"
+          [ -n "$FWMADE" ] && rm -f /usr/libexec/nimbus/hearth-firewall; [ -n "$FPMADE" ] && rm -rf /etc/nimbus/fingerprint
+          for f in ss-vpn-add ss-net-qr ss-net-add ss-net-mobile ss-firewall ss-signin-finger ss-users-crop ss-vaults ss-power-menu ss-askpass ss-polkit-finger; do
+            [ -s "shots/system-settings/$f.png" ] || echo "::warning title=Network and sign-in::no picture for $f"
+          done
+          if grep -E "(Set(Firewall|Vaults|Signin|Users|NetDetails|Vpn|BarDock)|AskPass|PowerMenu|NetSpeed|VaultStore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)|(Bar|Islands|Lock)\.qml.*(NetSpeed|VaultStore|fpPam|fpCheck|vaultLock|fpInfo)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Network and sign-in::$(grep -E "(Set(Firewall|Vaults|Signin|Users|NetDetails|Vpn|BarDock)|AskPass|PowerMenu|NetSpeed|VaultStore)\.qml|(Bar|Islands|Lock)\.qml.*(NetSpeed|VaultStore|fpPam|fpCheck|vaultLock|fpInfo)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Network and sign-in::no QML errors from the 1.14 network and sign-in pages"
+          fi
+          rm -f "$PX" /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/mokutil /tmp/fakebin/localectl /tmp/fakebin/systemctl
+          [ -e /tmp/proxy.json.before ] && mv -f /tmp/proxy.json.before "$PX"
+          if grep -E "(Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users|Thunderbolt|Sound|Power|Notifications|Startup)|NotifyRules|SessionRestore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=System settings::$(grep -E "(Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users|Thunderbolt|Sound|Power|Notifications|Startup)|NotifyRules|SessionRestore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=System settings::$(ls shots/system-settings | wc -l) pictures of the 1.14 system pages, no QML errors from them"
+          fi
+          # ---- 1.14, more of KDE's System Settings (test_settings_more_114.py, docs/SETTINGS-MORE-1.14.md): each new page
+          # at 1920x1080 with stand-in answers in /tmp/fakebin (only for these pictures; anything else goes to the real
+          # program) and a few of your own files, all put back afterwards. Posted by the system-settings-shots job as ss-*.
+          SM=/tmp/sm-before; mkdir -p "$SM"; D="$HOME/.local/share/nimbus/desktop.json"; cp -p "$D" "$SM/desktop.json"
+          SMF="$PWD/hosts/linux/test/fixtures/settings-more"
+          for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do
+            printf '#!/bin/sh\nexec python3 "%s/fake.py" %s "$@"\n' "$SMF" "$f" > "/tmp/fakebin/$f"; chmod +x "/tmp/fakebin/$f"
+          done
+          # Your own things for the pictures: a command at sign-in, a look saved, languages in order, words to leave alone.
+          printf '{"name": "Mount my NAS", "command": "rclone mount nas: ~/NAS"}' | python3 hosts/linux/desktop/shell/hearth-autostart add-command || true
+          mkdir -p "$HOME/.config/environment.d" "$HOME/.config/KDE" "$HOME/.config/nimbus"
+          printf '# Written by Hearth Settings \xe2\x80\xba Region & language; delete this file to keep your own.\nLANGUAGE=de_DE:fr_FR:en_US\n' > "$HOME/.config/environment.d/60-hearth-language.conf"
+          printf '[General]\ndefaultLanguage=en_US\nignore_en_US=Hearth,KWin,Mantel\n' > "$HOME/.config/KDE/Sonnet.conf"
+          cp "$SMF/my-looks.json" "$HOME/.config/nimbus/my-looks.json"
+          # An app that opens pictures and text, so File types has kinds to show (the runner's apps open none).
+          mkdir -p "$HOME/.local/share/applications"
+          printf '[Desktop Entry]\nType=Application\nName=Hearth Viewer (test)\nExec=true %%f\nMimeType=image/png;image/jpeg;image/webp;text/plain;text/markdown;application/pdf;video/mp4;audio/mpeg;\n' > "$HOME/.local/share/applications/hearth-test-viewer.desktop"
+          python3 - "$D" "$PWD/hosts/linux/desktop/shell/images/wallpapers" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d.update(frameTint=45, signinSplash="flame", wallShow={"on": True, "folder": sys.argv[2], "minutes": 30, "shuffle": False},
+                   wallScreens={"HEADLESS-1": "builtin:slate-dusk"}, screenOffBattery=5, sleepBattery=15)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          sleep 4
+          ss power-profiles ss-power-profiles; ss power-awake ss-power-awake; ss battery ss-battery
+          ss autostart ss-autostart; ss file-types ss-file-types; ss menu-editor:foot ss-menu-editor; ss app-permissions ss-app-permissions
+          ss wallpaper-more ss-wallpaper-more; ss my-looks ss-my-looks; ss look-more ss-look-more; ss fonts:small ss-fonts-small
+          # 1.14 settings bits (test_settings_bits_114.py): the picture of the day (today's kept in the cache, so no
+          # internet), the light/dark pair, "Apps follow Hearth", the sub-pixel order, Hybrid sleep (a stand-in answer).
+          WP="$PWD/hosts/linux/desktop/shell/images/wallpapers"; PC="$HOME/.cache/hearth/potd"; mkdir -p "$PC"; TD=$(date +%F)
+          cp "$WP/$(ls "$WP" | grep -m1 '\.jpg$')" "$PC/bing-$TD.jpg"
+          printf '{"path": "%s", "title": "Lake Bled at dawn, Slovenia", "credit": "A stand-in for the Desktop Mode test", "source": "bing", "date": "%s"}\n' "$PC/bing-$TD.jpg" "$TD" > "$PC/bing-$TD.json"
+          FCI="$HOME/.config/nimbus/fonts-cursor-icons.json"; [ -e "$FCI" ] && cp -p "$FCI" "$SM/fci.json"
+          printf '{"antialias": "rgba", "subpixel": "bgr"}\n' > "$FCI"
+          printf '{"hibernate": {"can": true, "why": "", "proven": false}, "hybrid": {"can": true, "why": ""}}\n' > "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"
+          python3 - "$D" "$WP" <<'PY'
+          import json, os, sys
+          p, wp = sys.argv[1], sys.argv[2]; d = json.load(open(p)); jpg = sorted(f for f in os.listdir(wp) if f.endswith(".jpg"))
+          d.update(wallPotd={"on": True, "source": "bing"}, wallPair={"on": True, "light": os.path.join(wp, jpg[-1]), "dark": os.path.join(wp, jpg[0])})
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          sleep 4
+          ss wallpaper-more:potd ss-wallpaper-potd; ss look-more:apps ss-look-apps; ss fonts:smoothing ss-fonts-subpixel; ss power:off ss-power-hybrid
+          rm -rf "$PC" "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"; rm -f "$FCI"; [ -e "$SM/fci.json" ] && mv -f "$SM/fci.json" "$FCI"
+          ss languages ss-languages; ss spellcheck ss-spellcheck; ss input-methods ss-input-methods
+          ss bluetooth-devices ss-bluetooth-devices; ss print-queue ss-print-queue; ss scanners ss-scanners; ss usb-devices ss-usb-devices
+          ss info-cpu ss-info-cpu; ss info-gpu ss-info-gpu; ss info-memory ss-info-memory; ss info-graphics ss-info-graphics
+          ss info-pci ss-info-pci; ss info-usb ss-info-usb
+          # Updates with one ready to download: "Shut down when it's done" (a stand-in hearth-admin through a stand-in pkexec).
+          AD_MADE=""; if [ ! -e /usr/libexec/nimbus/hearth-admin ]; then mkdir -p /usr/libexec/nimbus; AD_MADE=1
+            printf '%s\n' '#!/bin/sh' 'case "$1" in update-status) echo "{\"booted\":{\"version\":\"1.13.0\"},\"staged\":null,\"available\":{\"version\":\"1.14.0\"},\"rollback\":{\"version\":\"1.12.0\"},\"rollbackQueued\":false}" ;; esac' > /usr/libexec/nimbus/hearth-admin
+            chmod +x /usr/libexec/nimbus/hearth-admin; fi
+          printf '#!/bin/sh\nexec "$@"\n' > /tmp/fakebin/pkexec; chmod +x /tmp/fakebin/pkexec
+          ss updates ss-updates-shutdown
+          rm -f /tmp/fakebin/pkexec; [ -n "$AD_MADE" ] && rm -f /usr/libexec/nimbus/hearth-admin
+          ipc settings close
+          # The sign-in splash (its preview), the Welcome screen, the out-of-memory notice and a USB drive plugged in.
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call splash preview flame || true; sleep 0.9; grim shots/system-settings/ss-signin-splash.png || true; sleep 3
+          ipc welcome preview 1.14; sleep 1; grim shots/system-settings/ss-welcome.png || true; ipc welcome close
+          ipc oomwatch test; sleep 1; grim shots/system-settings/ss-oom-notice.png || true; wtype -k Escape; sleep 1
+          # The test notice is critical (it stays until dismissed): gone again, so later pictures don't show it.
+          ipc notify unpopAll
+          ipc devicewatch drive /dev/sdz1 "Holiday photos"; sleep 1; grim shots/system-settings/ss-drive-plugged.png || true; wtype -k Escape; sleep 1
+          # Put everything back.
+          for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do rm -f "/tmp/fakebin/$f"; done
+          rm -f "$HOME/.local/share/applications/hearth-test-viewer.desktop"
+          rm -f "$HOME"/.config/autostart/hearth-cmd-*.desktop "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.config/KDE/Sonnet.conf" "$HOME/.config/nimbus/my-looks.json"
+          cp -p "$SM/desktop.json" "$D"; sleep 3
+          SMQ='(Set(SoundSpeakers|SoundApps|PushToTalk|PowerProfiles|PowerAwake|Battery|Autostart|FileTypes|MenuEditor|WallpaperMore|MyLooks|LookMore|Languages|Spellcheck|InputMethods|AppPermissions|BtDevices|PrintQueue|Scanners|UsbDevices|InfoCenter|Panel|Power|Sound|Fonts|Region|Firmware|Updates|Bluetooth|Printers|About)|PushToTalk|FirmwareWatch|OomWatch|DeviceWatch|Welcome|SigninSplash|WallShow|Wallpaper|Dock|Mixer|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
+          if grep -E "$SMQ" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Settings (more of KDE's)::$(grep -E "$SMQ" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Settings (more of KDE's)::$(ls shots/system-settings | wc -l) pictures in system-settings, no QML errors from the new pages"
+          fi
+          # ---- 1.14, the rest of KDE's System Settings (test_settings_more_114_b.py): receiving files over Bluetooth and
+          # this PC's name, Temperatures & fans / Kernel modules / Interrupts, Scan to PDF, Ink & toner (a stand-in CUPS
+          # answering IPP on its socket), the firmware history and Translations & dictionaries. Stand-ins only for these
+          # pictures, all put back afterwards.
+          SM2=/tmp/sm2-before; mkdir -p "$SM2"; cp -p "$D" "$SM2/desktop.json"
+          ipc notify unpopAll
+          for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do
+            printf '#!/bin/sh\nexec python3 "%s/fake.py" %s "$@"\n' "$SMF" "$f" > "/tmp/fakebin/$f"; chmod +x "/tmp/fakebin/$f"
+          done
+          CUPS_MADE=""; if [ ! -e /run/cups/cups.sock ]; then mkdir -p /run/cups; CUPS_MADE=1
+            python3 "$SMF/fake_ipp.py" /run/cups/cups.sock & echo $! > /tmp/fake-ipp.pid; sleep 1; fi
+          mkdir -p "$HOME/.config/environment.d" "$HOME/.local/state/nimbus"
+          printf '# Written by Hearth Settings \xe2\x80\xba Region & language; delete this file to keep your own.\nLANGUAGE=de_DE:fr_FR:en_US\n' > "$HOME/.config/environment.d/60-hearth-language.conf"
+          NOW=$(date +%s%3N)
+          printf '{"items": [{"path": "%s/Downloads/IMG_2041.jpg", "name": "IMG_2041.jpg", "from": "Pixel 8", "at": %s}, {"path": "%s/Downloads/Boarding pass.pdf", "name": "Boarding pass.pdf", "from": "Pixel 8", "at": %s}]}\n' "$HOME" "$NOW" "$HOME" "$((NOW - 7200000))" > "$HOME/.local/state/nimbus/bt-received.json"
+          python3 - "$D" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d.update(btReceive=True, btReceiveTrusted=True)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          SCANDEV="airscan:e0:HP OfficeJet Pro 9010"
+          python3 hosts/linux/desktop/shell/hearth-scan clear >/dev/null || true
+          python3 hosts/linux/desktop/shell/hearth-scan page "$SCANDEV" 75 Color Flatbed >/dev/null || true
+          python3 hosts/linux/desktop/shell/hearth-scan page "$SCANDEV" 75 Color Flatbed >/dev/null || true
+          sleep 3
+          ss bluetooth-receive ss-bluetooth-receive
+          ss info-sensors ss-info-sensors; ss info-modules ss-info-modules; ss info-interrupts ss-info-interrupts
+          ss scan-pdf ss-scan-pdf; ss ink-levels ss-ink-levels
+          ss firmware-history ss-firmware-history; ss language-packs ss-language-packs
+          ipc settings close; ipc notify unpopAll; ipc inkwatch check; sleep 5; grim shots/system-settings/ss-ink-notice.png || true
+          echo "::notice title=Ink notice::$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call notify history 2>&1 | grep -o '"summary":"[^"]*low[^"]*"' | head -2 | tr '\n' ' ') $(grep -a 'InkWatch' "$LOG" | tail -2 | cut -c1-200 | tr '\n' ' ')"
+          ipc notify unpopAll; ipc btreceive test; sleep 2; grim shots/system-settings/ss-bt-receive-ask.png || true
+          ipc notify unpopAll
+          for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do rm -f "/tmp/fakebin/$f"; done
+          [ -n "$CUPS_MADE" ] && { kill "$(cat /tmp/fake-ipp.pid)" 2>/dev/null; rm -f /run/cups/cups.sock; }
+          python3 hosts/linux/desktop/shell/hearth-scan clear >/dev/null || true
+          rm -f "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.local/state/nimbus/bt-received.json" "$HOME/.local/state/nimbus/ink-told.json"
+          cp -p "$SM2/desktop.json" "$D"; sleep 3
+          SMQ2='(Set(BtReceive|ScanPdf|InkLevels|LanguagePacks|FirmwareHistory|InfoCenter|BtDevices|Printers|Scanners|Languages|Firmware)|BtReceive|InkWatch)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
+          if grep -E "$SMQ2" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Settings (rest of KDE's)::$(grep -E "$SMQ2" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Settings (rest of KDE's)::no QML errors from the new pages; $(ls shots/system-settings | tr '\n' ' ' | cut -c1-900)"
+          fi
+          # ---- end of more of KDE's System Settings
+          # ---- Mantel on KWin's Settings pages (1.14, docs/KWIN-SETTINGS.md): first as they are under labwc (greyed, with
+          # "Needs Mantel on KWin"), then in the preview with saved settings, at 1920×1080 (the kwin-pages-shots jobs post
+          # them as SHOT notices). Opening them writes nothing; labwc's own files are as they were.
+          mkdir -p shots/kwin-pages
+          kp() { ipc settings close; ipc settings page "$1"; sleep 3; grim "shots/kwin-pages/$2.png" || true; }
+          kdown() { wtype -k Right; sleep 1; for i in $(seq 1 "$1"); do wtype -k Down; done; sleep 1; grim "shots/kwin-pages/$2.png" || true; }
+          kp kwin-effects 00-labwc-needs-kwin
+          kp mouse 00-labwc-mouse
+          kp kwin-behaviour wb-0-labwc-window-behaviour
+          K0=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          L0=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
+          # Saved settings to show: three named desktops, a tile layout for the screen, two window rules, a few effects.
+          mkdir -p "$HOME/.config"
+          printf '%s\n' '[Desktops]' 'Id_1=6a1f0c62-1b1d-4c8e-9d2f-000000000001' 'Name_1=Main' 'Id_2=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'Name_2=Games' \
+            'Id_3=6a1f0c62-1b1d-4c8e-9d2f-000000000003' 'Name_3=Work' 'Number=3' 'Rows=1' '' '[Plugins]' 'wobblywindowsEnabled=true' 'diminactiveEnabled=true' \
+            'cubeEnabled=true' 'minimizeallEnabled=true' 'showfpsEnabled=true' 'hidecursorEnabled=true' '' '[Effect-hidecursor]' 'HideOnTyping=false' 'InactivityDuration=10' \
+            '' '[TabBoxAlternative]' 'ApplicationsMode=2' '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
+            '[Tiling][e3d3d5c4-af96-5514-988a-a5cf444294bf]' 'tiles={"layoutDirection":"horizontal","tiles":[{"width":0.3},{"width":0.4},{"width":0.3,"layoutDirection":"vertical","tiles":[{"height":0.5},{"height":0.5}]}]}' \
+            > "$HOME/.config/kwinrc"
+          printf '%s\n' '[General]' 'count=2' 'rules=1d0b1f5e-0000-4000-8000-000000000001,1d0b1f5e-0000-4000-8000-000000000002' '' \
+            '[1d0b1f5e-0000-4000-8000-000000000001]' 'Description=Steam on the Games desktop' 'wmclass=steam' 'wmclassmatch=1' 'desktops=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'desktopsrule=3' 'noborder=true' 'noborderrule=2' '' \
+            '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
+            > "$HOME/.config/kwinrulesrc"
+          printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
+          printf '%s\n' '[ButtonRebinds][Mouse]' 'ExtraButton1=Key,Alt+Left' 'ExtraButton5=Key,Meta+W' > "$HOME/.config/kcminputrc"
+          # Window behaviour (SetKwinWindows.qml): focus follows the pointer with raise on hover, a middle click closes,
+          # Super + right button opens the window menu.
+          printf '%s\n' '' '[Windows]' 'FocusPolicy=FocusFollowsMouse' 'AutoRaise=true' 'AutoRaiseInterval=500' '' '[MouseBindings]' \
+            'CommandActiveTitlebar2=Close' 'CommandInactiveTitlebar2=Close' 'CommandAll3=Operations menu' >> "$HOME/.config/kwinrc"
+          touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
+          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
+          kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
+          kp kwin-desktops 03-virtual-desktops
+          kp kwin-tiling 04-tiling
+          kp kwin-edges 05-screen-edges; kdown 12 06-screen-edges-touch
+          kp kwin-rules 07-window-rules; wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim shots/kwin-pages/08-window-rule-open.png || true
+          kp kwin-tablet 09-tablet-and-touchscreen; kdown 12 10-touchscreen
+          kp kwin-games 11-games-and-x11-apps
+          kp mouse 21-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
+          kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
+          # The 1.14 extras: the second switcher (Super+Tab), the pointer, window helpers and For developers at the bottom,
+          # and the Desktop Cube.
+          kp kwin-effects 16-window-effects-second-switcher; kdown 25 16-window-effects-second-switcher
+          kp kwin-effects 17-window-effects-pointer-helpers-developers; kdown 54 17-window-effects-pointer-helpers-developers
+          kp kwin-desktops 18-virtual-desktops-cube; kdown 12 18-virtual-desktops-cube
+          # Mouse buttons (1.14 wave 3, SetMouseButtons.qml): two saved rebinds (kcminputrc above), then the "press the button" box
+          # (mouse-buttons:press); the middle-click paste switch is in 21, the pen-and-mouse pointer switch in 09.
+          kp mouse-buttons 19-mouse-buttons
+          kp mouse-buttons:press 20-mouse-buttons-press
+          kp kwin-behaviour wb-1-window-behaviour; kdown 10 wb-2-window-behaviour-title-bar
+          # Further down with Down only: Right on a choice would pick the next option (and save it).
+          for i in $(seq 1 5); do wtype -k Down; done; sleep 1; grim shots/kwin-pages/wb-3-window-behaviour-super-drag.png || true
+          # A window menu's More actions › "Special window settings…" (here as its IPC): Window rules for that app,
+          # with a button to make one (nothing written: the K1/K2 check below).
+          ipc settings close; ipc settings windowRules foot "Terminal"; sleep 3; grim shots/kwin-pages/wb-4-window-rules-for-a-window.png || true
+          ipc settings state | grep -q '"page":"kwin-rules"' || { echo "::error title=KWin pages::Special window settings didn't open Window rules: $(ipc settings state | cut -c1-200)"; touch shots/FAILED; }
+          # Dwell click and one window inverted turned on (saved settings: under labwc nothing runs for them), the page
+          # down at Dwell click, then its ring as it fills (shown through its IPC, at the screen's middle and close up).
+          AJ="$HOME/.config/nimbus/accessibility.json"; [ -e "$AJ" ] && cp -f "$AJ" /tmp/accessibility.json.before
+          mkdir -p "$HOME/.config/nimbus"
+          python3 -c 'import json, sys; p = sys.argv[1]
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          d.update(dwellClick=True, dwellDelay=1200, dwellClickType="double", invertWindow=True); json.dump(d, open(p, "w"))' "$AJ"
+          kpd() { ipc settings close; ipc settings page accessibility; sleep 3; kdown "$1" "$2"; }
+          kpd 14 ac-1-invert-one-window; kpd 20 ac-2-typing-sounds; kpd 27 ac-3-dwell-click
+          ipc settings close; sleep 1
+          ipc dwell demo 960 540 0.65 left; sleep 1; grim shots/kwin-pages/ac-4-dwell-ring.png || true
+          grim -g "800,450 320x180" shots/kwin-pages/ac-5-dwell-ring-close.png || true
+          ipc dwell demo 960 540 0.3 double; sleep 1; grim -g "800,450 320x180" shots/kwin-pages/ac-6-dwell-ring-double.png || true
+          dnf -y install python3-pillow >/dev/null 2>&1 || true
+          # The ring has to sit on the pointer: its middle at 960,540 (the screen's), not pushed below the bar.
+          python3 - shots/kwin-pages/ac-4-dwell-ring.png <<'PY' || { echo "::error title=Dwell click::the ring isn't on the pointer"; touch shots/FAILED; }
+          import sys
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          im = Image.open(sys.argv[1]).convert('RGB')
+          ys = [y for y in range(380, 700) for x in range(940, 981) if (lambda p: p[2] > 200 and p[2] - p[0] > 80)(im.getpixel((x, y)))]
+          mid = (min(ys) + max(ys)) / 2 if ys else -1
+          print('::notice title=Dwell click::ring middle at y=%.0f (pointer at 540)' % mid)
+          sys.exit(0 if abs(mid - 540) <= 6 else 1)
+          PY
+          ipc dwell hide
+          rm -f "$AJ"; [ -e /tmp/accessibility.json.before ] && mv -f /tmp/accessibility.json.before "$AJ"
+          ipc settings close; sleep 1
+          rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
+          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
+          L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
+          [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
+          [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
+          [ "$K0" != "$K1" ] || echo "::notice title=KWin pages::labwc run left no KWin files (as it should)"
+          if grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=KWin pages::$(grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          echo "::notice title=KWin pages::$(ls shots/kwin-pages | tr '\n' ' ')"
+          # 1.14, the new Settings: the keyboard-and-mouse Home (A1) and Display (A2), then the controller look (B1, B2):
+          # Quick, System › Display, the help panel, LB / RB, X Default asked first, and back to A with the mouse.
+          mkdir -p shots/settings-new
+          rs home a1-home; rs display a2-display
+          ipc settings look pad; sleep 3; grim shots/settings-new/b0-switched-live.png || true
+          rs quick b1-quick; wtype -k Down; sleep 1; grim shots/settings-new/b1-quick-focus.png || true
+          wtype -M ctrl -k d -m ctrl; sleep 2; grim shots/settings-new/b1-pin-to-quick.png || true; wtype -M ctrl -k d -m ctrl
+          rs display b2-display; wtype -k Right; sleep 1; wtype -k Down; sleep 1; grim shots/settings-new/b2-display-help.png || true
+          wtype -M ctrl -k d -m ctrl; sleep 2; grim shots/settings-new/b2-default-asked.png || true; wtype -k Escape
+          wtype -M ctrl -k Next -m ctrl; sleep 2; grim shots/settings-new/b3-rb-network.png || true
+          wtype -M ctrl -k f -m ctrl; sleep 1; wtype sleep 2>/dev/null || true; sleep 2; grim shots/settings-new/b4-search.png || true; wtype -k Escape
+          ipc settings look mouse; sleep 3; grim shots/settings-new/b5-back-to-a.png || true
+          ipc settings close
+          if grep -E "(SettingsFrameB|SetQuick|SetChange[A-Za-z]*|SetDisplay)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=New Settings::$(grep -E "(SettingsFrameB|SetQuick|SetChange[A-Za-z]*|SetDisplay)\.qml" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          ! grep -q "the controller look didn't load" "$LOG" || { echo "::error title=New Settings::the controller look didn't load: $(grep -B6 "the controller look didn't load" "$LOG" | grep -E 'qml' | head -6 | cut -c1-220 | tr '\n' '|')"; touch shots/FAILED; }
           # The handheld layout (1280×800): the same labels, tighter.
           wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; sleep 4
           rs home 40-handheld-home; rs gaming 41-handheld-gaming; rs handheld 42-handheld-gaming-handheld; rs hs-services 43-handheld-services
           wtype -M ctrl -k f -m ctrl; sleep 1; wtype wifi 2>/dev/null || true; sleep 2; grim shots/settings-redesign/44-handheld-search.png || true
           ipc settings close
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 3
+          # ---- Screens (1.14, docs/SCREENS.md): hearth-screens under labwc answers in wlr-randr's shape and writes nothing
+          # when read; Settings › Display with its new rows (under labwc HDR, VRR, tearing and colour profiles say they
+          # need Mantel on KWin). Pictures: shots/screens/labwc-*.png (posted by the screens-shots job).
+          mkdir -p shots/screens
+          SH=hosts/linux/desktop/shell/hearth-screens
+          python3 $SH get > shots/screens/get.json 2>&1; python3 $SH info > shots/screens/info.json 2>&1
+          python3 -c 'import json,sys; o=json.load(open(sys.argv[1])); assert o and o[0]["name"] and "hdr" in o[0] and "rotation" in o[0], o' shots/screens/get.json \
+            || { echo "::error title=Screens::hearth-screens get under labwc: $(head -c 400 shots/screens/get.json)"; touch shots/FAILED; }
+          echo "::notice title=Screens (labwc)::$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["wm"], [(o["name"], o["scale"], o["rotation"], [m for m in o["modes"] if m.get("current")][:1]) for o in d["outputs"]], d["tearing"], d["mirror"])' shots/screens/info.json 2>&1 | cut -c1-600)"
+          # display:<part> opens the page scrolled to that part (SetDisplay.qml's goToAnchor).
+          scr() { ipc settings close; ipc settings page "display$1"; sleep 4; grim "shots/screens/$2.png" || true; }
+          scr "" labwc-1-display-top; scr :hdr labwc-2-hdr-and-colour; scr :games labwc-3-games-and-smoothness; scr :layout labwc-4-scale-rotation-mirror
+          ipc settings close
+          if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null; then
+            echo "::error title=Screens::$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess)\.qml" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          # ---- end of Screens
           # Two other looks (the test sets them in desktop.json, then puts the file back exactly as it was).
           D="$HOME/.local/share/nimbus/desktop.json"; cp "$D" /tmp/desktop.json.before
           for lk in glass hearth; do
@@ -842,18 +1259,18 @@ jobs:
             echo "::notice title=Win tools::$(ls $W/*.png 2>/dev/null | wc -l) pictures in win-tools/"
           fi
           # ---- Resource Monitor (docs/RESOURCE-MONITOR.md), in shots/resource-monitor/: Your PC for this runner, then the
-          # board drawn from the four sample machines (the owner's ATX desktop with a memory stick and the graphics card
-          # clicked, dad's FM2A88X, a laptop, a ROG Ally), Overview, Processor, Memory, Disk, Network, Graphics and a
+          # board drawn from the four sample machines (an ATX desktop with a memory stick and the graphics card
+          # clicked, an FM2A88X desktop, a laptop, a ROG Ally), Overview, Processor, Memory, Disk, Network, Graphics and a
           # program's actions. Opening it writes no setting; its sampler runs only while it's open.
           mkdir -p shots/resource-monitor; R=shots/resource-monitor; FX="$PWD/hosts/linux/test/fixtures/resmon"
           rm_before=$(find "$HOME/.config" "$HOME/.local/share" -type f -newer /proc/1 2>/dev/null | sort | xargs -r sha256sum 2>/dev/null | sha256sum)
           ipc resmon open; sleep 6; grim $R/01-your-pc-this-runner.png || true
-          ipc resmon fixture "$FX/owner-atx.json"; sleep 5; grim $R/02-owner-board.png || true
+          ipc resmon fixture "$FX/atx-desktop.json"; sleep 5; grim $R/02-atx-board.png || true
           ipc resmon select dimm1; sleep 2; grim $R/03-owner-memory-stick.png || true
           ipc resmon select pcie0; sleep 2; grim $R/04-owner-graphics-card.png || true
           ipc resmon select m2_1; sleep 2; grim $R/05-owner-empty-m2.png || true
-          ipc resmon fixture "$FX/dad-fm2.json"; sleep 5; grim $R/06-dad-board.png || true
-          ipc resmon select sata1; sleep 2; grim $R/07-dad-hdd-tip.png || true
+          ipc resmon fixture "$FX/fm2-desktop.json"; sleep 5; grim $R/06-fm2-board.png || true
+          ipc resmon select sata1; sleep 2; grim $R/07-fm2-hdd-tip.png || true
           ipc resmon fixture "$FX/laptop.json"; sleep 5; grim $R/08-laptop.png || true
           ipc resmon fixture "$FX/rog-ally.json"; sleep 5; grim $R/09-rog-ally.png || true
           ipc resmon tab overview; sleep 4; grim $R/10-overview.png || true
@@ -1261,9 +1678,11 @@ jobs:
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
           set +x
           # Report: problems in the shell log (not the expected "no uinput/evdev here") fail the test.
-          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files.
+          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files, and no
+          # logind session: Quickshell's polkit service still logs "No session for pid" here (quickshell.service.polkit),
+          # although PolkitPrompt.qml doesn't register its agent without a session. One filter, that category only.
           bad=$(grep -iE "ERROR|WARN|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" 2>/dev/null \
-            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -25 || true)
+            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez|quickshell\\.service\\.polkit" | head -25 || true)
           if [ -n "$bad" ] || grep -q "not running" shots/quickshell-running.txt; then
             msg=$( { cat shots/quickshell-running.txt; echo "$bad"; tail -15 "$LOG" 2>/dev/null; } | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g")
             echo "::error title=shell::$msg"
@@ -1832,6 +2251,18 @@ jobs:
           wtype -k Down; wtype -k Return; sleep 1
           echo "mixer: $(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state)"
           wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Return; sleep 1; grim $o/05-mixer-outputs.png || true
+          # Settings › Sound (1.14) with the same stand-in apps, and a stand-in sound card list (pactl) for its profiles.
+          ipc mixer close; mkdir -p shots/system-settings
+          printf '#!/bin/sh\ncase "$2 $3" in "list cards") exec cat "%s/hosts/linux/test/fixtures/pactl-cards.json" ;; "list sinks") exec cat "%s/hosts/linux/test/fixtures/pactl-sinks.json" ;; esac\n[ "$1" = get-default-sink ] && echo alsa_output.pci-0000_00_1f.3.analog-surround-51\nexit 0\n' "$PWD" "$PWD" > /tmp/fakebin/pactl; chmod +x /tmp/fakebin/pactl
+          ipc settings page sound; sleep 4; grim shots/system-settings/ss-sound.png || true; ipc settings close
+          # 1.14, more of KDE's Sound (test_settings_more_114.py): Speakers & balance, Apps' sound, Push to talk.
+          for pg in sound-speakers sound-apps push-to-talk; do ipc settings page $pg; sleep 4; grim shots/system-settings/ss-$pg.png || true; ipc settings close; done
+          ipc settings page sound-apps:mic; sleep 4; grim shots/system-settings/ss-sound-apps-mic.png || true; ipc settings close   # which microphone each app uses (1.14)
+          if grep -E "(SetSound[A-Za-z]*|SetPushToTalk|Mixer|Dock)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
+            bad "sound pages: $(grep -E '(SetSound[A-Za-z]*|SetPushToTalk|Mixer|Dock)\.qml' "$LOG" | sort -u | head -5 | cut -c1-220 | tr '\n' '|')"
+          fi
+          rm -f /tmp/fakebin/pactl
+          [ -e "$VOL" ] && [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])) == {"Cyberpunk 2077": 0.95})' "$VOL")" != True ] && bad "opening Settings › Sound changed app-volumes.json: $(cat "$VOL" | tr -d '\n ')"
           wtype -k Escape; sleep 0.5; wtype -k Escape; sleep 1
           ipc settings page sound; sleep 2; grim $o/06-settings-sound.png || true; ipc settings close
           # ---- Snap layouts: a window to snap, Super+Z (here over IPC), Right to the right half, Enter.
@@ -1874,6 +2305,96 @@ jobs:
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
           xbad=$(grep -E "(Mixer|SnapLayouts|Clipboard|ExtrasPal)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|(mixer|snap-layouts)\.js" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
           [ -z "$xbad" ] || bad "$xbad"
+          pkill -x labwc || true; pkill -f quickshell || true
+
+      # Search like KRunner + Baloo, Passwords like KDE Wallet, the App store like Discover, and Hearth Files' terminal
+      # panel / split view / Compare (1.14, feature/search-store): the helpers' tests, then each new view on a real
+      # 1920x1080 screen. The search-store-shots job posts the pictures as SHOT notices (names in its matrix).
+      - name: Search, passwords, app store and Files (1.14)
+        if: always()
+        shell: bash
+        run: |
+          o=shots/search-store; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          say() { echo "::notice title=Search and store::$*"; }
+          bad() { echo "::error title=Search and store::$*"; touch shots/FAILED; }
+          dnf -y install gnome-keyring libsecret systemd poppler-utils flatpak sqlite >/dev/null 2>&1 || true
+          fails=""
+          for t in test_search_plugins test_hearth_search test_hearth_secrets test_hearth_store test_files_dolphin_gaps; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" > $o/$t.log 2>&1 || { fails="$fails $t"; grep -E "^(FAIL|ERROR):|Error:" $o/$t.log | head -4 | tr '\n' '|' | sed "s/^/$t: /" > $o/$t.why; }
+          done
+          [ -z "$fails" ] && say "unit tests: search plugins, file index, passwords, app store and Files all pass" || bad "unit tests failed:$fails — $(cat $o/*.why 2>/dev/null | tr '\n' ' ' | cut -c1-600)"
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          SH="$PWD/hosts/linux/desktop/shell"
+          # The password store with two made-up sign-ins (no real secret: the values are the word "demo").
+          if command -v gnome-keyring-daemon >/dev/null; then
+            # A copy without the file capability it has (cap_ipc_lock): in a container it can't drop it and stops.
+            cp "$(command -v gnome-keyring-daemon)" /tmp/gkd && chmod 755 /tmp/gkd
+            printf '' | /tmp/gkd --unlock --components=secrets > $o/gkr.log 2>&1 || true
+            eval "$(/tmp/gkd --start --components=secrets 2>>$o/gkr.log)" || true
+            sleep 2
+            printf demo | secret-tool store --label='Chromium Safe Storage' application chromium xdg:schema chrome_libsecret_os_crypt_password_v2 || true
+            printf demo | secret-tool store --label='smb://nas/photos' xdg:schema org.gnome.keyring.NetworkPassword user sam server nas protocol smb || true
+          fi
+          say "passwords: $(python3 $SH/hearth-secrets status 2>&1 | tail -1 | cut -c1-300) · tools: $(for x in busctl secret-tool gnome-keyring-daemon; do command -v $x >/dev/null && printf '%s ' $x || printf 'no-%s ' $x; done) · bus: ${DBUS_SESSION_BUS_ADDRESS:-none} · $(tr '\n' ' ' < $o/gkr.log 2>/dev/null | cut -c1-200)"
+          # Flathub for the App store (yours, no system helper needed), and the file index made once.
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
+          say "store: $(python3 $SH/hearth-store home 2>&1 | tail -1 | cut -c1-200)"
+          say "store app page: $(python3 $SH/hearth-store app org.kde.krita 2>&1 | tail -4 | tr '\n' ' ' | cut -c1-500)"
+          mkdir -p "$HOME/Documents/Taxes" "$HOME/Projects"
+          printf 'the quarterly budget numbers\n' > "$HOME/Documents/report.txt"; printf 'the quarterly budget numbers\nand more\n' > "$HOME/Documents/report-v2.txt"
+          : > "$HOME/Documents/Taxes/Budget-2026.ods"
+          echo '{"contents": true}' | python3 $SH/hearth-search prefs-set >/dev/null
+          say "file index: $(python3 $SH/hearth-search index 2>&1 | tail -1) · query budget: $(python3 $SH/hearth-search query budget | cut -c1-200)"
+          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          CONF=$(python3 $SH/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 2; }
+          wtype -k Shift_L; sleep 1
+          # ---- the launcher's search plugins (the Hearth menu)
+          got=$(quickshell ipc -p "$SH" call launcher answers "10 km to mi" 2>/dev/null | tail -1)
+          case "$got" in *'6.2137 mi'*) say "the shell's search answers 10 km to mi: $got" ;; *) bad "the shell's search plugins didn't answer 10 km to mi: $got" ;; esac
+          shot() { ipc launcher query "$2"; sleep 2; grim "$o/$1.png" || true; ipc launcher close; }
+          shot s-calc "(3+4)*2^3"
+          shot s-convert "72 f in c"
+          shot s-currency "20 usd to eur"
+          shot s-web "gg:hearth os"
+          shot s-command ">htop"
+          shot s-emoji ":fire"
+          # ---- the same in the Centred menu (MenuSearch.qml: answers in their groups, with the preview)
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"; [ -s "$D" ] || echo '{}' > "$D"
+          python3 $SH/hearth_settings_io.py merge "$D" '{"appMenu": "centred"}' >/dev/null; sleep 4
+          ipc launcher query ""; sleep 1; wtype "2+2" 2>/dev/null || true; sleep 2; grim $o/s-centred-menu.png || true; ipc launcher close
+          python3 $SH/hearth_settings_io.py merge "$D" '{"appMenu": null}' >/dev/null; sleep 3
+          # ---- Settings › Search, Passwords, App store (home, an app, Updates)
+          sp() { ipc settings close; ipc settings page "$1"; sleep "${3:-4}"; grim "$o/$2.png" || true; }
+          sp search set-search
+          sp passwords set-passwords
+          sp store set-store 12
+          sp store:app-org_kde_krita store-app 14
+          sp store:updates store-updates 10
+          ipc settings close
+          # ---- Hearth Files: the terminal panel (F4), split view (F9), Compare
+          ipc files open "$HOME/Documents"; sleep 3
+          ipc filemanager terminal on; sleep 2; wtype "ls -la" 2>/dev/null; wtype -k Return; sleep 3; grim $o/files-terminal.png || true
+          ipc filemanager terminal off; ipc filemanager split on; sleep 3; grim $o/files-split.png || true
+          ipc filemanager split off; ipc filemanager compare "report.txt/report-v2.txt"; sleep 2; grim $o/files-compare.png || true
+          ipc files close
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(Launcher|MenuSearch|SetSearch|SetPasswords|SetStore|FilesTerminal|FilesSplitPane|FileManager|FilesIpc)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|search/[a-z-]+\.js" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] && say "no QML errors from the new views" || bad "$xbad"
+          ls -la $o
           pkill -x labwc || true; pkill -f quickshell || true
 
       # Server mode (docs/SERVER-MODE.md): its own labwc folder and dashboard started for real on a virtual screen, with the
@@ -1920,7 +2441,7 @@ jobs:
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
           for i in $(seq 1 40); do [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ] && break; sleep 1; done
           if [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ]; then echo "::notice title=Server mode::the dashboard said it's up after ${i}s (the session waits for this)"
-          else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$XDG_RUNTIME_DIR/hearth-server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
+          else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$HOME/.local/share/nimbus/server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
           sleep 6
           ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Server mode::ipc $* failed or hung (the dashboard stopped answering?)"; sleep 2; }
           # If the dashboard doesn't answer, where it's stuck (its threads' stacks, for finding what hangs)
@@ -1929,7 +2450,7 @@ jobs:
             if ! timeout 20 quickshell ipc -p "$QML" call server state >/dev/null; then
               touch /tmp/server-stuck shots/FAILED
               pkill -INT -x quickshell || true; sleep 25
-              grep -E '^Thread|^#' "$XDG_RUNTIME_DIR/hearth-server-dash.log" > shots/server-mode/stuck-stacks.txt || true
+              grep -E '^Thread|^#' "$HOME/.local/share/nimbus/server-dash.log" > shots/server-mode/stuck-stacks.txt || true
               echo "::error title=Server mode stuck ($1)::$(awk '/^Thread 1 /{f=1} f' shots/server-mode/stuck-stacks.txt | grep -oE ' in [^ ]+' | head -40 | tr '\n' ' ')"
             fi
           }
@@ -2035,7 +2556,7 @@ jobs:
           timeout 10 wtype -k Right; sleep 1; for i in $(seq 1 6); do timeout 10 wtype -k Down; done; sleep 1; timeout 15 grim shots/server-mode/07b-settings-schedule.png || true
           ipc settings close; ipc settings page gaming; sleep 3; timeout 15 grim shots/server-mode/08-gaming-start-in.png || true
           ipc settings close
-          cp "$XDG_RUNTIME_DIR/hearth-server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
+          cp "$HOME/.local/share/nimbus/server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
           sbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load|Unable to assign" shots/server-mode/dashboard.log 2>/dev/null | grep -viE "uinput|evdev|DBus|hearth-pad" | head -10 | cut -c1-220 | tr '\n' '|' || true)
           [ -z "$sbad" ] || { echo "::error title=Server mode dashboard::$sbad"; touch shots/FAILED; }
           pkill -x labwc || true; pkill -f quickshell || true
@@ -2067,6 +2588,95 @@ jobs:
           fi
           ls -la shots/server-mode
 
+      # 1.14 (wave 3): the keyboard's lights following the accent (a pretend multicolour keyboard LED: written only
+      # while the switch is on), "Log out?" and the power menu's default leave option (Settings › Startup), and the
+      # on-screen keyboard's accents by a long touch (slide onto one, lift) and by holding A.
+      - name: Keyboard lights, Log out?, accents by touch (1.14)
+        if: always()
+        shell: bash
+        run: |
+          o=shots/shell-bits; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          say() { echo "::notice title=Shell bits::$*"; }
+          bad() { echo "::error title=Shell bits::$*"; touch shots/FAILED; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_shell_bits_114.py' -v > $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -6 | tr '\n' '|' | cut -c1-700)"
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          # a pretend keyboard with a coloured light, and a nimbus-mode that only notes what it was asked
+          L=/tmp/fakeleds/rgb:kbd_backlight; mkdir -p $L /tmp/fakebin-sb
+          echo "0 0 0" > $L/multi_intensity; echo "red green blue" > $L/multi_index; echo 255 > $L/max_brightness; echo 0 > $L/brightness
+          printf '#!/bin/sh\necho "$*" >> /tmp/nimbus-mode.log\n' > /tmp/fakebin-sb/nimbus-mode && chmod +x /tmp/fakebin-sb/nimbus-mode; rm -f /tmp/nimbus-mode.log
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin-sb:/tmp/fakebin:$PATH" HEARTH_LEDS_DIR=/tmp/fakeleds
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          SH="$PWD/hosts/linux/desktop/shell"
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"; [ -s "$D" ] || echo '{}' > "$D"
+          python3 $SH/hearth_settings_io.py merge "$D" '{"kbdLights": null, "confirmLogout": null, "leaveDefault": null, "accent": "#ff7a2f"}' >/dev/null
+          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          CONF=$(python3 $SH/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | tail -n1 || echo "ipc $* failed"; }
+          merge() { python3 $SH/hearth_settings_io.py merge "$D" "$1" >/dev/null; }
+          leds() { cat $L/multi_intensity; }
+          wtype -k Shift_L; sleep 1
+          # ---- keyboard lights: off (the default) writes nothing; on follows the accent; off again writes nothing
+          sleep 3; [ "$(leds)" = "0 0 0" ] && say "keyboard lights: off by default, nothing written" || bad "keyboard lights wrote while off: $(leds)"
+          merge '{"kbdLights": true}'; sleep 5
+          [ "$(leds)" = "255 122 47" ] && say "keyboard lights: on, the accent #ff7a2f went to the keyboard ($(leds))" || bad "keyboard lights didn't follow the accent: $(leds) · $(ipc kbdlights state)"
+          merge '{"accent": "#1a9fff"}'; sleep 5
+          [ "$(leds)" = "26 159 255" ] && say "keyboard lights: a new accent follows ($(leds))" || bad "keyboard lights didn't follow the new accent: $(leds) · $(ipc kbdlights state)"
+          merge '{"kbdLights": false}'; sleep 2; merge '{"accent": "#ff7a2f"}'; sleep 5
+          [ "$(leds)" = "26 159 255" ] && say "keyboard lights: turned off, the next accent wrote nothing" || bad "keyboard lights wrote after being turned off: $(leds)"
+          merge '{"kbdLights": true}'; sleep 3
+          sp() { ipc settings close; sleep 1; ipc settings page "$1"; sleep "${3:-5}"; grim "$o/$2.png" || true; }
+          sp appearance:kbd-lights set-kbd-lights
+          ipc settings close; merge '{"kbdLights": false}'
+          # ---- Log out? and the default leave option
+          ipc leave logout; sleep 2
+          [ -s /tmp/nimbus-mode.log ] && say "confirm off (the default): Log out logged out at once" || bad "Log out with the question off didn't log out: $(ipc leave state)"
+          rm -f /tmp/nimbus-mode.log
+          merge '{"confirmLogout": true, "leaveDefault": "Restart"}'; sleep 3
+          ipc leave logout; sleep 2; grim $o/leave-confirm.png || true
+          [ -e /tmp/nimbus-mode.log ] && bad "Log out with the question on didn't ask first" || say "confirm on: Log out asked first"
+          wtype -k Escape; sleep 1.5
+          [ -e /tmp/nimbus-mode.log ] && bad "Cancel (Esc) logged out" || say "Esc cancelled Log out?"
+          ipc leave logout; sleep 1.5; wtype -k Return; sleep 2
+          grep -q logout /tmp/nimbus-mode.log 2>/dev/null && say "Log out? then Enter logged out" || bad "Enter on Log out? didn't log out: $(ipc leave state)"
+          ipc leave powermenu; sleep 2; grim $o/power-default.png || true
+          st=$(ipc leave state); case "$st" in *'"power":"Restart"'*) say "the power menu opens on the default leave option (Restart)" ;; *) bad "the power menu didn't open on Restart: $st" ;; esac
+          ipc leave powerclose; sleep 1
+          # (the Server mode step left a schedule on, which fills the page: off, so the new rows show)
+          python3 $SH/hearth-server-mode set scheduleOn off > $o/schedule-off.txt 2>&1 || true
+          sp startup:leave set-leave
+          ipc settings close
+          merge '{"confirmLogout": null, "leaveDefault": null}'
+          # ---- the on-screen keyboard's accents: a long touch, the finger slid onto the third one and lifted; then A held
+          kb() { quickshell ipc -p "$SH" call keyboard "$@" 2>&1 | tail -n1; }
+          kb open; sleep 2
+          kb touchhold e; sleep 1.2; grim $o/osk-touch-hold.png || true
+          s1=$(kb state)
+          got=$(kb touchslide 2); sleep 0.8; grim $o/osk-touch-slide.png || true
+          lifted=$(kb touchlift); sleep 1
+          s2=$(kb state)
+          case "$s1" in *'"popup":{'*) say "a long touch on e opened its accents" ;; *) bad "a long touch didn't open the accents: $(echo "$s1" | cut -c1-300)" ;; esac
+          [ "$got" = 2 ] && [ "$lifted" = 2 ] && say "the finger slid onto the third accent (found by its place on screen) and lifted there" || bad "sliding onto an accent: found $got, lifted $lifted"
+          case "$s2" in *'ê'*'"popup":null'*) say "lifting typed ê and closed the accents" ;; *) bad "lifting on ê didn't type it: $(echo "$s2" | cut -c1-300)" ;; esac
+          kb select a; sleep 0.3; kb hold a 750; sleep 1.3; grim $o/osk-pad-hold.png || true
+          s3=$(kb state); case "$s3" in *'"popup":{"alts":["à'*|*'"popup":{"alts":["á'*) say "holding A on a opened its accents (controller)" ;; *) bad "holding A didn't open the accents: $(echo "$s3" | cut -c1-300)" ;; esac
+          kb press b; sleep 0.5; kb close
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(KbdLights|Leave|LeaveConfirm|PowerMenu|SetStartup|SetAppearance|OskBoard|OskKey|Keyboard|Launcher|WinTools|DesktopMenu)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] && say "no QML errors from the changed views" || bad "$xbad"
+          ls -la $o
+          pkill -x labwc || true; pkill -f quickshell || true
+
       # The screenshots and logs also go to the ci/desktop-shots branch, so they can be looked at without
       # downloading the artifact.
       # A run started by hand on another branch publishes to ci/desktop-shots-<branch> instead.
@@ -2091,6 +2701,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          name: system-settings-shots
+          path: shots/system-settings
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
           name: desktop-screenshots
           path: shots
           retention-days: 14
@@ -2099,7 +2717,7 @@ jobs:
   # title "SHOT <which> <n>"), one step each: the desktop job's own notices are many, and a job keeps 50.
   game-mode-shots:
     needs: desktop
-    if: always()
+    if: always() && !inputs.kwin_only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -2134,3 +2752,626 @@ jobs:
         run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
       - name: Picture (gm-fallback)
         run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true
+
+  # Screens (1.14, docs/SCREENS.md): Settings › Display's pictures under labwc (the desktop job's shots/screens) as
+  # notices, a JPEG in base64 pieces titled "SHOT <name> <n>", one picture a step (a job keeps 50 notices).
+  screens-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, glob, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          from PIL import ImageStat
+          flat = []
+          for p in sorted(glob.glob('shots/screens/*.png')):
+              im = Image.open(p).convert('RGB')
+              spread = max(ImageStat.Stat(im).stddev)
+              print(p, im.size, 'spread', round(spread, 1))
+              if spread < 6:      # (nearly) one colour: a black or empty picture never passes
+                  flat.append('%s (spread %.1f)' % (p, spread))
+              for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+          if flat:
+              print('::error title=Screens: pictures::(nearly) one colour: ' + '; '.join(flat))
+              open('shots/screens/FLAT', 'w').write('flat pictures')
+          PY
+      - name: Picture (labwc-1-display-top)
+        run: f=shots/screens/labwc-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-1-display-top $i::$part"; done || true
+      - name: Picture (labwc-2-hdr-and-colour)
+        run: f=shots/screens/labwc-2-hdr-and-colour.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-2-hdr-and-colour $i::$part"; done || true
+      - name: Picture (labwc-3-games-and-smoothness)
+        run: f=shots/screens/labwc-3-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-3-games-and-smoothness $i::$part"; done || true
+      - name: Picture (labwc-4-scale-rotation-mirror)
+        run: f=shots/screens/labwc-4-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-4-scale-rotation-mirror $i::$part"; done || true
+      - name: Fail if a picture is (nearly) one colour
+        run: test ! -e shots/screens/FLAT
+
+  # Screens under KWin (Mantel on KWin, 1.14, docs/SCREENS.md): KWin (Fedora's) on a 1920×1080 screen inside a headless
+  # labwc, with HEARTH_WM=kwin as the session gives it. Checks hearth-screens against the real kscreen-doctor (get, set
+  # and keep, restore), KWin's Night Light settings, screen off and on (KWin's DPMS), and a screenshot through
+  # hearth-screenshot with KWin's permission check on (hearth-kwin-cast and its .desktop file as the images install them). Then
+  # Settings › Display in the real shell, its pictures as SHOT notices. Problems are ::error:: annotations.
+  kwin-screens:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # KWin composites only with a render device: the kernel's vgem module gives one (the host's /dev and modules).
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    timeout-minutes: 30
+    steps:
+      - name: Install KWin, kscreen-doctor and Quickshell
+        run: |
+          dnf -y install dnf5-plugins git kwin libkscreen kf6-kservice kf6-kconfig labwc grim wlr-randr xorg-x11-server-Xwayland mesa-dri-drivers \
+            python3 python3-gobject python3-pillow dbus-daemon dbus-tools glib2 qt6-qtsvg procps-ng google-noto-sans-fonts \
+            breeze-icon-theme adwaita-icon-theme rsms-inter-fonts wtype \
+            gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel >/dev/null
+          # hearth-kwin-cast (the helper KWin trusts for screenshots) is built from plasma-wayland-protocols' XML.
+          dnf -y install --skip-unavailable plasma-wayland-protocols-devel plasma-wayland-protocols >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland kscreen-doctor quickshell; do command -v $b >/dev/null || echo "::error title=KWin screens::$b isn't installed"; done
+          kwin_wayland --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Screens and Settings › Display under KWin
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots/kwin
+          exec > >(tee shots/kwin/step.log) 2>&1
+          fail() { echo "::error title=KWin screens::$*"; touch shots/kwin/FAILED; }
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 NIMBUS_SHARE="$PWD/hosts/linux" HEARTH_WM=kwin
+          export KSCREEN_BACKEND=KWayland KSCREEN_BACKEND_INPROCESS=1 LANG=C.UTF-8 LC_ALL=C.UTF-8
+          # The images' screenshot trust (os-bases/peppermint/build.sh, os/system_files): hearth-screens takes its
+          # pictures through hearth-kwin-cast, which hearth-kwin-cast.desktop names and which answers only
+          # hearth-portal and hearth-screens when they're root's and nobody else can change them (as in the image). No
+          # KWIN_SCREENSHOT_NO_PERMISSION_CHECKS: KWin checks for real.
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/kwin/helpers-build.log 2>&1 \
+            || fail "hearth-kwin-cast didn't build: $(grep -E 'error' shots/kwin/helpers-build.log | head -6 | tr '\n' '|' | cut -c1-600)"
+          install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
+          install -d /usr/share/nimbus/desktop
+          install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/bin/hearth-screenshot
+          ln -sfn "$PWD/hosts/linux/desktop/shell" /usr/share/nimbus/desktop/shell
+          kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+          # Settings as someone might have them: night light on in the evenings, warmer than the default.
+          mkdir -p "$HOME/.local/share/nimbus"
+          echo '{"nightLight": true, "nightTemp": 3400, "nightMode": "times", "nightFrom": "20:00", "nightTo": "07:00"}' > "$HOME/.local/share/nimbus/desktop.json"
+          # KWin's own virtual screen (1920×1080): its outputs take scale changes and screenshots as a real screen's do.
+          # If it can't start here, KWin inside a headless labwc instead (as plasma-test.yml; grim on labwc is then the
+          # backup picture).
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland   # it carries a file capability a container can't grant
+          modprobe vgem 2>/dev/null || echo "::warning title=KWin screens::no vgem module (KWin may not composite)"
+          OUTER=
+          WAYLAND_DISPLAY= /tmp/kwin_wayland --virtual --output-count 2 --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
+          for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          sleep 3
+          if ! [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || ! pgrep -f /tmp/kwin_wayland >/dev/null; then
+            echo "::warning title=KWin screens::KWin's virtual screen didn't start ($(grep -v -i locale shots/kwin/kwin.log | tail -3 | tr '\n' '|' | cut -c1-300)); KWin inside labwc instead"
+            pkill -f /tmp/kwin_wayland; rm -f "$XDG_RUNTIME_DIR/wayland-hearth"*
+            WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/kwin/outer.log 2>&1 &
+            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+            OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+            WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
+            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
+            for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          fi
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { fail "KWin didn't start: $(tail -5 shots/kwin/kwin.log | tr '\n' '|' | cut -c1-500)"; exit 1; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
+          sleep 3
+          SH=hosts/linux/desktop/shell/hearth-screens
+          # ---- hearth-screens against the real kscreen-doctor
+          kscreen-doctor -o > shots/kwin/kscreen-o.txt 2>&1; kscreen-doctor -j > shots/kwin/kscreen-j.json 2>&1
+          python3 $SH get > shots/kwin/get.json 2>&1
+          N=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["name"])' shots/kwin/get.json 2>/dev/null)
+          [ -n "$N" ] || fail "hearth-screens get found no screen: $(head -c 300 shots/kwin/get.json) | kscreen-doctor: $(head -c 300 shots/kwin/kscreen-o.txt | tr '\n' '|')"
+          echo "::notice title=KWin screens: get::$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))[0]; print(o["name"], o["description"], o["scale"], o["rotation"], [(m["width"], m["height"], round(m["refresh"])) for m in o["modes"] if m["current"]], "hdr", o["hdr"], "vrr", o["vrr"], "icc", o["icc"])' shots/kwin/get.json 2>&1 | cut -c1-600)"
+          echo "::notice title=KWin screens: kscreen-doctor scale::$(kscreen-doctor "output.$N.scale.1.25" 2>&1 | tr '\n' '|' | cut -c1-300) then: $(kscreen-doctor -o 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'Scale|Geometry' | tr '\n\t' '| ')"
+          kscreen-doctor "output.$N.scale.1" >/dev/null 2>&1; sleep 1
+          python3 $SH set "{\"outputs\": {\"$N\": {\"scale\": 1.25}}}" > shots/kwin/set.json 2>&1
+          got=$(python3 -c 'import json,sys; print([o["scale"] for o in json.loads(open(sys.argv[1]).read().splitlines()[-1])["outputs"] if o["name"] == sys.argv[2]][0])' shots/kwin/set.json "$N" 2>&1)
+          [ "$got" = 1.25 ] || fail "set scale 1.25: KWin says $(echo "$got" | tail -2 | tr '\n' '|') (set: $(tail -c 400 shots/kwin/set.json | tr '\n' '|'))"
+          grep -q '"scale": 1.25' "$HOME/.config/nimbus/screens.json" || fail "set didn't keep the scale in screens.json: $(head -c 300 "$HOME/.config/nimbus/screens.json")"
+          grep -q "wlr-randr --output '$N' --on .*--scale 1.25" "$HOME/.config/nimbus/display.sh" || fail "display.sh (labwc's) doesn't have it: $(cat "$HOME/.config/nimbus/display.sh" | tr '\n' '|')"
+          # restore with the scale back at 1 (as after a restart): it puts 1.25 back; a saved mode the screen doesn't list is left out.
+          kscreen-doctor "output.$N.scale.1" >/dev/null 2>&1; sleep 1
+          python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["outputs"][sys.argv[2]]["mode"]={"w":7680,"h":4320,"r":60}; open(p,"w").write(json.dumps(d))' "$HOME/.config/nimbus/screens.json" "$N"
+          python3 $SH restore > shots/kwin/restore.json 2>&1
+          echo "::notice title=KWin screens: restore::$(head -c 500 shots/kwin/restore.json)"
+          grep -q 7680 shots/kwin/restore.json || fail "restore didn't leave out the mode the screen doesn't list"
+          python3 $SH get | grep -q '"scale": 1.25' || fail "restore didn't put the scale back"
+          python3 $SH set "{\"outputs\": {\"$N\": {\"scale\": 1}}}" >/dev/null 2>&1
+          # Night Light: kwinrc from Settings, and KWin's own answer.
+          grep -A6 '^\[NightColor\]' "$HOME/.config/kwinrc" > shots/kwin/nightcolor.txt 2>&1
+          grep -q 'NightTemperature=3400' shots/kwin/nightcolor.txt && grep -q 'Active=true' shots/kwin/nightcolor.txt || fail "Night Light isn't in kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor.txt)"
+          sleep 3
+          kwinrc_line="kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor.txt) kwriteconfig6: $(command -v kwriteconfig6 || echo none)"
+          nl=$(gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/NightLight --method org.freedesktop.DBus.Properties.GetAll org.kde.KWin.NightLight 2>&1 | cut -c1-500)
+          echo "::notice title=KWin screens: Night Light::$kwinrc_line; KWin: $nl"
+          # ---- Mantel's Settings › Display in the real shell; its pictures through hearth-screenshot (KWin's
+          # ScreenShot2 with its permission check on), or grim when KWin runs inside labwc.
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1   # no one-time "Pick your browser" over the pictures
+          # ---- Screen power saving (1.14, hearth-screen-psr): its tests, then a stand-in of the owner's laptop (Intel
+          # 0x46d0 with a built-in screen and the driver's PSR switch) so Settings › Display shows the row as he'll see it.
+          python3 -m unittest hosts/linux/test/test_hearth_screen_psr.py hosts/linux/test/test_hearth_memory.py > shots/kwin/psr-tests.log 2>&1 \
+            || fail "screen power saving / memory tests: $(grep -E '^(FAIL|ERROR|AssertionError)' shots/kwin/psr-tests.log | head -6 | tr '\n' '|' | cut -c1-600)"
+          export HEARTH_PSR_ROOT=/tmp/psr-pc HEARTH_PSR_BIN="$PWD/os/system_files/usr/libexec/nimbus/hearth-screen-psr"
+          python3 -c "import sys; sys.path.insert(0, 'hosts/linux/test'); import test_hearth_screen_psr as t; t.fake_pc('/tmp/psr-pc')"
+          export HEARTH_PSR_SYS=/tmp/psr-pc/sys HEARTH_PSR_DEBUGFS=/tmp/psr-pc/debug HEARTH_PSR_RUN=/tmp/psr-pc/run/screen-psr.json HEARTH_PSR_SETTINGS=/tmp/psr-pc/etc/screen-power.json
+          python3 "$HEARTH_PSR_BIN" apply > shots/kwin/psr-apply.json 2>&1
+          grep -q '"by": "auto"' shots/kwin/psr-apply.json && grep -qx 1 /tmp/psr-pc/debug/dri/0/i915_edp_psr_debug \
+            || fail "Screen power saving: Auto didn't turn it off on the stand-in laptop: $(head -c 400 shots/kwin/psr-apply.json)"
+          [ ! -e "$HEARTH_PSR_SETTINGS" ] || fail "Screen power saving: Auto wrote a settings file"
+          echo "::notice title=Screen power saving::$(python3 "$HEARTH_PSR_BIN" status | head -c 600)"
+          quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
+          sleep 25
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          shot() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot -o "$N" "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
+          scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
+          scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
+          scr :power kwin-11-screen-power-saving
+          [ ! -e "$HEARTH_PSR_SETTINGS" ] || fail "Screen power saving: opening Settings › Display wrote a settings file"
+          ipc settings close
+          if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell.log >/dev/null; then
+            fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          fi
+          echo "::notice title=KWin screens: shell log::$(grep -v -i locale shots/kwin/shell.log | grep -i -E 'error|warn|qml' | sort -u | tail -12 | tr '\n' '|' | cut -c1-1000)"
+          # Capture's grab (hearth-screens grab MODE ... --out FILE): every mode through KWin, each a real picture.
+          ipc settings page display; sleep 3     # a window to take (Hearth Settings, the active one)
+          gr=""
+          for g in "all" "screen" "screen --screen 2" "window" "area --geometry 100,100,640,360" "all --pointer"; do
+            f="shots/kwin/grab-$(echo "$g" | tr -c 'a-z0-9' '-').png"
+            timeout 40 python3 $SH grab $g --out "$f" > "$f.txt" 2>&1; rc=$?
+            sp=$(python3 -c 'import sys; from PIL import Image, ImageStat; im=Image.open(sys.argv[1]).convert("RGB"); print(im.size[0], im.size[1], round(max(ImageStat.Stat(im).stddev), 1))' "$f" 2>/dev/null)
+            gr="$gr $g: exit $rc ${sp:-$(head -c 120 "$f.txt" | tr '\n' ' ')} |"
+            [ $rc = 0 ] || fail "grab $g: exit $rc $(head -c 300 "$f.txt" | tr '\n' '|')"
+            [ $rc = 0 ] && python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 6 else 1)' "${sp##* }" 2>/dev/null || [ $rc != 0 ] || fail "grab $g: the picture is (nearly) one colour ($sp)"
+          done
+          ipc settings close
+          echo "::notice title=KWin screens: grab::$(echo "$gr" | cut -c1-900)"
+          [ -s shots/kwin/shot-errors.txt ] && echo "::warning title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt | tr '\n' '|' | cut -c1-500)"
+          # ---- 1.14's KDE rows for the pictures. KWin's virtual screens have no HDR, overscan, RGB range, colour accuracy
+          # or DDC/CI, so the shell starts again with a preview of two screens (hosts/linux/test/fixtures/screens-preview:
+          # an HDR monitor and a TV; nothing is sent to KWin), a light sensor (a stand-in iio-sensor-proxy on the session
+          # bus, fixtures/fake-sensor-proxy.py, with Auto-brightness on and "How bright" at +10), and night light from
+          # sunset to sunrise in Austin with a 15 minute fade. Then Super+P's switcher and the screen-sharing picker's Area.
+          pkill quickshell; sleep 2
+          python3 -W ignore hosts/linux/test/fixtures/fake-sensor-proxy.py 120 > shots/kwin/fake-sensor.log 2>&1 &
+          sleep 2
+          export HEARTH_SCREENS_SENSOR_BUS=session
+          lt=$(timeout 20 python3 $SH light 2>&1 | tail -1)
+          echo "::notice title=KWin screens: light sensor::$lt"
+          echo "$lt" | grep -q '"source": "iio-sensor-proxy", "lux": 120.0' || fail "hearth-screens didn't read the fake iio-sensor-proxy: $lt $(head -c 300 shots/kwin/fake-sensor.log | tr '\n' '|')"
+          timeout 20 python3 $SH option '{"autoBrightness": true, "autoBrightnessOffset": 10}' >/dev/null 2>shots/kwin/autobright-option.txt \
+            || fail "Auto-brightness on: $(head -c 300 shots/kwin/autobright-option.txt)"
+          python3 -c 'import json,os,sys; d=json.load(open(os.path.expanduser("~/.config/nimbus/screens.json"))); assert d["autoBrightness"] is True and d["autoBrightnessOffset"] == 10, d' \
+            || fail "Auto-brightness didn't reach screens.json"
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/share/nimbus/desktop.json" \
+            '{"nightMode": "location", "nightPlace": "Austin", "nightLat": 30.2672, "nightLon": -97.7431, "nightFade": 15}' >/dev/null
+          HEARTH_SCREENS_FIXTURE=$PWD/hosts/linux/test/fixtures/screens-preview \
+            quickshell -p hosts/linux/desktop/shell >shots/kwin/shell-preview.log 2>&1 &
+          sleep 25
+          scr :bright kwin-6-brightness-and-night
+          echo "::notice title=KWin screens: auto-brightness::$(timeout 20 python3 $SH info 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["autoBrightness"])' 2>&1 | cut -c1-300); the fake sensor: $(tail -3 shots/kwin/fake-sensor.log | tr '\n' '|')"
+          scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
+          scr :several kwin-9-several-screens
+          # Full-screen overlays go to the shell's first screen: both screens are taken, before and with the overlay
+          # (the shots job keeps the screen that changed).
+          shotall() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
+          ipc settings close; shotall before-10; ipc settings page display:calibrate; sleep 5; shotall kwin-10-hdr-calibrate
+          ipc settings close
+          shotall before-11; ipc screens switcher; sleep 2; shotall kwin-11-super-p
+          echo "::notice title=KWin screens: Super+P::$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call screens state 2>&1 | tail -1 | cut -c1-300)"
+          ipc screens close
+          grep -A9 '^\[NightColor\]' "$HOME/.config/kwinrc" > shots/kwin/nightcolor-location.txt 2>&1
+          grep -q 'Mode=Location' shots/kwin/nightcolor-location.txt && grep -q 'LatitudeFixed=30.2672' shots/kwin/nightcolor-location.txt && grep -q 'TransitionTime=15' shots/kwin/nightcolor-location.txt \
+            || fail "Night light by location didn't reach kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor-location.txt)"
+          if grep -E "(SetDisplay|HdrCalibrate|ScreenSwitcher|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell-preview.log >/dev/null; then
+            fail "preview: $(grep -E "(SetDisplay|HdrCalibrate|ScreenSwitcher|shell)\.qml" shots/kwin/shell-preview.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          fi
+          # The screen-sharing picker on its own (as hearth_screencast.py starts it), on its Area tab: this screen's
+          # picture as the thumb, the middle of it picked.
+          cp shots/kwin/kwin-1-display-top.png /tmp/thumb-0.png 2>/dev/null
+          printf '%s' '{"kind": "cast", "app": "org.mozilla.firefox", "multiple": false, "desktop": false, "area": true, "windows": [], "screens": [{"name": "Virtual-0", "label": "Virtual-0", "w": 1920, "h": 1080, "thumb": "/tmp/thumb-0.png"}, {"name": "Virtual-1", "label": "Virtual-1", "w": 1920, "h": 1080, "thumb": "/tmp/thumb-0.png"}]}' > /tmp/cast-req.json
+          HEARTH_CAST_REQUEST=/tmp/cast-req.json HEARTH_CAST_RESULT=/tmp/cast-res.json quickshell -p hosts/linux/desktop/shell/cast-picker.qml >shots/kwin/cast-picker.log 2>&1 &
+          shotall before-12
+          sleep 8
+          CP="quickshell ipc -p $PWD/hosts/linux/desktop/shell/cast-picker.qml call cast"
+          $CP tab area; $CP preset 4; sleep 2; shotall kwin-12-area-picker
+          echo "::notice title=KWin screens: area picker::$($CP state 2>&1 | tail -1 | cut -c1-300)"
+          $CP share; sleep 2
+          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["kind"] == "area" and r["name"] == "Virtual-0" and abs(r["fw"] - 0.6) < 0.01, r; print(r)' /tmp/cast-res.json > shots/kwin/cast-res.txt 2>&1 \
+            || fail "the area picker's answer: $(head -c 300 shots/kwin/cast-res.txt) $(grep -i -E 'error|warn' shots/kwin/cast-picker.log | head -4 | tr '\n' '|' | cut -c1-400)"
+          pkill -f cast-picker.qml
+          # Screen off and on (Settings › Power's idle screen-off under KWin), near the end: this nested KWin on software GL
+          # may quit when its screen comes back.
+          sh hosts/linux/desktop/shell/hearth-screen-power check || fail "hearth-screen-power can't under KWin"
+          sh hosts/linux/desktop/shell/hearth-screen-power off; off=$?; sleep 2
+          dpms=$(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)
+          sh hosts/linux/desktop/shell/hearth-screen-power on; sleep 2
+          echo "::notice title=KWin screens: screen off::exit $off; while off: $dpms; on again: $(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)"
+          # A screenshot through KWin's ScreenShot2 with its permission check on (an unknown program gets NoAuthorized at
+          # once; KWin quitting means it was let in and then couldn't draw the picture on this runner).
+          # First programs KWin and the helper don't know: hearth-kwin-cast started by anything but hearth-portal or
+          # hearth-screens must refuse (exit 3), and so must its streams and remote input for hearth-screens.
+          python3 -c 'import subprocess, sys; sys.exit(subprocess.call(["/usr/libexec/hearth/hearth-kwin-cast", "shot", "workspace"], stdout=subprocess.DEVNULL))' 2> shots/kwin/untrusted.txt
+          rc=$?; [ $rc = 3 ] && echo "::notice title=KWin screens: untrusted::hearth-kwin-cast refused a program that isn't hearth-portal or hearth-screens (exit 3): $(head -c 200 shots/kwin/untrusted.txt)" \
+            || fail "hearth-kwin-cast didn't refuse an unknown program (exit $rc): $(head -c 300 shots/kwin/untrusted.txt | tr '\n' '|')"
+          timeout 40 gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/ScreenShot2 --method org.kde.KWin.ScreenShot2.CaptureWorkspace '{}' 0 > shots/kwin/untrusted-gdbus.txt 2>&1
+          echo "::notice title=KWin screens: untrusted::gdbus straight to ScreenShot2: $(head -c 300 shots/kwin/untrusted-gdbus.txt | tr '\n' '|')"
+          timeout 40 hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
+          if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
+            echo "::notice title=KWin screens: screenshot::hearth-screenshot took a picture through KWin's ScreenShot2 (permission check on): $(cat shots/kwin/screenshot-size.txt)"
+          elif grep -q -i 'NoAuthorized\|not authorized\|didn.t let Hearth' shots/kwin/screenshot-check.txt; then
+            fail "KWin refused hearth-screenshot (hearth-kwin-cast.desktop's trust didn't work): $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
+          else
+            fail "hearth-screenshot under KWin: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-300) KWin: $(grep -v -i locale shots/kwin/kwin.log | tail -3 | tr '\n' '|' | cut -c1-300)"
+          fi
+          # Tearing (kwinrc's Compositing AllowTearing, then KWin's reconfigure, as KDE's own settings do) last: this
+          # nested KWin on software GL may quit when it reconfigures its compositor.
+          python3 $SH set '{"tearing": false}' >/dev/null 2>&1; grep -q 'AllowTearing=false' "$HOME/.config/kwinrc" || fail "tearing off didn't reach kwinrc"
+          sleep 3; pgrep -f /tmp/kwin_wayland >/dev/null && echo "::notice title=KWin screens: tearing::kwinrc AllowTearing=false, KWin reconfigured and still running" \
+            || echo "::warning title=KWin screens: tearing::kwinrc has it; this nested KWin quit on reconfigure: $(grep -v -i locale shots/kwin/kwin.log | tail -4 | tr '\n' '|' | cut -c1-400)"
+          ls -la shots/kwin
+          pkill -f fake-sensor-proxy.py; unset HEARTH_SCREENS_SENSOR_BUS
+          pkill quickshell; pkill -f /tmp/kwin_wayland; pkill labwc; pkill dbus-daemon
+          true
+
+      - name: Make the JPEGs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, glob, io
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          from PIL import ImageStat
+          flat = []
+          for p in sorted(glob.glob('shots/kwin/kwin-*.png')):
+              im = Image.open(p).convert('RGB')
+              spread = max(ImageStat.Stat(im).stddev)
+              print(p, im.size, 'spread', round(spread, 1))
+              if spread < 6:      # (nearly) one colour: a black or empty picture never passes
+                  flat.append('%s (spread %.1f)' % (p, spread))
+              for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 6 * 3800:
+                      break
+              open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+          if len(glob.glob('shots/kwin/kwin-*.png')) < 12:
+              flat.append('only %d of the 12 pictures were taken' % len(glob.glob('shots/kwin/kwin-*.png')))
+          if flat:
+              print('::error title=KWin screens: pictures::(nearly) one colour or missing: ' + '; '.join(flat))
+              open('shots/kwin/FAILED', 'w').write('flat pictures')
+          PY
+      - name: Picture (kwin-1-display-top)
+        if: always()
+        run: f=shots/kwin/kwin-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-1-display-top $i::$part"; done || true
+      - name: Picture (kwin-11-screen-power-saving)
+        if: always()
+        run: f=shots/kwin/kwin-11-screen-power-saving.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-11-screen-power-saving $i::$part"; done || true
+      - name: Picture (kwin-2-night-light)
+        if: always()
+        run: f=shots/kwin/kwin-2-night-light.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-2-night-light $i::$part"; done || true
+      - name: Picture (kwin-3-hdr-and-colour)
+        if: always()
+        run: f=shots/kwin/kwin-3-hdr-and-colour.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-3-hdr-and-colour $i::$part"; done || true
+      - name: Picture (kwin-4-games-and-smoothness)
+        if: always()
+        run: f=shots/kwin/kwin-4-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-4-games-and-smoothness $i::$part"; done || true
+      - name: Picture (kwin-5-scale-rotation-mirror)
+        if: always()
+        run: f=shots/kwin/kwin-5-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-5-scale-rotation-mirror $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kwin-screens
+          path: shots/kwin
+          retention-days: 14
+      - name: Fail if something didn't work
+        if: always()
+        run: test ! -e shots/kwin/FAILED
+
+  # 1.14's new Display rows, Super+P and the Area picker (kwin-screens' pictures 6-12) as SHOT notices: a job of their
+  # own, since kwin-screens' own notices are near the 50 a job keeps (a JPEG in base64 pieces of 3800, one step each).
+  kwin-screens-shots:
+    needs: kwin-screens
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kwin-screens
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, glob, io
+          from PIL import Image
+          for p in sorted(glob.glob('shots/kwin-*.png')):
+              n = int(p.split('kwin-')[1].split('-')[0])
+              if n < 6:
+                  continue
+              im = Image.open(p).convert('RGB')
+              if im.width >= 2 * im.height * 1.5:          # both screens side by side: the one the overlay is on
+                  from PIL import ImageChops, ImageStat
+                  halves = lambda x: [x.crop((0, 0, x.width // 2, x.height)), x.crop((x.width // 2, 0, x.width, x.height))]
+                  cur = halves(im)
+                  try:
+                      was = halves(Image.open('shots/before-%d.png' % n).convert('RGB').resize(im.size))
+                      im = cur[max(range(2), key=lambda i: sum(ImageStat.Stat(ImageChops.difference(cur[i], was[i])).mean))]
+                  except OSError:
+                      im = max(cur, key=lambda h: sum(ImageStat.Stat(h).stddev))
+              for w, q in ((1000, 55), (900, 45), (800, 38), (700, 30), (600, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q, optimize=True)
+                  if len(base64.b64encode(b.getvalue())) <= 7 * 3800:
+                      break
+              open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+              print(p, len(b.getvalue()))
+          PY
+      - name: Picture (kwin-6-brightness-and-night)
+        run: f=shots/kwin-6-brightness-and-night.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-6-brightness-and-night $i::$part"; done || true
+      - name: Picture (kwin-7-hdr-colour-intensity)
+        run: f=shots/kwin-7-hdr-colour-intensity.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-7-hdr-colour-intensity $i::$part"; done || true
+      - name: Picture (kwin-8-picture-signal)
+        run: f=shots/kwin-8-picture-signal.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-8-picture-signal $i::$part"; done || true
+      - name: Picture (kwin-9-several-screens)
+        run: f=shots/kwin-9-several-screens.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-9-several-screens $i::$part"; done || true
+      - name: Picture (kwin-10-hdr-calibrate)
+        run: f=shots/kwin-10-hdr-calibrate.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-10-hdr-calibrate $i::$part"; done || true
+      - name: Picture (kwin-11-super-p)
+        run: f=shots/kwin-11-super-p.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-11-super-p $i::$part"; done || true
+      - name: Picture (kwin-12-area-picker)
+        run: f=shots/kwin-12-area-picker.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-12-area-picker $i::$part"; done || true
+
+  # 1.14 System Settings' pages (the system-settings-shots artifact): each picture as SHOT notices, one job per picture
+  # (a JPEG at 1920x1080 in base64 pieces of 3800, title "SHOT <name> <n>"; nine a step, five steps: a job keeps 50).
+  system-settings-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound, ss-users-oem,
+               ss-sound-speakers, ss-sound-apps, ss-push-to-talk, ss-power-profiles, ss-power-awake, ss-battery, ss-autostart, ss-file-types,
+               ss-menu-editor, ss-app-permissions, ss-wallpaper-more, ss-my-looks, ss-look-more, ss-fonts-small, ss-languages, ss-spellcheck,
+               ss-input-methods, ss-bluetooth-devices, ss-print-queue, ss-scanners, ss-usb-devices, ss-info-cpu, ss-info-gpu, ss-info-memory,
+               ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged,
+               ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic,
+               ss-bluetooth-receive, ss-bt-receive-ask, ss-info-sensors, ss-info-modules, ss-info-interrupts, ss-scan-pdf, ss-ink-levels,
+               ss-ink-notice, ss-firmware-history, ss-language-packs,
+               ss-vpn-add, ss-net-qr, ss-net-add, ss-net-mobile, ss-firewall, ss-signin-finger, ss-users-crop, ss-vaults, ss-power-menu, ss-askpass, ss-polkit-finger]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: system-settings-shots
+          path: shots
+      - name: Make the JPEG
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - "${{ matrix.shot }}" <<'PY'
+          import base64, io, os, sys
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          p = 'shots/%s.png' % sys.argv[1]
+          if not os.path.exists(p):
+              raise SystemExit(0)
+          im = Image.open(p).convert('RGB')
+          for w, q in ((1920, 72), (1920, 60), (1920, 50), (1920, 40), (1600, 45), (1280, 45)):
+              b = io.BytesIO(); (im if w == im.width else im.resize((w, round(im.height * w / im.width)))).save(b, 'JPEG', quality=q, optimize=True)
+              if len(base64.b64encode(b.getvalue())) <= 45 * 3800:
+                  break
+          open('shot.jpg', 'wb').write(b.getvalue())
+          print('%s: %dx%d, %d bytes' % (p, im.width, im.height, len(b.getvalue())))
+          PY
+          [ -f shot.jpg ] && base64 -w0 shot.jpg | fold -w 3800 | nl -ba -w2 -s' ' > parts.txt || : > parts.txt
+          echo "::notice title=SHOT ${{ matrix.shot }} parts::$(wc -l < parts.txt)"
+      - name: Picture 1-9
+        run: sed -n '1,9p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 10-18
+        run: sed -n '10,18p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 19-27
+        run: sed -n '19,27p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 28-36
+        run: sed -n '28,36p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 37-45
+        run: sed -n '37,45p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+
+  # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md): their pictures as notices (a JPEG in base64 pieces, title
+  # "SHOT kwin-<which> <n>", at most 9 a picture), five pictures a job (a job keeps 50 notices). Taken at 1920×1080.
+  kwin-pages-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
+          - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
+          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 21-mouse-on-kwin 13-touchpad-on-kwin"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube"
+          - "19-mouse-buttons 20-mouse-buttons-press"
+          - "wb-0-labwc-window-behaviour wb-1-window-behaviour wb-2-window-behaviour-title-bar wb-3-window-behaviour-super-drag wb-4-window-rules-for-a-window"
+          - "ac-1-invert-one-window ac-2-typing-sounds ac-3-dwell-click ac-4-dwell-ring ac-5-dwell-ring-close"
+          - "ac-6-dwell-ring-double"
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      # The JPEGs first (as small as needed to fit in 9 notices), then one step a picture: a step keeps 10 notices.
+      - name: Make the JPEGs
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['PART'].split():
+              p = 'shots/kwin-pages/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT kwin-%s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((960, 45), (800, 40), (720, 35), (640, 30), (560, 25), (480, 22)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/kwin-pages/%s.jpg' % name, 'wb').write(b.getvalue())
+              print('%s: %dx%d from %dx%d, %d bytes' % (name, w, round(im.height * w / im.width), im.width, im.height, len(b.getvalue())))
+          PY
+      - name: Picture 1
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f1); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 2
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f2); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 3
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f3); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 4
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f4); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 5
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f5); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+
+  # Search, Passwords, the App store and Hearth Files' new parts (1.14, feature/search-store): their pictures as notices
+  # (a JPEG in base64 pieces, title "SHOT <name> <n>"), five a job, one step each (a job keeps 50 notices).
+  search-store-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shots: ["s-calc s-convert s-currency s-web s-command", "s-emoji s-centred-menu set-search set-passwords set-store",
+                "store-app store-updates files-terminal files-split files-compare"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        env:
+          SHOTS: ${{ matrix.shots }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['SHOTS'].split():
+              p = 'shots/search-store/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT %s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              print('%s: %dx%d' % (name, im.width, im.height))
+              for w, q in ((800, 50), (720, 45), (640, 38), (560, 30), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/search-store/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - name: Picture 1
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f1); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 2
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f2); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 3
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f3); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 4
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f4); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 5
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f5); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+
+  # 1.14 (wave 3): the pictures of the step above as notices ("SHOT <name> <n>").
+  shell-bits-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shots: ["set-kbd-lights set-leave leave-confirm power-default", "osk-touch-hold osk-touch-slide osk-pad-hold"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        env:
+          SHOTS: ${{ matrix.shots }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['SHOTS'].split():
+              p = 'shots/shell-bits/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT %s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              print('%s: %dx%d' % (name, im.width, im.height))
+              for w, q in ((800, 50), (720, 45), (640, 38), (560, 30), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/shell-bits/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - name: Picture 1
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f1); f=shots/shell-bits/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 2
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f2); f=shots/shell-bits/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 3
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f3); f=shots/shell-bits/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 4
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f4); f=shots/shell-bits/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true

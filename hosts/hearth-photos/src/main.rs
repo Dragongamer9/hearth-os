@@ -6,14 +6,14 @@
 // Hearth's look (Settings › Appearance), shared by Hearth's apps.
 #[path = "../../hearth-apptheme/apptheme.rs"]
 mod apptheme;
-use hearth_photos::{folder, formats, imaging, info, save, system};
+use hearth_photos::{folder, formats, imaging, info, library, save, system};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tauri::http::{header, Response, StatusCode};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 
-struct Startup { target: Option<PathBuf>, slideshow: bool, selftest: bool }
+struct Startup { target: Option<PathBuf>, slideshow: bool, selftest: bool, view: Option<String> }
 
 #[tauri::command]
 fn init(start: tauri::State<Startup>) -> Value {
@@ -21,6 +21,7 @@ fn init(start: tauri::State<Startup>) -> Value {
         "target": start.target.as_ref().map(|p| p.to_string_lossy().into_owned()),
         "slideshow": start.slideshow,
         "selftest": start.selftest,
+        "view": start.view,
         "platform": if cfg!(windows) { "windows" } else { "linux" },
         "version": env!("CARGO_PKG_VERSION"),
         "home": dirs::home_dir(),
@@ -86,6 +87,63 @@ fn pick(app: tauri::AppHandle, from: Option<String>) -> Option<String> {
     d.blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
 }
 
+// ------------------------------------------------------------------ the library (1.14)
+
+/// What the library had last time (instant), your choices, and the phone box's numbers.
+#[tauri::command(async)]
+fn library_cached() -> Value {
+    let items = library::cached();
+    json!({"summary": library::summary(&items), "items": items, "store": library::store_read()})
+}
+
+/// Looks through every folder again (new and changed files are read); newest first.
+#[tauri::command(async)]
+fn library_scan() -> Value {
+    let items = library::scan();
+    json!({"summary": library::summary(&items), "items": items, "store": library::store_read()})
+}
+
+/// One change you made (favorite, albums, folders): saved with the settings helper; the whole store comes back.
+#[tauri::command(async)]
+fn library_change(change: Value) -> Result<Value, String> { library::change(&change) }
+
+// ------------------------------------------------------------------ faces and what's in a photo (on this PC)
+#[tauri::command(async)]
+fn ai_status() -> Value { hearth_photos::ai::status() }
+#[tauri::command(async)]
+fn ai_setup() -> Result<(), String> { hearth_photos::ai::setup() }
+#[tauri::command(async)]
+fn ai_run() -> Result<Value, String> { hearth_photos::ai::run() }
+#[tauri::command(async)]
+fn ai_results() -> Value { hearth_photos::ai::results() }
+#[tauri::command(async)]
+fn ai_faces(on: bool) -> Result<Value, String> { hearth_photos::ai::faces(on) }
+
+/// A place's name, for a photo's Place and the Places map.
+#[tauri::command(async)]
+fn place_name(lat: f64, lon: f64) -> Result<String, String> { hearth_photos::place::name(lat, lon) }
+
+#[tauri::command(async)]
+fn add_to_wallpapers(paths: Vec<String>) -> Result<String, String> { library::add_to_wallpapers(&paths) }
+
+#[tauri::command(async)]
+fn library_trash() -> Vec<library::Item> { library::trash_items() }
+
+/// A video opens in the system's video player (Hearth Player).
+#[tauri::command(async)]
+fn open_video(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.is_file() || !library::is_video(p) { return Err("That video isn't there any more".into()); }
+    let player = if system::which("hearth-player") { "hearth-player" } else { "xdg-open" };
+    std::process::Command::new(player).arg(p).spawn().map(|_| ()).map_err(|e| format!("Couldn't open the video: {e}"))
+}
+
+/// Import: pick a folder to add to the library.
+#[tauri::command(async)]
+fn pick_folder(app: tauri::AppHandle) -> Option<String> {
+    app.dialog().file().set_title("Add a folder to Photos").blocking_pick_folder().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn set_title(window: tauri::WebviewWindow, title: String) { let _ = window.set_title(&title); }
 
@@ -130,7 +188,7 @@ fn media(uri: &tauri::http::Uri) -> Response<Vec<u8>> {
     let query = uri.query().unwrap_or("");
     let size = query.split('&').find_map(|kv| kv.strip_prefix("s=")).and_then(|s| s.parse().ok()).unwrap_or(256);
     let fail = |status: StatusCode, msg: String| respond(status, "text/plain; charset=utf-8", msg.into_bytes(), false);
-    if !path.is_absolute() { return fail(StatusCode::BAD_REQUEST, "not a full path".into()); }
+    if !path.is_absolute() && route != "tile" { return fail(StatusCode::BAD_REQUEST, "not a full path".into()); }
     match route {
         "raw" => match std::fs::read(&path) {
             Ok(b) => respond(StatusCode::OK, formats::mime(&formats::ext(&path)), b, false),
@@ -140,6 +198,15 @@ fn media(uri: &tauri::http::Uri) -> Response<Vec<u8>> {
             Ok(b) => respond(StatusCode::OK, "image/png", b, false),
             Err(e) => fail(StatusCode::UNSUPPORTED_MEDIA_TYPE, e),
         },
+        // tile/<z>/<x>/<y>: a map picture from OpenStreetMap (kept here).
+        "tile" => {
+            let n: Vec<u32> = path.to_string_lossy().split('/').filter_map(|s| s.trim_end_matches(".png").parse().ok()).collect();
+            match (n.len() == 3).then(|| hearth_photos::place::tile(n[0], n[1], n[2])) {
+                Some(Ok(b)) => respond(StatusCode::OK, "image/png", b, true),
+                Some(Err(e)) => fail(StatusCode::BAD_GATEWAY, e),
+                None => fail(StatusCode::BAD_REQUEST, "tile/z/x/y".into()),
+            }
+        }
         "thumb" => match imaging::thumbnail(&path, size) {
             Ok((b, mime)) => respond(StatusCode::OK, mime, b, true),
             Err(e) => fail(StatusCode::UNSUPPORTED_MEDIA_TYPE, e),
@@ -171,8 +238,10 @@ Usage: hearth-photos [options] [PICTURE or FOLDER]
 
   --fullscreen     start full screen
   --slideshow      start a slideshow of the folder
+  --view NAME      start the library on a list (favorites, videos, collections, places…)
   --info PICTURE   print what Photos knows about a picture (JSON) and quit
   --thumb PICTURE OUT.png   write a thumbnail and quit (for checking)
+  --scan           look through the library's folders, print a summary (JSON) and quit
   --version, --help
 ";
 
@@ -194,26 +263,36 @@ fn main() {
             Err(e) => { eprintln!("{e}"); std::process::exit(1); }
         }
     }
+    if args.iter().any(|a| a == "--scan") {
+        let items = library::scan();
+        let mut kinds = std::collections::BTreeMap::new();
+        for i in &items { *kinds.entry(i.kind.clone()).or_insert(0u32) += 1; }
+        println!("{}", serde_json::to_string_pretty(&json!({"summary": library::summary(&items), "kinds": kinds, "first": items.iter().take(5).collect::<Vec<_>>()})).unwrap_or_default());
+        return;
+    }
     let start_fullscreen = args.iter().any(|a| a == "--fullscreen");
     let slideshow = args.iter().any(|a| a == "--slideshow");
-    let target = args.iter().find(|a| !a.starts_with("--")).map(|a| {
+    // --view NAME: start the library on a list (all, favorites, videos, captures, phone, collections, people, places, folders).
+    let view = args.iter().position(|a| a == "--view").and_then(|i| args.get(i + 1)).cloned();
+    let target = args.iter().enumerate().find(|(k, a)| !a.starts_with("--") && (*k == 0 || args[k - 1] != "--view")).map(|(_, a)| a).map(|a| {
         let p = hearth_photos::path_from_arg(a);
         std::fs::canonicalize(&p).unwrap_or(p)
     });
     #[cfg(target_os = "linux")]
     pick_drawing();
     std::thread::spawn(imaging::tidy_cache);
+    std::thread::spawn(save::tidy_replaced);
 
     tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Startup { target, slideshow, selftest: std::env::var_os("HEARTH_PHOTOS_SELFTEST").is_some() })
+        .manage(Startup { target, slideshow, selftest: std::env::var_os("HEARTH_PHOTOS_SELFTEST").is_some(), view })
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             let uri = request.uri().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(media(&uri)));
         })
         .invoke_handler(tauri::generate_handler![
             init, list, file_info, save_turn, save_edit, read_bytes, trash, untrash, copy_image, set_wallpaper,
-            show_in_folder, pick, set_title, fullscreen, print, log, quit
+            show_in_folder, pick, set_title, library_cached, library_scan, library_change, pick_folder, library_trash, open_video, place_name, add_to_wallpapers, ai_status, ai_setup, ai_run, ai_results, ai_faces, fullscreen, print, log, quit
         ])
         .setup(move |app| {
             let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

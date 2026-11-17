@@ -9,6 +9,7 @@
 // The pages, their categories and the search are one registry: settings-pages.js (adding a page is one entry there).
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import "settings-pages.js" as Reg
@@ -16,6 +17,8 @@ import "settings-pages.js" as Reg
 Scope {
     id: app
     property bool shown: false
+    // What's typed in Settings' search (the KWin checks look that keys reach the window).
+    property string query: ""
     property string page: "home"
     // On the live USB, "Install Hearth" shows (System, and a banner on Home).
     property bool live: false
@@ -41,15 +44,21 @@ Scope {
         p = p || "";
         if (Reg.ALIASES[p]) p = Reg.ALIASES[p];
         // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page or its expander goes there).
-        const m = /^([\w-]+):([\w-]+)$/.exec(p);
-        if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; p = m[1]; }
+        const m = /^([\w-]+):([\w.-]+)$/.exec(p);   // (a part may have dots: an app id, menu-editor:org.kde.kcalc)
+        if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; SettingsNav.anchorAt = Date.now(); p = m[1]; }
         const id = Reg.resolve(p);
         // A page only on the live USB stays closed elsewhere; anything unknown opens Home.
         const e = Reg.page(id);
         page = e && (!e.live || live) ? id : (shown ? page : "home");
+        if (page !== "kwin-rules") SettingsNav.ruleFor = null;
         shown = true;
     }
-    function close() { shown = false; SettingsNav.pageAnchor = ""; }
+    // A window's More actions › "Special window settings…" (Mantel on KWin): Window rules, for that window's app.
+    function openWindowRules(info) {
+        SettingsNav.ruleFor = info && (info.wmclass || info.title) ? { wmclass: String(info.wmclass || ""), title: String(info.title || "") } : null;
+        open("kwin-rules");
+    }
+    function close() { shown = false; SettingsNav.pageAnchor = ""; SettingsNav.ruleFor = null; }
     function toggle() { shown ? close() : open(""); }
 
     LazyLoader {
@@ -65,20 +74,48 @@ Scope {
             onVisibleChanged: if (!visible) app.shown = false
             // Opens on Home every time (a page asked for by name, or by a notification, opens that page instead).
             Component.onCompleted: if (app.page === "") app.page = "home"
+            Binding { target: app; property: "query"; value: frameLoader.item && typeof frameLoader.item.query === "string" ? frameLoader.item.query : "" }
 
             // The frame, loaded by file name: if it fails, the plain list instead (Settings always opens).
+            // 1.14: the controller look (SettingsFrameB.qml) while a controller is what you use, the keyboard-and-mouse
+            // look (SettingsFrame.qml) otherwise, switching live: the page stays open and the setting you were on stays
+            // picked. If the controller look can't load, the other one stays.
             Loader {
                 id: frameLoader
                 anchors.fill: parent
                 property bool fellBack: false
-                Component.onCompleted: setSource(Qt.resolvedUrl("SettingsFrame.qml"), { app: app })
+                property bool bFailed: false
+                property string want: SettingsNav.input === "pad" && !bFailed ? "SettingsFrameB.qml" : "SettingsFrame.qml"
+                property string keep: ""
+                function focusedTitle() {
+                    for (let it = frameLoader.Window.activeFocusItem; it; it = it.parent)
+                        if (it.title !== undefined && typeof it.title === "string" && it.title !== "" && it.activated !== undefined) return it.title;
+                    return "";
+                }
+                Component.onCompleted: setSource(Qt.resolvedUrl(want), { app: app })
+                onWantChanged: {
+                    if (fellBack) return;
+                    keep = focusedTitle();
+                    setSource(Qt.resolvedUrl(want), { app: app });
+                }
                 onStatusChanged: {
+                    if (status === Loader.Ready && keep !== "" && item && item.restoreFocus) { item.restoreFocus(keep); keep = ""; }
+                    if (status === Loader.Error && want === "SettingsFrameB.qml" && !bFailed) {
+                        bFailed = true;
+                        console.warn("Hearth Settings: the controller look didn't load; using the keyboard-and-mouse look");
+                        return;
+                    }
                     if (status === Loader.Error && !fellBack) {
                         fellBack = true;
                         console.warn("Hearth Settings: the new frame didn't load; using the plain list of pages");
                         setSource(Qt.resolvedUrl("SettingsSimple.qml"), { app: app });
                     }
                 }
+                // Typing on a real keyboard (a key nothing in the page took, with no controller button just before).
+                Keys.onPressed: e => { if (Date.now() - SettingsNav.padAt > 3000) SettingsNav.input = "mouse"; e.accepted = false; }
+                // The mouse or touch: back to the keyboard-and-mouse look (not while the controller moves the pointer).
+                HoverHandler { onPointChanged: SettingsNav.pointerUsed() }
+                TapHandler { onTapped: SettingsNav.pointerUsed() }
             }
         }
     }

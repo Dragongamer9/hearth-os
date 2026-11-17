@@ -1,0 +1,32 @@
+#!/bin/sh
+# Hearth's own login screen, started by greetd as the greeter's account (_greetd; hearth-login-screen writes greetd's
+# settings): cage, a one-window Wayland compositor (wlroots, as labwc in Desktop Mode, so the same Nvidia handling),
+# showing the greeter (Quickshell: /usr/share/hearth/greeter). Quickshell quits once greetd has your session; cage
+# ends with it. If this ends without a session, greetd ends too and SDDM takes over (hearth-login-fallback).
+# Why cage and not KWin: one small package with nothing to set up, made for exactly this (a single full-screen app,
+# the greetd project's own suggestion), and the same wlroots Desktop Mode already runs on Nvidia; KWin as a greeter
+# brings much of Plasma's stack and its own settings into the greeter's account.
+RUNDIR="${XDG_RUNTIME_DIR:-/tmp/hearth-greeter-$(id -u)}"
+mkdir -p "$RUNDIR" 2>/dev/null
+export XDG_RUNTIME_DIR="$RUNDIR"
+# The greeter's account has no home of its own: everything Qt or Quickshell keeps goes in its runtime folder.
+export HOME="$RUNDIR/home" XDG_CACHE_HOME="$RUNDIR/cache" XDG_STATE_HOME="$RUNDIR/state" XDG_CONFIG_HOME="$RUNDIR/config" XDG_DATA_HOME="$RUNDIR/data"
+mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" 2>/dev/null
+rm -f "$RUNDIR/hearth-greeter-ready" "$RUNDIR/hearth-greeter-ok"
+export XDG_SESSION_TYPE=wayland QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+# Nvidia: a software cursor, as the session does for labwc (nimbus-session).
+[ -d /sys/module/nvidia_drm ] && export WLR_NO_HARDWARE_CURSORS=1
+# The keyboard layout the system was set up with (/etc/default/keyboard), read, never run as a script.
+kb() { sed -n "s/^[[:space:]]*$1=[\"']\{0,1\}\([^\"']*\)[\"']\{0,1\}[[:space:]]*$/\1/p" /etc/default/keyboard 2>/dev/null | tail -1; }
+v=$(kb XKBLAYOUT); [ -n "$v" ] && export XKB_DEFAULT_LAYOUT="$v"
+v=$(kb XKBVARIANT); [ -n "$v" ] && export XKB_DEFAULT_VARIANT="$v"
+v=$(kb XKBOPTIONS); [ -n "$v" ] && export XKB_DEFAULT_OPTIONS="$v"
+v=$(kb XKBMODEL); [ -n "$v" ] && export XKB_DEFAULT_MODEL="$v"
+# A graphics card can show up a moment after greetd starts (Nvidia's module): up to 10 s.
+i=0
+while [ "$i" -lt 20 ] && ! ls /dev/dri/card* >/dev/null 2>&1; do sleep 0.5; i=$((i + 1)); done
+QS=$(command -v quickshell) || { echo "hearth-greeter: Quickshell isn't installed" >&2; exit 1; }
+set -- "${HEARTH_GREETER_COMPOSITOR:-cage}" -s -d -- "$QS" -p "${HEARTH_GREETER_DIR:-/usr/share/hearth/greeter}"
+# A bus of its own for the greeter (the screen reader, if there is one, needs it).
+if command -v dbus-run-session >/dev/null 2>&1; then set -- dbus-run-session -- "$@"; fi
+exec "$@"

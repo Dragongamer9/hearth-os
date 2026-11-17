@@ -1,0 +1,75 @@
+{
+  "_about": "TV Cleanup's groups (Settings › TV Cleanup). Only packages that are on the TV are touched, always with pm disable-user --user 0 (switched off for you, never uninstalled; pm enable brings each back). 'never' is refused even if listed: the TV needs them (inputs, updates, Wi-Fi, the remote, Google services). Sources: debloattv.com (TCL G09), github.com/aviv0404/tcl-tv-despy, github.com/rcland12/debloat-tv (packages-tcl.txt), checked against this TV's own list at install (docs/HEARTH-TV.md).",
+  "groups": {
+    "ads": {
+      "packages": [
+        "com.tcl.partnercustomizer",
+        "com.tcl.channelplus",
+        "com.tcl.messagebox",
+        "com.tcl.esticker",
+        "com.tcl.exhibit",
+        "com.tcl.tv.recommendation",
+        "com.google.android.tvrecommendations",
+        "com.google.android.leanbacklauncher.recommendations",
+        "com.tcl.tv.plus"
+      ]
+    },
+    "acr": {
+      "packages": [
+        "tv.samba.ssm.ui",
+        "tv.anoki.acr.anokiacroptin",
+        "com.tcl.logkit",
+        "com.tcl.interactive",
+        "com.google.android.feedback",
+        "com.android.tv.feedbackconsent"
+      ]
+    },
+    "tcl": {
+      "packages": [
+        "com.tcl.waterfall.overseas",
+        "com.tcl.dashboard",
+        "com.tcl.tv.tclhome_passive",
+        "com.tcl.magiconnectfree",
+        "com.tcl.smartalexa",
+        "com.tcl.hotelmenu",
+        "com.tcl.ocean.instructions",
+        "com.tcl.repairguide",
+        "com.tcl.gamebar",
+        "com.tcl.usercenter"
+      ]
+    },
+    "home": {
+      "packages": [
+        "com.google.android.apps.tv.launcherx",
+        "com.google.android.tvlauncher"
+      ]
+    },
+    "voice": {
+      "packages": [
+        "com.google.android.katniss"
+      ]
+    },
+    "updates": {
+      "packages": []
+    }
+  },
+  "never": [
+    "com.tcl.suspension",
+    "com.tcl.ttvs",
+    "com.tcl.tv",
+    "com.tcl.tvinput",
+    "com.tcl.providers.config",
+    "com.tcl.initsetup",
+    "com.google.android.tv.remote.service",
+    "com.tcl.tcl_bt_rcu_service",
+    "com.tcl.autopair",
+    "com.google.android.gms",
+    "com.google.android.gsf",
+    "com.android.location.fused",
+    "com.google.android.tungsten.setupwraith",
+    "com.android.vending",
+    "com.google.android.inputmethod.latin",
+    "com.google.android.tvkeyboard",
+    "dev.hearthos.tv"
+  ]
+}

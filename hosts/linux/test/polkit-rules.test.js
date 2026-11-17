@@ -57,9 +57,23 @@ test('a .deb on the system itself (Peppermint unlocked) always asks; the unlock 
   assert.strictEqual(decide(cl('hostname deb-install')), 'yes');
 });
 
+test('a driver from Debian (Settings › App store › Drivers) always asks for a password', () => {
+  const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
+  assert.strictEqual(decide(cl('driver-install firmware-realtek')), 'auth_admin');
+  assert.strictEqual(decide(cl('driver-install firmware-iwlwifi'), { isInGroup: () => false }), 'auth_admin');
+  assert.strictEqual(decide(cl('hostname driver-install')), 'yes');
+});
+
 test('a line break in an earlier argument does not hide --allow-internal (bug hunt)', () => {
   const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
   assert.strictEqual(decide(cl('usb-raw /dev/nvme0n1 --expect-size 1 --label a\nb --allow-internal')), 'auth_admin');
   assert.strictEqual(decide(cl('usb-prepare /dev/sda --label x\r\ny --allow-internal --expect-size 1')), 'auth_admin');
   assert.strictEqual(decide(cl('usb-raw /dev/sdb --expect-size 1 --label a\nb')), 'yes');
+});
+
+test('firmware updates always ask; the firmware list does not', () => {
+  const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
+  assert.strictEqual(decide(cl('firmware-update 0123456789abcdef0123456789abcdef01234567')), 'auth_admin');
+  assert.strictEqual(decide(cl('firmware-refresh')), 'yes');
+  assert.strictEqual(decide(cl('hostname firmware-update')), 'yes');
 });

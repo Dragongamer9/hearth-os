@@ -138,7 +138,10 @@ Singleton {
     // The wallpaper on show: yours, or the look's own ("" = Hearth's fireside). With Match sub theme on (the
     // default), the look's own is the sub theme's; a wallpaper you chose always wins (subthemes.js shownWallpaper).
     readonly property string ownWall: SubThemes.ownWallpaper(palettes, look, Settings.subTheme, Settings.wallMatch)
-    readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : ownWall
+    // Activities (1.14): an activity with its own wallpaper shows it while you're on it ("" = the desktop's own). Set by
+    // Widgets.qml (Activities.qml), so Theme never depends on it.
+    property string activityWall: ""
+    readonly property string wall: activityWall !== "" ? activityWall : Settings.wallpaper !== "" ? Settings.wallpaper : ownWall
     // A controller focus ring: crisp, in the accent.
     readonly property int focusWidth: 2
 
@@ -160,14 +163,16 @@ Singleton {
 
     // Apps and window decorations follow (theme/apply.sh runs theme/hearth-theme, which rewrites the Qt / GTK / KDE
     // colours and labwc's theme and asks labwc to reload). Once things settle, not on every step of a change.
-    readonly property string key: look + "/" + subTheme + "/" + mode + "/" + accent
+    readonly property string key: look + "/" + subTheme + "/" + mode + "/" + accent + "/" + Settings.frameTint + "/" + Settings.appsFollow   // (1.14: the frames' tint and "Apps follow Hearth" too)
     property string appliedKey: ""
     onKeyChanged: if (Settings.loaded) applyTimer.restart()
     Timer {
         id: applyTimer
         interval: 600
         onTriggered: {
-            if (root.appliedKey === "" ) { root.appliedKey = root.key; return; }   // the first settle: labwc's autostart already ran it
+            // The first settle: labwc's autostart already ran it. Under KWin nothing has, and KWin's window frames
+            // (Hearth's Aurorae theme) are written by it, so it runs now.
+            if (root.appliedKey === "" && Quickshell.env("HEARTH_WM") !== "kwin") { root.appliedKey = root.key; return; }
             if (root.appliedKey === root.key) return;
             root.appliedKey = root.key;
             Quickshell.execDetached(["sh", Quickshell.shellDir + "/../theme/apply.sh"]);

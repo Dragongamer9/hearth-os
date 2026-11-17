@@ -28,25 +28,30 @@ Scope {
     property bool ownerMouse: false
     property string simDir: ""          // checks only (desktop-test.yml): hearth-pad with a simulated controller
 
-    readonly property var active: ToplevelManager.activeToplevel
+    readonly property var active: WinList.activeToplevel
     // The controller types arrow keys / Enter / Esc instead of moving the pointer in Hearth's own menus
     // and in Hearth Settings when it's the window in front. Hearth Files' windows are "<folder> – Files", and every
     // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files". Hearth Files built from Dolphin
     // (app id org.kde.dolphin, hosts/hearth-kde) too: it does LB/RB, LT/RT and View itself (hearthgamepad.cpp).
     readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (steamFallback !== null && steamFallback.shown) || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && String(active.title).indexOf("Task Manager") === 0) || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files") || active.appId === "org.kde.dolphin"))
-        || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
+        || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.forceCloseShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || (active !== null && active.title === "Resource Monitor")   // ResourceMonitor.qml (LB / RB switch its tabs: hearth-pad)
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
+        || SettingsNav.captureShown || SettingsNav.polkitShown   // 1.14: Capture's pages and area picker, the password prompt
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
+        || SettingsNav.widgetsShown   // desktop widgets and activities (Widgets.qml)
+        || SettingsNav.fireholdShown  // Firehold's Couch (a hidden preview): its buttons go to it as they are (fhpad)
+        || SettingsNav.searchBarShown   // the search bar (SearchBar.qml, Alt+Space)
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
-    // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
+    // The window in front (WinList: labwc's foreign-toplevel list, or KWin's through hearth-kwin-bridge): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
     readonly property string frontApp: active !== null ? (active.appId || "") : ""
     // What has the keys (hearth-pad's pad.log says it, so a controller that "only does D-pad and A" shows why).
     function keysWhy() {
         if (!keysContext) return "";
+        if (SettingsNav.fireholdShown) return "Firehold";   // hearth-pad sends this one's buttons as they are
         if (launcher.shown) return "launcher";
         if (quick.shown) return "Quick Access";
         if (powerMenu.shown) return "power menu";
@@ -57,7 +62,10 @@ Scope {
         if (SettingsNav.snapShown) return "snap layouts";
         if (SettingsNav.discordShown) return "Discord chooser";
         if (SettingsNav.winxShown) return "Super+X menu";
+        if (SettingsNav.searchBarShown) return "search bar";
         if (DeskState.overlayShown) return "desktop menu";
+        if (SettingsNav.polkitShown) return "password prompt";
+        if (SettingsNav.captureShown) return "Capture";
         return "window: " + (active !== null ? ((active.appId || "") + " " + (active.title || "")).trim().slice(0, 60) : "?");
     }
     // keys {on, why, ttl}: hearth-pad lets it lapse after ttl seconds unless it's said again (keysBeat repeats it while
@@ -79,8 +87,8 @@ Scope {
     // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Discord's chooser, the
     // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
     // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
-    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || DeskState.overlayShown
-        || SettingsNav.winxShown
+    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || SettingsNav.widgetsShown || DeskState.overlayShown
+        || SettingsNav.winxShown || SettingsNav.searchBarShown
     property var beforeMenu: null
     onMenuOpenChanged: {
         if (menuOpen) { beforeMenu = active; refocus.stop(); }
@@ -93,18 +101,27 @@ Scope {
             const w = pad.beforeMenu;
             pad.beforeMenu = null;
             if (!w || pad.menuOpen) return;
-            const cur = ToplevelManager.activeToplevel;
-            if ((cur === w || cur === null) && ToplevelManager.toplevels.values.indexOf(w) >= 0) w.activate();
+            const cur = WinList.activeToplevel;
+            if ((cur === w || cur === null) && WinList.toplevels.values.indexOf(w) >= 0) w.activate();
         }
     }
 
     function send(o) { if (proc.running) proc.write(JSON.stringify(o) + "\n"); }
+    // The lock screen (Lock.qml on labwc, KWin's locker on KWin: DeskState.locked): the controller is its keys only.
+    Connections { target: DeskState; function onLockedChanged() { pad.send({ cmd: "locked", on: DeskState.locked }); } }
     function sync() {
         sendFocus();
         sendKeys();
         send({ cmd: "pause", on: fullscreenApp });
         send({ cmd: "mouse", on: mouseOn });
         send({ cmd: "speed", value: Settings.pointerSpeed });
+        send({ cmd: "firehold", on: SettingsNav.fireholdCouch });
+    }
+    // Firehold's Couch (Firehold.qml): Guide goes to it while the Couch posture is on.
+    Connections {
+        target: SettingsNav
+        function onFireholdCouchChanged() { pad.send({ cmd: "firehold", on: SettingsNav.fireholdCouch }); }
+        function onFireholdShownChanged() { pad.sendKeys(); }
     }
     Connections {
         target: Settings
@@ -119,8 +136,16 @@ Scope {
         send({ cmd: "radial", open: true });
     }
     // The on-screen keyboard (Keyboard.qml) works without hearth-pad too: touch, the mouse, and typing through wtype.
-    function openKeyboard() { keyboard.openKb(); }
+    // A password prompt (PolkitPrompt.qml) is up: the keyboard opens in password mode (no learned words, no suggestions,
+    // nothing kept of what's typed).
+    function openKeyboard(mode) { keyboard.openKb(mode || (SettingsNav.polkitShown ? "password" : "text")); }
     function closeKeyboard() { keyboard.closeKb(); }
+    // Y on the empty desktop opens the search bar (which opens the keyboard itself); false: Y is the keyboard as before.
+    function deskY() {
+        const b = SettingsNav.searchBar;
+        if (!b || keysContext || active !== null || keyboard.open || DeskState.locked) return false;
+        try { return b.padOpen() === true; } catch (e) { return false; }
+    }
     function setMouse(on) { mouseOn = on; send({ cmd: "mouse", on: on }); help.toast("Controller mouse " + (on ? "on" : "off")); }
     // The Hearth menu's Controller mouse over a controller app: the pointer in that app (like Guide + R3), on / off.
     function toggleMouse() { if (owner !== "") send({ cmd: "padmouse" }); else setMouse(!mouseOn); }
@@ -147,17 +172,22 @@ Scope {
         // The controller was just used for Hearth's menus: Mantel 2026's button-hint strip shows for a while (HintStrip.qml).
         if (["radial", "osk", "oskpad", "launcher", "help"].indexOf(m.t) >= 0) DeskState.padSeen = Date.now();
         switch (m.t) {
-        case "ready": problem = ""; sync(); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
+        case "ready": problem = ""; sync(); send({ cmd: "locked", on: DeskState.locked }); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
         case "error": problem = m.text; break;
         case "radial": radial.update(m); break;
         // Y: the Tiles / Start screen menus take it to move a tile when one has the focus ring (launcher.padY).
-        case "osk": if (m.open) { if (!(typeof launcher.padY === "function" && launcher.padY())) openKeyboard(); } else closeKeyboard(); break;
+        // Y with the desktop in front (no window, no menu): the search bar with the keyboard to type in it (SearchBar.qml).
+        case "osk": if (m.open) { if (!(typeof launcher.padY === "function" && launcher.padY()) && !pad.deskY()) openKeyboard(); } else closeKeyboard(); break;
         case "oskpad": keyboard.padButton(m.b, !!m.down); break;
         case "oskaxes": keyboard.padAxes(m.lx || 0, m.ly || 0, m.rx || 0, m.ry || 0); break;
         case "launcher": launcher.toggle(); break;
+        // View + Y: KWin's Overview (Mantel on KWin; labwc has none, so it says so).
+        case "overview": if (WinList.kwin) WinList.effect("overview"); else help.toast("The overview needs Mantel on KWin"); break;
         case "help": help.toggle(); break;
         case "toast": help.toast(m.text); break;
         case "mouse": mouseOn = m.on; break;
+        case "used": SettingsNav.padUsed(); break;
+        case "fhpad": DeskState.padSeen = Date.now(); if (SettingsNav.fireholdPad) SettingsNav.fireholdPad(m.b || "", m.down !== false); break;
         case "owner": owner = m.app || ""; ownerMouse = m.mouse === true; break;
         }
     }

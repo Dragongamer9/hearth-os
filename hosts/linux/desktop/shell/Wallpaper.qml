@@ -23,18 +23,29 @@ PanelWindow {
     // Hearth Settings › Appearance picks a picture (Settings.wallpaper); older setups used wallpaper.jpg/.png.
     // "" = the look's own (Theme.qml / theme/palettes.json: Hearth's fireside, Steam-style's Slate Tide).
     // (Theme.wall: with a sub theme and Match sub theme on, its wallpaper; yours always wins.)
-    readonly property string wall: Theme.wall
+    // 1.14: this screen's own picture, or the slideshow's, else Theme.wall (WallShow.qml).
+    readonly property string wall: WallShow.forScreen(root.screen ? root.screen.name : "")
     readonly property string anim: wall.startsWith("anim:") ? wall.slice(5) : ""
     readonly property string picture: anim ? "" : wall
     readonly property bool custom: !anim && (chosen.status === Image.Ready || (!picture && (jpg.status === Image.Ready || png.status === Image.Ready)))
-    // Moving wallpapers stay cheap: they hold still with Reduce motion, behind a fullscreen app or game, on battery,
+    // Moving wallpapers stay cheap: they hold still with Reduce motion, behind a fullscreen or maximized window, on battery,
     // while the screen is locked or off. The Slate ones also need a GPU (still with software rendering).
-    readonly property var front: ToplevelManager.activeToplevel
+    readonly property var front: WinList.activeToplevel
     readonly property bool onBattery: UPower.onBattery === true
-    readonly property bool moving: !Settings.reduceMotion && !(front && front.fullscreen === true) && !onBattery && !DeskState.locked && !DeskState.screenOff
+    // 1.14 (the owner's laptop felt slow): also behind a maximized window, where the wallpaper can't be seen but was
+    // still drawn every frame.
+    readonly property bool covered: !!front && front.minimized !== true && (front.fullscreen === true || front.maximized === true)
+    // 1.14: and after 3 minutes without input (DeskState.idle): a laptop left on all night drew it every frame.
+    readonly property bool moving: !Settings.reduceMotion && !covered && !onBattery && !DeskState.locked && !DeskState.screenOff && !DeskState.idle
     readonly property bool gpu: gpuProbe.gpu
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu
+
+    // Everything drawn, in one item: a window's own contentItem can't be grabbed ("item has no QML engine"),
+    // so saveStill grabs this.
+    Item {
+        id: scene
+        anchors.fill: parent
 
     // ---------------------------------------------------------------- Lava: big soft blobs drifting slowly
     Item {
@@ -401,5 +412,6 @@ PanelWindow {
         anchors.fill: parent
         active: root.primary && Theme.deskClock
         source: "DeskClock.qml"
+    }
     }
 }

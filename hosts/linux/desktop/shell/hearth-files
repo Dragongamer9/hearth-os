@@ -68,6 +68,12 @@
   hearth-files desktop-launch PATH      start what a .desktop file runs (after Files asked)
   hearth-files open-choice PATH [CHOICE]     remember (or, without CHOICE, forget) what opening this file does
 
+1.14's extras (hearth_files_extras.py, next to this file): tags (user.xdg.tags) and finding by tag, git status badges,
+disc images (iso-mount / iso-unmount), phones and cameras (portable, portable-mount), apps' right-click actions
+(service-menus / service-run), sharing a folder on your network (sharing / share, Settings › Home server's Samba),
+recent files' privacy (recent-prefs, recent-prefs-set, recent-forget), chmod-tree, groups, chgrp.
+"Act as administrator" is /usr/libexec/nimbus/hearth-files-admin (through hearth-admin files-*, pkexec).
+
 Your devices (hearth_netshares.py): your paired Hearth devices' shared folders and other computers sharing (SMB) in
 the sidebar, found by themselves; opening one mounts it with gvfs.
   hearth-files net-open JSON [--user USER] [--remember]   mount one ({device, name, share, home, away, wake}; the
@@ -132,6 +138,12 @@ class Fail(Exception):
     pass
 
 
+# hearth_files_extras.py's commands (its run() does them).
+EXTRA_COMMANDS = ('tags', 'tag-set', 'tag-list', 'tag-find', 'git-status', 'iso-mount', 'iso-unmount', 'portable', 'portable-mount',
+                  'portable-unmount', 'service-menus', 'service-run', 'sharing', 'share', 'recent-prefs', 'recent-prefs-set',
+                  'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp')
+
+
 class Cancelled(Exception):
     pass
 
@@ -157,6 +169,9 @@ def media_bases():
 def gvfs_root():
     """Where gvfs shows mounted network folders (your devices' shared folders, opened from the sidebar)."""
     return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid(), 'gvfs')
+
+
+GVFS_PREFIX = gvfs_root() + '/'
 
 
 def write_roots():
@@ -480,13 +495,22 @@ def recent_files(limit=40):
     except OSError:
         return {'recent': []}
     items = []
-    for m in re.finditer(r'<bookmark\b([^>]*)>', text):
-        attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
-        href = attrs.get('href', '')
-        if not href.startswith('file://'):
+    # Settings › Privacy › Recent files: off shows none; "keep for" and what's left out are honoured here too.
+    try:
+        import hearth_files_extras as hx
+        rprefs = hx.recent_prefs(hsio)
+    except ImportError:
+        hx, rprefs = None, None
+    found = hx.xbel_items(text) if hx else [
+        (m.group(0), a, urllib.parse.unquote(a.get('href', '')[7:], errors='surrogateescape') if a.get('href', '').startswith('file://') else '', [])
+        for m in re.finditer(r'<bookmark\b([^>]*)>', text) for a in [dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))]]
+    # Activities (1.14): on one with its own list, only the files opened on it.
+    aconf = hx.activities_conf() if hx else None
+    spans = hx.activity_spans() if hx and aconf['many'] else []
+    for whole, attrs, p, apps in found:
+        if not p or not os.path.isfile(p):
             continue
-        p = urllib.parse.unquote(href[7:], errors='surrogateescape')
-        if not os.path.isfile(p):
+        if rprefs is not None and not hx.recent_visible(rprefs, p, apps, hx._when(attrs), aconf, spans):
             continue
         when = attrs.get('visited') or attrs.get('modified') or attrs.get('added') or ''
         items.append((when, p))
@@ -538,6 +562,16 @@ def entry(path, name):
         e['exec'] = True
     if isdir and not under(path, gvfs_root()) and os.path.isfile(os.path.join(path, '.briefcase.json')):
         e['briefcase'] = briefcase_look(path)
+    # Tags (Dolphin's and KDE's: the user.xdg.tags extended attribute), shown and grouped by in Files. Not on network
+    # folders (a round trip per file there).
+    if not path.startswith(GVFS_PREFIX):
+        try:
+            t = os.getxattr(path, 'user.xdg.tags', follow_symlinks=False).decode('utf-8', 'replace')
+            tags = [x.strip() for x in t.split(',') if x.strip()]
+            if tags:
+                e['tags'] = tags
+        except (OSError, AttributeError):
+            pass
     return e
 
 
@@ -689,6 +723,36 @@ def briefcase_mod():
     return _BC or None
 
 
+def accounts_mod():
+    try:
+        import hearth_accounts
+        return hearth_accounts
+    except ImportError:
+        return None
+
+
+def account_places():
+    """Your online accounts with Files on (Settings › Accounts › Online accounts, hearth_accounts.py): Nextcloud's and
+    WebDAV's files, mounted with gvfs (davs://) when you open them."""
+    m = accounts_mod()
+    if not m:
+        return []
+    try:
+        return m.file_places()
+    except Exception:                     # noqa: BLE001 (a damaged accounts file never breaks the left menu)
+        return []
+
+
+def account_open(aid):
+    m = accounts_mod()
+    if not m:
+        raise Fail("Online accounts aren't on this device")
+    try:
+        return m.mount(aid)
+    except m.Fail as e:
+        raise Fail(str(e))
+
+
 def briefcase_places():
     """The Briefcases you made or opened that are reachable now, unless one's "Show in navigation pane" is off.
     ~/Briefcase is never pinned here by Hearth (a Briefcase is a folder you make): an existing one stays a normal
@@ -761,6 +825,7 @@ def places():
         out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
                     'kind': 'games', 'section': 'games'})
     out += bookmark_places()
+    out += account_places()
     out += briefcase_places()
     out += storage_places()
     out += device_places()
@@ -2271,6 +2336,34 @@ def extract(archive, dest, here=False):
 
 
 # ---------------------------------------------------------------------- search
+def indexed_search(root, query, limit):
+    """(hits, folders the index doesn't read under ROOT) from hearth-search, or None (no index, it's off, or ROOT
+    isn't in the folders it covers). The index also looks at folders changed since it last caught up."""
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth-search')
+    if not os.path.exists(helper):
+        return None
+    try:
+        st = json.loads(subprocess.run([sys.executable, helper, 'status'], capture_output=True, text=True, timeout=5).stdout or '{}')
+        pr = st.get('prefs') or {}
+        if not st.get('complete') or not pr.get('indexing', True):
+            return None
+        covered = [os.path.normpath(os.path.expanduser(f if f.startswith(('/', '~')) else '~/' + f)) for f in pr.get('folders') or ['~']]
+        if not any((root + '/').startswith(c.rstrip('/') + '/') for c in covered):
+            return None
+        if any(part.startswith('.') for part in root.split('/')):
+            return None
+        r = subprocess.run([sys.executable, helper, 'query', '--limit', str(min(limit, 5000)), '--under', root, query],
+                           capture_output=True, text=True, timeout=15)
+        hits = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else None
+        u = subprocess.run([sys.executable, helper, 'unindexed', root], capture_output=True, text=True, timeout=10)
+        skipped = json.loads(u.stdout.strip().splitlines()[-1]) if u.returncode == 0 and u.stdout.strip() else None
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
+    if not isinstance(hits, list) or not isinstance(skipped, list):
+        return None
+    return hits, skipped
+
+
 def search(path, query, hidden=False, limit=5000):
     """Looks below path for names containing query (or matching it, with * and ?): a "found: {entry}" line
     for each, then {"ok": true, "count": n, "truncated": bool}. Stops on SIGTERM (the Stop button)."""
@@ -2287,8 +2380,37 @@ def search(path, query, hidden=False, limit=5000):
         raise Cancelled()
     signal.signal(signal.SIGTERM, stop)
     n, truncated = 0, False
+    # The file index (hearth-search, like Baloo) answers at once when it covers this folder (not for hidden files or
+    # * ? patterns); its hits carry "snippet" when Settings › Search reads documents' text. The folders it doesn't
+    # read (node_modules, build, target, game libraries, ones you left out) are still walked here, so nothing found
+    # before goes missing. With no index: the walk of everything below.
+    got = None if hidden or glob else indexed_search(root, query.strip(), limit)
+    starts, shown = [root], set()
+    if got is not None:
+        hits, starts = got
+        for sp in starts:                                   # a left-out folder whose own name matches
+            nm = os.path.basename(sp)
+            if q in nm.lower() and not nm.startswith('.'):
+                e = entry(sp, nm)
+                if e:
+                    e['where'] = os.path.relpath(os.path.dirname(sp), root)
+                    print('found: ' + json.dumps(e), flush=True)
+                    shown.add(sp)
+                    n += 1
+        for h in hits:
+            e = entry(h['path'], h['name'])
+            if not e:
+                continue
+            e['where'] = os.path.relpath(os.path.dirname(h['path']), root)
+            if h.get('snippet'):
+                e['snippet'] = h['snippet']
+            print('found: ' + json.dumps(e), flush=True)
+            shown.add(h['path'])
+            n += 1
+            if n >= limit:
+                return {'ok': True, 'count': n, 'truncated': True, 'indexed': True}
     try:
-        for d, dirs, files in os.walk(root, followlinks=False):
+        for d, dirs, files in (step for start in starts for step in os.walk(start, followlinks=False)):
             if not hidden:
                 dirs[:] = [x for x in dirs if not x.startswith('.')]
             dirs.sort()
@@ -2297,6 +2419,8 @@ def search(path, query, hidden=False, limit=5000):
                     continue
                 low = name.lower()
                 if not (fnmatch.fnmatch(low, q) if glob else q in low):
+                    continue
+                if os.path.join(d, name) in shown:
                     continue
                 e = entry(os.path.join(d, name), name)
                 if not e:
@@ -2311,7 +2435,7 @@ def search(path, query, hidden=False, limit=5000):
         pass
     except Cancelled:
         return {'cancelled': True, 'count': n}
-    return {'ok': True, 'count': n, 'truncated': truncated}
+    return {'ok': True, 'count': n, 'truncated': truncated, 'indexed': got is not None}
 
 
 # ---------------------------------------------------------------------- drives, bookmarks, settings
@@ -2557,6 +2681,7 @@ def thumbs(paths):
     in the shared freedesktop cache, so other apps can use them too. 'have' lists every path (videos and PDFs) whose
     thumbnail is there and up to date, so Files only shows thumbnails that exist (no "Cannot open" in the log)."""
     tool = shutil.which('ffmpegthumbnailer') or shutil.which('ffmpeg')
+    pdftool = shutil.which('pdftoppm')            # PDFs' first page (poppler-utils), like Dolphin's previews
     made, have = [], []
     for path in paths[:60]:
         p = os.path.abspath(path)
@@ -2568,11 +2693,15 @@ def thumbs(paths):
         except OSError:
             continue
         mime = mimetypes.guess_type(p)[0] or ''
-        if not tool or not mime.startswith('video/') or len(made) >= 30:
+        pdf = mime == 'application/pdf'
+        if len(made) >= 30 or not ((pdf and pdftool) or (tool and mime.startswith('video/'))):
             continue
         os.makedirs(os.path.dirname(out), mode=0o700, exist_ok=True)
         tmp = out + '.%d.tmp.png' % os.getpid()
-        if tool.endswith('ffmpegthumbnailer'):
+        if pdf:
+            # pdftoppm writes <prefix>.png with -singlefile
+            argv = [pdftool, '-png', '-singlefile', '-f', '1', '-l', '1', '-scale-to', '256', p, tmp[:-4]]
+        elif tool.endswith('ffmpegthumbnailer'):
             argv = [tool, '-i', p, '-o', tmp, '-s', '256', '-c', 'png']
         else:
             argv = [tool, '-v', 'error', '-y', '-ss', '3', '-i', p, '-frames:v', '1', '-vf', 'scale=256:-1', tmp]
@@ -2586,7 +2715,59 @@ def thumbs(paths):
             pass
         if os.path.exists(tmp):
             os.unlink(tmp)
-    return {'ok': bool(tool), 'made': made, 'have': have}
+    return {'ok': bool(tool or pdftool), 'made': made, 'have': have}
+
+
+def compare(a, b, out_dir=None):
+    """Compares two files or two folders (like Dolphin's Compare files, without Kompare): same or not, and what's
+    different. Two text files: the differing lines, as a unified diff saved for the read-only text editor
+    (~/.cache/hearth/files/compare.diff). Two folders: what's only on one side and what differs in both."""
+    import difflib
+    import filecmp
+    pa, pb = (os.path.abspath(os.path.expanduser(x)) for x in (a, b))
+    for x in (pa, pb):
+        if not lexists(x):
+            raise Fail('“' + os.path.basename(x) + "” isn't there any more")
+    if os.path.isdir(pa) != os.path.isdir(pb):
+        raise Fail('Pick two files or two folders')
+    res = {'ok': True, 'a': pa, 'b': pb, 'same': False, 'diff': ''}
+    if os.path.isdir(pa):
+        only_a, only_b, differ, n = [], [], [], 0
+
+        def walk(rel):
+            nonlocal n
+            c = filecmp.dircmp(os.path.join(pa, rel), os.path.join(pb, rel))
+            only_a.extend(os.path.join(rel, x) for x in c.left_only)
+            only_b.extend(os.path.join(rel, x) for x in c.right_only)
+            _, mism, errs = filecmp.cmpfiles(c.left, c.right, c.common_files, shallow=False)
+            differ.extend(os.path.join(rel, x) for x in mism + errs)
+            n += len(c.common_files)
+            for d in c.common_dirs:
+                if n < 20000:
+                    walk(os.path.join(rel, d))
+        walk('')
+        res.update(same=not (only_a or only_b or differ), onlyA=sorted(only_a)[:200], onlyB=sorted(only_b)[:200],
+                   differ=sorted(differ)[:200], checked=n)
+        return res
+    if os.path.getsize(pa) == os.path.getsize(pb) and filecmp.cmp(pa, pb, shallow=False):
+        res['same'] = True
+        return res
+    res['sizes'] = [os.path.getsize(pa), os.path.getsize(pb)]
+    if looks_text(pa) and looks_text(pb) and max(res['sizes']) < 8 * 1024 * 1024:
+        with open(pa, encoding='utf-8', errors='replace') as f:
+            la = f.readlines()
+        with open(pb, encoding='utf-8', errors='replace') as f:
+            lb = f.readlines()
+        diff = list(difflib.unified_diff(la, lb, os.path.basename(pa), os.path.basename(pb)))
+        res['changed'] = sum(1 for l in diff if l[:1] in '+-' and not l.startswith(('+++', '---')))
+        d = out_dir or os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'files')
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        res['diff'] = os.path.join(d, 'compare.diff')
+        tmp = res['diff'] + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.writelines(diff)
+        os.replace(tmp, res['diff'])
+    return res
 
 
 def terminal(path):
@@ -4134,6 +4315,10 @@ def cmd(argv):
     if c == 'watch' and len(rest) == 1:
         watch(rest[0])
         return
+    if c in EXTRA_COMMANDS:
+        import hearth_files_extras as hx
+        print(json.dumps(hx.run(sys.modules[__name__], c, rest)), flush=True)
+        return
     remote = remote_cmd(c, rest)
     if remote is not None:
         print(json.dumps(remote), flush=True)
@@ -4156,6 +4341,8 @@ def cmd(argv):
         out = cdrive()
     elif c == 'app-sizes':
         out = app_sizes(rest)
+    elif c == 'account-open' and len(rest) == 1:
+        out = account_open(rest[0])
     elif c == 'net-open' and rest:
         out = net_open(rest[0], rest[1:])
     elif c == 'net-auto' and len(rest) == 2 and rest[1] in ('on', 'off'):
@@ -4263,6 +4450,8 @@ def cmd(argv):
         out = peek(rest[0])
     elif c == 'thumbs' and rest:
         out = thumbs(rest)
+    elif c == 'compare' and len(rest) == 2:
+        out = compare(rest[0], rest[1])
     elif c == 'terminal' and len(rest) == 1:
         out = terminal(rest[0])
     elif c == 'appimage-info' and len(rest) == 1:

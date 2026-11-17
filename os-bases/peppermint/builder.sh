@@ -9,6 +9,9 @@
 #   Quickshell  not in trixie (Desktop Mode's taskbar, launcher, settings)
 #   RyzenAdj    not in Debian (power limit on AMD handhelds without ASUS firmware attributes; hearth-admin)
 #   Handheld Daemon  not in Debian: built from its tagged source into its own venv at /usr/lib/hhd
+#   hearth-kwin-im, hearth-kwin-cast  Hearth's own small KWin helpers (hosts/linux/desktop/kwin-helpers)
+#   Firehold  Hearth's own compositor (hosts/firehold-comp, 2.0 preview: docs/FIREHOLD.md), to /usr/libexec/hearth/firehold-comp;
+#            nothing starts it unless Settings › Your desktop › Firehold (preview) is turned on
 #
 # It also writes:
 #   /debs/*.deb   placeholder packages telling dpkg that libostree-1-1, ostree and ostree-boot are provided by
@@ -161,6 +164,21 @@ cmake --build /src/quickshell/build
 DESTDIR=/output cmake --install /src/quickshell/build
 test -x /output/usr/bin/quickshell
 
+# ------------------------------------------------------------------ Hearth's KWin helpers (docs/KWIN-INPUT.md)
+# hearth-kwin-im (the input method KWin starts: typing any character) and hearth-kwin-cast (screen sharing and
+# screenshots from KWin for Hearth's portal backend), from hosts/linux/desktop/kwin-helpers (copied in by the
+# Containerfile). KWin's screencast protocol XML comes from plasma-wayland-protocols (build only).
+apt-get install -y --no-install-recommends plasma-wayland-protocols >/dev/null
+bash /src/hearth-kwin-helpers/build.sh /src/hearth-kwin-helpers/out
+install -Dm755 /src/hearth-kwin-helpers/out/hearth-kwin-im /output/usr/libexec/hearth/hearth-kwin-im
+install -Dm755 /src/hearth-kwin-helpers/out/hearth-kwin-cast /output/usr/libexec/hearth/hearth-kwin-cast
+# The Plasma/Shell package type KWin's screen locker reads Hearth's lock screen as (trixie ships none):
+# kwin-lock/install.sh puts it in place in the image.
+apt-get install -y --no-install-recommends libkf6package-dev libkf6coreaddons-dev >/dev/null
+cmake -S /src/hearth-kwin-helpers/shell-package -B /src/hearth-shell-package -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build /src/hearth-shell-package
+install -Dm644 /src/hearth-shell-package/plasma_shell.so /output/usr/lib/hearth/plasma_shell.so
+
 # ------------------------------------------------------------------ RyzenAdj
 fetch FlyGoat/RyzenAdj "$RYZENADJ_REF" ryzenadj
 cmake -S /src/ryzenadj -B /src/ryzenadj/build -DCMAKE_BUILD_TYPE=Release
@@ -187,6 +205,16 @@ mkdir -p /output/usr/bin
 ln -sf ../lib/hhd/bin/hhd /output/usr/bin/hhd
 ln -sf ../lib/hhd/bin/hhdctl /output/usr/bin/hhdctl
 mkdir -p /output/usr/share && echo "${HHD_REF#v}" > /output/usr/share/hearth-hhd-version
+
+# ------------------------------------------------------------------ Firehold (hosts/firehold-comp, copied in by the Containerfile)
+# Smithay's libraries (seat, input, udev, keyboard maps, pixman); GBM, DRM, EGL and Wayland are installed above. Its
+# version is the source's (no version line: the owner picks every version number).
+apt-get install -y --no-install-recommends libseat-dev libinput-dev libudev-dev libxkbcommon-dev libpixman-1-dev
+cp -a /src-firehold-comp /src/firehold-comp
+rm -rf /src/firehold-comp/target
+(cd /src/firehold-comp && cargo build --release)
+install -Dm755 /src/firehold-comp/target/release/firehold-comp /output/usr/libexec/hearth/firehold-comp
+/output/usr/libexec/hearth/firehold-comp --help | grep -q "usage: firehold-comp"
 
 # ------------------------------------------------------------------ the Debian packages all of the above link against
 mkdir -p /output/usr/share/hearth

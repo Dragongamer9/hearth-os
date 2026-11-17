@@ -1,0 +1,1825 @@
+#!/usr/bin/python3
+"""hearth-screens: Desktop Mode's screens on both of Mantel's compositors (1.14, docs/SCREENS.md).
+
+Under labwc it uses wlr-randr; under KWin (HEARTH_WM=kwin) kscreen-doctor (libkscreen-bin, KWin's
+kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, screenshots).
+
+  hearth-screens get                 the screens, as `wlr-randr --json` lists them (name, description, make, model,
+                                     serial, physical_size, enabled, modes [{width, height, refresh, preferred, current}],
+                                     position, transform, scale, adaptive_sync), each with: rotation (normal | left |
+                                     inverted | right), hdr {capable, on}, sdrBrightness (nits, KWin), wcg {capable, on},
+                                     vrr {capable, policy: never | automatic | always}, icc {capable, path, source}
+  hearth-screens info                {wm, outputs (as get), saved, nightLight, tearing, mirror, iccProfiles}
+  hearth-screens apply JSON          change screens now, without saving: {"outputs": {"DP-1": {"mode": {"w", "h", "r"},
+                                     "scale", "pos": {"x", "y"}, "enabled", "rotation", "hdr", "sdrBrightness", "wcg",
+                                     "vrr", "icc"}}}; prints info (with "problem" if a screen didn't take it)
+  hearth-screens keep '["DP-1"]'     save what those screens show now (Settings › Display's Keep)
+  hearth-screens set JSON            apply, then keep those screens; {"tearing": bool} too (KWin)
+  hearth-screens restore             at Desktop Mode's start: put the saved settings back (a mode a screen doesn't list
+                                     is left out and you're told; never every screen off); KWin's Night Light and
+                                     tearing from the saved settings; small sharp screens without a saved scale get one
+  hearth-screens autoscale           only that last part
+  hearth-screens night [JSON]        KWin's Night Light from Settings (nightLight, nightTemp, nightMode, nightFrom,
+                                     nightTo: as given, else desktop.json's); labwc's is wlsunset, started by the shell
+  hearth-screens plan MODE           Super+P's choice as changes: MODE main | other | extend | mirror; prints
+                                     {changes, prev, names} (the switcher applies them, then keep or prev)
+  hearth-screens option JSON         {"x11Scale": bool} (kdeglobals [KScreen]), {"barrier": {"px", "corner"}} (kwinrc
+                                     [EdgeBarrier]), {"desktopsMainOnly": bool}, {"autoBrightness": bool, "autoBrightnessOffset": -40..40}
+                                     (screens.json)
+  hearth-screens ddc | ddc-set SCREEN PCT
+                                     external screens' brightness over DDC/CI (ddcutil; nothing saved: the screen keeps it)
+  hearth-screens brightness SCREEN PCT   a screen newer KWin controls itself (kscreen-doctor brightness)
+  hearth-screens light | autobright  the light sensor (iio-sensor-proxy's, else the kernel's); auto-brightness's
+                                     loop (while screens.json says so; a brightness set by hand pauses it until the
+                                     light changes)
+  New per-screen keys under KWin (apply / set / screens.json): priority (1 = the main screen), overscan (0–100),
+  rgbRange (automatic | full | limited), sdrGamut (colour intensity, 0–100, HDR on), colorPower (efficiency |
+  accuracy), hdrCal {peak, avg, min} (nits; None = what the screen says), edr (never | always, newer KWin)
+  hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] [--window ID] FILE|-
+                                     a screenshot as PNG: grim under labwc; KWin's org.kde.KWin.ScreenShot2 under KWin,
+                                     through hearth-kwin-cast shot (the one small program KWin trusts for it,
+                                     hearth-kwin-cast.desktop; it answers only hearth-portal and hearth-screens)
+  hearth-screens grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE|-
+                                     Capture's screenshots: MODE screen (--screen: a name, or 1 = the first screen
+                                     that's on; else the active one), all, window (the active window: KWin's; under
+                                     labwc only with --geometry), area (--geometry). Exit 3: no window to take
+
+One source of truth: ~/.config/nimbus/screens.json, written only by `keep` / `set` (never by get, info or restore),
+through hearth_settings_io (atomic, .bak, merged, a damaged file restored from .bak and never overwritten with
+defaults). ~/.config/nimbus/display.sh, which labwc's autostart runs, is kept in step with it (same lines Settings ›
+Display always wrote, other screens' lines kept), so going back to labwc keeps everything; a display.sh newer than
+screens.json (written by something else, like the Hearth app) counts for the settings it has.
+"""
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+import zlib
+import struct
+import glob
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as io  # noqa: E402
+
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+NIMBUS = os.path.join(CONFIG, 'nimbus')
+SAVED = os.path.join(NIMBUS, 'screens.json')
+DISPLAY_SH = os.path.join(NIMBUS, 'display.sh')
+KWINRC = os.path.join(CONFIG, 'kwinrc')
+DESKTOP_JSON = os.path.join(os.path.expanduser('~'), '.local', 'share', 'nimbus', 'desktop.json')
+SYS_DRM = os.environ.get('HEARTH_SCREENS_SYS', '/sys/class/drm')
+ICC_DIRS = [os.path.join(os.path.expanduser('~'), '.local', 'share', 'icc'), os.path.join(os.path.expanduser('~'), '.local', 'share', 'color', 'icc'),
+            '/usr/share/color/icc', '/var/lib/colord/icc']
+NEEDS_KWIN = 'Needs Mantel on KWin'
+ROTATIONS = ('normal', 'left', 'inverted', 'right')
+TRANSFORM_OF = {'normal': 'normal', 'left': '90', 'inverted': '180', 'right': '270'}
+ROTATION_OF_TRANSFORM = {'normal': 'normal', '90': 'left', '180': 'inverted', '270': 'right'}
+KSCREEN_ROT = {1: 'normal', 2: 'left', 4: 'inverted', 8: 'right'}
+VRR_NAMES = {0: 'never', 1: 'always', 2: 'automatic'}
+RGB_RANGES = {0: 'automatic', 1: 'full', 2: 'limited'}
+COLOR_POWER = {'efficiency': 'preferEfficiency', 'accuracy': 'preferAccuracy'}
+NIGHT_DEFAULTS = {'nightLight': False, 'nightTemp': 3700, 'nightMode': 'times', 'nightFrom': '19:30', 'nightTo': '07:00',
+                  'nightLat': 0, 'nightLon': 0, 'nightPlace': '', 'nightFade': 30}
+
+
+# ------------------------------------------------------------------ running things (tests replace RUN)
+
+def _run(cmd, timeout=10, env=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+
+
+RUN = _run
+
+
+def have(cmd):
+    return any(os.access(os.path.join(p, cmd), os.X_OK) for p in os.environ.get('PATH', '/usr/bin:/bin').split(':') if p)
+
+
+def kscreen_env():
+    e = dict(os.environ)
+    e.setdefault('KSCREEN_BACKEND', 'KWayland')
+    e.setdefault('KSCREEN_BACKEND_INPROCESS', '1')
+    return e
+
+
+def wm():
+    """kwin or labwc: the session says (HEARTH_WM); without it, KDE's desktop name with kscreen-doctor means KWin."""
+    w = os.environ.get('HEARTH_WM', '').strip().lower()
+    if w in ('kwin', 'labwc'):
+        return w
+    if 'KDE' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper() and have('kscreen-doctor'):
+        return 'kwin'
+    return 'labwc'
+
+
+# ------------------------------------------------------------------ the screens' names (EDID)
+
+def edid_name(raw):
+    for d in range(54, 126, 18):
+        blk = raw[d:d + 18]
+        if len(blk) == 18 and blk[:3] == b'\0\0\0' and blk[3] == 0xFC:
+            return blk[5:].split(b'\n')[0].decode('ascii', 'replace').strip(' \x00')
+    return ''
+
+
+def edid_make(raw):
+    if len(raw) < 10:
+        return ''
+    v = (raw[8] << 8) | raw[9]
+    return ''.join(chr(((v >> s) & 31) + 64) for s in (10, 5, 0)) if v else ''
+
+
+def edids():
+    out = {}
+    for d in glob.glob(os.path.join(SYS_DRM, 'card*-*')):
+        name = os.path.basename(d).split('-', 1)[1]
+        try:
+            with open(os.path.join(d, 'edid'), 'rb') as f:
+                raw = f.read()
+        except OSError:
+            continue
+        if raw:
+            out[name] = raw
+    return out
+
+
+# ------------------------------------------------------------------ reading the screens
+
+def _fill(o, wmname):
+    """The new fields, with what labwc can't do marked so."""
+    o.setdefault('rotation', ROTATION_OF_TRANSFORM.get(o.get('transform') or 'normal', 'normal'))
+    o.setdefault('hdr', {'capable': False, 'on': False})
+    o.setdefault('sdrBrightness', None)
+    o.setdefault('wcg', {'capable': False, 'on': False})
+    o.setdefault('vrr', {'capable': False, 'policy': 'automatic' if o.get('adaptive_sync') else 'never'})
+    o.setdefault('icc', {'capable': False, 'path': '', 'source': 'sRGB'})
+    o.setdefault('priority', 0)
+    o.setdefault('overscan', {'capable': False, 'value': 0})
+    o.setdefault('rgbRange', {'capable': False, 'value': 'automatic'})
+    o.setdefault('sdrGamut', {'capable': False, 'value': 0})
+    o.setdefault('colorPower', {'capable': False, 'value': 'efficiency'})
+    o.setdefault('hdrCal', {'capable': False})
+    o.setdefault('edr', {'capable': False, 'policy': 'never'})
+    o.setdefault('kwinBrightness', {'capable': False, 'value': 100})
+    # Not in KWin 6.3's output management (Debian 13): colour depth, reduce red tint. Kept here so the page can say so.
+    o.setdefault('depth', {'capable': False})
+    o.setdefault('redTint', {'capable': False})
+    o['wm'] = wmname
+    return o
+
+
+def read_labwc():
+    rc, out, _ = RUN(['wlr-randr', '--json'])
+    try:
+        outs = json.loads(out) if rc == 0 and out.strip() else []
+    except ValueError:
+        outs = []
+    return [_fill(o, 'labwc') for o in outs if isinstance(o, dict)]
+
+
+ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _nits(v):
+    """"123 nits" / "123.5 nits, overridden with: 400 nits" → (123.5, 400 or None); "unknown" → (0, None)."""
+    m = re.match(r'^\s*([\d.]+)\s*nits', v)
+    o = re.search(r'overridden with:\s*([\d.]+)', v)
+    return (float(m.group(1)) if m else 0.0), (float(o.group(1)) if o else None)
+
+
+def parse_kscreen_text(text):
+    """What `kscreen-doctor -o` says that its JSON doesn't: each output's ICC profile and colour profile source, and
+    (while HDR is on) colour intensity and the brightness KWin uses for HDR (peak, average, lowest, each with the
+    value Hearth's calibration set), colour accuracy, KWin's own brightness control (newer KWin, DDC/CI included)
+    and Extended Dynamic Range (newer KWin)."""
+    got, cur = {}, None
+    for line in ANSI.sub('', text).splitlines():
+        m = re.match(r'^Output:\s+\d+\s+(\S+)', line)
+        if m:
+            cur = got.setdefault(m.group(1), {})
+            continue
+        if cur is None:
+            continue
+        m = re.match(r'^\s*ICC profile:\s*(.*)$', line)
+        if m:
+            v = m.group(1).strip()
+            cur['iccCapable'] = v != 'incapable'
+            cur['iccPath'] = '' if v in ('none', 'incapable') else v
+        m = re.match(r'^\s*Color profile source:\s*(.*)$', line)
+        if m and m.group(1).strip() != 'incapable':
+            cur['iccSource'] = m.group(1).strip()
+        m = re.match(r'^\s*SDR gamut wideness:\s*(\d+)\s*%', line)
+        if m:
+            cur['sdrGamut'] = int(m.group(1))
+        for key, label in (('peak', 'Peak brightness'), ('avg', 'Max average brightness'), ('min', 'Min brightness')):
+            m = re.match(r'^\s*%s:\s*(.*)$' % label, line)
+            if m:
+                cur[key] = _nits(m.group(1))
+        m = re.match(r'^\s*Color power preference:\s*(.*)$', line)
+        if m:
+            cur['colorPower'] = 'accuracy' if 'accuracy' in m.group(1) and 'efficiency' not in m.group(1) else 'efficiency'
+        m = re.match(r'^\s*Brightness control:\s*supported, set to (\d+)%', line)
+        if m:
+            cur['brightness'] = int(m.group(1))
+        m = re.match(r'(?i)^\s*(?:Extended dynamic range|EDR)(?: policy)?:\s*(\S+)', line)
+        if m and m.group(1).lower() not in ('incapable', 'unsupported', 'unknown'):
+            cur['edr'] = 'always' if m.group(1).lower() in ('always', 'enabled', 'on') else 'never'
+    return got
+
+
+def parse_kscreen(js, text='', names=None):
+    """kscreen-doctor -j's outputs (connected ones) in wlr-randr's shape, with the new fields."""
+    try:
+        j = json.loads(js[js.index('{'):]) if '{' in js else {}
+    except ValueError:
+        j = {}
+    extra = parse_kscreen_text(text)
+    names = names if names is not None else {}
+    outs = []
+    for o in j.get('outputs') or []:
+        if o.get('connected') is False:
+            continue
+        name = o.get('name') or ''
+        cur_id = str(o.get('currentModeId') or '')
+        pref = [str(x) for x in o.get('preferredModes') or []]
+        modes = []
+        for m in o.get('modes') or []:
+            sz = m.get('size') or {}
+            mid = str(m.get('id'))
+            modes.append({'id': mid, 'width': int(sz.get('width') or 0), 'height': int(sz.get('height') or 0),
+                          'refresh': float(m.get('refreshRate') or 0), 'preferred': mid in pref, 'current': mid == cur_id})
+        rot = KSCREEN_ROT.get(int(o.get('rotation') or 1), 'normal')
+        raw = names.get(name, b'')
+        model, make = edid_name(raw) if raw else '', edid_make(raw) if raw else ''
+        mm = o.get('sizeMM') or {}
+        vrr_on = 'vrrPolicy' in o
+        x = extra.get(name, {})
+        # Newer libkscreen leaves "enabled" out for a screen that can't be turned off ("disable unsupported"): on.
+        on = bool(o['enabled']) if 'enabled' in o else bool(cur_id)
+        out = {
+            'name': name, 'description': ' '.join(p for p in (make, model, '(%s)' % name) if p), 'make': make, 'model': model, 'serial': '',
+            'physical_size': {'width': int(mm.get('width') or 0), 'height': int(mm.get('height') or 0)},
+            'enabled': on, 'modes': [dict(m, current=m['current'] and on) for m in modes],
+            'position': {'x': int((o.get('pos') or {}).get('x') or 0), 'y': int((o.get('pos') or {}).get('y') or 0)},
+            'transform': TRANSFORM_OF[rot], 'scale': float(o.get('scale') or 1), 'priority': int(o.get('priority') or 0),
+            'adaptive_sync': vrr_on and int(o['vrrPolicy']) != 0,
+            'rotation': rot,
+            'hdr': {'capable': 'hdr' in o, 'on': bool(o.get('hdr'))},
+            'sdrBrightness': int(o['sdr-brightness']) if 'sdr-brightness' in o else None,
+            'wcg': {'capable': 'wcg' in o, 'on': bool(o.get('wcg'))},
+            'vrr': {'capable': vrr_on, 'policy': VRR_NAMES.get(int(o.get('vrrPolicy', 0)), 'never')},
+            'icc': {'capable': bool(x.get('iccCapable')), 'path': x.get('iccPath', ''), 'source': x.get('iccSource', 'sRGB')},
+            'kscreenId': o.get('id'),
+            'overscan': {'capable': 'overscan' in o, 'value': int(o.get('overscan') or 0)},
+            'rgbRange': {'capable': 'rgbRange' in o, 'value': RGB_RANGES.get(int(o.get('rgbRange') or 0), 'automatic')},
+            # Colour intensity (KWin's SDR gamut wideness): only while HDR is on, as KDE shows it.
+            'sdrGamut': {'capable': 'sdrGamut' in x, 'value': int(x.get('sdrGamut', 0))},
+            'colorPower': {'capable': 'colorPower' in x, 'value': x.get('colorPower', 'efficiency')},
+            'hdrCal': {'capable': bool(o.get('hdr')) and 'peak' in x,
+                       'peak': x.get('peak', (0, None))[0], 'peakSet': x.get('peak', (0, None))[1],
+                       'avg': x.get('avg', (0, None))[0], 'avgSet': x.get('avg', (0, None))[1],
+                       'min': x.get('min', (0, None))[0], 'minSet': x.get('min', (0, None))[1]},
+            'edr': {'capable': 'edr' in x, 'policy': x.get('edr', 'never')},
+            'kwinBrightness': {'capable': 'brightness' in x, 'value': x.get('brightness', 100)},
+        }
+        outs.append(_fill(out, 'kwin'))
+    outs.sort(key=lambda o: (o['priority'] or 99, o['name']))
+    return outs
+
+
+FIXTURE = os.environ.get('HEARTH_SCREENS_FIXTURE', '')
+
+
+def fixture(name):
+    """Preview (CI pictures only): HEARTH_SCREENS_FIXTURE=<folder> with kscreen.json / kscreen.txt (kscreen-doctor -j / -o)
+    and ddc.json; the screens come from there and nothing is sent to KWin or the screens."""
+    if not FIXTURE:
+        return None
+    try:
+        return _text(os.path.join(FIXTURE, name))
+    except OSError:
+        return None
+
+
+def read_kwin():
+    if fixture('kscreen.json') is not None:
+        return parse_kscreen(fixture('kscreen.json'), fixture('kscreen.txt') or '', {})
+    env = kscreen_env()
+    rc, js, _ = RUN(['kscreen-doctor', '-j'], env=env)
+    if rc != 0:
+        return []
+    _, text, _ = RUN(['kscreen-doctor', '-o'], env=env)
+    return parse_kscreen(js, text, edids())
+
+
+def read(wmname=None):
+    return read_kwin() if (wmname or wm()) == 'kwin' else read_labwc()
+
+
+# ------------------------------------------------------------------ the saved settings (screens.json + display.sh)
+
+def parse_display_sh(text):
+    """display.sh's wlr-randr lines: {name: {enabled, mode, scale, pos, rotation}} (only what each line says)."""
+    got = {}
+    for line in text.splitlines():
+        if not line.startswith('wlr-randr '):
+            continue
+        try:
+            a = shlex.split(line)
+        except ValueError:
+            continue
+        cur, i = None, 1
+        while i < len(a):
+            k = a[i]
+            v = a[i + 1] if i + 1 < len(a) else ''
+            if k == '--output':
+                cur = got.setdefault(v, {})
+                i += 2
+                continue
+            if cur is None:
+                i += 1
+                continue
+            if k == '--on':
+                cur['enabled'] = True
+            elif k == '--off':
+                cur['enabled'] = False
+            elif k == '--mode':
+                m = re.match(r'^(\d+)x(\d+)(?:@([\d.]+)(?:Hz)?)?$', v)
+                if m:
+                    cur['mode'] = {'w': int(m.group(1)), 'h': int(m.group(2)), 'r': float(m.group(3) or 0)}
+                i += 1
+            elif k == '--scale':
+                try:
+                    cur['scale'] = float(v)
+                except ValueError:
+                    pass
+                i += 1
+            elif k == '--pos':
+                m = re.match(r'^(-?\d+),(-?\d+)$', v)
+                if m:
+                    cur['pos'] = {'x': int(m.group(1)), 'y': int(m.group(2))}
+                i += 1
+            elif k == '--transform':
+                cur['rotation'] = ROTATION_OF_TRANSFORM.get(v, 'normal')
+                i += 1
+            i += 1
+    return got
+
+
+def display_line(name, e):
+    q = shlex.quote(name) if re.search(r"[^\w@%+=:,./-]", name) else "'%s'" % name
+    if e.get('enabled') is False:
+        return 'wlr-randr --output %s --off' % q
+    parts = ['wlr-randr --output %s --on' % q]
+    m = e.get('mode')
+    if m and m.get('w') and m.get('h'):
+        parts.append("--mode '%dx%d@%.3fHz'" % (m['w'], m['h'], float(m.get('r') or 60)))
+    if e.get('scale'):
+        parts.append('--scale %g' % float(e['scale']))
+    if e.get('pos') is not None:
+        parts.append('--pos %d,%d' % (int(e['pos']['x']), int(e['pos']['y'])))
+    if e.get('rotation') and e['rotation'] != 'normal':
+        parts.append('--transform %s' % TRANSFORM_OF.get(e['rotation'], 'normal'))
+    return ' '.join(parts)
+
+
+def _text(p, errors='replace'):
+    with open(p, encoding='utf-8', errors=errors) as f:
+        return f.read()
+
+
+def _mtime(p):
+    try:
+        return os.stat(p).st_mtime
+    except OSError:
+        return 0
+
+
+def saved():
+    """What you saved: screens.json's screens, with a newer display.sh's lines on top (never written here)."""
+    data = io.load_json(SAVED, {}, repair=False) if os.path.exists(SAVED) else {}
+    outs = {k: dict(v) for k, v in (data.get('outputs') or {}).items() if isinstance(v, dict)}
+    try:
+        sh = _text(DISPLAY_SH, 'replace')
+    except OSError:
+        sh = ''
+    if sh and (not os.path.exists(SAVED) or _mtime(DISPLAY_SH) > _mtime(SAVED) + 1):
+        for name, e in parse_display_sh(sh).items():
+            outs.setdefault(name, {}).update(e)
+    return {'outputs': outs, 'tearing': data.get('tearing'), 'desktopsMainOnly': bool(data.get('desktopsMainOnly')),
+            'autoBrightness': bool(data.get('autoBrightness')), 'autoBrightnessOffset': clamp_offset(data.get('autoBrightnessOffset', 0))}
+
+
+def entry_of(o):
+    """What a screen shows now, as a saved entry (only what this compositor can say)."""
+    m = next((x for x in o.get('modes', []) if x.get('current')), None)
+    e = {'enabled': bool(o.get('enabled')), 'scale': o.get('scale') or 1, 'pos': dict(o.get('position') or {'x': 0, 'y': 0}),
+         'rotation': o.get('rotation') or 'normal'}
+    if m:
+        e['mode'] = {'w': m['width'], 'h': m['height'], 'r': round(float(m['refresh']), 3)}
+    if o.get('hdr', {}).get('capable'):
+        e['hdr'] = bool(o['hdr']['on'])
+        if o.get('sdrBrightness'):
+            e['sdrBrightness'] = int(o['sdrBrightness'])
+    if o.get('wcg', {}).get('capable'):
+        e['wcg'] = bool(o['wcg']['on'])
+    if o.get('vrr', {}).get('capable') and o.get('wm') == 'kwin':
+        e['vrr'] = o['vrr']['policy']
+    if o.get('icc', {}).get('capable'):
+        e['icc'] = o['icc'].get('path') or ''
+        e['colorSource'] = o['icc'].get('source') or 'sRGB'
+    if o.get('wm') == 'kwin':
+        if o.get('priority'):
+            e['priority'] = int(o['priority'])
+        for k in ('overscan', 'rgbRange', 'sdrGamut', 'colorPower'):
+            if o.get(k, {}).get('capable'):
+                e[k] = o[k]['value']
+        if o.get('edr', {}).get('capable'):
+            e['edr'] = o['edr']['policy']
+        cal = o.get('hdrCal') or {}
+        if cal.get('capable'):
+            # Only what Hearth's calibration set (None: KWin uses what the screen says about itself).
+            e['hdrCal'] = {'peak': cal.get('peakSet'), 'avg': cal.get('avgSet'), 'min': cal.get('minSet')}
+    return e
+
+
+def save_entries(entries, extra=None):
+    """{name: entry} into screens.json (each screen's keys merged: what labwc can't say stays as you set it on KWin)
+    and display.sh (those screens' lines replaced, every other line kept). display.sh first, so screens.json is the
+    newer of the two."""
+    os.makedirs(NIMBUS, exist_ok=True)
+    full = {}
+
+    def change(d):
+        outs = d.setdefault('outputs', {})
+        for name, e in entries.items():
+            cur = outs.get(name) if isinstance(outs.get(name), dict) else {}
+            cur.update(e)
+            outs[name] = cur
+            full[name] = cur
+        for k, v in (extra or {}).items():
+            d[k] = v
+        d['version'] = 1
+    if entries:
+        with io.locked(DISPLAY_SH):
+            try:
+                old = _text(DISPLAY_SH, 'surrogateescape')
+            except OSError:
+                old = ''
+            cur = json.loads(json.dumps(saved()['outputs']))
+            for name, e in entries.items():
+                cur.setdefault(name, {}).update(e)
+            keep = [l for l in old.splitlines() if l.startswith('wlr-randr ') and not any(n in parse_display_sh(l) for n in entries)]
+            text = '#!/bin/sh\n# Written by Hearth Settings › Display (hearth-screens; the settings are in screens.json)\n'
+            text += ''.join(l + '\n' for l in keep) + ''.join(display_line(n, cur[n]) + '\n' for n in entries)
+            io.write_text(DISPLAY_SH, text, mode=0o755)
+    io.update_json(SAVED, change)
+    io.log_event('Screens kept: %s' % json.dumps(entries, sort_keys=True))
+    return full
+
+
+# ------------------------------------------------------------------ changing the screens
+
+class Refused(Exception):
+    pass
+
+
+class NoWindow(Refused):
+    """grab window: no window to take (exit 3)."""
+
+
+def _mode_of(o, want):
+    """The screen's own mode for {w, h, r} (r rounded, as the buttons show it; 0 = its fastest)."""
+    ms = [m for m in o.get('modes', []) if m['width'] == int(want.get('w') or 0) and m['height'] == int(want.get('h') or 0)]
+    if want.get('r'):
+        ms = [m for m in ms if round(m['refresh']) == round(float(want['r']))]
+    return max(ms, key=lambda m: m['refresh']) if ms else None
+
+
+def _check_off(live, changes):
+    on = {o['name'] for o in live if o.get('enabled')}
+    for name, e in changes.items():
+        if 'enabled' in e:
+            (on.add if e['enabled'] else on.discard)(name)
+    if live and not on:
+        raise Refused("That's the only screen that's on, so it stays on.")
+
+
+def ops_labwc(live, changes):
+    args = ['wlr-randr']
+    for name, e in changes.items():
+        o = next((x for x in live if x['name'] == name), None)
+        if not o:
+            raise Refused('There is no screen called %s now.' % name)
+        args += ['--output', name]
+        if e.get('enabled') is False:
+            args.append('--off')
+            continue
+        if e.get('enabled'):
+            args.append('--on')
+        if e.get('mode'):
+            m = _mode_of(o, e['mode'])
+            if not m:
+                raise Refused("This screen doesn't list %s × %s at %s Hz." % (e['mode'].get('w'), e['mode'].get('h'), round(float(e['mode'].get('r') or 0))))
+            args += ['--mode', '%dx%d@%.3fHz' % (m['width'], m['height'], m['refresh'])]
+        if e.get('scale'):
+            args += ['--scale', '%g' % float(e['scale'])]
+        if e.get('pos') is not None:
+            args += ['--pos', '%d,%d' % (max(0, int(e['pos']['x'])), max(0, int(e['pos']['y'])))]
+        if e.get('rotation'):
+            args += ['--transform', TRANSFORM_OF.get(e['rotation'], 'normal')]
+        for k, label in KWIN_ONLY.items():
+            if k in e:
+                raise Refused('%s: %s' % (label, NEEDS_KWIN))
+    return args
+
+
+KWIN_ONLY = {'hdr': 'HDR', 'wcg': 'Wide colour', 'vrr': 'Variable refresh rate', 'icc': 'Colour profiles',
+             'sdrBrightness': 'SDR brightness', 'priority': 'Main screen', 'overscan': 'Overscan', 'rgbRange': 'RGB range',
+             'sdrGamut': 'Colour intensity', 'colorPower': 'Colour accuracy', 'hdrCal': 'HDR calibration',
+             'edr': 'Extended dynamic range'}
+
+
+def _nits_op(v, lo, hi):
+    return max(lo, min(hi, int(round(float(v)))))
+
+
+def ops_kwin(live, changes):
+    ops = []
+    for name, e in changes.items():
+        o = next((x for x in live if x['name'] == name), None)
+        if not o:
+            raise Refused('There is no screen called %s now.' % name)
+        p = 'output.%s.' % name
+        if e.get('enabled') is False:
+            ops.append(p + 'disable')
+            continue
+        if e.get('enabled') and not o.get('enabled'):
+            ops.append(p + 'enable')
+        if e.get('mode'):
+            m = _mode_of(o, e['mode'])
+            if not m:
+                raise Refused("This screen doesn't list %s × %s at %s Hz." % (e['mode'].get('w'), e['mode'].get('h'), round(float(e['mode'].get('r') or 0))))
+            ops.append(p + 'mode.' + str(m.get('id') or '%dx%d@%d' % (m['width'], m['height'], round(m['refresh']))))
+        if e.get('scale'):
+            ops.append(p + 'scale.%g' % float(e['scale']))
+        if e.get('pos') is not None:
+            ops.append(p + 'position.%d,%d' % (int(e['pos']['x']), int(e['pos']['y'])))
+        if e.get('rotation'):
+            if e['rotation'] not in ROTATIONS:
+                raise Refused('Unknown rotation %s' % e['rotation'])
+            ops.append(p + 'rotation.' + e['rotation'])
+        if 'vrr' in e:
+            if not o['vrr']['capable']:
+                raise Refused("This screen can't change its refresh rate with the game (no VRR / FreeSync).")
+            if e['vrr'] not in ('never', 'automatic', 'always'):
+                raise Refused('Unknown VRR setting %s' % e['vrr'])
+            ops.append(p + 'vrrpolicy.' + e['vrr'])
+        if 'hdr' in e:
+            if not o['hdr']['capable']:
+                raise Refused("This screen doesn't have HDR.")
+            ops.append(p + 'hdr.' + ('enable' if e['hdr'] else 'disable'))
+        if e.get('sdrBrightness'):
+            ops.append(p + 'sdr-brightness.%d' % max(50, min(10000, int(e['sdrBrightness']))))
+        if 'wcg' in e:
+            if not o['wcg']['capable']:
+                raise Refused("This screen doesn't have wide colour.")
+            ops.append(p + 'wcg.' + ('enable' if e['wcg'] else 'disable'))
+        if 'icc' in e:
+            if not o['icc']['capable']:
+                raise Refused("This KWin can't use colour profiles for this screen.")
+            if e['icc'] == 'EDID':
+                ops.append(p + 'colorProfileSource.EDID')
+            elif e['icc'] and not os.path.isfile(e['icc']):
+                raise Refused("The colour profile %s isn't there any more." % e['icc'])
+            else:
+                ops.append(p + 'iccprofile.' + (e['icc'] or ''))
+        if e.get('priority'):
+            ops.append(p + 'priority.%d' % max(1, min(100, int(e['priority']))))
+        if 'overscan' in e:
+            if not o['overscan']['capable']:
+                raise Refused("This screen has no overscan setting.")
+            ops.append(p + 'overscan.%d' % max(0, min(100, int(e['overscan']))))
+        if 'rgbRange' in e:
+            if not o['rgbRange']['capable']:
+                raise Refused("This screen has no RGB range setting.")
+            if e['rgbRange'] not in RGB_RANGES.values():
+                raise Refused('Unknown RGB range %s' % e['rgbRange'])
+            ops.append(p + 'rgbrange.' + e['rgbRange'])
+        if 'sdrGamut' in e:
+            if not (o['sdrGamut']['capable'] or (o['hdr']['capable'] and e.get('hdr'))):
+                raise Refused("Colour intensity is there while HDR is on.")
+            ops.append(p + 'sdrGamut.%d' % max(0, min(100, int(e['sdrGamut']))))
+        if 'colorPower' in e:
+            if not o['colorPower']['capable']:
+                raise Refused("This KWin has no colour accuracy choice.")
+            if e['colorPower'] not in COLOR_POWER:
+                raise Refused('Unknown colour accuracy %s' % e['colorPower'])
+            ops.append(p + 'colorPowerTradeoff.' + COLOR_POWER[e['colorPower']])
+        if 'edr' in e:
+            if not o['edr']['capable']:
+                raise Refused("This KWin has no Extended Dynamic Range.")
+            ops.append(p + 'edrPolicy.' + ('always' if e['edr'] == 'always' else 'never'))
+        if 'hdrCal' in e:
+            if not (o['hdrCal']['capable'] or (o['hdr']['capable'] and e.get('hdr'))):
+                raise Refused("HDR calibration needs HDR on, on a screen KWin knows the brightness of.")
+            c = e['hdrCal'] or {}
+            # The average first: kscreen-doctor's "average … disable" also clears the peak, which comes after it.
+            ops.append(p + 'maxAverageBrightnessOverride.' + ('%d' % _nits_op(c['avg'], 1, 10000) if c.get('avg') else 'disable'))
+            ops.append(p + 'maxBrightnessOverride.' + ('%d' % _nits_op(c['peak'], 1, 10000) if c.get('peak') else 'disable'))
+            # The lowest brightness in 1/10000 nits.
+            ops.append(p + 'minBrightnessOverride.' + ('%d' % max(0, min(10000, int(round(float(c['min']) * 10000)))) if c.get('min') is not None else 'disable'))
+    return ops
+
+
+def apply(changes, wmname=None, live=None):
+    """Change the screens now (nothing saved). Returns (live after, problem or '')."""
+    wmname = wmname or wm()
+    live = live if live is not None else read(wmname)
+    outs = (changes or {}).get('outputs') or {}
+    if not outs:
+        return live, ''
+    _check_off(live, outs)
+    if FIXTURE:
+        return live, 'This is a preview: nothing was changed.'
+    if wmname == 'kwin':
+        ops = ops_kwin(live, outs)
+        rc, out, err = RUN(['kscreen-doctor'] + ops, timeout=20, env=kscreen_env()) if ops else (0, '', '')
+        failed = rc != 0 or 'applying config failed' in out
+    else:
+        args = ops_labwc(live, outs)
+        rc, out, err = RUN(args, timeout=20) if len(args) > 1 else (0, '', '')
+        failed = rc != 0
+    after = read(wmname)
+    problem = ''
+    for name, e in outs.items():
+        o = next((x for x in after if x['name'] == name), None)
+        if o and e.get('mode') and o.get('enabled'):
+            m = next((x for x in o['modes'] if x.get('current')), None)
+            w = e['mode']
+            if m and not (m['width'] == w.get('w') and m['height'] == w.get('h') and (not w.get('r') or round(m['refresh']) == round(float(w['r'])))):
+                problem = "The screen stayed at %d × %d, %d Hz: it didn't accept %s × %s at %s Hz." % (
+                    m['width'], m['height'], round(m['refresh']), w.get('w'), w.get('h'), round(float(w.get('r') or 0)))
+    if failed and not problem:
+        problem = (err or out).strip().splitlines()[-1][:200] if (err or out).strip() else "The screen didn't accept that."
+    return after, problem
+
+
+def keep(names, wmname=None, live=None):
+    live = live if live is not None else read(wmname)
+    entries = {o['name']: entry_of(o) for o in live if o['name'] in names}
+    return save_entries(entries)
+
+
+# ------------------------------------------------------------------ KWin's own settings (kwinrc), Night Light, tearing
+
+def ini_set(text, group, values):
+    """TEXT (a KDE ini file) with KEY=VALUE set in [GROUP], every other line kept."""
+    lines = text.splitlines()
+    header = '[%s]' % group
+    start = next((i for i, l in enumerate(lines) if l.strip() == header), None)
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append('')
+        lines.append(header)
+        lines += ['%s=%s' % (k, v) for k, v in values.items()]
+        return '\n'.join(lines) + '\n'
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('[')), len(lines))
+    todo = dict(values)
+    for i in range(start + 1, end):
+        k = lines[i].split('=', 1)[0].strip()
+        if '=' in lines[i] and k in todo:
+            lines[i] = '%s=%s' % (k, todo.pop(k))
+    last = end
+    while last > start + 1 and not lines[last - 1].strip():
+        last -= 1
+    lines[last:last] = ['%s=%s' % (k, v) for k, v in todo.items()]
+    return '\n'.join(lines) + '\n'
+
+
+def ini_get(text, group, key, default=None):
+    cur = None
+    for l in text.splitlines():
+        s = l.strip()
+        if s.startswith('['):
+            cur = s
+        elif cur == '[%s]' % group and '=' in s and s.split('=', 1)[0].strip() == key:
+            return s.split('=', 1)[1].strip()
+    return default
+
+
+def _gio():
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import Gio, GLib
+        return Gio, GLib
+    except (ImportError, ValueError):
+        return None, None
+
+
+def kwin_call(method, path='/KWin', iface='org.kde.KWin', args=None, sig=None, dest='org.kde.KWin'):
+    Gio, GLib = _gio()
+    if not Gio:
+        return None
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        return bus.call_sync(dest, path, iface, method, GLib.Variant(sig, args) if sig else None, None, Gio.DBusCallFlags.NONE, 5000, None)
+    except Exception as e:  # noqa: BLE001 (GLib.Error and friends)
+        io.log_event('KWin %s: %s' % (method, e))
+        return None
+
+
+def kwinrc_set(group, values, name='kwinrc'):
+    """Change GROUP in KDE's file NAME (kwinrc: KWin's own; kdeglobals; only these keys, the rest kept) through
+    hearth_settings_io (atomic, with .bak, under its lock), then tell KWin over D-Bus: KConfigWatcher's ConfigChanged
+    (as kwriteconfig6 --notify does) and, for kwinrc, org.kde.KWin.reconfigure. Never kwriteconfig6: it writes in
+    place with no .bak."""
+    path = KWINRC if name == 'kwinrc' else os.path.join(CONFIG, name)
+    try:
+        old = _text(path, 'surrogateescape')
+    except OSError:
+        old = ''
+    if all(ini_get(old, group, k) == str(v) for k, v in values.items()):
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    io.update_text(path, lambda t: ini_set(t, group, {k: str(v) for k, v in values.items()}))
+    Gio, GLib = _gio()
+    if Gio:
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            bus.emit_signal(None, '/' + name, 'org.kde.kconfig.notify', 'ConfigChanged',
+                            GLib.Variant('(a{saay})', ({group: [k.encode() for k in values]},)))
+        except Exception as e:  # noqa: BLE001
+            io.log_event('%s notify: %s' % (name, e))
+    if name == 'kwinrc' and wm() == 'kwin':
+        kwin_call('reconfigure')
+    return True
+
+
+def _hhmm(v, fallback):
+    m = re.match(r'^(\d{1,2}):?(\d{2})$', str(v or ''))
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return fallback
+    return '%02d%02d' % (int(m.group(1)), int(m.group(2)))
+
+
+def night_settings():
+    d = io.load_json(DESKTOP_JSON, {}, repair=False) if os.path.exists(DESKTOP_JSON) else {}
+    return {k: d.get(k, v) for k, v in NIGHT_DEFAULTS.items()}
+
+
+def _coord(v, limit):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if -limit <= f <= limit else None
+
+
+def night_fade(s):
+    """Fade length in minutes (1 to 120; KWin's TransitionTime, wlsunset's -d)."""
+    try:
+        return max(1, min(120, int(s.get('nightFade') or 30)))
+    except (TypeError, ValueError):
+        return 30
+
+
+def night_kwinrc(s):
+    temp = max(1000, min(6500, int(s.get('nightTemp') or 3700)))
+    mode = 'Constant' if s.get('nightMode') == 'always' else 'Times'
+    out = {'Active': 'true' if s.get('nightLight') else 'false', 'Mode': mode,
+           'NightTemperature': temp, 'EveningBeginFixed': _hhmm(s.get('nightFrom'), '1930'),
+           'MorningBeginFixed': _hhmm(s.get('nightTo'), '0700'), 'TransitionTime': night_fade(s)}
+    lat, lon = _coord(s.get('nightLat'), 90), _coord(s.get('nightLon'), 180)
+    # Sunset to sunrise where you are: the place you picked (Settings › Display), as KWin's fixed location. Without
+    # a place it stays on your times (never KWin's Automatic, which asks the network where you are).
+    if s.get('nightMode') == 'location' and s.get('nightPlace') and lat is not None and lon is not None:
+        out.update({'Mode': 'Location', 'LatitudeFixed': '%.4f' % lat, 'LongitudeFixed': '%.4f' % lon})
+    return out
+
+
+def night(values=None):
+    """KWin's Night Light from Settings' values (the shell passes them as it saves them; else desktop.json's)."""
+    if wm() != 'kwin':
+        return {'engine': 'wlsunset'}
+    s = night_settings()
+    s.update({k: v for k, v in (values or {}).items() if k in NIGHT_DEFAULTS})
+    changed = kwinrc_set('NightColor', night_kwinrc(s))
+    return {'engine': 'kwin', 'changed': changed}
+
+
+def night_status(wmname):
+    s = night_settings()
+    if wmname != 'kwin':
+        return dict(s, engine='wlsunset', available=have('wlsunset'))
+    st = {'engine': 'kwin', 'available': True}
+    r = kwin_call('GetAll', '/org/kde/KWin/NightLight', 'org.freedesktop.DBus.Properties', ('org.kde.KWin.NightLight',), '(s)')
+    if r is not None:
+        props = r.unpack()[0]
+        st.update({k: props[k] for k in ('available', 'running', 'currentTemperature', 'targetTemperature') if k in props})
+    return dict(s, **st)
+
+
+def tearing(on):
+    kwinrc_set('Compositing', {'AllowTearing': 'true' if on else 'false'})
+
+
+# ------------------------------------------------------------------ several screens: X11 apps, the edge barrier, desktops
+
+def kde_read(name, group, key, default):
+    """What KWin sees (the system files under yours, hearth_kconfig.effective), or DEFAULT."""
+    try:
+        import hearth_kconfig as kc
+        vals, _, _ = kc.effective(name)
+        return vals.get(group, {}).get(key, default)
+    except Exception:  # noqa: BLE001 (an unreadable file: what KWin would use by default)
+        return default
+
+
+KWIN_SETTINGS = os.path.join(HERE, 'hearth-kwin-settings')
+
+
+def kde_set(name, changes):
+    """Change keys in KDE's file NAME through hearth-kwin-settings set (its one writer for Settings: only these keys,
+    KDE's own lock, [$i] respected, a file that can't be read left alone; then KWin is told)."""
+    try:
+        r = subprocess.run([sys.executable, KWIN_SETTINGS, 'set', name], input=json.dumps(changes), capture_output=True,
+                           text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise Refused("Couldn't change %s: %s" % (name, e))
+    if r.returncode != 0:
+        last = (r.stdout or r.stderr).strip().splitlines()
+        raise Refused(last[-1].replace('error: ', '')[:200] if last else "Couldn't change %s" % name)
+
+
+def x11_scale_status(wmname):
+    """X11 apps scale themselves (KDE's default) or KWin scales them: kdeglobals [KScreen] XwaylandClientsScale, the
+    one home (Settings › Gaming › Full-screen games & X11 apps changes the same key)."""
+    return {'capable': wmname == 'kwin', 'self': str(kde_read('kdeglobals', 'KScreen', 'XwaylandClientsScale', 'true')).lower() != 'false',
+            'why': '' if wmname == 'kwin' else NEEDS_KWIN}
+
+
+def x11_scale(self_scale):
+    kde_set('kdeglobals', {'KScreen': {'XwaylandClientsScale': bool(self_scale)}})
+
+
+def barrier_status(wmname):
+    """KWin's sticky edge between screens: kwinrc [EdgeBarrier] (px; 0 = off) and the corner barrier (Screen edges
+    changes the same keys)."""
+    try:
+        px = int(kde_read('kwinrc', 'EdgeBarrier', 'EdgeBarrier', '100'))
+    except ValueError:
+        px = 100
+    return {'capable': wmname == 'kwin', 'px': px, 'corner': str(kde_read('kwinrc', 'EdgeBarrier', 'CornerBarrier', 'true')).lower() != 'false',
+            'why': '' if wmname == 'kwin' else NEEDS_KWIN}
+
+
+def barrier(values):
+    out = {}
+    if 'px' in values:
+        out['EdgeBarrier'] = max(0, min(1000, int(values['px'])))
+    if 'corner' in values:
+        out['CornerBarrier'] = bool(values['corner'])
+    if out:
+        kde_set('kwinrc', {'EdgeBarrier': out})
+
+
+MAIN_DESKTOPS_JS = os.path.join(HERE, 'hearth-main-desktops.js')
+MAIN_DESKTOPS_NAME = 'hearth-main-desktops'
+
+
+def desktops_status(wmname, sv=None):
+    sv = sv if sv is not None else saved()
+    # KWin 6.3 (Debian 13) has one set of desktops for every screen; "each screen its own" needs a newer KWin.
+    return {'capable': wmname == 'kwin', 'mode': 'main' if sv.get('desktopsMainOnly') else 'all', 'perScreen': False,
+            'why': '' if wmname == 'kwin' else NEEDS_KWIN}
+
+
+def main_desktops(on, live=None):
+    """Desktops only on the main screen: Hearth's KWin script keeps the windows on the other screens on every desktop
+    (as GNOME's "workspaces on the primary display only"); off puts back only the windows it changed. The script gets
+    the main screen's name (a copy in $XDG_RUNTIME_DIR), so a new main screen loads it again."""
+    if on:
+        live = live if live is not None else read('kwin')
+        main = next((o['name'] for o in live if o.get('priority') == 1), None) or next((o['name'] for o in live if o.get('enabled')), '')
+        try:
+            src = _text(MAIN_DESKTOPS_JS)
+        except OSError:
+            raise Refused("Hearth's desktops script is missing.")
+        run_dir = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+        path = os.path.join(run_dir, 'hearth-main-desktops.js')
+        io.write_text(path, src.replace('"HEARTH_MAIN"', json.dumps(main)), mode=0o600)
+        kwin_call('unloadScript', '/Scripting', 'org.kde.kwin.Scripting', (MAIN_DESKTOPS_NAME,), '(s)')
+        r = kwin_call('loadScript', '/Scripting', 'org.kde.kwin.Scripting', (path, MAIN_DESKTOPS_NAME), '(ss)')
+        sid = r.unpack()[0] if r is not None else -1
+        if sid is None or sid < 0:
+            raise Refused("KWin didn't take Hearth's desktops script.")
+        if kwin_call('run', '/Scripting/Script%d' % sid, 'org.kde.kwin.Script') is None:
+            kwin_call('run', '/%d' % sid, 'org.kde.kwin.Script')
+        return True
+    # The running script puts its windows back when its own shortcut is called, then it's unloaded.
+    kwin_call('invokeShortcut', '/component/kwin', 'org.kde.kglobalaccel.Component', ('Hearth main desktops off',), '(s)',
+              dest='org.kde.kglobalaccel')
+    time.sleep(0.3)
+    kwin_call('unloadScript', '/Scripting', 'org.kde.kwin.Scripting', (MAIN_DESKTOPS_NAME,), '(s)')
+    return False
+
+
+# ------------------------------------------------------------------ brightness of external screens (DDC/CI)
+
+def parse_ddc_detect(text):
+    """`ddcutil detect --terse` → {connector name: i2c bus number}."""
+    got, bus, valid = {}, None, False
+    for line in text.splitlines():
+        if re.match(r'^(Display|Invalid display|Phantom display)\b', line):
+            bus, valid = None, line.startswith('Display')
+            continue
+        m = re.match(r'^\s*I2C bus:\s*/dev/i2c-(\d+)', line)
+        if m:
+            bus = int(m.group(1))
+            continue
+        m = re.match(r'^\s*DRM[_ ]connector:\s*card\d+-(\S+)', line)
+        if m and bus is not None and valid:
+            got[m.group(1)] = bus
+    return got
+
+
+def parse_vcp(text):
+    """`ddcutil getvcp 10 --terse`: "VCP 10 C 50 100" → (50, 100)."""
+    m = re.search(r'VCP\s+10\s+C\s+(\d+)\s+(\d+)', text)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def ddc_list():
+    """External screens whose brightness Hearth can change over DDC/CI (ddcutil; Settings › Display uses KWin's own
+    control instead for a screen a newer KWin controls itself). A screen that doesn't answer is left out."""
+    if fixture('ddc.json') is not None:
+        return json.loads(fixture('ddc.json'))
+    if not have('ddcutil') or not glob.glob('/dev/i2c-*'):
+        return {'available': False, 'why': 'ddcutil or the i2c-dev module is missing', 'screens': []}
+    rc, out, err = RUN(['ddcutil', 'detect', '--terse'], timeout=15)
+    if rc != 0:
+        return {'available': False, 'why': (err or out).strip().splitlines()[-1][:160] if (err or out).strip() else 'ddcutil found no screens', 'screens': []}
+    screens = []
+    for name, bus in sorted(parse_ddc_detect(out).items()):
+        rc, o, _ = RUN(['ddcutil', '--bus', str(bus), 'getvcp', '10', '--terse'], timeout=6)
+        v = parse_vcp(o) if rc == 0 else None
+        if v:
+            screens.append({'name': name, 'bus': bus, 'value': v[0], 'max': v[1] or 100})
+    return {'available': True, 'why': '' if screens else "No screen answered over DDC/CI (turn DDC/CI on in the screen's own menu)", 'screens': screens}
+
+
+def ddc_set(name, pct):
+    """Brightness of NAME (0–100 % of what the screen allows). The screen keeps it itself: nothing is saved here."""
+    d = ddc_list()
+    s = next((x for x in d['screens'] if x['name'] == name), None)
+    if not s:
+        raise Refused("%s doesn't answer over DDC/CI." % name)
+    v = round(max(0, min(100, float(pct))) * s['max'] / 100)
+    rc, out, err = RUN(['ddcutil', '--bus', str(s['bus']), 'setvcp', '10', str(v)], timeout=10)
+    if rc != 0:
+        raise Refused("The screen didn't take it: %s" % ((err or out).strip()[:160] or rc))
+    return {'name': name, 'value': v, 'max': s['max']}
+
+
+def kwin_brightness(name, pct):
+    """A screen KWin controls itself (newer KWin: laptops and DDC/CI): kscreen-doctor's brightness."""
+    rc, out, err = RUN(['kscreen-doctor', 'output.%s.brightness.%d' % (name, max(0, min(100, int(pct))))], timeout=10, env=kscreen_env())
+    if rc != 0:
+        raise Refused("KWin didn't take it: %s" % ((err or out).strip()[:160] or rc))
+
+
+# ------------------------------------------------------------------ auto-brightness (an ambient light sensor)
+# The sensor through iio-sensor-proxy (net.hadess.SensorProxy on the system bus: HasAmbientLight, ClaimLight,
+# LightLevel, LightLevelUnit), as KDE and GNOME read it; the kernel's IIO files only where the proxy isn't running.
+# HEARTH_SCREENS_SENSOR_BUS=session: a stand-in proxy on the session bus (the tests' fake sensor).
+
+IIO = os.environ.get('HEARTH_SCREENS_IIO', '/sys/bus/iio/devices')
+PROXY = ('net.hadess.SensorProxy', '/net/hadess/SensorProxy', 'net.hadess.SensorProxy')
+OFFSET_MIN, OFFSET_MAX = -40, 40
+STATUS = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-autobright.json')
+
+
+def light_sensor():
+    """The kernel's ambient light sensor's lux file and scale, or None."""
+    for d in sorted(glob.glob(os.path.join(IIO, 'iio:device*'))):
+        for f in ('in_illuminance_input', 'in_illuminance_raw'):
+            p = os.path.join(d, f)
+            if os.path.exists(p):
+                scale = 1.0
+                try:
+                    scale = float(_text(os.path.join(d, 'in_illuminance_scale')).strip()) if f.endswith('raw') else 1.0
+                except (OSError, ValueError):
+                    pass
+                return p, scale
+    return None
+
+
+def sysfs_lux():
+    s = light_sensor()
+    if not s:
+        return None
+    try:
+        return max(0.0, float(_text(s[0]).strip()) * s[1])
+    except (OSError, ValueError):
+        return None
+
+
+class ProxyLight:
+    """iio-sensor-proxy's light sensor. claim() holds it for as long as this connection lives (the proxy reads the
+    sensor only while someone has claimed it); read() is the newest level in lux."""
+
+    def __init__(self):
+        self.bus = None
+        self.claimed = False
+        Gio, GLib = _gio()
+        self.Gio, self.GLib = Gio, GLib
+        if not Gio:
+            return
+        try:
+            kind = Gio.BusType.SESSION if os.environ.get('HEARTH_SCREENS_SENSOR_BUS') == 'session' else Gio.BusType.SYSTEM
+            self.bus = Gio.bus_get_sync(kind, None)
+        except Exception as e:  # noqa: BLE001
+            io.log_event('light sensor: no bus: %s' % e)
+
+    def _call(self, iface, method, args=None, sig=None):
+        if not self.bus:
+            return None
+        try:
+            return self.bus.call_sync(PROXY[0], PROXY[1], iface, method, self.GLib.Variant(sig, args) if sig else None, None,
+                                      self.Gio.DBusCallFlags.NO_AUTO_START, 2000, None)
+        except Exception:  # noqa: BLE001 (not running: no sensor through the proxy)
+            return None
+
+    def prop(self, name):
+        r = self._call('org.freedesktop.DBus.Properties', 'Get', (PROXY[2], name), '(ss)')
+        return r.unpack()[0] if r is not None else None
+
+    def present(self):
+        return self.prop('HasAmbientLight') is True
+
+    def claim(self):
+        self.claimed = self._call(PROXY[2], 'ClaimLight') is not None
+        return self.claimed
+
+    def release(self):
+        if self.claimed:
+            self._call(PROXY[2], 'ReleaseLight')
+            self.claimed = False
+
+    def read(self):
+        v = self.prop('LightLevel')
+        if v is None:
+            return None
+        # "vendor" units have no fixed scale: read as lux (the "how bright" offset evens it out).
+        return max(0.0, float(v))
+
+
+class SysfsLight:
+    def present(self):
+        return light_sensor() is not None
+
+    def claim(self):
+        return True
+
+    def release(self):
+        pass
+
+    def read(self):
+        return sysfs_lux()
+
+
+def light_source():
+    """The light sensor to read ('proxy' first), or (None, None): no sensor and the rows stay hidden."""
+    p = ProxyLight()
+    if p.present():
+        return 'iio-sensor-proxy', p
+    s = SysfsLight()
+    if s.present():
+        return 'sysfs', s
+    return None, None
+
+
+def lux():
+    _, src = light_source()
+    return src.read() if src else None
+
+
+def lux_to_pct(lx):
+    """Dim rooms low, daylight full: 10 % at 0 lux, about 70 % at 300 lux (an office), 100 % from about 3000."""
+    import math
+    return int(max(5, min(100, round(10 + 22.5 * math.log10(1 + lx)))))
+
+
+def clamp_offset(v):
+    try:
+        return max(OFFSET_MIN, min(OFFSET_MAX, int(round(float(v)))))
+    except (TypeError, ValueError):
+        return 0
+
+
+class AutoBright:
+    """Auto-brightness's thinking, one reading at a time (no I/O: the loop below and the tests feed it).
+
+    The light is smoothed (an average that follows the room in about ten seconds, in log lux, so a hand over the
+    sensor or a passing shadow doesn't flicker the screen), turned into a brightness, moved by the "how bright"
+    offset, and the screen is moved there in small steps. A brightness someone set by hand (keys, Quick settings,
+    the slider) pauses it until the room's light really changes."""
+    ALPHA = 0.3          # how much of each new reading goes into the average
+    STEP = 6             # at most this much per reading, so it fades
+    DEADBAND = 3         # smaller changes than this are left alone
+    HAND = 3             # the screen differs from what was set by more than this: someone changed it
+    RESUME = 0.3         # log10(1 + lux) has moved this far since the pause (about twice or half the light)
+
+    def __init__(self):
+        self.smooth = None   # log10(1 + lux)
+        self.last = None     # the brightness this set last
+        self.paused = False
+        self.paused_at = None
+
+    def tick(self, lx, current, offset=0):
+        """lx: the sensor's lux (None: no reading); current: the screen's brightness now (%, None: unknown).
+        Returns the brightness to set, or None."""
+        import math
+        if lx is None:
+            return None
+        v = math.log10(1 + max(0.0, lx))
+        self.smooth = v if self.smooth is None else self.smooth + self.ALPHA * (v - self.smooth)
+        if current is not None and self.last is not None and not self.paused and abs(current - self.last) > self.HAND:
+            self.paused, self.paused_at = True, self.smooth
+            io.log_event('auto-brightness: paused (brightness set by hand to %d%%)' % current)
+        if self.paused:
+            if abs(self.smooth - self.paused_at) < self.RESUME:
+                return None
+            self.paused, self.paused_at = False, None
+            self.last = current
+            io.log_event('auto-brightness: the light changed, following the room again')
+        target = max(1, min(100, lux_to_pct(10 ** self.smooth - 1) + clamp_offset(offset)))
+        base = current if current is not None else self.last
+        if base is None:
+            self.last = target
+            return target
+        if abs(target - base) < self.DEADBAND:
+            if current is not None:
+                self.last = current
+            return None
+        want = base + max(-self.STEP, min(self.STEP, target - base))
+        self.last = want
+        return want
+
+
+def backlight_pct():
+    """The built-in screen's brightness now (brightnessctl's backlight class, the same path the slider and keys use)."""
+    rc, out, _ = RUN(['brightnessctl', '-m', '-c', 'backlight'], timeout=5)
+    try:
+        return int(out.strip().splitlines()[0].split(',')[3].rstrip('%')) if rc == 0 else None
+    except (IndexError, ValueError):
+        return None
+
+
+def _status(d):
+    try:
+        io.write_json(STATUS, d)    # $XDG_RUNTIME_DIR: what Settings shows (paused or following), not a setting
+    except OSError:
+        pass
+
+
+def autobright(interval=2.0, rounds=None):
+    """Runs while Settings › Display's Auto-brightness is on (the shell starts it; screens.json says so). Ends by
+    itself when it's turned off, or there's no sensor or backlight (logged; nothing else depends on it)."""
+    name, src = light_source()
+    if not src or not have('brightnessctl') or backlight_pct() is None:
+        why = 'no light sensor' if not src else 'no backlight Hearth can set'
+        io.log_event('auto-brightness: not running: %s' % why)
+        return {'running': False, 'why': why}
+    if not src.claim():
+        io.log_event("auto-brightness: the light sensor couldn't be claimed")
+        return {'running': False, 'why': "the light sensor couldn't be claimed"}
+    ab, n, was = AutoBright(), 0, None
+    try:
+        while True:
+            sv = saved()
+            if not sv.get('autoBrightness'):
+                break
+            lx = src.read()
+            want = ab.tick(lx, backlight_pct(), sv.get('autoBrightnessOffset', 0))
+            if want is not None:
+                RUN(['brightnessctl', '-q', '-c', 'backlight', 'set', '%d%%' % want], timeout=5)
+            now = {'paused': ab.paused, 'lux': None if lx is None else round(lx, 1), 'source': name}
+            if now != was:
+                _status(now)
+                was = now
+            n += 1
+            if rounds is not None and n >= rounds:
+                break
+            time.sleep(interval)
+    finally:
+        src.release()
+        _status({'paused': False, 'running': False})
+    return {'running': False}
+
+
+def autobright_status():
+    try:
+        d = json.loads(_text(STATUS))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+# ------------------------------------------------------------------ Super+P: one screen, extend, mirror
+
+def _logical(o):
+    m = next((x for x in o.get('modes', []) if x.get('current')), None) or \
+        next((x for x in o.get('modes', []) if x.get('preferred')), None) or (o.get('modes') or [{'width': 1920, 'height': 1080}])[0]
+    turned = o.get('rotation') in ('left', 'right')
+    sc = float(o.get('scale') or 1)
+    return round((m['height'] if turned else m['width']) / sc), round((m['width'] if turned else m['height']) / sc)
+
+
+def switch_plan(mode, live, wmname, mirror_why=''):
+    """What Super+P's choice changes: {screen: entry}. MODE: main (only the main screen), other (only the other
+    screen), extend (every screen, a screen that was off to the right of the others), mirror."""
+    if mode == 'mirror':
+        raise Refused(mirror_why or "Mirroring isn't possible here.")
+    if not live:
+        raise Refused('No screens are connected.')
+    main = next((o for o in live if o.get('priority') == 1), None) or next((o for o in live if o.get('enabled')), live[0])
+    others = [o for o in live if o['name'] != main['name']]
+    if mode in ('other', 'extend') and not others:
+        raise Refused('Only one screen is connected.')
+    ch = {}
+    if mode == 'main':
+        if not main.get('enabled'):
+            ch[main['name']] = {'enabled': True}
+        for o in others:
+            if o.get('enabled'):
+                ch[o['name']] = {'enabled': False}
+    elif mode == 'other':
+        o = others[0]
+        if not o.get('enabled'):
+            ch[o['name']] = {'enabled': True, 'pos': {'x': 0, 'y': 0}}
+        if main.get('enabled'):
+            ch[main['name']] = {'enabled': False}
+        for x in others[1:]:
+            if x.get('enabled'):
+                ch[x['name']] = {'enabled': False}
+    elif mode == 'extend':
+        on = [o for o in live if o.get('enabled')]
+        right = max([(o.get('position') or {}).get('x', 0) + _logical(o)[0] for o in on] or [0])
+        for o in live:
+            if not o.get('enabled'):
+                ch[o['name']] = {'enabled': True, 'pos': {'x': right, 'y': 0}}
+                right += _logical(o)[0]
+    else:
+        raise Refused('Unknown choice %s' % mode)
+    return ch
+
+
+def switch_state(live):
+    """Which of Super+P's choices is in use now."""
+    on = [o for o in live if o.get('enabled')]
+    if len(live) < 2 or len(on) == 1:
+        main = next((o for o in live if o.get('priority') == 1), None) or (on[0] if on else None)
+        return 'main' if (not on or not main or on[0]['name'] == main['name']) else 'other'
+    return 'extend'
+
+
+def icc_profiles():
+    got = []
+    for d in ICC_DIRS:
+        for f in sorted(glob.glob(os.path.join(d, '*.ic[cm]'))):
+            got.append({'path': f, 'label': os.path.splitext(os.path.basename(f))[0]})
+    return got[:20]
+
+
+def auto_status(sv):
+    """Settings › Display's Auto-brightness rows: shown only with a light sensor."""
+    name, _ = light_source()
+    st = autobright_status() if sv['autoBrightness'] else {}
+    return {'capable': name is not None, 'source': name, 'on': sv['autoBrightness'], 'offset': sv['autoBrightnessOffset'],
+            'paused': bool(st.get('paused')), 'lux': st.get('lux')}
+
+
+def info(wmname=None, live=None):
+    wmname = wmname or wm()
+    live = live if live is not None else read(wmname)
+    sv = saved()
+    try:
+        rc = _text(KWINRC, 'replace')
+    except OSError:
+        rc = ''
+    tear_on = sv.get('tearing')
+    if tear_on is None:
+        tear_on = ini_get(rc, 'Compositing', 'AllowTearing', 'true') == 'true'
+    return {
+        'wm': wmname, 'outputs': live, 'saved': sv,
+        'nightLight': night_status(wmname),
+        'tearing': {'capable': wmname == 'kwin', 'on': bool(tear_on), 'why': '' if wmname == 'kwin' else NEEDS_KWIN},
+        # KWin 6.3's output management has no mirroring (kscreen-doctor can't set a replication source on Wayland).
+        'mirror': {'capable': False, 'why': "KWin 6.3 can't mirror screens yet" if wmname == 'kwin' else NEEDS_KWIN},
+        'iccProfiles': icc_profiles() if wmname == 'kwin' else [],
+        'x11Scale': x11_scale_status(wmname),
+        'barrier': barrier_status(wmname),
+        'desktops': desktops_status(wmname, sv),
+        'autoBrightness': auto_status(sv),
+        'switch': switch_state(live),
+    }
+
+
+# ------------------------------------------------------------------ at Desktop Mode's start
+
+def auto_scale(o):
+    """The comfortable scale for a small sharp screen (handhelds, high-DPI laptops): what labwc's autostart did."""
+    m = next((x for x in o.get('modes', []) if x.get('current')), None)
+    mm = (o.get('physical_size') or {}).get('width') or 0
+    if not o.get('enabled') or not m or mm <= 0:
+        return None
+    w = m['width'] if o.get('rotation', 'normal') in ('normal', 'inverted') else m['height']
+    dpi = w / (mm / 25.4)
+    s = 1.5 if dpi > 250 else 1.25 if dpi > 175 else 1.0
+    return s if s != 1.0 else None
+
+
+def restore_plan(live, sv, wmname):
+    """What restore changes, and what it had to leave out (each with why)."""
+    changes, left_out = {}, []
+    outs = sv.get('outputs') or {}
+    for o in live:
+        e = outs.get(o['name'])
+        if not e:
+            s = auto_scale(o)
+            if s and abs((o.get('scale') or 1) - 1) < 0.01:
+                changes[o['name']] = {'scale': s}
+            continue
+        c = {}
+        if 'enabled' in e and bool(e['enabled']) != bool(o.get('enabled')):
+            c['enabled'] = bool(e['enabled'])
+        if e.get('enabled', True) is not False:
+            cur = next((x for x in o['modes'] if x.get('current')), None)
+            if e.get('mode'):
+                m = _mode_of(o, e['mode'])
+                if not m:
+                    left_out.append('%s: %s × %s at %s Hz (the screen doesn\'t list it now)' % (o['name'], e['mode'].get('w'), e['mode'].get('h'), round(float(e['mode'].get('r') or 0))))
+                elif not cur or cur.get('id', (cur['width'], cur['height'], cur['refresh'])) != m.get('id', (m['width'], m['height'], m['refresh'])) \
+                        or cur['width'] != m['width'] or cur['height'] != m['height'] or round(cur['refresh']) != round(m['refresh']):
+                    c['mode'] = {'w': m['width'], 'h': m['height'], 'r': m['refresh']}
+            if e.get('scale') and abs(float(e['scale']) - float(o.get('scale') or 1)) > 0.001:
+                c['scale'] = float(e['scale'])
+            if e.get('pos') is not None and (e['pos'].get('x'), e['pos'].get('y')) != ((o.get('position') or {}).get('x'), (o.get('position') or {}).get('y')):
+                c['pos'] = e['pos']
+            if e.get('rotation') and e['rotation'] != o.get('rotation', 'normal'):
+                c['rotation'] = e['rotation']
+            if wmname == 'kwin':
+                if 'hdr' in e and o['hdr']['capable'] and bool(e['hdr']) != o['hdr']['on']:
+                    c['hdr'] = bool(e['hdr'])
+                if e.get('sdrBrightness') and o['hdr']['capable'] and int(e['sdrBrightness']) != (o.get('sdrBrightness') or 0):
+                    c['sdrBrightness'] = int(e['sdrBrightness'])
+                if 'wcg' in e and o['wcg']['capable'] and bool(e['wcg']) != o['wcg']['on']:
+                    c['wcg'] = bool(e['wcg'])
+                if e.get('vrr') and o['vrr']['capable'] and e['vrr'] != o['vrr']['policy']:
+                    c['vrr'] = e['vrr']
+                if 'icc' in e and o['icc']['capable'] and (e['icc'] or '') != (o['icc'].get('path') or ''):
+                    if e['icc'] and e['icc'] != 'EDID' and not os.path.isfile(e['icc']):
+                        left_out.append('%s: the colour profile %s (it isn\'t there any more)' % (o['name'], e['icc']))
+                    else:
+                        c['icc'] = e['icc']
+                if e.get('priority') == 1 and o.get('priority') != 1:
+                    c['priority'] = 1
+                for k in ('overscan', 'rgbRange', 'sdrGamut', 'colorPower'):
+                    if k in e and o.get(k, {}).get('capable') and e[k] != o[k]['value']:
+                        c[k] = e[k]
+                    elif k == 'sdrGamut' and k in e and c.get('hdr'):
+                        c[k] = e[k]             # HDR comes on in the same change: its colour intensity with it
+                if e.get('edr') and o['edr']['capable'] and e['edr'] != o['edr']['policy']:
+                    c['edr'] = e['edr']
+                cal, live_cal = e.get('hdrCal'), o.get('hdrCal') or {}
+                if isinstance(cal, dict) and c.get('hdr') and any(v is not None for v in cal.values()):
+                    c['hdrCal'] = cal
+                elif isinstance(cal, dict) and live_cal.get('capable') and \
+                        (cal.get('peak'), cal.get('avg'), cal.get('min')) != (live_cal.get('peakSet'), live_cal.get('avgSet'), live_cal.get('minSet')):
+                    c['hdrCal'] = cal
+        if c:
+            changes[o['name']] = c
+    # Never every screen off: a screen turned off there, with the one left on unplugged now.
+    on = {o['name'] for o in live if o.get('enabled')}
+    for n, c in changes.items():
+        if 'enabled' in c:
+            (on.add if c['enabled'] else on.discard)(n)
+    if live and not on:
+        for n, c in changes.items():
+            c.pop('enabled', None)
+        first = next((o for o in live), None)
+        if first and not first.get('enabled'):
+            changes.setdefault(first['name'], {})['enabled'] = True
+        left_out.append('turning every screen off (the one that was left on isn\'t connected now)')
+    return {k: v for k, v in changes.items() if v}, left_out
+
+
+def restore():
+    wmname = wm()
+    live = read(wmname)
+    sv = saved()
+    changes, left_out = restore_plan(live, sv, wmname)
+    problem = ''
+    if changes:
+        try:
+            _, problem = apply({'outputs': changes}, wmname, live)
+        except Refused as e:
+            problem = str(e)
+        if problem:
+            # Try again without the modes: a screen at its own mode is better than settings left half done.
+            no_modes = {n: {k: v for k, v in c.items() if k != 'mode'} for n, c in changes.items()}
+            no_modes = {n: c for n, c in no_modes.items() if c}
+            try:
+                apply({'outputs': no_modes}, wmname)
+            except Refused:
+                pass
+            left_out.append(problem)
+    if left_out:
+        io.notice('screens:' + '|'.join(left_out)[:200], 'Hearth left out some of your screen settings this time: %s. '
+                  'They are still saved; Settings › Display shows what the screen is using.' % '; '.join(left_out), 'Hearth screens')
+        io.log_event('Screens at start left out: %s' % '; '.join(left_out))
+    if wmname == 'kwin':
+        try:
+            night()
+        except (OSError, ValueError) as e:
+            io.log_event('Night Light at start: %s' % e)
+        if sv.get('tearing') is not None:
+            tearing(bool(sv['tearing']))
+        if sv.get('desktopsMainOnly'):
+            try:
+                main_desktops(True)
+            except Exception as e:  # noqa: BLE001 (never in the way of Desktop Mode's start)
+                io.log_event('Desktops only on the main screen at start: %s' % e)
+    return {'wm': wmname, 'changed': changes, 'leftOut': left_out}
+
+
+def autoscale():
+    wmname = wm()
+    live = read(wmname)
+    changes = {}
+    for o in live:
+        s = auto_scale(o)
+        if s and abs((o.get('scale') or 1) - 1) < 0.01:
+            changes[o['name']] = {'scale': s}
+    if changes:
+        apply({'outputs': changes}, wmname, live)
+    return {'changed': changes}
+
+
+# ------------------------------------------------------------------ screenshots
+
+def png(width, height, rgb):
+    """RGB bytes (width*height*3) as a PNG file."""
+    row = width * 3
+    raw = b''.join(b'\0' + rgb[y * row:(y + 1) * row] for y in range(height))
+
+    def chunk(t, d):
+        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + \
+        chunk(b'IDAT', zlib.compress(raw, 6)) + chunk(b'IEND', b'')
+
+
+def raw_to_rgb(data, width, height, stride, fmt):
+    """KWin's raw picture (a QImage::Format) as packed RGB."""
+    bpp = {4: 4, 5: 4, 6: 4, 16: 4, 17: 4, 18: 4, 20: 4, 21: 4, 22: 4, 23: 4, 25: 8, 26: 8, 27: 8}.get(fmt)
+    if not bpp:
+        raise Refused('KWin sent a picture format Hearth can\'t read yet (%d).' % fmt)
+    rows = b''.join(data[y * stride:y * stride + width * bpp] for y in range(height)) if stride != width * bpp else data[:width * height * bpp]
+    n = width * height
+    out = bytearray(n * 3)
+    if fmt in (4, 5, 6):            # 0xAARRGGBB in little-endian memory: B G R A
+        out[0::3], out[1::3], out[2::3] = rows[2::4], rows[1::4], rows[0::4]
+    elif fmt in (16, 17, 18):       # R G B A
+        out[0::3], out[1::3], out[2::3] = rows[0::4], rows[1::4], rows[2::4]
+    elif fmt in (25, 26, 27):       # 16 bits a channel, R G B A, little-endian: the high bytes
+        out[0::3], out[1::3], out[2::3] = rows[1::8], rows[3::8], rows[5::8]
+    else:                           # 10 bits a channel (20/21: BGR30, 22/23: RGB30)
+        import array
+        px = array.array('I')
+        px.frombytes(rows[:n * 4])
+        if sys.byteorder != 'little':
+            px.byteswap()
+        rs, bs = (20, 0) if fmt in (22, 23) else (0, 20)     # RGB30: A R G B from the top; BGR30: A B G R
+        for i, v in enumerate(px):
+            out[i * 3] = (v >> (rs + 2)) & 255
+            out[i * 3 + 1] = (v >> 12) & 255
+            out[i * 3 + 2] = (v >> (bs + 2)) & 255
+    return bytes(out)
+
+
+def parse_shot_args(argv):
+    o = {'geometry': None, 'output': None, 'cursor': False, 'file': None, 'windowId': None}
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == '--window' and i + 1 < len(argv):
+            # One window by KWin's id (WinList's wid): Firehold's Everything open shows its picture.
+            if not re.match(r'^\{?[0-9A-Fa-f-]{36}\}?$', argv[i + 1]):
+                raise Refused('Not a window id: %s' % argv[i + 1])
+            o['windowId'] = argv[i + 1]
+            i += 2
+            continue
+        if a == '-g' and i + 1 < len(argv):
+            m = re.match(r'^\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)\s*$', argv[i + 1])
+            if not m:
+                raise Refused('Not an area: %s (it\'s "X,Y WIDTHxHEIGHT", as slurp gives it)' % argv[i + 1])
+            o['geometry'] = tuple(int(x) for x in m.groups())
+            i += 2
+            continue
+        if a == '-o' and i + 1 < len(argv):
+            o['output'] = argv[i + 1]
+            i += 2
+            continue
+        if a == '-c':
+            o['cursor'] = True
+        elif a in ('-t',) and i + 1 < len(argv):
+            i += 1                  # grim's -t png: PNG is all this writes
+        elif not a.startswith('-') or a == '-':
+            o['file'] = a
+        i += 1
+    if not o['file']:
+        raise Refused('Where should the screenshot go? (a file, or - for the output)')
+    return o
+
+
+KWIN_CAST = os.environ.get('HEARTH_KWIN_CAST') or '/usr/libexec/hearth/hearth-kwin-cast'
+
+
+def kwin_cast_args(o):
+    """hearth-kwin-cast shot's arguments for a screenshot asked for with parse_shot_args / grab: at the screen's own
+    resolution, with the pointer when asked."""
+    if o.get('windowId'):
+        a = ['window', o['windowId']]            # one window by KWin's id (Firehold's Everything open)
+    elif o.get('window'):
+        a = ['active-window']
+    elif o['geometry']:
+        x, y, gw, gh = o['geometry']
+        a = ['area', str(int(x)), str(int(y)), str(int(gw)), str(int(gh))]
+    elif o.get('activeScreen'):
+        a = ['active-screen']
+    elif o['output']:
+        a = ['screen', str(o['output'])]
+    else:
+        a = ['workspace']
+    return ['shot'] + a + ['1' if o['cursor'] else '0', '1']
+
+
+def parse_cast_shot(out):
+    """hearth-kwin-cast shot's output: 'W H STRIDE FORMAT SCALE' then the raw pixels → (w, h, stride, fmt, data)."""
+    nl = out.find(b'\n')
+    if nl < 0:
+        raise Refused('KWin sent no picture.')
+    try:
+        wd, ht, st, fmt = (int(x) for x in out[:nl].split()[:4])
+    except ValueError:
+        raise Refused('KWin sent no picture.')
+    data = out[nl + 1:]
+    if wd <= 0 or ht <= 0 or st < wd * 4 or len(data) < st * (ht - 1) + wd:
+        raise Refused('KWin sent only part of the picture.')
+    return wd, ht, st, fmt, data
+
+
+def kwin_shot(o):
+    """A screenshot from KWin's org.kde.KWin.ScreenShot2, through hearth-kwin-cast (KWin answers only programs whose
+    .desktop file lists that interface: hearth-kwin-cast.desktop names that small program, not a Python)."""
+    if not os.access(KWIN_CAST, os.X_OK):
+        raise Refused("Screenshots under KWin need Hearth's hearth-kwin-cast, which isn't installed here.")
+    try:
+        p = subprocess.run([KWIN_CAST] + kwin_cast_args(o), stdin=subprocess.DEVNULL, capture_output=True, timeout=45)
+    except subprocess.TimeoutExpired:
+        raise Refused("KWin didn't answer in time.")
+    except OSError as e:
+        raise Refused("Couldn't start hearth-kwin-cast: %s" % e)
+    why = (p.stderr or b'').decode('utf-8', 'replace').strip().splitlines()
+    why = why[-1] if why else ''
+    if p.returncode == 4:
+        raise NoWindow('There is no window to take a picture of.')
+    if p.returncode == 2:
+        raise Refused("KWin didn't let Hearth take a screenshot (hearth-kwin-cast.desktop isn't installed?): %s" % why)
+    if p.returncode == 3:
+        raise Refused("hearth-kwin-cast takes screenshots only for Hearth's own hearth-screens (installed by root): %s" % why)
+    if p.returncode != 0:
+        raise Refused("KWin couldn't take the screenshot: %s" % (why or 'exit %d' % p.returncode))
+    wd, ht, st, fmt, data = parse_cast_shot(p.stdout)
+    return png(wd, ht, raw_to_rgb(data, wd, ht, st, fmt))
+
+
+def _write(data, out):
+    if out == '-':
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+    else:
+        with open(out, 'wb') as f:
+            f.write(data)
+
+
+def shot(argv):
+    if wm() != 'kwin':
+        os.execvp('grim', ['grim'] + argv)
+    o = parse_shot_args(argv)
+    _write(kwin_shot(o), o['file'])
+
+
+def parse_grab_args(argv):
+    """grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE (Capture's way of asking)."""
+    if not argv or argv[0] not in ('screen', 'all', 'window', 'area'):
+        raise Refused('grab what? screen, all, window or area')
+    o = {'mode': argv[0], 'screen': None, 'geometry': None, 'cursor': False, 'out': None}
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        v = argv[i + 1] if i + 1 < len(argv) else None
+        if a == '--screen' and v is not None:
+            o['screen'] = v
+            i += 2
+        elif a == '--geometry' and v is not None:
+            m = re.match(r'^\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*$', v)
+            if not m or int(m.group(3)) == 0 or int(m.group(4)) == 0:
+                raise Refused('Not an area: %s (it\'s X,Y,WIDTH,HEIGHT)' % v)
+            o['geometry'] = tuple(int(x) for x in m.groups())
+            i += 2
+        elif a == '--out' and v is not None:
+            o['out'] = v
+            i += 2
+        elif a == '--pointer':
+            o['cursor'] = True
+            i += 1
+        else:
+            raise Refused('Unknown option %s' % a)
+    if not o['out']:
+        raise Refused('Where should the picture go? (--out FILE, or --out - for the output)')
+    if o['mode'] == 'area' and not o['geometry']:
+        raise Refused('An area needs --geometry X,Y,WIDTH,HEIGHT')
+    return o
+
+
+def screen_name(want, outs):
+    """--screen: a screen's name, or its number among the screens that are on (1 = the first; 0 counts as the first too)."""
+    on = [o['name'] for o in outs if o.get('enabled')]
+    if want in on:
+        return want
+    try:
+        n = int(want)
+    except (TypeError, ValueError):
+        raise Refused('There is no screen called %s.' % want)
+    n = n - 1 if n >= 1 else 0
+    if n >= len(on):
+        raise Refused('There is no screen %s (there are %d).' % (want, len(on)))
+    return on[n]
+
+
+def grim_args(o, outs):
+    """The grim command for a grab under labwc."""
+    a = ['grim']
+    if o['cursor']:
+        a.append('-c')
+    if o['mode'] == 'area' or (o['mode'] == 'window' and o['geometry']):
+        x, y, w, h = o['geometry']
+        a += ['-g', '%d,%d %dx%d' % (x, y, w, h)]
+    elif o['mode'] == 'window':
+        # labwc tells no program which window is active: Capture gives its place (--geometry) or gets exit 3.
+        raise NoWindow("labwc can't say which window is active; give the window's place with --geometry.")
+    elif o['mode'] == 'screen':
+        name = screen_name(o['screen'], outs) if o['screen'] is not None else next((x['name'] for x in outs if x.get('enabled')), None)
+        if name:
+            a += ['-o', name]
+    return a + [o['out']]
+
+
+def grab(argv):
+    o = parse_grab_args(argv)
+    if wm() != 'kwin':
+        cmd = grim_args(o, read('labwc') if o['mode'] == 'screen' else [])
+        os.execvp(cmd[0], cmd)
+    k = {'geometry': None, 'output': None, 'cursor': o['cursor'], 'file': o['out']}
+    if o['mode'] == 'window':
+        if o['geometry']:
+            k['geometry'] = o['geometry']
+        else:
+            k['window'] = True
+    elif o['mode'] == 'area':
+        k['geometry'] = o['geometry']
+    elif o['mode'] == 'screen':
+        if o['screen'] is not None:
+            k['output'] = screen_name(o['screen'], read('kwin'))
+        else:
+            k['activeScreen'] = True
+    _write(kwin_shot(k), o['out'])
+
+
+# ------------------------------------------------------------------
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    arg = argv[2] if len(argv) > 2 else os.environ.get('HEARTH_INPUT', '')
+    try:
+        if cmd == 'get':
+            print(json.dumps(read()))
+        elif cmd == 'info':
+            print(json.dumps(info()))
+        elif cmd in ('apply', 'set'):
+            ch = json.loads(arg or '{}')
+            wmname = wm()
+            live, problem = apply(ch, wmname)
+            if cmd == 'set':
+                if 'tearing' in ch:
+                    if wmname != 'kwin':
+                        raise Refused('Tearing: ' + NEEDS_KWIN)
+                    tearing(bool(ch['tearing']))
+                    save_entries({}, {'tearing': bool(ch['tearing'])})
+                if not problem and ch.get('outputs'):
+                    # A new main screen renumbers the others: every screen's is kept.
+                    names = [o['name'] for o in live] if any('priority' in e for e in ch['outputs'].values()) else list(ch['outputs'])
+                    keep(names, wmname, live)
+                    if names != list(ch['outputs']) and wmname == 'kwin' and saved().get('desktopsMainOnly'):
+                        try:
+                            main_desktops(True, live)
+                        except Exception as e:  # noqa: BLE001
+                            io.log_event('Desktops on the new main screen: %s' % e)
+            r = info(wmname, live)
+            r['problem'] = problem
+            print(json.dumps(r))
+        elif cmd == 'keep':
+            names = json.loads(arg or '[]')
+            keep(names if isinstance(names, list) else [names])
+            print(json.dumps(info()))
+        elif cmd == 'restore':
+            print(json.dumps(restore()))
+        elif cmd == 'autoscale':
+            print(json.dumps(autoscale()))
+        elif cmd == 'night':
+            print(json.dumps(night(json.loads(arg) if arg.strip() else None)))
+        elif cmd == 'plan':
+            wmname = wm()
+            live = read(wmname)
+            mode = arg or 'extend'
+            ch = switch_plan(mode, live, wmname, info(wmname, live)['mirror']['why'])
+            prev = {o['name']: entry_of(o) for o in live if o['name'] in ch}
+            print(json.dumps({'mode': mode, 'changes': {'outputs': ch}, 'prev': {'outputs': prev}, 'names': sorted(ch)}))
+        elif cmd == 'option':
+            # Settings › Display's own switches that aren't a screen's: {"x11Scale": bool, "barrier": {px, corner},
+            # "desktopsMainOnly": bool, "autoBrightness": bool, "autoBrightnessOffset": int}. screens.json keeps Hearth's, KDE's files KDE's.
+            o = json.loads(arg or '{}')
+            wmname = wm()
+            extra = {}
+            if 'x11Scale' in o or 'barrier' in o or 'desktopsMainOnly' in o:
+                if wmname != 'kwin':
+                    raise Refused(NEEDS_KWIN)
+            if 'x11Scale' in o:
+                x11_scale(bool(o['x11Scale']))
+            if 'barrier' in o:
+                barrier(o['barrier'] or {})
+            if 'desktopsMainOnly' in o:
+                main_desktops(bool(o['desktopsMainOnly']))
+                extra['desktopsMainOnly'] = bool(o['desktopsMainOnly'])
+            if 'autoBrightness' in o:
+                if o['autoBrightness'] and not light_source()[1]:
+                    raise Refused('This PC has no light sensor.')
+                extra['autoBrightness'] = bool(o['autoBrightness'])
+            if 'autoBrightnessOffset' in o:
+                extra['autoBrightnessOffset'] = clamp_offset(o['autoBrightnessOffset'])
+            if extra:
+                save_entries({}, extra)
+            print(json.dumps(info(wmname)))
+        elif cmd == 'ddc':
+            print(json.dumps(ddc_list()))
+        elif cmd == 'ddc-set':
+            print(json.dumps(ddc_set(argv[2], argv[3])))
+        elif cmd == 'brightness':
+            kwin_brightness(argv[2], argv[3])
+            print(json.dumps({'name': argv[2], 'value': int(argv[3])}))
+        elif cmd == 'light':
+            name, src = light_source()
+            print(json.dumps({'sensor': src is not None, 'source': name, 'lux': src.read() if src else None}))
+        elif cmd == 'autobright':
+            print(json.dumps(autobright()))
+        elif cmd == 'shot':
+            shot(argv[2:])
+        elif cmd == 'grab':
+            grab(argv[2:])
+        else:
+            sys.exit(__doc__)
+    except NoWindow as e:
+        print('error: %s' % e)
+        sys.exit(3)
+    except Refused as e:
+        print('error: %s' % e)
+        sys.exit(1)
+    except ValueError as e:
+        print('error: %s' % e)
+        sys.exit(2)
+
+
+if __name__ == '__main__':
+    main(sys.argv)

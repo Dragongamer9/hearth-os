@@ -1,0 +1,26 @@
+# Hearth 1.14: Steam Game Mode beside the desktop for %i (docs/SIDE-BY-SIDE.md). Only started from Desktop Mode by
+# hearth-side-by-side when you turned it on in Settings; there is no [Install] section, so it can never start at boot
+# or on its own. It's a second sign-in of your own account on its own screen (tty9): systemd opens the session (no
+# password: only its session part, as a kiosk does) and nimbus-session runs Steam Game Mode only (HEARTH_SIDE=1).
+[Unit]
+Description=Hearth: Steam Game Mode beside the desktop for %i
+After=systemd-user-sessions.service
+Conflicts=getty@tty9.service
+
+[Service]
+Type=simple
+User=%i
+PAMName=login
+TTYPath=/dev/tty9
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty9
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland XDG_SESSION_CLASS=user XDG_SEAT=seat0 XDG_VTNR=9 HEARTH_SIDE=1
+ExecStart=/usr/bin/nimbus-session
+Restart=no
+TimeoutStopSec=20

@@ -33,6 +33,9 @@ ShellRoot {
         onOskSend: msg => pad.send(msg)
     }
 
+    // The "filemanager" IPC for this Files (it lives in FilesIpc.qml since 1.14).
+    FilesIpc { get: () => files; peek: () => files }
+
     function begin() {
         if (reqPath) return;        // reqFile starts the picker once it has read the request
         started = true;

@@ -1,0 +1,24 @@
+[Desktop Entry]
+# Hearth Capture: Hearth's own screenshot tool in Desktop Mode (Mantel's Capture.qml, 1.14), in place of KDE's Spectacle.
+Name=Capture
+GenericName=Screenshot Tool
+Comment=Take screenshots of the screen, a window or an area, and mark them up
+Exec=/usr/bin/hearth-capture
+Icon=hearth-capture
+Type=Application
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;snip;snipping tool;print screen;screen;window;area;markup;ocr;qr;
+OnlyShowIn=Nimbus;
+Actions=area;window;recent;
+
+[Desktop Action area]
+Name=Capture an area
+Exec=/usr/bin/hearth-capture area
+
+[Desktop Action window]
+Name=Capture the window in front
+Exec=/usr/bin/hearth-capture window
+
+[Desktop Action recent]
+Name=Recent screenshots
+Exec=/usr/bin/hearth-capture --recent

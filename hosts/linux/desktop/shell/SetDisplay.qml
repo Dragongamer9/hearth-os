@@ -1,24 +1,39 @@
-// Hearth Settings › Display: resolution, refresh rate, scale (wlr-randr), and brightness. With two or more screens:
-// which one you're setting, where it is next to the others, and turning one off. A change is kept only if you
-// confirm it within 15 seconds, so a mode the screen can't show fixes itself. Kept settings go to
-// ~/.config/nimbus/display.sh, which Desktop Mode runs at start (same file as Hearth's Game Mode settings use for
-// the desktop).
+// Hearth Settings › Display: resolution, refresh rate, scale, rotation and brightness; with two or more screens which
+// one you're setting, where it is next to the others, and turning one off; under KWin (Mantel on KWin, 1.14) HDR on
+// the desktop with its SDR brightness, wide colour, VRR / FreeSync, colour profiles and allowing tearing in games
+// (under labwc those rows say they need Mantel on KWin). Night light (on/off, how warm, when: your times, sunset to
+// sunrise where you are, or all the time; its fade) is Settings' own. 1.14's KDE rows (docs/SCREENS.md): the main
+// screen, colour intensity and accuracy, HDR calibration, Extended Dynamic Range, overscan and RGB range, X11 apps'
+// scaling, external screens' brightness (DDC/CI), auto-brightness and how bright, the edge barrier and desktops on the main screen
+// only. A row the screen or KWin can't do is hidden (or says why, where KDE shows it greyed).
+// Screen power saving (1.14, hearth-screen-psr): Intel laptops' Panel Self Refresh, Auto / On / Off. Auto turns it off
+// on Alder Lake-N / Twin Lake, where it can make the screen freeze or lag (the owner's laptop); the row says so.
+// Everything goes through hearth-screens (docs/SCREENS.md: wlr-randr under labwc, kscreen-doctor / KWin's D-Bus under
+// KWin). A change is kept only if you confirm it within 15 seconds, so a mode the screen can't show fixes itself, and
+// the page says it went back. Kept settings go to ~/.config/nimbus/screens.json (and display.sh, which labwc's start
+// runs; same lines as before), written by hearth-screens keep with hearth_settings_io.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 
 SetPage {
     id: page
     title: "Display"
-    property var out: null        // wlr-randr's output (the one being set)
-    property var outs: []         // every screen wlr-randr knows (on or off)
+    property var out: null        // the screen being set (hearth-screens get's shape: wlr-randr's, with more)
+    property var outs: []         // every screen (on or off)
+    property var sinfo: null      // hearth-screens info: {wm, nightLight, tearing, mirror, iccProfiles}
+    readonly property bool kwin: !!sinfo && sinfo.wm === "kwin"
+    readonly property string needsKwin: "Needs Mantel on KWin"
     property string picked: ""    // the name of the screen being set ("" = the first one that's on)
     property var cur: null        // {width, height, refresh}
-    property var prev: null       // what to go back to if not confirmed
+    property var prev: null       // {outputs: {name: entry}}: what to go back to if not confirmed
+    property var trying: []       // the screens whose change waits for Keep
     property int countdown: 0
-    property var want: null       // the mode just asked for, checked when wlr-randr answers
+    property var want: null       // the mode just asked for, checked when hearth-screens answers
     property string problem: ""   // the screen didn't take it
+    property string notice: ""    // what went back by itself
     property int brightness: -1
 
     readonly property var resolutions: {
@@ -29,30 +44,66 @@ SetPage {
     }
     readonly property var rates: out && cur ? out.modes.filter(m => m.width === cur.width && m.height === cur.height).map(m => Math.round(m.refresh)).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => b - a) : []
 
-    function load() { randr.running = true; bright.running = true; }
+    // Screen power saving (PSR) on an Intel built-in screen: read on open (nothing written), changed through pkexec.
+    property var psr: null
+    readonly property string psrBin: Quickshell.env("HEARTH_PSR_BIN") || "/usr/libexec/nimbus/hearth-screen-psr"
+    SetJob { id: psrJob; helper: page.psrBin }
+    SetJob { id: psrSet; helper: page.psrBin; admin: true }
+    function load() { psrJob.run(["status"], r => { page.psr = r; }, () => { page.psr = null; }); screensJob.run(["info"], r => page.took(r), e => { page.out = null; page.problem = e; }); bright.running = true; gm.run(["get"], r => { page.gmode = r; }, () => {}); if (!page.ddc) ddcJob.run(["ddc"], r => { page.ddc = r; }, () => { page.ddc = { available: false, screens: [] }; }); }
+    // External screens' brightness over DDC/CI (ddcutil; read once, it takes a moment).
+    property var ddc: null
+    SetJob { id: ddcJob; helper: "hearth-screens" }
+    // Settings › Display's own options (X11 apps, the edge barrier, desktops, auto-brightness): hearth-screens option.
+    function option(o, label) { screensJob.run(["option", JSON.stringify(o)], r => { page.took(r); if (label) SettingsNav.toast(label); }, e => { page.problem = e; page.load(); }); }
+    // Game Mode's HDR (gamescope's --hdr-enabled, the same switch as Gaming › Performance): hearth-gamemode-display.
+    property var gmode: null
+    SetJob { id: gm; helper: "hearth-gamemode-display" }
+    SetJob { id: screensJob; helper: "hearth-screens" }
+    readonly property bool hdrOk: !!gmode && !!gmode.screen && gmode.screen.hdr && gmode.has.hdr
     Component.onCompleted: load()
-    Process {
-        id: randr
-        command: ["wlr-randr", "--json"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const all = JSON.parse(text);
-                    page.outs = all;
-                    const outs = all.filter(o => o.enabled);
-                    page.out = all.find(o => o.name === page.picked) || outs[0] || null;
-                    if (page.out && !page.picked) page.picked = page.out.name;
-                    const m = page.out ? page.out.modes.find(x => x.current) : null;
-                    page.cur = m ? { width: m.width, height: m.height, refresh: m.refresh } : null;
-                    // Did the screen really switch? (wlr-randr can refuse quietly.)
-                    if (page.want && m) {
-                        const ok = m.width === page.want.w && m.height === page.want.h && Math.round(m.refresh) === Math.round(page.want.r);
-                        if (!ok) { page.problem = `The screen stayed at ${m.width} × ${m.height}, ${Math.round(m.refresh)} Hz: it didn't accept ${page.want.w} × ${page.want.h} at ${Math.round(page.want.r)} Hz.`; page.countdown = 0; }
-                        else page.problem = "";
-                        page.want = null;
-                    }
-                } catch (e) { page.out = null; }
-            }
+    // "display:night", "display:hdr", "display:games", "display:layout", "display:bright", "display:signal",
+    // "display:several": Settings opened at that part of the page
+    // (SettingsNav.pageAnchor), scrolled there once the screens are read (its rows may be greyed out, so it scrolls
+    // rather than focusing).
+    function goToAnchor() {
+        // "display:calibrate": straight into Calibrate HDR (when the screen can).
+        if (SettingsNav.pageAnchor === "calibrate") { SettingsNav.pageAnchor = ""; Qt.callLater(cal.start); return; }
+        const to = ({ night: nightSwitch, hdr: hdrHead, games: gamesHead, layout: layoutHead, bright: brightHead, signal: sigHead, several: severalHead, power: psrHead })[SettingsNav.pageAnchor];
+        if (!to) return;
+        SettingsNav.pageAnchor = "";
+        anchorGo.to = to;
+        anchorGo.restart();     // after the rows that just appeared are laid out
+    }
+    Timer {
+        id: anchorGo
+        property var to: null
+        interval: 400
+        onTriggered: {
+            const y = to.mapToItem(page.contentItem, 0, 0).y;
+            page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - 16));
+            if (to === nightSwitch) nightSwitch.forceActiveFocus();
+        }
+    }
+    // hearth-screens answered (info, or apply's info): the screens as they are now.
+    function took(r) {
+        const first = page.sinfo === null;
+        page.sinfo = r;
+        if (!autoOffSave.running) page.autoOffTouched = false;
+        if (first) goToAnchor();
+        const all = r.outputs || [];
+        page.outs = all;
+        const outs = all.filter(o => o.enabled);
+        page.out = all.find(o => o.name === page.picked) || outs[0] || null;
+        if (page.out && !page.picked) page.picked = page.out.name;
+        const m = page.out ? page.out.modes.find(x => x.current) : null;
+        page.cur = m ? { width: m.width, height: m.height, refresh: m.refresh } : null;
+        // Did the screen really switch? (A compositor can refuse quietly.)
+        if (r.problem) { page.problem = r.problem; page.countdown = 0; page.want = null; }
+        else if (page.want && m) {
+            const ok = m.width === page.want.w && m.height === page.want.h && Math.round(m.refresh) === Math.round(page.want.r);
+            if (!ok) { page.problem = `The screen stayed at ${m.width} × ${m.height}, ${Math.round(m.refresh)} Hz: it didn't accept ${page.want.w} × ${page.want.h} at ${Math.round(page.want.r)} Hz.`; page.countdown = 0; }
+            else page.problem = "";
+            page.want = null;
         }
     }
     Process {
@@ -60,29 +111,60 @@ SetPage {
         command: ["brightnessctl", "-m", "-c", "backlight"]
         stdout: StdioCollector { onStreamFinished: { const f = text.trim().split(","); page.brightness = f.length >= 4 ? parseInt(f[3]) : -1; } }
     }
-    function modeArg(w, h, r) { return `${w}x${h}@${r.toFixed ? r.toFixed(3) : r}Hz`; }
+    // What a screen shows now, in hearth-screens' words (to go back to it).
+    function entryOf(o) {
+        const m = o.modes.find(x => x.current);
+        const e = { enabled: o.enabled, scale: o.scale, pos: o.position || { x: 0, y: 0 }, rotation: o.rotation || "normal" };
+        if (m) e.mode = { w: m.width, h: m.height, r: m.refresh };
+        if (o.hdr && o.hdr.capable) e.hdr = o.hdr.on;
+        if (o.vrr && o.vrr.capable && kwin) e.vrr = o.vrr.policy;
+        if (o.wcg && o.wcg.capable) e.wcg = o.wcg.on;
+        if (o.overscan && o.overscan.capable) e.overscan = o.overscan.value;
+        if (o.rgbRange && o.rgbRange.capable) e.rgbRange = o.rgbRange.value;
+        if (o.edr && o.edr.capable) e.edr = o.edr.policy;
+        if (o.hdrCal && o.hdrCal.capable) e.hdrCal = { peak: o.hdrCal.peakSet, avg: o.hdrCal.avgSet, min: o.hdrCal.minSet };
+        return e;
+    }
+    // Change screens now and wait for Keep (CHANGES: {name: entry}). A second change while one waits goes back to what
+    // was there before both, not to the one waiting (it may be the mode the screen can't show).
+    function tryChange(changes) {
+        if (!out) return;
+        if (countdown === 0) {
+            const p = {};
+            for (const n in changes) { const o = outs.find(x => x.name === n); if (o) p[n] = entryOf(o); }
+            prev = { outputs: p };
+            trying = Object.keys(changes);
+        } else {
+            const p = prev ? prev.outputs : {};
+            for (const n in changes) if (!p[n]) { const o = outs.find(x => x.name === n); if (o) p[n] = entryOf(o); }
+            prev = { outputs: p };
+            trying = Object.keys(p);
+        }
+        problem = ""; notice = "";
+        countdown = 15;
+        screensJob.run(["apply", JSON.stringify({ outputs: changes })], r => page.took(r), e => { page.problem = e; page.countdown = 0; page.want = null; page.load(); });
+    }
+    function modeArg(w, h, r) { return { w: w, h: h, r: r }; }
     function apply(w, h, r, scale) {
         if (!out || !cur) return;
-        // A second change while one is waiting for Keep goes back to what was there before both, not to the
-        // one waiting (it may be the mode the screen can't show).
-        if (countdown === 0) prev = { name: out.name, mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale, pos: posArg(out), on: true };
-        const args = ["wlr-randr", "--output", out.name];
+        const e = {};
         if (w) {
-            // The screen's exact rate (e.g. 143.981), not the rounded one shown on the button: wlr-randr only
-            // switches to a mode the screen lists.
+            // The screen's exact rate (e.g. 143.981), not the rounded one shown on the button.
             const exact = out.modes.find(x => x.width === w && x.height === h && Math.round(x.refresh) === Math.round(r));
             const rate = exact ? exact.refresh : r;
-            args.push("--mode", modeArg(w, h, rate));
+            e.mode = modeArg(w, h, rate);
             want = { w: w, h: h, r: rate };
         }
-        if (scale) args.push("--scale", String(scale));
-        problem = "";
-        applyProc.command = args;
-        applyProc.running = true;
-        countdown = 15;
+        if (scale) e.scale = scale;
+        const c = {}; c[out.name] = e;
+        tryChange(c);
     }
-    // wlr-randr runs, then the screen is read back to see what it's really showing.
-    Process { id: applyProc; onExited: (code) => { if (code !== 0 && page.want) { page.problem = "The screen didn't accept that mode."; page.countdown = 0; page.want = null; } Qt.callLater(page.load); } }
+    // Changes that need no Keep (they can't leave the screen dark): applied and kept at once.
+    function setNow(e, label) {
+        if (!out) return;
+        const c = {}; c[out.name] = e;
+        screensJob.run(["set", JSON.stringify({ outputs: c })], r => { page.took(r); if (!r.problem && label) SettingsNav.toast(label); }, err => { page.problem = err; page.load(); });
+    }
     // ---- several screens: where each one is, and turning one off
     function posArg(o) { const p = o && o.position ? o.position : { x: 0, y: 0 }; return p.x + "," + p.y; }
     // A screen's size on the desktop (its mode divided by its scale, turned for a rotated screen).
@@ -93,6 +175,8 @@ SetPage {
         return { w: Math.round((turned ? m.height : m.width) / sc), h: Math.round((turned ? m.width : m.height) / sc) };
     }
     readonly property var others: outs.filter(o => o.enabled && out && o.name !== out.name)
+    // The main screen (KWin's priority 1; the bar, notifications and new windows go there). Under labwc: the first.
+    readonly property bool isMain: !!out && (kwin ? out.priority === 1 : outs.filter(o => o.enabled)[0] === out)
     readonly property string side: {
         if (!out || !others.length || !out.position) return "";
         const o = others[0], p = out.position, q = o.position || { x: 0, y: 0 };
@@ -108,58 +192,42 @@ SetPage {
         const o = others[0], q = o.position || { x: 0, y: 0 }, a = logical(o), me = logical(out);
         const pos = where === "right" ? [q.x + a.w, q.y] : where === "left" ? [q.x - me.w, q.y]
             : where === "above" ? [q.x, q.y - me.h] : [q.x, q.y + a.h];
-        // wlroots wants positions from 0: move the other screen over instead of going below 0.
-        const args = ["wlr-randr", "--output", out.name, "--pos", Math.max(0, pos[0]) + "," + Math.max(0, pos[1])];
-        if (pos[0] < 0 || pos[1] < 0) args.push("--output", o.name, "--pos", Math.max(0, -pos[0]) + "," + Math.max(0, -pos[1]));
-        if (countdown === 0) prev = { name: out.name, mode: modeArg(cur.width, cur.height, cur.refresh), scale: out.scale, pos: posArg(out), on: true, other: o.name, otherPos: posArg(o) };
-        problem = "";
-        applyProc.command = args;
-        applyProc.running = true;
-        countdown = 15;
+        // Positions from 0 (wlroots wants that): move the other screen over instead of going below 0.
+        const c = {};
+        c[out.name] = { pos: { x: Math.max(0, pos[0]), y: Math.max(0, pos[1]) } };
+        if (pos[0] < 0 || pos[1] < 0) c[o.name] = { pos: { x: Math.max(0, -pos[0]), y: Math.max(0, -pos[1]) } };
+        tryChange(c);
     }
     function setOn(on) {
         if (!out) return;
         if (!on && !others.length) { problem = "That's the only screen that's on, so it stays on."; return; }
-        if (countdown === 0) prev = { name: out.name, mode: cur ? modeArg(cur.width, cur.height, cur.refresh) : "", scale: out.scale, pos: posArg(out), on: out.enabled };
-        problem = "";
-        applyProc.command = ["wlr-randr", "--output", out.name, on ? "--on" : "--off"];
-        applyProc.running = true;
-        countdown = 15;
+        const c = {}; c[out.name] = { enabled: on };
+        tryChange(c);
     }
-    function lineFor(o) {
-        if (!o.enabled) return `wlr-randr --output '${o.name}' --off`;   // turned off: remembered as off
-        const m = o.modes.find(x => x.current) || o.modes[0];
-        return `wlr-randr --output '${o.name}' --on --mode '${modeArg(m.width, m.height, m.refresh)}' --scale ${o.scale}` + (outs.length > 1 ? ` --pos ${posArg(o)}` : "");
-    }
+    // Keep: what the waiting screens show now goes into screens.json (and display.sh), through hearth-screens keep.
     function keep() {
         countdown = 0;
-        const lines = [[lineFor(out), out.name]];
-        // A screen moved over to make room keeps its new place too.
-        if (prev && prev.other) { const o = outs.find(x => x.name === prev.other); if (o && o.enabled) lines.push([lineFor(o), o.name]); }
-        saveLines(lines);
+        const names = trying.length ? trying : (out ? [out.name] : []);
+        trying = [];
+        if (names.length) screensJob.run(["keep", JSON.stringify(names)], r => { page.took(r); SettingsNav.toast("Display settings kept"); }, e => { page.problem = "Couldn't save the display settings: " + e; });
     }
-    // [[line, screen name]...] into display.sh, replacing those screens' lines and keeping the others'. Under the
-    // lock Hearth's own writer uses, flushed to the drive, the old one kept as display.sh.bak (SETTINGS-PERSISTENCE.md).
-    function saveLines(lines) {
-        Quickshell.execDetached(["sh", "-c", 'd="$HOME/.config/nimbus"; f="$d/display.sh"; mkdir -p "$d" || exit 1; exec 9>"$d/.display.sh.lock"; flock 9 2>/dev/null; keep=$(grep "^wlr-randr " "$f" 2>/dev/null); new=""; while [ $# -ge 2 ]; do keep=$(printf "%s\n" "$keep" | grep -vF -- "--output \'$2\' "); new="$new$1\n"; shift 2; done; t=$(mktemp "$d/.display.sh.XXXXXX") || exit 1; { printf "#!/bin/sh\n# Written by Hearth Settings › Display\n"; [ -n "$keep" ] && printf "%s\n" "$keep"; printf "$new"; } > "$t" && chmod +x "$t" && sync "$t" 2>/dev/null; [ -s "$f" ] && cp -p "$f" "$f.bak"; mv -f "$t" "$f"', "sh"].concat([].concat.apply([], lines)));
-    }
-    function revert() {
+    // Go back (the button, or by itself after 15 s: then the page says so, so nothing changes without you knowing).
+    function revert(byItself) {
         countdown = 0;
-        if (prev) {
-            const args = ["wlr-randr", "--output", prev.name || out.name];
-            if (prev.on === false) args.push("--off");
-            else {
-                args.push("--on");
-                if (prev.mode) args.push("--mode", prev.mode);
-                args.push("--scale", String(prev.scale));
-                if (outs.length > 1 && prev.pos) args.push("--pos", prev.pos);
+        trying = [];
+        if (prev && prev.outputs && Object.keys(prev.outputs).length) {
+            screensJob.run(["apply", JSON.stringify(prev)], r => page.took(r), e => { page.problem = e; page.load(); });
+            if (byItself) {
+                page.notice = "Went back to the display settings you had: the new ones weren't kept within 15 seconds.";
+                SettingsNav.toast("Display: went back to the settings you had");
             }
-            if (prev.other) args.push("--output", prev.other, "--pos", prev.otherPos);
-            Quickshell.execDetached(args);
-        }
-        Qt.callLater(load);
+        } else Qt.callLater(load);
+        prev = null;
     }
-    Timer { interval: 1000; repeat: true; running: page.countdown > 0; onTriggered: { page.countdown--; if (page.countdown === 0) page.revert(); } }
+    // X on the controller (the frame's hint, mockup settings-A2): Keep these settings while a change waits.
+    readonly property string xLabel: countdown > 0 ? "Keep these settings" : ""
+    function xAction() { if (countdown > 0) keep(); }
+    Timer { interval: 1000; repeat: true; running: page.countdown > 0; onTriggered: { page.countdown--; if (page.countdown === 0) page.revert(true); } }
 
     Rectangle {
         visible: page.countdown > 0
@@ -181,6 +249,100 @@ SetPage {
     }
     onCountdownChanged: if (countdown === 15) keepBtn.forceActiveFocus()
 
+    // 1.14 (mockup settings-A2): your screens drawn as they're placed (1, 2…), the picked one lit; its name, mode and
+    // the graphics card it's on; Identify (each screen shows its number for 3 s), Detect (reads the screens again) and
+    // Arrange (to "Where this screen is").
+    property string gpuName: ""
+    Process {
+        running: true
+        command: ["sh", "-c", "g=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1); [ -n \"$g\" ] || g=$(lspci -mm 2>/dev/null | grep -E '\"(VGA|3D|Display)' | head -1 | awk -F'\" \"' '{print $2\" \"$3}'); echo \"$g\""]
+        stdout: StdioCollector { onStreamFinished: {
+            const t = text.trim().replace(/\[|\]/g, " ").replace(/\s+/g, " ");
+            const m = /\b((RTX|GTX|RX|Arc)\s?[A-Z]?\d{3,4}\s?(Ti|SUPER|XT|XTX)?)\b/i.exec(t);
+            page.gpuName = m ? m[1].trim() : /Radeon/i.test(t) ? "Radeon graphics" : /Intel/i.test(t) ? "Intel graphics" : t;
+        } }
+    }
+    readonly property var drawn: {
+        const on = outs.filter(o => o.enabled);
+        if (!on.length) return [];
+        const ls = on.map(o => ({ o: o, p: o.position || { x: 0, y: 0 }, s: logical(o) }));
+        const minX = Math.min(...ls.map(l => l.p.x)), minY = Math.min(...ls.map(l => l.p.y));
+        const maxX = Math.max(...ls.map(l => l.p.x + l.s.w)), maxY = Math.max(...ls.map(l => l.p.y + l.s.h));
+        const k = Math.min(420 / Math.max(1, maxX - minX), 150 / Math.max(1, maxY - minY));
+        return ls.map((l, i) => ({ name: l.o.name, n: i + 1, x: (l.p.x - minX) * k, y: (l.p.y - minY) * k, w: Math.max(40, l.s.w * k - 8), h: Math.max(28, l.s.h * k - 8) }));
+    }
+    property bool identifying: false
+    Timer { id: identifyOff; interval: 3000; onTriggered: page.identifying = false }
+    Variants {
+        model: page.identifying ? Quickshell.screens : []
+        delegate: PanelWindow {
+            required property var modelData
+            screen: modelData
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.namespace: "hearth-identify"
+            anchors { top: true; left: true }
+            margins { top: 40; left: 40 }
+            implicitWidth: 180; implicitHeight: 180
+            color: "transparent"
+            exclusionMode: ExclusionMode.Ignore
+            Rectangle {
+                anchors.fill: parent; radius: 24; color: Theme.panel; border.width: 3; border.color: Theme.accent
+                Text {
+                    anchors.centerIn: parent
+                    text: String(Math.max(1, (page.drawn.find(d => d.name === modelData.name) || { n: Quickshell.screens.indexOf(modelData) + 1 }).n))
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 110; font.weight: Font.Bold
+                }
+            }
+        }
+    }
+    Rectangle {
+        visible: !!page.out
+        Layout.fillWidth: true
+        implicitHeight: Math.max(190, scrInfo.implicitHeight + 50)
+        radius: SetStyle.bigRadius; color: SetStyle.card; border.width: 1; border.color: SetStyle.tint(Theme.text, 0.05)
+        Item {
+            id: scrPic
+            x: 24; y: 22
+            width: Math.max(...page.drawn.map(d => d.x + d.w).concat([120])); height: Math.max(...page.drawn.map(d => d.y + d.h).concat([80]))
+            Repeater {
+                model: page.drawn
+                delegate: Rectangle {
+                    id: scr
+                    required property var modelData
+                    readonly property bool lit: modelData.name === page.picked
+                    x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+                    radius: 8
+                    color: lit ? SetStyle.mix(SetStyle.card2, Theme.accent, 0.12) : SetStyle.card2
+                    border.width: lit ? 3 : 1; border.color: lit ? Theme.accent : Theme.line
+                    Text { anchors.centerIn: parent; text: scr.modelData.n; color: Theme.text; font.family: Theme.font; font.pixelSize: Math.min(44, scr.height * 0.4); font.weight: scr.lit ? Font.Bold : Font.Normal }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { page.picked = scr.modelData.name; page.countdown = 0; page.load(); } }
+                }
+            }
+        }
+        ColumnLayout {
+            id: scrInfo
+            anchors { left: scrPic.right; leftMargin: 32; right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
+            spacing: 6
+            Text {
+                Layout.fillWidth: true
+                text: page.out ? (page.out.model || page.out.description || page.out.name) + (page.drawn.length < 2 || page.isMain ? " · main display" : "") : ""
+                color: Theme.text; font.family: Theme.font; font.pixelSize: 19; font.weight: Font.DemiBold; elide: Text.ElideRight
+            }
+            Text {
+                Layout.fillWidth: true
+                text: page.cur ? [page.cur.width + " × " + page.cur.height, Math.round(page.cur.refresh) + " Hz", page.gmode && page.gmode.hdr ? "HDR on in Game Mode" : "HDR off", page.gpuName ? "connected to the " + page.gpuName : ""].filter(x => x).join(" · ") : (page.out && !page.out.enabled ? "Off" : "")
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                spacing: 8
+                Layout.topMargin: 6
+                SetButton { text: "Identify"; onActivated: { page.identifying = true; identifyOff.restart(); } }
+                SetButton { ghost: true; text: "Detect"; onActivated: { page.load(); SettingsNav.toast("Looked for screens again: " + page.outs.length + (page.outs.length === 1 ? " screen" : " screens")); } }
+                SetButton { ghost: true; text: "Arrange"; visible: page.others.length > 0; onActivated: arrangeChoice.forceActiveFocus() }
+            }
+        }
+    }
+
     // Two or more screens: which one these settings are for.
     SetChoice {
         visible: page.outs.length > 1
@@ -190,22 +352,335 @@ SetPage {
         onChosen: v => { page.picked = v; page.countdown = 0; page.load(); }
     }
 
-    SetHeader { text: "Brightness & colour" }
+    SetHeader { id: brightHead; text: "Brightness & colour" }
     SetSlider {
         visible: page.brightness >= 0
         icon: "sun"; title: "Brightness"; sub: "Only for screens that let Hearth change it"; value: page.brightness / 100
         onMoved: v => { page.brightness = Math.max(1, Math.round(v * 100)); Quickshell.execDetached(["brightnessctl", "-q", "-c", "backlight", "set", page.brightness + "%"]); }
     }
+    // Auto-brightness: a laptop with a light sensor (iio-sensor-proxy's) follows the room (hearth-screens autobright,
+    // started by the shell while it's on; off until you turn it on). Hidden without a sensor. "How bright" moves
+    // what it picks up or down; a brightness you set by hand pauses it until the light changes.
+    readonly property var autoB: page.sinfo && page.sinfo.autoBrightness ? page.sinfo.autoBrightness : null
+    readonly property bool autoOn: !!autoB && autoB.capable && autoB.on
+    property int autoOffWant: 0
+    property bool autoOffTouched: false     // moved, not saved and read back yet
+    SetSwitch {
+        visible: !!page.autoB && page.autoB.capable
+        icon: "sun"; title: "Auto-brightness"; sub: "The screen follows the light in the room"
+        checked: page.autoOn
+        onToggled: v => page.option({ autoBrightness: v }, v ? "Auto-brightness on" : "Auto-brightness off")
+    }
+    SetSlider {
+        id: autoOffset
+        visible: page.autoOn
+        icon: "sun"; title: "How bright"; sub: "Darker or brighter than Auto-brightness picks for the room"
+        step: 0.0625
+        value: ((page.autoOffTouched ? page.autoOffWant : page.autoB ? page.autoB.offset : 0) + 40) / 80
+        valueText: { const o = Math.round(value * 80 - 40); return o === 0 ? "As picked" : (o > 0 ? "+" : "") + o + "%"; }
+        onMoved: v => { page.autoOffWant = Math.round(v * 80 - 40); page.autoOffTouched = true; autoOffSave.restart(); }
+    }
+    Text {
+        visible: page.autoOn
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: page.autoB && page.autoB.paused ? "Auto-brightness is paused: you set the brightness yourself. It follows the room again when the light changes."
+            : "Setting the brightness yourself pauses Auto-brightness until the light in the room changes."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+    }
+    Timer { id: autoOffSave; interval: 600; onTriggered: page.option({ autoBrightnessOffset: page.autoOffWant }, "") }
+    // External screens' brightness: over DDC/CI (ddcutil), or KWin's own control where a newer KWin has it. The screen
+    // keeps it itself, so nothing is saved by Hearth. Moved a moment after you stop.
+    readonly property var extBright: {
+        const r = [];
+        for (const o of outs) if (o.enabled && o.kwinBrightness && o.kwinBrightness.capable && !/^eDP|^LVDS|^DSI/.test(o.name)) r.push({ name: o.name, label: o.model || o.name, value: o.kwinBrightness.value, via: "kwin" });
+        for (const d of (ddc && ddc.screens) || []) if (!r.some(x => x.name === d.name)) {
+            const o = outs.find(x => x.name === d.name);
+            r.push({ name: d.name, label: o ? (o.model || o.name) : d.name, value: Math.round(d.value * 100 / (d.max || 100)), via: "ddc" });
+        }
+        return r;
+    }
+    property var extWant: ({})
+    Repeater {
+        model: page.extBright
+        delegate: SetSlider {
+            required property var modelData
+            icon: "sun"; title: "Brightness · " + modelData.label
+            sub: modelData.via === "ddc" ? "Through the screen's own controls (DDC/CI); the screen keeps it" : "Set by KWin"
+            value: (page.extWant[modelData.name] !== undefined ? page.extWant[modelData.name] : modelData.value) / 100
+            onMoved: v => { const w = Object.assign({}, page.extWant); w[modelData.name] = Math.max(0, Math.round(v * 100)); page.extWant = w; extSave.who = modelData; extSave.restart(); }
+        }
+    }
+    Timer {
+        id: extSave
+        property var who: null
+        interval: 500
+        onTriggered: if (who) ddcJob.run([who.via === "ddc" ? "ddc-set" : "brightness", who.name, String(page.extWant[who.name])], () => {}, e => { page.problem = e; })
+    }
+    Text {
+        visible: !!page.ddc && !page.ddc.available && page.outs.some(o => !/^eDP|^LVDS|^DSI/.test(o.name)) && page.extBright.length === 0
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "External screens' brightness: " + (page.ddc ? page.ddc.why : "")
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+    }
     // Night light lives here now (it was in Appearance): the same setting (Settings.nightLight), and Quick Access's tile.
-    SetSwitch { icon: "moon"; title: "Night light"; sub: "Warmer colours from sunset to sunrise, to help you sleep"; checked: Settings.nightLight; onToggled: v => Settings.nightLight = v }
+    SetSwitch { id: nightSwitch; icon: "moon"; title: "Night light"; sub: "Warmer colours from sunset to sunrise, to help you sleep"; checked: Settings.nightLight; onToggled: v => Settings.nightLight = v }
+    SetSwitch {
+        icon: "sparkle"; title: "HDR"
+        sub: !page.gmode ? "" : !page.gmode.screen.hdr ? "This screen doesn't have HDR" : !page.gmode.has.hdr ? "This PC's gamescope can't do HDR"
+            : "Brighter, more vivid picture in games and videos that have it" + (page.gmode.hdr ? " · in Game Mode" : "")
+        enabled: page.hdrOk
+        checked: !!page.gmode && page.gmode.hdr
+        onToggled: v => gm.run(["set", JSON.stringify({ hdr: v })], r => { page.gmode = r; SettingsNav.toast((v ? "HDR on" : "HDR off") + " · from the next time Game Mode starts"); }, e => SettingsNav.toast(e))
+    }
+    // Night light's details (Settings: nightTemp, nightMode, nightFrom, nightTo; wlsunset under labwc, KWin's Night
+    // Light under KWin, both from the same settings).
+    SetSlider {
+        visible: Settings.nightLight
+        icon: "moon"; title: "How warm"; sub: "Night light's colour: further right is warmer"
+        value: (6500 - Settings.nightTemp) / 4500
+        valueText: Settings.nightTemp + " K"
+        onMoved: v => Settings.nightTemp = Math.round((6500 - v * 4500) / 100) * 100
+    }
+    SetChoice {
+        visible: Settings.nightLight
+        icon: "clock"; title: "When"
+        sub: Settings.nightMode === "always" ? "Warmer all the time"
+            : Settings.nightMode === "location" ? (Settings.nightPlace ? "From sunset to sunrise in " + Settings.nightPlace : "From sunset to sunrise: pick your town below")
+            : "From " + Settings.nightFrom + " to " + Settings.nightTo + ", fading in and out"
+        options: [{ value: "times", label: "Your times" }, { value: "location", label: "Sunset to sunrise" }, { value: "always", label: "All the time" }]
+        current: Settings.nightMode
+        onChosen: v => Settings.nightMode = v
+    }
+    // Sunset to sunrise where you are: your town, looked up by name (Open-Meteo, as the weather widget; only when you
+    // press Enter). Its place is kept in Settings (nightPlace, nightLat, nightLon), never looked up by itself.
+    property var places: []
+    property string placeMsg: ""
+    Process {
+        id: placeSearch
+        stdout: StdioCollector { onStreamFinished: {
+            try { const o = JSON.parse(text.trim().split("\n").pop()); page.places = (o.places || []).slice(0, 4); page.placeMsg = o.error || (page.places.length ? "" : "No place called that"); }
+            catch (e) { page.places = []; page.placeMsg = "Couldn't look that up"; }
+        } }
+    }
+    SetField {
+        id: placeField
+        visible: Settings.nightLight && Settings.nightMode === "location"
+        placeholder: Settings.nightPlace ? Settings.nightPlace + " · type another town, then Enter" : "Your town or city, then Enter"
+        onSubmitted: t => { if (!t.trim()) return; page.placeMsg = "Looking…"; placeSearch.command = ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-widgets").toString().replace(/^file:\/\//, "")), "places", t.trim()]; placeSearch.running = true; }
+    }
+    SetChoice {
+        visible: Settings.nightLight && Settings.nightMode === "location" && page.places.length > 0
+        icon: "globe"; title: "Which one"; sub: page.placeMsg
+        options: page.places.map((p, i) => ({ value: i, label: p.label || p.name }))
+        current: -1
+        onChosen: i => { const p = page.places[i]; if (!p) return; Settings.nightLat = Number(p.lat); Settings.nightLon = Number(p.lon); Settings.nightPlace = p.name || p.label; page.places = []; placeField.text = ""; SettingsNav.toast("Night light: sunset to sunrise in " + Settings.nightPlace); }
+    }
+    Text {
+        visible: Settings.nightLight && Settings.nightMode === "location" && page.placeMsg !== "" && page.places.length === 0
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: page.placeMsg; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+    }
+    SetChoice {
+        visible: Settings.nightLight && Settings.nightMode !== "always"
+        icon: "clock"; title: "Fade"; sub: "How long the colours take to change"
+        options: [5, 15, 30, 60].map(v => ({ value: v, label: v + " min" }))
+        current: Settings.nightFade
+        onChosen: v => Settings.nightFade = v
+    }
+    SetChoice {
+        visible: Settings.nightLight && Settings.nightMode === "times"
+        icon: "moon"; title: "Starts at"; sub: "Night light comes on"
+        options: ["18:00", "19:00", "19:30", "20:00", "21:00", "22:00"].map(v => ({ value: v, label: v }))
+        current: Settings.nightFrom
+        onChosen: v => Settings.nightFrom = v
+    }
+    SetChoice {
+        visible: Settings.nightLight && Settings.nightMode === "times"
+        icon: "sun"; title: "Ends at"; sub: "Back to normal colours"
+        options: ["05:00", "06:00", "07:00", "08:00", "09:00"].map(v => ({ value: v, label: v }))
+        current: Settings.nightTo
+        onChosen: v => Settings.nightTo = v
+    }
 
-    SetHeader { text: "Scale & layout"; visible: !!page.out }
+    // ---- HDR and colour on the desktop (KWin; under labwc these say they need Mantel on KWin)
+    readonly property bool deskHdr: !!out && !!out.hdr && out.hdr.capable
+    SetHeader { id: hdrHead; text: "HDR & colour on the desktop"; visible: !!page.out }
+    SetSwitch {
+        visible: !!page.out
+        icon: "sparkle"; title: "HDR on the desktop"
+        sub: !page.kwin ? page.needsKwin + " (Game Mode's HDR is the switch above)" : !page.deskHdr ? "This screen doesn't have HDR"
+            : "Brighter highlights in HDR videos, games and pictures; the desktop itself keeps its colours"
+        enabled: page.kwin && page.deskHdr
+        opacity: enabled ? 1 : 0.5
+        checked: page.deskHdr && page.out.hdr.on
+        onToggled: v => { const c = {}; c[page.out.name] = { hdr: v }; page.tryChange(c); }
+    }
+    // SDR (ordinary) content's brightness while HDR is on, in nits: KWin's sdr-brightness. Saved a moment after you
+    // stop moving it (no Keep needed: it can't leave the screen dark).
+    SetSlider {
+        visible: page.deskHdr && page.out.hdr.on
+        icon: "sun"; title: "Brightness of everything else"; sub: "Apps, the desktop and videos that aren't HDR, while HDR is on"
+        value: ((page.out && page.out.sdrBrightness ? page.out.sdrBrightness : 200) - 80) / 420
+        valueText: Math.round(80 + value * 420) + " nits"
+        onMoved: v => { page.sdrWant = Math.round(80 + v * 420); sdrSave.restart(); }
+    }
+    HdrCalibrate { id: cal; page: page }
+    property int sdrWant: 0
+    readonly property bool wcgOk: kwin && !!out && !!out.wcg && out.wcg.capable
+    Timer { id: sdrSave; interval: 700; onTriggered: page.setNow({ sdrBrightness: page.sdrWant }, "") }
+    // Colour intensity while HDR is on (KWin's SDR gamut wideness: ordinary content's colours from accurate to
+    // vivid). Saved a moment after you stop moving it.
+    SetSlider {
+        visible: page.deskHdr && page.out.hdr.on && !!page.out.sdrGamut && page.out.sdrGamut.capable
+        icon: "palette"; title: "Colour intensity"; sub: "Ordinary apps and videos while HDR is on: left is accurate, right more vivid"
+        value: (page.gamutWant >= 0 ? page.gamutWant : (page.out && page.out.sdrGamut ? page.out.sdrGamut.value : 0)) / 100
+        valueText: Math.round(value * 100) + "%"
+        onMoved: v => { page.gamutWant = Math.round(v * 100); gamutSave.restart(); }
+    }
+    property int gamutWant: -1
+    Timer { id: gamutSave; interval: 700; onTriggered: { page.setNow({ sdrGamut: page.gamutWant }, ""); page.gamutWant = -1; } }
+    // HDR calibration: how bright the screen really gets (KWin's peak, average and lowest brightness), with Hearth's
+    // own test pictures; kept only when you finish, and then with "Keep these settings?".
+    SetRow {
+        visible: page.kwin && page.deskHdr && page.out.hdr.on && !!page.out.hdrCal && page.out.hdrCal.capable
+        icon: "sparkle"; title: "Calibrate HDR"; chevron: true
+        sub: page.out && page.out.hdrCal ? "Brightest " + Math.round(page.out.hdrCal.peakSet || page.out.hdrCal.peak) + " nits" + (page.out.hdrCal.peakSet ? " (calibrated)" : " (what the screen says)") : ""
+        onActivated: cal.start()
+    }
+    // Extended Dynamic Range: HDR videos and games brighter on a laptop's ordinary (SDR) screen. Newer KWin only.
+    SetChoice {
+        visible: page.kwin && !!page.out && !!page.out.edr && page.out.edr.capable
+        icon: "sun"; title: "Extended Dynamic Range"; sub: "HDR videos and games brighter on this screen by turning its backlight up for them"
+        options: [{ value: "never", label: "Off" }, { value: "always", label: "On" }]
+        current: page.out && page.out.edr ? page.out.edr.policy : "never"
+        onChosen: v => { const c = {}; c[page.out.name] = { edr: v }; page.tryChange(c); }
+    }
+    SetSwitch {
+        visible: !!page.out
+        icon: "palette"; title: "Wide colour"
+        sub: !page.kwin ? page.needsKwin : !page.wcgOk ? "This screen doesn't have wide colour" : "Richer colours on screens that show more than sRGB"
+        enabled: page.wcgOk
+        opacity: enabled ? 1 : 0.5
+        checked: page.wcgOk && page.out.wcg.on
+        onToggled: v => { const c = {}; c[page.out.name] = { wcg: v }; page.tryChange(c); }
+    }
+    // A colour profile: none (sRGB), the screen's own (from its EDID), or an ICC file (~/.local/share/icc,
+    // /usr/share/color/icc).
+    readonly property bool iccOk: kwin && !!out && !!out.icc && out.icc.capable
+    SetChoice {
+        visible: !!page.out
+        icon: "palette"; title: "Colour profile"
+        sub: !page.kwin ? page.needsKwin : !page.iccOk ? "KWin can't use a colour profile for this screen"
+            : "For a calibrated screen: an ICC file in ~/.local/share/icc, or the screen's own"
+        enabled: page.iccOk
+        opacity: enabled ? 1 : 0.5
+        options: [{ value: "", label: "None" }, { value: "EDID", label: "The screen's own" }].concat((page.sinfo && page.sinfo.iccProfiles || []).slice(0, 4).map(f => ({ value: f.path, label: f.label })))
+        current: !page.iccOk ? "" : page.out.icc.source === "EDID" ? "EDID" : page.out.icc.source === "ICC" ? page.out.icc.path : ""
+        onChosen: v => page.setNow({ icc: v }, "Colour profile: " + (v === "" ? "none" : v === "EDID" ? "the screen's own" : v.replace(/^.*\//, "")))
+    }
+    // Colour accuracy (KWin's colour power trade-off): accurate colours, or less work for the graphics card.
+    SetChoice {
+        visible: page.kwin && !!page.out && !!page.out.colorPower && page.out.colorPower.capable
+        icon: "palette"; title: "Colour accuracy"; sub: "Accurate colours cost a little more power and speed"
+        options: [{ value: "efficiency", label: "Save power" }, { value: "accuracy", label: "Accurate colours" }]
+        current: page.out && page.out.colorPower ? page.out.colorPower.value : "efficiency"
+        onChosen: v => page.setNow({ colorPower: v }, v === "accuracy" ? "Colour accuracy: accurate colours" : "Colour accuracy: save power")
+    }
+
+    // ---- the picture signal: for TVs and screens that cut the edges off or show washed-out blacks (KWin; hidden
+    // when the screen has no such setting). Both wait for Keep: a wrong one can make the screen hard to read.
+    readonly property bool sigOk: kwin && !!out && ((out.overscan && out.overscan.capable) || (out.rgbRange && out.rgbRange.capable))
+    SetHeader { id: sigHead; text: "Picture signal"; visible: page.sigOk }
+    SetSlider {
+        visible: page.kwin && !!page.out && !!page.out.overscan && page.out.overscan.capable
+        icon: "display"; title: "Overscan"; sub: "For a TV that cuts off the picture's edges: shrinks the picture to fit"
+        value: (page.overWant >= 0 ? page.overWant : (page.out && page.out.overscan ? page.out.overscan.value : 0)) / 100
+        step: 0.01
+        valueText: Math.round(value * 100) + "%"
+        onMoved: v => { page.overWant = Math.round(v * 100); overSave.restart(); }
+    }
+    property int overWant: -1
+    Timer { id: overSave; interval: 900; onTriggered: { const c = {}; c[page.out.name] = { overscan: page.overWant }; page.overWant = -1; page.tryChange(c); } }
+    SetChoice {
+        visible: page.kwin && !!page.out && !!page.out.rgbRange && page.out.rgbRange.capable
+        icon: "palette"; title: "RGB range"; sub: "Washed-out blacks or crushed shadows on a TV? Try Full or Limited"
+        options: [{ value: "automatic", label: "Automatic" }, { value: "full", label: "Full" }, { value: "limited", label: "Limited" }]
+        current: page.out && page.out.rgbRange ? page.out.rgbRange.value : "automatic"
+        onChosen: v => { const c = {}; c[page.out.name] = { rgbRange: v }; page.tryChange(c); }
+    }
+
+    // ---- smoothness in games
+    SetHeader { id: gamesHead; text: "Games and smoothness"; visible: !!page.out }
+    readonly property bool vrrOk: kwin && !!out && !!out.vrr && out.vrr.capable
+    SetChoice {
+        visible: !!page.out
+        icon: "bolt"; title: "Variable refresh rate (VRR / FreeSync)"
+        sub: !page.kwin ? page.needsKwin : !page.vrrOk ? "This screen can't follow the game's frame rate"
+            : "The screen follows the game's frame rate, so there's no tearing or stutter. Automatic: in full-screen games"
+        enabled: page.vrrOk
+        opacity: enabled ? 1 : 0.5
+        options: [{ value: "never", label: "Never" }, { value: "automatic", label: "Automatic" }, { value: "always", label: "Always" }]
+        current: page.vrrOk ? page.out.vrr.policy : "never"
+        onChosen: v => { const c = {}; c[page.out.name] = { vrr: v }; page.tryChange(c); }
+    }
+    SetSwitch {
+        visible: !!page.out
+        icon: "pad"; title: "Allow tearing in full-screen games"
+        sub: !page.kwin ? page.needsKwin : "Less delay in games that ask for it, with a line where frames meet; the desktop never tears"
+        enabled: page.kwin && !!page.sinfo && page.sinfo.tearing.capable
+        opacity: enabled ? 1 : 0.5
+        checked: !!page.sinfo && page.sinfo.tearing.on
+        onToggled: v => screensJob.run(["set", JSON.stringify({ tearing: v })], r => { page.took(r); SettingsNav.toast(v ? "Tearing allowed in full-screen games" : "No tearing in games"); }, e => { page.problem = e; page.load(); })
+    }
+
+    SetHeader { id: layoutHead; text: "Scale & layout"; visible: !!page.out }
+    // X11 apps (most games, Steam, Proton, older apps): scale themselves (sharp) or are scaled by KWin (blurry but the
+    // right size). The same setting as Gaming › Full-screen games & X11 apps (kdeglobals [KScreen]).
+    SetChoice {
+        visible: !!page.out
+        icon: "window"; title: "Scaling X11 apps"
+        sub: !page.kwin ? page.needsKwin : page.sinfo.x11Scale.self ? "Apps draw themselves at your screen's scale: sharp, though a few older ones look small"
+            : "KWin enlarges them: the right size everywhere, a little blurry on a scaled screen"
+        enabled: page.kwin
+        opacity: enabled ? 1 : 0.5
+        options: [{ value: true, label: "Apps scale themselves" }, { value: false, label: "KWin scales them" }]
+        current: !!page.sinfo && !!page.sinfo.x11Scale && page.sinfo.x11Scale.self
+        onChosen: v => page.option({ x11Scale: v }, v ? "X11 apps scale themselves" : "KWin scales X11 apps")
+    }
     SetChoice {
         visible: !!page.out && page.out.enabled
         icon: "display"; title: "Scale"; sub: "Makes text, apps and the bar bigger or smaller"
-        options: [1, 1.25, 1.5, 1.75, 2].map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
-        current: page.out ? page.out.scale : 1
+        // Fractional steps; KWin draws in-between scales sharply, so it gets more of them.
+        options: (page.kwin ? [1, 1.1, 1.25, 1.4, 1.5, 1.75, 2, 2.25, 2.5, 3] : [1, 1.25, 1.5, 1.75, 2])
+            .concat(page.out && [1, 1.1, 1.25, 1.4, 1.5, 1.75, 2, 2.25, 2.5, 3].indexOf(Math.round(page.out.scale * 100) / 100) < 0 ? [Math.round(page.out.scale * 100) / 100] : [])
+            .sort((a, b) => a - b).map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
+        current: page.out ? Math.round(page.out.scale * 100) / 100 : 1
         onChosen: v => page.apply(0, 0, 0, v)
+    }
+    // Resolution as a choice (mockups A2 and B2): the screen's own and the next one down, plus Other… for the rest
+    // (the list below); in the controller look every resolution, one after another with ‹ ›.
+    property bool otherRes: false
+    readonly property var resChoices: {
+        const all = resolutions.map(r => ({ value: r.w + "x" + r.h, label: r.w + " × " + r.h }));
+        if (SetStyle.big) return all;
+        const top = all.slice(0, 2);
+        const curK = cur ? cur.width + "x" + cur.height : "";
+        if (curK && !top.some(o => o.value === curK)) top.push({ value: curK, label: cur.width + " × " + cur.height });
+        return all.length > top.length ? top.concat([{ value: "other", label: "Other…" }]) : top;
+    }
+    SetChoice {
+        visible: page.resolutions.length > 0
+        icon: "window"; title: "Resolution"
+        sub: page.resolutions.length ? "Recommended: " + page.resolutions[0].w + " × " + page.resolutions[0].h : ""
+        options: page.resChoices
+        current: page.otherRes ? "other" : page.cur ? page.cur.width + "x" + page.cur.height : ""
+        onChosen: v => {
+            if (v === "other") { page.otherRes = true; return; }
+            page.otherRes = false;
+            const [w, h] = v.split("x").map(Number);
+            const m = page.out.modes.filter(x => x.width === w && x.height === h).sort((a, b) => b.refresh - a.refresh)[0];
+            if (m) page.apply(m.width, m.height, m.refresh, 0);
+        }
     }
     SetChoice {
         visible: page.rates.length > 1
@@ -214,12 +689,32 @@ SetPage {
         current: page.cur ? Math.round(page.cur.refresh) : 0
         onChosen: r => { const m = page.out.modes.find(x => x.width === page.cur.width && x.height === page.cur.height && Math.round(x.refresh) === r); if (m) page.apply(m.width, m.height, m.refresh, 0); }
     }
+    // Rotation: for a screen on its side (both compositors: wlr-randr's --transform, KWin's rotation).
     SetChoice {
+        visible: !!page.out && page.out.enabled
+        icon: "restart"; title: "Rotation"; sub: "Turn the picture for a screen that's on its side or upside down"
+        options: [{ value: "normal", label: "Normal" }, { value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "inverted", label: "Upside down" }]
+        current: page.out ? (page.out.rotation || "normal") : "normal"
+        onChosen: v => { const c = {}; c[page.out.name] = { rotation: v }; page.tryChange(c); }
+    }
+    SetHeader { id: severalHead; text: "Several screens"; visible: page.outs.length > 1 && !!page.out }
+    SetChoice {
+        id: arrangeChoice
         visible: page.others.length > 0 && !!page.out && page.out.enabled
         icon: "desktops"; title: "Where this screen is"; sub: "Next to " + (page.others.length ? (page.others[0].model || page.others[0].name) : "the other screen") + ", so the pointer goes across where they meet"
         options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "above", label: "Above" }, { value: "below", label: "Below" }]
         current: page.side
         onChosen: v => page.placeAt(v)
+    }
+    // The main screen: the bar, notifications and new windows go there (KWin's priority; Super+P's "This screen").
+    SetSwitch {
+        visible: page.outs.length > 1 && !!page.out && page.out.enabled
+        icon: "display"; title: "Make this the main screen"
+        sub: !page.kwin ? page.needsKwin : page.isMain ? "This is the main screen: the bar, notifications and new windows are here" : "Moves the bar, notifications and new windows here"
+        enabled: page.kwin && !page.isMain
+        opacity: page.kwin ? 1 : 0.5
+        checked: page.isMain
+        onToggled: v => { if (v) page.setNow({ priority: 1 }, "Main screen: " + (page.out.model || page.out.name)); }
     }
     SetSwitch {
         visible: page.outs.length > 1 && !!page.out
@@ -228,9 +723,61 @@ SetPage {
         checked: !!page.out && page.out.enabled
         onToggled: v => page.setOn(v)
     }
+    // Between screens: KWin's sticky edge (the pointer stops for a moment where screens meet, so it's easy to reach
+    // things at the edge) and in the corners; kwinrc [EdgeBarrier], also on Screen edges.
+    SetSlider {
+        visible: page.outs.length > 1 && !!page.sinfo
+        icon: "mouse"; title: "Sticky edge between screens"
+        sub: !page.kwin ? page.needsKwin : "How far you push before the pointer goes across: 0 goes straight over"
+        enabled: page.kwin
+        opacity: enabled ? 1 : 0.5
+        value: (page.barWant >= 0 ? page.barWant : (page.sinfo && page.sinfo.barrier ? page.sinfo.barrier.px : 100)) / 500
+        step: 0.02
+        valueText: Math.round(value * 500) + " px"
+        onMoved: v => { page.barWant = Math.round(v * 500); barSave.restart(); }
+    }
+    property int barWant: -1
+    Timer { id: barSave; interval: 700; onTriggered: { page.option({ barrier: { px: page.barWant } }, ""); page.barWant = -1; } }
+    SetSwitch {
+        visible: page.outs.length > 1 && !!page.sinfo
+        icon: "mouse"; title: "Sticky corners"; sub: !page.kwin ? page.needsKwin : "The pointer doesn't slip into the next screen at a corner"
+        enabled: page.kwin
+        opacity: enabled ? 1 : 0.5
+        checked: !!page.sinfo && !!page.sinfo.barrier && page.sinfo.barrier.corner
+        onToggled: v => page.option({ barrier: { corner: v } }, v ? "Sticky corners on" : "Sticky corners off")
+    }
+    // Virtual desktops with several screens: on every screen (KWin's own), or only on the main one (Hearth's KWin
+    // script keeps the other screens' windows on every desktop). Each screen its own: a newer KWin.
+    SetChoice {
+        visible: page.outs.length > 1 && !!page.sinfo
+        icon: "desktops"; title: "Virtual desktops"
+        sub: !page.kwin ? page.needsKwin : page.sinfo.desktops.mode === "main" ? "Switching desktops changes only the main screen; the others stay as they are"
+            : "Switching desktops changes every screen together"
+        enabled: page.kwin
+        opacity: enabled ? 1 : 0.5
+        options: [{ value: "all", label: "Every screen" }, { value: "main", label: "Main screen only" },
+                  { value: "each", label: "Each its own", disabled: true }]
+        current: page.sinfo && page.sinfo.desktops ? page.sinfo.desktops.mode : "all"
+        onChosen: v => { if (v !== "each") page.option({ desktopsMainOnly: v === "main" }, v === "main" ? "Desktops on the main screen only" : "Desktops on every screen"); }
+    }
+    Text {
+        visible: page.outs.length > 1 && page.kwin
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "Each screen with its own desktops needs a newer KWin than Debian 13's 6.3."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+    }
+    // Mirroring (the same picture on two screens): neither labwc nor KWin 6.3 can, so it says so instead of hiding.
+    SetRow {
+        visible: page.outs.length > 1 && !!page.sinfo
+        icon: "desktops"; title: "Show the same thing on both screens (mirror)"
+        sub: page.sinfo ? page.sinfo.mirror.why : ""
+        value: "Not available"
+        enabled: false
+        opacity: 0.5
+    }
     SetExpander {
-        visible: page.resolutions.length > 0
-        icon: "window"; title: "Resolution"; sub: "Sharper with more pixels"
+        visible: page.resolutions.length > 0 && page.otherRes && !SetStyle.big
+        icon: "window"; title: "Other resolutions"; sub: "Sharper with more pixels"
         value: page.cur ? page.cur.width + " × " + page.cur.height : ""
         Repeater {
             model: page.resolutions.slice(0, 10)
@@ -244,7 +791,8 @@ SetPage {
             }
         }
     }
-    Text { visible: !page.out; text: "Display settings work in Desktop Mode (wlr-randr)."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+    Text { visible: !page.out; text: "Display settings work in Desktop Mode."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+    Text { visible: page.notice !== ""; text: page.notice; color: SetStyle.warn; wrapMode: Text.Wrap; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: 14 }
     Text { visible: page.problem !== ""; text: page.problem; color: "#ff9b8f"; wrapMode: Text.Wrap; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: 14 }
 
     // Nvidia: how the Hearth app draws (first-time setup, its windows; the same choice as its Settings › Display), so a
@@ -254,6 +802,28 @@ SetPage {
     FileView { id: nvRead; path: page.nvFile; onLoaded: page.nvDrawing = (text().trim() || "auto"); onLoadFailed: page.nvDrawing = "auto" }
     Process { id: nvProbe; command: ["test", "-d", "/sys/module/nvidia"]; running: true; onExited: code => page.hasNvidia = code === 0 }
     property bool hasNvidia: false
+    SetHeader { id: psrHead; text: "Screen power saving"; visible: !!page.psr && page.psr.supported }
+    SetChoice {
+        visible: !!page.psr && page.psr.supported
+        icon: "display"; title: "Screen power saving"
+        sub: page.psr ? page.psr.line : ""
+        options: [{ value: "auto", label: "Auto" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]
+        current: page.psr ? page.psr.choice : "auto"
+        onChosen: v => psrSet.run(["set", v], r => { page.psr = r; SettingsNav.toast(v === "off" ? "Screen power saving is off" : v === "on" ? "Screen power saving is on" : "Screen power saving: Auto"); },
+                                  e => { page.problem = e; })
+    }
+    Text {
+        visible: !!page.psr && page.psr.supported
+        Layout.fillWidth: true; wrapMode: Text.WordWrap
+        text: "Lets the built-in screen keep its picture by itself while nothing moves, so the graphics chip can rest. On some Intel laptops it makes the screen freeze or lag; Auto turns it off there."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+    }
+    SetHeader { text: "Related" }
+    SetRow {
+        icon: "pad"; chevron: true
+        title: "Game Mode's resolution and frame limit"; sub: "Gaming › Performance"
+        onActivated: SettingsNav.openPage("gameperf")
+    }
     SetHeader { text: "Advanced"; visible: page.hasNvidia }
     SetChoice {
         visible: page.hasNvidia

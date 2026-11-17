@@ -16,6 +16,9 @@ import "settings-index.js" as Index
 
 Item {
     id: frame
+    // Runs enterPage on the next turn; owned by the frame so it can't fire after the frame is gone
+    // (Qt.callLater on a closed frame gave "evaluate a function in an invalid context").
+    Timer { id: enterLater; interval: 0; onTriggered: frame.enterPage() }
     required property var app
     readonly property bool compact: width < 1300 || height < 760
     onCompactChanged: SetStyle.compact = compact
@@ -63,7 +66,7 @@ Item {
         if (up === "") { nav.forceActiveFocus(); return; }
         pendingFocus = entry.label;
         frame.app.open(up);
-        Qt.callLater(frame.enterPage);
+        enterLater.restart();
     }
     function stepCategory(d) {
         const cats = Reg.CATEGORIES;
@@ -71,13 +74,20 @@ Item {
         const n = cats[(i + d + cats.length) % cats.length];
         const hadNav = nav.activeFocus;
         frame.app.open(n.landing);
-        if (!hadNav) Qt.callLater(frame.enterPage);
+        if (!hadNav) enterLater.restart();
     }
 
     Shortcut { sequences: ["Ctrl+PgDown"]; onActivated: frame.stepCategory(1) }
     Shortcut { sequences: ["Ctrl+PgUp"]; onActivated: frame.stepCategory(-1) }
     Shortcut { sequences: ["Ctrl+F"]; onActivated: search.forceActiveFocus() }
     Shortcut { sequences: ["Ctrl+W"]; onActivated: frame.app.close() }
+    // 1.14: X on the controller (Ctrl+D): the page's own action when it has one (Display: Keep these settings while a
+    // change waits; Quick: Pin to Quick). The hint shows only then.
+    readonly property string xLabel: loader.item && loader.item.xLabel ? loader.item.xLabel : ""
+    Shortcut { sequences: ["Ctrl+D"]; onActivated: if (frame.xLabel !== "" && loader.item.xAction) loader.item.xAction() }
+    function focusSearch() { search.forceActiveFocus(); }
+    // The setting you were on stays picked when Settings changes look (SettingsApp.qml passes its title).
+    function restoreFocus(t) { if (t) { pendingFocus = t; enterLater.restart(); } }
 
     // ---------------------------------------------------------------- who you are (the card on top)
     property string userName: ""
@@ -127,7 +137,7 @@ Item {
         frame.query = ""; search.text = ""; frame.showAll = false;
         pendingFocus = r.isPage ? "" : r.title;
         frame.app.open(r.page);
-        Qt.callLater(frame.enterPage);
+        enterLater.restart();
     }
     function highlight(t) {
         const ws = words(query);
@@ -326,7 +336,7 @@ Item {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom; top: title.bottom; topMargin: frame.compact ? 12 : 18 }
                     onStatusChanged: {
                         if (status === Loader.Error) { failed = true; console.warn("Hearth Settings: couldn't load", source); }
-                        if (status === Loader.Ready && frame.pendingFocus !== "" && !nav.activeFocus) Qt.callLater(frame.enterPage);
+                        if (status === Loader.Ready && frame.pendingFocus !== "" && !nav.activeFocus) enterLater.restart();
                     }
                 }
                 // A page that couldn't load: say so (the rest of Settings keeps working).
@@ -358,6 +368,7 @@ Item {
                 Hint { keys: ["A"]; label: "Select" }
                 Hint { keys: ["B"]; label: "Back" }
                 Hint { keys: ["Y"]; label: "Search" }
+                Hint { visible: frame.xLabel !== ""; keys: ["X"]; label: frame.xLabel }
                 Item { Layout.fillWidth: true }
                 Hint { keys: ["LB", "RB"]; square: true; label: "Previous / next category" }
                 Hint { keys: ["☰"]; square: true; label: "Close" }

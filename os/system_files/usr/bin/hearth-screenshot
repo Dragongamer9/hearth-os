@@ -1,0 +1,16 @@
+#!/bin/sh
+# A screenshot, grim's way, on both of Mantel's compositors (docs/SCREENS.md):
+#   hearth-screenshot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-      (PNG; - writes it to the output)
+# Under labwc it is grim. Under KWin (HEARTH_WM=kwin) hearth-screens asks KWin's org.kde.KWin.ScreenShot2 through
+# hearth-kwin-cast shot: KWin answers only a program whose .desktop file lists that interface, and the one Hearth
+# installs (hearth-kwin-cast.desktop) names that small helper, which answers only hearth-portal and hearth-screens.
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+[ -f "$SHELL_DIR/hearth-screens" ] || SHELL_DIR=/usr/share/nimbus/desktop/shell
+kwin=0
+if [ "${HEARTH_WM:-}" = kwin ]; then kwin=1
+elif [ -z "${HEARTH_WM:-}" ]; then case "${XDG_CURRENT_DESKTOP:-}" in *KDE*) kwin=1 ;; esac
+fi
+if [ "$kwin" = 1 ]; then
+  HEARTH_WM=kwin exec python3 "$SHELL_DIR/hearth-screens" shot "$@"
+fi
+exec grim "$@"

@@ -38,7 +38,7 @@ const S = {
   turn: 1,                         // turned/flipped on screen, not saved yet
   nat: { w: 0, h: 0 },             // the shown picture's size, upright
   z: { mode: 'fit', s: 1, x: 0, y: 0 },
-  chrome: true, fs: false, infoOpen: store.get('info', false),
+  chrome: true, fs: false, infoOpen: store.get('info', true), fromLibrary: false,
   slide: null, slideMs: store.get('slideMs', 5000),
   front: 'A', loadSeq: 0, pad: false, converters: [],
 };
@@ -165,7 +165,10 @@ function layout() {
   el.classList.toggle('pixelated', S.z.s >= 3);
   const zoomed = S.z.s > fitScale() + 1e-3;
   stage.classList.toggle('grab', zoomed);
-  $('#zoomLabel').textContent = S.z.mode === 'fit' ? 'Fit' : S.z.mode === 'fill' ? 'Fill' : Math.round(S.z.s * 100) + '%';
+  // Fit / 100 % in the bar under the picture: 100 % shows the zoom you're at when it isn't fitted.
+  $('#zoomLabel').textContent = S.z.mode === 'fit' || S.z.mode === 'actual' ? '100 %' : Math.round(S.z.s * 100) + ' %';
+  $('#zoomFit').classList.toggle('on', S.z.mode === 'fit');
+  $('#zoomLabel').classList.toggle('on', S.z.mode !== 'fit');
 }
 function zoomTo(s, cx = 0, cy = 0) {
   const s1 = S.z.s, s2 = Math.max(minScale(), Math.min(40, s));
@@ -293,17 +296,46 @@ async function openPath(path, opts = {}) {
   } catch (e) { toast(String(e)); render(); }
 }
 
+/** From the library: these pictures (the day's, an album's…), showing the k-th. */
+async function openList(pics, k, opts = {}) {
+  S.dir = pics[k] ? pics[k].path.replace(/\/[^/]*$/, '') : '';
+  S.pics = pics;
+  S.nameOrder = new Map(pics.map((p, n) => [p.path, n]));
+  S.i = k;
+  S.fromLibrary = !!opts.fromLibrary;
+  stripRendered = '';
+  $('#welcome').hidden = true;
+  setMsg('');
+  await show(k, opts);
+  if (opts.slideshow) startSlide();
+  stage.focus();
+}
+
 // ---------------------------------------------------------------- what's on screen
+/** When it was taken, as a Date in local time (the library's times are as the camera wrote them). */
+function takenDate(p, i) {
+  const m = /^(\d{4})[-:](\d\d)[-:](\d\d)[ T](\d\d):(\d\d)/.exec((i && i.taken) || '');
+  if (m) return new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]);
+  if (p && p.taken) { const d = new Date(p.taken); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes()); }
+  return p && p.mtime ? new Date(p.mtime) : null;
+}
+function whenText(d) {
+  if (!d) return '';
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const ago = Math.round((t0 - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return (ago === 0 ? 'Today' : ago === 1 ? 'Yesterday' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: ago > 300 ? 'numeric' : undefined })) + ', ' + time;
+}
 function renderTitle() {
   const p = cur();
-  $('#name').textContent = p ? p.name : 'Photos';
-  const i = S.info, bits = [];
-  if (p) {
-    const u = upright();
-    if (u.w) bits.push(`${u.w} × ${u.h}`);
-    bits.push(human((i && i.size) ?? p.size));
-  }
-  $('#sub').textContent = bits.join('  ·  ');
+  $('#name').textContent = p ? p.name.replace(/\.[^.]+$/, '') : 'Photos';
+  $('#name').title = p ? p.name : '';
+  const bits = [];
+  if (p) { bits.push(whenText(takenDate(p, S.info))); if (S.pics.length > 1) bits.push(`${S.i + 1} of ${S.pics.length}`); }
+  $('#sub').textContent = bits.filter(Boolean).join(' · ');
+  const fav = p && window.HPLib && HPLib.favs().has(p.path);
+  $('#favBtn').classList.toggle('on', !!fav);
+  $('#favBtn').lastChild.textContent = fav ? ' Favorite' : ' Favorite';
   $('#count').textContent = p ? `${S.i + 1} of ${S.pics.length}` : '';
 }
 function render() {
@@ -314,10 +346,12 @@ function render() {
   $('#app').classList.toggle('infoOpen', S.infoOpen && has);
   $('#info').hidden = !(S.infoOpen && has);
   $('#infoBtn').classList.toggle('on', S.infoOpen);
+  $('#viewbar').hidden = !has;
   $$('.nav').forEach(n => n.disabled = S.pics.length < 2);
   $('#turnbar').hidden = S.turn === 1 || !has;
   if (S.turn !== 1) $('#turnText').textContent = 'Turned or mirrored, not saved yet';
   $$('#tools [data-f]').forEach(b => { if (b.dataset.act !== 'more') b.disabled = !has; });
+  $('#backBtn').hidden = !window.HPLib;
   if (!has) { imgs.A.classList.remove('on'); imgs.B.classList.remove('on'); }
   renderTitle();
   renderStrip();
@@ -333,25 +367,42 @@ function takenText(t) {
 function renderInfo() {
   if (!S.infoOpen) return;
   const p = cur(), i = S.info;
-  if (!p) { $('#infoBody').innerHTML = ''; return; }
+  if (!p) { $('#infoBody').innerHTML = ''; $('#infoFoot').innerHTML = ''; return; }
   const u = upright();
-  const kv = rows => `<dl class="kv">${rows.filter(r => r[1]).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
-  let h = `<div class="big1">${esc(p.name)}</div>`;
-  h += `<div class="isec"><h3>Picture</h3>${kv([
-    ['Size', u.w ? `${u.w} × ${u.h} pixels (${(u.w * u.h / 1e6).toFixed(1)} MP)` : (i && i.width ? `${i.width} × ${i.height} pixels` : '')],
-    ['Type', i ? (i.mime || '').replace('image/', '').toUpperCase().replace('SVG+XML', 'SVG').replace('X-ICON', 'ICO') : ''],
-    ['File size', human(i ? i.size : p.size)],
-    ['Taken', i && i.taken ? takenText(i.taken) : ''],
-  ])}</div>`;
-  if (i && i.camera && i.camera.length) h += `<div class="isec"><h3>Camera</h3>${kv(i.camera)}</div>`;
-  if (i && i.gps) h += `<div class="isec"><h3>Place</h3>${kv([['Location', `${i.gps[0].toFixed(5)}, ${i.gps[1].toFixed(5)}`]])}</div>`;
-  h += `<div class="isec"><h3>File</h3>${kv([['Changed', dateOf(i ? i.modified : p.mtime)], ['Created', i ? dateOf(i.created) : ''], ['Folder', i ? i.folder : S.dir]])}</div>`;
+  const d = takenDate(p, i);
+  const cam = i && i.camera ? Object.fromEntries(i.camera) : {};
+  // "iPhone 15 · 26 mm · ƒ/1.8 · 1/120 s · ISO 64": the camera, then how it was taken (focal length first).
+  const ex = (cam.Exposure || '').split('  ·  ').filter(Boolean);
+  const mm = ex.filter(x => / mm/.test(x)).map(x => x.replace(/ \(.*\)$/, ''));
+  const shot = [cam.Camera, ...mm, ...ex.filter(x => !/ mm/.test(x))].filter(Boolean).join(' · ');
+  const type = i ? (i.mime || '').replace('image/', '').toUpperCase().replace('SVG+XML', 'SVG').replace('X-ICON', 'ICO').replace('JPEG', 'JPEG') : HP.extOf(p.name).toUpperCase();
+  const dims = [u.w ? `${u.w} × ${u.h}` : '', human(i ? i.size : p.size), type].filter(Boolean).join(' · ');
+  let h = `<div class="isec"><h3>Details</h3><div class="dline">${esc(d ? d.toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')}</div>`;
+  if (shot) h += `<div class="dsub">${esc(shot)}</div>`;
+  h += `<div class="dsub">${esc(dims)}</div>`;
+  const more = (i && i.camera || []).filter(([k]) => !['Camera', 'Exposure'].includes(k));
+  if (more.length) h += `<dl class="kv small">${more.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  if (p.kind === 'capture' || p.kind === 'screenshot') h += `<div class="dsub">${esc(p.kind === 'capture' ? `Game capture${p.game ? ' · ' + p.game : ''} · ${p.src === 'steam' ? 'Steam' : 'Game Mode'}` : 'Screenshot')}</div>`;
+  h += '</div>';
+  const gps = (i && i.gps) || p.gps;
+  if (gps && window.HPPlace) h += `<div class="isec"><h3>Place</h3>${HPPlace.html(gps)}</div>`;
+  else if (gps) h += `<div class="isec"><h3>Place</h3><div class="dsub">${gps[0].toFixed(5)}, ${gps[1].toFixed(5)}</div></div>`;
+  if (window.HPFaces) h += HPFaces.html(p);
+  if (window.HPTags) h += HPTags.html(p);
+  if (window.HPLib) {
+    const ins = HPLib.albums().filter(a => (a.items || []).includes(p.path));
+    h += `<div class="isec"><h3>In albums</h3><div class="chips">${ins.map(a => `<span class="chip on">${esc(a.name)}</span>`).join('')}<button class="chip add" data-f data-act="addAlbum">+ Add to an album</button></div></div>`;
+  }
   if (i && i.error) h += `<p class="note">${esc(i.error)}</p>`;
   $('#infoBody').innerHTML = h;
+  const home = (S.home || '').replace(/\/$/, '');
+  const where = home && p.path.startsWith(home + '/') ? '~' + p.path.slice(home.length) : p.path;
+  $('#infoFoot').innerHTML = `<span title="${esc(p.path)}">${esc(where)}</span> · <button class="link" data-f data-act="showFolder">Show in Files</button>`;
+  if (window.HPPlace && gps) HPPlace.after(gps);
 }
 
 // ---------------------------------------------------------------- strip of thumbnails (only the visible ones exist)
-const CELL = 84, strip = $('#strip'), stripInner = $('#stripInner');
+const CELL = 104, strip = $('#strip'), stripInner = $('#stripInner');
 let stripRendered = '';
 function renderStrip(center = true) {
   if (S.pics.length < 2) { stripInner.innerHTML = ''; return; }
@@ -554,6 +605,18 @@ const actions = {
   trash: trashCurrent,
   more: () => moreMenu(),
   open: doOpen,
+  library: () => { if (window.HPLib) { if (S.slide) stopSlide(); if (S.fs) setFullscreen(false); HPLib.show(); } },
+  favorite: async () => { const p = cur(); if (!p || !window.HPLib) return; const on = !HPLib.favs().has(p.path); if (await HPLib.change({ op: 'favorite', paths: [p.path], on })) { renderTitle(); toast(on ? 'Added to Favorites' : 'Taken out of Favorites'); } },
+  addAlbum: async () => { const p = cur(); if (p && window.HPLib) { await HPLib.chooseAlbum([p.path]); renderInfo(); } },
+  wallpaper: () => doWallpaper(),
+  showFolder: () => doShowFolder(),
+  share: () => openMenu($('#shareBtn'), [
+    { label: 'Copy the picture', key: 'Ctrl+C', run: doCopy },
+    { label: 'Show in Files (to send it on)', run: doShowFolder },
+    { label: 'Print…', key: 'Ctrl+P', run: doPrint },
+  ]),
+  zoomFit: () => { S.z.mode = 'fit'; layout(); },
+  zoomActual: () => { S.z.mode = 'actual'; S.z.x = S.z.y = 0; layout(); },
   openPictures: async () => { const r = await invoke('init').catch(() => ({})); if (r.pictures) openPath(r.pictures); else doOpen(); },
 };
 document.addEventListener('click', e => {
@@ -573,7 +636,12 @@ function moreMenu() {
     { label: 'Set as wallpaper', run: doWallpaper, disabled: !has },
     { label: 'Show in its folder', run: doShowFolder, disabled: !has },
     { label: 'Print…', key: 'Ctrl+P', run: doPrint, disabled: !has },
+    { label: 'Turn left', key: 'Shift+R', run: () => turn(OP.left), disabled: !has },
+    { label: 'Mirror', key: 'H', run: () => turn(OP.flipH), disabled: !has },
     { label: 'Mirror top to bottom', key: 'V', run: () => turn(OP.flipV), disabled: !has },
+    { label: 'Zoom in', key: '+', run: () => zoomBy(1.25), disabled: !has },
+    { label: 'Zoom out', key: '−', run: () => zoomBy(0.8), disabled: !has },
+    { label: 'Slideshow', key: 'F5', run: () => actions.slideshow(), disabled: !has },
     { sep: true },
     { title: 'Order' },
     sortItem('name', 'By name'), sortItem('newest', 'Newest first'), sortItem('oldest', 'Oldest first'), sortItem('largest', 'Largest first'),
@@ -681,22 +749,23 @@ function back() {
   if (closeMenu()) return;
   if (!$('#editor').hidden) { window.Editor.back(); return; }
   if (!$('#toast').hidden && document.activeElement?.id === 'toastAct') { $('#toast').hidden = true; stage.focus(); return; }
-  if (document.activeElement && document.activeElement.closest('#top,#turnbar,#slidectl,#welcome')) { document.activeElement.blur(); stage.focus(); if (S.fs) hideChrome(); return; }
+  if (document.activeElement && document.activeElement.closest('#top,#turnbar,#slidectl,#welcome,#viewbar,#info')) { document.activeElement.blur(); stage.focus(); if (S.fs) hideChrome(); return; }
   if (S.slide) { stopSlide(); return; }
-  if (S.infoOpen) { actions.info(); return; }
   if (isZoomed()) { S.z.mode = 'fit'; layout(); return; }
   if (S.fs) { setFullscreen(false); return; }
+  if (window.HPLib && S.turn === 1) actions.library();
 }
 
 // ---------------------------------------------------------------- keyboard
 document.addEventListener('keydown', e => {
   S.pad = false;
+  if (window.HPLib && HPLib.visible() && topLayer() === $('#app')) { if (!$('#library').contains(document.activeElement)) HPLib.key(e); return; } // library.js has its own keys
   if (!$('#editor').hidden && window.Editor.key(e)) return;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'range';
   const k = e.key, ctrl = e.ctrlKey || e.metaKey;
   if (k === 'Escape') { e.preventDefault(); back(); return; }
   if (typing) return;
-  const inUi = topLayer() !== $('#app') || document.activeElement?.closest('#top,#turnbar,#slidectl,#welcome,#info,#toast');
+  const inUi = topLayer() !== $('#app') || document.activeElement?.closest('#top,#turnbar,#slidectl,#welcome,#info,#toast,#viewbar');
   const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   if (dirs[k] && inUi) { e.preventDefault(); if (!move(dirs[k]) && topLayer() === $('#app') && (k === 'ArrowDown')) stage.focus(); return; }
   if (topLayer() !== $('#app')) { if (k === 'Enter' || k === ' ') return; return; }
@@ -713,7 +782,7 @@ document.addEventListener('keydown', e => {
     '+': () => zoomBy(1.25), '=': () => zoomBy(1.25), '-': () => zoomBy(0.8), '_': () => zoomBy(0.8),
     '0': () => { S.z.mode = 'fit'; layout(); }, '1': () => { S.z.mode = 'actual'; S.z.x = S.z.y = 0; layout(); }, '2': () => { S.z.mode = 'fill'; layout(); },
     r: () => turn(OP.right), R: () => turn(OP.left), l: () => turn(OP.left), h: () => turn(OP.flipH), v: () => turn(OP.flipV),
-    i: actions.info, e: doEdit, f: actions.fullscreen, F11: actions.fullscreen, F5: actions.slideshow, s: actions.slideshow,
+    i: actions.info, e: doEdit, f: actions.favorite, Backspace: actions.library, F11: actions.fullscreen, F5: actions.slideshow, s: actions.slideshow,
     Delete: trashCurrent, Enter: () => { if (document.activeElement === stage || document.activeElement === document.body) { showChrome(); move('right', $('#top')); } },
   };
   const cmap = { o: doOpen, c: doCopy, p: doPrint, z: undoTrash, s: saveTurn, '0': map['0'], '=': map['+'], '+': map['+'], '-': map['-'], e: doEdit, q: () => invoke('quit').catch(() => window.close()), w: () => invoke('quit').catch(() => window.close()) };
@@ -739,7 +808,7 @@ function padFrame() {
       ax.lx += dz(a[0] || 0); ax.ly += dz(a[1] || 0); ax.rx += dz(a[2] || 0); ax.ry += dz(a[3] || 0);
       ax.lt = Math.max(ax.lt, g.buttons[6]?.value || 0); ax.rt = Math.max(ax.rt, g.buttons[7]?.value || 0);
     }
-    const ui = topLayer() !== $('#app') || !!document.activeElement?.closest('#top,#turnbar,#slidectl,#welcome,#toast');
+    const ui = topLayer() !== $('#app') || !!document.activeElement?.closest('#top,#turnbar,#slidectl,#welcome,#toast,#viewbar,#info,#library');
     // The left stick acts as a D-pad in menus and between pictures (unless zoomed in, when it pans).
     const editing = !$('#editor').hidden && !$('#layer .veil');
     if (!editing && (ui || !isZoomed())) { st.up ||= ax.ly < -0.6; st.down ||= ax.ly > 0.6; st.left ||= ax.lx < -0.6; st.right ||= ax.lx > 0.6; }
@@ -764,6 +833,7 @@ function padFrame() {
   }
 }
 function padButton(k, ui) {
+  if (window.HPLib && HPLib.visible() && topLayer() === $('#app')) { HPLib.pad(k); return; }
   if (k === 'b') { back(); return; }
   if (!$('#editor').hidden && window.Editor.padButton(k)) return;
   const dir = { up: 'up', down: 'down', left: 'left', right: 'right' }[k];
@@ -791,9 +861,22 @@ window.addEventListener('gamepadconnected', () => toast('Controller connected'))
 // Files dropped on the window open there.
 if (T && T.event) T.event.listen('tauri://drag-drop', e => { const p = e.payload && e.payload.paths && e.payload.paths[0]; if (p) openPath(p); }).catch(() => {});
 
+// Mistakes in the page go to the app's output (CI greps for JSERROR).
+window.addEventListener('error', e => { invoke('log', { line: `JSERROR ${e.message} at ${e.filename}:${e.lineno}` }).catch(() => {}); });
+window.addEventListener('unhandledrejection', e => { invoke('log', { line: `JSERROR (promise) ${e.reason && e.reason.stack || e.reason}` }).catch(() => {}); });
+
 // ---------------------------------------------------------------- start
-window.HP = { invoke, url, loadInto, cur, S, toast, dialog, openMenu, closeMenu, move, focusables, back, openPath, extOf, esc, human, then, cssOf, MATS, store,
-  afterEditorClose: () => { layout(); stage.focus(); } };
+window.HP = { renderInfo, renderTitle, openList, invoke, url, loadInto, cur, S, toast, dialog, openMenu, closeMenu, move, focusables, back, openPath, extOf, esc, human, then, cssOf, MATS, store,
+  afterEditorClose: () => { layout(); stage.focus(); },
+  /** After an edit from the library: the copy shows next to the original (or the original again, replaced). */
+  afterSaved: async (path, replaced) => {
+    const p = cur();
+    const name = path.split('/').pop();
+    if (replaced && p) { p.mtime = Date.now(); stripRendered = ''; $$('.th').forEach(t => { if (t.dataset.path === p.path) t.remove(); }); await show(S.i, { keepTurn: true }); return; }
+    S.pics.splice(S.i + 1, 0, { ...(p || {}), name, path, mtime: Date.now(), size: 0 });
+    stripRendered = '';
+    await show(S.i + 1);
+  } };
 
 
 // ---------------------------------------------------------------- without the app (a plain browser): sample pictures
@@ -830,10 +913,12 @@ function demoInvoke(cmd, args = {}) {
   try { init = await invoke('init'); } catch (_) {}
   S.host = init.platform || 'linux';
   S.converters = init.converters || [];
+  S.home = init.home || '';
   $('#app').classList.toggle('infoOpen', S.infoOpen);
   if (init.target) await openPath(init.target, { slideshow: init.slideshow });
-  if (init.selftest) selftest();
-  else { render(); $('#welcome').hidden = false; $('[data-act="open"]').focus(); }
+  if (init.selftest) { selftest(); return; }
+  if (!init.target && HP.startLibrary) { render(); HP.startLibrary(init); return; }
+  if (!init.target) { render(); $('#welcome').hidden = false; $('[data-act="open"]').focus(); }
   stage.focus();
 })();
 

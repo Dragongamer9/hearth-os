@@ -18,6 +18,15 @@ kept, plus the ones you pinned; Clear all keeps the pinned ones. Copies a passwo
   hearth-clipboard pin ID | unpin ID
   hearth-clipboard delete ID         forget one item (pinned or not)
   hearth-clipboard clear             forget everything that isn't pinned ("wipe" is the same)
+  hearth-clipboard store --primary [--keep] [--sync]
+                                     (wl-paste --primary --watch) the selection (what you highlight; middle-click
+                                     pastes it): kept with --keep (Selection history), and with --sync it's put on the
+                                     clipboard too; `store --sync` puts a copied text on the selection too
+  hearth-clipboard browsers          JSON: the web browsers here, for "Open in…" (the default one first)
+  hearth-clipboard open ID APP       open the link in item ID in APP (a browser's .desktop id)
+  hearth-clipboard qr ID             JSON {path}: a QR code picture of item ID's text (qrencode)
+  hearth-clipboard get ID            JSON {text}: the whole text of item ID (for Edit)
+  hearth-clipboard edit ID           the item's text replaced by standard input (the clipboard isn't changed)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import hashlib
@@ -31,6 +40,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import hearth_settings_io as hsio  # noqa: E402  (the safe writer, next to this file)
+import hearth_desktop_apps as apps  # noqa: E402
 
 LIMIT = 25                 # unpinned items kept
 PIN_MAX = 25               # pinned items kept (pinning one more is refused with a message; nothing is unpinned)
@@ -91,7 +101,8 @@ def clean_items(raw):
         out.append({'id': iid, 'kind': it['kind'], 'file': f, 'text': str(it.get('text', ''))[:PREVIEW],
                     'app': str(it.get('app', ''))[:80], 'time': float(it.get('time', 0) or 0),
                     'pinned': it.get('pinned') is True, 'hash': str(it.get('hash', ''))[:64],
-                    'size': int(it.get('size', 0) or 0), 'dims': str(it.get('dims', ''))[:20]})
+                    'size': int(it.get('size', 0) or 0), 'dims': str(it.get('dims', ''))[:20],
+                    'sel': it.get('sel') is True})
     return out
 
 
@@ -161,12 +172,12 @@ def png_size(data):
     return ''
 
 
-def offered_types():
+def offered_types(primary=False):
     """The types the app that copied offers ($HEARTH_CLIP_TYPES for the tests: one per line)."""
     if 'HEARTH_CLIP_TYPES' in os.environ:
         return [t for t in os.environ['HEARTH_CLIP_TYPES'].splitlines() if t.strip()]
     try:
-        r = subprocess.run(['wl-paste', '--list-types'], capture_output=True, text=True, timeout=3)
+        r = subprocess.run(['wl-paste', '--list-types'] + (['--primary'] if primary else []), capture_output=True, text=True, timeout=3)
         return [t.strip() for t in r.stdout.splitlines() if t.strip()]
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -197,14 +208,19 @@ def new_id(items):
     return str(n)
 
 
-def store(data, types=None, app=None, now=None, state=None):
-    """Keep one copy. Returns {'stored': bool, 'why'?: str, 'id'?: str}."""
-    types = offered_types() if types is None else types
+SEL_JOIN = 15.0      # seconds: a selection that grows or shrinks (you're still dragging) replaces the last one
+
+
+def store(data, types=None, app=None, now=None, state=None, primary=False):
+    """Keep one copy (PRIMARY: from the selection). Returns {'stored': bool, 'why'?: str, 'id'?: str}."""
+    types = offered_types(primary) if types is None else types
     if is_secret(types, state):
         return {'stored': False, 'why': 'secret'}
     if not data or len(data) > MAX_BYTES:
         return {'stored': False, 'why': 'empty' if not data else 'too big'}
     mime = mime_of(data)
+    if mime and primary:
+        return {'stored': False, 'why': 'not text'}     # the selection keeps text only
     if mime:
         kind, text, ext = 'image', '', IMAGE_EXT[mime]
     else:
@@ -227,11 +243,22 @@ def store(data, types=None, app=None, now=None, state=None):
                 same['app'] = app
             out['id'] = same['id']
             return trim(items)[0]
+        if primary:
+            # Still dragging: the newest item is a selection from a moment ago that this one grows or shrinks.
+            last = next((i for i in ordered(items) if not i['pinned']), None)
+            if last and last.get('sel') and now - last['time'] < SEL_JOIN and last['kind'] == 'text':
+                try:
+                    with open(os.path.join(data_dir(), last['file']), encoding='utf-8', errors='replace') as f:
+                        old = f.read()
+                except OSError:
+                    old = None
+                if old is not None and old and (text.startswith(old) or old.startswith(text) or text.endswith(old) or old.endswith(text)):
+                    items = [i for i in items if i['id'] != last['id']]     # its file goes with it (update)
         iid = new_id(items)
         name = '%s.%s' % (iid, ext)
         hsio._atomic_bytes(os.path.join(data_dir(), name), data, mode=0o600)
         items.insert(0, {'id': iid, 'kind': kind, 'file': name, 'text': text[:PREVIEW], 'app': app, 'time': now,
-                         'pinned': False, 'hash': digest, 'size': len(data), 'dims': png_size(data)})
+                         'pinned': False, 'hash': digest, 'size': len(data), 'dims': png_size(data), 'sel': bool(primary)})
         out['id'] = iid
         return trim(items)[0]
     ensure_dir()
@@ -258,6 +285,7 @@ def list_items():
     for i in items:
         i['path'] = os.path.join(d, i['file'])
         i.pop('hash', None)
+        i['link'] = link_of(i['text']) if i['kind'] == 'text' else ''
     return {'available': have(), 'items': items}
 
 
@@ -338,8 +366,17 @@ def copy(iid):
 
 def press_ctrl_v():
     """Ctrl+V into the window in front: wtype (Wayland's virtual keyboard, what the on-screen keyboard types with),
-    else a short-lived uinput keyboard (python3-evdev; Hearth's controller support already needs /dev/uinput)."""
-    if shutil.which('wtype'):
+    else a short-lived uinput keyboard (python3-evdev; Hearth's controller support already needs /dev/uinput).
+    On KWin (no virtual-keyboard protocol for wtype): hearth-type, Hearth's typing helper (docs/KWIN-INPUT.md)."""
+    if os.environ.get('HEARTH_WM') == 'kwin':
+        ht = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-type')
+        try:
+            r = subprocess.run([sys.executable, ht, '-M', 'ctrl', '-k', 'v', '-m', 'ctrl'], capture_output=True, timeout=8)
+            if r.returncode == 0:
+                return True
+        except (OSError, subprocess.SubprocessError):
+            pass
+    elif shutil.which('wtype'):
         r = subprocess.run(['wtype', '-M', 'ctrl', '-k', 'v', '-m', 'ctrl'], capture_output=True, timeout=5)
         if r.returncode == 0:
             return True
@@ -357,6 +394,139 @@ def press_ctrl_v():
         return False
 
 
+# ------------------------------------------------------------------ selection and clipboard in step
+def current(primary):
+    """What's on the clipboard (or the selection) now, as bytes; None when it can't be read."""
+    if 'HEARTH_CLIP_NOW' in os.environ:            # the tests: a file standing in for both
+        try:
+            with open(os.environ['HEARTH_CLIP_NOW'] + ('.primary' if primary else ''), 'rb') as f:
+                return f.read()
+        except OSError:
+            return b''
+    try:
+        r = subprocess.run(['wl-paste', '--no-newline'] + (['--primary'] if primary else []), capture_output=True, timeout=3)
+        return r.stdout if r.returncode == 0 else b''
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def put(data, primary):
+    if 'HEARTH_CLIP_NOW' in os.environ:
+        with open(os.environ['HEARTH_CLIP_NOW'] + ('.primary' if primary else ''), 'wb') as f:
+            f.write(data)
+        return True
+    try:
+        p = subprocess.Popen(['wl-copy'] + (['--primary'] if primary else []), stdin=subprocess.PIPE,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        p.stdin.write(data)
+        p.stdin.close()
+        p.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    except OSError:
+        return False
+    return True
+
+
+def sync(data, from_primary, types=None, state=None):
+    """Clipboard and selection in step: text that reached one is put on the other, unless it's there already (so the
+    two watchers never bounce a copy back and forth) or it's a secret. Pictures stay on the clipboard only."""
+    types = offered_types(from_primary) if types is None else types
+    if not data or is_secret(types, state) or mime_of(data) or b'\x00' in data[:4096] or len(data) > MAX_BYTES:
+        return False
+    other = current(not from_primary)
+    if other is None or other == data or other.rstrip(b'\n') == data.rstrip(b'\n'):
+        return False
+    return put(data, not from_primary)
+
+
+# ------------------------------------------------------------------ actions on an item
+URL_RE = re.compile(r'^(https?://|www\.)[^\s]{2,2000}$', re.I)
+
+
+def item_text(iid):
+    it = find(iid)
+    if it['kind'] != 'text':
+        raise Fail('that item is a picture')
+    try:
+        with open(os.path.join(data_dir(), it['file']), encoding='utf-8', errors='replace') as f:
+            return it, f.read()
+    except OSError:
+        raise Fail('that item\'s copy is missing')
+
+
+def link_of(text):
+    t = text.strip()
+    if not URL_RE.match(t):
+        return ''
+    return t if '://' in t else 'https://' + t
+
+
+def browsers():
+    return {'browsers': apps.apps_for('x-scheme-handler/https')}
+
+
+def open_in(iid, app_id):
+    _, text = item_text(iid)
+    url = link_of(text)
+    if not url:
+        raise Fail('that item isn\'t a web link')
+    try:
+        apps.launch(app_id, url)
+    except (ValueError, OSError) as e:
+        raise Fail(str(e))
+    return {'ok': True, 'id': iid, 'app': app_id}
+
+
+QR_MAX = 2900
+
+
+def qr(iid):
+    _, text = item_text(iid)
+    data = text.encode('utf-8')
+    if len(data) > QR_MAX:
+        raise Fail('that\'s too long for a QR code (%d characters at most)' % QR_MAX)
+    if not shutil.which('qrencode'):
+        raise Fail('QR codes need qrencode, which isn\'t installed')
+    rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-clipboard-qr')
+    os.makedirs(rt, mode=0o700, exist_ok=True)
+    for f in os.listdir(rt):           # one at a time: the last one's picture goes
+        try:
+            os.remove(os.path.join(rt, f))
+        except OSError:
+            pass
+    path = os.path.join(rt, '%s-%d.png' % (iid, int(time.time() * 1000)))
+    r = subprocess.run(['qrencode', '-o', path, '-s', '8', '-m', '2', '-l', 'M', '-r', '/dev/stdin'], input=data,
+                       capture_output=True, timeout=20)
+    if r.returncode != 0 or not os.path.isfile(path):
+        raise Fail('couldn\'t make the QR code (%s)' % (r.stderr.decode('utf-8', 'replace').strip()[:120] or 'qrencode'))
+    return {'ok': True, 'id': iid, 'path': path}
+
+
+def edit(iid, new):
+    """The item's text becomes NEW (kept where it is, pin and all). Empty text is refused: forget it instead."""
+    it, _ = item_text(iid)
+    if b'\x00' in new[:4096]:
+        raise Fail('that isn\'t text')
+    if len(new) > MAX_BYTES:
+        raise Fail('that\'s too big')
+    text = new.decode('utf-8', errors='replace')
+    if not text.strip():
+        raise Fail('the text is empty: forget the item instead')
+    digest = hashlib.sha256(new).hexdigest()
+    ensure_dir()
+    hsio._atomic_bytes(os.path.join(data_dir(), it['file']), new, mode=0o600)
+
+    def change(items):
+        items = [i for i in items if i['id'] == iid or i['hash'] != digest or i['pinned']]   # no second copy of it
+        for i in items:
+            if i['id'] == iid:
+                i.update({'text': text[:PREVIEW], 'hash': digest, 'size': len(new)})
+        return items
+    update(change)
+    return {'ok': True, 'id': iid}
+
+
 def paste(iid):
     copy(iid)
     time.sleep(0.2)            # the popup has closed and the app in front has the keyboard again
@@ -367,12 +537,28 @@ def main(argv):
     c = argv[1] if len(argv) > 1 else ''
     a = argv[2:]
     if c == 'status' and not a:
-        out = {'available': have(), 'wtype': bool(shutil.which('wtype'))}
+        out = {'available': have(), 'wtype': bool(shutil.which('wtype')), 'qrencode': bool(shutil.which('qrencode'))}
     elif c == 'list' and not a:
         out = list_items()
-    elif c == 'store' and not a:
+    elif c == 'store' and set(a) <= {'--primary', '--keep', '--sync'}:
         data = sys.stdin.buffer.read(MAX_BYTES + 1)
-        out = store(data)
+        primary = '--primary' in a
+        if primary and '--keep' not in a:
+            out = {'stored': False, 'why': 'selection history is off'}
+        else:
+            out = store(data, primary=primary)
+        if '--sync' in a:
+            out['synced'] = sync(data, primary)
+    elif c == 'browsers' and not a:
+        out = browsers()
+    elif c == 'open' and len(a) == 2:
+        out = open_in(a[0], a[1])
+    elif c == 'qr' and len(a) == 1:
+        out = qr(a[0])
+    elif c == 'get' and len(a) == 1:
+        out = {'id': a[0], 'text': item_text(a[0])[1][:200000]}
+    elif c == 'edit' and len(a) == 1:
+        out = edit(a[0], sys.stdin.buffer.read(MAX_BYTES + 1))
     elif c == 'paste' and len(a) == 1:
         out = paste(a[0])
     elif c == 'copy' and len(a) == 1:
@@ -384,7 +570,7 @@ def main(argv):
     elif c in ('clear', 'wipe') and not a:
         out = clear()
     else:
-        print('usage: hearth-clipboard status | list | store | paste ID | copy ID | pin ID | unpin ID | delete ID | clear')
+        print('usage: hearth-clipboard status | list | store [--primary] [--keep] [--sync] | paste ID | copy ID | pin ID | unpin ID | delete ID | clear | browsers | open ID APP | qr ID | edit ID')
         sys.exit(2)
     print(json.dumps(out), flush=True)
 

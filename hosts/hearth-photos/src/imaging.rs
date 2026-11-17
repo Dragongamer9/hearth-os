@@ -178,6 +178,19 @@ pub fn thumbnail(path: &Path, size: u32) -> Result<(Vec<u8>, &'static str), Stri
     for (ext, mime) in [("jpg", "image/jpeg"), ("png", "image/png")] {
         if let Ok(b) = std::fs::read(dir.join(format!("{key}.{ext}"))) { return Ok((b, mime)); }
     }
+    // A video: one frame a second in (ffmpeg), as a JPEG.
+    if crate::library::is_video(path) {
+        let _slot = Slot::take();
+        let out = dir.join(format!("{key}.jpg"));
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let tmp = dir.join(format!(".{key}.{}.jpg", std::process::id()));
+        let ok = crate::system::which("ffmpeg") && std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-ss", "1", "-i"]).arg(path)
+            .args(["-frames:v", "1", "-vf", &format!("scale='min({size},iw)':-2"), "-q:v", "5"]).arg(&tmp)
+            .stdin(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+        if !ok || std::fs::rename(&tmp, &out).is_err() { let _ = std::fs::remove_file(&tmp); return Err("No picture for this video (ffmpeg isn't here)".into()); }
+        return std::fs::read(&out).map(|b| (b, "image/jpeg")).map_err(|e| e.to_string());
+    }
     let o = file_orientation(path);
     let small = if crate::formats::is_jpeg(path) && size <= 256 { let _slot = Slot::take(); exif_preview(path) } else { None };
     let img = match small {
@@ -224,7 +237,7 @@ pub fn convert(path: &Path) -> Result<Vec<u8>, String> {
 /// Clears out cached pictures not used in 30 days (run once at start, in the background).
 pub fn tidy_cache() {
     let old = std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 86400);
-    for kind in ["thumbs", "view", "tmp"] {
+    for kind in ["thumbs", "view", "tmp", "tiles"] {
         let Ok(rd) = std::fs::read_dir(cache_dir(kind)) else { continue };
         for e in rd.flatten() {
             let stale = e.metadata().ok().and_then(|m| m.accessed().or_else(|_| m.modified()).ok()).map(|t| t < old).unwrap_or(false);

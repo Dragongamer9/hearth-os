@@ -1,0 +1,7 @@
+# Hearth: a fingerprint for administrator prompts (polkit), included at the top of /etc/pam.d/polkit-1 by
+# hearth-fingerprint-pam (docs/FINGERPRINT.md). Never the only way in: whatever happens here (no reader, no finger,
+# a wrong finger, a timeout, pam_fprintd missing) carries on to the password lines below it, unchanged.
+# 1. Only people who turned it on in Settings (the list file, root's); anyone else skips line 2.
+auth       [success=ignore default=1]   pam_listfile.so item=user sense=allow file=/etc/nimbus/fingerprint/polkit onerr=fail
+# 2. A recognised finger: done. Anything else: ignored, and the password is asked as before.
+auth       [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10

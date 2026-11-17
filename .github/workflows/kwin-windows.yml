@@ -1,0 +1,311 @@
+# Mantel on KWin: the window list (docs: desktop/kwin/windows/hearth-windows.js and desktop/shell/hearth-kwin-bridge).
+#   1. checks: the bridge's and the script's tests (test_kwin_windows.py: shortcuts the same as labwc's, the script run
+#      against a pretend KWin), the script's JavaScript.
+#   2. end to end (tools/e2e-kwin-windows.py): KWin on a virtual screen with Hearth's KWin defaults, Mantel started with HEARTH_WM=kwin, two test windows:
+#      the list, minimize/activate/maximize, snapping and Super+arrows, desktops, Super+Z, the bridge restarting, KWin's
+#      window menu, the desktop's right-click menu (menu.xml's entries), the frames' drop shadow on a light and a dark wallpaper,
+#      their rounded bottom corners and outline, picture-in-picture windows kept on top;
+#      the KDE extras (live previews, Hearth's Alt+Tab, Snap layouts from Maximize, force close, hidden from screen
+#      sharing, KWin's Overview / Present windows / Desktop grid, the keys in Settings). Small copies of the pictures are notices (SHOT ...) on the pictures jobs, the full ones in the kwin-windows artifact.
+# Failures are ::error:: annotations (logs can't always be read).
+name: Mantel on KWin (windows)
+
+on:
+  push:
+    branches: [bughunt, 'feature/kwin-*']
+    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/Dock.qml', 'hosts/linux/desktop/shell/TaskStrip.qml',
+            'hosts/linux/desktop/shell/SnapLayouts.qml', 'hosts/linux/desktop/shell/ForceClose.qml', 'hosts/linux/desktop/shell/SetKwinRules.qml', 'hosts/linux/desktop/shell/hearth_screencast.py',
+            'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/SetKeyboard.qml', 'os/system_files/usr/share/kwin/tabbox/**', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/HintStrip.qml', 'hosts/linux/desktop/theme/**', 'hosts/linux/desktop/shell/Theme.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
+            'hosts/linux/test/test_kwin_windows.py', 'hosts/linux/test/kwin-windows-mock.js', 'tools/e2e-kwin-windows.py',
+            '.github/workflows/kwin-windows.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: kwin-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kwin:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # KWin composites only with a render device: the kernel's vgem module gives one (the host's /dev and modules).
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install KWin, Quickshell and the checking tools
+        run: |
+          dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
+            foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-tkinter kmod python3-dbus python3-pillow python3-evdev systemd-udev libinput gtk3 >/dev/null
+          dnf -y install --skip-unavailable aurorae libkscreen kscreen milou plasma-milou >/dev/null || true
+          for b in kscreen-doctor; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed (pictures stay at vkms's size)"; done
+          ls /usr/lib64/qt6/plugins/org.kde.kdecoration*/ 2>/dev/null | tr '\n' ' ' | sed 's/^/::notice title=decorations::/'; echo
+          dnf -y install rsms-inter-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland quickshell foot; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          kwin_wayland --version || true; quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Checks (shortcuts, the script against a pretend KWin)
+        shell: bash
+        run: |
+          set +e
+          fail=0
+          python3 hosts/linux/desktop/shell/hearth-kwin-bridge render > /tmp/hearth-windows.js || fail=1
+          node --check /tmp/hearth-windows.js 2>/tmp/js.err || { echo "::error title=KWin script::$(tr '\n' ' ' </tmp/js.err | cut -c1-600)"; fail=1; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_windows.py' -v >/tmp/py.out 2>&1 \
+            || { echo "::error title=tests::$(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' /tmp/py.out | head -8 | tr '\n' '|' | cut -c1-900)"; fail=1; }
+          tail -3 /tmp/py.out
+          exit $fail
+
+      - name: Mantel on KWin, end to end
+        if: always()
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export NIMBUS_SHARE="$PWD/hosts/linux" QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
+          # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          # A render device for KWin (without one it doesn't composite: no frames, so apps never redraw after a resize).
+          modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
+          # Real key presses: a virtual keyboard (uinput) that KWin reads through libinput (udev tags it).
+          modprobe uinput 2>/dev/null; ls -l /dev/uinput >/dev/null 2>&1 || echo "::warning title=keys::no /dev/uinput"
+          for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
+          udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
+          # Someone who moved KWin's Peek at Desktop to Super+F9 themselves: Hearth must leave it there.
+          mkdir -p "$HOME/.config"
+          printf '[kwin]\nShow Desktop=Meta+F9,Meta+D,Peek at Desktop\n' > "$HOME/.config/kglobalshortcutsrc"
+          # Game Mode (Super+G) and Log out are stand-ins that leave a mark.
+          mkdir -p /tmp/fakebin
+          printf '#!/bin/sh\necho "$*" >> /tmp/nimbus-mode-asked\n' > /tmp/fakebin/nimbus-mode && chmod +x /tmp/fakebin/nimbus-mode
+          export PATH="/tmp/fakebin:$PATH"
+          echo "::notice title=render devices::$(ls -l /dev/dri 2>&1 | tr '\n' '|' | cut -c1-400)"
+          # KWin needs real input for the key checks: on a virtual screen KWin 6 reads no input devices, and nested in a
+          # labwc it never shows a frame. So KWin runs on a virtual KMS screen (the kernel's vkms) like on a real
+          # device, reading the uinput keyboard through libinput. KWin on its own virtual screen if that fails (the key
+          # checks fail then). Hearth's KWin defaults (four desktops, Super on its own) the way the session gives them;
+          # pictures through KWin's screenshot API.
+          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          # Hearth's Alt+Tab, installed as the image has it (os/system_files: KWin's tabbox folder, the old and the new name).
+          for d in /usr/share/kwin/tabbox /usr/share/kwin-wayland/tabbox; do mkdir -p "$d" && cp -a os/system_files/usr/share/kwin/tabbox/org.hearth.switcher "$d/"; done
+          echo "::notice title=KWin switchers::$(ls -d /usr/share/kwin*/tabbox/* 2>/dev/null | tr '\n' ' ') $(ls /usr/share/kwin*/ 2>/dev/null | tr '\n' ' ' | cut -c1-300)"
+          # Hearth's window frames written before KWin starts, as the session does (theme/apply.sh): KWin loads them then.
+          HEARTH_WM=kwin python3 hosts/linux/desktop/theme/hearth-theme >/dev/null 2>shots/hearth-theme.err || echo "::warning title=frames::hearth-theme: $(head -c 300 shots/hearth-theme.err)"
+          # The command at the end runs inside KWin's session: it leaves KWin's X server address (DISPLAY, XAUTHORITY).
+          X11ENV="sh -c 'env | grep -E \"^(DISPLAY|XAUTHORITY)=\" > /tmp/kwin-x11.env'"
+          modprobe vkms 2>/dev/null || echo "::warning title=keys::no vkms module"
+          udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
+          VKMS=""
+          # The card with screens (connectors, card1-Virtual-1): vkms. vgem's card has none.
+          for c in /sys/class/drm/card[0-9]*; do case "$c" in *-*) continue;; esac; ls -d "$c"-* >/dev/null 2>&1 && VKMS=/dev/dri/$(basename "$c"); done
+          echo "::notice title=KMS::screen card: ${VKMS:-none} ($(ls /sys/class/drm | tr '\n' ' '))"
+          if [ -n "$VKMS" ]; then
+            KWIN_DRM_DEVICES=$VKMS /tmp/kwin_wayland --drm --xwayland --no-lockscreen --socket wayland-hearth "$X11ENV" >shots/kwin.log 2>&1 &
+            for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          fi
+          if [ ! -S "$XDG_RUNTIME_DIR/wayland-hearth" ]; then
+            echo "::warning title=keys::KWin didn't start on vkms (the key checks will fail): $(tail -4 shots/kwin.log 2>/dev/null | tr '\n' '|' | cut -c1-500)"
+            pkill -f /tmp/kwin_wayland; sleep 1
+            /tmp/kwin_wayland --virtual --xwayland --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth "$X11ENV" >shots/kwin.log 2>&1 &
+            for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          fi
+          # 1920x1080 for the pictures (vkms starts at 1024x768).
+          if [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && command -v kscreen-doctor >/dev/null; then
+            sleep 2
+            OUT1=$(WAYLAND_DISPLAY=wayland-hearth kscreen-doctor -j 2>/dev/null | python3 -c 'import json,sys; o=json.load(sys.stdin)["outputs"]; print(o[0]["name"])' 2>/dev/null)
+            [ -n "$OUT1" ] && WAYLAND_DISPLAY=wayland-hearth kscreen-doctor "output.$OUT1.mode.1920x1080@60" >/dev/null 2>&1 \
+              || echo "::warning title=pictures::couldn't set 1920x1080 (${OUT1:-no output})"
+          fi
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
+          sleep 3
+          # KWin's X server for the X11 test window.
+          for i in $(seq 1 15); do [ -s /tmp/kwin-x11.env ] && break; sleep 1; done
+          [ -s /tmp/kwin-x11.env ] && { set -a; . /tmp/kwin-x11.env; set +a; }
+          echo "::notice title=KWin::$(grep -iE 'OpenGL|EGL|llvmpipe|render device|composit' shots/kwin.log | head -4 | tr '\n' '|' | cut -c1-500) (DISPLAY=$DISPLAY)"
+          # Pictures through KWin's screenshot API (with vgem KWin composites; they're taken last, after the checks).
+          # Each check is one line in shots/results.txt; the pictures are posted by the job after this one.
+          cat > /tmp/shot.py <<'PY'
+          import dbus, os, sys
+          from PIL import Image
+          i = dbus.Interface(dbus.SessionBus().get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
+          r, w = os.pipe()
+          res = i.CaptureWorkspace({'native-resolution': True}, dbus.types.UnixFd(w), timeout=15)
+          os.close(w)
+          data = b''
+          while True:
+              c = os.read(r, 1 << 20)
+              if not c:
+                  break
+              data += c
+          W, H, S = int(res['width']), int(res['height']), int(res['stride'])
+          # QImage's formats: ARGB32 (4, 5, 6: bytes B G R A here) or RGBA8888 (16-19: R G B A). Reading one as the other
+          # swapped red and blue (Steam blue came out orange).
+          raw = 'RGBA' if int(res.get('format', 6)) in (16, 17, 18, 19) else 'BGRA'
+          print('screenshot format %s -> %s' % (res.get('format'), raw))
+          Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
+          PY
+          sed -i 's/^          //' /tmp/shot.py
+          printf '%s\n' '#!/bin/bash' 'timeout 25 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || echo "::warning title=picture::$1 not taken"' \
+            'm=$(convert "shots/$1.png" -format "%[fx:mean]" info: 2>/dev/null); awk -v m="${m:-1}" "BEGIN{exit !(m < 0.01)}" && echo "::warning title=picture::$1 came out black"' \
+            'pgrep -f /tmp/kwin_wayland >/dev/null || echo "::error title=KWin::KWin is not running any more (after the picture $1)"; exit 0' > /tmp/shot.sh
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
+          quickshell -p "$NIMBUS_SHARE/desktop/shell" >shots/shell.log 2>&1 &
+          sleep 12
+          timeout 420 python3 tools/e2e-kwin-windows.py "$NIMBUS_SHARE/desktop/shell" shots 'bash /tmp/shot.sh "$1"' > shots/e2e.log 2>&1
+          rc=$?
+          cat shots/e2e.log
+          cp "$XDG_RUNTIME_DIR/hearth/windows.json" "$XDG_RUNTIME_DIR/hearth/kwin-bridge.log" shots/ 2>/dev/null || true
+          grep "KWin script" shots/kwin-bridge.log | head -10 | while IFS= read -r l; do echo "::warning title=KWin script::$(echo "$l" | cut -c1-600)"; done
+          [ -s shots/shot-errors.txt ] && echo "::warning title=pictures::$(head -c 500 shots/shot-errors.txt | tr '\n' '|')"
+          grep -iE "hearth-kwin-bridge|window list|WinList|hearthwindows" shots/shell.log | head -20 | while IFS= read -r l; do echo "::notice title=shell log::$(echo "$l" | cut -c1-300)"; done
+          grep -iE "hearthwindows|script" shots/kwin.log | head -10 | while IFS= read -r l; do echo "::warning title=KWin log::$(echo "$l" | cut -c1-300)"; done
+          grep -iE "hearthpreviews|hearth-previews|org.hearth.switcher|tabbox|WindowThumbnail|DBusCall|\.qml:[0-9]+" shots/kwin.log | grep -v "^$" | head -12 | while IFS= read -r l; do echo "::warning title=KWin QML::$(echo "$l" | cut -c1-400)"; done
+          grep -E "ERROR|TypeError|ReferenceError" shots/shell.log | grep -iE "WinList|DeskSwitcher|SnapLayouts|Bar.qml|Dock.qml|TaskStrip|ForceClose|SetKeyboard|Pad.qml" | head -8 | while IFS= read -r l; do echo "::error title=shell::$(echo "$l" | cut -c1-300)"; done
+          pgrep -f /tmp/kwin_wayland >/dev/null || tail -12 shots/kwin.log | while IFS= read -r l; do echo "::warning title=KWin log (it stopped)::$(echo "$l" | cut -c1-300)"; done
+          pkill -f quickshell; pkill -f /tmp/kwin_wayland; pkill dbus-daemon
+          exit $rc
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kwin-windows
+          path: shots
+
+  # The pictures, small, as notices (artifacts can't be read from here), in a job of their own so the checks' own
+  # results aren't buried under them.
+  pictures:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kwin-windows
+          path: shots
+      - name: ImageMagick
+        run: command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; } || true
+      - name: Picture (halves)
+        run: f=shots/kwin-halves.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-halves $i::$part"; done || true
+      - name: Picture (snap-layouts)
+        run: f=shots/kwin-snap-layouts.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-snap-layouts $i::$part"; done || true
+      - name: Picture (window-menu)
+        run: f=shots/kwin-window-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-window-menu $i::$part"; done || true
+      - name: Picture (desktop-menu)
+        run: f=shots/kwin-desktop-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-desktop-menu $i::$part"; done || true
+      - name: Picture (frame-active)
+        run: f=shots/kwin-frame-active.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-active $i::$part"; done || true
+      - name: Picture (frame-inactive)
+        run: f=shots/kwin-frame-inactive.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-inactive $i::$part"; done || true
+      - name: Picture (frame-maximized)
+        run: f=shots/kwin-frame-maximized.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-maximized $i::$part"; done || true
+      - name: Picture (frame-hearth-gold)
+        run: f=shots/kwin-frame-hearth-gold.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-hearth-gold $i::$part"; done || true
+      - name: Picture (frame-full)
+        run: f=shots/kwin-frame-full-4.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-full $i::$part"; done || true
+      - name: Picture (frame-csd)
+        run: f=shots/kwin-frame-csd.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-csd $i::$part"; done || true
+      - name: Picture (frame-zoom)
+        run: f=shots/kwin-frame-zoom.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-zoom $i::$part"; done || true
+
+  # The frames' drop shadow (hearth_aurorae SHADOW) on a light and a dark wallpaper, and behind another window: a job
+  # of its own (a job shows at most 50 notices).
+  shadow-pictures:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kwin-windows
+          path: shots
+      - name: ImageMagick
+        run: command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; } || true
+      - name: Picture (frame-shadow-light)
+        run: f=shots/kwin-frame-shadow-light.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-light $i::$part"; done || true
+      - name: Picture (frame-shadow-dark)
+        run: f=shots/kwin-frame-shadow-dark.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-dark $i::$part"; done || true
+      - name: Picture (frame-shadow-light-corner)
+        run: f=shots/kwin-frame-shadow-light-corner.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-light-corner $i::$part"; done || true
+      - name: Picture (frame-shadow-dark-corner)
+        run: f=shots/kwin-frame-shadow-dark-corner.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-dark-corner $i::$part"; done || true
+      - name: Picture (frame-shadow-inactive)
+        run: f=shots/kwin-frame-shadow-inactive.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-inactive $i::$part"; done || true
+      - name: Picture (frame-shadow-dark-full)
+        run: f=shots/kwin-frame-shadow-dark-full.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-dark-full $i::$part"; done || true
+      - name: Picture (pip-on-top)
+        run: f=shots/kwin-pip-on-top.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-pip-on-top $i::$part"; done || true
+
+  # The KDE extras' pictures (live previews, Alt+Tab, Snap layouts from Maximize, the window menu, screen sharing,
+  # force close, KWin's views, the keys): GitHub keeps 50 notices a job, so two jobs.
+  pictures-extras:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kwin-windows
+          path: shots
+      - name: ImageMagick
+        run: command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; } || true
+      - name: Picture (preview-zoom)
+        run: f=shots/kwin-preview-zoom.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-preview-zoom $i::$part"; done || true
+      - name: Picture (alt-tab)
+        run: f=shots/kwin-alt-tab.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-alt-tab $i::$part"; done || true
+      - name: Picture (snap-maximize-zoom)
+        run: f=shots/kwin-snap-maximize-zoom.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-snap-maximize-zoom $i::$part"; done || true
+      - name: Picture (window-menu-extras)
+        run: f=shots/kwin-window-menu-extras.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-window-menu-extras $i::$part"; done || true
+      - name: Picture (cast-hidden)
+        run: f=shots/kwin-cast-hidden.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-cast-hidden $i::$part"; done || true
+
+  pictures-extras-2:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kwin-windows
+          path: shots
+      - name: ImageMagick
+        run: command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; } || true
+      - name: Picture (force-close-pick)
+        run: f=shots/kwin-force-close-pick.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-force-close-pick $i::$part"; done || true
+      - name: Picture (force-close)
+        run: f=shots/kwin-force-close.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-force-close $i::$part"; done || true
+      - name: Picture (overview)
+        run: f=shots/kwin-overview.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-overview $i::$part"; done || true
+      - name: Picture (present-windows)
+        run: f=shots/kwin-present-windows.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-present-windows $i::$part"; done || true
+      - name: Picture (desktop-grid)
+        run: f=shots/kwin-desktop-grid.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-desktop-grid $i::$part"; done || true
+      - name: Picture (shortcuts)
+        run: f=shots/kwin-shortcuts.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-shortcuts $i::$part"; done || true
+
+  # Window menu › More actions (shade, no title bar and frame, special window settings) and Window rules opened for a window.
+  pictures-extras-3:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kwin-windows
+          path: shots
+      - name: ImageMagick
+        run: command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; } || true
+      - name: Picture (window-more-actions)
+        run: f=shots/kwin-window-more-actions.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-window-more-actions $i::$part"; done || true
+      - name: Picture (window-special-settings)
+        run: f=shots/kwin-window-special-settings.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-window-special-settings $i::$part"; done || true

@@ -1,4 +1,5 @@
-// When Desktop Mode isn't used for a while (Hearth Settings › Power): the screen goes off (wlopm), then the device
+// When Desktop Mode isn't used for a while (Hearth Settings › Power): the screen goes off (hearth-screen-power: wlopm
+// under labwc, KWin's own DPMS under KWin), then the device
 // goes to sleep. Apps that keep the screen on (a video playing, a game: the idle-inhibit protocol) hold both off.
 // So do logind's "block" inhibitors (systemd-inhibit, and Hearth Player while it plays: "idle" keeps the screen on,
 // "sleep" keeps the device awake); they're checked when the timer runs out, and again every minute while idle.
@@ -8,22 +9,28 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Services.UPower
 
 Scope {
     id: root
+    // 1.14: on battery the "On battery" times (Settings › Power › Plugged in, battery and lid), when you set them; -1
+    // there means the same as plugged in. Only read here, never written.
+    readonly property bool onBattery: !!UPower.onBattery
+    readonly property int offMinutes: onBattery && Settings.screenOffBattery >= 0 ? Settings.screenOffBattery : Settings.screenOffMinutes
+    readonly property int sleepMins: onBattery && Settings.sleepBattery >= 0 ? Settings.sleepBattery : Settings.sleepMinutes
     property bool hasWlopm: false
     property bool screenIsOff: false
     onScreenIsOffChanged: DeskState.screenOff = screenIsOff
     Process {
         running: true
-        command: ["sh", "-c", "command -v wlopm"]
+        command: ["sh", Quickshell.shellDir + "/hearth-screen-power", "check"]
         onExited: code => root.hasWlopm = code === 0
     }
 
-    function screenOff() { root.screenIsOff = true; Quickshell.execDetached(["wlopm", "--off", "*"]); }
+    function screenOff() { root.screenIsOff = true; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "off"]); }
     function sleepNow() {
         // The screen comes back on first, so it isn't dark after waking.
-        if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); }
+        if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); }
         Buttons.sleep("idle timer (Settings › Power)");
     }
 
@@ -52,23 +59,30 @@ Scope {
 
     IdleMonitor {
         id: screenIdle
-        enabled: root.hasWlopm && Settings.screenOffMinutes > 0
-        timeout: Math.max(1, Settings.screenOffMinutes) * 60
+        enabled: root.hasWlopm && root.offMinutes > 0
+        timeout: Math.max(1, root.offMinutes) * 60
         respectInhibitors: true
         onIsIdleChanged: {
             if (isIdle) { root.wantScreenOff = true; root.check(); }
-            else { root.wantScreenOff = false; if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); } }
+            else { root.wantScreenOff = false; if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); } }
         }
     }
     IdleMonitor {
         id: sleepIdle
-        enabled: Settings.sleepMinutes > 0
-        timeout: Math.max(1, Settings.sleepMinutes) * 60
+        enabled: root.sleepMins > 0
+        timeout: Math.max(1, root.sleepMins) * 60
         respectInhibitors: true
         onIsIdleChanged: {
             if (isIdle) { root.wantSleep = true; root.check(); }
             else root.wantSleep = false;
         }
+    }
+    // 1.14 (the owner's laptop: the shell drew the moving wallpaper all night): after 3 minutes without input the moving
+    // wallpaper holds still (DeskState.idle); any input brings it back. Nothing else changes.
+    IdleMonitor {
+        timeout: 180
+        respectInhibitors: false
+        onIsIdleChanged: DeskState.idle = isIdle
     }
     // Scheduled tasks you set to run "When the PC is idle" (Task Manager › + New task, 1.12): after 10 minutes idle,
     // once per idle stretch (games and videos that keep the screen on count as busy).
@@ -80,6 +94,7 @@ Scope {
     // A setting changed while the screen was off: make sure it's on.
     Connections {
         target: Settings
-        function onScreenOffMinutesChanged() { if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); } }
+        function onScreenOffBatteryChanged() { if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); } }
+        function onScreenOffMinutesChanged() { if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); } }
     }
 }

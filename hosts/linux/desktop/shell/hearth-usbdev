@@ -1,0 +1,140 @@
+#!/usr/bin/python3
+"""hearth-usbdev: Hearth Settings › Bluetooth & devices › USB devices (1.14, KDE's USB devices page and device prompts),
+as you (no root). The USB devices plugged in now (sysfs: name, maker, kind, speed), and, where USBGuard runs, which are
+allowed or blocked, with Allow / Block for one (usbguard's own commands; Hearth never installs or turns on USBGuard, and
+never blocks anything by itself: a keyboard or mouse blocked by mistake could lock you out).
+
+  hearth-usbdev list                 JSON: {devices: [{path, vendor, product, name, maker, kind, speed, guard}],
+                                     usbguard: {present, running}}
+  hearth-usbdev allow GUARD_ID [always] | block GUARD_ID   through usbguard (allow-device [-p], block-device)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+SYS = os.environ.get('HEARTH_USBDEV_SYS', '/sys')
+KINDS = {'01': 'Sound', '02': 'Network or modem', '03': 'Input', '06': 'Camera or phone', '07': 'Printer', '08': 'Storage',
+         '09': 'Hub', '0a': 'Network or modem', '0b': 'Smart card', '0e': 'Webcam', '10': 'Sound and video',
+         'e0': 'Wireless (Bluetooth)', 'ef': 'Device', 'ff': 'Device'}
+
+
+class Fail(Exception):
+    pass
+
+
+def read(path):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def kind_of(classes, protocols):
+    if '03' in classes:
+        if '01' in protocols:
+            return 'Keyboard'
+        if '02' in protocols:
+            return 'Mouse'
+        return 'Controller or input'
+    for c in ('08', '0e', '06', '01', '07', 'e0', '02', '0a', '0b', '10'):
+        if c in classes:
+            return KINDS[c]
+    return KINDS.get(classes[0], 'Device') if classes else 'Device'
+
+
+def devices(sysfs=None):
+    sysfs = sysfs or SYS
+    out = []
+    for d in sorted(glob.glob(os.path.join(sysfs, 'bus', 'usb', 'devices', '*'))):
+        base = os.path.basename(d)
+        if ':' in base or not read(os.path.join(d, 'idVendor')):
+            continue
+        dev_class = read(os.path.join(d, 'bDeviceClass')).lower()
+        if dev_class == '09' or base.startswith('usb'):
+            continue                                   # hubs and the PC's own root hubs
+        classes, protocols = [], []
+        for i in glob.glob(os.path.join(d, base + ':*')):
+            classes.append(read(os.path.join(i, 'bInterfaceClass')).lower())
+            protocols.append(read(os.path.join(i, 'bInterfaceProtocol')).lower())
+        speed = read(os.path.join(d, 'speed'))
+        out.append({'path': base, 'vendor': read(os.path.join(d, 'idVendor')), 'product': read(os.path.join(d, 'idProduct')),
+                    'name': read(os.path.join(d, 'product')) or 'USB device', 'maker': read(os.path.join(d, 'manufacturer')),
+                    'kind': kind_of([c for c in classes if c] or [dev_class], protocols),
+                    'speed': (speed + ' Mbit/s') if speed else '', 'authorized': read(os.path.join(d, 'authorized')) != '0',
+                    'guard': None})
+    return out
+
+
+def parse_guard(text):
+    """usbguard list-devices: "12: allow id 046d:c52b serial "..." name "USB Receiver" ..." -> [{id, target, vp, name}]."""
+    out = []
+    for line in text.splitlines():
+        m = re.match(r'^(\d+): (allow|block|reject) id ([0-9a-f]{4}:[0-9a-f]{4})(?:.*? name "([^"]*)")?', line.strip())
+        if m:
+            out.append({'id': m.group(1), 'target': m.group(2), 'vp': m.group(3), 'name': m.group(4) or ''})
+    return out
+
+
+def guard_state():
+    present = bool(shutil.which('usbguard'))
+    if not present:
+        return {'present': False, 'running': False}, []
+    try:
+        p = subprocess.run(['usbguard', 'list-devices'], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return {'present': True, 'running': False}, []
+    return {'present': True, 'running': p.returncode == 0}, parse_guard(p.stdout) if p.returncode == 0 else []
+
+
+def listing():
+    st, g = guard_state()
+    ds = devices()
+    for d in ds:
+        vp = d['vendor'] + ':' + d['product']
+        m = next((x for x in g if x['vp'] == vp and (not x['name'] or x['name'] == d['name'])), None) or next((x for x in g if x['vp'] == vp), None)
+        if m:
+            d['guard'] = {'id': m['id'], 'target': m['target']}
+    return {'devices': ds, 'usbguard': st}
+
+
+def guard_cmd(what, gid, always=False):
+    if not shutil.which('usbguard'):
+        raise Fail("USBGuard isn't on this system")
+    if not re.match(r'^\d{1,6}$', gid or ''):
+        raise Fail('not a device')
+    cmd = ['usbguard', 'allow-device' if what == 'allow' else 'block-device'] + (['-p'] if always and what == 'allow' else []) + [gid]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail(str(e))
+    if p.returncode != 0:
+        raise Fail((p.stderr or p.stdout).strip()[:200] or "USBGuard said no (you may need its permission: usbguard add-user)")
+    return {'ok': True}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['list']:
+            r = listing()
+        elif argv[:1] == ['allow'] and len(argv) in (2, 3):
+            r = guard_cmd('allow', argv[1], len(argv) == 3 and argv[2] == 'always')
+        elif argv[:1] == ['block'] and len(argv) == 2:
+            r = guard_cmd('block', argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

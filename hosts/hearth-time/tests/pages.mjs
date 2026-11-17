@@ -15,18 +15,18 @@ const browser = await chromium.launch();
 const errors = [];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function page(name, steps, size = { width: 1280, height: 800 }) {
+async function page(name, steps, size = { width: 1280, height: 800 }, query = '', shot = name) {
   const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1 });
   const p = await ctx.newPage();
   p.on('pageerror', e => errors.push(`${name}: ${e.message}`));
   p.on('console', m => { if (m.type() === 'error') errors.push(`${name} console: ${m.text()}`); });
-  await p.goto(pathToFileURL(path.join(ui, `${name}.html`)).href);
+  await p.goto(pathToFileURL(path.join(ui, `${name}.html`)).href + query);
   await sleep(600);
-  await p.screenshot({ path: path.join(out, `${name}.png`) });
+  await p.screenshot({ path: path.join(out, `${shot}.png`) });
   for (const [label, fn] of steps) {
     await fn(p);
     await sleep(400);
-    await p.screenshot({ path: path.join(out, `${name}-${label}.png`) });
+    await p.screenshot({ path: path.join(out, `${shot}-${label}.png`) });
   }
   await ctx.close();
 }
@@ -64,6 +64,15 @@ await page('weather', [], { width: 820, height: 560 });
 await page('ring', []);
 await page('clock', [], { width: 800, height: 520 });
 await page('calendar', [], { width: 1024, height: 640 });
+// Online accounts' calendars: the list, an account event opened (this time or every time), the editor with the
+// calendar picker, and a change made in two places.
+await page('calendar', [
+  ['accounts', async p => { await p.click('#menubtn'); await p.click('[data-m="accounts"]'); }],
+  ['repeat-ask', async p => { await p.keyboard.press('Escape'); await p.keyboard.press('a'); await sleep(300); await p.click('[data-ev="acct-demo|team"]'); }],
+  ['this-time', async p => { await p.click('[data-a="this"]'); }],
+  ['new-picker', async p => { await p.keyboard.press('Escape'); await sleep(200); await p.keyboard.press('n'); }],
+], { width: 1920, height: 1080 }, '', 'calendar-accounts');
+await page('calendar', [], { width: 1920, height: 1080 }, '?conflict', 'calendar-conflict');
 
 await browser.close();
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }

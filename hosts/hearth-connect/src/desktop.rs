@@ -34,11 +34,12 @@ pub fn session_env() -> Vec<(String, String)> {
 
 fn env_of(k: &str) -> Option<String> { session_env().into_iter().find(|(x, _)| x == k).map(|(_, v)| v).filter(|v| !v.is_empty()) }
 
-fn has(prog: &str) -> bool {
+pub(crate) fn has(prog: &str) -> bool {
     std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(prog).is_file())).unwrap_or(false)
 }
 
-fn cmd(prog: &str) -> Command {
+/// A program run in the person's session (its display variables), stdin and stderr closed.
+pub(crate) fn cmd(prog: &str) -> Command {
     let mut c = Command::new(prog);
     c.env_remove("WAYLAND_DISPLAY").env_remove("DISPLAY");
     for (k, v) in session_env() { if !v.is_empty() { c.env(k, v); } }
@@ -106,6 +107,11 @@ pub fn clipboard_set(text: &str) -> bool {
 /// Types text the US layout can't (accents, other scripts) in Desktop Mode.
 pub fn type_text(text: &str) -> bool {
     if text.is_empty() { return true; }
+    // KWin has no virtual keyboard for wtype: Hearth's typing helper there (docs/KWIN-INPUT.md).
+    let ht = "/usr/share/nimbus/desktop/shell/hearth-type";
+    if env_of("WAYLAND_DISPLAY").is_some() && env_of("HEARTH_WM").as_deref() == Some("kwin") && std::path::Path::new(ht).exists() {
+        return cmd("python3").arg(ht).arg("--").arg(text).status().map(|s| s.success()).unwrap_or(false);
+    }
     if env_of("WAYLAND_DISPLAY").is_some() && has("wtype") { return cmd("wtype").arg("--").arg(text).status().map(|s| s.success()).unwrap_or(false); }
     if env_of("DISPLAY").is_some() && has("xdotool") { return cmd("xdotool").args(["type", "--", text]).status().map(|s| s.success()).unwrap_or(false); }
     false

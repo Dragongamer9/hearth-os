@@ -10,7 +10,7 @@
 // Hearth's look (Settings › Appearance), shared by Hearth's apps.
 #[path = "../../hearth-apptheme/apptheme.rs"]
 mod apptheme;
-use hearth_contacts::{carddav, secrets, store::{self, Account, Store}, vcard::Contact};
+use hearth_contacts::{carddav, online, secrets, store::{self, Account, Store}, vcard::Contact};
 use serde_json::{json, Value};
 use std::sync::Mutex;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -28,7 +28,7 @@ async fn state() -> Result<Value, String> {
     blocking(|| {
         let s = st();
         let accounts: Vec<Value> = s.accounts().into_iter().map(|a| json!({"id": a.id, "name": a.name, "provider": a.provider, "server": a.server,
-            "username": a.username, "bookName": a.book_name, "lastSync": a.last_sync, "lastError": a.last_error})).collect();
+            "username": a.username, "bookName": a.book_name, "lastSync": a.last_sync, "lastError": a.last_error, "online": a.online, "paused": a.paused})).collect();
         Ok(json!({"books": s.books(), "contacts": s.list(), "accounts": accounts, "presets": carddav::presets()}))
     }).await
 }
@@ -97,8 +97,28 @@ async fn add_account(name: String, provider: String, server: String, username: S
 
 #[tauri::command]
 async fn remove_account(id: String, keep_copy: bool) -> Result<(), String> {
-    blocking(move || { st().remove_account(&id, keep_copy)?; secrets::remove(&id); Ok(()) }).await
+    blocking(move || {
+        let s = st();
+        let from_online = s.accounts().into_iter().find(|a| a.id == id).map(|a| !a.online.is_empty() && !a.paused).unwrap_or(false);
+        if from_online { return Err("This address book comes from Online accounts: switch Contacts off for it in Settings › Accounts › Online accounts.".into()); }
+        s.remove_account(&id, keep_copy)?;
+        secrets::remove(&id);
+        Ok(())
+    }).await
 }
+
+/// Online accounts' address books (online.rs): new ones added, gone ones paused, and the ones that are also one of
+/// Contacts' own accounts offered to be joined.
+#[tauri::command]
+async fn online_refresh() -> Result<online::Refresh, String> { blocking(|| online::refresh(&st())).await }
+
+/// The person chose to join Contacts' own account with the Online accounts one that has the same address book.
+#[tauri::command]
+async fn online_merge(own: String, account: String) -> Result<(), String> { blocking(move || online::merge(&st(), &own, &account)).await }
+
+/// The person chose to keep them apart (not offered again).
+#[tauri::command]
+async fn online_decline(own: String, account: String) -> Result<(), String> { blocking(move || online::decline(&st(), &own, &account)).await }
 
 /// Changes the account's password (kept in the keyring) after the server stopped taking the old one.
 #[tauri::command]
@@ -112,8 +132,11 @@ async fn sync(id: String) -> Result<Value, String> {
     blocking(move || {
         let s = st();
         let mut out = Vec::new();
-        for mut a in s.accounts().into_iter().filter(|a| id.is_empty() || a.id == id) {
-            let r = secrets::get(&a.id).and_then(|pw| carddav::sync(&s, &a, &pw));
+        for mut a in s.accounts().into_iter().filter(|a| (id.is_empty() || a.id == id) && !a.paused) {
+            // An address book from Online accounts signs in with what hearth-accounts gives now (held only for this
+            // sync); Contacts' own accounts with their password from the keyring.
+            let r = if a.online.is_empty() { secrets::get(&a.id).and_then(|pw| carddav::sync(&s, &a, &pw)) }
+                else { online::credentials(&a.online).and_then(|c| carddav::sync_with(&s, &a, &c)) };
             a.last_sync = store::now_rev();
             a.last_error = r.as_ref().err().cloned().unwrap_or_default();
             let _ = s.put_account(a.clone());
@@ -204,7 +227,7 @@ fn main() {
     tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
         .manage(Launch(Mutex::new(file)))
-        .invoke_handler(tauri::generate_handler![state, save, delete, move_to, preview_file, import_file, export_file, discover, add_account, remove_account, set_password, sync, launch_file, read_image, open_uri, open_map])
+        .invoke_handler(tauri::generate_handler![state, save, delete, move_to, preview_file, import_file, export_file, discover, add_account, remove_account, set_password, sync, online_refresh, online_merge, online_decline, launch_file, read_image, open_uri, open_map])
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Contacts")

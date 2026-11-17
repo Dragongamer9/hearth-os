@@ -47,6 +47,9 @@ RUN --mount=type=bind,source=os-bases/peppermint/apt-snapshot.sh,target=/apt-sna
 # ------------------------------------------------------------------ what Debian doesn't package (see builder.sh)
 FROM base AS builder
 COPY os-bases/peppermint/builder.sh /builder.sh
+COPY hosts/linux/desktop/kwin-helpers /src/hearth-kwin-helpers
+# Firehold, Hearth's own compositor (2.0 preview, docs/FIREHOLD.md): built here with the other Rust parts.
+COPY hosts/firehold-comp /src-firehold-comp
 RUN --mount=type=tmpfs,dst=/tmp /builder.sh
 
 # ------------------------------------------------------------------ Hearth

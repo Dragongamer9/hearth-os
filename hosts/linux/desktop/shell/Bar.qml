@@ -67,7 +67,9 @@ PanelWindow {
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);
         }
-        for (const t of ToplevelManager.toplevels.values) {
+        for (const t of WinList.toplevels.values) {
+            // Activities (SettingsNav.activityShows, from feature/widgets): only the activity you're on; without it, all.
+            if (SettingsNav.activityShows) { try { if (!SettingsNav.activityShows(t)) continue; } catch (e) {} }
             const own = ownWindow(t);
             const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
@@ -120,7 +122,7 @@ PanelWindow {
 
     // ---- Show desktop (the strip at the end of the bar, like Windows): every window minimized, then back.
     function toggleShowDesktop() {
-        const open = ToplevelManager.toplevels.values.filter(t => !t.minimized);
+        const open = WinList.toplevels.values.filter(t => !t.minimized);
         if (open.length) {
             const front = open.find(t => t.activated) || null;
             DeskState.shownDesktop = { windows: open, front: front };
@@ -130,7 +132,7 @@ PanelWindow {
         const was = DeskState.shownDesktop;
         DeskState.shownDesktop = null;
         if (!was) return;
-        const still = ToplevelManager.toplevels.values;
+        const still = WinList.toplevels.values;
         was.windows.filter(t => still.indexOf(t) >= 0 && t !== was.front).forEach(t => t.minimized = false);
         if (was.front && still.indexOf(was.front) >= 0) was.front.activate();
     }
@@ -167,8 +169,10 @@ PanelWindow {
         if (portrait) return Qt.point(bar.width + 4, p.y - 20);
         return Qt.point(p.x - (menu ? menu.cardWidth / 2 : 134), (screen ? screen.height : 1080) - bar.height + 2);
     }
-    // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window.
+    // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window;
+    // on KWin (which takes no typed keys) WinList asks KWin's hearthwindows script.
     function moveToDesktop(win, n) {
+        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;
@@ -225,6 +229,12 @@ PanelWindow {
             }
             if (list.length) list.push({ separator: true });
             list.push({ label: "Move to desktop", icon: "desktops", group: "Window", sub: sub });
+            // Move to activity › (SettingsNav.activityMoveItems, from feature/widgets; nothing with one activity).
+            if (SettingsNav.activityMoveItems) {
+                let acts = [];
+                try { acts = SettingsNav.activityMoveItems(win) || []; } catch (e) {}
+                if (acts.length) list.push({ label: "Move to activity", icon: "desktops", group: "Window", sub: acts });
+            }
             if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
             else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });
@@ -372,15 +382,20 @@ PanelWindow {
                 id: net
                 property string kind: ""     // wifi | ethernet | ""
                 property string name: ""
-                tip: name ? "Connected to " + name : "Not connected"
+                // 1.14: the speed, down and up (Settings › Bar and dock › Network speed in the bar; NetSpeed.qml).
+                readonly property bool showSpeed: Settings.netSpeed
+                wide: showSpeed && !bar.portrait
+                tip: (name ? "Connected to " + name : "Not connected") + (showSpeed && NetSpeed.text ? "\n" + NetSpeed.text : "")
                 onClicked: bar.quickRequested()
                 onRightClicked: bar.statusMenu(net, name ? "Connected to " + name : "Not connected", [
                     { label: "Wi-Fi settings", icon: "wifi", run: () => bar.settingsRequested("wifi") },
+                    { label: "Connection details", icon: "gear", run: () => bar.settingsRequested("net-details") },
+                    { label: Settings.netSpeed ? "Hide the network speed" : "Show the network speed", icon: "speed", run: () => NetSpeed.toggle() },
                     { label: "Quick Access", icon: "menu", run: () => bar.quickRequested() }
                 ])
                 StatusLabel {
                     icon: net.kind === "wifi" ? "network-wireless-signal-good-symbolic" : net.kind === "ethernet" ? "network-wired-symbolic" : "network-offline-symbolic"
-                    label: ""
+                    label: net.showSpeed && !bar.portrait ? NetSpeed.text : ""
                 }
                 Process {
                     id: nmcli
@@ -397,6 +412,17 @@ PanelWindow {
                     }
                 }
                 Timer { interval: 10000; running: true; repeat: true; triggeredOnStart: true; onTriggered: nmcli.running = true }
+            }
+
+            // Vaults (1.14, SetVaults.qml): shown when you have one; lit while one is unlocked. Click: lock, open or
+            // unlock each (unlocking asks for its password in Settings › Vaults).
+            BarButton {
+                id: vaultBtn
+                visible: VaultStore.vaults.length > 0
+                tip: VaultStore.tip
+                onClicked: bar.statusMenu(vaultBtn, "Vaults", VaultStore.menu(p => bar.settingsRequested(p)))
+                onRightClicked: bar.statusMenu(vaultBtn, "Vaults", VaultStore.menu(p => bar.settingsRequested(p)))
+                Icon { anchors.centerIn: parent; name: "vault"; size: 18; color: VaultStore.opened.length ? Theme.accent : Theme.text }
             }
 
             // Battery (laptops and handhelds only)

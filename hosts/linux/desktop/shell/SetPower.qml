@@ -1,4 +1,6 @@
-// Hearth Settings › Power: battery, performance profile, sleep and restart.
+// Hearth Settings › Power: battery, performance profile, sleep and restart. 1.14: the battery's charge limit and health
+// (hearth-hwset, the same setting as Task Manager › Battery: /etc/hearth/hardware.json, put back at every start), shown
+// only where the battery has a charge limit (charge_control_end_threshold).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -10,11 +12,28 @@ SetPage {
     title: "Power"
     readonly property var dev: UPower.displayDevice
     readonly property bool battery: !!(dev && dev.isLaptopBattery)
-    property bool canScreenOff: false    // wlopm is installed (IdlePower.qml)
+    property bool canScreenOff: false    // hearth-screen-power can (wlopm under labwc, KWin's DPMS under KWin; IdlePower.qml)
     property string profile: ""
     property var profiles: []
     property var tdp: null             // {supported, watts, min, max, via}
     property string powerError: ""
+    property var hw: null              // hearth-hwset status (the battery's charge limit)
+    readonly property var bat: hw && hw.batteries && hw.batteries.length ? hw.batteries[0] : null
+    SetJob { id: hwStatus; helper: "/usr/libexec/nimbus/hearth-hwset" }
+    SetJob { id: hwJob; helper: "/usr/libexec/nimbus/hearth-hwset"; admin: true }
+    Component.onCompleted: { power(["status"]); hwStatus.run(["status"], r => page.hw = r, () => page.hw = null); moreJob.run(["status"], r => page.more = r, () => page.more = null); reveal(); }
+    // `settings page power:off` opens it at "Turn off or switch" (the Desktop Mode test's picture); only scrolls.
+    // The anchor stays until the timer: opening Settings can make the page twice in a row, and the second must see it.
+    function reveal() { if (SettingsNav.pageAnchor === "off") revealTimer.start(); }
+    Timer { id: revealTimer; interval: 1500; onTriggered: { if (SettingsNav.pageAnchor === "off") SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(offCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)); } }
+    // 1.14 (hearth-powerset): the lid, apps keeping it awake, whether it can hibernate, the battery's health.
+    property var more: null
+    property bool askHibernate: false
+    property string askWhat: "hibernate"     // what the first-time question is for: "hibernate" | "hybrid-sleep"
+    readonly property var hybrid: more ? more.hybrid : null
+    SetJob { id: moreJob; helper: "hearth-powerset" }
+    readonly property var hib: more ? more.hibernate : null
+    readonly property int awake: more ? more.inhibitors.filter(i => i.mode === "block").length : 0
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-power").toString().replace(/^file:\/\//, ""))
 
     // Power mode and power limit through hearth-power (the same as Hearth's Game Mode settings).
@@ -24,7 +43,6 @@ SetPage {
         if (pw.running) { pw.next = args; return; }
         pw.command = ["python3", helper].concat(args); pw.running = true;
     }
-    Component.onCompleted: power(["status"])
     Process {
         id: pw
         property var next: null
@@ -55,11 +73,19 @@ SetPage {
 
     SetCardGroup {
         title: "Battery & performance"
-        visible: page.battery || page.profiles.length > 1 || !!(page.tdp && page.tdp.supported) || page.powerError !== ""
+        visible: page.battery || (!!page.bat && page.bat.canLimit) || page.profiles.length > 1 || !!(page.tdp && page.tdp.supported) || page.powerError !== ""
         SetRow {
             visible: page.battery; interactive: false
             icon: page.dev && page.dev.state === UPowerDeviceState.Charging ? "batt-charging" : "batt"
             title: "Battery"; value: page.battText; chevron: false
+        }
+        SetChoice {
+            visible: !!page.bat && page.bat.canLimit
+            icon: "batt"; title: "Stop charging at"
+            sub: (page.bat && page.bat.health ? "Battery health " + page.bat.health + "%" + (page.bat.cycles ? " after " + page.bat.cycles + " charges" : "") + ". " : "") + "A limit keeps the battery healthy longer if it's plugged in a lot"
+            options: [{ value: 60, label: "60%" }, { value: 80, label: "80%" }, { value: 100, label: "100% (no limit)" }]
+            current: page.bat && page.bat.limit ? (page.bat.limit >= 95 ? 100 : page.bat.limit <= 70 ? 60 : 80) : 100
+            onChosen: v => hwJob.run(["set", "battery.limit", String(v)], () => hwStatus.run(["status"], r => page.hw = r), e => page.powerError = e)
         }
         SetChoice {
             visible: page.profiles.length > 1
@@ -87,14 +113,24 @@ SetPage {
     }
     Process {
         running: true
-        command: ["sh", "-c", "command -v wlopm"]
+        command: ["sh", Quickshell.shellDir + "/hearth-screen-power", "check"]
         onExited: code => page.canScreenOff = code === 0
+    }
+    SetCardGroup {
+        title: "More power settings"
+        SetRow { icon: "batt"; title: "Plugged in, battery & lid"; sub: "Different times and power mode on battery, and what closing the lid does"; chevron: true; onActivated: SettingsNav.openPage("power-profiles") }
+        SetRow {
+            icon: "sleep"; title: "Apps keeping it awake"; chevron: true
+            sub: page.awake ? page.awake + (page.awake === 1 ? " app is" : " apps are") + " keeping the screen on or the PC awake" : "Nothing is keeping it awake right now"
+            onActivated: SettingsNav.openPage("power-awake")
+        }
+        SetRow { icon: "bolt"; title: "Battery health & history"; sub: "Charge cycles, how much it holds, graphs of charge and power, your devices' batteries"; chevron: true; onActivated: SettingsNav.openPage("battery") }
     }
     SetCardGroup {
         title: "When you're away"
         SetChoice {
             icon: "display"; title: "Turn the screen off after"
-            sub: page.canScreenOff ? "Videos and games that are playing keep it on" : "Needs wlopm, which isn't installed"
+            sub: page.canScreenOff ? "Videos and games that are playing keep it on" : (Quickshell.env("HEARTH_WM") === "kwin" ? "Needs kscreen-doctor (libkscreen-bin), which isn't installed" : "Needs wlopm, which isn't installed")
             enabled: page.canScreenOff
             opacity: page.canScreenOff ? 1 : 0.5
             options: [{ value: 0, label: "Never" }, { value: 2, label: "2 min" }, { value: 5, label: "5 min" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }]
@@ -131,9 +167,48 @@ SetPage {
         }
     }
     SetCardGroup {
+        id: offCard
         title: "Turn off or switch"
         SetRow { icon: "pad"; title: "Game Mode"; sub: "The Game Mode you picked in Gaming (Steam's or Hearth's) on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
         SetRow { icon: "sleep"; title: "Sleep"; onActivated: Buttons.sleep("Settings › Power › Sleep") }
+        // Hibernate (1.14): only where this PC can (hearth-powerset: the kernel offers it, Secure Boot allows it, a swap
+        // file on the drive big enough for what's in memory, logind agrees). Booting is never changed for it. The first
+        // time it hasn't come back on this PC yet, so it asks first.
+        SetRow {
+            visible: !!page.hib && page.hib.can
+            icon: "moon"; title: "Hibernate"; chevron: false
+            sub: page.hib && page.hib.proven ? "Saves everything to the drive and turns off; turn on to carry on where you were" : "Not tried on this PC yet: save your work first"
+            onActivated: { if (page.hib.proven) Quickshell.execDetached(["systemctl", "hibernate"]); else { page.askWhat = "hibernate"; page.askHibernate = true; } }
+        }
+        // Hybrid sleep (1.14, KDE's): sleeps, with everything also saved to the drive, so a flat battery or a power cut
+        // doesn't lose your work. Only where Hibernate is offered and logind says yes (hearth-powerset hybrid); the
+        // first time on this PC it asks, like Hibernate.
+        SetRow {
+            visible: !!page.hib && page.hib.can && !!page.hybrid && page.hybrid.can
+            icon: "sleep"; title: "Hybrid sleep"; chevron: false
+            sub: page.hib && page.hib.proven ? "Sleeps, and saves everything to the drive too in case the power goes" : "Not tried on this PC yet: save your work first"
+            onActivated: { if (page.hib.proven) Quickshell.execDetached(["systemctl", "hybrid-sleep"]); else { page.askWhat = "hybrid-sleep"; page.askHibernate = true; } }
+        }
+        SetBanner {
+            visible: page.askHibernate
+            Layout.fillWidth: true
+            kind: "warn"; title: page.askWhat === "hybrid-sleep" ? "Hybrid sleep for the first time?" : "Hibernate for the first time?"
+            sub: "Hearth hasn't seen this PC come back from hibernating yet. Save your work: if it doesn't come back, it starts fresh and anything not saved is lost. Once it has worked, Hearth remembers."
+        }
+        RowLayout {
+            visible: page.askHibernate
+            Layout.leftMargin: 4; spacing: 8
+            SetButton { text: page.askWhat === "hybrid-sleep" ? "Hybrid sleep now" : "Hibernate now"; primary: true; onActivated: { page.askHibernate = false; Quickshell.execDetached(["systemctl", page.askWhat === "hybrid-sleep" ? "hybrid-sleep" : "hibernate"]); } }
+            SetButton { text: "Cancel"; ghost: true; onActivated: page.askHibernate = false }
+        }
+        SetRow {
+            visible: !!page.hib && !page.hib.can
+            interactive: false; chevron: false; icon: "moon"; title: "Hibernate isn't available"; sub: page.hib ? page.hib.why : ""
+        }
+        SetRow {
+            visible: !!page.hib && page.hib.can && !!page.hybrid && !page.hybrid.can
+            interactive: false; chevron: false; icon: "sleep"; title: "Hybrid sleep isn't available"; sub: page.hybrid ? page.hybrid.why : ""
+        }
         SetRow { icon: "restart"; title: "Restart"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
         SetRow { icon: "power"; title: "Shut down"; danger: true; onActivated: Quickshell.execDetached(["systemctl", "poweroff"]) }
     }

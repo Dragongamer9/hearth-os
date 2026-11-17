@@ -17,6 +17,9 @@
 //! - input.rs: the phone as touchpad and keyboard (a virtual mouse and keyboard through uinput)
 //! - desktop.rs: notifications, media players (MPRIS), clipboard, battery, sounds
 //! - ipc.rs: the window's connection to the service
+//! - plugins/: the other features, one file each: run commands, calls (pause media when the phone rings), text
+//!   messages, the presentation remote, this PC's volume from the phone, browsing the phone's files (sftp), and the
+//!   desktop notifications' buttons and Reply box (notify_bus.rs)
 //!
 //! Safety: only local addresses are answered; nothing but pairing happens with a device until the person accepts
 //! the pairing on this PC (and checks the verification key matches the phone's); files from a paired phone wait in a
@@ -32,6 +35,7 @@ pub mod input;
 pub mod ipc;
 pub mod lan;
 pub mod packet;
+pub mod plugins;
 
 use std::net::IpAddr;
 use std::path::PathBuf;
