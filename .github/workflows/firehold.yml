@@ -162,7 +162,7 @@ jobs:
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
           for name in ('firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                        'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice'):
+                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=pictures::no %s' % name); continue
@@ -286,7 +286,7 @@ jobs:
       matrix:
         name: ['firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice']
+               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide']
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true
