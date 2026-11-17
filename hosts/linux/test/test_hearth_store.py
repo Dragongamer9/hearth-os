@@ -90,6 +90,18 @@ class Flathub(unittest.TestCase):
         # ODRS gets the same anonymous hash from everybody
         fetch = [b for u, b in self.urls if u.endswith('/fetch')][0]
         self.assertEqual(fetch['user_hash'], '0' * 40)
+        # Flathub's newer shape: sizes as a list of {src, width, height}
+        ANSWERS['appstream/org.kde.krita'] = dict(APPSTREAM, screenshots=[{'caption': 'New', 'sizes': [
+            {'src': 'https://x/n624.png', 'width': '624', 'height': '351', 'scale': '1x'},
+            {'src': 'https://x/n1248.png', 'width': '1248', 'height': '702', 'scale': '1x'},
+            {'src': 'https://x/n2496.png', 'width': '2496', 'height': '1404', 'scale': '1x'}]}], urls=None, metadata=None)
+        self.mod.CACHE = self.tmp.name + '/2'
+        try:
+            b = self.mod.app('org.kde.krita', getter=self.web)
+        finally:
+            ANSWERS['appstream/org.kde.krita'] = APPSTREAM
+        self.assertEqual(b['screenshots'], [{'url': 'https://x/n1248.png', 'caption': 'New'}])
+        self.assertEqual((b['homepage'], b['verified']), ('', False))
         for bad in ('krita', '../x.y.z', 'org.kde.krita; rm'):
             with self.assertRaises(self.mod.Fail):
                 self.mod.app(bad, getter=self.web)
