@@ -618,6 +618,14 @@
   {
    "title": "Task Manager (always on top)",
    "keepAbove": true
+  },
+  {
+   "id": "picture-in-picture",
+   "titles": ["Picture-in-Picture", "Picture in picture"],
+   "apps": ["firefox", "firefox-esr", "org.mozilla.firefox", "librewolf", "io.gitlab.librewolf-community", "chromium",
+            "chromium-browser", "org.chromium.chromium", "google-chrome", "com.google.chrome", "brave-browser",
+            "com.brave.browser", "microsoft-edge", "vivaldi-stable"],
+   "keepAbove": true
   }
  ],
  "kwinOnly": [
