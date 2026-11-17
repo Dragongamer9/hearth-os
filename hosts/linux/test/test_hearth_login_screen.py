@@ -641,7 +641,8 @@ class GreeterInfo(unittest.TestCase):
             os.makedirs(tmp + '/icons')
             (pathlib.Path(tmp) / 'icons' / 'alex').write_bytes(b'\x89PNG')
             os.makedirs(tmp + '/s')
-            for f in ('nimbus.desktop', 'hearth-classic.desktop', 'hearth-kde.desktop'):
+            # hearth-kde.desktop only while KDE Plasma's session is still shipped (1.14 archives it: docs/ARCHIVED.md)
+            for f in [f for f in ('nimbus.desktop', 'hearth-classic.desktop', 'hearth-kde.desktop') if (SESSION_DIR / f).exists()]:
                 # the image's own paths (build.sh puts nimbus-session in /usr/bin): here, a program that's there
                 (pathlib.Path(tmp) / 's' / f).write_text((SESSION_DIR / f).read_text().replace('/usr/local/bin/nimbus-session', '/bin/sh'))
             (pathlib.Path(tmp) / 'kb').write_text('XKBMODEL="pc105"\nXKBLAYOUT="us,de"\n')
@@ -656,7 +657,8 @@ class GreeterInfo(unittest.TestCase):
             ids = [s['id'] for s in d['sessions']]
             self.assertEqual(ids[:3], ['hearth', 'game', 'desktop'])
             self.assertNotIn('hearth-classic', ids)
-            self.assertEqual('hearth-kde' in ids, os.path.exists('/usr/bin/startplasma-wayland'))   # only once KDE is there
+            self.assertEqual('hearth-kde' in ids, (SESSION_DIR / 'hearth-kde.desktop').exists()
+                             and os.path.exists('/usr/bin/startplasma-wayland'))   # only once KDE is there
             self.assertEqual(d['layouts'], ['us', 'de'])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
