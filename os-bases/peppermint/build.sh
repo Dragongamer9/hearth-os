@@ -78,6 +78,9 @@ KVER=$(basename "${KDIRS[0]}")
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
   python3-pyroute2 libusb-1.0-0 \
   shim-signed grub-efi-amd64-signed
+# Settings 1.14: Thunderbolt and USB4 devices (bolt, Bluetooth & devices › Thunderbolt), OpenVPN files in Network &
+# internet › VPN (NetworkManager's plugin), and the sound a notification can play (Settings › Notifications).
+optional bolt network-manager-openvpn sound-theme-freedesktop
 optional power-profiles-daemon fonts-inter fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
 
 # ------------------------------------------------------------------ graphics and Steam (AMD, Intel; Nvidia below)
@@ -1806,7 +1809,14 @@ chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.
 getent group wheel >/dev/null || groupadd -r wheel
 getent group netdev >/dev/null || groupadd -r netdev   # Wi-Fi and network changes (49-hearth-network.rules, hearth-groups)
-sed -i 's/^#\s*\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen && locale-gen
+# Settings › Region & language (1.14) offers the languages and formats made here (/usr is read-only afterwards, so
+# none can be added on the device): English first, then the most used ones. A missing line is only skipped.
+for l in en_US en_GB en_CA en_AU en_IE en_NZ en_IN en_ZA de_DE de_AT de_CH fr_FR fr_CA fr_BE fr_CH es_ES es_MX es_AR \
+         es_US it_IT pt_PT pt_BR nl_NL nl_BE sv_SE da_DK nb_NO fi_FI pl_PL cs_CZ sk_SK hu_HU ro_RO bg_BG el_GR \
+         ru_RU uk_UA tr_TR he_IL ar_EG ar_SA ja_JP ko_KR zh_CN zh_TW zh_HK th_TH vi_VN id_ID ms_MY hi_IN; do
+  sed -i "s/^#\s*\($l.UTF-8 UTF-8\)/\1/" /etc/locale.gen
+done
+locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
 # Flathub for system apps (Hearth's updates update them).

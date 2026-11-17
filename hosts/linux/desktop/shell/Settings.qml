@@ -56,6 +56,7 @@ Singleton {
     // ---- Sub themes (Settings › Personalisation; palettes.json "subThemes"). Missing = the default, never written by
     // itself: "" is the look's own colours (today's), so nobody's desktop changes until they pick one.
     property string subTheme: ""         // "" (the look's first: Firelight, Steam blue, Cyber…) | a sub theme's id
+    property bool restoreApps: false     // reopen the apps that were open when you signed out (SessionRestore.qml; 1.14)
     property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
@@ -71,6 +72,7 @@ Singleton {
         .concat(["menuStyle"])
         .concat(["subTheme", "wallMatch"])
         .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
+        .concat(["restoreApps"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
@@ -106,6 +108,7 @@ Singleton {
     onMenuStyleChanged: save("menuStyle")
     onSubThemeChanged: save("subTheme")
     onWallMatchChanged: save("wallMatch")
+    onRestoreAppsChanged: save("restoreApps")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

@@ -21,9 +21,19 @@ Scope {
         // Every notification goes into the history (the clock's panel, ClockPanel.qml). With Do Not Disturb on
         // only urgent ones pop up.
         onNotification: n => {
-            DeskState.remember(n);
-            if ((DeskState.dnd || DeskState.isMuted(n.appName)) && n.urgency !== NotificationUrgency.Critical) return;
+            // Each app's settings (1.14, NotifyRules.qml): not allowed = not kept or shown at all (urgent ones too);
+            // low priority = only the list; high = pops up even with Do Not Disturb; a sound when it pops up.
+            // Hearth's own are always allowed, and Hearth's own urgent ones always pop up (NotifyRules.isHearth).
+            const rule = NotifyRules.rule(n.appName);
+            const critical = n.urgency === NotificationUrgency.Critical;
+            if (!rule.allow) { n.dismiss(); return; }
+            DeskState.remember(n, rule.lockScreen);
+            const urgent = critical || rule.priority === "high";
+            if (critical && NotifyRules.isHearth(n.appName)) { n.tracked = true; return; }
+            if (rule.priority === "low" && !critical) return;
+            if ((DeskState.dnd || DeskState.isMuted(n.appName)) && !urgent) return;
             n.tracked = true;
+            if (rule.sound && !DeskState.dnd) NotifyRules.playSound();
         }
         // Reply boxes on pop-ups (NotifReply.qml; your phone's messages, docs/PHONE-LINK.md). Set only where this
         // Quickshell has it, so an older one still starts.

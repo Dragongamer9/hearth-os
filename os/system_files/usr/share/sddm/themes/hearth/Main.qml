@@ -65,6 +65,20 @@ Rectangle {
         }
     }
 
+    // Your picture (Settings › Accounts › Login screen: /var/lib/hearth/login-screen/background), over the fireside, a
+    // little darker so the clock and names stay easy to read. Missing or unreadable: not shown, the fireside stays.
+    Image {
+        id: picture
+        anchors.fill: parent
+        source: "file:///var/lib/hearth/login-screen/background"
+        fillMode: Image.PreserveAspectCrop
+        // Decoded at most at 4K, whatever the file's size (hearth-sysset-admin also refuses one over 8192 pixels a side).
+        sourceSize.width: 3840; sourceSize.height: 2160
+        asynchronous: true; cache: false
+        visible: status === Image.Ready
+    }
+    Rectangle { anchors.fill: parent; visible: picture.visible; color: "#000000"; opacity: 0.45 }
+
     ColumnLayout {
         anchors.centerIn: parent
         width: Math.min(parent.width - 80, 760)
