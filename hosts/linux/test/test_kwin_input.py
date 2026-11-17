@@ -385,6 +385,11 @@ class LockCheck(unittest.TestCase):
         self.greet_says('something else entirely')          # no failure seen, but no sign it loaded either
         self.assertFalse(lc.check(kenv=self.kenv)['ok'])
 
+    def test_env_file_format(self):
+        self.assertEqual(lc.parse_env(b'A=1\0PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock\0junk\0'),
+                         {'A': '1', 'PLASMA_DEFAULT_SHELL': 'org.hearth.mantel-lock'})
+        self.assertEqual(lc.parse_env(b'# made by the session\nB=x=y\n'), {'B': 'x=y'})
+
     def test_reads_kwins_environment(self):
         env = lc.kwin_environ()
         self.assertTrue(env is None or isinstance(env, dict))

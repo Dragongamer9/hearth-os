@@ -175,7 +175,7 @@ install -Dm755 /src/hearth-kwin-helpers/out/hearth-kwin-cast /output/usr/libexec
 apt-get install -y --no-install-recommends libkf6package-dev libkf6coreaddons-dev >/dev/null
 cmake -S /src/hearth-kwin-helpers/shell-package -B /src/hearth-shell-package -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build /src/hearth-shell-package
-install -Dm644 /src/hearth-shell-package/hearth_plasma_shell.so /output/usr/lib/hearth/hearth_plasma_shell.so
+install -Dm644 /src/hearth-shell-package/plasma_shell.so /output/usr/lib/hearth/plasma_shell.so
 
 # ------------------------------------------------------------------ RyzenAdj
 fetch FlyGoat/RyzenAdj "$RYZENADJ_REF" ryzenadj
