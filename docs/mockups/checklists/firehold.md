@@ -43,7 +43,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour — hosts/linux/desktop/shell/FireholdFrames.qml: "color: modelData === \"close\" ? F.C.accent : F.C.card2"
 - [ ] Hearth Files' picture grid inside it (two rows of five)
 - [x] The game in a window with the accent border (the same game resumed on the Couch) — hosts/linux/desktop/shell/FireholdFrames.qml: "color: \"transparent\"; border.width: 2; border.color: F.C.accent"
-- [x] The game window's title line: name · paused · 60 fps limit · VRR — hosts/linux/desktop/shell/FireholdFrames.qml: "F.gameLine(\"\", one.win.minimized, fr.fh.frameLimit, fr.vrr)"
+- [x] The game window's title line: name · paused · 60 fps limit · VRR — hosts/linux/desktop/shell/FireholdFrames.qml: "\" · \" + F.gameLine(\"\", one.win.minimized, fr.fh.frameLimit, fr.vrr)"
 - [x] The game window's hint chip "Full screen: F11 or ≡" — hosts/linux/desktop/shell/FireholdFrames.qml: "\"Full screen: F11 or ≡\""
 - [x] The game window keeps the game's picture ("The same game you resumed on the Couch, now in a window") — hosts/linux/desktop/shell/FireholdFrames.qml: "mask: Region { id: hits }"
 - [x] Notification card "Switched to Desk": "You moved the mouse. Everything stayed open. Press the Guide button to go back to the Couch." — hosts/linux/desktop/shell/Firehold.qml: "Everything stayed open. Press the Guide button to go back to the Couch."
