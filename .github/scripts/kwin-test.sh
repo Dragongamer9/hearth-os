@@ -167,6 +167,34 @@ command -v wayland-info >/dev/null && echo "::notice title=keyboard repeat (wayl
 ipc wayland-hearth settings page keyboard; sleep 4
 shot kwin-9-keyboard-kwin
 ipc wayland-hearth settings close
+# ---- Wave 3 under KWin (1.14's Desktop Mode is Mantel on KWin): the search bar, Activities, the App store's Drivers.
+qk() { WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" 2>/dev/null | grep -v WARN | tail -n1; }
+sb_shown() { qk searchbar state | python3 -c 'import json,sys; print(json.load(sys.stdin)["shown"])' 2>/dev/null; }
+ipc wayland-hearth searchbar open; sleep 2
+[ "$(sb_shown)" = True ] || fail "search bar (KWin)" "it didn't open under KWin: $(qk searchbar state | head -c 300)"
+shot kwin-w3-search-empty
+ipc wayland-hearth searchbar type "(3+4)*2^3"; sleep 2
+qk searchbar state | grep -q '"plugin":"calc"' || fail "search bar (KWin)" "the calculator didn't answer under KWin: $(qk searchbar state | head -c 300)"
+shot kwin-w3-search-calc
+ipc wayland-hearth searchbar type "display"; sleep 2
+shot kwin-w3-search-settings
+ipc wayland-hearth searchbar close
+r=$(qk searchbar desk "terminal"); sleep 2
+[ "$r" = opened ] && [ "$(sb_shown)" = True ] || fail "search bar (KWin)" "typing on the desktop didn't open it under KWin: $r"
+shot kwin-w3-search-typed-on-desktop
+ipc wayland-hearth searchbar close
+ipc wayland-hearth searchbar pad; sleep 3
+shot kwin-w3-search-controller
+ipc wayland-hearth searchbar close
+ipc wayland-hearth activities create "Work" >/dev/null; sleep 1
+ipc wayland-hearth activities switcher; sleep 2
+shot kwin-w3-activities
+ipc wayland-hearth activities close
+ipc wayland-hearth settings page store:drivers; sleep 5
+shot kwin-w3-store-drivers
+ipc wayland-hearth settings close
+grep -E "(SearchBar|Activit|StoreDrivers|SetStore)[A-Za-z]*\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
+  | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null
 end_session
