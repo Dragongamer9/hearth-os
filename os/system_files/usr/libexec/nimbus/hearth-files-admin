@@ -35,7 +35,8 @@ REFUSED = ('/boot', '/efi', '/sysroot', '/ostree', '/proc', '/sys', '/dev', '/ru
            '/lib64', '/usr', '/etc/fstab', '/etc/crypttab', '/etc/kernel', '/etc/default/grub', '/etc/grub.d',
            '/etc/dracut.conf', '/etc/dracut.conf.d', '/etc/initramfs-tools', '/etc/sudoers', '/etc/sudoers.d',
            '/etc/pam.d', '/etc/shadow', '/etc/gshadow', '/etc/passwd', '/etc/group', '/etc/polkit-1', '/etc/bootc',
-           '/var/lib/ostree')
+           '/var/lib', '/etc/security', '/etc/login.defs', '/etc/nsswitch.conf', '/etc/systemd', '/etc/NetworkManager',
+           '/etc/ssh')
 ALLOWED_UNDER_REFUSED = ('/usr/local',)
 
 
@@ -69,6 +70,14 @@ def check(path, must_exist=True, into=False):
     if home and (path == home or path.startswith(home + '/')):
         raise Fail('that\'s in your home folder: change it as yourself (Act as administrator is for system folders)')
     parent = os.path.dirname(path)
+    # A folder anyone can write to (/tmp, /var/tmp): another user could swap names there under root's feet.
+    for d in [parent] + ([path] if into else []):
+        try:
+            m = os.stat(d, follow_symlinks=False).st_mode
+            if stat.S_ISDIR(m) and m & stat.S_IWOTH:        # (a link's own mode means nothing: links are refused below)
+                raise Fail('%s is a folder anyone can change, so nothing is changed in it as administrator' % d)
+        except FileNotFoundError:
+            pass
     if os.path.realpath(parent) != parent:
         raise Fail('the path goes through a link: open the real folder (%s)' % os.path.realpath(parent))
     real = os.path.realpath(path)

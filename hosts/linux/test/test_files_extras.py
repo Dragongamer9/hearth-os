@@ -462,6 +462,29 @@ class AdminFakeRoot(unittest.TestCase):
         self.refused('files-delete', R + '/var/data/fs')
         self.intact()
 
+    def test_more_refused_places_and_folders_anyone_can_change(self):
+        src = ADMIN.read_text()
+        for x in ('/var/lib', '/etc/security', '/etc/login.defs', '/etc/nsswitch.conf', '/etc/systemd', '/etc/NetworkManager', '/etc/ssh'):
+            self.assertIn("'%s'" % x, src)
+        R = self.r
+        os.makedirs(R + '/shared')
+        os.chmod(R + '/shared', 0o1777)                         # like /tmp
+        with open(R + '/shared/f', 'w') as fh:
+            fh.write('x')
+        for args in (('files-new-file', R + '/shared/new'), ('files-delete', R + '/shared/f'), ('files-chmod', R + '/shared/f', '600'),
+                     ('files-copy', R + '/src/fstab', R + '/shared')):
+            self.assertIn('anyone can change', self.refused(*args))
+        self.assertTrue(os.path.exists(R + '/shared/f'))
+
+    def test_portal_cast_only_in_checks(self):
+        env = {k: v for k, v in os.environ.items() if k != 'HEARTH_CHECKS'}
+        for args in (('outputs',), ('shot', os.path.join(self.r, 'x.png')), ('stream', 'output', 'X', '1')):
+            p = subprocess.run([sys.executable, str(SHELL / 'hearth-portal'), 'cast'] + list(args), capture_output=True, text=True, timeout=30, env=env)
+            self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+            self.assertIn("only for Hearth's checks", p.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.r, 'x.png')))
+        self.assertIn("os.environ['HEARTH_CHECKS'] = '1'", (ROOT / 'hosts' / 'linux' / 'test' / 'kwin_e2e.py').read_text())
+
     def test_open_dir_never_follows_a_swapped_link(self):
         R = self.r
         fd = self.m.open_dir(R + '/var/data')
