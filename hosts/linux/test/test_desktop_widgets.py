@@ -324,8 +324,15 @@ class Wiring(unittest.TestCase):
         self.assertIn('for (const k in r) if (writer.owns(k) && act.raw[k] === undefined) delete r[k];', a)   # a deleted one stays deleted
         self.assertIn('runWriter.setText(JSON.stringify({ acts: m, hidden: h }))', a)                           # hidden windows survive a restart
         self.assertIn('restoredHidden.indexOf(key) >= 0', a)
-        self.assertIn('property var activityShows: t => true', code((SHELL / 'SettingsNav.qml').read_text()))
-        self.assertIn('SettingsNav.activityShows = t => Activities.shows(t)', code((SHELL / 'Widgets.qml').read_text()))
+        nav = code((SHELL / 'SettingsNav.qml').read_text())
+        self.assertEqual(nav.count('property var activityShows: null'), 1)        # the same lines as feature/kwin-windows
+        self.assertEqual(nav.count('property var activityMoveItems: null'), 1)
+        wg = code((SHELL / 'Widgets.qml').read_text())
+        self.assertIn('SettingsNav.activityShows = t => Activities.shows(t)', wg)
+        self.assertIn('SettingsNav.activityMoveItems = t => root.moveItems(t)', wg)
+        self.assertIn('SettingsNav.activityShows = null', wg)
+        self.assertIn('SettingsNav.activityMoveItems = null', wg)
+        self.assertIn('run: () => Activities.moveWindow(t, a.id)', wg)
 
     def test_fetches_are_started_by_calls_not_bindings(self):
         for f in ('WidgetCalendar.qml', 'WidgetClock.qml', 'WidgetFolder.qml', 'WidgetNews.qml', 'WidgetPhotos.qml', 'WidgetWeather.qml'):

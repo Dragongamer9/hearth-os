@@ -49,8 +49,25 @@ Scope {
         return id;
     }
     function openActivities() { actSwitcher.open(); }
-    Component.onCompleted: { WidgetStore.ui = root; SettingsNav.widgets = root; SettingsNav.activityShows = t => Activities.shows(t); }
-    Component.onDestruction: { if (SettingsNav.widgets === root) SettingsNav.widgets = null; SettingsNav.activityShows = t => true; }
+    // The taskbars' hooks (Bar, Dock, TaskStrip read them; null = every window, no "Move to activity" menu).
+    function moveItems(t) {
+        if (!Activities.many) return [];
+        const here = Activities.actOf(t);
+        return Activities.list.map(a => ({ label: a.name + (a.id === here ? " (this one)" : ""), icon: a.icon, enabled: a.id !== here,
+                                           run: () => Activities.moveWindow(t, a.id) }))
+            .concat([{ label: "Every activity", icon: "desktops", enabled: here !== "*", run: () => Activities.moveWindow(t, "*") }]);
+    }
+    Component.onCompleted: {
+        WidgetStore.ui = root;
+        SettingsNav.widgets = root;
+        SettingsNav.activityShows = t => Activities.shows(t);
+        SettingsNav.activityMoveItems = t => root.moveItems(t);
+    }
+    Component.onDestruction: {
+        if (SettingsNav.widgets === root) SettingsNav.widgets = null;
+        SettingsNav.activityShows = null;
+        SettingsNav.activityMoveItems = null;
+    }
     Binding { target: Theme; property: "activityWall"; value: Activities.wallpaper }
     Binding { target: SettingsNav; property: "activityName"; value: Activities.name }
     Binding { target: SettingsNav; property: "activityIcon"; value: Activities.cur ? Activities.cur.icon : "home" }

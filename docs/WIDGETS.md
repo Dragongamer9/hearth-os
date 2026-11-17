@@ -65,13 +65,14 @@ Files: `Activities.qml` (the model), `ActivitySwitcher.qml`, `ActivityChip.qml` 
 ## Hooks for other parts of Mantel
 
 - **Window lists** (taskbar, dock, TaskStrip, Alt+Tab, the window bridge): show a window only when
-  `SettingsNav.activityShows(toplevel)` is true. Widgets.qml sets it; without Widgets.qml, or with one activity, it is
-  always true, so the bars never import Activities themselves.
+  `SettingsNav.activityShows(toplevel)` is true (null: show every window). Widgets.qml sets it and
+  `SettingsNav.activityMoveItems(toplevel)` (PopMenu items for "Move to activity ›", [] with one activity) and sets
+  both back to null if it unloads, so the bars never import Activities themselves.
 - **The window bridge (WinList)**: Activities reads `WinList.toplevels` when the singleton exists (else
   `ToplevelManager.toplevels`). For lasting membership give each toplevel `kwinId` (KWin's internal id); minimizing
   uses `setMinimized(bool)` if it exists, else `minimized = …`.
-- **A window's menu**: "Move to activity ›" calls `Activities.moveWindow(toplevel, id)`; "Always open on this
-  activity" calls `Activities.sendApp(appId, id)`.
+- **A window's menu**: "Move to activity ›" uses `SettingsNav.activityMoveItems(toplevel)` (each item calls
+  `Activities.moveWindow(toplevel, id)`).
 - **Pinned apps**: nothing to add. DeskState shows an activity's own list (`DeskState.activityPins`) and pin / unpin /
   reorder change only that list while you're on it.
 - **Wallpaper**: nothing to add. `Theme.wall` shows `Theme.activityWall` first (set by Widgets.qml).
