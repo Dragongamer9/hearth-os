@@ -94,7 +94,7 @@ Scope {
     function classesFor(client) { return (st && st.windowClasses && st.windowClasses[client]) || classesAll[client] || []; }
     function findWindow() {
         const want = st && st.opens ? classesFor(st.opens) : [].concat(classesAll.official, classesAll.web, classesAll.dorion);
-        const all = ToplevelManager.toplevels.values;
+        const all = WinList.toplevels.values;
         for (let i = all.length - 1; i >= 0; i--) {
             const id = (all[i].appId || "").toLowerCase();
             if (want.some(c => id === c || (c === "dorion" && id.indexOf("dorion") >= 0))) return all[i];
@@ -121,7 +121,7 @@ Scope {
         if (chooserShown) { chooserShown = false; return; }
         refresh(() => {
             const w = findWindow();
-            const inFront = !!w && !w.minimized && ToplevelManager.activeToplevel === w;
+            const inFront = !!w && !w.minimized && WinList.activeToplevel === w;
             act(decide(st && st.chosen, st && st.opens, !!w, inFront), w);
         });
     }
