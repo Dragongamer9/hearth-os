@@ -10,7 +10,7 @@
 #   nimbus-mode current   print the mode you're in
 
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
-# Desktop Mode (Mantel) on KWin (1.14) or labwc: HEARTH_DESKTOP_PID is the window manager's process id (set for both by
+# Desktop Mode (Mantel) on KWin (1.14), labwc or (2.0 preview) Hearth's own compositor: HEARTH_DESKTOP_PID is the window manager's process id (set for both by
 # nimbus-session and the autostart; labwc's own LABWC_PID for anything older that only has that). labwc's own commands
 # (labwc --exit) only under labwc: they signal LABWC_PID, which is never set under KWin.
 desk_pid="${HEARTH_DESKTOP_PID:-$LABWC_PID}"
@@ -46,7 +46,8 @@ case "$1" in
       # somewhere that didn't inherit HEARTH_DESKTOP_PID (an SSH login, a systemd user service, an app started over
       # D-Bus) while Desktop Mode is up, it's this user's labwc or KWin that has to end, or the switch never happens.
       pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null \
-        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null || pkill -TERM -u "$(id -u)" -x kwin_wayland 2>/dev/null
+        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null || pkill -TERM -u "$(id -u)" -x kwin_wayland 2>/dev/null \
+        || pkill -TERM -u "$(id -u)" -x hearth-composit 2>/dev/null
     fi ;;
   *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current" >&2; exit 2 ;;
 esac
