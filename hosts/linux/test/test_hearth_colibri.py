@@ -123,8 +123,8 @@ class Catalog(Base):
         std = [m for m in c['models'] if m['group'] == 'standard']
         self.assertEqual([m['id'] for m in std], [r['id'] for r in rows], 'every one, in Colibri\'s order, nothing hidden')
         unc = [m for m in c['models'] if m['group'] == 'uncensored']
-        listed = [e for e in json.load(open(AI_MODELS))['models'] if e['group'] == 'uncensored']
-        self.assertEqual([m['id'] for m in unc], [e['id'] for e in listed], 'every uncensored build in Hearth\'s list')
+        listed = [m for m in json.load(open(AI_MODELS))['models'] if m['group'] == 'uncensored']
+        self.assertEqual(len(unc), sum(len(m['quants']) for m in listed), 'every quant of every uncensored build in Hearth\'s list')
         self.assertEqual([g['label'] for g in c['groups']], ['Standard (filtered)', 'Uncensored'])
         self.assertEqual(self.files(), before, 'opening the list writes nothing')
         by = {m['id']: m for m in c['models']}
@@ -146,10 +146,13 @@ class Catalog(Base):
                                          'diskFreeGb': 2000.0})
         self.assertIn('--all', self.coli_log()[0]['args'])
         u = {m['id']: m for m in unc}
-        self.assertEqual(u['qwen36-35b-abl-q4-k-m']['fit'], 'good')
-        self.assertEqual(u['qwen36-35b-abl-q8-0']['fit'], 'slow', '37 GB does not all fit in 32 GB of memory')
+        self.assertEqual(u['huihui-qwen3.6-35b-a3b-abliterated-q4_k']['fit'], 'good')
+        self.assertTrue(u['huihui-qwen3.6-35b-a3b-abliterated-q4_k']['recommended'], 'Hearth AI\'s pick for a 32 GB PC')
+        self.assertEqual(u['huihui-qwen3.6-35b-a3b-abliterated-q8_0']['fit'], 'slow', '38 GB does not all fit in 32 GB of memory')
+        self.assertEqual(u['huihui-qwen3.8-flash-next-abliterated-ud-iq4_xs']['fit'], 'very-slow')
+        self.assertEqual(len(u['huihui-qwen3.8-flash-next-abliterated-bf16']['files']), 8)
         notice('catalog on a 32 GB / RTX 5070 12 GB PC: ' + '; '.join('%s %s' % (m['id'], m['fitLabel']) for m in std))
-        notice('uncensored: ' + '; '.join('%s %s' % (m['id'], m['fitLabel']) for m in unc if m['quant'] in ('Q4_K_M', 'Q8_0')))
+        notice('uncensored: ' + '; '.join('%s %s' % (m['id'], m['fitLabel']) for m in unc if m['quant'] in ('Q4_K', 'Q4_K_M', 'UD-IQ4_XS')))
 
     def test_a_small_drive_says_not_enough_disk_space(self):
         self.free = 100 * GB
@@ -212,6 +215,17 @@ class Downloads(Base):
         with self.assertRaises(self.hc.Fail):
             self.hc.use('kimi-k3')
 
+    def test_use_takes_a_folder_hearth_ai_imported(self):
+        f = os.path.join(self.home, 'colibri-models', 'uncensored', 'huihui-qwen3.6-35b-a3b-abliterated-q4_k.colibri')
+        os.makedirs(f)
+        with self.assertRaises(self.hc.Fail):
+            self.hc.use('huihui-qwen3.6-35b-a3b-abliterated-q4_k', f)        # nothing there yet
+        open(os.path.join(f, 'config.json'), 'w').write('{}')
+        open(os.path.join(f, 'gguf.json'), 'w').write('{}')
+        self.assertEqual(self.hc.main(['use', 'huihui-qwen3.6-35b-a3b-abliterated-q4_k', f]), 0)
+        self.assertEqual(self.eng.load()['colibri']['model'], 'huihui-qwen3.6-35b-a3b-abliterated-q4_k')
+        self.assertEqual(self.hc.downloaded()['huihui-qwen3.6-35b-a3b-abliterated-q4_k']['dir'], os.path.realpath(f))
+
     def test_a_failed_download_says_why_and_changes_nothing(self):
         os.environ['FAKE_COLI_FAIL'] = '1'
         self.hc.download_start('qwen36-35b')
@@ -243,15 +257,18 @@ class Downloads(Base):
 class Uncensored(Base):
     def setUp(self):
         super().setUp()
-        self.e = next(e for e in self.hc.extra_models() if e['id'] == 'qwen3-30b-2507-abl-q2-k')
+        self.e = next(e for e in self.hc.extra_models() if e['id'] == 'huihui-qwen3.8-flash-next-abliterated-ud-iq4_xs')
         self.blob = b'GGUF' + b'x' * 4092
-        self.e['source']['sizeBytes'] = len(self.blob)
-        self.hc.extra_models = lambda: [self.e]
+        n = len(self.e['source']['files'])
+        self.e['source']['bytes'] = [len(self.blob)] * n
+        self.hc.extra_models = lambda ram_gb=None: [self.e]
         self.sha = hashlib.sha256(self.blob).hexdigest()
-        self.hc.hf_json = lambda url: [{'path': self.e['source']['file'], 'size': len(self.blob), 'lfs': {'oid': self.sha}}]
+        self.hc.hf_json = lambda url: [{'path': f, 'size': len(self.blob), 'lfs': {'oid': self.sha}} for f in self.e['source']['files']]
+        self.got = []
 
         def hf_download(url, dest, size, progress=None):
             self.assertTrue(url.startswith('https://huggingface.co/%s/resolve/main/' % self.e['source']['repo']))
+            self.got.append(os.path.basename(dest))
             open(dest, 'wb').write(self.blob)
             if progress:
                 progress(size, size, 1e6)
@@ -261,13 +278,25 @@ class Uncensored(Base):
     def test_the_list_holds_only_confirmed_builds_colibri_can_run(self):
         d = json.load(open(AI_MODELS))
         self.assertEqual([g['id'] for g in d['groups']], ['standard', 'uncensored'])
-        unc = [e for e in d['models'] if e['group'] == 'uncensored']
-        self.assertEqual(len(unc), 44)
-        for e in unc:
-            self.assertIn(e['architecture'], ('qwen35moe', 'qwen3moe'))
-            self.assertTrue(e['source']['repo'].startswith('mradermacher/Huihui-Qwen3'))
-            self.assertTrue(e['source']['file'].endswith('.%s.gguf' % e['quant']))
-            self.assertIn('Apache-2.0', e['licence'])
+        # Hearth AI's shape (its docs/colibri.md "Uncensored models"), starting from its four confirmed models
+        for k in ('updated', 'recommend', 'models'):
+            self.assertIn(k, d)
+        repos = [m['repo'] for m in d['models']]
+        for r in ('huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF', 'mradermacher/Qwen3-30B-A3B-abliterated-GGUF',
+                  'mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF', 'huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF'):
+            self.assertIn(r, repos)
+        self.assertEqual(len(repos), len(set(repos)))
+        for m in d['models']:
+            for k in ('id', 'group', 'name', 'repo', 'arch', 'engine', 'license', 'base', 'method', 'size', 'summary', 'quants'):
+                self.assertIn(k, m, m['id'])
+            self.assertEqual(m['group'], 'uncensored')
+            self.assertIn(m['arch'], ('qwen35moe', 'qwen3moe', 'qwen3', 'qwen4exp'))
+            for q in m['quants']:
+                self.assertEqual(len(q['files']), len(q['bytes']))
+                self.assertAlmostEqual(q['download_gb'], sum(q['bytes']) / 1e9, delta=0.06)
+                for k in ('quant', 'files', 'download_gb', 'ram_min_gb', 'ram_good_gb'):
+                    self.assertIn(k, q)
+        self.assertEqual(len(d['standard']['models']), 12)
         self.assertEqual(len(self.hc.extra_models()), 1)   # (this test's stand-in)
 
     def test_a_build_is_downloaded_checked_and_imported(self):
@@ -275,24 +304,25 @@ class Uncensored(Base):
         res = self.hc.download_run(self.e['id'])
         self.assertTrue(os.path.isfile(os.path.join(res['dir'], 'config.json')))
         imp = [l for l in self.coli_log() if l['args'][:1] == ['import']][0]['args']
-        self.assertTrue(imp[1].endswith(self.e['source']['file']))
+        self.assertTrue(imp[1].endswith('-00001-of-00003.gguf'), 'coli import takes the first part')
+        self.assertEqual(len(self.got), 3, 'every part downloaded')
         self.assertIn(self.e['id'], self.hc.downloaded())
         self.hc.use(self.e['id'])
         self.assertEqual(self.eng.load()['colibri']['model'], self.e['id'])
         self.hc.remove_model(self.e['id'])
-        self.assertFalse(os.path.exists(os.path.join(self.home, 'colibri-models', 'gguf', self.e['source']['file'])), 'its GGUF goes too')
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'colibri-models', 'gguf', self.e['id'])), 'its GGUF goes too')
 
     def test_a_wrong_checksum_is_deleted_and_never_used(self):
-        self.hc.hf_json = lambda url: [{'path': self.e['source']['file'], 'size': len(self.blob), 'lfs': {'oid': '0' * 64}}]
+        self.hc.hf_json = lambda url: [{'path': f, 'size': len(self.blob), 'lfs': {'oid': '0' * 64}} for f in self.e['source']['files']]
         self.hc.download_start(self.e['id'])
         with self.assertRaises(self.hc.Fail):
             self.hc.download_run(self.e['id'])
-        self.assertFalse(os.path.exists(os.path.join(self.home, 'colibri-models', 'gguf', self.e['source']['file'])))
+        self.assertEqual(os.listdir(os.path.join(self.home, 'colibri-models', 'gguf', self.e['id'])), [], 'the wrong file deleted')
         self.assertIn('SHA-256', self.hc.state()['download']['error'])
         self.assertEqual(self.hc.downloaded(), {})
 
     def test_a_size_that_changed_downloads_nothing(self):
-        self.hc.hf_json = lambda url: [{'path': self.e['source']['file'], 'size': 999, 'lfs': {'oid': self.sha}}]
+        self.hc.hf_json = lambda url: [{'path': f, 'size': 999, 'lfs': {'oid': self.sha}} for f in self.e['source']['files']]
         with self.assertRaises(self.hc.Fail):
             self.hc.download_run(self.e['id'])
 

@@ -22,7 +22,8 @@ card) and starts it again after. If it fails, nothing else is touched: Ollama, S
   hearth-colibri install             the engine, in its own unit (only when you ask); install-run is that unit
   hearth-colibri download ID         one model, in its own unit, after a free-space check; download-run is that unit
   hearth-colibri cancel              stop a download (what's there stays: running it again continues)
-  hearth-colibri use ID              the model Colibri serves (a downloaded one); restarts it if it's running
+  hearth-colibri use ID [FOLDER]     the model Colibri serves (a downloaded one, or FOLDER: one another app made with
+                                     coli setup or coli import, e.g. Hearth AI's "Install & use"); restarts it if running
   hearth-colibri set KEY VALUE       engine (ollama|colibri|both: Settings › Home server's switches), default
                                      (ollama|colibri: what Hearth's AI pieces use first), modelsDir (a folder)
   hearth-colibri remove-model ID sure   delete a downloaded model's files
@@ -73,9 +74,11 @@ AI_MODELS = os.environ.get('HEARTH_AI_MODELS') or next(
     (p for p in ('/usr/share/hearth/ai-models.json',
                  os.path.join(HERE, '..', '..', '..', '..', 'os', 'system_files', 'usr', 'share', 'hearth', 'ai-models.json'))
      if os.path.isfile(p)), '/usr/share/hearth/ai-models.json')
-GGUF_ARCHS = ('qwen35moe', 'qwen35', 'qwen3moe', 'qwen3')      # the ones Hearth's list uses (Colibri's docs/gguf.md lists more)
+# The GGUF architectures Colibri's `coli import` takes (its docs/gguf.md, v2.1.0); anything else is left out of the list.
+GGUF_ARCHS = ('qwen35moe', 'qwen35', 'qwen3moe', 'qwen3', 'flint', 'muse-spark', 'lfm3', 'qwen4exp', 'deepseek4', 'deepseek41',
+              'inkling', 'glm5-next', 'glm-dsa', 'mistral-large4', 'mimo2', 'olmoe', 'kimi-k3')
 HF_REPO_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$')
-HF_FILE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,200}\.gguf$')
+HF_FILE_RE = re.compile(r'^(?:[A-Za-z0-9][A-Za-z0-9_.-]{0,100}/)?[A-Za-z0-9][A-Za-z0-9_.-]{0,200}\.gguf$')
 COLIBRI_PORT = eng.COLIBRI_PORT
 UNIT = 'hearth-colibri.service'
 TIMER = 'hearth-colibri.timer'
@@ -480,12 +483,12 @@ def catalog():
         res.append({'id': mid, 'name': e['name'][:80], 'family': e.get('family', ''), 'familyName': e.get('familyName', ''),
                     'group': 'uncensored', 'kind': 'text', 'summary': e.get('goodAt', '')[:200], 'quant': e.get('quant', ''),
                     'quantNote': e.get('quantNote', ''), 'architecture': e.get('architecture', ''),
-                    'repo': e['source']['repo'], 'file': e['source']['file'],
+                    'repo': e['source']['repo'], 'files': e['source']['files'],
                     'downloadGb': e['downloadGb'], 'diskGb': disk_needed_gb(e['downloadGb']),
                     'ramMinGb': e['ramMinGb'], 'ramGoodGb': e['ramGoodGb'], 'runs': e['runs'],
                     'fit': fit, 'fitLabel': label, 'why': why, 'expect': EXPECT.get(fit, ''),
                     'measured': 'no speed published for this build (its Qwen original: %s)' % MEASURED.get(
-                        'qwen3-coder-30b' if 'coder' in mid else 'qwen36-35b', ''),
+                        'qwen38-flash-next' if 'qwen3.8' in mid else 'qwen3-coder-30b' if 'coder' in mid else 'qwen36-35b', 'none'),
                     'colibriSays': '', 'recommended': e.get('recommended') is True, 'license': e.get('licence', '')[:120],
                     'have': mid in have, 'chosen': mid == cfg['colibri']['model'],
                     'downloading': dl.get('id') == mid and dl.get('running') is True})
@@ -493,22 +496,37 @@ def catalog():
             'groups': [{'id': 'standard', 'label': 'Standard (filtered)'}, {'id': 'uncensored', 'label': 'Uncensored'}]}
 
 
-def extra_models():
-    """The uncensored group from Hearth's model list (ai-models.json): GGUF files on Hugging Face of an architecture
-    Colibri runs. An entry that isn't well formed is left out, never guessed at."""
+def extra_models(ram_gb=None):
+    """The uncensored group from Hearth's model list (ai-models.json, Hearth AI's shape: a model with its quants), one
+    entry per model and quant. An entry that isn't well formed is left out, never guessed at."""
     d = sio.load_json(AI_MODELS, {}, repair=False) if os.path.isfile(AI_MODELS) else {}
+    d = d if isinstance(d, dict) else {}
+    ram = meminfo_gb() if ram_gb is None else ram_gb
+    rec = next(((r.get('model'), r.get('quant')) for r in d.get('recommend') or [] if isinstance(r, dict)
+                and ram * 1.05 >= float(r.get('min_ram_gb') or 0)), (None, None))
     out = []
-    for e in d.get('models') or [] if isinstance(d, dict) else []:
+    for m in d.get('models') or []:
         try:
-            src = e['source']
-            if e.get('group') != 'uncensored' or src.get('kind') != 'hf-gguf' or not ID_RE.fullmatch(e['id']):
+            if m.get('group', 'uncensored') != 'uncensored' or not ID_RE.fullmatch(m['id']) or not HF_REPO_RE.fullmatch(m['repo']):
                 continue
-            if not HF_REPO_RE.fullmatch(src['repo']) or not HF_FILE_RE.fullmatch(src['file']) or e.get('architecture') not in GGUF_ARCHS:
+            if m.get('arch') not in GGUF_ARCHS:
                 continue
-            if not (0 < int(src['sizeBytes']) < 4 << 40):
-                continue
-            float(e['downloadGb']), float(e['ramMinGb']), float(e['ramGoodGb'])
-            out.append(e)
+            for q in m['quants']:
+                files, sizes = list(q['files']), [int(b) for b in q.get('bytes') or []]
+                if not files or not all(HF_FILE_RE.fullmatch(f) and '..' not in f for f in files) or len(sizes) != len(files):
+                    continue
+                if not all(0 < b < 4 << 40 for b in sizes):
+                    continue
+                qid = '%s-%s' % (m['id'], re.sub(r'[^a-z0-9._-]+', '-', q['quant'].lower()).strip('-'))
+                if not ID_RE.fullmatch(qid):
+                    continue
+                out.append({'id': qid, 'name': '%s · %s' % (m['name'], q['quant']), 'family': m['id'], 'familyName': m['name'],
+                            'group': 'uncensored', 'quant': q['quant'], 'quantNote': str(q.get('note') or ''), 'architecture': m['arch'],
+                            'goodAt': str(m.get('summary') or ''), 'licence': str(m.get('license') or ''),
+                            'source': {'kind': 'hf-gguf', 'repo': m['repo'], 'files': files, 'bytes': sizes, 'revision': 'main'},
+                            'downloadGb': float(q['download_gb']), 'ramMinGb': float(q['ram_min_gb']), 'ramGoodGb': float(q['ram_good_gb']),
+                            'denseGb': 0.0, 'runs': 'streams experts from the SSD' if m.get('size') == 'large' else 'from RAM',
+                            'recommended': (m['id'], q['quant']) == rec})
         except (KeyError, TypeError, ValueError, AttributeError):
             continue
     return out
@@ -734,8 +752,9 @@ def download_start(mid):
     target = os.path.join(models, mid)
     present = dir_bytes(target) if os.path.isdir(target) else 0
     if extra:
-        part = os.path.join(models, 'gguf', extra['source']['file'] + '.part')
-        present += os.path.getsize(part) if os.path.isfile(part) else 0
+        for f in extra['source']['files']:
+            p = os.path.join(models, 'gguf', mid, os.path.basename(f))
+            present += os.path.getsize(p) if os.path.isfile(p) else os.path.getsize(p + '.part') if os.path.isfile(p + '.part') else 0
     need = disk_needed_gb(float(row.get('download_gb') or 0)) * GB - present
     free = free_bytes(models)
     if need > free:
@@ -753,35 +772,43 @@ def download_start(mid):
 
 
 def gguf_run(e, models):
-    """An uncensored build: its GGUF from Hugging Face (https, resumed, its size and SHA-256 as Hugging Face lists them
-    checked), then `coli import` writes the model folder beside it (the engine reads the GGUF in place)."""
+    """An uncensored build: its GGUF file(s) from Hugging Face (https, resumed; each file's size and SHA-256 as Hugging
+    Face lists them checked, a wrong one deleted), then `coli import` of the first part writes the model folder beside
+    them (the engine reads the GGUF in place)."""
     src = e['source']
-    listing = hf_json('https://huggingface.co/api/models/%s/tree/%s' % (src['repo'], src.get('revision') or 'main'))
-    info = next((f for f in listing if isinstance(f, dict) and f.get('path') == src['file']), None) if isinstance(listing, list) else None
-    if not info:
-        raise Fail('%s isn\'t in %s any more' % (src['file'], src['repo']))
-    size = int(info.get('size') or 0)
-    sha = str(((info.get('lfs') or {}).get('oid') or '')).lower()
-    if size != int(src['sizeBytes']):
-        raise Fail('the file on Hugging Face isn\'t the size Hearth expects (%s, not %s): not downloading it' % (gb(size / GB), gb(int(src['sizeBytes']) / GB)))
-    gdir = os.path.join(models, 'gguf')
+    listing = hf_json('https://huggingface.co/api/models/%s/tree/%s?recursive=true' % (src['repo'], src.get('revision') or 'main'))
+    listing = {f.get('path'): f for f in listing if isinstance(f, dict)} if isinstance(listing, list) else {}
+    gdir = os.path.join(models, 'gguf', e['id'])
     os.makedirs(gdir, exist_ok=True)
-    dest = os.path.join(gdir, src['file'])
-    if not os.path.isfile(dest):
-        def prog(got, total, rate):
-            d = dict(state().get('download') or {})
-            d.update({'done': got, 'total': total, 'rate': rate, 'pct': round(100.0 * got / total, 1), 'phase': 'download'})
-            state_set(download=d)
-        url = 'https://huggingface.co/%s/resolve/%s/%s' % (src['repo'], src.get('revision') or 'main', urllib.parse.quote(src['file']))
-        got = hf_download(url, dest, size, prog)
-        if re.fullmatch(r'[0-9a-f]{64}', sha) and got != sha:
-            os.remove(dest)
-            raise Fail('the download doesn\'t match the SHA-256 Hugging Face publishes for it: deleted, not used')
+    total = sum(src['bytes'])
+    before = 0
+    dests = []
+    for f, want in zip(src['files'], src['bytes']):
+        info = listing.get(f)
+        if not info:
+            raise Fail('%s isn\'t in %s any more' % (f, src['repo']))
+        size = int(info.get('size') or 0)
+        sha = str(((info.get('lfs') or {}).get('oid') or '')).lower()
+        if size != want:
+            raise Fail('%s on Hugging Face isn\'t the size Hearth expects (%s, not %s): not downloading it' % (f, gb(size / GB), gb(want / GB)))
+        dest = os.path.join(gdir, os.path.basename(f))
+        dests.append(dest)
+        if not os.path.isfile(dest):
+            def prog(got, _t, rate, base=before):
+                d = dict(state().get('download') or {})
+                d.update({'done': base + got, 'total': total, 'rate': rate, 'pct': round(100.0 * (base + got) / total, 1), 'phase': 'download'})
+                state_set(download=d)
+            url = 'https://huggingface.co/%s/resolve/%s/%s' % (src['repo'], src.get('revision') or 'main', urllib.parse.quote(f))
+            got = hf_download(url, dest, size, prog)
+            if re.fullmatch(r'[0-9a-f]{64}', sha) and got != sha:
+                os.remove(dest)
+                raise Fail('%s doesn\'t match the SHA-256 Hugging Face publishes for it: deleted, not used' % os.path.basename(f))
+        before += want
     out_dir = os.path.join(models, e['id'])
     d = dict(state().get('download') or {})
     d['phase'] = 'import'
     state_set(download=d)
-    code, out = coli(['import', dest, '--out', out_dir], 3600)
+    code, out = coli(['import', dests[0], '--out', out_dir], 3600)
     if code != 0 or not os.path.isfile(os.path.join(out_dir, 'config.json')):
         raise Fail('coli import didn\'t take it: %s' % ((out or '').strip().splitlines() or ['no answer'])[-1][:200])
     env = {'COLI_VULKAN': '1'} if gpu() else {}
@@ -803,7 +830,7 @@ def download_run(mid):
             state_set(download=dl)
             raise Fail(str(ex))
         models_st = dict(state().get('models') or {})
-        models_st[mid] = {'dir': r['dir'], 'at': int(time.time()), 'backend': r['backend'], 'env': r['env'], 'gguf': extra['source']['file']}
+        models_st[mid] = {'dir': r['dir'], 'at': int(time.time()), 'backend': r['backend'], 'env': r['env'], 'gguf': mid}
         dl = dict(state().get('download') or {})
         dl.update({'running': False, 'error': '', 'done': True})
         state_set(models=models_st, download=dl)
@@ -859,7 +886,18 @@ def adopt(mid):
     return None
 
 
-def use(mid):
+def use(mid, folder=''):
+    """The model Colibri serves. FOLDER: a model folder another app made (`coli import --out FOLDER`, or coli setup's),
+    under your Home or a drive you can write to, with Colibri's config.json in it."""
+    if folder:
+        f = os.path.realpath(folder)
+        if not ID_RE.fullmatch(mid or '') or not os.path.isfile(os.path.join(f, 'config.json')) or \
+                not (os.path.isfile(os.path.join(f, 'gguf.json')) or os.path.isfile(os.path.join(f, '.colibri-download.json'))):
+            raise Fail('That folder isn\'t a Colibri model (no config.json with gguf.json or Colibri\'s download record)')
+        models_st = dict(state().get('models') or {})
+        models_st[mid] = {'dir': f, 'at': int(time.time()), 'backend': 'vulkan' if gpu() else 'cpu', 'adopted': True,
+                          'env': {'COLI_VULKAN': '1'} if gpu() else {}}
+        state_set(models=models_st)
     if mid not in downloaded():
         found = adopt(mid)
         if not found:
@@ -885,10 +923,10 @@ def remove_model(mid):
     if eng.load()['colibri']['model'] == mid and unit_active(UNIT):
         cmd(['systemctl', '--user', 'stop', UNIT], 60)
     shutil.rmtree(d)
-    if rec.get('gguf') and HF_FILE_RE.fullmatch(rec['gguf']):
-        g = os.path.join(os.path.dirname(d), 'gguf', rec['gguf'])
-        if os.path.isfile(g):
-            os.remove(g)
+    if rec.get('gguf') == mid:
+        g = os.path.join(os.path.dirname(d), 'gguf', mid)
+        if os.path.isdir(g) and not os.path.islink(g):
+            shutil.rmtree(g)
     models_st = dict(state().get('models') or {})
     models_st.pop(mid, None)
     state_set(models=models_st)
@@ -1095,8 +1133,8 @@ def main(argv):
             res = download_run(a[1])
         elif a == ['cancel']:
             res = cancel()
-        elif len(a) == 2 and a[0] == 'use':
-            res = use(a[1])
+        elif len(a) in (2, 3) and a[0] == 'use':
+            res = use(a[1], a[2] if len(a) == 3 else '')
         elif len(a) == 3 and a[0] == 'set':
             res = set_key(a[1], a[2])
         elif len(a) == 3 and a[0] == 'remove-model' and a[2] == 'sure':

@@ -46,8 +46,8 @@ def main(out, dash_in, dash_out):
     status = {'installed': True, 'version': 'v2.1.0', 'pinned': 'v2.1.0', 'installing': False, 'progress': 100, 'error': '',
               'on': True, 'pause': True, 'active': True, 'model': 'qwen36-35b', 'modelDownloaded': True,
               'downloaded': ['qwen3-coder-30b', 'qwen36-35b'],
-              'download': {'id': 'qwen36-35b-abl-q4-k-m', 'name': 'Qwen3.6 35B A3B, uncensored · Q4_K_M', 'running': True,
-                           'done': 8_100_000_000, 'total': 21_166_758_784, 'rate': 48_000_000, 'pct': 38.3},
+              'download': {'id': 'huihui-qwen3-30b-a3b-instruct-2507-abliterated-q4_k_m', 'name': 'Huihui Qwen3-30B-A3B Instruct 2507 abliterated · Q4_K_M', 'running': True,
+                           'done': 7_100_000_000, 'total': 18_556_687_008, 'rate': 48_000_000, 'pct': 38.3},
               'server': {'health': 'ready', 'modelId': 'qwen36-35b', 'tokensPerSecond': 24.6, 'answers': 12},
               'port': 11440, 'openai': 'http://127.0.0.1:11440/v1', 'listen': ['127.0.0.1', '100.101.102.103'], 'ollamaOn': True,
               'engine': 'both', 'default': 'ollama', 'modelsDir': '/run/media/owner/NVMe/colibri-models'}

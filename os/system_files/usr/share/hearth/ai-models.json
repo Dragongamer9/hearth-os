@@ -1,7 +1,24 @@
 {
- "version": 1,
+ "schema": 1,
  "updated": "2026-11-16",
- "about": "Every AI model Hearth OS offers for Colibri (Server mode › AI engine), in two groups. \"standard\" is Colibri's own catalog (Hearth reads it live from `coli setup --list --all --json`; this is the v2.1.0 copy for apps that only read files). \"uncensored\" are abliterated GGUF builds on Hugging Face of models Colibri runs (architectures qwen3moe and qwen35moe, docs/gguf.md), each confirmed to exist; Hearth downloads one over https with resume, checks its size and its SHA-256 as Hugging Face publishes it, then runs `coli import`. Sizes are bytes as Hugging Face lists them; the RAM figures for the GGUF builds are Hearth's estimate (Colibri's planner decides on the real files).",
+ "about": "Uncensored (abliterated) GGUF builds of models Colibri runs. Every repo and file here was checked on Hugging Face on 2026-11-16 (file names and sizes from the repo's file list). RAM figures are estimates from the file size (mixture of experts: about 0.43x to start, 0.9x to hold every expert; dense: the whole file plus 1-2 GB). This is Hearth OS's shared list (/usr/share/hearth/ai-models.json), read by Server mode › AI engine and by Hearth AI. \"models\" is the Uncensored group (Hearth AI's shape; \"bytes\" is each file's exact size, checked again against Hugging Face before a download, with its SHA-256). \"standard\" is a copy of Colibri's own catalog (Standard (filtered)); Hearth reads it live from `coli setup --list --all --json`.",
+ "recommend": [
+  {
+   "min_ram_gb": 24,
+   "model": "huihui-qwen3.6-35b-a3b-abliterated",
+   "quant": "Q4_K"
+  },
+  {
+   "min_ram_gb": 12,
+   "model": "qwen3-30b-a3b-abliterated",
+   "quant": "Q3_K_M"
+  },
+  {
+   "min_ram_gb": 0,
+   "model": "huihui-qwen3-8b-abliterated-v2",
+   "quant": "Q4_K_M"
+  }
+ ],
  "groups": [
   {
    "id": "standard",
@@ -14,1508 +31,1402 @@
  ],
  "models": [
   {
-   "id": "qwen36-35b",
-   "name": "Qwen3.6-35B-A3B",
-   "group": "standard",
+   "id": "huihui-qwen3.6-35b-a3b-abliterated",
+   "name": "Huihui Qwen3.6-35B-A3B abliterated",
+   "repo": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF",
+   "base": "Qwen/Qwen3.6-35B-A3B",
+   "method": "abliterated by huihui-ai",
+   "arch": "qwen35moe",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
    "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "qwen36-35b",
-    "repo": "Kreuzzelg/qwen36-35b-a3b-colibri-i4-gs64"
-   },
-   "downloadGb": 23.1,
-   "ramMinGb": 10,
-   "ramGoodGb": 20,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "qwen3-coder-30b",
-   "name": "Qwen3-Coder-30B-A3B",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "qwen3-coder-30b",
-    "repo": "Justvugg/Qwen3-Coder-30B-A3B-colibri-int4"
-   },
-   "downloadGb": 19.4,
-   "ramMinGb": 8,
-   "ramGoodGb": 18,
-   "denseGb": 3.6,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "deepseek-v4-flash-reap",
-   "name": "DeepSeek V4 Flash REAP 150B",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "deepseek-v4-flash-reap",
-    "repo": "puwaer/DeepSeek-V4-Flash-0731-reap-150b"
-   },
-   "downloadGb": 84.7,
-   "ramMinGb": 16,
-   "ramGoodGb": 32,
-   "denseGb": 7.9,
-   "runs": "streams experts from the SSD",
-   "goodAt": "tools and reasoning, smaller download",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "deepseek-v4-flash",
-   "name": "DeepSeek V4 Flash",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "deepseek-v4-flash",
-    "repo": "deepseek-ai/DeepSeek-V4-Flash-0731"
-   },
-   "downloadGb": 166.9,
-   "ramMinGb": 16,
-   "ramGoodGb": 32,
-   "denseGb": 7.9,
-   "runs": "streams experts from the SSD",
-   "goodAt": "tools and reasoning",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "qwen38-flash-next",
-   "name": "Qwen3.8-Flash-Next",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "qwen38-flash-next",
-    "repo": "Qwen/Qwen3.8-Flash-Next-FP8"
-   },
-   "downloadGb": 185.6,
-   "ramMinGb": 24,
-   "ramGoodGb": 32,
-   "denseGb": 8.0,
-   "runs": "streams experts from the SSD",
-   "goodAt": "vision and tools",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "mimo-v2.6-flash",
-   "name": "MiMo-V2.6 Flash",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "mimo-v2.6-flash",
-    "repo": "XiaomiMiMo/MiMo-V2.6-Flash-MOPD"
-   },
-   "downloadGb": 171.8,
-   "ramMinGb": 32,
-   "ramGoodGb": 52,
-   "denseGb": 24.0,
-   "runs": "streams experts from the SSD",
-   "goodAt": "vision and tools",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "glm-5.2",
-   "name": "GLM-5.2",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "glm-5.2",
-    "repo": "mastouri/GLM-5.2-colibri-int4-g64-with-int8-mtp"
-   },
-   "downloadGb": 429.3,
-   "ramMinGb": 16,
-   "ramGoodGb": 24,
-   "denseGb": 9.9,
-   "runs": "streams experts from the SSD",
-   "goodAt": "the strongest answers Colibri was built for",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "glm-5.3",
-   "name": "GLM-5.3",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "glm-5.3",
-    "repo": "Justvugg/GLM-5.3-colibri-int4-g64"
-   },
-   "downloadGb": 419.3,
-   "ramMinGb": 16,
-   "ramGoodGb": 24,
-   "denseGb": 9.9,
-   "runs": "streams experts from the SSD",
-   "goodAt": "the strongest answers (no speculative decoding)",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "mimo-v2.6-pro",
-   "name": "MiMo-V2.6 Pro",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "mimo-v2.6-pro",
-    "repo": "XiaomiMiMo/MiMo-V2.6-Pro-MOPD"
-   },
-   "downloadGb": 563.6,
-   "ramMinGb": 54,
-   "ramGoodGb": 64,
-   "denseGb": 32.4,
-   "runs": "streams experts from the SSD",
-   "goodAt": "vision and tools, very large",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "inkling",
-   "name": "Inkling",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "inkling",
-    "repo": "nbeerbower/Inkling-colibri-int4"
-   },
-   "downloadGb": 514.1,
-   "ramMinGb": 120,
-   "ramGoodGb": 128,
-   "denseGb": 49.4,
-   "runs": "streams experts from the SSD",
-   "goodAt": "very large general model",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "kimi-k3",
-   "name": "Kimi K3",
-   "group": "standard",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "kimi-k3",
-    "repo": "moonshotai/Kimi-K3"
-   },
-   "downloadGb": 1561.0,
-   "ramMinGb": 32,
-   "ramGoodGb": 64,
-   "denseGb": 20.0,
-   "runs": "streams experts from the SSD",
-   "goodAt": "the largest model there is",
-   "licence": "the model authors' own (see its page)"
-  },
-  {
-   "id": "qwen-image-2.1",
-   "name": "Qwen-Image-2.1",
-   "group": "standard",
-   "kind": "image",
-   "engine": "colibri",
-   "source": {
-    "kind": "colibri-catalog",
-    "id": "qwen-image-2.1",
-    "repo": "Qwen/Qwen-Image-2.1"
-   },
-   "downloadGb": 33.1,
-   "ramMinGb": 12,
-   "ramGoodGb": 18,
-   "denseGb": 8.5,
-   "runs": "from RAM",
-   "goodAt": "pictures from text",
-   "licence": "Qwen Research License: non-commercial use only"
-  },
-  {
-   "id": "qwen36-35b-abl-q2-k",
-   "name": "Qwen3.6 35B A3B, uncensored · Q2_K",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
+   "summary": "Colibri’s recommended model (Qwen3.6-35B-A3B) with its refusals removed; thinking and tools. The GGUF also carries an MTP head, which Colibri may leave unread.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q2_K.gguf"
+     ],
+     "bytes": [
+      13246129376
+     ],
+     "download_gb": 13.2,
+     "ram_min_gb": 6,
+     "ram_good_gb": 12
+    },
+    {
+     "quant": "Q3_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q3_K.gguf"
+     ],
+     "bytes": [
+      17165606112
+     ],
+     "download_gb": 17.2,
+     "ram_min_gb": 7,
+     "ram_good_gb": 15
+    },
+    {
+     "quant": "Q4_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q4_K.gguf"
+     ],
+     "bytes": [
+      21712409824
+     ],
+     "download_gb": 21.7,
+     "ram_min_gb": 9,
+     "ram_good_gb": 20
+    },
+    {
+     "quant": "Q5_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q5_K.gguf"
+     ],
+     "bytes": [
+      25346479328
+     ],
+     "download_gb": 25.3,
+     "ram_min_gb": 11,
+     "ram_good_gb": 23
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q6_K.gguf"
+     ],
+     "bytes": [
+      29207678176
+     ],
+     "download_gb": 29.2,
+     "ram_min_gb": 13,
+     "ram_good_gb": 26
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q8_0.gguf"
+     ],
+     "bytes": [
+      37801096416
+     ],
+     "download_gb": 37.8,
+     "ram_min_gb": 16,
+     "ram_good_gb": 34
+    },
+    {
+     "quant": "F16",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-f16.gguf"
+     ],
+     "bytes": [
+      71065941536
+     ],
+     "download_gb": 71.1,
+     "ram_min_gb": 31,
+     "ram_good_gb": 64
+    }
+   ],
    "group": "uncensored",
+   "source": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF"
+  },
+  {
+   "id": "qwen3-30b-a3b-abliterated",
+   "name": "Qwen3-30B-A3B abliterated",
+   "repo": "mradermacher/Qwen3-30B-A3B-abliterated-GGUF",
+   "base": "Qwen/Qwen3-30B-A3B",
+   "method": "abliterated by mlabonne (mlabonne/Qwen3-30B-A3B-abliterated), GGUF by mradermacher",
+   "arch": "qwen3moe",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
    "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q2_K.gguf",
-    "revision": "main",
-    "sizeBytes": 12939594624,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q2_K",
-   "quantNote": "smallest, lowest quality",
-   "architecture": "qwen35moe",
+   "summary": "Qwen3 mixture-of-experts (30B, 3B active) with its refusals removed; thinking and tools.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q2_K.gguf"
+     ],
+     "bytes": [
+      11258609632
+     ],
+     "download_gb": 11.3,
+     "ram_min_gb": 5,
+     "ram_good_gb": 10
+    },
+    {
+     "quant": "Q3_K_S",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q3_K_S.gguf"
+     ],
+     "bytes": [
+      13292468192
+     ],
+     "download_gb": 13.3,
+     "ram_min_gb": 6,
+     "ram_good_gb": 12
+    },
+    {
+     "quant": "Q3_K_M",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q3_K_M.gguf"
+     ],
+     "bytes": [
+      14711846880
+     ],
+     "download_gb": 14.7,
+     "ram_min_gb": 6,
+     "ram_good_gb": 13
+    },
+    {
+     "quant": "Q3_K_L",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q3_K_L.gguf"
+     ],
+     "bytes": [
+      15900669920
+     ],
+     "download_gb": 15.9,
+     "ram_min_gb": 7,
+     "ram_good_gb": 14
+    },
+    {
+     "quant": "IQ4_XS",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.IQ4_XS.gguf"
+     ],
+     "bytes": [
+      16557092832
+     ],
+     "download_gb": 16.6,
+     "ram_min_gb": 7,
+     "ram_good_gb": 15
+    },
+    {
+     "quant": "Q4_K_S",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q4_K_S.gguf"
+     ],
+     "bytes": [
+      17456009184
+     ],
+     "download_gb": 17.5,
+     "ram_min_gb": 8,
+     "ram_good_gb": 16
+    },
+    {
+     "quant": "Q4_K_M",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q4_K_M.gguf"
+     ],
+     "bytes": [
+      18556686304
+     ],
+     "download_gb": 18.6,
+     "ram_min_gb": 8,
+     "ram_good_gb": 17
+    },
+    {
+     "quant": "Q5_K_S",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q5_K_S.gguf"
+     ],
+     "bytes": [
+      21080510432
+     ],
+     "download_gb": 21.1,
+     "ram_min_gb": 9,
+     "ram_good_gb": 19
+    },
+    {
+     "quant": "Q5_K_M",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q5_K_M.gguf"
+     ],
+     "bytes": [
+      21725581280
+     ],
+     "download_gb": 21.7,
+     "ram_min_gb": 9,
+     "ram_good_gb": 20
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q6_K.gguf"
+     ],
+     "bytes": [
+      25092532192
+     ],
+     "download_gb": 25.1,
+     "ram_min_gb": 11,
+     "ram_good_gb": 23
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Qwen3-30B-A3B-abliterated.Q8_0.gguf"
+     ],
+     "bytes": [
+      32483932128
+     ],
+     "download_gb": 32.5,
+     "ram_min_gb": 14,
+     "ram_good_gb": 29
+    }
+   ],
+   "group": "uncensored",
+   "source": "https://huggingface.co/mradermacher/Qwen3-30B-A3B-abliterated-GGUF"
+  },
+  {
+   "id": "huihui-qwen3-8b-abliterated-v2",
+   "name": "Huihui Qwen3-8B abliterated v2",
+   "repo": "mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF",
+   "base": "Qwen/Qwen3-8B",
+   "method": "abliterated by huihui-ai (huihui-ai/Huihui-Qwen3-8B-abliterated-v2), GGUF by mradermacher",
+   "arch": "qwen3",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
+   "kind": "text",
+   "summary": "The same model as her Ollama brain today (and the base her own generations grow from), in Colibri. Dense: the whole model sits in RAM.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q2_K.gguf"
+     ],
+     "bytes": [
+      3281729280
+     ],
+     "download_gb": 3.28,
+     "ram_min_gb": 4,
+     "ram_good_gb": 5
+    },
+    {
+     "quant": "Q3_K_S",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q3_K_S.gguf"
+     ],
+     "bytes": [
+      3769607936
+     ],
+     "download_gb": 3.77,
+     "ram_min_gb": 5,
+     "ram_good_gb": 6
+    },
+    {
+     "quant": "Q3_K_M",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q3_K_M.gguf"
+     ],
+     "bytes": [
+      4124157696
+     ],
+     "download_gb": 4.12,
+     "ram_min_gb": 5,
+     "ram_good_gb": 6
+    },
+    {
+     "quant": "Q3_K_L",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q3_K_L.gguf"
+     ],
+     "bytes": [
+      4431390464
+     ],
+     "download_gb": 4.43,
+     "ram_min_gb": 5,
+     "ram_good_gb": 6
+    },
+    {
+     "quant": "IQ4_XS",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.IQ4_XS.gguf"
+     ],
+     "bytes": [
+      4593293056
+     ],
+     "download_gb": 4.59,
+     "ram_min_gb": 6,
+     "ram_good_gb": 7
+    },
+    {
+     "quant": "Q4_K_S",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q4_K_S.gguf"
+     ],
+     "bytes": [
+      4802008832
+     ],
+     "download_gb": 4.8,
+     "ram_min_gb": 6,
+     "ram_good_gb": 7
+    },
+    {
+     "quant": "Q4_K_M",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q4_K_M.gguf"
+     ],
+     "bytes": [
+      5027780352
+     ],
+     "download_gb": 5.03,
+     "ram_min_gb": 6,
+     "ram_good_gb": 7
+    },
+    {
+     "quant": "Q5_K_S",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q5_K_S.gguf"
+     ],
+     "bytes": [
+      5720758016
+     ],
+     "download_gb": 5.72,
+     "ram_min_gb": 7,
+     "ram_good_gb": 8
+    },
+    {
+     "quant": "Q5_K_M",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q5_K_M.gguf"
+     ],
+     "bytes": [
+      5851109120
+     ],
+     "download_gb": 5.85,
+     "ram_min_gb": 7,
+     "ram_good_gb": 8
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q6_K.gguf"
+     ],
+     "bytes": [
+      6725895936
+     ],
+     "download_gb": 6.73,
+     "ram_min_gb": 8,
+     "ram_good_gb": 9
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.Q8_0.gguf"
+     ],
+     "bytes": [
+      8709515008
+     ],
+     "download_gb": 8.71,
+     "ram_min_gb": 10,
+     "ram_good_gb": 11
+    },
+    {
+     "quant": "F16",
+     "files": [
+      "Huihui-Qwen3-8B-abliterated-v2.f16.gguf"
+     ],
+     "bytes": [
+      16388040448
+     ],
+     "download_gb": 16.4,
+     "ram_min_gb": 17,
+     "ram_good_gb": 18
+    }
+   ],
+   "group": "uncensored",
+   "source": "https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF"
+  },
+  {
+   "id": "huihui-qwen3.8-flash-next-abliterated",
+   "name": "Huihui Qwen3.8-Flash-Next abliterated",
+   "repo": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF",
+   "base": "Qwen/Qwen3.8-Flash-Next",
+   "method": "abliterated by huihui-ai; GGUF quants by unsloth",
+   "arch": "qwen4exp",
+   "engine": "qwen38",
+   "license": "qwen-community-1.0",
+   "size": "large",
+   "kind": "text",
+   "summary": "177B mixture of experts with its refusals removed. Experts stream from the SSD: much slower than the 35B, needs a fast NVMe.",
+   "quants": [
+    {
+     "quant": "UD-IQ4_XS",
+     "files": [
+      "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf",
+      "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00002-of-00003.gguf",
+      "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00003-of-00003.gguf"
+     ],
+     "bytes": [
+      10946624,
+      49835229856,
+      43836407744
+     ],
+     "download_gb": 93.7,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32
+    },
+    {
+     "quant": "UD-Q4_K_XL",
+     "files": [
+      "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+      "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf"
+     ],
+     "bytes": [
+      10946624,
+      49859583136,
+      49376141504,
+      12087983520
+     ],
+     "download_gb": 111.3,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32
+    },
+    {
+     "quant": "UD-Q4_K_XL (second copy)",
+     "files": [
+      "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+      "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf"
+     ],
+     "bytes": [
+      10946752,
+      49859583296,
+      49376141664,
+      12087983680
+     ],
+     "download_gb": 111.3,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32,
+     "note": "the same quant in the repo's other folder"
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+      "Q8_0/Qwen3.8-Flash-Next-Q8_0-00002-of-00006.gguf",
+      "Q8_0/Qwen3.8-Flash-Next-Q8_0-00003-of-00006.gguf",
+      "Q8_0/Qwen3.8-Flash-Next-Q8_0-00004-of-00006.gguf",
+      "Q8_0/Qwen3.8-Flash-Next-Q8_0-00005-of-00006.gguf",
+      "Q8_0/Qwen3.8-Flash-Next-Q8_0-00006-of-00006.gguf"
+     ],
+     "bytes": [
+      10946624,
+      682434944,
+      54400261344,
+      49446841248,
+      49668930432,
+      34015618848
+     ],
+     "download_gb": 188.2,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32
+    },
+    {
+     "quant": "BF16",
+     "files": [
+      "BF16/Qwen3.8-Flash-Next-BF16-00001-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00002-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00003-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00004-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00005-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00006-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00007-of-00008.gguf",
+      "BF16/Qwen3.8-Flash-Next-BF16-00008-of-00008.gguf"
+     ],
+     "bytes": [
+      10946368,
+      10447201728,
+      102400491744,
+      48394236704,
+      48367899104,
+      48615234016,
+      48367899104,
+      47426022080
+     ],
+     "download_gb": 354.0,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32,
+     "note": "unquantized"
+    },
+    {
+     "quant": "Swift IQ2_XS",
+     "files": [
+      "swift-IQ2_XS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+      "swift-IQ2_XS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf"
+     ],
+     "bytes": [
+      39788473344,
+      28363693824
+     ],
+     "download_gb": 68.2,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32,
+     "note": "a \"Swift\" GSQ-RCO build; Colibri reads IQ2_XS, this one is to be confirmed on the PC"
+    },
+    {
+     "quant": "Swift IQ3_XXS",
+     "files": [
+      "swift-IQ3_XXS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "swift-IQ3_XXS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf"
+     ],
+     "bytes": [
+      39785790560,
+      36180282560
+     ],
+     "download_gb": 76.0,
+     "ram_min_gb": 24,
+     "ram_good_gb": 32,
+     "note": "a \"Swift\" GSQ-RCO build; Colibri reads IQ3_XXS, this one is to be confirmed on the PC"
+    }
+   ],
+   "group": "uncensored",
+   "source": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF"
+  },
+  {
+   "id": "huihui-qwen3.6-35b-a3b-abliterated-mradermacher",
+   "group": "uncensored",
+   "name": "Huihui Qwen3.6-35B-A3B abliterated (mradermacher's quants)",
+   "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
    "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 12.9,
-   "ramMinGb": 7,
-   "ramGoodGb": 13,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
+   "method": "abliterated by huihui-ai",
+   "arch": "qwen35moe",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
+   "kind": "text",
+   "summary": "The same abliterated Qwen3.6-35B-A3B in more sizes (K_S / K_M and IQ4_XS); thinking and tools.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q2_K.gguf"
+     ],
+     "bytes": [
+      12939594624
+     ],
+     "download_gb": 12.9,
+     "ram_min_gb": 6,
+     "ram_good_gb": 12
+    },
+    {
+     "quant": "Q3_K_S",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q3_K_S.gguf"
+     ],
+     "bytes": [
+      15182185344
+     ],
+     "download_gb": 15.2,
+     "ram_min_gb": 7,
+     "ram_good_gb": 14
+    },
+    {
+     "quant": "Q3_K_M",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q3_K_M.gguf"
+     ],
+     "bytes": [
+      16764765056
+     ],
+     "download_gb": 16.8,
+     "ram_min_gb": 7,
+     "ram_good_gb": 15
+    },
+    {
+     "quant": "Q3_K_L",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q3_K_L.gguf"
+     ],
+     "bytes": [
+      18115330944
+     ],
+     "download_gb": 18.1,
+     "ram_min_gb": 8,
+     "ram_good_gb": 16
+    },
+    {
+     "quant": "IQ4_XS",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.IQ4_XS.gguf"
+     ],
+     "bytes": [
+      18939313024
+     ],
+     "download_gb": 18.9,
+     "ram_min_gb": 8,
+     "ram_good_gb": 17
+    },
+    {
+     "quant": "Q4_K_S",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q4_K_S.gguf"
+     ],
+     "bytes": [
+      19889904512
+     ],
+     "download_gb": 19.9,
+     "ram_min_gb": 9,
+     "ram_good_gb": 18
+    },
+    {
+     "quant": "Q4_K_M",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q4_K_M.gguf"
+     ],
+     "bytes": [
+      21166758784
+     ],
+     "download_gb": 21.2,
+     "ram_min_gb": 9,
+     "ram_good_gb": 19
+    },
+    {
+     "quant": "Q5_K_S",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q5_K_S.gguf"
+     ],
+     "bytes": [
+      23981284224
+     ],
+     "download_gb": 24.0,
+     "ram_min_gb": 10,
+     "ram_good_gb": 22
+    },
+    {
+     "quant": "Q5_K_M",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q5_K_M.gguf"
+     ],
+     "bytes": [
+      24729131904
+     ],
+     "download_gb": 24.7,
+     "ram_min_gb": 11,
+     "ram_good_gb": 22
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q6_K.gguf"
+     ],
+     "bytes": [
+      28514153344
+     ],
+     "download_gb": 28.5,
+     "ram_min_gb": 12,
+     "ram_good_gb": 26
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Huihui-Qwen3.6-35B-A3B-abliterated.Q8_0.gguf"
+     ],
+     "bytes": [
+      36903140224
+     ],
+     "download_gb": 36.9,
+     "ram_min_gb": 16,
+     "ram_good_gb": 33
+    }
+   ]
   },
   {
-   "id": "qwen36-35b-abl-q3-k-s",
-   "name": "Qwen3.6 35B A3B, uncensored · Q3_K_S",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
+   "id": "huihui-qwen3.5-35b-a3b-abliterated",
    "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q3_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 15182185344,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_S",
-   "quantNote": "small",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 15.2,
-   "ramMinGb": 8,
-   "ramGoodGb": 15,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q3-k-m",
-   "name": "Qwen3.6 35B A3B, uncensored · Q3_K_M",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q3_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 16764765056,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_M",
-   "quantNote": "small",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 16.8,
-   "ramMinGb": 9,
-   "ramGoodGb": 16,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q3-k-l",
-   "name": "Qwen3.6 35B A3B, uncensored · Q3_K_L",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q3_K_L.gguf",
-    "revision": "main",
-    "sizeBytes": 18115330944,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_L",
-   "quantNote": "small",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 18.1,
-   "ramMinGb": 9,
-   "ramGoodGb": 17,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-iq4-xs",
-   "name": "Qwen3.6 35B A3B, uncensored · IQ4_XS",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.IQ4_XS.gguf",
-    "revision": "main",
-    "sizeBytes": 18939313024,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "IQ4_XS",
-   "quantNote": "good balance",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 18.9,
-   "ramMinGb": 10,
-   "ramGoodGb": 18,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q4-k-s",
-   "name": "Qwen3.6 35B A3B, uncensored · Q4_K_S",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q4_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 19889904512,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_S",
-   "quantNote": "good balance",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 19.9,
-   "ramMinGb": 10,
-   "ramGoodGb": 19,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q4-k-m",
-   "name": "Qwen3.6 35B A3B, uncensored · Q4_K_M",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q4_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 21166758784,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_M",
-   "quantNote": "recommended balance",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 21.2,
-   "ramMinGb": 11,
-   "ramGoodGb": 20,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": true,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q5-k-s",
-   "name": "Qwen3.6 35B A3B, uncensored · Q5_K_S",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q5_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 23981284224,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_S",
-   "quantNote": "better quality",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 24.0,
-   "ramMinGb": 12,
-   "ramGoodGb": 23,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q5-k-m",
-   "name": "Qwen3.6 35B A3B, uncensored · Q5_K_M",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q5_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 24729131904,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_M",
-   "quantNote": "better quality",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 24.7,
-   "ramMinGb": 12,
-   "ramGoodGb": 23,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q6-k",
-   "name": "Qwen3.6 35B A3B, uncensored · Q6_K",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q6_K.gguf",
-    "revision": "main",
-    "sizeBytes": 28514153344,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q6_K",
-   "quantNote": "near the original",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 28.5,
-   "ramMinGb": 14,
-   "ramGoodGb": 27,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen36-35b-abl-q8-0",
-   "name": "Qwen3.6 35B A3B, uncensored · Q8_0",
-   "family": "qwen36-35b-abl",
-   "familyName": "Qwen3.6 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.6-35B-A3B-abliterated.Q8_0.gguf",
-    "revision": "main",
-    "sizeBytes": 36903140224,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q8_0",
-   "quantNote": "closest to the original, biggest",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
-   "downloadGb": 36.9,
-   "ramMinGb": 18,
-   "ramGoodGb": 34,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "everyday chat with thinking and tools, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q2-k",
-   "name": "Qwen3.5 35B A3B, uncensored · Q2_K",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q2_K.gguf",
-    "revision": "main",
-    "sizeBytes": 12821629760,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q2_K",
-   "quantNote": "smallest, lowest quality",
-   "architecture": "qwen35moe",
+   "name": "Huihui Qwen3.5-35B-A3B abliterated",
+   "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
    "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 12.8,
-   "ramMinGb": 7,
-   "ramGoodGb": 13,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
+   "method": "abliterated by huihui-ai",
+   "arch": "qwen35moe",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
+   "kind": "text",
+   "summary": "Qwen3.5-35B-A3B (the release before Qwen3.6) with its refusals removed; thinking and tools.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q2_K.gguf"
+     ],
+     "bytes": [
+      12821629760
+     ],
+     "download_gb": 12.8,
+     "ram_min_gb": 6,
+     "ram_good_gb": 12
+    },
+    {
+     "quant": "Q3_K_S",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q3_K_S.gguf"
+     ],
+     "bytes": [
+      15182185280
+     ],
+     "download_gb": 15.2,
+     "ram_min_gb": 7,
+     "ram_good_gb": 14
+    },
+    {
+     "quant": "Q3_K_M",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q3_K_M.gguf"
+     ],
+     "bytes": [
+      16760832832
+     ],
+     "download_gb": 16.8,
+     "ram_min_gb": 7,
+     "ram_good_gb": 15
+    },
+    {
+     "quant": "Q3_K_L",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q3_K_L.gguf"
+     ],
+     "bytes": [
+      18052416320
+     ],
+     "download_gb": 18.1,
+     "ram_min_gb": 8,
+     "ram_good_gb": 16
+    },
+    {
+     "quant": "IQ4_XS",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.IQ4_XS.gguf"
+     ],
+     "bytes": [
+      18860669760
+     ],
+     "download_gb": 18.9,
+     "ram_min_gb": 8,
+     "ram_good_gb": 17
+    },
+    {
+     "quant": "Q4_K_S",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q4_K_S.gguf"
+     ],
+     "bytes": [
+      19884006208
+     ],
+     "download_gb": 19.9,
+     "ram_min_gb": 9,
+     "ram_good_gb": 18
+    },
+    {
+     "quant": "Q4_K_M",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q4_K_M.gguf"
+     ],
+     "bytes": [
+      21169118016
+     ],
+     "download_gb": 21.2,
+     "ram_min_gb": 9,
+     "ram_good_gb": 19
+    },
+    {
+     "quant": "Q5_K_S",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q5_K_S.gguf"
+     ],
+     "bytes": [
+      23981284160
+     ],
+     "download_gb": 24.0,
+     "ram_min_gb": 10,
+     "ram_good_gb": 22
+    },
+    {
+     "quant": "Q5_K_M",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q5_K_M.gguf"
+     ],
+     "bytes": [
+      24764783424
+     ],
+     "download_gb": 24.8,
+     "ram_min_gb": 11,
+     "ram_good_gb": 22
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q6_K.gguf"
+     ],
+     "bytes": [
+      28514153280
+     ],
+     "download_gb": 28.5,
+     "ram_min_gb": 12,
+     "ram_good_gb": 26
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Huihui-Qwen3.5-35B-A3B-abliterated.Q8_0.gguf"
+     ],
+     "bytes": [
+      36903140160
+     ],
+     "download_gb": 36.9,
+     "ram_min_gb": 16,
+     "ram_good_gb": 33
+    }
+   ]
   },
   {
-   "id": "qwen35-35b-abl-q3-k-s",
-   "name": "Qwen3.5 35B A3B, uncensored · Q3_K_S",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
+   "id": "huihui-qwen3-30b-a3b-instruct-2507-abliterated",
    "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q3_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 15182185280,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_S",
-   "quantNote": "small",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 15.2,
-   "ramMinGb": 8,
-   "ramGoodGb": 15,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q3-k-m",
-   "name": "Qwen3.5 35B A3B, uncensored · Q3_K_M",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q3_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 16760832832,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_M",
-   "quantNote": "small",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 16.8,
-   "ramMinGb": 9,
-   "ramGoodGb": 16,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q3-k-l",
-   "name": "Qwen3.5 35B A3B, uncensored · Q3_K_L",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q3_K_L.gguf",
-    "revision": "main",
-    "sizeBytes": 18052416320,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_L",
-   "quantNote": "small",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 18.1,
-   "ramMinGb": 9,
-   "ramGoodGb": 17,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-iq4-xs",
-   "name": "Qwen3.5 35B A3B, uncensored · IQ4_XS",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.IQ4_XS.gguf",
-    "revision": "main",
-    "sizeBytes": 18860669760,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "IQ4_XS",
-   "quantNote": "good balance",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 18.9,
-   "ramMinGb": 10,
-   "ramGoodGb": 18,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q4-k-s",
-   "name": "Qwen3.5 35B A3B, uncensored · Q4_K_S",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q4_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 19884006208,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_S",
-   "quantNote": "good balance",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 19.9,
-   "ramMinGb": 10,
-   "ramGoodGb": 19,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q4-k-m",
-   "name": "Qwen3.5 35B A3B, uncensored · Q4_K_M",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q4_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 21169118016,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_M",
-   "quantNote": "recommended balance",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 21.2,
-   "ramMinGb": 11,
-   "ramGoodGb": 20,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q5-k-s",
-   "name": "Qwen3.5 35B A3B, uncensored · Q5_K_S",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q5_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 23981284160,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_S",
-   "quantNote": "better quality",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 24.0,
-   "ramMinGb": 12,
-   "ramGoodGb": 23,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q5-k-m",
-   "name": "Qwen3.5 35B A3B, uncensored · Q5_K_M",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q5_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 24764783424,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_M",
-   "quantNote": "better quality",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 24.8,
-   "ramMinGb": 12,
-   "ramGoodGb": 23,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q6-k",
-   "name": "Qwen3.5 35B A3B, uncensored · Q6_K",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q6_K.gguf",
-    "revision": "main",
-    "sizeBytes": 28514153280,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q6_K",
-   "quantNote": "near the original",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 28.5,
-   "ramMinGb": 14,
-   "ramGoodGb": 27,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen35-35b-abl-q8-0",
-   "name": "Qwen3.5 35B A3B, uncensored · Q8_0",
-   "family": "qwen35-35b-abl",
-   "familyName": "Qwen3.5 35B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF",
-    "file": "Huihui-Qwen3.5-35B-A3B-abliterated.Q8_0.gguf",
-    "revision": "main",
-    "sizeBytes": 36903140160,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q8_0",
-   "quantNote": "closest to the original, biggest",
-   "architecture": "qwen35moe",
-   "base": "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated",
-   "downloadGb": 36.9,
-   "ramMinGb": 18,
-   "ramGoodGb": 34,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "chat with thinking and tools, without refusals (the release before Qwen3.6)",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q2-k",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q2_K",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q2_K.gguf",
-    "revision": "main",
-    "sizeBytes": 11258610336,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q2_K",
-   "quantNote": "smallest, lowest quality",
-   "architecture": "qwen3moe",
+   "name": "Huihui Qwen3-30B-A3B Instruct 2507 abliterated",
+   "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
    "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 11.3,
-   "ramMinGb": 6,
-   "ramGoodGb": 11,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
+   "method": "abliterated by huihui-ai",
+   "arch": "qwen3moe",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
+   "kind": "text",
+   "summary": "Quick answers without thinking, refusals removed.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q2_K.gguf"
+     ],
+     "bytes": [
+      11258610336
+     ],
+     "download_gb": 11.3,
+     "ram_min_gb": 5,
+     "ram_good_gb": 10
+    },
+    {
+     "quant": "Q3_K_S",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q3_K_S.gguf"
+     ],
+     "bytes": [
+      13292468896
+     ],
+     "download_gb": 13.3,
+     "ram_min_gb": 6,
+     "ram_good_gb": 12
+    },
+    {
+     "quant": "Q3_K_M",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q3_K_M.gguf"
+     ],
+     "bytes": [
+      14711847584
+     ],
+     "download_gb": 14.7,
+     "ram_min_gb": 6,
+     "ram_good_gb": 13
+    },
+    {
+     "quant": "Q3_K_L",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q3_K_L.gguf"
+     ],
+     "bytes": [
+      15900670624
+     ],
+     "download_gb": 15.9,
+     "ram_min_gb": 7,
+     "ram_good_gb": 14
+    },
+    {
+     "quant": "IQ4_XS",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.IQ4_XS.gguf"
+     ],
+     "bytes": [
+      16557093536
+     ],
+     "download_gb": 16.6,
+     "ram_min_gb": 7,
+     "ram_good_gb": 15
+    },
+    {
+     "quant": "Q4_K_S",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q4_K_S.gguf"
+     ],
+     "bytes": [
+      17456009888
+     ],
+     "download_gb": 17.5,
+     "ram_min_gb": 8,
+     "ram_good_gb": 16
+    },
+    {
+     "quant": "Q4_K_M",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q4_K_M.gguf"
+     ],
+     "bytes": [
+      18556687008
+     ],
+     "download_gb": 18.6,
+     "ram_min_gb": 8,
+     "ram_good_gb": 17
+    },
+    {
+     "quant": "Q5_K_S",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q5_K_S.gguf"
+     ],
+     "bytes": [
+      21080511136
+     ],
+     "download_gb": 21.1,
+     "ram_min_gb": 9,
+     "ram_good_gb": 19
+    },
+    {
+     "quant": "Q5_K_M",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q5_K_M.gguf"
+     ],
+     "bytes": [
+      21725581984
+     ],
+     "download_gb": 21.7,
+     "ram_min_gb": 9,
+     "ram_good_gb": 20
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q6_K.gguf"
+     ],
+     "bytes": [
+      25092532896
+     ],
+     "download_gb": 25.1,
+     "ram_min_gb": 11,
+     "ram_good_gb": 23
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q8_0.gguf"
+     ],
+     "bytes": [
+      32483932832
+     ],
+     "download_gb": 32.5,
+     "ram_min_gb": 14,
+     "ram_good_gb": 29
+    }
+   ]
   },
   {
-   "id": "qwen3-30b-2507-abl-q3-k-s",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q3_K_S",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
+   "id": "huihui-qwen3-coder-30b-a3b-instruct-abliterated",
    "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q3_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 13292468896,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_S",
-   "quantNote": "small",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 13.3,
-   "ramMinGb": 7,
-   "ramGoodGb": 13,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q3-k-m",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q3_K_M",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q3_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 14711847584,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_M",
-   "quantNote": "small",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 14.7,
-   "ramMinGb": 8,
-   "ramGoodGb": 14,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q3-k-l",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q3_K_L",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q3_K_L.gguf",
-    "revision": "main",
-    "sizeBytes": 15900670624,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_L",
-   "quantNote": "small",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 15.9,
-   "ramMinGb": 8,
-   "ramGoodGb": 15,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-iq4-xs",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · IQ4_XS",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.IQ4_XS.gguf",
-    "revision": "main",
-    "sizeBytes": 16557093536,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "IQ4_XS",
-   "quantNote": "good balance",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 16.6,
-   "ramMinGb": 8,
-   "ramGoodGb": 16,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q4-k-s",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q4_K_S",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q4_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 17456009888,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_S",
-   "quantNote": "good balance",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 17.5,
-   "ramMinGb": 9,
-   "ramGoodGb": 17,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q4-k-m",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q4_K_M",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q4_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 18556687008,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_M",
-   "quantNote": "recommended balance",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 18.6,
-   "ramMinGb": 9,
-   "ramGoodGb": 18,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q5-k-s",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q5_K_S",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q5_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 21080511136,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_S",
-   "quantNote": "better quality",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 21.1,
-   "ramMinGb": 10,
-   "ramGoodGb": 20,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q5-k-m",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q5_K_M",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q5_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 21725581984,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_M",
-   "quantNote": "better quality",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 21.7,
-   "ramMinGb": 11,
-   "ramGoodGb": 21,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q6-k",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q6_K",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q6_K.gguf",
-    "revision": "main",
-    "sizeBytes": 25092532896,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q6_K",
-   "quantNote": "near the original",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 25.1,
-   "ramMinGb": 12,
-   "ramGoodGb": 24,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-30b-2507-abl-q8-0",
-   "name": "Qwen3 30B A3B Instruct 2507, uncensored · Q8_0",
-   "family": "qwen3-30b-2507-abl",
-   "familyName": "Qwen3 30B A3B Instruct 2507, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF",
-    "file": "Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated.Q8_0.gguf",
-    "revision": "main",
-    "sizeBytes": 32483932832,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q8_0",
-   "quantNote": "closest to the original, biggest",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated",
-   "downloadGb": 32.5,
-   "ramMinGb": 16,
-   "ramGoodGb": 30,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "quick answers without thinking, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q2-k",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q2_K",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q2_K.gguf",
-    "revision": "main",
-    "sizeBytes": 11258612928,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q2_K",
-   "quantNote": "smallest, lowest quality",
-   "architecture": "qwen3moe",
+   "name": "Huihui Qwen3-Coder-30B-A3B Instruct abliterated",
+   "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
    "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 11.3,
-   "ramMinGb": 6,
-   "ramGoodGb": 11,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q3-k-s",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q3_K_S",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
+   "method": "abliterated by huihui-ai",
+   "arch": "qwen3moe",
+   "engine": "qwen36",
+   "license": "apache-2.0",
+   "size": "small",
    "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q3_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 13292471488,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_S",
-   "quantNote": "small",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 13.3,
-   "ramMinGb": 7,
-   "ramGoodGb": 13,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q3-k-m",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q3_K_M",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q3_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 14711850176,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_M",
-   "quantNote": "small",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 14.7,
-   "ramMinGb": 8,
-   "ramGoodGb": 14,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q3-k-l",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q3_K_L",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q3_K_L.gguf",
-    "revision": "main",
-    "sizeBytes": 15900673216,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q3_K_L",
-   "quantNote": "small",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 15.9,
-   "ramMinGb": 8,
-   "ramGoodGb": 15,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-iq4-xs",
-   "name": "Qwen3 Coder 30B A3B, uncensored · IQ4_XS",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.IQ4_XS.gguf",
-    "revision": "main",
-    "sizeBytes": 16557096128,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "IQ4_XS",
-   "quantNote": "good balance",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 16.6,
-   "ramMinGb": 8,
-   "ramGoodGb": 16,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q4-k-s",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q4_K_S",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q4_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 17456012480,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_S",
-   "quantNote": "good balance",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 17.5,
-   "ramMinGb": 9,
-   "ramGoodGb": 17,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q4-k-m",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q4_K_M",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q4_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 18556689600,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q4_K_M",
-   "quantNote": "recommended balance",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 18.6,
-   "ramMinGb": 9,
-   "ramGoodGb": 18,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q5-k-s",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q5_K_S",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q5_K_S.gguf",
-    "revision": "main",
-    "sizeBytes": 21080513728,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_S",
-   "quantNote": "better quality",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 21.1,
-   "ramMinGb": 10,
-   "ramGoodGb": 20,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q5-k-m",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q5_K_M",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q5_K_M.gguf",
-    "revision": "main",
-    "sizeBytes": 21725584576,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q5_K_M",
-   "quantNote": "better quality",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 21.7,
-   "ramMinGb": 11,
-   "ramGoodGb": 21,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q6-k",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q6_K",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q6_K.gguf",
-    "revision": "main",
-    "sizeBytes": 25092535488,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q6_K",
-   "quantNote": "near the original",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 25.1,
-   "ramMinGb": 12,
-   "ramGoodGb": 24,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
-  },
-  {
-   "id": "qwen3-coder-30b-abl-q8-0",
-   "name": "Qwen3 Coder 30B A3B, uncensored · Q8_0",
-   "family": "qwen3-coder-30b-abl",
-   "familyName": "Qwen3 Coder 30B A3B, uncensored",
-   "group": "uncensored",
-   "kind": "text",
-   "engine": "colibri",
-   "source": {
-    "kind": "hf-gguf",
-    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF",
-    "file": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q8_0.gguf",
-    "revision": "main",
-    "sizeBytes": 32483935424,
-    "sha256": "from Hugging Face at download time (the file's LFS SHA-256)"
-   },
-   "quant": "Q8_0",
-   "quantNote": "closest to the original, biggest",
-   "architecture": "qwen3moe",
-   "base": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
-   "downloadGb": 32.5,
-   "ramMinGb": 16,
-   "ramGoodGb": 30,
-   "denseGb": 3.5,
-   "runs": "from RAM",
-   "goodAt": "code and tool calls, without refusals",
-   "recommended": false,
-   "licence": "Apache-2.0 (as the Qwen model it comes from)"
+   "summary": "Code and tool calls, refusals removed.",
+   "quants": [
+    {
+     "quant": "Q2_K",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q2_K.gguf"
+     ],
+     "bytes": [
+      11258612928
+     ],
+     "download_gb": 11.3,
+     "ram_min_gb": 5,
+     "ram_good_gb": 10
+    },
+    {
+     "quant": "Q3_K_S",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q3_K_S.gguf"
+     ],
+     "bytes": [
+      13292471488
+     ],
+     "download_gb": 13.3,
+     "ram_min_gb": 6,
+     "ram_good_gb": 12
+    },
+    {
+     "quant": "Q3_K_M",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q3_K_M.gguf"
+     ],
+     "bytes": [
+      14711850176
+     ],
+     "download_gb": 14.7,
+     "ram_min_gb": 6,
+     "ram_good_gb": 13
+    },
+    {
+     "quant": "Q3_K_L",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q3_K_L.gguf"
+     ],
+     "bytes": [
+      15900673216
+     ],
+     "download_gb": 15.9,
+     "ram_min_gb": 7,
+     "ram_good_gb": 14
+    },
+    {
+     "quant": "IQ4_XS",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.IQ4_XS.gguf"
+     ],
+     "bytes": [
+      16557096128
+     ],
+     "download_gb": 16.6,
+     "ram_min_gb": 7,
+     "ram_good_gb": 15
+    },
+    {
+     "quant": "Q4_K_S",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q4_K_S.gguf"
+     ],
+     "bytes": [
+      17456012480
+     ],
+     "download_gb": 17.5,
+     "ram_min_gb": 8,
+     "ram_good_gb": 16
+    },
+    {
+     "quant": "Q4_K_M",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q4_K_M.gguf"
+     ],
+     "bytes": [
+      18556689600
+     ],
+     "download_gb": 18.6,
+     "ram_min_gb": 8,
+     "ram_good_gb": 17
+    },
+    {
+     "quant": "Q5_K_S",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q5_K_S.gguf"
+     ],
+     "bytes": [
+      21080513728
+     ],
+     "download_gb": 21.1,
+     "ram_min_gb": 9,
+     "ram_good_gb": 19
+    },
+    {
+     "quant": "Q5_K_M",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q5_K_M.gguf"
+     ],
+     "bytes": [
+      21725584576
+     ],
+     "download_gb": 21.7,
+     "ram_min_gb": 9,
+     "ram_good_gb": 20
+    },
+    {
+     "quant": "Q6_K",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q6_K.gguf"
+     ],
+     "bytes": [
+      25092535488
+     ],
+     "download_gb": 25.1,
+     "ram_min_gb": 11,
+     "ram_good_gb": 23
+    },
+    {
+     "quant": "Q8_0",
+     "files": [
+      "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q8_0.gguf"
+     ],
+     "bytes": [
+      32483935424
+     ],
+     "download_gb": 32.5,
+     "ram_min_gb": 14,
+     "ram_good_gb": 29
+    }
+   ]
   }
- ]
+ ],
+ "standard": {
+  "source": "colibri setup --list --all --json",
+  "colibri": "v2.1.0",
+  "models": [
+   {
+    "id": "qwen36-35b",
+    "name": "Qwen3.6-35B-A3B",
+    "family": "qwen36",
+    "repo": "Kreuzzelg/qwen36-35b-a3b-colibri-i4-gs64",
+    "revision": "main",
+    "download_gb": 23.1,
+    "ram_min_gb": 10,
+    "ram_good_gb": 20,
+    "dense_gb": 3.5,
+    "kind": "text",
+    "runs": "from RAM",
+    "summary": "general chat with thinking and tools; int4-gs64 container",
+    "status": "fits",
+    "fits": true,
+    "reason": "fits in RAM",
+    "recommended": true,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "qwen3-coder-30b",
+    "name": "Qwen3-Coder-30B-A3B",
+    "family": "qwen36",
+    "repo": "Justvugg/Qwen3-Coder-30B-A3B-colibri-int4",
+    "revision": "main",
+    "download_gb": 19.4,
+    "ram_min_gb": 8,
+    "ram_good_gb": 18,
+    "dense_gb": 3.6,
+    "kind": "text",
+    "runs": "from RAM",
+    "summary": "coding model with tool calls, no thinking; int4-gs64 container",
+    "status": "fits",
+    "fits": true,
+    "reason": "fits in RAM",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "deepseek-v4-flash-reap",
+    "name": "DeepSeek V4 Flash REAP 150B",
+    "family": "deepseek_v4",
+    "repo": "puwaer/DeepSeek-V4-Flash-0731-reap-150b",
+    "revision": "main",
+    "download_gb": 84.7,
+    "ram_min_gb": 16,
+    "ram_good_gb": 32,
+    "dense_gb": 7.9,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "pruned DeepSeek V4 Flash (132 of 256 experts), official fp4/fp8 weights",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "deepseek-v4-flash",
+    "name": "DeepSeek V4 Flash",
+    "family": "deepseek_v4",
+    "repo": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "revision": "main",
+    "download_gb": 166.9,
+    "ram_min_gb": 16,
+    "ram_good_gb": 32,
+    "dense_gb": 7.9,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "284B, official checkpoint, no conversion",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "qwen38-flash-next",
+    "name": "Qwen3.8-Flash-Next",
+    "family": "qwen38",
+    "repo": "Qwen/Qwen3.8-Flash-Next-FP8",
+    "revision": "main",
+    "download_gb": 185.6,
+    "ram_min_gb": 24,
+    "ram_good_gb": 32,
+    "dense_gb": 8.0,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "125B + 51B n-gram, official FP8 checkpoint (pinned revision)",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "mimo-v2.6-flash",
+    "name": "MiMo-V2.6 Flash",
+    "family": "mimo",
+    "repo": "XiaomiMiMo/MiMo-V2.6-Flash-MOPD",
+    "revision": "main",
+    "download_gb": 171.8,
+    "ram_min_gb": 32,
+    "ram_good_gb": 52,
+    "dense_gb": 24.0,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "309B with vision and tools, official checkpoint",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "glm-5.2",
+    "name": "GLM-5.2",
+    "family": "glm",
+    "repo": "mastouri/GLM-5.2-colibri-int4-g64-with-int8-mtp",
+    "revision": "main",
+    "download_gb": 429.3,
+    "ram_min_gb": 16,
+    "ram_good_gb": 24,
+    "dense_gb": 9.9,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "744B, the reference model; int4-gs64 with the int8 MTP head",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "glm-5.3",
+    "name": "GLM-5.3",
+    "family": "glm",
+    "repo": "Justvugg/GLM-5.3-colibri-int4-g64",
+    "revision": "main",
+    "download_gb": 419.3,
+    "ram_min_gb": 16,
+    "ram_good_gb": 24,
+    "dense_gb": 9.9,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "744B, int4-gs64, no MTP head (no speculative decoding)",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "mimo-v2.6-pro",
+    "name": "MiMo-V2.6 Pro",
+    "family": "mimo",
+    "repo": "XiaomiMiMo/MiMo-V2.6-Pro-MOPD",
+    "revision": "main",
+    "download_gb": 563.6,
+    "ram_min_gb": 54,
+    "ram_good_gb": 64,
+    "dense_gb": 32.4,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "1.02T with vision and tools, official checkpoint",
+    "status": "too big",
+    "fits": false,
+    "reason": "needs 54 GB of RAM",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "inkling",
+    "name": "Inkling",
+    "family": "inkling",
+    "repo": "nbeerbower/Inkling-colibri-int4",
+    "revision": "main",
+    "download_gb": 514.1,
+    "ram_min_gb": 120,
+    "ram_good_gb": 128,
+    "dense_gb": 49.4,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "975B, int4 experts with bf16 dense weights",
+    "status": "too big",
+    "fits": false,
+    "reason": "needs 120 GB of RAM",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "kimi-k3",
+    "name": "Kimi K3",
+    "family": "kimi",
+    "repo": "moonshotai/Kimi-K3",
+    "revision": "main",
+    "download_gb": 1561.0,
+    "ram_min_gb": 32,
+    "ram_good_gb": 64,
+    "dense_gb": 20.0,
+    "kind": "text",
+    "runs": "streams experts from the SSD",
+    "summary": "2.8T, original checkpoint with native MXFP4 experts",
+    "status": "fits",
+    "fits": true,
+    "reason": "streams experts from the SSD",
+    "recommended": false,
+    "license_note": "",
+    "doc": ""
+   },
+   {
+    "id": "qwen-image-2.1",
+    "name": "Qwen-Image-2.1",
+    "family": "qwen_image",
+    "repo": "Qwen/Qwen-Image-2.1",
+    "revision": "main",
+    "download_gb": 33.1,
+    "ram_min_gb": 12,
+    "ram_good_gb": 18,
+    "dense_gb": 8.5,
+    "kind": "image",
+    "runs": "from RAM",
+    "summary": "text to image (pictures, not chat)",
+    "status": "fits",
+    "fits": true,
+    "reason": "fits in RAM",
+    "recommended": false,
+    "license_note": "Qwen Research License: non-commercial use only",
+    "doc": ""
+   }
+  ]
+ }
 }
