@@ -236,8 +236,11 @@ def title_matches(name, theme, label):
         want = _re.search(r'id="decoration-top"><rect [^>]*fill="(#[0-9a-f]{6})"', svg).group(1)
         w = tuple(int(want[i:i + 2], 16) for i in (1, 3, 5))
         im = Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB')
-        got = im.getpixel((300, 58))
-        ok = max(abs(a - b) for a, b in zip(w, got)) <= 12
+        # The title bar is somewhere down the window's column (the bar's height differs between looks): look for it.
+        col = [im.getpixel((300, y)) for y in range(30, 220)]
+        near = [c for c in col if max(abs(a - b) for a, b in zip(w, c)) <= 8]
+        got = near[0] if near else max(col, key=lambda c: -max(abs(a - b) for a, b in zip(w, c)))
+        ok = len(near) >= 12             # a band at least 12 px tall in the theme's colour
         check('the title bar has the look\'s colour (%s)' % label, ok, 'theme %s, picture %s' % (want, '#%02x%02x%02x' % got))
     except Exception as ex:
         check('the title bar has the look\'s colour (%s)' % label, False, ex)
