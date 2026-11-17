@@ -14,7 +14,17 @@ Bazaar (hearth-flatpak open-bazaar) stays installed; this is the controller-frie
   hearth-store remove APP_ID           (hearth-flatpak remove)
   hearth-store updates                 JSON: Flatpak updates (yours and the system's); the system image and firmware
                                        are Settings › Updates' and Settings › Firmware's (links)
-  hearth-store update [APP_ID...]      progress lines, then JSON (every Flatpak without APP_IDs)
+  hearth-store update [APP_ID...] [--allow-new]
+                                       progress lines, then JSON {updated, waiting}. Without APP_IDs: every Flatpak
+                                       whose update asks for no new permissions (the others wait: "waiting"); an app
+                                       that asks for new ones only with --allow-new (you looked at them first)
+  hearth-store check                   JSON: updates Hearth hasn't told you about yet (StoreWatch.qml's notice)
+  hearth-store prefs | prefs-set notifyUpdates on|off
+                                       the store's choices (~/.config/nimbus/store.json, hearth_settings_io)
+  hearth-store drivers                 JSON: the PC's parts and the Debian packages that drive them (Nvidia, firmware-*,
+                                       microcode): installed, can be installed (read only)
+  hearth-store driver-install PACKAGE  progress lines, then JSON: through hearth-admin (an administrator's password)
+                                       (the 1.14 extras are in hearth_store_extras.py; "updates" rows carry newPerms)
   hearth-store sources                 JSON: Flatpak sources (remotes): name, title, URL, yours or the system's, on/off
   hearth-store source-add NAME URL     add a source for you (--user): a https:// .flatpakrepo file or repo URL
   hearth-store source-remove NAME [--system]
@@ -140,16 +150,32 @@ def plain(desc):
 
 
 def shots(a):
+    """Up to 8 screenshots, each at the biggest size up to 1280 wide. Flathub has given sizes both as
+    {"624x351": url} and as [{"src": url, "width": 624, "height": 351, "scale": "1x"}]: both are read."""
     out = []
     for s in a.get('screenshots') or []:
+        if not isinstance(s, dict):
+            continue
         sizes = s.get('sizes') or {}
-        best = None
-        for k, url in sizes.items():
-            m = re.match(r'(\d+)x(\d+)', k)
-            if m and int(m.group(1)) <= 1280 and (not best or int(m.group(1)) > best[0]):
-                best = (int(m.group(1)), url)
+        cands = []
+        if isinstance(sizes, dict):
+            for k, url in sizes.items():
+                m = re.match(r'(\d+)x(\d+)', str(k))
+                if m and isinstance(url, str):
+                    cands.append((int(m.group(1)), url))
+        elif isinstance(sizes, list):
+            for z in sizes:
+                if isinstance(z, dict) and isinstance(z.get('src') or z.get('url'), str):
+                    try:
+                        w = int(str(z.get('width') or '0').split('x')[0])
+                    except ValueError:
+                        w = 0
+                    cands.append((w, z.get('src') or z.get('url')))
+        fits = [c for c in cands if 0 < c[0] <= 1280] or [c for c in cands if c[0] == 0]
+        best = max(fits) if fits else (min(cands) if cands else None)
         if best:
-            out.append({'url': best[1], 'caption': s.get('caption') or ''})
+            cap = s.get('caption')
+            out.append({'url': best[1], 'caption': cap if isinstance(cap, str) else ''})
     return out[:8]
 
 
@@ -202,13 +228,15 @@ def app(app_id, getter=None):
         size = (s or {}).get('download_size') or None
     except Fail:
         pass
-    urls = a.get('urls') or {}
+    urls = a.get('urls') if isinstance(a.get('urls'), dict) else {}
+    meta = a.get('metadata') if isinstance(a.get('metadata'), dict) else {}
+    lic = a.get('project_license') or ''
     return {'id': app_id, 'name': a.get('name') or app_id, 'summary': a.get('summary') or '', 'developer': a.get('developer_name') or '',
             'icon': a.get('icon') or '', 'description': plain(a.get('description')), 'screenshots': shots(a),
-            'license': a.get('project_license') or '', 'homepage': urls.get('homepage') or '', 'help': urls.get('help') or '',
+            'license': lic if isinstance(lic, str) else '', 'homepage': urls.get('homepage') or '', 'help': urls.get('help') or '',
             'size': size, 'ratings': ratings(app_id, getter), 'reviews': reviews(app_id, getter),
             'installed': installed_where(app_id) if getter is None else [], 'cached': old,
-            'verified': bool((a.get('metadata') or {}).get('flathub::verification::verified') == 'true')}
+            'verified': str(meta.get('flathub::verification::verified')).lower() == 'true'}
 
 
 # ------------------------------------------------------------------ flatpak
@@ -362,6 +390,12 @@ def source_remove(name, system=False):
     return {'ok': True, 'removed': name}
 
 
+def extras():
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import hearth_store_extras
+    return hearth_store_extras
+
+
 def main(argv):
     if not argv:
         print(__doc__)
@@ -382,8 +416,11 @@ def main(argv):
             out = remove(rest[0])
         elif c == 'updates':
             out = updates()
+            extras().with_perms(sys.modules[__name__], out['flatpaks'])
         elif c == 'update':
-            out = update(rest)
+            out = extras().update_apps(sys.modules[__name__], [a for a in rest if a != '--allow-new'], '--allow-new' in rest)
+        elif c in ('check', 'prefs', 'prefs-set', 'drivers', 'driver-install'):
+            out = extras().run(sys.modules[__name__], c, rest)
         elif c == 'sources':
             out = sources()
         elif c == 'source-add' and len(rest) == 2:
@@ -394,6 +431,11 @@ def main(argv):
             raise Fail('Unknown command')
     except Fail as e:
         print('error: ' + str(e))
+        return 1
+    except Exception as e:  # an answer from Flathub shaped differently: said plainly, the details on stderr
+        import traceback
+        traceback.print_exc()
+        print("error: Flathub's answer couldn't be read (%s)" % type(e).__name__)
         return 1
     print(json.dumps(out, ensure_ascii=False))
     return 0

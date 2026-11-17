@@ -1,7 +1,8 @@
 // Hearth Capture's markup editor (Capture.qml loads it by file name, so a problem here leaves Take and Recent working).
 // Tools: arrow, box, pen, highlighter, text, blur, pixelate, numbered steps, crop; seven colours, three widths, undo
 // and redo. Copy, Save (Pictures › Screenshots, and copied), Save as, Show in folder, Read text (tesseract) and Read
-// QR code (zbarimg). The shapes are kept in the picture's own pixels (capture-draw.js): the view draws them scaled
+// QR code (zbarimg), and Share (1.14: copy, save, open with an app for pictures, send to your phone when Phone link
+// is on; Open with and Send use the saved file, saved first when it isn't). The shapes are kept in the picture's own pixels (capture-draw.js): the view draws them scaled
 // to fit, and saving draws them 1:1 on a canvas the size of the (cropped) picture, so what you save is full size.
 // The picture you took is never changed: saving always makes a new file (Save as never replaces one without asking).
 import QtQuick
@@ -24,7 +25,11 @@ Item {
     property string tool: "arrow"
     property string color: Draw.COLORS[0]
     property string widthKey: "m"
-    property string panel: ""            // "" | text | qr | saveas
+    property string panel: ""            // "" | text | qr | saveas | share
+    property var shareApps: []           // [{id, name, icon, default}]: apps that open pictures
+    property var sharePhones: null       // {on, phones: [{id, name}]} from Phone link
+    property int edits: 0                // changes since the picture was opened (Share reuses the saved file only if none since)
+    property int savedEdits: -1
     property string ocrState: ""         // busy | done | missing | error
     property string ocrText: ""
     property var qrCodes: []
@@ -46,7 +51,7 @@ Item {
     readonly property int textSize: widthKey === "s" ? 22 : widthKey === "l" ? 52 : 34
 
     function start() {
-        shapes = []; live = null; undoStack = []; redoStack = []; panel = ""; toast = ""; lastSaved = "";
+        shapes = []; live = null; undoStack = []; redoStack = []; panel = ""; toast = ""; lastSaved = ""; edits = 0; savedEdits = -1;
         crop = cap && cap.crop ? Object.assign({}, cap.crop) : null;
         tool = "arrow"; editingText = false;
         ink.requestPaint();
@@ -58,16 +63,17 @@ Item {
 
     function stateObj() {
         return { tool: tool, shapes: shapes.length, ready: ready, exportError: exportError, crop: crop, width: imgW, height: imgH, panel: panel, ocr: ocrState,
-                 text: ocrText.slice(0, 400), qr: qrCodes, qrState: qrState, qrError: qrError, toast: toast, saved: lastSaved, busy: busy };
+                 text: ocrText.slice(0, 400), qr: qrCodes, qrState: qrState, qrError: qrError, toast: toast, saved: lastSaved, busy: busy,
+                 shareApps: shareApps.length, phones: sharePhones };
     }
     function say(t) { toast = t; toastTimer.restart(); }
     Timer { id: toastTimer; interval: 5000; onTriggered: ed.toast = "" }
 
     // ------------------------------------------------ undo
     function snapshot() { return { shapes: shapes.slice(), crop: crop ? Object.assign({}, crop) : null }; }
-    function change(fn) { undoStack = undoStack.concat([snapshot()]).slice(-100); redoStack = []; fn(); ink.requestPaint(); }
-    function undo() { if (!undoStack.length) return; redoStack = redoStack.concat([snapshot()]); const s = undoStack[undoStack.length - 1]; undoStack = undoStack.slice(0, -1); shapes = s.shapes; crop = s.crop; ink.requestPaint(); }
-    function redo() { if (!redoStack.length) return; undoStack = undoStack.concat([snapshot()]); const s = redoStack[redoStack.length - 1]; redoStack = redoStack.slice(0, -1); shapes = s.shapes; crop = s.crop; ink.requestPaint(); }
+    function change(fn) { undoStack = undoStack.concat([snapshot()]).slice(-100); redoStack = []; fn(); edits++; ink.requestPaint(); }
+    function undo() { if (!undoStack.length) return; redoStack = redoStack.concat([snapshot()]); const s = undoStack[undoStack.length - 1]; undoStack = undoStack.slice(0, -1); shapes = s.shapes; crop = s.crop; edits++; ink.requestPaint(); }
+    function redo() { if (!redoStack.length) return; undoStack = undoStack.concat([snapshot()]); const s = redoStack[redoStack.length - 1]; redoStack = redoStack.slice(0, -1); shapes = s.shapes; crop = s.crop; edits++; ink.requestPaint(); }
     function add(sh) { if (Draw.worthKeeping(sh)) change(() => shapes = shapes.concat([sh])); }
 
     // A sample of every tool (the screenshots in CI show the editor with them).
@@ -114,7 +120,7 @@ Item {
             if (!p) { say("Couldn't make the picture"); return; }
             cap.run(["save", p], j => {
                 if (!j.ok) { say(j.error || "Couldn't save it"); return; }
-                lastSaved = j.path; cap.saved(j.path);
+                lastSaved = j.path; savedEdits = edits; cap.saved(j.path);
                 cap.run(["copy", j.path], c => say(c.ok ? "Saved as " + j.name + " and copied" : "Saved as " + j.name));
             });
         });
@@ -136,9 +142,35 @@ Item {
                 if (j.exists) { saveAsExists = true; say(j.error); return; }
                 if (j.kind && !j.ok) { say("This PC can't save " + j.kind.toUpperCase() + " pictures here: try .png or .jpg"); return; }
                 if (!j.ok) { say(j.error || "Couldn't save it"); return; }
-                lastSaved = j.path; cap.saved(j.path); panel = ""; say("Saved as " + j.name);
+                lastSaved = j.path; savedEdits = edits; cap.saved(j.path); panel = ""; say("Saved as " + j.name);
             });
         }, mime);
+    }
+    // ------------------------------------------------ Share
+    function share() {
+        panel = "share"; sharePhones = null;
+        cap.run(["apps"], j => ed.shareApps = j.apps || []);
+        cap.run(["phones"], j => ed.sharePhones = j);
+    }
+    // The saved file as it is now: the one saved already when nothing changed since, else saved now (Pictures ›
+    // Screenshots, as Save does).
+    function savedFile(cb) {
+        if (lastSaved !== "" && savedEdits === edits) { cb(lastSaved); return; }
+        finished(p => {
+            if (!p) { say("Couldn't make the picture"); cb(""); return; }
+            cap.run(["save", p], j => {
+                if (!j.ok) { say(j.error || "Couldn't save it"); cb(""); return; }
+                lastSaved = j.path; savedEdits = edits; cap.saved(j.path); cb(j.path);
+            });
+        });
+    }
+    function openWith(app) { savedFile(p => { if (p) cap.run(["open-with", app.id, p], j => say(j.ok ? "Opening it in " + app.name : (j.error || "Couldn't open it"))); }); }
+    function sendPhone(ph) {
+        savedFile(p => {
+            if (!p) return;
+            say("Sending it to " + ph.name + "…");
+            cap.run(["send-phone", p, ph.id], j => say(j.ok ? "Sent to " + ph.name : (j.error || "Couldn't send it")));
+        });
     }
     function showFolder() {
         if (lastSaved !== "") { cap.run(["folder", lastSaved]); return; }
@@ -393,7 +425,11 @@ Item {
                 CaptureBtn { Layout.fillWidth: true; icon: "copy"; text: "Copy"; onActivated: ed.copyOnly() }
                 CaptureBtn { Layout.fillWidth: true; icon: "doc"; text: "Save as…"; onActivated: ed.openSaveAs() }
             }
-            CaptureBtn { Layout.fillWidth: true; icon: "folder"; text: "Show in folder"; onActivated: ed.showFolder() }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                CaptureBtn { Layout.fillWidth: true; icon: "folder"; text: "Show in folder"; onActivated: ed.showFolder() }
+                CaptureBtn { Layout.fillWidth: true; glyph: "share"; text: "Share…"; selected: ed.panel === "share"; onActivated: ed.share() }
+            }
             Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; height: 1; color: Theme.line }
             RowLayout {
                 Layout.fillWidth: true; spacing: 8
@@ -402,6 +438,64 @@ Item {
             }
             CaptureBtn { Layout.fillWidth: true; glyph: "area"; text: "New screenshot"; onActivated: ed.cap.take(ed.cap.mode) }
 
+            // Share: copy, save, open with an app, send to the phone.
+            ColumnLayout {
+                visible: ed.panel === "share"
+                Layout.fillWidth: true; Layout.topMargin: 8; spacing: 8
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: "Share"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                    CaptureBtn { icon: "close"; tip: "Close"; onActivated: ed.panel = "" }
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    CaptureBtn { Layout.fillWidth: true; icon: "copy"; text: "Copy"; onActivated: ed.copyOnly() }
+                    CaptureBtn { Layout.fillWidth: true; icon: "check"; text: "Save"; onActivated: ed.saveAndCopy() }
+                }
+                Text { text: "Open with"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(appCol.implicitHeight, 150)
+                    contentHeight: appCol.implicitHeight; clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: appCol
+                        width: parent.width; spacing: 6
+                        Repeater {
+                            model: ed.shareApps
+                            CaptureBtn {
+                                required property var modelData
+                                width: appCol.width
+                                icon: modelData.icon || "image"
+                                text: modelData.name + (modelData["default"] ? "  ·  default" : "")
+                                onActivated: ed.openWith(modelData)
+                            }
+                        }
+                        Text {
+                            visible: ed.shareApps.length === 0
+                            width: appCol.width; wrapMode: Text.WordWrap
+                            text: "No app for pictures found."
+                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                        }
+                    }
+                }
+                Text { text: "Send to your phone"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+                Repeater {
+                    model: ed.sharePhones && ed.sharePhones.on ? ed.sharePhones.phones : []
+                    CaptureBtn {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        glyph: "phone"; text: "Send to " + modelData.name
+                        onActivated: ed.sendPhone(modelData)
+                    }
+                }
+                Text {
+                    visible: !ed.sharePhones || !ed.sharePhones.on || ed.sharePhones.phones.length === 0
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    text: !ed.sharePhones ? "Looking for your phone…" : !ed.sharePhones.on ? "Phone link is off (Settings › Phone)." : "No phone connected right now."
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                }
+            }
             // Save as: where, typed (the on-screen keyboard opens with Y, or the keyboard button).
             ColumnLayout {
                 visible: ed.panel === "saveas"
@@ -486,6 +580,7 @@ Item {
             Text {
                 Layout.fillWidth: true; wrapMode: Text.WordWrap
                 text: (ed.imgW > 0 ? (ed.crop ? ed.crop.w + " × " + ed.crop.h : ed.imgW + " × " + ed.imgH) + " pixels" : "") + (ed.lastSaved !== "" ? "\nSaved: " + ed.lastSaved.split("/").pop() : "")
+                      + (ed.cap && ed.cap.scrollNote !== "" && ed.cap.shot.indexOf("/scroll-") >= 0 ? "\n" + ed.cap.scrollNote : "")
                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
             }
         }

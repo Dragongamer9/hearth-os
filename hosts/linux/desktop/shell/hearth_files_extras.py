@@ -19,8 +19,10 @@ as `hf`, so the same rules apply: what may change, plain-words errors, the JSON 
   share FOLDER on|off|write-on|write-off    share it, stop, or let others change files (through hearth-home-server)
   recent-prefs / recent-prefs-set JSON  Settings › Privacy › Recent files: {"remember": true, "keepDays": 0, "leaveOut": []}
                                         (~/.config/nimbus/recent.json through hearth_settings_io)
-  recent-forget hour|day|all|PATH       forget recently opened files (the shared recently-used.xbel, written atomically
-                                        with a .bak)
+  recent-forget hour|day|all|PATH|activity:ID   forget recently opened files (the shared recently-used.xbel,
+                                        written atomically with a .bak); activity:ID: the ones opened on that activity
+  activity-mark ID / activity-tidy      Activities: you're on ID from now (kept so each activity has its own recent
+                                        files) / forget what was opened on an activity set to "Don't remember"
   chmod-tree FOLDER MODE                the same permissions for everything inside (folders get MODE; files get MODE
                                         without "run as a program" unless they had it)
   groups / chgrp PATH GROUP             your groups / give a file of yours to one of them
@@ -831,6 +833,147 @@ def recent_apps(hf):
     return seen[:40]
 
 
+# ---------------------------------------------------------------------- recent files per activity (1.14)
+# Activities.qml says which activity you're on as you switch (activity-mark): $XDG_DATA_HOME/hearth/activity-history.json
+# keeps {"spans": [[seconds since 1970, activity id], ...]}, oldest first (a record of what happened, not a setting:
+# written atomically with a .bak, the last ACT_SPANS kept). A recent file belongs to the activity that was on when it
+# was last opened (before the first record: Main). Each activity's choice is in activities.json ("act:<id>".recent,
+# activities.js): "own" (the default) shows only its files, "all" every activity's, and "off" forgets what's opened
+# on it (activity-tidy, run at every switch and each minute while you're on it).
+ACT_SPANS = 3000
+ACT_MODES = ('own', 'all', 'off')
+ACT_ID = re.compile(r'^[A-Za-z0-9_-]{1,40}$')
+
+
+def activity_history_file():
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
+    return os.path.join(base, 'hearth', 'activity-history.json')
+
+
+def activities_file():
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+    return os.path.join(cfg, 'nimbus', 'activities.json')
+
+
+def activity_spans():
+    for f in (activity_history_file(), activity_history_file() + '.bak'):
+        try:
+            with open(f) as fh:
+                d = json.load(fh)
+            spans = [s for s in (d.get('spans') or []) if isinstance(s, list) and len(s) == 2
+                     and isinstance(s[0], (int, float)) and isinstance(s[1], str)]
+            return sorted(spans, key=lambda s: s[0])
+        except (OSError, ValueError, AttributeError):
+            continue
+    return []
+
+
+def activities_conf():
+    """{"current", "modes": {id: own|all|off}, "names": {id: name}, "many"} from activities.json (read only; a file
+    that can't be read means one activity, Main: everything shows as before)."""
+    try:
+        with open(activities_file()) as fh:
+            d = json.load(fh)
+        if not isinstance(d, dict):
+            d = {}
+    except (OSError, ValueError):
+        d = {}
+    modes, names = {'default': 'own'}, {'default': 'Main'}
+    for k, v in d.items():
+        if k.startswith('act:') and isinstance(v, dict) and k[4:]:
+            modes[k[4:]] = v.get('recent') if v.get('recent') in ACT_MODES else 'own'
+            names[k[4:]] = str(v.get('name') or '').strip() or ('Main' if k[4:] == 'default' else 'Activity')
+    cur = d.get('current') if isinstance(d.get('current'), str) and d.get('current') in modes else 'default'
+    return {'current': cur, 'modes': modes, 'names': names, 'many': len(modes) > 1}
+
+
+def activity_at(spans, when):
+    """The activity that was on at WHEN (seconds): the last switch before it; Main before the first one."""
+    act = 'default'
+    for t, a in spans:
+        if t > when:
+            break
+        act = a
+    return act
+
+
+def recent_visible(prefs, path, apps, when, conf=None, spans=None):
+    """recent_allowed, and on an activity with its own list ("own"), only what was opened on it. Lists only: never
+    used to decide what's forgotten."""
+    if not recent_allowed(prefs, path, apps, when):
+        return False
+    conf = conf if conf is not None else activities_conf()
+    if not conf['many'] or conf['modes'].get(conf['current'], 'own') != 'own':
+        return True
+    spans = spans if spans is not None else activity_spans()
+    return activity_at(spans, when or 0) == conf['current']
+
+
+def _save_spans(spans):
+    f = activity_history_file()
+    os.makedirs(os.path.dirname(f), mode=0o700, exist_ok=True)
+    if os.path.exists(f):
+        try:
+            with open(f) as fh:
+                json.load(fh)
+            shutil.copy2(f, f + '.bak')          # only a good copy becomes the .bak
+        except (OSError, ValueError):
+            pass
+    tmp = f + '.tmp'
+    with open(tmp, 'w') as fh:
+        json.dump({'spans': spans[-ACT_SPANS:]}, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, f)
+
+
+def activity_mark(hf, act, now=None):
+    """You're on ACT from now on (Activities.qml at every switch and when the shell starts); then activity_tidy."""
+    if not ACT_ID.match(act or ''):
+        raise hf.Fail('That isn\'t an activity')
+    spans = activity_spans()
+    if not spans or spans[-1][1] != act:
+        spans.append([int(now or time.time()), act])
+        _save_spans(spans)
+    return dict(activity_tidy(hf, now), current=act)
+
+
+def activity_tidy(hf, now=None):
+    """Forgets recent files opened while an activity set to "off" (Don't remember) was on."""
+    conf = activities_conf()
+    off = {a for a, m in conf['modes'].items() if m == 'off'}
+    if not off:
+        return {'ok': True, 'forgot': 0}
+    spans = activity_spans()
+    return {'ok': True, 'forgot': recent_rewrite(lambda a, p, apps: activity_at(spans, _when(a)) not in off)}
+
+
+def activity_forget(hf, act):
+    """Forget the recent files that belong to one activity (Settings › Recent files, "Forget its recent files")."""
+    if not ACT_ID.match(act or ''):
+        raise hf.Fail('That isn\'t an activity')
+    spans = activity_spans()
+    return {'ok': True, 'forgot': recent_rewrite(lambda a, p, apps: activity_at(spans, _when(a)) != act)}
+
+
+def activity_counts():
+    """[{id, name, mode, files}] for Settings › Recent files (how many recent files each activity has)."""
+    conf = activities_conf()
+    if not conf['many']:
+        return []
+    try:
+        with open(xbel_file(), encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+    except OSError:
+        text = ''
+    spans, n = activity_spans(), {}
+    for _, attrs, p, _ in xbel_items(text):
+        if p:
+            a = activity_at(spans, _when(attrs))
+            n[a] = n.get(a, 0) + 1
+    return [{'id': a, 'name': conf['names'].get(a, a), 'mode': m, 'files': n.get(a, 0)} for a, m in conf['modes'].items()]
+
+
 # ---------------------------------------------------------------------- permissions: a whole folder, groups
 def chmod_tree(hf, folder, mode):
     p = hf.check_writable(folder, allow_root=True)
@@ -895,7 +1038,7 @@ def chgrp(hf, path, group):
 # ---------------------------------------------------------------------- the commands
 COMMANDS = ('tags', 'tag-set', 'tag-list', 'tag-find', 'git-status', 'iso-mount', 'iso-unmount', 'portable', 'portable-mount',
             'portable-unmount', 'service-menus', 'service-run', 'sharing', 'share', 'recent-prefs', 'recent-prefs-set',
-            'recent-forget', 'chmod-tree', 'groups', 'chgrp')
+            'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp')
 
 
 def run(hf, c, rest):
@@ -929,11 +1072,17 @@ def run(hf, c, rest):
     if c == 'share' and len(rest) == 2:
         return share(hf, rest[0], rest[1])
     if c == 'recent-prefs' and not rest:
-        return {'prefs': recent_prefs(), 'apps': recent_apps(hf)}
+        return {'prefs': recent_prefs(), 'apps': recent_apps(hf), 'activities': activity_counts()}
     if c == 'recent-prefs-set' and one:
         return recent_prefs_set(hf, rest[0])
     if c == 'recent-forget' and one:
+        if rest[0].startswith('activity:'):
+            return activity_forget(hf, rest[0][9:])
         return recent_forget(hf, rest[0])
+    if c == 'activity-mark' and one:
+        return activity_mark(hf, rest[0])
+    if c == 'activity-tidy' and not rest:
+        return activity_tidy(hf)
     if c == 'chmod-tree' and len(rest) == 2:
         return chmod_tree(hf, rest[0], rest[1])
     if c == 'groups' and not rest:

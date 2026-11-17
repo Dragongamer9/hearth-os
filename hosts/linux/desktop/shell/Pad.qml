@@ -42,6 +42,8 @@ Scope {
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
         || SettingsNav.widgetsShown   // desktop widgets and activities (Widgets.qml)
+        || SettingsNav.fireholdShown  // Firehold's Couch (a hidden preview): its buttons go to it as they are (fhpad)
+        || SettingsNav.searchBarShown   // the search bar (SearchBar.qml, Alt+Space)
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
     // The window in front (WinList: labwc's foreign-toplevel list, or KWin's through hearth-kwin-bridge): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
@@ -49,6 +51,7 @@ Scope {
     // What has the keys (hearth-pad's pad.log says it, so a controller that "only does D-pad and A" shows why).
     function keysWhy() {
         if (!keysContext) return "";
+        if (SettingsNav.fireholdShown) return "Firehold";   // hearth-pad sends this one's buttons as they are
         if (launcher.shown) return "launcher";
         if (quick.shown) return "Quick Access";
         if (powerMenu.shown) return "power menu";
@@ -59,6 +62,7 @@ Scope {
         if (SettingsNav.snapShown) return "snap layouts";
         if (SettingsNav.discordShown) return "Discord chooser";
         if (SettingsNav.winxShown) return "Super+X menu";
+        if (SettingsNav.searchBarShown) return "search bar";
         if (DeskState.overlayShown) return "desktop menu";
         if (SettingsNav.polkitShown) return "password prompt";
         if (SettingsNav.captureShown) return "Capture";
@@ -84,7 +88,7 @@ Scope {
     // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
     // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
     readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || SettingsNav.widgetsShown || DeskState.overlayShown
-        || SettingsNav.winxShown
+        || SettingsNav.winxShown || SettingsNav.searchBarShown
     property var beforeMenu: null
     onMenuOpenChanged: {
         if (menuOpen) { beforeMenu = active; refocus.stop(); }
@@ -111,6 +115,13 @@ Scope {
         send({ cmd: "pause", on: fullscreenApp });
         send({ cmd: "mouse", on: mouseOn });
         send({ cmd: "speed", value: Settings.pointerSpeed });
+        send({ cmd: "firehold", on: SettingsNav.fireholdCouch });
+    }
+    // Firehold's Couch (Firehold.qml): Guide goes to it while the Couch posture is on.
+    Connections {
+        target: SettingsNav
+        function onFireholdCouchChanged() { pad.send({ cmd: "firehold", on: SettingsNav.fireholdCouch }); }
+        function onFireholdShownChanged() { pad.sendKeys(); }
     }
     Connections {
         target: Settings
@@ -129,6 +140,12 @@ Scope {
     // nothing kept of what's typed).
     function openKeyboard(mode) { keyboard.openKb(mode || (SettingsNav.polkitShown ? "password" : "text")); }
     function closeKeyboard() { keyboard.closeKb(); }
+    // Y on the empty desktop opens the search bar (which opens the keyboard itself); false: Y is the keyboard as before.
+    function deskY() {
+        const b = SettingsNav.searchBar;
+        if (!b || keysContext || active !== null || keyboard.open || DeskState.locked) return false;
+        try { return b.padOpen() === true; } catch (e) { return false; }
+    }
     function setMouse(on) { mouseOn = on; send({ cmd: "mouse", on: on }); help.toast("Controller mouse " + (on ? "on" : "off")); }
     // The Hearth menu's Controller mouse over a controller app: the pointer in that app (like Guide + R3), on / off.
     function toggleMouse() { if (owner !== "") send({ cmd: "padmouse" }); else setMouse(!mouseOn); }
@@ -159,7 +176,8 @@ Scope {
         case "error": problem = m.text; break;
         case "radial": radial.update(m); break;
         // Y: the Tiles / Start screen menus take it to move a tile when one has the focus ring (launcher.padY).
-        case "osk": if (m.open) { if (!(typeof launcher.padY === "function" && launcher.padY())) openKeyboard(); } else closeKeyboard(); break;
+        // Y with the desktop in front (no window, no menu): the search bar with the keyboard to type in it (SearchBar.qml).
+        case "osk": if (m.open) { if (!(typeof launcher.padY === "function" && launcher.padY()) && !pad.deskY()) openKeyboard(); } else closeKeyboard(); break;
         case "oskpad": keyboard.padButton(m.b, !!m.down); break;
         case "oskaxes": keyboard.padAxes(m.lx || 0, m.ly || 0, m.rx || 0, m.ry || 0); break;
         case "launcher": launcher.toggle(); break;
@@ -169,6 +187,7 @@ Scope {
         case "toast": help.toast(m.text); break;
         case "mouse": mouseOn = m.on; break;
         case "used": SettingsNav.padUsed(); break;
+        case "fhpad": DeskState.padSeen = Date.now(); if (SettingsNav.fireholdPad) SettingsNav.fireholdPad(m.b || "", m.down !== false); break;
         case "owner": owner = m.app || ""; ownerMouse = m.mouse === true; break;
         }
     }
