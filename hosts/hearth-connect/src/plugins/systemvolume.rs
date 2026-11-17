@@ -24,7 +24,8 @@ pub fn packet(d: &Arc<Daemon>, id: &str, p: &Packet) {
     let (d, id, p) = (d.clone(), id.to_string(), p.clone());
     std::thread::spawn(move || {
         if let Some(v) = p.int("volume") {
-            let _ = crate::desktop::cmd("wpctl").args(["set-volume", SINK, &format!("{:.2}", v.clamp(0, 100) as f64 / 100.0)]).status();
+            let level = format!("{:.2}", v.clamp(0, 100) as f64 / 100.0);
+            let _ = crate::desktop::cmd("wpctl").args(["set-volume", SINK, level.as_str()]).status();
         }
         if p.has("muted") {
             let _ = crate::desktop::cmd("wpctl").args(["set-mute", SINK, if p.bool("muted") { "1" } else { "0" }]).status();

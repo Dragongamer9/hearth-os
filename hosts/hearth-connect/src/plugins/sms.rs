@@ -38,17 +38,17 @@ pub fn packet(d: &Arc<Daemon>, id: &str, p: &Packet) {
     super::with(id, |s| {
         for v in &list {
             let Some((t, m)) = message(v) else { continue };
-            let th = s.threads.entry(t).or_default();
+            let th = s.sms.threads.entry(t).or_default();
             if th.iter().any(|x| x["id"] == m["id"] && x["date"] == m["date"]) { continue; }
             th.push(m);
             new += 1;
             th.sort_by_key(|x| x["date"].as_i64().unwrap_or(0));
             if th.len() > PER_THREAD { let cut = th.len() - PER_THREAD; th.drain(..cut); }
         }
-        if s.threads.len() > THREADS {
-            let mut by: Vec<(i64, i64)> = s.threads.iter().map(|(k, v)| (*k, v.last().and_then(|m| m["date"].as_i64()).unwrap_or(0))).collect();
+        if s.sms.threads.len() > THREADS {
+            let mut by: Vec<(i64, i64)> = s.sms.threads.iter().map(|(k, v)| (*k, v.last().and_then(|m| m["date"].as_i64()).unwrap_or(0))).collect();
             by.sort_by_key(|x| std::cmp::Reverse(x.1));
-            for (k, _) in by.into_iter().skip(THREADS) { s.threads.remove(&k); }
+            for (k, _) in by.into_iter().skip(THREADS) { s.sms.threads.remove(&k); }
         }
     });
     d.emit("sms", json!({"device": id, "new": new}));
@@ -56,7 +56,7 @@ pub fn packet(d: &Arc<Daemon>, id: &str, p: &Packet) {
 
 /// The conversations, newest first: {thread, addresses, last, date, sent, unread}.
 pub fn threads(id: &str) -> Vec<Value> {
-    let mut out: Vec<Value> = super::with(id, |s| s.threads.iter().filter_map(|(t, msgs)| {
+    let mut out: Vec<Value> = super::with(id, |s| s.sms.threads.iter().filter_map(|(t, msgs)| {
         let last = msgs.last()?;
         Some(json!({"thread": t, "addresses": last["addresses"], "last": last["body"], "date": last["date"], "sent": last["sent"],
             "unread": msgs.iter().filter(|m| !m["read"].as_bool().unwrap_or(true) && !m["sent"].as_bool().unwrap_or(false)).count()}))
@@ -71,10 +71,10 @@ pub fn threads(id: &str) -> Vec<Value> {
     out
 }
 
-pub fn messages(id: &str, thread: i64) -> Vec<Value> { super::with(id, |s| s.threads.get(&thread).cloned().unwrap_or_default()) }
+pub fn messages(id: &str, thread: i64) -> Vec<Value> { super::with(id, |s| s.sms.threads.get(&thread).cloned().unwrap_or_default()) }
 
 pub fn addresses_of(id: &str, thread: i64) -> Vec<String> {
-    super::with(id, |s| s.threads.get(&thread).and_then(|m| m.last()).and_then(|m| m["addresses"].as_array().cloned()).unwrap_or_default())
+    super::with(id, |s| s.sms.threads.get(&thread).and_then(|m| m.last()).and_then(|m| m["addresses"].as_array().cloned()).unwrap_or_default())
         .into_iter().filter_map(|a| a.as_str().map(String::from)).collect()
 }
 

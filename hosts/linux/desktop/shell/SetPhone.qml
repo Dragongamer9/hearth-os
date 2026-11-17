@@ -186,7 +186,7 @@ SetPage {
         model: page.on && page.phone ? page.phone.players.slice(0, 2) : []
         delegate: ColumnLayout {
             required property var modelData
-            readonly property var now: page.phone.playing ? page.phone.playing[modelData] || ({}) : ({})
+            readonly property var now: page.phone && page.phone.playing ? page.phone.playing[modelData] || ({}) : ({})
             Layout.fillWidth: true
             spacing: 6
             SetRow {

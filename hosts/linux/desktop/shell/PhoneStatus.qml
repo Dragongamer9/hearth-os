@@ -22,8 +22,8 @@ Item {
         busy = true;
         on = !on;
         line = on ? "Turning on…" : "Off";
-        set.command = ["python3", helper, on ? "on" : "off"];
-        set.running = true;
+        setProc.command = ["python3", helper, on ? "on" : "off"];
+        setProc.running = true;
     }
     onActiveChanged: if (active) refresh()
     Timer { interval: 3000; running: ps.active; repeat: true; onTriggered: ps.refresh() }
@@ -38,5 +38,5 @@ Item {
         } catch (e) { ps.line = "Not available"; }
     }
     Process { id: read; command: ["python3", ps.helper, "tile"]; stdout: StdioCollector { onStreamFinished: ps.take(text) } }
-    Process { id: set; onExited: { ps.busy = false; ps.refresh(); } }
+    Process { id: setProc; onExited: { ps.busy = false; ps.refresh(); } }
 }
