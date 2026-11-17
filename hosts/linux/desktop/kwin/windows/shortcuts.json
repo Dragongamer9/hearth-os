@@ -1,0 +1,614 @@
+{
+ "//": [
+  "Hearth Desktop Mode on KWin: Mantel's keyboard shortcuts (the same as labwc/rc.xml's, test_kwin_windows.py checks).",
+  "hearth-kwin-bridge puts them in KWin's hearthwindows script, which registers each with KWin (registerShortcut,",
+  "named \"Hearth <id>\", so a key someone changes in KWin's shortcut settings stays changed). \"run\": the same command",
+  "as labwc's (run by the bridge with sh -c). \"win\": done by the script itself (snapping, desktops, closing).",
+  "\"kwinOwn\": keys KWin's own actions already do the same way (xdg/kglobalshortcutsrc sets the ones that need it).",
+  "\"skipped\": labwc keys that have no job under KWin."
+ ],
+ "shortcuts": [
+  {
+   "id": "launcher",
+   "title": "Open the app menu",
+   "keys": "Meta+Space",
+   "labwc": "W-space",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'"
+  },
+  {
+   "id": "clipboard",
+   "title": "Clipboard history",
+   "keys": "Meta+V",
+   "labwc": "W-v",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call clipboard toggle'"
+  },
+  {
+   "id": "terminal",
+   "title": "Open a terminal",
+   "keys": "Meta+Return",
+   "labwc": "W-Return",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'"
+  },
+  {
+   "id": "terminal-2",
+   "title": "Open a terminal (Ctrl+Alt+T)",
+   "keys": "Ctrl+Alt+T",
+   "labwc": "C-A-t",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'"
+  },
+  {
+   "id": "settings",
+   "title": "Open Settings",
+   "keys": "Meta+I",
+   "labwc": "W-i",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call settings open'"
+  },
+  {
+   "id": "quick",
+   "title": "Quick Access",
+   "keys": "Meta+A",
+   "labwc": "W-a",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call quick toggle'"
+  },
+  {
+   "id": "calendar",
+   "title": "Notifications and the calendar",
+   "keys": "Meta+N",
+   "labwc": "W-n",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call calendar toggle'"
+  },
+  {
+   "id": "search",
+   "title": "Search the app menu",
+   "keys": "Meta+S",
+   "labwc": "W-s",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher open'"
+  },
+  {
+   "id": "run",
+   "title": "Run box",
+   "keys": "Meta+R",
+   "labwc": "W-r",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call run toggle'"
+  },
+  {
+   "id": "winx",
+   "title": "Quick links menu",
+   "keys": "Meta+X",
+   "labwc": "W-x",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call winx toggle'"
+  },
+  {
+   "id": "taskbar-1",
+   "title": "Taskbar app 1",
+   "keys": "Meta+1",
+   "labwc": "W-1",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 1'"
+  },
+  {
+   "id": "taskbar-2",
+   "title": "Taskbar app 2",
+   "keys": "Meta+2",
+   "labwc": "W-2",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 2'"
+  },
+  {
+   "id": "taskbar-3",
+   "title": "Taskbar app 3",
+   "keys": "Meta+3",
+   "labwc": "W-3",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 3'"
+  },
+  {
+   "id": "taskbar-4",
+   "title": "Taskbar app 4",
+   "keys": "Meta+4",
+   "labwc": "W-4",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 4'"
+  },
+  {
+   "id": "taskbar-5",
+   "title": "Taskbar app 5",
+   "keys": "Meta+5",
+   "labwc": "W-5",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 5'"
+  },
+  {
+   "id": "taskbar-6",
+   "title": "Taskbar app 6",
+   "keys": "Meta+6",
+   "labwc": "W-6",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 6'"
+  },
+  {
+   "id": "taskbar-7",
+   "title": "Taskbar app 7",
+   "keys": "Meta+7",
+   "labwc": "W-7",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 7'"
+  },
+  {
+   "id": "taskbar-8",
+   "title": "Taskbar app 8",
+   "keys": "Meta+8",
+   "labwc": "W-8",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 8'"
+  },
+  {
+   "id": "taskbar-9",
+   "title": "Taskbar app 9",
+   "keys": "Meta+9",
+   "labwc": "W-9",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 9'"
+  },
+  {
+   "id": "power-menu",
+   "title": "Power menu",
+   "keys": "Ctrl+Alt+Del",
+   "labwc": "C-A-Delete",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call power menu'"
+  },
+  {
+   "id": "files",
+   "title": "Open Files",
+   "keys": "Meta+E",
+   "labwc": "W-e",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh files'"
+  },
+  {
+   "id": "tasks",
+   "title": "Task Manager",
+   "keys": "Ctrl+Shift+Esc",
+   "labwc": "C-S-Escape",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call tasks toggle'"
+  },
+  {
+   "id": "game-mode",
+   "title": "Go to Game Mode",
+   "keys": "Meta+G",
+   "labwc": "W-g",
+   "run": "nimbus-mode game"
+  },
+  {
+   "id": "lock",
+   "title": "Lock the screen",
+   "keys": "Meta+L",
+   "labwc": "W-l",
+   "run": "sh -c 'quickshell ipc -p \"$NIMBUS_SHARE/desktop/shell\" call lock lock'"
+  },
+  {
+   "id": "close",
+   "title": "Close the window",
+   "keys": "Meta+Q",
+   "labwc": "W-q",
+   "win": "close"
+  },
+  {
+   "id": "snap-left",
+   "title": "Snap to the left half",
+   "keys": "Meta+Left",
+   "labwc": "W-Left",
+   "win": "left"
+  },
+  {
+   "id": "snap-right",
+   "title": "Snap to the right half",
+   "keys": "Meta+Right",
+   "labwc": "W-Right",
+   "win": "right"
+  },
+  {
+   "id": "snap-up",
+   "title": "Maximize, or a quarter from a half",
+   "keys": "Meta+Up",
+   "labwc": "W-Up",
+   "win": "up"
+  },
+  {
+   "id": "snap-down",
+   "title": "Restore, minimize, or a quarter from a half",
+   "keys": "Meta+Down",
+   "labwc": "W-Down",
+   "win": "down"
+  },
+  {
+   "id": "show-desktop",
+   "title": "Show the desktop",
+   "keys": "Meta+D",
+   "labwc": "W-d",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'"
+  },
+  {
+   "id": "show-desktop-2",
+   "title": "Show the desktop (Super+M)",
+   "keys": "Meta+M",
+   "labwc": "W-m",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'"
+  },
+  {
+   "id": "desktop-1",
+   "title": "Go to desktop 1",
+   "keys": "Meta+Ctrl+1",
+   "labwc": "W-C-1",
+   "win": "go-desktop:1"
+  },
+  {
+   "id": "desktop-2",
+   "title": "Go to desktop 2",
+   "keys": "Meta+Ctrl+2",
+   "labwc": "W-C-2",
+   "win": "go-desktop:2"
+  },
+  {
+   "id": "desktop-3",
+   "title": "Go to desktop 3",
+   "keys": "Meta+Ctrl+3",
+   "labwc": "W-C-3",
+   "win": "go-desktop:3"
+  },
+  {
+   "id": "desktop-4",
+   "title": "Go to desktop 4",
+   "keys": "Meta+Ctrl+4",
+   "labwc": "W-C-4",
+   "win": "go-desktop:4"
+  },
+  {
+   "id": "window-to-desktop-1",
+   "title": "Send the window to desktop 1",
+   "keys": "Meta+Shift+1",
+   "labwc": "W-S-1",
+   "win": "to-desktop:1"
+  },
+  {
+   "id": "window-to-desktop-2",
+   "title": "Send the window to desktop 2",
+   "keys": "Meta+Shift+2",
+   "labwc": "W-S-2",
+   "win": "to-desktop:2"
+  },
+  {
+   "id": "window-to-desktop-3",
+   "title": "Send the window to desktop 3",
+   "keys": "Meta+Shift+3",
+   "labwc": "W-S-3",
+   "win": "to-desktop:3"
+  },
+  {
+   "id": "window-to-desktop-4",
+   "title": "Send the window to desktop 4",
+   "keys": "Meta+Shift+4",
+   "labwc": "W-S-4",
+   "win": "to-desktop:4"
+  },
+  {
+   "id": "window-to-desktop-1-alt",
+   "title": "Send the window to desktop 1 (Super+Alt)",
+   "keys": "Meta+Alt+1",
+   "labwc": "W-A-1",
+   "win": "to-desktop:1"
+  },
+  {
+   "id": "window-to-desktop-2-alt",
+   "title": "Send the window to desktop 2 (Super+Alt)",
+   "keys": "Meta+Alt+2",
+   "labwc": "W-A-2",
+   "win": "to-desktop:2"
+  },
+  {
+   "id": "window-to-desktop-3-alt",
+   "title": "Send the window to desktop 3 (Super+Alt)",
+   "keys": "Meta+Alt+3",
+   "labwc": "W-A-3",
+   "win": "to-desktop:3"
+  },
+  {
+   "id": "window-to-desktop-4-alt",
+   "title": "Send the window to desktop 4 (Super+Alt)",
+   "keys": "Meta+Alt+4",
+   "labwc": "W-A-4",
+   "win": "to-desktop:4"
+  },
+  {
+   "id": "screenshot",
+   "title": "Screenshot",
+   "keys": "Print",
+   "labwc": "Print",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot'"
+  },
+  {
+   "id": "screenshot-region",
+   "title": "Screenshot of an area",
+   "keys": "Shift+Print",
+   "labwc": "S-Print",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'"
+  },
+  {
+   "id": "screenshot-region-2",
+   "title": "Screenshot of an area (Super+Shift+S)",
+   "keys": "Meta+Shift+S",
+   "labwc": "W-S-s",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'"
+  },
+  {
+   "id": "screenshot-clipboard",
+   "title": "Screenshot to the clipboard",
+   "keys": "Ctrl+Print",
+   "labwc": "C-Print",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-clipboard'"
+  },
+  {
+   "id": "record",
+   "title": "Record the screen",
+   "keys": "Meta+Alt+R",
+   "labwc": "W-A-r",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh record'"
+  },
+  {
+   "id": "record-area",
+   "title": "Record an area",
+   "keys": "Meta+Alt+Shift+R",
+   "labwc": "W-A-S-r",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh record-area'"
+  },
+  {
+   "id": "replay-save",
+   "title": "Save instant replay",
+   "keys": "Meta+Alt+G",
+   "labwc": "W-A-g",
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh replay-save'"
+  },
+  {
+   "id": "volume-up",
+   "title": "Volume up",
+   "keys": "Volume Up",
+   "labwc": "XF86AudioRaiseVolume",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'"
+  },
+  {
+   "id": "volume-down",
+   "title": "Volume down",
+   "keys": "Volume Down",
+   "labwc": "XF86AudioLowerVolume",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-'"
+  },
+  {
+   "id": "volume-mute",
+   "title": "Mute",
+   "keys": "Volume Mute",
+   "labwc": "XF86AudioMute",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle'"
+  },
+  {
+   "id": "power-button",
+   "title": "Power button",
+   "keys": "Power Off",
+   "labwc": "XF86PowerOff",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons power'"
+  },
+  {
+   "id": "brightness-up",
+   "title": "Brightness up",
+   "keys": "Monitor Brightness Up",
+   "labwc": "XF86MonBrightnessUp",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness up || brightnessctl set 5%+'"
+  },
+  {
+   "id": "brightness-down",
+   "title": "Brightness down",
+   "keys": "Monitor Brightness Down",
+   "labwc": "XF86MonBrightnessDown",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness down || brightnessctl set 5%-'"
+  },
+  {
+   "id": "mic-mute",
+   "title": "Mute the microphone",
+   "keys": "Microphone Mute",
+   "labwc": "XF86AudioMicMute",
+   "run": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+  },
+  {
+   "id": "media-play",
+   "title": "Play or pause",
+   "keys": "Media Play",
+   "labwc": "XF86AudioPlay",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'"
+  },
+  {
+   "id": "media-pause",
+   "title": "Play or pause (Pause key)",
+   "keys": "Media Pause",
+   "labwc": "XF86AudioPause",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'"
+  },
+  {
+   "id": "media-next",
+   "title": "Next track",
+   "keys": "Media Next",
+   "labwc": "XF86AudioNext",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media next'"
+  },
+  {
+   "id": "media-previous",
+   "title": "Previous track",
+   "keys": "Media Previous",
+   "labwc": "XF86AudioPrev",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media previous'"
+  },
+  {
+   "id": "media-stop",
+   "title": "Stop playing",
+   "keys": "Media Stop",
+   "labwc": "XF86AudioStop",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media stop'"
+  },
+  {
+   "id": "sleep",
+   "title": "Sleep key",
+   "keys": "Sleep",
+   "labwc": "XF86Sleep",
+   "run": "sh -c 'python3 $NIMBUS_SHARE/desktop/shell/hearth-buttons sleep \"Desktop Mode: sleep key (labwc)\"'"
+  },
+  {
+   "id": "screen-reader",
+   "title": "Screen reader on or off",
+   "keys": "Meta+Alt+S",
+   "labwc": "W-A-s",
+   "run": "sh -c 'python3 $NIMBUS_SHARE/desktop/shell/hearth-access screen-reader toggle'"
+  },
+  {
+   "id": "emoji",
+   "title": "Emoji picker",
+   "keys": "Meta+.",
+   "labwc": "W-period",
+   "run": "sh -c 'pkill -x hearth-emoji || hearth-emoji'"
+  },
+  {
+   "id": "snap-layouts",
+   "title": "Snap layouts",
+   "keys": "Meta+Z",
+   "labwc": "W-z",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'"
+  }
+ ],
+ "kwinOwn": [
+  {
+   "labwc": "Super_L",
+   "kwin": "Meta on its own: kwinrc [ModifierOnlyShortcuts] calls org.hearth.Windows Launcher (xdg/kwinrc)",
+   "keys": ""
+  },
+  {
+   "labwc": "W-Tab",
+   "kwin": "Walk Through Windows Alternative",
+   "keys": "Meta+Tab"
+  },
+  {
+   "labwc": "W-S-Tab",
+   "kwin": "Walk Through Windows Alternative (Reverse)",
+   "keys": "Meta+Shift+Tab"
+  },
+  {
+   "labwc": "W-S-Left",
+   "kwin": "Window One Screen to the Left",
+   "keys": "Meta+Shift+Left"
+  },
+  {
+   "labwc": "W-S-Right",
+   "kwin": "Window One Screen to the Right",
+   "keys": "Meta+Shift+Right"
+  },
+  {
+   "labwc": "W-C-Left",
+   "kwin": "Switch One Desktop to the Left",
+   "keys": "Meta+Ctrl+Left"
+  },
+  {
+   "labwc": "W-C-Right",
+   "kwin": "Switch One Desktop to the Right",
+   "keys": "Meta+Ctrl+Right"
+  },
+  {
+   "labwc": "W-C-S-Left",
+   "kwin": "Window One Desktop to the Left",
+   "keys": "Meta+Ctrl+Shift+Left"
+  },
+  {
+   "labwc": "W-C-S-Right",
+   "kwin": "Window One Desktop to the Right",
+   "keys": "Meta+Ctrl+Shift+Right"
+  },
+  {
+   "labwc": "W-equal",
+   "kwin": "view_zoom_in (KWin zoom)",
+   "keys": "Meta+="
+  },
+  {
+   "labwc": "W-plus",
+   "kwin": "view_zoom_in (KWin zoom)",
+   "keys": "Meta++"
+  },
+  {
+   "labwc": "W-KP_Add",
+   "kwin": "view_zoom_in (KWin zoom)",
+   "keys": "Meta++"
+  },
+  {
+   "labwc": "W-minus",
+   "kwin": "view_zoom_out (KWin zoom)",
+   "keys": "Meta+-"
+  },
+  {
+   "labwc": "W-KP_Subtract",
+   "kwin": "view_zoom_out (KWin zoom)",
+   "keys": "Meta+-"
+  },
+  {
+   "labwc": "W-Escape",
+   "kwin": "view_actual_size (KWin zoom; Meta+Esc here)",
+   "keys": "Meta+Esc"
+  }
+ ],
+ "skipped": [
+  {
+   "labwc": "W-C-S-F1",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F2",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F3",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F4",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F5",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F6",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F7",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F8",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F9",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F10",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  },
+  {
+   "labwc": "W-C-S-F11",
+   "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
+  }
+ ],
+ "extraZones": [
+  {
+   "id": "center",
+   "label": "Middle of the screen",
+   "x": 12,
+   "y": 8,
+   "w": 76,
+   "h": 84
+  }
+ ],
+ "gap": 6,
+ "rules": [
+  {
+   "title": "Task Manager (always on top)",
+   "keepAbove": true
+  }
+ ]
+}

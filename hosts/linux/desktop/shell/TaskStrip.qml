@@ -45,7 +45,7 @@ Item {
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);
         }
-        for (const t of ToplevelManager.toplevels.values) {
+        for (const t of WinList.toplevels.values) {
             const own = ownWindow(t);
             const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
@@ -84,7 +84,7 @@ Item {
     }
     function activateNth(n) { const it = taskItems[n - 1]; if (it) cycleApp(it); }
     function toggleShowDesktop() {
-        const open = ToplevelManager.toplevels.values.filter(t => !t.minimized);
+        const open = WinList.toplevels.values.filter(t => !t.minimized);
         if (open.length) {
             const front = open.find(t => t.activated) || null;
             DeskState.shownDesktop = { windows: open, front: front };
@@ -94,7 +94,7 @@ Item {
         const was = DeskState.shownDesktop;
         DeskState.shownDesktop = null;
         if (!was) return;
-        const still = ToplevelManager.toplevels.values;
+        const still = WinList.toplevels.values;
         was.windows.filter(t => still.indexOf(t) >= 0 && t !== was.front).forEach(t => t.minimized = false);
         if (was.front && still.indexOf(was.front) >= 0) was.front.activate();
     }
@@ -112,6 +112,7 @@ Item {
         else menu.popup(screen, Math.max(8, sx - menu.cardWidth - 22), sy, { title: title, above: false }, list);
     }
     function moveToDesktop(win, n) {
+        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;

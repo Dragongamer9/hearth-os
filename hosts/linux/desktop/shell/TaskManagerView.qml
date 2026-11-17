@@ -336,7 +336,7 @@ FocusScope {
         if (!g) return null;
         const ids = g.appIds || [];
         const desk = (g.desktop || "").toLowerCase();
-        const all = ToplevelManager.toplevels.values;
+        const all = WinList.toplevels.values;
         for (let i = 0; i < all.length; i++) {
             const t = all[i];
             const a = (t.appId || "").toLowerCase();
