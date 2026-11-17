@@ -105,10 +105,11 @@ function blur(data, w, h, radius) {
 
 // Blur and Pixelate never read the canvas's pixels back (QML's canvas gives nothing useful there). On the saving canvas
 // they're squares, each one pixel of the picture (its middle) stretched flat over the square: Pixelate one grid of
-// PIX-sized squares, Blur a finer grid and a second one half a square across, half see-through, so it's soft. In the
+// PIX-sized squares, Blur bigger squares in three grids a third of a square apart, the later ones see-through, so it's
+// soft and nothing readable is left (a QR code under it can't be read: capture-polkit-test.yml checks). In the
 // editor's view the same areas show Qt's own small copies of the picture (CaptureEditor.qml), PIX and BLUR of its size.
 var PIX = 1 / 14;
-var BLUR = 1 / 12;
+var BLUR = 1 / 24;
 // The squares for an area of the picture (IX0..IX1, IY0..IY1 in its pixels): squares of 1/K picture pixels on a grid
 // moved by SHIFT squares, drawn at scale S with picture pixel (OX, OY) at the canvas's top left. DRAW(sx, sy, dx, dy,
 // dw, dh): picture pixel (sx, sy) stretched over that square. Returns how many.
@@ -180,7 +181,9 @@ function paint(ctx, shapes, s, ox, oy, src, cw, ch) {
                 else {
                     pixelSquares(src, ix0, iy0, ix1, iy1, BLUR, s, ox, oy, 0);
                     ctx.globalAlpha = 0.5;
-                    pixelSquares(src, ix0, iy0, ix1, iy1, BLUR, s, ox, oy, 0.5);
+                    pixelSquares(src, ix0, iy0, ix1, iy1, BLUR, s, ox, oy, 1 / 3);
+                    ctx.globalAlpha = 0.34;
+                    pixelSquares(src, ix0, iy0, ix1, iy1, BLUR, s, ox, oy, 2 / 3);
                 }
             }
         }
