@@ -1383,7 +1383,8 @@ command -v update-desktop-database >/dev/null && update-desktop-database -q /usr
 # keyboard's, clipboard paste's and the magnifier's typing on KWin) needs python3-evdev and /dev/uinput (installed
 # for hearth-pad). KWin's own screen locker locks Mantel on KWin (fail-safe), showing Hearth's lock screen: the
 # Plasma shell package org.hearth.mantel-lock (desktop/kwin-lock; only a lock screen, KWin's locker
-# reads lockscreen/LockScreen.qml from a Plasma/Shell package with X-Plasma-APIVersion 2). On labwc nothing changes:
+# reads lockscreen/LockScreen.qml from a Plasma/Shell package with X-Plasma-APIVersion 2; the KWin session sets
+# PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock so it picks this one). On labwc nothing changes:
 # wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
 test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
@@ -1391,6 +1392,13 @@ optional kscreenlocker
 mkdir -p /usr/share/plasma/shells
 rm -rf /usr/share/plasma/shells/org.hearth.mantel-lock
 cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
+# Older kscreenlockers (before the shell package) take the lock screen from the look-and-feel package named in
+# kscreenlockerrc [Greeter] Theme: the same files there, as a Plasma/LookAndFeel package.
+mkdir -p /usr/share/plasma/look-and-feel
+rm -rf /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
+cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
+python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["KPackageStructure"]="Plasma/LookAndFeel"; json.dump(m, open(p,"w"), indent=4)' \
+  /usr/share/plasma/look-and-feel/org.hearth.mantel-lock/metadata.json
 rm -rf /usr/share/nimbus/desktop/kwin-helpers
 # For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
 # screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.
