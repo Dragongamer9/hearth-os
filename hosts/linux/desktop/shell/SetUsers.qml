@@ -20,6 +20,7 @@ SetPage {
     property bool messageBad: false
     readonly property var me: st ? st.users.find(u => u.me) : null
     readonly property bool canManage: !!st && st.canAdmin && st.admin
+    readonly property bool oem: !!st && !!st.oemSetup   // a pre-installed PC's stand-in account (hearth-oem-account)
 
     function say(t, bad) { message = t; messageBad = !!bad; }
     property int stamp: 0                 // new pictures under the same file name show at once
@@ -108,6 +109,31 @@ SetPage {
         visible: page.picking && !!page.me && page.me.picture !== ""
         icon: "close"; chevron: false; title: "Remove my picture"
         onActivated: job.run(["picture-set", ""], () => { page.picking = false; page.say("Picture removed."); page.load(); }, e => page.say(e, true))
+    }
+
+    // A pre-installed PC (hearth-oem-account): the account is still the stand-in one, with no password, until
+    // first-time setup's "Make it yours" or this is done (hearth-admin oem-finish: your name and password).
+    SetHeader { text: "Finish setting up: your name and password"; visible: page.oem }
+    Text {
+        visible: page.oem
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "This PC came with Hearth on it, so its account is still the stand-in one, with no password. Type your name and a password here, or do it in first-time setup at the next start."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+    SetField { id: oemName; visible: page.oem; placeholder: "Your name" }
+    SetField { id: oemPw; visible: page.oem; placeholder: "Password (at least 4 characters)"; secret: true }
+    SetField { id: oemPw2; visible: page.oem; placeholder: "Password again"; secret: true; onSubmitted: oemBtn.activated() }
+    SetRow {
+        id: oemBtn
+        visible: page.oem
+        icon: "check"; chevron: false; title: admin.what === "oem" ? "Saving…" : "Finish setting up"
+        onActivated: {
+            const name = oemName.text.trim();
+            if (!name || /[:,=\\]/.test(name)) return page.say("Type your name (no : , = or \\ in it).", true);
+            if (oemPw.text.length < 4) return page.say("The password needs at least 4 characters.", true);
+            if (oemPw.text !== oemPw2.text) return page.say("The passwords don't match.", true);
+            page.runAdmin(["oem-finish"], JSON.stringify({ full: name, password: oemPw.text }) + "\n", "oem", "All set: your name and password are saved.", () => { oemName.text = oemPw.text = oemPw2.text = ""; });
+        }
     }
 
     SetHeader { text: "My password"; visible: !!page.st && page.st.canAdmin }

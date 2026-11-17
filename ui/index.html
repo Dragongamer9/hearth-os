@@ -12911,7 +12911,7 @@ async function oemEdit(what){
   render('oem-'+what);
 }
 // Until "Make it yours" is done (Skip too): a lasting notice, and a row at the top of Settings › Sign-in.
-const OEM_NOTE='Set your name and password';
+const OEM_NOTE='Finish setting up: your name and password';
 function oemNotice(){
   if(!NOTIFS.some(n=>n.oem)){ NOTIFS.unshift({i:'user', t:OEM_NOTE, s:'This PC came with '+APP+' on it: Settings › Sign-in', go:'signin', oem:true}); updateBadge(); }
 }

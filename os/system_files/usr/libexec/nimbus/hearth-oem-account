@@ -182,10 +182,12 @@ def plan(getpwall=None, getpwuid=None):
         return ['useradd', 'nopass'], 'the stand-in account was never made'
     if os.path.exists(p(STAMP)):
         return [], 'already checked at an earlier start'
+    # The stamp goes down before anything is looked up, so a lookup that hangs (NSS) is never tried again.
+    write_root_file(p(STAMP), {'at': int(time.time())})
     why = nobody_here(getpwall, getpwuid)
     if why:
-        return ['stamp'], why
-    return ['stamp', 'mark', 'useradd', 'nopass'], 'no account yet (a pre-installed PC)'
+        return [], why
+    return ['mark', 'useradd', 'nopass'], 'no account yet (a pre-installed PC)'
 
 
 def write_root_file(path, data):
@@ -212,10 +214,13 @@ def run(args):
 def main():
     steps, why = plan()
     log(why)
-    for s in steps:
-        if s == 'stamp':
+    if os.path.exists(p(STAMP)) and not os.path.exists(p(MARK)):
+        try:   # what it decided, for the log report (the stamp itself was written before deciding)
             write_root_file(p(STAMP), {'at': int(time.time()), 'made': 'mark' in steps, 'why': why})
-        elif s == 'mark':
+        except OSError:
+            pass
+    for s in steps:
+        if s == 'mark':
             # Before useradd: a crash after it still ends in setup (the next start finishes the account).
             write_root_file(p(MARK), {'user': USER, 'uid': UID, 'at': int(time.time())})
         elif s == 'useradd':
@@ -229,8 +234,52 @@ def main():
     return 0
 
 
+NOTICE = 'Finish setting up: your name and password'
+NOTICE_BODY = ('This PC came with Hearth on it, so its account is still the stand-in one, with no password. '
+               'Settings › Users, or first-time setup at the next start.')
+
+
+def notice(tries=40, wait=15):
+    """`hearth-oem-account notice` (the user service hearth-oem-notice, after you sign in): tells you once, while the
+    marker is there, that the account still needs your name and password. Never writes anything of the system's."""
+    if not trusted(p(MARK)):
+        return 0
+    try:
+        with open(p(MARK)) as f:
+            ev = str((json.load(f) or {}).get('at', ''))
+    except (OSError, ValueError, AttributeError):
+        ev = ''
+    seen_dir = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state'), 'nimbus')
+    seen = os.path.join(seen_dir, 'oem-notice-seen')
+    try:
+        with open(seen) as f:
+            if f.read().strip() == ev:
+                return 0
+    except OSError:
+        pass
+    for _ in range(tries):   # a notification server may come up a bit after signing in
+        try:
+            r = subprocess.run(['notify-send', '-a', 'Hearth', '-u', 'normal', NOTICE, NOTICE_BODY],
+                               capture_output=True, timeout=20)
+            if r.returncode == 0:
+                break
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        time.sleep(wait)
+    try:
+        os.makedirs(seen_dir, exist_ok=True)
+        with open(seen + '.tmp', 'w') as f:
+            f.write(ev + '\n')
+        os.replace(seen + '.tmp', seen)
+    except OSError:
+        pass
+    return 0
+
+
 if __name__ == '__main__':
     try:
+        if sys.argv[1:] == ['notice']:
+            sys.exit(notice())
         sys.exit(main())
     except Exception as e:   # never a stop at start-up
         log('error: %s' % e)

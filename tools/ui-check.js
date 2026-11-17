@@ -2691,7 +2691,7 @@ const path = require('path');
         if (S.setupStep !== at) out.push('Next went on with a 2-letter password');
         // Skip before it's done: the lasting notice (to Settings › Sign-in) and the row at the top of that page.
         HOSTINFO.oemSetup = true;
-        if (!/data-k="li-oem"/.test(oemRow()) || !/Set your name and password/.test(oemRow())) out.push('no Set your name and password row for Settings › Sign-in');
+        if (!/data-k="li-oem"/.test(oemRow()) || !/Finish setting up: your name and password/.test(oemRow())) out.push('no Finish setting up row for Settings › Sign-in');
         if (!/let h=oemRow\(\)/.test(pageSignin.toString())) out.push('Settings › Sign-in does not show the row');
         setupFinish(); await w(100);
         const n = NOTIFS.filter(x => x.oem);

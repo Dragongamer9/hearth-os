@@ -1804,7 +1804,10 @@ steam_game_unwatch() { [ -n "$SG_WATCH_PID" ] && kill "$SG_WATCH_PID" 2>/dev/nul
 # removes the file), even after Skip: setupDone doesn't count while the file is there.
 oem_pending() {
   local m="${HEARTH_OEM_MARK:-/var/lib/hearth/oem-setup.json}"
-  [ -f "$m" ] && [ ! -L "$m" ] && [ "$(stat -c %u "$m" 2>/dev/null)" = "${HEARTH_OEM_OWNER:-0}" ]
+  local d o="${HEARTH_OEM_OWNER:-0}"; d="$(dirname "$m")"
+  [ -f "$m" ] && [ ! -L "$m" ] && [ "$(stat -c %u "$m" 2>/dev/null)" = "$o" ] && [ "$(stat -c %u "$d" 2>/dev/null)" = "$o" ] || return 1
+  # The folder: no group or world write (the same check as hearth-admin and Hearth's core).
+  [ $(( 0$(stat -c %a "$d" 2>/dev/null || echo 777) & 022 )) -eq 0 ]
 }
 setup_pending() {
   [ -z "$HEARTH_SEAT" ] && can_game || return 1

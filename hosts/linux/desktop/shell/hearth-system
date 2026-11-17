@@ -1358,7 +1358,35 @@ def users():
         u['picture'] = pic
     out.sort(key=lambda u: (not u['me'], u['player'], u['name']))
     meinfo = next((u for u in out if u['me']), None)
-    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK)}
+    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK),
+            'oemSetup': oem_pending() and oem_user() == me}
+
+
+OEM_MARK = '/var/lib/hearth/oem-setup.json'
+OEM_OWNER = 0
+
+
+def oem_pending(path=None):
+    """A pre-installed PC's first-time setup still to do (hearth-oem-account's marker): only a regular file of root's
+    (not a link) in a folder only root can write to, as hearth-admin and Hearth's core check it."""
+    import stat as st_
+    path = path or OEM_MARK
+    try:
+        st = os.lstat(path)
+        dst = os.stat(os.path.dirname(path))
+    except OSError:
+        return False
+    return (st_.S_ISREG(st.st_mode) and st.st_uid == OEM_OWNER and dst.st_uid == OEM_OWNER
+            and not dst.st_mode & (st_.S_IWGRP | st_.S_IWOTH))
+
+
+def oem_user(path=None):
+    """The stand-in account the marker names ("hearth"): the notice is only for it."""
+    try:
+        with open(path or OEM_MARK) as f:
+            return (json.load(f) or {}).get('user')
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def picture_kind(data):
