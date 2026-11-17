@@ -6,7 +6,12 @@
 //     and the app it opens with (Change…).
 //   Permissions: owner and group, read / write / execute for owner, group and others, "Allow executing as a
 //     program".
-//   Checksums: MD5, SHA-1 and SHA-256 on demand.
+//   Checksums: MD5, SHA-1, SHA-256 and SHA-512 on demand, and a box to paste the one a website lists: it says
+//     whether they match.
+//   Permissions (1.14 too): change the group to one of yours, "the same for everything inside" for a folder, and
+//     with Files' Act as administrator on, a system file's permissions, owner and group (through hearth-admin).
+//   Sharing (1.14, folders): share it on your network (Settings › Home server's shared folders, Samba), stop, or let
+//     others change files; where Windows, a Mac or a phone finds it.
 // Changes wait for Apply or OK; problems are shown in plain words above the buttons. Keyboard and controller:
 // Up/Down move, Left/Right switch tabs (on the tab row), A / Enter / Space press or tick, B / Esc closes.
 // hearth-files does the work (props, count, checksum, chmod, set-default, rename, apps).
@@ -27,7 +32,16 @@ Scope {
     property var paths: []
     property var info: null                    // hearth-files props
     property string loadError: ""
-    property string tab: "general"             // general | permissions | checksums
+    property string tab: "general"             // general | permissions | checksums | sharing
+    property bool admin: false                 // Files' Act as administrator is on (system files change through pkexec)
+    property bool recursive: false             // permissions: the same for everything inside the folder
+    property string newGroup: ""
+    property string newOwner: ""
+    property var myGroups: []
+    property bool groupPick: false
+    property var share: null                   // hearth-files sharing
+    property bool shareBusy: false
+    property string compare: ""                // a checksum pasted to compare
     property string focusId: "tabs"
     property bool editingName: false
     // What's changed, waiting for Apply.
@@ -55,11 +69,36 @@ Scope {
         const t = [{ id: "general", label: "General" }];
         if (single && !info.trashed && !info.isLink) t.push({ id: "permissions", label: "Permissions" });
         if (isFile && !info.trashed) t.push({ id: "checksums", label: "Checksums" });
+        if (single && info.dir && !info.trashed && !info.isLink && info.path.indexOf("/") === 0) t.push({ id: "sharing", label: "Sharing" });
         return t;
+    }
+    readonly property bool canChange: single && (info.mine || admin)
+    onTabChanged: if (tab === "sharing" && single && share === null) loadShare()
+    function loadShare() {
+        if (!single) return;
+        const at = info.path;
+        call(["sharing", at], (r, err) => { if (single && info.path === at) pr.share = r || { error: err }; });
+    }
+    function setShare(what) {
+        if (!single || shareBusy) return;
+        shareBusy = true;
+        call(["share", info.path, what], (r, err) => { shareBusy = false; if (err) error = err; else { error = ""; share = r; } });
+    }
+    // A pasted checksum: which kind it is (by its length), and whether it matches.
+    readonly property string compareClean: compare.trim().toLowerCase().replace(/\s+/g, "")
+    readonly property string compareAlgo: ({ 32: "md5", 40: "sha1", 64: "sha256", 128: "sha512" })[compareClean.length] || ""
+    onCompareAlgoChanged: if (compareAlgo !== "" && /^[0-9a-f]+$/.test(compareClean)) computeSum(compareAlgo)
+    readonly property string compareVerdict: {
+        if (compareClean === "") return "";
+        if (compareAlgo === "" || !/^[0-9a-f]+$/.test(compareClean)) return "bad";
+        const st = sums[compareAlgo];
+        if (!st || !st.sum) return "working";
+        return st.sum.toLowerCase() === compareClean ? "match" : "differ";
     }
     readonly property int mode: newMode >= 0 ? newMode : (single ? info.mode : 0)
     readonly property bool dirty: single && ((newName !== "" && newName !== info.name) || (newMode >= 0 && newMode !== info.mode)
-        || (newApp !== null && (!info.app || newApp.id !== info.app.id)))
+        || (newApp !== null && (!info.app || newApp.id !== info.app.id)) || (newGroup !== "" && newGroup !== info.group)
+        || (newOwner !== "" && newOwner !== info.owner) || recursive)
 
     // ================================================ open / close
     function show(list) {
@@ -75,6 +114,12 @@ Scope {
         newName = "";
         newMode = -1;
         newApp = null;
+        recursive = false;
+        newGroup = "";
+        newOwner = "";
+        groupPick = false;
+        share = null;
+        compare = "";
         error = "";
         counted = null;
         sums = ({});
@@ -122,7 +167,11 @@ Scope {
         }
     }
     function call(args, cb) {
-        const p = callComp.createObject(pr, { command: ["python3", helper].concat(args), cb: cb || null });
+        // Files' Act as administrator: a system file that isn't yours changes through hearth-admin (pkexec asks for an
+        // administrator's password; hearth-files-admin never touches what starts the PC).
+        const adm = admin && single && info && (args[0] === "chown" || !info.mine) && ["chmod", "rename", "chown"].indexOf(args[0]) >= 0;
+        const cmd = adm ? ["pkexec", "/usr/libexec/nimbus/hearth-admin", "files-" + args[0]].concat(args.slice(1)) : ["python3", helper].concat(args);
+        const p = callComp.createObject(pr, { command: cmd, cb: cb || null });
         p.running = true;
     }
 
@@ -225,6 +274,10 @@ Scope {
             next("");
         }));
         if (newMode >= 0 && newMode !== info.mode) steps.push(next => call(["chmod", path, newMode.toString(8)], (r, err) => next(err)));
+        if (recursive && info.dir && info.mine) steps.push(next => call(["chmod-tree", path, mode.toString(8)], (r, err) => next(err)));
+        const ownerChange = (newOwner !== "" && newOwner !== info.owner) || (newGroup !== "" && newGroup !== info.group);
+        if (ownerChange && (admin && !info.mine || newOwner !== "")) steps.push(next => call(["chown", path, newOwner || info.owner, newGroup || info.group], (r, err) => next(err)));
+        else if (ownerChange) steps.push(next => call(["chgrp", path, newGroup], (r, err) => next(err)));
         if (newApp && (!info.app || newApp.id !== info.app.id)) steps.push(next => call(["set-default", path, newApp.id], (r, err) => next(err)));
         const run = i => {
             if (i >= steps.length) {
@@ -232,6 +285,9 @@ Scope {
                 newName = "";
                 newMode = -1;
                 newApp = null;
+                recursive = false;
+                newGroup = "";
+                newOwner = "";
                 pr.applied(oldPath, path);
                 if (thenClose) return close();
                 paths = [path];
@@ -258,11 +314,11 @@ Scope {
         run(0);
     }
     function setBit(bit, on) {
-        if (!single || !info.mine) return;
+        if (!canChange) return;
         newMode = on ? (mode | bit) : (mode & ~bit);
     }
     function setExec(on) {
-        if (!single || !info.mine) return;
+        if (!canChange) return;
         // Like other file managers: whoever can read it may run it.
         let m = mode;
         if (on) m = m | 0o100 | ((m & 0o040) ? 0o010 : 0) | ((m & 0o004) ? 0o001 : 0);
@@ -348,12 +404,17 @@ Scope {
             if (single && info.target) l.push("copytarget");
             if (isFile && !info.trashed) l.push("change");
         } else if (tab === "permissions") {
-            if (info.mine) {
+            if (canChange) {
+                l.push("group");
                 for (const w of ["u", "g", "o"]) for (const b of ["r", "w", "x"]) l.push("p-" + w + b);
                 if (!info.dir) l.push("exec");
+                if (info.dir && info.mine) l.push("recursive");
             }
         } else if (tab === "checksums") {
-            for (const a of ["md5", "sha1", "sha256"]) l.push(sums[a] && sums[a].sum ? "copy-" + a : "sum-" + a);
+            for (const a of ["md5", "sha1", "sha256", "sha512"]) l.push(sums[a] && sums[a].sum ? "copy-" + a : "sum-" + a);
+        } else if (tab === "sharing") {
+            l.push("share");
+            if (share && share.shared) l.push("sharewrite");
         }
         l.push("cancel");
         if (single) l.push("apply");
@@ -383,12 +444,21 @@ Scope {
         if (id === "copytarget") return copyText(info.target);
         if (id === "change") return openPicker(false);
         if (id === "exec") return setExec(!(mode & 0o100));
+        if (id === "recursive") { recursive = !recursive; return; }
+        if (id === "group") return pickGroup();
+        if (id === "share") return setShare(share && share.shared ? "off" : "on");
+        if (id === "sharewrite") return setShare(share && share.share && share.share.write ? "write-off" : "write-on");
         if (id.startsWith("p-")) return setBit(bitOf(id), !(mode & bitOf(id)));
         if (id.startsWith("sum-")) return computeSum(id.slice(4));
         if (id.startsWith("copy-")) return copyText(sums[id.slice(5)].sum);
         if (id === "cancel") return close();
         if (id === "apply") return apply(false);
         if (id === "ok") return apply(true);
+    }
+    function pickGroup() {
+        if (!canChange) return;
+        if (groupPick) { groupPick = false; return; }
+        call(["groups"], (r, err) => { pr.myGroups = r && r.groups ? r.groups : []; pr.groupPick = true; });
     }
     property var ui: null
     function startEditName() { if (canRename && ui) ui.editName(); }
@@ -397,6 +467,9 @@ Scope {
         target: "fileprops"
         function open(path: string): void { pr.show([path]); }
         function tab(name: string): void { pr.tab = name; }
+        // For the Desktop Mode test's pictures: a pasted checksum, and the Change… group list.
+        function compare(text: string): void { pr.compare = text; }
+        function groups(): void { pr.pickGroup(); }
         function close(): void { pr.close(); }
     }
 
@@ -774,12 +847,43 @@ Scope {
                             Layout.fillWidth: true
                             visible: pr.tab === "permissions" && pr.single
                             spacing: 12
-                            PropRow { label: "Owner"; value: pr.single ? pr.info.owner + (pr.info.mine ? " (you)" : "") : "" }
-                            PropRow { label: "Group"; value: pr.single ? pr.info.group : "" }
+                            PropRow { label: "Owner"; value: pr.single ? (pr.newOwner || pr.info.owner) + (pr.info.mine && !pr.newOwner ? " (you)" : "") + (pr.newOwner && pr.newOwner !== pr.info.owner ? "  (after Apply)" : "") : "" }
+                            // As administrator: give it to the system (root) or to you.
+                            Row {
+                                visible: pr.single && pr.admin
+                                Layout.leftMargin: 150
+                                spacing: 8
+                                SmallButton { label: "Give to the system (root)"; dim: pr.single && (pr.newOwner || pr.info.owner) === "root"; onPressed: { keys.forceActiveFocus(); pr.newOwner = "root"; if (!pr.newGroup) pr.newGroup = "root"; } }
+                                SmallButton { label: "Give to me"; dim: pr.single && (pr.newOwner || pr.info.owner) === (Quickshell.env("USER") || ""); onPressed: { keys.forceActiveFocus(); pr.newOwner = Quickshell.env("USER") || ""; } }
+                            }
+                            PropRow {
+                                id: groupRow
+                                label: "Group"
+                                value: pr.single ? (pr.newGroup || pr.info.group) + (pr.newGroup && pr.newGroup !== pr.info.group ? "  (after Apply)" : "") : ""
+                                button: pr.canChange ? (pr.groupPick ? "Done" : "Change…") : ""
+                                buttonFocused: pr.focusId === "group"
+                                Component.onCompleted: win.reg("group", groupRow)
+                                onPressed: { keys.forceActiveFocus(); pr.focusId = "group"; pr.pickGroup(); }
+                            }
+                            Flow {
+                                visible: pr.groupPick && pr.canChange
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 150
+                                spacing: 8
+                                Repeater {
+                                    model: pr.admin ? pr.myGroups.concat(["root", "wheel", "users"].filter(g => pr.myGroups.indexOf(g) < 0)) : pr.myGroups
+                                    delegate: SmallButton {
+                                        required property string modelData
+                                        label: modelData
+                                        primary: (pr.newGroup || (pr.single ? pr.info.group : "")) === modelData
+                                        onPressed: { keys.forceActiveFocus(); pr.newGroup = modelData; pr.groupPick = false; }
+                                    }
+                                }
+                            }
                             Text {
                                 Layout.fillWidth: true
-                                visible: pr.single && !pr.info.mine
-                                text: pr.single ? "Only " + pr.info.owner + " can change these permissions." : ""
+                                visible: pr.single && !pr.info.mine && !pr.admin
+                                text: pr.single ? "Only " + pr.info.owner + " can change these permissions. For a system file, turn on Act as administrator in Files (right-click the folder)." : ""
                                 color: Theme.muted
                                 wrapMode: Text.WordWrap
                                 font.family: Theme.font
@@ -836,7 +940,7 @@ Scope {
                                                     Check {
                                                         anchors.centerIn: parent
                                                         checked: (pr.mode & cell.bit) !== 0
-                                                        enabled: pr.single && pr.info.mine
+                                                        enabled: pr.canChange
                                                         focused: pr.focusId === cell.fid
                                                         onToggled: { keys.forceActiveFocus(); pr.focusId = cell.fid; pr.setBit(cell.bit, !((pr.mode & cell.bit) !== 0)); }
                                                     }
@@ -861,7 +965,7 @@ Scope {
                                     spacing: 12
                                     Check {
                                         checked: (pr.mode & 0o100) !== 0
-                                        enabled: pr.single && pr.info.mine
+                                        enabled: pr.canChange
                                         onToggled: { keys.forceActiveFocus(); pr.focusId = "exec"; pr.setExec(!((pr.mode & 0o100) !== 0)); }
                                     }
                                     Text {
@@ -877,6 +981,25 @@ Scope {
                                     z: -1
                                     onClicked: { keys.forceActiveFocus(); pr.focusId = "exec"; pr.setExec(!((pr.mode & 0o100) !== 0)); }
                                 }
+                            }
+                            // A folder: the same for everything inside (files keep "run as a program" only if they had it).
+                            Rectangle {
+                                id: recRow
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 52
+                                visible: pr.single && pr.info.dir && pr.info.mine
+                                radius: Theme.r(10)
+                                color: Theme.panel2
+                                border.width: 2
+                                border.color: pr.focusId === "recursive" ? Theme.accent : "transparent"
+                                Component.onCompleted: win.reg("recursive", recRow)
+                                RowLayout {
+                                    anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
+                                    spacing: 12
+                                    Check { checked: pr.recursive; onToggled: { keys.forceActiveFocus(); pr.focusId = "recursive"; pr.recursive = !pr.recursive; } }
+                                    Text { Layout.fillWidth: true; text: "The same for everything inside this folder"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
+                                }
+                                MouseArea { anchors.fill: parent; z: -1; onClicked: { keys.forceActiveFocus(); pr.focusId = "recursive"; pr.recursive = !pr.recursive; } }
                             }
                             Text {
                                 Layout.fillWidth: true
@@ -900,8 +1023,51 @@ Scope {
                                 font.family: Theme.font
                                 font.pixelSize: 13
                             }
+                            // Paste the checksum the website lists: which kind it is goes by its length, and it says if they match.
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: cmpCol.implicitHeight + 24
+                                radius: Theme.r(12)
+                                color: Theme.panel2
+                                border.width: 2
+                                border.color: pr.compareVerdict === "match" ? "#4fbf7f" : pr.compareVerdict === "differ" ? Theme.danger : "transparent"
+                                ColumnLayout {
+                                    id: cmpCol
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                    spacing: 8
+                                    Text { text: "Compare with a checksum"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 38
+                                        radius: Theme.r(8)
+                                        color: Theme.panel3
+                                        TextInput {
+                                            id: cmpInput
+                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                            verticalAlignment: TextInput.AlignVCenter
+                                            text: pr.compare
+                                            onTextEdited: pr.compare = text
+                                            color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.accentInk
+                                            font.family: "monospace"; font.pixelSize: 13
+                                            clip: true
+                                            Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !cmpInput.text; text: "Paste it here (MD5, SHA-1, SHA-256 or SHA-512)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: pr.compareVerdict !== ""
+                                        wrapMode: Text.WordWrap
+                                        text: ({ match: "✓ It matches (" + pr.compareAlgo.toUpperCase().replace("SHA", "SHA-") + "): the file is the one the website has.",
+                                                 differ: "✗ It doesn't match: the file is different or didn't download whole. Download it again.",
+                                                 working: "Working out the " + pr.compareAlgo.toUpperCase().replace("SHA", "SHA-") + " checksum…",
+                                                 bad: "That isn't a checksum (an MD5, SHA-1, SHA-256 or SHA-512 is 32, 40, 64 or 128 letters and digits)." })[pr.compareVerdict] || ""
+                                        color: pr.compareVerdict === "match" ? "#4fbf7f" : pr.compareVerdict === "differ" ? Theme.danger : Theme.muted
+                                        font.family: Theme.font; font.pixelSize: 13
+                                    }
+                                }
+                            }
                             Repeater {
-                                model: [{ id: "md5", label: "MD5" }, { id: "sha1", label: "SHA-1" }, { id: "sha256", label: "SHA-256" }]
+                                model: [{ id: "md5", label: "MD5" }, { id: "sha1", label: "SHA-1" }, { id: "sha256", label: "SHA-256" }, { id: "sha512", label: "SHA-512" }]
                                 delegate: Rectangle {
                                     id: sumRow
                                     required property var modelData
@@ -967,6 +1133,62 @@ Scope {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // Sharing ------------------------------------------------
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: pr.tab === "sharing" && pr.single
+                            spacing: 12
+                            readonly property var sh: pr.share && pr.share.share ? pr.share.share : null
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Share this folder with your other devices on your home network (Windows, a Mac, a phone, another Hearth device), through Settings › Home server's shared folders. Shares start read only."
+                                color: Theme.muted; wrapMode: Text.WordWrap; font.family: Theme.font; font.pixelSize: 13
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: pr.share === null || !!(pr.share && pr.share.error)
+                                text: pr.share === null ? "Looking…" : (pr.share.error || "")
+                                color: pr.share && pr.share.error ? Theme.danger : Theme.muted; wrapMode: Text.WordWrap; font.family: Theme.font; font.pixelSize: 13
+                            }
+                            PropRow {
+                                id: shareRow
+                                visible: !!pr.share && !pr.share.error
+                                label: "Shared"
+                                value: pr.share && pr.share.shared ? "Yes, as “" + parent.sh.name + "”" + (parent.sh.write ? " · others can change files" : " · read only") : "No"
+                                button: pr.shareBusy ? "Working…" : pr.share && pr.share.shared ? "Stop sharing" : "Share this folder"
+                                buttonFocused: pr.focusId === "share"
+                                Component.onCompleted: win.reg("share", shareRow)
+                                onPressed: { keys.forceActiveFocus(); pr.focusId = "share"; pr.activate("share"); }
+                            }
+                            Rectangle {
+                                id: writeRow
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 52
+                                visible: !!parent.sh
+                                radius: Theme.r(10)
+                                color: Theme.panel2
+                                border.width: 2
+                                border.color: pr.focusId === "sharewrite" ? Theme.accent : "transparent"
+                                Component.onCompleted: win.reg("sharewrite", writeRow)
+                                RowLayout {
+                                    anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
+                                    spacing: 12
+                                    Check { checked: !!writeRow.parent.sh && !!writeRow.parent.sh.write; onToggled: { keys.forceActiveFocus(); pr.focusId = "sharewrite"; pr.activate("sharewrite"); } }
+                                    Text { Layout.fillWidth: true; text: "Others can change and add files"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
+                                }
+                                MouseArea { anchors.fill: parent; z: -1; onClicked: { keys.forceActiveFocus(); pr.focusId = "sharewrite"; pr.activate("sharewrite"); } }
+                            }
+                            PropRow { visible: !!parent.sh && !!parent.sh.how; label: "On Windows"; value: parent.sh && parent.sh.how ? parent.sh.how.windows : "" }
+                            PropRow { visible: !!parent.sh && !!parent.sh.how; label: "On a Mac or phone"; value: parent.sh && parent.sh.how ? parent.sh.how.mac : "" }
+                            PropRow { visible: !!parent.sh && !!parent.sh.how && !!parent.sh.how.away; label: "Away (Tailscale)"; value: parent.sh && parent.sh.how ? parent.sh.how.away || "" : "" }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: !!pr.share && !pr.share.error
+                                text: pr.share && pr.share.samba === false ? "Samba (Windows file sharing) comes with the next Hearth OS update." : "Your devices ask for your user name and your sharing password: set it in Settings › Home server › Shared folders. Who else can open it: Settings › Home server › People."
+                                color: Theme.muted; wrapMode: Text.WordWrap; font.family: Theme.font; font.pixelSize: 13
                             }
                         }
                     }

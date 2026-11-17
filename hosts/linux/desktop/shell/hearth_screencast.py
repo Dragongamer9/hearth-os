@@ -18,6 +18,11 @@ them, so the calls go through the small helper /usr/libexec/hearth/hearth-kwin-c
 The window list comes from a KWin script (callDBus back to this service). Only on KWin: on labwc screen sharing
 stays xdg-desktop-portal-wlr's (nimbus-portals.conf).
 
+Hidden from screen sharing (a window's title bar menu, "Hide from screen sharing": hearth-windows.js): those windows
+are never offered here (not in the picker's Windows, not shared by id, not in a screenshot of a window); the bridge's
+list ($XDG_RUNTIME_DIR/hearth/windows.json, noShare) says which. KWin itself paints them out of whole screens too when
+it can (its excludeFromCapture); the picker says when it can't.
+
   python3 hearth_screencast.py outputs | shot FILE.png [screen NAME | window ID | workspace] | picker REQUEST.json
   (checks)
 """
@@ -118,6 +123,7 @@ var ws = workspace.windowList ? workspace.windowList() : workspace.clientList();
 for (var i = 0; i < ws.length; i++) {
     var w = ws[i];
     if (!w || !w.normalWindow || w.skipTaskbar || w.deleted) continue;
+    if (w.excludeFromCapture === true) continue;      // hidden from screen sharing (KWin's own)
     var g = w.frameGeometry;
     out.push({id: String(w.internalId), title: String(w.caption || ""), app: String(w.resourceClass || ""),
               desktop: String(w.desktopFileName || ""), minimized: !!w.minimized, active: w === workspace.activeWindow,
@@ -265,6 +271,24 @@ class WindowLister:
                 pass
 
 
+def hidden_windows():
+    """(ids hidden from screen sharing, whether KWin paints them out of whole screens too) from the bridge's list."""
+    path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth', 'windows.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return set(), False
+    return {w.get('id') for w in d.get('windows', []) if w.get('noShare')}, d.get('captureHide') is True
+
+
+def shareable(wins):
+    """The windows that may be shared (not hidden from screen sharing), and how many were left out."""
+    hidden, _ = hidden_windows()
+    keep = [w for w in wins if w.get('id') not in hidden]
+    return keep, len(wins) - len(keep)
+
+
 def dbus_kwin(method_and_args, path):
     """gdbus call to KWin; the answer's first number (a script id) or '' on success, None on failure."""
     try:
@@ -286,9 +310,12 @@ def quickshell():
 
 
 def build_request(kind, app_id, types, multiple, outputs, windows, thumbs_dir, with_thumbs=True):
-    """What the picker shows. kind: 'cast' (ScreenCast) or 'shot' (an interactive screenshot)."""
+    """What the picker shows. kind: 'cast' (ScreenCast) or 'shot' (an interactive screenshot). Windows hidden from
+    screen sharing are left out (hiddenCount says how many; screensShowHidden: KWin can't paint them out of a screen)."""
+    windows, left_out = shareable(windows)
+    _, painted_out = hidden_windows()
     req = {'kind': kind, 'app': app_id or '', 'multiple': bool(multiple), 'screens': [], 'windows': [],
-           'desktop': kind == 'shot'}
+           'desktop': kind == 'shot', 'hiddenCount': left_out, 'screensShowHidden': bool(left_out) and not painted_out}
     if types & MONITOR or kind == 'shot':
         for i, o in enumerate(outputs):
             t = os.path.join(thumbs_dir, 'screen-%d.png' % i)
@@ -846,6 +873,9 @@ class Portal:
                 shutil.rmtree(thumbs, ignore_errors=True)
         if holder['closed'] or choice is None:
             return 1, {}
+        if choice['kind'] == 'window' and choice.get('id') in hidden_windows()[0]:
+            log('a window hidden from screen sharing was asked for: not shared')
+            return 2, {}
         target = ('output', choice['name']) if choice['kind'] == 'screen' else ('window', choice['id'])
         st = Stream(target, s['cursor'])
         if st.wait_node() is None:
@@ -1002,7 +1032,8 @@ class Portal:
                     elif choice['kind'] == 'screen':
                         target = ('screen', choice['name'])
                     elif choice['kind'] == 'window':
-                        target = ('window', choice['id'])
+                        # A window hidden from screen sharing is never taken (the picker doesn't offer it).
+                        target = ('window', choice['id']) if choice.get('id') not in hidden_windows()[0] else None
                 if target:
                     p = screenshot_path()
                     if shot(target, p):

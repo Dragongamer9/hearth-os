@@ -27,3 +27,9 @@ ShowToolTips=true
 # A double-click on the title bar maximizes (and restores), as on labwc.
 [Windows]
 TitlebarDoubleClickCommand=Maximize
+
+# Alt+Tab (and the controller's LB / RB): Hearth's own switcher, live pictures of the windows in Mantel's look
+# (os/system_files/usr/share/kwin/tabbox/org.hearth.switcher, in the image). One you pick in Settings › Window
+# effects (your ~/.config/kwinrc) wins.
+[TabBox]
+LayoutName=org.hearth.switcher

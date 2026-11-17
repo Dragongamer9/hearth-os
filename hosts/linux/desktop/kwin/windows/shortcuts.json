@@ -7,7 +7,7 @@
   "\"skipped\": labwc keys that have no job under KWin.",
   "\"kwinOnly\": Hearth keys labwc has none of (Activities, from feature/widgets' Activities.qml).",
   "\"kwinOwn\": keys KWin's own actions already do the same way.",
-  "\"kdeKeys\": KDE's own keys that would take Mantel's (hearth-kwin-bridge keys): \"keys\": [] frees the action, else the keys Hearth gives it. Done once, only while the action is still on KDE's default; never over a key the person set (see hearth-kwin-bridge)."
+  "\"kwinOnly\": Hearth keys labwc has none of (Activities, from feature/widgets' Activities.qml; KWin's Overview, Present windows, Desktop grid and force closing a frozen window, which labwc can't do)."
  ],
  "shortcuts": [
   {
@@ -625,6 +625,30 @@
    "title": "Previous activity",
    "keys": "Meta+Ctrl+Shift+Q",
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call activities previous'"
+  },
+  {
+   "id": "overview",
+   "title": "Overview: every window and desktop",
+   "keys": "Meta+W",
+   "win": "effect:overview"
+  },
+  {
+   "id": "present-windows",
+   "title": "Present windows: every window side by side",
+   "keys": "Ctrl+F10",
+   "win": "effect:windows"
+  },
+  {
+   "id": "desktop-grid",
+   "title": "Desktop grid: all your desktops",
+   "keys": "Ctrl+F8",
+   "win": "effect:grid"
+  },
+  {
+   "id": "kill-window",
+   "title": "Force close a window that isn't responding",
+   "keys": "Ctrl+Alt+Esc",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call forceclose start'"
   }
  ],
  "kdeKeys": [
@@ -731,6 +755,24 @@
    "action": "_launch",
    "keys": [],
    "why": "Super+. opens Hearth's emoji picker"
+  },
+  {
+   "component": "kwin",
+   "action": "Overview",
+   "keys": [],
+   "why": "Super+W is Hearth's Overview key (the same view, also on Mantel's Task view button and View + Y)"
+  },
+  {
+   "component": "kwin",
+   "action": "ExposeAll",
+   "keys": [],
+   "why": "Ctrl+F10 is Hearth's Present windows key"
+  },
+  {
+   "component": "kwin",
+   "action": "Kill Window",
+   "keys": [],
+   "why": "Ctrl+Alt+Esc asks first in Hearth's look (ForceClose.qml)"
   }
  ]
 }
