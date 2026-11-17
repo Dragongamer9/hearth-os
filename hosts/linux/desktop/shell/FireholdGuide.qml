@@ -2,7 +2,7 @@
 // the game, six quick tiles, the game's display and power settings, and Put it in a window / Home / Quit game. The game
 // keeps running underneath. What works today is wired (screenshots and recording through Capture and the recorder, Discord,
 // the on-screen keyboard, volume, brightness, VRR and tearing through hearth-screens on KWin, power through hearth-power,
-// the performance overlay); the frame limit and resolution scaling need Firehold's own compositor and say so.
+// the performance overlay); the frame limit and resolution scaling come from Firehold's compositor through hearth-firehold-game.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -90,17 +90,26 @@ PanelWindow {
     readonly property string outName: gameScreen ? gameScreen.name : ""
     readonly property var out: (screens.outputs || []).find(o => o.name === outName) || null
     readonly property bool kwin: WinList.kwin
-    // Firehold's own compositor's controls (`firehold-comp ctl`, docs/FIREHOLD.md): the frame limit and scaling rows
-    // work once it answers (`ctl scanout status`); until then they say "Not yet".
-    property bool comp: false
-    property string scaling: "Off"
-    readonly property var limits: ["Off", "30", "40", "60", "90", "120"]
-    readonly property var scales: ["Off", "Quality", "Balanced", "Performance"]
-    readonly property string compCmd: "b=$(command -v firehold-comp || ls /usr/libexec/hearth/firehold-comp 2>/dev/null) && exec \"$b\" ctl \"$@\""
-    Process { id: compProbe; command: ["sh", "-c", gp.compCmd, "sh", "scanout", "status"]; onExited: code => gp.comp = code === 0 }
-    Process { id: compSet; stdout: StdioCollector { onStreamFinished: if (text.trim().startsWith("error")) SettingsNav.toast(text.trim()) } }
-    function compCtl(args) { compSet.command = ["sh", "-c", compCmd, "sh"].concat(args); compSet.running = true; }
-    function refresh() { compProbe.running = true; infoProc.running = true; powerProc.running = true; brightProc.command = ["brightnessctl", "-m", "-c", "backlight", "info"]; brightProc.running = true; }
+    // The frame limit and resolution scaling come from Firehold's compositor, through the firehold-game helper
+    // (`hearth-firehold-game status` / `step KEY up|down`, docs/FIREHOLD.md; it saves them per game in
+    // ~/.config/hearth/firehold-games.json with hearth_settings_io). When the helper or the compositor isn't there,
+    // the two rows say "Not yet" and change nothing.
+    property var gameSt: ({})                     // the helper's status: {ok, running, game: {frameLimitLabel, scalingLabel...}}
+    readonly property var fg: gameSt && gameSt.running && gameSt.game && typeof gameSt.game === "object" ? gameSt.game : null
+    readonly property bool comp: fg !== null
+    readonly property string scaling: fg ? String(fg.scalingLabel || "Off") : "Off"
+    readonly property string gameCmd: "for h in \"$0/hearth-firehold-game\" \"$(command -v hearth-firehold-game)\"; do [ -f \"$h\" ] && exec python3 \"$h\" \"$@\"; done; echo 'error: no firehold-game helper'; exit 3"
+    function gameRun(proc, args) { proc.command = ["sh", "-c", gameCmd, Quickshell.shellDir].concat(args); proc.running = true; }
+    function gameRead(text) {
+        const l = text.trim().split("\n").pop() || "";
+        if (l.startsWith("error: ")) return false;
+        try { gp.gameSt = JSON.parse(l); } catch (e) { gp.gameSt = {}; }
+        if (gp.fg) fh.frameLimit = String(gp.fg.frameLimitLabel || "Off");   // the Desk's game title line shows it too
+        return true;
+    }
+    Process { id: gameProbe; stdout: StdioCollector { onStreamFinished: gp.gameRead(text) } }
+    Process { id: gameSet; stdout: StdioCollector { onStreamFinished: { const l = text.trim().split("\n").pop() || ""; if (!gp.gameRead(text)) SettingsNav.toast(l.slice(7)); } } }
+    function refresh() { gameRun(gameProbe, ["status"]); infoProc.running = true; powerProc.running = true; brightProc.command = ["brightnessctl", "-m", "-c", "backlight", "info"]; brightProc.running = true; }
     Process {
         id: infoProc
         command: ["python3", Quickshell.shellDir + "/hearth-screens", "info"]
@@ -135,9 +144,9 @@ PanelWindow {
     ]
     function step(i, d) {
         const r = rows[i];
-        if (!r[4]) { SettingsNav.toast(r[0] + ": " + (i < 2 ? "comes with Firehold's own compositor" : r[2])); return; }
-        if (i === 0) { fh.frameLimit = limits[(limits.indexOf(fh.frameLimit) + (d > 0 ? 1 : limits.length - 1)) % limits.length]; compCtl(["frame-limit", fh.frameLimit === "Off" ? "off" : fh.frameLimit]); }
-        else if (i === 1) { scaling = scales[(scales.indexOf(scaling) + (d > 0 ? 1 : scales.length - 1)) % scales.length]; compCtl(["scale", scaling.toLowerCase()]); }
+        if (!r[4]) { SettingsNav.toast(r[0] + ": " + (i < 2 ? "comes with Firehold's compositor" : r[2])); return; }
+        if (i === 0) gameRun(gameSet, ["step", "frameLimit", d > 0 ? "up" : "down"]);
+        else if (i === 1) gameRun(gameSet, ["step", "scaling", d > 0 ? "up" : "down"]);
         else if (i === 2) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ outputs: { [outName]: { vrr: vrr.policy === "never" ? "automatic" : "never" } } })]);
         else if (i === 3) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ tearing: !tearOn })]);
         else if (i === 4) { const n = modes[(modes.indexOf(powerMode) + (d > 0 ? 1 : modes.length - 1)) % modes.length]; runSet(["python3", Quickshell.shellDir + "/hearth-power", "mode", n]); }
