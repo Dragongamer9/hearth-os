@@ -253,6 +253,31 @@ Item {
                 sourceClipRect: Qt.rect(ed.view.x, ed.view.y, ed.view.w, ed.view.h)
                 smooth: true; mipmap: true; cache: false
             }
+            // Blur and Pixelate in the view: the small copies of the picture stretched over each area (rough squares for
+            // Pixelate, smooth for Blur). Saving draws the same from the same copies on the saving canvas.
+            Repeater {
+                model: ed.live && (ed.live.t === "blur" || ed.live.t === "pix") ? ed.shapes.concat([ed.live]) : ed.shapes
+                delegate: Item {
+                    id: hid
+                    required property var modelData
+                    readonly property bool hides: modelData.t === "blur" || modelData.t === "pix"
+                    readonly property var r: hides ? Draw.normRect(modelData.x1, modelData.y1, modelData.x2, modelData.y2) : ({ x: 0, y: 0, w: 0, h: 0 })
+                    readonly property real k: (modelData.t === "pix" ? pixSrc.sourceSize.width : blurSrc.sourceSize.width) / Math.max(1, ed.imgW)
+                    visible: hides && r.w > 1 && r.h > 1 && ed.ready
+                    x: (r.x - ed.view.x) * ed.sc; y: (r.y - ed.view.y) * ed.sc
+                    width: r.w * ed.sc; height: r.h * ed.sc
+                    Image {
+                        anchors.fill: parent
+                        visible: hid.visible
+                        source: hid.visible ? ed.url : ""
+                        sourceSize.width: hid.modelData.t === "pix" ? pixSrc.sourceSize.width : blurSrc.sourceSize.width
+                        sourceClipRect: Qt.rect(hid.r.x * hid.k, hid.r.y * hid.k, Math.max(1, hid.r.w * hid.k), Math.max(1, hid.r.h * hid.k))
+                        smooth: hid.modelData.t === "blur"
+                        mipmap: false
+                        fillMode: Image.Stretch
+                    }
+                }
+            }
             Canvas {
                 id: ink
                 anchors.fill: parent
@@ -265,7 +290,7 @@ Item {
                     c.clearRect(0, 0, width, height);
                     const list = ed.live ? ed.shapes.concat([ed.live]) : ed.shapes;
                     Draw.paint(c, list, ed.sc, ed.view.x, ed.view.y,
-                               ed.ready ? ed.hideSrc(c) : null,
+                               null,   // Blur and Pixelate are the Repeater's pictures below this canvas
                                width, height);
                 }
             }
