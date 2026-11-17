@@ -18,6 +18,9 @@ IgnoreSIGPIPE=no
 SendSIGHUP=yes
 KeyringMode=shared
 TimeoutStopSec=30s
+# However greetd ends (even with code 0, which OnFailure= never sees): the fallback. It does nothing while the PC is
+# shutting down, waits while someone is still signed in through greetd, and counts a start only once.
+ExecStopPost=/usr/libexec/nimbus/hearth-login-screen fallback "greetd ended"
 
 [Install]
 WantedBy=graphical.target

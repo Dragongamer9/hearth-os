@@ -1,0 +1,12 @@
+# Tells you once, after you sign in, that a pre-installed PC's account still needs your name and password
+# (hearth-oem-account notice). Does nothing otherwise.
+[Unit]
+Description=Hearth: finish setting up your name and password
+ConditionPathExists=/var/lib/hearth/oem-setup.json
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-oem-account notice
+
+[Install]
+WantedBy=default.target

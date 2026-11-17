@@ -184,6 +184,10 @@ optional avahi-utils
 # documents) and pdftoppm draws PDFs' first page as their preview in Files (poppler-utils, about 1 MB). Optional:
 # without it PDFs are found by name and shown with their icon.
 optional poppler-utils
+# Auto-brightness (Settings › Display, 1.14): iio-sensor-proxy reads a laptop's or handheld's light sensor for
+# hearth-screens (net.hadess.SensorProxy, as KDE and GNOME use it). udev starts it only on a PC with a sensor; off in
+# Settings until you turn it on. Optional: without it the kernel's sensor files are read instead.
+optional iio-sensor-proxy
 command -v gio secret-tool
 # Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
 # (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.
@@ -1133,16 +1137,12 @@ ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # Screens and screenshots on both of Mantel's compositors (1.14, docs/SCREENS.md): hearth-screens (Settings › Display,
 # restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
 # KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
-# .desktop file lists it, found by the program's executable: hearth-screenshot runs through its own copy of Python
-# (a real copy, not a link: KWin may compare the file itself, and then every Python program would be trusted), named
-# by hearth-screenshot.desktop (os/system_files).
+# .desktop file lists it, found by the program's executable: hearth-screens takes its screenshots through the small
+# helper hearth-kwin-cast (hearth-kwin-cast.desktop), which answers only hearth-portal and hearth-screens. (1.14
+# before this trusted a copy of Python, hearth-shot-python: any script it ran could take screenshots; it's gone.)
 optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
-py=$(readlink -f /usr/bin/python3)
-install -d /usr/libexec/nimbus
-cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
-/usr/libexec/nimbus/hearth-shot-python -c 'import gi; gi.require_version("Gio", "2.0"); from gi.repository import Gio; print("hearth-shot-python can reach D-Bus")' \
-  || echo "hearth-shot-python can't load GLib: screenshots under KWin will say so (grim under labwc is unaffected)"
+rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop
 # Online accounts (docs/ONLINE-ACCOUNTS.md): `hearth-accounts` for Hearth's apps (list, token, events, mount). Nothing
 # runs by itself; Google/Microsoft stay off until the owner's client ids are in /etc/hearth/online-accounts.json.
 if [ -f /usr/share/nimbus/desktop/shell/hearth_accounts.py ]; then
@@ -1899,6 +1899,11 @@ if [ -d /etc/X11 ]; then echo /usr/bin/sddm > /etc/X11/default-display-manager; 
 
 # ------------------------------------------------------------------ boot straight into Hearth
 systemctl enable nimbus-autologin.service
+# A pre-installed PC (bootc install, no Hearth installer) has no account: a stand-in one for first-time setup, made
+# before the autologin (hearth-oem-account; does nothing once there's an account, never a stop).
+chmod 755 /usr/libexec/nimbus/hearth-oem-account
+systemctl enable hearth-oem-account.service
+systemctl --global enable hearth-oem-notice.service   # and tells you once after you sign in, until it's done
 systemctl enable hearth-greeter-pad.service
 # Hearth's own login screen (1.14, a test): inert unless turned on in Settings (hearth-login-select picks SDDM by
 # default and whenever anything is missing; SDDM stays display-manager.service).
@@ -2068,6 +2073,12 @@ echo "sddm shared/default-x-display-manager select sddm" | debconf-set-selection
 # SDDM is still the display manager after everything above (Hearth's own login screen never takes its place).
 test "$(readlink /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service
 if [ -f /etc/X11/default-display-manager ]; then grep -qx /usr/bin/sddm /etc/X11/default-display-manager; fi
+# Debian's own greetd.service never runs at start-up (it would take a screen from SDDM or Hearth's hearth-greetd):
+# turned off if the package turned it on, and the build stops if it still is.
+if [ -e /usr/lib/systemd/system/greetd.service ]; then
+  systemctl disable greetd.service >/dev/null 2>&1 || true
+  if systemctl is-enabled --quiet greetd.service 2>/dev/null; then echo "build: Debian's greetd.service is enabled" >&2; exit 1; fi
+fi
 mkdir -p /usr/share/hearth/debconf && cp -a /var/cache/debconf/. /usr/share/hearth/debconf/
 # The core of the system stays at the image's own versions (apt can't swap them under Hearth: systemd, udev, glibc,
 # D-Bus, Mesa), generated from what's installed (systemd-boot is left to the boot-chain pin: never from apt).
