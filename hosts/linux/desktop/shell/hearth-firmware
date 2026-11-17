@@ -125,13 +125,23 @@ def release_of(dev):
             'size': r.get('Size', 0), 'description': re.sub(r'<[^>]+>', ' ', r.get('Description', '') or '').strip()[:600]}
 
 
+def is_system_firmware(dev):
+    """The one rule for "system firmware" (also in hearth-sysset-admin and the page): the PC's own firmware (UEFI
+    capsules, flashrom) or an internal part that is only updated while the PC restarts. These touch how the PC starts."""
+    flags = dev.get('Flags') or []
+    plugin = dev.get('Plugin') or ''
+    return plugin.startswith('uefi') or plugin == 'flashrom' or ('internal' in flags and 'needs-reboot' in flags)
+
+
 def device_entry(d):
     flags = d.get('Flags') or []
     plugin = d.get('Plugin', '')
-    system = plugin in ('uefi_capsule', 'uefi', 'flashrom') or 'internal' in flags and 'needs-reboot' in flags
+    system = is_system_firmware(d)
     return {'id': d.get('DeviceId', ''), 'name': d.get('Name', ''), 'vendor': d.get('Vendor', ''),
             'version': d.get('Version', ''), 'updatable': 'updatable' in flags, 'system': system,
-            'needsReboot': 'needs-reboot' in flags or plugin.startswith('uefi'), 'plugin': plugin, 'update': None}
+            'needsReboot': 'needs-reboot' in flags or plugin.startswith('uefi'), 'plugin': plugin, 'update': None,
+            # 1.14: system firmware is shown with its update, never installed from Hearth (it touches booting).
+            'installable': 'updatable' in flags and not system}
 
 
 def parse_devices(devs_json, updates_json):

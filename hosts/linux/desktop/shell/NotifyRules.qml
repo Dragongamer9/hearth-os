@@ -12,7 +12,15 @@ Singleton {
     id: root
     property var apps: ({})
     readonly property var defaults: ({ allow: true, sound: false, lockScreen: false, priority: "normal" })
-    function rule(app) { return Object.assign({}, defaults, (app && apps[app]) || {}); }
+    // Hearth's own notifications (a lock warning, a settings file put back from its .bak, a pairing request) can't be
+    // turned off: the rule for them always allows them, whatever the file says (hearth-notify refuses it too).
+    readonly property var hearthApp: /^(hearth|nimbus|mantel|task manager)\b/i
+    function isHearth(app) { return !!app && hearthApp.test(app); }
+    function rule(app) {
+        const r = Object.assign({}, defaults, (app && apps[app]) || {});
+        if (isHearth(app)) r.allow = true;
+        return r;
+    }
     // A short sound for a notification from an app with Sound on (the freedesktop theme's, if it's installed).
     readonly property string soundFile: "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
     function playSound() {

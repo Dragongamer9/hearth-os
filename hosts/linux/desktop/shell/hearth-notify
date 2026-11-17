@@ -12,6 +12,7 @@ Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -20,6 +21,7 @@ import hearth_settings_io as hsio
 CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
 FILE = os.path.join(CONFIG, 'nimbus', 'notify-apps.json')
 DEFAULTS = {'allow': True, 'sound': False, 'lockScreen': False, 'priority': 'normal'}
+HEARTH_APP = re.compile(r'^(hearth|nimbus|mantel|task manager)\b', re.I)   # NotifyRules.qml's isHearth
 VALUES = {'allow': ('on', 'off'), 'sound': ('on', 'off'), 'lockScreen': ('on', 'off'), 'priority': ('low', 'normal', 'high')}
 
 
@@ -44,6 +46,8 @@ def set_(name, key, value):
     if key not in VALUES or value not in VALUES[key]:
         raise Fail('unknown setting')
     v = value if key == 'priority' else value == 'on'
+    if key == 'allow' and not v and HEARTH_APP.match(name):
+        raise Fail("Hearth's own notifications can't be turned off")
 
     def change(d):
         apps = d.get('apps') if isinstance(d.get('apps'), dict) else {}

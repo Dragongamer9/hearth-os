@@ -72,6 +72,8 @@ Rectangle {
         anchors.fill: parent
         source: "file:///var/lib/hearth/login-screen/background"
         fillMode: Image.PreserveAspectCrop
+        // Decoded at most at 4K, whatever the file's size (hearth-sysset-admin also refuses one over 8192 pixels a side).
+        sourceSize.width: 3840; sourceSize.height: 2160
         asynchronous: true; cache: false
         visible: status === Image.Ready
     }

@@ -22,6 +22,8 @@ LOCKED = [
     (r'^(dbus|dbus-broker)', 'Apps talk to each other through it'),
     (r'^xdg-(desktop-portal|document-portal|permission-store|user-dirs)', 'File choosers, screen sharing and app permissions'),
     (r'^(at-spi|orca)', 'Accessibility'),
+    (r'^(speech-dispatcher|speechd)', 'The screen reader and read-aloud speak through it'),
+    (r'^(obex|bluetooth-obex)', 'Sending and receiving files over Bluetooth'),
     (r'^(gnome-keyring|gcr-ssh-agent|ssh-agent|gpg-agent|kwalletd)', 'Your saved passwords'),
     (r'^(gvfs|tracker|localsearch)', 'Drives, phones and network folders in the file manager'),
     (r'^(plasma-|kwin|kde|ksmserver|kded)', "The desktop's own"),
