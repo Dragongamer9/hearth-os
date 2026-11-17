@@ -393,6 +393,39 @@ class LockCheck(unittest.TestCase):
         lc.qt_wayland = lambda: False
         self.assertIn('qt6-wayland', lc.check(kenv=self.kenv)['why'])
 
+    def test_the_test_run_ends_as_soon_as_it_loaded(self):
+        self.install()
+        with open(self.greeter, 'w') as f:
+            f.write('#!/bin/sh\necho "%s" >&2\nexec sleep 30\n' % lc.LOADED)
+        t = time.monotonic()
+        self.assertTrue(lc.check(kenv=self.kenv)['ok'])
+        self.assertLess(time.monotonic() - t, 5)
+        # A greeter that never says anything: given up on after PROBE_TIME, not ok.
+        with open(self.greeter, 'w') as f:
+            f.write('#!/bin/sh\nexec sleep 30\n')
+        os.unlink(os.path.join(self.d, 'run', 'hearth', 'lockcheck.json'))
+        old, lc.PROBE_TIME = lc.PROBE_TIME, 1
+        try:
+            t = time.monotonic()
+            self.assertFalse(lc.check(kenv=self.kenv)['ok'])
+            self.assertLess(time.monotonic() - t, 5)
+        finally:
+            lc.PROBE_TIME = old
+
+    def test_named_package_and_qt_plugins(self):
+        self.install()
+        os.environ['HEARTH_LOCK_PKG'] = os.path.join(self.d, 'elsewhere')
+        self.assertEqual(lc.package(self.kenv), '')
+        os.environ['HEARTH_LOCK_PKG'] = os.path.join(self.d, 'share', 'plasma', 'shells', lc.PACKAGE)
+        self.assertTrue(lc.package(self.kenv))
+        lc.qt_wayland = self.qtw
+        os.environ['HEARTH_LOCK_QT_PLUGINS'] = os.path.join(self.d, 'qt')
+        self.assertFalse(lc.qt_wayland())
+        for f in ('platforms/libqwayland-egl.so', 'wayland-shell-integration/liblayer-shell.so'):
+            os.makedirs(os.path.dirname(os.path.join(self.d, 'qt', f)), exist_ok=True)
+            open(os.path.join(self.d, 'qt', f), 'w').close()
+        self.assertTrue(lc.qt_wayland())
+
     def test_env_file_format(self):
         self.assertEqual(lc.parse_env(b'A=1\0PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock\0junk\0'),
                          {'A': '1', 'PLASMA_DEFAULT_SHELL': 'org.hearth.mantel-lock'})
@@ -467,7 +500,7 @@ class Wiring(unittest.TestCase):
         self.assertIn('GetActive', lock)
         self.assertIn('"critical"', lock)
         rc = read('hosts/linux/desktop/kwin/xdg/kscreenlockerrc')
-        for line in ('Autolock=false', 'LockOnResume=false'):
+        for line in ('Autolock[$i]=false', 'LockOnResume[$i]=false'):     # fixed: your own file can't turn them on
             self.assertIn(line, rc)
         meta = json.loads(read('hosts/linux/desktop/kwin-lock/metadata.json'))
         self.assertEqual(meta['KPlugin']['Id'], 'org.hearth.mantel-lock')
