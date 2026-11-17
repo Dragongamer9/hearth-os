@@ -2843,6 +2843,20 @@ var ENTRIES = [
 "p": "winapps"
 },
 {
+"t": "Window manager",
+"p": "your-desktop",
+"d": "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
+},
+{
+"t": "Running now",
+"p": "your-desktop"
+},
+{
+"t": "Safe start",
+"p": "your-desktop",
+"d": "If KWin doesn't start, Mantel opens on labwc for that sign-in and tells you why. Twice in a row, it stays on labwc until you pick KWin again. Your choice stays saved."
+},
+{
 "t": "KDE Plasma and GNOME",
 "p": "your-desktop",
 "d": "Retired in Hearth 1.14: Mantel is the desktop. A KDE Plasma or GNOME pick from before opens Mantel, and Hearth tells you once."

@@ -153,8 +153,8 @@ def save(settings):
 
 
 def mode():
-    """'game' inside gamescope (Game Mode), 'desktop' inside labwc (Desktop Mode), else 'other'."""
-    if os.environ.get('LABWC_PID'):
+    """'game' inside gamescope (Game Mode), 'desktop' inside Desktop Mode (labwc or, 1.14, KWin), else 'other'."""
+    if os.environ.get('HEARTH_DESKTOP_PID') or os.environ.get('LABWC_PID'):
         return 'desktop'
     if os.environ.get('GAMESCOPE_WAYLAND_DISPLAY') or os.environ.get('HEARTH_GAME_MODE'):
         return 'game'
@@ -215,7 +215,8 @@ def reload_labwc():
     rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
     if os.path.isdir(rt):
         run(['python3', os.path.join(here, 'hearth-system'), 'labwc-config'])
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    # labwc only: --reconfigure signals LABWC_PID (never set under KWin, 1.14).
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):
         return run(['labwc', '--reconfigure'])[0] == 0
     return False
 

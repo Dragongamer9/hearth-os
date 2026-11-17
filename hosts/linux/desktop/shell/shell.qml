@@ -312,6 +312,9 @@ ShellRoot {
     }
 
     Component.onCompleted: { SettingsNav.pad = pad; SettingsNav.help = help; }
+    // 1.14: "Mantel is up", for nimbus-session's safe start on KWin (run_kwin waits for $XDG_RUNTIME_DIR/hearth-shell-up and
+    // opens Mantel on labwc instead when it doesn't come): written once the shell has been running for 3 seconds.
+    Timer { interval: 3000; running: true; onTriggered: Quickshell.execDetached(["sh", "-c", ': > "${XDG_RUNTIME_DIR:-/tmp}/hearth-shell-up"']) }
     // labwc's key bindings for the volume and power keys (a backup for what hearth-buttons can't read).
     IpcHandler {
         target: "buttons"

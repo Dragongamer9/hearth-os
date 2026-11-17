@@ -228,9 +228,16 @@ touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
-# Mantel (labwc + Quickshell) is Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone, and
-# their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter,
-# gnome-session, gnome-control-center and GNOME's apps; their portals) aren't installed any more. What stays:
+# Mantel (Quickshell) is Hearth's only desktop, on KWin from 1.14 with labwc (above) as its fallback (nimbus-session's
+# run_classic; docs/DESKTOPS.md "Mantel on KWin"). Hearth Plasma, Hearth GNOME, Hearth COSMIC and 1.13's KDE Plasma /
+# GNOME downloads are gone: their sessions (plasma-workspace, plasma-desktop and Plasma's applets; gnome-shell, mutter,
+# gnome-session, gnome-control-center and GNOME's apps) aren't installed. What's here:
+#   kwin-wayland         KWin, Mantel's window manager (required: the build stops without kwin_wayland)
+#   kglobalacceld        KWin's keyboard shortcuts service (optional)
+#   xdg-desktop-portal-kde
+#                        screen sharing and screenshots under KWin (optional; desktop/kwin/xdg's nimbus-portals.conf)
+#   libkf6screen-bin / kscreen
+#                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
 #   kde-cli-tools, plasma-integration, qml6-module-org-kde-kirigami
@@ -239,6 +246,14 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 # plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
 optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
+"${APT[@]}" kwin-wayland || true
+if ! command -v kwin_wayland >/dev/null; then
+  echo "::error title=KWin::kwin_wayland isn't installed (package kwin-wayland): Mantel runs on KWin from 1.14"
+  exit 1
+fi
+optional kglobalacceld xdg-desktop-portal-kde
+if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
+command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
 # gdb's gcore: Task Manager › Details › Create dump file (1.12, mockup tm-2); optional, so a missing gdb never stops the build
 optional gdb
 # dmidecode: Task Manager › Memory's speed and slots (1.12, mockup task-manager-memory)
@@ -1053,7 +1068,7 @@ for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop 
   dpkg-divert --list "/usr/share/$f" | grep -q . || dpkg-divert --local --no-rename --divert "/usr/share/hearth/desktop-sessions/$(echo "$f" | tr / -)" --add "/usr/share/$f"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/kwin/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart

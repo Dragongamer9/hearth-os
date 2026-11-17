@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """hearth-your-desktop: Settings › System › Your desktop and Desktop Mode's one-time notice (DesktopNotice.qml).
 
-  hearth-your-desktop status      JSON: the last notice (why Desktop Mode started the way it did) and what's running
+  hearth-your-desktop status      JSON: the last notice (why Desktop Mode started the way it did), Mantel's window
+                                  manager (picked, running now, KWin's failed starts) and what's here
   hearth-your-desktop notice      JSON: the notice Mantel hasn't shown yet ({} when there's none), marked as shown
+  hearth-your-desktop wm kwin|labwc
+                                  Mantel's window manager from the next start of Desktop Mode (session.conf's
+                                  HEARTH_DESKTOP_WM, only that line, through hearth_settings_io). Picking KWin also
+                                  turns it back on after it didn't start twice (nimbus-session's safe start).
 
-The notices come from nimbus-session (desk_notice): ~/.local/state/hearth/desktop-notice, one line
-"<what> <why> <when>". Shown once: it then moves to desktop-notice.shown (Settings still shows the last one), and for
-1.13's retired KDE Plasma / GNOME choice desktop-retired-told keeps it from coming back. Nothing here changes a
-setting: session.conf is only read.
+The notices come from nimbus-session (desk_notice): ~/.local/state/hearth/desktop-notice, a line
+"<what> <why> <when>" each (one per what). Shown once, oldest first: a line then moves to desktop-notice.shown (Settings
+still shows the last ones), and for
+1.13's retired KDE Plasma / GNOME choice desktop-retired-told keeps it from coming back. Only `wm` changes a setting,
+when the person picks one.
 """
 import json
 import os
+import re
+import shutil
 import sys
 import time
 
@@ -20,12 +28,21 @@ sys.path.insert(0, HERE)
 import hearth_settings_io as sio  # noqa: E402
 
 E = os.environ.get
+CONFIG_HOME = E('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+SESSION_CONF = os.path.join(CONFIG_HOME, 'nimbus', 'session.conf')
+RUN = E('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
 STATE_HOME = E('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
 DESK_STATE = os.path.join(STATE_HOME, 'hearth')
 NOTICE = os.path.join(DESK_STATE, 'desktop-notice')
 SHOWN = NOTICE + '.shown'
 RETIRED_TOLD = os.path.join(DESK_STATE, 'desktop-retired-told')
+FAILS = os.path.join(DESK_STATE, 'desktop-fails')
 NAMES = {'kde': 'KDE Plasma', 'gnome': 'GNOME'}
+WMS = {'kwin': 'KWin', 'labwc': 'labwc'}
+
+
+class Fail(Exception):
+    pass
 
 
 def texts(what, why):
@@ -36,44 +53,135 @@ def texts(what, why):
                 'You had %s picked for Desktop Mode. Hearth 1.14 retired KDE Plasma and GNOME as desktops: Desktop '
                 'Mode is Mantel, which now runs on KWin, KDE\'s own window manager. Your apps, files and settings are '
                 'all still here.' % name)
+    if what == 'kwin':
+        return {
+            'missing': ('Mantel opened on labwc', 'KWin, the window manager Mantel runs on, isn\'t installed, so Mantel '
+                        'opened on labwc, the one it used before 1.14. Everything works as before.'),
+            'failed': ('KWin didn\'t start', 'Mantel opened on labwc instead, the window manager it used before 1.14, '
+                       'for this sign-in. Next time Hearth tries KWin again.'),
+            'twice': ('KWin didn\'t start twice in a row', 'Mantel uses labwc, the window manager it used before 1.14, '
+                      'until you turn KWin back on. You can try it again here or in Settings › System › Your desktop.'),
+        }.get(why, ('', ''))
     return ('', '')
 
 
-def read_notice(path):
+def parse(line):
+    p = line.split()
     try:
-        with open(path, encoding='utf-8') as f:
-            p = f.read().split()
         what, why, at = p[0], p[1], int(p[2])
-    except (OSError, IndexError, ValueError):
+    except (IndexError, ValueError):
         return None
     title, sub = texts(what, why)
     if not title:
         return None
-    return {'what': what, 'kind': why, 'at': at, 'title': title, 'sub': sub, 'text': title}
+    return {'what': what, 'kind': why, 'at': at, 'title': title, 'sub': sub, 'text': title, 'line': line.strip()}
+
+
+def read_notices(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return [n for n in (parse(l) for l in f) if n]
+    except OSError:
+        return []
+
+
+def write_lines(path, notices):
+    if notices:
+        sio.write_text(path, ''.join(n['line'] + '\n' for n in notices))
+    else:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def conf_value(key):
+    try:
+        with open(SESSION_CONF, encoding='utf-8') as f:
+            text = f.read()
+    except OSError:
+        return ''
+    found = re.findall(r'''^[ \t]*(?:export[ \t]+)?%s=["']?([a-z]*)''' % key, text, re.M)
+    return found[-1] if found else ''
+
+
+def kwin_fails():
+    try:
+        with open(FAILS, encoding='utf-8') as f:
+            for line in f:
+                p = line.split()
+                if len(p) == 2 and p[0] == 'kwin':
+                    return int(p[1])
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def wm_now():
+    """The window manager Desktop Mode is on right now ('' outside Desktop Mode)."""
+    w = E('HEARTH_WM', '')
+    if w in WMS and (E('HEARTH_DESKTOP_PID') or E('LABWC_PID')):
+        return w
+    try:
+        with open(os.path.join(RUN, 'nimbus-mode-now'), encoding='utf-8') as f:
+            if f.read().strip() != 'desktop':
+                return ''
+    except OSError:
+        return ''
+    try:
+        with open(os.path.join(RUN, 'hearth-kwin.pid'), encoding='utf-8') as f:
+            os.kill(int(f.read().strip()), 0)
+        return 'kwin'
+    except (OSError, ValueError):
+        return 'labwc'
 
 
 def status():
-    n = read_notice(NOTICE)
-    shown = False
-    if not n:
-        n, shown = read_notice(SHOWN), True
-    return {'notice': n, 'noticeShown': shown}
+    pending, seen = read_notices(NOTICE), read_notices(SHOWN)
+    n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
+    picked = 'labwc' if conf_value('HEARTH_DESKTOP_WM') == 'labwc' else 'kwin'
+    fails = kwin_fails()
+    return {'notice': n, 'noticeShown': shown, 'notices': pending + seen, 'wm': picked, 'wmNow': wm_now(), 'kwinFails': fails,
+            'kwinPaused': picked == 'kwin' and fails >= 2, 'kwinHere': bool(shutil.which('kwin_wayland')),
+            'labwcHere': bool(shutil.which('labwc')),
+            'safeGraphics': os.path.exists(E('HEARTH_SAFE_FLAG') or '/run/hearth/safe-graphics')}
+
+
+def cmd_wm(w):
+    if w not in WMS:
+        raise Fail('kwin or labwc')
+    sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', w))
+    if w == 'kwin':
+        # Turned back on: the safe start's count and its notice start over (nimbus-session's desk_fails kwin).
+        try:
+            with open(FAILS, encoding='utf-8') as f:
+                rest = [l for l in f if not l.startswith('kwin ')]
+            sio.write_text(FAILS, ''.join(rest)) if rest else os.remove(FAILS)
+        except OSError:
+            pass
+        for p in (NOTICE, SHOWN):
+            ns = read_notices(p)
+            if any(n['what'] == 'kwin' for n in ns):
+                write_lines(p, [n for n in ns if n['what'] != 'kwin'])
+    sio.log_event('desktop: Mantel on %s from the next start of Desktop Mode' % WMS[w])
+    return status()
 
 
 def cmd_notice():
-    n = read_notice(NOTICE)
-    if not n:
+    pending = read_notices(NOTICE)
+    if not pending:
         return {}
-    try:
-        os.replace(NOTICE, SHOWN)
-    except OSError:
-        pass
+    n = pending[0]
+    seen = [s for s in read_notices(SHOWN) if s['what'] != n['what']] + [n]
+    write_lines(SHOWN, seen)
+    write_lines(NOTICE, pending[1:])
     if n['kind'] == 'retired':
         try:
             sio.write_text(RETIRED_TOLD, 'told %d\n' % int(time.time()))
         except OSError:
             pass
     sio.log_event('desktop: notice shown (%s %s)' % (n['what'], n['kind']))
+    n.pop('line', None)
     return n
 
 
@@ -83,6 +191,12 @@ def main(argv):
         out = status()
     elif cmd == 'notice':
         out = cmd_notice()
+    elif cmd == 'wm' and len(argv) == 3:
+        try:
+            out = cmd_wm(argv[2])
+        except Fail as e:
+            print('error: %s' % e, flush=True)
+            return 1
     else:
         print(__doc__.strip(), file=sys.stderr)
         return 2

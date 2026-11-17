@@ -326,6 +326,9 @@ pub fn report(version: &str) -> String {
     }
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
+                      // 1.14: Mantel on KWin (nimbus-session's run_kwin), and the bridge between them.
+                      (data.join("kwin.log"), "Desktop Mode compositor (KWin)"),
+                      (run.join("hearth-kwin-bridge.log"), "Mantel's KWin bridge (hearth-kwin-bridge)"),
                       (data.join("briefcase.log"), "Hearth Files: Briefcase auto-sync"),
                       (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
                        "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
@@ -708,6 +711,9 @@ mod tests {
         // None of the older desktops' logs is written any more (1.13's KDE Plasma and GNOME were retired in 1.14); a
         // report still shows old ones.
         for f in ["kde.log", "gnome.log", "plasma.log", "cosmic.log"] { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
+        // 1.14: KWin's log is written by the session (run_kwin) and is in the report.
+        assert!(session.contains("/kwin.log\""));
+        assert!(include_str!("logs.rs").contains("data.join(\"kwin.log\")"));
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]

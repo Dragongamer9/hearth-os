@@ -1,5 +1,6 @@
 // Why Desktop Mode started the way it did, shown once a few seconds after Mantel starts (1.14): 1.13's KDE Plasma or
-// GNOME choice was retired (the owner, Nov 16: a choice that changes must tell the person). The session leaves the
+// GNOME choice was retired (the owner, Nov 16: a choice that changes must tell the person), or KWin didn't start and
+// Mantel opened on labwc (nimbus-session's safe start; twice in a row: "Use KWin again" turns it back on). The session leaves the
 // notice (nimbus-session's desk_notice); `hearth-your-desktop notice` hands it over once and marks it as shown, and
 // Settings › System › Your desktop keeps showing the last one. Controller: Up/Down and A; B closes it.
 import QtQuick
@@ -14,16 +15,23 @@ PanelWindow {
     property bool shown: false
     property var notice: ({})
     property int sel: 0
-    readonly property var items: [{ icon: "check", label: "Got it", sub: "Mantel is your desktop", cmd: "" },
-                                  { icon: "desktops", label: "Open Your desktop in Settings", sub: "Settings › System › Your desktop", cmd: "settings" }]
+    readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-your-desktop").toString().replace(/^file:\/\//, ""))
+    readonly property var items: (notice.what === "kwin" && notice.kind === "twice"
+            ? [{ icon: "check", label: "Use KWin again", sub: "From the next time Desktop Mode starts", cmd: "kwin" },
+               { icon: "close", label: "Stay on labwc", sub: "Settings › System › Your desktop changes it any time", cmd: "" }]
+            : [{ icon: "check", label: "Got it", sub: notice.what === "kwin" ? "Mantel works the same on labwc" : "Mantel is your desktop", cmd: "" }])
+        .concat([{ icon: "desktops", label: "Open Your desktop in Settings", sub: "Settings › System › Your desktop", cmd: "settings" }])
     function pick(i) {
         shown = false;
         const c = items[i] ? items[i].cmd : "";
         if (c === "settings" && settingsApp) settingsApp.open("your-desktop");
+        else if (c === "kwin") Quickshell.execDetached(["python3", helper, "wm", "kwin"]);
+        again.restart();   // the next one waiting, if there is one (KDE retired and KWin didn't start can both be)
     }
+    Timer { id: again; interval: 800; onTriggered: check.running = true }
     Process {
         id: check
-        command: ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-your-desktop").toString().replace(/^file:\/\//, "")), "notice"]
+        command: ["python3", root.helper, "notice"]
         stdout: StdioCollector { onStreamFinished: {
             let n = {}; try { n = JSON.parse(text.trim() || "{}"); } catch (e) {}
             if (n && n.title) { root.notice = n; root.sel = 0; root.shown = true; }
