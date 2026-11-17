@@ -138,3 +138,45 @@ jobs:
         with:
           name: remote-record-shots
           path: shots
+
+  # The pictures as notices too (title "SHOT <name> <n>", a small JPEG in base64 in parts of 3800 characters), so they can
+  # be put back together from the run's annotations. One step per picture (GitHub keeps 10 notices a step, 50 a job), each
+  # at most 8 parts.
+  notices:
+    name: Pictures as notices
+    needs: pictures
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: remote-record-shots
+          path: shots
+        continue-on-error: true
+      - name: Make them small
+        run: |
+          sudo apt-get install -y imagemagick >/dev/null 2>&1 || true
+          mkdir -p small
+          for f in shots/*.png; do
+            [ -f "$f" ] || continue
+            n=$(basename "$f" .png)
+            for w in 1100 960 800 640 520; do
+              for q in 70 55 40 30; do
+                convert "$f" -resize "${w}x" -strip -quality "$q" "small/$n.jpg"
+                [ "$(stat -c %s "small/$n.jpg")" -le 22500 ] && break 2
+              done
+            done
+            echo "$n: $(stat -c %s "small/$n.jpg") bytes"
+          done
+      - name: SHOT 1
+        run: f=$(ls small/1-*.jpg 2>/dev/null | head -1); [ -n "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -8 | while read -r i part; do echo "::notice title=SHOT $(basename "$f" .jpg) $i::$part"; done || true
+      - name: SHOT 2
+        run: f=$(ls small/2-*.jpg 2>/dev/null | head -1); [ -n "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -8 | while read -r i part; do echo "::notice title=SHOT $(basename "$f" .jpg) $i::$part"; done || true
+      - name: SHOT 3
+        run: f=$(ls small/3-*.jpg 2>/dev/null | head -1); [ -n "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -8 | while read -r i part; do echo "::notice title=SHOT $(basename "$f" .jpg) $i::$part"; done || true
+      - name: SHOT 4
+        run: f=$(ls small/4-*.jpg 2>/dev/null | head -1); [ -n "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -8 | while read -r i part; do echo "::notice title=SHOT $(basename "$f" .jpg) $i::$part"; done || true
+      - name: SHOT 5
+        run: f=$(ls small/5-*.jpg 2>/dev/null | head -1); [ -n "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -8 | while read -r i part; do echo "::notice title=SHOT $(basename "$f" .jpg) $i::$part"; done || true
+      - name: SHOT 6
+        run: f=$(ls small/6-*.jpg 2>/dev/null | head -1); [ -n "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -8 | while read -r i part; do echo "::notice title=SHOT $(basename "$f" .jpg) $i::$part"; done || true
