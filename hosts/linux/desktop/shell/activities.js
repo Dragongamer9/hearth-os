@@ -5,7 +5,10 @@
 // Hearth's own: it never needs KDE's activity manager. ~/.config/nimbus/activities.json, one top-level key each so a
 // change merges in alone:
 //   "current": "<id>"                          the one you're on ("default" when missing)
-//   "act:<id>": { name, icon, wallpaper, pins, order }
+//   "act:<id>": { name, icon, wallpaper, pins, order, recent }
+//       recent     "own" (missing too) = its own recent-files list: the files you opened while on it;
+//                  "all" = every activity's recent files; "off" = files opened on it aren't remembered (1.14, like
+//                  KDE's activity privacy; hearth_files_extras.py's activity_* keeps which activity was on when)
 //       wallpaper  "" = the desktop's own (Settings › Appearance); else a picture or "anim:…" as Settings.wallpaper
 //       pins       null/missing = the taskbar's own pins (desk.json); a list = this activity's own pinned apps
 //   "app:<app id>": "<id>"                     an app's windows open on this activity (set by Move to activity, or
@@ -17,6 +20,9 @@
 
 var DEFAULT = "default";
 var ICONS = ["home", "doc", "pad", "film", "palette", "globe", "chat", "rocket", "leaf", "steam"];
+var RECENT = ["own", "all", "off"];
+var RECENT_WORDS = { own: "Its own list", all: "Shared with every activity", off: "Don't remember" };
+function recentMode(a) { return a && RECENT.indexOf(a.recent) >= 0 ? a.recent : "own"; }
 
 // A list from the settings file, whatever form Qt hands it over in (a JavaScript array, or the list type a
 // value stored in a QML property can come back as, where Array.isArray says false); null when it isn't one.
@@ -42,9 +48,9 @@ function parse(obj) {
         list.push({ id: id, name: str(a.name).trim() || (id === DEFAULT ? "Main" : "Activity"),
                     icon: ICONS.indexOf(a.icon) >= 0 ? a.icon : (id === DEFAULT ? "home" : "desktops"),
                     wallpaper: str(a.wallpaper), pins: asList(a.pins) ? asList(a.pins).filter(function (p) { return typeof p === "string"; }) : null,
-                    order: typeof a.order === "number" ? a.order : (id === DEFAULT ? -1 : 0) });
+                    order: typeof a.order === "number" ? a.order : (id === DEFAULT ? -1 : 0), recent: recentMode(a) });
     }
-    if (!seen[DEFAULT]) list.push({ id: DEFAULT, name: "Main", icon: "home", wallpaper: "", pins: null, order: -1 });
+    if (!seen[DEFAULT]) list.push({ id: DEFAULT, name: "Main", icon: "home", wallpaper: "", pins: null, order: -1, recent: "own" });
     list.sort(function (a, b) { return a.order - b.order || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
     var apps = {};
     for (var j in o) if (j.indexOf("app:") === 0 && typeof o[j] === "string") apps[j.slice(4)] = o[j];

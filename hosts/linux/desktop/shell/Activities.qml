@@ -12,6 +12,9 @@ pragma Singleton
 // Switching hides (minimizes) the windows of the activity you leave and brings back the ones Hearth hid on the one you
 // go to; a window you minimized yourself stays minimized. The taskbars show only the current activity's windows
 // (Activities.shows(window), see docs/WIDGETS.md for the hook). Widgets carry their activity (widgets.json).
+// Recent files per activity: each switch is noted (hearth-files activity-mark), so a file belongs to the activity you
+// were on when you opened it; an activity has its own list ("own"), shares every one's ("all") or remembers nothing
+// ("off": what's opened on it is forgotten at each switch and every minute while you're on it). See hearth_files_extras.py.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -123,6 +126,7 @@ Singleton {
         saveRun();
         current = id;
         writer.merge({ current: id });
+        markActivity();
         applyPins();
         switched(id);
         SettingsNav.toast(name);
@@ -165,6 +169,18 @@ Singleton {
     }
     function windowsOn(id) { return seen.filter(e => e.act === id).length; }
 
+    // ------------------------------------------------ recent files per activity (hearth-files activity-mark / -tidy)
+    readonly property string filesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-files").toString().replace(/^file:\/\//, ""))
+    function markActivity() { if (many) Quickshell.execDetached(["python3", filesHelper, "activity-mark", current]); }   // only Main: nothing to note
+    // "own" | "all" | "off" (A.RECENT_WORDS): a choice you make in the switcher or Settings › Recent files.
+    function setRecent(id, mode) {
+        if (A.RECENT.indexOf(mode) < 0) return;
+        put(id, { recent: mode });
+        if (mode === "off") Quickshell.execDetached(["python3", filesHelper, "activity-tidy"]);
+    }
+    function recentOf(id) { return A.recentMode(A.find(list, id)); }
+    Timer { interval: 60000; repeat: true; running: act.loaded && act.recentOf(act.current) === "off"; onTriggered: Quickshell.execDetached(["python3", act.filesHelper, "activity-tidy"]) }
+
     function reparse() {
         const p = A.parse(raw);
         list = p.list;
@@ -206,6 +222,7 @@ Singleton {
                 act.current = p.current;
                 act.applyPins();
             }
+            if (first) act.markActivity();       // where this session starts (its recent files go there)
             act.loaded = true;
         }
         onLoadFailed: act.loaded = true

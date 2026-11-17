@@ -45,7 +45,7 @@ Scope {
         if (Reg.ALIASES[p]) p = Reg.ALIASES[p];
         // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page or its expander goes there).
         const m = /^([\w-]+):([\w-]+)$/.exec(p);
-        if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; p = m[1]; }
+        if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; SettingsNav.anchorAt = Date.now(); p = m[1]; }
         const id = Reg.resolve(p);
         // A page only on the live USB stays closed elsewhere; anything unknown opens Home.
         const e = Reg.page(id);

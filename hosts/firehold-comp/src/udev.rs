@@ -117,6 +117,77 @@ type UdevRenderer<'a> = MultiRenderer<
     GbmGlesBackend<GlesRenderer, DrmDeviceFd>,
 >;
 
+// An upscaled game's sharpening (render.rs) on the GLES renderer underneath.
+impl<'a, 'b> GameFilter
+    for MultiRenderer<'a, 'b, GbmGlesBackend<GlesRenderer, DrmDeviceFd>, GbmGlesBackend<GlesRenderer, DrmDeviceFd>>
+{
+    fn prepare_sharpen(&mut self) -> bool {
+        let gles: &mut GlesRenderer = self.as_mut();
+        gles_prepare_sharpen(gles)
+    }
+    fn sharpen_on<'frame, 'buffer>(
+        frame: &mut <Self as smithay::backend::renderer::RendererSuper>::Frame<'frame, 'buffer>,
+        texel: [f32; 2],
+        strength: f32,
+    ) -> bool
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
+        gles_sharpen_on(frame.as_mut(), texel, strength)
+    }
+    fn sharpen_off<'frame, 'buffer>(frame: &mut <Self as smithay::backend::renderer::RendererSuper>::Frame<'frame, 'buffer>)
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
+        let gles: &mut smithay::backend::renderer::gles::GlesFrame<'frame, 'buffer> = frame.as_mut();
+        gles.clear_tex_program_override();
+    }
+}
+
+/// VRR for a screen while a fullscreen game wants it (game.rs): only on screens that switch without a modeset;
+/// back off when the game goes. A failure is logged and the screen keeps its fixed rate.
+fn game_vrr(drm_output: &DrmOutput<
+    GbmAllocator<DrmDeviceFd>,
+    GbmFramebufferExporter<DrmDeviceFd>,
+    Option<OutputPresentationFeedback>,
+    DrmDeviceFd,
+>, output: &Output) {
+    let g = crate::game::output_state(output);
+    let want_game = g.game.get() && g.vrr.get();
+    if !want_game && !g.vrr_active.get() {
+        return;
+    }
+    let known = g.vrr_cap.get();
+    let (cap, active) = drm_output.with_compositor(|c| {
+        let cap = if known != crate::game::VrrCap::Unknown {
+            known
+        } else {
+            match c.current_connectors().into_iter().next().map(|h| c.vrr_supported(h)) {
+                Some(Ok(smithay::backend::drm::VrrSupport::Supported)) => crate::game::VrrCap::Yes,
+                Some(Ok(smithay::backend::drm::VrrSupport::RequiresModeset)) => crate::game::VrrCap::NeedsModeset,
+                Some(Ok(smithay::backend::drm::VrrSupport::NotSupported)) => crate::game::VrrCap::No,
+                _ => crate::game::VrrCap::No,
+            }
+        };
+        let want = crate::game::vrr_wanted(g.game.get(), &crate::game::GameSettings { vrr: g.vrr.get(), ..Default::default() }, cap);
+        let mut active = c.vrr_enabled();
+        if want != active {
+            match c.use_vrr(want) {
+                Ok(()) => {
+                    active = want;
+                    info!(output = %output.name(), on = want, "Firehold game: VRR (adaptive sync) {}", if want { "on" } else { "off" });
+                }
+                Err(e) => warn!(output = %output.name(), err = ?e, "Firehold game: VRR couldn't be switched; the screen keeps its fixed rate"),
+            }
+        }
+        (cap, active)
+    });
+    g.vrr_cap.set(cap);
+    g.vrr_active.set(active);
+}
+
 #[derive(Debug, PartialEq)]
 struct UdevOutputId {
     device_id: DrmNode,
@@ -1717,15 +1788,29 @@ fn render_surface<'a>(
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview, lock_view);
 
+    // Direct to the display (game.rs): a fullscreen game's buffer may take the primary plane in any format it
+    // takes; Smithay tests the planes first and composites as usual when they say no.
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()
     } else {
-        FrameFlags::DEFAULT
+        match crate::game::output_state(output).scanout.get() {
+            crate::game::ScanoutChoice::Normal => FrameFlags::DEFAULT,
+            crate::game::ScanoutChoice::PreferGame => FrameFlags::DEFAULT | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY,
+            crate::game::ScanoutChoice::Never => FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT,
+        }
     };
+    game_vrr(&surface.drm_output, output);
     let (rendered, states) = surface
         .drm_output
         .render_frame(renderer, &elements, clear_color, frame_mode)
         .map(|render_frame_result| {
+            if !render_frame_result.is_empty {
+                let direct = matches!(
+                    render_frame_result.primary_element,
+                    smithay::backend::drm::compositor::PrimaryPlaneElement::Element(_)
+                );
+                crate::game::note_scanout(output, direct);
+            }
             #[cfg(feature = "renderer_sync")]
             if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
                 element.sync.wait();
