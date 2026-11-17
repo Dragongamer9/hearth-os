@@ -13,6 +13,7 @@ It reads every connected controller from /dev/input and acts as a mouse and keyb
   Menu (☰)      apps                                Guide        Hearth menu (radial)
   View + D-pad  snap left/right, maximize, minimize View + B     close the window
   View (tap)    show these controls                 L3           middle-click
+  View + Y      the overview (Mantel on KWin: every window and desktop)
   Guide + X     on-screen keyboard (open / close), like Steam + X
 
 Controller apps (docs/CONTROLLER-FOCUS.md): while the window in front is an app that reads the controller itself
@@ -23,7 +24,7 @@ happens twice and LB / RB can't switch the app away. Guide still opens the Heart
 pointer back in that window (again: the app's). The shell says which window is in front: focus {app, title}.
 
 Talks to the shell with one JSON object per line: events out on stdout, commands in on stdin.
-Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-screen keyboard), launcher, help,
+Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-screen keyboard), launcher, help, overview,
      mouse {on}, toast {text}, owner {app, mouse} (the app that owns the controller now, '' for none; mouse: Guide + R3
      gave the pointer back); while the keyboard is open: oskpad {b, down} (every button but Guide and RT) and
      oskaxes {lx, ly, rx, ry} (the left stick; the right one too with split sticks).
@@ -775,6 +776,9 @@ class Pad:
                 self.tap('KEY_LEFTMETA', 'KEY_Q')
             else:
                 self.tap('KEY_ESC')
+        elif name == 'y' and view:
+            self.view_used = True
+            self.out.send({'t': 'overview'})      # View + Y: KWin's Overview (Mantel on KWin; Pad.qml)
         elif name == 'y':
             self.want_osk()
         elif name == 'menu':

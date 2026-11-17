@@ -7,6 +7,9 @@
 // the end shows the desktop (click again: the windows). A running app has a dot, the one in front a long accent dot.
 // Auto-hide (Zen's own, or Settings › Appearance › Bar and dock): hidden until the pointer touches the bottom edge
 // (the small handle), and while the on-screen keyboard is open the dock steps aside.
+// Mantel on KWin only (labwc can't show another app's window or KWin's views, so these aren't there on labwc):
+// resting the pointer on a running app shows live previews of its windows (KWin draws them, hearth-previews.qml),
+// and the Task view button next to the app menu opens KWin's Overview (right-click: Present windows, Desktop grid).
 // Loaded by shell.qml through a Loader: if this file can't load, the classic taskbar (Bar.qml) comes up instead.
 import QtQuick
 import QtQuick.Layouts
@@ -273,6 +276,17 @@ PanelWindow {
                     onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(dock.screen, startMenuBtn, "bottom")   // the Super+X menu
                     Image { anchors.centerIn: parent; width: 28; height: 28; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                 }
+                DockButton {   // Task view (KWin): the Overview; right-click for Present windows and the Desktop grid
+                    id: taskViewBtn
+                    visible: !dock.shelf && WinList.kwin
+                    tip: "Task view (Super+W)"
+                    onClicked: WinList.effect("overview")
+                    onRightClicked: dock.popupAt(taskViewBtn, "Task view", [
+                        { label: "Overview", icon: "desktops", short: "Overview", run: () => WinList.effect("overview") },
+                        { label: "Present windows (Ctrl+F10)", icon: "window", run: () => WinList.effect("windows") },
+                        { label: "Desktop grid (Ctrl+F8)", icon: "grid", run: () => WinList.effect("grid") }])
+                    Icon { anchors.centerIn: parent; name: "desktops"; size: 26 }
+                }
                 Rectangle { visible: !dock.shelf; implicitWidth: 1; implicitHeight: dock.tile * 0.6; color: Theme.line }
 
                 Repeater {
@@ -289,6 +303,8 @@ PanelWindow {
                         status: dock.shelf ? dock.statusLine(modelData) : ""
                         active: focused
                         running: wins.length > 0
+                        previewWins: wins
+                        previewKey: modelData.key
                         count: wins.length
                         draggable: modelData.pinned
                         dropMark: dock.dragFrom >= 0 && dock.dragTo === index && dock.dragTo !== dock.dragFrom ? (dock.dragTo < dock.dragFrom ? -1 : 1) : 0
@@ -406,6 +422,10 @@ PanelWindow {
         property int dropMark: 0
         property bool dragging: false
         property real dragOffset: 0
+        property var previewWins: []       // KWin: the windows whose live previews show while the pointer rests here
+        property string previewKey: ""
+        readonly property bool previews: WinList.previewsReady && previewWins.length > 0 && !dock.shelf
+        property bool previewShown: false
         default property alias content: holder.data
         signal clicked()
         signal middleClicked()
@@ -415,6 +435,21 @@ PanelWindow {
         signal dragEnded()
         z: dragging ? 5 : 0
         transform: Translate { x: btn.dragOffset }
+        // Previews: after a short rest (at once when moving over from another app's), above the dock.
+        function showPreview() {
+            if (!area.containsMouse || btn.dragging || !btn.previews) return;
+            const top = btn.mapToItem(body, 0, 0).y;
+            previewShown = WinList.preview(btn.previewWins, "bottom", top + area.mouseY, btn.width / 2 - area.mouseX, btn.previewKey);
+            if (previewShown) DeskState.previewAt = Date.now();
+        }
+        function endPreview(now) { previewWait.stop(); if (previewShown) { previewShown = false; WinList.previewHide(now); DeskState.previewAt = Date.now(); } }
+        Timer { id: previewWait; interval: Date.now() - DeskState.previewAt < 500 ? 60 : 450; onTriggered: btn.showPreview() }
+        Connections {
+            target: area
+            function onContainsMouseChanged() { if (area.containsMouse && btn.previews) previewWait.restart(); else btn.endPreview(false); }
+            function onPressed() { btn.endPreview(true); }
+        }
+        onPreviewWinsChanged: if (previewShown && previewWins.length === 0) endPreview(true)
         implicitWidth: dock.tile
         implicitHeight: dock.shelf ? dock.tile * 1.18 : dock.tile
         Rectangle {
@@ -476,8 +511,8 @@ PanelWindow {
                 else btn.clicked();
             }
         }
-        PopupWindow {   // the hover label above the dock
-            visible: area.containsMouse && btn.tip !== "" && !btn.dragging && !dock.shelf
+        PopupWindow {   // the hover label above the dock (KWin's live previews take its place for a running app)
+            visible: area.containsMouse && btn.tip !== "" && !btn.dragging && !dock.shelf && !btn.previews
             anchor.item: btn
             anchor.rect.x: Math.round(btn.width / 2 - implicitWidth / 2)
             anchor.rect.y: -implicitHeight - 14

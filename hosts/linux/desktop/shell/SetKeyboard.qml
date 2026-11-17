@@ -44,12 +44,19 @@ SetPage {
     Component.onCompleted: {
         load();
         job.run(["keyboard-layouts"], r => page.all = r.layouts || []);
-        job.run(["shortcuts"], r => page.shortcuts = r.shortcuts || []);
+        job.run(["shortcuts"], r => { page.shortcuts = r.shortcuts || []; if (SettingsNav.pageAnchor === "shortcuts") toShortcuts.restart(); });
         kdeJob.run(["keys", "changed"], r => {                               // reads only
             page.kdeKeys = r.count || 0;
             // "keyboard:kde-keys" (the bridge's notice points here): scrolled to the button once it's there.
             if (SettingsNav.pageAnchor === "kde-keys") { SettingsNav.pageAnchor = ""; if (page.kdeKeys > 0) kdeGo.restart(); }
         });
+    }
+    // "keyboard:shortcuts": Settings opened at the shortcuts. Under KWin (Mantel on KWin) they're Hearth's KWin keys:
+    // the Overview, Present windows, Desktop grid, force closing... which come last, so it goes to the end of the list.
+    Timer {
+        id: toShortcuts
+        interval: 400
+        onTriggered: { SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, page.contentHeight - page.height); }
     }
     SetJob { id: job; helper: "hearth-system" }
     function apply() {

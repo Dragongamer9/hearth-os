@@ -37,12 +37,12 @@ Counts (done · partly · missing): Stage 1 19 · 6 · 3 (one line added by this
 
 - [x] Window list for the taskbar, dock, centre pill, Task Manager, Discord and Snap layouts — WinList.qml, hearth-kwin-bridge, kwin/windows/hearth-windows.js; Dock/TaskStrip/Bar/Islands/TaskManagerView/Discord/SnapLayouts/Pad: "WinList.toplevels"; test_kwin_windows.py "test_script_against_pretend_kwin", "test_no_direct_toplevel_manager"; kwin-windows.yml end to end (needs testing on a device)
 - [x] Window actions from the taskbar (minimize, maximize, close, move to desktop, keep above, on all desktops, fullscreen) — hearth-windows.js `run()`: "case \"keepAbove\"", "case \"allDesktops\"", "case \"fullscreen\"", "case \"desktop\""; Dock.qml: "if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }"; test_kwin_windows.py "test_window_actions_are_known" (needs testing on a device)
-- [ ] Window previews on hover in the dock/taskbar. Left: KWin's window thumbnails through the bridge, or a ScreenCast stream per window (M)
+- [x] Window previews on hover in the dock/taskbar — kwin/windows/hearth-previews.qml (KWin declarative script, loaded by hearth-kwin-bridge): "WindowThumbnail"; Dock.qml / TaskStrip.qml: "WinList.preview(btn.previewWins"; kwin-windows.yml: "the previews card shows over the desktop", picture "kwin-preview-zoom" (needs testing on a device)
 - [x] Title bars in Hearth's look — theme/hearth_aurorae.py, kwin/windows/xdg/kwinrc: "theme=__aurorae__svg__hearth"; test_kwin_windows.py "test_aurorae_files", "test_labwcs_colours"; kwin-windows.yml pictures "kwin-frame-active/inactive/maximized/hearth-gold/csd" (needs testing on a device)
 - [x] Title bar right-click menu with Hearth's items — hearth-windows.js: "registerUserActionsMenu … \"Snap layouts…\"" plus each zone; KWin's own menu has Move to desktop, Keep above, Close; kwin-windows.yml picture "kwin-window-menu" (needs testing on a device)
-- [ ] Alt+Tab window switcher in Hearth's look — Hearth has: KWin's default switcher (no Hearth TabBox layout anywhere in kwin/). Left: a Hearth task-switcher QML layout for KWin's TabBox, picked in Hearth's kwinrc defaults (S)
+- [x] Alt+Tab window switcher in Hearth's look — os/system_files/usr/share/kwin/tabbox/org.hearth.switcher (and kwin-wayland/tabbox): "KWin.TabBoxSwitcher"; kwin/windows/xdg/kwinrc: "LayoutName=org.hearth.switcher"; kwin-windows.yml: "Alt+Tab switches to the other window", picture "kwin-alt-tab" (needs testing on a device)
 - [x] Snapping: drag to edges and corners, Super+arrows, halves and quarters — kwin/xdg/kwinrc: "ElectricBorderTiling=true"; shortcuts.json "snap-left … snap-down" (win: left/right/up/down); test_kwin_windows.py "test_zones_match_snap_layouts_and_labwc"; picture "kwin-halves" (needs testing on a device)
-- [ ] Snap layouts (Super+Z, Maximize right-click) — partly: Super+Z and the title bar menu's Snap place windows through WinList.snap (SnapLayouts.qml: "if (WinList.kwin) { WinList.snap(win, q.id); return; }", picture "kwin-snap-layouts"). Left: right-click (or rest the pointer) on Maximize opening Snap layouts under KWin (Aurorae's button does KWin's own thing) (S)
+- [x] Snap layouts (Super+Z, Maximize) — Super+Z and the title bar menu as before; resting the pointer on Maximize: hearth-windows.js "onCursor" / "HoverMax", hearth-kwin-bridge "HOVER_WAIT", SnapLayouts.qml "hoverOpen"; kwin-windows.yml: "resting on Maximize opens Snap layouts under the button", picture "kwin-snap-maximize-zoom". (Hover, not right-click: KWin doesn't tell scripts about clicks on its buttons) (needs testing on a device)
 - [x] Virtual desktops: the bar's switcher, Super+Ctrl+arrows/1–4, move window to desktop — kwin/windows/xdg/kwinrc "[Desktops] Number=4"; DeskSwitcher.qml: "if (WinList.kwin) return WinList.desktops…"; shortcuts.json "desktop-1…4", "window-to-desktop-1…4"; test_kwin_windows.py "test_same_keys_and_commands" (needs testing on a device)
 - [x] Show desktop (Super+D) and minimize all (Super+M) — shortcuts.json "show-desktop": "call taskbar showDesktop"; kdeKeys frees KDE's Super+D; test_kwin_windows.py "test_kde_keys_table" (needs testing on a device)
 
@@ -115,9 +115,9 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 
 ### Overview, switcher, desktops
 
-- [ ] Overview (Super+W): all windows and desktops, search, drag windows between desktops (M)
-- [ ] Window view / Present windows (S)
-- [ ] Desktop grid (S)
+- [x] Overview (Super+W): all windows and desktops, search, drag windows between desktops — KWin's own, in Hearth's KDE colour scheme, opened from Mantel: Dock.qml / TaskStrip.qml Task view button "WinList.effect(\"overview\")", shortcuts.json "overview" (Meta+W, KDE's freed), hearth-pad View + Y; Milou in the image (build.sh "optional milou"); kwin-windows.yml: "Super+W opens the Overview", picture "kwin-overview" (needs testing on a device)
+- [x] Window view / Present windows — KWin's, from the Task view button's menu and Ctrl+F10 (shortcuts.json "present-windows"); kwin-windows.yml picture "kwin-present-windows" (needs testing on a device)
+- [x] Desktop grid — KWin's, from the Task view button's menu and Ctrl+F8 (shortcuts.json "desktop-grid"); kwin-windows.yml picture "kwin-desktop-grid" (needs testing on a device)
 - [ ] Window switcher styles (Thumbnail grid, Large icons, … Cover switch, Flip switch) and their settings (M)
 - [ ] Second switcher (Alt+`, same app's windows) (S)
 - [ ] Virtual desktops: add, remove, rename, rows, wrap around, OSD — Hearth has: 4 fixed, named desktops (kwin/windows/xdg/kwinrc "[Desktops]") (M)
@@ -132,10 +132,10 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [ ] Snap zones: edges stick, gap sizes — partly: Snap layouts' gap (shortcuts.json "gap": 6). Left: the sliders (S)
 - [ ] Window rules page (per app, "Detect window", presets) — partly: one built-in rule (shortcuts.json "rules": Task Manager kept on top; hearth-windows.js `applyRules`). Left: the users' page and KWin's rule file (L)
 - [ ] Window menu "More actions" — partly: KWin's own window menu (keep above, all desktops, fullscreen) with Hearth's Snap. Left: shade, no border and special window settings in Hearth's look (S)
-- [ ] Kill a frozen window (Ctrl+Alt+Esc) and "not responding" in Hearth's look (S)
+- [x] Kill a frozen window (Ctrl+Alt+Esc) in Hearth's look — ForceClose.qml ("Click the window that isn't responding", "Force close"), title bar menu "Force close (not responding)…", hearth-kwin-bridge "queryWindowInfo" / "KILL_WAIT" / "killable"; kwin-windows.yml: "Force close ends a frozen window (asked, then made to)", pictures "kwin-force-close-pick", "kwin-force-close". Left: KWin's own automatic "not responding" notice stays KWin's (needs testing on a device)
 - [x] Session restore: reopen apps after restart — SessionRestore.qml, SetStartup.qml "Reopen my apps from last time" (off by default, WinList); test_system_settings_114.py "test_off_by_default_and_only_at_sign_in" (needs testing on a device)
 - [ ] Plasma's KWin scripts (Minimize all, Desktop change OSD, video wall, sync skip-switcher) — Hearth has: Minimize all (show-desktop-2) (S)
-- [ ] Exclude a window from screen sharing (title bar menu) (S)
+- [x] Exclude a window from screen sharing (title bar menu) — hearth-windows.js "Hide from screen sharing" (and KWin's excludeFromCapture where it has it); hearth_screencast.py "hidden_windows"; cast-picker.qml "hidden from sharing and not listed"; kwin-windows.yml: "the screen-sharing picker leaves the hidden window out", pictures "kwin-window-menu-extras", "kwin-cast-hidden" (needs testing on a device)
 - [ ] Picture-in-picture windows: check Hearth Player and browsers use it under KWin (S)
 
 ### Screen edges, gestures, input
@@ -247,10 +247,10 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Contacts from the phone into Hearth Contacts — plugins/contacts.rs; test_phone_link.py (needs testing on a device)
 - [x] Browse the phone's files (SFTP) — plugins/sftp.rs (sshfs); test_phone_link.py (needs testing on a device)
 - [x] Run commands — plugins/runcommand.rs, SetPhone.qml; test_phone_link.py (needs testing on a device)
-- [ ] Phone controls PC volume, lock, presentation remote — partly: volume (plugins/systemvolume.rs) and the presentation remote (plugins/presenter.rs), tested in test_phone_link.py. Left: `kdeconnect.lock` (lock this PC from the phone) (S)
-- [ ] PC sends its notifications to the phone; PC as a remote keyboard for the phone (`kdeconnect.notification` and `.mousepad` outgoing) (M)
-- [ ] Signal report, stop the screensaver while connected, share text and URLs — partly: signal (`kdeconnect.connectivity_report`) and the phone's camera (`kdeconnect.photo`). Left: inhibit while connected, text/URL shares checked (S)
-- [ ] Phone as a second screen, Bluetooth link (L)
+- [x] Phone controls PC volume, lock, presentation remote — hosts/hearth-connect/src/plugins/lock.rs (never unlocks), systemvolume.rs, presenter.rs; test_phone_link.py: "test_20a_lock_this_pc_from_the_phone"; phone-link.yml round2 pictures (needs testing on a device)
+- [x] PC sends its notifications to the phone; PC as a remote keyboard for the phone — plugins/sendnotify.rs (session bus watch, choices in settings.json "notifyOut"), plugins/remote.rs, PhoneRemote.qml; test_phone_link.py: "test_20b_this_pcs_notifications_on_the_phone", "test_20c_this_pc_types_and_points_on_the_phone" (needs testing on a device)
+- [x] Signal report, stop the screensaver while connected, share text and URLs — daemon.rs set_awake (logind idle:sleep inhibitor), plugins/mod.rs share_notice (Copy / Open), "send"; test_phone_link.py: "test_20d_calls_mute_and_staying_awake", "test_20e_text_and_links_both_ways" (needs testing on a device)
+- [ ] Phone as a second screen, Bluetooth link (L) — later (the owner's round 2 list leaves them out)
 - [x] Phone tray item and Settings page — PhoneStatus.qml, SetPhone.qml, Quick Access tile; phone-link.yml pictures (needs testing on a device)
 
 ### Remote desktop and screen recording
@@ -266,18 +266,18 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Views, tabs, places, Trash, previews, filter, search, hidden files, archives, batch rename, Open in Terminal, network shares, undo, details, properties — `FileManager.qml`, `hearth-files`, `FileProperties.qml`
 - [ ] Split view (F3) — on unmerged feature/search-store (M)
 - [ ] Terminal panel (F4) — on unmerged feature/search-store (M)
-- [ ] Tags, ratings and comments (M)
-- [ ] Group by (S)
-- [ ] Git status badges (S)
-- [ ] Act as administrator (M)
-- [ ] Checksums, permissions and owner tabs in Properties (S)
-- [ ] Mount an ISO, MTP phones, PTP cameras (M)
-- [ ] Service menus (M)
+- [ ] Tags, ratings and comments (M) — partly: tags (user.xdg.tags, Tags › menu, a Tags list in the left menu, find by tag; hearth_files_extras.py, FilesExtras.qml; test_files_extras.py: "test_tags_set_list_find_and_in_listings"; files-extras.yml pictures). Left: ratings and comments (S)
+- [x] Group by — FileManager.qml (type, date, size, tag); files-extras.yml "files-x1-tags-grouped" (needs testing on a device)
+- [x] Git status badges — hearth_files_extras.py git_status, FilesMarks.qml; test_files_extras.py: "test_git_status_badges"; files-extras.yml "files-x4-git" (needs testing on a device)
+- [x] Act as administrator — FilesExtras.qml, os/system_files/usr/libexec/nimbus/hearth-files-admin (never /boot, /efi, the image, fstab, kernel/boot settings), 49-hearth-admin.rules AUTH_ADMIN_KEEP; test_files_extras.py: "test_never_what_starts_the_pc"; files-extras.yml "files-x6-admin" (needs testing on a device)
+- [x] Checksums, permissions and owner tabs in Properties — FileProperties.qml (SHA-512, compare a pasted one, group, whole folder, owner as administrator); test_files_extras.py: "test_chmod_tree_and_groups"; files-extras.yml "files-x7-checksums", "files-x8-permissions" (needs testing on a device)
+- [x] Mount an ISO, MTP phones, PTP cameras — hearth_files_extras.py iso_mount (udisks, read only), portable (gvfs); test_files_extras.py: "test_iso_mount_and_close_through_udisks", "test_phones_and_cameras_from_gio"; files-extras.yml "files-x5-iso-menu", "files-x1-tags-grouped" (needs testing on a device)
+- [x] Service menus — hearth_files_extras.py service_menus / service_run (kio/servicemenus, kservices5/ServiceMenus); test_files_extras.py: "test_service_menus_kde_style"; files-extras.yml "files-x2-menu" (needs testing on a device)
 
 ### File search and indexing
 
 - [ ] File indexing (names and contents) with folders to skip and battery limits — on unmerged feature/search-store (XL)
-- [ ] Recent files tracking and "forget recent files" (S)
+- [x] Recent files tracking and "forget recent files" — SetRecentFiles.qml, hearth_files_extras.py recent_*; test_files_extras.py: "test_recent_files_privacy"; files-extras.yml "files-x10-recent-privacy" (needs testing on a device)
 
 ### Passwords, wallet, vaults
 
@@ -311,7 +311,7 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Proxy settings (none, automatic, by hand) — SetProxy.qml, hearth-network; test_system_settings_114.py "test_proxy_saved_with_settings_io_and_handed_on" (needs testing on a device)
 - [ ] Firewall page (M)
 - [ ] Duplicate a connection, network speed in the tray (S)
-- [ ] "Share this folder" (SMB) in Files' Properties (S)
+- [x] "Share this folder" (SMB) in Files' Properties — FileProperties.qml Sharing tab through hearth-home-server; test_files_extras.py: "test_share_this_folder_through_home_server"; files-extras.yml "files-x9-sharing" (needs testing on a device)
 
 ### Online accounts
 

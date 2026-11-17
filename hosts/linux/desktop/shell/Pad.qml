@@ -34,7 +34,7 @@ Scope {
     // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files". Hearth Files built from Dolphin
     // (app id org.kde.dolphin, hosts/hearth-kde) too: it does LB/RB, LT/RT and View itself (hearthgamepad.cpp).
     readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (steamFallback !== null && steamFallback.shown) || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && String(active.title).indexOf("Task Manager") === 0) || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files") || active.appId === "org.kde.dolphin"))
-        || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
+        || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.forceCloseShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || (active !== null && active.title === "Resource Monitor")   // ResourceMonitor.qml (LB / RB switch its tabs: hearth-pad)
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
@@ -172,6 +172,8 @@ Scope {
         case "oskpad": keyboard.padButton(m.b, !!m.down); break;
         case "oskaxes": keyboard.padAxes(m.lx || 0, m.ly || 0, m.rx || 0, m.ry || 0); break;
         case "launcher": launcher.toggle(); break;
+        // View + Y: KWin's Overview (Mantel on KWin; labwc has none, so it says so).
+        case "overview": if (WinList.kwin) WinList.effect("overview"); else help.toast("The overview needs Mantel on KWin"); break;
         case "help": help.toggle(); break;
         case "toast": help.toast(m.text); break;
         case "mouse": mouseOn = m.on; break;

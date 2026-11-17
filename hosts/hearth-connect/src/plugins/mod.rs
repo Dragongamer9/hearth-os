@@ -11,12 +11,20 @@
 //! - connectivity: the phone's signal and network (kdeconnect.connectivity_report, below)
 //! - photo: take a picture with the phone's camera (kdeconnect.photo.request; the picture comes back as a file)
 //! - notify_bus.rs: the phone's notifications in Mantel with their buttons and a Reply box, and calls' Mute ringer
+//! - lock.rs: lock this PC from the phone, and the phone sees whether it's locked (never unlock)
+//! - sendnotify.rs: this PC's notifications on the phone (with the choices of what goes)
+//! - remote.rs: this PC as the phone's keyboard and touchpad (the phone's Remote keyboard and mouse receiver)
+//! - share notices: text and links from the phone with Copy / Open buttons (share_notice, below)
+//! - stay awake: daemon.rs set_awake (no screen-off or sleep while a phone set to keep it awake is linked)
 //!
 //! What they remember about a phone lives here while the service runs (the phone has all of it; nothing is saved).
 //! The person's choices for a phone (pause media in calls, run commands) are in paired.json with the others.
 
 pub mod contacts;
+pub mod lock;
 pub mod notify_bus;
+pub mod remote;
+pub mod sendnotify;
 pub mod presenter;
 pub mod runcommand;
 pub mod sftp;
@@ -71,6 +79,12 @@ pub fn handle(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet, pd: &PairedDev)
         "kdeconnect.systemvolume.request" => if pd.volume { systemvolume::packet(d, id, p) },
         "kdeconnect.sftp" => sftp::packet(d, id, from, p),
         "kdeconnect.contacts.response_uids_timestamps" | "kdeconnect.contacts.response_vcards" => contacts::packet(d, id, p),
+        "kdeconnect.lock.request" => if pd.lock { lock::packet(d, id, from, p) } else if p.has("requestLocked") || p.has("setLocked") {
+            // Off for this phone: it hears "not locked" and can't lock it.
+            let _ = d.send_body(id, "kdeconnect.lock", json!({"isLocked": false}));
+        },
+        "kdeconnect.notification.request" => sendnotify::phone_request(d, id, p),
+        "kdeconnect.mousepad.echo" => d.emit("remote-echo", json!({"device": id, "body": p.body})),
         "kdeconnect.connectivity_report" => {
             let v = p.body.get("signalStrengths").cloned().unwrap_or(json!({}));
             with(id, |s| s.signal = Some(v));
@@ -79,6 +93,30 @@ pub fn handle(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet, pd: &PairedDev)
         _ => return false,
     }
     true
+}
+
+/// Text or a link the phone shared: a notification with Copy (and Open for a link). Nothing opens by itself: a link
+/// opens only when you press Open (KDE Connect's desktop opens it at once; a phone shouldn't open pages here unasked).
+pub fn share_notice(d: &Arc<Daemon>, _id: &str, from: &str, kind: &str, content: &str) {
+    let (summary, icon) = if kind == "url" { (format!("{from} shared a link"), "applications-internet") } else { (format!("{from} shared text"), "edit-paste") };
+    let shown: String = content.chars().take(200).collect();
+    let mut actions = vec![("copy".to_string(), "Copy".to_string())];
+    if kind == "url" { actions.insert(0, ("open".to_string(), "Open".to_string())); }
+    let (d2, text, is_url) = (d.clone(), content.to_string(), kind == "url");
+    let n = notify_bus::notify(&summary, &shown, icon, 0, false, &actions, None, Arc::new(move |ev| if let notify_bus::Event::Action(k) = ev {
+        match k.as_str() {
+            "copy" => { let t = text.clone(); std::thread::spawn(move || crate::desktop::clipboard_set(&t)); d2.emit("copied", json!({})); }
+            "open" if is_url => {
+                let t = text.clone();
+                if t.starts_with("http://") || t.starts_with("https://") {
+                    std::thread::spawn(move || { if let Ok(mut c) = crate::desktop::cmd("xdg-open").arg(&t).spawn() { let _ = c.wait(); } });
+                }
+            }
+            "default" => notify_bus::open_page("phone"),
+            _ => {}
+        }
+    }));
+    if n.is_none() { d.notify_desktop(&summary, &shown, icon, false); }
 }
 
 /// "Pixel 8 wants to pair", with Accept and Decline (and the key to check); it goes once the request is answered.
@@ -132,6 +170,7 @@ pub fn device_state(id: &str) -> Value {
 
 const COMMANDS: &[&str] = &[
     "commands", "command_add", "command_remove", "contacts", "photo", "sms_threads", "sms_thread", "sms_refresh", "sms_send", "mute_call", "browse", "unmount",
+    "notify_out", "notify_out_set", "remote_key", "remote_text", "remote_mouse", "send", "lock_state", "copy_shared", "open_shared",
 ];
 
 pub fn knows(cmd: &str) -> bool { COMMANDS.contains(&cmd) }
@@ -174,6 +213,36 @@ pub async fn command(d: &Arc<Daemon>, cmd: &str, a: &Value) -> Result<Value, Str
         "mute_call" => { let id = s("id")?; paired(&id)?; d.send_body(&id, "kdeconnect.telephony.request_mute", json!({})).map(|_| json!({})) }
         "browse" => { let id = s("id")?; paired(&id)?; sftp::browse(d, &id) }
         "unmount" => { let id = s("id")?; sftp::unmount(&id); d.changed(); Ok(json!({})) }
+        "notify_out" => Ok(json!({"prefs": sendnotify::prefs(&d.home), "apps": sendnotify::seen()})),
+        "notify_out_set" => { let r = sendnotify::set_prefs(&d.home, a.get("prefs").unwrap_or(&json!({})))?; d.changed(); Ok(r) }
+        "remote_key" => { let id = s("id")?; paired(&id)?; remote::key(d, &id, a) }
+        "remote_text" => { let id = s("id")?; paired(&id)?; remote::text(d, &id, &s("text")?) }
+        "remote_mouse" => { let id = s("id")?; paired(&id)?; remote::mouse(d, &id, a) }
+        // Settings › Phone's "Send text or a link": a link goes as a link (the phone offers to open it), anything else as text.
+        "send" => {
+            let id = s("id")?;
+            paired(&id)?;
+            let t = s("text")?.trim().to_string();
+            if t.is_empty() { return Err("Type something to send".into()); }
+            let link = !t.contains(char::is_whitespace) && (t.starts_with("http://") || t.starts_with("https://"));
+            d.send_body(&id, "kdeconnect.share.request", if link { json!({"url": t}) } else { json!({"text": t}) })?;
+            Ok(json!({"kind": if link { "url" } else { "text" }}))
+        }
+        "lock_state" => Ok(json!({"locked": tokio::task::spawn_blocking(lock::is_locked).await.ok().flatten()})),
+        // A shared text or link from the list in Settings › Phone (only what a phone shared: d.texts).
+        "copy_shared" | "open_shared" => {
+            let at = a.get("at").and_then(|v| v.as_i64()).ok_or("missing at")?;
+            let item = crate::lock(&d.texts).iter().find(|t| t["at"].as_i64() == Some(at)).cloned().ok_or("That isn't in the list any more")?;
+            let content = item["url"].as_str().or_else(|| item["text"].as_str()).unwrap_or("").to_string();
+            if cmd == "copy_shared" {
+                let ok = tokio::task::spawn_blocking(move || crate::desktop::clipboard_set(&content)).await.unwrap_or(false);
+                if ok { Ok(json!({})) } else { Err("The clipboard can't be reached here".into()) }
+            } else {
+                if !(content.starts_with("http://") || content.starts_with("https://")) { return Err("Only web links open".into()); }
+                tokio::task::spawn_blocking(move || crate::desktop::cmd("xdg-open").arg(&content).spawn().map(|_| ()).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())??;
+                Ok(json!({}))
+            }
+        }
         _ => Err(format!("unknown command {cmd}")),
     }
 }

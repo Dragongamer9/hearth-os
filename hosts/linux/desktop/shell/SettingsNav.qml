@@ -41,6 +41,7 @@ Singleton {
     property bool mixerShown: false
     property var snap: null
     property bool snapShown: false
+    property bool forceCloseShown: false   // ForceClose.qml's "Force close it?" (KWin): the controller types keys
     property var discord: null        // Discord (Discord.qml): the bar's Discord button toggles its small window
     property bool discordShown: false // its "Which Discord?" chooser is open
     property var winTools: null       // Device Manager, Run and the Super+X menu (WinTools.qml): the Start button's right-click
