@@ -12,6 +12,7 @@ pub mod drawing;
 pub mod edid;
 pub mod focus;
 pub mod foreign_toplevel;
+pub mod game;
 pub mod gamma;
 #[cfg(feature = "headless")]
 pub mod headless;
