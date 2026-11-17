@@ -65,6 +65,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      the boot splash preset for the next starts (hearth-boot-look; Settings ›
                                      Boot & startup): nothing rebuilt, the boot menu gets plymouth.splash=
   hearth-admin timezone ZONE         the time zone (one from timedatectl list-timezones)
+  hearth-admin oem-finish            first-time setup on a pre-installed PC (hearth-oem-account's stand-in account
+                                     only, while /var/lib/hearth/oem-setup.json is there); stdin: {"full": ...,
+                                     "password": ... | "nopassword": true, "timezone": ...}
   hearth-admin ntp on|off            set the time from the internet, or not
   hearth-admin time-set "YYYY-MM-DD HH:MM"
                                      set the clock by hand (only while automatic time is off)
@@ -2157,6 +2160,68 @@ def timezone(zone):
     print(json.dumps({'ok': True, 'timezone': zone}))
 
 
+OEM_MARK = '/var/lib/hearth/oem-setup.json'
+
+
+def oem_finish_check(req, mark_user, me):
+    """First-time setup on a pre-installed PC (hearth-oem-account): what to change, or a message. Only the stand-in
+    account itself, only while its file is there. Returns (full, password or None for no password, zone)."""
+    if not mark_user or mark_user != me:
+        return 'this is only for first-time setup on a pre-installed PC'
+    if not isinstance(req, dict):
+        return 'expected {"full": ..., "password": ..., "timezone": ...}'
+    full = str(req.get('full') or '').strip()
+    if not full or len(full) > 64 or any(c in full for c in ':,\n\r=\\'):
+        return 'type your name (no : , = or \\ in it)'
+    nopass = req.get('nopassword') is True
+    pw = '' if nopass else str(req.get('password') or '')
+    if not nopass and len(pw) < 4:
+        return 'the password needs at least 4 characters (or choose No password)'
+    if '\n' in pw or '\r' in pw:
+        return 'the password can\'t contain line breaks'
+    zone = req.get('timezone') or ''
+    if zone and not (isinstance(zone, str) and TIMEZONE_RE.fullmatch(zone) and '..' not in zone):
+        return 'unknown time zone'
+    return full, (None if nopass else pw), zone
+
+
+def oem_finish():
+    """stdin {"full", "password" | "nopassword": true, "timezone"}: your name shown on the account, its password and
+    the time zone, then the stand-in mark is removed. The account's sign-in name stays (it's signed in right now)."""
+    me = caller().pw_name
+    try:
+        with open(OEM_MARK) as f:
+            mark_user = (json.load(f) or {}).get('user')
+    except (OSError, ValueError, AttributeError):
+        mark_user = None
+    try:
+        req = json.loads(sys.stdin.readline() or 'null')
+    except ValueError:
+        req = None
+    got = oem_finish_check(req, mark_user, me)
+    if isinstance(got, str):
+        fail(got)
+    full, pw, zone = got
+    if zone:
+        if not valid_timezone(zone):
+            fail('unknown time zone')
+        code, out = admin_run(['timedatectl', 'set-timezone', zone])
+        if code != 0:
+            fail('couldn\'t change the time zone (%s)' % last_line(out, 'timedatectl failed'))
+    code, out = admin_run(['usermod', '-c', full, me])
+    if code != 0:
+        fail('couldn\'t set your name (%s)' % last_line(out, 'usermod failed'))
+    if pw is not None:
+        code, out = admin_run(['chpasswd'], input=f'{me}:{pw}\n')
+        if code != 0:
+            fail('couldn\'t set the password (%s)' % last_line(out, 'chpasswd failed'))
+    try:
+        os.remove(OEM_MARK)
+    except FileNotFoundError:
+        pass
+    print(json.dumps({'ok': True, 'user': me, 'full': full, 'password': pw is not None, 'timezone': zone}))
+
+
 def ntp(state):
     caller()
     if state not in ('on', 'off'):
@@ -2789,6 +2854,8 @@ def main(argv):
         os.execv(sys.executable, [sys.executable, helper, 'splash', argv[2]])
     elif cmd == 'timezone' and len(argv) == 3:
         timezone(argv[2])
+    elif cmd == 'oem-finish' and len(argv) == 2:
+        oem_finish()
     elif cmd == 'ntp' and len(argv) == 3:
         ntp(argv[2])
     elif cmd == 'time-set' and len(argv) == 3:

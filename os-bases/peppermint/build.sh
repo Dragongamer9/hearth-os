@@ -1896,6 +1896,10 @@ if [ -d /etc/X11 ]; then echo /usr/bin/sddm > /etc/X11/default-display-manager; 
 
 # ------------------------------------------------------------------ boot straight into Hearth
 systemctl enable nimbus-autologin.service
+# A pre-installed PC (bootc install, no Hearth installer) has no account: a stand-in one for first-time setup, made
+# before the autologin (hearth-oem-account; does nothing once there's an account, never a stop).
+chmod 755 /usr/libexec/nimbus/hearth-oem-account
+systemctl enable hearth-oem-account.service
 systemctl enable hearth-greeter-pad.service
 # Hearth's own login screen (1.14, a test): inert unless turned on in Settings (hearth-login-select picks SDDM by
 # default and whenever anything is missing; SDDM stays display-manager.service).

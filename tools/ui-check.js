@@ -2666,6 +2666,44 @@ const path = require('path');
     await sp.close();
   }
 
+  // First-time setup on a pre-installed PC (hearth-oem-account, host.info oemSetup): a "Make it yours" step after the
+  // internet asks for your name, a password (or No password) and the time zone; Next refuses until they're filled in.
+  // Without oemSetup there's no such step. Picture: tools/qa-shots/setup-oem-account.jpg (SHOT setup-oem-account).
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    sp.on('pageerror', e => errors.push('pre-installed PC: ' + e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(800);
+      const r = await sp.evaluate(async () => {
+        const out = [], w = ms => new Promise(res => setTimeout(res, ms)), txt = () => document.querySelector('#view').innerText;
+        if (SETUP_STEPS.includes('account')) out.push('the account step shows without oemSetup');
+        setupOem(true); setupOem(true);
+        if (SETUP_STEPS.filter(s => s === 'account').length !== 1 || SETUP_STEPS[SETUP_STEPS.indexOf('wifi') + 1] !== 'account') out.push('account step not once, right after the internet: ' + SETUP_STEPS.join(','));
+        closeAll(); S.history = []; S.setupStep = SETUP_STEPS.indexOf('account'); navigate('setup', {}, false); await w(300);
+        if (!/Make it yours/.test(txt())) out.push('no Make it yours: ' + txt().slice(0, 200));
+        for (const k of ['oem-full', 'oem-password', 'oem-nopass', 'oem-tz', 'setup-next', 'setup-skip'])
+          if (!document.querySelector(`#view [data-k="${k}"]`)) out.push('no ' + k);
+        const at = S.setupStep;
+        act(document.querySelector('#view [data-k="setup-next"]')); await w(200);
+        if (S.setupStep !== at) out.push('Next went on without a name');
+        OEM.full = 'Sam Smith'; OEM.password = 'ab'; act(document.querySelector('#view [data-k="setup-next"]')); await w(200);
+        if (S.setupStep !== at) out.push('Next went on with a 2-letter password');
+        OEM.password = 'hunter22'; OEM.tz = 'America/Chicago'; render(null, true); await w(200);
+        return out;
+      });
+      for (const e of r) errors.push('pre-installed PC: ' + e);
+      const dir = path.resolve(__dirname, 'qa-shots'); require('fs').mkdirSync(dir, { recursive: true });
+      for (const q of [60, 45, 30, 20]) { const buf = await sp.screenshot({ type: 'jpeg', quality: q }); if (buf.toString('base64').length <= 9 * 3800 || q === 20) { require('fs').writeFileSync(path.join(dir, 'setup-oem-account.jpg'), buf); break; } }
+      const r2 = await sp.evaluate(async () => {
+        const at = S.setupStep; act(document.querySelector('#view [data-k="setup-next"]')); await new Promise(res => setTimeout(res, 300));
+        return S.setupStep === at + 1 && OEM.done ? [] : ['Next with everything filled in did not go on'];
+      });
+      for (const e of r2) errors.push('pre-installed PC: ' + e);
+    } catch (e) { errors.push('pre-installed PC: ' + e.message.split('\n')[0]); }
+    await sp.close();
+  }
+
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);
