@@ -334,6 +334,10 @@ ShellRoot {
     Loader { source: "MediaKeys.qml" }
     Loader { source: "IdlePower.qml" }
     PowerMenu { id: powerMenu }
+    // 1.14: the keyboard's lights following the accent (off unless you turn it on) and "Log out?" (Settings › Startup):
+    // loaded by file name, so a problem in one only loses it (Log out then works as before).
+    Loader { id: kbdLights; source: "KbdLights.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: keyboard lights (KbdLights.qml) couldn't load") }
+    Loader { source: "LeaveConfirm.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Log out? (LeaveConfirm.qml) couldn't load") }
     Lock { id: lockScreen }
     LiveWelcome { id: liveWelcome; settingsApp: settings }
     SteamFallback { id: steamFallback }   // "Steam Game Mode didn't start" with "Try Steam Game Mode again"
@@ -519,9 +523,26 @@ ShellRoot {
         function hold(b: string, ms: int): void { keyboard.holdButton(b, ms); }
         function tap(key: string): void { keyboard.tapKey(key); }
         function select(key: string): void { keyboard.tapKey(key, true); }
+        // a long touch on a key (its accents open), the finger slid onto accent n, lifted (types it)
+        function touchhold(key: string): void { keyboard.touchHold(key); }
+        function touchslide(n: int): int { return keyboard.touchSlide(n); }
+        function touchlift(): int { return keyboard.touchLift(); }
         function stick(x: real, y: real): void { keyboard.padAxes(x, y, 0, 0); }
         function setting(key: string, value: string): void { keyboard.setSetting(key, value); }
         function state(): string { return keyboard.stateJson(); }
+    }
+    // For checks (desktop-test.yml): what the keyboard lights last did, and Log out as the menus do it
+    IpcHandler {
+        target: "kbdlights"
+        function state(): string { const k = kbdLights.item; return JSON.stringify({ loaded: !!k, on: !!k && k.on, color: k ? k.color : "", sent: k ? k.sent : "", last: k ? k.last : "" }); }
+    }
+    IpcHandler {
+        target: "leave"
+        function logout(): void { Leave.logout(); }
+        function state(): string { return JSON.stringify({ canAsk: Leave.canAsk, confirm: Settings.confirmLogout, leaveDefault: Settings.leaveDefault, power: powerMenu.shown ? (powerMenu.items[powerMenu.sel] || {}).label : "" }); }
+        // the power menu as the power button opens it (its picked entry: Settings › Startup › Default leave option)
+        function powermenu(): void { powerMenu.open(); }
+        function powerclose(): void { powerMenu.shown = false; }
     }
     IpcHandler {
         target: "help"

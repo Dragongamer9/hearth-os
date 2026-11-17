@@ -276,6 +276,11 @@ var ENTRIES = [
 "p": "appearance"
 },
 {
+"t": "Keyboard lights follow the accent",
+"p": "appearance",
+"i": "kbd"
+},
+{
 "t": "Desktop clock and weather",
 "p": "appearance",
 "i": "clock"
@@ -4577,6 +4582,18 @@ var ENTRIES = [
 "p": "startup",
 "d": "The apps open when you signed out or left Desktop Mode open again (not games or Steam)",
 "i": "restart"
+},
+{
+"t": "Confirm before logging out",
+"p": "startup",
+"d": "Log out (in the app menu, Super+X and the desktop's menu) asks first, so a stray click can't close your apps",
+"i": "logout"
+},
+{
+"t": "Default leave option",
+"p": "startup",
+"d": "What the power menu has picked when it opens: press the power button twice (or A) to do it",
+"i": "power"
 },
 {
 "t": "If a game is running",

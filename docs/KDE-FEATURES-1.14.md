@@ -347,7 +347,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Icon theme choice — SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_theme_lists" (needs testing on a device)
 - [x] App style: window frame colour intensity, "apps follow Hearth" — frame colour intensity (SetLookMore.qml, desktop.json frameTint, hearth_aurorae.py "tint_colors" / "tint_themerc" for KWin and labwc; test_settings_more_114.py "test_frame_tint"; picture ss-look-more). "Apps follow Hearth" (SetLookMore.qml, desktop.json appsFollow, hearth-theme "apps_follow", theme/apply.sh; test_settings_bits_114.py "test_off_and_on_again"; picture ss-look-apps) (needs testing on a device)
 - [x] Splash at sign-in — SigninSplash.qml (flame, logo or plain; clicks go through it, gone after 2.5 s, once per sign-in), SetLookMore.qml; test_settings_more_114.py "test_watchers_are_loaded_by_file_name_and_cant_hold_the_desktop_up"; pictures ss-look-more, ss-signin-splash (needs testing on a device)
-- [ ] Keyboard RGB lights follow the accent (M)
+- [x] Keyboard RGB lights follow the accent — hosts/linux/desktop/shell/hearth-kbd-lights (OpenRGB keyboards only, else /sys/class/leds/*kbd_backlight*/multi_intensity; "apply" writes nothing unless desktop.json says kbdLights true), KbdLights.qml: "readonly property bool on: Settings.loaded && Settings.kbdLights", SetAppearance.qml: "Keyboard lights follow the accent" (off by default), 70-hearth-backlight.rules: "TEST==\"multi_intensity\""; test_shell_bits_114.py, desktop-test "Keyboard lights, Log out?, accents by touch (1.14)" (a pretend LED: off writes nothing, on follows #ff7a2f → "255 122 47"), picture "set-kbd-lights" (needs testing on a device)
 
 ### Sound
 
@@ -386,7 +386,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Autostart page — SetAutostart.qml, hearth-autostart (add an app or a command, remove yours, turn on/off; a system one never deleted); test_settings_more_114.py "test_a_command_survives_the_round_trip", "test_a_system_one_is_never_deleted"; picture ss-autostart (needs testing on a device)
 - [x] Background services page — SetServices.qml, hearth-services; test_system_settings_114.py "test_a_service_for_everyone_is_masked_for_you" (needs testing on a device)
 - [x] File associations editor — SetFileTypes.qml, hearth-mime (every kind, its endings, the app it opens in, your own endings in mime/packages/hearth-user.xml); test_settings_more_114.py "test_types_set_and_reset", "test_own_endings_file"; picture ss-file-types (needs testing on a device)
-- [ ] Desktop session rows — partly: "Reopen my apps from last time" (SetStartup.qml). Left: confirm logout, default leave option (S)
+- [x] Desktop session rows — SetStartup.qml: "Reopen my apps from last time", "Confirm before logging out" (Leave.qml / LeaveConfirm.qml: the app menus, Super+X and the desktop menu ask first; off by default, as before), "Default leave option" (PowerMenu.qml: "items.findIndex(x => x.label === Settings.leaveDefault)"); test_shell_bits_114.py, desktop-test checks (asks first, Esc cancels, Enter logs out, the power menu opens on Restart), pictures "set-leave", "leave-confirm", "power-default" (needs testing on a device)
 - [x] Menu editor ("Edit app…") — SetMenuEditor.qml, hearth-menu (your copy of the entry, X-Hearth-Edited, Put back), "Edit app…" in the app menu's right-click (shell.qml); test_settings_more_114.py "test_save_makes_your_copy_and_reset_puts_it_back"; picture ss-menu-editor (needs testing on a device)
 
 ### Info and system
@@ -400,8 +400,8 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 ### Hearth-specific extras
 
-- [ ] Emoji picker: mixed skin tones, sizes (S)
-- [ ] On-screen keyboard press-and-hold for special characters, checked on touch (S)
+- [x] Emoji picker: mixed skin tones, sizes — hosts/hearth-emoji/ui/index.html: "Two skin tones" (13 two-person emoji, right-click / long touch / Shift+F10 / View), Small / Medium / Large (the size button, Ctrl + / Ctrl −, LT / RT), lib.rs "save_size" (only that key changes); test_shell_bits_114.py (Unicode's mixed-tone sequences), lib.rs saved_file_round_trip, apps-create pictures "emoji-two-tones", "emoji-large", "emoji-small" (needs testing on a device)
+- [x] On-screen keyboard press-and-hold for special characters, checked on touch — ui/osk/hearth-osk.js "hoverAlt" and the web page's "pointermove" slide, OskKey.qml: "onPositionChanged … owner.slideTo(owner.altAt(p.x, p.y))" (a long touch opens the accents, slide onto one and lift to type it; holding A on the controller as before); test_shell_bits_114.py, desktop-test (long touch on e, slid to the third accent by its place on screen, lifted: typed "ê"; A held on a), pictures "osk-touch-hold", "osk-touch-slide", "osk-pad-hold" (needs testing on a device)
 
 ---
 
