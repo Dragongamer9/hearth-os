@@ -103,6 +103,20 @@ function blur(data, w, h, radius) {
     return data;
 }
 
+// Squares of B×B (the grid moved back by OFF) filled with the average colour of DATA (W×H, RGBA) under each, at
+// (OX, OY) on CTX, with ALPHA.
+function blocks(ctx, data, w, h, ox, oy, b, off, alpha) {
+    for (var by = -off; by < h; by += b) {
+        for (var bx = -off; bx < w; bx += b) {
+            var r = 0, g = 0, bl = 0, n = 0, y0 = Math.max(0, by), x0 = Math.max(0, bx), ey = Math.min(h, by + b), ex = Math.min(w, bx + b);
+            for (var y = y0; y < ey; y += 2) for (var x = x0; x < ex; x += 2) { var i = (y * w + x) * 4; r += data[i]; g += data[i + 1]; bl += data[i + 2]; n++; }
+            if (!n) continue;
+            ctx.fillStyle = "rgba(" + Math.round(r / n) + "," + Math.round(g / n) + "," + Math.round(bl / n) + "," + alpha + ")";
+            ctx.fillRect(ox + bx, oy + by, b, b);
+        }
+    }
+}
+
 // Draws SHAPES on CTX (a Canvas 2D context) at scale S, with the picture's pixel (OX, OY) at the canvas's top left.
 // DRAWIMAGE(sx, sy, sw, sh, dx, dy, dw, dh) draws part of the picture (for blur and pixelate, which need its pixels);
 // CW, CH: the canvas's size, so a blurred area is cut to it.
@@ -154,11 +168,19 @@ function paint(ctx, shapes, s, ox, oy, drawImage, cw, ch) {
             var dx = Math.max(0, Math.floor(q.x)), dy = Math.max(0, Math.floor(q.y));
             var dw = Math.min(cw || 1e9, Math.ceil(q.x + q.w)) - dx, dh = Math.min(ch || 1e9, Math.ceil(q.y + q.h)) - dy;
             if (dw >= 2 && dh >= 2) {
+                // The picture's own pixels there, read back, then painted over as squares of their average colour (QML's
+                // canvas doesn't take changes to getImageData's pixels back, so nothing is written into them). Blur:
+                // smaller squares, three grids offset and blended, so it's soft and nothing readable is left.
                 drawImage(ox + dx / s, oy + dy / s, dw / s, dh / s, dx, dy, dw, dh);
-                var d = ctx.getImageData(dx, dy, dw, dh);
-                if (sh.t === "pix") pixelate(d.data, dw, dh, Math.max(4, 14 * s));
-                else blur(d.data, dw, dh, Math.max(3, 9 * s));
-                ctx.putImageData(d, dx, dy);
+                var px = ctx.getImageData(dx, dy, dw, dh).data;
+                ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
+                if (sh.t === "pix") blocks(ctx, px, dw, dh, dx, dy, Math.max(4, Math.round(14 * s)), 0, 1);
+                else {
+                    var bb = Math.max(3, Math.round(10 * s));
+                    blocks(ctx, px, dw, dh, dx, dy, bb, 0, 1);
+                    blocks(ctx, px, dw, dh, dx, dy, bb, Math.round(bb / 2), 0.5);
+                    blocks(ctx, px, dw, dh, dx, dy, bb, Math.round(bb / 4), 0.35);
+                }
             }
         }
         ctx.restore();
