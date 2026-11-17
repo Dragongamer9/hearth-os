@@ -26,6 +26,7 @@ Item {
     property string typed: ""
     property string message: ""
     property string pending: ""      // typed before PAM asked (it's handed over when it asks)
+    property string fpInfo: ""       // the fingerprint reader's words, when it's in use (1.14)
     readonly property bool busy: typeof authenticator !== "undefined" && authenticator && authenticator.busy === true
     readonly property string user: typeof kscreenlocker_userName !== "undefined" ? kscreenlocker_userName : ""
 
@@ -65,12 +66,16 @@ Item {
         }
         function onSucceeded() { Qt.quit(); }
         function onFailed(kind) {
-            if (kind !== undefined && kind !== 0) return;   // fingerprint / smartcard: not used by Hearth
+            // A finger (kde-fingerprint, 1.14: only for people who turned it on in Hearth's Settings): the password
+            // still works; KWin's locker tries the reader again by itself.
+            if (kind !== undefined && kind !== 0) { root.fpInfo = "That finger wasn't recognised. Try again, or type your password"; return; }
             root.message = "That password isn't right";
             root.pending = "";
             retry.restart();
         }
         function onErrorMessageChanged() { if (authenticator.errorMessage) root.message = authenticator.errorMessage; }
+        // pam_fprintd's "Place your finger on the reader" (KWin's locker runs kde-fingerprint next to the password).
+        function onInfoMessageChanged() { const m = authenticator.infoMessage || ""; if (/finger|swipe|reader/i.test(m)) root.fpInfo = "Or touch the fingerprint reader"; }
     }
     Timer { id: retry; interval: 400; onTriggered: root.begin() }
     // hearth-lockcheck's test run looks for this line: only a lock screen that really loaded may lock the screen.
@@ -119,6 +124,7 @@ Item {
             }
         }
         Text { Layout.alignment: Qt.AlignHCenter; visible: root.message !== ""; text: root.message; color: root.danger; font.family: root.font; font.pixelSize: 14 }
+        Text { Layout.alignment: Qt.AlignHCenter; visible: root.fpInfo !== ""; text: root.fpInfo; color: root.muted; font.family: root.font; font.pixelSize: 14 }
 
         // Its own keyboard: tap, or arrows / D-pad and Enter (the regular on-screen keyboard can't show here).
         Item {

@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+"""pinentry-hearth: GnuPG's passphrase prompt (pinentry) in Hearth's look (1.14). gpg-agent runs it and talks the
+Assuan protocol on its stdin/stdout; it asks Mantel (AskPass.qml) through hearth_askpass. When Mantel isn't there (a
+terminal, another desktop) it becomes the classic pinentry right away (pinentry-qt, -gnome3, -gtk2, -curses, -tty),
+before reading anything, so GnuPG can always ask. The image makes it /usr/bin/pinentry's choice (update-alternatives,
+higher than the others); `update-alternatives --config pinentry` puts any other back.
+"""
+import os
+import sys
+from urllib.parse import quote
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+CLASSIC = ['/usr/bin/pinentry-qt', '/usr/bin/pinentry-gnome3', '/usr/bin/pinentry-gtk-2', '/usr/bin/pinentry-gtk2',
+           '/usr/bin/pinentry-curses', '/usr/bin/pinentry-tty']
+CANCELLED = 'ERR 83886179 Operation cancelled <Pinentry>'
+
+
+def classic(argv):
+    me = os.path.realpath(__file__)
+    for p in CLASSIC:
+        if os.access(p, os.X_OK) and os.path.realpath(p) != me:
+            os.execv(p, [p] + argv)
+    sys.stdout.write('OK no pinentry\n')
+    return 1
+
+
+def unescape(s):
+    """Assuan's %XX escapes (gpg-agent sends %0A for a new line)."""
+    out, i = bytearray(), 0
+    b = s.encode('utf-8', 'replace')
+    while i < len(b):
+        h = b[i + 1:i + 3]
+        if b[i:i + 1] == b'%' and len(h) == 2 and all(c in b'0123456789abcdefABCDEF' for c in h):
+            out.append(int(b[i + 1:i + 3], 16)); i += 3
+        else:
+            out.append(b[i]); i += 1
+    return out.decode('utf-8', 'replace')
+
+
+def escape_data(s):
+    return quote(s, safe=' !"#$&\'()*+,-./:;<=>?@[]^_`{|}~')
+
+
+class Session:
+    def __init__(self, ask, out):
+        self.ask, self.out = ask, out
+        self.reset()
+
+    def reset(self):
+        self.desc, self.prompt, self.title, self.error, self.repeat = '', 'Passphrase:', '', '', ''
+
+    def say(self, line):
+        self.out.write(line + '\n')
+        self.out.flush()
+
+    def handle(self, line):
+        """One command; False ends the session."""
+        cmd, _, arg = line.strip().partition(' ')
+        cmd = cmd.upper()
+        if cmd in ('SETDESC', 'SETPROMPT', 'SETTITLE', 'SETERROR', 'SETREPEAT'):
+            v = unescape(arg)
+            if cmd == 'SETDESC': self.desc = v
+            elif cmd == 'SETPROMPT': self.prompt = v
+            elif cmd == 'SETTITLE': self.title = v
+            elif cmd == 'SETERROR': self.error = v
+            else: self.repeat = v or 'Repeat:'
+            self.say('OK')
+        elif cmd == 'GETINFO':
+            what = arg.strip()
+            if what == 'pid':
+                self.say('D %d' % os.getpid())
+            elif what == 'flavor':
+                self.say('D hearth')
+            elif what == 'version':
+                self.say('D 1.14')
+            elif what == 'ttyinfo':
+                self.say('D - - -')
+            self.say('OK')
+        elif cmd == 'GETPIN':
+            desc = self.desc + (('\n\n' + self.error) if self.error else '')
+            r = self.ask('secret', self.title or 'GnuPG', desc, self.prompt)
+            self.error = ''
+            if not r or not r[0]:
+                self.say(CANCELLED)
+            else:
+                if r[1]:
+                    self.say('D ' + escape_data(r[1]))
+                if self.repeat:
+                    self.say('S PIN_REPEATED')
+                self.say('OK')
+        elif cmd in ('CONFIRM', 'MESSAGE'):
+            r = self.ask('confirm' if cmd == 'CONFIRM' and '--one-button' not in arg else 'message',
+                         self.title or 'GnuPG', self.desc, '')
+            self.say('OK' if r and r[0] else CANCELLED if cmd == 'CONFIRM' else 'OK')
+        elif cmd == 'RESET':
+            self.reset()
+            self.say('OK')
+        elif cmd == 'BYE':
+            self.say('OK closing connection')
+            return False
+        else:
+            # OPTION, SETOK, SETCANCEL, SETNOTOK, SETQUALITYBAR, SETKEYINFO, SETTIMEOUT, SETGENPIN…: noted, not needed.
+            self.say('OK')
+        return True
+
+
+def main(argv):
+    try:
+        import hearth_askpass as ha
+        if not ha.mantel_here():
+            return classic(argv)
+    except Exception:  # noqa: BLE001
+        return classic(argv)
+    s = Session(lambda kind, title, desc, prompt: ha.ask(kind, title, desc, prompt), sys.stdout)
+    s.say('OK Pleased to meet you')
+    for line in sys.stdin:
+        try:
+            if not s.handle(line):
+                break
+        except Exception:  # noqa: BLE001 - one bad command never leaves gpg-agent waiting
+            s.say(CANCELLED)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

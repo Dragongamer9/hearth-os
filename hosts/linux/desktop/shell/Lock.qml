@@ -14,7 +14,57 @@ import Quickshell.Services.Pam
 Scope {
     id: root
     property bool locked: false
-    onLockedChanged: { if (locked && onKwin) lockedAt = new Date(); DeskState.locked = locked; }   // lockedAt: KWin's locker said so
+    onLockedChanged: {
+        if (locked && onKwin) lockedAt = new Date();   // lockedAt: KWin's locker said so
+        DeskState.locked = locked;
+        // 1.14: vaults set to lock with the screen are locked (hearth-vaults), and the fingerprint (if you turned it on)
+        // is asked for next to the password. Leaving the lock screen stops the fingerprint.
+        if (locked) { vaultLock.running = false; vaultLock.running = true; fpTries = 0; fpInfo = ""; if (!onKwin) { fpCheck.running = false; fpCheck.running = true; } }
+        else if (fpPam.active) fpPam.abort();
+    }
+    readonly property string vaultsHelper: decodeURIComponent(Qt.resolvedUrl("hearth-vaults").toString().replace(/^file:\/\//, ""))
+    Process {
+        id: vaultLock
+        command: ["sh", "-c", "[ -e \"$HOME/.config/nimbus/vaults.json\" ] || exit 0; exec python3 \"$0\" lock-all --screen", root.vaultsHelper]
+    }
+
+    // ---- Fingerprint (1.14, docs/FINGERPRINT.md): a second PAM conversation (service hearth-fingerprint) NEXT TO the
+    // password one, never in its place: the password always unlocks. Only when your name is in
+    // /etc/nimbus/fingerprint/lock (Settings › Sign-in options); a few tries, then the reader rests until the next lock.
+    property bool fpOn: false
+    property string fpInfo: ""
+    property int fpTries: 0
+    Process {
+        id: fpCheck
+        command: ["sh", "-c", "grep -qx -- \"$1\" \"$0\" 2>/dev/null && command -v fprintd-list >/dev/null && echo on", "/etc/nimbus/fingerprint/lock", Quickshell.env("USER") || ""]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.fpOn = text.trim() === "on";
+                if (root.fpOn && root.locked && !root.onKwin) root.startFp();
+            }
+        }
+    }
+    function startFp() {
+        if (fpPam.active || !locked) return;
+        fpInfo = "Or touch the fingerprint reader";
+        fpPam.start();
+    }
+    Timer { id: fpRetry; interval: 1500; onTriggered: root.startFp() }
+    PamContext {
+        id: fpPam
+        config: "hearth-fingerprint"
+        onPamMessage: {
+            if (fpPam.responseRequired) fpPam.respond("");      // pam_fprintd asks nothing; never the password here
+            else if (fpPam.message !== "") root.fpInfo = /place|swipe|touch/i.test(fpPam.message) ? "Or touch the fingerprint reader" : fpPam.message;
+        }
+        onCompleted: result => {
+            if (result === PamResult.Success) { root.locked = false; root.typed = ""; root.fpInfo = ""; return; }
+            root.fpTries++;
+            root.fpInfo = root.fpTries < 3 ? "That finger wasn't recognised. Try again, or type your password" : "Type your password (the reader rests until the next lock)";
+            if (root.fpTries < 3 && root.locked) fpRetry.start();
+        }
+        onError: root.fpInfo = ""
+    }
     property string typed: ""
     property string message: ""
     property bool busy: false
@@ -158,6 +208,13 @@ Scope {
                     }
                 }
                 Text { Layout.alignment: Qt.AlignHCenter; visible: root.message !== ""; text: root.message; color: Theme.danger; font.family: Theme.font; font.pixelSize: 14 }
+                Row {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: root.fpInfo !== ""
+                    spacing: 8
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "fingerprint"; size: 20; color: Theme.accent }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: root.fpInfo; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
+                }
 
                 // Its own keyboard: tap, or arrows / D-pad and Enter.
                 Item {

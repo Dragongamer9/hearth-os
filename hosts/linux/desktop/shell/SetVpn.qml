@@ -1,7 +1,8 @@
-// Hearth Settings › Network & internet › VPN: your VPNs (WireGuard and OpenVPN, kept by NetworkManager), connect and
-// disconnect, add one from its file (.conf or .ovpn, the file your VPN provider gives you), remove one. An OpenVPN
-// account's user name and password are asked when you connect and go to NetworkManager on nmcli's stdin
-// (hearth-network): Hearth never keeps them. Nothing here changes by itself.
+// Hearth Settings › Network & internet › VPN: your VPNs (kept by NetworkManager), connect and disconnect, add one from
+// its file (.conf or .ovpn, the file your VPN provider gives you), remove one. 1.14: or set one up by hand: IPsec,
+// L2TP/IPsec, PPTP, OpenConnect, SSTP and Fortinet, each only when NetworkManager's plugin for it is installed (the
+// others say which plugin they need). Passwords go to NetworkManager on nmcli's stdin (hearth-network) and
+// NetworkManager keeps them: Hearth never does. Nothing here changes by itself.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -14,13 +15,28 @@ SetPage {
     property string picked: ""         // the VPN whose actions are open
     property string asking: ""         // the OpenVPN asking for its account
     property string confirm: ""
+    property string adding: ""         // the kind of VPN being typed in by hand (1.14)
+    property string ocProto: "anyconnect"
     property string message: ""
     property bool messageBad: false
     readonly property var vpns: st ? st.vpns : []
+    readonly property var types: st && st.vpnTypes ? st.vpnTypes : []
+    readonly property var addType: types.find(t => t.id === adding) || null
+    readonly property string addPlugin: addType ? addType.plugin : ""
+    // Settings opened at "vpn:add-<kind>" (the pictures, a link): that kind's form open.
+    Component.onCompleted: { load(); const m = /^add-(\w+)$/.exec(SettingsNav.pageAnchor); if (m) { adding = m[1]; SettingsNav.pageAnchor = ""; } }
+    function addByHand() {
+        say("");
+        const req = { type: page.adding, name: vname.text.trim(), gateway: vserver.text.trim(), user: vaddUser.text.trim(),
+                      password: vaddPass.text, psk: vpsk.text, group: vgroup.text.trim(), domain: vdomain.text.trim(),
+                      realm: vdomain.text.trim(), protocol: page.ocProto };
+        job.run(["vpn-add"], r => { page.say(r.name + " is added" + (r.warning ? ". " + r.warning : ". Connect it above.")); page.adding = ""; vaddPass.text = ""; vpsk.text = ""; page.load(); },
+                e => page.say(e, true), JSON.stringify(req), "add");
+    }
 
     function say(t, bad) { message = t; messageBad = !!bad; }
     function load() { job.run(["status"], r => page.st = r, e => page.say(e, true)); }
-    Component.onCompleted: load()
+    Component.onDestruction: { vaddPass.text = ""; vpsk.text = ""; }
     Timer { interval: 10000; repeat: true; running: page.visible && !job.busy && page.asking === ""; onTriggered: page.load() }
     SetJob { id: job; helper: "hearth-network" }
 
@@ -28,7 +44,7 @@ SetPage {
         say("");
         const input = pw !== undefined ? JSON.stringify({ user: user || "", password: pw }) : "";
         job.run(["vpn-up", v.uuid], () => { page.asking = ""; page.say("Connected to " + v.name + "."); page.load(); },
-                e => { page.say(e, true); if (v.vpnType === "OpenVPN") page.asking = v.uuid; page.load(); }, input, "up");
+                e => { page.say(e, true); if (v.vpnType !== "WireGuard") page.asking = v.uuid; page.load(); }, input, "up");
     }
     Process {
         id: picker
@@ -65,7 +81,7 @@ SetPage {
                     SetRow {
                         visible: !vr.modelData.active
                         icon: "link"; chevron: false; title: job.what === "up" ? "Connecting…" : "Connect"
-                        sub: vr.modelData.vpnType === "OpenVPN" ? "Asks for your VPN account if it needs one" : ""
+                        sub: vr.modelData.vpnType !== "WireGuard" ? "Asks for your VPN account if it needs one" : ""
                         onActivated: page.connect(vr.modelData)
                     }
                     SetRow {
@@ -125,8 +141,65 @@ SetPage {
             interactive: false; chevron: false
             icon: "info"; title: "OpenVPN isn't on this system"; sub: "WireGuard works. OpenVPN needs NetworkManager's OpenVPN plugin in the image"
         }
+    }
+    // 1.14: a VPN typed in by hand. Every kind is listed; the ones whose plugin isn't installed say so and can't be picked.
+    SetCardGroup {
+        title: "Set up a VPN by hand"
+        Repeater {
+            model: page.types
+            delegate: SetRow {
+                required property var modelData
+                icon: modelData.installed ? "shield" : "info"
+                interactive: modelData.installed
+                chevron: modelData.installed
+                title: modelData.label
+                sub: modelData.installed ? (page.adding === modelData.id ? "Fill in the details below" : "Server, user name and password from your work or VPN provider")
+                                         : "Not on this system: needs NetworkManager's " + modelData.package + " plugin"
+                value: page.adding === modelData.id ? "Setting up" : ""
+                onActivated: { page.adding = page.adding === modelData.id ? "" : modelData.id; page.say(""); }
+            }
+        }
+        ColumnLayout {
+            visible: !!page.addType && page.addType.installed
+            Layout.fillWidth: true
+            Layout.leftMargin: 52
+            spacing: 8
+            SetField { id: vname; placeholder: "A name for it, like Work VPN" }
+            SetField { id: vserver; placeholder: page.adding === "openconnect" ? "Server, like vpn.example.com or https://vpn.example.com/group" : "Server (gateway), like vpn.example.com" }
+            SetChoice {
+                visible: page.adding === "openconnect"
+                icon: "globe"; title: "Kind of server"
+                options: [{ value: "anyconnect", label: "Cisco AnyConnect" }, { value: "gp", label: "GlobalProtect" }, { value: "pulse", label: "Pulse / Ivanti" },
+                          { value: "nc", label: "Juniper" }, { value: "f5", label: "F5" }, { value: "fortinet", label: "Fortinet" }]
+                current: page.ocProto
+                onChosen: v => page.ocProto = v
+            }
+            SetField { id: vaddUser; visible: page.adding !== "openconnect"; placeholder: page.adding === "ipsec" ? "User name (leave empty for a pre-shared key only)" : "User name" }
+            SetField { id: vaddPass; visible: page.adding !== "openconnect"; secret: true; placeholder: "Password (NetworkManager keeps it, not Hearth)" }
+            SetField { id: vpsk; visible: page.adding === "ipsec" || page.adding === "l2tp"; secret: true; placeholder: page.adding === "l2tp" ? "IPsec pre-shared key (if your VPN uses one)" : "Pre-shared key (if your VPN uses one)" }
+            SetField { id: vgroup; visible: page.adding === "openconnect" || page.addPlugin === "libreswan"; placeholder: page.adding === "openconnect" ? "Group (if your server has several; optional)" : "Group name (optional)" }
+            SetField { id: vdomain; visible: page.adding === "pptp" || page.adding === "fortisslvpn"; placeholder: page.adding === "pptp" ? "Windows domain (optional)" : "Realm (optional)" }
+            SetRow {
+                icon: "info"; interactive: false; chevron: false
+                visible: page.adding === "openconnect"
+                title: "Your user name and password are asked when you connect"
+                sub: "OpenConnect signs in on the server's own sign-in page each time"
+            }
+            SetRow {
+                icon: "plus"; chevron: false
+                title: job.what === "add" ? "Adding…" : "Add this VPN"
+                sub: "It connects only when you press Connect"
+                onActivated: page.addByHand()
+            }
+            Text {
+                visible: page.message !== ""
+                Layout.fillWidth: true; Layout.leftMargin: 4
+                text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
+                font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+            }
+        }
         Text {
-            visible: page.message !== ""
+            visible: page.message !== "" && page.adding === ""
             Layout.fillWidth: true; Layout.leftMargin: 4
             text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
             font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap

@@ -263,6 +263,9 @@ ShellRoot {
     // polkit agent; hearth-polkit-fallback starts the classic one when this isn't registered). Loaded by file name, so a
     // problem in either (or a Quickshell without its Polkit module) only loses that one.
     Loader { source: "Capture.qml" }
+    // 1.14: SSH and GPG passphrases in Hearth's look (hearth-askpass, pinentry-hearth): by file name too; without it
+    // they ask the classic way.
+    Loader { source: "AskPass.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the SSH/GPG passphrase prompt (AskPass.qml) couldn't load; the classic askpass and pinentry ask") }
     Loader { active: Quickshell.env("HEARTH_POLKIT") !== "classic"; source: "PolkitPrompt.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the password prompt (PolkitPrompt.qml) couldn't load; the classic agent asks (hearth-polkit-fallback)") }
     // 1.11: the shell watches its own memory and CPU (hearth-shell-health) and refreshes itself only while nobody is
     // looking and none of its own windows (Settings, Task Manager, Files) is open.

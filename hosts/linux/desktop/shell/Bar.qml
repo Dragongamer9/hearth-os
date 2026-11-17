@@ -382,15 +382,20 @@ PanelWindow {
                 id: net
                 property string kind: ""     // wifi | ethernet | ""
                 property string name: ""
-                tip: name ? "Connected to " + name : "Not connected"
+                // 1.14: the speed, down and up (Settings › Bar and dock › Network speed in the bar; NetSpeed.qml).
+                readonly property bool showSpeed: Settings.netSpeed
+                wide: showSpeed && !bar.portrait
+                tip: (name ? "Connected to " + name : "Not connected") + (showSpeed && NetSpeed.text ? "\n" + NetSpeed.text : "")
                 onClicked: bar.quickRequested()
                 onRightClicked: bar.statusMenu(net, name ? "Connected to " + name : "Not connected", [
                     { label: "Wi-Fi settings", icon: "wifi", run: () => bar.settingsRequested("wifi") },
+                    { label: "Connection details", icon: "gear", run: () => bar.settingsRequested("net-details") },
+                    { label: Settings.netSpeed ? "Hide the network speed" : "Show the network speed", icon: "speed", run: () => NetSpeed.toggle() },
                     { label: "Quick Access", icon: "menu", run: () => bar.quickRequested() }
                 ])
                 StatusLabel {
                     icon: net.kind === "wifi" ? "network-wireless-signal-good-symbolic" : net.kind === "ethernet" ? "network-wired-symbolic" : "network-offline-symbolic"
-                    label: ""
+                    label: net.showSpeed && !bar.portrait ? NetSpeed.text : ""
                 }
                 Process {
                     id: nmcli
@@ -407,6 +412,17 @@ PanelWindow {
                     }
                 }
                 Timer { interval: 10000; running: true; repeat: true; triggeredOnStart: true; onTriggered: nmcli.running = true }
+            }
+
+            // Vaults (1.14, SetVaults.qml): shown when you have one; lit while one is unlocked. Click: lock, open or
+            // unlock each (unlocking asks for its password in Settings › Vaults).
+            BarButton {
+                id: vaultBtn
+                visible: VaultStore.vaults.length > 0
+                tip: VaultStore.tip
+                onClicked: bar.statusMenu(vaultBtn, "Vaults", VaultStore.menu(p => bar.settingsRequested(p)))
+                onRightClicked: bar.statusMenu(vaultBtn, "Vaults", VaultStore.menu(p => bar.settingsRequested(p)))
+                Icon { anchors.centerIn: parent; name: "vault"; size: 18; color: VaultStore.opened.length ? Theme.accent : Theme.text }
             }
 
             // Battery (laptops and handhelds only)

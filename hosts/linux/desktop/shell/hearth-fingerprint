@@ -1,0 +1,167 @@
+#!/usr/bin/python3
+"""hearth-fingerprint: Settings › Accounts › Sign-in options › Fingerprint (1.14), as you (no root). fprintd keeps the
+fingers (enrolling and deleting your own needs no password: fprintd's polkit rules let the person at the device);
+where a finger is used is a list only root writes (hearth-admin fingerprint-places, hearth-fingerprint-pam), read
+here. Your password always works everywhere: a fingerprint is only ever next to it (docs/FINGERPRINT.md).
+
+  hearth-fingerprint status          JSON {fprintd, reader, device, fingers: [...], places: {lock, polkit}, pam}
+  hearth-fingerprint enroll FINGER   add a finger: "progress: N what" lines while you touch the reader, then JSON
+  hearth-fingerprint delete FINGER   forget one finger (or "all")
+FINGER: left-thumb … right-little-finger (fprintd's names).
+"""
+import getpass
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+FINGERS = ['right-index-finger', 'left-index-finger', 'right-thumb', 'left-thumb', 'right-middle-finger',
+           'left-middle-finger', 'right-ring-finger', 'left-ring-finger', 'right-little-finger', 'left-little-finger']
+LISTS = os.environ.get('HEARTH_FP_LISTS', '/etc/nimbus/fingerprint')
+PAMD = os.environ.get('HEARTH_PAMD', '/etc/pam.d')
+STAGES = 10    # most readers want 5 to 15 touches; the bar moves by this and finishes on "completed"
+WORDS = {
+    'enroll-stage-passed': 'Got it. Lift your finger and touch the reader again',
+    'enroll-retry-scan': "That didn't read. Touch the reader again",
+    'enroll-swipe-too-short': 'Too short. Swipe a little slower',
+    'enroll-finger-not-centered': 'Put your finger in the middle of the reader',
+    'enroll-remove-and-retry': 'Lift your finger, then touch the reader again',
+    'enroll-completed': 'Done: your finger is saved',
+    'enroll-failed': "The reader couldn't learn that finger. Try again",
+    'enroll-data-full': "The reader is full: forget a finger first",
+    'enroll-duplicate': 'That finger is already saved (maybe for another account)',
+    'enroll-disconnected': 'The reader was unplugged',
+    'enroll-unknown-error': 'The reader had a problem',
+}
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=30):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def me():
+    return os.environ.get('USER') or getpass.getuser()
+
+
+def parse_list(text):
+    """fprintd-list: "Fingerprints for user X on <device> (press):" then " - #0: right-index-finger"."""
+    dev = ''
+    m = re.search(r'on (.+?) \((press|swipe)\):', text)
+    if m:
+        dev = m.group(1)
+    fingers = re.findall(r'^\s*-\s*#\d+:\s*([a-z-]+)\s*$', text, re.M)
+    reader = bool(m) or 'has no fingers enrolled' in text or 'Fingerprints for user' in text
+    if 'No devices available' in text or 'NoSuchDevice' in text:
+        reader = False
+    return {'reader': reader, 'device': dev, 'fingers': [f for f in fingers if f in FINGERS]}
+
+
+def places():
+    out = {}
+    for p in ('lock', 'polkit'):
+        try:
+            with open(os.path.join(LISTS, p)) as f:
+                names = [l.strip() for l in f if l.strip() and not l.startswith('#')]
+        except OSError:
+            names = []
+        out[p] = me() in names
+    return out
+
+
+def status():
+    have = bool(shutil.which('fprintd-list'))
+    res = {'fprintd': have, 'reader': False, 'device': '', 'fingers': [], 'places': places(),
+           'pam': {'lock': os.path.exists(os.path.join(PAMD, 'hearth-fingerprint')),
+                   'polkit': 'hearth-fingerprint-polkit' in (read(os.path.join(PAMD, 'polkit-1')) or '')}}
+    if have:
+        code, out = run(['fprintd-list', me()], timeout=15)
+        res.update(parse_list(out))
+    return res
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def check_finger(f):
+    if f not in FINGERS:
+        raise Fail('pick a finger')
+    return f
+
+
+def enroll(finger):
+    check_finger(finger)
+    if not shutil.which('fprintd-enroll'):
+        raise Fail("fprintd isn't on this system")
+    try:
+        p = subprocess.Popen(['fprintd-enroll', '-f', finger, me()], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    except OSError as e:
+        raise Fail(str(e))
+    passed, result = 0, ''
+    print('progress: 0 Touch the fingerprint reader with your %s' % finger.replace('-', ' '), flush=True)
+    for line in p.stdout:
+        m = re.search(r'Enroll result:\s*(\S+)', line)
+        if not m:
+            if 'Failed to' in line or 'failed' in line.lower():
+                result = result or line.strip()
+            continue
+        r = m.group(1)
+        if r == 'enroll-stage-passed':
+            passed += 1
+        if r == 'enroll-completed':
+            result = r
+            print('progress: 100 ' + WORDS[r], flush=True)
+            continue
+        print('progress: %d %s' % (min(95, passed * 100 // STAGES), WORDS.get(r, r)), flush=True)
+        if r in ('enroll-failed', 'enroll-data-full', 'enroll-duplicate', 'enroll-disconnected', 'enroll-unknown-error'):
+            result = r
+    p.wait()
+    if result != 'enroll-completed':
+        raise Fail(WORDS.get(result, result or "the reader didn't finish"))
+    return status()
+
+
+def delete(finger):
+    if finger != 'all':
+        check_finger(finger)
+    code, out = run(['fprintd-delete', me()] + ([] if finger == 'all' else ['-f', finger]))
+    if code != 0:
+        raise Fail(((out or '').strip().splitlines() or ["fprintd said no"])[-1][:200])
+    return status()
+
+
+def main(argv):
+    cmd, rest = (argv[0] if argv else ''), argv[1:]
+    try:
+        if cmd == 'status' and not rest:
+            r = status()
+        elif cmd == 'enroll' and len(rest) == 1:
+            r = enroll(rest[0])
+        elif cmd == 'delete' and len(rest) == 1:
+            r = delete(rest[0])
+        else:
+            print('error: usage: hearth-fingerprint status | enroll FINGER | delete FINGER|all')
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

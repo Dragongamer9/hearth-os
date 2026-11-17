@@ -24,6 +24,14 @@ SetPage {
         current: Settings.barStyle
         onChosen: v => Settings.barStyle = v
     }
+    // 1.14: the network's speed (down and up) next to its icon in the bar; off unless you turn it on.
+    SetSwitch {
+        icon: "speed"
+        title: "Network speed in the bar"
+        sub: "How fast things download and upload right now, next to the network icon"
+        checked: Settings.netSpeed
+        onToggled: v => Settings.netSpeed = v
+    }
     SetHeader { text: "App menu" }
     Loader { Layout.fillWidth: true; source: "AppMenuPicker.qml" }
     SetHeader { text: "Menus" }
