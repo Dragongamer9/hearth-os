@@ -1,9 +1,11 @@
 """Tests for one app of each kind per desktop (os/system_files/usr/libexec/hearth-app-kinds and its table
 os/system_files/usr/share/hearth/app-kinds.json, docs/APP-KINDS.md): the table, the menu-entry copies, each desktop's
 default apps, and the check that stops the image build."""
+import contextlib
 import copy
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -251,12 +253,17 @@ class ApplyTest(Base):
         shutil.copy(TABLE, os.path.join(self.root, 'tab.json'))
         os.makedirs(os.path.join(self.root, 'usr/share/hearth'), exist_ok=True)
         shutil.copy(TABLE, os.path.join(self.root, 'usr/share/hearth/app-kinds.json'))
-        self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 0)
-        self.assertEqual(ak.main(['x', 'check', '--root', self.root]), 0)
-        for p in ('usr/bin/hearth-text', 'usr/bin/kate', 'usr/bin/kwrite'):
-            os.unlink(os.path.join(self.root, p))
-        self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 1)
-        self.assertEqual(ak.main(['x', 'apply', '--refresh', '--root', self.root]), 0)   # the apt hook never fails apt
+        # main() prints its problems as `::error` lines for CI; they're caught here, or the run's annotations would show
+        # this test's made-up problems ("Nimbus shows no text-editor app") as if the image had them.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 0)
+            self.assertEqual(ak.main(['x', 'check', '--root', self.root]), 0)
+            for p in ('usr/bin/hearth-text', 'usr/bin/kate', 'usr/bin/kwrite'):
+                os.unlink(os.path.join(self.root, p))
+            self.assertEqual(ak.main(['x', 'apply', '--root', self.root]), 1)
+            self.assertEqual(ak.main(['x', 'apply', '--refresh', '--root', self.root]), 0)   # the apt hook never fails apt
+        self.assertIn('::error title=app kinds::Nimbus shows no text-editor app', out.getvalue())
 
     def test_hidden_lists_for_the_launcher(self):
         self.apply()
