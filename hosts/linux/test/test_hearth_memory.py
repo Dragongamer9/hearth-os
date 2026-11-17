@@ -307,3 +307,26 @@ class HandOver(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OldDefaultsKept(unittest.TestCase):
+    """Red flag 9 (start-safety review, Nov 17): 1.14 made Auto the recommended Keep memory free and swappiness 180.
+    A memory.json from before that never set them keeps what they were (2 GB, 200); only a PC with no file gets Auto."""
+
+    def test_saved_file_without_keep_or_swappiness_keeps_the_old_values(self):
+        mem = 16 * hm.GIB
+        old = hm.merged({'zram': {'on': True, 'gb': 8}}, mem)
+        self.assertEqual(old['keep'], {'mode': '2gb'})
+        self.assertEqual(old['swappiness'], 200)
+        self.assertEqual(hm.wanted_vm(old, mem, True)['swappiness'], 200)
+        self.assertEqual(hm.wanted_vm(old, mem, True)['watermark_scale_factor'], hm.watermark_for({'mode': '2gb'}, mem))
+        new = hm.merged({}, mem)                                  # no file: the new recommendation
+        self.assertEqual(new['keep'], {'mode': 'auto'})
+        self.assertEqual(new['swappiness'], hm.AUTO_SWAPPINESS)
+        mine = hm.merged({'keep': {'mode': 'auto'}, 'swappiness': 150}, mem)   # what you chose stays
+        self.assertEqual((mine['keep'], mine['swappiness']), ({'mode': 'auto'}, 150))
+
+    def test_auto_is_a_choice_on_the_page(self):
+        import pathlib
+        qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/MemorySettings.qml').read_text()
+        self.assertIn('["auto", "Auto"]', qml)
