@@ -16,14 +16,18 @@ WidgetBase {
     implicitWidth: 380; implicitHeight: 270
     paintsOwn: true
 
+    // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
+    // once more when it's done.
+    property bool lsAgain: false
+    function lsRefresh() { if (ls.running) lsAgain = true; else ls.running = true; }
     Process {
         id: ls
+        onExited: if (w.lsAgain) { w.lsAgain = false; running = true; }
         command: ["python3", w.helper, "photos", w.source]
-        running: w.live
         stdout: StdioCollector { onStreamFinished: { try { w.info = JSON.parse(text.trim().split("\n").pop()); w.at = 0; w.show(); } catch (e) {} } }
     }
-    onSourceChanged: ls.running = true
-    Timer { interval: 600000; running: w.live; repeat: true; onTriggered: if (!ls.running) ls.running = true }
+    onSourceChanged: lsRefresh()
+    Timer { interval: 600000; running: w.live; repeat: true; triggeredOnStart: true; onTriggered: if (!ls.running) w.lsRefresh() }
     Timer { interval: Math.max(5, w.every) * 1000; running: w.live && (w.info.items || []).length > 1; repeat: true; onTriggered: { w.at = (w.at + 1) % w.info.items.length; w.show(); } }
     readonly property string currentPath: (info.items || []).length ? info.items[at % info.items.length] : ""
     function show() {

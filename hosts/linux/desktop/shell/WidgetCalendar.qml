@@ -18,13 +18,17 @@ WidgetBase {
     implicitWidth: 340; implicitHeight: 420
     readonly property int room: Math.max(1, Math.floor((height - 14 - monthGrid.y - monthGrid.height - 46) / 38))   // agenda rows that fit
 
+    // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
+    // once more when it's done.
+    property bool evAgain: false
+    function evRefresh() { if (ev.running) evAgain = true; else ev.running = true; }
     Process {
         id: ev
+        onExited: if (w.evAgain) { w.evAgain = false; running = true; }
         command: ["python3", w.helper, "events"]
-        running: w.live
         stdout: StdioCollector { onStreamFinished: { try { w.events = JSON.parse(text.trim().split("\n").pop()).events || []; } catch (e) { w.events = []; } } }
     }
-    Timer { interval: 300000; running: w.live; repeat: true; onTriggered: ev.running = true }
+    Timer { interval: 300000; running: w.live; repeat: true; triggeredOnStart: true; onTriggered: w.evRefresh() }
 
     function key(y, m, d) { return y + "-" + ("0" + (m + 1)).slice(-2) + "-" + ("0" + d).slice(-2); }
     function eventsOn(k) { return events.filter(e => (e.date || "") <= k && (e.lastDate || e.date || "") >= k); }

@@ -17,15 +17,19 @@ WidgetBase {
     property bool busy: false
     implicitWidth: 400; implicitHeight: 360
 
+    // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
+    // once more when it's done.
+    property bool getAgain: false
+    function getRefresh() { if (get.running) getAgain = true; else get.running = true; }
     Process {
         id: get
+        onExited: if (w.getAgain) { w.getAgain = false; running = true; }
         command: ["python3", w.helper, "feed", w.url]
-        running: w.live && w.url !== ""
         onRunningChanged: w.busy = running
         stdout: StdioCollector { onStreamFinished: { try { w.info = JSON.parse(text.trim().split("\n").pop()); } catch (e) { w.info = { items: [], error: "Couldn't read that feed" }; } } }
     }
-    onUrlChanged: { info = { items: [] }; if (url) get.running = true; }
-    Timer { interval: 900000; running: w.live && w.url !== ""; repeat: true; onTriggered: if (!get.running) get.running = true }
+    onUrlChanged: { info = { items: [] }; if (url) getRefresh(); }
+    Timer { interval: 900000; running: w.live && w.url !== ""; repeat: true; triggeredOnStart: true; onTriggered: if (!get.running) w.getRefresh() }
     function ago(s) {
         const t = Date.parse(s);
         if (isNaN(t)) return "";

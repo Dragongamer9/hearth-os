@@ -49,8 +49,8 @@ Scope {
         return id;
     }
     function openActivities() { actSwitcher.open(); }
-    Component.onCompleted: { WidgetStore.ui = root; SettingsNav.widgets = root; }
-    Component.onDestruction: if (SettingsNav.widgets === root) SettingsNav.widgets = null
+    Component.onCompleted: { WidgetStore.ui = root; SettingsNav.widgets = root; SettingsNav.activityShows = t => Activities.shows(t); }
+    Component.onDestruction: { if (SettingsNav.widgets === root) SettingsNav.widgets = null; SettingsNav.activityShows = t => true; }
     Binding { target: Theme; property: "activityWall"; value: Activities.wallpaper }
     Binding { target: SettingsNav; property: "activityName"; value: Activities.name }
     Binding { target: SettingsNav; property: "activityIcon"; value: Activities.cur ? Activities.cur.icon : "home" }

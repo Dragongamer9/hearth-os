@@ -319,6 +319,23 @@ class Wiring(unittest.TestCase):
         self.assertIn('source: "ActivityChip.qml"', isl)
         self.assertIn('source: "BarWidgets.qml"', isl)
 
+    def test_activities_reload_and_restart(self):
+        a = code((SHELL / 'Activities.qml').read_text())
+        self.assertIn('for (const k in r) if (writer.owns(k) && act.raw[k] === undefined) delete r[k];', a)   # a deleted one stays deleted
+        self.assertIn('runWriter.setText(JSON.stringify({ acts: m, hidden: h }))', a)                           # hidden windows survive a restart
+        self.assertIn('restoredHidden.indexOf(key) >= 0', a)
+        self.assertIn('property var activityShows: t => true', code((SHELL / 'SettingsNav.qml').read_text()))
+        self.assertIn('SettingsNav.activityShows = t => Activities.shows(t)', code((SHELL / 'Widgets.qml').read_text()))
+
+    def test_fetches_are_started_by_calls_not_bindings(self):
+        for f in ('WidgetCalendar.qml', 'WidgetClock.qml', 'WidgetFolder.qml', 'WidgetNews.qml', 'WidgetPhotos.qml', 'WidgetWeather.qml'):
+            t = code((SHELL / f).read_text())
+            for m in re.finditer(r'Process \{(.*?)\n    \}', t, re.S):
+                self.assertNotRegex(m.group(1), r'\n        running:', f)
+        wx = code((SHELL / 'WidgetWeather.qml').read_text())
+        self.assertIn('c("units", usMeasure ? "imperial" : "metric")', wx)       # the default only; nothing written
+        self.assertNotIn('set("units", usMeasure', wx)
+
     def test_widgets_sit_under_windows(self):
         w = code((SHELL / 'WidgetWindow.qml').read_text())
         self.assertIn('WlrLayershell.layer: WlrLayer.Bottom', w)

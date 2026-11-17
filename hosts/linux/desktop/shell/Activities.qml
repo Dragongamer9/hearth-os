@@ -57,7 +57,8 @@ Singleton {
     property var seen: []
     property int nextSid: 1
     property var hidden: []                // sids Hearth hid when leaving their activity
-    property var restored: ({})            // KWin ids → activity, from the runtime file (after a shell restart)
+    property var restored: ({})            // window keys → activity, from the runtime file (after a shell restart)
+    property var restoredHidden: []        // window keys Hearth had hidden, from the runtime file (after a shell restart)
     function entryOf(t) { return seen.find(e => e.t === t) || null; }
     function track() {
         const now = wins().filter(t => t && !act.ownWindow(t));
@@ -68,6 +69,8 @@ Singleton {
             if (!e) {
                 const key = A.winKey(t);
                 e = { t: t, sid: "s" + (nextSid++), key: key, act: A.activityOf(key, t.appId || "", restored, apps, list, current) };
+                // Hidden by Hearth before the shell restarted: still Hearth's to bring back on its own activity.
+                if (restoredHidden.indexOf(key) >= 0 && t.minimized) hidden = hidden.concat([e.sid]);
                 changed = true;
             }
             keep.push(e);
@@ -89,6 +92,7 @@ Singleton {
         e.act = id;
         seen = seen.slice();
         if (id !== current && id !== "*" && !t.minimized) { setMin(t, true); hidden = hidden.concat([e.sid]); }
+        else if ((id === current || id === "*") && hidden.indexOf(e.sid) >= 0) { setMin(t, false); hidden = hidden.filter(s => s !== e.sid); }
         saveRun();
     }
     // "Always open here": this app's new windows go to activity ID (a choice you made; null forgets it).
@@ -117,6 +121,7 @@ Singleton {
             else if (plan.show.indexOf(e.sid) >= 0) setMin(e.t, false);
         }
         hidden = plan.hidden;
+        saveRun();
         current = id;
         writer.merge({ current: id });
         applyPins();
@@ -190,7 +195,10 @@ Singleton {
                 return;
             }
             const r = Object.assign({}, o);
+            // Keys still on their way to the file keep this session's value, and one just deleted stays deleted (a
+            // reload of an earlier write mustn't bring a deleted activity back).
             for (const k in act.raw) if (writer.owns(k)) r[k] = act.raw[k];
+            for (const k in r) if (writer.owns(k) && act.raw[k] === undefined) delete r[k];
             act.raw = r;
             const first = !act.loaded;
             act.reparse();
@@ -203,17 +211,29 @@ Singleton {
         }
         onLoadFailed: act.loaded = true
     }
-    // The session's window map, so restarting the shell keeps windows on their activities (KWin ids only: labwc's list
-    // has no lasting id, and its windows go to the activity you're on).
+    // The session's window state, so restarting the shell keeps windows on their activities and still brings back the
+    // ones it hid: { acts: { key: activity }, hidden: [key] } (KWin's ids last; labwc's app id + first title mostly do).
+    // Runtime state in $XDG_RUNTIME_DIR, gone at sign-out with the windows: not a setting.
     function saveRun() {
-        const m = {};
-        for (const e of seen) if (e.key.indexOf("k:") === 0) m[e.key] = e.act;
-        runWriter.setText(JSON.stringify(m));
+        const m = {}, h = [];
+        for (const e of seen) {
+            m[e.key] = e.act;
+            if (hidden.indexOf(e.sid) >= 0) h.push(e.key);
+        }
+        runWriter.setText(JSON.stringify({ acts: m, hidden: h }));
     }
     FileView { id: runWriter; path: act.runPath; atomicWrites: true; blockLoading: true }
     FileView {
         path: act.runPath
         blockLoading: true
-        onLoaded: { try { const o = JSON.parse(text()); if (o && typeof o === "object") act.restored = o; } catch (e) {} }
+        onLoaded: {
+            try {
+                const o = JSON.parse(text());
+                if (o && typeof o === "object" && o.acts && typeof o.acts === "object") {
+                    act.restored = o.acts;
+                    act.restoredHidden = A.asList(o.hidden) || [];
+                } else if (o && typeof o === "object") act.restored = o;    // the first version: the map alone
+            } catch (e) {}
+        }
     }
 }

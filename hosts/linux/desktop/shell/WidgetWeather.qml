@@ -10,7 +10,15 @@ import "widget-layout.js" as L
 WidgetBase {
     id: w
     readonly property var place: c("place", null)
-    readonly property bool imperial: c("units", "metric") === "imperial"
+    // No choice made yet: °F where the measurement system is the US's (LC_MEASUREMENT / the locale), else °C. Only
+    // the default: nothing is written until you pick °C or °F.
+    readonly property bool usMeasure: {
+        const lm = Quickshell.env("LC_ALL") || Quickshell.env("LC_MEASUREMENT") || Quickshell.env("LANG") || "";
+        if (/^(en_US|en_LR|my_MM|es_US|chr_US|haw_US)\b/.test(lm)) return true;
+        if (lm !== "") return false;
+        return Qt.locale().measurementSystem === Locale.ImperialUSSystem;
+    }
+    readonly property bool imperial: c("units", usMeasure ? "imperial" : "metric") === "imperial"
     property var wx: null
     property var results: []
     property string searchErr: ""
@@ -18,15 +26,19 @@ WidgetBase {
     implicitWidth: compact ? barRow.implicitWidth : 330
     implicitHeight: compact ? 24 : 230
 
+    // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
+    // once more when it's done.
+    property bool getAgain: false
+    function getRefresh() { if (get.running) getAgain = true; else get.running = true; }
     Process {
         id: get
+        onExited: if (w.getAgain) { w.getAgain = false; running = true; }
         command: w.place ? ["python3", w.helper, "weather", String(w.place.lat), String(w.place.lon)].concat(w.imperial ? ["imperial"] : []) : ["true"]
-        running: w.live && !!w.place
         stdout: StdioCollector { onStreamFinished: { try { const o = JSON.parse(text.trim().split("\n").pop()); if (!o.error) w.wx = o; } catch (e) {} } }
     }
-    onPlaceChanged: { wx = null; if (place) get.running = true; }
-    onImperialChanged: if (place) get.running = true
-    Timer { interval: 900000; running: w.live && !!w.place; repeat: true; onTriggered: get.running = true }
+    onPlaceChanged: { wx = null; if (place) getRefresh(); }
+    onImperialChanged: if (place) getRefresh()
+    Timer { interval: 900000; running: w.live && !!w.place; repeat: true; triggeredOnStart: true; onTriggered: w.getRefresh() }
     Process {
         id: search
         stdout: StdioCollector {
