@@ -704,6 +704,12 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "How bright",
+"p": "display",
+"d": "Darker or brighter than Auto-brightness picks for the room",
+"i": "sun"
+},
+{
 "t": "Night light",
 "p": "display",
 "d": "Warmer colours from sunset to sunrise, to help you sleep",
@@ -2370,6 +2376,12 @@ var ENTRIES = [
 "d": "Press it to go to the next layout"
 },
 {
+"t": "Remember the layout",
+"p": "keyboard",
+"d": "One layout for everything, or each app or window keeps the one you switched it to",
+"i": "kbd"
+},
+{
 "t": "Wait before a held key repeats",
 "p": "keyboard",
 "i": "kbd"
@@ -2377,6 +2389,18 @@ var ENTRIES = [
 {
 "t": "Repeat speed",
 "p": "keyboard",
+"i": "kbd"
+},
+{
+"t": "Num Lock when Desktop Mode starts",
+"p": "keyboard",
+"d": "Used from the next time Desktop Mode starts",
+"i": "kbd"
+},
+{
+"t": "Compose key",
+"p": "keyboard",
+"d": "Press it, then two keys, to type a letter that isn't on the keyboard: Compose, e, ' types é",
 "i": "kbd"
 },
 {
@@ -3637,7 +3661,7 @@ var ENTRIES = [
 "i": "globe"
 },
 {
-"t": "This PC's certificate",
+"t": "This PC's certificate (SHA-256)",
 "p": "remote-desktop",
 "i": "shield"
 },
