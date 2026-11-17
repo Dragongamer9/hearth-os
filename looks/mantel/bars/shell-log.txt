@@ -1,0 +1,1 @@
+[33m  WARN[97m scene[0m: QML FileView at @Launcher.qml[259:5]: Read of /tmp/home/.config/hearth/search.json failed: File does not exist.
