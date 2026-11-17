@@ -27,6 +27,10 @@ PanelWindow {
     WlrLayershell.keyboardFocus: !shown ? WlrKeyboardFocus.None : searching ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
+    // The screen's own size from the first frame (a first frame drawn smaller was left in the other buffer and showed
+    // through, shifted, when only part of the page was drawn again).
+    implicitWidth: screen ? screen.width : 1920
+    implicitHeight: screen ? screen.height : 1080
 
     onShownChanged: {
         if (shown) { shownAt = Date.now(); if (primary || !fh.activeCouch) fh.activeCouch = cw; keys.forceActiveFocus(); }
