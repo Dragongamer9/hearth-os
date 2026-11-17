@@ -45,14 +45,20 @@ Scope {
         if (Reg.ALIASES[p]) p = Reg.ALIASES[p];
         // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page or its expander goes there).
         const m = /^([\w-]+):([\w-]+)$/.exec(p);
-        if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; p = m[1]; }
+        if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; SettingsNav.anchorAt = Date.now(); p = m[1]; }
         const id = Reg.resolve(p);
         // A page only on the live USB stays closed elsewhere; anything unknown opens Home.
         const e = Reg.page(id);
         page = e && (!e.live || live) ? id : (shown ? page : "home");
+        if (page !== "kwin-rules") SettingsNav.ruleFor = null;
         shown = true;
     }
-    function close() { shown = false; SettingsNav.pageAnchor = ""; }
+    // A window's More actions › "Special window settings…" (Mantel on KWin): Window rules, for that window's app.
+    function openWindowRules(info) {
+        SettingsNav.ruleFor = info && (info.wmclass || info.title) ? { wmclass: String(info.wmclass || ""), title: String(info.title || "") } : null;
+        open("kwin-rules");
+    }
+    function close() { shown = false; SettingsNav.pageAnchor = ""; SettingsNav.ruleFor = null; }
     function toggle() { shown ? close() : open(""); }
 
     LazyLoader {

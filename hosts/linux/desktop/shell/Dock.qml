@@ -59,7 +59,7 @@ PanelWindow {
     property bool remapping: false
     // Off screen for a moment (not within one frame, or the compositor wouldn't see it go), then back.
     Timer { id: remapTimer; interval: 150; onTriggered: dock.remapping = false }
-    visible: settingsReady && !remapping
+    visible: settingsReady && !remapping && !SettingsNav.fireholdDesk && !SettingsNav.fireholdCouch   // Firehold's Desk has its own dock (FireholdDesk.qml), its Couch none
     property int lastReserved: -1
     onSettingsReadyChanged: refit()
     function refit() {
@@ -430,7 +430,9 @@ PanelWindow {
             anchors.centerIn: parent; anchors.verticalCenterOffset: db.lift
             width: db.iconSize + 10; height: width; radius: Theme.r(width / 3)
             color: "transparent"; border.width: 2; border.color: Theme.flame
-            SequentialAnimation on opacity { running: db.visible && !Settings.reduceMotion; loops: Animation.Infinite; NumberAnimation { from: 1; to: 0.35; duration: 700 } NumberAnimation { from: 0.35; to: 1; duration: 700 } }
+            // Only while the app asks for attention: a count or a progress bar alone used to keep this pulse (and the
+            // whole dock) redrawing every frame, all the time (1.14, the owner's laptop: the shell at ~13% CPU).
+            SequentialAnimation on opacity { running: db.visible && !!db.info && db.info.urgent === true && !Settings.reduceMotion; loops: Animation.Infinite; NumberAnimation { from: 1; to: 0.35; duration: 700 } NumberAnimation { from: 0.35; to: 1; duration: 700 } }
         }
         Rectangle {   // the count
             visible: !!db.info && db.info.count > 0

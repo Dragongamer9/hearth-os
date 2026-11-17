@@ -55,6 +55,8 @@ jobs:
       - name: Looks and apps theme tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+          # Mantel on KWin's Settings pages' helper (hearth-kwin-settings: merge-on-write, rebinds, what it may change).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py' -v
           # Screens on labwc and KWin (hearth-screens, docs/SCREENS.md): parse/build, saved settings never lost.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_screens.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
@@ -103,6 +105,9 @@ jobs:
           # 1.14, network and sign-in (KDE's missing parts): VPNs by hand, 802.1X, mobile broadband, Wi-Fi QR codes,
           # Duplicate, the firewall, fingerprint sign-in's PAM side, Vaults, SSH/GPG passphrases, the power menu's choices.
           python3 -m unittest discover -s hosts/linux/test -p 'test_net_signin_114.py' -v
+          # 1.14, Window effects' and Virtual desktops' extras: second switcher, hide the pointer after a time, show FPS /
+          # paint, KWin's scripts, the Desktop Cube.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_effects_extras.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -422,13 +427,15 @@ jobs:
           kdown() { wtype -k Right; sleep 1; for i in $(seq 1 "$1"); do wtype -k Down; done; sleep 1; grim "shots/kwin-pages/$2.png" || true; }
           kp kwin-effects 00-labwc-needs-kwin
           kp mouse 00-labwc-mouse
+          kp kwin-behaviour wb-0-labwc-window-behaviour
           K0=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
           L0=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
           # Saved settings to show: three named desktops, a tile layout for the screen, two window rules, a few effects.
           mkdir -p "$HOME/.config"
           printf '%s\n' '[Desktops]' 'Id_1=6a1f0c62-1b1d-4c8e-9d2f-000000000001' 'Name_1=Main' 'Id_2=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'Name_2=Games' \
             'Id_3=6a1f0c62-1b1d-4c8e-9d2f-000000000003' 'Name_3=Work' 'Number=3' 'Rows=1' '' '[Plugins]' 'wobblywindowsEnabled=true' 'diminactiveEnabled=true' \
-            '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
+            'cubeEnabled=true' 'minimizeallEnabled=true' 'showfpsEnabled=true' 'hidecursorEnabled=true' '' '[Effect-hidecursor]' 'HideOnTyping=false' 'InactivityDuration=10' \
+            '' '[TabBoxAlternative]' 'ApplicationsMode=2' '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
             '[Tiling][e3d3d5c4-af96-5514-988a-a5cf444294bf]' 'tiles={"layoutDirection":"horizontal","tiles":[{"width":0.3},{"width":0.4},{"width":0.3,"layoutDirection":"vertical","tiles":[{"height":0.5},{"height":0.5}]}]}' \
             > "$HOME/.config/kwinrc"
           printf '%s\n' '[General]' 'count=2' 'rules=1d0b1f5e-0000-4000-8000-000000000001,1d0b1f5e-0000-4000-8000-000000000002' '' \
@@ -436,8 +443,13 @@ jobs:
             '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
             > "$HOME/.config/kwinrulesrc"
           printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
+          printf '%s\n' '[ButtonRebinds][Mouse]' 'ExtraButton1=Key,Alt+Left' 'ExtraButton5=Key,Meta+W' > "$HOME/.config/kcminputrc"
+          # Window behaviour (SetKwinWindows.qml): focus follows the pointer with raise on hover, a middle click closes,
+          # Super + right button opens the window menu.
+          printf '%s\n' '' '[Windows]' 'FocusPolicy=FocusFollowsMouse' 'AutoRaise=true' 'AutoRaiseInterval=500' '' '[MouseBindings]' \
+            'CommandActiveTitlebar2=Close' 'CommandInactiveTitlebar2=Close' 'CommandAll3=Operations menu' >> "$HOME/.config/kwinrc"
           touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
           kp kwin-desktops 03-virtual-desktops
           kp kwin-tiling 04-tiling
@@ -445,11 +457,27 @@ jobs:
           kp kwin-rules 07-window-rules; wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim shots/kwin-pages/08-window-rule-open.png || true
           kp kwin-tablet 09-tablet-and-touchscreen; kdown 12 10-touchscreen
           kp kwin-games 11-games-and-x11-apps
-          kp mouse 12-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
+          kp mouse 21-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
           kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
+          # The 1.14 extras: the second switcher (Super+Tab), the pointer, window helpers and For developers at the bottom,
+          # and the Desktop Cube.
+          kp kwin-effects 16-window-effects-second-switcher; kdown 25 16-window-effects-second-switcher
+          kp kwin-effects 17-window-effects-pointer-helpers-developers; kdown 54 17-window-effects-pointer-helpers-developers
+          kp kwin-desktops 18-virtual-desktops-cube; kdown 12 18-virtual-desktops-cube
+          # Mouse buttons (1.14 wave 3, SetMouseButtons.qml): two saved rebinds (kcminputrc above), then the "press the button" box
+          # (mouse-buttons:press); the middle-click paste switch is in 21, the pen-and-mouse pointer switch in 09.
+          kp mouse-buttons 19-mouse-buttons
+          kp mouse-buttons:press 20-mouse-buttons-press
+          kp kwin-behaviour wb-1-window-behaviour; kdown 10 wb-2-window-behaviour-title-bar
+          # Further down with Down only: Right on a choice would pick the next option (and save it).
+          for i in $(seq 1 5); do wtype -k Down; done; sleep 1; grim shots/kwin-pages/wb-3-window-behaviour-super-drag.png || true
+          # A window menu's More actions › "Special window settings…" (here as its IPC): Window rules for that app,
+          # with a button to make one (nothing written: the K1/K2 check below).
+          ipc settings close; ipc settings windowRules foot "Terminal"; sleep 3; grim shots/kwin-pages/wb-4-window-rules-for-a-window.png || true
+          ipc settings state | grep -q '"page":"kwin-rules"' || { echo "::error title=KWin pages::Special window settings didn't open Window rules: $(ipc settings state | cut -c1-200)"; touch shots/FAILED; }
           ipc settings close; sleep 1
           rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
           [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
           [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
@@ -1488,9 +1516,11 @@ jobs:
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
           set +x
           # Report: problems in the shell log (not the expected "no uinput/evdev here") fail the test.
-          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files.
+          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files, and no
+          # logind session: Quickshell's polkit service still logs "No session for pid" here (quickshell.service.polkit),
+          # although PolkitPrompt.qml doesn't register its agent without a session. One filter, that category only.
           bad=$(grep -iE "ERROR|WARN|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" 2>/dev/null \
-            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -25 || true)
+            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez|quickshell\\.service\\.polkit" | head -25 || true)
           if [ -n "$bad" ] || grep -q "not running" shots/quickshell-running.txt; then
             msg=$( { cat shots/quickshell-running.txt; echo "$bad"; tail -15 "$LOG" 2>/dev/null; } | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g")
             echo "::error title=shell::$msg"
@@ -2148,6 +2178,7 @@ jobs:
           # Flathub for the App store (yours, no system helper needed), and the file index made once.
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
           say "store: $(python3 $SH/hearth-store home 2>&1 | tail -1 | cut -c1-200)"
+          say "store app page: $(python3 $SH/hearth-store app org.kde.krita 2>&1 | tail -4 | tr '\n' ' ' | cut -c1-500)"
           mkdir -p "$HOME/Documents/Taxes" "$HOME/Projects"
           printf 'the quarterly budget numbers\n' > "$HOME/Documents/report.txt"; printf 'the quarterly budget numbers\nand more\n' > "$HOME/Documents/report-v2.txt"
           : > "$HOME/Documents/Taxes/Budget-2026.ods"
@@ -2625,12 +2656,26 @@ jobs:
           # ---- Mantel's Settings › Display in the real shell; its pictures through hearth-screenshot (KWin's
           # ScreenShot2 with its permission check on), or grim when KWin runs inside labwc.
           python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1   # no one-time "Pick your browser" over the pictures
+          # ---- Screen power saving (1.14, hearth-screen-psr): its tests, then a stand-in of the owner's laptop (Intel
+          # 0x46d0 with a built-in screen and the driver's PSR switch) so Settings › Display shows the row as he'll see it.
+          python3 -m unittest hosts/linux/test/test_hearth_screen_psr.py hosts/linux/test/test_hearth_memory.py > shots/kwin/psr-tests.log 2>&1 \
+            || fail "screen power saving / memory tests: $(grep -E '^(FAIL|ERROR|AssertionError)' shots/kwin/psr-tests.log | head -6 | tr '\n' '|' | cut -c1-600)"
+          export HEARTH_PSR_ROOT=/tmp/psr-pc HEARTH_PSR_BIN="$PWD/os/system_files/usr/libexec/nimbus/hearth-screen-psr"
+          python3 -c "import sys; sys.path.insert(0, 'hosts/linux/test'); import test_hearth_screen_psr as t; t.fake_pc('/tmp/psr-pc')"
+          export HEARTH_PSR_SYS=/tmp/psr-pc/sys HEARTH_PSR_DEBUGFS=/tmp/psr-pc/debug HEARTH_PSR_RUN=/tmp/psr-pc/run/screen-psr.json HEARTH_PSR_SETTINGS=/tmp/psr-pc/etc/screen-power.json
+          python3 "$HEARTH_PSR_BIN" apply > shots/kwin/psr-apply.json 2>&1
+          grep -q '"by": "auto"' shots/kwin/psr-apply.json && grep -qx 1 /tmp/psr-pc/debug/dri/0/i915_edp_psr_debug \
+            || fail "Screen power saving: Auto didn't turn it off on the stand-in laptop: $(head -c 400 shots/kwin/psr-apply.json)"
+          [ ! -e "$HEARTH_PSR_SETTINGS" ] || fail "Screen power saving: Auto wrote a settings file"
+          echo "::notice title=Screen power saving::$(python3 "$HEARTH_PSR_BIN" status | head -c 600)"
           quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
           sleep 25
           ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
           shot() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot -o "$N" "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
           scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
           scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
+          scr :power kwin-11-screen-power-saving
+          [ ! -e "$HEARTH_PSR_SETTINGS" ] || fail "Screen power saving: opening Settings › Display wrote a settings file"
           ipc settings close
           if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell.log >/dev/null; then
             fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
@@ -2768,6 +2813,9 @@ jobs:
       - name: Picture (kwin-1-display-top)
         if: always()
         run: f=shots/kwin/kwin-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-1-display-top $i::$part"; done || true
+      - name: Picture (kwin-11-screen-power-saving)
+        if: always()
+        run: f=shots/kwin/kwin-11-screen-power-saving.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-11-screen-power-saving $i::$part"; done || true
       - name: Picture (kwin-2-night-light)
         if: always()
         run: f=shots/kwin/kwin-2-night-light.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-2-night-light $i::$part"; done || true
@@ -2906,8 +2954,10 @@ jobs:
         part:
           - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
           - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
-          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
-          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse"
+          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 21-mouse-on-kwin 13-touchpad-on-kwin"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube"
+          - "19-mouse-buttons 20-mouse-buttons-press"
+          - "wb-0-labwc-window-behaviour wb-1-window-behaviour wb-2-window-behaviour-title-bar wb-3-window-behaviour-super-drag wb-4-window-rules-for-a-window"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

@@ -1,8 +1,9 @@
 // Hearth Settings › Personalization › Window effects (Mantel on KWin, docs/KWIN-SETTINGS.md): KWin's own effects, Hearth's
 // controls. How fast animations run (kdeglobals [KDE] AnimationDurationFactor), the overview and window views, the window
 // switcher's look, blur and see-through windows, wobbly windows, minimize, open and close animations, dimming, the
-// pointer effects and the rest of KWin 6's effects (kwinrc [Plugins] and each effect's [Effect-*] group). Only what
-// you change is written; KWin takes it at once.
+// pointer effects and the rest of KWin 6's effects (kwinrc [Plugins] and each effect's [Effect-*] group), the second
+// switcher (Super+Tab, kwinrc [TabBoxAlternative]), KWin's own scripts (minimize all, video wall, switcher follows the
+// taskbar) and, for developers, show FPS and show paint. Only what you change is written; KWin takes it at once.
 import QtQuick
 import QtQuick.Layouts
 
@@ -28,6 +29,34 @@ SetPage {
     function onOf(ids) { for (const id of ids) if (kw.effectOn(id)) return id; return "none"; }
     function opt(id, label) { return { value: id, label: label, disabled: id !== "none" && !kw.hasEffect(id) }; }
     function effSub(id, text) { return kw.hasEffect(id) ? text : text + ". Not in this KWin"; }
+    // KWin's own scripts (status.scripts: what's installed; offered when that can't be told).
+    function hasScript(id) { return !kw.st || !kw.st.scripts || kw.st.scripts.indexOf(id) >= 0; }
+    function scriptSub(id, text) { return page.hasScript(id) ? text : text + ". Not in this KWin"; }
+    // A window switcher's look (main: TabBox, second: TabBoxAlternative), "__none" for no switcher.
+    function switcherLooks() {
+        return (kw.st && kw.st.switchers ? kw.st.switchers : [{ id: "thumbnail_grid", label: "Thumbnail grid" }])
+            .map(s => ({ value: s.id, label: s.hearth ? s.label + " (Hearth)" : s.label }))
+            .concat([{ value: "__none", label: "No switcher, just switch" }]);
+    }
+    function lookNow(group) {
+        return kw.b("kwinrc", group, "ShowTabBox", true) ? kw.v("kwinrc", group, "LayoutName", "thumbnail_grid") : "__none";
+    }
+    function setLook(group, v) {
+        if (v === "__none") kw.set("kwinrc", group, "ShowTabBox", false);
+        else kw.setMany("kwinrc", { [group]: { ShowTabBox: true, LayoutName: v } });
+    }
+    // Hide the pointer when the mouse is still (Effect-hidecursor InactivityDuration, seconds; 0 = never). The effect
+    // is on while either this or "while you type" is.
+    readonly property var stillTimes: [{ value: 0, label: "Never" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" },
+        { value: 30, label: "30 s" }, { value: 60, label: "1 min" }]
+    readonly property bool hideTyping: kw.effectOn("hidecursor") && kw.b("kwinrc", "Effect-hidecursor", "HideOnTyping", true)
+    function hideStillNow() { return kw.effectOn("hidecursor") ? kw.n("kwinrc", "Effect-hidecursor", "InactivityDuration", 0) : 0; }
+    function setHideStill(sec) {
+        const fx = { InactivityDuration: sec };
+        // Turning the effect on for this alone must not also start hiding it while typing (that's on by default).
+        if (!page.hideTyping && kw.b("kwinrc", "Effect-hidecursor", "HideOnTyping", true)) fx.HideOnTyping = false;
+        kw.setMany("kwinrc", { Plugins: { hidecursorEnabled: sec > 0 || page.hideTyping }, "Effect-hidecursor": fx });
+    }
 
     KwinGate {
         kw: kw
@@ -135,13 +164,10 @@ SetPage {
         SetHeader { text: "Window switcher (Alt+Tab)" }
         SetDropdown {
             icon: "window"; title: "Look"
-            sub: "What Alt+Tab shows while you hold it"
-            options: (kw.st && kw.st.switchers ? kw.st.switchers : [{ id: "thumbnail_grid", label: "Thumbnail grid" }])
-                .map(s => ({ value: s.id, label: s.hearth ? s.label + " (Hearth)" : s.label }))
-                .concat([{ value: "__none", label: "No switcher, just switch" }])
-            current: kw.b("kwinrc", "TabBox", "ShowTabBox", true) ? kw.v("kwinrc", "TabBox", "LayoutName", "thumbnail_grid") : "__none"
-            onChosen: v => v === "__none" ? kw.set("kwinrc", "TabBox", "ShowTabBox", false)
-                                          : kw.setMany("kwinrc", { TabBox: { ShowTabBox: true, LayoutName: v } })
+            sub: "What Alt+Tab shows while you hold it. Alt+` shows only the windows of the app you're on, in the same look"
+            options: page.switcherLooks()
+            current: page.lookNow("TabBox")
+            onChosen: v => page.setLook("TabBox", v)
         }
         SetSwitch {
             icon: "eye"; title: "Show the window you're on"
@@ -166,6 +192,36 @@ SetPage {
             options: [{ value: 0, label: "Most recent first" }, { value: 1, label: "As they are stacked" }]
             current: kw.n("kwinrc", "TabBox", "SwitchingMode", 0)
             onChosen: v => kw.set("kwinrc", "TabBox", "SwitchingMode", v)
+        }
+
+        // ---------------------------------------------------- second switcher (KWin's "Walk Through Windows Alternative":
+        // Super+Tab in Hearth, shortcuts.json kwinOwn). Alt+` (KWin's own) uses the main switcher's look, this app only.
+        SetHeader { text: "Second switcher (Super+Tab)" }
+        SetDropdown {
+            icon: "window"; title: "Second switcher's look"
+            sub: "A switcher of its own, set up apart from Alt+Tab"
+            options: page.switcherLooks()
+            current: page.lookNow("TabBoxAlternative")
+            onChosen: v => page.setLook("TabBoxAlternative", v)
+        }
+        SetChoice {
+            icon: "grid"; title: "Which apps"
+            sub: "Only the app you're on: Super+Tab goes between that app's windows"
+            options: [{ value: 0, label: "Every window" }, { value: 1, label: "One per app" }, { value: 2, label: "Only the app you're on" }]
+            current: kw.n("kwinrc", "TabBoxAlternative", "ApplicationsMode", 0)
+            onChosen: v => kw.set("kwinrc", "TabBoxAlternative", "ApplicationsMode", v)
+        }
+        SetChoice {
+            icon: "desktops"; title: "Which windows"
+            options: [{ value: 1, label: "This desktop" }, { value: 0, label: "Every desktop" }]
+            current: kw.n("kwinrc", "TabBoxAlternative", "DesktopMode", 1)
+            onChosen: v => kw.set("kwinrc", "TabBoxAlternative", "DesktopMode", v)
+        }
+        SetChoice {
+            icon: "window"; title: "Minimized windows"
+            options: [{ value: 0, label: "Included" }, { value: 1, label: "Left out" }, { value: 2, label: "Only those" }]
+            current: kw.n("kwinrc", "TabBoxAlternative", "MinimizedMode", 0)
+            onChosen: v => kw.set("kwinrc", "TabBoxAlternative", "MinimizedMode", v)
         }
 
         // ---------------------------------------------------- glass
@@ -328,11 +384,55 @@ SetPage {
             checked: kw.effectOn("hidecursor") && kw.b("kwinrc", "Effect-hidecursor", "HideOnTyping", true); enabled: kw.hasEffect("hidecursor")
             onToggled: v => kw.setMany("kwinrc", { Plugins: { hidecursorEnabled: v || kw.n("kwinrc", "Effect-hidecursor", "InactivityDuration", 0) > 0 }, "Effect-hidecursor": { HideOnTyping: v } })
         }
+        SetChoice {
+            icon: "mouse"; title: "Hide the pointer when the mouse is still"
+            sub: page.effSub("hidecursor", "It comes back when you move the mouse")
+            enabled: kw.hasEffect("hidecursor")
+            options: page.stillTimes
+            current: page.hideStillNow()
+            onChosen: v => page.setHideStill(v)
+        }
         SetSwitch {
             icon: "pad"; title: "Show touches on a touchscreen"
             sub: page.effSub("touchpoints", "Circles where fingers touch")
             checked: kw.effectOn("touchpoints"); enabled: kw.hasEffect("touchpoints")
             onToggled: v => kw.setEffect("touchpoints", v)
+        }
+
+        // ---------------------------------------------------- KWin's own scripts ([Plugins] <name>Enabled)
+        SetHeader { text: "Window helpers" }
+        SetSwitch {
+            icon: "window"; title: "Minimize every window with Super+Shift+D"
+            sub: page.scriptSub("minimizeall", "Press it again to bring them all back")
+            checked: kw.effectOn("minimizeall"); enabled: page.hasScript("minimizeall")
+            onToggled: v => kw.setEffect("minimizeall", v)
+        }
+        SetSwitch {
+            icon: "display"; title: "Video wall"
+            sub: page.scriptSub("videowall", "A video played full screen stretches over every screen")
+            checked: kw.effectOn("videowall"); enabled: page.hasScript("videowall")
+            onToggled: v => kw.setEffect("videowall", v)
+        }
+        SetSwitch {
+            icon: "grid"; title: "Leave out of Alt+Tab what's left off the taskbar"
+            sub: page.scriptSub("synchronizeskipswitcher", "Windows an app keeps off the taskbar aren't in the switchers either")
+            checked: kw.effectOn("synchronizeskipswitcher"); enabled: page.hasScript("synchronizeskipswitcher")
+            onToggled: v => kw.setEffect("synchronizeskipswitcher", v)
+        }
+
+        // ---------------------------------------------------- KWin's debugging effects
+        SetHeader { text: "For developers" }
+        SetSwitch {
+            icon: "cpu"; title: "Show FPS"
+            sub: page.effSub("showfps", "How many frames a second KWin draws, in a corner of the screen")
+            checked: kw.effectOn("showfps"); enabled: kw.hasEffect("showfps")
+            onToggled: v => kw.setEffect("showfps", v)
+        }
+        SetSwitch {
+            icon: "edit"; title: "Show paint"
+            sub: page.effSub("showpaint", "Flashes a colour over every part of the screen KWin draws again")
+            checked: kw.effectOn("showpaint"); enabled: kw.hasEffect("showpaint")
+            onToggled: v => kw.setEffect("showpaint", v)
         }
     }
 }

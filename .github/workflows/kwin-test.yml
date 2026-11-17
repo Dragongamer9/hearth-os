@@ -13,7 +13,7 @@ on:
             'hosts/linux/desktop/shell/hearth-your-desktop', 'hosts/linux/desktop/shell/hearth-lockcheck', 'hosts/linux/desktop/shell/DesktopNotice.qml',
             'hosts/linux/desktop/shell/hearth-kwin-settings', 'hosts/linux/desktop/shell/SetKeyboard.qml', 'hosts/linux/test/test_kwin_keyboard.py',
             'hosts/linux/desktop/shell/SearchBar.qml', 'hosts/linux/desktop/shell/StoreDrivers.qml', 'hosts/linux/desktop/shell/Activities.qml',
-            'hosts/linux/desktop/shell/SetUsers.qml']
+            'hosts/linux/desktop/shell/SetUsers.qml', 'hosts/linux/desktop/shell/Launcher.qml', 'hosts/linux/desktop/shell/SearchSources.qml']
   workflow_dispatch:
 
 concurrency:
@@ -36,6 +36,8 @@ jobs:
             python3 python3-dbus python3-gobject python3-pillow qt6ct google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon dbus-tools \
             libnotify wl-clipboard wtype kmod >/dev/null
           dnf -y install --skip-unavailable wayland-utils rsms-inter-fonts plasma-breeze >/dev/null || true
+          # The Desktop Cube (Debian's kwin-addons is kdeplasma-addons' KWin part): its Super+C checked against KWin's own default.
+          dnf -y install --skip-unavailable --setopt=install_weak_deps=False kdeplasma-addons >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           for b in kwin_wayland labwc quickshell grim; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
@@ -72,7 +74,9 @@ jobs:
       fail-fast: false
       matrix:
         shot: [kwin-w3-search-empty, kwin-w3-search-calc, kwin-w3-search-settings, kwin-w3-search-typed-on-desktop, kwin-w3-search-controller,
-               kwin-w3-activities, kwin-w3-store-drivers, kwin-w3-users-oem, kwin-1-retired-card, kwin-2-desktop, kwin-3-your-desktop, kwin-4-fallback-card, kwin-5-twice-card, kwin-6-your-desktop-paused,
+               kwin-w3-activities, kwin-w3-store-drivers, kwin-w3-users-oem,
+               kwin-w3-store-app, kwin-w3-files-terminal, kwin-w3-search-world-clock, kwin-w3-search-colour, kwin-w3-search-help,
+               kwin-w3-search-kill-asks-first, kwin-1-retired-card, kwin-2-desktop, kwin-3-your-desktop, kwin-4-fallback-card, kwin-5-twice-card, kwin-6-your-desktop-paused,
                kwin-7-kde-settings-card, kwin-8-keyboard-kde-keys, kwin-9-keyboard-kwin]
     steps:
       - uses: actions/download-artifact@v4

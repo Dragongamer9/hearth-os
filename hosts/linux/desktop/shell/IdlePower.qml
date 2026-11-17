@@ -71,6 +71,13 @@ Scope {
             else root.wantSleep = false;
         }
     }
+    // 1.14 (the owner's laptop: the shell drew the moving wallpaper all night): after 3 minutes without input the moving
+    // wallpaper holds still (DeskState.idle); any input brings it back. Nothing else changes.
+    IdleMonitor {
+        timeout: 180
+        respectInhibitors: false
+        onIsIdleChanged: DeskState.idle = isIdle
+    }
     // Scheduled tasks you set to run "When the PC is idle" (Task Manager › + New task, 1.12): after 10 minutes idle,
     // once per idle stretch (games and videos that keep the screen on count as busy).
     IdleMonitor {

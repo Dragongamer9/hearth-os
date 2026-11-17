@@ -163,6 +163,18 @@ echo "kernel command line: $(cat /proc/cmdline)"
 echo "kernel: $(uname -r)"
 echo "--- kernel messages about screens and HDMI links (this boot)"
 journalctl -k -b --no-pager 2>/dev/null | grep -iE 'frl|hdmi|nvidia-modeset|nvkms|NVRM|link training|edid|drm.*(connector|mode)' | tail -60
+# 1.14 (the owner's i3-N305 laptop froze: "Atomic commit failed: Device or resource busy", an i915_flip worker in D):
+# Screen power saving (PSR) as Hearth set it, the driver's own PSR switch, the kernel's words about flips, PSR and
+# stuck tasks, and how much the memory stalled (a flip can wait on memory being brought back from swap).
+echo "--- screen power saving (PSR, hearth-screen-psr; Settings > Display)"
+[ -x /usr/libexec/nimbus/hearth-screen-psr ] && python3 /usr/libexec/nimbus/hearth-screen-psr status 2>&1 | head -c 4000; echo
+[ -r /sys/module/i915/parameters/enable_psr ] && echo "i915 enable_psr (start option): $(cat /sys/module/i915/parameters/enable_psr)"
+echo "--- kernel messages about flips, PSR and stuck tasks (this boot)"
+journalctl -k -b --no-pager 2>/dev/null | grep -iE 'psr|flip_done|atomic update|vblank wait|hung_task|blocked for more than|i915.*(error|timed out|hang)' | tail -40
+echo "--- memory stalls (PSI) and zram"
+echo "memory: $(tr '\n' ' ' < /proc/pressure/memory 2>/dev/null) | cpu: $(tr '\n' ' ' < /proc/pressure/cpu 2>/dev/null)"
+for z in /sys/block/zram*; do [ -d "$z" ] && echo "${z##*/}: algorithm $(cat "$z/comp_algorithm" 2>/dev/null) | size $(cat "$z/disksize" 2>/dev/null) | mm_stat $(cat "$z/mm_stat" 2>/dev/null)"; done
+tail -n 5 /var/lib/hearth/memory/guard.log 2>/dev/null
 true
 "##;
 

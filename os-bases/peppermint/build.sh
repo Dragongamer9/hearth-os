@@ -274,6 +274,20 @@ optional kglobalacceld xdg-desktop-portal-kde
 # KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
 # (org.kde.milou): without it they don't open (Present windows still does).
 optional milou
+# The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
+# cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
+# The image check says what it brings with it (packages, size) and warns if that is a Plasma session or a login manager.
+if have_pkg kwin-addons; then
+  ka_new=$(apt-get install -s "${APT[@]:3}" kwin-addons 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ' || true)
+  ka_kb=0
+  for p in $ka_new; do s=$(apt-cache show "$p" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}'); ka_kb=$((ka_kb + ${s:-0})); done
+  echo "::notice title=kwin-addons::$(echo $ka_new | wc -w) new package(s), $((ka_kb / 1024)) MB installed: $(echo "$ka_new" | cut -c1-3000)" || true
+  case " $ka_new " in
+    *" plasma-workspace "*|*" plasma-desktop "*|*" plasma-session"*|*" sddm "*|*" kde-plasma-desktop "*|*" plasma-workspace-wayland "*)
+      echo "::warning title=kwin-addons::it brings a Plasma session or a login manager: $(echo "$ka_new" | tr ' ' '\n' | grep -E '^(plasma|sddm|kde-plasma)' | tr '\n' ' ')";;
+  esac
+fi
+optional kwin-addons
 # kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
 if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
 command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkscreen-bin / kscreen): screens under KWin need it"
@@ -1900,6 +1914,11 @@ systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard
 # hearth-diskguard (1.11): frees its 2 GB emergency reserve at start-up when the system drive is nearly full
 systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
+# Screen power saving (1.14, hearth-screen-psr, Settings › Display): Intel laptops' Panel Self Refresh switched at
+# runtime through the driver's own switch (Auto: off on Alder Lake-N / Twin Lake, where it can stall the screen).
+# Never a start option or the boot menu; a simple service nothing waits for.
+chmod 755 /usr/libexec/nimbus/hearth-screen-psr
+systemctl enable hearth-screen-psr.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts the PC down cleanly (no lost files from a
 # battery that just dies). Hearth's BatteryWatch.qml says so at 10%, 5% and 3%, and hibernates instead where a
 # hibernation has come back before on this PC (/var/lib/hearth/hibernate-proven).
