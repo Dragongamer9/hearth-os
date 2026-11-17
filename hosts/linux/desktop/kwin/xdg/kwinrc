@@ -1,6 +1,7 @@
 # Hearth's KWin defaults for Mantel (1.14, docs/DESKTOPS.md "Mantel on KWin"). A system default: nimbus-session puts
 # this folder first in XDG_CONFIG_DIRS, under your own ~/.config/kwinrc, so anything you (or KWin's own settings)
-# change there wins and this file is never written to.
+# change there wins and this file is never written to. Except the keys marked [$i] (fixed): Mantel needs them to work
+# (Hearth Settings changes Night Light and tearing in your kwinrc, and those are never fixed here).
 
 [Windows]
 FocusPolicy=ClickToFocus
@@ -27,9 +28,11 @@ Left=None
 # Window frames: kwin/windows/xdg/kwinrc (Hearth's Aurorae theme). Not set here: this folder comes first in
 # XDG_CONFIG_DIRS, so a [org.kde.kdecoration2] here would win over it.
 
-# Hearth's on-screen keyboard as KWin's input method (feature/kwin-input: hearth-kwin-im.desktop).
+# Hearth's on-screen keyboard as KWin's input method (feature/kwin-input: hearth-kwin-im.desktop). Fixed ([$i],
+# KConfig's "immutable"): an input method picked in KDE Plasma (1.13) in your own kwinrc would leave Mantel's keyboard
+# unable to type. Hearth's keyboard is chosen in Settings › Keyboard; Hearth tells you once if yours isn't used.
 [Wayland]
-InputMethod[$e]=/usr/share/applications/hearth-kwin-im.desktop
+InputMethod[$ei]=/usr/share/applications/hearth-kwin-im.desktop
 VirtualKeyboardEnabled=true
 
 [NightColor]

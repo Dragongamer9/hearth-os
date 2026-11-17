@@ -44,7 +44,12 @@ named by `PLASMA_DEFAULT_SHELL` in KWin's environment (the KWin session sets it)
 more. It has the same clock, password field and own on-screen keyboard (touch, D-pad and A) as Lock.qml, in plain
 QtQuick, and checks the password with PAM through KWin's locker (PAM service `kde`). `kscreenlockerrc` (Hearth's
 KWin defaults) turns off KWin's own automatic locking and lock on resume, so Mantel's settings (Lock when waking,
-idle) are the only ones deciding.
+idle) are the only ones deciding. Those keys are fixed (`Autolock[$i]`, KConfig's "immutable"), so a
+`~/.config/kscreenlockerrc` left from KDE Plasma (1.13) can't turn them back on; so are kwinrc's
+`[Wayland] InputMethod` and `[ModifierOnlyShortcuts] Meta` (Mantel's keyboard and Super key), never Night Light or
+tearing (Settings › Display writes those to your kwinrc). If your own files set any of them, Hearth tells you once
+which and why (hearth-your-desktop `kwin-overrides`, its `LOCKED` list; the "Some of your KDE settings aren't used
+here" notice) and never changes your files.
 
 The controller on the lock screen: `Pad.qml` tells hearth-pad `locked {on}` while it's up (`DeskState.locked`, which
 on KWin follows KWin's locker). hearth-pad then holds the controller (a game behind the lock never sees a press) and
@@ -67,15 +72,28 @@ emergency screen, which on a handheld without a keyboard would be a lockout. So:
   loading (a positive sign; an error, a fallback or silence all fail). The test run is cached per change and made at
   Mantel's start. If anything fails it **doesn't lock**: a critical notification and a toast say why.
 - **The session's guard** (nimbus-session `run_kwin`, red flag 2: a device must never be locked out): when Hearth's
-  lock screen package or KWin's locker (`kscreenlocker_greet`) isn't there, KWin starts with `--no-lockscreen` and
+  lock screen package or KWin's locker (`kscreenlocker_greet`) isn't there, or the greeter's test run
+  (`hearth-lockcheck --as-kwin`, at most 12 s; it ends as soon as the greeter says it loaded) doesn't show Hearth's
+  lock screen loading, KWin starts with `--no-lockscreen` and
   without `PLASMA_DEFAULT_SHELL`, so nothing can lock with a lock screen that can't show. You're told once, through
   Hearth's own notice ("The lock screen is off", DesktopNotice.qml, which Do not disturb can't hide; the details in
   Settings › System › Your desktop and session.log), and Lock.qml says why each time you lock. Told again if it
-  breaks again after working. On real images this never trips: their build fails first (above).
+  breaks again after working. On real images this never trips: their build fails first (above). A pass is kept per
+  image (`~/.local/state/hearth/kwin-lock-proven`: the image's version and the lock screen's and greeter's checksums),
+  so the test run only happens on the first start after an update; a failure is never kept.
 - **KWin's environment for the check**: right before kwin_wayland starts, run_kwin writes the exact environment KWin
   gets to `$XDG_RUNTIME_DIR/hearth/kwin.env` (`env -0`; mode 600 in a 700 folder; written whole, then moved into
   place), since KWin's file capability hides its `/proc/<pid>/environ`. A failed write doesn't stop KWin (it's
   logged; Lock.qml then won't lock). It's removed when KWin ends.
+- **If the locker breaks anyway** (its "the screen locker is broken" emergency screen, on a device that passed every
+  check): the screen stays covered, which is KWin's choice and the safe one. To get back in without a keyboard: hold
+  the power button to restart (the next start shows Hearth's login screen or SDDM as usual); with a keyboard, Ctrl+Alt+F3
+  for a text console, sign in, run `loginctl unlock-session` (for your session, `loginctl list-sessions` shows its
+  number), then Ctrl+Alt+F1 (or the number your desktop is on) to go back. Over SSH or Hearth Link's terminal the same
+  command works. The Guide button deliberately does **not** unlock: anything that unlocks without your password
+  because the lock screen "looks broken" could be triggered on purpose (crash the greeter, get in), so a broken locker
+  is only ever left through a restart or `loginctl` by someone who can sign in. Send logs afterwards: kwin.log has the
+  greeter's error.
 - CI (`kwin-input.yml`) checks all of this, and on Debian trixie (`lock-debian`) locks for real, types a wrong
   password with hearth-type (still locked) and the right one (unlocked: PAM).
 - Left: something else asking the system to lock (`loginctl lock-session`, an app's "lock now") goes to KWin's
@@ -107,7 +125,7 @@ bare `loginctl unlock-session` would unlock that console's own session, not the 
 - Remote control (`org.freedesktop.impl.portal.RemoteDesktop`, e.g. VNC): Hearth asks "Allow … to control this
   computer?" (access-prompt.qml), optionally with the screen picker when the app also shares the screen, then the
   app's keys and pointer go to KWin through its fake input (`hearth-kwin-cast input`; keycodes, keysyms on a US layout,
-  relative and absolute pointer, buttons, scrolling; no touch yet). It ends when the app closes the session.
+  relative and absolute pointer, buttons, scrolling; and touch since 1.14: a finger down, moving, up, each with a frame). It ends when the app closes the session.
 - "Allow?" questions (xdg-desktop-portal's Access, e.g. before an app's first screenshot) are Hearth's too:
   `access-prompt.qml` (Allow / Don't allow, keyboard and D-pad, nothing allowed unless you pick Allow). On labwc
   they stay GTK's.

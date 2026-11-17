@@ -69,7 +69,12 @@ SetPage {
         ColumnLayout {
             spacing: 2
             Text { text: "Hearth"; color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.DemiBold }
-            Text { text: page.hearthVersion ? "Hearth OS " + page.hearthVersion : page.info.ver ? "Version " + page.info.ver : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+            Text {
+                text: page.hearthVersion ? "Hearth OS " + page.hearthVersion : page.info.ver ? "Version " + page.info.ver : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                // (SettingsNav.tapVersion: what seven taps do is written there.)
+                MouseArea { anchors.fill: parent; onClicked: SettingsNav.tapVersion() }
+            }
+            Text { visible: SettingsNav.unlockNote !== ""; text: SettingsNav.unlockNote; color: Theme.accent; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
         }
     }
     Repeater {
@@ -77,9 +82,10 @@ SetPage {
         delegate: SetRow {
             required property var modelData
             visible: page.inPart("about")
-            interactive: false; chevron: false
+            interactive: modelData[0] === "Version"; chevron: false
             implicitHeight: 52
             title: modelData[0]; value: modelData[1]
+            onActivated: if (modelData[0] === "Version") SettingsNav.tapVersion()
         }
     }
 

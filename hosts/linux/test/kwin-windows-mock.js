@@ -43,13 +43,16 @@ const desks = [{ id: "d1", name: "Desktop 1" }, { id: "d2", name: "Desktop 2" },
 const ws = {
     stackingOrder: [], desktops: desks, currentDesktop: desks[0], activeWindow: null,
     windowAdded: signal(), windowRemoved: signal(), windowActivated: signal(), currentDesktopChanged: signal(), desktopsChanged: signal(),
+    cursorPos: { x: 0, y: 0 }, cursorPosChanged: signal(),
     clientArea() { return Object.assign({}, AREA); },
     slotWindowOperations() { this.menuShown = true; },
 };
 const sent = [];          // Update(json) calls
 const shortcutsCalled = [];
+const otherCalls = [];    // the script's other D-Bus calls: [service, method, args...]
 let nextCallback = null;  // the script's waiting Next()
 const shortcuts = {};
+const menuFns = [];
 let menuFn = null;
 const ctx = {
     workspace: ws, KWin: { MaximizeArea: 2 }, print: m => { throw new Error("script printed: " + m); },
@@ -59,9 +62,10 @@ const ctx = {
         if (method === "Update") sent.push(JSON.parse(args[0]));
         else if (method === "Next") nextCallback = args[0];
         else if (method === "Shortcut") shortcutsCalled.push(args[0]);
+        else otherCalls.push([bus, method].concat(args));
     },
     registerShortcut(name, text, keys, fn) { assert(!shortcuts[name], "two shortcuts named " + name); shortcuts[name] = { keys, fn }; },
-    registerUserActionsMenu(fn) { menuFn = fn; },
+    registerUserActionsMenu(fn) { menuFns.push(fn); if (!menuFn) menuFn = fn; },
 };
 
 // Before the script: an app window, a layer-shell surface Mantel draws (the bar), and a window that skips the taskbar.
@@ -175,6 +179,23 @@ assert.strictEqual(tm.keepAbove, true);
 tm.caption = "Task Manager"; tm.captionChanged();
 assert.strictEqual(tm.keepAbove, false);
 
+// ---- picture-in-picture windows stay on top (shortcuts.json's "picture-in-picture" rule): Firefox's and Chromium's,
+// also when the title comes after the window opens; another app's window with that title doesn't
+const ffPip = makeWindow({ caption: "Picture-in-Picture", app: "firefox-esr" });
+ws.windowAdded(ffPip);
+assert.strictEqual(ffPip.keepAbove, true);
+const crPip = makeWindow({ caption: "", cls: "Chromium" });
+ws.windowAdded(crPip);
+assert.strictEqual(crPip.keepAbove, false);
+crPip.caption = "Picture in picture"; crPip.captionChanged();
+assert.strictEqual(crPip.keepAbove, true);
+const notPip = makeWindow({ caption: "Picture-in-Picture", app: "org.hearth.text" });
+ws.windowAdded(notPip);
+assert.strictEqual(notPip.keepAbove, false);
+const ffMain = makeWindow({ caption: "Picture-in-Picture — Mozilla Firefox", app: "firefox" });
+ws.windowAdded(ffMain);
+assert.strictEqual(ffMain.keepAbove, false);
+
 // ---- the title bar menu: Hearth's Snap with Snap layouts at the top; nothing for Mantel's own surfaces
 const m = menuFn(files);
 assert.strictEqual(m.text, "Snap");
@@ -186,6 +207,54 @@ assert.strictEqual(shortcutsCalled[shortcutsCalled.length - 1], "snap-layouts-op
 m.items.find(i => i.text === "Left half").triggered();
 assert.strictEqual(last().windows.find(w => w.title === "Files").zone, "left-half");
 assert.strictEqual(menuFn(bar), undefined);
+
+// ---- Hearth's other title bar menu entries: hide from screen sharing (checkable), force close
+assert.strictEqual(menuFns.length, 3, "Snap, Hide from screen sharing, Force close");
+const share = menuFns[1](files);
+assert.strictEqual(share.text, "Hide from screen sharing");
+assert.strictEqual(share.checked, false);
+share.triggered();
+assert.strictEqual(last().windows.find(w => w.title === "Files").noShare, true);
+assert.strictEqual(menuFns[1](files).checked, true, "ticked once hidden");
+send([{ op: "noShare", id: files.internalId, on: false }]);
+assert.strictEqual(last().windows.find(w => w.title === "Files").noShare, false);
+assert.strictEqual(last().captureHide, false, "this pretend KWin can't paint windows out of a share");
+const fcItem = menuFns[2](files);
+assert(/Force close/.test(fcItem.text));
+fcItem.triggered();
+assert.deepStrictEqual(otherCalls[otherCalls.length - 1].slice(1), ["ForceClose", files.internalId]);
+assert.strictEqual(menuFns[1](bar), undefined);
+assert.strictEqual(menuFns[2](bar), undefined);
+
+// ---- KWin's views: through kglobalaccel's invokeShortcut, from a command or Hearth's keys
+send([{ op: "effect", name: "overview" }]);
+assert.deepStrictEqual(otherCalls[otherCalls.length - 1], ["org.kde.kglobalaccel", "invokeShortcut", "Overview"]);
+key("present-windows");
+assert.deepStrictEqual(otherCalls[otherCalls.length - 1], ["org.kde.kglobalaccel", "invokeShortcut", "ExposeAll"]);
+key("desktop-grid");
+assert.deepStrictEqual(otherCalls[otherCalls.length - 1], ["org.kde.kglobalaccel", "invokeShortcut", "Grid View"]);
+key("overview");
+assert.deepStrictEqual(otherCalls[otherCalls.length - 1], ["org.kde.kglobalaccel", "invokeShortcut", "Overview"]);
+
+// ---- resting the pointer on Maximize (Hearth's Aurorae frame: 34 px buttons, close 5 px from the right edge)
+term.minimized = false;
+term.frameGeometry = { x: 100, y: 100, width: 800, height: 600 };
+term.clientGeometry = { x: 101, y: 130, width: 798, height: 569 };
+ws.stackingOrder = [files, bar, hidden, term];
+const hovers = () => otherCalls.filter(c => c[1] === "HoverMax").map(c => JSON.parse(c[2]));
+ws.cursorPos = { x: 100 + 800 - 5 - 34 - 2 - 17, y: 112 };     // the middle of Maximize
+ws.cursorPosChanged();
+let h = hovers();
+assert.strictEqual(h[h.length - 1].id, term.internalId, "on Maximize");
+same([h[h.length - 1].x, h[h.length - 1].w], [100 + 800 - 5 - 34 - 2 - 34, 34]);
+const nh = h.length;
+ws.cursorPos = { x: ws.cursorPos.x + 3, y: 113 }; ws.cursorPosChanged();
+assert.strictEqual(hovers().length, nh, "moving on the same button sends nothing more");
+ws.cursorPos = { x: 100 + 800 - 20, y: 112 }; ws.cursorPosChanged();     // onto Close
+h = hovers();
+assert.strictEqual(h[h.length - 1].id, "", "off Maximize");
+ws.cursorPos = { x: 300, y: 300 }; ws.cursorPosChanged();
+assert.strictEqual(hovers().length, h.length, "still off: nothing more");
 
 // ---- closing, and windows that go
 send([{ op: "close", id: files.internalId }]);

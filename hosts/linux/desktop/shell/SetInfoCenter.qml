@@ -13,9 +13,11 @@ SetPage {
         { p: "graphics", id: "info-graphics", t: "Vulkan & OpenGL" }, { p: "pci", id: "info-pci", t: "PCI" }, { p: "usb", id: "info-usb", t: "USB" }, { p: "energy", id: "info-energy", t: "Energy" }]
     readonly property string which: part || "cpu"
     property string find: ""
-    function load() { info = null; job.run([which], r => page.info = r, e => page.info = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
-    Component.onCompleted: Qt.callLater(load)
-    onWhichChanged: Qt.callLater(load)
+    function load() { page.info = null; job.run([which], r => page.info = r, e => page.info = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
+    property bool ready: false
+    Component.onCompleted: { ready = true; load(); }
+    onWhichChanged: if (ready) reload.restart()
+    Timer { id: reload; interval: 1; onTriggered: page.load() }
     SetJob { id: job; helper: "hearth-info" }
     function asText() {
         if (!info) return "";

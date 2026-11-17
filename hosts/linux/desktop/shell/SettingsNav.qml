@@ -5,8 +5,40 @@ pragma Singleton
 // own list registers here too: Left / Esc go back to the list of the window you're in.
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Singleton {
+    // ---- The Firehold preview's hidden switch (the owner's alone on 1.14; not in docs, release notes or the site).
+    // How to unlock and test: Settings › System › About, tap or click the "Hearth OS <version>" line (or the Version
+    // row, controller A) 7 times within 4 seconds. The 7th tap runs `hearth-your-desktop unlock`
+    // ({"firehold": {"unlocked": true}} in ~/.config/nimbus/firehold.json, atomic with .bak), "Firehold unlocked" shows on
+    // the page, and Settings › System › Your desktop shows "Firehold (preview)" (Off / Try once / Always) with "Hide
+    // Firehold again" next to it (`relock`: Firehold off, the window manager from before back, hidden again). Until
+    // then nimbus-session ignores any Firehold setting. Inside Firehold, Ctrl+Alt+Backspace goes back to KWin. Tests:
+    // `quickshell ipc call settings tapversion` is one tap (firehold-test.sh taps 7 times).
+    property int versionTaps: 0
+    property string unlockNote: ""
+    function tapVersion() {
+        versionTaps += 1;
+        tapWindow.restart();
+        if (versionTaps >= 7) {
+            versionTaps = 0;
+            tapWindow.stop();
+            unlockProc.running = true;
+        }
+    }
+    property Timer tapWindow: Timer { interval: 4000; onTriggered: versionTaps = 0 }
+    property Timer noteTimer: Timer { interval: 6000; onTriggered: unlockNote = "" }
+    property Process unlockProc: Process {
+        command: ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-your-desktop").toString().replace(/^file:\/\//, "")), "unlock"]
+        onExited: (code) => {
+            unlockNote = code === 0 ? "Firehold unlocked · Settings › System › Your desktop" : "Couldn't unlock Firehold";
+            noteTimer.restart();
+            unlocked();
+        }
+    }
+    signal unlocked()
+
     property var navTarget: null
     property string pageAnchor: ""    // a part of the page to open at ("appearance:bar": Settings › Appearance › Bar and dock)
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
@@ -43,6 +75,7 @@ Singleton {
     property bool mixerShown: false
     property var snap: null
     property bool snapShown: false
+    property bool forceCloseShown: false   // ForceClose.qml's "Force close it?" (KWin): the controller types keys
     property var discord: null        // Discord (Discord.qml): the bar's Discord button toggles its small window
     property bool discordShown: false // its "Which Discord?" chooser is open
     property var winTools: null       // Device Manager, Run and the Super+X menu (WinTools.qml): the Start button's right-click
