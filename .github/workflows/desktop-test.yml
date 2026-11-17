@@ -209,6 +209,9 @@ jobs:
           # Desktop Mode's settings file there from the start (the shell watches it once it exists: the keyboard looks'
           # light-mode pictures below change it while the shell runs).
           mkdir -p "$HOME/.local/share/nimbus"; [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md) in their preview: their test devices and screen. Only
+          # used once $XDG_RUNTIME_DIR/hearth-kwin-preview exists (below); until then they show "Needs Mantel on KWin".
+          export HEARTH_KWIN_FIXTURE="$PWD/hosts/linux/test/fixtures/kwin-preview.json"
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -404,6 +407,51 @@ jobs:
             echo "::notice title=Settings (more of KDE's)::$(ls shots/system-settings | wc -l) pictures in system-settings, no QML errors from the new pages"
           fi
           # ---- end of more of KDE's System Settings
+          # ---- Mantel on KWin's Settings pages (1.14, docs/KWIN-SETTINGS.md): first as they are under labwc (greyed, with
+          # "Needs Mantel on KWin"), then in the preview with saved settings, at 1920×1080 (the kwin-pages-shots jobs post
+          # them as SHOT notices). Opening them writes nothing; labwc's own files are as they were.
+          mkdir -p shots/kwin-pages
+          kp() { ipc settings close; ipc settings page "$1"; sleep 3; grim "shots/kwin-pages/$2.png" || true; }
+          kdown() { wtype -k Right; sleep 1; for i in $(seq 1 "$1"); do wtype -k Down; done; sleep 1; grim "shots/kwin-pages/$2.png" || true; }
+          kp kwin-effects 00-labwc-needs-kwin
+          kp mouse 00-labwc-mouse
+          K0=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          L0=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
+          # Saved settings to show: three named desktops, a tile layout for the screen, two window rules, a few effects.
+          mkdir -p "$HOME/.config"
+          printf '%s\n' '[Desktops]' 'Id_1=6a1f0c62-1b1d-4c8e-9d2f-000000000001' 'Name_1=Main' 'Id_2=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'Name_2=Games' \
+            'Id_3=6a1f0c62-1b1d-4c8e-9d2f-000000000003' 'Name_3=Work' 'Number=3' 'Rows=1' '' '[Plugins]' 'wobblywindowsEnabled=true' 'diminactiveEnabled=true' \
+            '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
+            '[Tiling][e3d3d5c4-af96-5514-988a-a5cf444294bf]' 'tiles={"layoutDirection":"horizontal","tiles":[{"width":0.3},{"width":0.4},{"width":0.3,"layoutDirection":"vertical","tiles":[{"height":0.5},{"height":0.5}]}]}' \
+            > "$HOME/.config/kwinrc"
+          printf '%s\n' '[General]' 'count=2' 'rules=1d0b1f5e-0000-4000-8000-000000000001,1d0b1f5e-0000-4000-8000-000000000002' '' \
+            '[1d0b1f5e-0000-4000-8000-000000000001]' 'Description=Steam on the Games desktop' 'wmclass=steam' 'wmclassmatch=1' 'desktops=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'desktopsrule=3' 'noborder=true' 'noborderrule=2' '' \
+            '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
+            > "$HOME/.config/kwinrulesrc"
+          printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
+          touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
+          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
+          kp kwin-desktops 03-virtual-desktops
+          kp kwin-tiling 04-tiling
+          kp kwin-edges 05-screen-edges; kdown 12 06-screen-edges-touch
+          kp kwin-rules 07-window-rules; wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim shots/kwin-pages/08-window-rule-open.png || true
+          kp kwin-tablet 09-tablet-and-touchscreen; kdown 12 10-touchscreen
+          kp kwin-games 11-games-and-x11-apps
+          kp mouse 12-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
+          kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
+          ipc settings close; sleep 1
+          rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
+          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
+          [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
+          [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
+          [ "$K0" != "$K1" ] || echo "::notice title=KWin pages::labwc run left no KWin files (as it should)"
+          if grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=KWin pages::$(grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          echo "::notice title=KWin pages::$(ls shots/kwin-pages | tr '\n' ' ')"
           # 1.14, the new Settings: the keyboard-and-mouse Home (A1) and Display (A2), then the controller look (B1, B2):
           # Quick, System › Display, the help panel, LB / RB, X Default asked first, and back to A with the mouse.
           mkdir -p shots/settings-new
@@ -2059,6 +2107,95 @@ jobs:
           [ -z "$xbad" ] || bad "$xbad"
           pkill -x labwc || true; pkill -f quickshell || true
 
+      # Search like KRunner + Baloo, Passwords like KDE Wallet, the App store like Discover, and Hearth Files' terminal
+      # panel / split view / Compare (1.14, feature/search-store): the helpers' tests, then each new view on a real
+      # 1920x1080 screen. The search-store-shots job posts the pictures as SHOT notices (names in its matrix).
+      - name: Search, passwords, app store and Files (1.14)
+        if: always()
+        shell: bash
+        run: |
+          o=shots/search-store; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          say() { echo "::notice title=Search and store::$*"; }
+          bad() { echo "::error title=Search and store::$*"; touch shots/FAILED; }
+          dnf -y install gnome-keyring libsecret systemd poppler-utils flatpak sqlite >/dev/null 2>&1 || true
+          fails=""
+          for t in test_search_plugins test_hearth_search test_hearth_secrets test_hearth_store test_files_dolphin_gaps; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" > $o/$t.log 2>&1 || { fails="$fails $t"; grep -E "^(FAIL|ERROR):|Error:" $o/$t.log | head -4 | tr '\n' '|' | sed "s/^/$t: /" > $o/$t.why; }
+          done
+          [ -z "$fails" ] && say "unit tests: search plugins, file index, passwords, app store and Files all pass" || bad "unit tests failed:$fails — $(cat $o/*.why 2>/dev/null | tr '\n' ' ' | cut -c1-600)"
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          SH="$PWD/hosts/linux/desktop/shell"
+          # The password store with two made-up sign-ins (no real secret: the values are the word "demo").
+          if command -v gnome-keyring-daemon >/dev/null; then
+            # A copy without the file capability it has (cap_ipc_lock): in a container it can't drop it and stops.
+            cp "$(command -v gnome-keyring-daemon)" /tmp/gkd && chmod 755 /tmp/gkd
+            printf '' | /tmp/gkd --unlock --components=secrets > $o/gkr.log 2>&1 || true
+            eval "$(/tmp/gkd --start --components=secrets 2>>$o/gkr.log)" || true
+            sleep 2
+            printf demo | secret-tool store --label='Chromium Safe Storage' application chromium xdg:schema chrome_libsecret_os_crypt_password_v2 || true
+            printf demo | secret-tool store --label='smb://nas/photos' xdg:schema org.gnome.keyring.NetworkPassword user sam server nas protocol smb || true
+          fi
+          say "passwords: $(python3 $SH/hearth-secrets status 2>&1 | tail -1 | cut -c1-300) · tools: $(for x in busctl secret-tool gnome-keyring-daemon; do command -v $x >/dev/null && printf '%s ' $x || printf 'no-%s ' $x; done) · bus: ${DBUS_SESSION_BUS_ADDRESS:-none} · $(tr '\n' ' ' < $o/gkr.log 2>/dev/null | cut -c1-200)"
+          # Flathub for the App store (yours, no system helper needed), and the file index made once.
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
+          say "store: $(python3 $SH/hearth-store home 2>&1 | tail -1 | cut -c1-200)"
+          mkdir -p "$HOME/Documents/Taxes" "$HOME/Projects"
+          printf 'the quarterly budget numbers\n' > "$HOME/Documents/report.txt"; printf 'the quarterly budget numbers\nand more\n' > "$HOME/Documents/report-v2.txt"
+          : > "$HOME/Documents/Taxes/Budget-2026.ods"
+          echo '{"contents": true}' | python3 $SH/hearth-search prefs-set >/dev/null
+          say "file index: $(python3 $SH/hearth-search index 2>&1 | tail -1) · query budget: $(python3 $SH/hearth-search query budget | cut -c1-200)"
+          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          CONF=$(python3 $SH/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 2; }
+          wtype -k Shift_L; sleep 1
+          # ---- the launcher's search plugins (the Hearth menu)
+          got=$(quickshell ipc -p "$SH" call launcher answers "10 km to mi" 2>/dev/null | tail -1)
+          case "$got" in *'6.2137 mi'*) say "the shell's search answers 10 km to mi: $got" ;; *) bad "the shell's search plugins didn't answer 10 km to mi: $got" ;; esac
+          shot() { ipc launcher query "$2"; sleep 2; grim "$o/$1.png" || true; ipc launcher close; }
+          shot s-calc "(3+4)*2^3"
+          shot s-convert "72 f in c"
+          shot s-currency "20 usd to eur"
+          shot s-web "gg:hearth os"
+          shot s-command ">htop"
+          shot s-emoji ":fire"
+          # ---- the same in the Centred menu (MenuSearch.qml: answers in their groups, with the preview)
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"; [ -s "$D" ] || echo '{}' > "$D"
+          python3 $SH/hearth_settings_io.py merge "$D" '{"appMenu": "centred"}' >/dev/null; sleep 4
+          ipc launcher query ""; sleep 1; wtype "2+2" 2>/dev/null || true; sleep 2; grim $o/s-centred-menu.png || true; ipc launcher close
+          python3 $SH/hearth_settings_io.py merge "$D" '{"appMenu": null}' >/dev/null; sleep 3
+          # ---- Settings › Search, Passwords, App store (home, an app, Updates)
+          sp() { ipc settings close; ipc settings page "$1"; sleep "${3:-4}"; grim "$o/$2.png" || true; }
+          sp search set-search
+          sp passwords set-passwords
+          sp store set-store 12
+          sp store:app-org_kde_krita store-app 14
+          sp store:updates store-updates 10
+          ipc settings close
+          # ---- Hearth Files: the terminal panel (F4), split view (F9), Compare
+          ipc files open "$HOME/Documents"; sleep 3
+          ipc filemanager terminal on; sleep 2; wtype "ls -la" 2>/dev/null; wtype -k Return; sleep 3; grim $o/files-terminal.png || true
+          ipc filemanager terminal off; ipc filemanager split on; sleep 3; grim $o/files-split.png || true
+          ipc filemanager split off; ipc filemanager compare "report.txt/report-v2.txt"; sleep 2; grim $o/files-compare.png || true
+          ipc files close
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(Launcher|MenuSearch|SetSearch|SetPasswords|SetStore|FilesTerminal|FilesSplitPane|FileManager|FilesIpc)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|search/[a-z-]+\.js" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] && say "no QML errors from the new views" || bad "$xbad"
+          ls -la $o
+          pkill -x labwc || true; pkill -f quickshell || true
+
       # Server mode (docs/SERVER-MODE.md): its own labwc folder and dashboard started for real on a virtual screen, with the
       # dashboard's data from a fixture (the mockup's numbers); the AI tile opened, the 5-second switch countdown, a web
       # page's 10-second countdown, "Back in Server mode", the menu, the idle screen, Settings › Home server › Server mode
@@ -2639,3 +2776,121 @@ jobs:
         run: sed -n '28,36p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
       - name: Picture 37-45
         run: sed -n '37,45p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+
+  # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md): their pictures as notices (a JPEG in base64 pieces, title
+  # "SHOT kwin-<which> <n>", at most 9 a picture), five pictures a job (a job keeps 50 notices). Taken at 1920×1080.
+  kwin-pages-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
+          - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
+          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse"
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      # The JPEGs first (as small as needed to fit in 9 notices), then one step a picture: a step keeps 10 notices.
+      - name: Make the JPEGs
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['PART'].split():
+              p = 'shots/kwin-pages/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT kwin-%s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((960, 45), (800, 40), (720, 35), (640, 30), (560, 25), (480, 22)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/kwin-pages/%s.jpg' % name, 'wb').write(b.getvalue())
+              print('%s: %dx%d from %dx%d, %d bytes' % (name, w, round(im.height * w / im.width), im.width, im.height, len(b.getvalue())))
+          PY
+      - name: Picture 1
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f1); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 2
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f2); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 3
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f3); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 4
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f4); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 5
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f5); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+
+  # Search, Passwords, the App store and Hearth Files' new parts (1.14, feature/search-store): their pictures as notices
+  # (a JPEG in base64 pieces, title "SHOT <name> <n>"), five a job, one step each (a job keeps 50 notices).
+  search-store-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shots: ["s-calc s-convert s-currency s-web s-command", "s-emoji s-centred-menu set-search set-passwords set-store",
+                "store-app store-updates files-terminal files-split files-compare"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        env:
+          SHOTS: ${{ matrix.shots }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['SHOTS'].split():
+              p = 'shots/search-store/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT %s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              print('%s: %dx%d' % (name, im.width, im.height))
+              for w, q in ((800, 50), (720, 45), (640, 38), (560, 30), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/search-store/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - name: Picture 1
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f1); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 2
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f2); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 3
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f3); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 4
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f4); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 5
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f5); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true

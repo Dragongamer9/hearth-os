@@ -40,6 +40,12 @@ PanelWindow {
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu
 
+    // Everything drawn, in one item: a window's own contentItem can't be grabbed ("item has no QML engine"),
+    // so saveStill grabs this.
+    Item {
+        id: scene
+        anchors.fill: parent
+
     // ---------------------------------------------------------------- Lava: big soft blobs drifting slowly
     Item {
         id: lava
@@ -405,5 +411,6 @@ PanelWindow {
         anchors.fill: parent
         active: root.primary && Theme.deskClock
         source: "DeskClock.qml"
+    }
     }
 }

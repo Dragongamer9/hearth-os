@@ -98,11 +98,27 @@ def folder_label(d):
     return d
 
 
+def indexed(query, limit):
+    """The file index's answer (hearth-search, like Baloo), or None when there's no index (yet, or it's off)."""
+    try:
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth-search'),
+                            'query', '--limit', str(limit), query], capture_output=True, text=True, timeout=3)
+        hits = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else None
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
+    return hits if isinstance(hits, list) else None
+
+
 def find_files(query, limit=24, budget=1.5, max_depth=5, base=None):
-    """Names containing QUERY (any case) under the home folder, folders first among equals; quick, never exhaustive."""
+    """Names containing QUERY (any case) under the home folder, folders first among equals; quick, never exhaustive.
+    From the file index when there is one (and then the text inside documents too, if Settings › Search reads it)."""
     q = (query or '').strip().lower()
     if len(q) < 2:
         return []
+    if base is None:
+        hits = indexed(query.strip(), limit)
+        if hits is not None:
+            return hits
     base = base or home()
     start = time.monotonic()
     hits, seen = [], 0
