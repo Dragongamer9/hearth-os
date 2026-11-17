@@ -13,10 +13,11 @@ import "firehold.js" as F
 PanelWindow {
     id: cw
     property var fh
+    property string scrName: ""        // this screen's name (set once by Firehold.qml: no binding through the window)
     readonly property var pal: F.C
     readonly property real k: Math.min(width / 1920, height / 1080) || 1
     readonly property bool primary: screen === Quickshell.screens[0]
-    readonly property bool shown: fh.unlocked && fh.postureOf(screen) === "couch" && fh.view === "home"
+    readonly property bool shown: fh.unlocked && fh.postureOfName(scrName) === "couch" && fh.view === "home"
     readonly property string font: Qt.fontFamilies().indexOf("Inter") >= 0 ? "Inter" : Theme.font
 
     visible: shown

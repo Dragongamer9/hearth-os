@@ -13,7 +13,7 @@ PanelWindow {
     id: gp
     property var fh
     readonly property var pal: F.C
-    readonly property var game: fh.frontGame()
+    readonly property var game: fh.guideWin
     readonly property var info: game ? (F.gameFor(game, fh.library) || { title: game.title || "Game", store: "Game" }) : { title: "", store: "" }
     readonly property var gameScreen: game && game.screens && game.screens.length ? game.screens[0] : Quickshell.screens[0]
     screen: gameScreen

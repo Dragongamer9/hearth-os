@@ -168,7 +168,12 @@ PanelWindow {
                                 // Automatic: half Couch, half Desk; Always Couch: the ember gradient; Always Desk: plain.
                                 FhGrad { visible: md.index === 1; anchors.fill: parent; radius: 12 * st.k; angle: 110; stops: [[0, "#2b1a2e"], [1, "#a3541e"]] }
                                 Rectangle { visible: md.index === 2; anchors.fill: parent; radius: 12 * st.k; color: "#2a2420" }
-                                FhGrad { visible: md.index === 0; anchors.fill: parent; radius: 12 * st.k; angle: 90; stops: [[0, "#5b2b1a"], [0.5, "#5b2b1a"], [0.5, "#2a2420"], [1, "#2a2420"]] }
+                                // Automatic: half Couch (ember), half Desk (plain), a hard line in the middle.
+                                Rectangle {
+                                    visible: md.index === 0; anchors.fill: parent; radius: 12 * st.k; color: "#5b2b1a"
+                                    Rectangle { x: parent.width / 2; width: parent.width / 2; height: parent.height; radius: 12 * st.k; color: "#2a2420" }
+                                    Rectangle { x: parent.width / 2; width: 14 * st.k; height: parent.height; color: "#2a2420" }
+                                }
                             }
                             T { text: md.modelData[1]; font.pixelSize: 18 * st.k; font.weight: Font.Bold }
                             T { width: parent.width; wrapMode: Text.WordWrap; elide: Text.ElideNone; text: md.modelData[2]; font.pixelSize: 14 * st.k; color: st.pal.muted }
