@@ -56,7 +56,7 @@ APPS = {
     'hearth-calculator-kde.desktop': entry('Calculator', 'KDE;Utility;Calculator', tryexec='kcalc'),
     'hearth-documents.desktop': entry('Documents', 'Office;Viewer', PDF, '/usr/bin/hearth-documents'),
     'hearth-reader.desktop': entry('Reader', 'KDE;Office;Viewer', PDF, 'okular'),
-    'hearth-capture.desktop': entry('Capture', 'KDE;Utility', tryexec='spectacle',
+    'hearth-capture-kde.desktop': entry('Capture', 'KDE;Utility', tryexec='spectacle',
                                     extra='Actions=area;\n\n[Desktop Action area]\nName=Capture an area\nExec=spectacle --region\n'),
     'hearth-tasks.desktop': entry('Task Manager', 'System;Monitor', extra='OnlyShowIn=Nimbus;\n'),
     'hearth-photos.desktop': entry('Photos', 'Graphics;Viewer', IMAGES, '/usr/bin/hearth-photos'),
@@ -155,13 +155,13 @@ class ApplyTest(Base):
                   'hearth-documents.desktop', 'hearth-tasks.desktop'):
             self.assertIn(i, nim)
         for i in ('hearth-files-kde.desktop', 'hearth-terminal-kde.desktop', 'hearth-text-kde.desktop', 'hearth-reader.desktop',
-                  'hearth-capture.desktop', 'hearth-calculator-kde.desktop', 'org.kde.kwrite.desktop', 'footclient.desktop',
+                  'hearth-capture-kde.desktop', 'hearth-calculator-kde.desktop', 'org.kde.kwrite.desktop', 'footclient.desktop',
                   'org.example.Files.desktop'):
             self.assertNotIn(i, nim)
         # KDE Plasma (1.13): KDE's own apps first (Dolphin, Konsole, Gwenview), Hearth's KDE-based ones where KDE's
         # isn't installed, stock duplicates hidden.
         for i in ('org.kde.dolphin.desktop', 'org.kde.konsole.desktop', 'hearth-text-kde.desktop', 'hearth-reader.desktop',
-                  'hearth-capture.desktop', 'hearth-calculator-kde.desktop', 'org.kde.gwenview.desktop'):
+                  'hearth-capture-kde.desktop', 'hearth-calculator-kde.desktop', 'org.kde.gwenview.desktop'):
             self.assertIn(i, kde)
         for i in ('hearth-files.desktop', 'hearth-terminal.desktop', 'hearth-text.desktop', 'hearth-documents.desktop',
                   'hearth-calculator.desktop', 'hearth-files-kde.desktop', 'hearth-terminal-kde.desktop', 'org.kde.kwrite.desktop',
@@ -182,7 +182,7 @@ class ApplyTest(Base):
         self.apply()
         for did, text in APPS.items():
             self.assertEqual(read(os.path.join(self.root, 'usr/share/applications', did)), text)
-        copy_ = read(os.path.join(self.root, 'usr/share/hearth/app-kinds/applications/hearth-capture.desktop'))
+        copy_ = read(os.path.join(self.root, 'usr/share/hearth/app-kinds/applications/hearth-capture-kde.desktop'))
         self.assertIn('OnlyShowIn=KDE;', copy_)
         self.assertIn('[Desktop Action area]', copy_)                # actions kept
         self.assertIn('Exec=spectacle --region', copy_)

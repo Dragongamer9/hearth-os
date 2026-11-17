@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth screenshots
+Comment=Takes screenshots for Hearth's Print Screen, Quick Access and apps under KWin (hearth-screenshot)
+Exec=/usr/libexec/nimbus/hearth-shot-python /usr/share/nimbus/desktop/shell/hearth-screens shot -
+Icon=hearth-capture
+NoDisplay=true
+Terminal=false
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
