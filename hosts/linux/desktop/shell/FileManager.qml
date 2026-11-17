@@ -1580,7 +1580,7 @@ Scope {
     readonly property var viewNames: ({ large: "Large icons", grid: "Medium icons", small: "Small icons", tiles: "Tiles", compact: "List", details: "Details" })
     function setShowExt(on) { showExt = on; rememberView(); say(on ? "Showing file name extensions" : "Hiding file name extensions"); }
     function toggleDetails() { detailsPane = !detailsPane; rememberView(); }
-    function showTerminal(on) { termPanel = on; if (on) Qt.callLater(() => termPane.focusInput()); else keys.forceActiveFocus(); }
+    function showTerminal(on) { termPanel = on; }          // the panel takes the typing when it shows (FilesTerminal.qml)
     // Compare (two files or two folders selected): the same, or what differs (text files: the changed lines in the
     // read-only text editor). hearth-files compare.
     function compareTwo(paths) {
