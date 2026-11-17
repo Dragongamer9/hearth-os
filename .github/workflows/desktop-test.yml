@@ -2229,6 +2229,7 @@ jobs:
       image: registry.fedoraproject.org/fedora:44
       # KWin composites only with a render device: the kernel's vgem module gives one (the host's /dev and modules).
       options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    timeout-minutes: 30
     steps:
       - name: Install KWin, kscreen-doctor and Quickshell
         run: |
@@ -2345,10 +2346,10 @@ jobs:
           # A screenshot through KWin's ScreenShot2 with its permission check on (an unknown program gets NoAuthorized at
           # once; KWin quitting means it was let in and then couldn't draw the picture on this runner).
           # First a program KWin doesn't know (plain python3): it must be refused.
-          python3 $SH shot shots/kwin/untrusted.png > shots/kwin/untrusted.txt 2>&1
+          timeout 40 python3 $SH shot shots/kwin/untrusted.png > shots/kwin/untrusted.txt 2>&1
           if grep -q "didn't let Hearth" shots/kwin/untrusted.txt; then echo "::notice title=KWin screens: untrusted::plain python3 was refused, as it should be: $(head -c 200 shots/kwin/untrusted.txt)"
           else echo "::warning title=KWin screens: untrusted::plain python3 wasn't refused: $(head -c 300 shots/kwin/untrusted.txt | tr '\n' '|')"; fi
-          hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
+          timeout 40 hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
           if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
             echo "::notice title=KWin screens: screenshot::hearth-screenshot took a picture through KWin's ScreenShot2 (permission check on): $(cat shots/kwin/screenshot-size.txt)"
           elif grep -q -i 'NoAuthorized\|not authorized\|didn.t let Hearth' shots/kwin/screenshot-check.txt; then
