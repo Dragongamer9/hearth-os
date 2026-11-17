@@ -85,13 +85,17 @@ Scope {
         }
     }
     FileView {
+        id: liveFile
         path: rp.statePath
+        printErrors: false             // not there until the first recording
         watchChanges: true
         onFileChanged: reload()
         onLoaded: { try { rp.live = JSON.parse(text()); } catch (e) {} }
         onLoadFailed: rp.live = { state: "idle" }
     }
     Timer { interval: 1000; running: rp.shown && rp.recording; repeat: true; onTriggered: clock.text = rp.elapsed() }
+    // A file that isn't there yet can't be watched: read again every 2 seconds while the panel is open.
+    Timer { interval: 2000; running: rp.shown; repeat: true; triggeredOnStart: true; onTriggered: liveFile.reload() }
 
     IpcHandler {
         target: "record"
