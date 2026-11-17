@@ -25,6 +25,13 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+decky-install(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // Firmware updates (Settings › Firmware & security) write new firmware into the PC's parts: always an
+    // administrator's password. Getting the list of firmware (firmware-refresh) doesn't ask.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+firmware-update(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
     // root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&

@@ -1,4 +1,6 @@
-// Hearth Settings › Sound (PipeWire): volume, which speakers or headphones, which microphone.
+// Hearth Settings › Sound (PipeWire): volume, which speakers or headphones, which microphone; 1.14: each app's volume
+// right here, each sound card's profile (hearth-sound, pactl: PipeWire remembers the choice itself) and a microphone
+// test (a few seconds recorded and played back, kept in memory only).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -14,6 +16,14 @@ SetPage {
     readonly property var inputs: nodes.filter(n => n.audio && !n.isSink && !n.isStream)
     PwObjectTracker { objects: [page.sink, page.source].concat(page.outputs).concat(page.inputs).filter(Boolean) }
     function label(n) { return n ? (n.description || n.nickname || n.name || "Device") : "None"; }
+    property var cards: null           // hearth-sound cards
+    property var test: null            // the last microphone test
+    property string message: ""
+    property bool messageBad: false
+    function say(t, bad) { message = t; messageBad = !!bad; }
+    SetJob { id: job; helper: "hearth-sound" }
+    Component.onCompleted: job.run(["cards"], r => page.cards = r.cards || [], () => page.cards = [])
+    function kindIcon(k) { return k === "bluetooth" ? "headphones" : k === "hdmi" ? "tv" : "vol"; }
 
     SetCardGroup {
         title: "Volume"
@@ -39,6 +49,22 @@ SetPage {
             visible: SettingsNav.mixer !== null
             icon: "vol"; title: "Volume mixer"; sub: "Each app's own volume, and which speakers or headphones it plays on"
             onActivated: if (SettingsNav.mixer) SettingsNav.mixer.open()
+        }
+    }
+    // Each app's own level (1.14): the mixer's apps (Mixer.qml), so a level set here is remembered the same way.
+    readonly property var mixer: SettingsNav.mixer
+    SetCardGroup {
+        title: "Apps playing sound"
+        visible: !!page.mixer && page.mixer.appKeys.length > 0
+        Repeater {
+            model: page.mixer ? page.mixer.appKeys : []
+            delegate: SetSlider {
+                required property string modelData
+                icon: page.mixer.mutedOf(modelData) ? "vol-mute" : "vol"
+                title: modelData
+                value: page.mixer.volOf(modelData)
+                onMoved: v => page.mixer.setVol(modelData, v, true)
+            }
         }
     }
     SetCardGroup {
@@ -69,6 +95,58 @@ SetPage {
                 value: page.source === modelData ? "In use" : ""
                 onActivated: Pipewire.preferredDefaultAudioSource = modelData
             }
+        }
+    }
+    SetCardGroup {
+        title: "Test your microphone"
+        visible: !!page.source
+        SetRow {
+            icon: "mic"; chevron: false
+            title: job.what === "test" ? "Recording… say something" : page.test ? "Record again" : "Record a few seconds"
+            sub: !page.test ? "Then play it back to hear how you sound to others"
+                 : page.test.level === "silent" ? "Nothing was heard. Check the microphone is picked above and not muted"
+                 : page.test.level === "quiet" ? "Very quiet (" + Math.round(page.test.peak * 100) + "% at the loudest). Turn the input volume up"
+                 : page.test.level === "loud" ? "Too loud: it clipped. Turn the input volume down"
+                 : "Sounds good (" + Math.round(page.test.peak * 100) + "% at the loudest)"
+            onActivated: { page.say(""); job.run(["mic-test", "4"], r => page.test = r, e => page.say(e, true), "", "test"); }
+        }
+        // How loud the test was, as a bar.
+        Rectangle {
+            visible: !!page.test
+            Layout.fillWidth: true; Layout.leftMargin: 4; Layout.rightMargin: 4
+            implicitHeight: 8; radius: 4; color: Theme.panel3
+            Rectangle {
+                width: parent.width * Math.min(1, page.test ? page.test.peak : 0); height: parent.height; radius: 4
+                color: page.test && (page.test.level === "loud" || page.test.level === "silent") ? Theme.danger : Theme.accent
+            }
+        }
+        SetRow {
+            visible: !!page.test
+            icon: "play"; chevron: false; title: "Play it back"
+            onActivated: job.run(["mic-play"], () => {}, e => page.say(e, true))
+        }
+    }
+    SetCardGroup {
+        title: "Sound cards"
+        visible: !!page.cards && page.cards.length > 0
+        Repeater {
+            model: page.cards || []
+            delegate: SetDropdown {
+                required property var modelData
+                icon: page.kindIcon(modelData.kind)
+                title: modelData.description
+                sub: "Which outputs and inputs it offers: stereo, surround, HDMI, a headset's microphone"
+                options: modelData.profiles.map(p => ({ value: p.name, label: p.description + (p.available ? "" : " (not plugged in)") }))
+                current: modelData.active
+                boxWidth: 320
+                onChosen: v => job.run(["profile", modelData.name, v], () => { page.say("Saved."); job.run(["cards"], r => page.cards = r.cards || []); }, e => page.say(e, true), "", "profile")
+            }
+        }
+        Text {
+            visible: page.message !== ""
+            Layout.fillWidth: true; Layout.leftMargin: 4
+            text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
+            font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
         }
     }
 }

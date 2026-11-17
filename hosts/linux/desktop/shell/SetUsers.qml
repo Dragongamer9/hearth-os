@@ -159,6 +159,15 @@ SetPage {
                     Text { visible: acct.removable; text: "›"; color: Theme.muted; font.pixelSize: 20 }
                 }
             }
+            // Administrator or standard (1.14, hearth-admin user-type: never yourself, never the last administrator).
+            SetChoice {
+                visible: page.picked === acct.modelData.name && page.confirm === ""
+                Layout.leftMargin: 52
+                icon: "shield"; title: "Account type"; sub: "Administrators can install apps, change the system and other accounts. From their next sign-in"
+                options: [{ value: false, label: "Standard" }, { value: true, label: "Administrator" }]
+                current: acct.modelData.admin
+                onChosen: v => page.runAdmin(["user-type", acct.modelData.name, v ? "admin" : "standard"], "", "type", (acct.modelData.fullname || acct.modelData.name) + (v ? " is an administrator now." : " has a standard account now."))
+            }
             SetRow {
                 visible: page.picked === acct.modelData.name && page.confirm === ""
                 Layout.leftMargin: 52

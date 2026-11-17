@@ -14,7 +14,7 @@ import Quickshell.Services.Pam
 Scope {
     id: root
     property bool locked: false
-    onLockedChanged: DeskState.locked = locked
+    onLockedChanged: { if (locked && onKwin) lockedAt = new Date(); DeskState.locked = locked; }   // lockedAt: KWin's locker said so
     property string typed: ""
     property string message: ""
     property bool busy: false
@@ -23,9 +23,10 @@ Scope {
     // (desktop/kwin-lock). `locked` then follows KWin's locker (org.freedesktop.ScreenSaver ActiveChanged).
     readonly property bool onKwin: Quickshell.env("HEARTH_WM") === "kwin"
 
+    property var lockedAt: new Date()     // when it locked (system-settings); KWin's locker: when it said so
     function lock() {
         if (onKwin) { kwinLock.running = false; kwinLock.running = true; return; }
-        if (!locked) { typed = ""; message = ""; locked = true; }
+        if (!locked) { typed = ""; message = ""; lockedAt = new Date(); locked = true; }
     }
 
     // KWin: first hearth-lockcheck (is KWin's locker there, and will it show Hearth's lock screen? If it couldn't, KWin
@@ -128,6 +129,23 @@ Scope {
                         onTriggered: { clock.text = Qt.formatTime(new Date(), "h:mm"); date.text = Qt.formatDate(new Date(), "dddd, MMMM d"); } }
                 }
                 Text { id: date; Layout.alignment: Qt.AlignHCenter; color: Theme.muted; font.family: Theme.font; font.pixelSize: 20 }
+                // Notifications from apps you let show here (Settings › Notifications, 1.14; none unless you turn it on
+                // for an app): the three newest since the screen locked, the app's name and the title only.
+                Repeater {
+                    model: root.locked ? DeskState.history.filter(h => h.lock && h.time >= root.lockedAt).slice(0, 3) : []
+                    delegate: Rectangle {
+                        required property var modelData
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: 420; implicitHeight: 52; radius: 12
+                        color: Theme.panel2; border.color: Theme.line
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 14
+                            width: parent.width - 28
+                            Text { text: modelData.app; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight; width: parent.width }
+                            Text { text: modelData.summary; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; elide: Text.ElideRight; width: parent.width }
+                        }
+                    }
+                }
 
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 24

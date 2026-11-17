@@ -1,0 +1,384 @@
+#!/usr/bin/python3
+"""hearth-lookset: Hearth Settings' Fonts, cursor & icons page (Personalization), as you (no root). One source of truth,
+~/.config/nimbus/fonts-cursor-icons.json (through hearth_settings_io: atomic, .bak, merge-on-write), holding only what
+you chose: a key that isn't there means Hearth's default. Handed on to apps the way each kind reads it: GTK and GNOME
+apps (gsettings), Qt and KDE apps (qt6ct/qt5ct's files while they carry Hearth's mark, and kdeglobals' [General] fonts
+and [Icons] while it carries Hearth's mark), KWin and KDE apps' cursor (kcminputrc [Mouse]), fontconfig (a file of
+Hearth's in ~/.config/fontconfig/conf.d) and programs started later (~/.config/environment.d, the cursor).
+
+  hearth-lookset status    JSON: {saved, effective, fonts, monoFonts, cursors, icons}
+  hearth-lookset set       stdin {"font": "Noto Sans", "fontSize": 10, "mono": "Hack", "monoSize": 10,
+                           "antialias": "grayscale|rgba|none", "hinting": "none|slight|medium|full", "dpi": 96,
+                           "cursor": "breeze_cursors", "cursorSize": 24, "icons": "breeze-dark"}; null = Hearth's default
+  hearth-lookset apply     hand the saved choices on again (theme/apply.sh runs it at each sign-in; writes nothing
+                           of yours, and nothing at all when you chose nothing)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+SAVED = os.path.join(CONFIG, 'nimbus', 'fonts-cursor-icons.json')
+FONTCONF = os.path.join(CONFIG, 'fontconfig', 'conf.d', '90-hearth-fonts.conf')
+CURSOR_ENV = os.path.join(CONFIG, 'environment.d', '90-hearth-cursor.conf')
+ICON_DIRS = [os.path.join(DATA, 'icons'), os.path.join(HOME, '.icons')] + \
+    [os.path.join(d, 'icons') for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+DEFAULTS = {'font': 'Noto Sans', 'fontSize': 10, 'mono': 'Hack', 'monoSize': 10, 'antialias': 'grayscale',
+            'hinting': 'slight', 'dpi': 96, 'cursor': 'breeze_cursors', 'cursorSize': 24, 'icons': ''}
+QT_MARK = '# Written by Hearth Desktop Mode; delete this line to keep your own settings.'
+KDE_MARK = '# Written by Hearth'
+FC_MARK = '<!-- Written by Hearth Settings > Fonts, cursor & icons; delete this line to keep your own. -->'
+ENV_MARK = '# Written by Hearth Settings > Fonts, cursor & icons; delete this line to keep your own.'
+NAME_RE = re.compile(r'^[^\x00-\x1f\x7f"\'\\<>&,;=\[\]]{1,80}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=20):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+    return p.returncode, p.stdout
+
+
+def read(path):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def write(path, text):
+    if read(path) == text:
+        return False
+    if hsio:
+        hsio.write_text(path, text)
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + '.tmp', 'w') as f:
+            f.write(text)
+        os.replace(path + '.tmp', path)
+    return True
+
+
+def saved():
+    raw = hsio.load_json(SAVED, {}) if hsio else {}
+    if not hsio:
+        try:
+            raw = json.load(open(SAVED))
+        except (OSError, ValueError):
+            raw = {}
+    return {k: v for k, v in (raw or {}).items() if k in DEFAULTS}
+
+
+def effective(s=None):
+    s = saved() if s is None else s
+    out = dict(DEFAULTS)
+    out.update(s)
+    return out
+
+
+def font_families(text):
+    out = set()
+    for l in text.splitlines():
+        fam = l.split(',')[0].strip()
+        if fam and not fam.startswith('.'):
+            out.add(fam)
+    return sorted(out, key=str.lower)
+
+
+def theme_dirs():
+    for base in ICON_DIRS:
+        for d in sorted(glob.glob(os.path.join(base, '*'))):
+            if os.path.isdir(d):
+                yield os.path.basename(d), d
+
+
+def cursor_themes():
+    out = {}
+    for name, d in theme_dirs():
+        if os.path.isdir(os.path.join(d, 'cursors')) and name not in out:
+            out[name] = theme_title(d) or name
+    return [{'id': k, 'name': v} for k, v in sorted(out.items(), key=lambda kv: kv[1].lower())]
+
+
+def theme_title(d):
+    m = re.search(r'^Name\s*=\s*(.+)$', read(os.path.join(d, 'index.theme')), re.M)
+    return m.group(1).strip() if m else ''
+
+
+def icon_themes():
+    out = {}
+    for name, d in theme_dirs():
+        idx = read(os.path.join(d, 'index.theme'))
+        # A real icon theme has folders of icons (a cursor-only theme has none) and isn't hidden.
+        if not idx or not re.search(r'^Directories\s*=\s*\S', idx, re.M) or re.search(r'^Hidden\s*=\s*true', idx, re.M | re.I):
+            continue
+        if name not in out and name not in ('default', 'hicolor', 'locolor'):
+            out[name] = theme_title(d) or name
+    return [{'id': k, 'name': v} for k, v in sorted(out.items(), key=lambda kv: kv[1].lower())]
+
+
+def status():
+    s = saved()
+    fonts = mono = []
+    if shutil.which('fc-list'):
+        code, out = run(['fc-list', '--format', '%{family}\\n'])
+        fonts = font_families(out)
+        code, out = run(['fc-list', ':spacing=mono', '--format', '%{family}\\n'])
+        mono = font_families(out)
+    return {'saved': s, 'effective': effective(s), 'defaults': DEFAULTS, 'fonts': fonts, 'monoFonts': mono,
+            'cursors': cursor_themes(), 'icons': icon_themes()}
+
+
+def clean(req):
+    out = {}
+    for k, v in req.items():
+        if k not in DEFAULTS:
+            raise Fail('unknown setting ' + k)
+        if v is None:
+            out[k] = None
+            continue
+        if k in ('font', 'mono', 'cursor', 'icons'):
+            if not isinstance(v, str) or not NAME_RE.match(v) or (k in ('cursor', 'icons') and '/' in v):
+                raise Fail('that name has letters Hearth can\'t use')
+        elif k in ('fontSize', 'monoSize'):
+            if not isinstance(v, (int, float)) or not 6 <= v <= 32:
+                raise Fail('font sizes are 6 to 32')
+            v = round(float(v) * 2) / 2
+            v = int(v) if v == int(v) else v
+        elif k == 'dpi':
+            if not isinstance(v, int) or not 72 <= v <= 288:
+                raise Fail('font DPI is 72 to 288')
+        elif k == 'cursorSize':
+            if v not in (16, 24, 32, 36, 48, 64, 72, 96):
+                raise Fail('cursor sizes are 16, 24, 32, 36, 48, 64, 72 or 96')
+        elif k == 'antialias' and v not in ('grayscale', 'rgba', 'none'):
+            raise Fail('smoothing is grayscale, rgba or none')
+        elif k == 'hinting' and v not in ('none', 'slight', 'medium', 'full'):
+            raise Fail('hinting is none, slight, medium or full')
+        out[k] = v
+    return out
+
+
+# ------------------------------------------------------------------ handing it on
+def gsettings_cmds(e, s):
+    """gsettings for what you chose (only those: Hearth's own defaults are set by theme/apply.sh)."""
+    base = 'org.gnome.desktop.interface'
+    cmds = []
+    if 'font' in s or 'fontSize' in s:
+        cmds.append([base, 'font-name', '%s %s' % (e['font'], e['fontSize'])])
+    if 'mono' in s or 'monoSize' in s:
+        cmds.append([base, 'monospace-font-name', '%s %s' % (e['mono'], e['monoSize'])])
+    if 'antialias' in s:
+        cmds.append([base, 'font-antialiasing', e['antialias']])
+    if 'hinting' in s:
+        cmds.append([base, 'font-hinting', e['hinting']])
+    if 'dpi' in s:
+        cmds.append([base, 'text-scaling-factor', '%.2f' % (e['dpi'] / 96.0)])
+    if 'cursor' in s:
+        cmds.append([base, 'cursor-theme', e['cursor']])
+    if 'cursorSize' in s:
+        cmds.append([base, 'cursor-size', str(e['cursorSize'])])
+    if 'icons' in s and e['icons']:
+        cmds.append([base, 'icon-theme', e['icons']])
+    return cmds
+
+
+def qt_font(fam, size):
+    return '"%s,%s,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"' % (fam, size)
+
+
+def ini_set(text, section, values):
+    """Set (or with None remove) keys in one [section] of an INI text, keeping every other line."""
+    lines = text.splitlines()
+    out, in_sec, found, done = [], False, False, set()
+
+    def rest():
+        return ['%s=%s' % (k, v) for k, v in values.items() if k not in done and v is not None]
+    for line in lines:
+        st = line.strip()
+        if st.startswith('[') and st.endswith(']'):
+            if in_sec:
+                out += rest(); done.update(values)
+            in_sec = st[1:-1] == section
+            found = found or in_sec
+            out.append(line)
+            continue
+        if in_sec and '=' in line and line.split('=', 1)[0].strip() in values:
+            k = line.split('=', 1)[0].strip()
+            done.add(k)
+            if values[k] is not None:
+                out.append('%s=%s' % (k, values[k]))
+            continue
+        out.append(line)
+    if in_sec:
+        out += rest()
+    elif not found and any(v is not None for v in values.values()):
+        if out and out[-1].strip():
+            out.append('')
+        out.append('[%s]' % section)
+        out += rest()
+    return '\n'.join(out) + '\n'
+
+
+def qt_values(e, s):
+    fonts = {}
+    if 'font' in s or 'fontSize' in s:
+        fonts['general'] = qt_font(e['font'], e['fontSize'])
+    if 'mono' in s or 'monoSize' in s:
+        fonts['fixed'] = qt_font(e['mono'], e['monoSize'])
+    return fonts
+
+
+def fontconfig_text(e, s):
+    if not any(k in s for k in ('antialias', 'hinting', 'dpi')):
+        return None
+    aa = e['antialias'] != 'none'
+    rgba = 'rgb' if e['antialias'] == 'rgba' else 'none'
+    hint = {'none': 'hintnone', 'slight': 'hintslight', 'medium': 'hintmedium', 'full': 'hintfull'}[e['hinting']]
+    return ('<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n' + FC_MARK + '\n<fontconfig>\n'
+            '  <match target="font">\n'
+            '    <edit name="antialias" mode="assign"><bool>%s</bool></edit>\n'
+            '    <edit name="rgba" mode="assign"><const>%s</const></edit>\n'
+            '    <edit name="hinting" mode="assign"><bool>%s</bool></edit>\n'
+            '    <edit name="hintstyle" mode="assign"><const>%s</const></edit>\n'
+            '  </match>\n'
+            '  <match target="pattern">\n'
+            '    <edit name="dpi" mode="assign"><double>%d</double></edit>\n'
+            '  </match>\n'
+            '</fontconfig>\n') % ('true' if aa else 'false', rgba, 'false' if e['hinting'] == 'none' else 'true', hint, e['dpi'])
+
+
+def cursor_env_text(e, s):
+    if 'cursor' not in s and 'cursorSize' not in s:
+        return None
+    return '%s\nXCURSOR_THEME=%s\nXCURSOR_SIZE=%d\n' % (ENV_MARK, e['cursor'], e['cursorSize'])
+
+
+def own_file(path, mark):
+    cur = read(path)
+    return not cur or cur.startswith(mark) or (mark == FC_MARK and FC_MARK in cur.splitlines()[:3])
+
+
+def apply(s=None):
+    """Hand the saved choices on. Only files that are Hearth's (their mark) or the few keys named above change."""
+    s = saved() if s is None else s
+    e = effective(s)
+    changed = []
+    if shutil.which('gsettings'):
+        for schema, key, val in gsettings_cmds(e, s):
+            run(['gsettings', 'set', schema, key, val], timeout=10)
+    # qt6ct / qt5ct: only while they're Hearth's (theme/apply.sh writes them each sign-in, then this runs).
+    for v in ('qt6ct', 'qt5ct'):
+        f = os.path.join(CONFIG, v, v + '.conf')
+        cur = read(f)
+        if cur.startswith(QT_MARK):
+            new = cur
+            if 'icons' in s and e['icons']:
+                new = ini_set(new, 'Appearance', {'icon_theme': e['icons']})
+            fonts = qt_values(e, s)
+            if fonts:
+                new = ini_set(new, 'Fonts', fonts)
+            if write(f, new):
+                changed.append(f)
+    kg = os.path.join(CONFIG, 'kdeglobals')
+    cur = read(kg)
+    if cur.startswith(KDE_MARK):
+        new = cur
+        if 'icons' in s and e['icons']:
+            new = ini_set(new, 'Icons', {'Theme': e['icons']})
+        gen = {}
+        if 'font' in s or 'fontSize' in s:
+            gen['font'] = qt_font(e['font'], e['fontSize']).strip('"')
+        if 'mono' in s or 'monoSize' in s:
+            gen['fixed'] = qt_font(e['mono'], e['monoSize']).strip('"')
+        if gen:
+            new = ini_set(new, 'General', gen)
+        if write(kg, new):
+            changed.append(kg)
+    if 'cursor' in s or 'cursorSize' in s:
+        f = os.path.join(CONFIG, 'kcminputrc')
+        if write(f, ini_set(read(f), 'Mouse', {'cursorTheme': e['cursor'], 'cursorSize': str(e['cursorSize'])})):
+            changed.append(f)
+    for path, text, mark in ((FONTCONF, fontconfig_text(e, s), FC_MARK), (CURSOR_ENV, cursor_env_text(e, s), ENV_MARK)):
+        if text is None:
+            if read(path) and own_file(path, mark):
+                os.remove(path); changed.append(path)
+        elif own_file(path, mark) and write(path, text):
+            changed.append(path)
+    return changed
+
+
+def set_(req):
+    changes = clean(req)
+    if hsio:
+        hsio.merge_json(SAVED, changes, who='you')
+    else:
+        cur = saved()
+        for k, v in changes.items():
+            if v is None:
+                cur.pop(k, None)
+            else:
+                cur[k] = v
+        write(SAVED, json.dumps(cur, indent=2) + '\n')
+    s = saved()
+    # A default you went back to: the apps get Hearth's own value again, once.
+    back = {k: DEFAULTS[k] for k, v in changes.items() if v is None}
+    apply(dict(back, **s))
+    if 'icons' in back and shutil.which('gsettings'):
+        run(['gsettings', 'reset', 'org.gnome.desktop.interface', 'icon-theme'], timeout=10)
+    return {'saved': s, 'effective': effective(s)}
+
+
+def stdin_json():
+    raw = os.environ.get('HEARTH_INPUT')
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read()
+    try:
+        v = json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('bad input')
+    if not isinstance(v, dict):
+        raise Fail('bad input')
+    return v
+
+
+def main(argv):
+    cmd = argv[0] if argv else ''
+    try:
+        if cmd == 'status':
+            r = status()
+        elif cmd == 'set':
+            r = set_(stdin_json())
+        elif cmd == 'apply':
+            r = {'changed': apply()}
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
