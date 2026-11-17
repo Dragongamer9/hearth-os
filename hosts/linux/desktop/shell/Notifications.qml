@@ -25,14 +25,19 @@ Scope {
             if ((DeskState.dnd || DeskState.isMuted(n.appName)) && n.urgency !== NotificationUrgency.Critical) return;
             n.tracked = true;
         }
+        // Reply boxes on pop-ups (NotifReply.qml; your phone's messages, docs/PHONE-LINK.md). Set only where this
+        // Quickshell has it, so an older one still starts.
+        Component.onCompleted: if ("inlineReplySupported" in server) server.inlineReplySupported = true
     }
 
     PanelWindow {
+        id: popups
+        property bool replying: false      // typing in a pop-up's Reply box (NotifReply.qml): the keyboard is ours till then
         visible: server.trackedNotifications.values.length > 0
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "nimbus-notifications"
         // Never takes the keyboard (or a WebKit app's controller) from the window in front: docs/CONTROLLER-FOCUS.md
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: popups.replying ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         // Mantel 2026: under the clock pill in the middle of the top (several stack); with the classic taskbar, the
         // top-right corner as before.
@@ -64,7 +69,7 @@ Scope {
 
                     // Gone after its timeout (or 6 s); critical ones stay until dismissed.
                     Timer {
-                        running: card.modelData.urgency !== NotificationUrgency.Critical && !hover.containsMouse
+                        running: card.modelData.urgency !== NotificationUrgency.Critical && !hover.containsMouse && !replyBox.typing
                         // expireTimeout may come in seconds or milliseconds depending on the version; accept both.
                         interval: card.modelData.expireTimeout <= 0 ? 6000 : card.modelData.expireTimeout > 100 ? card.modelData.expireTimeout : card.modelData.expireTimeout * 1000
                         onTriggered: card.modelData.expire()
@@ -112,6 +117,13 @@ Scope {
                                 opacity: 0.85
                                 font.pixelSize: 13
                                 font.family: Theme.font
+                            }
+                            // A Reply box (NotifReply.qml), for notifications that take a reply.
+                            NotifReply {
+                                id: replyBox
+                                notification: card.modelData
+                                onTypingChanged: popups.replying = typing
+                                onSent: card.modelData.dismiss()
                             }
                             // Other actions as buttons
                             Flow {

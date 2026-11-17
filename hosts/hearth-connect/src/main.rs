@@ -4,6 +4,8 @@
 //   hearth-connect --daemon         the background service (hearth-connect.service, a systemd user unit)
 //   hearth-connect --call CMD [JSON]  one request to the service, its answer as JSON (scripts and tests)
 //   hearth-connect --events         the service's events as JSON lines, until it stops
+//   hearth-connect --autostart      starts the service if Phone link is on (Mantel's autostart runs this at sign-in)
+//   hearth-connect --turn-on / --turn-off   Phone link on or off (remembered in settings.json, "enabled")
 // The window's page (ui/index.html) calls `call` (forwarded to the service) and hears "connect://event".
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -98,30 +100,57 @@ async fn call(cmd: String, args: Option<Value>) -> Result<Value, String> {
     }).await.map_err(|e| e.to_string())?
 }
 
-/// "Start when I sign in": the systemd user unit enabled (it's off until the person first opens Hearth Connect).
+// ---- Phone link on or off. The service's unit has no [Install]: Mantel's autostart runs `hearth-connect --autostart`
+// at sign-in, which starts it only when the person turned Phone link on. The choice is "enabled" in settings.json
+// (merged in, never written by itself). Before this, "on" was the unit being enabled; that still counts as on.
+
+fn settings_path() -> std::path::PathBuf { hearth_connect::config_dir().join("settings.json") }
+
+/// Is Phone link on? "enabled" in settings.json, or, where it was never set, the old enabled unit.
+fn enabled() -> bool {
+    if let Some(on) = hearth_connect::appfile::read_json(&settings_path()).and_then(|v| v.get("enabled").and_then(|e| e.as_bool())) { return on; }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let cfg = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    cfg.join("systemd/user/default.target.wants/hearth-connect.service").exists()
+}
+
+fn set_enabled(on: bool) -> Result<(), String> {
+    let p = settings_path();
+    if let Some(dir) = p.parent() { let _ = std::fs::create_dir_all(dir); }
+    hearth_connect::appfile::update(&p, |cur| {
+        let mut o = cur.and_then(|v| v.as_object().cloned()).unwrap_or_default();
+        o.insert("enabled".into(), json!(on));
+        (Some(Value::Object(o)), ())
+    }).map_err(|e| format!("Couldn't save it: {e}"))
+}
+
+#[cfg(unix)]
+fn stop_service() {
+    let _ = std::process::Command::new("systemctl").args(["--user", "stop", "hearth-connect.service"]).stderr(std::process::Stdio::null()).status();
+    if ipc::running() { let _ = ipc::call("quit", json!({})); }
+}
+
+/// "Start when I sign in" (the window's switch): the same as Phone link on or off.
 #[cfg(unix)]
 #[tauri::command]
 fn autostart(on: Option<bool>) -> Result<bool, String> {
-    if let Some(on) = on {
-        let args = if on { ["--user", "enable", "hearth-connect.service"] } else { ["--user", "disable", "hearth-connect.service"] };
-        std::process::Command::new("systemctl").args(args).status().map_err(|e| e.to_string())?;
-    }
-    Ok(std::process::Command::new("systemctl").args(["--user", "is-enabled", "hearth-connect.service"]).output().map(|o| o.status.success()).unwrap_or(false))
+    if let Some(on) = on { set_enabled(on)?; }
+    Ok(enabled())
 }
 
 /// Turns Hearth Connect off: the service stops (phones can't reach this PC) and doesn't start at sign-in.
 #[cfg(unix)]
 #[tauri::command]
 fn turn_off() -> Result<(), String> {
-    let _ = std::process::Command::new("systemctl").args(["--user", "disable", "--now", "hearth-connect.service"]).status();
-    let _ = ipc::call("quit", json!({}));
+    set_enabled(false)?;
+    stop_service();
     Ok(())
 }
 
 #[cfg(unix)]
 #[tauri::command]
 fn turn_on() -> Result<(), String> {
-    let _ = std::process::Command::new("systemctl").args(["--user", "enable", "hearth-connect.service"]).status();
+    set_enabled(true)?;
     ensure_service()
 }
 
@@ -169,6 +198,21 @@ fn main() {
                 Err(e) => { eprintln!("{e}"); std::process::exit(1); }
             }
         }
+        if args.iter().any(|a| a == "--autostart") {
+            if !enabled() { std::process::exit(0); }
+            std::process::exit(match ensure_service() { Ok(()) => 0, Err(e) => { eprintln!("{e}"); 1 } });
+        }
+        if args.iter().any(|a| a == "--turn-on") {
+            let r = set_enabled(true).and_then(|_| ensure_service());
+            match r { Ok(()) => { println!("{}", json!({"enabled": true})); std::process::exit(0); } Err(e) => { eprintln!("{e}"); std::process::exit(1); } }
+        }
+        if args.iter().any(|a| a == "--turn-off") {
+            if let Err(e) = set_enabled(false) { eprintln!("{e}"); std::process::exit(1); }
+            stop_service();
+            println!("{}", json!({"enabled": false}));
+            std::process::exit(0);
+        }
+        if args.iter().any(|a| a == "--is-enabled") { println!("{}", json!({"enabled": enabled(), "running": ipc::running()})); std::process::exit(0); }
         if args.iter().any(|a| a == "--events") {
             let r = ipc::events(|v| println!("{v}"));
             std::process::exit(if r.is_ok() { 0 } else { 1 });

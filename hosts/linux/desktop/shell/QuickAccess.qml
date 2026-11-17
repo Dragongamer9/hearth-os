@@ -77,6 +77,7 @@ PanelWindow {
     property bool hhdOn: false
     Process { id: hhdRead; command: ["sh", "-c", "test -S /run/hhd/api || test -s /tmp/hhd/token"]; onExited: code => root.hhdOn = code === 0 }
     function run(cmd) { Quickshell.execDetached(cmd); }
+    PhoneStatus { id: phoneStatus; active: root.shown }   // Phone link's tile (docs/PHONE-LINK.md)
 
     Process {
         id: brightRead
@@ -120,7 +121,7 @@ PanelWindow {
 
     // ------------------------------------------------------------------ controller / keyboard navigation
     readonly property var navRows: {
-        const rows = [["settings", "lock", "power"], ["game"], ["wifi", "bluetooth"], ["night", "mouse"], ["dnd", "keyboard"], ["activity", "widgets"], ["volume"]];
+        const rows = [["settings", "lock", "power"], ["game"], ["wifi", "bluetooth"], ["night", "mouse"], ["dnd", "keyboard"], ["activity", "widgets"], ["phone"], ["volume"]];
         if (brightness >= 0) rows.push(["brightness"]);
         if (profile !== "") rows.push(["power-saver", "balanced", "performance"]);
         const last = [];
@@ -162,6 +163,7 @@ PanelWindow {
         case "keyboard": shown = false; root.keyboardRequested(); break;
         case "activity": shown = false; if (SettingsNav.widgets) SettingsNav.widgets.openActivities(); break;   // 1.14: Activities.qml
         case "widgets": shown = false; if (SettingsNav.widgets) SettingsNav.widgets.openGallery(""); break;  // 1.14: desktop widgets (Widgets.qml)
+        case "phone": phoneStatus.toggle(); break;   // Phone link on / off (PhoneStatus.qml)
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
         case "sleep": shown = false; Buttons.sleep("Quick Access"); break;
@@ -282,6 +284,7 @@ PanelWindow {
                     Tile { navId: "keyboard"; icon: "kbd"; label: "Keyboard"; detail: "On-screen" }
                     Tile { navId: "activity"; icon: SettingsNav.activityIcon || "desktops"; label: "Activity"; detail: SettingsNav.activitiesMany ? SettingsNav.activityName : "Make one"; lit: SettingsNav.activitiesMany; enabled: SettingsNav.widgets !== null }
                     Tile { navId: "widgets"; icon: "grid"; label: "Widgets"; detail: "Add or arrange"; enabled: SettingsNav.widgets !== null }
+                    Tile { navId: "phone"; icon: "phone"; label: "Phone"; detail: phoneStatus.line; lit: phoneStatus.on; enabled: phoneStatus.installed; page: "phone" }   // Phone link (PhoneStatus.qml)
                 }
 
                 // ---- sliders

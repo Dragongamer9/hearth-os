@@ -34,11 +34,12 @@ pub fn session_env() -> Vec<(String, String)> {
 
 fn env_of(k: &str) -> Option<String> { session_env().into_iter().find(|(x, _)| x == k).map(|(_, v)| v).filter(|v| !v.is_empty()) }
 
-fn has(prog: &str) -> bool {
+pub(crate) fn has(prog: &str) -> bool {
     std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(prog).is_file())).unwrap_or(false)
 }
 
-fn cmd(prog: &str) -> Command {
+/// A program run in the person's session (its display variables), stdin and stderr closed.
+pub(crate) fn cmd(prog: &str) -> Command {
     let mut c = Command::new(prog);
     c.env_remove("WAYLAND_DISPLAY").env_remove("DISPLAY");
     for (k, v) in session_env() { if !v.is_empty() { c.env(k, v); } }
