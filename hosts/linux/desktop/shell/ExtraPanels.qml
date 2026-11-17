@@ -128,11 +128,12 @@ Scope {
             Repeater {
                 model: (WinList.toplevels ? WinList.toplevels.values : []).filter(t => !/quickshell/i.test(t.appId || "") && (t.title || t.appId)).slice(0, 14)
                 delegate: PBtn {
+                    id: wb
                     required property var modelData
                     tip: modelData.title || modelData.appId || ""
                     lit: modelData.activated
                     onClicked: { if (modelData.activated && !modelData.minimized) { if (modelData.setMinimized) modelData.setMinimized(true); else modelData.minimized = true; } else modelData.activate(); }
-                    AppIcon { anchors.centerIn: parent; size: parent.side * 0.62; appId: parent.modelData.appId || ""; icon: "" }
+                    AppIcon { anchors.centerIn: parent; size: wb.side * 0.62; appId: wb.modelData.appId || ""; icon: "" }
                 }
             }
         }
@@ -240,7 +241,7 @@ Scope {
         implicitWidth: side; implicitHeight: side
         Rectangle { anchors.fill: parent; radius: Theme.r(9); color: ma.containsMouse ? Theme.panel3 : b.lit ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent" }
         Rectangle { visible: b.lit; anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom } width: 14; height: 3; radius: 1.5; color: Theme.accent }
-        Item { id: holder; anchors.fill: parent }
+        Item { id: holder; anchors.fill: parent; readonly property real side: b.side }   // what's put in reads side from here
         Rectangle {
             visible: b.badge > 0
             x: b.side / 2 + 2; y: 2; width: Math.max(15, bt.implicitWidth + 7); height: 15; radius: 7.5; color: Theme.accent

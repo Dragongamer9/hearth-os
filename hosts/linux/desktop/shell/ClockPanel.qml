@@ -317,7 +317,7 @@ PanelWindow {
                         readonly property bool lit: root.nav === index + 2
                         readonly property var live: { void DeskState.liveRev; return DeskState.liveOf(modelData.key); }
                         readonly property var acts: live ? Array.from(live.actions) : []
-                        readonly property bool opensApp: !live && !!modelData.entry
+                        readonly property bool opensApp: !live && !!modelData.entry && DesktopEntries.byId(modelData.entry) !== null
                         width: list.width
                         implicitHeight: crow.implicitHeight + 20
                         radius: Theme.r(12)

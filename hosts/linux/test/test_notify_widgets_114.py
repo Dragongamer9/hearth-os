@@ -159,7 +159,7 @@ class NotifyHelper(unittest.TestCase):
                      ('setTotalAmount', (1000, 'bytes')), ('setProcessedAmount', (250, 'bytes')), ('setSpeed', (50,))):
             self.assertTrue(d.job_apply_v2(j, m, a))
         v = d.job_view(j)
-        self.assertEqual((v['percent'], v['processed'], v['total'], v['title'], v['killable'], v['suspendable']), (25, 250, 1000, 'Source', True, True))
+        self.assertEqual((v['percent'], v['processed'], v['total'], v['title'], v['killable'], v['suspendable']), (25, 250, 1000, 'Copying', True, True))
         d.job_apply_v2(j, 'terminate', ('',))
         self.assertEqual(d.job_view(j)['state'], 'done')
         k = {'id': 2, 'caps': 0}
