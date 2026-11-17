@@ -352,6 +352,8 @@ PanelWindow {
         list.push({ label: "Display settings", icon: "display", group: "Settings", run: () => { if (settingsApp) settingsApp.open("display"); } });
         list.push({ label: "Open in Files", icon: "folder", group: "Open", run: () => { if (filesApp) filesApp.open(dir || home); } });
         list.push({ label: "Open a terminal here", icon: "kbd", group: "Open", run: () => Quickshell.execDetached(["sh", "-c", "cd \"$1\" && exec sh \"$2\" terminal", "sh", dir || home, Quickshell.env("NIMBUS_SHARE") + "/desktop/open.sh"]) });
+        // KWin: labwc's own desktop menu (menu.xml: Apps, Terminal, Files, Game Mode, Reconfigure, Log out) too.
+        if (WinList.kwin) for (const it of DesktopMenu.items()) list.push(it);
         menu.popup(screen, x, y, { title: "Desktop" }, list);
         // Your templates, for next time the menu opens (cheap: one small folder).
         DeskState.call(["templates"], (r, err) => { if (!err && r) templates = r.templates || []; });

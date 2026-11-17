@@ -160,6 +160,31 @@ class Shell(unittest.TestCase):
         self.assertLess(src.index('WinList.snap(win, q.id)'), src.index('typer.command ='))
         self.assertIn('WinList.goDesktop', (SHELL / 'DeskSwitcher.qml').read_text())
 
+    def test_desktop_menu_has_labwcs(self):
+        # labwc's desktop menu (menu.xml root-menu) in Mantel's under KWin: every entry, in order, the same commands.
+        root = ET.parse(LINUX / 'desktop' / 'labwc' / 'menu.xml').getroot()
+        want = []
+        for el in root.find("menu[@id='root-menu']"):
+            if el.tag == 'separator':
+                want.append(('-', None))
+            else:
+                act = el.find('action')
+                want.append((el.get('label'), act.get('command') if act.get('name') == 'Execute' else act.get('name')))
+        src = (SHELL / 'DesktopMenu.qml').read_text()
+        src = src[src.index('property var entries: ['):src.index('function run(')]
+        got = []
+        for m in re.finditer(r'\{ (separator: true|id: "[a-z-]+", label: "([^"]+)".*?command: "((?:[^"\\]|\\.)*)")', src, re.S):
+            got.append(('-', None) if m.group(1).startswith('separator') else (m.group(2), m.group(3)))
+        self.assertEqual([g[0] for g in got], [w[0] for w in want])
+        for (label, cmd), (_, mine) in zip(want, got):
+            if cmd == 'Reconfigure':
+                self.assertIn('org.kde.KWin.reconfigure', mine)
+            elif cmd:
+                self.assertEqual(mine, cmd, label)
+        d = (SHELL / 'Desktop.qml').read_text()
+        body = d[d.index('function backgroundMenu('):]
+        self.assertLess(body.index('DesktopMenu.items()'), body.index('menu.popup('))
+
     def test_winlist_names_match_toplevels(self):
         src = (SHELL / 'WinList.qml').read_text()
         for prop in ('appId', 'title', 'activated', 'minimized', 'maximized', 'fullscreen', 'screens'):

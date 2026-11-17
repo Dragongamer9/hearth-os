@@ -3,14 +3,14 @@
 #      against a pretend KWin), the script's JavaScript.
 #   2. end to end (tools/e2e-kwin-windows.py): KWin on a virtual screen with Hearth's KWin defaults, Mantel started with HEARTH_WM=kwin, two test windows:
 #      the list, minimize/activate/maximize, snapping and Super+arrows, desktops, Super+Z, the bridge restarting, KWin's
-#      window menu. Small copies of the pictures are notices (SHOT ...), the full ones in the kwin-windows artifact.
+#      window menu, the desktop's right-click menu (menu.xml's entries). Small copies of the pictures are notices (SHOT ...), the full ones in the kwin-windows artifact.
 # Failures are ::error:: annotations (logs can't always be read).
 name: Mantel on KWin (windows)
 
 on:
   push:
     branches: [bughunt, 'feature/kwin-*']
-    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
+    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
             'hosts/linux/test/test_kwin_windows.py', 'hosts/linux/test/kwin-windows-mock.js', 'tools/e2e-kwin-windows.py',
             '.github/workflows/kwin-windows.yml']
   workflow_dispatch:
@@ -131,6 +131,9 @@ jobs:
       - name: Picture (window-menu)
         if: always()
         run: f=shots/kwin-window-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-window-menu $i::$part"; done || true
+      - name: Picture (desktop menu)
+        if: always()
+        run: f=shots/kwin-desktop-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-desktop-menu $i::$part"; done || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
