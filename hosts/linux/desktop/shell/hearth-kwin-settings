@@ -22,7 +22,10 @@ Only the keys the person changes are written (hearth_kconfig), then KWin is aske
   hearth-kwin-settings input                  JSON: KWin's input devices and their settings
   hearth-kwin-settings input-set SYSNAME      stdin {property: value}: a tablet's or touchscreen's setting
   hearth-kwin-settings pointer-apply          puts pointer.json (Settings › Mouse & touchpad) on KWin's devices
-  hearth-kwin-settings input-watch            pointer-apply now and whenever a device is plugged in (session)
+  hearth-kwin-settings input-watch            keyboard-apply and pointer-apply now, pointer-apply whenever a device
+                                              is plugged in (session)
+  hearth-kwin-settings keyboard-apply         puts keyboard.json (Settings › Keyboard) in kxkbrc [Layout] and
+                                              kcminputrc [Keyboard] and has KWin take it (nothing written if unchanged)
   hearth-kwin-settings rebind TOOL BUTTON     stdin action ("" = as it is): a pen button (kcminputrc ButtonRebinds)
   hearth-kwin-settings shortcut NAME          runs one of KWin's own shortcuts (zoom in, invert, overview...)
 
@@ -942,9 +945,115 @@ def pointer_apply():
     return {'ok': not bad, 'applied': len(plan) - len(bad), 'kwin': True}
 
 
+# ------------------------------------------------------------------ the keyboard (Settings › Keyboard)
+# keyboard.json (hearth-system keyboard-set) is the one home of these settings; KWin reads them from kxkbrc [Layout]
+# (layouts, the switch shortcut, the compose key, layout per window) and kcminputrc [Keyboard] (key repeat, Num Lock
+# at start). Only what the person chose in Hearth is written: a setting they never picked stays as KWin has it.
+NUMLOCK = {'on': '0', 'off': '1', 'keep': '2'}            # KWin's NumLock: 0 on, 1 off, 2 leave as it was
+SWITCH_MODES = ('Global', 'WinClass', 'Window')           # one layout everywhere / each app / each window
+COMPOSE_RE = re.compile(r'^compose:[a-z0-9_]{1,16}$')
+LAYOUT_RE = re.compile(r'^[a-z][a-z0-9_-]{0,31}$')
+VARIANT_RE = re.compile(r'^[A-Za-z0-9_-]{0,48}$')
+
+
+def keyboard_json():
+    p = os.path.join(kc.config_home(), 'nimbus', 'keyboard.json')
+    d = hsio.load_json(p, {}) if os.path.exists(p) else {}
+    return d if isinstance(d, dict) else {}
+
+
+def keyboard_changes(saved, kxkb_now, input_now):
+    """{file: {group: {key: value}}}: keyboard.json's settings as KWin's keys, only those that differ from KWin's
+    files now (kxkb_now / input_now: effective [Layout] / [Keyboard]). Empty when nothing changed."""
+    lay, kbd = {}, {}
+    lays = saved.get('layouts')
+    if isinstance(lays, list):
+        lays = [l for l in lays if isinstance(l, dict) and isinstance(l.get('layout'), str) and LAYOUT_RE.match(l['layout'])
+                and VARIANT_RE.match(l.get('variant') or '')][:4]
+    else:
+        lays = []
+    opts = [o for o in (kxkb_now.get('Options') or '').split(',') if o]
+    new_opts = list(opts)
+    if lays:
+        lay['Use'] = 'true'
+        lay['LayoutList'] = ','.join(l['layout'] for l in lays)
+        lay['VariantList'] = ','.join(l.get('variant') or '' for l in lays)
+        sw = saved.get('switch') or ''
+        new_opts = [o for o in new_opts if not o.startswith('grp:')]
+        if len(lays) > 1 and isinstance(sw, str) and sw.startswith('grp:'):
+            new_opts.append(sw)
+    if 'compose' in saved:
+        c = saved.get('compose') or ''
+        new_opts = [o for o in new_opts if not o.startswith('compose:')]
+        if isinstance(c, str) and COMPOSE_RE.match(c):
+            new_opts.append(c)
+    if new_opts != opts or (lays and new_opts and kxkb_now.get('ResetOldOptions') != 'true'):
+        lay['Options'] = ','.join(new_opts)
+        lay['ResetOldOptions'] = 'true'
+    if saved.get('switchMode') in SWITCH_MODES:
+        lay['SwitchMode'] = saved['switchMode']
+    for src, dst, lo, hi in (('delay', 'RepeatDelay', 150, 2000), ('rate', 'RepeatRate', 1, 80)):
+        v = saved.get(src)
+        if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi:
+            kbd[dst] = str(v)
+    if saved.get('numlock') in NUMLOCK:
+        kbd['NumLock'] = NUMLOCK[saved['numlock']]
+    out = {}
+    lay = {k: v for k, v in lay.items() if kxkb_now.get(k) != v}
+    kbd = {k: v for k, v in kbd.items() if input_now.get(k) != v}
+    if lay:
+        out['kxkbrc'] = {'Layout': lay}
+    if kbd:
+        out['kcminputrc'] = {'Keyboard': kbd}
+    return out
+
+
+def keyboard_reload(files):
+    """KWin takes the new keyboard settings: its layouts on org.kde.keyboard's reloadConfig, the repeat on KDE's
+    "kcminputrc changed" signal (KWin's config watcher)."""
+    if not kwin_running():
+        return False
+    conn = bus()
+    if conn is None:
+        return False
+    if 'kxkbrc' in files:
+        try:
+            conn.emit_signal(None, '/Layouts', 'org.kde.keyboard', 'reloadConfig', None)
+            conn.flush_sync(None)
+        except Exception as e:
+            hsio.log_event('kwin: keyboard reloadConfig not sent: %s' % e)
+    return True
+
+
+def keyboard_apply():
+    """Settings › Keyboard on KWin. Never raises (it runs as the session starts): a problem is logged and left."""
+    try:
+        saved = keyboard_json()
+        xk, _, _ = kc.effective('kxkbrc')
+        ki, _, _ = kc.effective('kcminputrc')
+        changes = keyboard_changes(saved, xk.get('Layout', {}), ki.get('Keyboard', {}))
+        done = []
+        for name, ch in changes.items():
+            try:
+                if write_changes(name, ch):
+                    done.append(name)
+            except Fail as e:
+                hsio.log_event('kwin: keyboard settings not written: %s' % e)
+        reloaded = keyboard_reload(done) if done else kwin_running()
+        return {'ok': True, 'written': done, 'kwin': kwin_running(), 'reloaded': reloaded}
+    except Exception as e:      # noqa: BLE001 (the start goes on whatever happens)
+        hsio.log_event('kwin: keyboard settings not applied: %s' % e)
+        return {'ok': False, 'written': [], 'kwin': False, 'error': str(e)}
+
+
 def input_watch():
-    """For the session: puts the mouse and touchpad settings on every device now and on each one plugged in later."""
-    pointer_apply()
+    """For the session: puts the keyboard settings on KWin, and the mouse and touchpad settings on every device now and
+    on each one plugged in later."""
+    keyboard_apply()
+    try:
+        pointer_apply()
+    except Exception as e:      # noqa: BLE001
+        hsio.log_event('kwin: mouse/touchpad settings not applied at start: %s' % e)
     conn = bus()
     if conn is None:
         return
@@ -1014,6 +1123,8 @@ def main(argv):
         out = input_set(a[0], sys.stdin.read())
     elif c == 'pointer-apply' and not a:
         out = pointer_apply()
+    elif c == 'keyboard-apply' and not a:
+        out = keyboard_apply()
     elif c == 'input-watch' and not a:
         input_watch()
         return

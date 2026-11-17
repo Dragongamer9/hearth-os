@@ -1,0 +1,20 @@
+[Unit]
+Description=Hearth: a stand-in account for first-time setup on a pre-installed PC
+# Before the autologin is written and the login screen starts; never holds either up (no Requires/Wants on them).
+Before=nimbus-autologin.service display-manager.service hearth-groups.service
+# Every place an account can come from is ready first (userdb, homed, LDAP/sssd), and /home is mounted.
+After=local-fs.target systemd-sysusers.service nss-user-lookup.target systemd-userdbd.service systemd-homed.service
+# Only /var/lib (its stamp and marker): a /home that's missing or late (nofail) must never hold the login screen up;
+# an empty or missing /home just counts as no home folders, and NSS and /etc/passwd are checked as well.
+RequiresMountsFor=/var/lib
+ConditionPathExists=!/etc/hearth-live
+ConditionPathExists=!/etc/hearth-installer
+ConditionPathExists=!/etc/hearth-recovery
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/libexec/nimbus/hearth-oem-account
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -6,7 +6,8 @@ on:
   push:
     branches: [linux-host]
     paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml', 'tools/app-bundle.py', 'hosts/linux/test/test_hearth_app_channel.py',
-            'tools/installer-check.py', 'tools/installer-looks.py', 'hosts/linux/desktop/theme/palettes.json', 'os/live/src/hearth-install', 'hosts/linux/test/test_hearth_install_look.py']
+            'tools/installer-check.py', 'tools/installer-looks.py', 'hosts/linux/desktop/theme/palettes.json', 'os/live/src/hearth-install', 'hosts/linux/test/test_hearth_install_look.py',
+            'hosts/linux/test/test_hearth_oem_setup.py', 'os/system_files/usr/libexec/nimbus/hearth-oem-account']
   workflow_dispatch:
 
 permissions:
@@ -64,6 +65,10 @@ jobs:
         run: |
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
           node ui-check.js
+      # First-time setup on a pre-installed PC (tools/ui-check.js "pre-installed PC" took the picture).
+      - name: Picture (setup-oem-account)
+        if: always()
+        run: f=tools/qa-shots/setup-oem-account.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT setup-oem-account $i::$part"; done || true
       # The USB installer's page (ui/installer.html, tools/installer-check.py): the Welcome screen's Controllers card
       # with the pretend PC, leaving Welcome stops the search, no Bluetooth and Try again; the look picker (every
       # screen in every look, X / the Look chip, Synthwave and Light recolour, the look in the install request, a
@@ -88,6 +93,13 @@ jobs:
           if-no-files-found: ignore
       # The installer engine writes the look picked on the USB into the new user's settings (merged, only when
       # picked, never over a damaged file, never a stop): hosts/linux/test/test_hearth_install_look.py.
+      # A pre-installed PC (no installer, no account): the stand-in account, setup opening for it, and hearth-admin
+      # oem-finish (hosts/linux/test/test_hearth_oem_setup.py).
+      - name: First-time setup on a pre-installed PC
+        run: |
+          if ! python3 -m unittest -v hosts/linux/test/test_hearth_oem_setup.py > /tmp/oem.txt 2>&1; then
+            echo "::error title=Pre-installed PC::$(grep -E 'FAIL|ERROR|Error|assert' /tmp/oem.txt | head -20 | tr '\n' '|' | cut -c1-3000)"; tail -40 /tmp/oem.txt; exit 1
+          fi
       - name: The installer's look reaches the new user
         run: |
           if ! python3 -m unittest -v hosts/linux/test/test_hearth_install_look.py > /tmp/il.txt 2>&1; then
