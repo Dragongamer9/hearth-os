@@ -91,6 +91,9 @@ jobs:
           # checks fail then). Hearth's KWin defaults (four desktops, Super on its own) the way the session gives them;
           # pictures through KWin's screenshot API.
           export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          # Hearth's window frames written before KWin starts, as the session does (theme/apply.sh): KWin loads them then.
+          HEARTH_WM=kwin python3 hosts/linux/desktop/theme/hearth-theme >/dev/null 2>shots/hearth-theme.err || echo "::warning title=frames::hearth-theme: $(head -c 300 shots/hearth-theme.err)"
+          ls "$HOME/.local/share/aurorae/themes/hearth" | tr '\n' ' ' | sed 's/^/::notice title=frames::written before KWin: /'; echo
           # The command at the end runs inside KWin's session: it leaves KWin's X server address (DISPLAY, XAUTHORITY).
           X11ENV="sh -c 'env | grep -E \"^(DISPLAY|XAUTHORITY)=\" > /tmp/kwin-x11.env'"
           modprobe vkms 2>/dev/null || echo "::warning title=keys::no vkms module"
