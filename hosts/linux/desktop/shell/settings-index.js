@@ -97,6 +97,11 @@ var ENTRIES = [
 "i": "palette"
 },
 {
+"t": "Invert one window",
+"p": "accessibility",
+"i": "palette"
+},
+{
 "t": "Screen reader (Orca)",
 "p": "accessibility",
 "i": "vol"
@@ -114,6 +119,16 @@ var ENTRIES = [
 },
 {
 "t": "Turn off when two keys are held together",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "A sound for modifier keys",
+"p": "accessibility",
+"i": "vol"
+},
+{
+"t": "Toggle keys",
 "p": "accessibility",
 "i": "kbd"
 },
@@ -161,6 +176,27 @@ var ENTRIES = [
 "t": "Play the alert sound",
 "p": "accessibility",
 "i": "vol"
+},
+{
+"t": "Click by resting the pointer",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Rest for",
+"p": "accessibility",
+"i": "clock"
+},
+{
+"t": "Click",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "How still the pointer has to be",
+"p": "accessibility",
+"d": "For a shaky hand, let it wander a little further",
+"i": "mouse"
 },
 {
 "t": "Text size",

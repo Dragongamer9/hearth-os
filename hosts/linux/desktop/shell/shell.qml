@@ -290,6 +290,8 @@ ShellRoot {
     // 1.14: Caps Lock, Num Lock, the keyboard layout and the microphone (SystemOsd.qml), and Arrange the bar with the
     // extra panels (BarArrange.qml, ExtraPanels.qml): loaded by file name, so a problem in one only loses it.
     Loader { source: "SystemOsd.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the keyboard and microphone messages (SystemOsd.qml) couldn't load") }
+    // Dwell click's ring (Settings › Accessibility, hearth-dwell): only does anything on KWin while it's turned on.
+    Loader { source: "Dwell.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: dwell click (Dwell.qml) couldn't load") }
     Loader { source: "BarArrange.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Arrange the bar (BarArrange.qml) couldn't load") }
     Loader { source: "ExtraPanels.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: extra panels (ExtraPanels.qml) couldn't load") }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell

@@ -157,11 +157,11 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [ ] Zoom with Mantel's keys, follow modes, pixel grid — partly: Super+= / − / 0 reach KWin's Zoom (hearth-access:481, shortcuts.json "kwinOwn"; test_kwin_input.py "test_paste_and_magnifier"). Left: follow pointer / text cursor / centred and the page (S)
 - [ ] Magnifier (a lens around the pointer) (S)
 - [ ] Colour filters in Desktop Mode (greyscale, protanopia, deuteranopia, tritanopia, intensity) (S)
-- [ ] Invert colours (whole screen, one window) — Hearth has: labwc's gamma invert; nothing under KWin (Stage 1's line) (S)
-- [ ] Sticky, slow, bounce and toggle keys, mouse keys (M)
-- [ ] Dwell click (S)
+- [x] Invert colours (whole screen, one window) — SetAccessibility.qml: "Invert one window" (Super+Ctrl+U, KWin's InvertWindow), the whole screen through the "Inverted colours" filter; hearth-access apply_filter_kwin (invertWindow keeps KWin's invert effect loaded, unloads it when nothing needs it); test_hearth_dwell.py "InvertOneWindow"; CI kwin-16 (needs testing on a device)
+- [x] Sticky, slow, bounce and toggle keys, mouse keys — SetAccessibility.qml: "Sticky keys", "Slow keys", "Bounce keys", "Mouse keys", "Toggle keys" (kaccessrc [Keyboard] ToggleKeysBeep); test_hearth_dwell.py "test_rows"; CI kwin-15 (needs testing on a device)
+- [x] Dwell click — hearth-dwell (KWin script for where the pointer is, uinput virtual mouse, Esc lent to its cancel action only while the ring fills), Dwell.qml (the ring), SetAccessibility.qml "Click by resting the pointer" (off by default; rest time, click type, how still); test_hearth_dwell.py "Countdown", "Clicks"; CI kwin-17..20 (needs testing on a device; labwc: not offered)
 - [ ] Shake cursor and Track mouse on Accessibility (S)
-- [ ] Activation sounds / visual bell (S)
+- [x] Activation sounds / visual bell — SetAccessibility.qml: "A sound for modifier keys" (kaccessrc StickyKeysBeep), "Toggle keys" (ToggleKeysBeep), "Flash the screen for the alert sound" (VisibleBell); test_hearth_dwell.py "test_rows"; CI kwin-15 (needs testing on a device)
 
 ### Xwayland and gaming
 

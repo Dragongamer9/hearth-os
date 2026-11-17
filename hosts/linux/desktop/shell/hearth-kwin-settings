@@ -88,7 +88,7 @@ INPUT_READ = list(INPUT_PROPS) + [
     'tabletPadButtonCount', 'supportsInputArea', 'supportsDisableEvents', 'deviceGroupId', 'vendor', 'product',
 ]
 SHORTCUTS = {'zoom-in': 'view_zoom_in', 'zoom-out': 'view_zoom_out', 'zoom-reset': 'view_actual_size',
-             'invert': 'Invert', 'overview': 'Overview', 'grid': 'Grid View', 'windows': 'Expose',
+             'invert': 'Invert', 'invert-window': 'InvertWindow', 'overview': 'Overview', 'grid': 'Grid View', 'windows': 'Expose',
              'tiles': 'Edit Tiles', 'magnifier-in': 'MagnifierZoomIn'}
 
 

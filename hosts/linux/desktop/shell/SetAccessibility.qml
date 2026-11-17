@@ -4,8 +4,9 @@
 // filters are gamescope's; Desktop Mode can only invert colours, see hearth-access). With Mantel on KWin the same
 // settings go through KWin's effects (hearth-access's kwin mode: zoom / magnifier, invert, colour-blindness correction,
 // greyscale on KWin 6.6), and KWin's own extras are here too, in their one home (kwinrc, kaccessrc through
-// hearth-kwin-settings): how the zoom follows, sticky / bounce / slow keys, mouse keys and the visual bell. Under labwc
-// those show greyed, as needing Mantel on KWin.
+// hearth-kwin-settings): how the zoom follows, sticky / bounce / slow keys, toggle keys, the modifier keys' sound, mouse
+// keys and the visual bell. Also on KWin: inverting one window (Super+Ctrl+U) and dwell click (Hearth's own, hearth-dwell
+// with the ring in Dwell.qml). Under labwc those show greyed, as needing Mantel on KWin.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -153,6 +154,14 @@ SetPage {
         valueText: Math.round(value * 100) + "%"
         onMoved: v => page.change({ filterStrength: Math.max(0.1, Math.round(v * 20) / 20) })
     }
+    // Invert one window (1.14): KWin's invert effect kept on for its own Super+Ctrl+U (hearth-access invertWindow).
+    SetSwitch {
+        enabled: kw.live; opacity: kw.live ? 1 : 0.45
+        icon: "palette"; title: "Invert one window"
+        sub: "Super+Ctrl+U inverts the colours of the window you're in; press it again to turn them back" + page.kwinNote
+        checked: !!page.s.invertWindow
+        onToggled: v => page.change({ invertWindow: v }, true)
+    }
     Text {
         Layout.fillWidth: true; Layout.leftMargin: 4
         text: page.onKwin ? "Super+Ctrl+I also inverts the colours (KWin's own shortcut)."
@@ -192,6 +201,21 @@ SetPage {
         icon: "kbd"; title: "Turn off when two keys are held together"
         checked: kw.b("kaccessrc", "Keyboard", "StickyKeysAutoOff", false)
         onToggled: v => kw.set("kaccessrc", "Keyboard", "StickyKeysAutoOff", v)
+    }
+    // Activation sounds (1.14): KDE's "system bell" for modifier keys and for the locking keys (toggle keys).
+    SetSwitch {
+        enabled: kw.live; opacity: kw.live ? 1 : 0.45
+        icon: "vol"; title: "A sound for modifier keys"
+        sub: "The alert sound plays when Shift, Ctrl, Alt or Super is held, locked or let go with sticky keys" + page.kwinNote
+        checked: kw.b("kaccessrc", "Keyboard", "StickyKeysBeep", true)
+        onToggled: v => kw.set("kaccessrc", "Keyboard", "StickyKeysBeep", v)
+    }
+    SetSwitch {
+        enabled: kw.live; opacity: kw.live ? 1 : 0.45
+        icon: "kbd"; title: "Toggle keys"
+        sub: "A sound when Caps Lock, Num Lock or Scroll Lock turns on or off" + page.kwinNote
+        checked: kw.b("kaccessrc", "Keyboard", "ToggleKeysBeep", false)
+        onToggled: v => kw.set("kaccessrc", "Keyboard", "ToggleKeysBeep", v)
     }
     SetSwitch {
         enabled: kw.live; opacity: kw.live ? 1 : 0.45
@@ -261,6 +285,46 @@ SetPage {
         sub: page.kwinNote.replace(/^\. /, "")
         checked: kw.b("kaccessrc", "Bell", "SystemBell", true)
         onToggled: v => kw.set("kaccessrc", "Bell", "SystemBell", v)
+    }
+
+    // ------------------------------------------------ dwell click (1.14, Hearth's own: hearth-dwell, Dwell.qml)
+    SetHeader { text: "Dwell click" }
+    readonly property bool dwellHere: kw.live && (!page.st || !page.onKwin || page.av.dwell !== false)
+    SetSwitch {
+        enabled: page.dwellHere; opacity: page.dwellHere ? 1 : 0.45
+        icon: "mouse"; title: "Click by resting the pointer"
+        sub: (page.onKwin && page.av.dwell === false ? "Needs python3-evdev for its virtual mouse"
+              : "Rest the pointer and a ring fills, then it clicks. Move away or press Esc to stop it") + page.kwinNote
+        checked: !!page.s.dwellClick
+        onToggled: v => page.change({ dwellClick: v }, true)
+    }
+    SetSlider {
+        visible: !!page.s.dwellClick
+        enabled: page.dwellHere
+        icon: "clock"; title: "Rest for"
+        readonly property int lo: 300
+        readonly property int hi: 3000
+        value: ((page.s.dwellDelay || 1000) - lo) / (hi - lo)
+        step: 100 / (hi - lo)
+        valueText: ((page.s.dwellDelay || 1000) / 1000).toFixed(1) + " s"
+        onMoved: v => page.change({ dwellDelay: Math.round((lo + v * (hi - lo)) / 100) * 100 })
+    }
+    SetChoice {
+        visible: !!page.s.dwellClick
+        enabled: page.dwellHere
+        icon: "mouse"; title: "Click"
+        options: [{ value: "left", label: "Left" }, { value: "double", label: "Double" }, { value: "right", label: "Right" }, { value: "middle", label: "Middle" }]
+        current: page.s.dwellClickType || "left"
+        onChosen: v => page.change({ dwellClickType: v })
+    }
+    SetChoice {
+        visible: !!page.s.dwellClick
+        enabled: page.dwellHere
+        icon: "mouse"; title: "How still the pointer has to be"
+        sub: "For a shaky hand, let it wander a little further"
+        options: [{ value: 5, label: "Very still" }, { value: 10, label: "Still" }, { value: 20, label: "Loose" }]
+        current: page.s.dwellTolerance || 10
+        onChosen: v => page.change({ dwellTolerance: v })
     }
 
     // ------------------------------------------------ text, contrast, pointer

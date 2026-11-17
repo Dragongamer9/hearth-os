@@ -16,6 +16,10 @@ Game Mode's Settings › Accessibility through hearth-core's access.* calls). On
                   colours (the invert effect), the three colour-blindness filters (colorblindnesscorrection) and
                   greyscale (its Monochrome mode, KWin 6.6 and later). Inverted brightness has no KWin effect.
                   The magnifier is KWin's zoom (the whole screen) or magnifier (a box) effect, Super+= / Super+-.
+                  Invert one window (invertWindow): the invert effect kept loaded for its Super+Ctrl+U (the window
+                  you're in; again turns it back).
+  Dwell click     Mantel on KWin: rest the pointer and it clicks (dwellClick, dwellDelay, dwellClickType,
+                  dwellTolerance). Saved here; hearth-dwell does it, started by Mantel's Dwell.qml while it's on.
   Screen reader   Orca, in both modes (Super+Alt+S in Desktop Mode). Qt (Mantel) and GTK/WebKit apps talk to it
                   over AT-SPI.
   Text size, high contrast, large pointer
@@ -79,7 +83,13 @@ DEFAULTS = {
     'textScale': 1.0,
     'highContrast': False,
     'largePointer': False,
+    'invertWindow': False,        # Mantel on KWin: Super+Ctrl+U inverts the window you're in (KWin's invert effect)
+    'dwellClick': False,          # Mantel on KWin: rest the pointer to click (hearth-dwell, Dwell.qml)
+    'dwellDelay': 1000,           # how long it rests before the click (ms, 300..3000)
+    'dwellClickType': 'left',     # left, double, right or middle
+    'dwellTolerance': 10,         # how far it may wobble and still count as resting (px, 3..40)
 }
+DWELL_KINDS = ('left', 'double', 'right', 'middle')
 
 
 class Fail(Exception):
@@ -133,7 +143,13 @@ def clean(raw):
     v = raw.get('textScale')
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         out['textScale'] = min(TEXT_SCALES, key=lambda s: abs(s - float(v)))
-    for k in ('screenReader', 'highContrast', 'largePointer'):
+    for k, lo, hi in (('dwellDelay', 300, 3000), ('dwellTolerance', 3, 40)):
+        v = raw.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = int(round(max(lo, min(hi, float(v)))))
+    if raw.get('dwellClickType') in DWELL_KINDS:
+        out['dwellClickType'] = raw['dwellClickType']
+    for k in ('screenReader', 'highContrast', 'largePointer', 'invertWindow', 'dwellClick'):
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
     return out
@@ -428,9 +444,10 @@ def kwin_changes(k, want):
     return out
 
 
-def apply_filter_kwin(name, strength=1.0):
+def apply_filter_kwin(name, strength=1.0, invert_window=False):
     """Mantel on KWin: the filter through KWin's effects (Accessibility is the one place that changes these: the
-    generic KWin pages can't write them). Inverted colours are switched with KWin's own shortcut."""
+    generic KWin pages can't write them). Inverted colours are switched with KWin's own shortcut. INVERT_WINDOW: the
+    invert effect stays loaded for its other shortcut, Super+Ctrl+U (one window); with neither, it's unloaded."""
     try:
         k = kwin_tool()
     except (OSError, ImportError, SyntaxError) as e:
@@ -443,7 +460,7 @@ def apply_filter_kwin(name, strength=1.0):
         return 'KWin has no effect for this filter; it works in Game Mode.'
     m = KWIN_MODES.get(name)
     want = {'Plugins': {'colorblindnesscorrectionEnabled': m is not None}}
-    if name == 'invert':
+    if name == 'invert' or invert_window:
         want['Plugins']['invertEnabled'] = True
     if m is not None:
         want['Effect-colorblindnesscorrection'] = {'Mode': m, 'Intensity': round(float(strength), 2)}
@@ -468,6 +485,15 @@ def apply_filter_kwin(name, strength=1.0):
                 os.unlink(kwin_invert_mark())
         except OSError:
             pass
+    if not want_inv and not invert_window:
+        # Unloaded only after the screen was switched back above (the shortcut needs the effect).
+        off = kwin_changes(k, {'Plugins': {'invertEnabled': False}})
+        if off:
+            try:
+                k.write_changes('kwinrc', off)
+            except k.Fail as e:
+                return str(e)
+            k.reconfigure()
     return None
 
 
@@ -555,7 +581,15 @@ def available():
         'desktopFilters': kwin_filters(kv) if mode() == 'kwin' else DESKTOP_FILTERS,
         'filters': FILTERS,
         'textScales': TEXT_SCALES,
+        # Dwell click (hearth-dwell): Mantel on KWin, with python3-evdev for its virtual mouse.
+        'dwell': mode() == 'kwin' and evdev_there(),
+        'dwellKinds': list(DWELL_KINDS),
     }
+
+
+def evdev_there():
+    import importlib.util
+    return importlib.util.find_spec('evdev') is not None
 
 
 def status(problems=None):
@@ -578,8 +612,8 @@ def apply(s, changed=None, where=None):
             if p:
                 problems['gameZoom'] = p
     elif where == 'kwin':
-        if keys & {'filter', 'filterStrength'}:
-            p = apply_filter_kwin(s['filter'], s['filterStrength'])
+        if keys & {'filter', 'filterStrength', 'invertWindow'}:
+            p = apply_filter_kwin(s['filter'], s['filterStrength'], s['invertWindow'])
             if p:
                 problems['filter'] = p
         # Only when the person changed one: at the start KWin has its own settings already.
