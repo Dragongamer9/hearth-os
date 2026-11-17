@@ -1,0 +1,6 @@
+C:\Program Files (x86)\Notepad++ -> /tmp/home/Games/Windows apps/Notepad++
+C:\Users\root\AppData\Roaming -> /tmp/home/.config
+C:\Users\root\AppData\Local\Temp -> /tmp/home/.cache
+C:\Windows -> /usr
+C:\ProgramData -> /var/lib
+C:\ -> hearth:c

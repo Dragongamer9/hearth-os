@@ -1,0 +1,8 @@
+................/usr/lib64/python3.14/ipaddress.py:2019: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x721577fbda80>
+  @property
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...
+----------------------------------------------------------------------
+Ran 19 tests in 2.622s
+
+OK
