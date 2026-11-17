@@ -329,7 +329,7 @@ jobs:
           q firehold press b
           # 2. The Desk as in the mockup: Hearth Files on the left, the game in a window in front, the others minimized
           for t in "3 tabs — Firefox" "2 new messages — Discord" "Downloading 1 update — Steam" "Pixel Rally"; do q winlist act "$t" minimize; done
-          q winlist run '{"op":"place","title":"Trips – Files","x":120,"y":100,"w":1040,"h":640}'
+          q winlist run '{"op":"place","title":"Trips – Files","x":120,"y":100,"w":900,"h":640}'
           q winlist run '{"op":"place","title":"Ember Trails","x":1020,"y":300,"w":800,"h":500}'
           q winlist act "Trips – Files" activate; sleep 1; q winlist act "Ember Trails" activate; sleep 2
           q firehold input mouse; shot k02-desk 5
