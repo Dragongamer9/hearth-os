@@ -79,7 +79,6 @@ SetPage {
     // (Settings keeps a page loaded, so a second "phone:commands" while it's open is heard too.)
     property string anchor: ""
     function takeAnchor() {
-        console.info("Phone link: Settings › Phone at '" + SettingsNav.pageAnchor + "'");
         if (!["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) return;
         anchor = SettingsNav.pageAnchor;
         anchorClear.restart();
@@ -88,14 +87,13 @@ SetPage {
     // Settings may load the page a second time as it opens: the part stays asked for a moment, so that one gets it too.
     Timer { id: anchorClear; interval: 2500; onTriggered: if (["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) SettingsNav.pageAnchor = "" }
     // After Settings has put the focus on the page's first card (it does once the page is in), not before.
-    function goAnchor() { if (page.anchor !== "") { console.info("Phone link: soon at " + page.anchor); anchorFocus.restart(); } }
+    function goAnchor() { if (page.anchor !== "") anchorFocus.restart(); }
     Timer {
         id: anchorFocus; interval: 700
         onTriggered: {
             if (page.anchor === "") return;
             if (!page.st || !page.st.running) { anchorFocus.restart(); return; }   // its cards come with the state
             const to = { notifications: notifHead, commands: cmdName, pair: ipField }[page.anchor];
-            console.info("Phone link: going to " + page.anchor + " (" + (to && to.visible) + ")");
             page.anchor = "";
             page.anchorTarget = to || null;
             if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }

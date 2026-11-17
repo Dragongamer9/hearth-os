@@ -35,7 +35,7 @@ SetPage {
         return d.toDateString() === now.toDateString() ? Qt.formatTime(d, "hh:mm") : Qt.formatDate(d, "d MMM");
     }
     // `hearth-settings phone-messages:<thread>` opens at that conversation.
-    function takeAnchor() { console.info("Phone link: Messages at '" + SettingsNav.pageAnchor + "'"); if (/^\d+$/.test(SettingsNav.pageAnchor)) { open = parseInt(SettingsNav.pageAnchor); anchorClear.restart(); messages = []; refresh(); } }
+    function takeAnchor() { if (/^\d+$/.test(SettingsNav.pageAnchor)) { open = parseInt(SettingsNav.pageAnchor); anchorClear.restart(); messages = []; refresh(); } }
     // Settings may load the page a second time as it opens: the conversation stays asked for a moment for that one.
     Timer { id: anchorClear; interval: 2500; onTriggered: if (/^\d+$/.test(SettingsNav.pageAnchor)) SettingsNav.pageAnchor = "" }
     Timer { id: anchorLater; interval: 300; onTriggered: page.takeAnchor() }
