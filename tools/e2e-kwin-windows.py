@@ -312,6 +312,7 @@ def frames_check(procs):
     time.sleep(1.5)
     shot('frame-full')
     title_matches('frame-full', theme, 'Steam-style, the default')
+    crop('frame-full', (0, 0, 640, 140), 'frame-zoom')
     many, size = crop('frame-full', (0, 30, 1000, 230), 'frame-active')
     check('the frame picture (active) is more than one colour', many, size)
     ipc('winlist', 'act', 'Test B', 'activate')
