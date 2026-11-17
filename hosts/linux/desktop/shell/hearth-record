@@ -69,7 +69,7 @@ def videos_dir():
     d = ''
     if shutil.which('xdg-user-dir'):
         try:
-            d = subprocess.run(['xdg-user-dir', 'VIDEOS'], capture_output=True, text=True, timeout=5).stdout.strip()
+            d = subprocess.run(['xdg-user-dir', 'VIDEOS'], capture_output=True, text=True, errors='replace', timeout=5).stdout.strip()
         except Exception:
             d = ''
     if not d or os.path.realpath(d) == os.path.realpath(HOME):
@@ -84,7 +84,7 @@ def read_state():
     except Exception:
         return {'state': 'idle'}
     pid = st.get('pid')
-    if st.get('state') in ('starting', 'recording', 'stopping') and not alive(pid):
+    if st.get('state') in ('starting', 'recording', 'stopping') and not ours(pid):
         st = {'state': 'idle', 'last': st.get('file', ''), 'error': st.get('error', '')}
     return st
 
@@ -98,12 +98,31 @@ def write_state(st):
     os.replace(tmp, STATE)
 
 
-def alive(pid):
+def ours(pid):
+    """True only for a running `hearth-record run` with this pid. Never 0, 1, a negative number or a missing pid:
+    os.kill(0, ...) is the caller's whole process group (Quickshell's), and a pid can be reused by another program."""
     try:
-        os.kill(int(pid), 0)
-        return True
-    except Exception:
+        pid = int(pid)
+    except (TypeError, ValueError):
         return False
+    if pid <= 1 or pid == os.getpid():
+        return False
+    try:
+        with open('/proc/%d/cmdline' % pid, 'rb') as f:
+            argv = f.read().split(b'\0')
+    except OSError:
+        return False
+    return any(a.endswith(b'hearth-record') for a in argv) and b'run' in argv
+
+
+def signal_ours(pid, sig):
+    if ours(pid):
+        try:
+            os.kill(int(pid), sig)
+            return True
+        except OSError:
+            return False
+    return False
 
 
 def gst_has(name):
@@ -137,7 +156,7 @@ def recent(n=5):
 
 
 def cmd_status():
-    import hearth_screencast as hs
+    import hearth_portal_client as hs
     ok, why, rd = hs.available()
     st = read_state()
     encs = encoders()
@@ -208,38 +227,53 @@ def cmd_start(args):
     if not shutil.which('gst-launch-1.0'):
         return fail("GStreamer (gst-launch-1.0) isn't on this system")
     os.makedirs(RUNTIME, exist_ok=True)
-    write_state({'state': 'starting', 'pid': 0, 'since': 0, 'what': o['what'], 'sound': o['sound']})
     argv = [sys.executable, SELF, 'run', '--what', o['what'], '--sound', o['sound'], '--fps', str(o['fps'])]
     if not o['pointer']:
         argv.append('--no-pointer')
     with open(LOG, 'w') as lg:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=lg, stderr=lg, start_new_session=True, close_fds=True)
+    write_state({'state': 'starting', 'pid': p.pid, 'since': 0, 'what': o['what'], 'sound': o['sound']})
     # The portal may ask at the PC first: wait for the answer (a few minutes at most).
     deadline = time.time() + 200
     while time.time() < deadline:
         time.sleep(0.3)
         st = read_state()
-        if p.poll() is not None and st.get('state') != 'recording':
-            return fail(st.get('error') or "the recording couldn't start")
+        if p.poll() is not None:
+            st = read_state()
+            if st.get('state') != 'recording':
+                err = st.get('error') or "the recording couldn't start (see %s)" % LOG
+                write_state({'state': 'idle', 'error': err, 'last': st.get('last', '')})
+                return fail(err)
         if st.get('state') == 'recording':
             return out({'ok': True, 'file': st.get('file', ''), 'encoder': st.get('encoder', '')})
         if st.get('state') == 'idle' and st.get('error'):
             return fail(st['error'])
-    os.kill(p.pid, signal.SIGTERM)
-    return fail('nobody answered the screen-sharing question at the PC')
+    p.terminate()
+    try:
+        p.wait(10)
+    except subprocess.TimeoutExpired:
+        p.kill()
+    err = 'nobody answered the screen-sharing question at the PC'
+    write_state({'state': 'idle', 'error': err})
+    return fail(err)
 
 
 def cmd_stop():
     st = read_state()
     if st.get('state') not in ('starting', 'recording', 'stopping'):
         return out({'ok': True, 'file': st.get('last', ''), 'was': False})
-    try:
-        os.kill(int(st['pid']), signal.SIGTERM)
-    except Exception:
-        pass
-    deadline = time.time() + 20
-    while time.time() < deadline and alive(st.get('pid')):
+    pid = st.get('pid')
+    if not signal_ours(pid, signal.SIGTERM):
+        # Not running any more (it was read as idle) or not ours: nothing is signalled, the state is put right.
+        write_state({'state': 'idle', 'last': st.get('file', '')})
+        return out({'ok': True, 'file': st.get('file', ''), 'was': False})
+    # It finishes the file (GStreamer's end of stream, then SIGTERM, then SIGKILL to GStreamer on its own clock).
+    deadline = time.time() + 30
+    while time.time() < deadline and ours(pid):
         time.sleep(0.2)
+    if ours(pid):
+        signal_ours(pid, signal.SIGKILL)
+        write_state({'state': 'idle', 'last': st.get('file', ''), 'error': "the recording didn't stop by itself, so it was ended"})
     now = read_state()
     return out({'ok': True, 'file': now.get('last') or st.get('file', ''), 'was': True})
 
@@ -275,7 +309,32 @@ def pipeline(fd, node, o, enc, path, aac):
 
 
 def cmd_run(args):
-    import hearth_screencast as hs
+    """The recording; whatever happens, the state isn't left at starting or recording when it ends."""
+    try:
+        return _run(args)
+    except BaseException as e:
+        st = read_state_raw()
+        if st.get('state') != 'idle':
+            write_state({'state': 'idle', 'error': 'the recording stopped: %s' % (str(e) or e.__class__.__name__)})
+        if isinstance(e, Exception):
+            return 1
+        raise
+    finally:
+        st = read_state_raw()
+        if st.get('state') in ('starting', 'recording', 'stopping') and st.get('pid') == os.getpid():
+            write_state({'state': 'idle', 'last': st.get('file', ''), 'error': st.get('error', '')})
+
+
+def read_state_raw():
+    try:
+        with open(STATE, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _run(args):
+    import hearth_portal_client as hs
     try:
         o = parse_opts(args)
     except ValueError as e:
@@ -338,8 +397,19 @@ def cmd_run(args):
         os.close(fd)
         write_state({'state': 'recording', 'pid': os.getpid(), 'since': int(started), 'file': path, 'what': o['what'],
                      'sound': o['sound'], 'encoder': enc[2]})
+        asked = 0.0
         while child['p'].poll() is None:
             time.sleep(0.2)
+            if stopping['now']:
+                asked = asked or time.time()
+                waited = time.time() - asked
+                try:
+                    if waited > 15:
+                        child['p'].kill()
+                    elif waited > 8:
+                        child['p'].terminate()
+                except OSError:
+                    pass
         rc = child['p'].returncode
         quick = time.time() - started < 4 and not stopping['now']
         # A graphics-card encoder that fails straight away: the next one (x264 last), into the same file.

@@ -2417,8 +2417,7 @@ var ENTRIES = [
 },
 {
 "t": "Reachable",
-"p": "remote-desktop",
-"d": "Never from the internet. Tailscale only keeps it closed to your home network too"
+"p": "remote-desktop"
 },
 {
 "t": "View only",

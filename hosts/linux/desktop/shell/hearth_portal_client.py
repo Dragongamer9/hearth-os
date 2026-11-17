@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""hearth_screencast: the screen through xdg-desktop-portal, for hearth-record and hearth-vnc.
+"""hearth_portal_client: the screen through xdg-desktop-portal, for hearth-record and hearth-vnc.
 
 The portal is how a program gets the screen on any Wayland desktop: KWin (the kde backend) and labwc (the wlr backend)
 alike, with the person asked at the PC the first time. It hands over a PipeWire stream (a node id and a file
