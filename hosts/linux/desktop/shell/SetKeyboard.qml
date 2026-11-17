@@ -45,6 +45,11 @@ SetPage {
         load();
         job.run(["keyboard-layouts"], r => page.all = r.layouts || []);
         job.run(["shortcuts"], r => page.shortcuts = r.shortcuts || []);
+        kdeJob.run(["keys", "changed"], r => {                               // reads only
+            page.kdeKeys = r.count || 0;
+            // "keyboard:kde-keys" (the bridge's notice points here): scrolled to the button once it's there.
+            if (SettingsNav.pageAnchor === "kde-keys") { SettingsNav.pageAnchor = ""; if (page.kdeKeys > 0) kdeGo.restart(); }
+        });
     }
     SetJob { id: job; helper: "hearth-system" }
     function apply() {
@@ -287,7 +292,7 @@ SetPage {
         SetRow { title: "Clear learned words"; sub: "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"; danger: true; chevron: false; onActivated: { oskWords.setText("{}"); page.say("Learned words cleared."); } }
     }
 
-    SetHeader { text: "Keyboard shortcuts"; visible: page.shortcuts.length > 0 }
+    SetHeader { text: "Keyboard shortcuts"; visible: page.shortcuts.length > 0 || page.kdeKeys > 0 }
     Repeater {
         model: page.shortcuts
         delegate: SetRow {
@@ -296,5 +301,43 @@ SetPage {
             title: modelData.keys
             sub: modelData.action
         }
+    }
+    // KDE's own shortcuts that hearth-kwin-bridge changed once so Mantel's keys work on KWin (its fix_kde_keys; the
+    // notice it gives points here). Put back with one button, not only from a terminal (red flag 9: anything Hearth
+    // changes by itself is reversible from Settings). Reading what changed writes nothing.
+    property int kdeKeys: 0
+    property string kdeMsg: ""
+    property bool kdeMsgBad: false
+    SetJob { id: kdeJob; helper: "hearth-kwin-bridge" }
+    Timer {
+        id: kdeGo
+        interval: 400
+        onTriggered: {
+            const y = kdeRow.mapToItem(page.contentItem, 0, 0).y;
+            page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - page.height / 2));
+            kdeRow.forceActiveFocus();
+        }
+    }
+    SetRow {
+        id: kdeRow
+        visible: page.kdeKeys > 0
+        icon: "undo"
+        title: "Bring back KDE's own shortcuts"
+        sub: (kdeJob.busy ? "Putting them back… " : "")
+            + "Hearth moved " + page.kdeKeys + " of KDE's shortcuts (Super+arrows, Super+D, Super+G, Print…) so Mantel's own work on KWin. This gives them back to KDE; Mantel's shortcuts on those keys then stop working."
+        onActivated: kdeJob.run(["keys", "restore", "--json"], r => {
+            page.kdeKeys = r.count || 0;
+            const n = (r.back || []).length;
+            page.kdeMsgBad = n === 0 || page.kdeKeys > 0;
+            page.kdeMsg = n === 0 ? "None could be put back right now. Try again in Desktop Mode on KWin."
+                : page.kdeKeys > 0 ? n + " put back; " + page.kdeKeys + " couldn't be yet. Try again in Desktop Mode on KWin."
+                : "KDE's shortcuts are back. Hearth won't change them again.";
+        }, e => { page.kdeMsg = e; page.kdeMsgBad = true; }, "", "kde-keys")
+    }
+    Text {
+        visible: page.kdeMsg !== ""
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: page.kdeMsg; color: page.kdeMsgBad ? Theme.danger : Theme.flame
+        font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 }
