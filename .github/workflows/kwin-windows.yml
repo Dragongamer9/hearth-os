@@ -169,6 +169,26 @@ jobs:
           name: kwin-windows
           path: shots
 
+  # How this KWin's Aurorae (v2, the KSvg engine) reads a theme's decoration.svg: its source, as notices (diagnostic).
+  aurorae-source:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Aurorae's source
+        shell: bash
+        run: |
+          set +e
+          dnf -y install dnf5-plugins cpio rpm >/dev/null
+          cd /tmp && dnf -y download --source aurorae --enablerepo=fedora-source,updates-source >/dev/null 2>&1
+          ls /tmp/*.src.rpm || { echo "::warning title=aurorae::no source rpm"; exit 0; }
+          mkdir -p src && cd src && rpm2cpio /tmp/aurorae*.src.rpm | cpio -idm 2>/dev/null && tar xf aurorae-*.tar.* 2>/dev/null
+          find . -name '*.cpp' | grep -i -E 'svg|v2|decoration|theme' | head -30 | tr '\n' ' ' | sed 's/^/::notice title=aurorae files::/'; echo
+          for f in $(grep -rl -E 'decoration-inactive|"decoration"|QStringLiteral\("decoration' --include=*.cpp . | head -6); do
+            grep -n -E 'decoration|FrameSvg|setElementPrefix|elementPrefix|hasElement|imagePath|svgz|\.svg|opaque|mask|setImagePath|paint|fill' "$f" | head -80 > /tmp/g.txt
+            split -b 3500 /tmp/g.txt /tmp/part-
+            n=0; for p in /tmp/part-*; do n=$((n+1)); echo "::notice title=aurorae $f $n::$(tr '\n' '|' < $p | sed 's/%/%25/g')"; done; rm -f /tmp/part-*
+          done
+
   # The pictures, small, as notices (artifacts can't be read from here), in a job of their own so the checks' own
   # results aren't buried under them.
   pictures:
