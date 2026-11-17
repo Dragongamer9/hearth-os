@@ -306,7 +306,12 @@ SetPage {
         // `settings page appearance:kbd-lights` opens the page at it
         Component.onCompleted: {
             kbdJob.run(["status"], r => kbdLightsRow.st = r, () => {});
-            if (SettingsNav.pageAnchor === "kbd-lights") { SettingsNav.pageAnchor = ""; Qt.callLater(() => kbdLightsRow.forceActiveFocus()); }
+            if (SettingsNav.pageAnchor === "kbd-lights") { SettingsNav.pageAnchor = ""; toKbdLights.start(); }
+        }
+        Timer {
+            id: toKbdLights
+            interval: 900
+            onTriggered: { const y = kbdLightsRow.mapToItem(page.contentItem, 0, 0).y; page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - 60)); kbdLightsRow.forceActiveFocus(); }
         }
     }
 
