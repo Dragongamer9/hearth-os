@@ -38,6 +38,8 @@ APPS = E('HEARTH_DESKTOPS_APPS', '/usr/share/applications')
 UNLOCK = E('HEARTH_DESKTOPS_UNLOCK', '/usr/bin/hearth-unlock')
 APP_KINDS = E('HEARTH_DESKTOPS_APP_KINDS', '/usr/libexec/hearth-app-kinds')
 APT = E('HEARTH_DESKTOPS_APT', 'apt-get')
+# Which packages apt can get here (tests with their own apt-get: none checked unless they give one).
+APT_CACHE = E('HEARTH_DESKTOPS_APT_CACHE', 'apt-cache' if APT == 'apt-get' else '')
 SYSTEMD_RUN = E('HEARTH_DESKTOPS_SYSTEMD_RUN', 'systemd-run')
 SYSTEMCTL = E('HEARTH_DESKTOPS_SYSTEMCTL', 'systemctl')
 VERSION_FILE = E('HEARTH_DESKTOPS_VERSION', '/usr/share/nimbus/version')
@@ -47,13 +49,15 @@ ROOT = E('HEARTH_DESKTOPS_ROOT', '')                   # tests: where /usr/bin/.
 # GNOME's core apps, without GDM (the trailing '-': apt must not install it; Hearth's login screen stays).
 DESKTOPS = {
     'kde': {'label': 'KDE Plasma', 'packages': ['kde-plasma-desktop', 'plasma-workspace', 'kwin-wayland', 'systemsettings',
-                                                'dolphin', 'konsole', 'kate', 'ark', 'okular', 'gwenview', 'spectacle',
+                                                'dolphin', 'konsole', 'kate', 'ark', 'okular', 'gwenview', 'kde-spectacle',
                                                 'plasma-nm', 'plasma-pa', 'powerdevil', 'bluedevil', 'kscreen'],
+            'core': 4,
             'check': ['/usr/bin/startplasma-wayland', '/usr/bin/plasmashell'], 'remove': ['kde-plasma-desktop', 'plasma-workspace', 'kwin-wayland', 'systemsettings']},
     'gnome': {'label': 'GNOME', 'packages': ['gnome-shell', 'gnome-session', 'gnome-control-center', 'gnome-settings-daemon',
                                              'nautilus', 'gnome-console', 'gnome-text-editor', 'gnome-system-monitor',
                                              'gnome-shell-extension-prefs', 'gnome-disk-utility', 'loupe', 'evince',
                                              'gnome-calculator', 'xdg-desktop-portal-gnome', 'gdm3-'],
+              'core': 4,
               'check': ['/usr/bin/gnome-session', '/usr/bin/gnome-shell'], 'remove': ['gnome-shell', 'gnome-session', 'gnome-control-center']},
 }
 ID_RE = re.compile(r'^[A-Za-z0-9._+-]{1,200}\.desktop$')
@@ -246,6 +250,36 @@ def apt_run(name, args, phase, lo, hi):
         raise Fail('; '.join(tail[-3:]) or ' '.join(cmd) + ' failed')
 
 
+def has_candidate(pkg):
+    """Whether apt can install this package here (it has a version to install)."""
+    if not APT_CACHE:
+        return True
+    try:
+        r = subprocess.run([APT_CACHE, 'policy', pkg], capture_output=True, text=True, timeout=60, env=apt_env())
+    except (OSError, subprocess.TimeoutExpired):
+        return True        # can't tell: let apt itself say
+    m = re.search(r'Candidate:\s*(\S+)', r.stdout)
+    return bool(m) and m.group(1) != '(none)'
+
+
+def wanted_packages(d):
+    """The desktop's packages this system can get (1.14, the owner's laptop: one app missing from Debian, KDE's
+    screenshot tool named kde-spectacle there, stopped the whole of KDE). The desktop itself (the first `core`) must
+    all be there; an extra app that isn't is left out and said in the log. "name-" (not to install) always stays."""
+    core = d.get('core', len(d['packages']))
+    out, missing = [], []
+    for i, p in enumerate(d['packages']):
+        if p.endswith('-') or has_candidate(p):
+            out.append(p)
+        elif i < core:
+            raise Fail('%s isn\'t in this system\'s package lists, so %s can\'t be added' % (p, d['label']))
+        else:
+            missing.append(p)
+    if missing:
+        print('left out (not in the package lists here): ' + ', '.join(missing), file=sys.stderr, flush=True)
+    return out
+
+
 def app_ids():
     try:
         return {n for n in os.listdir(APPS) if ID_RE.match(n)}
@@ -265,11 +299,12 @@ def cmd_run(name):
     try:
         put_progress(name, state='downloading', percent=0, what='Looking for the packages', error='')
         apt_run(name, ['update'], 'downloading', 0, 3)
-        apt_run(name, ['install', '--download-only'] + d['packages'], 'downloading', 3, 85)
+        pkgs = wanted_packages(d)
+        apt_run(name, ['install', '--download-only'] + pkgs, 'downloading', 3, 85)
         # From here it isn't cancelled: dpkg cut off in the middle would leave the system half installed.
         put_progress(name, state='installing', percent=85, what='Installing')
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        apt_run(name, ['install'] + d['packages'], 'installing', 85, 99)
+        apt_run(name, ['install'] + pkgs, 'installing', 85, 99)
     except KeyboardInterrupt:
         put_progress(name, state='cancelled', percent=0, what='', error='')
         return {'ok': False, 'cancelled': True}
