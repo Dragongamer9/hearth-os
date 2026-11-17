@@ -95,7 +95,7 @@ impl FrameLimit {
 
     /// The time between two frames the game is allowed, or None when nothing needs pacing: no limit, the screen's
     /// rate, or a limit at or above a real screen's rate (its vblanks already pace the game; a timer next to them
-    /// would only beat against them). `screen_paces` is false nested, where the host decides how fast we draw.
+    /// would only beat against them). `screen_paces` is false nested and headless, where clients decide how fast we draw.
     pub fn interval(self, refresh_mhz: i32, screen_paces: bool) -> Option<Duration> {
         match self {
             FrameLimit::Fps(n) if n > 0 => {
@@ -639,7 +639,7 @@ impl<B: Backend + 'static> HearthState<B> {
         let (title, app_id) = crate::wm::title_and_app_id(&window);
         let settings = self.game.games.get(&app_id).copied().unwrap_or_default();
         let refresh = output.current_mode().map(|m| m.refresh).unwrap_or(60_000);
-        let interval = settings.frame_limit.interval(refresh, !B::NESTED);
+        let interval = settings.frame_limit.interval(refresh, B::SCREEN_PACES);
         let output_size = self.space.output_geometry(&output).map(|g| g.size).unwrap_or_default();
         let x11 = is_x11(&window);
 
