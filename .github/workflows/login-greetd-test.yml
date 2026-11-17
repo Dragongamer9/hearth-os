@@ -8,7 +8,7 @@ name: Login screen (greetd) test
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'feature/login-*']   # a new workflow can't be dispatched until it's on main
     paths: ['os/system_files/usr/share/hearth/greeter/**', 'os/system_files/usr/libexec/nimbus/hearth-login-screen',
             'os/system_files/usr/libexec/nimbus/hearth-session-start', 'os/system_files/usr/libexec/nimbus/hearth-greeter',
             '.github/workflows/login-greetd-test.yml', '.github/scripts/fake-greetd.py']
