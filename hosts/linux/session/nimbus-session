@@ -26,7 +26,7 @@
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
 #   HEARTH_DESKTOP_WM=labwc               Mantel on labwc instead of KWin (Settings › System › Your desktop; no line:
 #                                         KWin). Written only by hearth-your-desktop when you pick one.
-#   HEARTH_DESKTOP_WM=albireo              Mantel on Hearth's own compositor (2.0's, a preview: docs/ALBIREO.md),
+#   HEARTH_DESKTOP_WM=firehold              Mantel on Hearth's own compositor (2.0's, a preview: docs/FIREHOLD.md),
 #                                         off unless you turn it on there; it falls back to KWin, then labwc.
 #   HEARTH_LEGACY_GAME_MODE=1             the old developer switch: read as HEARTH_GAME_MODE_CHOICE=hearth when that
 #                                         line isn't there
@@ -159,7 +159,7 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() {   # Mantel: on KWin (1.14), labwc the fallback (run_classic); or the 2.0 preview, when it's turned on
-  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = albireo ] && albireo_bin >/dev/null; }
+  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
 }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
@@ -409,8 +409,13 @@ run_desktop() {
 # ~/.local/state/hearth/desktop-notice; Mantel shows it once (DesktopNotice.qml) and Settings › System › Your desktop
 # while it's there (hearth-your-desktop). desk_fails counts starts that didn't work, per name.
 DESK_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/hearth"
-desk_fails() { n=$(sed -n "s/^$1 //p" "$DESK_STATE/desktop-fails" 2>/dev/null | tail -n 1); echo "${n:-0}"; }
-desk_fails_set() { mkdir -p "$DESK_STATE"; { grep -v "^$1 " "$DESK_STATE/desktop-fails" 2>/dev/null; [ "$2" -gt 0 ] && echo "$1 $2"; } >"$DESK_STATE/desktop-fails.tmp" && mv -f "$DESK_STATE/desktop-fails.tmp" "$DESK_STATE/desktop-fails"; }
+# (Firehold's count may still be under its old name, albireo: read as its, and replaced by the next write.)
+desk_fails() {
+  n=$(sed -n "s/^$1 //p" "$DESK_STATE/desktop-fails" 2>/dev/null | tail -n 1)
+  [ -z "$n" ] && [ "$1" = firehold ] && n=$(sed -n "s/^albireo //p" "$DESK_STATE/desktop-fails" 2>/dev/null | tail -n 1)
+  echo "${n:-0}"
+}
+desk_fails_set() { mkdir -p "$DESK_STATE"; o="$1"; [ "$1" = firehold ] && o=albireo; { grep -v -e "^$1 " -e "^$o " "$DESK_STATE/desktop-fails" 2>/dev/null; [ "$2" -gt 0 ] && echo "$1 $2"; } >"$DESK_STATE/desktop-fails.tmp" && mv -f "$DESK_STATE/desktop-fails.tmp" "$DESK_STATE/desktop-fails"; }
 desk_fails_add() { desk_fails_set "$1" $(( $(desk_fails "$1") + 1 )); }
 desk_fails_reset() { [ "$(desk_fails "$1")" -gt 0 ] && desk_fails_set "$1" 0; return 0; }
 # One line per <what> (a new one replaces that one's line and keeps the others: "KDE was retired" and "KWin didn't
@@ -445,34 +450,53 @@ companion_stop() {
 KWIN_BIN="${HEARTH_KWIN_BIN:-kwin_wayland}"   # (tests: one that isn't there)
 KWIN_UP_SECS="${HEARTH_KWIN_UP_SECS:-45}"
 KWIN_EARLY_SECS="${HEARTH_KWIN_EARLY_SECS:-15}"
+firehold_unlocked() {
+  [ "$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_FIREHOLD_UNLOCKED=["'"'"']*\([0-9]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)" = 1 ]
+}
 desktop_wm_choice() {
   w=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  case "$w" in labwc) echo labwc ;; albireo) echo albireo ;; *) echo kwin ;; esac
+  # albireo: Firehold's name before Nov 17, 2026 (a preview turned on then stays on); Settings' helper rewrites the
+  # line as firehold (atomically), never resetting it. The choice is read as Firehold either way.
+  if [ "$w" = albireo ] && [ -f "$SHARE/desktop/shell/hearth-your-desktop" ]; then
+    timeout 5 python3 "$SHARE/desktop/shell/hearth-your-desktop" status >/dev/null 2>&1 || true
+  fi
+  # Firehold stays as if it weren't there until it's unlocked on this device (HEARTH_FIREHOLD_UNLOCKED=1): then
+  # what was picked before it (or KWin).
+  case "$w" in
+    labwc) echo labwc ;;
+    firehold|albireo)
+      # (albireo, its name before, was only ever turned on by hand, before it was hidden: it counts as unlocked.)
+      if [ "$w" = albireo ] || firehold_unlocked; then echo firehold
+      else b=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM_BEFORE=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+           [ "$b" = labwc ] && echo labwc || echo kwin; fi ;;
+    *) echo kwin ;;
+  esac
 }
 
-# ---- 2.0 preview: Albireo, Hearth's own compositor (hosts/albireo, docs/ALBIREO.md). Only when it's turned on
-# (HEARTH_DESKTOP_WM=albireo, Settings › System › Your desktop › Albireo (preview); off by default), and
-# with the same safe start as KWin, one step above it: it isn't there, ends within ALBIREO_EARLY_SECS (15 s) or
-# Mantel doesn't say it's up within ALBIREO_UP_SECS (45 s) → KWin for this sign-in (then labwc, as always), and
-# Mantel says why once (desk_notice albireo missing|failed|twice). Twice in a row → KWin until it's turned on again.
+# ---- 2.0 preview: Firehold, Hearth's own compositor (hosts/firehold-comp, docs/FIREHOLD.md). Only when it's turned on
+# (HEARTH_DESKTOP_WM=firehold, Settings › System › Your desktop › Firehold (preview); off by default), and
+# with the same safe start as KWin, one step above it: it isn't there, ends within FIREHOLD_EARLY_SECS (15 s) or
+# Mantel doesn't say it's up within FIREHOLD_UP_SECS (45 s) → KWin for this sign-in (then labwc, as always), and
+# Mantel says why once (desk_notice firehold missing|failed|twice). Twice in a row → KWin until it's turned on again.
 # Safe graphics, a second player's seat and Server mode never use it.
-ALBIREO_BIN_NAME="${ALBIREO_BIN:-albireo}"
-ALBIREO_UP_SECS="${ALBIREO_UP_SECS:-45}"
-ALBIREO_EARLY_SECS="${ALBIREO_EARLY_SECS:-15}"
-albireo_bin() {
-  if have "$ALBIREO_BIN_NAME"; then command -v "$ALBIREO_BIN_NAME"; return 0; fi
-  for b in /usr/libexec/hearth/albireo /usr/local/lib/nimbus/albireo; do
+FIREHOLD_BIN_NAME="${FIREHOLD_BIN:-firehold-comp}"
+FIREHOLD_UP_SECS="${FIREHOLD_UP_SECS:-45}"
+FIREHOLD_EARLY_SECS="${FIREHOLD_EARLY_SECS:-15}"
+firehold_bin() {
+  if have "$FIREHOLD_BIN_NAME"; then command -v "$FIREHOLD_BIN_NAME"; return 0; fi
+  for b in /usr/libexec/hearth/firehold-comp /usr/local/lib/nimbus/firehold-comp; do
     [ -x "$b" ] && { echo "$b"; return 0; }
   done
   return 1
 }
-# Can Albireo be tried this time? (Says why not in the log, and the notice once when it's not there.)
-albireo_ok() {
-  if [ -e "$RUN/albireo-failed" ]; then log "desktop: Albireo didn't start earlier this sign-in, KWin instead"; return 1; fi
-  if [ "$(desk_fails albireo)" -ge 2 ]; then log "desktop: Albireo didn't start twice in a row; KWin until it's turned on again in Settings"; return 1; fi
-  if ! albireo_bin >/dev/null; then
-    log "desktop: Albireo isn't installed; KWin instead"
-    [ -e "$RUN/albireo-missing-told" ] || { : >"$RUN/albireo-missing-told"; desk_notice albireo missing; }
+# Can Firehold be tried this time? (Says why not in the log, and the notice once when it's not there.)
+firehold_ok() {
+  if [ -e "$RUN/firehold-left" ]; then log "desktop: you left Firehold this sign-in (Ctrl+Alt+Backspace), KWin instead"; return 1; fi
+  if [ -e "$RUN/firehold-failed" ]; then log "desktop: Firehold didn't start earlier this sign-in, KWin instead"; return 1; fi
+  if [ "$(desk_fails firehold)" -ge 2 ]; then log "desktop: Firehold didn't start twice in a row; KWin until it's turned on again in Settings"; return 1; fi
+  if ! firehold_bin >/dev/null; then
+    log "desktop: Firehold isn't installed; KWin instead"
+    [ -e "$RUN/firehold-missing-told" ] || { : >"$RUN/firehold-missing-told"; desk_notice firehold missing; }
     return 1
   fi
   return 0
@@ -481,9 +505,16 @@ albireo_ok() {
 desktop_wm() {
   if [ -n "$HEARTH_SEAT" ]; then echo labwc; return 0; fi
   choice=$(desktop_wm_choice)
+  # Try once (Settings › Your desktop): this start only. The mark goes now, so the next start is back to the choice
+  # (KWin) whatever happens to this one.
+  if [ -e "$DESK_STATE/firehold-once" ] && firehold_unlocked; then
+    rm -f "$DESK_STATE/firehold-once"
+    log "desktop: Firehold (preview), tried once"
+    choice=firehold
+  fi
   if [ "$choice" = labwc ]; then log "desktop: labwc (picked in Settings › Your desktop)"; echo labwc; return 0; fi
   if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then log "desktop: safe graphics this time, labwc instead of KWin"; echo labwc; return 0; fi
-  if [ "$choice" = albireo ] && albireo_ok; then echo albireo; return 0; fi
+  if [ "$choice" = firehold ] && firehold_ok; then echo firehold; return 0; fi
   if [ -e "$RUN/hearth-kwin-failed" ]; then log "desktop: KWin didn't start earlier this sign-in, labwc instead"; echo labwc; return 0; fi
   if [ "$(desk_fails kwin)" -ge 2 ]; then log "desktop: KWin didn't start twice in a row; labwc until it's turned back on in Settings"; echo labwc; return 0; fi
   if ! have "$KWIN_BIN"; then
@@ -506,17 +537,28 @@ run_classic() {
     [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
   fi
   wm=$(desktop_wm)
-  if [ "$wm" = albireo ]; then
-    run_albireo; hrc=$?
-    [ "$hrc" -ne 200 ] && return "$hrc"
-    # Albireo didn't come up: KWin for the rest of this sign-in (and labwc after it if KWin fails too).
-    : >"$RUN/albireo-failed"; desk_fails_add albireo
-    if [ "$(desk_fails albireo)" -ge 2 ]; then
-      log "desktop: Albireo didn't start twice in a row; KWin until it's turned on again in Settings"; desk_notice albireo twice
-    else
-      log "desktop: Albireo didn't start; KWin for this sign-in"; desk_notice albireo failed
+  if [ "$wm" = firehold ]; then
+    FIREHOLD_WHY=""
+    run_firehold; hrc=$?
+    if [ "$hrc" = 201 ]; then
+      # Left with Ctrl+Alt+Backspace: KWin for the rest of this sign-in, not counted as a failure.
+      desk_notice firehold left
+      settle_firehold
+      hrc=200; wm=$(desktop_wm)
     fi
-    settle_albireo
+  fi
+  if [ "$wm" = firehold ]; then
+    [ "$hrc" -ne 200 ] && return "$hrc"
+    # Firehold didn't come up: KWin for the rest of this sign-in (and labwc after it if KWin fails too), and why.
+    mkdir -p "$DESK_STATE"; printf '%s\n' "${FIREHOLD_WHY:-it ended before Mantel came up}" >"$DESK_STATE/firehold-why.tmp" \
+      && mv -f "$DESK_STATE/firehold-why.tmp" "$DESK_STATE/firehold-why"
+    : >"$RUN/firehold-failed"; desk_fails_add firehold
+    if [ "$(desk_fails firehold)" -ge 2 ]; then
+      log "desktop: Firehold didn't start twice in a row; KWin until it's turned on again in Settings"; desk_notice firehold twice
+    else
+      log "desktop: Firehold didn't start; KWin for this sign-in"; desk_notice firehold failed
+    fi
+    settle_firehold
     wm=$(desktop_wm)
   fi
   if [ "$wm" = kwin ]; then
@@ -612,19 +654,23 @@ run_kwin() {
   log "kwin ended (code $rc)"
   return "$rc"
 }
-# Mantel on Albireo, Hearth's own compositor (2.0 preview). The same environment as labwc's (its folder's environment file:
+# Mantel on Firehold, Hearth's own compositor (2.0 preview). The same environment as labwc's (its folder's environment file:
 # XDG_CURRENT_DESKTOP Nimbus:wlroots, so the portals and Mantel take labwc's ways, which the compositor's protocols
-# are made to match; your keyboard layouts), HEARTH_WM=albireo, and labwc's rc.xml for Mantel's shortcuts (read
-# only). Its messages in ~/.local/share/nimbus/albireo.log. 200 = didn't come up, as run_kwin.
-# $ALBIREO_ARGS: extra options for tests (--winit --size 1920x1080 in albireo.yml).
-run_albireo() {
-  log "desktop mode: Mantel on Albireo (preview)"
-  ALBIREO_LOGF="$(dirname "$LOG")/albireo.log"
-  [ -f "$ALBIREO_LOGF" ] && [ "$(wc -c <"$ALBIREO_LOGF")" -gt 1000000 ] && mv -f "$ALBIREO_LOGF" "$ALBIREO_LOGF.old"
-  echo "--- $(date '+%F %T') Desktop Mode (Albireo)" >>"$ALBIREO_LOGF"
-  bin=$(albireo_bin)
-  auto="$SHARE/desktop/albireo/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
-  rm -f "$RUN/hearth-shell-up"
+# are made to match; your keyboard layouts), HEARTH_WM=firehold, and labwc's rc.xml for Mantel's shortcuts (read
+# only). Its messages in ~/.local/share/nimbus/firehold.log. 200 = didn't come up, as run_kwin.
+# $FIREHOLD_ARGS: extra options for tests (--winit --size 1920x1080 in firehold.yml).
+run_firehold() {
+  log "desktop mode: Mantel on Firehold (preview)"
+  FIREHOLD_LOGF="$(dirname "$LOG")/firehold.log"
+  [ -f "$FIREHOLD_LOGF" ] && [ "$(wc -c <"$FIREHOLD_LOGF")" -gt 1000000 ] && mv -f "$FIREHOLD_LOGF" "$FIREHOLD_LOGF.old"
+  echo "--- $(date '+%F %T') Desktop Mode (Firehold)" >>"$FIREHOLD_LOGF"
+  bin=$(firehold_bin)
+  auto="$SHARE/desktop/firehold/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
+  rm -f "$RUN/hearth-shell-up" "$RUN/firehold-leave"
+  # The first time: how to get out (a card once Mantel is up; a failure's card replaces it).
+  if [ ! -e "$DESK_STATE/firehold-intro-told" ]; then
+    mkdir -p "$DESK_STATE"; : >"$DESK_STATE/firehold-intro-told"; desk_notice firehold intro
+  fi
   (
     unset LABWC_PID
     if [ -f "$CONF/environment" ]; then
@@ -634,36 +680,51 @@ run_albireo() {
         export "$line"
       done <"$CONF/environment"
     fi
-    export XDG_SESSION_TYPE=wayland HEARTH_WM=albireo
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${ALBIREO_ARGS:---tty-udev} --labwc-rc "$2" -- sh "$3"' sh "$bin" "$CONF/rc.xml" "$auto"
-  ) >>"$ALBIREO_LOGF" 2>&1 &
+    export XDG_SESSION_TYPE=wayland HEARTH_WM=firehold
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${FIREHOLD_ARGS:---tty-udev} --labwc-rc "$2" -- sh "$3"' sh "$bin" "$CONF/rc.xml" "$auto"
+  ) >>"$FIREHOLD_LOGF" 2>&1 &
   hpid=$!
-  echo "$hpid" >"$RUN/albireo.pid"
+  echo "$hpid" >"$RUN/firehold.pid"
   started=$(date +%s); up=0
   while kill -0 "$hpid" 2>/dev/null; do
     [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
-    [ $(( $(date +%s) - started )) -ge "$ALBIREO_UP_SECS" ] && break
+    [ $(( $(date +%s) - started )) -ge "$FIREHOLD_UP_SECS" ] && break
     sleep 1
   done
   if [ "$up" = 0 ] && kill -0 "$hpid" 2>/dev/null && [ ! -s "$NEXT" ]; then
-    log "albireo: Mantel didn't say it's up after ${ALBIREO_UP_SECS}s; ending it"
+    log "firehold: Mantel didn't say it's up after ${FIREHOLD_UP_SECS}s; ending it"
+    FIREHOLD_WHY="the desktop (Mantel) wasn't up after ${FIREHOLD_UP_SECS} seconds"
     kill -TERM "$hpid" 2>/dev/null; sleep 3; kill -KILL "$hpid" 2>/dev/null
   fi
-  [ "$up" = 1 ] && log "albireo: Mantel up after $(( $(date +%s) - started ))s"
+  [ "$up" = 1 ] && log "firehold: Mantel up after $(( $(date +%s) - started ))s"
   wait "$hpid"; rc=$?
-  rm -f "$RUN/albireo.pid"
-  if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset albireo; log "albireo ended (code $rc)"; return "$rc"; fi
-  if [ "$up" = 0 ]; then log "albireo ended before Mantel came up (code $rc)"; return 200; fi
-  if [ $(( $(date +%s) - started )) -lt "$ALBIREO_EARLY_SECS" ]; then log "albireo ended right after starting (code $rc)"; return 200; fi
-  desk_fails_reset albireo
-  log "albireo ended (code $rc)"
+  rm -f "$RUN/firehold.pid"
+  if [ -e "$RUN/firehold-leave" ] && [ ! -s "$NEXT" ]; then
+    rm -f "$RUN/firehold-leave"; : >"$RUN/firehold-left"
+    [ "$up" = 1 ] && desk_fails_reset firehold
+    log "firehold: left for KWin (Ctrl+Alt+Backspace)"; return 201
+  fi
+  if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset firehold; log "firehold ended (code $rc)"; return "$rc"; fi
+  last=$(grep -E "ERROR|panicked" "$FIREHOLD_LOGF" 2>/dev/null | tail -n 1 | cut -c1-200)
+  if [ "$up" = 0 ]; then
+    log "firehold ended before Mantel came up (code $rc)"
+    [ -n "$FIREHOLD_WHY" ] || FIREHOLD_WHY="firehold-comp ended before the desktop came up (code $rc)${last:+: $last}"
+    return 200
+  fi
+  if [ $(( $(date +%s) - started )) -lt "$FIREHOLD_EARLY_SECS" ]; then
+    log "firehold ended right after starting (code $rc)"
+    FIREHOLD_WHY="firehold-comp ended right after starting (code $rc)${last:+: $last}"
+    return 200
+  fi
+  desk_fails_reset firehold
+  log "firehold ended (code $rc)"
   return "$rc"
 }
-# What an Albireo that didn't come up leaves behind, before KWin starts.
-settle_albireo() {
+# What an Firehold that didn't come up leaves behind, before KWin starts.
+settle_firehold() {
   pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
-  pkill -KILL -u "$(id -u)" -x albireo 2>/dev/null
-  rm -f "$RUN/albireo.pid" "$RUN/hearth-shell-up" "$RUN/albireo.json"
+  pkill -KILL -u "$(id -u)" -x firehold-comp 2>/dev/null
+  rm -f "$RUN/firehold.pid" "$RUN/hearth-shell-up" "$RUN/firehold.json"
   sleep 1
   return 0
 }
@@ -784,9 +845,9 @@ settle() {
   # 1.14: Mantel on KWin (run_kwin): KWin too, and its marks.
   pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -x kwin_wayland_wrapper 2>/dev/null
   rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up"
-  # 2.0 preview: Hearth's own compositor (run_albireo; process names are cut to 15 characters).
-  pkill -KILL -u "$(id -u)" -x albireo 2>/dev/null
-  rm -f "$RUN/albireo.pid" "$RUN/albireo.json"
+  # 2.0 preview: Hearth's own compositor (run_firehold; process names are cut to 15 characters).
+  pkill -KILL -u "$(id -u)" -x firehold-comp 2>/dev/null
+  rm -f "$RUN/firehold.pid" "$RUN/firehold.json"
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   companion_stop

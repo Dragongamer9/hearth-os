@@ -1,5 +1,5 @@
 //! wlr-output-management-unstable-v1 (v4): the screens for wlr-randr, so Settings › Display (SetDisplay.qml) and the
-//! autostart's saved display.sh work on Albireo as on labwc: each screen's name, make, model and serial number (from
+//! autostart's saved display.sh work on Firehold as on labwc: each screen's name, make, model and serial number (from
 //! its EDID, udev.rs), its modes, the one in use, its position, rotation and scale; and changes back (a mode, a
 //! position, a rotation, a scale), tried first with "test" or made with "apply".
 //!

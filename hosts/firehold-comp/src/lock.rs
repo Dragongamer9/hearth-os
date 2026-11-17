@@ -1,7 +1,7 @@
 //! The session lock (ext-session-lock-v1): Mantel's lock screen (Lock.qml, Super+L, "Lock" in the power menu, lock
 //! when waking) covers every screen, and nothing else is drawn or gets a key, a click or a touch until it unlocks.
 //!
-//! The two rules (docs/ALBIREO.md "The lock screen"):
+//! The two rules (docs/FIREHOLD.md "The lock screen"):
 //! - **Never unlocks by itself.** Only the lock client's own "unlock" or the right password in the built-in prompt
 //!   below ends it. When the lock client dies (Mantel crashed, was killed), the screens stay covered.
 //! - **Never locks anyone out.** Then the compositor shows its own small prompt ("type your password and press
@@ -85,7 +85,7 @@ pub struct LockState {
     last_relock: Option<Instant>,
     unlock_check: bool,
     pub prompt: Prompt,
-    /// How long after the lock client went away the compositor asks Mantel to lock again (ALBIREO_RELOCK_AFTER, s).
+    /// How long after the lock client went away the compositor asks Mantel to lock again (FIREHOLD_RELOCK_AFTER, s).
     relock_after: Duration,
 }
 
@@ -97,7 +97,7 @@ impl LockState {
                 .get_data::<crate::ClientState>()
                 .map_or(true, |c| c.security_context.is_none())
         });
-        let relock_after = std::env::var("ALBIREO_RELOCK_AFTER")
+        let relock_after = std::env::var("FIREHOLD_RELOCK_AFTER")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(3);

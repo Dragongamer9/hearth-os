@@ -747,6 +747,12 @@ jobs:
           warn "Hearth Fonts is installed and lists the fonts" "test -x /usr/bin/hearth-fonts && HOME=/tmp /usr/bin/hearth-fonts --list | grep -q '\"name\"'"
           warn "Hearth Theater is installed and finds its libraries" "test -x /usr/bin/hearth-theater && ! ldd /usr/bin/hearth-theater | grep -q 'not found'"
           warn "hearth-gamma (inverted colours in Desktop Mode) is installed" "test -x /usr/bin/hearth-gamma"
+          # Firehold (2.0 preview, docs/FIREHOLD.md): in the image with every library it links, never started unless
+          # the preview is turned on, and the lock prompt's password checker is there.
+          check "Firehold is installed with every library it links, and runs" "test -x /usr/libexec/hearth/firehold-comp && ! ldd /usr/libexec/hearth/firehold-comp | grep -q 'not found' && /usr/libexec/hearth/firehold-comp --help | grep -q 'usage: firehold-comp'"
+          check "Firehold is off unless turned on (nothing in the image sets HEARTH_DESKTOP_WM=firehold)" "! grep -rqs 'HEARTH_DESKTOP_WM=firehold' /etc /usr/lib/systemd"
+          check "Firehold's lock prompt can check passwords (unix_chkpwd)" "test -x /usr/sbin/unix_chkpwd || test -x /sbin/unix_chkpwd"
+          check "Firehold can be found by the session and Settings" "grep -q /usr/libexec/hearth/firehold-comp /usr/bin/nimbus-session && grep -q /usr/libexec/hearth/firehold-comp /usr/share/nimbus/desktop/shell/hearth-your-desktop"
           warn "the emoji picker can type and copy (wtype, wl-copy)" "command -v wtype && command -v wl-copy"
           warn "Orca (the screen reader) is installed" "command -v orca"
           warn "labwc has the magnifier (0.7.3 or newer)" "labwc --version | grep -qE '0\.(7\.[3-9]|[89]\.|[1-9][0-9]\.)|[1-9]\.'"

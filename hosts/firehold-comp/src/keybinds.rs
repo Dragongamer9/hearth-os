@@ -22,6 +22,8 @@ pub enum Action {
     Iconify,
     ToggleFullscreen,
     VtSwitch(i32),
+    /// Ctrl+Alt+Backspace: leave Firehold for KWin at once (always there; never while the screen is locked).
+    LeaveForKwin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,6 +192,12 @@ pub fn builtin(key: Keysym) -> Option<Action> {
         .then(|| Action::VtSwitch((raw - xkb::keysyms::KEY_XF86Switch_VT_1 + 1) as i32))
 }
 
+/// The key that always gets out of the preview, whatever rc.xml says: Ctrl+Alt+Backspace (Terminate_Server is
+/// the same keys with X's "terminate" option). Not in Mantel's rc.xml, so nothing else is lost.
+pub fn leave_key(mods: Mods, key: Keysym) -> bool {
+    (mods.ctrl && mods.alt && !mods.logo && key == Keysym::BackSpace) || key == Keysym::Terminate_Server
+}
+
 impl Keymap {
     /// The bind for a key press (on_release false) or release (true) with these modifiers held.
     pub fn find(&self, mods: Mods, key: Keysym, on_release: bool) -> Option<&Bind> {
@@ -261,6 +269,14 @@ mod tests {
         assert!(km.find(Mods::default(), keysym("XF86AudioRaiseVolume").unwrap(), false).is_some());
         // SendToDesktop isn't there yet: skipped, and said so.
         assert!(km.skipped.iter().any(|s| s == "SendToDesktop"));
+    }
+
+    #[test]
+    fn the_way_out_is_ctrl_alt_backspace() {
+        let ca = Mods { ctrl: true, alt: true, ..Mods::default() };
+        assert!(leave_key(ca, Keysym::BackSpace));
+        assert!(!leave_key(Mods { ctrl: true, ..Mods::default() }, Keysym::BackSpace));
+        assert!(!leave_key(ca, Keysym::Delete));
     }
 
     #[test]

@@ -281,7 +281,7 @@ pub fn run_udev() {
     /*
      * Initialize the compositor
      */
-    let primary_gpu = if let Ok(var) = std::env::var("ALBIREO_DRM_DEVICE") {
+    let primary_gpu = if let Ok(var) = std::env::var("FIREHOLD_DRM_DEVICE") {
         DrmNode::from_path(var).expect("Invalid drm device path")
     } else {
         primary_gpu(session.seat())
@@ -874,7 +874,7 @@ impl HearthState<UdevData> {
 
         let framebuffer_exporter = GbmFramebufferExporter::new(gbm.clone(), render_node);
 
-        let color_formats = if std::env::var("ALBIREO_DISABLE_10BIT").is_ok() {
+        let color_formats = if std::env::var("FIREHOLD_DISABLE_10BIT").is_ok() {
             SUPPORTED_FORMATS_8BIT_ONLY
         } else {
             SUPPORTED_FORMATS
@@ -1078,7 +1078,7 @@ impl HearthState<UdevData> {
                 }
             };
 
-            let disable_direct_scanout = std::env::var("ALBIREO_DISABLE_DIRECT_SCANOUT").is_ok();
+            let disable_direct_scanout = std::env::var("FIREHOLD_DISABLE_DIRECT_SCANOUT").is_ok();
 
             let dmabuf_feedback = drm_output.with_compositor(|compositor| {
                 compositor.set_debug_flags(self.backend_data.debug_flags);

@@ -1,29 +1,29 @@
-# Albireo, Hearth's own desktop compositor (hosts/albireo, docs/ALBIREO.md; 2.0, a preview until it's proven on devices).
+# Firehold, Hearth's own desktop compositor (hosts/firehold-comp, docs/FIREHOLD.md; 2.0, a preview until it's proven on devices).
 #   build     cargo build and test, only here (never on anyone's computer), in Fedora as Quickshell's package is; the
 #             compiler's errors come out as annotations (logs can't be downloaded where the owner's sessions run)
 #   session   the session's tests: the preview is opt-in and falls back to KWin, then labwc
 #   nested    the compositor in a window on a virtual screen, started by nimbus-session with Mantel on it
-#             (.github/scripts/albireo-test.sh): its protocols, Mantel's bar and dock (layer shell), a window
+#             (.github/scripts/firehold-test.sh): its protocols, Mantel's bar and dock (layer shell), a window
 #             on Mantel's taskbar (foreign toplevel), minimizing, snapping, Settings › Your desktop, a clean end
 #   pictures  each picture as notices ("SHOT comp-<n>-<what> <i>", a JPEG in base64 pieces of 3800, at most 8, after
 #             a "SHOT-PARTS" count), one job and one step per picture
-name: Albireo
+name: Firehold
 
 on:
   push:
-    branches: ['feature/hearth-compositor', 'feature/albireo', 'feature/albireo-*']
-    paths: ['hosts/albireo/**', 'hosts/linux/session/**', 'hosts/linux/desktop/albireo/**',
+    branches: ['feature/hearth-compositor', 'feature/firehold', 'feature/firehold-*']
+    paths: ['hosts/firehold-comp/**', 'hosts/linux/session/**', 'hosts/linux/desktop/firehold/**',
             'hosts/linux/desktop/labwc/autostart', 'hosts/linux/desktop/shell/hearth-your-desktop',
             'hosts/linux/desktop/shell/SetYourDesktop.qml', 'hosts/linux/desktop/shell/DesktopNotice.qml',
-            'hosts/linux/test/test_albireo_session.py', 'hosts/linux/test/test_kwin_session.py',
-            '.github/workflows/albireo.yml', '.github/scripts/albireo-test.sh']
+            'hosts/linux/test/test_firehold_session.py', 'hosts/linux/test/test_kwin_session.py',
+            '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: albireo-${{ github.ref }}
+  group: firehold-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -47,11 +47,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            hosts/albireo/target
-          key: albireo-${{ hashFiles('hosts/albireo/Cargo.toml') }}-${{ github.sha }}
-          restore-keys: albireo-${{ hashFiles('hosts/albireo/Cargo.toml') }}-
+            hosts/firehold-comp/target
+          key: firehold-${{ hashFiles('hosts/firehold-comp/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: firehold-${{ hashFiles('hosts/firehold-comp/Cargo.toml') }}-
       - name: Build
-        working-directory: hosts/albireo
+        working-directory: hosts/firehold-comp
         run: |
           set +e
           cargo build --release --message-format=json-diagnostic-rendered-ansi > ../../build.json 2> ../../build.err
@@ -78,7 +78,7 @@ jobs:
               for span, text in errs:
                   props = 'title=build'
                   if span:
-                      props = 'file=hosts/albireo/%s,line=%d,col=%d,title=build' % (span['file_name'], span['line_start'], span['column_start'])
+                      props = 'file=hosts/firehold-comp/%s,line=%d,col=%d,title=build' % (span['file_name'], span['line_start'], span['column_start'])
                   body = text[:1800].replace('%', '%25').replace('\r', '').replace('\n', '%0A')
                   out.write('::error %s::%s\n' % (props, body))
           print('::notice title=build::%d errors, %d warnings' % (len(errs), warns))
@@ -96,7 +96,7 @@ jobs:
         if: failure()
         run: sed -n '31,40p' errors.txt
       - name: Tests
-        working-directory: hosts/albireo
+        working-directory: hosts/firehold-comp
         run: |
           cargo test --release 2>&1 | tee ../../test.log | tail -25
           grep -E "^test .* FAILED|panicked at" ../../test.log | head -8 | while read -r l; do echo "::error title=cargo test::$l"; done
@@ -104,8 +104,8 @@ jobs:
           echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ')"
       - uses: actions/upload-artifact@v4
         with:
-          name: albireo
-          path: hosts/albireo/target/release/albireo
+          name: firehold
+          path: hosts/firehold-comp/target/release/firehold-comp
           retention-days: 7
 
   session:
@@ -116,7 +116,7 @@ jobs:
       - name: The session's tests
         run: |
           fail=0
-          for t in test_albireo_session.py test_kwin_session.py; do
+          for t in test_firehold_session.py test_kwin_session.py; do
             if ! python3 -W ignore -m unittest discover -s hosts/linux/test -p "$t" -v > /tmp/t.log 2>&1; then
               fail=1
               grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -12 | while read -r l; do echo "::error title=$t::$l"; done
@@ -144,11 +144,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: albireo
+          name: firehold
           path: .
-      - name: Mantel on Albireo
+      - name: Mantel on Firehold
         timeout-minutes: 15
-        run: bash .github/scripts/albireo-test.sh
+        run: bash .github/scripts/firehold-test.sh
       - name: Make the JPEGs
         if: always()
         run: |
@@ -156,8 +156,9 @@ jobs:
           import base64, io, os
           from PIL import Image
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
-          for name in ('albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-5b-resized', 'albireo-6-your-desktop',
-                       'albireo-7-locked', 'albireo-8-lock-prompt', 'albireo-9-unlocked', 'albireo-10-grim', 'albireo-11-display'):
+          for name in ('firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
+                       'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
+                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=pictures::no %s' % name); continue
@@ -175,7 +176,56 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: albireo-shots
+          name: firehold-shots
+          path: shots
+          retention-days: 14
+
+  headless:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install Quickshell and friends (no virtual screen)
+        run: |
+          dnf -y install dnf5-plugins git xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL libinput libseat \
+            libxkbcommon labwc qt6-qtsvg procps-ng python3 python3-pillow foot dbus-daemon dbus-tools \
+            google-noto-sans-fonts adwaita-icon-theme fontconfig libnotify grim wlr-randr >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold
+          path: .
+      - name: Mantel on Firehold, headless
+        timeout-minutes: 12
+        run: bash .github/scripts/firehold-headless-test.sh
+      - name: Picture firehold-h-mantel
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, io, os, hashlib
+          from PIL import Image
+          name = 'firehold-h-mantel'
+          p = 'shots/%s.png' % name
+          if not os.path.exists(p):
+              print('::error title=pictures::no %s' % name); raise SystemExit(1)
+          im = Image.open(p).convert('RGB')
+          for w, q in ((960, 45), (900, 38), (800, 34), (720, 30), (640, 26), (560, 22)):
+              b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+              data = base64.b64encode(b.getvalue()).decode()
+              if len(data) <= 8 * 3800:
+                  break
+          parts = [data[i:i + 3800] for i in range(0, len(data), 3800)]
+          print('::notice title=SHOT-PARTS %s %d::%s' % (name, len(parts), hashlib.sha256(b.getvalue()).hexdigest()[:16]))
+          for i, part in enumerate(parts, 1):
+              print('::notice title=SHOT %s %d::%s' % (name, i, part))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-headless-shots
           path: shots
           retention-days: 14
 
@@ -186,13 +236,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ['albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-5b-resized', 'albireo-6-your-desktop',
-               'albireo-7-locked', 'albireo-8-lock-prompt', 'albireo-9-unlocked', 'albireo-10-grim', 'albireo-11-display']
+        name: ['firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
+               'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
+               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice']
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: albireo-shots
+          name: firehold-shots
           path: shots
       - name: Picture ${{ matrix.name }}
         run: |

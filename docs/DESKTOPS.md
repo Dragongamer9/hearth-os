@@ -33,12 +33,12 @@ lacks gets written for Mantel. KWin draws, moves and snaps the windows; Mantel i
 - **Not yet under KWin** (their own branches): keyboard layouts and pointer settings applied live, screens, the
   magnifier and Mantel's own window list and workspaces through KWin.
 
-## Albireo, Hearth's own desktop (2.0, a preview)
+## Firehold, Hearth's own desktop (2.0)
 
-For 2.0 Mantel gets a window manager that is Hearth's own (the owner, Nov 16): `hosts/albireo`, on Smithay.
-It's off unless you turn on Settings › System › Your desktop › Albireo (preview); then the session tries it
-first and falls back to KWin (then labwc) with the same safe start. The plan, what it does so far and how it's tested:
-[ALBIREO](ALBIREO.md).
+For 2.0 Mantel gets a window manager that is Hearth's own (the owner, Nov 16): `hosts/firehold-comp`, on Smithay.
+It isn't on by default; when it's turned on, the session tries it first and falls back to KWin (then labwc) with
+the same safe start. The plan, what it does so far and how it's tested:
+[FIREHOLD](FIREHOLD.md).
 
 ## KDE Plasma and GNOME: retired in 1.14
 

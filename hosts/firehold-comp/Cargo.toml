@@ -1,15 +1,15 @@
-# Hearth's own Wayland compositor (docs/ALBIREO.md): Mantel's window manager for 2.0, on Smithay.
+# Hearth's own Wayland compositor (docs/FIREHOLD.md): Mantel's window manager for 2.0, on Smithay.
 # Started from Smithay's example compositor Anvil (MIT, LICENSE-SMITHAY-ANVIL.txt), pinned to the same Smithay release.
 # No version line: the owner picks every version number (Cargo reads a missing one as 0.0.0).
 [package]
-name = "albireo"
+name = "firehold-comp"
 edition = "2021"
 description = "Hearth's own Wayland compositor (preview): Mantel's window manager, on Smithay"
 license = "GPL-3.0-or-later"
 publish = false
 
 [[bin]]
-name = "albireo"
+name = "firehold-comp"
 path = "src/main.rs"
 
 [dependencies]
@@ -41,7 +41,9 @@ optional = true
 version = "0.13.0"
 
 [features]
-default = ["egl", "winit", "udev", "xwayland"]
+default = ["egl", "winit", "udev", "xwayland", "headless"]
+# No screen or window: drawn into memory with EGL (surfaceless or any device), for tests and CI.
+headless = ["egl", "smithay/renderer_gl", "smithay/backend_egl"]
 egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 udev = [
   "smithay-drm-extras",

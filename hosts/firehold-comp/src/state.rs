@@ -732,7 +732,7 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
         let pointer = seat.add_pointer();
         // Keyboard layouts come from the session's XKB_DEFAULT_* (labwc's environment file, Settings › Keyboard);
         // the key repeat from rc.xml, like labwc.
-        let rc = opts.labwc_rc.clone().or_else(|| std::env::var_os("ALBIREO_RC").map(Into::into));
+        let rc = opts.labwc_rc.clone().or_else(|| std::env::var_os("FIREHOLD_RC").map(Into::into));
         let keymap = rc
             .as_ref()
             .and_then(|p| std::fs::read_to_string(p).ok())

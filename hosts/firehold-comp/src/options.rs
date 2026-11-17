@@ -2,13 +2,15 @@
 
 use std::{path::PathBuf, sync::OnceLock};
 
-pub const USAGE: &str = "usage: albireo [--winit | --tty-udev | --auto] [--socket NAME] [--config FILE] \
+pub const USAGE: &str = "usage: firehold-comp [--winit | --tty-udev | --headless | --auto] [--socket NAME] [--config FILE] \
 [--labwc-rc FILE] [--size WxH] [--no-xwayland] [-- COMMAND ARGS...]";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     Winit,
     Udev,
+    /// Drawn into memory, no screen or window (tests, CI: headless.rs).
+    Headless,
     Auto,
 }
 
@@ -17,7 +19,7 @@ pub struct Options {
     pub backend: Backend,
     /// The Wayland socket's name in $XDG_RUNTIME_DIR (None: the first free wayland-N).
     pub socket: Option<String>,
-    /// The compositor's own settings (read only). None: $ALBIREO_CONFIG or ~/.config/hearth/compositor.json.
+    /// The compositor's own settings (read only). None: $FIREHOLD_CONFIG or ~/.config/hearth/compositor.json.
     pub config: Option<PathBuf>,
     /// The labwc rc.xml Desktop Mode uses (keybinds, key repeat), read only.
     pub labwc_rc: Option<PathBuf>,
@@ -53,13 +55,14 @@ fn parse_size(s: &str) -> Option<(i32, i32)> {
 impl Options {
     pub fn parse<I: Iterator<Item = String>>(mut args: I) -> Result<Options, String> {
         let mut o = Options::default();
-        if let Some(s) = std::env::var("ALBIREO_SIZE").ok().and_then(|s| parse_size(&s)) {
+        if let Some(s) = std::env::var("FIREHOLD_SIZE").ok().and_then(|s| parse_size(&s)) {
             o.size = s;
         }
         while let Some(a) = args.next() {
             match a.as_str() {
                 "--winit" => o.backend = Backend::Winit,
                 "--tty-udev" | "--udev" => o.backend = Backend::Udev,
+                "--headless" => o.backend = Backend::Headless,
                 "--auto" => o.backend = Backend::Auto,
                 "--socket" => o.socket = Some(args.next().ok_or("--socket needs a name")?),
                 "--config" => o.config = Some(args.next().ok_or("--config needs a file")?.into()),
@@ -141,6 +144,7 @@ mod tests {
         assert_eq!(p(&["--size", "1920x1080"]).size, (1920, 1080));
         assert!(Options::parse(["--size", "1x1"].iter().map(|s| s.to_string())).is_err());
         assert!(Options::parse(["--bogus"].iter().map(|s| s.to_string())).is_err());
+        assert_eq!(p(&["--headless"]).backend(), Backend::Headless);
         assert!(Options::parse(["--socket", "a/b"].iter().map(|s| s.to_string())).is_err());
     }
 }

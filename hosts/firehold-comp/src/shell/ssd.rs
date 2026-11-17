@@ -445,7 +445,7 @@ pub(crate) fn font() -> Option<&'static fontdue::Font> {
     FONT.get_or_init(|| {
         let family = theme::current().font;
         let mut tries: Vec<String> = Vec::new();
-        if let Ok(p) = std::env::var("ALBIREO_FONT") {
+        if let Ok(p) = std::env::var("FIREHOLD_FONT") {
             tries.push(p);
         }
         for fam in [family.as_str(), "Inter", "Noto Sans", "DejaVu Sans", "sans-serif"] {
