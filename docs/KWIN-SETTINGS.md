@@ -33,9 +33,17 @@ screens.
 
 ## Hooks for other parts of Mantel on KWin
 
-- The session: run `hearth-access apply kwin` and `hearth-kwin-settings input-watch` (puts the mouse and touchpad settings
-  on every device, also ones plugged in later) when KWin's session starts; clear `$XDG_RUNTIME_DIR/hearth-kwin-inverted`
-  at login (a fresh runtime dir does).
+- The session (KWin's autostart) runs `hearth-access apply kwin`, `hearth-kwin-settings pointer-apply` and
+  `hearth-kwin-settings input-watch` (the last stays running: devices plugged in later get the mouse and touchpad
+  settings). All three are idempotent and write nothing when nothing changed (only keys that differ from what KWin sees
+  are written; device properties only when they differ). Inverted colours: KWin's invert effect has no setting, so
+  `$XDG_RUNTIME_DIR/hearth-kwin-inverted` holds the KWin process id it was switched on for; a mark from an earlier
+  KWin counts as not inverted.
+- One home each: the colour filters, zoom / magnifier on-off and steps are Accessibility's (accessibility.json, applied
+  by hearth-access); `hearth-kwin-settings set` refuses those keys. kdeglobals: hearth-theme merges only its colour
+  groups into it (hearth_kconfig), so `[KDE] AnimationDurationFactor` and `[KScreen]` survive every Desktop Mode start;
+  a kdeglobals Hearth starts carries hearth-theme's mark.
+- Locked settings: a group or key marked `[$i]` (in your file or a system one) is never written; a notice says so.
 - The window switcher: a Mantel switcher installed as a KWin tabbox package (`kwin-wayland/tabbox/org.hearth.*`) is listed
   as "(Hearth)" under Window effects › Alt+Tab.
 - Hearth's own actions on hot corners (the Hearth menu, Quick Access) need a KWin script that registers screen edges; the

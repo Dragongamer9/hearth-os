@@ -444,7 +444,7 @@ def pointer_set(raw):
         labwc_config()
         live = True
     reloaded = False
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    if os.environ.get('HEARTH_WM') != 'kwin' and os.environ.get('LABWC_PID') and shutil.which('labwc'):
         reloaded = run(['labwc', '--reconfigure'])[0] == 0
     elif os.environ.get('HEARTH_WM') == 'kwin':
         # Mantel on KWin: the same settings put on KWin's mouse and touchpad devices now.

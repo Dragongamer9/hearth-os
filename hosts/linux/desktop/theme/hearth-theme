@@ -229,6 +229,25 @@ def cap_radii(s, cap, pattern):
     return re.sub(pattern, lambda m: m.group(1) + str(min(int(m.group(2)), cap)), s)
 
 
+def write_kdeglobals(kg, cur, scheme):
+    """Hearth's colours into kdeglobals: only the colour scheme's groups and keys are merged in (hearth_kconfig), so
+    everything else in it stays (KWin's animation speed, [KScreen], what KDE apps keep there). The mark stays first."""
+    try:
+        import hearth_kconfig as kc
+    except ImportError:
+        kc = None
+    if kc is None:
+        return write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', scheme))
+    data, _ = kc.parse(re.sub(r'(?m)^#.*\n', '', scheme))
+    changes = {g: dict(kv) for g, kv in data.items() if g != kc.DEFAULT_GROUP and kv}
+    if not cur:
+        write(kg, KDE_MARK + '\n')
+    try:
+        return kc.update(kg, changes)
+    except kc.BadFile:
+        return False        # a file that can't be read is left as it is
+
+
 def write(path, text):
     """Write when different; True if it changed."""
     try:
@@ -359,8 +378,8 @@ def main():
     # "Hearth" (not HearthLive): KDE matches the scheme by its Name= in older releases and by its file name in newer
     # ones, and color-schemes/Hearth.colors (the live copy written above) has both.
     if not cur or cur.startswith(KDE_MARK):
-        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde).rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n'
-              '\n[Icons]\nTheme=%s\n' % ('breeze' if mode == 'light' else 'breeze-dark'))
+        write_kdeglobals(kg, cur, kde + '\n[UiSettings]\nColorScheme=Hearth\n\n[Icons]\nTheme=%s\n' % (
+            'breeze' if mode == 'light' else 'breeze-dark'))
     if labwc_changed:
         rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
         system = os.path.join(DESKTOP, 'shell', 'hearth-system')

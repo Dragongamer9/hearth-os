@@ -73,6 +73,7 @@ DEFAULTS = {
     'magnifierZoom': 2.0,         # where Super+Esc first turns it on (labwc: initScale; Super+= starts at 1 + step)
     'magnifierStep': 0.5,         # how much each Super+= / Super+- changes it
     'gameZoom': 1.0,              # Game Mode: gamescope's zoom (1 = off)
+    'filterStrength': 1.0,        # Mantel on KWin: how strong the colour-blindness / greyscale filter is (0.1..1)
     'filter': 'none',
     'screenReader': False,
     'textScale': 1.0,
@@ -122,7 +123,8 @@ def clean(raw):
         return out
     if raw.get('magnifierSize') in ('full', 'lens'):
         out['magnifierSize'] = raw['magnifierSize']
-    for k, lo, hi in (('magnifierZoom', 1.25, 8.0), ('magnifierStep', 0.1, 2.0), ('gameZoom', 1.0, 4.0)):
+    for k, lo, hi in (('magnifierZoom', 1.25, 8.0), ('magnifierStep', 0.1, 2.0), ('gameZoom', 1.0, 4.0),
+                      ('filterStrength', 0.1, 1.0)):
         v = raw.get(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             out[k] = round(max(lo, min(hi, float(v))), 2)
@@ -162,10 +164,10 @@ def save(settings):
 def mode():
     """'game' inside gamescope (Game Mode), 'desktop' inside labwc (Desktop Mode), 'kwin' for Mantel on KWin, else
     'other'."""
-    if os.environ.get('LABWC_PID'):
-        return 'desktop'
     if os.environ.get('HEARTH_WM') == 'kwin' and not os.environ.get('GAMESCOPE_WAYLAND_DISPLAY'):
         return 'kwin'
+    if os.environ.get('LABWC_PID'):
+        return 'desktop'
     if os.environ.get('GAMESCOPE_WAYLAND_DISPLAY') or os.environ.get('HEARTH_GAME_MODE'):
         return 'game'
     return 'other'
@@ -225,13 +227,17 @@ def reload_labwc():
     rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
     if os.path.isdir(rt):
         run(['python3', os.path.join(here, 'hearth-system'), 'labwc-config'])
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    if os.environ.get('HEARTH_WM') != 'kwin' and os.environ.get('LABWC_PID') and shutil.which('labwc'):
         return run(['labwc', '--reconfigure'])[0] == 0
     return False
 
 
 def gsettings(schema, key, value):
+    """Sets a GNOME setting only when it differs (applying at every start writes nothing when nothing changed)."""
     if shutil.which('gsettings'):
+        code, out = run(['gsettings', 'get', schema, key])
+        if code == 0 and (out or '').strip().strip("'") == value:
+            return
         run(['gsettings', 'set', schema, key, value])
 
 
@@ -387,9 +393,43 @@ def kwin_invert_mark():
     return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-kwin-inverted')
 
 
-def apply_filter_kwin(name):
-    """Mantel on KWin: the filter through KWin's effects. KWin's invert effect is switched with its own shortcut
-    (it has no setting), so whether it is on in this session is kept in $XDG_RUNTIME_DIR."""
+def kwin_pid(k):
+    """The process id of the KWin running now (its D-Bus name's owner), or 0."""
+    try:
+        return int(k.call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                          'GetConnectionUnixProcessID', '(s)', ('org.kde.KWin',))[0])
+    except Exception:
+        return 0
+
+
+def kwin_inverted(k):
+    """Whether Hearth inverted this KWin's colours. KWin's invert effect has no setting (only a shortcut that switches
+    it), so the mark holds the KWin's process id: a mark left by an earlier KWin (a restart, a new session) is stale."""
+    try:
+        with open(kwin_invert_mark()) as f:
+            return int(f.read().strip() or 0) == kwin_pid(k) != 0
+    except (OSError, ValueError):
+        return False
+
+
+def kwin_changes(k, want):
+    """Only the keys whose value KWin sees now differs from WANT ({group: {key: value}}): nothing is written when
+    nothing changed. Effects' defaults are KWin's own (k.EFFECTS)."""
+    vals, _, _ = k.kc.effective('kwinrc')
+    out = {}
+    for g, kv in want.items():
+        for key, v in kv.items():
+            cur = vals.get(g, {}).get(key)
+            if cur is None and g == 'Plugins' and key.endswith('Enabled'):
+                cur = 'true' if k.EFFECTS.get(key[:-7]) else 'false'
+            if cur != k.kc.to_text(v):
+                out.setdefault(g, {})[key] = v
+    return out
+
+
+def apply_filter_kwin(name, strength=1.0):
+    """Mantel on KWin: the filter through KWin's effects (Accessibility is the one place that changes these: the
+    generic KWin pages can't write them). Inverted colours are switched with KWin's own shortcut."""
     try:
         k = kwin_tool()
     except (OSError, ImportError, SyntaxError) as e:
@@ -401,31 +441,32 @@ def apply_filter_kwin(name):
                 KWIN_GREYSCALE + ('.'.join(map(str, ver)) if ver else 'an older KWin',))
         return 'KWin has no effect for this filter; it works in Game Mode.'
     m = KWIN_MODES.get(name)
-    plugins = {'colorblindnesscorrectionEnabled': m is not None}
+    want = {'Plugins': {'colorblindnesscorrectionEnabled': m is not None}}
     if name == 'invert':
-        plugins['invertEnabled'] = True
-    changes = {'Plugins': plugins}
+        want['Plugins']['invertEnabled'] = True
     if m is not None:
-        changes['Effect-colorblindnesscorrection'] = {'Mode': m}
-    try:
-        k.write_changes('kwinrc', changes)
-    except k.Fail as e:
-        return str(e)
-    k.reconfigure()
-    want = name == 'invert'
-    on = os.path.exists(kwin_invert_mark())
-    if want != on and k.kwin_running():
+        want['Effect-colorblindnesscorrection'] = {'Mode': m, 'Intensity': round(float(strength), 2)}
+    changes = kwin_changes(k, want)
+    if changes:
+        try:
+            k.write_changes('kwinrc', changes)
+        except k.Fail as e:
+            return str(e)
+        k.reconfigure()
+    want_inv = name == 'invert'
+    if k.kwin_running() and want_inv != kwin_inverted(k):
         try:
             k.shortcut('invert')
         except k.Fail as e:
             return 'KWin didn\'t switch inverted colours (%s)' % e
-        if want:
-            open(kwin_invert_mark(), 'w').close()
-        else:
-            try:
+        try:
+            if want_inv:
+                with open(kwin_invert_mark(), 'w') as f:
+                    f.write(str(kwin_pid(k)))
+            else:
                 os.unlink(kwin_invert_mark())
-            except OSError:
-                pass
+        except OSError:
+            pass
     return None
 
 
@@ -434,12 +475,14 @@ def apply_magnifier_kwin(s):
     try:
         k = kwin_tool()
         full = s['magnifierSize'] == 'full'
-        k.write_changes('kwinrc', {
+        changes = kwin_changes(k, {
             'Plugins': {'zoomEnabled': full, 'magnifierEnabled': not full},
             'Effect-zoom': {'ZoomFactor': round(1 + s['magnifierStep'], 2)},
             'Effect-magnifier': {'InitialZoom': s['magnifierZoom'], 'Width': 640, 'Height': 400},
         })
-        k.reconfigure()
+        if changes:
+            k.write_changes('kwinrc', changes)
+            k.reconfigure()
     except Exception as e:
         return str(e)
     return None
@@ -534,8 +577,8 @@ def apply(s, changed=None, where=None):
             if p:
                 problems['gameZoom'] = p
     elif where == 'kwin':
-        if 'filter' in keys:
-            p = apply_filter_kwin(s['filter'])
+        if keys & {'filter', 'filterStrength'}:
+            p = apply_filter_kwin(s['filter'], s['filterStrength'])
             if p:
                 problems['filter'] = p
         # Only when the person changed one: at the start KWin has its own settings already.

@@ -350,5 +350,96 @@ class AccessOnKwin(Env):
             self.assertIn('ElectricBorderDelay=150', self.read('kwinrc'))
 
 
+class Review(Env):
+    def test_list_escaped_once(self):
+        kc.update(self.path('kwinrc'), {'Effect-overview': {'BorderActivate': [7, 1]}, 'X': {'L': ['a,b', 'c\\d']}})
+        text = self.read('kwinrc')
+        self.assertIn('BorderActivate=7,1\n', text)
+        self.assertIn('L=a\\,b,c\\\\d\n', text)
+
+    def test_crlf_kept(self):
+        with open(self.path('kwinrc'), 'w', newline='') as f:
+            f.write('[Plugins]\r\nblurEnabled=false\r\n')
+        kc.update(self.path('kwinrc'), {'Plugins': {'blurEnabled': True, 'fadeEnabled': True}})
+        with open(self.path('kwinrc'), newline='') as f:
+            self.assertEqual(f.read(), '[Plugins]\r\nblurEnabled=true\r\nfadeEnabled=true\r\n')
+
+    def test_locked_group_in_your_file_refused(self):
+        self.write('kwinrc', '[Plugins][$i]\nblurEnabled=false\n')
+        with self.assertRaises(kc.Locked):
+            kc.update(self.path('kwinrc'), {'Plugins': {'blurEnabled': True}})
+        with self.assertRaises(K.Fail):
+            K.set_file('kwinrc', json.dumps({'Plugins': {'blurEnabled': True}}))
+        self.assertEqual(self.read('kwinrc'), '[Plugins][$i]\nblurEnabled=false\n')
+        with open(os.path.join(self.sys, 'kwinrc'), 'w') as f:
+            f.write('[Windows][$i]\nRollOverDesktops=false\n')
+        with self.assertRaises(K.Fail):
+            K.set_file('kwinrc', json.dumps({'Windows': {'RollOverDesktops': True}}))
+
+    def test_accessibility_owns_its_effects(self):
+        for ch in ({'Plugins': {'colorblindnesscorrectionEnabled': True}}, {'Plugins': {'invertEnabled': True}},
+                   {'Effect-colorblindnesscorrection': {'Mode': 1}}, {'Effect-zoom': {'ZoomFactor': 2}}):
+            with self.assertRaises(K.Fail):
+                K.set_file('kwinrc', json.dumps(ch))
+        self.assertFalse(os.path.exists(self.path('kwinrc')))
+        K.set_file('kwinrc', json.dumps({'Effect-zoom': {'MouseTracking': 1}}))
+
+    def test_kdeglobals_started_with_hearths_mark(self):
+        K.set_file('kdeglobals', json.dumps({'KDE': {'AnimationDurationFactor': 0.5}}))
+        self.assertTrue(self.read('kdeglobals').startswith(K.KDE_MARK + '\n'))
+
+    def test_theme_keeps_your_animation_speed(self):
+        import subprocess
+        home = os.path.join(self.tmp.name, 'home')
+        os.makedirs(os.path.join(home, '.local', 'share', 'nimbus'), exist_ok=True)
+        with open(os.path.join(home, '.local', 'share', 'nimbus', 'desktop.json'), 'w') as f:
+            json.dump({'look': 'steam', 'mode': 'dark'}, f)
+        K.set_file('kdeglobals', json.dumps({'KDE': {'AnimationDurationFactor': 0.25}, 'KScreen': {'XwaylandClientsScale': False}}))
+        env = dict(os.environ, HOME=home, NIMBUS_SHARE=str(ROOT / 'hosts' / 'linux'))
+        env.pop('LABWC_PID', None)
+        for mode in ('dark', 'light'):
+            with open(os.path.join(home, '.local', 'share', 'nimbus', 'desktop.json'), 'w') as f:
+                json.dump({'look': 'steam', 'mode': mode}, f)
+            subprocess.run(['sh', str(ROOT / 'hosts' / 'linux' / 'desktop' / 'theme' / 'apply.sh')], env=env,
+                           capture_output=True, timeout=120)
+            text = self.read('kdeglobals')
+            self.assertTrue(text.startswith(K.KDE_MARK))
+            self.assertIn('AnimationDurationFactor=0.25', text)
+            self.assertIn('XwaylandClientsScale=false', text)
+            self.assertIn('[UiSettings]', text)
+            self.assertIn('Theme=%s' % ('breeze' if mode == 'light' else 'breeze-dark'), text)
+            self.assertIn('ColorScheme=HearthLive', text)
+        # And yours (no mark) is still never touched.
+        self.write('kdeglobals', '[General]\nColorScheme=Mine\n')
+        subprocess.run(['sh', str(ROOT / 'hosts' / 'linux' / 'desktop' / 'theme' / 'apply.sh')], env=env, capture_output=True, timeout=120)
+        self.assertEqual(self.read('kdeglobals'), '[General]\nColorScheme=Mine\n')
+
+    def test_access_apply_on_kwin_writes_nothing_twice(self):
+        A = load(SHELL / 'hearth-access', 'hearth_access_kwin_idem')
+        with mock.patch.dict(os.environ, {'HEARTH_WM': 'kwin', 'LABWC_PID': ''}), \
+                mock.patch.object(A, 'kwin_version_tuple', return_value=(6, 3)), \
+                mock.patch.object(A, 'gsettings'):
+            # 'none' with KWin's defaults: nothing to write, no file made.
+            self.assertEqual(A.apply(A.clean({'filter': 'none'}), None, 'kwin'), {})
+            self.assertFalse(os.path.exists(self.path('kwinrc')))
+            A.apply(A.clean({'filter': 'tritanopia', 'filterStrength': 0.6}), None, 'kwin')
+            text = self.read('kwinrc')
+            self.assertIn('Intensity=0.6', text)
+            t1 = os.stat(self.path('kwinrc')).st_mtime_ns
+            A.apply(A.clean({'filter': 'tritanopia', 'filterStrength': 0.6}), None, 'kwin')
+            self.assertEqual(os.stat(self.path('kwinrc')).st_mtime_ns, t1)
+
+    def test_stale_invert_mark(self):
+        A = load(SHELL / 'hearth-access', 'hearth_access_kwin_mark')
+        with open(A.kwin_invert_mark(), 'w') as f:
+            f.write('4242')
+        with mock.patch.object(A, 'kwin_pid', return_value=4242):
+            self.assertTrue(A.kwin_inverted(K))
+        with mock.patch.object(A, 'kwin_pid', return_value=999):   # KWin started again: not inverted any more
+            self.assertFalse(A.kwin_inverted(K))
+        with mock.patch.object(A, 'kwin_pid', return_value=0):
+            self.assertFalse(A.kwin_inverted(K))
+
+
 if __name__ == '__main__':
     unittest.main()
