@@ -304,6 +304,8 @@ class LockCheck(unittest.TestCase):
         self.env = dict(os.environ)
         self.d = tempfile.mkdtemp()
         os.environ['XDG_RUNTIME_DIR'] = os.path.join(self.d, 'run')
+        self.qtw = lc.qt_wayland
+        lc.qt_wayland = lambda: True
         self.kenv = {'PLASMA_DEFAULT_SHELL': lc.PACKAGE, 'XDG_DATA_DIRS': os.path.join(self.d, 'share'),
                      'HOME': os.path.join(self.d, 'home')}
         self.greeter = os.path.join(self.d, 'greet')
@@ -311,6 +313,7 @@ class LockCheck(unittest.TestCase):
         self.saved = list(lc.GREETERS)
 
     def tearDown(self):
+        lc.qt_wayland = self.qtw
         lc.GREETERS[:] = self.saved
         os.environ.clear()
         os.environ.update(self.env)
@@ -384,6 +387,11 @@ class LockCheck(unittest.TestCase):
         self.assertIn('Failed to load lockscreen QML', r['why'])
         self.greet_says('something else entirely')          # no failure seen, but no sign it loaded either
         self.assertFalse(lc.check(kenv=self.kenv)['ok'])
+
+    def test_needs_qt_wayland(self):
+        self.install()
+        lc.qt_wayland = lambda: False
+        self.assertIn('qt6-wayland', lc.check(kenv=self.kenv)['why'])
 
     def test_env_file_format(self):
         self.assertEqual(lc.parse_env(b'A=1\0PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock\0junk\0'),

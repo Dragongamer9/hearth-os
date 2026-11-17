@@ -59,7 +59,7 @@ time.sleep(900)
 PY
   sleep 2
   for renderer in gles2 pixman; do
-    ( umask 000; WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=$renderer WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
+    ( umask 000; WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128 WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=$renderer WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
         WAYLAND_DISPLAY= labwc >"$REPO/shots/debian-outer-$renderer.log" 2>&1 & )
     for i in $(seq 1 20); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
     ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break

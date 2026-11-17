@@ -19,7 +19,9 @@ KSL=$(pick kscreenlocker libkscreenlocker6 libkscreenlocker5) || { echo "install
 PLS=$(pick libplasma6 libplasma5 || true)
 PFW=""
 # The lock screen is plain QtQuick + QtQuick.Layouts (Quickshell needs them too).
-"${APT[@]}" "$KSL" ${PLS:+"$PLS"} ${PFW:+"$PFW"} qml6-module-qtquick qml6-module-qtquick-layouts
+# qt6-wayland: the greeter is a Wayland client of KWin (without it, it can't start and KWin stays on its emergency
+# screen).
+"${APT[@]}" "$KSL" ${PLS:+"$PLS"} ${PFW:+"$PFW"} qml6-module-qtquick qml6-module-qtquick-layouts qt6-wayland
 GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null || true) | head -1)
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 
