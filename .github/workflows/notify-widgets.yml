@@ -17,7 +17,7 @@ name: Notifications and widgets (1.14)
 on:
   workflow_dispatch:
   push:
-    branches: [feature/kwin-notify-widgets]
+    branches: [feature/kwin-notify-widgets, feature/kwin-1.14]
     paths: ['hosts/linux/desktop/shell/**', 'hosts/linux/desktop/sounds/**', 'hosts/linux/test/test_notify_widgets_114.py', '.github/workflows/notify-widgets.yml']
 
 concurrency:
