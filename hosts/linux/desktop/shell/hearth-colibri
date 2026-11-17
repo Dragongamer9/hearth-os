@@ -310,6 +310,31 @@ def installed():
     return os.path.isfile(coli_path()) and os.path.isfile(os.path.join(ENGINE, 'colibri'))
 
 
+# The engine settings a model's setup may pass to Colibri (its own COLI_*, ggml's and llama.cpp's, thread counts and
+# which graphics card): nothing else. Never what changes which code runs (LD_PRELOAD, LD_LIBRARY_PATH, PYTHON*, PATH,
+# a library or plugin folder), even from a hand-edited state file.
+ENV_PREFIXES = ('COLI_', 'GGML_', 'LLAMA_', 'OMP_', 'OPENBLAS_', 'MKL_')
+ENV_NAMES = ('CUDA_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES', 'GPU_DEVICE_ORDINAL')
+ENV_REFUSED_PARTS = ('PATH', 'LIB', 'PRELOAD', 'DIR', 'HOME', 'PLUGIN', 'MODULE', 'ICD', 'LAYER')
+
+
+def env_name_ok(k):
+    k = str(k)
+    if not re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', k) or k == 'COLI_SETUP_HOME':
+        return False
+    if any(part in k for part in ENV_REFUSED_PARTS):
+        return False
+    return k in ENV_NAMES or k.startswith(ENV_PREFIXES)
+
+
+def safe_env(d):
+    """D (a model's env) with only the names Colibri may be given (env_name_ok); values as short single-line text."""
+    if not isinstance(d, dict):
+        return {}
+    return {str(k): str(v)[:200] for k, v in d.items()
+            if env_name_ok(k) and '\n' not in str(v) and '\0' not in str(v)}
+
+
 def coli_env(extra=None):
     env = dict(os.environ)
     env['COLI_SETUP_HOME'] = SETUP_HOME
@@ -849,7 +874,7 @@ def download_run(mid):
     mdir = conf.get('model_dir') or os.path.join(models, mid)
     models_st = dict(state().get('models') or {})
     models_st[mid] = {'dir': mdir, 'at': int(time.time()), 'backend': str(conf.get('backend') or '')[:20],
-                      'env': {k: str(v) for k, v in (conf.get('env') or {}).items() if re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', str(k))}}
+                      'env': safe_env(conf.get('env'))}
     dl.update({'running': False, 'error': '', 'done': True})
     state_set(models=models_st, download=dl)
     return {'downloaded': mid, 'dir': mdir}
@@ -905,7 +930,7 @@ def use(mid, folder=''):
         d, cfg = found
         models_st = dict(state().get('models') or {})
         models_st[mid] = {'dir': d, 'at': int(time.time()), 'backend': str(cfg.get('backend') or '')[:20], 'adopted': True,
-                          'env': {k: str(v) for k, v in (cfg.get('env') or {}).items() if re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', str(k))}}
+                          'env': safe_env(cfg.get('env'))}
         state_set(models=models_st)
     eng.set_key('colibriModel', mid)
     if unit_active(UNIT):
@@ -1070,7 +1095,7 @@ def run_argv(mid, rec, allowed=()):
             '--port', str(COLIBRI_PORT), '--model-id', mid, '--auto-tier']
     for h in allowed:
         argv += ['--allowed-host', h]
-    env = {k: v for k, v in (rec.get('env') or {}).items() if re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', k)}
+    env = safe_env(rec.get('env'))
     if rec.get('backend') == 'vulkan':
         env.setdefault('COLI_VULKAN', '1')
     return argv, env

@@ -127,9 +127,15 @@ def unpack(rpm, dest):
                 t.extractall(dest, filter='tar') if hasattr(tarfile, 'tar_filter') else t.extractall(dest)
             return
     if shutil.which('rpm2cpio') and shutil.which('cpio'):
-        r = subprocess.run(f'rpm2cpio "{rpm}" | cpio -idm --quiet', shell=True, cwd=dest, capture_output=True)
-        if r.returncode == 0:
-            return
+        # rpm2cpio RPM | cpio -idm: two argument lists joined by a pipe, no shell.
+        try:
+            p1 = subprocess.Popen(['rpm2cpio', rpm], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p2 = subprocess.run(['cpio', '-idm', '--quiet'], stdin=p1.stdout, cwd=dest, capture_output=True)
+            p1.stdout.close()
+            if p1.wait() == 0 and p2.returncode == 0:
+                return
+        except OSError:
+            pass
     if shutil.which('bsdtar'):
         if subprocess.run(['bsdtar', '-xf', rpm, '-C', dest], capture_output=True).returncode == 0:
             return
