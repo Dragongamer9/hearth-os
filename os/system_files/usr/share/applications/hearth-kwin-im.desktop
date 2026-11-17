@@ -1,0 +1,9 @@
+[Desktop Entry]
+# Hearth's input method for KWin (hosts/linux/desktop/kwin-helpers/hearth-kwin-im.c): KWin starts it (kwinrc
+# [Wayland] InputMethod=/usr/share/applications/hearth-kwin-im.desktop) so Mantel's on-screen keyboard, the
+# controller and clipboard paste can type any character into apps. Not an app: hidden from menus.
+Type=Application
+Name=Hearth typing
+Exec=/usr/libexec/hearth/hearth-kwin-im
+NoDisplay=true
+X-KDE-Wayland-VirtualKeyboard=true

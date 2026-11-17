@@ -1,0 +1,10 @@
+[Desktop Entry]
+# Hearth's screen sharing and screenshots on KWin (hosts/linux/desktop/kwin-helpers/hearth-kwin-cast.c). KWin gives
+# its screen-sharing protocol and its screenshot D-Bus interface only to programs whose .desktop file asks for them,
+# found by the program's path (Exec), the same way xdg-desktop-portal-kde gets them. Not an app: hidden from menus.
+Type=Application
+Name=Hearth screen sharing
+Exec=/usr/libexec/hearth/hearth-kwin-cast
+NoDisplay=true
+X-KDE-Wayland-Interfaces=zkde_screencast_unstable_v1
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2

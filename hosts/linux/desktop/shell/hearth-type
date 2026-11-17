@@ -1,0 +1,623 @@
+#!/usr/bin/env python3
+"""hearth-type: types text and keys into the window in front, on labwc and on KWin alike (docs/KWIN-INPUT.md).
+
+  hearth-type [-M MOD] [-m MOD] [-k KEY] [-P KEY] [-p KEY] [-s MS] [--] [TEXT...]
+        wtype's own arguments, in order: -M / -m press / let go of a modifier (ctrl, alt, shift, logo, altgr),
+        -k presses and lets go of a key (XKB names: Return, BackSpace, Left, Page_Down, F5, a, equal...),
+        -P / -p only press / let go of one, -s waits MS milliseconds, the rest is text (after -- everything is).
+  hearth-type --status       one JSON line: which way it types here, the keyboard layout, the input method
+  hearth-type --serve        the typing service (the first hearth-type starts it; it ends after IDLE_EXIT)
+
+Which way it types:
+  * labwc (HEARTH_WM isn't kwin) with wtype installed: it simply is wtype (the same arguments), as before.
+  * KWin (HEARTH_WM=kwin): KWin has no virtual-keyboard protocol (wtype only says "Compositor does not support the
+    virtual keyboard protocol"), so:
+      - text goes to Hearth's input method (hearth-kwin-im, the input method KWin starts: kwinrc [Wayland]
+        InputMethod) when a text field has the keyboard: any character, emoji too, whatever the keyboard layout;
+      - keys, shortcuts (Ctrl+V...) and text where no text field takes the input method (games, Xwayland apps,
+        terminals without it) go through a virtual keyboard (/dev/uinput, python3-evdev: the same access hearth-pad
+        has, udev rule 70-hearth-uinput.rules), using the active keyboard layout's keys (osk-keymap.json). Characters
+        that layout can't type are left out and said so on stderr (exit code 0, like wtype).
+  HEARTH_TYPE_ROUTE=wtype|kwin forces one way (checks).
+
+The virtual keyboard lives in a small service (one device for every hearth-type, so the first key isn't lost while
+KWin picks up a new keyboard): socket <runtime dir>/hearth/type.sock, this user's only (0700 folder, peer check).
+Exit codes: 1 bad arguments or typing failed, 2 python3-evdev missing, 3 no access to /dev/uinput.
+"""
+import fcntl
+import json
+import os
+import re
+import select
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+KEYMAP_FILE = os.path.join(HERE, 'osk-keymap.json')
+IDLE_EXIT = 1800          # s without a request before the service ends (the next hearth-type starts it again)
+SETTLE = 0.35             # s a new virtual keyboard gets before the first key (KWin's libinput has to find it)
+KEY_GAP = 0.004           # s between key events
+MAX_LINE = 256 * 1024
+MAX_TEXT = 4000           # characters in one call
+IM_TIMEOUT = 1.5
+
+MODS = {'ctrl': 'KEY_LEFTCTRL', 'control': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT',
+        'logo': 'KEY_LEFTMETA', 'win': 'KEY_LEFTMETA', 'super': 'KEY_LEFTMETA', 'altgr': 'KEY_RIGHTALT',
+        'capslock': 'KEY_CAPSLOCK'}
+LAYOUT_MODS = {'shift': 'KEY_LEFTSHIFT', 'altgr': 'KEY_RIGHTALT', 'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT'}
+# XKB key names (what wtype -k takes) → kernel keys. Single characters (a, 1, equal...) come from the layout.
+NAMED = {
+    'Return': 'KEY_ENTER', 'KP_Enter': 'KEY_KPENTER', 'BackSpace': 'KEY_BACKSPACE', 'Tab': 'KEY_TAB',
+    'ISO_Left_Tab': 'KEY_TAB', 'Escape': 'KEY_ESC', 'space': 'KEY_SPACE', 'Delete': 'KEY_DELETE',
+    'Insert': 'KEY_INSERT', 'Home': 'KEY_HOME', 'End': 'KEY_END', 'Prior': 'KEY_PAGEUP', 'Page_Up': 'KEY_PAGEUP',
+    'Next': 'KEY_PAGEDOWN', 'Page_Down': 'KEY_PAGEDOWN', 'Left': 'KEY_LEFT', 'Right': 'KEY_RIGHT', 'Up': 'KEY_UP',
+    'Down': 'KEY_DOWN', 'Menu': 'KEY_COMPOSE', 'Print': 'KEY_SYSRQ', 'Pause': 'KEY_PAUSE',
+    'Scroll_Lock': 'KEY_SCROLLLOCK', 'Num_Lock': 'KEY_NUMLOCK', 'Caps_Lock': 'KEY_CAPSLOCK',
+    'Shift_L': 'KEY_LEFTSHIFT', 'Shift_R': 'KEY_RIGHTSHIFT', 'Control_L': 'KEY_LEFTCTRL', 'Control_R': 'KEY_RIGHTCTRL',
+    'Alt_L': 'KEY_LEFTALT', 'Alt_R': 'KEY_RIGHTALT', 'Super_L': 'KEY_LEFTMETA', 'Super_R': 'KEY_RIGHTMETA',
+    'ISO_Level3_Shift': 'KEY_RIGHTALT',
+    'minus': 'KEY_MINUS', 'equal': 'KEY_EQUAL', 'comma': 'KEY_COMMA', 'period': 'KEY_DOT', 'slash': 'KEY_SLASH',
+    'semicolon': 'KEY_SEMICOLON', 'apostrophe': 'KEY_APOSTROPHE', 'grave': 'KEY_GRAVE', 'backslash': 'KEY_BACKSLASH',
+    'bracketleft': 'KEY_LEFTBRACE', 'bracketright': 'KEY_RIGHTBRACE',
+    'XF86AudioRaiseVolume': 'KEY_VOLUMEUP', 'XF86AudioLowerVolume': 'KEY_VOLUMEDOWN', 'XF86AudioMute': 'KEY_MUTE',
+    'XF86AudioPlay': 'KEY_PLAYPAUSE', 'XF86AudioNext': 'KEY_NEXTSONG', 'XF86AudioPrev': 'KEY_PREVIOUSSONG',
+    'XF86MonBrightnessUp': 'KEY_BRIGHTNESSUP', 'XF86MonBrightnessDown': 'KEY_BRIGHTNESSDOWN',
+}
+for _i in range(1, 25):
+    NAMED['F%d' % _i] = 'KEY_F%d' % _i
+# XKB names that stand for one character: typed through the layout, like the character itself.
+NAMED_CHARS = {'plus': '+', 'asterisk': '*', 'at': '@', 'numbersign': '#', 'dollar': '$', 'percent': '%',
+               'ampersand': '&', 'parenleft': '(', 'parenright': ')', 'underscore': '_', 'colon': ':', 'less': '<',
+               'greater': '>', 'question': '?', 'exclam': '!', 'quotedbl': '"', 'bar': '|', 'asciitilde': '~',
+               'asciicircum': '^', 'braceleft': '{', 'braceright': '}'}
+SPECIAL_CHARS = {' ': ['KEY_SPACE'], '\n': ['KEY_ENTER'], '\t': ['KEY_TAB'], '\b': ['KEY_BACKSPACE']}
+LAYOUT_RE = re.compile(r'^[a-z]{2,3}$')
+
+
+class Fail(Exception):
+    def __init__(self, msg, code=1):
+        Exception.__init__(self, msg)
+        self.code = code
+
+
+# ---------------------------------------------------------------------- the keyboard layout's keys
+
+def load_keymap(path=KEYMAP_FILE):
+    try:
+        with open(path, encoding='utf-8') as f:
+            km = json.load(f)
+        if isinstance(km.get('layouts'), dict):
+            return km
+    except (OSError, ValueError):
+        pass
+    return {'letters': 'abcdefghijklmnopqrstuvwxyz', 'layouts': {'us': {}}}
+
+
+KEYMAP = load_keymap()
+
+
+def layout_table(name):
+    """The table for an XKB layout name ("de", "fr,us", "de(nodeadkeys)" → its first), US when there's none."""
+    name = (name or 'us').split(',')[0].split('(')[0].strip().lower()
+    layouts = KEYMAP.get('layouts', {})
+    t = layouts.get(name) if LAYOUT_RE.match(name) else None
+    if t is None:
+        return 'us', layouts.get('us', {})
+    if '_same' in t:
+        return name, layouts.get(t['_same'], {})
+    return name, t
+
+
+def char_keys(ch, layout='us'):
+    """The kernel keys (modifiers first) that type one character on this layout, or None."""
+    if ch in SPECIAL_CHARS:
+        return list(SPECIAL_CHARS[ch])
+    _, table = layout_table(layout)
+    spec, shift = table.get(ch), False
+    if spec is None:
+        low = ch.lower()
+        if len(low) == 1 and low in KEYMAP.get('letters', ''):
+            spec, shift = table.get(low, low.upper()), low != ch
+            if shift and '+' in spec:
+                return None
+        else:
+            return None
+    parts = spec.split('+')
+    if any(m not in LAYOUT_MODS for m in parts[:-1]):
+        return None
+    return (['KEY_LEFTSHIFT'] if shift else []) + [LAYOUT_MODS[m] for m in parts[:-1]] + ['KEY_' + parts[-1]]
+
+
+def key_codes(name, layout='us'):
+    """A -k / -P key name → kernel keys (a one-character name goes through the layout). None if unknown."""
+    if name in NAMED:
+        return [NAMED[name]]
+    if name in NAMED_CHARS:
+        return char_keys(NAMED_CHARS[name], layout)
+    if len(name) == 1:
+        keys = char_keys(name, layout)
+        if keys is None and name.isalpha() and name.lower() in KEYMAP.get('letters', ''):
+            keys = char_keys(name.lower(), layout)
+        return keys
+    return None
+
+
+def all_codes():
+    """Every kernel key the virtual keyboard may press."""
+    out = set(NAMED.values()) | set(MODS.values()) | set(LAYOUT_MODS.values())
+    out |= {'KEY_' + c.upper() for c in KEYMAP.get('letters', '')}
+    for t in KEYMAP.get('layouts', {}).values():
+        for k, spec in t.items():
+            if not k.startswith('_') and isinstance(spec, str):
+                out.add('KEY_' + spec.split('+')[-1])
+    return sorted(out)
+
+
+# ---------------------------------------------------------------------- arguments (wtype's)
+
+def parse_args(argv):
+    """wtype's arguments → actions: ('mod', name, down), ('key', name, 'tap'|'down'|'up'), ('sleep', ms), ('text', s)."""
+    acts, i, rest = [], 0, False
+    while i < len(argv):
+        a = argv[i]
+        if rest or not a.startswith('-') or a == '-':
+            acts.append(('text', a))
+            i += 1
+            continue
+        if a == '--':
+            rest = True
+            i += 1
+            continue
+        if a in ('-M', '-m', '-k', '-P', '-p', '-s', '-d'):
+            if i + 1 >= len(argv):
+                raise Fail('%s needs a value' % a)
+            v = argv[i + 1]
+            if a in ('-M', '-m'):
+                if v.lower() not in MODS:
+                    raise Fail('unknown modifier %r' % v)
+                acts.append(('mod', v.lower(), a == '-M'))
+            elif a in ('-s', '-d'):
+                if not v.isdigit():
+                    raise Fail('%s takes milliseconds' % a)
+                if a == '-s':
+                    acts.append(('sleep', min(int(v), 10000)))
+            else:
+                acts.append(('key', v, {'-k': 'tap', '-P': 'down', '-p': 'up'}[a]))
+            i += 2
+            continue
+        raise Fail('unknown argument %r' % a)
+    if sum(len(x[1]) for x in acts if x[0] == 'text') > MAX_TEXT:
+        raise Fail('too much text at once (more than %d characters)' % MAX_TEXT)
+    return acts
+
+
+def plan(acts, layout, im_ok=None):
+    """Actions → steps the service and the input method carry out, in order:
+       ('im', text)  committed by the input method (only text with no modifier held, when im_ok(text) says so),
+       ('ev', [(code, value)...]) key events, ('sleep', ms). Returns (steps, skipped characters)."""
+    steps, skipped, held = [], '', []
+
+    def ev(pairs):
+        if steps and steps[-1][0] == 'ev':
+            steps[-1][1].extend(pairs)
+        else:
+            steps.append(('ev', list(pairs)))
+
+    def tap(keys):
+        ev([(k, 1) for k in keys] + [(k, 0) for k in reversed(keys)])
+
+    for a in acts:
+        if a[0] == 'mod':
+            code = MODS[a[1]]
+            if a[2]:
+                held.append(code)
+                ev([(code, 1)])
+            else:
+                if code in held:
+                    held.remove(code)
+                ev([(code, 0)])
+        elif a[0] == 'sleep':
+            steps.append(('sleep', a[1]))
+        elif a[0] == 'key':
+            keys = key_codes(a[1], layout)
+            if keys is None:
+                raise Fail('unknown key %r' % a[1])
+            if a[2] == 'tap':
+                tap(keys)
+            elif a[2] == 'down':
+                ev([(k, 1) for k in keys])
+            else:
+                ev([(k, 0) for k in reversed(keys)])
+        else:
+            text = a[1]
+            if not held and im_ok is not None:
+                # Line breaks and tabs are keys (a text field's own Enter / Tab); the rest goes as text.
+                for part in re.split(r'([\n\t])', text):
+                    if not part:
+                        continue
+                    if part in '\n\t' and len(part) == 1:
+                        tap(SPECIAL_CHARS[part])
+                    else:
+                        steps.append(('im?', part))
+                continue
+            for ch in text:
+                keys = char_keys(ch, layout)
+                if keys is None:
+                    skipped += ch
+                    continue
+                if held and keys[0] == 'KEY_LEFTSHIFT' and 'KEY_LEFTSHIFT' in held:
+                    keys = keys[1:]
+                tap(keys)
+    return steps, skipped
+
+
+# ---------------------------------------------------------------------- where this runs
+
+def runtime_dir():
+    d = os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+    return os.path.join(d, 'hearth')
+
+
+def sock_path():
+    return os.path.join(runtime_dir(), 'type.sock')
+
+
+def im_sock_path():
+    return os.path.join(runtime_dir(), 'im.sock')
+
+
+def route():
+    forced = os.environ.get('HEARTH_TYPE_ROUTE', '')
+    if forced in ('wtype', 'kwin'):
+        return forced
+    if os.environ.get('HEARTH_WM', '') == 'kwin':
+        return 'kwin'
+    return 'wtype' if shutil.which('wtype') else 'kwin'
+
+
+LAYOUT_TTL = 5.0          # s the layout found is reused (each key is its own hearth-type)
+
+
+def current_layout():
+    """The active keyboard layout's name (us, de...), looked up at most every LAYOUT_TTL seconds."""
+    forced = os.environ.get('HEARTH_TYPE_LAYOUT')
+    if forced:
+        return forced
+    cache = os.path.join(runtime_dir(), 'type-layout')
+    try:
+        if time.time() - os.path.getmtime(cache) < LAYOUT_TTL:
+            with open(cache, encoding='utf-8') as f:
+                name = f.read().strip()
+            if name:
+                return name
+    except OSError:
+        pass
+    name = find_layout()
+    try:
+        os.makedirs(runtime_dir(), mode=0o700, exist_ok=True)
+        with open(cache + '.part', 'w', encoding='utf-8') as f:
+            f.write(name)
+        os.replace(cache + '.part', cache)
+    except OSError:
+        pass
+    return name
+
+
+def find_layout():
+    """KWin's active layout (org.kde.keyboard), else KDE's kxkbrc, else the session's XKB_DEFAULT_LAYOUT, else
+    labwc's environment file, else us."""
+    try:
+        out = subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.kde.keyboard', '--object-path', '/Layouts',
+                              '--method', 'org.kde.KeyboardLayouts.getLayout'], capture_output=True, text=True,
+                             timeout=1).stdout
+        m = re.search(r'(\d+)', out)
+        if m:
+            lst = subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.kde.keyboard', '--object-path',
+                                  '/Layouts', '--method', 'org.kde.KeyboardLayouts.getLayoutsList'],
+                                 capture_output=True, text=True, timeout=1).stdout
+            names = re.findall(r"\('([a-z]{2,3})',", lst)
+            if names:
+                return names[min(int(m.group(1)), len(names) - 1)]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+    try:
+        with open(os.path.join(cfg, 'kxkbrc'), encoding='utf-8') as f:
+            m = re.search(r'^LayoutList=([^\n]*)', f.read(), re.M)
+            if m and m.group(1).strip():
+                return m.group(1).split(',')[0].strip()
+    except OSError:
+        pass
+    if os.environ.get('XKB_DEFAULT_LAYOUT'):
+        return os.environ['XKB_DEFAULT_LAYOUT'].split(',')[0]
+    try:
+        with open(os.path.join(cfg, 'labwc', 'environment'), encoding='utf-8') as f:
+            m = re.search(r'^\s*XKB_DEFAULT_LAYOUT=["\']?([^"\'\n,]*)', f.read(), re.M)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+    except OSError:
+        pass
+    return 'us'
+
+
+def check_peer(conn):
+    try:
+        cred = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
+        return struct.unpack('3i', cred)[1] == os.getuid()
+    except OSError:
+        return False
+
+
+# ---------------------------------------------------------------------- the input method (hearth-kwin-im)
+
+def pct(text):
+    return ''.join(c if c not in '%\n\r' else '%%%02X' % ord(c) for c in text)
+
+
+class InputMethod:
+    """One connection to hearth-kwin-im's socket. commit(text) → True when a text field took it."""
+
+    def __init__(self, path=None):
+        self.path = path or im_sock_path()
+        self.sock = None
+
+    def _ask(self, line):
+        if self.sock is None:
+            if not os.path.exists(self.path):
+                return None
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(IM_TIMEOUT)
+            try:
+                s.connect(self.path)
+            except OSError:
+                s.close()
+                return None
+            self.sock, self.buf = s, b''
+        try:
+            self.sock.sendall(line.encode('utf-8') + b'\n')
+            while b'\n' not in self.buf:
+                c = self.sock.recv(4096)
+                if not c:
+                    raise OSError('closed')
+                self.buf += c
+            ans, self.buf = self.buf.split(b'\n', 1)
+            return ans.decode('utf-8', 'replace')
+        except OSError:
+            self.close()
+            return None
+
+    def state(self):
+        a = self._ask('S')
+        if a is None:
+            return {'running': False, 'active': False}
+        parts = a.split()
+        return {'running': True, 'active': len(parts) > 1 and parts[0] == 'active' and parts[1] == '1',
+                'purpose': int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0}
+
+    def commit(self, text):
+        a = self._ask('T ' + pct(text))
+        return a == 'ok'
+
+    def close(self):
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+        self.sock = None
+
+
+# ---------------------------------------------------------------------- the service (the virtual keyboard)
+
+class Keyboard:
+    def __init__(self):
+        try:
+            import evdev
+        except ImportError:
+            raise Fail('python3-evdev is missing', 2)
+        self.e = evdev.ecodes
+        codes = sorted({getattr(self.e, c) for c in all_codes() if hasattr(self.e, c)})
+        try:
+            self.dev = evdev.UInput({self.e.EV_KEY: codes}, name='Hearth typing keyboard')
+        except (OSError, evdev.UInputError) as err:
+            raise Fail('no access to /dev/uinput (%s)' % err, 3)
+        self.down = set()
+        time.sleep(SETTLE)
+
+    def send(self, pairs):
+        for code, val in pairs:
+            c = getattr(self.e, code, None)
+            if c is None:
+                continue
+            self.dev.write(self.e.EV_KEY, c, val)
+            self.dev.syn()
+            (self.down.add if val else self.down.discard)(c)
+            time.sleep(KEY_GAP)
+
+    def release_all(self):
+        for c in list(self.down):
+            self.dev.write(self.e.EV_KEY, c, 0)
+        self.dev.syn()
+        self.down.clear()
+
+
+def serve():
+    d = runtime_dir()
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
+    lock = open(os.path.join(d, 'type.lock'), 'w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return 0             # another one is starting or running
+    try:
+        kb = Keyboard()
+    except Fail as err:
+        sys.stderr.write('hearth-type: %s\n' % err)
+        return err.code
+    p = sock_path()
+    try:
+        os.unlink(p)
+    except OSError:
+        pass
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(p)
+    os.chmod(p, 0o600)
+    srv.listen(8)
+    last = time.monotonic()
+    try:
+        while time.monotonic() - last < IDLE_EXIT:
+            r, _, _ = select.select([srv], [], [], 30)
+            if not r:
+                continue
+            conn, _ = srv.accept()
+            last = time.monotonic()
+            with conn:
+                if not check_peer(conn):
+                    continue
+                conn.settimeout(10)
+                buf = b''
+                try:
+                    while b'\n' not in buf and len(buf) < MAX_LINE:
+                        c = conn.recv(65536)
+                        if not c:
+                            break
+                        buf += c
+                    req = json.loads(buf.split(b'\n', 1)[0] or b'{}')
+                    ans = handle(kb, req)
+                except (OSError, ValueError) as err:
+                    ans = {'ok': False, 'error': str(err)}
+                try:
+                    conn.sendall(json.dumps(ans).encode() + b'\n')
+                except OSError:
+                    pass
+    finally:
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+        kb.release_all()
+    return 0
+
+
+def handle(kb, req):
+    if req.get('cmd') == 'status':
+        return {'ok': True}
+    ev = req.get('ev')
+    if not isinstance(ev, list):
+        return {'ok': False, 'error': 'nothing to type'}
+    pairs = [(str(c), 1 if v else 0) for c, v in ev if isinstance(c, str) and c.startswith('KEY_')]
+    kb.send(pairs)
+    if req.get('release'):
+        kb.release_all()
+    return {'ok': True}
+
+
+def service_request(req, start=True):
+    p = sock_path()
+    deadline = time.monotonic() + 3.0
+    started = False
+    while True:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(15)
+        try:
+            s.connect(p)
+            s.sendall(json.dumps(req).encode() + b'\n')
+            buf = b''
+            while b'\n' not in buf:
+                c = s.recv(65536)
+                if not c:
+                    break
+                buf += c
+            return json.loads(buf.split(b'\n', 1)[0] or b'{}')
+        except (OSError, ValueError):
+            pass
+        finally:
+            s.close()
+        if not start:
+            return None
+        if not started:
+            started = True
+            proc = subprocess.Popen([sys.executable, os.path.realpath(__file__), '--serve'], stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, start_new_session=True)
+        if proc.poll() is not None and proc.returncode:
+            err = (proc.stderr.read() or b'').decode('utf-8', 'replace').strip()
+            raise Fail(err.replace('hearth-type: ', '') or 'the typing service didn\'t start', proc.returncode)
+        if time.monotonic() > deadline:
+            raise Fail('the typing service didn\'t start')
+        time.sleep(0.05)
+
+
+def run_kwin(acts):
+    layout = current_layout()
+    im = InputMethod()
+    st = im.state()
+    steps, skipped = plan(acts, layout, im_ok=True if st.get('active') else None)
+    via = set()
+    for kind, val in steps:
+        if kind == 'sleep':
+            time.sleep(val / 1000.0)
+        elif kind == 'im?':
+            if im.commit(val):
+                via.add('input method')
+                continue
+            sub, sk = plan([('text', val)], layout)
+            skipped += sk
+            for k2, v2 in sub:
+                if k2 == 'ev':
+                    service_request({'ev': v2})
+                    via.add('keyboard')
+        elif kind == 'ev':
+            ans = service_request({'ev': val})
+            if not ans or not ans.get('ok'):
+                raise Fail('typing failed: %s' % ((ans or {}).get('error') or 'no answer'))
+            via.add('keyboard')
+    im.close()
+    if skipped:
+        sys.stderr.write('hearth-type: the %s layout has no key for %r, left out\n' % (layout_table(layout)[0], skipped))
+    return 0
+
+
+def status():
+    im = InputMethod().state()
+    out = {'route': route(), 'wm': os.environ.get('HEARTH_WM', ''), 'layout': layout_table(current_layout())[0],
+           'wtype': bool(shutil.which('wtype')), 'inputMethod': im.get('running', False),
+           'textField': im.get('active', False), 'service': service_request({'cmd': 'status'}, start=False) is not None}
+    try:
+        import evdev  # noqa: F401
+        out['evdev'] = True
+    except ImportError:
+        out['evdev'] = False
+    out['uinput'] = os.access('/dev/uinput', os.W_OK)
+    return out
+
+
+def main(argv):
+    if argv[:1] == ['--serve']:
+        return serve()
+    if argv[:1] == ['--status']:
+        print(json.dumps(status()))
+        return 0
+    if argv[:1] in (['-h'], ['--help']):
+        print(__doc__)
+        return 0
+    if route() == 'wtype':
+        w = shutil.which('wtype')
+        if w:
+            os.execv(w, [w] + argv)
+    try:
+        return run_kwin(parse_args(argv))
+    except Fail as err:
+        sys.stderr.write('hearth-type: %s\n' % err)
+        return err.code
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

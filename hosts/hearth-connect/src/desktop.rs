@@ -106,6 +106,11 @@ pub fn clipboard_set(text: &str) -> bool {
 /// Types text the US layout can't (accents, other scripts) in Desktop Mode.
 pub fn type_text(text: &str) -> bool {
     if text.is_empty() { return true; }
+    // KWin has no virtual keyboard for wtype: Hearth's typing helper there (docs/KWIN-INPUT.md).
+    let ht = "/usr/share/nimbus/desktop/shell/hearth-type";
+    if env_of("WAYLAND_DISPLAY").is_some() && env_of("HEARTH_WM").as_deref() == Some("kwin") && std::path::Path::new(ht).exists() {
+        return cmd("python3").arg(ht).arg("--").arg(text).status().map(|s| s.success()).unwrap_or(false);
+    }
     if env_of("WAYLAND_DISPLAY").is_some() && has("wtype") { return cmd("wtype").arg("--").arg(text).status().map(|s| s.success()).unwrap_or(false); }
     if env_of("DISPLAY").is_some() && has("xdotool") { return cmd("xdotool").args(["type", "--", text]).status().map(|s| s.success()).unwrap_or(false); }
     false

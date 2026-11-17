@@ -136,10 +136,26 @@ pub fn type_command(text: &str, wayland: bool, has_wtype: bool, has_xdotool: boo
     }
 }
 
+/// Hearth's typing helper (hosts/linux/desktop/shell/hearth-type, docs/KWIN-INPUT.md): on KWin, which has no
+/// virtual keyboard for wtype, it types through Hearth's input method (any character) or a uinput keyboard.
+pub const HEARTH_TYPE: &str = "/usr/share/nimbus/desktop/shell/hearth-type";
+
+/// The same as type_command, through hearth-type (wtype's arguments).
+pub fn hearth_type_command(text: &str, helper: &str) -> Vec<String> {
+    vec!["sh".into(), "-c".into(), "sleep 0.35; exec \"$@\"".into(), "sh".into(), "python3".into(), helper.into(),
+         "--".into(), text.into()]
+}
+
 /// Starts typing it (in the background: the picker closes right after). False: it can only be copied here.
 pub fn type_later(text: &str) -> bool {
     let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
-    match type_command(text, wayland, have("wtype"), have("xdotool")) {
+    let kwin = std::env::var("HEARTH_WM").map(|v| v == "kwin").unwrap_or(false);
+    let picked = if wayland && kwin && std::path::Path::new(HEARTH_TYPE).exists() {
+        Some(hearth_type_command(text, HEARTH_TYPE))
+    } else {
+        type_command(text, wayland, have("wtype"), have("xdotool"))
+    };
+    match picked {
         Some(argv) => Command::new(&argv[0]).args(&argv[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().is_ok(),
         None => false,
     }
@@ -200,6 +216,9 @@ mod tests {
         assert!(type_command("é", true, false, false).is_none());
         // The text is an argument, never part of the shell's script.
         assert!(!w[2].contains('é'));
+        let k = hearth_type_command("é 🔥", HEARTH_TYPE);
+        assert_eq!(&k[4..], &["python3", HEARTH_TYPE, "--", "é 🔥"]);
+        assert!(!k[2].contains('é'));
     }
 
     #[test]

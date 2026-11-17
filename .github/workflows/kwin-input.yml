@@ -1,0 +1,207 @@
+# Mantel on KWin: typing, the lock screen and screen sharing (docs/KWIN-INPUT.md), for real on KWin.
+#   1. helpers-debian: Hearth's KWin helpers (hosts/linux/desktop/kwin-helpers) build on Debian trixie, as in the image.
+#   2. kwin: on Fedora, KWin nested in a headless labwc (which passes uinput keyboards to KWin and takes the pictures),
+#      with Hearth's input method, PipeWire and xdg-desktop-portal with Hearth's KWin portals.conf. Checks
+#      (hosts/linux/test/kwin_e2e.py): which protocols KWin has, typing into a GTK text field through hearth-type
+#      (input method: any character; uinput: keys), Mantel's on-screen keyboard typing on KWin, KWin's screen-sharing
+#      stream (frames really arrive over PipeWire), Hearth's ScreenCast and Screenshot portals through
+#      xdg-desktop-portal with the picker driven like a person would, Hearth's lock screen in KWin's locker, and a
+#      real lock from Lock.qml.
+#   3. shots: the pictures as SHOT notices (1920x1080 captures, JPEG in base64 pieces, one step each).
+# Failures are ::error:: annotations (logs can't always be read).
+name: Mantel on KWin (typing, lock, screen sharing)
+
+on:
+  push:
+    branches: [feature/kwin-input]
+    paths: ['hosts/linux/desktop/shell/hearth-type', 'hosts/linux/desktop/shell/hearth_screencast.py',
+            'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/Lock.qml',
+            'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
+            'hosts/linux/desktop/kwin-helpers/**', 'hosts/linux/desktop/kwin-lock/**', 'hosts/linux/desktop/kwin/**',
+            'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: kwin-input-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helpers-debian:
+    runs-on: ubuntu-latest
+    container: docker.io/library/debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build hearth-kwin-im and hearth-kwin-cast as the image's builder does
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends build-essential pkgconf libwayland-dev libwayland-bin \
+            wayland-protocols plasma-wayland-protocols libglib2.0-dev >/dev/null
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/out 2>&1 | tee /tmp/build.log || {
+            echo "::error title=helpers (Debian)::$(grep -E 'error|warning' /tmp/build.log | head -8 | tr '\n' '|' | cut -c1-900)"; exit 1; }
+          echo "::notice title=helpers (Debian)::built: $(ls /tmp/out | tr '\n' ' ')"
+
+  kwin:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install KWin, PipeWire, the portal, Quickshell and the checking tools
+        run: |
+          dnf -y install dnf5-plugins git python3 python3-gobject python3-evdev python3-pillow gtk3 procps-ng \
+            dbus-daemon dbus-tools kwin kscreenlocker xorg-x11-server-Xwayland mesa-dri-drivers labwc grim wlr-randr \
+            wayland-utils pipewire wireplumber pipewire-gstreamer gstreamer1-plugins-base gstreamer1-plugins-good \
+            xdg-desktop-portal gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel \
+            google-noto-sans-fonts google-noto-color-emoji-fonts adwaita-icon-theme breeze-icon-theme \
+            ImageMagick systemd-udev libinput kmod >/dev/null
+          dnf -y install --skip-unavailable plasma-wayland-protocols-devel plasma-wayland-protocols kf6-kservice rsms-inter-fonts \
+            pipewire-utils libnotify >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland quickshell grim labwc wayland-info pipewire wireplumber; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          kwin_wayland --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests (hearth-type, the portal backend's pieces, the wiring)
+        run: python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_input.py' -v
+
+      - name: Build and install Hearth's KWin pieces where the image puts them
+        run: |
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/out 2>&1 | tee /tmp/build.log || {
+            echo "::error title=helpers (Fedora)::$(grep -E 'error' /tmp/build.log | head -8 | tr '\n' '|' | cut -c1-900)"; exit 1; }
+          install -Dm755 /tmp/out/hearth-kwin-im /usr/libexec/hearth/hearth-kwin-im
+          install -Dm755 /tmp/out/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          cp os/system_files/usr/share/applications/hearth-kwin-*.desktop /usr/share/applications/
+          mkdir -p /usr/share/nimbus /usr/share/plasma/look-and-feel
+          cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          cp -a hosts/linux/desktop/kwin-lock /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
+          # The portal: Hearth's backend (from this checkout) and the KWin session's portals.conf (build.sh's).
+          mkdir -p /usr/share/xdg-desktop-portal/portals /usr/share/dbus-1/services
+          cp os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal /usr/share/xdg-desktop-portal/portals/
+          sed -n '/^cat > \/usr\/share\/xdg-desktop-portal\/hearth-portals.conf/,/^PORTALS$/p' os-bases/peppermint/build.sh | sed '1d;$d' \
+            > /usr/share/xdg-desktop-portal/hearth-portals.conf
+          cat /usr/share/xdg-desktop-portal/hearth-portals.conf
+          sed "s#/usr/share/nimbus/desktop/shell#$PWD/hosts/linux/desktop/shell#" os/system_files/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service \
+            > /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service
+
+      - name: KWin with Hearth's pieces, and the checks
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # What Hearth's KWin session gives KWin (the session branch's environment; here only what these checks need):
+          # HEARTH_WM, the desktop name portals.conf goes by, Hearth's KWin defaults (kscreenlockerrc from this branch)
+          # and the input method line for kwinrc.
+          mkdir -p /tmp/kwin-ci-xdg
+          printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/hearth-kwin-im.desktop\nVirtualKeyboardEnabled=true\n' > /tmp/kwin-ci-xdg/kwinrc
+          export HEARTH_WM=kwin XDG_CURRENT_DESKTOP=Hearth:KDE XDG_SESSION_DESKTOP=Hearth XDG_SESSION_TYPE=wayland
+          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/xdg:/tmp/kwin-ci-xdg:/etc/xdg"
+          export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_BACKEND=software
+          # KWin finds hearth-kwin-cast's .desktop file through KService's cache.
+          command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1
+          # PipeWire before KWin (its screen sharing connects at start).
+          pipewire >shots/pipewire.log 2>&1 &
+          sleep 1; wireplumber >shots/wireplumber.log 2>&1 &
+          sleep 2
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          modprobe uinput 2>/dev/null; ls -l /dev/uinput || echo "::warning title=typing::no /dev/uinput"
+          for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
+          udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
+          # The outer labwc: holds KWin as one undecorated 1920x1080 window at 0,0 (grim takes the pictures from it) and
+          # passes uinput keyboards to it (libinput).
+          mkdir -p "$HOME/.config/labwc"
+          cat > "$HOME/.config/labwc/rc.xml" <<'XML'
+          <labwc_config>
+            <keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard>
+            <windowRules><windowRule identifier="*" serverDecoration="no"><action name="MoveTo" x="0" y="0"/></windowRule></windowRules>
+          </labwc_config>
+          XML
+          sed -i 's/^          //' "$HOME/.config/labwc/rc.xml"
+          ( unset HEARTH_WM XDG_CONFIG_DIRS; WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
+            labwc >shots/outer.log 2>&1 & )
+          for i in $(seq 1 20); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          [ -n "$OUTER" ] || { echo "::error title=labwc::didn't start: $(tail -5 shots/outer.log | tr '\n' '|' | cut -c1-500)"; exit 1; }
+          WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --socket wayland-hearth >shots/kwin.log 2>&1 &
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
+          sleep 4
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland GDK_BACKEND=wayland OUTER
+          # xdg-desktop-portal, started by hand with this environment (no systemd here).
+          XDP=""; for x in /usr/libexec/xdg-desktop-portal /usr/lib/xdg-desktop-portal; do [ -x "$x" ] && { XDP="$x"; break; }; done
+          "$XDP" -r -v > shots/xdg-desktop-portal.log 2>&1 &
+          sleep 2
+          timeout 900 python3 hosts/linux/test/kwin_e2e.py shots; rc=$?
+          echo "::notice title=KWin log::$(grep -iE 'input ?method|screencast|screen ?lock|ksld|greeter|pipewire' shots/kwin.log | grep -v '^$' | tail -12 | tr '\n' '|' | cut -c1-1500)"
+          echo "::notice title=portal log::$(grep -iE 'hearth|screencast|screenshot|error|backend' shots/xdg-desktop-portal.log | tail -10 | tr '\n' '|' | cut -c1-1500)"
+          pkill -f kscreenlocker_greet; pkill quickshell; pkill -f hearth-kwin; pkill -f xdg-desktop-portal; pkill -f /tmp/kwin_wayland; pkill wireplumber; pkill pipewire; pkill labwc
+          sleep 2; pkill -9 -f /tmp/kwin_wayland; pkill dbus-daemon
+          exit $rc
+
+      - name: Keep the pictures and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kwin-input-shots
+          path: shots
+          retention-days: 14
+
+  # The pictures as notices: title "SHOT <name> <n>", a JPEG of the 1920x1080 capture in base64 pieces, one step each
+  # (a step keeps 10 notices).
+  shots:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kwin-input-shots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for f in sorted(os.listdir('shots')):
+              if not f.endswith('.png'):
+                  continue
+              im = Image.open(os.path.join('shots', f)).convert('RGB')
+              print(f, im.size)
+              for w, q in ((960, 50), (800, 42), (720, 36), (640, 30), (560, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open(os.path.join('shots', f[:-4] + '.jpg'), 'wb').write(b.getvalue())
+          PY
+          ls -la shots || true
+      - name: Picture (kwin-osk-typing)
+        run: f=shots/kwin-osk-typing.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-osk-typing $i::$part"; done || true
+      - name: Picture (kwin-typed-unicode)
+        run: f=shots/kwin-typed-unicode.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-typed-unicode $i::$part"; done || true
+      - name: Picture (cast-picker-screens)
+        run: f=shots/cast-picker-screens.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT cast-picker-screens $i::$part"; done || true
+      - name: Picture (cast-picker-windows)
+        run: f=shots/cast-picker-windows.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT cast-picker-windows $i::$part"; done || true
+      - name: Picture (cast-frame)
+        run: f=shots/cast-frame.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT cast-frame $i::$part"; done || true
+      - name: Picture (shot-picker)
+        run: f=shots/shot-picker.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT shot-picker $i::$part"; done || true
+      - name: Picture (lock-greeter)
+        run: f=shots/lock-greeter.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-greeter $i::$part"; done || true
+      - name: Picture (lock-wrong-password)
+        run: f=shots/lock-wrong-password.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-wrong-password $i::$part"; done || true
+      - name: Picture (lock-real)
+        run: f=shots/lock-real.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-real $i::$part"; done || true

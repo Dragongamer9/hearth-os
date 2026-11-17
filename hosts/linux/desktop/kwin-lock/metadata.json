@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [{ "Name": "Hearth OS" }],
+        "Description": "Mantel's lock screen on KWin (Hearth Desktop Mode): only the lock screen, nothing else of a look",
+        "Id": "org.hearth.mantel-lock",
+        "License": "GPL-2.0-or-later",
+        "Name": "Hearth Mantel lock screen",
+        "Version": "1"
+    },
+    "X-Plasma-MainScript": "lockscreen/LockScreen.qml"
+}

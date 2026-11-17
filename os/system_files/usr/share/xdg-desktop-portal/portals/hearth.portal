@@ -1,4 +1,4 @@
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.hearth
-Interfaces=org.freedesktop.impl.portal.FileChooser;
-UseIn=Nimbus
+Interfaces=org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Screenshot;
+UseIn=Nimbus;Hearth
