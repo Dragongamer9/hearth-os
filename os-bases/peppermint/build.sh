@@ -1260,7 +1260,12 @@ DESKTOP
 if [ -x /ctx/nimbus-app/hearth-text ]; then
   install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
   # An editor that can't start is worse than none: then text files open in whatever else is installed.
-  if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
+  if ldd /usr/bin/hearth-text | grep 'not found'; then
+    echo "::warning title=Hearth Text::it needs libraries this image doesn't have, so it's left out: $(ldd /usr/bin/hearth-text | grep 'not found' | tr -s ' \t' ' ' | tr '\n' '|' | cut -c1-400)"
+    rm -f /usr/bin/hearth-text
+  fi
+else
+  echo "::warning title=Hearth Text::the Hearth app's build didn't carry hearth-text (os/nimbus-app), so the image has no Hearth Text"
 fi
 if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
