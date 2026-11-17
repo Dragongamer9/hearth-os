@@ -101,7 +101,8 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Blur and background contrast behind Hearth's panels — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Translucency (moving, inactive, menus) — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Dim inactive windows, dim behind password prompts — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
-- [ ] Rounded corners and outlines for windows — partly: rounded top corners in Hearth's Aurorae frames (hearth_aurorae.py). Left: bottom corners, outlines, apps that draw their own (Steam) (M)
+- [x] Rounded corners and outlines for windows (Hearth's frames) — hearth_aurorae.py: all four corners rounded (`bottom_radius`, as far as the window's own square corner fits inside the frame), 4 px sides and bottom ("SIDE = 4"), a light 1 px outline all round (`outline_color`); shadow, maximized and live look change kept; test_kwin_windows.py "test_rounded_bottom_corners_and_outline"; kwin-windows.yml: "the frame's bottom corners are rounded", "the frame has a light outline round it", pictures "kwin-frame-shadow-light-corner", "kwin-frame-shadow-dark-corner" (needs testing on a device)
+- [ ] Rounded corners for apps that draw their own frames (Steam, GTK header bars) — needs a KWin effect that clips windows' corners; KWin 6.3 has none built in (M)
 - [x] Peek at desktop / Show desktop animation, login and logout fades — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Mouse click animation, mouse mark, track mouse, touch points — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Shake cursor to find it — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
@@ -118,7 +119,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Window switcher styles (Thumbnail grid, Large icons, … Cover switch, Flip switch) and their settings — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [ ] Second switcher (Alt+`, same app's windows) (S)
 - [x] Virtual desktops: add, remove, rename, rows, wrap around, OSD — SetKwinDesktops.qml (needs testing on a device)
-- [ ] Different tile layouts per desktop — needs a newer KWin than Debian's 6.3: KWin 6.3 keeps one tile layout per screen, not per desktop
+- [ ] Different tile layouts per desktop — needs newer KWin: KWin's tiles are one layout per screen in 6.3 (Debian 13); a layout per virtual desktop came with Plasma 6.4 (KDE bug 466031). Snap layouts' zones (SnapLayouts.qml) are the same on every desktop until then (S)
 
 ### Window management
 
@@ -133,7 +134,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Session restore: reopen apps after restart — SessionRestore.qml, SetStartup.qml "Reopen my apps from last time" (off by default, WinList); test_system_settings_114.py "test_off_by_default_and_only_at_sign_in" (needs testing on a device)
 - [ ] Plasma's KWin scripts (Minimize all, Desktop change OSD, video wall, sync skip-switcher) — Hearth has: Minimize all (show-desktop-2) (S)
 - [x] Exclude a window from screen sharing (title bar menu) — hearth-windows.js "Hide from screen sharing" (and KWin's excludeFromCapture where it has it); hearth_screencast.py "hidden_windows"; cast-picker.qml "hidden from sharing and not listed"; kwin-windows.yml: "the screen-sharing picker leaves the hidden window out", pictures "kwin-window-menu-extras", "kwin-cast-hidden" (needs testing on a device)
-- [ ] Picture-in-picture windows: check Hearth Player and browsers use it under KWin (S)
+- [x] Picture-in-picture windows stay on top under KWin — shortcuts.json "rules": "picture-in-picture" (Firefox's "Picture-in-Picture", Chromium's "Picture in picture", by title and app: Firefox, Firefox ESR, LibreWolf, Chromium, Chrome, Brave, Edge, Vivaldi), hearth-windows.js `ruleMatches`; kwin-windows-mock.js "picture-in-picture windows stay on top", test_kwin_windows.py "test_picture_in_picture_rule"; kwin-windows.yml: "Firefox's picture-in-picture window stays on top", "the picture-in-picture window is still on top with another window in front", picture "kwin-pip-on-top". Hearth Player has no picture-in-picture (WebKitGTK has none) (needs testing on a device)
 
 ### Screen edges, gestures, input
 
