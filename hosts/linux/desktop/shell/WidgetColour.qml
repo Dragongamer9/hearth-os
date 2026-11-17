@@ -35,8 +35,8 @@ WidgetBase {
         spacing: 6
         Rectangle { width: 18; height: 18; radius: 5; color: w.cur; border.color: Theme.line }
         Text { text: w.cur.toUpperCase(); color: Theme.text; font.family: "DejaVu Sans Mono"; font.pixelSize: 13 }
-        MouseArea { anchors.fill: parent; onClicked: w.pick() }
     }
+    MouseArea { visible: w.compact; anchors.fill: parent; onClicked: w.pick() }
 
     ColumnLayout {
         visible: !w.compact

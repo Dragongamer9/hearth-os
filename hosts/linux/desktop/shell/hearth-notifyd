@@ -339,7 +339,8 @@ class Hub:
                 vpath = '/JobViewServer/JobView_%d' % jid
                 if iface == 'org.kde.JobViewServerV2':
                     entry, caps, hints = args
-                    app, icon = entry, ''
+                    # (the shell shows the app's own name from its desktop entry when it has one)
+                    app, icon = (str(entry).rsplit('.', 1)[-1] or 'An app').capitalize(), ''
                     hint = {k: (v if not hasattr(v, 'unpack') else v.unpack()) for k, v in (hints or {}).items()}
                 else:
                     app, icon, caps = args
