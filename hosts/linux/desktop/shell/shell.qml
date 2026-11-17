@@ -243,6 +243,8 @@ ShellRoot {
     Loader { source: "Clipboard.qml" }
     Loader { source: "Mixer.qml" }
     Loader { source: "SnapLayouts.qml" }
+    // Force close a frozen window (Ctrl+Alt+Esc, KWin only): loaded by file name like the rest here.
+    Loader { source: "ForceClose.qml" }
     // Recording the screen (Recorder.qml, hearth-record) and the capture dot that shows whenever the screen is being
     // recorded or someone is connected with Remote desktop (CaptureIndicator.qml, hearth-vnc). Loaded by file name: a
     // problem in either only loses it.

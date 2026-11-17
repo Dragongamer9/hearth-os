@@ -417,6 +417,195 @@ def shadow_check(theme):
     desk({'wallpaper': ''})
 
 
+def differs(a, b):
+    """How different two of the pictures are (0..255 on average); -1 if either is missing."""
+    try:
+        from PIL import Image, ImageChops, ImageStat
+        x = Image.open(os.path.join(OUT, 'kwin-%s.png' % a)).convert('L')
+        y = Image.open(os.path.join(OUT, 'kwin-%s.png' % b)).convert('L').resize(x.size)
+        return ImageStat.Stat(ImageChops.difference(x, y)).mean[0]
+    except Exception:
+        return -1
+
+
+def extras_check(procs):
+    """The KDE extras on KWin (feature/kwin-window-extras): live previews, Hearth's Alt+Tab, Snap layouts from resting on
+    Maximize, force closing a frozen window, hiding a window from screen sharing, KWin's Overview / Present windows /
+    Desktop grid opened from Mantel, and the keys in Settings › Keyboard. A picture of each."""
+    try:
+        import evdev
+        from evdev import ecodes as e
+        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTALT, e.KEY_TAB, e.KEY_ESC, e.KEY_LEFTMETA, e.KEY_W, e.KEY_DOWN, e.KEY_RIGHT, e.KEY_UP]}, name='Hearth test keyboard 2')
+        time.sleep(2)
+    except Exception as ex:
+        kbd = None
+        log('::warning title=KWin extras::no virtual keyboard: %s' % ex)
+
+    def key(*names, hold=0.08):
+        if not kbd:
+            return
+        for n in names:
+            kbd.write(e.EV_KEY, getattr(e, n), 1); kbd.syn(); time.sleep(0.03)
+        time.sleep(hold)
+        for n in reversed(names):
+            kbd.write(e.EV_KEY, getattr(e, n), 0); kbd.syn(); time.sleep(0.03)
+        time.sleep(0.5)
+
+    ipc('browserpick', 'close')          # the first-run "Pick your browser" card would cover the pictures
+    for t in ('Test A', 'Test B'):
+        ipc('winlist', 'act', t, 'activate')
+        wait(lambda: (win(t) or {}).get('minimized') is False, 5)
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'left-half'}))
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'right-half'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'left-half' and (win('Test B') or {}).get('zone') == 'right-half')
+    time.sleep(1)
+    shot('extras-before')
+    blog = bridge_log()
+    check('the script follows the pointer (resting on Maximize can open Snap layouts)', 'no cursorPosChanged' not in blog, blog[-300:])
+
+    # ---- live previews (KWin's previews script, above the dock as the dock asks)
+    ready = wait(lambda: state().get('previews'), 20)
+    check('KWin\'s previews script is loaded and asking the bridge', ready, [l for l in bridge_log().splitlines() if 'preview' in l.lower()][-3:])
+    ipc('winlist', 'previewAt', '*', 960, 960)
+    time.sleep(2)
+    log('::notice title=KWin previews::%s' % ' | '.join(l for l in bridge_log().splitlines() if 'preview' in l.lower())[-600:])
+    shot('preview')
+    crop('preview', (240, 420, 1680, 1080), 'preview-zoom')
+    d = differs('preview', 'extras-before')
+    check('the previews card shows over the desktop', d > 0.15, 'picture difference %.2f' % d)
+    ipc('winlist', 'previewHide')
+
+    # ---- Hearth's Alt+Tab (hold Alt, Tab once: the switcher stays up while Alt is held)
+    a_id = (win('Test A') or {}).get('id')
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: listed().get('active') == a_id)
+    if kbd:
+        kbd.write(e.EV_KEY, e.KEY_LEFTALT, 1); kbd.syn(); time.sleep(0.1)
+        kbd.write(e.EV_KEY, e.KEY_TAB, 1); kbd.syn(); time.sleep(0.05)
+        kbd.write(e.EV_KEY, e.KEY_TAB, 0); kbd.syn()
+        time.sleep(1.2)
+        shot('alt-tab')
+        kbd.write(e.EV_KEY, e.KEY_LEFTALT, 0); kbd.syn()
+        switched = wait(lambda: listed().get('active') == (win('Test B') or {}).get('id'), 6)
+        check('Alt+Tab switches to the other window', switched, listed().get('active'))
+        d = differs('alt-tab', 'extras-before')
+        check('the Alt+Tab switcher shows (Hearth\'s, org.hearth.switcher)', d > 0.4, 'picture difference %.2f' % d)
+
+    # ---- Snap layouts from resting on Maximize: what the script sends when the pointer is on the button
+    a = win('Test A') or {}
+    f = a.get('frame') or {}
+    if f:
+        btn = {'id': a['id'], 'x': f['x'] + f['w'] - 5 - 34 - 2 - 34, 'y': f['y'] + 2, 'w': 34, 'h': 24, 'output': a.get('output', '')}
+        bridge('HoverMax', GLib.Variant('(s)', (json.dumps(btn),)))
+        st = wait(lambda: json.loads(ipc('snap', 'state') or '{}').get('hover') and json.loads(ipc('snap', 'state')), 6)
+        check('resting on Maximize opens Snap layouts under the button', st, ipc('snap', 'state'))
+        time.sleep(1)
+        shot('snap-maximize')
+        crop('snap-maximize', (max(0, btn['x'] - 420), max(0, btn['y'] - 20), btn['x'] + 300, btn['y'] + 330), 'snap-maximize-zoom')
+        bridge('HoverMax', GLib.Variant('(s)', (json.dumps({'id': ''}),)))
+        gone = wait(lambda: not json.loads(ipc('snap', 'state') or '{}').get('shown'), 5)
+        check('Snap layouts goes away when the pointer leaves the button', gone, ipc('snap', 'state'))
+        ipc('snap', 'close')
+
+    # ---- hidden from screen sharing: the title bar menu's entry, then the portal's picker leaves it out
+    ipc('winlist', 'run', json.dumps({'op': 'noShare', 'title': 'Test B', 'on': True}))
+    hid = wait(lambda: (win('Test B') or {}).get('noShare') is True, 6)
+    check('Hide from screen sharing marks the window', hid, win('Test B'))
+    try:
+        sys.path.insert(0, SHELL)
+        import hearth_screencast as hs
+        wins = [{'id': w['id'], 'title': w['title'], 'app': w.get('appId', '')} for w in listed().get('windows', [])]
+        outs = [{'name': 'Virtual-1', 'desc': 'Screen', 'x': 0, 'y': 0, 'w': 1920, 'h': 1080}]
+        req = hs.build_request('cast', 'com.discordapp.Discord', hs.MONITOR | hs.WINDOW, False, outs, wins, '/nonexistent', False)
+        check('the screen-sharing picker leaves the hidden window out', [w['title'] for w in req['windows']] == ['Test A'] and req['hiddenCount'] == 1,
+              [w['title'] for w in req['windows']])
+        rq = os.path.join(OUT, 'cast-request.json')
+        with open(rq, 'w') as fh:
+            json.dump(req, fh)
+        picker = subprocess.Popen(['python3', os.path.join(SHELL, 'hearth_screencast.py'), 'picker', rq], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(5)
+        subprocess.run(['quickshell', 'ipc', '-p', os.path.join(SHELL, 'cast-picker.qml'), 'call', 'cast', 'tab', 'windows'], timeout=10, capture_output=True)
+        time.sleep(1)
+        shot('cast-hidden')
+        subprocess.run(['quickshell', 'ipc', '-p', os.path.join(SHELL, 'cast-picker.qml'), 'call', 'cast', 'cancel'], timeout=10, capture_output=True)
+        try:
+            picker.wait(10)
+        except subprocess.TimeoutExpired:
+            picker.kill()
+    except Exception as ex:
+        check('the screen-sharing picker leaves the hidden window out', False, ex)
+    ipc('winlist', 'run', json.dumps({'op': 'noShare', 'title': 'Test B', 'on': False}))
+    ipc('winlist', 'act', 'Test A', 'activate')
+    time.sleep(0.5)
+    do({'op': 'menu'})
+    time.sleep(1.5)
+    # KWin puts scripts' entries under its menu's last group ("Extensions" here): the keys walk to it and open it.
+    # (Up from nothing picked: the last entry, Close; once more: Extensions, just above it.)
+    for _ in range(2):
+        key('KEY_UP', hold=0.03)
+    key('KEY_RIGHT')
+    time.sleep(1)
+    shot('window-menu-extras')
+    key('KEY_ESC'); key('KEY_ESC')
+
+    # ---- force closing a frozen window: KWin's click-a-window first (then Esc), then the prompt for a stopped app
+    ipc('forceclose', 'start')
+    picking = wait(lambda: json.loads(ipc('forceclose', 'state') or '{}').get('phase') == 'picking', 5)
+    check('Ctrl+Alt+Esc\'s pick starts (KWin\'s click-a-window)', picking, ipc('forceclose', 'state'))
+    time.sleep(1)
+    shot('force-close-pick')
+    key('KEY_ESC')
+    cancelled = wait(lambda: json.loads(ipc('forceclose', 'state') or '{}').get('phase') == '', 6)
+    check('Esc cancels the pick', cancelled, ipc('forceclose', 'state'))
+    ipc('forceclose', 'cancel')
+    k = subprocess.Popen(['foot', '--app-id=hearth.test.k', '--title=Test K', 'sleep', '600'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    procs.append(k)
+    if wait(lambda: win('Test K'), 15):
+        ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test K', 'zone': 'center'}))
+        time.sleep(1.5)
+        os.kill(k.pid, 19)                      # SIGSTOP: it really stops answering
+        ipc('forceclose', 'ask', 'Test K')
+        time.sleep(1.5)
+        shot('force-close')
+        ipc('forceclose', 'confirm')
+        closed = wait(lambda: not win('Test K') and k.poll() is not None, 12)
+        check('Force close ends a frozen window (asked, then made to)', closed, [w.get('title') for w in listed().get('windows', [])])
+    else:
+        check('a window to force close', False, 'Test K never came')
+
+    # ---- KWin's own views, opened the way Mantel's Task view button and keys do
+    for name, pic in (('overview', 'overview'), ('windows', 'present-windows'), ('grid', 'desktop-grid')):
+        ipc('winlist', 'effect', name)
+        time.sleep(2.5)
+        shot(pic)
+        d = differs(pic, 'extras-before')
+        check('KWin\'s %s opens from Mantel' % pic.replace('-', ' '), d > 1.0, 'picture difference %.2f' % d)
+        key('KEY_ESC')
+        time.sleep(1.5)
+    # Super+W: Hearth's key for the Overview (KDE's own freed for it).
+    if kbd:
+        key('KEY_LEFTMETA', 'KEY_W')
+        time.sleep(2.5)
+        shot('overview-key')
+        d = differs('overview-key', 'extras-before')
+        check('Super+W opens the Overview', d > 1.0, 'picture difference %.2f' % d)
+        key('KEY_ESC')
+        time.sleep(1)
+    kk = keys_now()
+    check('Hearth\'s Super+W has its key (KDE\'s Overview freed)', kk.get('kwin/Hearth overview') == [[0x10000000 | 0x57]], kk.get('kwin/Hearth overview', kk))
+    check('Hearth\'s Ctrl+Alt+Esc has its key (KDE\'s Kill Window freed)', kk.get('kwin/Hearth kill-window') == [[0x04000000 | 0x08000000 | 0x01000000]],
+          kk.get('kwin/Hearth kill-window', kk))
+
+    # ---- the keys in Settings › Keyboard › Keyboard shortcuts
+    ipc('browserpick', 'close')
+    ipc('settings', 'page', 'keyboard:shortcuts')
+    time.sleep(4)
+    shot('shortcuts')
+    ipc('settings', 'close')
+    if kbd:
+        kbd.close()
+
+
 def main():
     s = wait(lambda: state().get('connected') and state(), 40)
     check('Mantel started the bridge and KWin\'s script is talking', s, json.dumps(s or state())[:400])
@@ -551,7 +740,10 @@ def main():
     want = ['Apps', 'Return to Game Mode', 'Reconfigure', 'Log out']     # Terminal, Files: Mantel's own entries
     check('the desktop menu has menu.xml\'s entries', [i for i in items if i != '-'] == want, items)
     ipc('desktop', 'close')
+    for t in ('Test A', 'Test B'):
+        ipc('winlist', 'act', t, 'activate')
 
+    extras_check(procs)
     frames_check(procs)
 
     for p in procs:

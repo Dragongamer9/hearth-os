@@ -275,6 +275,34 @@ class ScreenCast(unittest.TestCase):
         self.assertEqual(hs.cursor_mode(4), 4)
         self.assertEqual(hs.cursor_mode(0), hs.CURSOR_EMBEDDED)
 
+    def test_hidden_from_sharing(self):
+        """A window hidden from screen sharing (its title bar menu: the bridge's windows.json noShare) is never offered."""
+        outs = [{'name': 'DP-1', 'desc': 'Main', 'x': 0, 'y': 0, 'w': 1920, 'h': 1080}]
+        wins = [{'id': '{1}', 'title': 'Firefox', 'app': 'firefox'}, {'id': '{2}', 'title': 'Bank', 'app': 'firefox'}]
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, 'hearth'))
+        old = os.environ.get('XDG_RUNTIME_DIR')
+        os.environ['XDG_RUNTIME_DIR'] = d
+        try:
+            r = hs.build_request('cast', '', hs.MONITOR | hs.WINDOW, False, outs, wins, '/nonexistent', False)
+            self.assertEqual([w['title'] for w in r['windows']], ['Firefox', 'Bank'])
+            self.assertEqual(r['hiddenCount'], 0)
+            with open(os.path.join(d, 'hearth', 'windows.json'), 'w') as f:
+                json.dump({'windows': [{'id': '{2}', 'noShare': True}, {'id': '{1}'}], 'captureHide': False}, f)
+            r = hs.build_request('cast', '', hs.MONITOR | hs.WINDOW, False, outs, wins, '/nonexistent', False)
+            self.assertEqual([w['title'] for w in r['windows']], ['Firefox'])
+            self.assertEqual(r['hiddenCount'], 1)
+            self.assertTrue(r['screensShowHidden'])
+            with open(os.path.join(d, 'hearth', 'windows.json'), 'w') as f:
+                json.dump({'windows': [{'id': '{2}', 'noShare': True}], 'captureHide': True}, f)
+            self.assertFalse(hs.build_request('cast', '', hs.WINDOW, False, outs, wins, '/x', False)['screensShowHidden'])
+            self.assertIn('excludeFromCapture === true) continue', hs.WINDOW_SCRIPT)
+        finally:
+            if old is None:
+                os.environ.pop('XDG_RUNTIME_DIR', None)
+            else:
+                os.environ['XDG_RUNTIME_DIR'] = old
+
     def test_stream_helper(self):
         d = tempfile.mkdtemp()
         fake = os.path.join(d, 'cast')
