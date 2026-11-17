@@ -26,6 +26,8 @@ from gi.repository import Gio, GLib  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.join(os.path.dirname(HERE), 'desktop', 'shell')
 INSTALLED = '/usr/share/nimbus/desktop/shell'
+# hearth-portal's `cast` (no Allow prompt) works only in Hearth's checks.
+os.environ['HEARTH_CHECKS'] = '1'
 HT = os.path.join(INSTALLED, 'hearth-type')
 CAST_PICKER = os.path.join(INSTALLED, 'cast-picker.qml')
 SHOTS = sys.argv[1]
