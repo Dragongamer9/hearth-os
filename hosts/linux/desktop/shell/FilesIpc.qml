@@ -35,7 +35,7 @@ Scope {
         function details(on: string): void { ipc.get().detailsPane = on === "on"; ipc.get().rememberView(); }
         function undo(): void { ipc.get().undo(); }
         // The terminal panel (F4) and split view (F9) on or off; Compare two items of this folder ("a.txt/b.txt").
-        function terminal(on: string): void { ipc.get().termPanel = on === "on"; }
+        function terminal(on: string): void { ipc.get().showTerminal(on === "on"); }
         function split(on: string): void { ipc.get().splitView = on === "on"; }
         function compare(names: string): void { const ps = names.split("/").map(n => ipc.get().entries.find(x => x.name === n)).filter(Boolean).map(e => e.path); ipc.get().compareTwo(ps); }
         // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.

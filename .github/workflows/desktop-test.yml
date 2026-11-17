@@ -1921,12 +1921,13 @@ jobs:
           SH="$PWD/hosts/linux/desktop/shell"
           # The password store with two made-up sign-ins (no real secret: the values are the word "demo").
           if command -v gnome-keyring-daemon >/dev/null; then
-            eval "$(printf '' | gnome-keyring-daemon --unlock --replace --components=secrets 2>/dev/null)" || true
+            printf '' | gnome-keyring-daemon --unlock --components=secrets > $o/gkr.log 2>&1 || true
+            eval "$(gnome-keyring-daemon --start --components=secrets 2>>$o/gkr.log)" || true
             sleep 2
             printf demo | secret-tool store --label='Chromium Safe Storage' application chromium xdg:schema chrome_libsecret_os_crypt_password_v2 || true
             printf demo | secret-tool store --label='smb://nas/photos' xdg:schema org.gnome.keyring.NetworkPassword user sam server nas protocol smb || true
           fi
-          say "passwords: $(python3 $SH/hearth-secrets status 2>&1 | tail -1 | cut -c1-300)"
+          say "passwords: $(python3 $SH/hearth-secrets status 2>&1 | tail -1 | cut -c1-300) · tools: $(for x in busctl secret-tool gnome-keyring-daemon; do command -v $x >/dev/null && printf '%s ' $x || printf 'no-%s ' $x; done) · bus: ${DBUS_SESSION_BUS_ADDRESS:-none} · $(tr '\n' ' ' < $o/gkr.log 2>/dev/null | cut -c1-200)"
           # Flathub for the App store (yours, no system helper needed), and the file index made once.
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
           say "store: $(python3 $SH/hearth-store home 2>&1 | tail -1 | cut -c1-200)"
@@ -1970,7 +1971,7 @@ jobs:
           ipc settings close
           # ---- Hearth Files: the terminal panel (F4), split view (F9), Compare
           ipc files open "$HOME/Documents"; sleep 3
-          ipc filemanager terminal on; sleep 1; wtype "ls -la" 2>/dev/null; wtype -k Return; sleep 3; grim $o/files-terminal.png || true
+          ipc filemanager terminal on; sleep 2; wtype "ls -la" 2>/dev/null; wtype -k Return; sleep 3; grim $o/files-terminal.png || true
           ipc filemanager terminal off; ipc filemanager split on; sleep 3; grim $o/files-split.png || true
           ipc filemanager split off; ipc filemanager compare "report.txt/report-v2.txt"; sleep 2; grim $o/files-compare.png || true
           ipc files close
