@@ -39,15 +39,16 @@ ColumnLayout {
             model: dr.info ? dr.info.drivers : []
             delegate: SetRow {
                 required property var modelData
-                readonly property bool can: !modelData.installed && !!modelData.available && dr.info.canInstall
+                readonly property bool can: !modelData.infoOnly && !modelData.installed && !!modelData.available && dr.info.canInstall
                 icon: modelData.package.indexOf("nvidia") === 0 || modelData.device.indexOf("graphics") >= 0 ? "display"
                     : modelData.package.indexOf("microcode") >= 0 ? "cpu" : modelData.device.indexOf("sound") >= 0 ? "vol" : "wifi"
                 title: modelData.device + "  ·  " + modelData.package
-                sub: modelData.installed ? "Installed (" + modelData.installed + ")" + (modelData.why.length > 1 ? " · " + modelData.why.slice(1).join(" · ") : "")
+                sub: modelData.infoOnly ? modelData.note + (modelData.installed ? " · installed (" + modelData.installed + ")" : "")
+                    : modelData.installed ? "Installed (" + modelData.installed + ")" + (modelData.why.length > 1 ? " · " + modelData.why.slice(1).join(" · ") : "")
                     : modelData.available ? "Not installed · " + modelData.available + " is there to install" + (modelData.why.length > 1 ? " · " + modelData.why.slice(1).join(" · ") : "")
                     : modelData.note
-                chip: modelData.installed ? (modelData.inUse ? "In use" : "Installed") : modelData.available ? "Not installed" : "Not available"
-                chipKind: modelData.installed ? "ok" : modelData.available ? "warn" : "off"
+                chip: modelData.infoOnly ? (modelData.inUse ? "In use" : "With updates") : modelData.installed ? (modelData.inUse ? "In use" : "Installed") : modelData.available ? "Not installed" : "Not available"
+                chipKind: modelData.infoOnly ? (modelData.inUse ? "ok" : "off") : modelData.installed ? "ok" : modelData.available ? "warn" : "off"
                 value: can ? (dr.confirm === modelData.package ? "Install (asks for a password)" : "Install…") : ""
                 danger: dr.confirm === modelData.package
                 chevron: false
@@ -57,7 +58,7 @@ ColumnLayout {
                     if (dr.confirm !== modelData.package) { dr.confirm = modelData.package; return; }
                     dr.confirm = "";
                     worker.run(["driver-install", modelData.package], r => {
-                        const t = modelData.package + " is installed" + (r && r.restart ? ": restart the PC to use it." : ".");
+                        const t = modelData.package + " is installed: it takes effect after a restart (graphics firmware comes with Hearth OS's updates).";
                         if (dr.page) dr.page.say(t); SettingsNav.toast(t); dr.load();
                     }, e => { if (dr.page) dr.page.say(e, true); });
                 }

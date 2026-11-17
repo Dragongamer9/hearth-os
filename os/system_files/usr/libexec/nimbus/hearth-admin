@@ -260,7 +260,9 @@ def recovery_next_start():
 
 UNLOCK = '/usr/bin/hearth-unlock'
 # Settings › App store › Drivers (hearth_store_extras.py has the same list)
-DRIVER_PKG = re.compile(r'^(nvidia-open|nvidia-driver|firmware-[a-z0-9][a-z0-9-]{1,40}|intel-microcode|amd64-microcode)$')
+# Only the firmware packages Settings › Apps › Drivers offers (hearth_store_extras.py's DRIVER_PKG, kept the same);
+# microcode and Nvidia's driver come with Hearth OS's image. Always re.fullmatch.
+DRIVER_PKG = re.compile(r'(firmware-amd-graphics|firmware-intel-graphics|firmware-iwlwifi|firmware-sof-signed|firmware-realtek|firmware-atheros|firmware-mediatek|firmware-brcm80211|firmware-nvidia-graphics|firmware-cirrus|firmware-misc-nonfree)')
 UNLOCK_ACTIONS = {'on': '--unlock', 'off': '--lock', 'resume': '--resume', 'dismiss': '--dismiss',
                   'reapply': '--reapply-later'}
 
@@ -2841,8 +2843,8 @@ def main(argv):
         unlock(['--install-deb', argv[2]])
     elif cmd == 'driver-install' and len(argv) == 3:
         caller()
-        if not DRIVER_PKG.match(argv[2]):
-            fail('only a driver package (nvidia-open, nvidia-driver, firmware-*, intel-microcode, amd64-microcode)')
+        if not DRIVER_PKG.fullmatch(argv[2]):
+            fail('only a firmware package Settings › Apps › Drivers offers (processor and Nvidia drivers come with Hearth OS\'s updates)')
         unlock(['--install-package', argv[2]])
     elif cmd == 'deb-remove' and len(argv) == 3:
         caller()

@@ -53,7 +53,7 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+deb-(install|remove)(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
-    // A driver from Debian (Settings › App store › Drivers: Nvidia's, firmware-*, microcode) goes on the system itself
+    // A driver from Debian (Settings › App store › Drivers: the firmware packages it offers) goes on the system itself
     // and its scripts run as root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&

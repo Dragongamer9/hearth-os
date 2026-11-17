@@ -30,7 +30,9 @@ PREFS_FILE = os.path.join(CONFIG, 'nimbus', 'store.json')
 PREFS_DEFAULTS = {'notifyUpdates': True}
 ADMIN = '/usr/libexec/nimbus/hearth-admin'
 # The packages driver-install takes (hearth-admin checks the same list again as root).
-DRIVER_PKG = re.compile(r'^(nvidia-open|nvidia-driver|firmware-[a-z0-9][a-z0-9-]{1,40}|intel-microcode|amd64-microcode)$')
+# What Hearth installs from Debian: only the firmware packages named in VENDORS and FIRMWARE_FILES below (always with
+# re.fullmatch). Microcode and Nvidia's driver come with Hearth OS's own image and updates: shown, never installed here.
+DRIVER_PKG = re.compile(r'(firmware-amd-graphics|firmware-intel-graphics|firmware-iwlwifi|firmware-sof-signed|firmware-realtek|firmware-atheros|firmware-mediatek|firmware-brcm80211|firmware-nvidia-graphics|firmware-cirrus|firmware-misc-nonfree)')
 REF_RE = re.compile(r'^[A-Za-z_][\w-]*(\.[A-Za-z_][\w-]*){2,}(//[\w.-]+)?$')
 
 
@@ -320,21 +322,25 @@ def drivers(hs=None):
                 want(pkg, 'Firmware the kernel asked for: ' + name)
                 break
     cpu = f.get('cpu') or ''
-    if 'GenuineIntel' in cpu:
-        want('intel-microcode', 'Intel processor (security and stability fixes)')
-    elif 'AuthenticAMD' in cpu:
-        want('amd64-microcode', 'AMD processor (security and stability fixes)')
+    ucode = 'intel-microcode' if 'GenuineIntel' in cpu else 'amd64-microcode' if 'AuthenticAMD' in cpu else ''
     nv_pkgs = ['nvidia-open', 'nvidia-driver', 'firmware-nvidia-graphics'] if nvidia else []
-    st = pkg_state(f, list(found) + nv_pkgs)
+    st = pkg_state(f, list(found) + nv_pkgs + ([ucode] if ucode else []))
     rows = []
+    if ucode:
+        # Information only: the processor's fixes come with Hearth OS's updates (never installed from here).
+        rows.append({'package': ucode, 'device': ('Intel' if ucode.startswith('intel') else 'AMD') + ' processor',
+                     'why': ['Security and stability fixes for the processor'], 'installed': st[ucode][0], 'available': '',
+                     'inUse': bool(st[ucode][0]), 'recommended': False, 'infoOnly': True,
+                     'note': "Comes with Hearth OS's updates"})
     if nvidia:
         # NVIDIA's own driver (Hearth OS's image carries it on PCs with an Nvidia card); Debian's nvidia-driver only
         # when it's what's installed already (Debian's 550 doesn't build for the newer kernel Hearth uses).
         have = next((p for p in ('nvidia-open', 'nvidia-driver') if st[p][0]), '')
         pkg = have or 'nvidia-open'
+        # Information only: Hearth OS's own image carries NVIDIA's driver (never installed from here).
         rows.append({'package': pkg, 'device': 'Nvidia graphics', 'why': ['An Nvidia graphics card'], 'installed': st[pkg][0],
-                     'available': st[pkg][1], 'inUse': bool(f.get('nvidiaLoaded')), 'recommended': True,
-                     'note': '' if have or st[pkg][1] else "NVIDIA's driver isn't in this system's package sources: Hearth OS's own image carries it (Settings › Updates)"})
+                     'available': '', 'inUse': bool(f.get('nvidiaLoaded')), 'recommended': False, 'infoOnly': True,
+                     'note': "Hearth OS's own image carries it (Settings › Updates)"})
         if st['firmware-nvidia-graphics'][0] or st['firmware-nvidia-graphics'][1]:
             found.setdefault('firmware-nvidia-graphics', {'why': ['Nvidia graphics (its GSP firmware)']})
     for pkg, e in sorted(found.items()):
@@ -343,7 +349,7 @@ def drivers(hs=None):
                      'inUse': bool(inst), 'recommended': True, 'note': '' if inst or cand else "Not in this system's package sources"})
     can, why = can_install()
     return {'drivers': rows, 'canInstall': can, 'cantWhy': why,
-            'missing': sum(1 for r in rows if not r['installed'] and r['available'])}
+            'missing': sum(1 for r in rows if not r.get('infoOnly') and not r['installed'] and r['available'])}
 
 
 def can_install():
@@ -363,9 +369,9 @@ def can_install():
 
 
 def driver_install(hs, pkg):
-    if not DRIVER_PKG.match(pkg or ''):
+    if not DRIVER_PKG.fullmatch(pkg or ''):
         raise hs.Fail("That isn't one of the drivers Hearth installs")
-    known = [r['package'] for r in drivers()['drivers']]
+    known = [r['package'] for r in drivers()['drivers'] if not r.get('infoOnly')]
     if pkg not in known:
         raise hs.Fail('This PC doesn\'t need %s' % pkg)
     can, why = can_install()
@@ -386,7 +392,7 @@ def driver_install(hs, pkg):
         raise hs.Fail('Not installed: the password wasn\'t given')
     if code != 0:
         raise hs.Fail('Couldn\'t install %s (%s)' % (pkg, re.sub(r'^error:\s*', '', last)[:200] or 'apt-get failed'))
-    return {'ok': True, 'installed': pkg, 'restart': pkg.startswith('nvidia') or pkg.endswith('microcode')}
+    return {'ok': True, 'installed': pkg, 'restart': True}   # firmware takes effect after a restart
 
 
 def run(hs, c, rest):
