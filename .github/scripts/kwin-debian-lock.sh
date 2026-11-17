@@ -14,7 +14,7 @@ setup() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends kwin-wayland labwc grim wlr-randr dbus dbus-bin python3 python3-evdev \
-    python3-gi gir1.2-glib-2.0 udev kmod libgl1-mesa-dri libegl-mesa0 xwayland passwd libpam-runtime \
+    python3-gi gir1.2-glib-2.0 libglib2.0-bin udev kmod libgl1-mesa-dri libegl-mesa0 xwayland passwd libpam-runtime \
     fonts-noto-core binutils ca-certificates >/tmp/apt.log 2>&1 || { echo "::error title=Debian lock (setup)::$(tail -5 /tmp/apt.log | tr '\n' '|')"; exit 1; }
   apt-get install -y -qq --no-install-recommends cmake ninja-build g++ extra-cmake-modules qt6-base-dev libkf6package-dev libkf6coreaddons-dev >/tmp/apt-dev.log 2>&1 \
     || { echo "::error title=Debian lock (build deps)::$(tail -3 /tmp/apt-dev.log | tr '\n' '|')"; exit 1; }
