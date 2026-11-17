@@ -51,7 +51,7 @@ jobs:
           apt-get install -y -qq --no-install-recommends cmake ninja-build g++ extra-cmake-modules qt6-base-dev libkf6package-dev libkf6coreaddons-dev >/dev/null 2>&1
           cmake -S hosts/linux/desktop/kwin-helpers/shell-package -B /tmp/hsp -G Ninja >/tmp/cmake.log 2>&1 && cmake --build /tmp/hsp >>/tmp/cmake.log 2>&1 \
             || { echo "::error title=Debian Plasma/Shell type (as builder.sh builds it)::$(grep -iE 'error' /tmp/cmake.log | head -8 | tr '\n' '|' | cut -c1-1800)"; exit 1; }
-          HEARTH_SHELL_PACKAGE_SO=/tmp/hsp/hearth_plasma_shell.so bash -x hosts/linux/desktop/kwin-lock/install.sh hosts/linux/desktop/kwin-lock > /tmp/install.log 2>&1; irc=$?
+          HEARTH_SHELL_PACKAGE_SO=/tmp/hsp/plasma_shell.so bash -x hosts/linux/desktop/kwin-lock/install.sh hosts/linux/desktop/kwin-lock > /tmp/install.log 2>&1; irc=$?
           echo "::notice title=Debian install.sh trace::$(grep -E '^\+|install.sh' /tmp/install.log | grep -v '^++* *for p\|apt-cache show' | tail -25 | tr '\n' '|' | cut -c1-3000)"
           echo "::notice title=Debian install.sh::exit $irc $(grep -v "^\(Setting up\|Unpacking\|Selecting\|Preparing\|Processing\|debconf\)" /tmp/install.log | tail -8 | tr '\n' '|' | cut -c1-1500)"
           g=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
@@ -77,7 +77,7 @@ jobs:
         run: bash .github/scripts/kwin-debian-lock.sh setup
       - name: Lock, a wrong password, the right password
         timeout-minutes: 10
-        run: runuser -u hearthtest -- bash .github/scripts/kwin-debian-lock.sh run
+        run: bash .github/scripts/kwin-debian-lock.sh run
       - name: Keep the pictures and logs
         if: always()
         uses: actions/upload-artifact@v4

@@ -64,6 +64,7 @@ start() {
     # the focus (on a real PC KWin reads every keyboard itself). hearth-type's service is that keyboard.
     python3 /usr/share/nimbus/desktop/shell/hearth-type --serve >shots/hearth-type-service.log 2>&1 &
     sleep 3
+    mkdir -p "$XDG_RUNTIME_DIR/hearth" && env -0 > "$XDG_RUNTIME_DIR/hearth/kwin.env" && chmod 600 "$XDG_RUNTIME_DIR/hearth/kwin.env"
     WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --socket wayland-hearth >shots/kwin-$mode.log 2>&1 &
   else
     /tmp/kwin_wayland --virtual --width 1920 --height 1080 --socket wayland-hearth >shots/kwin-$mode.log 2>&1 &

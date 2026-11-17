@@ -24,18 +24,19 @@ GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 
 # The Plasma/Shell package type: newer libplasma has it (plasma_shell); Debian trixie's doesn't, so Hearth's own
-# (hearth_plasma_shell.so, built by the image's builder from kwin-helpers/shell-package; HEARTH_SHELL_PACKAGE_SO
+# (plasma_shell.so, built by the image's builder from kwin-helpers/shell-package; HEARTH_SHELL_PACKAGE_SO
 # points elsewhere for CI) goes in KDE's package-type folder.
-have_shell_type() { grep -rlqF 'Plasma/Shell' /usr/lib/*/qt6/plugins/kf6/packagestructure/ /usr/lib64/qt6/plugins/kf6/packagestructure/ 2>/dev/null; }
+have_shell_type() { for f in /usr/lib/*/qt6/plugins/kf6/packagestructure/plasma_shell.so /usr/lib64/qt6/plugins/kf6/packagestructure/plasma_shell.so; do [ -f "$f" ] && return 0; done; return 1; }
 if ! have_shell_type; then
-  so=${HEARTH_SHELL_PACKAGE_SO:-/usr/lib/hearth/hearth_plasma_shell.so}
+  so=${HEARTH_SHELL_PACKAGE_SO:-/usr/lib/hearth/plasma_shell.so}
   [ -f "$so" ] || { echo "install.sh: no Plasma/Shell package type here and no $so"; exit 1; }
   qtp=$( (ls -d /usr/lib/*/qt6/plugins 2>/dev/null || true) | head -1)
   [ -n "$qtp" ] || { echo "install.sh: Qt's plugin folder isn't there"; exit 1; }
   missing=$(ldd "$so" | awk '/not found/{print $1}')
   [ -z "$missing" ] || { echo "install.sh: $so needs libraries that aren't installed: $missing"; exit 1; }
-  install -Dm644 "$so" "$qtp/kf6/packagestructure/hearth_plasma_shell.so"
-  echo "install.sh: Hearth's Plasma/Shell package type: $qtp/kf6/packagestructure/hearth_plasma_shell.so"
+  # KPackage finds a type by its file name: "Plasma/Shell" is plasma_shell.so.
+  install -Dm644 "$so" "$qtp/kf6/packagestructure/plasma_shell.so"
+  echo "install.sh: Hearth's Plasma/Shell package type: $qtp/kf6/packagestructure/plasma_shell.so"
 fi
 have_shell_type || { echo "install.sh: the Plasma/Shell package type still isn't found"; exit 1; }
 

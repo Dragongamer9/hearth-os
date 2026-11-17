@@ -1,6 +1,5 @@
 {
     "KPlugin": {
-        "Id": "Plasma/Shell",
         "Name": "Plasma shell package (Hearth: KWin's lock screen only)"
     }
 }
