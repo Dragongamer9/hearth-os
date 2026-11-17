@@ -262,6 +262,7 @@ class Page(unittest.TestCase):
         self.assertIn('Loader { source: "Dwell.qml"', shell)
         d = (SHELL / 'Dwell.qml').read_text()
         self.assertIn('mask: Region {}', d)
+        self.assertIn('exclusionMode: ExclusionMode.Ignore', d)
         self.assertIn('WlrKeyboardFocus.None', d)
         self.assertIn('"release"', d)
         self.assertIn('stdinEnabled: true', d)

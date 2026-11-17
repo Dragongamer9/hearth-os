@@ -396,7 +396,8 @@ jobs:
           try: d = json.load(open(p))
           except Exception: d = {}
           d.update(dwellClick=True, dwellDelay=1200, dwellClickType="double", invertWindow=True); json.dump(d, open(p, "w"))' "$AJ"
-          kp accessibility 16-accessibility-invert-one-window; kdown 29 17-accessibility-dwell-click
+          kpd() { ipc settings close; ipc settings page accessibility; sleep 3; kdown "$1" "$2"; }
+          kpd 14 16-accessibility-invert-one-window; kpd 20 21-accessibility-typing-sounds; kpd 27 17-accessibility-dwell-click
           ipc settings close; sleep 1
           ipc dwell demo 960 540 0.65 left; sleep 1; grim shots/kwin-pages/18-dwell-ring.png || true
           grim -g "800,450 320x180" shots/kwin-pages/19-dwell-ring-close.png || true
@@ -2746,6 +2747,7 @@ jobs:
           - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
           - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse"
           - "16-accessibility-invert-one-window 17-accessibility-dwell-click 18-dwell-ring 19-dwell-ring-close 20-dwell-ring-double"
+          - "21-accessibility-typing-sounds"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

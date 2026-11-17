@@ -92,6 +92,8 @@ Scope {
             implicitWidth: size
             implicitHeight: size
             exclusiveZone: 0
+            // Placed from the screen's corner, not below the bar: the ring sits right on the pointer.
+            exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "hearth-dwell"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

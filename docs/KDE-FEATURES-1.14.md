@@ -155,10 +155,10 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Magnifier (a lens around the pointer) — SetAccessibility.qml, hearth-access (needs testing on a device)
 - [x] Colour filters in Desktop Mode (greyscale, protanopia, deuteranopia, tritanopia, intensity) — SetAccessibility.qml, hearth-access (needs testing on a device)
 - [x] Invert colours (whole screen, one window) — SetAccessibility.qml: "Invert one window" (Super+Ctrl+U, KWin's InvertWindow), the whole screen through the "Inverted colours" filter; hearth-access apply_filter_kwin (invertWindow keeps KWin's invert effect loaded, unloads it when nothing needs it); test_hearth_dwell.py "InvertOneWindow"; CI kwin-16 (needs testing on a device)
-- [x] Sticky, slow, bounce and toggle keys, mouse keys — SetAccessibility.qml: "Sticky keys", "Slow keys", "Bounce keys", "Mouse keys", "Toggle keys" (kaccessrc [Keyboard] ToggleKeysBeep); test_hearth_dwell.py "test_rows"; CI kwin-15 (needs testing on a device)
+- [x] Sticky, slow, bounce and toggle keys, mouse keys — SetAccessibility.qml: "Sticky keys", "Slow keys", "Bounce keys", "Mouse keys", "Toggle keys" (kaccessrc [Keyboard] ToggleKeysBeep); test_hearth_dwell.py "test_rows"; CI kwin-21 (needs testing on a device)
 - [x] Dwell click — hearth-dwell (KWin script for where the pointer is, uinput virtual mouse, Esc lent to its cancel action only while the ring fills), Dwell.qml (the ring), SetAccessibility.qml "Click by resting the pointer" (off by default; rest time, click type, how still); test_hearth_dwell.py "Countdown", "Clicks"; CI kwin-17..20 (needs testing on a device; labwc: not offered)
 - [x] Shake cursor and Track mouse on Accessibility — SetAccessibility.qml, hearth-access (needs testing on a device)
-- [x] Activation sounds / visual bell — SetAccessibility.qml: "A sound for modifier keys" (kaccessrc StickyKeysBeep), "Toggle keys" (ToggleKeysBeep), "Flash the screen for the alert sound" (VisibleBell); test_hearth_dwell.py "test_rows"; CI kwin-15 (needs testing on a device)
+- [x] Activation sounds / visual bell — SetAccessibility.qml: "A sound for modifier keys" (kaccessrc StickyKeysBeep), "Toggle keys" (ToggleKeysBeep), "Flash the screen for the alert sound" (VisibleBell); test_hearth_dwell.py "test_rows"; CI kwin-21 (needs testing on a device)
 
 ### Xwayland and gaming
 
