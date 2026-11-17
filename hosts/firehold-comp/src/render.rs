@@ -264,20 +264,45 @@ pub trait GameFilter: Renderer {
         false
     }
     /// Sharpening on for the textures drawn next; false when it isn't available.
-    fn sharpen_on(_frame: &mut <Self as RendererSuper>::Frame<'_, '_>, _texel: [f32; 2], _strength: f32) -> bool {
+    fn sharpen_on<'frame, 'buffer>(
+        _frame: &mut <Self as RendererSuper>::Frame<'frame, 'buffer>,
+        _texel: [f32; 2],
+        _strength: f32,
+    ) -> bool
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
         false
     }
-    fn sharpen_off(_frame: &mut <Self as RendererSuper>::Frame<'_, '_>) {}
+    fn sharpen_off<'frame, 'buffer>(_frame: &mut <Self as RendererSuper>::Frame<'frame, 'buffer>)
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
+    }
 }
 
 impl GameFilter for GlesRenderer {
     fn prepare_sharpen(&mut self) -> bool {
         gles_prepare_sharpen(self)
     }
-    fn sharpen_on(frame: &mut <Self as RendererSuper>::Frame<'_, '_>, texel: [f32; 2], strength: f32) -> bool {
+    fn sharpen_on<'frame, 'buffer>(
+        frame: &mut <Self as RendererSuper>::Frame<'frame, 'buffer>,
+        texel: [f32; 2],
+        strength: f32,
+    ) -> bool
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
         gles_sharpen_on(frame, texel, strength)
     }
-    fn sharpen_off(frame: &mut <Self as RendererSuper>::Frame<'_, '_>) {
+    fn sharpen_off<'frame, 'buffer>(frame: &mut <Self as RendererSuper>::Frame<'frame, 'buffer>)
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
         frame.clear_tex_program_override();
     }
 }
@@ -374,12 +399,12 @@ pub fn gles_sharpen_on(frame: &mut GlesFrame<'_, '_>, texel: [f32; 2], strength:
 }
 
 /// The fullscreen game's picture, drawn through the sharpening shader. Never scanned out directly (it needs the GPU).
-pub struct SharpenElement<R: Renderer + ImportAll + ImportMem> {
+pub struct SharpenElement<R: Renderer> {
     pub inner: WindowRenderElement<R>,
     pub strength: f32,
 }
 
-impl<R: Renderer + ImportAll + ImportMem> std::fmt::Debug for SharpenElement<R> {
+impl<R: Renderer> std::fmt::Debug for SharpenElement<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SharpenElement").field("inner", &self.inner).field("strength", &self.strength).finish()
     }

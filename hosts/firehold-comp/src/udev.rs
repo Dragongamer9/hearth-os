@@ -125,15 +125,23 @@ impl<'a, 'b> GameFilter
         let gles: &mut GlesRenderer = self.as_mut();
         gles_prepare_sharpen(gles)
     }
-    fn sharpen_on(
-        frame: &mut <Self as smithay::backend::renderer::RendererSuper>::Frame<'_, '_>,
+    fn sharpen_on<'frame, 'buffer>(
+        frame: &mut <Self as smithay::backend::renderer::RendererSuper>::Frame<'frame, 'buffer>,
         texel: [f32; 2],
         strength: f32,
-    ) -> bool {
+    ) -> bool
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
         gles_sharpen_on(frame.as_mut(), texel, strength)
     }
-    fn sharpen_off(frame: &mut <Self as smithay::backend::renderer::RendererSuper>::Frame<'_, '_>) {
-        let gles: &mut smithay::backend::renderer::gles::GlesFrame<'_, '_> = frame.as_mut();
+    fn sharpen_off<'frame, 'buffer>(frame: &mut <Self as smithay::backend::renderer::RendererSuper>::Frame<'frame, 'buffer>)
+    where
+        'buffer: 'frame,
+        Self: 'frame,
+    {
+        let gles: &mut smithay::backend::renderer::gles::GlesFrame<'frame, 'buffer> = frame.as_mut();
         gles.clear_tex_program_override();
     }
 }
