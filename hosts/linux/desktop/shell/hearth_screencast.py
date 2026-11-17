@@ -159,8 +159,13 @@ def to_png(raw_header, data):
             chunk(b'IDAT', zlib.compress(raw, 3)) + chunk(b'IEND', b''))
 
 
+LAST_ERROR = ['']
+
+
 def shot(target, path, cursor=False):
-    """A screenshot as a PNG file. target: ('screen', name) | ('window', id) | ('workspace',). True if it worked."""
+    """A screenshot as a PNG file. target: ('screen', name) | ('window', id) | ('workspace',). True if it worked
+    (LAST_ERROR[0] says why not)."""
+    LAST_ERROR[0] = ''
     try:
         r = subprocess.run([helper(), 'shot'] + list(target) + ['1' if cursor else '0'], capture_output=True,
                            timeout=20)
@@ -168,7 +173,8 @@ def shot(target, path, cursor=False):
         log('screenshot failed: %s' % e)
         return False
     if r.returncode != 0:
-        log('screenshot of %s failed: %s' % (' '.join(target), r.stderr.decode('utf-8', 'replace').strip()))
+        LAST_ERROR[0] = r.stderr.decode('utf-8', 'replace').strip()
+        log('screenshot of %s failed: %s' % (' '.join(target), LAST_ERROR[0]))
         return False
     head, _, data = r.stdout.partition(b'\n')
     try:
@@ -270,6 +276,19 @@ def build_request(kind, app_id, types, multiple, outputs, windows, thumbs_dir, w
     return req
 
 
+def picker_log():
+    """~/.local/share/nimbus/cast-picker.log (kept small), for Send logs."""
+    d = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus')
+    try:
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, 'cast-picker.log')
+        if os.path.exists(p) and os.path.getsize(p) > 500000:
+            os.replace(p, p + '.old')
+        return open(p, 'ab')
+    except OSError:
+        return subprocess.DEVNULL
+
+
 def run_picker(req, holder=None, env=None):
     """cast-picker.qml in its own Quickshell until it answers: {kind: screen|window|desktop, name|id} or None."""
     qs = quickshell()
@@ -283,8 +302,11 @@ def run_picker(req, holder=None, env=None):
             json.dump(req, f)
         e = dict(env or os.environ)
         e.update({'HEARTH_CAST_REQUEST': rq, 'HEARTH_CAST_RESULT': rs})
-        proc = subprocess.Popen([qs, '-p', PICKER_QML], env=e, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, start_new_session=True)
+        out = picker_log()
+        proc = subprocess.Popen([qs, '-p', PICKER_QML], env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                start_new_session=True)
+        if out is not subprocess.DEVNULL:
+            out.close()
         if holder is not None:
             holder['proc'] = proc
         try:
