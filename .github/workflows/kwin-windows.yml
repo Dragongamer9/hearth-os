@@ -3,7 +3,8 @@
 #      against a pretend KWin), the script's JavaScript.
 #   2. end to end (tools/e2e-kwin-windows.py): KWin on a virtual screen with Hearth's KWin defaults, Mantel started with HEARTH_WM=kwin, two test windows:
 #      the list, minimize/activate/maximize, snapping and Super+arrows, desktops, Super+Z, the bridge restarting, KWin's
-#      window menu, the desktop's right-click menu (menu.xml's entries), the frames' drop shadow on a light and a dark wallpaper;
+#      window menu, the desktop's right-click menu (menu.xml's entries), the frames' drop shadow on a light and a dark wallpaper,
+#      their rounded bottom corners and outline, picture-in-picture windows kept on top;
 #      the KDE extras (live previews, Hearth's Alt+Tab, Snap layouts from Maximize, force close, hidden from screen
 #      sharing, KWin's Overview / Present windows / Desktop grid, the keys in Settings). Small copies of the pictures are notices (SHOT ...) on the pictures jobs, the full ones in the kwin-windows artifact.
 # Failures are ::error:: annotations (logs can't always be read).
@@ -241,6 +242,8 @@ jobs:
         run: f=shots/kwin-frame-shadow-inactive.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-inactive $i::$part"; done || true
       - name: Picture (frame-shadow-dark-full)
         run: f=shots/kwin-frame-shadow-dark-full.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-shadow-dark-full $i::$part"; done || true
+      - name: Picture (pip-on-top)
+        run: f=shots/kwin-pip-on-top.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-pip-on-top $i::$part"; done || true
 
   # The KDE extras' pictures (live previews, Alt+Tab, Snap layouts from Maximize, the window menu, screen sharing,
   # force close, KWin's views, the keys): GitHub keeps 50 notices a job, so two jobs.

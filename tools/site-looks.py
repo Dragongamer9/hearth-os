@@ -2,10 +2,12 @@
 """Website looks: hearthos.fun gets Hearth OS's own looks (Settings › Appearance), from the same palettes Mantel uses
 (hosts/linux/desktop/theme/palettes.json). Writes site/looks.css and site/looks.js; the front page and the docs load
 both. Steam-style is the site's own colours, so picking it just clears the choice. The choice is kept in this browser
-only (localStorage "hearth.look"), next to light or dark ("hearth.theme").
+only (localStorage "hearth.look"), next to light or dark ("hearth.theme"). A few looks are the website's own (SITE_LOOKS,
+like Gold: black and gold, the Server look); they sit in the same picker.
 
     python3 tools/site-looks.py            # write site/looks.css and site/looks.js
     python3 tools/site-looks.py --check    # fail if they're out of date (the site test runs this)
+    python3 tools/site-looks.py --art      # also redraw site/img/looks/gold-glow.png (Gold's glow, needs Pillow)
 """
 import json, os, sys
 
@@ -27,8 +29,24 @@ def rgba(h, a):
     r, g, b = rgb(h); return f'rgba({r},{g},{b},{a})'
 
 
+# The website's own looks, next to Hearth OS's. Gold is the golden look of Server mode and the Hearth AI Command Center
+# (hearth-workspace hearth/mockups/gold-theme, artboard 5): near-black, a gold dot grid with a soft glow, #ffb347, ◢ labels
+# in spaced capitals and gold corner marks on cards and panels. Its light mode is gold on cream (text at least 4.5:1).
+SITE_LOOKS = {
+    'gold': {
+        'label': 'Gold', 'desc': 'Black and gold, the Server look', 'order': 9, 'windowCorner': 6,
+        'wallpaper': 'anim:gold', 'islandStyle': 'bar', 'frame': 'gold', 'deskClock': False,
+        'dark': {'bg': '#030201', 'bg2': '#070503', 'panel': '#0c0802', 'panel2': '#140d04', 'panel3': '#1c1206',
+                 'line': '#2b1c08', 'text': '#fff4df', 'muted': '#c9a372', 'ember': '#ffb347', 'flame': '#ffd166', 'ink': '#1a1003'},
+        'light': {'bg': '#efe4cc', 'bg2': '#f8f1e2', 'panel': '#fffaf0', 'panel2': '#f6ecd8', 'panel3': '#eedfc0',
+                  'line': '#d9c194', 'text': '#241703', 'muted': '#6b4f1f', 'ember': '#9a5c00', 'flame': '#b07a1c', 'ink': '#ffffff'},
+    },
+}
+
+
 def looks():
     out = [(k, v) for k, v in PAL.items() if not k.startswith('_') and isinstance(v, dict) and v.get('dark')]
+    out += [(k, v) for k, v in SITE_LOOKS.items() if k not in PAL]
     return sorted(out, key=lambda kv: kv[1].get('order', 99))
 
 
@@ -86,6 +104,7 @@ def css():
         lines.append(block(sel, dict({'--lrad': f"{max(int(v.get('windowCorner', 4)), 3)}px"}, **({'--lstretch': stretch} if stretch else {}))))
     lines.append(LOOKS_UI_CSS)
     lines.append(WALL_CSS)
+    lines.append(GOLD_CSS)
     return '\n'.join(lines) + '\n'
 
 
@@ -185,6 +204,27 @@ html[data-frame="wood"]{--wood1:#4a2f1b;--wood2:#3a2414;--wood3:#2b1a0e;--wooded
 @media (prefers-color-scheme:light){html[data-frame="wood"]:not([data-theme="dark"]){--wood1:#d8b48a;--wood2:#c99f72;--wood3:#b98b5d;--woodedge:#8a6440;--grain:rgba(90,51,20,.18)}}
 html[data-frame="wood"][data-theme="light"]{--wood1:#d8b48a;--wood2:#c99f72;--wood3:#b98b5d;--woodedge:#8a6440;--grain:rgba(90,51,20,.18)}
 html:not([data-bar="floating"]) .lk-isl.fr{background:none!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;clip-path:none!important}
+"""
+
+GOLD_CSS = """/* Gold (the site's own look): ◢ labels in spaced capitals, gold corner marks on cards and panels, a soft gold glow. */
+:root[data-look="gold"]{--gold-mark:var(--acc);--gold-glow:color-mix(in srgb,var(--acc) 30%,transparent)}
+:root[data-look="gold"] .eyebrow,:root[data-look="gold"] .covers .lab,:root[data-look="gold"] .road .when,:root[data-look="gold"] .safe .k{font:600 13px/1.3 var(--body);letter-spacing:.26em;text-transform:uppercase}
+:root[data-look="gold"] :is(.eyebrow,.covers .lab)::before{content:"\\25E2\\00a0\\00a0";color:var(--acc)}
+:root[data-look="gold"] :is(.eyebrow,.covers .lab){color:var(--muted)}
+:root[data-look="gold"] :is(.h1,.h2,.h2x,h1.big){text-transform:uppercase;letter-spacing:.02em;font-stretch:100%}
+:root[data-look="gold"] h1.big em{text-shadow:0 0 32px var(--gold-glow)}
+:root[data-look="gold"] .brand{letter-spacing:.2em;text-transform:uppercase;font-stretch:100%}
+:root[data-look="gold"] :is(.btn.go,header .dl){color:var(--onacc);background:var(--acc);letter-spacing:.08em;text-transform:uppercase;box-shadow:0 0 22px var(--gold-glow)}
+:root[data-look="gold"] .road .next{box-shadow:0 0 0 1px var(--acc),0 0 38px var(--gold-glow)}
+html[data-frame="gold"] :is(.flow,.shelf,.box,.stat,.cmd,.card,.road article,.win,.safe>div,main .card,main .tile){
+  background-image:linear-gradient(var(--gold-mark),var(--gold-mark)),linear-gradient(var(--gold-mark),var(--gold-mark)),linear-gradient(var(--gold-mark),var(--gold-mark)),linear-gradient(var(--gold-mark),var(--gold-mark));
+  background-size:22px 2px,2px 22px,22px 2px,2px 22px;background-position:0 0,0 0,100% 100%,100% 100%;background-repeat:no-repeat;
+  background-color:color-mix(in srgb,var(--panel) 90%,transparent);box-shadow:0 0 0 1px var(--rule),0 0 34px color-mix(in srgb,var(--acc) 7%,transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+html[data-frame="gold"] .player{box-shadow:0 0 0 1px var(--rule),0 0 18px color-mix(in srgb,var(--acc) 12%,transparent)}
+html[data-frame="gold"] .road .next{--gold-mark:var(--onacc);background-color:var(--acc)}
+html[data-frame="gold"] .box.main{background-color:color-mix(in srgb,var(--acc) 10%,var(--panel));box-shadow:0 0 0 1px var(--acc),0 0 40px var(--gold-glow)}
+html[data-frame="gold"] header.top{border-bottom-color:var(--rule)}
 """
 
 
@@ -342,6 +382,13 @@ WALL_JS = r"""
       for (var a = -14; a <= 14; a++) { c.beginPath(); c.moveTo(cx + a * W * .01, hz); c.lineTo(cx + a * W * .12, H); c.stroke(); }
       for (var j = 1; j < 14; j++) { var y = hz + (H - hz) * Math.pow(j / 13, 2.2); c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
       g = c.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, W * .7); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.4)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    },
+    gold: function(){   // Gold: near-black, a gold dot grid every 26px and a soft gold glow up top right (gold-glow.png)
+      c.fillStyle = dark ? '#030201' : '#f8f1e2'; c.fillRect(0, 0, W, H);
+      var gi = img('gold-glow.png');
+      if (ready(gi)) { var gw = Math.max(W, H) * 1.1; c.globalAlpha = dark ? .9 : .5; c.drawImage(gi, W * .7 - gw / 2, H * .1 - gw * .36, gw, gw * .72); c.globalAlpha = 1; }
+      c.fillStyle = dark ? 'rgba(255,179,71,0.10)' : 'rgba(128,77,1,0.14)';
+      for (var y = 13; y < H; y += 26) for (var x = 13; x < W; x += 26) c.fillRect(x - 1, y - 1, 2, 2);
     }
   };
   var MOVING = { fireside: 1, tide: 1 };
@@ -391,7 +438,23 @@ def versioned(want):
     return want
 
 
+def gold_art():
+    """site/img/looks/gold-glow.png: Gold's soft glow (a warm gold radial fade on transparency, like ember-glow.png)."""
+    from PIL import Image
+    import math
+    n = 512; im = Image.new('RGBA', (n, n)); px = im.load()
+    for y in range(n):
+        for x in range(n):
+            d = math.hypot(x - n / 2 + .5, y - n / 2 + .5) / (n / 2)
+            a = max(0.0, 1 - d) ** 2.2
+            r, g, b = (255, round(150 + 29 * a), round(40 + 31 * a))
+            px[x, y] = (r, g, b, round(255 * .30 * a))
+    im.save(os.path.join(ROOT, 'site/img/looks/gold-glow.png'), optimize=True)
+
+
 def main():
+    if '--art' in sys.argv:
+        gold_art()
     want = versioned({'site/looks.css': css(), 'site/looks.js': js()})
     if '--check' in sys.argv:
         stale = [p for p, t in want.items() if not os.path.exists(os.path.join(ROOT, p)) or open(os.path.join(ROOT, p)).read() != t]
