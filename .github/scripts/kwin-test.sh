@@ -142,7 +142,7 @@ end_session
 mkdir -p "$HOME/.config" "$HOME/.local/state/nimbus"
 printf '[Daemon]\nAutolock=true\nLockOnResume=true\nTimeout=1\n' > "$HOME/.config/kscreenlockerrc"
 printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop\n\n[NightColor]\nActive=false\n' > "$HOME/.config/kwinrc"
-cp "$HOME/.config/kscreenlockerrc" /tmp/lockrc-before; cp "$HOME/.config/kwinrc" /tmp/kwinrc-before
+cp "$HOME/.config/kscreenlockerrc" /tmp/kscreenlockerrc-before; cp "$HOME/.config/kwinrc" /tmp/kwinrc-before
 # What the bridge changed once (as on a PC that had KDE's default keys): the button puts them back.
 python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/state/nimbus/kwin-keys.json" \
   '{"done": {"kwin/Window Quick Tile Left": {"was": [[285212690]], "now": [], "title": "", "at": 1}, "kwin/Show Desktop": {"was": [[268435524]], "now": [], "title": "", "at": 1}, "kwin/Grid View": {"was": [[268435527]], "now": [], "title": "", "at": 1}}}' >/dev/null
@@ -152,8 +152,12 @@ sleep 10
 shot kwin-7-kde-settings-card
 grep -q '^kwin-mine autolock+lockonresume+inputmethod' "$STATE/desktop-notice.shown" 2>/dev/null \
   || fail "your KDE settings" "the card wasn't shown (state: $(cat "$STATE"/desktop-notice* 2>/dev/null | tr '\n' '|'))"
-cmp -s "$HOME/.config/kscreenlockerrc" /tmp/lockrc-before && cmp -s "$HOME/.config/kwinrc" /tmp/kwinrc-before \
-  || fail "your KDE settings" "your own files were changed"
+# Your own lines are all still there (KDE's own kconf_update may add its [$Version] lines; Hearth never changes yours).
+for f in kscreenlockerrc kwinrc; do
+  cmp -s "$HOME/.config/$f" /tmp/$f-before 2>/dev/null || echo "::notice title=your KDE settings ($f)::$(diff /tmp/$f-before "$HOME/.config/$f" 2>/dev/null | tr '\n' '|' | cut -c1-400)"
+done
+for l in 'Autolock=true' 'LockOnResume=true' 'Timeout=1'; do grep -qxF "$l" "$HOME/.config/kscreenlockerrc" || fail "your KDE settings" "your kscreenlockerrc lost $l"; done
+grep -qxF 'InputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop' "$HOME/.config/kwinrc" || fail "your KDE settings" "your kwinrc's InputMethod was changed"
 gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true \
   && fail "your KDE settings" "KWin is locked by itself"
 pkill -TERM -x quickshell; sleep 12      # the card off the screen (shown once: it doesn't come back)

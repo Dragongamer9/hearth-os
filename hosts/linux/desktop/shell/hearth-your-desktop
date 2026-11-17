@@ -100,9 +100,9 @@ def texts(what, why):
         if not rows or len(rows) != len(ids):
             return ('', '')
         return ('Some of your KDE settings aren\'t used here',
-                'Mantel on KWin needs these to work, so your own choices from KDE Plasma aren\'t used in Desktop Mode: '
-                + '; '.join('%s: %s' % (x[5], x[6]) for x in rows) + '. Your own files aren\'t changed: KDE would '
-                'use them again.')
+                'Mantel on KWin needs these to work, so your own choices from KDE Plasma aren\'t used in Desktop Mode.\n'
+                + ''.join('\n• %s: %s.' % (x[5], x[6][0].upper() + x[6][1:]) for x in rows)
+                + '\n\nYour own files aren\'t changed: KDE would use them again.')
     return ('', '')
 
 
