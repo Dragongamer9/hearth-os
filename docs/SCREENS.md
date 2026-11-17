@@ -46,7 +46,8 @@ Night Light and tearing.
 
 KWin answers `org.kde.KWin.ScreenShot2` only for a program whose `.desktop` file lists that interface in
 `X-KDE-DBUS-Restricted-Interfaces`. KWin finds that file by the program's executable. A Python script's executable
-is Python itself, so trusting it would trust every Python program. Instead the image hard-links Python as
+is Python itself, so trusting it would trust every Python program. Instead the image copies Python (a real copy, not
+a link) to
 `/usr/libexec/nimbus/hearth-shot-python`, and `/usr/share/applications/hearth-screenshot.desktop` trusts only that.
 `/usr/bin/hearth-screenshot` takes grim's arguments (`[-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-`): it is grim under
 labwc, and under KWin it runs `hearth-screens shot` through that Python. `open.sh` (Print Screen, Quick Access, the

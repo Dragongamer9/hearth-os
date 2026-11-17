@@ -1066,12 +1066,13 @@ ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
 # KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
 # .desktop file lists it, found by the program's executable: hearth-screenshot runs through its own copy of Python
-# (a hard link, so every Python program isn't trusted), named by hearth-screenshot.desktop (os/system_files).
+# (a real copy, not a link: KWin may compare the file itself, and then every Python program would be trusted), named
+# by hearth-screenshot.desktop (os/system_files).
 optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
 py=$(readlink -f /usr/bin/python3)
 install -d /usr/libexec/nimbus
-ln -f "$py" /usr/libexec/nimbus/hearth-shot-python 2>/dev/null || cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
+cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
 /usr/libexec/nimbus/hearth-shot-python -c 'import gi; gi.require_version("Gio", "2.0"); from gi.repository import Gio; print("hearth-shot-python can reach D-Bus")' \
   || echo "hearth-shot-python can't load GLib: screenshots under KWin will say so (grim under labwc is unaffected)"
 # Hearth OS's player count (desktop/shell/hearth-counter): the anonymous "I'm here" the Hearth app sent while it ran,

@@ -2260,7 +2260,7 @@ jobs:
           # checkout's hearth-screens through its own Python, which hearth-screenshot.desktop names. No
           # KWIN_SCREENSHOT_NO_PERMISSION_CHECKS: KWin checks for real.
           install -d /usr/libexec/nimbus /usr/share/nimbus/desktop
-          ln -f "$(readlink -f /usr/bin/python3)" /usr/libexec/nimbus/hearth-shot-python 2>/dev/null || cp "$(readlink -f /usr/bin/python3)" /usr/libexec/nimbus/hearth-shot-python
+          cp "$(readlink -f /usr/bin/python3)" /usr/libexec/nimbus/hearth-shot-python
           install -Dm644 os/system_files/usr/share/applications/hearth-screenshot.desktop /usr/share/applications/hearth-screenshot.desktop
           install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/bin/hearth-screenshot
           ln -sfn "$PWD/hosts/linux/desktop/shell" /usr/share/nimbus/desktop/shell
@@ -2274,7 +2274,7 @@ jobs:
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland   # it carries a file capability a container can't grant
           modprobe vgem 2>/dev/null || echo "::warning title=KWin screens::no vgem module (KWin may not composite)"
           OUTER=
-          WAYLAND_DISPLAY= /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
+          WAYLAND_DISPLAY= /tmp/kwin_wayland --virtual --output-count 2 --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
           for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
           sleep 3
           if ! [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || ! pgrep -f /tmp/kwin_wayland >/dev/null; then
@@ -2294,8 +2294,6 @@ jobs:
           # ---- hearth-screens against the real kscreen-doctor
           kscreen-doctor -o > shots/kwin/kscreen-o.txt 2>&1; kscreen-doctor -j > shots/kwin/kscreen-j.json 2>&1
           python3 $SH get > shots/kwin/get.json 2>&1
-          echo "::notice title=KWin screens: kscreen-doctor::$(sed 's/\x1b\[[0-9;]*m//g' shots/kwin/kscreen-o.txt | grep -v -i locale | tr '\n\t' '| ' | cut -c1-900)"
-          echo "::notice title=KWin screens: kscreen-doctor json::$(python3 -c 'import json,sys; t=open(sys.argv[1]).read(); d=json.loads(t[t.index("{"):]); print([{k: o.get(k) for k in ("name","enabled","connected","currentModeId","scale","rotation","priority")} | {"modes": [m.get("id") for m in o.get("modes", [])][:6]} for o in d["outputs"]])' shots/kwin/kscreen-j.json 2>&1 | cut -c1-900)"
           N=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["name"])' shots/kwin/get.json 2>/dev/null)
           [ -n "$N" ] || fail "hearth-screens get found no screen: $(head -c 300 shots/kwin/get.json) | kscreen-doctor: $(head -c 300 shots/kwin/kscreen-o.txt | tr '\n' '|')"
           echo "::notice title=KWin screens: get::$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))[0]; print(o["name"], o["description"], o["scale"], o["rotation"], [(m["width"], m["height"], round(m["refresh"])) for m in o["modes"] if m["current"]], "hdr", o["hdr"], "vrr", o["vrr"], "icc", o["icc"])' shots/kwin/get.json 2>&1 | cut -c1-600)"
@@ -2318,16 +2316,15 @@ jobs:
           grep -A6 '^\[NightColor\]' "$HOME/.config/kwinrc" > shots/kwin/nightcolor.txt 2>&1
           grep -q 'NightTemperature=3400' shots/kwin/nightcolor.txt && grep -q 'Active=true' shots/kwin/nightcolor.txt || fail "Night Light isn't in kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor.txt)"
           sleep 3
-          echo "::notice title=KWin screens: kwinrc::$(tr '\n' '|' < shots/kwin/nightcolor.txt) kwriteconfig6: $(command -v kwriteconfig6 || echo none)"
+          kwinrc_line="kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor.txt) kwriteconfig6: $(command -v kwriteconfig6 || echo none)"
           nl=$(gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/NightLight --method org.freedesktop.DBus.Properties.GetAll org.kde.KWin.NightLight 2>&1 | cut -c1-500)
-          echo "::notice title=KWin screens: Night Light::$nl"
-          echo "::notice title=KWin screens: KWin::$(grep -iE 'OpenGL|EGL|llvmpipe|render device|composit' shots/kwin/kwin.log | head -4 | tr '\n' '|' | cut -c1-500); /dev/dri: $(ls /dev/dri 2>&1 | tr '\n' ' ')"
+          echo "::notice title=KWin screens: Night Light::$kwinrc_line; KWin: $nl"
           # ---- Mantel's Settings › Display in the real shell; its pictures through hearth-screenshot (KWin's
           # ScreenShot2 with its permission check on), or grim when KWin runs inside labwc.
           quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
           sleep 25
           ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
-          shot() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
+          shot() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot -o "$N" "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
           scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
           scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
           ipc settings close
@@ -2335,7 +2332,7 @@ jobs:
             fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
           fi
           echo "::notice title=KWin screens: shell log::$(grep -v -i locale shots/kwin/shell.log | grep -i -E 'error|warn|qml' | sort -u | tail -12 | tr '\n' '|' | cut -c1-1000)"
-          echo "::notice title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt 2>/dev/null | tr '\n' '|' | cut -c1-500)"
+          [ -s shots/kwin/shot-errors.txt ] && echo "::warning title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt | tr '\n' '|' | cut -c1-500)"
           # Screen off and on (Settings › Power's idle screen-off under KWin), near the end: this nested KWin on software GL
           # may quit when its screen comes back.
           sh hosts/linux/desktop/shell/hearth-screen-power check || fail "hearth-screen-power can't under KWin"
