@@ -13,7 +13,10 @@ import "firehold.js" as F
 PanelWindow {
     id: cw
     property var fh
-    property string scrName: ""        // this screen's name (set once by Firehold.qml: no binding through the window)
+    property string scrName: ""
+    // The CONTINUE line's letter spacing, except with Qt's software renderer: there, spaced text over the big title
+    // drew the rest of the page shifted (CI's virtual screen).
+    readonly property bool spaced: GraphicsInfo.api !== GraphicsInfo.Software        // this screen's name (set once by Firehold.qml: no binding through the window)
     readonly property var pal: F.C
     readonly property real k: Math.min(width / 1920, height / 1080) || 1
     readonly property bool primary: screen === Quickshell.screens[0]
@@ -339,7 +342,6 @@ PanelWindow {
         // ---- Continue
         Item {
             id: hero
-            visible: cw.fh.debugHide !== "hero"
             readonly property var game: cw.fh.continueGame
             readonly property var win: cw.fh.windowFor(game)
             x: 72 * cw.k; y: 136 * cw.k; width: 1776 * cw.k; height: 440 * cw.k
@@ -362,10 +364,10 @@ PanelWindow {
                 width: 900 * cw.k
                 spacing: 14 * cw.k
                 T {
-                    font.pixelSize: 18 * cw.k; font.weight: Font.Bold; color: cw.pal.flame; font.letterSpacing: 1 * cw.k; visible: cw.fh.debugHide !== "continue"
+                    font.pixelSize: 18 * cw.k; font.weight: Font.Bold; color: cw.pal.flame; font.letterSpacing: cw.spaced ? 1 * cw.k : 0
                     text: !hero.game ? "WELCOME TO THE COUCH" : hero.win ? "CONTINUE · PLAYING " + F.duration(clock.date.getTime() - cw.fh.since(hero.win)).toUpperCase() : "CONTINUE · " + F.ago(hero.game.lastPlayed, clock.date.getTime())
                 }
-                T { width: parent.width; font.pixelSize: 64 * cw.k; font.weight: Font.ExtraBold; visible: cw.fh.debugHide !== "title"; text: hero.game ? hero.game.title : "Your games, all in one place" }
+                T { width: parent.width; font.pixelSize: 64 * cw.k; font.weight: Font.ExtraBold; text: hero.game ? hero.game.title : "Your games, all in one place" }
                 T {
                     width: parent.width; font.pixelSize: 20 * cw.k; color: cw.pal.sub
                     text: !hero.game ? "Play something from your Library, or open an app; everything you open stays open on the Desk too."
