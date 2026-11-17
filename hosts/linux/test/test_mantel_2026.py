@@ -154,7 +154,8 @@ class SettingsNeverChangeByThemselves(unittest.TestCase):
         self.assertIn('function changesForLook(look) { return { look: look, subTheme: "" }; }', js)
         # The look's wallpaper, bar, dock, clock and transparency are only used where yours is "" (not set).
         t = (SHELL / 'Theme.qml').read_text()
-        self.assertIn('readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : ownWall', t)
+        # (1.14: an activity with its own wallpaper comes first, Activities.qml; "" there is the desktop's own.)
+        self.assertIn('readonly property string wall: activityWall !== "" ? activityWall : Settings.wallpaper !== "" ? Settings.wallpaper : ownWall', t)
         w = (SHELL / 'Wallpaper.qml').read_text()
         self.assertIn('readonly property string wall: Theme.wall', w)
 

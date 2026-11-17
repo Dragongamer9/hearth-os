@@ -1,0 +1,233 @@
+# Desktop widgets and Activities (1.14, docs/WIDGETS.md): their unit tests, then Desktop Mode for real on a virtual
+# 1920 × 1080 screen (labwc headless + Quickshell on Fedora, as desktop-test.yml) with every widget added, the gallery,
+# Arrange, a widget's settings, the bar's widgets, the activity switcher and a second activity, each screenshotted.
+# Fails if the shell reports errors in these files, a widget isn't saved, or widgets.json / activities.json change by
+# themselves across a restart of the shell. The pictures are a download on the run and SHOT notices (the "shots"
+# jobs: tools/shot-notices.py, 50 notices a job).
+name: Widgets and Activities test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['hosts/linux/desktop/shell/Widget*', 'hosts/linux/desktop/shell/Activit*', 'hosts/linux/desktop/shell/widget-layout.js',
+            'hosts/linux/desktop/shell/activities.js', 'hosts/linux/desktop/shell/hearth-widgets', '.github/workflows/widgets-test.yml']
+
+jobs:
+  widgets:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme >/dev/null
+          dnf -y install dbus-daemon libnotify wl-clipboard wtype foot hicolor-icon-theme rsms-inter-fonts kcalc nodejs >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests (layout and activities rules, the layout store, the helper)
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_widgets.py' -v 2>&1 | tail -40
+          python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_widgets.py' >/dev/null 2>&1 || { echo "::error title=widgets unit tests::failed (see the log)"; exit 1; }
+
+      - name: Desktop Mode with every widget, and two activities
+        shell: bash
+        run: |
+          mkdir -p shots/post
+          exec > >(tee shots/step.log) 2>&1
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          if command -v dbus-daemon >/dev/null; then
+            dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          fi
+          # ---- stand-ins: Hearth Time's events, and the widgets' internet answers and battery / player (HEARTH_WIDGETS_FIXTURES)
+          mkdir -p /tmp/fakebin
+          printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+            '  --events) d=$(date +%F); t=$(date -d tomorrow +%F); n=$(date -d "+3 days" +%F); printf "{\"events\":[{\"title\":\"Dentist\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":false,\"start\":%s000,\"location\":\"Smile Clinic\",\"color\":\"#66c0f4\"},{\"title\":\"Game night with Sam\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":false,\"start\":%s000,\"color\":\"#ff8a3d\"},{\"title\":\"Dad'"'"'s birthday\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":true,\"color\":\"#6fd08c\"}]}\n" "$d" "$d" "$(date -d "+2 hours" +%s)" "$t" "$t" "$(date -d "tomorrow 20:00" +%s)" "$n" "$n" ;;' \
+            '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
+          chmod +x /tmp/fakebin/hearth-time
+          export PATH="/tmp/fakebin:$PATH"
+          FX=/tmp/widget-fixtures; mkdir -p $FX; export HEARTH_WIDGETS_FIXTURES=$FX
+          python3 - "$FX" <<'PY'
+          import datetime, json, sys
+          d = sys.argv[1]
+          days = [(datetime.date.today() + datetime.timedelta(days=i)).isoformat() for i in range(6)]
+          json.dump({'current': {'temperature_2m': 18.4, 'apparent_temperature': 17.1, 'relative_humidity_2m': 64, 'weather_code': 2, 'is_day': 1, 'wind_speed_10m': 14},
+                     'current_units': {'temperature_2m': '°C', 'wind_speed_10m': 'km/h'},
+                     'daily': {'time': days, 'weather_code': [2, 61, 3, 0, 80, 1], 'temperature_2m_max': [20, 17, 18, 22, 19, 21],
+                               'temperature_2m_min': [12, 11, 12, 13, 12, 13], 'precipitation_probability_max': [10, 80, 20, 0, 60, 5]}}, open(d + '/weather.json', 'w'))
+          json.dump({'results': [{'name': 'Lisbon', 'admin1': 'Lisbon', 'country': 'Portugal', 'latitude': 38.72, 'longitude': -9.13, 'timezone': 'Europe/Lisbon'},
+                                 {'name': 'Lisbon', 'admin1': 'Ohio', 'country': 'United States', 'latitude': 40.77, 'longitude': -80.77},
+                                 {'name': 'Lisbon', 'admin1': 'Maine', 'country': 'United States', 'latitude': 44.03, 'longitude': -70.1}]}, open(d + '/places.json', 'w'))
+          json.dump({'percent': 76, 'charging': False, 'seconds': 11640}, open(d + '/battery.json', 'w'))
+          json.dump({'title': 'Midnight City', 'artist': 'M83 · Hearth Player', 'playing': True, 'position': 95, 'length': 243, 'art': ''}, open(d + '/media.json', 'w'))
+          now = datetime.datetime.now(datetime.timezone.utc)
+          items = ''.join('<item><title>%s</title><link>https://example.org/%d</link><pubDate>%s</pubDate></item>' % (t, i, (now - datetime.timedelta(minutes=17 * i + 5)).strftime('%a, %d %b %Y %H:%M:%S +0000'))
+                          for i, t in enumerate(['Steam Deck 2 rumours: what we know so far', 'Proton 10 brings big gains to older DirectX games', 'Linux 6.18 lands with faster suspend on AMD laptops',
+                                                 'Indie hit Hollow Pines comes to Linux next week', 'How to keep your handheld cool in summer', 'KDE Plasma 6.6 beta is out']))
+          open(d + '/feed.xml', 'w').write('<?xml version="1.0"?><rss version="2.0"><channel><title>Gaming news</title>%s</channel></rss>' % items)
+          PY
+          # Pictures for the photo frame, files for the folder view
+          mkdir -p "$HOME/Pictures" "$HOME/Downloads" "$HOME/Desktop" "$HOME/.local/share/nimbus"
+          python3 - "$HOME" <<'PY'
+          import sys
+          from PIL import Image, ImageDraw
+          h = sys.argv[1]
+          for n, (a, b) in enumerate([((255, 138, 61), (40, 18, 6)), ((102, 192, 244), (10, 20, 40)), ((111, 208, 140), (12, 30, 20))]):
+              im = Image.new('RGB', (1200, 800))
+              d = ImageDraw.Draw(im)
+              for y in range(800):
+                  t = y / 800
+                  d.line([(0, y), (1200, y)], fill=tuple(int(a[i] * (1 - t) + b[i] * t) for i in range(3)))
+              d.ellipse([800, 120, 1000, 320], fill=(255, 220, 120))
+              d.polygon([(0, 700), (400, 380), (700, 620), (1000, 420), (1200, 680), (1200, 800), (0, 800)], fill=(28, 21, 18))
+              im.save('%s/Pictures/holiday-%d.jpg' % (h, n + 1), quality=85)
+          im.resize((300, 200)).save(h + '/Downloads/screenshot.png')
+          for f in ('Hearth OS 1.14 notes.pdf', 'invoice-november.pdf', 'setlist.txt', 'track-01.flac', 'clip.mp4'):
+              open(h + '/Downloads/' + f, 'w').write('x')
+          PY
+          mkdir -p "$HOME/Downloads/Mods"
+          [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # ---- the desktop
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          SH="$NIMBUS_SHARE/desktop/shell"
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null; }
+          shot() { sleep "${2:-2}"; grim "shots/post/$1.png" || echo "::warning title=widgets::no picture $1"; }
+          for i in $(seq 1 60); do [ -n "$(q widgets count)" ] && break; sleep 2; done
+          [ -n "$(q widgets count)" ] || { echo "::error title=widgets::Widgets.qml didn't load: $(grep -E 'Widget|Activit' "$LOG" | head -8 | cut -c1-220 | tr '\n' '|')"; touch shots/FAILED; }
+          sleep 5
+          W="$HOME/.config/nimbus/widgets.json"; A="$HOME/.config/nimbus/activities.json"
+          [ ! -e "$W" ] || { echo "::error title=widgets::widgets.json was written before anything was added (settings must never change by themselves)"; touch shots/FAILED; }
+
+          # ---- Main: clock, calendar, weather, sticky note, system monitor, battery, media; and four in the bar
+          clock=$(q widgets add clock); q widgets set "$clock" style '"analog"'; q widgets set "$clock" seconds 'true'
+          q widgets set "$clock" cities '["Asia/Tokyo","America/New_York","Europe/London"]'
+          cal=$(q widgets add calendar)
+          wx=$(q widgets add weather); q widgets set "$wx" place '{"label":"Lisbon, Portugal","name":"Lisbon","lat":38.72,"lon":-9.13}'
+          note=$(q widgets add notes); q widgets set "$note" text '"Pick up controller batteries\nCall Dad about Trains 2010\nBackup the Ally before 1.14"'
+          mon=$(q widgets add monitor)
+          bat=$(q widgets add battery)
+          med=$(q widgets add media)
+          for t in clock weather monitor timer; do b=$(q widgets addBar $t); done
+          bc=$(q widgets list | python3 -c 'import json,sys; print(next(w["id"] for w in json.load(sys.stdin) if w["place"]=="bar" and w["type"]=="clock"))')
+          q widgets set "$bc" cities '["Asia/Tokyo"]'
+          shot 01-desktop-main 10
+
+          # ---- the gallery, Arrange (moved with the keys, then its menu), a widget's settings
+          q widgets gallery; wtype -k Right; wtype -k Down; shot 03-gallery 3; wtype -k Escape; sleep 1; q widgets close
+          q widgets arrange; sleep 2; wtype -k Left; wtype -k Left; wtype -k Down; shot 04-arrange 2
+          wtype -k Return; shot 05-arrange-menu 2; wtype -k Escape; wtype -k Escape; sleep 2; q widgets close
+          q widgets configure "$wx"; sleep 2; wtype "Lisbon"; wtype -k Return; shot 06-weather-settings 4
+          q widgets close; q widgets configure "$clock"; shot 07-clock-settings 3; q widgets close
+          q quick toggle; shot 10-quick-access 3; q quick toggle
+          q desktop menu; shot 11-desktop-menu 2; q desktop close
+
+          # ---- a window on Main, then a second activity: Work, its own wallpaper and widgets
+          foot -T "Main: terminal" -W 90x20 sh -c 'echo "This window is on Main"; sleep 100000' >/dev/null 2>&1 &
+          sleep 4
+          work=$(q activities create Work); q activities wallpaper "$work" "builtin:slate-nebula"
+          q activities switchTo "$work"; sleep 3
+          fold=$(q widgets add folder)
+          pho=$(q widgets add photos); q widgets set "$pho" source "\"folder:$HOME/Pictures\""; q widgets set "$pho" every '10'
+          apps=$(q widgets add apps); q widgets set "$apps" apps '["foot.desktop","org.kde.kcalc.desktop","footclient.desktop","foot-server.desktop"]'
+          news=$(q widgets add news); q widgets set "$news" url '"https://example.org/feed.xml"'
+          tim=$(q widgets add timer); q widgets set "$tim" minutes '25'
+          qn=$(q widgets add quicknotes); q widgets set "$qn" items '[{"t":"Finish the widgets mockup","done":true},{"t":"Reply to the Hearth Link issue","done":false},{"t":"Test Activities on the Ally","done":false}]'
+          shot 02-desktop-work 10
+          q activities switcher; shot 08-activities 3
+          wtype -k Menu; shot 09-activity-edit 2; wtype -k Escape; sleep 1; wtype -k Escape; sleep 1
+          q activities switchTo default; shot 02b-back-to-main 5
+          echo "activities: $(q activities list)"
+          q widgets list > shots/widgets-list.json; cat shots/widgets-list.json
+
+          # ---- each widget on its own (cut from the desktop pictures), and the bar
+          python3 - shots/post shots/widgets-list.json <<'PY'
+          import json, sys
+          from PIL import Image
+          d, lst = sys.argv[1], json.load(open(sys.argv[2]))
+          pics = {'default': Image.open(d + '/01-desktop-main.png'), 'work': Image.open(d + '/02-desktop-work.png')}
+          seen = set()
+          for w in lst:
+              if w['place'] != 'desk' or w['type'] in seen:
+                  continue
+              seen.add(w['type'])
+              im = pics['default' if w['activity'] == 'default' else 'work']
+              m = 12
+              im.crop((max(0, w['x'] - m), max(0, w['y'] - m), min(im.width, w['x'] + w['w'] + m), min(im.height, w['y'] + w['h'] + m))).save('%s/w-%s.png' % (d, w['type']))
+          pics['default'].crop((0, 0, 1920, 90)).save(d + '/12-bar-widgets.png')
+          print('cut', sorted(seen))
+          PY
+
+          # ---- checks: every widget saved, and nothing changes by itself across a restart of the shell
+          n=$(python3 -c 'import json,sys; print(len([k for k in json.load(open(sys.argv[1])) if k.startswith("w:")]))' "$W" 2>/dev/null)
+          [ "$n" = "17" ] || { echo "::error title=widgets::widgets.json has $n widgets, not 17 (13 on the desktop, 4 in the bar)"; touch shots/FAILED; }
+          [ "$(q activities current)" = "default" ] || { echo "::error title=activities::not back on Main"; touch shots/FAILED; }
+          sleep 3
+          before=$(sha256sum "$W" "$A" | cut -c1-64 | tr '\n' ' ')
+          pkill -f "quickshell -p $SH" || true
+          for i in $(seq 1 40); do sleep 2; [ "$(q widgets count)" = "17" ] && break; done
+          sleep 12
+          after=$(sha256sum "$W" "$A" | cut -c1-64 | tr '\n' ' ')
+          [ "$before" = "$after" ] && echo "::notice title=widgets::widgets.json and activities.json unchanged across a shell restart" \
+            || { echo "::error title=widgets::widgets.json or activities.json changed by itself when the shell restarted"; touch shots/FAILED; }
+          [ "$(q widgets count)" = "17" ] || { echo "::error title=widgets::after a restart the shell has $(q widgets count) widgets, not 17"; touch shots/FAILED; }
+          cp "$W" "$A" shots/ 2>/dev/null || true
+          # ---- the shell's log: any error in these files fails the run
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          P='(Widget[A-Za-z]*|Activit[A-Za-z]*|ActivitySwitcher|ActivityChip|BarWidgets|WBtn|WField|Spark|WeatherIcon)\.qml'
+          if grep -E "$P.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=widgets::$(grep -E "$P" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          grep -E "$P|widgets:|activities:" "$LOG" | sort | uniq -c | sort -rn | head -30 || true
+          ls -la shots/post
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: widgets-screenshots
+          path: shots
+          retention-days: 14
+
+      - name: Fail if the shell had problems
+        if: always()
+        run: test ! -e shots/FAILED
+
+  # The pictures as notices (title "SHOT <name> <n>", a JPEG in base64 pieces): 50 to a job, 10 to a step.
+  shots:
+    needs: widgets
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/shot-notices.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: widgets-screenshots
+          path: shots
+      - run: pip install --quiet pillow >/dev/null 2>&1 || true
+      - name: Pictures 1
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 0
+      - name: Pictures 2
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 1
+      - name: Pictures 3
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
+      - name: Pictures 4
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4
