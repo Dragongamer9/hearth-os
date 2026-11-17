@@ -43,7 +43,7 @@ SetPage {
                     Layout.fillWidth: true
                     icon: it.modelData.added && it.modelData.command ? "doc" : "store"
                     title: it.modelData.name
-                    sub: it.modelData.command ? it.modelData.command.replace(/^sh -c "(.*)"$/, "$1").replace(/\\(["`$\\])/g, "$1").replace(/%%/g, "%") : it.modelData.sub
+                    sub: it.modelData.command ? it.modelData.command.replace(/^sh -c "(.*)"$/, "$1").replace(/\\(["\\])/g, "$1").replace(/%%/g, "%") : it.modelData.sub
                     checked: it.modelData.on
                     enabled: it.modelData.canChange
                     onToggled: v => job.run(["set", it.modelData.file, v ? "on" : "off"], () => page.load(), e => { page.say(e, true); page.load(); })

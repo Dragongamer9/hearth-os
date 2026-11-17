@@ -37,8 +37,15 @@ var PAGES = [
     { id: "install", file: "SetInstall.qml", cat: "system", label: "Install Hearth", icon: "update", desc: "Put Hearth OS on this PC, next to Windows or on its own", words: "install live usb windows dual boot", old: "Install Hearth", live: true },
     { id: "display", file: "SetDisplay.qml", cat: "system", label: "Display", icon: "display", desc: "Brightness, night light, scale, resolution and refresh rate", words: "screen resolution refresh scale monitor brightness night light", old: "Display", status: "display" },
     { id: "sound", file: "SetSound.qml", cat: "system", label: "Sound", icon: "vol", desc: "Volume, speakers and headphones, microphone", words: "volume audio speakers output microphone", old: "Sound" },
+    // 1.14, more of KDE's Sound (docs/SETTINGS-MORE-1.14.md)
+    { id: "sound-speakers", file: "SetSoundSpeakers.qml", cat: "system", parent: "sound", label: "Speakers & balance", icon: "vol", desc: "Left and right balance, and a test tone from each speaker", words: "balance left right speaker test surround 5.1 channels tone" },
+    { id: "sound-apps", file: "SetSoundApps.qml", cat: "system", parent: "sound", label: "Apps' sound", icon: "headphones", desc: "Which speakers or headphones each app plays on, and scrolling on the dock", words: "per app output device move stream play on dock scroll volume" },
+    { id: "push-to-talk", file: "SetPushToTalk.qml", cat: "system", parent: "sound", label: "Push to talk", icon: "mic", desc: "The microphone stays muted unless you hold a key", words: "push to talk ptt microphone mute hold key discord voice" },
     { id: "notifications", file: "SetNotifications.qml", cat: "system", label: "Notifications", icon: "bell", desc: "Do not disturb, apps you muted", words: "do not disturb mute alerts", old: "Notifications", status: "dnd" },
     { id: "power", file: "SetPower.qml", cat: "system", label: "Power & battery", icon: "power", desc: "Screen off and sleep times, the power button, battery", words: "battery sleep screen off suspend power button", old: "Power" },
+    { id: "power-profiles", file: "SetPowerProfiles.qml", cat: "system", parent: "power", label: "Plugged in, battery & lid", icon: "batt", desc: "Different times and power mode on battery, and what closing the lid does", words: "ac battery profile lid close laptop docked on battery plugged in power mode" },
+    { id: "power-awake", file: "SetPowerAwake.qml", cat: "system", parent: "power", label: "Apps keeping it awake", icon: "sleep", desc: "What's holding the screen on or the PC awake right now", words: "inhibit inhibitors blocking sleep awake screen on caffeine" },
+    { id: "battery", file: "SetBattery.qml", cat: "system", parent: "power", label: "Battery health & history", icon: "bolt", desc: "Charge cycles, how much it holds, graphs, your devices' batteries", words: "battery health cycles cycle count capacity wear history graph energy bluetooth mouse controller headphones battery" },
     { id: "memory", file: "SetMemory.qml", cat: "system", label: "Memory", icon: "cpu", desc: "Compressed memory (zram), keep memory free, the swap file, what closes when memory runs out", words: "ram memory swap zram swappiness swap file pagefile virtual memory oom out of memory freeze compress keep free" },
     { id: "storage", file: "SetStorage.qml", cat: "system", label: "Storage", icon: "drive", desc: "Space on your drives, games by size, clean up", words: "disk space clean games by size move games low space", old: "Storage" },
     { id: "drives", file: "SetDrives.qml", cat: "system", label: "Drives & folders", icon: "drive", desc: "Hearth (C:) with Windows folder names, the address bar, Copy path, drive letters", words: "c: drive letter program files users windows appdata linux folders address bar copy path hearth files explorer" },
@@ -48,8 +55,19 @@ var PAGES = [
     { id: "remote-desktop", file: "SetRemoteDesktop.qml", cat: "system", label: "Remote desktop", icon: "desktops", desc: "This PC's desktop in a VNC app on your other devices, through Tailscale", words: "vnc remote desktop control screen share tigervnc remmina krdc krfb tailscale view only password" },
     { id: "datetime", file: "SetDateTime.qml", cat: "system", label: "Date & time", icon: "clock", desc: "Time zone, 24-hour clock", words: "clock time zone 24-hour", old: "Date & time" },
     { id: "region", file: "SetRegion.qml", cat: "system", label: "Region & language", icon: "globe", desc: "Language, and how dates, numbers, money and measurements are written", words: "language locale formats region country numbers currency money date format measurement metric imperial paper a4 letter translation" },
+    { id: "languages", file: "SetLanguages.qml", cat: "system", parent: "region", label: "Languages in order", icon: "globe", desc: "More than one language: apps try them one after another", words: "languages several order fallback LANGUAGE translations" },
+    { id: "spellcheck", file: "SetSpellcheck.qml", cat: "system", parent: "region", label: "Spell check", icon: "check", desc: "Dictionary, checking as you type, words to leave alone", words: "spell check spelling dictionary hunspell sonnet typo ignore words" },
+    { id: "input-methods", file: "SetInputMethods.qml", cat: "system", parent: "region", label: "Chinese, Japanese & Korean typing", icon: "kbd", desc: "Input methods (fcitx5), off unless you turn them on", words: "fcitx fcitx5 input method ime cjk chinese japanese korean pinyin mozc hangul" },
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
+    // Info Center (1.14, KDE Info Center's technical pages): one file, a page per part.
+    { id: "info-cpu", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center", icon: "cpu", desc: "Processor, graphics, memory, Vulkan and OpenGL, PCI and USB devices", words: "info center system information cpu processor cores threads cache hardware specs", props: { part: "cpu" } },
+    { id: "info-gpu", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center · Graphics card", icon: "display", desc: "Graphics cards, their drivers and memory", words: "gpu graphics card vram driver nvidia amd intel", props: { part: "gpu" }, hidden: true },
+    { id: "info-memory", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center · Memory", icon: "cpu", desc: "Memory and swap", words: "ram memory swap zram meminfo", props: { part: "memory" }, hidden: true },
+    { id: "info-graphics", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center · Vulkan & OpenGL", icon: "display", desc: "Vulkan and OpenGL versions and drivers", words: "vulkan opengl egl glx mesa renderer wayland", props: { part: "graphics" }, hidden: true },
+    { id: "info-pci", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center · PCI", icon: "cpu", desc: "Every PCI device and its driver", words: "pci lspci devices drivers kernel modules", props: { part: "pci" }, hidden: true },
+    { id: "info-usb", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center · USB", icon: "link", desc: "Every USB device", words: "usb lsusb devices", props: { part: "usb" }, hidden: true },
+    { id: "info-energy", file: "SetBattery.qml", cat: "system", parent: "about", label: "Info Center · Energy", icon: "batt", desc: "The battery's health and history", words: "energy battery upower", hidden: true },
 
     // ---- Network & internet (Wi-Fi is the landing, as in the mockup; Tailscale follows it under "Reach your devices from anywhere")
     { id: "wifi", file: "SetWifi.qml", cat: "net", label: "Wi-Fi", icon: "wifi", desc: "Connect to wireless networks", words: "wireless network internet hotspot", old: "Wi-Fi", status: "wifi", landing: true },
@@ -62,6 +80,7 @@ var PAGES = [
     // ---- Bluetooth & devices
     { id: "bt", file: "SetCategory.qml", cat: "bt", label: "Bluetooth & devices", icon: "bt", landing: true },
     { id: "bluetooth", file: "SetBluetooth.qml", cat: "bt", label: "Bluetooth", icon: "bt", desc: "Headphones, controllers and other wireless devices", words: "headphones headset speaker pair devices", old: "Bluetooth", status: "bt" },
+    { id: "bluetooth-devices", file: "SetBtDevices.qml", cat: "bt", parent: "bluetooth", label: "Your Bluetooth devices", icon: "bt", desc: "Trust, block, batteries and sending files", words: "bluetooth trust block send file obex battery paired devices" },
     { id: "keyboard", file: "SetKeyboard.qml", cat: "bt", label: "Keyboard", icon: "kbd", desc: "Layouts, typing, the on-screen keyboard, shortcuts", words: "layout on-screen osk typing shortcuts", old: "Keyboard" },
     { id: "mouse", file: "SetMouse.qml", cat: "bt", label: "Mouse & touchpad", icon: "mouse", desc: "Pointer speed, scrolling, tapping", words: "touchpad pointer cursor speed", old: "Mouse & touchpad" },
     // ---- Phone link (Hearth Connect, KDE Connect's protocol: docs/PHONE-LINK.md)
@@ -69,6 +88,9 @@ var PAGES = [
     { id: "phone-messages", file: "SetPhoneMessages.qml", cat: "bt", parent: "phone", label: "Messages", icon: "chat", desc: "Your phone's text messages: read and send", words: "sms text messages conversations send a text", hidden: true },
     // ---- end Phone link
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
+    { id: "print-queue", file: "SetPrintQueue.qml", cat: "bt", parent: "printers", label: "Print queue", icon: "list", desc: "What's waiting to print: hold, go on or cancel", words: "print queue jobs cancel printing waiting cups" },
+    { id: "scanners", file: "SetScanners.qml", cat: "bt", parent: "printers", label: "Scanners", icon: "printer", desc: "The scanners found, and a test scan", words: "scanner scan sane airscan test" },
+    { id: "usb-devices", file: "SetUsbDevices.qml", cat: "bt", label: "USB devices & drives", icon: "drive", desc: "What happens when a drive is plugged in, new USB devices, USBGuard", words: "usb removable drive memory card sd plug in automount autoplay usbguard new device allow block" },
     { id: "thunderbolt", file: "SetThunderbolt.qml", cat: "bt", label: "Thunderbolt", icon: "link", desc: "Docks, drives and screens on Thunderbolt or USB4: allow them, or forget them", words: "thunderbolt usb4 dock egpu bolt boltctl authorize allow device security" },
 
     // ---- Hearth Link (its own category; the page is the landing)
@@ -79,12 +101,19 @@ var PAGES = [
     { id: "appearance", file: "SetAppearance.qml", cat: "pers", label: "Personalization", icon: "palette", words: "look theme accent colour color wallpaper dark light mode sunset transparency clock", old: "Appearance", landing: true },
     { id: "bar-dock", file: "SetBarDock.qml", cat: "pers", label: "Bar and dock", icon: "window", desc: "Where the bar goes, the dock, auto-hide, the app menu and the right-click menu", words: "taskbar panel dock autohide islands bar layout edge app menu start tiles classic centred right-click context menu windows 11 compact", status: "bar" },
     { id: "fonts", file: "SetFonts.qml", cat: "pers", label: "Fonts, cursor & icons", icon: "doc", desc: "The font and its size, font smoothing, the mouse cursor, the icon theme", words: "font fonts size monospace fixed width terminal antialiasing smoothing hinting dpi cursor pointer size icon theme icons qt gtk" },
+    { id: "wallpaper-more", file: "SetWallpaperMore.qml", cat: "pers", label: "Wallpaper per screen & slideshow", icon: "image", desc: "A picture for each screen, and a slideshow from a folder", words: "wallpaper per screen monitor slideshow folder shuffle change every" },
+    { id: "my-looks", file: "SetMyLooks.qml", cat: "pers", label: "My looks", icon: "palette", desc: "Save how it all looks now, and put it back in one press", words: "save as my look global theme preset save look restore look" },
+    { id: "look-more", file: "SetLookMore.qml", cat: "pers", label: "Window frames & sign-in splash", icon: "window", desc: "The accent in window frames, and a splash after you sign in", words: "frame colour intensity title bar tint accent window borders splash screen sign in login splash" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
     { id: "apps", file: "SetApps.qml", cat: "apps", label: "Installed apps", icon: "store", desc: "Apps from Debian packages, Flathub and AppImages; uninstall", words: "install uninstall packages deb flatpak appimage", old: "Apps" },
     { id: "winapps", file: "SetWinApps.qml", cat: "apps", label: "Windows apps", icon: "window", desc: "Windows programs (.exe, .msi) with the Proton built into Hearth OS: open, Proton, remove", words: "windows exe msi proton wine dxvk vkd3d ge-proton program installer" },
     { id: "defaults", file: "SetDefaults.qml", cat: "apps", label: "Default apps", icon: "grid", desc: "Which app opens web links, pictures, music and more", words: "default apps browser terminal", old: "Default apps" },
+    { id: "file-types", file: "SetFileTypes.qml", cat: "apps", label: "File types", icon: "doc", desc: "Every kind of file, the app it opens in, and its endings", words: "file associations mime types open with extension endings default app" },
+    { id: "autostart", file: "SetAutostart.qml", cat: "apps", label: "Autostart", icon: "power", desc: "Apps and commands that start when you sign in", words: "autostart startup login apps start at sign in command script" },
+    { id: "menu-editor", file: "SetMenuEditor.qml", cat: "apps", label: "App menu editor", icon: "edit", desc: "Change an app's name, icon or command, hide it, or add your own", words: "menu editor kmenuedit edit app desktop entry rename icon command hide add to menu" },
+    { id: "app-permissions", file: "SetAppPermissions.qml", cat: "apps", label: "App permissions", icon: "shield", desc: "What apps from Flathub may reach: internet, files, devices", words: "flatpak permissions flatseal override sandbox network files home devices" },
     { id: "services", file: "SetServices.qml", cat: "apps", label: "Background services", icon: "gear", desc: "Programs that run in the background for you, and whether they start when you sign in", words: "background services systemd daemons startup autostart user services" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
     { id: "claude", file: "SetClaude.qml", cat: "apps", label: "Claude", icon: "chat", desc: "Claude on this PC", words: "ai assistant", old: "Claude" },
@@ -185,7 +214,9 @@ var LINKS = {
     privacy: [{ page: "clipboard", label: "Clipboard history", desc: "What you copy is kept for Super+V. Turn it off or clear it" },
               { page: "signin", label: "Lock after sleep", desc: "Ask for your password when this PC wakes" },
               { page: "hs-safety", label: "Home server safety", desc: "Who can reach what, open ports, ransomware guard" }],
-    accounts: [{ page: "home", label: "Device name", desc: "This PC's name on your network: rename it on Home" }]
+    accounts: [{ page: "home", label: "Device name", desc: "This PC's name on your network: rename it on Home" }],
+    // 1.14: backing up your files is Home server › Backups & sync (to a drive, another Hearth device or the cloud).
+    updates: [{ page: "hs-backups", label: "Back up your files", desc: "To a drive, another Hearth device or the cloud" }]
 };
 
 // The heading over a landing page's other pages ("More in <category>" when there's none here).
