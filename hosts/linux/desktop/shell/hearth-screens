@@ -836,31 +836,50 @@ def tearing(on):
 # ------------------------------------------------------------------ several screens: X11 apps, the edge barrier, desktops
 
 def kde_read(name, group, key, default):
+    """What KWin sees (the system files under yours, hearth_kconfig.effective), or DEFAULT."""
     try:
-        return ini_get(_text(KWINRC if name == 'kwinrc' else os.path.join(CONFIG, name), 'replace'), group, key, default)
-    except OSError:
+        import hearth_kconfig as kc
+        vals, _, _ = kc.effective(name)
+        return vals.get(group, {}).get(key, default)
+    except Exception:  # noqa: BLE001 (an unreadable file: what KWin would use by default)
         return default
+
+
+KWIN_SETTINGS = os.path.join(HERE, 'hearth-kwin-settings')
+
+
+def kde_set(name, changes):
+    """Change keys in KDE's file NAME through hearth-kwin-settings set (its one writer for Settings: only these keys,
+    KDE's own lock, [$i] respected, a file that can't be read left alone; then KWin is told)."""
+    try:
+        r = subprocess.run([sys.executable, KWIN_SETTINGS, 'set', name], input=json.dumps(changes), capture_output=True,
+                           text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise Refused("Couldn't change %s: %s" % (name, e))
+    if r.returncode != 0:
+        last = (r.stdout or r.stderr).strip().splitlines()
+        raise Refused(last[-1].replace('error: ', '')[:200] if last else "Couldn't change %s" % name)
 
 
 def x11_scale_status(wmname):
     """X11 apps scale themselves (KDE's default) or KWin scales them: kdeglobals [KScreen] XwaylandClientsScale, the
     one home (Settings › Gaming › Full-screen games & X11 apps changes the same key)."""
-    return {'capable': wmname == 'kwin', 'self': kde_read('kdeglobals', 'KScreen', 'XwaylandClientsScale', 'true') != 'false',
+    return {'capable': wmname == 'kwin', 'self': str(kde_read('kdeglobals', 'KScreen', 'XwaylandClientsScale', 'true')).lower() != 'false',
             'why': '' if wmname == 'kwin' else NEEDS_KWIN}
 
 
 def x11_scale(self_scale):
-    if kwinrc_set('KScreen', {'XwaylandClientsScale': 'true' if self_scale else 'false'}, 'kdeglobals'):
-        kwin_call('reconfigure')
+    kde_set('kdeglobals', {'KScreen': {'XwaylandClientsScale': bool(self_scale)}})
 
 
 def barrier_status(wmname):
-    """KWin's sticky edge between screens: kwinrc [EdgeBarrier] (px; 0 = off) and the corner barrier."""
+    """KWin's sticky edge between screens: kwinrc [EdgeBarrier] (px; 0 = off) and the corner barrier (Screen edges
+    changes the same keys)."""
     try:
         px = int(kde_read('kwinrc', 'EdgeBarrier', 'EdgeBarrier', '100'))
     except ValueError:
         px = 100
-    return {'capable': wmname == 'kwin', 'px': px, 'corner': kde_read('kwinrc', 'EdgeBarrier', 'CornerBarrier', 'true') != 'false',
+    return {'capable': wmname == 'kwin', 'px': px, 'corner': str(kde_read('kwinrc', 'EdgeBarrier', 'CornerBarrier', 'true')).lower() != 'false',
             'why': '' if wmname == 'kwin' else NEEDS_KWIN}
 
 
@@ -869,9 +888,9 @@ def barrier(values):
     if 'px' in values:
         out['EdgeBarrier'] = max(0, min(1000, int(values['px'])))
     if 'corner' in values:
-        out['CornerBarrier'] = 'true' if values['corner'] else 'false'
-    if out and kwinrc_set('EdgeBarrier', out):
-        kwin_call('reconfigure')
+        out['CornerBarrier'] = bool(values['corner'])
+    if out:
+        kde_set('kwinrc', {'EdgeBarrier': out})
 
 
 MAIN_DESKTOPS_JS = os.path.join(HERE, 'hearth-main-desktops.js')

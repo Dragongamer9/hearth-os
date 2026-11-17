@@ -451,20 +451,28 @@ class Screens114(Base):
             self.assertIn('on%sChanged: save("%s")' % (k[0].upper() + k[1:], k), st)
 
     def test_kde_files_change_only_their_keys(self):
-        pathlib.Path(hs.KWINRC).write_text('[EdgeBarrier]\nOther=1\n\n[Plugins]\nblurEnabled=false\n')
-        kdeglobals = os.path.join(hs.CONFIG, 'kdeglobals')
-        with mock.patch.object(hs, 'CONFIG', self.d.name), mock.patch.object(hs, 'have', return_value=False), mock.patch.object(hs, 'kwin_call'):
-            kdeglobals = os.path.join(self.d.name, 'kdeglobals')
-            pathlib.Path(kdeglobals).write_text('[Colors:View]\nBackgroundNormal=1,2,3\n')
+        """X11 apps' scaling and the edge barrier go through hearth-kwin-settings set (the KDE files' one writer)."""
+        cfg = os.path.join(self.d.name, 'config')
+        os.makedirs(cfg)
+        kwinrc, kdeglobals = os.path.join(cfg, 'kwinrc'), os.path.join(cfg, 'kdeglobals')
+        pathlib.Path(kwinrc).write_text('[EdgeBarrier]\nOther=1\n\n[Plugins]\nblurEnabled=false\n')
+        pathlib.Path(kdeglobals).write_text('[Colors:View]\nBackgroundNormal=1,2,3\n')
+        env = {'XDG_CONFIG_HOME': cfg, 'XDG_CONFIG_DIRS': os.path.join(self.d.name, 'nothing'), 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/nonexistent'}
+        with mock.patch.dict(os.environ, env):
+            self.assertTrue(hs.x11_scale_status('kwin')['self'])
             hs.x11_scale(False)
             hs.barrier({'px': 40, 'corner': False})
             self.assertFalse(hs.x11_scale_status('kwin')['self'])
             self.assertEqual(hs.barrier_status('kwin'), {'capable': True, 'px': 40, 'corner': False, 'why': ''})
+            with self.assertRaises(hs.Refused):            # never a group the Display page doesn't own
+                hs.kde_set('kwinrc', {'NotAGroup': {'X': 1}})
         kg = pathlib.Path(kdeglobals).read_text()
         self.assertIn('[Colors:View]\nBackgroundNormal=1,2,3', kg)
-        self.assertIn('[KScreen]\nXwaylandClientsScale=false', kg)
-        rc = pathlib.Path(hs.KWINRC).read_text()
-        self.assertIn('[EdgeBarrier]\nOther=1\nEdgeBarrier=40\nCornerBarrier=false', rc)
+        self.assertIn('XwaylandClientsScale=false', kg)
+        rc = pathlib.Path(kwinrc).read_text()
+        self.assertIn('Other=1', rc)
+        self.assertIn('EdgeBarrier=40', rc)
+        self.assertIn('CornerBarrier=false', rc)
         self.assertIn('blurEnabled=false', rc)
         self.assertFalse(os.path.exists(hs.SAVED))          # KDE's own files are their settings' one home
 
