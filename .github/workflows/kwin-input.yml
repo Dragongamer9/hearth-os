@@ -40,6 +40,14 @@ jobs:
           bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/out 2>&1 | tee /tmp/build.log || {
             echo "::error title=helpers (Debian)::$(grep -E 'error|warning' /tmp/build.log | head -8 | tr '\n' '|' | cut -c1-900)"; exit 1; }
           echo "::notice title=helpers (Debian)::built: $(ls /tmp/out | tr '\n' ' ')"
+      - name: What Debian's KWin screen locker reads (the lock screen package it loads)
+        continue-on-error: true
+        run: |
+          apt-get install -y -qq --no-install-recommends kscreenlocker binutils >/dev/null 2>&1 || true
+          g=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
+          echo "::notice title=Debian kscreenlocker::$(dpkg-query -W kscreenlocker 2>/dev/null) $g"
+          [ -n "$g" ] && echo "::notice title=Debian greeter strings::$(strings "$g" | grep -iE 'shell|theme|lookandfeel|lockscreenmainscript|APIVersion|plasmashellrc|kdeglobals' | sort -u | head -40 | tr '\n' '|' | cut -c1-1800)"
+          [ -n "$g" ] && echo "::notice title=Debian greeter help::$(QT_QPA_PLATFORM=offscreen "$g" --help 2>&1 | tr '\n' '|' | cut -c1-1200)"
 
   kwin:
     runs-on: ubuntu-latest
