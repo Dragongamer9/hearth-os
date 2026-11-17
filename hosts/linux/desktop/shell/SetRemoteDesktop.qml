@@ -106,9 +106,12 @@ SetPage {
     }
     SetRow {
         visible: page.on && !!page.st.fingerprint
-        icon: "shield"; chevron: false; interactive: false
-        title: "This PC's certificate"
+        icon: "shield"; chevron: false
+        title: "This PC's certificate (SHA-256)"
         sub: "If your VNC app asks whether to trust this PC, check it shows: " + (page.st ? page.st.fingerprint : "")
+        value: "Copy"
+        // Read only: the fingerprint is copied, never changed here.
+        onActivated: if (page.st && page.st.fingerprint) { Quickshell.execDetached(["wl-copy", "--", page.st.fingerprint]); page.say("Certificate fingerprint copied"); }
     }
 
     // ---- the password
