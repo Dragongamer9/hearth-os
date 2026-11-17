@@ -9,6 +9,7 @@ import Quickshell
 Singleton {
     property var navTarget: null
     property string pageAnchor: ""    // a part of the page to open at ("appearance:bar": Settings › Appearance › Bar and dock)
+    property real anchorAt: 0         // when it was asked for (a page loaded more than once in a moment still sees it)
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
     function openPage(p) { if (settingsApp) settingsApp.open(p); }
     // (pageAnchor above: Settings opened at a part of a page, "keyboard:osk", "appearance:bar"; the page or its SetExpander goes there.)
