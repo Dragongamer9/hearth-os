@@ -7,8 +7,10 @@
 //   it; the right stick still moves the pointer and RT clicks (into another field). Fast typing (Settings › Keyboard):
 //   the Ember Wheel on the left stick, or split sticks.
 //   Touch and the mouse: tap the keys; a long touch on a letter shows its accents.
-// Typing goes through wtype (Wayland's virtual keyboard: any character, whatever the system layout is); without wtype
-// through hearth-pad's uinput keyboard (US layout, plain characters). Settings and learned words: ~/.config/nimbus/osk.json
+// Typing goes through wtype (Wayland's virtual keyboard: any character, whatever the system layout is); on KWin, which
+// has no virtual keyboard for wtype, through hearth-type (Hearth's input method for text fields, any character, and a
+// uinput keyboard in the active layout for keys and the rest; docs/KWIN-INPUT.md); without either through hearth-pad's
+// uinput keyboard (US layout, plain characters). Settings and learned words: ~/.config/nimbus/osk.json
 // and ~/.local/share/nimbus/osk-words.json, shared with Game Mode's keyboard.
 import QtQuick
 import Quickshell
@@ -22,7 +24,11 @@ PanelWindow {
     property var pad: null               // Pad.qml (set by it): sends to hearth-pad
     property var engine: null
     property var vm: null
-    property bool hasWtype: false
+    property bool hasWtype: false        // something types for it: wtype, or hearth-type on KWin
+    readonly property bool onKwin: Quickshell.env("HEARTH_WM") === "kwin"
+    readonly property string hearthType: decodeURIComponent(Qt.resolvedUrl("hearth-type").toString().replace(/^file:\/\//, ""))
+    // The typing program and its first arguments: wtype on labwc, hearth-type (wtype's arguments) on KWin.
+    readonly property var typeCmd: onKwin ? ["python3", hearthType] : ["wtype"]
     property bool useWtype: true         // Hearth Plasma (osk-plasma.qml): KWin has no wtype, hearth-pad types
     property bool settingsLoaded: false
     property string typedLog: ""         // the last things typed (for the Desktop Mode test)
@@ -138,15 +144,15 @@ PanelWindow {
         typedLog = (typedLog + text).slice(-200);
         if (!hasWtype) { if (pad) pad.send({ cmd: "emit", text: text, mods: mods ? Object.keys(mods).filter(k => mods[k]) : [] }); return; }
         const args = modArgs(mods, true);
-        if (args.length && text.length === 1 && /[a-z0-9]/i.test(text)) push(["wtype"].concat(args, [text.toLowerCase()], modArgs(mods, false)));
-        else push(["wtype", "--", text]);
+        if (args.length && text.length === 1 && /[a-z0-9]/i.test(text)) push(typeCmd.concat(args, [text.toLowerCase()], modArgs(mods, false)));
+        else push(typeCmd.concat(["--", text]));
     }
     function typeKey(name, n, mods) {
         if (name === "bksp") typedLog = typedLog.slice(0, Math.max(0, typedLog.length - (n || 1)));
         if (!hasWtype) { if (pad) pad.send({ cmd: "key", key: name, n: n || 1, mods: mods ? Object.keys(mods).filter(k => mods[k]) : [] }); return; }
-        if (name === "paste") return push(["wtype", "-M", "ctrl", "v", "-m", "ctrl"]);
+        if (name === "paste") return push(typeCmd.concat(["-M", "ctrl", "v", "-m", "ctrl"]));
         const k = wkeys[name]; if (!k) return;
-        let args = ["wtype"].concat(modArgs(mods, true));
+        let args = typeCmd.concat(modArgs(mods, true));
         for (let i = 0; i < Math.max(1, Math.min(n || 1, 200)); i++) args.push("-k", k);
         push(args.concat(modArgs(mods, false)));
     }
@@ -167,7 +173,9 @@ PanelWindow {
     Process { id: typer; onExited: root.next() }
     Process {
         id: whichWtype
-        command: ["sh", "-c", "command -v wtype"]
+        // On KWin: hearth-type, when it can type here (python3-evdev and /dev/uinput, or Hearth's input method).
+        command: root.onKwin ? ["sh", "-c", "python3 \"$0\" --status | grep -Eq '\"(uinput|inputMethod)\": true' && echo hearth-type", root.hearthType]
+                             : ["sh", "-c", "command -v wtype"]
         stdout: SplitParser { onRead: line => { if (line.trim() && root.useWtype) root.hasWtype = true; } }
     }
 

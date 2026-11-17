@@ -2,7 +2,8 @@
 // wakes from sleep (Hearth Settings › Sign-in › Lock when waking). Covers every screen (the compositor keeps
 // everything else hidden until it's unlocked) and checks your password with the system (PAM), like the login
 // screen. It has its own keyboard on screen (tap, or move with the arrow keys / D-pad and press Enter), since
-// the regular on-screen keyboard can't show over a locked screen.
+// the regular on-screen keyboard can't show over a locked screen. On KWin it hands locking to KWin's locker with
+// Hearth's own lock screen in it (desktop/kwin-lock, docs/KWIN-INPUT.md).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -17,8 +18,42 @@ Scope {
     property string typed: ""
     property string message: ""
     property bool busy: false
+    // On KWin (HEARTH_WM=kwin) there's no ext-session-lock-v1, so WlSessionLock would cover nothing: KWin's own
+    // locker locks instead (fail-safe: it stays covered even if its screen crashes), showing Hearth's lock screen
+    // (desktop/kwin-lock). `locked` then follows KWin's locker (org.freedesktop.ScreenSaver ActiveChanged).
+    readonly property bool onKwin: Quickshell.env("HEARTH_WM") === "kwin"
 
-    function lock() { if (!locked) { typed = ""; message = ""; locked = true; } }
+    function lock() {
+        if (onKwin) { kwinLock.running = false; kwinLock.running = true; return; }
+        if (!locked) { typed = ""; message = ""; locked = true; }
+    }
+
+    // KWin: lock through its locker and check it really locked; if it didn't, say so loudly (never a silent
+    // "locked" that isn't).
+    Process {
+        id: kwinLock
+        command: ["sh", "-c", "gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.Lock >/dev/null 2>&1; for i in 1 2 3 4 5 6 7 8 9 10; do gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true && { echo locked; exit 0; }; sleep 0.5; done; echo failed"]
+        stdout: SplitParser {
+            onRead: l => {
+                if (l.trim() === "locked") { root.locked = true; return; }
+                root.locked = false;
+                console.warn("Lock: KWin's screen locker didn't lock");
+                SettingsNav.toast("The screen couldn't be locked. KWin's screen locker didn't answer");
+                Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Hearth", "The screen isn't locked",
+                    "KWin's screen locker didn't answer, so nothing is covering your desktop. Try Lock again, or sign out."]);
+            }
+        }
+    }
+    Process {
+        running: root.onKwin
+        command: ["gdbus", "monitor", "--session", "--dest", "org.freedesktop.ScreenSaver", "--object-path", "/ScreenSaver"]
+        stdout: SplitParser {
+            onRead: l => {
+                if (l.indexOf("ActiveChanged (true") >= 0) root.locked = true;
+                else if (l.indexOf("ActiveChanged (false") >= 0) root.locked = false;
+            }
+        }
+    }
     function tryUnlock() {
         if (busy) return;
         busy = true; message = "";
@@ -53,7 +88,7 @@ Scope {
 
     WlSessionLock {
         id: session
-        locked: root.locked
+        locked: root.locked && !root.onKwin
 
         WlSessionLockSurface {
             id: surface

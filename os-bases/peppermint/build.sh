@@ -1377,6 +1377,31 @@ done
 command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 # ---- end of Hearth Files as the file chooser
 
+# ---- Mantel on KWin: typing, the lock screen, screen sharing (docs/KWIN-INPUT.md)
+# hearth-kwin-im and hearth-kwin-cast come from the builder (/usr/libexec/hearth), their .desktop files (which KWin
+# reads to give them its input-method and screencast protocols) from os/system_files. hearth-type (the on-screen
+# keyboard's, clipboard paste's and the magnifier's typing on KWin) needs python3-evdev and /dev/uinput (installed
+# for hearth-pad). KWin's own screen locker locks Mantel on KWin (fail-safe), showing Hearth's lock screen: the
+# look-and-feel package org.hearth.mantel-lock (desktop/kwin-lock; only its lock screen). On labwc nothing changes:
+# wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
+test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
+optional kscreenlocker
+mkdir -p /usr/share/plasma/look-and-feel
+rm -rf /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
+cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
+rm -rf /usr/share/nimbus/desktop/kwin-helpers
+# For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
+# screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.
+cat > /usr/share/xdg-desktop-portal/hearth-portals.conf <<PORTALS
+[preferred]
+default=gtk
+org.freedesktop.impl.portal.FileChooser=hearth
+org.freedesktop.impl.portal.ScreenCast=hearth
+org.freedesktop.impl.portal.Screenshot=hearth
+PORTALS
+# ---- end of Mantel on KWin: typing, the lock screen, screen sharing
+
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
 # Built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
 # come with Hearth's icon set above.

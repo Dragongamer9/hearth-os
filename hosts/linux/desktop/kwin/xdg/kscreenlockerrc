@@ -1,0 +1,11 @@
+# KWin's screen locker in Hearth's KWin session (docs/KWIN-INPUT.md). Mantel decides when to lock (Super+L, the power
+# menu, Settings › Sign-in › Lock when waking, idle): Lock.qml asks KWin's locker, so KWin itself never locks on its
+# own (that would be a setting changing by itself) and the screen it shows is Hearth's (kwin-lock/, installed as the
+# look-and-feel package org.hearth.mantel-lock). Read from XDG_CONFIG_DIRS: nothing here is written to your files.
+[Daemon]
+Autolock=false
+LockOnResume=false
+Timeout=0
+
+[Greeter]
+Theme=org.hearth.mantel-lock

@@ -47,6 +47,7 @@ RUN --mount=type=bind,source=os-bases/peppermint/apt-snapshot.sh,target=/apt-sna
 # ------------------------------------------------------------------ what Debian doesn't package (see builder.sh)
 FROM base AS builder
 COPY os-bases/peppermint/builder.sh /builder.sh
+COPY hosts/linux/desktop/kwin-helpers /src/hearth-kwin-helpers
 RUN --mount=type=tmpfs,dst=/tmp /builder.sh
 
 # ------------------------------------------------------------------ Hearth

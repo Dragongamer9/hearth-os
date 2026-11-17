@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 """hearth-portal: Hearth Files as every app's file chooser, and as the file manager other apps open.
 
-  hearth-portal filechooser             the xdg-desktop-portal FileChooser backend, D-Bus name
+  hearth-portal filechooser             the xdg-desktop-portal FileChooser backend (and, on KWin, ScreenCast and
+                                        Screenshot: hearth_screencast.py), D-Bus name
                                         org.freedesktop.impl.portal.desktop.hearth (started by D-Bus; hearth.portal and
                                         nimbus-portals.conf send xdg-desktop-portal's OpenFile / SaveFile / SaveFiles here)
   hearth-portal filemanager1 [--replace]   org.freedesktop.FileManager1: ShowFolders, ShowItems, ShowItemProperties
@@ -682,8 +683,19 @@ def serve_filechooser():
     def get_prop(conn, sender, path, iface, prop):
         return GLib.Variant('u', FC_VERSION) if prop == 'version' else None
 
+    def busy(n):
+        state['busy'] += n
+        state['last'] = time.monotonic()
+
     def on_bus(conn, name):
         conn.register_object(PORTAL_PATH, fc_info, on_call, get_prop, None)
+        # Screen sharing and screenshots on KWin (hearth_screencast.py; hearth.portal lists them, the KWin
+        # session's portals.conf picks them). A missing or broken module leaves the file chooser working.
+        try:
+            import hearth_screencast
+            hearth_screencast.Portal(Gio, GLib, BUS_NAME, busy).register(conn, PORTAL_PATH)
+        except Exception as e:
+            log('screen sharing isn\'t available: %r' % e)
 
     Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE, on_bus, None,
                      lambda c, n: loop.quit())
