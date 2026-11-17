@@ -234,11 +234,45 @@ def free_on(path):
 
 
 # ------------------------------------------------------------------ what's recommended, and the limits
-def recommended(mem):
-    """For this PC (mem in bytes): zram first, sized by memory; Auto kept free (1.14); the guard gentle."""
+# 1.14 (the owner's i3-N305 laptop froze with 6 GB squeezed into zram): on a small processor (Intel's N-series,
+# Celeron, Pentium Silver, Atom, AMD's Athlon, or 4 threads or fewer) zstd's squeezing and unsqueezing keeps every core
+# busy once memory is full. lz4 is several times quicker (it squeezes a little less), and zram the size of memory
+# instead of 1.5x leaves room for the programs themselves; your drive swap file takes what's left over.
+WEAK_CPU = re.compile(r'Celeron|Pentium|Atom|Athlon|\bi3-N\d|Processor N\d|\bN\d{2,3}\b|\bN\d{4}\b', re.I)
+
+
+def cpu_facts(root=None):
+    """{model, threads} from /proc/cpuinfo."""
+    text = read(os.path.join(root or PROC, 'cpuinfo'))
+    model = ''
+    for line in text.splitlines():
+        if line.lower().startswith('model name'):
+            model = line.partition(':')[2].strip()
+            break
+    return {'model': model, 'threads': len(re.findall(r'^processor\s*:', text, re.M)) or (os.cpu_count() or 0)}
+
+
+def weak_cpu(cpu=None):
+    cpu = cpu if cpu is not None else cpu_facts()
+    return bool(WEAK_CPU.search(cpu.get('model') or '')) or 0 < (cpu.get('threads') or 0) <= 4
+
+
+def zram_before_114(mem):
+    """What zram was recommended as before 1.14 (zstd, 1.5x memory up to 8 GB): a saved memory.json that didn't set
+    every part of zram keeps these, so a newer recommendation never changes what you already had (red flag 9)."""
     g = mem / GIB
     mult = 1.5 if g <= 8.5 else 1.0 if g <= 16.5 else 0.5
-    return {'zram': {'on': True, 'gb': max(1, int(round(g * mult))), 'algo': 'zstd'},
+    return {'on': True, 'gb': max(1, int(round(g * mult))), 'algo': 'zstd'}
+
+
+def recommended(mem, cpu=None):
+    """For this PC (mem in bytes): zram first, sized by memory (lz4 and memory-sized on a small processor, 1.14);
+    Auto kept free (1.14); the guard gentle."""
+    g = mem / GIB
+    zram = zram_before_114(mem)
+    if weak_cpu(cpu):
+        zram = {'on': True, 'gb': max(1, int(round(g))), 'algo': 'lz4'}
+    return {'zram': zram,
             'swapfile': {'everyday': True},
             'keep': {'mode': 'auto'},
             'swappiness': AUTO_SWAPPINESS,
@@ -371,6 +405,7 @@ def merged(saved, mem):
             base['keep'] = dict(LEGACY_KEEP)
         if 'swappiness' not in saved:
             base['swappiness'] = LEGACY_SWAPPINESS
+        base['zram'] = zram_before_114(mem)     # what you didn't set of zram stays as it was (1.14's lz4 is a choice)
     for k, v in (saved or {}).items():
         if isinstance(v, dict) and isinstance(base.get(k), dict):
             base[k] = dict(base[k], **v)
@@ -832,14 +867,59 @@ def pick_victim(procs, keep, skip=()):
     return {'key': k, 'pids': g['pids'], 'bytes': b, 'name': name, 'names': list(g['names'])}
 
 
-def out_of_memory(mi, p, level):
+def out_of_memory(mi, p, level, sw=None):
+    """Memory really ran out: almost nothing available, swap almost full, and everything stalling (PSI full).
+    1.14 (the owner's laptop froze with a 37 GB drive swap file behind 8 GB of zram, so swap never looked "full"):
+    with zram in front of a drive swap file, swap counts as full once zram is; past that every page goes to the drive
+    and the desktop stalls long before the drive file fills up."""
     L = LEVELS.get(level)
     if not L:
         return False
     total = mi.get('MemTotal', 1)
     swap_total = mi.get('SwapTotal', 0)
     swap_free_ok = swap_total == 0 or mi.get('SwapFree', 0) < swap_total * L['swapfree']
+    fast = [s for s in (sw or []) if s.get('path', '').startswith('/dev/zram')]
+    if fast and len(fast) < len(sw):
+        fast_total = sum(s['size'] for s in fast)
+        fast_free = sum(max(0, s['size'] - s['used']) for s in fast)
+        swap_free_ok = swap_free_ok or (fast_total > 0 and fast_free < fast_total * L['swapfree'])
     return mi.get('MemAvailable', 0) < total * L['avail'] and swap_free_ok and p.get('full', 0) >= L['psi']
+
+
+# A browser's tab is its own process: when the browser is the one eating memory, its biggest tab is closed first (the
+# browser shows "this tab crashed", with Reload), the way Chrome and Edge drop tabs, instead of the whole browser and
+# every window in it. Firefox's tabs are "Isolated Web Co"/"Web Content"; Chromium-family tabs are --type=renderer.
+TAB_COMMS = ('Isolated Web Co', 'Web Content')
+CHROMIUM_COMMS = ('chrome', 'chromium', 'chromium-browse', 'brave', 'msedge', 'vivaldi-bin', 'opera', 'thorium')
+BROWSER_NAME = {'firefox': 'Firefox', 'firefox-bin': 'Firefox', 'librewolf': 'LibreWolf', 'floorp': 'Floorp',
+                'zen': 'Zen', 'chrome': 'Chrome', 'chromium': 'Chromium', 'chromium-browse': 'Chromium',
+                'brave': 'Brave', 'msedge': 'Edge', 'vivaldi-bin': 'Vivaldi', 'opera': 'Opera', 'thorium': 'Thorium'}
+
+
+def is_tab(p, root=None):
+    if p['comm'] in TAB_COMMS:
+        return True
+    if p['comm'] in CHROMIUM_COMMS:
+        args = read(os.path.join(root or PROC, str(p['pid']), 'cmdline')).split('\0')
+        return '--type=renderer' in args and '--extension-process' not in args
+    return False
+
+
+def biggest_tab(v, procs, root=None):
+    """The one tab to close instead of the whole browser: its biggest tab, when it holds at least a quarter of the
+    browser's memory and 300 MB (else closing it wouldn't help, and the whole app is closed as before)."""
+    pids = set(v['pids'])
+    tabs = [p for p in procs if p['pid'] in pids and is_tab(p, root)]
+    if not tabs:
+        return None
+    t = max(tabs, key=lambda p: p['rss'] + p['swap'])
+    b = t['rss'] + t['swap']
+    if b < 300 * 1024 * 1024 or b < v['bytes'] * 0.25:
+        return None
+    browser = next((BROWSER_NAME[n] for n in v.get('names', []) if n in BROWSER_NAME), None)
+    if not browser:
+        browser = 'Firefox' if t['comm'] in TAB_COMMS else BROWSER_NAME.get(t['comm'], 'the browser')
+    return {'pid': t['pid'], 'bytes': b, 'browser': browser}
 
 
 # ------------------------------------------------------------------ Keep this running (checkpoint), 1.12
@@ -1041,7 +1121,7 @@ def guard():
                     pass
             protect_at = now
         mi, p = meminfo(), pressure()
-        if out_of_memory(mi, p, level):
+        if out_of_memory(mi, p, level, swaps()):
             since = since or now
             if now - since >= LEVELS[level]['hold']:
                 procs = proc_list()
@@ -1065,6 +1145,18 @@ def guard():
                     if not nxt:
                         break                      # it's the only one left: closing it is all that's left
                     v = nxt
+                tab = biggest_tab(v, procs) if v else None
+                if tab:
+                    try:
+                        os.kill(tab['pid'], signal.SIGKILL)
+                    except OSError:
+                        pass
+                    rec = {'at': int(now), 'name': '%s tab' % tab['browser'], 'mb': tab['bytes'] // (1024 * 1024), 'tab': True}
+                    with open(os.path.join(STATE, 'guard.log'), 'a') as f:
+                        f.write(json.dumps(rec) + '\n')
+                    tell('A %s tab was closed: it was using %.1f GB and memory was full. %s and your other tabs stay '
+                         'open; press Reload on that tab to open it again.' % (tab['browser'], tab['bytes'] / GIB, tab['browser']))
+                    v = None
                 if v:
                     for pid in v['pids']:
                         try:
