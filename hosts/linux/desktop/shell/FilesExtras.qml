@@ -1,7 +1,7 @@
 // Hearth Files' 1.14 extras (Dolphin's features), kept apart from FileManager.qml, which calls in here:
 //   tags (Tags ›, a Tags list in the left menu, finding what carries one; user.xdg.tags, the same as Dolphin's),
 //   git status badges (on items in a git repository, and the branch in the status bar),
-//   Act as administrator (changes outside your home folder through hearth-admin files-*, pkexec: polkit asks for an
+//   Act as administrator (changes outside your home folder through pkexec hearth-files-admin, its own polkit action: polkit asks for an
 //     administrator's password; never the parts that start the PC; this window only, never saved, a red bar while on),
 //   disc images (Open as a drive / Close the drive), phones (MTP) and cameras (PTP) under This PC,
 //   apps' right-click actions (KDE service menus), Share on your network… (Properties › Sharing).
@@ -15,7 +15,7 @@ Scope {
 
     // ------------------------------------------------ Act as administrator
     property bool admin: false
-    readonly property string adminHelper: "/usr/libexec/nimbus/hearth-admin"
+    readonly property string adminHelper: "/usr/libexec/nimbus/hearth-files-admin"   // its own polkit action
     readonly property var adminOps: ["mkdir", "new-file", "rename", "delete", "copy", "move", "chmod"]
     function inHome(p) { const h = app ? app.home : ""; return !!p && !!h && (p === h || p.indexOf(h + "/") === 0); }
     function systemPath(p) { return !!p && p.indexOf("/") === 0 && !inHome(p) && p.indexOf("/run/media/") !== 0 && p.indexOf("/media/") !== 0 && p.indexOf("/tmp") !== 0 && p.indexOf("/run/user/") !== 0; }

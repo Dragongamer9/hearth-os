@@ -46,6 +46,8 @@ PanelWindow {
     // what you type shows there (menuQuery). barSearch: the bar on the main screen shows that field (shell.qml).
     property bool barSearch: false
     readonly property string menuQuery: shown && styled && typeof styleLoader.item.query === "string" ? styleLoader.item.query : ""
+    // What's typed in the menu (its search or the styled menu's): the KWin checks look that keys reach it.
+    readonly property string typedText: menuQuery !== "" ? menuQuery : search.text
     function openMenuSearch() {
         if (!shown) shown = true;
         if (styled && typeof styleLoader.item.focusSearch === "function") styleLoader.item.focusSearch();
