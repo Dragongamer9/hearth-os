@@ -12,6 +12,11 @@
  *   hearth-kwin-cast stream output NAME CURSOR | window UUID CURSOR | region X Y W H CURSOR
  *       starts a stream (CURSOR: 1 hidden, 2 in the picture, 4 as metadata) and prints "node N" (the PipeWire node)
  *       once KWin has made it; it lasts until stdin closes or SIGTERM, then "closed". "failed WHY" if it couldn't.
+ *   hearth-kwin-cast input
+ *       remote control (the RemoteDesktop portal, after you allowed it): KWin's fake input; one command per line on
+ *       stdin: "m DX DY" (pointer motion), "a X Y" (pointer to a place, KWin's coordinates), "b BUTTON 1|0" (evdev
+ *       button code, down/up), "x AXIS VALUE" (0 vertical, 1 horizontal scroll), "k KEYCODE 1|0" (evdev key code).
+ *       Ends when stdin closes; prints "ready" once KWin took it.
  *   hearth-kwin-cast shot screen NAME | window UUID | workspace | area X Y W H  [CURSOR 0|1]
  *       a screenshot: one line "W H STRIDE FORMAT SCALE" (FORMAT: Qt's QImage format number) and the raw pixels.
  * Exit codes: 1 failed, 2 KWin didn't give this program what it asked for (its .desktop file isn't installed),
@@ -34,6 +39,7 @@
 #include <gio/gunixfdlist.h>
 #include <wayland-client.h>
 #include "screencast-client-protocol.h"
+#include "fake-input-client-protocol.h"
 
 struct output {
     struct wl_output *wl;
@@ -45,6 +51,7 @@ struct output {
 
 static struct wl_display *display;
 static struct zkde_screencast_unstable_v1 *screencast;
+static struct org_kde_kwin_fake_input *fake;
 static struct output *outputs;
 static int done_stream;        /* 1 created, -1 failed, 2 closed */
 
@@ -91,6 +98,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
         wl_output_add_listener(o->wl, &out_listener, o);
         o->next = outputs;
         outputs = o;
+    } else if (strcmp(iface, org_kde_kwin_fake_input_interface.name) == 0 && !fake) {
+        uint32_t v = version < 4 ? version : 4;
+        fake = wl_registry_bind(r, name, &org_kde_kwin_fake_input_interface, v);
     } else if (strcmp(iface, zkde_screencast_unstable_v1_interface.name) == 0 && !screencast) {
         uint32_t v = version < 4 ? version : 4;
         screencast = wl_registry_bind(r, name, &zkde_screencast_unstable_v1_interface, v);
@@ -191,6 +201,42 @@ static int do_stream(int argc, char **argv) {
         if (done_stream == 1) { printf("closed\n"); fflush(stdout); }
     }
     return done_stream < 0 ? 1 : 0;
+}
+
+/* ------------------------------------------------------------------ remote input (org_kde_kwin_fake_input) */
+
+static int do_input(void) {
+    if (connect_wayland() < 0) return 1;
+    if (!fake) {
+        printf("failed KWin didn't give org_kde_kwin_fake_input to this program (hearth-kwin-cast.desktop)\n");
+        return 2;
+    }
+    org_kde_kwin_fake_input_authenticate(fake, "Hearth", "Remote control you allowed (Hearth's RemoteDesktop portal)");
+    wl_display_roundtrip(display);
+    printf("ready\n");
+    fflush(stdout);
+    char line[256];
+    unsigned v = org_kde_kwin_fake_input_get_version(fake);
+    while (fgets(line, sizeof line, stdin)) {
+        double a = 0, b = 0;
+        int i = 0, j = 0;
+        if (line[0] == 'm' && sscanf(line + 1, "%lf %lf", &a, &b) == 2) {
+            org_kde_kwin_fake_input_pointer_motion(fake, wl_fixed_from_double(a), wl_fixed_from_double(b));
+        } else if (line[0] == 'a' && sscanf(line + 1, "%lf %lf", &a, &b) == 2 && v >= ORG_KDE_KWIN_FAKE_INPUT_POINTER_MOTION_ABSOLUTE_SINCE_VERSION) {
+            org_kde_kwin_fake_input_pointer_motion_absolute(fake, wl_fixed_from_double(a), wl_fixed_from_double(b));
+        } else if (line[0] == 'b' && sscanf(line + 1, "%d %d", &i, &j) == 2 && i > 0) {
+            org_kde_kwin_fake_input_button(fake, (uint32_t)i, j ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED);
+        } else if (line[0] == 'x' && sscanf(line + 1, "%d %lf", &i, &a) == 2 && (i == 0 || i == 1)) {
+            org_kde_kwin_fake_input_axis(fake, i ? WL_POINTER_AXIS_HORIZONTAL_SCROLL : WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_double(a));
+        } else if (line[0] == 'k' && sscanf(line + 1, "%d %d", &i, &j) == 2 && i > 0 && i < 0x300 && v >= ORG_KDE_KWIN_FAKE_INPUT_KEYBOARD_KEY_SINCE_VERSION) {
+            org_kde_kwin_fake_input_keyboard_key(fake, (uint32_t)i, j ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+        } else {
+            continue;
+        }
+        if (wl_display_flush(display) < 0) break;
+    }
+    wl_display_roundtrip(display);
+    return 0;
 }
 
 static int do_outputs(void) {
@@ -333,6 +379,7 @@ int main(int argc, char **argv) {
     if (argc >= 2 && strcmp(argv[1], "outputs") == 0) return do_outputs();
     if (argc >= 2 && strcmp(argv[1], "stream") == 0) return do_stream(argc - 2, argv + 2);
     if (argc >= 2 && strcmp(argv[1], "shot") == 0) return do_shot(argc - 2, argv + 2);
+    if (argc >= 2 && strcmp(argv[1], "input") == 0) return do_input();
     fprintf(stderr, "usage: hearth-kwin-cast outputs | stream ... | shot ...\n");
     return 1;
 }

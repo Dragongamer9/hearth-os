@@ -1406,6 +1406,7 @@ org.freedesktop.impl.portal.FileChooser=hearth
 org.freedesktop.impl.portal.ScreenCast=hearth
 org.freedesktop.impl.portal.Screenshot=hearth
 org.freedesktop.impl.portal.Access=hearth
+org.freedesktop.impl.portal.RemoteDesktop=hearth
 PORTALS
 # ---- end of Mantel on KWin: typing, the lock screen, screen sharing
 

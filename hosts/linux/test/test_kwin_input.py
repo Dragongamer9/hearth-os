@@ -428,6 +428,22 @@ class Access(unittest.TestCase):
         self.assertIn('<interface name="org.freedesktop.impl.portal.Access">', hs.XML)
 
 
+class Remote(unittest.TestCase):
+    def test_keysyms(self):
+        self.assertEqual(hs.keysym_keys(0xff0d), ['KEY_ENTER'])
+        self.assertEqual(hs.keysym_keys(0x41), ['KEY_LEFTSHIFT', 'KEY_A'])
+        self.assertEqual(hs.keysym_keys(0x21), ['KEY_LEFTSHIFT', 'KEY_1'])
+        self.assertEqual(hs.keysym_keys(0xffbe), ['KEY_F1'])
+        self.assertIsNone(hs.keysym_keys(0x1f525 + 0x1000000))        # 🔥: no key for it
+        self.assertEqual(hs.keycode('KEY_ENTER'), 28)
+
+    def test_registered(self):
+        self.assertIn('org.freedesktop.impl.portal.RemoteDesktop;', read('os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal'))
+        self.assertIn('org.freedesktop.impl.portal.RemoteDesktop=hearth', read('os-bases/peppermint/build.sh'))
+        self.assertIn('<interface name="org.freedesktop.impl.portal.RemoteDesktop">', hs.XML)
+        self.assertIn('org_kde_kwin_fake_input', read('os/system_files/usr/share/applications/hearth-kwin-cast.desktop'))
+
+
 class Wiring(unittest.TestCase):
     def test_keyboard_types_through_hearth_type_on_kwin(self):
         kb = read('hosts/linux/desktop/shell/Keyboard.qml')
