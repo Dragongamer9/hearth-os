@@ -2689,6 +2689,15 @@ const path = require('path');
         if (S.setupStep !== at) out.push('Next went on without a name');
         OEM.full = 'Sam Smith'; OEM.password = 'ab'; act(document.querySelector('#view [data-k="setup-next"]')); await w(200);
         if (S.setupStep !== at) out.push('Next went on with a 2-letter password');
+        // Skip before it's done: the lasting notice (to Settings › Sign-in) and the row at the top of that page.
+        HOSTINFO.oemSetup = true;
+        if (!/data-k="li-oem"/.test(oemRow()) || !/Set your name and password/.test(oemRow())) out.push('no Set your name and password row for Settings › Sign-in');
+        if (!/let h=oemRow\(\)/.test(pageSignin.toString())) out.push('Settings › Sign-in does not show the row');
+        setupFinish(); await w(100);
+        const n = NOTIFS.filter(x => x.oem);
+        if (n.length !== 1 || n[0].go !== 'signin') out.push('Skip left no lasting notice to Settings › Sign-in: ' + JSON.stringify(n));
+        setupFinish(); if (NOTIFS.filter(x => x.oem).length !== 1) out.push('the notice was added twice');
+        closeAll(); S.history = []; S.setupStep = SETUP_STEPS.indexOf('account'); navigate('setup', {}, false); await w(300);
         OEM.password = 'hunter22'; OEM.tz = 'America/Chicago'; render(null, true); await w(200);
         return out;
       });
@@ -2697,7 +2706,9 @@ const path = require('path');
       for (const q of [60, 45, 30, 20]) { const buf = await sp.screenshot({ type: 'jpeg', quality: q }); if (buf.toString('base64').length <= 9 * 3800 || q === 20) { require('fs').writeFileSync(path.join(dir, 'setup-oem-account.jpg'), buf); break; } }
       const r2 = await sp.evaluate(async () => {
         const at = S.setupStep; act(document.querySelector('#view [data-k="setup-next"]')); await new Promise(res => setTimeout(res, 300));
-        return S.setupStep === at + 1 && OEM.done ? [] : ['Next with everything filled in did not go on'];
+        const o = S.setupStep === at + 1 && OEM.done ? [] : ['Next with everything filled in did not go on'];
+        if (NOTIFS.some(x => x.oem)) o.push('the notice stayed after the account was set up');
+        return o;
       });
       for (const e of r2) errors.push('pre-installed PC: ' + e);
     } catch (e) { errors.push('pre-installed PC: ' + e.message.split('\n')[0]); }

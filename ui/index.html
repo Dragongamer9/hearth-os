@@ -1626,7 +1626,7 @@ function openStartPage(p){
   if(p==='recomps'){ if(typeof SHOP==='object') SHOP.store='recomps'; navigate('shop',{},false); return; }
   if(['stores','library','downloads'].includes(p)) navigate(p,{},false);
 }
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(LINUX&&!OVERLAY&&hasFeat('gameModeChoice')) gmStart(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.oemSetup&&!i.live) setupOem(true); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(LINUX&&!OVERLAY&&hasFeat('gameModeChoice')) gmStart(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.oemSetup&&!i.live){ setupOem(true); oemNotice(); } if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -6853,7 +6853,7 @@ function pageSignin(){
   if(!host) return note('Sign-in settings work in the '+APP+' app.');
   const L=LOGIN.s; if(!L) return note('Loading…');
   const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
-  let h='';
+  let h=oemRow();
   if(L.canAdmin) h += `<button class="row" data-f data-k="li-auto" data-act="loginAuto"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign in automatically</b><small>${L.autologin?'Starts straight into '+APP+' when you turn it on, like a console':'Shows the login screen when you turn it on'}</small></div><div class="sw ${L.autologin?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-wake" data-act="loginWake"><span class="ricon">${I.lock}</span><div class="rt"><b>Ask for my password after sleep</b><small>${L.lockOnWake?'Locked when it wakes up, in Game Mode and on the desktop':'Wakes straight back to where you were'}</small></div><div class="sw ${L.lockOnWake?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-start" data-act="loginStart"><span class="ricon">${I.desk}</span><div class="rt"><b>Start in</b><small>What you see after signing in</small></div><div class="rv">${mode} ›</div></button>`;
@@ -10449,6 +10449,7 @@ function act(el){
     case 'swRestart': return swRestart();
     case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : SETUP_STEPS[S.setupStep||0]==='account' ? oemNext() : setupGo(1);
     case 'oemEdit': return oemEdit(d.v);
+    case 'oemOpen': return oemOpen();
     case 'setupSkip': return setupFinish();
     case 'setupBrowser': return call('browser.act',{action:d.v==='chrome'?'pick-chrome':'pick-firefox'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'profRetry': PROF.err=null; render('pr-retry',true); return loadProfiles();
@@ -12909,13 +12910,23 @@ async function oemEdit(what){
   if(what==='tz') return openSheet({title:'Time zone', items: OSI_TZ.map(z=>({label:z.replace(/_/g,' ').replace('/',' · '), icon: z===OEM.tz?'check':'info', run:()=>{ OEM.tz=z; render('oem-tz'); }}))});
   render('oem-'+what);
 }
+// Until "Make it yours" is done (Skip too): a lasting notice, and a row at the top of Settings › Sign-in.
+const OEM_NOTE='Set your name and password';
+function oemNotice(){
+  if(!NOTIFS.some(n=>n.oem)){ NOTIFS.unshift({i:'user', t:OEM_NOTE, s:'This PC came with '+APP+' on it: Settings › Sign-in', go:'signin', oem:true}); updateBadge(); }
+}
+function oemOpen(){ setupOem(true); S.setupStep=SETUP_STEPS.indexOf('account'); navigate('setup'); }
+function oemRow(){
+  return HOSTINFO.oemSetup ? `<button class="row" data-f data-k="li-oem" data-act="oemOpen"><span class="ricon">${I.user}</span><div class="rt"><b>${OEM_NOTE}</b><small>This PC came with ${APP} on it and its account is still the stand-in one, with no password</small></div><div class="rv">Set up ›</div></button>` : '';
+}
 function oemNext(){
   if(OEM.done) return setupGo(1);
   const why=oemWhy(); if(why) return toast(why);
-  if(!host){ OEM.done=true; return setupGo(1); }
+  const done=()=>{ OEM.done=true; OEM.password=''; HOSTINFO.oemSetup=false; const k=NOTIFS.findIndex(n=>n.oem); if(k>=0){ NOTIFS.splice(k,1); updateBadge(); } };
+  if(!host){ done(); return setupGo(1); }
   OEM.busy=true; render(null,true);
   call('setup.oemFinish',{full:OEM.full.trim(), password:OEM.nopassword?'':OEM.password, nopassword:OEM.nopassword, timezone:OEM.tz},60000)
-    .then(()=>{ OEM.done=true; OEM.password=''; HOSTINFO.oemSetup=false; toast('Your account is set up'); setupGo(1); })
+    .then(()=>{ done(); toast('Your account is set up'); setupGo(1); })
     .catch(e=>toast(e.message)).finally(()=>{ OEM.busy=false; render(null,true); });
 }
 // ---------- "Connect a controller": the first screen on the live USB and at first start ----------
@@ -12986,6 +12997,8 @@ function setupGo(d){
 }
 function setupFinish(){
   if(host) call('setup.done').catch(()=>{});
+  // Skipped before "Make it yours": setup comes back at the next start, and the notice stays.
+  if(HOSTINFO.oemSetup && !OEM.done){ oemNotice(); toast(OEM_NOTE+': Settings › Sign-in, or at the next start'); }
   HOSTINFO.setupDone=true; S.history=[];
   // Hearth OS: first-time setup runs once in Hearth's app, then the device goes to its Game Mode, Steam Game Mode
   // (nimbus-session's "setup" run; host.info feature steamOnly).
