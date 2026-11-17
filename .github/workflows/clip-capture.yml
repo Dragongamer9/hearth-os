@@ -243,12 +243,30 @@ jobs:
         run: |
           dnf -y install dnf5-plugins git kwin mesa-dri-drivers qt6-qtsvg qt6ct procps-ng python3 python3-gobject python3-dbus python3-pillow \
             google-noto-sans-fonts google-noto-sans-mono-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme dbus-daemon dbus-tools \
-            libnotify wl-clipboard foot qrencode zbar ffmpeg-free kmod glib2 >/dev/null
+            libnotify wl-clipboard foot qrencode zbar ffmpeg-free kmod glib2 kf6-kservice \
+            gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel >/dev/null
+          # hearth-kwin-cast (the small helper KWin trusts for screenshots) is built from plasma-wayland-protocols' XML.
+          dnf -y install --skip-unavailable plasma-wayland-protocols-devel plasma-wayland-protocols >/dev/null || true
           dnf -y install --skip-unavailable rsms-inter-fonts gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-base-tools pipewire-gstreamer >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           kwin_wayland --version || true
       - uses: actions/checkout@v4
+      - name: Hearth's screenshot helper for KWin, where the image puts it
+        run: |
+          # As desktop-test.yml's KWin screens job and the image: hearth-screens takes KWin's pictures (CaptureArea too)
+          # through hearth-kwin-cast, which answers only a root-owned hearth-screens.
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > /tmp/helpers-build.log 2>&1 \
+            || { echo "::error title=KWin helpers::$(grep -E 'error' /tmp/helpers-build.log | head -6 | tr '\n' '|' | cut -c1-600)"; exit 1; }
+          install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          # /usr/bin/hearth-screenshot as in the image, behind a stand-in that writes down how it was asked (the proof
+          # that the scrolling capture's pictures go through it).
+          install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/libexec/hearth-screenshot.real
+          printf '#!/bin/sh\necho "$*" >> /tmp/hearth-screenshot.log\nexec /usr/libexec/hearth-screenshot.real "$@"\n' > /usr/bin/hearth-screenshot
+          chmod 755 /usr/bin/hearth-screenshot
+          chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
+          kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
       - name: Mantel on KWin, check and take the pictures
         timeout-minutes: 20
         shell: bash
@@ -265,7 +283,7 @@ jobs:
           dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           export NIMBUS_SHARE="$PWD/hosts/linux" QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
-          chmod +x hosts/linux/desktop/shell/hearth-capture-helper hosts/linux/desktop/shell/hearth-clipboard hosts/linux/desktop/shell/hearth-record hosts/linux/desktop/shell/hearth-screens os/system_files/usr/bin/hearth-screenshot
+          chmod +x hosts/linux/desktop/shell/hearth-capture-helper hosts/linux/desktop/shell/hearth-clipboard hosts/linux/desktop/shell/hearth-record hosts/linux/desktop/shell/hearth-screens
           # Stand-ins as in the labwc job: two browsers, two picture apps, Phone link with one phone.
           app() { printf '[Desktop Entry]\nType=Application\nName=%s\nIcon=%s\nExec=sh -c '"'"'echo "%s $1" >> /tmp/opened.txt'"'"' sh %%u\nMimeType=%s\n' "$2" "$3" "$2" "$4" > "$HOME/.local/share/applications/$1"; }
           app hearth-browser.desktop "Hearth Browser" firefox "x-scheme-handler/http;x-scheme-handler/https;text/html;"
@@ -302,11 +320,6 @@ jobs:
           python3 -c "
           import random; r = random.Random(4); w = 'hearth ember mantel capture scroll stitch window page picture desktop kwin labwc steam phone sound'.split()
           print('\n'.join('%03d  %s' % (i, ' '.join(r.choice(w) for _ in range(r.randint(3, 11)))) for i in range(1, 400)))" > /tmp/long.txt
-          # hearth-screenshot as the image has it (/usr/bin), behind a stand-in that writes down how it was asked.
-          mkdir -p /tmp/bin
-          printf '#!/bin/sh\necho "$*" >> /tmp/hearth-screenshot.log\nexec %s "$@"\n' "$PWD/os/system_files/usr/bin/hearth-screenshot" > /tmp/bin/hearth-screenshot
-          chmod +x /tmp/bin/hearth-screenshot
-          export PATH="/tmp/bin:$PATH"
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
           modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
           /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
@@ -332,12 +345,16 @@ jobs:
           shot() { timeout 25 python3 /tmp/shot.py "shots/kwin-$1.png" 2>>shots/shot-errors.txt && echo "took kwin-$1" || echo "::warning title=KWin picture::$1 not taken"; }
           export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin XDG_CURRENT_DESKTOP=Hearth:KDE
           SH="$NIMBUS_SHARE/desktop/shell"
+          # KWin's CaptureArea through hearth-screenshot before the shell starts: it must give a picture here.
+          timeout 40 hearth-screenshot -g "100,100 320x200" /tmp/area-check.png > /tmp/area-check.txt 2>&1
+          python3 -c 'import struct,sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; print(struct.unpack(">II", d[16:24]))' /tmp/area-check.png > /tmp/area-size.txt 2>&1 \
+            && note "CaptureArea" "hearth-screenshot -g gave a $(cat /tmp/area-size.txt) picture" \
+            || bad "CaptureArea" "hearth-screenshot -g failed: $(tr '\n' '|' < /tmp/area-check.txt | cut -c1-400)"
           quickshell -p "$SH" >shots/shell.log 2>&1 &
           q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
           for i in $(seq 1 60); do [ -n "$(q clipboard state)" ] && break; sleep 2; done
           sleep 8
           q browserpick close; sleep 2
-          note "protocols" "$(wl-paste --list-types 2>&1 | head -2 | tr '\n' ' ') / clipboard: $(q clipboard state)"
           CLIPJ="$HOME/.config/nimbus/clipboard.json"
 
           # ---- Clipboard: More, Open in, QR code, Edit.
