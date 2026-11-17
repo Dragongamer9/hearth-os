@@ -1,0 +1,8 @@
+[Sound Theme]
+Name=Hearth
+Comment=Hearth OS's own short system sounds (made by tools/make-hearth-sounds.py; GPL-3.0, like Hearth OS)
+Inherits=freedesktop
+Directories=stereo
+
+[stereo]
+OutputProfile=stereo

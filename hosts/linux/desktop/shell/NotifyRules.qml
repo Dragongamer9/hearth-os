@@ -16,16 +16,22 @@ Singleton {
     // turned off: the rule for them always allows them, whatever the file says (hearth-notify refuses it too).
     readonly property var hearthApp: /^(hearth|nimbus|mantel|task manager)\b/i
     function isHearth(app) { return !!app && hearthApp.test(app); }
+    // Hearth's own warnings (1.14): never blocked by anything (an app rule, muting, Do Not Disturb, automatic quiet,
+    // low priority). Urgent ones from any Hearth app, and anything from Hearth itself (not its apps like Hearth
+    // Player): the system's own names, or the category "hearth.warning" a Hearth helper gives its warnings (not low ones).
+    readonly property var hearthSystem: /^(hearth|hearth os|hearth settings|hearth system|hearth updates|hearth security|hearth restore|nimbus|mantel|task manager)$/i
+    function isHearthWarning(n) {
+        if (!n || !isHearth(n.appName)) return false;
+        let cat = "";
+        try { cat = String((n.hints && n.hints["category"]) || ""); } catch (e) {}
+        return n.urgency === 2 || (n.urgency !== 0 && (hearthSystem.test(n.appName) || /^hearth\.warning/.test(cat)));
+    }
     function rule(app) {
         const r = Object.assign({}, defaults, (app && apps[app]) || {});
         if (isHearth(app)) r.allow = true;
         return r;
     }
-    // A short sound for a notification from an app with Sound on (the freedesktop theme's, if it's installed).
-    readonly property string soundFile: "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
-    function playSound() {
-        Quickshell.execDetached(["sh", "-c", 'f="$1"; if [ -f "$f" ] && command -v pw-play >/dev/null; then exec pw-play "$f"; fi; command -v canberra-gtk-play >/dev/null && exec canberra-gtk-play -i message-new-instant', "sh", soundFile]);
-    }
+    // (The sound for an app with Sound on is Sounds.qml's "Notification" now: Settings › Sounds, 1.14.)
     FileView {
         id: file
         path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/notify-apps.json"

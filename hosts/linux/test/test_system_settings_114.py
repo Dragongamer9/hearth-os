@@ -760,8 +760,10 @@ class NotifyApps(Home):
     def test_the_server_follows_the_rules(self):
         q = (SHELL / 'Notifications.qml').read_text()
         self.assertIn('const rule = NotifyRules.rule(n.appName);', q)
-        self.assertIn('if (!rule.allow) { n.dismiss(); return; }', q)
-        self.assertIn('if (critical && NotifyRules.isHearth(n.appName)) { n.tracked = true; return; }', q)
+        # 1.14 round 2: Hearth's own warnings can't be blocked by anything (test_notify_widgets_114.py has the rest)
+        self.assertIn('if (!rule.allow && !warn) { n.dismiss(); return; }', q)
+        self.assertIn('const warn = NotifyRules.isHearthWarning(n);', q)
+        self.assertIn('if (warn) pop = true;', q)
         self.assertIn('if (isHearth(app)) r.allow = true;', (SHELL / 'NotifyRules.qml').read_text())
         self.assertIn('rule.priority === "high"', q)
         lock = (SHELL / 'Lock.qml').read_text()
