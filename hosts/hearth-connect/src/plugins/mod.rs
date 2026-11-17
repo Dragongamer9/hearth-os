@@ -39,6 +39,8 @@ pub struct DevState {
     pub contacts: contacts::State,
     /// The phone's network and signal (0-4), per SIM.
     pub signal: Option<serde_json::Value>,
+    /// The "wants to pair" notification.
+    pub pair_notif: u32,
 }
 
 fn all() -> &'static Mutex<HashMap<String, DevState>> {
@@ -70,6 +72,28 @@ pub fn handle(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet, pd: &PairedDev)
         _ => return false,
     }
     true
+}
+
+/// "Pixel 8 wants to pair", with Accept and Decline (and the key to check); it goes once the request is answered.
+pub fn pair_notice(d: &Arc<Daemon>, id: &str, who: &str, key: &str) {
+    let (d2, dev) = (d.clone(), id.to_string());
+    let n = notify_bus::notify(&format!("{who} wants to pair"), &format!("Check that the phone shows {key}, then accept here or in Settings › Phone."), "smartphone", 0, true,
+        &[("accept".to_string(), "Accept".to_string()), ("reject".to_string(), "Decline".to_string()), ("default".to_string(), "Open".to_string())], None,
+        Arc::new(move |ev| match ev {
+            notify_bus::Event::Action(k) if k == "accept" => { let _ = d2.accept_pair(&dev); }
+            notify_bus::Event::Action(k) if k == "reject" => { let _ = d2.reject_pair(&dev); }
+            notify_bus::Event::Action(k) if k == "default" => notify_bus::open_page("phone"),
+            _ => {}
+        }));
+    match n {
+        Some(n) => { let old = with(id, |s| std::mem::replace(&mut s.pair_notif, n)); if old != 0 && old != n { notify_bus::close(old); } }
+        None => d.notify_desktop(&format!("{who} wants to pair"), &format!("Accept in Settings › Phone. Check that the phone shows {key}."), "smartphone", true),
+    }
+}
+
+pub fn pair_notice_done(id: &str) {
+    let n = with(id, |s| std::mem::take(&mut s.pair_notif));
+    if n != 0 { notify_bus::close(n); }
 }
 
 /// A paired phone just linked.

@@ -85,7 +85,7 @@ jobs:
           cat tests.log
           echo "::notice title=pretend phone::$(grep -E ' \.\.\. (ok|FAIL|ERROR|skipped)' tests.log | sed -E 's/^test_([0-9]+)_([a-z_]+) .* \.\.\. /\1 \2: /' | tr '\n' '|' | cut -c1-3900)"
           if [ $code -ne 0 ]; then
-            echo "::error title=pretend phone failures::$(sed -n '/^\(FAIL\|ERROR\):/,/^------/p' tests.log | grep -vE '^\s*File \"/usr' | tr '\n' '|' | cut -c1-3900)"
+            echo "::error title=pretend phone failures::$(grep -vE '^\s*File \"/usr|^-+$' tests.log | sed -n '/^\(FAIL\|ERROR\):/,/^\(Ran \|=====\)/p' | tr '\n' '|' | cut -c1-3900)"
           fi
           exit $code
 
@@ -123,7 +123,7 @@ jobs:
           cat tests.log
           echo "::notice title=inside KWin::$(grep -E ' \.\.\. (ok|FAIL|ERROR|skipped)' tests.log | sed -E 's/^test_([0-9]+)_([a-z_]+) .* \.\.\. /\1 \2: /' | tr '\n' '|' | cut -c1-3900)"
           if [ $code -ne 0 ]; then
-            echo "::error title=inside KWin failures::$(sed -n '/^\(FAIL\|ERROR\):/,/^------/p' tests.log | grep -vE '^\s*File \"/usr' | tr '\n' '|' | cut -c1-3900)"
+            echo "::error title=inside KWin failures::$(grep -vE '^\s*File \"/usr|^-+$' tests.log | sed -n '/^\(FAIL\|ERROR\):/,/^\(Ran \|=====\)/p' | tr '\n' '|' | cut -c1-3900)"
           fi
           exit $code
 
@@ -189,11 +189,13 @@ jobs:
             ipc settings close; sleep 1; ipc quick toggle; sleep 3; grim shots/quick-access-phone.png || true; ipc quick toggle
           else
             sleep 4
+            # 1.12's "Pick your browser" comes up a minute in: closed so it doesn't cover the pages.
+            ( sleep 45; quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call browserpick close ) >/dev/null 2>&1 &
             ipc settings page phone; sleep 4; grim shots/phone-page-call.png || true
             ipc settings close; ipc settings page phone:notifications; sleep 4; grim shots/phone-notifications.png || true
             ipc settings close; ipc settings page phone:commands; sleep 4; grim shots/phone-commands.png || true
             ipc settings close; ipc settings page phone-messages; sleep 5; grim shots/phone-messages.png || true
-            ipc settings close; ipc settings page phone-messages:7; sleep 5; grim shots/phone-conversation.png || true
+            ipc browserpick close; ipc settings close; ipc settings page phone-messages:7; sleep 5; grim shots/phone-conversation.png || true
           fi
           hearth-connect --call state > shots/state.json 2>&1 || true
           grep -E "(SetPhone|SetPhoneMessages|PhoneStatus|NotifReply|Notifications|QuickAccess)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
