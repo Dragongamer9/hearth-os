@@ -456,12 +456,23 @@ PanelWindow {
                             onClicked: isl.keyboardRequested()
                             Icon { anchors.centerIn: parent; name: "kbd"; size: 20 * isl.k }
                         }
-                        IslandButton {   // network
+                        IslandButton {   // vaults (1.14, VaultStore.qml): shown when you have one, lit while one is unlocked
+                            id: vaultIsl
+                            visible: VaultStore.vaults.length > 0
+                            tip: VaultStore.tip
+                            onClicked: isl.statusMenu(vaultIsl, "Vaults", VaultStore.menu(p => isl.settingsRequested(p)))
+                            onRightClicked: isl.statusMenu(vaultIsl, "Vaults", VaultStore.menu(p => isl.settingsRequested(p)))
+                            Icon { anchors.centerIn: parent; name: "vault"; size: 19 * isl.k; color: VaultStore.opened.length ? Theme.accent : Theme.text }
+                        }
+                        IslandButton {   // network (1.14: with its speed when Settings › Bar and dock › Network speed is on)
                             id: net
-                            tip: isl.netName ? "Connected to " + isl.netName : "Not connected"
+                            wideLabel: Settings.netSpeed && !isl.vertical && NetSpeed.text !== "" ? NetSpeed.text : ""
+                            tip: (isl.netName ? "Connected to " + isl.netName : "Not connected") + (Settings.netSpeed && NetSpeed.text ? "\n" + NetSpeed.text : "")
                             onClicked: isl.quickRequested()
                             onRightClicked: isl.statusMenu(net, net.tip, [
                                 { label: "Wi-Fi settings", icon: "wifi", run: () => isl.settingsRequested("wifi") },
+                                { label: "Connection details", icon: "gear", run: () => isl.settingsRequested("net-details") },
+                                { label: Settings.netSpeed ? "Hide the network speed" : "Show the network speed", icon: "speed", run: () => NetSpeed.toggle() },
                                 { label: "Quick settings", icon: "menu", run: () => isl.quickRequested() }
                             ])
                             Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.netKind === "wifi" ? "wifi" : isl.netKind === "ethernet" ? "wired" : "offline" }

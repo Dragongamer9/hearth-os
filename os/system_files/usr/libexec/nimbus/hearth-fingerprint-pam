@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""hearth-fingerprint-pam: fingerprint sign-in's system half (docs/FINGERPRINT.md). Root only.
+
+RED FLAG: a fingerprint is never the only way in, and nothing here may lock anyone out. So:
+  - The PAM stacks are set up once, when the image is built (`install`), and checked there and in CI
+    (.github/workflows/fingerprint-pam.yml: a test account's password still works for polkit, login and sudo, with
+    the fingerprint turned on, without fprintd running and without pam_fprintd at all; a wrong password still fails;
+    `uninstall` gives back polkit-1 byte for byte).
+  - Turning it on or off in Settings never touches a PAM file: it only adds or removes your name in a list
+    (/etc/nimbus/fingerprint/lock and /polkit) that pam_listfile reads. A missing or broken list means "off".
+  - The lock screen asks for a finger with its own service (hearth-fingerprint, kde-fingerprint on KWin) next to the
+    password; polkit-1 gets one included block at the top whose every failure carries on to the password.
+
+  hearth-fingerprint-pam install            the image build: polkit-1's include line, kde-fingerprint (KWin's locker)
+  hearth-fingerprint-pam uninstall          take them out again (polkit-1 exactly as before)
+  hearth-fingerprint-pam check              exit 0 when installed and well-formed (one JSON line)
+  hearth-fingerprint-pam places USER        JSON {lock, polkit}: is USER's fingerprint on for each
+  hearth-fingerprint-pam places-set USER    stdin {"lock": true|false, "polkit": true|false} (only the keys sent)
+Run by hearth-admin fingerprint-places (pkexec) for the person who asked, never for anyone else.
+"""
+import json
+import os
+import pwd
+import re
+import sys
+
+PAMD = os.environ.get('HEARTH_PAMD', '/etc/pam.d')
+VENDOR_PAMD = os.environ.get('HEARTH_VENDOR_PAMD', '/usr/lib/pam.d')
+LISTS = os.environ.get('HEARTH_FP_LISTS', '/etc/nimbus/fingerprint')
+PLACES = ('lock', 'polkit')
+INCLUDE = 'auth       include      hearth-fingerprint-polkit'
+MARK = '# Hearth: fingerprint for administrator prompts (hearth-fingerprint-pam; never instead of the password)'
+USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}\$?$')
+
+
+class Fail(Exception):
+    pass
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def write(path, text, mode=0o644):
+    """Atomic: a power cut leaves the old file or the new one, never half of one."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def with_include(text):
+    """polkit-1 with Hearth's block before its first auth line (once)."""
+    if INCLUDE in text:
+        return text
+    lines = text.splitlines(True)
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if re.match(r'^-?auth\s', s) or s.startswith('@include common-auth') or re.match(r'^auth\s', s):
+            lines.insert(i, MARK + '\n' + INCLUDE + '\n')
+            return ''.join(lines)
+    raise Fail("polkit-1 has no auth lines: left as it is")
+
+
+def without_include(text):
+    return text.replace(MARK + '\n' + INCLUDE + '\n', '')
+
+
+def polkit_path():
+    return os.path.join(PAMD, 'polkit-1')
+
+
+def install():
+    done = []
+    if not os.path.exists(os.path.join(PAMD, 'hearth-fingerprint-polkit')) or not os.path.exists(os.path.join(PAMD, 'hearth-fingerprint')):
+        raise Fail('the hearth-fingerprint PAM files are missing (os-bases/peppermint/system_files/etc/pam.d)')
+    p = polkit_path()
+    cur = read(p)
+    if cur is None:
+        vendor = read(os.path.join(VENDOR_PAMD, 'polkit-1'))
+        if vendor is None:
+            raise Fail('no polkit-1 PAM file here (polkit uses "other"): fingerprint stays off for admin prompts')
+        cur = vendor
+        done.append('polkit-1 copied from %s' % VENDOR_PAMD)
+    new = with_include(cur)
+    if new != cur or not os.path.exists(p):
+        if not os.path.exists(p):
+            write(p + '.hearth-copied', '# polkit-1 was copied here from %s by hearth-fingerprint-pam\n' % VENDOR_PAMD)
+        elif not os.path.exists(p + '.hearth-orig'):
+            write(p + '.hearth-orig', cur)
+        write(p, new)
+        done.append('polkit-1: include added')
+    # KWin's locker (kscreenlocker) runs its fingerprint service, kde-fingerprint, next to the password one.
+    kf = os.path.join(PAMD, 'kde-fingerprint')
+    ours = read(os.path.join(PAMD, 'hearth-fingerprint'))
+    theirs = read(kf)
+    if theirs is not None and theirs != ours and not os.path.exists(kf + '.hearth-orig'):
+        write(kf + '.hearth-orig', theirs)
+    if theirs != ours:
+        write(kf, ours)
+        done.append('kde-fingerprint written')
+    os.makedirs(LISTS, exist_ok=True)
+    os.chmod(LISTS, 0o755)
+    return {'ok': True, 'done': done}
+
+
+def uninstall():
+    p = polkit_path()
+    cur = read(p)
+    orig = read(p + '.hearth-orig')
+    if os.path.exists(p + '.hearth-copied'):
+        # Hearth made /etc/pam.d/polkit-1 from the vendor's file: without it, the vendor's is used again.
+        os.remove(p)
+        os.remove(p + '.hearth-copied')
+    elif orig is not None:
+        write(p, orig)
+        os.remove(p + '.hearth-orig')
+    elif cur is not None:
+        write(p, without_include(cur))
+    kf = os.path.join(PAMD, 'kde-fingerprint')
+    korig = read(kf + '.hearth-orig')
+    if korig is not None:
+        write(kf, korig)
+        os.remove(kf + '.hearth-orig')
+    elif read(kf) == read(os.path.join(PAMD, 'hearth-fingerprint')):
+        os.remove(kf)
+    return {'ok': True}
+
+
+def check():
+    p = read(polkit_path()) or ''
+    inc = read(os.path.join(PAMD, 'hearth-fingerprint-polkit')) or ''
+    problems = []
+    if p.count(INCLUDE) != 1:
+        problems.append('polkit-1 has %d include lines' % p.count(INCLUDE))
+    # The password lines must still be there, after Hearth's block.
+    after = p.split(INCLUDE, 1)[-1]
+    if not re.search(r'^(@include\s+common-auth|auth\s+(include|substack)\s+\S+|auth\s+\S+\s+pam_unix\.so)', after, re.M):
+        problems.append("polkit-1's password lines aren't after Hearth's block")
+    if 'default=ignore' not in inc or 'default=1' not in inc or 'required' in inc or 'requisite' in inc:
+        problems.append("hearth-fingerprint-polkit isn't the never-blocking block")
+    return {'ok': not problems, 'problems': problems}
+
+
+def list_path(place):
+    return os.path.join(LISTS, place)
+
+
+def names(place):
+    t = read(list_path(place)) or ''
+    return [l.strip() for l in t.splitlines() if l.strip() and not l.startswith('#')]
+
+
+def check_user(user):
+    if not USER_RE.match(user or ''):
+        raise Fail('not an account name')
+    try:
+        pwd.getpwnam(user)
+    except KeyError:
+        raise Fail('no such account')
+    return user
+
+
+def places(user):
+    check_user(user)
+    return {p: user in names(p) for p in PLACES}
+
+
+def places_set(user, req):
+    check_user(user)
+    for p in PLACES:
+        if p not in req:
+            continue
+        cur = names(p)
+        want = bool(req[p])
+        new = [n for n in cur if n != user] + ([user] if want else [])
+        if new != cur:
+            write(list_path(p), '# Hearth: accounts that sign in here with a fingerprint too (Settings › Sign-in options)\n'
+                  + ''.join(n + '\n' for n in new))
+    return places(user)
+
+
+def main(argv):
+    cmd, rest = (argv[0] if argv else ''), argv[1:]
+    try:
+        if os.geteuid() != 0 and not os.environ.get('HEARTH_PAMD'):
+            raise Fail('needs root')
+        if cmd == 'install' and not rest:
+            r = install()
+        elif cmd == 'uninstall' and not rest:
+            r = uninstall()
+        elif cmd == 'check' and not rest:
+            r = check()
+            print(json.dumps(r))
+            return 0 if r['ok'] else 1
+        elif cmd == 'places' and len(rest) == 1:
+            r = places(rest[0])
+        elif cmd == 'places-set' and len(rest) == 1:
+            raw = os.environ.pop('HEARTH_INPUT', None)
+            if raw is None:
+                raw = '' if sys.stdin.isatty() else sys.stdin.read(4096)
+            try:
+                req = json.loads(raw or '{}')
+            except ValueError:
+                raise Fail('bad input')
+            if not isinstance(req, dict):
+                raise Fail('bad input')
+            r = places_set(rest[0], req)
+        else:
+            print('error: usage: hearth-fingerprint-pam install | uninstall | check | places USER | places-set USER')
+            return 2
+    except (Fail, OSError) as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

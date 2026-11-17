@@ -32,6 +32,14 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+firmware-update(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // The firewall (Settings › Privacy & security › Firewall, 1.14): turning it off, letting a port in and letting
+    // everything in open this PC up, so they always ask for an administrator's password. Turning it on, removing a
+    // rule and reading it don't ask.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+firewall-(off|allow|incoming)(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
     // root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&

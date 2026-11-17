@@ -1,0 +1,319 @@
+#!/usr/bin/python3
+"""hearth-vaults: Vaults (1.14, like KDE's Plasma Vaults): encrypted folders you open with a password, in the bar's tray
+and in Settings › Privacy & security › Vaults. As you (no root): gocryptfs (in the image) or CryFS (when installed)
+keep the files encrypted in ~/.local/share/hearth-vaults/<id>; while a vault is unlocked they show in ~/Vaults/<name>.
+
+  hearth-vaults list                 JSON {vaults: [{id, name, backend, mount, data, open, idle, lockOnLock}], backends}
+  hearth-vaults create               stdin {"name", "backend": "gocryptfs|cryfs", "password", "idle": minutes,
+                                     "lockOnLock": bool}: make one (and unlock it)
+  hearth-vaults unlock ID            stdin {"password"}
+  hearth-vaults lock ID              close it (the files must be closed first)
+  hearth-vaults lock-all [--screen]  close every vault (--screen: the ones set to lock with the screen)
+  hearth-vaults set ID               stdin {"idle", "lockOnLock"}: its auto-lock (from the next unlock for idle)
+  hearth-vaults forget ID            take a locked vault off the list; its encrypted files stay where they are
+Auto-lock: after `idle` minutes nobody used its files (gocryptfs -idle, cryfs --unmount-idle), and when the screen
+locks if lockOnLock (Lock.qml runs lock-all --screen). The password goes to gocryptfs/cryfs on their stdin only: it's
+never on a command line, in a file or a log, and Hearth never keeps it. The list is a settings file
+(~/.config/nimbus/vaults.json, hearth_settings_io: atomic, .bak, merge on write); nothing changes it by itself.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_settings_io as hsio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+LIST = os.path.join(CONFIG, 'nimbus', 'vaults.json')
+DATA = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share'), 'hearth-vaults')
+MOUNTS = os.path.join(HOME, 'Vaults')
+NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$')
+ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,39}$')
+BACKENDS = ('gocryptfs', 'cryfs')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, input=None, timeout=120, env=None):
+    e = {k: v for k, v in os.environ.items() if k != 'HEARTH_INPUT'}
+    e.update(env or {})
+    try:
+        p = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout, env=e)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as ex:
+        return 127, str(ex)
+
+
+def which(name):
+    return shutil.which(name)
+
+
+def mounted(path, mounts_text=None):
+    if mounts_text is None:
+        try:
+            with open('/proc/self/mounts') as f:
+                mounts_text = f.read()
+        except OSError:
+            mounts_text = ''
+    want = os.path.realpath(path)
+    for line in mounts_text.splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[1].replace('\\040', ' ') == want:
+            return True
+    return False
+
+
+def load():
+    d = hsio.load_json(LIST, {})
+    v = d.get('vaults') if isinstance(d, dict) else None
+    return v if isinstance(v, dict) else {}
+
+
+def entry(vid, v):
+    mnt = os.path.join(MOUNTS, v.get('name') or vid)
+    return {'id': vid, 'name': v.get('name') or vid, 'backend': v.get('backend', 'gocryptfs'), 'mount': mnt,
+            'data': os.path.join(DATA, vid), 'open': mounted(mnt), 'idle': int(v.get('idle') or 0),
+            'lockOnLock': bool(v.get('lockOnLock', True))}
+
+
+def list_vaults():
+    vs = load()
+    return {'vaults': [entry(k, vs[k]) for k in sorted(vs, key=lambda k: (vs[k].get('name') or k).lower())],
+            'backends': [b for b in BACKENDS if which(b)], 'folder': MOUNTS}
+
+
+def find(vid):
+    if not ID_RE.match(vid or ''):
+        raise Fail('not a vault')
+    vs = load()
+    if vid not in vs:
+        raise Fail("that vault isn't on the list")
+    return entry(vid, vs[vid])
+
+
+def password_of(req):
+    pw = req.get('password')
+    pw = '' if pw is None else str(pw)
+    if not pw:
+        raise Fail('type the password')
+    if '\n' in pw or '\r' in pw or '\x00' in pw or len(pw) > 1024:
+        raise Fail("that can't be a password")
+    return pw
+
+
+def idle_of(req, default=0):
+    try:
+        n = int(req.get('idle', default) or 0)
+    except (TypeError, ValueError):
+        raise Fail('auto-lock is a number of minutes')
+    if not 0 <= n <= 1440:
+        raise Fail('auto-lock is 0 (never) to 1440 minutes')
+    return n
+
+
+def slug(name, taken):
+    base = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:32] or 'vault'
+    s, i = base, 2
+    while s in taken or os.path.exists(os.path.join(DATA, s)):
+        s = '%s-%d' % (base, i); i += 1
+    return s
+
+
+def unlock_cmd(v, idle):
+    data, mnt = v['data'], v['mount']
+    if v['backend'] == 'cryfs':
+        return ['cryfs'] + (['--unmount-idle', str(idle)] if idle else []) + [data, mnt], \
+            {'CRYFS_FRONTEND': 'noninteractive', 'CRYFS_NO_UPDATE_CHECK': 'true'}
+    return ['gocryptfs', '-q'] + (['-idle', '%dm' % idle] if idle else []) + [data, mnt], {}
+
+
+def wrong_password(out):
+    o = (out or '').lower()
+    return 'password incorrect' in o or 'wrong password' in o or 'could not decrypt' in o or 'decryption failed' in o
+
+
+def do_unlock(v, pw):
+    if v['open']:
+        return
+    if not which(v['backend']):
+        raise Fail("%s isn't on this system, so this vault can't be opened here" % v['backend'])
+    os.makedirs(v['mount'], exist_ok=True)
+    if os.listdir(v['mount']):
+        raise Fail('%s has files in it: move them out, then unlock (the vault shows there)' % v['mount'])
+    cmd, env = unlock_cmd(v, v['idle'])
+    code, out = run(cmd, input=pw + '\n', env=env)
+    if code != 0:
+        if wrong_password(out) or code in (11, 12):
+            raise Fail("That password isn't right")
+        raise Fail("couldn't unlock it (%s)" % last(out))
+
+
+def last(out):
+    return ((out or '').strip().splitlines() or ['no answer'])[-1][:200]
+
+
+def create(req):
+    name = str(req.get('name') or '').strip()
+    if not NAME_RE.match(name):
+        raise Fail('a vault name is letters, numbers, spaces, - and _ (up to 40)')
+    backend = req.get('backend') or 'gocryptfs'
+    if backend not in BACKENDS:
+        raise Fail('gocryptfs or CryFS')
+    if not which(backend):
+        raise Fail("%s isn't on this system" % backend)
+    pw = password_of(req)
+    if len(pw) < 6:
+        raise Fail('use a password of 6 letters or more')
+    idle = idle_of(req, 15)
+    vs = load()
+    if any((x.get('name') or k).lower() == name.lower() for k, x in vs.items()):
+        raise Fail('you already have a vault called %s' % name)
+    mnt = os.path.join(MOUNTS, name)
+    if os.path.exists(mnt) and (not os.path.isdir(mnt) or os.listdir(mnt)):
+        raise Fail('%s is already there: pick another name' % mnt)
+    vid = slug(name, vs)
+    data = os.path.join(DATA, vid)
+    os.makedirs(data, mode=0o700)
+    if backend == 'gocryptfs':
+        code, out = run(['gocryptfs', '-init', '-q', data], input=pw + '\n')
+        if code != 0:
+            shutil.rmtree(data, ignore_errors=True)
+            raise Fail("gocryptfs couldn't make it (%s)" % last(out))
+    v = {'name': name, 'backend': backend, 'idle': idle, 'lockOnLock': bool(req.get('lockOnLock', True))}
+
+    def add(d):
+        d.setdefault('vaults', {})
+        if not isinstance(d['vaults'], dict):
+            d['vaults'] = {}
+        d['vaults'][vid] = v
+    hsio.update_json(LIST, add)
+    # CryFS makes its files the first time it opens an empty folder.
+    do_unlock(entry(vid, v), pw)
+    return list_vaults()
+
+
+def unlock(vid, req):
+    do_unlock(find(vid), password_of(req))
+    return list_vaults()
+
+
+def lock_one(v):
+    if not v['open']:
+        return
+    tool = which('fusermount3') or which('fusermount')
+    if not tool:
+        raise Fail('fusermount is missing')
+    code, out = run([tool, '-u', v['mount']], timeout=30)
+    if code != 0:
+        if 'busy' in out.lower():
+            raise Fail('%s has files open: close them, then lock it' % v['name'])
+        raise Fail("couldn't lock %s (%s)" % (v['name'], last(out)))
+
+
+def lock(vid):
+    lock_one(find(vid))
+    return list_vaults()
+
+
+def lock_all(screen=False):
+    problems = []
+    for v in list_vaults()['vaults']:
+        if screen and not v['lockOnLock']:
+            continue
+        try:
+            lock_one(v)
+        except Fail as e:
+            problems.append(str(e))
+    r = list_vaults()
+    if problems:
+        r['problems'] = problems
+    return r
+
+
+def set_vault(vid, req):
+    find(vid)
+    changes = {}
+    if 'idle' in req:
+        changes['idle'] = idle_of(req)
+    if 'lockOnLock' in req:
+        changes['lockOnLock'] = bool(req['lockOnLock'])
+
+    def apply(d):
+        v = (d.get('vaults') or {}).get(vid)
+        if isinstance(v, dict):
+            v.update(changes)
+    if changes:
+        hsio.update_json(LIST, apply)
+    return list_vaults()
+
+
+def forget(vid):
+    v = find(vid)
+    if v['open']:
+        raise Fail('lock it first')
+
+    def apply(d):
+        (d.get('vaults') or {}).pop(vid, None)
+    hsio.update_json(LIST, apply)
+    try:
+        os.rmdir(v['mount'])        # only the empty folder it showed in
+    except OSError:
+        pass
+    r = list_vaults()
+    r['kept'] = v['data']
+    return r
+
+
+def stdin_json():
+    raw = os.environ.pop('HEARTH_INPUT', None)
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read(64 * 1024)
+    if not raw.strip():
+        return {}
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        raise Fail('bad input')
+    if not isinstance(v, dict):
+        raise Fail('bad input')
+    return v
+
+
+def main(argv):
+    cmd, rest = (argv[0] if argv else ''), argv[1:]
+    try:
+        if cmd == 'list' and not rest:
+            r = list_vaults()
+        elif cmd == 'create' and not rest:
+            r = create(stdin_json())
+        elif cmd == 'unlock' and len(rest) == 1:
+            r = unlock(rest[0], stdin_json())
+        elif cmd == 'lock' and len(rest) == 1:
+            r = lock(rest[0])
+        elif cmd == 'lock-all' and rest in ([], ['--screen']):
+            r = lock_all(rest == ['--screen'])
+        elif cmd == 'set' and len(rest) == 1:
+            r = set_vault(rest[0], stdin_json())
+        elif cmd == 'forget' and len(rest) == 1:
+            r = forget(rest[0])
+        else:
+            print('error: usage: hearth-vaults list | create | unlock ID | lock ID | lock-all [--screen] | set ID | forget ID')
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    except OSError as e:
+        print('error: ' + (e.strerror or str(e)))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

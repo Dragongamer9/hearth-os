@@ -133,6 +133,8 @@ fi
 # use your default browser: Hearth Browser unless you picked another in Settings › Default apps, not the first
 # browser they find (Chrome). A value you set yourself is kept.
 [ -z "${BROWSER+x}" ] && command -v xdg-open >/dev/null 2>&1 && export BROWSER=xdg-open
+# 1.14: SSH passphrases in Hearth's look (hearth-askpass: Mantel asks, else the classic askpass), unless you set your own.
+[ -z "${SSH_ASKPASS+x}" ] && [ -x /usr/libexec/nimbus/hearth-askpass ] && export SSH_ASKPASS=/usr/libexec/nimbus/hearth-askpass
 
 have() { command -v "$1" >/dev/null 2>&1; }
 

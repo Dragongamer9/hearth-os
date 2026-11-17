@@ -27,6 +27,22 @@ apps (gsettings), Qt/KDE apps (kioslaverc) and programs that read http_proxy (~/
   hearth-network proxy-set           stdin {"mode": "none|auto|manual", "url": "...", "http": "host:port",
                                      "https": "host:port", "socks": "host:port", "ignore": "localhost, 127.0.0.1"}
   hearth-network proxy-apply         hand the saved proxy on to apps again (each sign-in; writes nothing of Hearth's)
+1.14, the rest of KDE's network settings (docs/SYSTEM-SETTINGS.md, "Network"):
+  hearth-network vpn-add             stdin {"type": "l2tp|pptp|openconnect|sstp|fortisslvpn|ipsec", "name", "gateway",
+                                     "user", "password", "psk", "group", "domain", "realm", "protocol"}: a VPN typed in
+                                     by hand. Only types whose NetworkManager plugin is installed (status: vpnTypes)
+  hearth-network enterprise-set UUID stdin {"eap": "peap|ttls|tls|pwd", "identity", "anonymous", "caCert", "phase2",
+                                     "domain", "clientCert", "privateKey", "password", "keyPassword"} (802.1X, for
+                                     Wi-Fi and wired); {"off": true} takes 802.1X off a wired connection
+  hearth-network wifi-enterprise-add stdin {"ssid", ...the same}: an enterprise (WPA-EAP) Wi-Fi network
+  hearth-network wired-add           stdin {"name", "device"}: a wired connection of your own (a second profile)
+  hearth-network mobile-add          stdin {"name", "apn", "user", "password", "pin", "roaming"}: mobile broadband
+  hearth-network mobile-set UUID     stdin {"apn", "user", "password", "pin", "roaming"} (only the keys sent change)
+  hearth-network wifi-qr UUID        JSON {ssid, security, password, size, rows}: a Wi-Fi network's QR code (rows of
+                                     "0"/"1", made by qrencode on its stdin); read only when you ask for it
+  hearth-network duplicate UUID      a copy of a connection ("Name (copy)"); JSON {uuid, name}
+Passwords (802.1X, mobile broadband, a VPN's) go to NetworkManager through `nmcli connection edit` on its stdin and
+NetworkManager keeps them (its own secret store): never on a command line, in a Hearth file or a log.
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import ipaddress
@@ -102,7 +118,7 @@ def check_uuid(u):
 
 
 KINDS = {'802-11-wireless': 'wifi', 'wifi': 'wifi', '802-3-ethernet': 'ethernet', 'ethernet': 'ethernet',
-         'wireguard': 'vpn', 'vpn': 'vpn', 'gsm': 'mobile', 'bluetooth': 'bluetooth', 'bridge': 'other',
+         'wireguard': 'vpn', 'vpn': 'vpn', 'gsm': 'mobile', 'cdma': 'mobile', 'bluetooth': 'bluetooth', 'bridge': 'other',
          'loopback': 'loopback', 'tun': 'other'}
 
 
@@ -121,15 +137,47 @@ def parse_connections(text):
     return out
 
 
+# The VPN kinds typed in by hand (1.14): NetworkManager's plugin for each, the Debian package that has it, and the
+# words on the page. IPsec is strongSwan's plugin, or Libreswan's when that's the one installed.
+VPN_TYPES = [
+    ('ipsec', 'IPsec (IKEv2)', ('strongswan', 'libreswan'), 'network-manager-strongswan'),
+    ('l2tp', 'L2TP/IPsec', ('l2tp',), 'network-manager-l2tp'),
+    ('pptp', 'PPTP', ('pptp',), 'network-manager-pptp'),
+    ('openconnect', 'OpenConnect (Cisco AnyConnect, GlobalProtect, Pulse)', ('openconnect',), 'network-manager-openconnect'),
+    ('sstp', 'SSTP', ('sstp',), 'network-manager-sstp'),
+    ('fortisslvpn', 'Fortinet SSL VPN', ('fortisslvpn',), 'network-manager-fortisslvpn'),
+]
+PLUGIN_NAMES = ('openvpn', 'strongswan', 'libreswan', 'l2tp', 'pptp', 'openconnect', 'sstp', 'fortisslvpn')
+SERVICE = 'org.freedesktop.NetworkManager.'
+
+
 def plugins():
-    have = {'wireguard': True, 'openvpn': False}
+    """Which NetworkManager VPN plugins are installed: their nm-<name>-service.name files (service=...)."""
+    have = {'wireguard': True}
+    have.update({n: False for n in PLUGIN_NAMES})
     try:
-        for n in os.listdir(VPN_PLUGINS):
-            if 'openvpn' in n:
-                have['openvpn'] = True
+        names = os.listdir(VPN_PLUGINS)
     except OSError:
-        pass
+        names = []
+    for f in names:
+        if not f.endswith('.name'):
+            continue
+        text = read(os.path.join(VPN_PLUGINS, f))
+        m = re.search(r'^service=org\.freedesktop\.NetworkManager\.(\w+)\s*$', text, re.M)
+        n = m.group(1) if m else ''
+        for p in PLUGIN_NAMES:
+            if n == p or (not n and 'nm-%s-service' % p in f):
+                have[p] = True
     return have
+
+
+def vpn_types(have=None):
+    have = have or plugins()
+    out = []
+    for tid, label, names, pkg in VPN_TYPES:
+        plug = next((n for n in names if have.get(n)), '')
+        out.append({'id': tid, 'label': label, 'installed': bool(plug), 'plugin': plug, 'package': pkg})
+    return out
 
 
 def wifi_device(text):
@@ -143,11 +191,21 @@ def wifi_device(text):
 
 def status():
     conns = parse_connections(nmcli(['-t', '-f', 'NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT', 'connection', 'show']))
-    dev = wifi_device(nmcli(['-t', '-f', 'DEVICE,TYPE,STATE', 'device']))
+    devtext = nmcli(['-t', '-f', 'DEVICE,TYPE,STATE', 'device'])
+    dev = wifi_device(devtext)
     vpns = [c for c in conns if c['kind'] == 'vpn']
     for v in vpns:
         v['vpnType'] = 'WireGuard' if v['type'] == 'wireguard' else vpn_service(v['uuid'])
-    return {'connections': conns, 'vpns': vpns, 'wifiDevice': dev, 'plugins': plugins()}
+    have = plugins()
+    devices = [{'device': f[0], 'type': f[1], 'state': f[2] if len(f) > 2 else ''}
+               for f in (fields(line) for line in devtext.splitlines()) if len(f) >= 2 and f[1] in ('ethernet', 'gsm', 'wifi')]
+    return {'connections': conns, 'vpns': vpns, 'wifiDevice': dev, 'plugins': have, 'vpnTypes': vpn_types(have),
+            'devices': devices, 'hasModem': any(d['type'] == 'gsm' for d in devices),
+            'hasEthernet': any(d['type'] == 'ethernet' for d in devices), 'qr': bool(shutil.which('qrencode'))}
+
+
+SERVICE_LABELS = {'openvpn': 'OpenVPN', 'strongswan': 'IPsec', 'libreswan': 'IPsec', 'l2tp': 'L2TP/IPsec', 'pptp': 'PPTP',
+                  'openconnect': 'OpenConnect', 'sstp': 'SSTP', 'fortisslvpn': 'Fortinet'}
 
 
 def vpn_service(uuid):
@@ -155,7 +213,8 @@ def vpn_service(uuid):
         s = nmcli(['-g', 'vpn.service-type', 'connection', 'show', 'uuid', uuid]).strip()
     except Fail:
         return 'VPN'
-    return 'OpenVPN' if 'openvpn' in s else s.rsplit('.', 1)[-1] or 'VPN'
+    short = s.rsplit('.', 1)[-1]
+    return SERVICE_LABELS.get(short, short or 'VPN')
 
 
 def vpn_import(path):
@@ -286,7 +345,58 @@ def details(uuid):
         'now': {'device': s.get('GENERAL.DEVICES', ''), 'address': (split_list(s.get('IP4.ADDRESS')) or [''])[0],
                 'gateway': s.get('IP4.GATEWAY', ''), 'dns': split_list(s.get('IP4.DNS')) + split_list(s.get('IP6.DNS')),
                 'address6': (split_list(s.get('IP6.ADDRESS')) or [''])[0]},
+        # 1.14: the size of a packet (MTU, 0 = automatic), 802.1X, mobile broadband and the Wi-Fi's security.
+        'mtu': mtu_of(s, typ),
+        'enterprise': enterprise_of(s),
+        'mobile': mobile_of(s) if typ in ('gsm', 'cdma') else None,
+        'ssid': s.get('802-11-wireless.ssid', '') if typ == '802-11-wireless' else '',
+        'security': wifi_security(s) if typ == '802-11-wireless' else '',
     }
+
+
+def val(s, k):
+    v = s.get(k, '')
+    return '' if v in ('--', None) else v
+
+
+def mtu_of(s, typ):
+    key = {'802-11-wireless': '802-11-wireless.mtu', '802-3-ethernet': '802-3-ethernet.mtu'}.get(typ)
+    v = val(s, key) if key else ''
+    m = re.match(r'^(\d+)', v)
+    return int(m.group(1)) if m else 0
+
+
+def enterprise_of(s):
+    """802.1X as the page shows it: never a password, only whether NetworkManager keeps one."""
+    eap = split_list(val(s, '802-1x.eap'))
+    if not eap:
+        return None
+    flags = val(s, '802-1x.password-flags')
+    return {'eap': eap[0], 'identity': val(s, '802-1x.identity'), 'anonymous': val(s, '802-1x.anonymous-identity'),
+            'caCert': val(s, '802-1x.ca-cert').replace('file://', ''), 'phase2': val(s, '802-1x.phase2-auth'),
+            'domain': val(s, '802-1x.domain-suffix-match'), 'clientCert': val(s, '802-1x.client-cert').replace('file://', ''),
+            'privateKey': val(s, '802-1x.private-key').replace('file://', ''),
+            'asks': flags.startswith('2') or 'not-saved' in flags}
+
+
+def mobile_of(s):
+    return {'apn': val(s, 'gsm.apn'), 'user': val(s, 'gsm.username'), 'roaming': val(s, 'gsm.home-only') != 'yes',
+            'number': val(s, 'gsm.number')}
+
+
+def wifi_security(s):
+    km = val(s, '802-11-wireless-security.key-mgmt')
+    if km == 'wpa-eap' or km == 'wpa-eap-suite-b-192':
+        return 'enterprise'
+    if km == 'sae':
+        return 'SAE'
+    if km in ('wpa-psk', 'wpa-psk-sha256'):
+        return 'WPA'
+    if km == 'none' or val(s, '802-11-wireless-security.wep-key0'):
+        return 'WEP'
+    if km == 'owe':
+        return 'nopass'
+    return 'nopass' if not km else 'WPA'
 
 
 def ip_ok(v, version=None):
@@ -345,6 +455,17 @@ def details_args(req, typ):
         if req['ipv6'] not in ('auto', 'disabled', 'ignore'):
             raise Fail('IPv6 is auto, disabled or ignore')
         args += ['ipv6.method', req['ipv6']]
+    if 'mtu' in req:
+        key = {'802-11-wireless': '802-11-wireless.mtu', '802-3-ethernet': '802-3-ethernet.mtu'}.get(typ)
+        if not key:
+            raise Fail('this connection has no packet size (MTU) setting')
+        try:
+            m = int(req['mtu'])
+        except (TypeError, ValueError):
+            raise Fail('the packet size is a number from 576 to 9000, or 0 for automatic')
+        if m != 0 and not 576 <= m <= 9000:
+            raise Fail('the packet size is a number from 576 to 9000, or 0 for automatic')
+        args += [key, str(m) if m else 'auto']
     return args
 
 
@@ -362,6 +483,381 @@ def details_set(uuid, req):
         if code != 0:
             run(['nmcli', 'connection', 'up', 'uuid', uuid], timeout=60)
     return details(uuid)
+
+
+# ------------------------------------------------------------------ 1.14: secrets, VPNs by hand, 802.1X, mobile, QR
+NAME_RE = re.compile(r'^[^\x00-\x1f\x7f]{1,64}$')
+HOST_RE = re.compile(r'^(https?://)?[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]{0,200})?$|^\[?[0-9A-Fa-f:.]{2,45}\]?$')
+
+
+def text_of(req, key, limit=256, required=False, what=''):
+    """A plain value from the page: one line, no control characters."""
+    v = req.get(key)
+    v = '' if v is None else str(v).strip()
+    if any(ord(c) < 32 or ord(c) == 127 for c in v) or len(v) > limit:
+        raise Fail("that can't be %s" % (what or key))
+    if required and not v:
+        raise Fail('type %s' % (what or key))
+    return v
+
+
+def secret_of(req, key, what='a password'):
+    """A password from the page (it's only ever handed to NetworkManager on nmcli's stdin)."""
+    v = req.get(key)
+    if v is None or v == '':
+        return None
+    v = str(v)
+    if '\n' in v or '\r' in v or '\x00' in v or len(v) > 512:
+        raise Fail("that can't be %s" % what)
+    if v != v.strip():
+        raise Fail("%s can't start or end with a space" % (what[0].upper() + what[1:]))
+    return v
+
+
+def file_of(req, key, what):
+    """A certificate or key file: it must be there (NetworkManager reads it when it connects)."""
+    v = text_of(req, key, 1024, what=what)
+    if not v:
+        return ''
+    v = os.path.abspath(os.path.expanduser(v))
+    if not os.path.isfile(v):
+        raise Fail("the %s isn't there (%s)" % (what, v))
+    return v
+
+
+def dict_text(d):
+    """vpn.data / vpn.secrets for nmcli: "key = value, key = value", with ',' and '\\' escaped in values."""
+    return ', '.join('%s = %s' % (k, str(v).replace('\\', '\\\\').replace(',', '\\,')) for k, v in d.items())
+
+
+def edit_script(sets):
+    """`nmcli connection edit` commands, read on its stdin: secrets never go on a command line."""
+    lines = []
+    for prop, value in sets:
+        if '\n' in value or '\r' in value:
+            raise Fail("that can't be a password")
+        lines.append('set %s %s' % (prop, value))
+    return '\n'.join(lines + ['save persistent', 'quit']) + '\n'
+
+
+def save_secrets(uuid, sets):
+    if sets:
+        nmcli(['connection', 'edit', 'uuid', check_uuid(uuid)], input=edit_script(sets))
+
+
+def new_uuid(out, what):
+    m = re.findall(r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})', out)
+    if not m:
+        raise Fail('NetworkManager made no %s' % what)
+    return m[-1]
+
+
+def vpn_plan(req, have=None):
+    """(service, data, secrets) for a VPN typed in by hand; checked. The plugin must be installed."""
+    types = {t['id']: t for t in vpn_types(have)}
+    tid = req.get('type')
+    if tid not in types:
+        raise Fail('pick a kind of VPN')
+    t = types[tid]
+    if not t['installed']:
+        raise Fail("%s isn't on this system (NetworkManager's plugin, %s, is missing)" % (t['label'], t['package']))
+    gw = text_of(req, 'gateway', 260, True, 'the server')
+    if not HOST_RE.match(gw):
+        raise Fail('the server is a name or address, like vpn.example.com')
+    user = text_of(req, 'user', 256, what='a user name')
+    pw = secret_of(req, 'password')
+    psk = secret_of(req, 'psk', 'a pre-shared key')
+    plug = t['plugin']
+    data, sec = {}, {}
+    if plug == 'strongswan':
+        data = {'address': gw, 'virtual': 'yes', 'encap': 'yes', 'ipcomp': 'no', 'proposal': 'no'}
+        if user:
+            data.update({'method': 'eap', 'user': user, 'password-flags': '0'})
+            if pw:
+                sec['password'] = pw
+        elif psk:
+            data.update({'method': 'psk', 'password-flags': '0'})
+            sec['password'] = psk
+        else:
+            raise Fail('IPsec needs a user name and password, or a pre-shared key')
+    elif plug == 'libreswan':
+        data = {'right': gw, 'pskvalue-flags': '0', 'xauthpassword-flags': '0'}
+        group = text_of(req, 'group', 128, what='a group name')
+        if group:
+            data['leftid'] = group
+        if user:
+            data.update({'leftxauthusername': user, 'ikev2': 'no'})
+            if pw:
+                sec['xauthpassword'] = pw
+        else:
+            data['ikev2'] = 'insist'
+        if psk:
+            data['authby'] = 'secret'
+            sec['pskvalue'] = psk
+    elif plug == 'l2tp':
+        data = {'gateway': gw, 'password-flags': '0'}
+        if user:
+            data['user'] = user
+        if pw:
+            sec['password'] = pw
+        if psk:
+            data.update({'ipsec-enabled': 'yes', 'ipsec-psk-flags': '0'})
+            sec['ipsec-psk'] = psk
+    elif plug == 'pptp':
+        data = {'gateway': gw, 'password-flags': '0', 'require-mppe': 'yes'}
+        if user:
+            data['user'] = user
+        dom = text_of(req, 'domain', 128, what='a domain')
+        if dom:
+            data['domain'] = dom
+        if pw:
+            sec['password'] = pw
+    elif plug == 'sstp':
+        data = {'gateway': gw, 'password-flags': '0'}
+        if user:
+            data['user'] = user
+        if pw:
+            sec['password'] = pw
+    elif plug == 'fortisslvpn':
+        data = {'gateway': gw, 'password-flags': '0'}
+        if user:
+            data['user'] = user
+        realm = text_of(req, 'realm', 128, what='a realm')
+        if realm:
+            data['realm'] = realm
+        if pw:
+            sec['password'] = pw
+    elif plug == 'openconnect':
+        proto = req.get('protocol') or 'anyconnect'
+        if proto not in ('anyconnect', 'gp', 'nc', 'pulse', 'f5', 'fortinet', 'array'):
+            raise Fail('pick which kind of OpenConnect server it is')
+        data = {'gateway': gw, 'protocol': proto, 'cookie-flags': '2', 'gateway-flags': '2', 'gwcert-flags': '2'}
+        group = text_of(req, 'group', 128, what='a group name')
+        if group:
+            data['usergroup'] = group
+        # OpenConnect signs in each time it connects (the server's own sign-in page): asked then, never kept.
+        sec = {}
+    return SERVICE + plug, data, sec
+
+
+def vpn_add(req):
+    name = text_of(req, 'name', 64, what='a name') or text_of(req, 'gateway', 64)
+    if not NAME_RE.match(name or ''):
+        raise Fail('give the VPN a name')
+    service, data, sec = vpn_plan(req)
+    out = nmcli(['connection', 'add', 'type', 'vpn', 'vpn-type', service, 'con-name', name,
+                 'connection.autoconnect', 'no', 'vpn.data', dict_text(data)])
+    uuid = new_uuid(out, 'VPN')
+    if sec:
+        try:
+            save_secrets(uuid, [('vpn.secrets', dict_text(sec))])
+        except Fail as e:
+            # A VPN without its password still works (it's asked when connecting); say so instead of failing.
+            return {'uuid': uuid, 'name': name, 'warning': "NetworkManager didn't keep the password (%s): it's asked when you connect" % e}
+    return {'uuid': uuid, 'name': name}
+
+
+EAPS = ('peap', 'ttls', 'tls', 'pwd')
+PHASE2 = ('mschapv2', 'pap', 'gtc', 'mschap', 'chap', 'md5')
+
+
+def enterprise_props(req):
+    """(properties for `connection modify/add`, secrets for `connection edit`) for 802.1X; checked."""
+    eap = req.get('eap')
+    if eap not in EAPS:
+        raise Fail('pick how it signs in: PEAP, TTLS, TLS (certificate) or PWD')
+    ident = text_of(req, 'identity', 256, True, 'your user name (identity)')
+    props = ['802-1x.eap', eap, '802-1x.identity', ident,
+             '802-1x.anonymous-identity', text_of(req, 'anonymous', 256, what='an anonymous identity'),
+             '802-1x.domain-suffix-match', text_of(req, 'domain', 256, what='a domain')]
+    ca = file_of(req, 'caCert', 'CA certificate')
+    props += ['802-1x.ca-cert', ca]
+    sec = []
+    if eap in ('peap', 'ttls'):
+        p2 = req.get('phase2') or 'mschapv2'
+        if p2 not in PHASE2:
+            raise Fail('pick the inner sign-in (MSCHAPv2 is the usual one)')
+        props += ['802-1x.phase2-auth', p2]
+    if eap == 'tls':
+        cert = file_of(req, 'clientCert', 'your certificate')
+        key = file_of(req, 'privateKey', 'private key')
+        if not cert or not key:
+            raise Fail('TLS needs your certificate and its private key')
+        props += ['802-1x.client-cert', cert, '802-1x.private-key', key, '802-1x.private-key-password-flags', '0']
+        kp = secret_of(req, 'keyPassword', "the key's password")
+        if kp is not None:
+            sec.append(('802-1x.private-key-password', kp))
+    else:
+        pw = secret_of(req, 'password')
+        ask = bool(req.get('askEachTime'))
+        props += ['802-1x.password-flags', '2' if ask else '0']
+        if pw is not None and not ask:
+            sec.append(('802-1x.password', pw))
+    return props, sec
+
+
+def enterprise_set(uuid, req):
+    check_uuid(uuid)
+    typ = nmcli(['-g', 'connection.type', 'connection', 'show', 'uuid', uuid]).strip()
+    if typ not in ('802-11-wireless', '802-3-ethernet'):
+        raise Fail('802.1X is for Wi-Fi and wired connections')
+    if req.get('off'):
+        if typ != '802-3-ethernet':
+            raise Fail("an enterprise Wi-Fi network always signs in: remove it from Wi-Fi instead")
+        nmcli(['connection', 'modify', 'uuid', uuid, 'remove', '802-1x'])
+        return details(uuid)
+    props, sec = enterprise_props(req)
+    if typ == '802-11-wireless':
+        props = ['802-11-wireless-security.key-mgmt', 'wpa-eap'] + props
+    nmcli(['connection', 'modify', 'uuid', uuid] + props)
+    save_secrets(uuid, sec)
+    return details(uuid)
+
+
+def wifi_enterprise_add(req):
+    ssid = text_of(req, 'ssid', 32, True, "the network's name")
+    if len(ssid.encode()) > 32:
+        raise Fail("the network's name is up to 32 letters")
+    props, sec = enterprise_props(req)
+    out = nmcli(['connection', 'add', 'type', 'wifi', 'con-name', ssid, 'ssid', ssid,
+                 '802-11-wireless-security.key-mgmt', 'wpa-eap'] + props)
+    uuid = new_uuid(out, 'Wi-Fi network')
+    save_secrets(uuid, sec)
+    return {'uuid': uuid, 'name': ssid}
+
+
+def wired_add(req):
+    name = text_of(req, 'name', 64, what='a name') or 'Wired connection'
+    if not NAME_RE.match(name):
+        raise Fail('give the connection a name')
+    dev = text_of(req, 'device', 15, what='a device')
+    if dev and not re.match(r'^[A-Za-z0-9_.-]{1,15}$', dev):
+        raise Fail("that isn't a network device")
+    out = nmcli(['connection', 'add', 'type', 'ethernet', 'con-name', name] + (['ifname', dev] if dev else []) +
+                ['connection.autoconnect', 'no'])
+    return {'uuid': new_uuid(out, 'wired connection'), 'name': name}
+
+
+def mobile_props(req):
+    props, sec = [], []
+    if 'apn' in req:
+        apn = text_of(req, 'apn', 64, what='an APN')
+        if apn and not re.match(r'^[A-Za-z0-9._-]{1,64}$', apn):
+            raise Fail('the APN is a name like internet or fast.t-mobile.com')
+        props += ['gsm.apn', apn]
+    if 'user' in req:
+        props += ['gsm.username', text_of(req, 'user', 128, what='a user name')]
+    if 'roaming' in req:
+        props += ['gsm.home-only', 'no' if req['roaming'] else 'yes']
+    pw = secret_of(req, 'password')
+    if pw is not None:
+        props += ['gsm.password-flags', '0']
+        sec.append(('gsm.password', pw))
+    pin = req.get('pin')
+    if pin not in (None, ''):
+        pin = str(pin)
+        if not re.match(r'^[0-9]{4,8}$', pin):
+            raise Fail('the SIM PIN is 4 to 8 numbers')
+        props += ['gsm.pin-flags', '0']
+        sec.append(('gsm.pin', pin))
+    return props, sec
+
+
+def mobile_add(req):
+    name = text_of(req, 'name', 64, what='a name') or 'Mobile broadband'
+    if not NAME_RE.match(name):
+        raise Fail('give the connection a name')
+    if not text_of(req, 'apn', 64):
+        raise Fail("type the APN (your mobile provider's internet name, like internet)")
+    props, sec = mobile_props(req)
+    out = nmcli(['connection', 'add', 'type', 'gsm', 'ifname', '*', 'con-name', name] + props)
+    uuid = new_uuid(out, 'mobile broadband connection')
+    save_secrets(uuid, sec)
+    return {'uuid': uuid, 'name': name}
+
+
+def mobile_set(uuid, req):
+    check_uuid(uuid)
+    typ = nmcli(['-g', 'connection.type', 'connection', 'show', 'uuid', uuid]).strip()
+    if typ != 'gsm':
+        raise Fail('this is not a mobile broadband connection')
+    props, sec = mobile_props(req)
+    if props:
+        nmcli(['connection', 'modify', 'uuid', uuid] + props)
+    save_secrets(uuid, sec)
+    return details(uuid)
+
+
+def qr_escape(v):
+    return re.sub(r'([\\;,:"])', r'\\\1', v)
+
+
+def wifi_qr_text(ssid, security, password, hidden=False):
+    """The text Wi-Fi QR codes hold (phones' cameras join from it): WIFI:T:WPA;S:name;P:password;;"""
+    if security == 'enterprise':
+        raise Fail("an enterprise network can't be shared with a code: each person signs in with their own account")
+    t = 'nopass' if security == 'nopass' else security
+    out = 'WIFI:T:%s;S:%s;' % (t, qr_escape(ssid))
+    if t != 'nopass':
+        out += 'P:%s;' % qr_escape(password or '')
+    if hidden:
+        out += 'H:true;'
+    return out + ';'
+
+
+def qr_rows(text):
+    """qrencode's ASCII picture (two characters a square, '#' dark) as rows of "0"/"1". The text goes on its stdin."""
+    if not shutil.which('qrencode'):
+        raise Fail("qrencode isn't on this system, so there's no code to show")
+    code, out, err = run(['qrencode', '-t', 'ASCII', '-m', '0', '-l', 'M', '-o', '-'], input=text, timeout=15)
+    if code != 0 or not out.strip():
+        raise Fail("couldn't make the code")
+    rows = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        rows.append(''.join('1' if line[i:i + 2] == '##' else '0' for i in range(0, len(line), 2)))
+    w = max(len(r) for r in rows)
+    return [r.ljust(w, '0') for r in rows]
+
+
+def wifi_qr(uuid):
+    check_uuid(uuid)
+    s = parse_show(nmcli(['-t', 'connection', 'show', 'uuid', uuid]))
+    if s.get('connection.type') != '802-11-wireless':
+        raise Fail('only Wi-Fi networks have a code')
+    ssid = val(s, '802-11-wireless.ssid')
+    sec = wifi_security(s)
+    pw = ''
+    if sec in ('WPA', 'SAE'):
+        pw = nmcli(['-s', '-g', '802-11-wireless-security.psk', 'connection', 'show', 'uuid', uuid]).strip()
+        if not pw:
+            raise Fail("NetworkManager didn't give the password (your keyring keeps it): connect once from Hearth, then try again")
+    elif sec == 'WEP':
+        pw = nmcli(['-s', '-g', '802-11-wireless-security.wep-key0', 'connection', 'show', 'uuid', uuid]).strip()
+    rows = qr_rows(wifi_qr_text(ssid, sec, pw, val(s, '802-11-wireless.hidden') == 'yes'))
+    return {'ssid': ssid, 'security': sec, 'password': pw, 'size': len(rows), 'rows': rows}
+
+
+def duplicate(uuid):
+    check_uuid(uuid)
+    conns = parse_connections(nmcli(['-t', '-f', 'NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT', 'connection', 'show']))
+    me = next((c for c in conns if c['uuid'] == uuid), None)
+    if not me:
+        raise Fail("that connection isn't there any more")
+    names = {c['name'] for c in conns}
+    base = me['name'][:56] + ' (copy)'
+    name, i = base, 2
+    while name in names:
+        name = '%s %d' % (base, i); i += 1
+    out = nmcli(['connection', 'clone', 'uuid', uuid, name])
+    new = new_uuid(out.replace(uuid, ''), 'copy')
+    # The copy never connects by itself (two of the same fighting over the device): you pick it.
+    try:
+        nmcli(['connection', 'modify', 'uuid', new, 'connection.autoconnect', 'no'])
+    except Fail:
+        pass
+    return {'uuid': new, 'name': name}
 
 
 # ------------------------------------------------------------------ hotspot
@@ -677,6 +1173,22 @@ def main(argv):
             r = proxy_set(stdin_json())
         elif cmd == 'proxy-apply':
             r = proxy_apply()
+        elif cmd == 'vpn-add':
+            r = vpn_add(stdin_json())
+        elif cmd == 'enterprise-set' and len(rest) == 1:
+            r = enterprise_set(rest[0], stdin_json())
+        elif cmd == 'wifi-enterprise-add':
+            r = wifi_enterprise_add(stdin_json())
+        elif cmd == 'wired-add':
+            r = wired_add(stdin_json())
+        elif cmd == 'mobile-add':
+            r = mobile_add(stdin_json())
+        elif cmd == 'mobile-set' and len(rest) == 1:
+            r = mobile_set(rest[0], stdin_json())
+        elif cmd == 'wifi-qr' and len(rest) == 1:
+            r = wifi_qr(rest[0])
+        elif cmd == 'duplicate' and len(rest) == 1:
+            r = duplicate(rest[0])
         else:
             print('error: unknown command')
             return 2

@@ -1,0 +1,9 @@
+#%PAM-1.0
+# Hearth: fingerprint only, for the lock screen (Mantel's own on labwc, and KWin's locker as kde-fingerprint, which
+# hearth-fingerprint-pam writes from this file). It runs NEXT TO the password, never in its place: the lock screen
+# checks the password with its own service at the same time, so the password always works (docs/FINGERPRINT.md).
+# Only people who turned it on in Settings › Accounts › Sign-in options are asked for a finger (the list file, written
+# by hearth-admin fingerprint-places); everyone else gets an instant "no" here and nothing changes for them.
+auth       requisite    pam_listfile.so item=user sense=allow file=/etc/nimbus/fingerprint/lock onerr=fail
+auth       required     pam_fprintd.so max-tries=3 timeout=30
+account    include      common-account

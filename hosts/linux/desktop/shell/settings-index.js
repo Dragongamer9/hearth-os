@@ -245,6 +245,12 @@ var ENTRIES = [
 "i": "window"
 },
 {
+"t": "Network speed in the bar",
+"p": "bar-dock",
+"d": "How fast things download and upload right now, next to the network icon",
+"i": "speed"
+},
+{
 "t": "Right-click menu",
 "p": "bar-dock",
 "d": "How the menu looks on files, the desktop, the bar, the dock and the app menus",
@@ -763,6 +769,33 @@ var ENTRIES = [
 "p": "drives",
 "d": "These only change how Hearth names things. Your files, apps and games stay exactly where they are, and Windows apps keep their own C: inside them.",
 "i": "info"
+},
+{
+"t": "There's no firewall on this system",
+"p": "firewall",
+"d": "Hearth OS doesn't ship one: your router already keeps the internet out. With firewalld or ufw installed (Peppermint unlocked), it's set here",
+"i": "info"
+},
+{
+"t": "Other devices connecting in",
+"p": "firewall",
+"i": "shield"
+},
+{
+"t": "Stop letting this in",
+"p": "firewall",
+"i": "trash"
+},
+{
+"t": "Kind",
+"p": "firewall",
+"i": "link"
+},
+{
+"t": "From",
+"p": "firewall",
+"d": "Anywhere matters only if your router forwards the port",
+"i": "globe"
 },
 {
 "t": "Secure Boot",
@@ -2443,6 +2476,56 @@ var ENTRIES = [
 "i": "kbd"
 },
 {
+"t": "Wired connection",
+"p": "net-details",
+"d": "A second profile for a cable: another address, DNS or 802.1X sign-in",
+"i": "ethernet"
+},
+{
+"t": "For",
+"p": "net-details",
+"i": "ethernet"
+},
+{
+"t": "Mobile broadband",
+"p": "net-details",
+"i": "globe"
+},
+{
+"t": "Use it when roaming",
+"p": "net-details",
+"d": "Abroad or on another network: it can cost more",
+"i": "globe"
+},
+{
+"t": "Enterprise Wi-Fi (802.1X)",
+"p": "net-details",
+"d": "Work, school or eduroam: you sign in with your own account",
+"i": "wifi"
+},
+{
+"t": "How it signs in",
+"p": "net-details",
+"d": "Ask your IT people if you're not sure: PEAP is the usual one (eduroam too)",
+"i": "lock"
+},
+{
+"t": "Inner sign-in",
+"p": "net-details",
+"i": "key"
+},
+{
+"t": "Ask for the password each time",
+"p": "net-details",
+"d": "Off: NetworkManager keeps it, so it connects by itself",
+"i": "lock"
+},
+{
+"t": "Turn 802.1X off for this cable",
+"p": "net-details",
+"i": "close"
+},
+{
 "t": "Connect automatically",
 "p": "net-details",
 "d": "When it's in reach",
@@ -2485,6 +2568,11 @@ var ENTRIES = [
 "t": "IPv6",
 "p": "net-details",
 "i": "globe"
+},
+{
+"t": "Use this packet size",
+"p": "net-details",
+"i": "check"
 },
 {
 "t": "Do not disturb",
@@ -2964,6 +3052,32 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Forget this finger",
+"p": "signin",
+"i": "trash"
+},
+{
+"t": "Add a finger",
+"p": "signin",
+"i": "plus"
+},
+{
+"t": "Start",
+"p": "signin",
+"d": "Then touch the reader again and again with that finger until it's done",
+"i": "fingerprint"
+},
+{
+"t": "Unlock the lock screen with a finger",
+"p": "signin",
+"i": "lock"
+},
+{
+"t": "Use it for administrator prompts",
+"p": "signin",
+"i": "shield"
+},
+{
 "t": "Start in Game Mode or Desktop Mode",
 "p": "signin",
 "d": "Now in Gaming › Start in",
@@ -3199,6 +3313,11 @@ var ENTRIES = [
 "i": "restart"
 },
 {
+"t": "Zoom",
+"p": "users",
+"i": "search"
+},
+{
 "t": "Remove my picture",
 "p": "users",
 "i": "close"
@@ -3222,6 +3341,47 @@ var ENTRIES = [
 {
 "t": "Cancel",
 "p": "users"
+},
+{
+"t": "Unlock…",
+"p": "vaults",
+"i": "lock"
+},
+{
+"t": "Open in Files",
+"p": "vaults",
+"i": "folder"
+},
+{
+"t": "Lock by itself",
+"p": "vaults",
+"d": "After nobody used its files for a while (from the next unlock)",
+"i": "clock"
+},
+{
+"t": "Lock it when the screen locks",
+"p": "vaults",
+"i": "lock"
+},
+{
+"t": "Take it off the list…",
+"p": "vaults",
+"i": "trash"
+},
+{
+"t": "Make a vault…",
+"p": "vaults",
+"i": "plus"
+},
+{
+"t": "Kind",
+"p": "vaults",
+"i": "vault"
+},
+{
+"t": "Cancel",
+"p": "vaults",
+"i": "close"
 },
 {
 "t": "Disconnect",
@@ -3254,6 +3414,17 @@ var ENTRIES = [
 "t": "OpenVPN isn't on this system",
 "p": "vpn",
 "d": "WireGuard works. OpenVPN needs NetworkManager's OpenVPN plugin in the image",
+"i": "info"
+},
+{
+"t": "Kind of server",
+"p": "vpn",
+"i": "globe"
+},
+{
+"t": "Your user name and password are asked when you connect",
+"p": "vpn",
+"d": "OpenConnect signs in on the server's own sign-in page each time",
 "i": "info"
 },
 {

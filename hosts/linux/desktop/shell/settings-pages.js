@@ -54,10 +54,10 @@ var PAGES = [
     // ---- Network & internet (Wi-Fi is the landing, as in the mockup; Tailscale follows it under "Reach your devices from anywhere")
     { id: "wifi", file: "SetWifi.qml", cat: "net", label: "Wi-Fi", icon: "wifi", desc: "Connect to wireless networks", words: "wireless network internet hotspot", old: "Wi-Fi", status: "wifi", landing: true },
     { id: "hs-tailscale", file: "SetHomeTailscale.qml", cat: "net", label: "Tailscale", icon: "tailscale", desc: "Reach your devices from anywhere, privately", words: "vpn remote away taildrop exit node wake", old: "Home server › Tailscale", status: "tailscale" },
-    { id: "vpn", file: "SetVpn.qml", cat: "net", label: "VPN", icon: "shield", desc: "WireGuard and OpenVPN: add one from its file, connect", words: "vpn wireguard openvpn ovpn conf tunnel private network" },
+    { id: "vpn", file: "SetVpn.qml", cat: "net", label: "VPN", icon: "shield", desc: "WireGuard and OpenVPN from their file, IPsec, L2TP, PPTP, OpenConnect, SSTP and Fortinet by hand", words: "vpn wireguard openvpn ovpn conf tunnel private network ipsec strongswan libreswan l2tp pptp openconnect anyconnect globalprotect sstp fortinet forticlient" },
     { id: "hotspot", file: "SetHotspot.qml", cat: "net", label: "Mobile hotspot", icon: "share", desc: "Share this PC's internet with your other devices over Wi-Fi", words: "hotspot tethering share internet access point ap" },
     { id: "proxy", file: "SetProxy.qml", cat: "net", label: "Proxy", icon: "globe", desc: "A proxy for apps and browsers, by hand or from a setup script", words: "proxy http https socks pac wpad automatic manual" },
-    { id: "net-details", file: "SetNetDetails.qml", cat: "net", label: "Connection details", icon: "gear", desc: "DNS, metered, random MAC address, IP address and auto-connect for each network", words: "dns metered mac address random privacy static ip manual ipv4 ipv6 gateway ethernet wired properties advanced" },
+    { id: "net-details", file: "SetNetDetails.qml", cat: "net", label: "Connection details", icon: "gear", desc: "DNS, IP address, MAC address, 802.1X, mobile broadband, a QR code to share Wi-Fi, duplicate", words: "dns metered mac address random privacy static ip manual ipv4 ipv6 gateway ethernet wired properties advanced mtu 802.1x enterprise eduroam peap ttls eap mobile broadband sim apn pin roaming qr code share wifi password duplicate copy connection" },
 
     // ---- Bluetooth & devices
     { id: "bt", file: "SetCategory.qml", cat: "bt", label: "Bluetooth & devices", icon: "bt", landing: true },
@@ -132,6 +132,8 @@ var PAGES = [
     // ---- Privacy & security
     { id: "privacy", file: "SetCategory.qml", cat: "privacy", label: "Privacy & security", icon: "shield", landing: true },
     { id: "player-count", file: "SetAbout.qml", cat: "privacy", label: "Player count", icon: "users", desc: "Hearth OS's anonymous count of running devices", words: "privacy counter telemetry anonymous", old: "About › Privacy", props: { part: "privacy" }, status: "countMe" },
+    { id: "firewall", file: "SetFirewall.qml", cat: "privacy", label: "Firewall", icon: "firewall", desc: "firewalld or ufw: on or off, and the ports other devices can connect to", words: "firewall firewalld ufw ports open block incoming allow security network" },
+    { id: "vaults", file: "SetVaults.qml", cat: "privacy", label: "Vaults", icon: "vault", desc: "Encrypted folders only your password opens, locked by themselves", words: "vault vaults encrypted folder encryption gocryptfs cryfs plasma vaults private lock" },
     { id: "firmware", file: "SetFirmware.qml", cat: "privacy", label: "Firmware & device security", icon: "shield", desc: "Secure Boot, the TPM security chip, firmware updates for this PC's parts", words: "firmware fwupd lvfs bios uefi update secure boot tpm hsi security chip" },
 
     // ---- Accessibility (the page is the landing)
