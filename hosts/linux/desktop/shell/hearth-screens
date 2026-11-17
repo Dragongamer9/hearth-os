@@ -198,17 +198,19 @@ def parse_kscreen(js, text='', names=None):
             sz = m.get('size') or {}
             mid = str(m.get('id'))
             modes.append({'id': mid, 'width': int(sz.get('width') or 0), 'height': int(sz.get('height') or 0),
-                          'refresh': float(m.get('refreshRate') or 0), 'preferred': mid in pref, 'current': mid == cur_id and bool(o.get('enabled'))})
+                          'refresh': float(m.get('refreshRate') or 0), 'preferred': mid in pref, 'current': mid == cur_id})
         rot = KSCREEN_ROT.get(int(o.get('rotation') or 1), 'normal')
         raw = names.get(name, b'')
         model, make = edid_name(raw) if raw else '', edid_make(raw) if raw else ''
         mm = o.get('sizeMM') or {}
         vrr_on = 'vrrPolicy' in o
         x = extra.get(name, {})
+        # Newer libkscreen leaves "enabled" out for a screen that can't be turned off ("disable unsupported"): on.
+        on = bool(o['enabled']) if 'enabled' in o else bool(cur_id)
         out = {
             'name': name, 'description': ' '.join(p for p in (make, model, '(%s)' % name) if p), 'make': make, 'model': model, 'serial': '',
             'physical_size': {'width': int(mm.get('width') or 0), 'height': int(mm.get('height') or 0)},
-            'enabled': bool(o.get('enabled')), 'modes': modes,
+            'enabled': on, 'modes': [dict(m, current=m['current'] and on) for m in modes],
             'position': {'x': int((o.get('pos') or {}).get('x') or 0), 'y': int((o.get('pos') or {}).get('y') or 0)},
             'transform': TRANSFORM_OF[rot], 'scale': float(o.get('scale') or 1), 'priority': int(o.get('priority') or 0),
             'adaptive_sync': vrr_on and int(o['vrrPolicy']) != 0,
@@ -599,6 +601,11 @@ def kwinrc_set(group, values):
     if all(ini_get(old, group, k) == str(v) for k, v in values.items()):
         return False
     os.makedirs(os.path.dirname(KWINRC), exist_ok=True)
+    # KDE's own way first: kwriteconfig6 --notify writes it as KConfig does and tells KWin's KConfigWatcher.
+    if have('kwriteconfig6') and os.path.realpath(KWINRC) == os.path.realpath(os.path.join(CONFIG, 'kwinrc')):
+        ok = all(RUN(['kwriteconfig6', '--file', 'kwinrc', '--group', group, '--key', k, '--notify', str(v)])[0] == 0 for k, v in values.items())
+        if ok:
+            return True
     io.update_text(KWINRC, lambda t: ini_set(t, group, {k: str(v) for k, v in values.items()}))
     Gio, GLib = _gio()
     if Gio:
