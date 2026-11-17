@@ -117,11 +117,13 @@ def clean_name(n):
 
 
 def exec_line(command):
-    """The desktop entry's Exec= for a command line: run through sh -c, quoted the way the spec asks."""
+    """The desktop entry's Exec= for a command line: run through sh -c in double quotes. Only \\ and " are escaped (and %
+    doubled): GLib's and KDE's readers and hearth-tasks' (shlex) all read that back the same, and none of them expands $
+    or ` themselves (sh -c does, as you'd expect from a command)."""
     c = (command or '').strip()
     if not 1 <= len(c) <= 2000 or re.search(r'[\x00-\x08\x0a-\x1f\x7f]', c):
         raise Fail('the command must be one line')
-    arg = c.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%')
+    arg = c.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
     return 'sh -c "%s"' % arg
 
 

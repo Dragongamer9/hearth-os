@@ -271,6 +271,15 @@ ShellRoot {
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
     Loader { source: "SpaceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.openStorage = () => settings.open("storage"); } }   // 1.11: main drive almost full
     Loader { source: "BatteryWatch.qml" }   // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
+    // 1.14, more of KDE's System Settings (docs/SETTINGS-MORE-1.14.md): push to talk, firmware and out-of-memory notices,
+    // drives and USB devices plugged in, the Welcome screen after an update, the splash after signing in. Each loaded by
+    // file name, so a problem in one only loses that one; none of them can hold the desktop up.
+    Loader { source: "PushToTalk.qml" }
+    Loader { source: "FirmwareWatch.qml"; onLoaded: item.settings = settings }
+    Loader { source: "OomWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; } }
+    Loader { source: "DeviceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; item.openFiles = p => files.open(p); } }
+    Loader { source: "Welcome.qml"; onLoaded: item.settings = settings }
+    Loader { source: "SigninSplash.qml" }
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {

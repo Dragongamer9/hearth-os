@@ -100,6 +100,13 @@ SetPage {
         icon: "edit"; title: "Rename this PC"; sub: "Its name on your network and your other devices · on Home"
         onActivated: SettingsNav.openPage("home")
     }
+    // 1.14: KDE Info Center's technical pages (SetInfoCenter.qml).
+    SetRow {
+        visible: page.inPart("about")
+        chevron: true
+        icon: "cpu"; title: "Info Center"; sub: "Processor, graphics card, memory, Vulkan and OpenGL, PCI and USB devices, energy"
+        onActivated: SettingsNav.openPage("info-cpu")
+    }
 
     // @part privacy
     SetHeader { text: "Privacy"; visible: page.inPart("privacy") }

@@ -1,0 +1,173 @@
+#!/usr/bin/python3
+"""hearth-printq: Hearth Settings › Printers › Print queue and Scanners (1.14, KDE's print queue window and scanner
+check), as you (no root). What's waiting to print and what printed lately (CUPS: lpstat), cancelling, holding and
+going on with your own jobs (cancel, lp -i), and the scanners SANE finds (scanimage -L, network ones through
+sane-airscan) with a quick test scan to see one works. Programs always run with argument lists.
+
+  hearth-printq jobs                JSON: {printers: [{name, state, reason}], jobs: [{id, printer, user, size, when,
+                                    state, title}], done: [...]}
+  hearth-printq cancel JOB | cancel-all | hold JOB | resume JOB
+  hearth-printq scanners            JSON: {scanners: [{device, name}]}
+  hearth-printq scan-test DEVICE    a small preview scan: JSON {ok, file} (in $XDG_RUNTIME_DIR)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import getpass
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+JOB_RE = re.compile(r'^[A-Za-z0-9_.@-]{1,127}-\d{1,9}$')
+DEV_RE = re.compile(r'^[A-Za-z0-9_.:@/=,+%() -]{1,200}$')   # (an argument, never through a shell)
+RUN = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+SCAN = os.path.join(RUN, 'hearth-scan-test.png')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=20):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def parse_jobs(text, state):
+    """lpstat -o lines: "PRINTER-ID  user  size  date"."""
+    out = []
+    for line in text.splitlines():
+        f = line.split(None, 3)
+        if len(f) >= 3 and JOB_RE.match(f[0]):
+            printer, _, num = f[0].rpartition('-')
+            out.append({'id': f[0], 'num': int(num), 'printer': printer, 'user': f[1], 'size': int(f[2]) if f[2].isdigit() else 0,
+                        'when': f[3].strip() if len(f) > 3 else '', 'state': state, 'title': ''})
+    return out
+
+
+def parse_titles(text):
+    """lpq -a lines: "Rank Owner Job File(s) Total Size" -> {job number: (rank, file name)}."""
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r'^(\S+)\s+(\S+)\s+(\d+)\s+(.+?)\s+(\d+) bytes$', line.strip())
+        if m:
+            out[int(m.group(3))] = (m.group(1), m.group(4))
+    return out
+
+
+def parse_printers(text):
+    out = []
+    for m in re.finditer(r'^printer (\S+) (?:is )?(idle|now printing \S+|disabled)[^\n]*(?:\n\t(.*))?', text, re.M):
+        st = 'printing' if m.group(2).startswith('now printing') else m.group(2)
+        out.append({'name': m.group(1), 'state': st, 'reason': (m.group(3) or '').strip()})
+    return out
+
+
+def need(prog):
+    if not shutil.which(prog):
+        raise Fail("%s isn't on this system (the printing service's tools)" % prog)
+
+
+def jobs():
+    need('lpstat')
+    code, pr, _ = run(['lpstat', '-p'])
+    code, w, _ = run(['lpstat', '-W', 'not-completed', '-o'])
+    waiting = parse_jobs(w, 'waiting')
+    code, d, _ = run(['lpstat', '-W', 'completed', '-o'])
+    done = parse_jobs(d, 'done')[-15:]
+    if shutil.which('lpq'):
+        code, q, _ = run(['lpq', '-a'])
+        t = parse_titles(q)
+        for j in waiting:
+            if j['num'] in t:
+                rank, title = t[j['num']]
+                j['title'], j['state'] = title, 'printing' if rank == 'active' else 'waiting'
+    held = set()
+    code, h, _ = run(['lpstat', '-W', 'not-completed', '-l', '-o'])
+    cur = None
+    for line in h.splitlines():
+        m = re.match(r'^(\S+-\d+)\s', line)
+        if m:
+            cur = m.group(1)
+        elif cur and ('job-hold-until' in line or re.search(r'\bheld\b', line, re.I)):
+            held.add(cur)
+    for j in waiting:
+        if j['id'] in held:
+            j['state'] = 'held'
+    me = getpass.getuser()
+    for j in waiting + done:
+        j['mine'] = j['user'] == me
+    return {'printers': parse_printers(pr), 'jobs': waiting, 'done': list(reversed(done))}
+
+
+def job_cmd(what, job):
+    if what == 'cancel-all':
+        need('cancel')
+        code, out, err = run(['cancel', '-u', getpass.getuser()])
+    else:
+        if not JOB_RE.match(job or ''):
+            raise Fail('not a print job')
+        if what == 'cancel':
+            need('cancel')
+            code, out, err = run(['cancel', job])
+        else:
+            need('lp')
+            code, out, err = run(['lp', '-i', job, '-H', 'hold' if what == 'hold' else 'resume'])
+    if code != 0:
+        raise Fail((err or out).strip()[:200] or 'the printing service said no')
+    return {'ok': True}
+
+
+def parse_scanners(text):
+    return [{'device': m.group(1), 'name': m.group(2).strip()} for m in re.finditer(r"^device `([^']+)' is (?:a )?(.*)$", text, re.M)
+            if DEV_RE.match(m.group(1))]
+
+
+def scanners():
+    need('scanimage')
+    code, out, err = run(['scanimage', '-L'], timeout=60)
+    return {'scanners': parse_scanners(out)}
+
+
+def scan_test(device):
+    need('scanimage')
+    if not DEV_RE.match(device or ''):
+        raise Fail('not a scanner')
+    try:
+        os.remove(SCAN)
+    except OSError:
+        pass
+    code, out, err = run(['scanimage', '-d', device, '--format=png', '--resolution', '75', '-o', SCAN], timeout=180)
+    if code != 0 or not os.path.isfile(SCAN):
+        raise Fail("the scanner didn't scan: " + ((err or out).strip().splitlines() or ['no answer'])[-1][:160])
+    return {'ok': True, 'file': SCAN}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['jobs']:
+            r = jobs()
+        elif argv[:1] == ['cancel-all']:
+            r = job_cmd('cancel-all', None)
+        elif argv[:1] and argv[0] in ('cancel', 'hold', 'resume') and len(argv) == 2:
+            r = job_cmd(argv[0], argv[1])
+        elif argv[:1] == ['scanners']:
+            r = scanners()
+        elif argv[:1] == ['scan-test'] and len(argv) == 2:
+            r = scan_test(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
