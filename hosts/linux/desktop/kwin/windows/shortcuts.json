@@ -471,6 +471,13 @@
    "keys": "Meta+Z",
    "labwc": "W-z",
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'"
+  },
+  {
+   "id": "screens-switch",
+   "title": "Screen switcher (one screen, extend)",
+   "keys": "Meta+P",
+   "labwc": "W-p",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call screens switcher'"
   }
  ],
  "kwinOwn": [
@@ -628,6 +635,7 @@
   }
  ],
  "kdeKeys": [
+  {"component": "org.kde.kscreen.desktop", "action": "ShowOSD", "keys": [], "why": "Super+P is Hearth's screen switcher"},
   {
    "component": "kwin",
    "action": "Window Quick Tile Left",

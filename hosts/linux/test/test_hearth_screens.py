@@ -339,6 +339,230 @@ class KWinSettings(Base):
             self.assertEqual(hs.night(), {'engine': 'wlsunset'})
 
 
+KSCREEN_TEXT_114 = (KSCREEN_TEXT.replace('\tHDR: enabled\n', '\tHDR: enabled\n\t\tSDR brightness: 250 nits\n\t\tSDR gamut wideness: 40%\n'
+                                       '\t\tPeak brightness: 603.5 nits, overridden with: 450 nits\n\t\tMax average brightness: 400 nits\n'
+                                       '\t\tMin brightness: 0.05 nits\n')
+                    .replace('\tColor profile source: ICC\n', '\tColor profile source: ICC\n\tColor power preference: prefer accuracy\n'
+                             '\tBrightness control: supported, set to 70% and dimming to 100%\n'))
+KSCREEN_114 = json.loads(json.dumps(KSCREEN))
+KSCREEN_114['outputs'][1].update({'overscan': 0, 'rgbRange': 0})
+
+
+class Screens114(Base):
+    """1.14's KDE rows: main screen, colour intensity and accuracy, HDR calibration, overscan, RGB range, Super+P,
+    night light by location with its fade, X11 apps, the edge barrier, desktops, DDC/CI, auto-brightness."""
+
+    def live(self):
+        return hs.parse_kscreen(json.dumps(KSCREEN_114), KSCREEN_TEXT_114, {})
+
+    def test_kwin_reads_the_new_fields(self):
+        dp, tv = self.live()
+        self.assertEqual(dp['priority'], 1)
+        self.assertEqual(dp['sdrGamut'], {'capable': True, 'value': 40})
+        self.assertEqual(dp['colorPower'], {'capable': True, 'value': 'accuracy'})
+        self.assertEqual((dp['hdrCal']['capable'], dp['hdrCal']['peak'], dp['hdrCal']['peakSet'], dp['hdrCal']['avg'], dp['hdrCal']['avgSet'], dp['hdrCal']['min']),
+                         (True, 603.5, 450.0, 400.0, None, 0.05))
+        self.assertEqual(dp['kwinBrightness'], {'capable': True, 'value': 70})
+        self.assertFalse(dp['overscan']['capable'])
+        self.assertEqual((tv['overscan'], tv['rgbRange']), ({'capable': True, 'value': 0}, {'capable': True, 'value': 'automatic'}))
+        self.assertFalse(tv['hdrCal']['capable'])
+        for o in (dp, tv):                     # not in KWin 6.3: hidden on the page
+            self.assertFalse(o['depth']['capable'])
+            self.assertFalse(o['redTint']['capable'])
+            self.assertFalse(o['edr']['capable'])
+        edr = hs.parse_kscreen(json.dumps(KSCREEN_114), KSCREEN_TEXT_114.replace('\tICC profile: incapable', '\tExtended dynamic range: never\n\tICC profile: incapable'), {})
+        self.assertEqual(edr[1]['edr'], {'capable': True, 'policy': 'never'})
+
+    def test_kwin_commands_for_the_new_keys(self):
+        live = self.live()
+        self.assertEqual(hs.ops_kwin(live, {'HDMI-A-1': {'priority': 1, 'overscan': 5, 'rgbRange': 'full'}}),
+                         ['output.HDMI-A-1.priority.1', 'output.HDMI-A-1.overscan.5', 'output.HDMI-A-1.rgbrange.full'])
+        self.assertEqual(hs.ops_kwin(live, {'DP-1': {'sdrGamut': 70, 'colorPower': 'efficiency', 'hdrCal': {'peak': 800, 'avg': None, 'min': 0.02}}}),
+                         ['output.DP-1.sdrGamut.70', 'output.DP-1.colorPowerTradeoff.preferEfficiency',
+                          'output.DP-1.maxAverageBrightnessOverride.disable', 'output.DP-1.maxBrightnessOverride.800',
+                          'output.DP-1.minBrightnessOverride.200'])
+        for bad in ({'DP-1': {'overscan': 3}}, {'HDMI-A-1': {'sdrGamut': 50}}, {'HDMI-A-1': {'hdrCal': {'peak': 500}}},
+                    {'HDMI-A-1': {'rgbRange': 'tv'}}, {'HDMI-A-1': {'edr': 'always'}}, {'HDMI-A-1': {'colorPower': 'accuracy'}}):
+            with self.assertRaises(hs.Refused):
+                hs.ops_kwin(live, bad)
+        # HDR coming on in the same change brings its colour intensity with it.
+        self.assertIn('output.DP-1.sdrGamut.30', hs.ops_kwin([dict(live[0], sdrGamut={'capable': False, 'value': 0})], {'DP-1': {'hdr': True, 'sdrGamut': 30}}))
+        with mock.patch.object(hs, 'RUN', FakeRun(wlr=WLR)):
+            for k, v in (('priority', 1), ('overscan', 2), ('rgbRange', 'full'), ('sdrGamut', 5), ('colorPower', 'accuracy'), ('hdrCal', {})):
+                with self.assertRaises(hs.Refused) as c:
+                    hs.ops_labwc(hs.read('labwc'), {'DP-1': {k: v}})
+                self.assertIn(hs.NEEDS_KWIN, str(c.exception))
+
+    def test_keep_and_restore_the_new_keys(self):
+        live = self.live()
+        hs.keep(['DP-1', 'HDMI-A-1'], 'kwin', live)
+        sv = json.loads(pathlib.Path(hs.SAVED).read_text())['outputs']
+        self.assertEqual((sv['DP-1']['priority'], sv['DP-1']['sdrGamut'], sv['DP-1']['colorPower'], sv['DP-1']['hdrCal']),
+                         (1, 40, 'accuracy', {'peak': 450.0, 'avg': None, 'min': None}))
+        self.assertEqual((sv['HDMI-A-1']['overscan'], sv['HDMI-A-1']['rgbRange'], sv['HDMI-A-1']['priority']), (0, 'automatic', 2))
+        # After a restart KWin forgot them: restore puts back only what differs.
+        saved = {'outputs': {'DP-1': dict(sv['DP-1'], sdrGamut=60), 'HDMI-A-1': dict(sv['HDMI-A-1'], priority=1, rgbRange='limited')}}
+        changes, left = hs.restore_plan(live, saved, 'kwin')
+        self.assertEqual(changes, {'DP-1': {'sdrGamut': 60}, 'HDMI-A-1': {'priority': 1, 'rgbRange': 'limited'}})
+        self.assertEqual(left, [])
+        # labwc never touches them.
+        with mock.patch.object(hs, 'RUN', FakeRun(wlr=WLR)):
+            ch, _ = hs.restore_plan(hs.read('labwc'), saved, 'labwc')
+        self.assertFalse(any(k in c for c in ch.values() for k in ('priority', 'sdrGamut', 'rgbRange')))
+
+    def test_super_p_plans(self):
+        live = self.live()
+        self.assertEqual(hs.switch_plan('main', live, 'kwin'), {'HDMI-A-1': {'enabled': False}})
+        self.assertEqual(hs.switch_plan('other', live, 'kwin'), {'DP-1': {'enabled': False}})
+        off = [live[0], dict(live[1], enabled=False)]
+        self.assertEqual(hs.switch_plan('extend', off, 'kwin'), {'HDMI-A-1': {'enabled': True, 'pos': {'x': 2048, 'y': 0}}})
+        self.assertEqual(hs.switch_plan('extend', live, 'kwin'), {})
+        self.assertEqual(hs.switch_state(live), 'extend')
+        self.assertEqual(hs.switch_state(off), 'main')
+        self.assertEqual(hs.switch_state([dict(live[0], enabled=False), live[1]]), 'other')
+        with self.assertRaises(hs.Refused):
+            hs.switch_plan('mirror', live, 'kwin', "KWin 6.3 can't mirror screens yet")
+        with self.assertRaises(hs.Refused):
+            hs.switch_plan('other', live[:1], 'kwin')
+        # The plan never leaves every screen off (apply checks it too).
+        for mode in ('main', 'other', 'extend'):
+            ch = hs.switch_plan(mode, live, 'kwin')
+            on = {o['name'] for o in live if o['enabled']}
+            for n, e in ch.items():
+                if 'enabled' in e:
+                    (on.add if e['enabled'] else on.discard)(n)
+            self.assertTrue(on, mode)
+
+    def test_night_by_location_and_fade(self):
+        base = {'nightLight': True, 'nightTemp': 3500, 'nightFrom': '20:00', 'nightTo': '07:00', 'nightFade': 15}
+        r = hs.night_kwinrc(dict(base, nightMode='location', nightPlace='Austin', nightLat=30.2672, nightLon=-97.7431))
+        self.assertEqual((r['Mode'], r['LatitudeFixed'], r['LongitudeFixed'], r['TransitionTime']), ('Location', '30.2672', '-97.7431', 15))
+        # No place picked yet: your times, never KWin's network lookup (Automatic).
+        r = hs.night_kwinrc(dict(base, nightMode='location', nightPlace=''))
+        self.assertEqual(r['Mode'], 'Times')
+        self.assertNotIn('LatitudeFixed', r)
+        self.assertEqual(hs.night_kwinrc(dict(base, nightFade=999))['TransitionTime'], 120)
+        self.assertEqual(hs.night_kwinrc(dict(base, nightMode='location', nightPlace='X', nightLat=95, nightLon=0))['Mode'], 'Times')
+        sh = (SHELL / 'shell.qml').read_text()
+        self.assertIn('"-l", String(Settings.nightLat), "-L", String(Settings.nightLon)', sh)
+        self.assertIn('String(Math.max(1, Settings.nightFade) * 60)', sh)
+        st = (SHELL / 'Settings.qml').read_text()
+        for k in ('nightPlace', 'nightLat', 'nightLon', 'nightFade'):
+            self.assertIn('on%sChanged: save("%s")' % (k[0].upper() + k[1:], k), st)
+
+    def test_kde_files_change_only_their_keys(self):
+        pathlib.Path(hs.KWINRC).write_text('[EdgeBarrier]\nOther=1\n\n[Plugins]\nblurEnabled=false\n')
+        kdeglobals = os.path.join(hs.CONFIG, 'kdeglobals')
+        with mock.patch.object(hs, 'CONFIG', self.d.name), mock.patch.object(hs, 'have', return_value=False), mock.patch.object(hs, 'kwin_call'):
+            kdeglobals = os.path.join(self.d.name, 'kdeglobals')
+            pathlib.Path(kdeglobals).write_text('[Colors:View]\nBackgroundNormal=1,2,3\n')
+            hs.x11_scale(False)
+            hs.barrier({'px': 40, 'corner': False})
+            self.assertFalse(hs.x11_scale_status('kwin')['self'])
+            self.assertEqual(hs.barrier_status('kwin'), {'capable': True, 'px': 40, 'corner': False, 'why': ''})
+        kg = pathlib.Path(kdeglobals).read_text()
+        self.assertIn('[Colors:View]\nBackgroundNormal=1,2,3', kg)
+        self.assertIn('[KScreen]\nXwaylandClientsScale=false', kg)
+        rc = pathlib.Path(hs.KWINRC).read_text()
+        self.assertIn('[EdgeBarrier]\nOther=1\nEdgeBarrier=40\nCornerBarrier=false', rc)
+        self.assertIn('blurEnabled=false', rc)
+        self.assertFalse(os.path.exists(hs.SAVED))          # KDE's own files are their settings' one home
+
+    def test_options_in_screens_json_merge(self):
+        pathlib.Path(hs.SAVED).write_text(json.dumps({'version': 1, 'outputs': {'DP-1': {'scale': 1.5}}, 'tearing': False}))
+        hs.save_entries({}, {'autoBrightness': True})
+        hs.save_entries({}, {'desktopsMainOnly': True})
+        sv = hs.saved()
+        self.assertEqual((sv['outputs']['DP-1']['scale'], sv['tearing'], sv['autoBrightness'], sv['desktopsMainOnly']), (1.5, False, True, True))
+        self.assertEqual(hs.desktops_status('kwin', sv)['mode'], 'main')
+        self.assertFalse(hs.desktops_status('kwin', sv)['perScreen'])
+
+    def test_main_desktops_script(self):
+        js = (SHELL / 'hearth-main-desktops.js').read_text()
+        self.assertIn('var MAIN = "HEARTH_MAIN";', js)
+        self.assertIn('registerShortcut("Hearth main desktops off"', js)
+        self.assertIn('pinned[id]', js)                     # only the windows it changed go back
+        calls = []
+        fake_variant = mock.Mock()
+        fake_variant.unpack.return_value = (3,)
+
+        def kc(method, *a, **k):
+            calls.append((method,) + a)
+            return fake_variant
+        with mock.patch.object(hs, 'kwin_call', side_effect=kc), mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': self.d.name}):
+            hs.main_desktops(True, self.live())
+            hs.main_desktops(False)
+        copy = pathlib.Path(self.d.name, 'hearth-main-desktops.js').read_text()
+        self.assertIn('var MAIN = "DP-1";', copy)
+        self.assertEqual([c[0] for c in calls], ['unloadScript', 'loadScript', 'run', 'invokeShortcut', 'unloadScript'])
+
+    def test_ddc(self):
+        detect = ('Display 1\n   I2C bus:  /dev/i2c-5\n   DRM connector:           card1-DP-1\n   Monitor: GSM:LG 27GP850:\n\n'
+                  'Invalid display\n   I2C bus:  /dev/i2c-7\n   DRM connector:           card1-HDMI-A-1\n\n'
+                  'Display 2\n   I2C bus:  /dev/i2c-6\n   DRM_connector:           card1-DP-2\n')
+        self.assertEqual(hs.parse_ddc_detect(detect), {'DP-1': 5, 'DP-2': 6})
+        self.assertEqual(hs.parse_vcp('VCP 10 C 50 100\n'), (50, 100))
+        self.assertIsNone(hs.parse_vcp('VCP 10 ERR\n'))
+
+        def run(cmd, timeout=10, env=None):
+            if cmd[:2] == ['ddcutil', 'detect']:
+                return 0, detect, ''
+            if 'getvcp' in cmd:
+                return (0, 'VCP 10 C 30 80\n', '') if cmd[2] == '5' else (1, '', 'no answer')
+            if 'setvcp' in cmd:
+                run.set = cmd
+                return 0, '', ''
+            return 127, '', ''
+        with mock.patch.object(hs, 'RUN', run), mock.patch.object(hs, 'have', return_value=True), mock.patch.object(hs.glob, 'glob', return_value=['/dev/i2c-5']):
+            d = hs.ddc_list()
+            self.assertEqual(d['screens'], [{'name': 'DP-1', 'bus': 5, 'value': 30, 'max': 80}])
+            self.assertEqual(hs.ddc_set('DP-1', 50)['value'], 40)
+            self.assertEqual(run.set, ['ddcutil', '--bus', '5', 'setvcp', '10', '40'])
+            with self.assertRaises(hs.Refused):
+                hs.ddc_set('DP-2', 50)
+        self.assertFalse(os.path.exists(hs.SAVED))          # the screen keeps its brightness itself
+        with mock.patch.object(hs, 'have', return_value=False):
+            self.assertFalse(hs.ddc_list()['available'])
+
+    def test_auto_brightness_needs_a_sensor(self):
+        iio = os.path.join(self.d.name, 'iio')
+        with mock.patch.object(hs, 'IIO', iio):
+            self.assertIsNone(hs.light_sensor())
+            self.assertIsNone(hs.lux())
+            dev = os.path.join(iio, 'iio:device0')
+            os.makedirs(dev)
+            pathlib.Path(dev, 'in_illuminance_raw').write_text('200\n')
+            pathlib.Path(dev, 'in_illuminance_scale').write_text('1.5\n')
+            self.assertEqual(hs.lux(), 300.0)
+            with mock.patch.object(hs, 'have', return_value=True):
+                self.assertFalse(hs.autobright()['running'])     # off in screens.json: ends at once
+        self.assertEqual(hs.lux_to_pct(0), 10)
+        self.assertLess(hs.lux_to_pct(50), hs.lux_to_pct(300))
+        self.assertEqual(hs.lux_to_pct(100000), 100)
+
+    def test_page_and_switcher(self):
+        t = (SHELL / 'SetDisplay.qml').read_text()
+        for part in ('title: "Make this the main screen"', 'title: "Colour intensity"', 'title: "Colour accuracy"', 'title: "Calibrate HDR"',
+                     'title: "Extended Dynamic Range"', 'title: "Overscan"', 'title: "RGB range"', 'title: "Scaling X11 apps"',
+                     'title: "Sticky edge between screens"', 'title: "Sticky corners"', 'title: "Virtual desktops"', 'title: "Auto-brightness"',
+                     '"Brightness · " + modelData.label', 'label: "Sunset to sunrise"', 'title: "Fade"', 'HdrCalibrate { id: cal; page: page }'):
+            self.assertIn(part, t)
+        # What can leave a screen unusable waits for Keep.
+        for k in ('overscan: page.overWant', 'rgbRange: v', 'edr: v'):
+            self.assertIn(k, t)
+        self.assertIn('page.tryChange(c)', t[t.index('title: "RGB range"'):t.index('title: "RGB range"') + 600])
+        sw = (SHELL / 'ScreenSwitcher.qml').read_text()
+        for part in ('"This screen only"', '"Duplicate"', '"Extend"', '"Second screen only"', 'job.run(["plan", c.mode]', 'sw.countdown = 15',
+                     'sw.back(true)', 'job.run(["keep", JSON.stringify(names)]'):
+            self.assertIn(part, sw)
+        self.assertIn('Loader { source: "ScreenSwitcher.qml" }', (SHELL / 'shell.qml').read_text())
+        keys = json.loads((SHELL.parent / 'kwin' / 'windows' / 'shortcuts.json').read_text())
+        self.assertTrue(any(s['keys'] == 'Meta+P' and s['labwc'] == 'W-p' and 'screens switcher' in s['run'] for s in keys['shortcuts']))
+        self.assertIn('<keybind key="W-p">', (SHELL.parent / 'labwc' / 'rc.xml').read_text())
+        cal = (SHELL / 'HdrCalibrate.qml').read_text()
+        self.assertIn('page.countdown = 15', cal)         # Finish goes through Keep these settings?
+
+
 class Screenshots(unittest.TestCase):
     def test_raw_pictures_become_pngs(self):
         data = bytes([10, 20, 30, 255, 10, 20, 30, 255]) + b'\0' * 8 + bytes([1, 2, 3, 255, 4, 5, 6, 255]) + b'\0' * 8
