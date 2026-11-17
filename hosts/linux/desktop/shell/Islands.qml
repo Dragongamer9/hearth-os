@@ -323,6 +323,14 @@ PanelWindow {
                             source: "DeskSwitcher.qml"
                             onLoaded: { item.island = true; item.portrait = Qt.binding(() => isl.vertical); item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20); }
                         }
+                        // ---- Activities (1.14, Activities.qml): the one you're on, once you have more than one
+                        Loader {
+                            Layout.alignment: Qt.AlignCenter
+                            visible: !isl.shelf && status === Loader.Ready && !!item && item.wanted
+                            active: !isl.shelf
+                            source: "ActivityChip.qml"
+                            onLoaded: item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20)
+                        }
                         RowLayout {   // the window in front (across the top or bottom, without your apps in the bar)
                             visible: !isl.compact && !isl.shelf && !isl.vertical && !isl.holdsApps && isl.front !== null && (isl.front.title || "") !== ""
                             spacing: 8
@@ -368,6 +376,13 @@ PanelWindow {
                     visible: Theme.perfIsland && !isl.compact && !isl.vertical && perf.status === Loader.Ready
                     along: perf.item ? perf.item.implicitWidth + 24 : 0
                     Loader { id: perf; anchors.centerIn: parent; active: Theme.perfIsland && !isl.compact && !isl.vertical; source: "PerfIsland.qml" }
+                }
+
+                // ---- widgets you put in the bar (1.14, BarWidgets.qml; Add widgets › Add to bar)
+                Island {
+                    visible: !isl.vertical && barWidgets.status === Loader.Ready && !!barWidgets.item && barWidgets.item.wanted
+                    along: barWidgets.item ? barWidgets.item.implicitWidth + 28 : 0
+                    Loader { id: barWidgets; anchors.centerIn: parent; active: !isl.vertical; source: "BarWidgets.qml" }
                 }
 
                 Item { Layout.fillWidth: !isl.vertical; Layout.fillHeight: isl.vertical }

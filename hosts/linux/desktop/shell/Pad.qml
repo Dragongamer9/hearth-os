@@ -40,6 +40,7 @@ Scope {
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
+        || SettingsNav.widgetsShown   // desktop widgets and activities (Widgets.qml)
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
     // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
@@ -79,7 +80,7 @@ Scope {
     // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Discord's chooser, the
     // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
     // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
-    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || DeskState.overlayShown
+    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.mixerShown || SettingsNav.snapShown || SettingsNav.discordShown || SettingsNav.widgetsShown || DeskState.overlayShown
         || SettingsNav.winxShown
     property var beforeMenu: null
     onMenuOpenChanged: {

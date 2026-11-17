@@ -268,6 +268,9 @@ ShellRoot {
     // Resource Monitor (docs/RESOURCE-MONITOR.md): loaded by file name, so a problem in it only loses that window, never
     // the shell. IPC target "resmon" (hearth-resmon).
     Loader { source: "ResourceMonitor.qml" }
+    // Desktop widgets and Activities (1.14, docs/WIDGETS.md): loaded by file name, so a problem in them only loses
+    // widgets and activities, never the shell. IPC targets "widgets" and "activities".
+    Loader { source: "Widgets.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: desktop widgets (Widgets.qml) couldn't load") }
     FileManager { id: files }
     FilesIpc { get: () => files; peek: () => files }
     VolumeOsd { id: osd }
