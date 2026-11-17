@@ -1,0 +1,139 @@
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ mkdir -p /tmp/xdg /tmp/home/.config/nimbus /tmp/home/.local/share/nimbus /tmp/home/Videos/Recordings /tmp/fakebin
++ chmod 700 /tmp/xdg
++ echo '{}'
++ python3 hosts/linux/desktop/shell/hearth-browser asked
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
++ dbus-daemon --session --fork --address=unix:path=/tmp/xdg/bus
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ printf '%s\n' '#!/bin/sh' 'f="$HOME/.fake-keyring"' 'case "$1" in' '  lookup) [ -f "$f" ] && cat "$f" || exit 1 ;;' '  search) [ -f "$f" ] || exit 1; echo "[/org/freedesktop/secrets/collection/login/1]"; echo "label = Hearth remote desktop (VNC)"; echo "secret = $(cat "$f")" ;;' '  store) cat > "$f" ;;' '  clear) rm -f "$f" ;;' esac
++ printf '%s\n' '#!/bin/sh' '[ "$1" = status ] && echo "{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"gaming-pc.tail1234.ts.net.\",\"TailscaleIPs\":[\"100.71.12.40\"]}}"'
++ chmod +x /tmp/fakebin/secret-tool /tmp/fakebin/tailscale
++ export PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ head -c 48000000 /dev/zero
++ head -c 9000000 /dev/zero
++ labwc -C hosts/linux/desktop/labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ snap
++ find /tmp/home/.config/nimbus /tmp/home/.local/share/nimbus -maxdepth 2 -type f -name '*.json'
++ sort
++ xargs -r sha256sum
++ ipc settings page remote-desktop
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page remote-desktop
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 3
++ grim shots/1-remote-desktop-off.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc record open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call record open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 3
++ grim shots/2-recorder-panel.png
++ ipc record close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call record close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ snap
++ find /tmp/home/.config/nimbus /tmp/home/.local/share/nimbus -maxdepth 2 -type f -name '*.json'
++ sort
++ xargs -r sha256sum
++ diff -q shots/files-before.txt shots/files-after.txt
++ '[' '!' -e /tmp/home/.config/nimbus/remote-vnc.json ']'
++ '[' '!' -e /tmp/home/.config/nimbus/record.json ']'
++ printf %s 'correct horse battery'
++ python3 hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.config/nimbus/remote-vnc.json '{"on": true, "reach": "home"}'
++ SRV=774
++ mkdir -p /tmp/xdg/hearth-vnc
++ sleep 100000
+++ date +%s
++ printf '{"pid": %d, "port": 5900, "input": "uinput", "inputWhy": "", "error": "", "clients": [{"id": 1, "ip": "100.88.3.17", "name": "work-laptop", "via": "tailscale", "since": %d, "viewOnly": false}]}\n' 774 1794908177
++ ipc settings page remote-desktop
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page remote-desktop
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 4
++ grim shots/3-remote-desktop-connected.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ REC=841
++ mkdir -p /tmp/xdg/hearth-record
++ sleep 100000
+++ date +%s
++ printf '{"state": "recording", "pid": %d, "since": %d, "file": "%s/Videos/Recordings/Recording now.mp4", "what": "screen", "sound": "both", "encoder": "VA-API"}\n' 841 1794909604 /tmp/home
++ sleep 3
++ grim shots/4-capture-dot-recording-and-connected.png
++ ipc record open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call record open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 3
++ grim shots/5-recorder-recording.png
++ ipc record close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call record close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ kill 774 841
++ printf '{"state": "idle", "last": "%s/Videos/Recordings/Recording now.mp4"}\n' /tmp/home
++ rm -f /tmp/xdg/hearth-vnc/clients.json
++ sleep 12
++ grim shots/6-capture-dot-gone.png
++ cp /tmp/xdg/nimbus-shell.log shots/shell.log
++ grep -E '(Recorder|CaptureIndicator|SetRemoteDesktop)\.qml.*(Error|error|is not a type|Cannot assign|ReferenceError|TypeError)' /tmp/xdg/nimbus-shell.log
++ '[' '!' -e shots/FAILED ']'
