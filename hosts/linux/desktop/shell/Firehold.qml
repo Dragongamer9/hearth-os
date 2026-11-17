@@ -205,6 +205,25 @@ Scope {
     function openGuide() { guideWin = frontGame() || (lastGame && wins.indexOf(lastGame) >= 0 ? lastGame : null) || games()[0] || null; guideShown = guideWin !== null; }
     property var lastGame: null
     function home() { page = "tabs"; tab = "home"; guideShown = false; view = "home"; }
+    // From the Desk (its dock's Home and Library, the bar's tile): the Couch at that tab.
+    function couchHome() { couchTab("home"); }
+    function couchTab(t) { if (!unlocked) return; switchTo("couch", ""); home(); tab = t; }
+
+    // ------------------------------------------------------------------ Everything open's window pictures (KWin)
+    // KWin takes a picture of each window (hearth-firehold pictures → hearth-screens shot --window) every 3 seconds
+    // while Everything open is on screen; labwc can't, so there the cards stay their colour. Runtime files only.
+    property var pictures: ({})
+    property int pictureTick: 0
+    readonly property string pictureDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-firehold/pictures"
+    readonly property bool picturesWanted: unlocked && WinList.kwin && couchUp && page === "switcher"
+    Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: fhs.picturesWanted; onTriggered: if (!picProc.running) { picProc.command = ["python3", fhs.libHelper, "pictures", fhs.pictureDir].concat(fhs.openList.map(o => WinList.widOf(o.win)).filter(i => i !== "")); picProc.running = true; } }
+    Process {
+        id: picProc
+        stdout: StdioCollector {
+            onStreamFinished: { try { fhs.pictures = JSON.parse(text.trim().split("\n").pop()) || ({}); fhs.pictureTick++; } catch (e) {} }
+        }
+    }
+    function pictureOf(w) { const id = WinList.widOf(w); return id && pictures[id] ? "file://" + pictures[id] + "?" + pictureTick : ""; }
 
     // ------------------------------------------------------------------ the library (hearth-firehold)
     property var library: []
@@ -316,6 +335,19 @@ Scope {
     LazyLoader {
         active: fhs.unlocked && fhs.overlay !== "off" && fhs.frontGame() !== null
         FireholdPerf { fh: fhs }
+    }
+    // The Desk: Firehold's bar and dock (Mantel's step aside meanwhile), and a game in a window's frame (KWin).
+    LazyLoader {
+        active: fhs.unlocked && fhs.started && fhs.posture === "desk"
+        FireholdDesk { fh: fhs }
+    }
+    readonly property var frameGame: {
+        const a = WinList.activeToplevel;
+        return unlocked && WinList.kwin && posture === "desk" && a && !a.fullscreen && !a.minimized && a.frame && a.frame.w > 0 && F.isGame(a, library) ? a : null;
+    }
+    LazyLoader {
+        active: fhs.frameGame !== null
+        FireholdGameFrame { fh: fhs; win: fhs.frameGame }
     }
     LazyLoader {
         active: fhs.unlocked && fhs.settingsShown

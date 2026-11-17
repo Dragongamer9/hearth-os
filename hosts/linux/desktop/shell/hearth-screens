@@ -21,7 +21,7 @@ kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, sc
   hearth-screens autoscale           only that last part
   hearth-screens night [JSON]        KWin's Night Light from Settings (nightLight, nightTemp, nightMode, nightFrom,
                                      nightTo: as given, else desktop.json's); labwc's is wlsunset, started by the shell
-  hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-
+  hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] [--window ID] FILE|-
                                      a screenshot as PNG: grim under labwc; KWin's org.kde.KWin.ScreenShot2 under KWin
                                      (run it through hearth-screenshot: KWin only answers the program
                                      hearth-screenshot.desktop names; this re-runs itself through it when it can)
@@ -861,10 +861,17 @@ def raw_to_rgb(data, width, height, stride, fmt):
 
 
 def parse_shot_args(argv):
-    o = {'geometry': None, 'output': None, 'cursor': False, 'file': None}
+    o = {'geometry': None, 'output': None, 'cursor': False, 'file': None, 'windowId': None}
     i = 0
     while i < len(argv):
         a = argv[i]
+        if a == '--window' and i + 1 < len(argv):
+            # One window by KWin's id (WinList's wid): Firehold's Everything open shows its picture.
+            if not re.match(r'^\{?[0-9A-Fa-f-]{36}\}?$', argv[i + 1]):
+                raise Refused('Not a window id: %s' % argv[i + 1])
+            o['windowId'] = argv[i + 1]
+            i += 2
+            continue
         if a == '-g' and i + 1 < len(argv):
             m = re.match(r'^\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)\s*$', argv[i + 1])
             if not m:
@@ -899,7 +906,10 @@ def kwin_shot(o):
     opts = {'include-cursor': GLib.Variant('b', o['cursor']), 'native-resolution': GLib.Variant('b', True)}
     fds = Gio.UnixFDList.new()
     idx = fds.append(w)
-    if o.get('window'):
+    if o.get('windowId'):
+        opts['include-decoration'] = GLib.Variant('b', False)
+        method, args, sig = 'CaptureWindow', (o['windowId'], opts, idx), '(sa{sv}h)'
+    elif o.get('window'):
         opts['include-decoration'] = GLib.Variant('b', True)
         method, args, sig = 'CaptureActiveWindow', (opts, idx), '(a{sv}h)'
     elif o['geometry']:

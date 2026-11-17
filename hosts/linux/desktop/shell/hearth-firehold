@@ -10,6 +10,11 @@ in one list, and starting one.
   hearth-firehold cached       the copy from last time, at once
   hearth-firehold play ID      play it: a Windows app through hearth-winapps, a game through Hearth (hearth-games play)
   hearth-firehold page ID      Hearth's page for a game (to install it): `nimbus --windowed --game-page ID`
+  hearth-firehold pictures DIR ID...
+                               a picture of each window (KWin's ids, as WinList has them) for Everything open, taken
+                               by KWin (hearth-screens shot --window) into DIR/<id>.png; prints {id: file} (a window
+                               that can't be taken, a minimized one, is left out). Only under KWin: labwc has no way
+                               to take one window's picture, so there it prints {}.
 
 Each game: {id, title, source, store (the badge: "Steam", "GOG", "Epic", "Emulator", "Windows app", "Your game"...),
 kind (its filter chip: steam, gog, epic, winapp, emu, yours, other), installed, update, savesBackedUp, devBuild,
@@ -246,6 +251,36 @@ def page(i):
     return {'ok': True}
 
 
+WIN_ID = re.compile(r'^\{?[0-9A-Fa-f-]{36}\}?$')
+
+
+def pictures(d, ids):
+    """Each window's picture from KWin; at most 12, a few seconds each at most."""
+    if os.environ.get('HEARTH_WM') != 'kwin':
+        return {}
+    h = helper('hearth-screens')
+    if not h:
+        return {}
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    out = {}
+    for i in ids[:12]:
+        if not WIN_ID.match(i):
+            continue
+        f = os.path.join(d, re.sub(r'[^0-9A-Za-z-]', '', i) + '.png')
+        tmp = f + '.part'
+        try:
+            r = subprocess.run(h + ['shot', '--window', i, tmp], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=8, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            os.replace(tmp, f)
+            out[i] = f
+        elif os.path.exists(tmp):
+            os.unlink(tmp)
+    return out
+
+
 def main(argv):
     what = argv[1] if len(argv) > 1 else ''
     try:
@@ -257,6 +292,8 @@ def main(argv):
             out = play(argv[2])
         elif what == 'page' and len(argv) > 2:
             out = page(argv[2])
+        elif what == 'pictures' and len(argv) > 2:
+            out = pictures(argv[2], argv[3:])
         else:
             print(__doc__.strip(), file=sys.stderr)
             return 2

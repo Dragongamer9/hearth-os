@@ -7,6 +7,9 @@ Item {
     id: a
     property string source: ""
     property real radius: 14
+    // A picture that's taken again and again (Everything open's windows): read at once and not kept, so the card
+    // never blinks empty between two pictures.
+    property bool live: false
     readonly property bool ready: art.item !== null && art.item.ready
     Loader {
         id: art
@@ -19,8 +22,8 @@ Item {
                 anchors.fill: parent
                 source: a.source
                 fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                cache: true
+                asynchronous: !a.live
+                cache: !a.live
                 visible: false
                 sourceSize.width: Math.max(64, Math.round(a.width))
             }

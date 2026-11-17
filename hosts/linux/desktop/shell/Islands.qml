@@ -101,7 +101,7 @@ PanelWindow {
     Timer { interval: 4000; running: !isl.settingsReady; onTriggered: isl.settingsReady = true }
     property bool remapping: false
     Timer { id: remapTimer; interval: 150; onTriggered: isl.remapping = false }
-    visible: settingsReady && !remapping
+    visible: settingsReady && !remapping && !SettingsNav.fireholdDesk   // Firehold's Desk has its own bar (FireholdDesk.qml)
     property int lastReserved: -1
     onSettingsReadyChanged: refit()
     function refit() {

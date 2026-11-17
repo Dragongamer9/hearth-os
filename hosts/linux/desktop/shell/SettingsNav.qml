@@ -58,6 +58,7 @@ Singleton {
     property bool fireholdShown: false
     property bool fireholdCouch: false
     property var fireholdPad: null
+    property bool fireholdDesk: false  // Firehold's Desk bar and dock are up (FireholdDesk.qml): Mantel's own step aside
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;
