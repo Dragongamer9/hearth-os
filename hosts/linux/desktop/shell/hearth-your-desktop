@@ -62,6 +62,16 @@ def texts(what, why):
             'twice': ('KWin didn\'t start twice in a row', 'Mantel uses labwc, the window manager it used before 1.14, '
                       'until you turn KWin back on. You can try it again here or in Settings › System › Your desktop.'),
         }.get(why, ('', ''))
+    if what == 'kwin-lock':
+        part = {'nopackage': "Hearth's lock screen for KWin (/usr/share/plasma/shells/org.hearth.mantel-lock) is missing",
+                'nolocker': "KWin's screen locker (kscreenlocker_greet) isn't installed"}.get(why)
+        if not part:
+            return ('', '')
+        return ('The lock screen is off',
+                "The lock screen is off because Hearth's lock screen isn't installed correctly: %s. So that you can "
+                "never be locked out, Desktop Mode doesn't lock the screen (Lock says so too) until it's fixed. "
+                "Restoring Hearth's system files or the next update puts it back. Details: session.log in "
+                "~/.local/share/nimbus, and Send logs." % part)
     return ('', '')
 
 

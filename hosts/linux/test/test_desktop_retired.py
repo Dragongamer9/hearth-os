@@ -29,6 +29,8 @@ class Retired(unittest.TestCase):
         self.conf = os.path.join(self.home, '.config', 'nimbus', 'session.conf')
         os.makedirs(os.path.dirname(self.conf))
         self.state = os.path.join(self.home, '.local', 'state', 'hearth')
+        os.makedirs(self.state, exist_ok=True)   # the lock guard's notice already told (no lock screen here)
+        open(os.path.join(self.state, 'kwin-lock-off-told'), 'w').close()
         # Mantel's compositor stand-ins: each notes that it started and ends (no next mode: the session ends).
         # (KWin is the default from 1.14; labwc its fallback. Either one means "Mantel opened".)
         self.write_bin('labwc', '#!/bin/sh\necho labwc >> "$HOME/mantel-ran"\nexit 0\n')
@@ -102,6 +104,8 @@ class Retired(unittest.TestCase):
         for v, want in (('gnome', 'gnome'), ('plasma', 'kde'), ('cosmic', None), ('classic', None), ('', None)):
             with self.subTest(v=v):
                 shutil.rmtree(self.state, ignore_errors=True)
+                os.makedirs(self.state)
+                open(os.path.join(self.state, 'kwin-lock-off-told'), 'w').close()
                 r, log = self.session('NIMBUS_START_MODE=desktop\n' + ('HEARTH_DESKTOP=%s\n' % v if v else ''))
                 self.assertEqual(self.notice(), [want, 'retired'] if want else [])
                 self.assertTrue(self.mantel_started(), log)
