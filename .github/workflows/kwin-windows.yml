@@ -10,7 +10,7 @@ name: Mantel on KWin (windows)
 on:
   push:
     branches: [bughunt, 'feature/kwin-*']
-    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
+    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/HintStrip.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
             'hosts/linux/test/test_kwin_windows.py', 'hosts/linux/test/kwin-windows-mock.js', 'tools/e2e-kwin-windows.py',
             '.github/workflows/kwin-windows.yml']
   workflow_dispatch:
