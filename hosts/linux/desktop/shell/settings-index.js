@@ -480,6 +480,16 @@ var ENTRIES = [
 "i": "clipboard"
 },
 {
+"t": "Selection history",
+"p": "clipboard",
+"i": "clipboard"
+},
+{
+"t": "Keep the clipboard and selection in step",
+"p": "clipboard",
+"i": "sync"
+},
+{
 "t": "Open clipboard history",
 "p": "clipboard",
 "d": "Super+V",
