@@ -36,9 +36,9 @@ kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, sc
   rgbRange (automatic | full | limited), sdrGamut (colour intensity, 0–100, HDR on), colorPower (efficiency |
   accuracy), hdrCal {peak, avg, min} (nits; None = what the screen says), edr (never | always, newer KWin)
   hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] [--window ID] FILE|-
-                                     a screenshot as PNG: grim under labwc; KWin's org.kde.KWin.ScreenShot2 under KWin
-                                     (run it through hearth-screenshot: KWin only answers the program
-                                     hearth-screenshot.desktop names; this re-runs itself through it when it can)
+                                     a screenshot as PNG: grim under labwc; KWin's org.kde.KWin.ScreenShot2 under KWin,
+                                     through hearth-kwin-cast shot (the one small program KWin trusts for it,
+                                     hearth-kwin-cast.desktop; it answers only hearth-portal and hearth-screens)
   hearth-screens grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE|-
                                      Capture's screenshots: MODE screen (--screen: a name, or 1 = the first screen
                                      that's on; else the active one), all, window (the active window: KWin's; under
@@ -56,7 +56,6 @@ import re
 import shlex
 import subprocess
 import sys
-import threading
 import time
 import zlib
 import struct
@@ -1554,80 +1553,66 @@ def parse_shot_args(argv):
     return o
 
 
-def kwin_shot(o):
-    Gio, GLib = _gio()
-    if not Gio:
-        raise Refused("Screenshots under KWin need Python's GLib (python3-gi).")
-    r, w = os.pipe()
-    chunks = []
-    reader = threading.Thread(target=lambda: chunks.append(_read_all(r)), daemon=True)
-    reader.start()
-    opts = {'include-cursor': GLib.Variant('b', o['cursor']), 'native-resolution': GLib.Variant('b', True)}
-    fds = Gio.UnixFDList.new()
-    idx = fds.append(w)
+KWIN_CAST = os.environ.get('HEARTH_KWIN_CAST') or '/usr/libexec/hearth/hearth-kwin-cast'
+
+
+def kwin_cast_args(o):
+    """hearth-kwin-cast shot's arguments for a screenshot asked for with parse_shot_args / grab: at the screen's own
+    resolution, with the pointer when asked."""
     if o.get('windowId'):
-        opts['include-decoration'] = GLib.Variant('b', False)
-        method, args, sig = 'CaptureWindow', (o['windowId'], opts, idx), '(sa{sv}h)'
+        a = ['window', o['windowId']]            # one window by KWin's id (Firehold's Everything open)
     elif o.get('window'):
-        opts['include-decoration'] = GLib.Variant('b', True)
-        method, args, sig = 'CaptureActiveWindow', (opts, idx), '(a{sv}h)'
+        a = ['active-window']
     elif o['geometry']:
         x, y, gw, gh = o['geometry']
-        method, args, sig = 'CaptureArea', (x, y, gw, gh, opts, idx), '(iiuua{sv}h)'
+        a = ['area', str(int(x)), str(int(y)), str(int(gw)), str(int(gh))]
     elif o.get('activeScreen'):
-        method, args, sig = 'CaptureActiveScreen', (opts, idx), '(a{sv}h)'
+        a = ['active-screen']
     elif o['output']:
-        method, args, sig = 'CaptureScreen', (o['output'], opts, idx), '(sa{sv}h)'
+        a = ['screen', str(o['output'])]
     else:
-        method, args, sig = 'CaptureWorkspace', (opts, idx), '(a{sv}h)'
+        a = ['workspace']
+    return ['shot'] + a + ['1' if o['cursor'] else '0', '1']
+
+
+def parse_cast_shot(out):
+    """hearth-kwin-cast shot's output: 'W H STRIDE FORMAT SCALE' then the raw pixels → (w, h, stride, fmt, data)."""
+    nl = out.find(b'\n')
+    if nl < 0:
+        raise Refused('KWin sent no picture.')
     try:
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        res, _ = bus.call_with_unix_fd_list_sync('org.kde.KWin', '/org/kde/KWin/ScreenShot2', 'org.kde.KWin.ScreenShot2', method,
-                                                 GLib.Variant(sig, args), GLib.VariantType('(a{sv})'), Gio.DBusCallFlags.NONE, 30000, fds, None)
-    except Exception as e:  # noqa: BLE001
-        os.close(w)
-        msg = str(e)
-        if 'NoActiveWindow' in msg:
-            raise NoWindow('There is no window to take a picture of.')
-        if 'NoAuthorized' in msg or 'not authorized' in msg.lower():
-            raise Refused("KWin didn't let Hearth take a screenshot: run it through hearth-screenshot "
-                          "(hearth-screenshot.desktop lets that one program use org.kde.KWin.ScreenShot2).")
-        raise Refused("KWin couldn't take the screenshot: %s" % msg)
-    finally:
-        fds = None
-    os.close(w)
-    reader.join(30)
-    meta = res.unpack()[0]
-    data = chunks[0] if chunks else b''
-    if meta.get('type', 'raw') != 'raw':
-        raise Refused('KWin sent a picture type Hearth can\'t read (%s).' % meta.get('type'))
-    wd, ht, st, fmt = int(meta['width']), int(meta['height']), int(meta['stride']), int(meta['format'])
-    if len(data) < st * (ht - 1) + wd:
+        wd, ht, st, fmt = (int(x) for x in out[:nl].split()[:4])
+    except ValueError:
+        raise Refused('KWin sent no picture.')
+    data = out[nl + 1:]
+    if wd <= 0 or ht <= 0 or st < wd * 4 or len(data) < st * (ht - 1) + wd:
         raise Refused('KWin sent only part of the picture.')
+    return wd, ht, st, fmt, data
+
+
+def kwin_shot(o):
+    """A screenshot from KWin's org.kde.KWin.ScreenShot2, through hearth-kwin-cast (KWin answers only programs whose
+    .desktop file lists that interface: hearth-kwin-cast.desktop names that small program, not a Python)."""
+    if not os.access(KWIN_CAST, os.X_OK):
+        raise Refused("Screenshots under KWin need Hearth's hearth-kwin-cast, which isn't installed here.")
+    try:
+        p = subprocess.run([KWIN_CAST] + kwin_cast_args(o), stdin=subprocess.DEVNULL, capture_output=True, timeout=45)
+    except subprocess.TimeoutExpired:
+        raise Refused("KWin didn't answer in time.")
+    except OSError as e:
+        raise Refused("Couldn't start hearth-kwin-cast: %s" % e)
+    why = (p.stderr or b'').decode('utf-8', 'replace').strip().splitlines()
+    why = why[-1] if why else ''
+    if p.returncode == 4:
+        raise NoWindow('There is no window to take a picture of.')
+    if p.returncode == 2:
+        raise Refused("KWin didn't let Hearth take a screenshot (hearth-kwin-cast.desktop isn't installed?): %s" % why)
+    if p.returncode == 3:
+        raise Refused("hearth-kwin-cast takes screenshots only for Hearth's own hearth-screens (installed by root): %s" % why)
+    if p.returncode != 0:
+        raise Refused("KWin couldn't take the screenshot: %s" % (why or 'exit %d' % p.returncode))
+    wd, ht, st, fmt, data = parse_cast_shot(p.stdout)
     return png(wd, ht, raw_to_rgb(data, wd, ht, st, fmt))
-
-
-def _read_all(fd):
-    parts = []
-    with os.fdopen(fd, 'rb') as f:
-        while True:
-            b = f.read(1 << 20)
-            if not b:
-                break
-            parts.append(b)
-    return b''.join(parts)
-
-
-TRUSTED_PY = '/usr/libexec/nimbus/hearth-shot-python'
-
-
-def as_trusted(argv):
-    """Under KWin, run again through hearth-shot-python (the program hearth-screenshot.desktop names, which KWin 6.3
-    lets use its screenshot interface), when this isn't it already."""
-    if os.access(TRUSTED_PY, os.X_OK) and os.path.realpath(sys.executable) != os.path.realpath(TRUSTED_PY) \
-            and not os.environ.get('HEARTH_SCREENS_TRUSTED'):
-        os.environ['HEARTH_SCREENS_TRUSTED'] = '1'
-        os.execv(TRUSTED_PY, [TRUSTED_PY, os.path.realpath(__file__)] + argv)
 
 
 def _write(data, out):
@@ -1642,7 +1627,6 @@ def _write(data, out):
 def shot(argv):
     if wm() != 'kwin':
         os.execvp('grim', ['grim'] + argv)
-    as_trusted(['shot'] + argv)
     o = parse_shot_args(argv)
     _write(kwin_shot(o), o['file'])
 
@@ -1718,7 +1702,6 @@ def grab(argv):
     if wm() != 'kwin':
         cmd = grim_args(o, read('labwc') if o['mode'] == 'screen' else [])
         os.execvp(cmd[0], cmd)
-    as_trusted(['grab'] + argv)
     k = {'geometry': None, 'output': None, 'cursor': o['cursor'], 'file': o['out']}
     if o['mode'] == 'window':
         if o['geometry']:
