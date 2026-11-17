@@ -22,6 +22,13 @@ var lastSent = "";
 
 function idOf(w) { return String(w.internalId); }
 
+// Into the bridge's log ($XDG_RUNTIME_DIR/hearth/kwin-bridge.log): KWin's own print() is usually not shown anywhere.
+var said = {};
+function say(text, once) {
+    if (once) { if (said[text]) return; said[text] = true; }
+    callDBus(BUS, OBJ, IFACE, "Log", String(text));
+}
+
 // What a taskbar shows: apps' normal windows and dialogs. Not Mantel's own bar, dock or flyouts: KWin gives layer-shell
 // surfaces a window type from their namespace, Normal when it doesn't know it, but they can't be moved, resized or
 // minimized, which no app window is.
@@ -84,7 +91,7 @@ function snapshot() {
 
 function push() {
     var s;
-    try { s = snapshot(); } catch (e) { print("hearthwindows: " + e); return; }
+    try { s = snapshot(); } catch (e) { say("list: " + e, true); return; }
     if (s === lastSent) return;
     lastSent = s;
     callDBus(BUS, OBJ, IFACE, "Update", s);
@@ -120,21 +127,41 @@ function zoneOf(w) {
     return "";
 }
 
+function near(g, r) { return Math.abs(g.x - r.x) < 2 && Math.abs(g.y - r.y) < 2 && Math.abs(g.width - r.width) < 2 && Math.abs(g.height - r.height) < 2; }
+
+// KWin takes a new place as a rect. Which way of writing one this KWin accepts isn't the same everywhere, so: a plain
+// object, then the rect KWin gave us with new numbers, then moving and resizing in two steps.
 function setGeometry(w, r) {
-    try {
-        w.frameGeometry = { x: r.x, y: r.y, width: r.width, height: r.height };
-    } catch (e) {
-        var g = w.frameGeometry;
-        g.x = r.x; g.y = r.y; g.width = r.width; g.height = r.height;
-        w.frameGeometry = g;
+    var ways = [
+        function () { w.frameGeometry = { x: r.x, y: r.y, width: r.width, height: r.height }; },
+        function () { var g = w.frameGeometry; g.x = r.x; g.y = r.y; g.width = r.width; g.height = r.height; w.frameGeometry = g; },
+        function () { if (w.move) w.move({ x: r.x, y: r.y }); if (w.resize) w.resize({ width: r.width, height: r.height }); }
+    ];
+    var errors = [];
+    for (var i = 0; i < ways.length; i++) {
+        try { ways[i](); } catch (e) { errors.push(i + ": " + e); continue; }
+        if (near(w.frameGeometry, r)) { say("geometry: way " + i + " works", true); return true; }
     }
+    var g = w.frameGeometry;
+    say("geometry: no way worked (wanted " + JSON.stringify(r) + ", got " + JSON.stringify({ x: g.x, y: g.y, width: g.width, height: g.height }) +
+        (errors.length ? "; " + errors.join("; ") : "") + ")");
+    return false;
+}
+
+// Maximize or restore: KWin's setMaximize(vertically, horizontally), or its Maximize action on the window in front.
+function setMax(w, on) {
+    if (typeof w.setMaximize === "function") { w.setMaximize(on, on); return; }
+    say("maximize: no setMaximize here (" + typeof w.setMaximize + "); using KWin's Maximize action", true);
+    if (isMax(w) === on) return;
+    workspace.activeWindow = w;
+    workspace.slotWindowMaximize();
 }
 
 function snap(w, id) {
     var z = zoneById(id);
     if (!w || !z) return;
     if (w.fullScreen) w.fullScreen = false;
-    if (isMax(w)) w.setMaximize(false, false);
+    if (isMax(w)) setMax(w, false);
     w.minimized = false;
     setGeometry(w, rectFor(w, z));
     workspace.activeWindow = w;
@@ -155,13 +182,13 @@ function winKey(k) {
         else if (z === "right-half") snap(w, "top-right");
         else if (z === "bottom-left") snap(w, "left-half");
         else if (z === "bottom-right") snap(w, "right-half");
-        else w.setMaximize(true, true);
+        else setMax(w, true);
     } else if (k === "down") {
         if (z === "left-half") snap(w, "bottom-left");
         else if (z === "right-half") snap(w, "bottom-right");
         else if (z === "top-left") snap(w, "left-half");
         else if (z === "top-right") snap(w, "right-half");
-        else if (isMax(w)) w.setMaximize(false, false);
+        else if (isMax(w)) setMax(w, false);
         else w.minimized = true;
     } else if (k === "close") w.closeWindow();
     else if (k.indexOf("to-desktop:") === 0) toDesktop(w, parseInt(k.slice(11), 10));
@@ -193,7 +220,7 @@ function run(c) {
     case "activate": if (w) { w.minimized = false; workspace.activeWindow = w; } break;
     case "close": if (w) w.closeWindow(); break;
     case "minimize": if (w) w.minimized = !!c.on; break;
-    case "maximize": if (w) { if (c.on) w.minimized = false; w.setMaximize(!!c.on, !!c.on); } break;
+    case "maximize": if (w) { if (c.on) w.minimized = false; setMax(w, !!c.on); } break;
     case "fullscreen": if (w) w.fullScreen = !!c.on; break;
     case "keepAbove": if (w) w.keepAbove = !!c.on; break;
     case "allDesktops": if (w) w.onAllDesktops = !!c.on; break;
@@ -203,6 +230,12 @@ function run(c) {
     case "key": winKey(String(c.key || "")); break;
     case "menu": workspace.slotWindowOperations(); break;        // KWin's window menu (with Hearth's Snap), for checks
     case "refresh": lastSent = ""; break;
+    case "probe":                                                 // what this KWin offers, into the log (checks)
+        if (w) say("probe: " + JSON.stringify({ setMaximize: typeof w.setMaximize, maximizeMode: w.maximizeMode, move: typeof w.move,
+            frame: { x: w.frameGeometry.x, y: w.frameGeometry.y, width: w.frameGeometry.width, height: w.frameGeometry.height },
+            area: (function () { var a = area(w); return { x: a.x, y: a.y, width: a.width, height: a.height }; })(),
+            moveable: w.moveable, resizeable: w.resizeable, tile: typeof w.tile }));
+        break;
     }
 }
 
@@ -212,7 +245,7 @@ function poll() {
         var list = [];
         try { list = JSON.parse(String(reply)); } catch (e) {}
         for (var i = 0; i < list.length; i++) {
-            try { run(list[i]); } catch (e) { print("hearthwindows: " + list[i].op + ": " + e); }
+            try { run(list[i]); } catch (e) { say(list[i].op + ": " + e); }
         }
         push();
         poll();

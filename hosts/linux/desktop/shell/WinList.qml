@@ -135,7 +135,7 @@ Singleton {
                     wl.connected = m.connected === true;
                     wl.problem = m.problem || "";
                     if (!wl.connected && wl.problem) console.warn("window list (KWin): " + wl.problem);
-                }
+                } else if (m.t === "log") console.warn("window list (KWin): " + (m.text || ""));
             }
         }
         onExited: code => {

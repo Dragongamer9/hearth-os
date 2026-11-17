@@ -123,7 +123,9 @@ def main():
     ipc('winlist', 'act', 'Test A', 'restore')
     check('restore size', wait(lambda: (win('Test A') or {}).get('maximized') is False), win('Test A'))
 
-    # Snap layouts (WinList.snap), then Super+Left/Up/Down's steps (the script's own keys).
+    # Snap layouts (WinList.snap), then Super+Left/Up/Down's steps (the script's own keys). First what this KWin offers
+    # (into kwin-bridge.log, shown after the run).
+    do({'op': 'probe', 'id': (win('Test A') or {}).get('id', '')})
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'left-half'}))
     check('snap to the left half', wait(lambda: (win('Test A') or {}).get('zone') == 'left-half'), win('Test A'))
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'right-half'}))
