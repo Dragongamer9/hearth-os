@@ -206,7 +206,7 @@ class PhoneLink(unittest.TestCase):
 
     def got(self, kind, pred=None, secs=15):
         p = self.phone.wait(kind, pred, timeout=secs)
-        self.assertIsNotNone(p, 'the phone never got ' + kind)
+        self.assertIsNotNone(p, 'the phone never got ' + kind + (' (its link: %s)' % self.phone.io_error if self.phone.io_error else ''))
         return p
 
     def need_pair(self):
