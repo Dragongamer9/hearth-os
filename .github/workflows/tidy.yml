@@ -1,11 +1,11 @@
 # Quick tidiness checks (tools/tidy-check.py, 1.13): Settings' search index up to date, no roadmap item listed twice,
-# no test that only passes on one machine (a fixed home folder). Seconds, no build.
+# no test that only passes on one machine (a fixed home folder), and every commit not yet on main is the owner's
+# (tools/attribution-check.py: no AI author or committer, no attribution lines). Seconds, no build; every push.
 name: Tidy
 
 on:
   push:
     branches: [bughunt, main, 'feature/**']
-    paths: ['docs/ROADMAP.md', 'hosts/linux/desktop/shell/**', 'hosts/linux/test/**', 'tools/**', '.github/workflows/tidy.yml']
   workflow_dispatch:
 
 jobs:
@@ -14,5 +14,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Tidy checks
         run: python3 tools/tidy-check.py
+      - name: Every commit is the owner's (not yet on main)
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main 2>/dev/null || true
+          python3 tools/attribution-check.py origin/main HEAD
