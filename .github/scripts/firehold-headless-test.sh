@@ -26,6 +26,10 @@ STATUS="$XDG_RUNTIME_DIR/firehold.json"
 status() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {"d": d}))' "$STATUS" "$1" 2>/dev/null; }
 wait_for() { for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1; }
 W() { WAYLAND_DISPLAY=wayland-hearth "$@"; }
+orient() {   # $1 a picture taken through screencopy: the right way up? (firehold-orientation.py)
+  o=$(python3 .github/scripts/firehold-orientation.py "$1" "$STATUS" "$HOME/.config/hearth/theme.json" 2>&1); rc=$?
+  case $rc in 0) note "screencopy" "upright: $o";; 2) note "screencopy" "orientation not checked: $o";; *) fail "screencopy" "upside down or wrong: $o";; esac
+}
 
 CONF="$HOME/.config/nimbus/session.conf"; FHJ="$HOME/.config/nimbus/firehold.json"   # the test's own files
 printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\n' > "$CONF"
@@ -51,6 +55,7 @@ wait_for 30 'any(w["appId"] == "hearth-test-window" for w in d["windows"])' || f
 sleep 8
 W timeout 20 grim shots/firehold-h-mantel.png 2>shots/grim.err || fail "screencopy" "grim failed: $(head -c 400 shots/grim.err | tr '\n' ' ')"
 note "screencopy" "captures: $(status 'd["captures"]')"
+orient shots/firehold-h-mantel.png
 # Recording (wf-recorder, wlr-screencopy with damage), shared memory only: there's no dmabuf headless.
 if command -v wf-recorder >/dev/null; then
   w0=$(status 'd["captures"]["wlr"] + d["captures"]["ext"]')
