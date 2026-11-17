@@ -17,7 +17,8 @@ in one list, and starting one.
                                to take one window's picture, so there it prints {}.
 
 Each game: {id, title, source, store (the badge: "Steam", "GOG", "Epic", "Emulator", "Windows app", "Your game"...),
-kind (its filter chip: steam, gog, epic, winapp, emu, yours, other), installed, update, savesBackedUp, devBuild,
+kind (its filter chip: steam, gog, epic, winapp, emu, yours, other), installed, update, savesBackedUp, cloudSaves (a
+Steam game whose saves Steam Cloud keeps: Steam's own userdata/<account>/<appid>/remote folder has files), devBuild,
 cover, wide, hero, icon, lastPlayed (ms), minutes, system}. Only reads; nothing is saved but the cache. Failures
 print "error: ..." and exit 1.
 """
@@ -95,7 +96,41 @@ def norm(t):
     return re.sub(r'[^a-z0-9]+', '', (t or '').lower())
 
 
-def game_entry(g, saves=()):
+def steam_userdata():
+    """Steam's userdata folders (one per account that signed in on this PC); read only, nothing about the account."""
+    home = os.path.expanduser('~')
+    seen, out = set(), []
+    for root in (os.path.join(home, '.local/share/Steam'), os.path.join(home, '.steam/steam'),
+                 os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam')):
+        ud = os.path.join(root, 'userdata')
+        try:
+            real = os.path.realpath(ud)
+            if real in seen or not os.path.isdir(ud):
+                continue
+            seen.add(real)
+            out += [os.path.join(ud, d) for d in os.listdir(ud) if d.isdigit()]
+        except OSError:
+            continue
+    return out
+
+
+def cloud_saves(game_id, userdata):
+    """True when Steam Cloud keeps this Steam game's saves (its remote folder has something in it)."""
+    if not isinstance(game_id, str) or not game_id.startswith('steam:'):
+        return False
+    appid = game_id.split(':', 1)[1]
+    if not appid.isdigit():
+        return False
+    for ud in userdata:
+        try:
+            if any(os.scandir(os.path.join(ud, appid, 'remote'))):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def game_entry(g, saves=(), userdata=()):
     """One game from Hearth's list, as Firehold's tiles read it."""
     if not isinstance(g, dict) or not valid_id(g.get('id')):
         return None
@@ -105,7 +140,7 @@ def game_entry(g, saves=()):
     exe = g.get('exe') if isinstance(g.get('exe'), str) else ''
     return {'id': g['id'], 'title': title, 'source': src, 'store': STORES.get(src, src.capitalize() or 'Game'),
             'kind': KINDS.get(src, 'other'), 'installed': installed, 'update': g.get('update') is True,
-            'savesBackedUp': norm(title) in saves, 'devBuild': src == 'manual' and bool(DEV_RE.search(exe)),
+            'savesBackedUp': norm(title) in saves, 'cloudSaves': cloud_saves(g['id'], userdata), 'devBuild': src == 'manual' and bool(DEV_RE.search(exe)),
             'cover': picture(g.get('cover')), 'wide': picture(g.get('wide')), 'hero': picture(g.get('hero')),
             'icon': picture(g.get('icon')), 'lastPlayed': ms(g.get('lastPlayed')),
             'minutes': g.get('minutes') if isinstance(g.get('minutes'), int) else 0,
@@ -117,7 +152,7 @@ def winapp_entry(a):
         return None
     last = a.get('last') if isinstance(a.get('last'), dict) else {}
     return {'id': 'winapp:' + a['id'], 'title': a.get('name') or a['id'], 'source': 'winapp', 'store': 'Windows app',
-            'kind': 'winapp', 'installed': True, 'update': False, 'savesBackedUp': False, 'devBuild': False,
+            'kind': 'winapp', 'installed': True, 'update': False, 'savesBackedUp': False, 'cloudSaves': False, 'devBuild': False,
             'cover': '', 'wide': '', 'hero': '', 'icon': picture(a.get('icon')),
             'lastPlayed': ms(last.get('at') or last.get('time') or 0), 'minutes': 0, 'system': ''}
 
@@ -177,7 +212,8 @@ def winapps():
 
 
 def build(raw, apps, saves):
-    games = [e for e in (game_entry(g, saves) for g in (raw or [])) if e]
+    ud = steam_userdata()
+    games = [e for e in (game_entry(g, saves, ud) for g in (raw or [])) if e]
     seen = {g['id'] for g in games}
     games += [a for a in apps if a['id'] not in seen]
     games.sort(key=lambda g: g['title'].lower())
