@@ -1,5 +1,5 @@
 """Resource Monitor (docs/RESOURCE-MONITOR.md): "Your PC"'s detection from sample sysfs / DMI / lspci / hwmon trees of four
-machines (the owner's ATX desktop, dad's FM2A88X desktop, a laptop, a ROG Ally), the drawing chosen for each, the tips
+machines (an ATX desktop, an FM2A88X desktop, a laptop, a ROG Ally), the drawing chosen for each, the tips
 that are true from the data, the root helper's output (only the memory and slot tables, never serial numbers), the
 sampler's extras, and that opening Resource Monitor writes no setting."""
 import importlib.machinery
@@ -47,8 +47,8 @@ def parts(view):
 
 
 class Detection(unittest.TestCase):
-    def test_owners_atx_desktop(self):
-        pc, v = machine('owner-atx')
+    def test_atx_desktop(self):
+        pc, v = machine('atx-desktop')
         self.assertIsNone(pc.get('problems'))
         self.assertEqual(pc['family'], 'desktop')
         self.assertEqual(pc['cpu']['name'], 'Intel Core i7-14700F')
@@ -89,8 +89,8 @@ class Detection(unittest.TestCase):
         self.assertEqual(v['layout']['template'], 'atx')
         self.assertIn('Intel B760', v['sub'])
 
-    def test_dads_fm2a88x_desktop(self):
-        pc, v = machine('dad-fm2')
+    def test_fm2a88x_desktop(self):
+        pc, v = machine('fm2-desktop')
         self.assertEqual(pc['cpu']['name'], 'AMD A10-6800K APU')
         self.assertEqual((pc['cpu']['socket'], pc['cpu']['family']), ('FM2', 'Richland'))
         self.assertTrue(pc['cpu']['igpu'])
@@ -148,7 +148,7 @@ class Detection(unittest.TestCase):
         """Never a broken picture: every part inside the stage, with a title, a status and a known style; every wire to
         a hub that exists."""
         styles = set(re.findall(r'case "([A-Za-z0-9]+)"', (SHELL / 'ResmonBoard.qml').read_text()))
-        for name in ('owner-atx', 'dad-fm2', 'laptop', 'rog-ally'):
+        for name in ('atx-desktop', 'fm2-desktop', 'laptop', 'rog-ally'):
             pc, v = machine(name)
             ids = {p['id'] for p in v['parts']}
             self.assertEqual(len(ids), len(v['parts']), name + ': ids are unique')
@@ -197,7 +197,7 @@ class LayoutChoice(unittest.TestCase):
         self.assertEqual(rm.form_factor('Unknown', 2, 1, 'desktop'), 'ITX')
 
     def test_a_failing_drawing_falls_back_to_the_generic_one(self):
-        pc, _ = machine('owner-atx')
+        pc, _ = machine('atx-desktop')
         pc['drives'] = [None]   # broken data
         v = rm.build_view(pc)
         self.assertEqual(v['layout']['template'], 'generic')
@@ -210,7 +210,7 @@ class LayoutChoice(unittest.TestCase):
         self.assertEqual(rm.channel_of('DIMM 1', 'BANK 1'), 'B')
 
     def test_tips_only_when_true(self):
-        pc, _ = machine('owner-atx')
+        pc, _ = machine('atx-desktop')
         self.assertEqual([t['id'] for t in rm.tips_for(pc)], ['m2-empty'])
         for s in pc['memory']['slots']:   # both sticks moved to channel A
             s['empty'] = s['channel'] == 'B'
@@ -384,7 +384,7 @@ class NoSettingsWritten(unittest.TestCase):
             env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home + '/.config', XDG_CACHE_HOME=home + '/.cache', XDG_DATA_HOME=home + '/.local/share',
                        XDG_STATE_HOME=home + '/.local/state', XDG_RUNTIME_DIR=home + '/run')
             os.makedirs(home + '/run')
-            for args in (['pc', '--no-helper'], ['pc', '--fixture', str(FIX / 'owner-atx.json')], ['sample', 'procs', 'mem', 'temps'], ['sample', 'brief']):
+            for args in (['pc', '--no-helper'], ['pc', '--fixture', str(FIX / 'atx-desktop.json')], ['sample', 'procs', 'mem', 'temps'], ['sample', 'brief']):
                 r = subprocess.run([sys.executable, str(SHELL / 'hearth-resmon')] + args, capture_output=True, text=True, env=env, timeout=60)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
                 json.loads(r.stdout)
