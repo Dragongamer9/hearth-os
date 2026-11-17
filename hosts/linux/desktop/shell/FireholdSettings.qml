@@ -11,7 +11,7 @@ import "firehold.js" as F
 PanelWindow {
     id: st
     property var fh
-    readonly property var C: F.C
+    readonly property var pal: F.C
     screen: Quickshell.screens[0]
     readonly property real k: Math.min((screen ? screen.width : 1920) / 1920, (screen ? screen.height : 1080) / 1080) || 1
     WlrLayershell.layer: WlrLayer.Overlay
@@ -19,7 +19,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
-    color: C.bg
+    color: pal.bg
     Component.onCompleted: { fh.settingsPanel = st; keys.forceActiveFocus(); }
     Component.onDestruction: if (fh.settingsPanel === st) fh.settingsPanel = null
 
@@ -111,11 +111,11 @@ PanelWindow {
     Rectangle {
         id: frame
         x: 200 * st.k; y: 70 * st.k; width: 1520 * st.k; height: 940 * st.k; radius: 22 * st.k
-        color: st.C.panel; border.width: 1; border.color: st.C.line; clip: true
+        color: st.pal.panel; border.width: 1; border.color: st.pal.line; clip: true
         // The list of pages
         Rectangle {
-            x: 1; y: 1; width: 340 * st.k; height: parent.height - 2; color: st.C.panel2; radius: 21 * st.k
-            Rectangle { anchors { right: parent.right; top: parent.top; bottom: parent.bottom } width: 22 * st.k; color: st.C.panel2 }
+            x: 1; y: 1; width: 340 * st.k; height: parent.height - 2; color: st.pal.panel2; radius: 21 * st.k
+            Rectangle { anchors { right: parent.right; top: parent.top; bottom: parent.bottom } width: 22 * st.k; color: st.pal.panel2 }
             Column {
                 x: 18 * st.k; y: 32 * st.k; width: parent.width - 36 * st.k
                 spacing: 6 * st.k
@@ -128,9 +128,9 @@ PanelWindow {
                         readonly property bool on: modelData[0] === ""
                         readonly property bool ring: st.zone === "nav" && st.idx === index
                         width: parent.width; height: nt.implicitHeight + 26 * st.k; radius: 12 * st.k
-                        color: on ? st.C.card2 : "transparent"
-                        border.width: ring ? 2 * st.k : 0; border.color: st.C.accent
-                        T { id: nt; x: 16 * st.k; anchors.verticalCenter: parent.verticalCenter; text: nv.modelData[1]; font.pixelSize: 17 * st.k; font.weight: nv.on ? Font.Bold : Font.Medium; color: nv.on ? st.C.text : st.C.muted }
+                        color: on ? st.pal.card2 : "transparent"
+                        border.width: ring ? 2 * st.k : 0; border.color: st.pal.accent
+                        T { id: nt; x: 16 * st.k; anchors.verticalCenter: parent.verticalCenter; text: nv.modelData[1]; font.pixelSize: 17 * st.k; font.weight: nv.on ? Font.Bold : Font.Medium; color: nv.on ? st.pal.text : st.pal.muted }
                         TapHandler { onTapped: st.openNav(nv.index) }
                     }
                 }
@@ -142,7 +142,7 @@ PanelWindow {
             spacing: 24 * st.k
             T { text: "Couch and Desk"; font.pixelSize: 34 * st.k; font.weight: Font.ExtraBold }
             T {
-                width: Math.min(parent.width, 900 * st.k); wrapMode: Text.WordWrap; elide: Text.ElideNone; font.pixelSize: 17 * st.k; color: st.C.soft
+                width: Math.min(parent.width, 900 * st.k); wrapMode: Text.WordWrap; elide: Text.ElideNone; font.pixelSize: 17 * st.k; color: st.pal.soft
                 text: "One desktop, two ways to sit. Couch is for the controller and the TV; Desk is for the mouse and keyboard. Switching never closes anything."
             }
             Row {
@@ -156,9 +156,9 @@ PanelWindow {
                         readonly property bool on: st.fh.mode === modelData[0]
                         readonly property bool ring: st.zone === "cards" && st.idx === index
                         width: (st.width > 0 ? (1520 * st.k - 340 * st.k - 104 * st.k - 36 * st.k) / 3 : 300); height: mdCol.implicitHeight + 36 * st.k; radius: 16 * st.k
-                        color: st.C.panel2
-                        border.width: 2 * st.k; border.color: on ? st.C.accent : st.C.line
-                        Rectangle { visible: md.ring && !md.on; anchors { fill: parent; margins: -5 * st.k } radius: 20 * st.k; color: "transparent"; border.width: 2 * st.k; border.color: st.C.flame }
+                        color: st.pal.panel2
+                        border.width: 2 * st.k; border.color: on ? st.pal.accent : st.pal.line
+                        Rectangle { visible: md.ring && !md.on; anchors { fill: parent; margins: -5 * st.k } radius: 20 * st.k; color: "transparent"; border.width: 2 * st.k; border.color: st.pal.flame }
                         Column {
                             id: mdCol
                             x: 16 * st.k; y: 16 * st.k; width: parent.width - 32 * st.k
@@ -171,14 +171,14 @@ PanelWindow {
                                 FhGrad { visible: md.index === 0; anchors.fill: parent; radius: 12 * st.k; angle: 90; stops: [[0, "#5b2b1a"], [0.5, "#5b2b1a"], [0.5, "#2a2420"], [1, "#2a2420"]] }
                             }
                             T { text: md.modelData[1]; font.pixelSize: 18 * st.k; font.weight: Font.Bold }
-                            T { width: parent.width; wrapMode: Text.WordWrap; elide: Text.ElideNone; text: md.modelData[2]; font.pixelSize: 14 * st.k; color: st.C.muted }
+                            T { width: parent.width; wrapMode: Text.WordWrap; elide: Text.ElideNone; text: md.modelData[2]; font.pixelSize: 14 * st.k; color: st.pal.muted }
                         }
                         TapHandler { onTapped: { st.zone = "cards"; st.idx = md.index; st.fh.set("posture", md.modelData[0]); } }
                     }
                 }
             }
             Rectangle {
-                width: parent.width; height: rowsCol.implicitHeight; radius: 16 * st.k; color: st.C.panel2; clip: true
+                width: parent.width; height: rowsCol.implicitHeight; radius: 16 * st.k; color: st.pal.panel2; clip: true
                 Column {
                     id: rowsCol
                     width: parent.width
@@ -190,20 +190,20 @@ PanelWindow {
                             required property int index
                             readonly property bool ring: st.zone === "rows" && st.idx === index
                             width: parent.width; height: rwCol.implicitHeight + 36 * st.k
-                            color: ring ? st.C.card : "transparent"
-                            border.width: ring ? 2 * st.k : 0; border.color: st.C.accent; radius: ring ? 12 * st.k : 0
-                            Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: st.C.card }
+                            color: ring ? st.pal.card : "transparent"
+                            border.width: ring ? 2 * st.k : 0; border.color: st.pal.accent; radius: ring ? 12 * st.k : 0
+                            Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: st.pal.card }
                             Column {
                                 id: rwCol
                                 x: 22 * st.k; anchors.verticalCenter: parent.verticalCenter; width: parent.width - pill.width - 64 * st.k
                                 spacing: 3 * st.k
                                 T { width: parent.width; text: rw.modelData[1]; font.pixelSize: 17 * st.k; font.weight: Font.DemiBold }
-                                T { width: parent.width; text: rw.modelData[2]; font.pixelSize: 14 * st.k; color: st.C.muted }
+                                T { width: parent.width; text: rw.modelData[2]; font.pixelSize: 14 * st.k; color: st.pal.muted }
                             }
                             Rectangle {
                                 id: pill
                                 anchors { right: parent.right; rightMargin: 22 * st.k; verticalCenter: parent.verticalCenter }
-                                width: pv.implicitWidth + 32 * st.k; height: pv.implicitHeight + 20 * st.k; radius: 12 * st.k; color: st.C.card
+                                width: pv.implicitWidth + 32 * st.k; height: pv.implicitHeight + 20 * st.k; radius: 12 * st.k; color: st.pal.card
                                 T { id: pv; anchors.centerIn: parent; text: rw.modelData[3]; font.pixelSize: 15 * st.k; font.weight: Font.Bold }
                             }
                             TapHandler { onTapped: { st.zone = "rows"; st.idx = rw.index; st.change(rw.index, 1); } }

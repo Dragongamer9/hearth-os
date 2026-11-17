@@ -13,14 +13,14 @@ import "firehold.js" as F
 PanelWindow {
     id: cw
     property var fh
-    readonly property var C: F.C
+    readonly property var pal: F.C
     readonly property real k: Math.min(width / 1920, height / 1080) || 1
     readonly property bool primary: screen === Quickshell.screens[0]
     readonly property bool shown: fh.unlocked && fh.postureOf(screen) === "couch" && fh.view === "home"
     readonly property string font: Qt.fontFamilies().indexOf("Inter") >= 0 ? "Inter" : Theme.font
 
     visible: shown
-    color: C.bg
+    color: pal.bg
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "hearth-firehold"
     WlrLayershell.keyboardFocus: !shown ? WlrKeyboardFocus.None : searching ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
@@ -222,7 +222,7 @@ PanelWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 28 * cw.k
             Rectangle {
-                width: 44 * cw.k; height: 44 * cw.k; radius: 12 * cw.k; color: cw.C.accent
+                width: 44 * cw.k; height: 44 * cw.k; radius: 12 * cw.k; color: cw.pal.accent
                 anchors.verticalCenter: parent.verticalCenter
                 Canvas {
                     visible: cw.tab !== "library"
@@ -247,10 +247,10 @@ PanelWindow {
                     T {
                         id: tt; text: tl.modelData[1]; font.pixelSize: 22 * cw.k
                         font.weight: tl.on ? Font.ExtraBold : (cw.tab === "library" ? Font.Normal : Font.DemiBold)
-                        color: tl.on ? cw.C.text : cw.C.muted
+                        color: tl.on ? cw.pal.text : cw.pal.muted
                     }
-                    Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 3 * cw.k; color: tl.on ? cw.C.accent : "transparent" }
-                    Rectangle { anchors { fill: parent; margins: -8 * cw.k } radius: 10 * cw.k; color: "transparent"; border.width: tl.ring ? 2 * cw.k : 0; border.color: cw.C.flame }
+                    Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 3 * cw.k; color: tl.on ? cw.pal.accent : "transparent" }
+                    Rectangle { anchors { fill: parent; margins: -8 * cw.k } radius: 10 * cw.k; color: "transparent"; border.width: tl.ring ? 2 * cw.k : 0; border.color: cw.pal.flame }
                     TapHandler { onTapped: cw.fh.tab = tl.modelData[0] }
                 }
             }
@@ -263,19 +263,19 @@ PanelWindow {
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 height: pillText.implicitHeight + 16 * cw.k; width: pillText.implicitWidth + 52 * cw.k; radius: 22 * cw.k
-                color: cw.C.glass; border.width: 1; border.color: cw.C.line
-                Rectangle { x: 16 * cw.k; anchors.verticalCenter: parent.verticalCenter; width: 10 * cw.k; height: width; radius: width / 2; color: cw.C.accent }
+                color: cw.pal.glass; border.width: 1; border.color: cw.pal.line
+                Rectangle { x: 16 * cw.k; anchors.verticalCenter: parent.verticalCenter; width: 10 * cw.k; height: width; radius: width / 2; color: cw.pal.accent }
                 T {
                     id: pillText; x: 36 * cw.k; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 16 * cw.k; font.weight: Font.DemiBold
                     text: cw.fh.mode === "auto" ? "Couch · switches to Desk when you touch the mouse" : "Couch · stays Couch until you change it in Settings"
                 }
             }
-            T { anchors.verticalCenter: parent.verticalCenter; text: cw.net; color: cw.C.muted; font.pixelSize: 20 * cw.k; visible: text !== "" }
-            T { anchors.verticalCenter: parent.verticalCenter; text: cw.battery; color: cw.C.muted; font.pixelSize: 20 * cw.k; visible: text !== "" }
+            T { anchors.verticalCenter: parent.verticalCenter; text: cw.net; color: cw.pal.muted; font.pixelSize: 20 * cw.k; visible: text !== "" }
+            T { anchors.verticalCenter: parent.verticalCenter; text: cw.battery; color: cw.pal.muted; font.pixelSize: 20 * cw.k; visible: text !== "" }
             T { anchors.verticalCenter: parent.verticalCenter; text: Qt.formatTime(clock.date, Qt.locale().timeFormat(Locale.ShortFormat).indexOf("AP") >= 0 || Qt.locale().timeFormat(Locale.ShortFormat).indexOf("ap") >= 0 ? "h:mm AP" : "HH:mm"); font.pixelSize: 20 * cw.k; font.weight: Font.Bold }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 44 * cw.k; height: width; radius: width / 2; color: cw.C.card2
+                width: 44 * cw.k; height: width; radius: width / 2; color: cw.pal.card2
                 T { anchors.centerIn: parent; text: cw.initial; font.pixelSize: 20 * cw.k; font.weight: Font.ExtraBold }
             }
         }
@@ -284,7 +284,7 @@ PanelWindow {
             visible: cw.tab === "library"
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             width: 460 * cw.k; height: 52 * cw.k; radius: 26 * cw.k
-            color: cw.C.glass; border.width: cw.searching ? 2 * cw.k : 1; border.color: cw.searching ? cw.C.flame : cw.C.line
+            color: cw.pal.glass; border.width: cw.searching ? 2 * cw.k : 1; border.color: cw.searching ? cw.pal.flame : cw.pal.line
             Canvas {
                 x: 18 * cw.k; anchors.verticalCenter: parent.verticalCenter; width: 20 * cw.k; height: width
                 onPaint: { const c = getContext("2d"); c.reset(); c.scale(width / 24, height / 24); c.strokeStyle = "#a69484"; c.lineWidth = 2; c.lineCap = "round";
@@ -293,12 +293,12 @@ PanelWindow {
             TextInput {
                 id: searchField
                 x: 50 * cw.k; width: parent.width - 68 * cw.k; anchors.verticalCenter: parent.verticalCenter
-                color: cw.C.text; font.family: cw.font; font.pixelSize: 18 * cw.k; clip: true
+                color: cw.pal.text; font.family: cw.font; font.pixelSize: 18 * cw.k; clip: true
                 text: cw.fh.libQuery
                 onTextEdited: { cw.fh.libQuery = text; libGrid.currentIndex = 0; }
                 Keys.onReturnPressed: cw.stopSearch()
                 Keys.onEscapePressed: { cw.fh.libQuery = ""; cw.stopSearch(); }
-                T { visible: searchField.text === ""; text: "Search " + (cw.fh.counts.all || cw.fh.library.length) + " games"; color: cw.C.muted; font.pixelSize: 18 * cw.k; anchors.verticalCenter: parent.verticalCenter }
+                T { visible: searchField.text === ""; text: "Search " + (cw.fh.counts.all || cw.fh.library.length) + " games"; color: cw.pal.muted; font.pixelSize: 18 * cw.k; anchors.verticalCenter: parent.verticalCenter }
             }
             TapHandler { onTapped: cw.startSearch() }
         }
@@ -354,12 +354,12 @@ PanelWindow {
                 width: 900 * cw.k
                 spacing: 14 * cw.k
                 T {
-                    font.pixelSize: 18 * cw.k; font.weight: Font.Bold; color: cw.C.flame; font.letterSpacing: 1 * cw.k
+                    font.pixelSize: 18 * cw.k; font.weight: Font.Bold; color: cw.pal.flame; font.letterSpacing: 1 * cw.k
                     text: !hero.game ? "WELCOME TO THE COUCH" : hero.win ? "CONTINUE · PLAYING " + F.duration(clock.date.getTime() - cw.fh.since(hero.win)).toUpperCase() : "CONTINUE · " + F.ago(hero.game.lastPlayed, clock.date.getTime())
                 }
                 T { width: parent.width; font.pixelSize: 64 * cw.k; font.weight: Font.ExtraBold; lineHeight: 1; text: hero.game ? hero.game.title : "Your games, all in one place" }
                 T {
-                    width: parent.width; font.pixelSize: 20 * cw.k; color: cw.C.sub
+                    width: parent.width; font.pixelSize: 20 * cw.k; color: cw.pal.sub
                     text: !hero.game ? "Play something from your Library, or open an app; everything you open stays open on the Desk too."
                         : [hero.game.store, hero.game.minutes > 0 ? F.duration(hero.game.minutes * 60000) + " played" : "",
                            hero.game.savesBackedUp ? "Saved on this PC and backed up" : "", "runs natively, no Game Mode"].filter(Boolean).join(" · ")
@@ -370,15 +370,15 @@ PanelWindow {
                     spacing: 14 * cw.k
                     Rectangle {
                         readonly property bool ring: cw.zone === "hero" && cw.idx === 0
-                        height: 60 * cw.k; width: rt.implicitWidth + 68 * cw.k; radius: 16 * cw.k; color: cw.C.accent
-                        border.width: ring ? 3 * cw.k : 0; border.color: cw.C.flame
-                        T { id: rt; anchors.centerIn: parent; text: hero.game && !hero.game.installed ? "Install" : hero.win || (hero.game && hero.game.lastPlayed > 0) ? "Resume" : "Play"; color: cw.C.ink; font.pixelSize: 22 * cw.k; font.weight: Font.ExtraBold }
+                        height: 60 * cw.k; width: rt.implicitWidth + 68 * cw.k; radius: 16 * cw.k; color: cw.pal.accent
+                        border.width: ring ? 3 * cw.k : 0; border.color: cw.pal.flame
+                        T { id: rt; anchors.centerIn: parent; text: hero.game && !hero.game.installed ? "Install" : hero.win || (hero.game && hero.game.lastPlayed > 0) ? "Resume" : "Play"; color: cw.pal.ink; font.pixelSize: 22 * cw.k; font.weight: Font.ExtraBold }
                         TapHandler { onTapped: cw.fh.play(hero.game, false) }
                     }
                     Rectangle {
                         readonly property bool ring: cw.zone === "hero" && cw.idx === 1
                         height: 60 * cw.k; width: ow.implicitWidth + 56 * cw.k; radius: 16 * cw.k; color: Qt.rgba(15 / 255, 11 / 255, 9 / 255, 0.55)
-                        border.width: ring ? 3 * cw.k : 0; border.color: cw.C.flame
+                        border.width: ring ? 3 * cw.k : 0; border.color: cw.pal.flame
                         T { id: ow; anchors.centerIn: parent; text: "Open in a window"; font.pixelSize: 20 * cw.k; font.weight: Font.DemiBold }
                         TapHandler { onTapped: cw.fh.play(hero.game, true) }
                     }
@@ -404,7 +404,7 @@ PanelWindow {
                         spacing: 10 * cw.k
                         Rectangle {
                             width: parent.width; height: 128 * cw.k; radius: 14 * cw.k; color: F.toneFor(rc.modelData.id)
-                            border.width: rc.ring ? 3 * cw.k : 0; border.color: cw.C.accent
+                            border.width: rc.ring ? 3 * cw.k : 0; border.color: cw.pal.accent
                             FhArt { anchors.fill: parent; anchors.margins: rc.ring ? 3 * cw.k : 0; radius: 12 * cw.k; source: rc.modelData.wide || rc.modelData.hero || "" }
                             Rectangle {
                                 visible: !!(rc.modelData.wide || rc.modelData.hero)
@@ -428,7 +428,7 @@ PanelWindow {
             Row {
                 spacing: 0
                 T { id: openTitle; text: "Open on this PC"; font.pixelSize: 22 * cw.k; font.weight: Font.Bold }
-                T { text: " · the same windows you see on the Desk"; font.pixelSize: 18 * cw.k; font.weight: Font.Medium; color: cw.C.muted; anchors.baseline: openTitle.baseline }
+                T { text: " · the same windows you see on the Desk"; font.pixelSize: 18 * cw.k; font.weight: Font.Medium; color: cw.pal.muted; anchors.baseline: openTitle.baseline }
             }
             Row {
                 spacing: 16 * cw.k
@@ -440,7 +440,7 @@ PanelWindow {
                         required property int index
                         readonly property bool ring: cw.zone === "open" && cw.idx === index
                         height: 72 * cw.k; width: Math.min(360 * cw.k, ocCol.implicitWidth + 98 * cw.k); radius: 16 * cw.k
-                        color: cw.C.glass; border.width: ring ? 3 * cw.k : 1; border.color: ring ? cw.C.accent : cw.C.line
+                        color: cw.pal.glass; border.width: ring ? 3 * cw.k : 1; border.color: ring ? cw.pal.accent : cw.pal.line
                         Rectangle {
                             id: ocIcon
                             x: 22 * cw.k; anchors.verticalCenter: parent.verticalCenter; width: 40 * cw.k; height: width; radius: 10 * cw.k
@@ -456,7 +456,7 @@ PanelWindow {
                             x: 76 * cw.k; anchors.verticalCenter: parent.verticalCenter
                             spacing: 2 * cw.k
                             T { width: Math.min(implicitWidth, 260 * cw.k); text: oc.modelData.name; font.pixelSize: 18 * cw.k; font.weight: Font.DemiBold }
-                            T { width: Math.min(implicitWidth, 260 * cw.k); text: oc.modelData.sub; font.pixelSize: 14 * cw.k; color: cw.C.muted; visible: text !== "" }
+                            T { width: Math.min(implicitWidth, 260 * cw.k); text: oc.modelData.sub; font.pixelSize: 14 * cw.k; color: cw.pal.muted; visible: text !== "" }
                         }
                         TapHandler { onTapped: cw.fh.goTo(oc.modelData.win, false) }
                     }
@@ -490,13 +490,13 @@ PanelWindow {
                     readonly property bool on: cw.fh.libFilter === modelData.key
                     readonly property bool ring: cw.zone === "chips" && cw.idx === index
                     height: ct.implicitHeight + 24 * cw.k; width: ct.implicitWidth + 40 * cw.k; radius: 22 * cw.k
-                    color: on ? cw.C.accent : cw.C.glass
-                    border.width: ring ? 2 * cw.k : 0; border.color: cw.C.flame
+                    color: on ? cw.pal.accent : cw.pal.glass
+                    border.width: ring ? 2 * cw.k : 0; border.color: cw.pal.flame
                     Row {
                         id: ct; anchors.centerIn: parent
                         spacing: 5 * cw.k
-                        T { id: ctName; text: chip.modelData.label; font.pixelSize: 17 * cw.k; font.weight: Font.DemiBold; color: chip.on ? cw.C.ink : cw.C.text }
-                        T { text: String(chip.modelData.n); font.pixelSize: 17 * cw.k; font.weight: Font.Medium; color: chip.on ? cw.C.ink : cw.C.text; opacity: 0.7; anchors.baseline: ctName.baseline }
+                        T { id: ctName; text: chip.modelData.label; font.pixelSize: 17 * cw.k; font.weight: Font.DemiBold; color: chip.on ? cw.pal.ink : cw.pal.text }
+                        T { text: String(chip.modelData.n); font.pixelSize: 17 * cw.k; font.weight: Font.Medium; color: chip.on ? cw.pal.ink : cw.pal.text; opacity: 0.7; anchors.baseline: ctName.baseline }
                     }
                     TapHandler { onTapped: { cw.fh.libFilter = chip.modelData.key; libGrid.currentIndex = 0; } }
                 }
@@ -523,7 +523,7 @@ PanelWindow {
                 Rectangle {
                     id: ltCard
                     width: parent.width; height: 330 * cw.k; radius: 16 * cw.k; color: F.toneFor(lt.modelData.id)
-                    border.width: lt.ring ? 3 * cw.k : 1; border.color: lt.ring ? cw.C.accent : cw.C.line
+                    border.width: lt.ring ? 3 * cw.k : 1; border.color: lt.ring ? cw.pal.accent : cw.pal.line
                     FhArt { anchors.fill: parent; anchors.margins: lt.ring ? 3 * cw.k : 1; radius: 14 * cw.k; source: lt.modelData.cover || "" }
                     Rectangle {
                         x: 12 * cw.k; y: 12 * cw.k; width: lb.implicitWidth + 20 * cw.k; height: lb.implicitHeight + 8 * cw.k; radius: 8 * cw.k
@@ -543,7 +543,7 @@ PanelWindow {
         }
         T {
             visible: cw.libList.length === 0
-            x: 72 * cw.k; y: 240 * cw.k; font.pixelSize: 20 * cw.k; color: cw.C.muted
+            x: 72 * cw.k; y: 240 * cw.k; font.pixelSize: 20 * cw.k; color: cw.pal.muted
             text: !cw.fh.libraryLoaded ? "Reading your library…" : cw.fh.libQuery !== "" ? "No game called “" + cw.fh.libQuery + "”" : "Nothing here yet"
         }
         HintBar {
@@ -625,7 +625,7 @@ PanelWindow {
             x: 96 * cw.k; y: 64 * cw.k
             spacing: 8 * cw.k
             T { text: "Open now"; font.pixelSize: 40 * cw.k; font.weight: Font.ExtraBold }
-            T { text: "Games and windows are one list. Pick one to jump to it, in Couch or Desk."; font.pixelSize: 18 * cw.k; color: cw.C.muted }
+            T { text: "Games and windows are one list. Pick one to jump to it, in Couch or Desk."; font.pixelSize: 18 * cw.k; color: cw.pal.muted }
         }
         GridView {
             id: openGrid
@@ -649,11 +649,11 @@ PanelWindow {
                 Rectangle {
                     width: parent.width; height: 300 * cw.k; radius: 18 * cw.k
                     color: sw.game ? "transparent" : F.WINDOW_CARDS[sw.nth % F.WINDOW_CARDS.length]
-                    border.width: sw.ring ? 3 * cw.k : 1; border.color: sw.ring ? cw.C.accent : cw.C.line
+                    border.width: sw.ring ? 3 * cw.k : 1; border.color: sw.ring ? cw.pal.accent : cw.pal.line
                     Rectangle {
                         anchors { top: parent.top; right: parent.right; margins: 14 * cw.k }
                         width: tg2.implicitWidth + 24 * cw.k; height: tg2.implicitHeight + 10 * cw.k; radius: 10 * cw.k; color: Qt.rgba(15 / 255, 11 / 255, 9 / 255, 0.65)
-                        T { id: tg2; anchors.centerIn: parent; text: sw.game ? "GAME" : "WINDOW"; color: sw.game ? cw.C.flame : cw.C.soft; font.pixelSize: 13 * cw.k; font.weight: Font.Bold }
+                        T { id: tg2; anchors.centerIn: parent; text: sw.game ? "GAME" : "WINDOW"; color: sw.game ? cw.pal.flame : cw.pal.soft; font.pixelSize: 13 * cw.k; font.weight: Font.Bold }
                     }
                     TapHandler { onTapped: { openGrid.currentIndex = sw.index; cw.fh.goTo(sw.modelData.win, false); } }
                 }
@@ -661,13 +661,13 @@ PanelWindow {
                     y: 312 * cw.k
                     spacing: 10 * cw.k
                     T { id: swName; text: sw.modelData.name; font.pixelSize: 20 * cw.k; font.weight: sw.ring ? Font.ExtraBold : Font.DemiBold }
-                    T { text: sw.modelData.sub; font.pixelSize: 15 * cw.k; color: cw.C.muted; anchors.baseline: swName.baseline; width: Math.min(implicitWidth, sw.width - swName.width - 10 * cw.k) }
+                    T { text: sw.modelData.sub; font.pixelSize: 15 * cw.k; color: cw.pal.muted; anchors.baseline: swName.baseline; width: Math.min(implicitWidth, sw.width - swName.width - 10 * cw.k) }
                 }
             }
         }
         T {
             visible: cw.fh.openList.length === 0
-            x: 96 * cw.k; y: 230 * cw.k; font.pixelSize: 20 * cw.k; color: cw.C.muted
+            x: 96 * cw.k; y: 230 * cw.k; font.pixelSize: 20 * cw.k; color: cw.pal.muted
             text: "Nothing is open. Games and apps you start show up here."
         }
         HintBar {
