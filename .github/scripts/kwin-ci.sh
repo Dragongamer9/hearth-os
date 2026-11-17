@@ -13,6 +13,8 @@ if [ "${1:-}" = env ] || [ "${BASH_SOURCE[0]}" != "$0" ]; then
   export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/xdg:/tmp/kwin-ci-xdg:/etc/xdg"
   export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_BACKEND=software QT_QPA_PLATFORM=wayland GDK_BACKEND=wayland
   export WAYLAND_DISPLAY=wayland-hearth
+  # KWin's screen locker takes its lock screen from the Plasma shell package named here (Hearth's: kwin-lock).
+  export PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock
   [ -f /tmp/kwin-ci-outer ] && export OUTER="$(cat /tmp/kwin-ci-outer)"
   return 0 2>/dev/null || exit 0
 fi
