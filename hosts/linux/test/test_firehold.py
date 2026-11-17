@@ -94,6 +94,18 @@ class Rules(unittest.TestCase):
             startPosture("last", "auto", ""), startPosture("couch", "desk", "")]));''')
         self.assertEqual(r, ['couch', 'desk', 'desk', 'couch', 'desk', 'couch', 'desk', 'couch', 'couch', 'desk', 'desk'])
 
+    def test_title_bars_only_where_no_window_is_above(self):
+        r = run_js('''console.log(JSON.stringify([visibleParts([{x: 0, y: 0, w: 100, h: 30}], [{x: 40, y: -10, w: 20, h: 100}]),
+            visibleParts([{x: 0, y: 0, w: 100, h: 30}], [{x: -5, y: -5, w: 200, h: 200}]), visibleParts([{x: 0, y: 0, w: 100, h: 30}], [{x: 200, y: 0, w: 5, h: 5}]),
+            stackOrder([{id: "a"}, {id: "b"}, {id: "c"}], ["b"], w => w.id).map(w => w.id),
+            gameLine("Ember Trails", true, "60", true), gameLine("Ember Trails", false, "Off", false)]));''')
+        self.assertEqual(r[0], [{'x': 0, 'y': 0, 'w': 40, 'h': 30}, {'x': 60, 'y': 0, 'w': 40, 'h': 30}])
+        self.assertEqual(r[1], [])
+        self.assertEqual(r[2], [{'x': 0, 'y': 0, 'w': 100, 'h': 30}])
+        self.assertEqual(r[3], ['b', 'c', 'a'])                 # the one you went to last, then the newest
+        self.assertEqual(r[4], 'Ember Trails · paused · 60 fps limit · VRR')
+        self.assertEqual(r[5], 'Ember Trails · running')
+
     def test_grid_moves_and_times(self):
         r = run_js('''console.log(JSON.stringify([gridMove(0, 12, 6, "left"), gridMove(5, 12, 6, "right"), gridMove(2, 12, 6, "down"), gridMove(8, 12, 6, "up"),
             gridMove(2, 12, 6, "up"), gridMove(4, 8, 6, "down"), ago(0, 1), ago(1000, 1000 + 41 * 60000), ago(1, 1 + 3 * 3600000), duration(72 * 60000)]));''')
@@ -236,7 +248,7 @@ class Guards(unittest.TestCase):
         self.assertFalse(h.WIN_ID.match('../../etc/passwd'))
 
     def test_settings_only_through_settings_writer_and_never_on_open(self):
-        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdGameFrame.qml'):
+        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdFrames.qml'):
             src = code((SHELL / name).read_text())
             self.assertNotIn('setText(', src, name)
             self.assertNotRegex(src, r'firehold\.json.*(>|tee|cp )', name)

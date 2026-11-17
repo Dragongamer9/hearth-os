@@ -242,3 +242,37 @@ var GAME_CARDS = [["#2b1a2e", "#a3541e"], ["#3d2410", "#6b4a2a"]];
 var WINDOW_CARDS = ["#2a2420", "#22303a", "#2c2a3a", "#1e2a33"];
 // The mockups' font, Inter, when it's installed; else the shell's own.
 function font(fallback) { return Qt.fontFamilies().indexOf("Inter") >= 0 ? "Inter" : fallback; }
+
+// ---- Firehold's window title bars on the Desk (FireholdFrames.qml): what of a rectangle stays visible under others.
+// Rectangles are {x, y, w, h}; the result is a list of rectangles that together are A without any of CUTS.
+function subtractRect(a, b) {
+    var ax2 = a.x + a.w, ay2 = a.y + a.h, bx2 = b.x + b.w, by2 = b.y + b.h;
+    if (b.x >= ax2 || bx2 <= a.x || b.y >= ay2 || by2 <= a.y) return [a];
+    var out = [];
+    if (b.y > a.y) out.push({ x: a.x, y: a.y, w: a.w, h: b.y - a.y });                       // above
+    if (by2 < ay2) out.push({ x: a.x, y: by2, w: a.w, h: ay2 - by2 });                         // below
+    var top = Math.max(a.y, b.y), bot = Math.min(ay2, by2);
+    if (b.x > a.x) out.push({ x: a.x, y: top, w: b.x - a.x, h: bot - top });                   // left
+    if (bx2 < ax2) out.push({ x: bx2, y: top, w: ax2 - bx2, h: bot - top });                   // right
+    return out.filter(function (r) { return r.w > 0 && r.h > 0; });
+}
+function visibleParts(rects, cuts) {
+    var parts = rects.slice();
+    for (var i = 0; i < (cuts || []).length; i++) {
+        var next = [];
+        for (var j = 0; j < parts.length; j++) next = next.concat(subtractRect(parts[j], cuts[i]));
+        parts = next;
+    }
+    return parts;
+}
+// The order windows are stacked in, top first: the ones you went to last (KWin raises a window you activate), then the
+// rest, newest first. recent: window ids, most recent first.
+function stackOrder(wins, recent, idOf) {
+    var list = (wins || []).slice();
+    var rank = function (w) { var i = (recent || []).indexOf(idOf(w)); return i < 0 ? 100000 - list.indexOf(w) : i; };
+    return list.sort(function (a, b) { return rank(a) - rank(b); });
+}
+// A game window's title line: "Ember Trails · paused · 60 fps limit · VRR" (each part only when it's so).
+function gameLine(title, paused, limit, vrr) {
+    return [title, paused ? "paused" : "running", limit && limit !== "Off" ? limit + " fps limit" : "", vrr ? "VRR" : ""].filter(Boolean).join(" · ");
+}

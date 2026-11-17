@@ -313,9 +313,14 @@ jobs:
           n=$(ls "$XDG_RUNTIME_DIR/hearth-firehold/pictures"/*.png 2>/dev/null | wc -l)
           [ "$n" -ge 4 ] && echo "::notice title=firehold kwin::KWin took $n window pictures" || fail "KWin took $n window pictures for Everything open (6 windows open)"
           q firehold press b
-          # 2. The Desk: the game in a window in front, the mouse moved
-          q winlist act "Ember Trails" activate; sleep 2
-          q firehold input mouse; shot k02-desk 4
+          # 2. The Desk as in the mockup: Hearth Files on the left, the game in a window in front, the others minimized
+          for t in "3 tabs — Firefox" "2 new messages — Discord" "Downloading 1 update — Steam" "Pixel Rally"; do q winlist act "$t" minimize; done
+          q winlist run '{"op":"place","title":"Pictures › Trips — Hearth Files","x":120,"y":100,"w":980,"h":620}'
+          q winlist run '{"op":"place","title":"Ember Trails","x":1020,"y":300,"w":800,"h":500}'
+          q winlist act "Pictures › Trips — Hearth Files" activate; sleep 1; q winlist act "Ember Trails" activate; sleep 2
+          q firehold input mouse; shot k02-desk 5
+          q winlist state | grep -q '"fullscreen":true' && echo "::warning title=firehold kwin::a window is full screen on the Desk"
+          q firehold menu Edit; shot k02b-desk-edit-menu 2; q firehold menu ""
           echo "::notice title=firehold kwin::desk: $(q firehold state | head -c 400) active: $(q winlist state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("active"))')"
           # 3. The Guide over the game
           q firehold couch; sleep 2; q firehold go "Ember Trails"; sleep 3; q firehold open guide; shot k03-guide 4

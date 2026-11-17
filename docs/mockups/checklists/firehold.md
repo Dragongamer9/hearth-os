@@ -36,16 +36,16 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 ## 2. Desk (2-desk.png)
 
 - [x] Top bar: app tile at the left with the focused app's name (Hearth Files) — hosts/linux/desktop/shell/FireholdDesk.qml: "text: dk.frontName"
-- [ ] Top bar: the focused app's menus (File, Edit, View)
+- [x] Top bar: the focused app's menus (File, Edit, View) — hosts/linux/desktop/shell/FireholdDesk.qml: "model: [\"File\", \"Edit\", \"View\"]"
 - [x] Top bar: date and clock in the middle (Mon Nov 16 · 10:22 PM) — hosts/linux/desktop/shell/FireholdDesk.qml: "Qt.formatDate(clock.date, \"ddd MMM d\") + \" · \""
 - [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/shell/FireholdDesk.qml: "text: \"Desk\""
 - [x] Top bar: Wi-Fi · battery (Wi-Fi · 78%) — hosts/linux/desktop/shell/FireholdDesk.qml: ".filter(Boolean).join(\" · \")"
-- [ ] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour
+- [x] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour — hosts/linux/desktop/shell/FireholdFrames.qml: "color: modelData === \"close\" ? F.C.accent : F.C.card2"
 - [ ] Hearth Files' picture grid inside it (two rows of five)
-- [x] The game in a window with the accent border (the same game resumed on the Couch) — hosts/linux/desktop/shell/FireholdGameFrame.qml: "border.width: 2; border.color: F.C.accent"
-- [ ] The game window's title line: name · paused · 60 fps limit · VRR
-- [x] The game window's hint chip "Full screen: F11 or ≡" — hosts/linux/desktop/shell/FireholdGameFrame.qml: "\"Full screen: F11 or ≡\""
-- [x] The game window keeps the game's picture ("The same game you resumed on the Couch, now in a window") — hosts/linux/desktop/shell/FireholdGameFrame.qml: "mask: Region { item: chip }"
+- [x] The game in a window with the accent border (the same game resumed on the Couch) — hosts/linux/desktop/shell/FireholdFrames.qml: "color: \"transparent\"; border.width: 2; border.color: F.C.accent"
+- [x] The game window's title line: name · paused · 60 fps limit · VRR — hosts/linux/desktop/shell/FireholdFrames.qml: "F.gameLine(\"\", one.win.minimized, fr.fh.frameLimit, fr.vrr)"
+- [x] The game window's hint chip "Full screen: F11 or ≡" — hosts/linux/desktop/shell/FireholdFrames.qml: "\"Full screen: F11 or ≡\""
+- [x] The game window keeps the game's picture ("The same game you resumed on the Couch, now in a window") — hosts/linux/desktop/shell/FireholdFrames.qml: "mask: Region { id: hits }"
 - [x] Notification card "Switched to Desk": "You moved the mouse. Everything stayed open. Press the Guide button to go back to the Couch." — hosts/linux/desktop/shell/Firehold.qml: "Everything stayed open. Press the Guide button to go back to the Couch."
 - [x] Dock: Home (H, accent) — hosts/linux/desktop/shell/FireholdDesk.qml: "glyph: \"H\"; tint: F.C.accent"
 - [x] Dock: Hearth Files (F) with its running dot — hosts/linux/desktop/shell/FireholdDesk.qml: "readonly property var running"
@@ -123,9 +123,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 ## Still open on feature/firehold-shell, and why
 
 - Hero line, chapter: no store says which chapter you're on; the line shows the store, time played, saves and "runs natively, no Game Mode".
-- Desk top bar, the focused app's menus: needs a global menu (apps' menus over D-Bus, an appmenu registrar), which Mantel doesn't have yet.
-- The Hearth Files window's frame (round buttons, accent close) and its picture grid: KWin's window frames (desktop/kwin) and Hearth Files itself, not Firehold's screens.
-- The game window's title line: name, running/paused and VRR are shown; "60 fps limit" waits for the frame limit (firehold-comp).
+- Hearth Files' picture grid: that's Hearth Files itself (its Pictures view), not Firehold's screens.
 - The game full screen drawn straight to the display, Frame limit, Resolution scaling: need firehold-comp (feature/firehold-game). The Guide's rows already call `firehold-comp ctl frame-limit` / `scale` once `ctl scanout status` answers; until then they say "Not yet".
 - Record "Last 30 s too": hearth-record has no replay buffer; firehold-comp's (feature/firehold-game) is coming.
 - Friends "2 online": needs Steam's friends data (Discord gives Mantel no online count).
