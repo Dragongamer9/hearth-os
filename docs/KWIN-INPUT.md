@@ -50,8 +50,9 @@ KWin's locker is fail-safe the strict way: if its lock screen can't load, it kee
 emergency screen, which on a handheld without a keyboard would be a lockout. So:
 
 - **The image build fails** without KWin's screen locker (`kscreenlocker`, its greeter `kscreenlocker_greet`) or
-  without Hearth's lock screen complete where the greeter looks (`hearth-lockcheck --no-probe` in `build.sh`, and
-  checks in `base-peppermint.yml`).
+  without Hearth's lock screen loading in it (`hearth-lockcheck` in `build.sh` runs the greeter's own test run;
+  on Debian the locker is `libkscreenlocker6`, and `libplasma6` gives it the Plasma/Shell package type it reads Hearth's
+  lock screen as; checks in `base-peppermint.yml` too).
 - **Lock.qml asks `hearth-lockcheck` before every lock on KWin**: the greeter is installed, Hearth's package is where
   it looks (the Plasma shell package named by `PLASMA_DEFAULT_SHELL`, API version 2, its `LockScreen.qml`; or the
   look-and-feel package for older lockers), and the greeter's own test run off screen doesn't report that it

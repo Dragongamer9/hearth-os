@@ -1396,6 +1396,9 @@ for p in kscreenlocker libkscreenlocker6 libkscreenlocker5; do have_pkg "$p" && 
 "${APT[@]}" "$KSL"
 KSL_GREETER=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
 [ -x "$KSL_GREETER" ] || { echo "kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
+# The greeter reads Hearth's lock screen as a Plasma/Shell package: that package type comes from libplasma (Debian's
+# libkscreenlocker6 doesn't pull it in; without it: "Invalid metadata for package structure Plasma/Shell").
+for p in libplasma6 libplasma5; do have_pkg "$p" && { "${APT[@]}" "$p"; break; }; done
 mkdir -p /usr/share/plasma/shells
 rm -rf /usr/share/plasma/shells/org.hearth.mantel-lock
 cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
@@ -1408,7 +1411,8 @@ python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["KPackageStr
   /usr/share/plasma/look-and-feel/org.hearth.mantel-lock/metadata.json
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-lockcheck
 # The lock screen must be complete where the greeter looks (never a lock that can't show its screen: red flag 2).
-PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck --no-probe
+# With the greeter's own test run (off screen): it must load Hearth's lock screen, or the image isn't built.
+PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck
 rm -rf /usr/share/nimbus/desktop/kwin-helpers
 # For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
 # screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.

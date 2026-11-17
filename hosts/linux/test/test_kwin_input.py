@@ -364,7 +364,8 @@ class LockCheck(unittest.TestCase):
         self.assertLess(lock.index('out=$(python3'), lock.index('org.freedesktop.ScreenSaver.Lock'))
         self.assertIn('"nolock ', lock)
         b = read('os-bases/peppermint/build.sh')
-        self.assertIn('hearth-lockcheck --no-probe', b)
+        self.assertIn('XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck\n', b)
+        self.assertIn('libplasma6', b)
         self.assertIn('kscreenlocker_greet isn\'t installed', b)
 
 
