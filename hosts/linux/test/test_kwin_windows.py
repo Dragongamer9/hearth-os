@@ -80,8 +80,13 @@ class Shortcuts(unittest.TestCase):
         for s in self.table.get('kwinOnly', []):
             self.assertNotIn(qt_parts(s['keys']), mine, s['id'] + ' takes a key Mantel already uses')
             self.assertNotIn(s['id'], ids)
-            self.assertTrue(s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
-            self.assertEqual(kb.command_for(s['id'], self.table), s['run'])
+            self.assertTrue(('run' in s) != ('win' in s), s['id'] + ': a command or a window action, one of them')
+            if 'run' in s:
+                self.assertTrue(s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
+                self.assertEqual(kb.command_for(s['id'], self.table), s['run'])
+            else:
+                base = s['win'].split(':')[0] + (':' if ':' in s['win'] else '')
+                self.assertIn('"%s"' % base, (KWIN / 'hearth-windows.js').read_text(), s['id'] + ': the script has no ' + base)
         self.assertIn('Hearth activities-next', kb.render().replace('"activities-next"', 'Hearth activities-next'))
 
     def test_window_actions_are_known(self):
@@ -103,6 +108,72 @@ class Shortcuts(unittest.TestCase):
         self.assertEqual(kb.qt_key('Meta+0'), 0x10000030)
         self.assertIn('Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
         self.assertFalse((KWIN / 'xdg' / 'kglobalshortcutsrc').exists(), 'kglobalaccel never reads a default file')
+
+    def test_kwin_views_and_force_close(self):
+        """KWin's Overview, Present windows and Desktop grid, and force closing, each have a Hearth key that KDE's own
+        same key is freed for, and the script knows each view's name."""
+        only = {s['id']: s for s in self.table['kwinOnly']}
+        for sid, keys in (('overview', 'Meta+W'), ('present-windows', 'Ctrl+F10'), ('desktop-grid', 'Ctrl+F8'), ('kill-window', 'Ctrl+Alt+Esc')):
+            self.assertEqual(only[sid]['keys'], keys, sid)
+        freed = {e['action'] for e in self.table['kdeKeys'] if e['component'] == 'kwin' and e['keys'] == []}
+        self.assertTrue({'Overview', 'ExposeAll', 'Kill Window'} <= freed, freed)
+        src = (KWIN / 'hearth-windows.js').read_text()
+        for name in ('overview', 'windows', 'grid'):
+            self.assertIn('%s: "' % name, src, name)
+        self.assertIn('call forceclose start', only['kill-window']['run'])
+        self.assertTrue((SHELL / 'ForceClose.qml').is_file())
+
+    def test_hearth_switcher_package(self):
+        """Hearth's Alt+Tab: a KWin window switcher package, in both of KWin's folders, picked by Hearth's kwinrc."""
+        base = LINUX.parent.parent / 'os' / 'system_files' / 'usr' / 'share'
+        pkg = base / 'kwin' / 'tabbox' / 'org.hearth.switcher'
+        meta = json.loads((pkg / 'metadata.json').read_text())
+        self.assertEqual(meta['KPlugin']['Id'], 'org.hearth.switcher')
+        self.assertEqual(meta['KPackageStructure'], 'KWin/WindowSwitcher')
+        qml = (pkg / 'contents' / 'ui' / meta['X-Plasma-MainScript'].split('/', 1)[1]).read_text()
+        for part in ('KWin.TabBoxSwitcher', 'KWin.WindowThumbnail', 'model.activate', 'model.close', 'Kirigami.Theme.highlightColor'):
+            self.assertIn(part, qml)
+        self.assertEqual((base / 'kwin-wayland' / 'tabbox' / 'org.hearth.switcher').resolve(), pkg.resolve())
+        self.assertIn('[TabBox]\nLayoutName=org.hearth.switcher', (KWIN / 'xdg' / 'kwinrc').read_text())
+
+    def test_previews_script(self):
+        """The live previews: a declarative KWin script the bridge loads, asking the bridge for work (NextPreview)."""
+        qml = (KWIN / 'hearth-previews.qml').read_text()
+        for part in ('import org.kde.kwin', 'DBusCall', '"NextPreview"', 'WindowThumbnail', 'closeWindow()', 'Workspace.activeWindow = w'):
+            self.assertIn(part, qml)
+        self.assertEqual(kb.PREVIEW_SRC, str(KWIN / 'hearth-previews.qml'))
+        self.assertIn('NextPreview', kb.XML)
+        self.assertIn('HoverMax', kb.XML)
+
+    def test_killable(self):
+        import os
+        self.assertFalse(kb.killable(1))
+        self.assertFalse(kb.killable(os.getpid()))
+        self.assertFalse(kb.killable(0))
+        self.assertFalse(kb.killable('12'))
+        p = subprocess.Popen(['sleep', '30'])
+        try:
+            self.assertTrue(kb.killable(p.pid))
+        finally:
+            p.kill(); p.wait()
+
+    def test_theme_cols(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, 'hearth'))
+            with open(os.path.join(d, 'hearth', 'theme.json'), 'w') as f:
+                json.dump({'radius': 14, 'font': '"Inter", system-ui, sans-serif',
+                           'colors': {'panel': '#111111', 'text': '#eeeeee', 'accent': '#ff7a3d', 'bogus': 3}}, f)
+            old = os.environ.get('XDG_CONFIG_HOME')
+            os.environ['XDG_CONFIG_HOME'] = d
+            try:
+                c = kb.theme_cols()
+            finally:
+                if old is None:
+                    del os.environ['XDG_CONFIG_HOME']
+                else:
+                    os.environ['XDG_CONFIG_HOME'] = old
+        self.assertEqual(c, {'panel': '#111111', 'text': '#eeeeee', 'accent': '#ff7a3d', 'r': 14, 'font': 'Inter'})
 
     def test_extra_ids_and_launcher(self):
         self.assertTrue(kb.command_for('launcher', self.table).endswith("call launcher toggle'"))

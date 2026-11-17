@@ -658,7 +658,50 @@ def parse_keybinds(text):
     return out
 
 
+def kwin_shortcuts(path=None):
+    """Mantel on KWin: Hearth's keys as the KWin script registers them (desktop/kwin/windows/shortcuts.json: the same
+    as labwc's, the KWin-only ones like the Overview and force closing, and KWin's own that do the same job). Shown
+    with Hearth's default keys; a key changed in KWin's own shortcut settings is KWin's to show."""
+    path = path or os.path.normpath(os.path.join(HERE, '..', 'kwin', 'windows', 'shortcuts.json'))
+    try:
+        with open(path, encoding='utf-8') as f:
+            t = json.load(f)
+    except (OSError, ValueError):
+        return []
+
+    def words(seq):
+        parts = seq.split('+')
+        if seq.endswith('++'):
+            parts = seq[:-2].split('+') + ['+']
+        return '+'.join({'Meta': 'Super', 'Esc': 'Esc', 'Del': 'Delete'}.get(p, p) for p in parts)
+    out, seen = [], set()
+    for s in t.get('shortcuts', []) + t.get('kwinOnly', []):
+        if not s.get('keys') or s['keys'] in seen:
+            continue
+        seen.add(s['keys'])
+        out.append({'key': s['keys'], 'keys': words(s['keys']), 'action': re.sub(r' \((Super|Ctrl)[^)]*\)$', '', s.get('title', ''))})
+    # KWin's own actions that do these jobs, in plain words.
+    own = [('Alt+Tab', 'Switch windows (Hearth\'s switcher)'), ('Alt+Shift+Tab', 'Switch windows, back the other way')]
+    plain = {'Walk Through Windows Alternative': 'Switch windows', 'Walk Through Windows Alternative (Reverse)': 'Switch windows, back the other way',
+             'Window One Screen to the Left': 'Move the window to the screen on the left',
+             'Window One Screen to the Right': 'Move the window to the screen on the right',
+             'Switch One Desktop to the Left': 'Go to the desktop on the left', 'Switch One Desktop to the Right': 'Go to the desktop on the right',
+             'Window One Desktop to the Left': 'Move the window to the desktop on the left',
+             'Window One Desktop to the Right': 'Move the window to the desktop on the right',
+             'view_zoom_in': 'Zoom in', 'view_zoom_out': 'Zoom out', 'view_actual_size': 'Zoom back to normal'}
+    for s in t.get('kwinOwn', []):
+        name = re.sub(r' \((KWin|Meta)[^)]*\)$', '', s.get('kwin', ''))
+        own.append((s.get('keys') or '', plain.get(name, name)))
+    for k, what in own:
+        if k and k not in seen:
+            seen.add(k)
+            out.append({'key': k, 'keys': words(k), 'action': what})
+    return out
+
+
 def shortcuts():
+    if os.environ.get('HEARTH_WM') == 'kwin':
+        return {'shortcuts': kwin_shortcuts(), 'file': 'kwin', 'wm': 'kwin'}
     path = os.path.join(runtime_dir(), 'rc.xml')
     if not os.path.exists(path):
         path = os.path.join(LABWC_DIR, 'rc.xml')

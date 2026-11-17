@@ -44,7 +44,14 @@ SetPage {
     Component.onCompleted: {
         load();
         job.run(["keyboard-layouts"], r => page.all = r.layouts || []);
-        job.run(["shortcuts"], r => page.shortcuts = r.shortcuts || []);
+        job.run(["shortcuts"], r => { page.shortcuts = r.shortcuts || []; if (SettingsNav.pageAnchor === "shortcuts") toShortcuts.restart(); });
+    }
+    // "keyboard:shortcuts": Settings opened at the shortcuts (they're at the end), once they're listed. Under KWin
+    // (Mantel on KWin) they're Hearth's KWin keys: the Overview, Present windows, Desktop grid, force closing...
+    Timer {
+        id: toShortcuts
+        interval: 400
+        onTriggered: { SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(shortcutsHead.mapToItem(page.contentItem, 0, 0).y - 12, page.contentHeight - page.height)); }
     }
     SetJob { id: job; helper: "hearth-system" }
     function apply() {
@@ -287,7 +294,7 @@ SetPage {
         SetRow { title: "Clear learned words"; sub: "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"; danger: true; chevron: false; onActivated: { oskWords.setText("{}"); page.say("Learned words cleared."); } }
     }
 
-    SetHeader { text: "Keyboard shortcuts"; visible: page.shortcuts.length > 0 }
+    SetHeader { id: shortcutsHead; text: "Keyboard shortcuts"; visible: page.shortcuts.length > 0 }
     Repeater {
         model: page.shortcuts
         delegate: SetRow {
