@@ -1,0 +1,126 @@
+{
+ "idle": {
+  "hearth-notifyd": {
+   "cpu": 0.23,
+   "mb": 35.4,
+   "n": 1
+  },
+  "quickshell shell": {
+   "cpu": 0.17,
+   "mb": 352.3,
+   "n": 3
+  },
+  "perf-measure.py": {
+   "cpu": 0.07,
+   "mb": 17.2,
+   "n": 1
+  },
+  "hearth-buttons": {
+   "cpu": 0.03,
+   "mb": 23.1,
+   "n": 1
+  },
+  "labwc": {
+   "cpu": 0.0,
+   "mb": 93.4,
+   "n": 1
+  },
+  "python3": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 171
+  },
+  "nimbus": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-disks": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-text": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-portal": {
+   "cpu": 0.0,
+   "mb": 76.6,
+   "n": 2
+  }
+ },
+ "Settings (cold)": {
+  "first": 0.68,
+  "ready": 0.99,
+  "mbBefore": 352.3,
+  "mbAfter": 369.3
+ },
+ "Settings \u203a Display (cold)": {
+  "first": 0.64,
+  "ready": 0.96,
+  "mbBefore": 357.3,
+  "mbAfter": 373.7
+ },
+ "Hearth Files (cold)": {
+  "first": 0.46,
+  "ready": 0.63,
+  "mbBefore": 361.7,
+  "mbAfter": 359.8
+ },
+ "Task Manager (cold)": {
+  "first": 0.31,
+  "ready": 0.62,
+  "mbBefore": 359.5,
+  "mbAfter": 388.8
+ },
+ "App menu (cold)": {
+  "first": 0.31,
+  "ready": null,
+  "mbBefore": 381.4,
+  "mbAfter": 389.5
+ },
+ "Quick Access (cold)": {
+  "first": 0.31,
+  "ready": 0.47,
+  "mbBefore": 364.3,
+  "mbAfter": 392.5
+ },
+ "Settings (warm)": {
+  "first": 0.87,
+  "ready": 1.19,
+  "mbBefore": 367.4,
+  "mbAfter": 382.2
+ },
+ "Settings \u203a Display (warm)": {
+  "first": 0.73,
+  "ready": 0.88,
+  "mbBefore": 368.7,
+  "mbAfter": 383.9
+ },
+ "Hearth Files (warm)": {
+  "first": 0.51,
+  "ready": 0.51,
+  "mbBefore": 371.9,
+  "mbAfter": 370.4
+ },
+ "Task Manager (warm)": {
+  "first": 0.29,
+  "ready": 0.6,
+  "mbBefore": 370.1,
+  "mbAfter": 389.4
+ },
+ "App menu (warm)": {
+  "first": 0.29,
+  "ready": null,
+  "mbBefore": 381.4,
+  "mbAfter": 393.5
+ },
+ "Quick Access (warm)": {
+  "first": 0.33,
+  "ready": 0.49,
+  "mbBefore": 373.5,
+  "mbAfter": 394.6
+ }
+}
