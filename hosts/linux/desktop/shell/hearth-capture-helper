@@ -264,8 +264,16 @@ def grab(mode, path, screen='', geometry=None, pointer=False, env=None):
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)[:200], False
     if r.returncode != 0:
-        return False, (r.stderr.strip().split('\n')[-1] or 'Couldn\'t take the picture')[:200], False
+        return False, (tool_error(r.stdout, r.stderr) or 'Couldn\'t take the picture')[:200], False
     return True, '', False
+
+
+def tool_error(stdout, stderr):
+    """Why a screenshot tool failed: hearth-screens says it on its output ("error: ..."), grim on its error output."""
+    for line in reversed((stdout or '').splitlines()):
+        if line.startswith('error: '):
+            return line[7:].strip()
+    return (stderr or '').strip().split('\n')[-1]
 
 
 def parse_geometry(s):
@@ -538,8 +546,9 @@ def grab_frame(geo, pointer=False, env=None):
             raise OSError('Taking a picture needs grim, which isn\'t installed')
         cmd = ['grim', '-t', 'ppm'] + (['-c'] if pointer else []) + ['-g', g, '-']
     r = subprocess.run(cmd, capture_output=True, timeout=30)
-    if r.returncode != 0 or not r.stdout:
-        raise OSError((r.stderr.decode('utf-8', 'replace').strip().split('\n') or [''])[-1][:200] or 'Couldn\'t take the picture')
+    if r.returncode != 0 or not r.stdout or r.stdout.startswith(b'error: '):
+        why = tool_error(r.stdout[:400].decode('utf-8', 'replace') if r.stdout[:7] == b'error: ' else '', r.stderr.decode('utf-8', 'replace'))
+        raise OSError(why[:200] or 'Couldn\'t take the picture')
     data = r.stdout
     fw, fh, rgb = read_ppm(data) if data[:2] == b'P6' else read_png(data)
     return Frame(fw, fh, rgb)

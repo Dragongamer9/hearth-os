@@ -532,6 +532,15 @@ class Scrolling(Env):
         r = subprocess.run([sys.executable, hp, 'scroll'], capture_output=True, text=True, timeout=20)
         self.assertEqual(r.returncode, 1)
 
+    def test_a_screenshot_tools_reason_is_passed_on(self):
+        # hearth-screens says why on its output (KWin), grim on its error output (labwc).
+        self.assertEqual(self.h.tool_error('error: KWin didn\'t let Hearth take a screenshot\n', ''), "KWin didn't let Hearth take a screenshot")
+        self.assertEqual(self.h.tool_error('', 'warning\ngrim: no output\n'), 'grim: no output')
+        self.fake_bin('grim', 'echo "error: no screen called X" ; exit 1')
+        with self.assertRaises(OSError) as e:
+            self.h.grab_frame((0, 0, 10, 10), env={'PATH': os.environ['PATH']})
+        self.assertIn('no screen called X', str(e.exception))
+
     def test_wiring(self):
         q = code((SHELL / 'Capture.qml').read_text())
         self.assertIn('{ id: "scroll", g: "scroll", t: "Scrolling"', q)
