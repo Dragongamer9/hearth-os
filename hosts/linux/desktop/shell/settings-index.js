@@ -2865,6 +2865,74 @@ var ENTRIES = [
 "i": "window"
 },
 {
+"t": "Which window gets the keyboard",
+"p": "kwin-behaviour",
+"i": "kbd"
+},
+{
+"t": "Wait before the focus follows",
+"p": "kwin-behaviour",
+"i": "clock"
+},
+{
+"t": "Raise the window under the pointer",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Raise after",
+"p": "kwin-behaviour",
+"i": "clock"
+},
+{
+"t": "Clicking a window brings it to the front",
+"p": "kwin-behaviour",
+"d": "Off: a window you click in stays where it is in the stack",
+"i": "mouse"
+},
+{
+"t": "The pointer comes first",
+"p": "kwin-behaviour",
+"d": "When a window closes or you switch desktops, the window under the pointer gets the keyboard, not the last one you used",
+"i": "mouse"
+},
+{
+"t": "Stop windows taking the keyboard",
+"p": "kwin-behaviour",
+"i": "pin"
+},
+{
+"t": "Double-click",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Middle-click",
+"p": "kwin-behaviour",
+"i": "mouse"
+},
+{
+"t": "Turning the wheel",
+"p": "kwin-behaviour",
+"i": "mouse"
+},
+{
+"t": "Hold",
+"p": "kwin-behaviour",
+"d": "Pressed on its own, Super still opens the app menu",
+"i": "kbd"
+},
+{
+"t": "Where new windows open",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Just one app's windows",
+"p": "kwin-behaviour",
+"d": "A window rule opens them where, how big and how you want"
+},
+{
 "t": "Share this device's AI",
 "p": "link",
 "d": "Its AI (chat, voices, pictures, speech to text) for your other devices and the Command Center, through Tailscale",

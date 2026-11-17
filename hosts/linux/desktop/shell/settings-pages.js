@@ -87,6 +87,7 @@ var PAGES = [
     { id: "kwin-desktops", file: "SetKwinDesktops.qml", cat: "pers", label: "Virtual desktops", icon: "desktops", desc: "How many desktops, their names, rows, switching animation", words: "kwin virtual desktops workspaces rows names wrap slide switch" },
     { id: "kwin-tiling", file: "SetKwinTiling.qml", cat: "pers", label: "Tiling", icon: "grid", desc: "Each screen's tile layout, dragging windows to edges, snapping", words: "kwin tiling tiles layout columns quick tile snap edges corners maximize" },
     { id: "kwin-edges", file: "SetKwinEdges.qml", cat: "pers", label: "Screen edges", icon: "display", desc: "Hot corners, edges, touchscreen swipes, sticky edges between screens", words: "kwin hot corners screen edges electric borders touch swipe edge barrier" },
+    { id: "kwin-behaviour", file: "SetKwinWindows.qml", cat: "pers", label: "Window behaviour", icon: "window", desc: "Which window gets the keyboard, raise on hover, title bar clicks, Super+drag, where new windows open", words: "kwin window behaviour behavior focus policy follows mouse under mouse click to focus raise hover auto raise click raises focus stealing prevention title bar double click middle click wheel super alt drag move resize placement new windows centered smart" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },

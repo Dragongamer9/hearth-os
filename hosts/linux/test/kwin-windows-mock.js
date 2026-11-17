@@ -192,7 +192,7 @@ assert.strictEqual(last().windows.find(w => w.title === "Files").zone, "left-hal
 assert.strictEqual(menuFn(bar), undefined);
 
 // ---- Hearth's other title bar menu entries: hide from screen sharing (checkable), force close
-assert.strictEqual(menuFns.length, 3, "Snap, Hide from screen sharing, Force close");
+assert.strictEqual(menuFns.length, 4, "Snap, Hide from screen sharing, Force close, More actions");
 const share = menuFns[1](files);
 assert.strictEqual(share.text, "Hide from screen sharing");
 assert.strictEqual(share.checked, false);
@@ -208,6 +208,34 @@ fcItem.triggered();
 assert.deepStrictEqual(otherCalls[otherCalls.length - 1].slice(1), ["ForceClose", files.internalId]);
 assert.strictEqual(menuFns[1](bar), undefined);
 assert.strictEqual(menuFns[2](bar), undefined);
+
+// ---- More actions in Hearth's look: shade, no title bar and frame, special window settings (Window rules for it)
+const more = menuFns[3](files);
+assert.strictEqual(more.text, "More actions");
+same(more.items.map(i => i.text.split(" ")[0]), ["Shade", "No", "Special"]);
+assert.strictEqual(more.items[0].checked, false);
+more.items[0].triggered();
+assert.strictEqual(files.shade, true, "shaded");
+assert.strictEqual(menuFns[3](files).items[0].checked, true, "ticked once shaded");
+menuFns[3](files).items[0].triggered();
+assert.strictEqual(files.shade, false, "rolled down again");
+more.items[1].triggered();
+assert.strictEqual(files.noBorder, true, "no frame");
+assert.strictEqual(menuFns[3](files).items[1].checked, true);
+menuFns[3](files).items[1].triggered();
+assert.strictEqual(files.noBorder, false, "its frame back");
+more.items[2].triggered();
+const wr = otherCalls[otherCalls.length - 1];
+assert.strictEqual(wr[1], "WindowRules");
+assert.deepStrictEqual(JSON.parse(wr[2]), { id: files.internalId, wmclass: "org.hearth.files", title: "Files" });
+const fixed = makeWindow({ caption: "Fixed", cls: "fixedapp" });
+fixed.shadeable = false; fixed.userCanSetNoBorder = false;
+ws.windowAdded(fixed);
+same(menuFns[3](fixed).items.map(i => i.text), ["Special window settings…"], "only what KWin lets this window do");
+menuFns[3](fixed).items[0].triggered();
+assert.strictEqual(JSON.parse(otherCalls[otherCalls.length - 1][2]).wmclass, "fixedapp", "the window class first");
+ws.windowRemoved(fixed);
+assert.strictEqual(menuFns[3](bar), undefined);
 
 // ---- KWin's views: through kglobalaccel's invokeShortcut, from a command or Hearth's keys
 send([{ op: "effect", name: "overview" }]);

@@ -48,9 +48,15 @@ Scope {
         // A page only on the live USB stays closed elsewhere; anything unknown opens Home.
         const e = Reg.page(id);
         page = e && (!e.live || live) ? id : (shown ? page : "home");
+        if (page !== "kwin-rules") SettingsNav.ruleFor = null;
         shown = true;
     }
-    function close() { shown = false; SettingsNav.pageAnchor = ""; }
+    // A window's More actions › "Special window settings…" (Mantel on KWin): Window rules, for that window's app.
+    function openWindowRules(info) {
+        SettingsNav.ruleFor = info && (info.wmclass || info.title) ? { wmclass: String(info.wmclass || ""), title: String(info.title || "") } : null;
+        open("kwin-rules");
+    }
+    function close() { shown = false; SettingsNav.pageAnchor = ""; SettingsNav.ruleFor = null; }
     function toggle() { shown ? close() : open(""); }
 
     LazyLoader {
