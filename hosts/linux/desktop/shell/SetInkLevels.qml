@@ -73,7 +73,7 @@ SetPage {
                         }
                         Text { Layout.preferredWidth: 46; horizontalAlignment: Text.AlignRight; text: modelData.level + " %"; color: parent.low ? Theme.danger : Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
                         Rectangle {
-                            visible: parent.low
+                            opacity: parent.low ? 1 : 0
                             implicitWidth: lowT.implicitWidth + 16; implicitHeight: 22; radius: 11; color: Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.18)
                             Text { id: lowT; anchors.centerIn: parent; text: "Low"; color: Theme.danger; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                         }

@@ -117,12 +117,13 @@ def status():
     ls, r = chosen()
     extra = flatpak_extra()
     names = {re.sub(r'\..*$', '', l['id']): l['name'] for l in r.status().get('locales', [])} if hasattr(r, 'status') else {}
+    sys_lang = (os.environ.get('LANG') or '').split('.')[0]
     out = []
     for l in ls:
         code, _, land = l.partition('_')
         name = names.get(l) or r.LANGS.get(code, code) + (' (' + r.LANDS.get(land, land) + ')' if land else '')
         out.append({'id': l, 'name': name, 'apps': apps_in(l),
-                    'flatpak': extra is not None and (l in extra or code in extra), 'dict': dict_state(l, r)})
+                    'flatpak': extra is not None and (l in extra or code in extra or l == sys_lang), 'dict': dict_state(l, r)})
     return {'languages': out, 'flatpak': extra is not None, 'extra': extra or []}
 
 
