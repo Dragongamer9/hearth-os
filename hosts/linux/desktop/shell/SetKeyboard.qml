@@ -51,7 +51,8 @@ SetPage {
     Timer {
         id: toShortcuts
         interval: 400
-        onTriggered: { SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(shortcutsHead.mapToItem(page.contentItem, 0, 0).y - 12, page.contentHeight - page.height)); }
+        // To the end of the list: Mantel on KWin's own keys (the Overview, Present windows, force close...) come last.
+        onTriggered: { SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, page.contentHeight - page.height); }
     }
     SetJob { id: job; helper: "hearth-system" }
     function apply() {

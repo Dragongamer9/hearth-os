@@ -438,6 +438,8 @@ class Bridge:
             self.GLib.source_remove(self.ppending_timer)
             self.ppending_timer = 0
         batch, self.pqueue = self.pqueue, []
+        if any(c.get('op') == 'preview' for c in batch):
+            log('previews: %d window(s) for the previews script' % len(batch[-1].get('ids') or []))
         inv.return_value(self.GLib.Variant('(s)', (json.dumps(batch),)))
 
     def panswer_empty(self):

@@ -39,7 +39,7 @@ Item {
     function show(c) {
         const list = [];
         for (const id of (c.ids || [])) { const w = findWin(id); if (w && !w.deleted) list.push(w); }
-        if (!list.length) { hideNow(); return; }
+        if (!list.length) { console.warn("hearthpreviews: none of these windows is here: " + JSON.stringify(c.ids)); hideNow(); return; }
         if (c.cols) cols = Object.assign({}, cols, c.cols);
         wins = list.slice(0, 6);
         forApp = String(c.key || "");
@@ -79,7 +79,10 @@ Item {
         method: "NextPreview"
         onFinished: returnValue => {
             let list = [];
-            try { list = JSON.parse(String(returnValue[0])); } catch (e) {}
+            try {
+                const v = Array.isArray(returnValue) ? returnValue[0] : returnValue;
+                list = JSON.parse(String(Array.isArray(v) ? v[0] : v));
+            } catch (e) { console.warn("hearthpreviews: the bridge's answer: " + e); }
             for (const c of list) {
                 try { root.run(c); } catch (e) { console.warn("hearthpreviews: " + c.op + ": " + e); }
             }
