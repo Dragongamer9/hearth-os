@@ -37,7 +37,20 @@ var CATALOG = [
     { type: "timer", settings: false, name: "Timer & stopwatch", icon: "bell", w: 290, h: 230, minW: 220, minH: 160, bar: true,
       about: "Count down or time something" },
     { type: "quicknotes", settings: false, name: "Quick notes", icon: "list", w: 310, h: 330, minW: 220, minH: 180, bar: false,
-      about: "A short list you can tick off" }
+      about: "A short list you can tick off" },
+    // 1.14, round 2
+    { type: "web", name: "Web page", icon: "globe", w: 480, h: 360, minW: 260, minH: 200, bar: false,
+      about: "A web page on the desktop, fresh every few minutes" },
+    { type: "calc", settings: false, name: "Calculator", icon: "plus", w: 300, h: 380, minW: 240, minH: 300, bar: false,
+      about: "Sums with brackets, % and powers; copy the answer" },
+    { type: "colour", settings: false, name: "Colour picker", icon: "palette", w: 300, h: 250, minW: 220, minH: 170, bar: true,
+      about: "Pick a colour from the screen and copy it as hex, RGB or HSL" },
+    { type: "keys", settings: false, name: "Keyboard indicator", icon: "kbd", w: 280, h: 140, minW: 200, minH: 100, bar: true,
+      about: "Caps Lock, Num Lock and the keyboard layout" },
+    { type: "pager", name: "Pager", icon: "desktops", w: 420, h: 170, minW: 200, minH: 100, bar: true,
+      about: "Your desktops with their windows; click one to go there" },
+    { type: "windowlist", name: "Window list", icon: "window", w: 340, h: 320, minW: 220, minH: 160, bar: true,
+      about: "Every open window, to switch, minimize or close" }
 ];
 
 // A list from the settings file, whatever form Qt hands it over in (a JavaScript array, or the list type a
