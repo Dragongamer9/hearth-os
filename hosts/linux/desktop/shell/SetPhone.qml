@@ -79,6 +79,7 @@ SetPage {
     // (Settings keeps a page loaded, so a second "phone:commands" while it's open is heard too.)
     property string anchor: ""
     function takeAnchor() {
+        console.log("Phone link: Settings › Phone at '" + SettingsNav.pageAnchor + "'");
         if (!["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) return;
         anchor = SettingsNav.pageAnchor;
         SettingsNav.pageAnchor = "";
@@ -90,6 +91,7 @@ SetPage {
         id: anchorFocus; interval: 700
         onTriggered: {
             const to = { notifications: notifHead, commands: cmdName, pair: ipField }[page.anchor];
+            console.log("Phone link: going to " + page.anchor + " (" + (to && to.visible) + ")");
             page.anchor = "";
             if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
         }
