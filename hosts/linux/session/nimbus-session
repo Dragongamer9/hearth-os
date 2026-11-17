@@ -863,6 +863,14 @@ run_firehold() {
     FIREHOLD_WHY="firehold-comp ended right after starting (code $rc)${last:+: $last}"
     return 200
   fi
+  # Ended by itself with no switch asked for: a crash (code not 0) is a failure like not starting, as for KWin
+  # (red flag 2: returning its code would end the session, and a compositor that keeps crashing would loop the sign-in).
+  # 200: KWin for the rest of this sign-in, counted and told (run_classic).
+  if [ "$rc" -ne 0 ]; then
+    log "firehold crashed after $(( $(date +%s) - started ))s (code $rc); KWin for the rest of this sign-in"
+    FIREHOLD_WHY="firehold-comp stopped (code $rc)${last:+: $last}"
+    return 200
+  fi
   desk_fails_reset firehold
   log "firehold ended (code $rc)"
   return "$rc"
