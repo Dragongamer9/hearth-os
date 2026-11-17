@@ -136,9 +136,10 @@ jobs:
           before=$(sha256sum "$F" | cut -c1-64)
 
           # 1. Couch Home (the game's window is behind it; the windows are in Open on this PC)
-          q firehold couch; q firehold tab home; shot 01-couch-home 5
+          q firehold couch; sleep 4
           # 5. Library, the first tile focused; then a filter and the search
           q firehold tab library; shot 05-library 5
+          q firehold tab home; shot 01-couch-home 6
           q firehold filter epic; shot 05b-library-epic 3; q firehold filter all
           q firehold search "deep"; shot 05c-library-search 3; q firehold search ""
           q firehold tab apps; shot 07-apps 4
@@ -149,6 +150,7 @@ jobs:
           q firehold press b
           # 3. The Guide panel over the game (A on Ember Trails in Everything open goes to it, full screen)
           q firehold open switcher; sleep 1; q firehold press a; sleep 3
+          echo "::notice title=firehold::windows after A: $(q winlist state | head -c 900)"
           q firehold open guide; shot 03-guide 5
           echo "::notice title=firehold::with the guide: $(q firehold state | head -c 700)"
           q firehold press b; sleep 1

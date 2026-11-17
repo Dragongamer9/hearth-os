@@ -90,6 +90,7 @@ Scope {
     onModeChanged: if (unlocked && started && mode !== "auto") switchTo(mode, "")
 
     function postureOf(scr) { return F.screenPosture(perScreen, scr ? scr.name : "", posture); }
+    function postureOfName(n) { return F.screenPosture(perScreen, n, posture); }
     readonly property bool anyCouch: unlocked && (posture === "couch" || Object.keys(perScreen).some(k => perScreen[k] === "couch"))
 
     // why: "pad" | "mouse" | "keys" | "" (a choice in Settings, or the Guide panel's "Put it in a window").
@@ -189,6 +190,7 @@ Scope {
         view = "app";
         if (w.minimized) w.minimized = false;
         const game = F.isGame(w, library);
+        if (game) lastGame = w;
         if (game && posture === "couch") {
             const full = asWindow ? false : gamesOpen !== "window";
             if (w.fullscreen !== full) w.fullscreen = full;
@@ -197,6 +199,10 @@ Scope {
     }
     function toggleFull(w) { if (w) w.fullscreen = !w.fullscreen; }
     function closeWin(w) { if (w) w.close(); }
+    // The game the Guide panel is about: the one in front, else the one you went to last, else any that's running.
+    property var guideWin: null
+    function openGuide() { guideWin = frontGame() || (lastGame && wins.indexOf(lastGame) >= 0 ? lastGame : null) || games()[0] || null; guideShown = guideWin !== null; }
+    property var lastGame: null
     function home() { page = "tabs"; tab = "home"; guideShown = false; view = "home"; }
 
     // ------------------------------------------------------------------ the library (hearth-firehold)
@@ -260,7 +266,7 @@ Scope {
         if (page === "switcher") { page = "tabs"; return; }
         if (view === "app") {
             const g = frontGame();
-            if (g) { guideShown = true; return; }
+            if (g) { openGuide(); return; }
             home();
             return;
         }
@@ -293,6 +299,7 @@ Scope {
             FireholdCouch {
                 required property var modelData
                 screen: modelData
+                scrName: modelData.name
                 fh: fhs
             }
         }
@@ -331,7 +338,7 @@ Scope {
         function open(what: string): void {
             if (!fhs.unlocked) return;
             if (what === "switcher") { fhs.guideShown = false; fhs.view = "home"; fhs.page = "switcher"; }
-            else if (what === "guide") fhs.guideShown = true;
+            else if (what === "guide") fhs.openGuide();
             else if (what === "settings") fhs.settingsShown = true;
             else if (what === "home") fhs.home();
         }
