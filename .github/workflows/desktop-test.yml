@@ -1005,18 +1005,18 @@ jobs:
             echo "::notice title=Win tools::$(ls $W/*.png 2>/dev/null | wc -l) pictures in win-tools/"
           fi
           # ---- Resource Monitor (docs/RESOURCE-MONITOR.md), in shots/resource-monitor/: Your PC for this runner, then the
-          # board drawn from the four sample machines (the owner's ATX desktop with a memory stick and the graphics card
-          # clicked, dad's FM2A88X, a laptop, a ROG Ally), Overview, Processor, Memory, Disk, Network, Graphics and a
+          # board drawn from the four sample machines (an ATX desktop with a memory stick and the graphics card
+          # clicked, an FM2A88X desktop, a laptop, a ROG Ally), Overview, Processor, Memory, Disk, Network, Graphics and a
           # program's actions. Opening it writes no setting; its sampler runs only while it's open.
           mkdir -p shots/resource-monitor; R=shots/resource-monitor; FX="$PWD/hosts/linux/test/fixtures/resmon"
           rm_before=$(find "$HOME/.config" "$HOME/.local/share" -type f -newer /proc/1 2>/dev/null | sort | xargs -r sha256sum 2>/dev/null | sha256sum)
           ipc resmon open; sleep 6; grim $R/01-your-pc-this-runner.png || true
-          ipc resmon fixture "$FX/owner-atx.json"; sleep 5; grim $R/02-owner-board.png || true
+          ipc resmon fixture "$FX/atx-desktop.json"; sleep 5; grim $R/02-atx-board.png || true
           ipc resmon select dimm1; sleep 2; grim $R/03-owner-memory-stick.png || true
           ipc resmon select pcie0; sleep 2; grim $R/04-owner-graphics-card.png || true
           ipc resmon select m2_1; sleep 2; grim $R/05-owner-empty-m2.png || true
-          ipc resmon fixture "$FX/dad-fm2.json"; sleep 5; grim $R/06-dad-board.png || true
-          ipc resmon select sata1; sleep 2; grim $R/07-dad-hdd-tip.png || true
+          ipc resmon fixture "$FX/fm2-desktop.json"; sleep 5; grim $R/06-fm2-board.png || true
+          ipc resmon select sata1; sleep 2; grim $R/07-fm2-hdd-tip.png || true
           ipc resmon fixture "$FX/laptop.json"; sleep 5; grim $R/08-laptop.png || true
           ipc resmon fixture "$FX/rog-ally.json"; sleep 5; grim $R/09-rog-ally.png || true
           ipc resmon tab overview; sleep 4; grim $R/10-overview.png || true
