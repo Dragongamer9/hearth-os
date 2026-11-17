@@ -526,6 +526,7 @@ class Portal:
         self.req_info = node.lookup_interface(REQ_IFACE)
         self.win_info = node.lookup_interface(WIN_IFACE)
         self.windows = WindowLister(bus_name)
+        self.frontend = None
         self.sessions = {}
 
     def register(self, conn, path):
@@ -546,13 +547,40 @@ class Portal:
         return None
 
     def on_windows(self, conn, sender, path, iface, method, params, inv):
+        try:
+            kwin = conn.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                                  self.GLib.Variant('(s)', ('org.kde.KWin',)), None, self.Gio.DBusCallFlags.NONE, 2000,
+                                  None).unpack()[0]
+        except Exception:
+            kwin = None
+        if sender != kwin:
+            inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only KWin reports windows here')
+            return
         if method == 'Report':
             token, text = params.unpack()
             self.windows.report(token, text)
         inv.return_value(None)
 
+    def from_frontend(self, conn, sender):
+        """Only xdg-desktop-portal itself may ask (an app talks to it, never to this backend straight: otherwise any
+        program could start sharing or take screenshots without the picker or the Allow? question)."""
+        if sender and sender == self.frontend:
+            return True
+        try:
+            r = conn.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                               self.GLib.Variant('(s)', ('org.freedesktop.portal.Desktop',)), None,
+                               self.Gio.DBusCallFlags.NONE, 2000, None)
+            self.frontend = r.unpack()[0]
+        except Exception:
+            self.frontend = None
+        return bool(sender) and sender == self.frontend
+
     def on_call(self, conn, sender, path, iface, method, params, inv):
         GLib = self.GLib
+        if not self.from_frontend(conn, sender):
+            log('refused %s.%s from %s: only xdg-desktop-portal may ask' % (iface, method, sender))
+            inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
+            return
         try:
             if iface == SC_IFACE and method == 'CreateSession':
                 handle, session_handle, app_id, options = params.unpack()
@@ -593,6 +621,9 @@ class Portal:
              'restore': None, 'multiple': False, 'conn': conn}
 
         def on_session(c, sender, path, iface, method, params, inv):
+            if not self.from_frontend(c, sender):
+                inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
+                return
             if method == 'Close':
                 self.close_session(session_handle, signal=False)
                 inv.return_value(None)
@@ -634,6 +665,9 @@ class Portal:
             return 0
 
         def on_close(c, sender, path, iface, m, p, i):
+            if not self.from_frontend(c, sender):
+                i.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
+                return
             holder['closed'] = True
             pr = holder.get('proc')
             if pr and pr.poll() is None:

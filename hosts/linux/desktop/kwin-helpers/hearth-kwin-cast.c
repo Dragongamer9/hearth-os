@@ -14,7 +14,8 @@
  *       once KWin has made it; it lasts until stdin closes or SIGTERM, then "closed". "failed WHY" if it couldn't.
  *   hearth-kwin-cast shot screen NAME | window UUID | workspace | area X Y W H  [CURSOR 0|1]
  *       a screenshot: one line "W H STRIDE FORMAT SCALE" (FORMAT: Qt's QImage format number) and the raw pixels.
- * Exit codes: 1 failed, 2 KWin didn't give this program what it asked for (its .desktop file isn't installed).
+ * Exit codes: 1 failed, 2 KWin didn't give this program what it asked for (its .desktop file isn't installed),
+ *             3 not started by hearth-portal (see parent_is_portal).
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -27,6 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <limits.h>
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 #include <wayland-client.h>
@@ -275,13 +278,14 @@ static int do_shot(int argc, char **argv) {
     guint32 w = dict_u(d, "width"), h = dict_u(d, "height"), stride = dict_u(d, "stride"), fmt = dict_u(d, "format");
     double scale = 1.0;
     g_variant_lookup(d, "scale", "d", &scale);
-    if (!w || !h || !stride || rd.data->len < (guint)stride * h) {
+    if (!w || !h || !stride || stride < (guint64)w * 4 || (guint64)stride * h > (guint64)rd.data->len ||
+        (guint64)stride * h > (guint64)1 << 31) {
         fprintf(stderr, "hearth-kwin-cast: KWin's picture was cut short (%u bytes for %ux%u)\n", rd.data->len, w, h);
         return 1;
     }
     printf("%u %u %u %u %g\n", w, h, stride, fmt, scale);
     fflush(stdout);
-    size_t off = 0, n = (size_t)stride * h;
+    size_t off = 0, n = (size_t)((guint64)stride * h);
     while (off < n) {
         ssize_t wr = write(1, rd.data->data + off, n - off);
         if (wr < 0) { if (errno == EINTR) continue; return 1; }
@@ -290,7 +294,42 @@ static int do_shot(int argc, char **argv) {
     return 0;
 }
 
+/* Only Hearth's portal backend may use this program: KWin trusts it by its path (its .desktop file), so anything
+ * else running it could capture the screen. Its parent must be the interpreter running hearth-portal, a file owned
+ * by root that nobody else can change, in a folder owned by root that nobody else can change. Not a wall against
+ * code running as you (it can start hearth-portal itself), but no other program gets screen capture just by running
+ * this one. There's no switch to turn this off. */
+static int parent_is_portal(void) {
+    char path[64], buf[8192];
+    snprintf(path, sizeof path, "/proc/%d/cmdline", (int)getppid());
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    /* argv[0] = the interpreter, then maybe its options (-I, -E...), then the script. */
+    size_t i = strlen(buf) + 1;
+    while (i < n && buf[i] == '-') i += strlen(buf + i) + 1;
+    if (i >= n) return 0;
+    const char *script = buf + i;
+    char real[4096];
+    if (!realpath(script, real)) return 0;
+    const char *base = strrchr(real, '/');
+    if (!base || strcmp(base + 1, "hearth-portal") != 0) return 0;
+    struct stat st;
+    if (stat(real, &st) != 0 || st.st_uid != 0 || (st.st_mode & 022)) return 0;
+    char dir[4096];
+    snprintf(dir, sizeof dir, "%.*s", (int)(base - real), real);
+    if (stat(dir, &st) != 0 || st.st_uid != 0 || (st.st_mode & 022)) return 0;
+    return 1;
+}
+
 int main(int argc, char **argv) {
+    if (!parent_is_portal()) {
+        fprintf(stderr, "hearth-kwin-cast: only Hearth's portal backend (hearth-portal) may use this\n");
+        printf("failed only Hearth's portal backend may use this\n");
+        return 3;
+    }
     if (argc >= 2 && strcmp(argv[1], "outputs") == 0) return do_outputs();
     if (argc >= 2 && strcmp(argv[1], "stream") == 0) return do_stream(argc - 2, argv + 2);
     if (argc >= 2 && strcmp(argv[1], "shot") == 0) return do_shot(argc - 2, argv + 2);

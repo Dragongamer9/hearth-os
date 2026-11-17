@@ -6,7 +6,7 @@
 # 2. The "Plasma/Shell" package type the greeter reads the lock screen as: libplasma's plugins (Debian's
 #    plasma-framework; not the Plasma desktop). If this Debian has it elsewhere, it's looked for in plasma-workspace's
 #    package and only that one plugin taken, with every library it needs already there.
-# 3. The lock screen itself, as that shell package (and as a look-and-feel package for older lockers).
+# 3. The lock screen itself, as that shell package.
 # Fails (exit 1) when any of it is missing: a lock screen that can't show would be a lockout.
 set -Eeuo pipefail
 trap 'echo "install.sh: failed at line $LINENO: $BASH_COMMAND" >&2' ERR
@@ -43,12 +43,14 @@ if ! ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>/dev/null | grep -qi shel
   rm -rf "$tmp"
 fi
 
-for kind in shells look-and-feel; do
-  rm -rf "/usr/share/plasma/$kind/$ID"
-  mkdir -p "/usr/share/plasma/$kind"
-  cp -a "$SRC" "/usr/share/plasma/$kind/$ID"
-  rm -f "/usr/share/plasma/$kind/$ID/install.sh"
-done
-python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["KPackageStructure"]="Plasma/LookAndFeel"; json.dump(m, open(p,"w"), indent=4)' \
-  "/usr/share/plasma/look-and-feel/$ID/metadata.json"
+# KWin's locker checks the password with PAM's "kde" service: Debian's common-auth if no package brought one.
+if [ ! -e /etc/pam.d/kde ]; then
+  printf '# KWin screen locker (written by Hearth: kwin-lock/install.sh)\n@include common-auth\n@include common-account\n' > /etc/pam.d/kde
+  echo "install.sh: /etc/pam.d/kde written (common-auth)"
+fi
+
+rm -rf "/usr/share/plasma/shells/$ID"
+mkdir -p /usr/share/plasma/shells
+cp -a "$SRC" "/usr/share/plasma/shells/$ID"
+rm -f "/usr/share/plasma/shells/$ID/install.sh"
 echo "install.sh: $KSL ($GREETER), lock screen $ID installed"

@@ -18,7 +18,7 @@ on:
             'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/Lock.qml', 'hosts/linux/desktop/shell/access-prompt.qml', 'hosts/linux/desktop/shell/hearth-lockcheck',
             'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
             'hosts/linux/desktop/kwin-helpers/**', 'hosts/linux/desktop/kwin-lock/**', 'hosts/linux/desktop/kwin/**',
-            'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml',
+            'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml', '.github/scripts/kwin-debian-lock.sh', 'hosts/linux/desktop/shell/hearth-pad',
             '.github/scripts/kwin-ci.sh']
   workflow_dispatch:
 
@@ -54,12 +54,34 @@ jobs:
           g=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
           [ -n "$g" ] && echo "::notice title=Debian greeter strings::$(strings "$g" | grep -iE 'shell|theme|lookandfeel|lockscreenmainscript|APIVersion' | sort -u | head -30 | tr '\n' '|' | cut -c1-1500)"
           [ "$irc" = 0 ] || exit 1
-          r=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_GREETER="$g" XDG_RUNTIME_DIR=/tmp python3 hosts/linux/desktop/shell/hearth-lockcheck); rc=$?
-          echo "::notice title=Debian hearth-lockcheck (with the greeter's own test run)::exit $rc $r"
+          r=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_GREETER="$g" XDG_RUNTIME_DIR=/tmp python3 hosts/linux/desktop/shell/hearth-lockcheck --as-kwin); rc=$?
+          echo "::notice title=Debian hearth-lockcheck --as-kwin (as the image build runs it)::exit $rc $r"
           echo "::notice title=Debian package types::$(ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>&1 | tr '\n' ' ') owners: $(dpkg -S /usr/lib/*/qt6/plugins/kf6/packagestructure/* 2>/dev/null | cut -d: -f1 | sort -u | tr '\n' ' ')"
           out=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen timeout 8 "$g" --testing 2>&1 | grep -v 'no notify signal' | head -30 | tr '\n' '|')
           echo "::notice title=Debian greeter test run::$(printf '%s' "$out" | cut -c1-3000)"
           exit $rc
+
+  # The lock screen on Debian trixie (as the image has it): KWin's locker with Hearth's lock screen, a user with a
+  # password: a wrong one typed with hearth-type doesn't unlock, the right one does (PAM).
+  lock-debian:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/debian:trixie
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - uses: actions/checkout@v4
+      - name: KWin, its screen locker and Hearth's lock screen, a test user
+        run: bash .github/scripts/kwin-debian-lock.sh setup
+      - name: Lock, a wrong password, the right password
+        timeout-minutes: 10
+        run: runuser -u hearthtest -- bash .github/scripts/kwin-debian-lock.sh run
+      - name: Keep the pictures and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kwin-debian-lock-shots
+          path: shots
+          retention-days: 14
 
   kwin:
     runs-on: ubuntu-latest
@@ -96,6 +118,8 @@ jobs:
           cp os/system_files/usr/share/applications/hearth-kwin-*.desktop /usr/share/applications/
           mkdir -p /usr/share/nimbus /usr/share/plasma/shells
           cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          # As in the image: root's, nobody else can change them (hearth-kwin-cast checks hearth-portal is).
+          chown -R root:root /usr/share/nimbus/desktop && chmod -R go-w /usr/share/nimbus/desktop
           cp -a hosts/linux/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
           # The portal: Hearth's backend (from this checkout) and the KWin session's portals.conf (build.sh's).
           mkdir -p /usr/share/xdg-desktop-portal/portals /usr/share/dbus-1/services
@@ -103,8 +127,7 @@ jobs:
           sed -n '/^cat > \/usr\/share\/xdg-desktop-portal\/hearth-portals.conf/,/^PORTALS$/p' os-bases/peppermint/build.sh | sed '1d;$d' \
             > /usr/share/xdg-desktop-portal/hearth-portals.conf
           cat /usr/share/xdg-desktop-portal/hearth-portals.conf
-          sed "s#/usr/share/nimbus/desktop/shell#$PWD/hosts/linux/desktop/shell#" os/system_files/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service \
-            > /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service
+          cp os/system_files/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service /usr/share/dbus-1/services/
 
       - name: KWin in labwc - typing, the on-screen keyboard, the lock screen
         timeout-minutes: 15
@@ -162,7 +185,7 @@ jobs:
   # The pictures as notices: title "SHOT <name> <n>", a JPEG of the 1920x1080 capture in base64 pieces, one step each
   # (a step keeps 10 notices).
   shots:
-    needs: kwin
+    needs: [kwin, lock-debian]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -170,6 +193,11 @@ jobs:
         continue-on-error: true
         with:
           name: kwin-input-shots
+          path: shots
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kwin-debian-lock-shots
           path: shots
       - name: Make the JPEGs
         run: |
@@ -206,6 +234,12 @@ jobs:
         run: f=shots/shot-picker.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT shot-picker $i::$part"; done || true
       - name: Picture (access-prompt)
         run: f=shots/access-prompt.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT access-prompt $i::$part"; done || true
+      - name: Picture (debian-locked)
+        run: f=shots/debian-locked.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-locked $i::$part"; done || true
+      - name: Picture (debian-wrong-password)
+        run: f=shots/debian-wrong-password.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-wrong-password $i::$part"; done || true
+      - name: Picture (debian-unlocked)
+        run: f=shots/debian-unlocked.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-unlocked $i::$part"; done || true
       - name: Picture (lock-greeter)
         run: f=shots/lock-greeter.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-greeter $i::$part"; done || true
       - name: Picture (lock-wrong-password)

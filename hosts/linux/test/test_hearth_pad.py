@@ -676,3 +676,42 @@ class HotplugTest(unittest.TestCase):
                 return ['/dev/input/event9']
         self.assertEqual(hp.gamepads(Evdev, {}), {})
         self.assertTrue(Gone.closed)
+
+
+class Locked(unittest.TestCase):
+    """The lock screen (Lock.qml, or KWin's locker with Hearth's screen): the controller is its keys only, and held."""
+
+    def test_keys_only(self):
+        pad, out = make()
+        pad.command({'cmd': 'locked', 'on': True})
+        self.assertTrue(pad.wants_grab)               # a game behind the lock screen never sees the presses
+        press(pad, 'down')
+        press(pad, 'a')
+        press(pad, 'b')
+        press(pad, 'x')
+        self.assertEqual([k for k, d in out.log if d], ['KEY_DOWN', 'KEY_ENTER', 'KEY_ESC', 'KEY_BACKSPACE'])
+        out.log.clear()
+        for b in ('guide', 'menu', 'view', 'y', 'rt', 'lt', 'lb', 'rb', 'l3'):
+            press(pad, b)
+        self.assertEqual(out.log, [])
+        self.assertNotIn('radial', [m.get('t') for m in out.sent])
+        self.assertEqual(pad.mode, 'desk')
+
+    def test_even_over_a_controller_app_or_fullscreen_game(self):
+        pad, out = make()
+        pad.owner = 'steam_app_570'
+        pad.command({'cmd': 'pause', 'on': True})
+        pad.command({'cmd': 'locked', 'on': True})
+        press(pad, 'a')
+        self.assertIn(('KEY_ENTER', True), out.log)
+
+    def test_unlock_gives_it_back(self):
+        pad, out = make()
+        pad.command({'cmd': 'locked', 'on': True})
+        pad.button('up', True, 0.0)                   # held while unlocking: let go, never stuck
+        pad.command({'cmd': 'locked', 'on': False})
+        self.assertIn(('KEY_UP', False), out.log)
+        self.assertFalse(pad.wants_grab)
+        out.log.clear()
+        press(pad, 'a')
+        self.assertIn(('BTN_LEFT', True), out.log)    # the desktop's A again

@@ -99,6 +99,8 @@ Scope {
     }
 
     function send(o) { if (proc.running) proc.write(JSON.stringify(o) + "\n"); }
+    // The lock screen (Lock.qml on labwc, KWin's locker on KWin: DeskState.locked): the controller is its keys only.
+    Connections { target: DeskState; function onLockedChanged() { pad.send({ cmd: "locked", on: DeskState.locked }); } }
     function sync() {
         sendFocus();
         sendKeys();
@@ -147,7 +149,7 @@ Scope {
         // The controller was just used for Hearth's menus: Mantel 2026's button-hint strip shows for a while (HintStrip.qml).
         if (["radial", "osk", "oskpad", "launcher", "help"].indexOf(m.t) >= 0) DeskState.padSeen = Date.now();
         switch (m.t) {
-        case "ready": problem = ""; sync(); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
+        case "ready": problem = ""; sync(); send({ cmd: "locked", on: DeskState.locked }); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
         case "error": problem = m.text; break;
         case "radial": radial.update(m); break;
         // Y: the Tiles / Start screen menus take it to move a tile when one has the focus ring (launcher.padY).
