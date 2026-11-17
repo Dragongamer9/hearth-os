@@ -8,7 +8,7 @@
 #    from plasma-workspace's package, and every library it needs must already be there.
 # 3. The lock screen itself, as that shell package (and as a look-and-feel package for older lockers).
 # Fails (exit 1) when any of it is missing: a lock screen that can't show would be a lockout.
-set -euo pipefail
+set -Eeuo pipefail
 trap 'echo "install.sh: failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 SRC=${1:?install.sh SOURCE_FOLDER}
 ID=org.hearth.mantel-lock
