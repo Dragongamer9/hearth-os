@@ -2453,7 +2453,7 @@ jobs:
   # Screens under KWin (Mantel on KWin, 1.14, docs/SCREENS.md): KWin (Fedora's) on a 1920×1080 screen inside a headless
   # labwc, with HEARTH_WM=kwin as the session gives it. Checks hearth-screens against the real kscreen-doctor (get, set
   # and keep, restore), KWin's Night Light settings, screen off and on (KWin's DPMS), and a screenshot through
-  # hearth-screenshot with KWin's permission check on (hearth-screenshot.desktop as the images install it). Then
+  # hearth-screenshot with KWin's permission check on (hearth-kwin-cast and its .desktop file as the images install them). Then
   # Settings › Display in the real shell, its pictures as SHOT notices. Problems are ::error:: annotations.
   kwin-screens:
     runs-on: ubuntu-latest
@@ -2467,7 +2467,10 @@ jobs:
         run: |
           dnf -y install dnf5-plugins git kwin libkscreen kf6-kservice kf6-kconfig labwc grim wlr-randr xorg-x11-server-Xwayland mesa-dri-drivers \
             python3 python3-gobject python3-pillow dbus-daemon dbus-tools glib2 qt6-qtsvg procps-ng google-noto-sans-fonts \
-            breeze-icon-theme adwaita-icon-theme rsms-inter-fonts wtype >/dev/null
+            breeze-icon-theme adwaita-icon-theme rsms-inter-fonts wtype \
+            gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel >/dev/null
+          # hearth-kwin-cast (the helper KWin trusts for screenshots) is built from plasma-wayland-protocols' XML.
+          dnf -y install --skip-unavailable plasma-wayland-protocols-devel plasma-wayland-protocols >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           for b in kwin_wayland kscreen-doctor quickshell; do command -v $b >/dev/null || echo "::error title=KWin screens::$b isn't installed"; done
@@ -2488,12 +2491,16 @@ jobs:
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 NIMBUS_SHARE="$PWD/hosts/linux" HEARTH_WM=kwin
           export KSCREEN_BACKEND=KWayland KSCREEN_BACKEND_INPROCESS=1 LANG=C.UTF-8 LC_ALL=C.UTF-8
-          # The images' screenshot trust (os-bases/peppermint/build.sh, os/system_files): hearth-screenshot runs this
-          # checkout's hearth-screens through its own Python, which hearth-screenshot.desktop names. No
+          # The images' screenshot trust (os-bases/peppermint/build.sh, os/system_files): hearth-screens takes its
+          # pictures through hearth-kwin-cast, which hearth-kwin-cast.desktop names and which answers only
+          # hearth-portal and hearth-screens when they're root's and nobody else can change them (as in the image). No
           # KWIN_SCREENSHOT_NO_PERMISSION_CHECKS: KWin checks for real.
-          install -d /usr/libexec/nimbus /usr/share/nimbus/desktop
-          cp "$(readlink -f /usr/bin/python3)" /usr/libexec/nimbus/hearth-shot-python
-          install -Dm644 os/system_files/usr/share/applications/hearth-screenshot.desktop /usr/share/applications/hearth-screenshot.desktop
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/kwin/helpers-build.log 2>&1 \
+            || fail "hearth-kwin-cast didn't build: $(grep -E 'error' shots/kwin/helpers-build.log | head -6 | tr '\n' '|' | cut -c1-600)"
+          install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
+          install -d /usr/share/nimbus/desktop
           install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/bin/hearth-screenshot
           ln -sfn "$PWD/hosts/linux/desktop/shell" /usr/share/nimbus/desktop/shell
           kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
@@ -2629,15 +2636,18 @@ jobs:
           echo "::notice title=KWin screens: screen off::exit $off; while off: $dpms; on again: $(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)"
           # A screenshot through KWin's ScreenShot2 with its permission check on (an unknown program gets NoAuthorized at
           # once; KWin quitting means it was let in and then couldn't draw the picture on this runner).
-          # First a program KWin doesn't know (plain python3): it must be refused.
-          timeout 40 python3 $SH shot shots/kwin/untrusted.png > shots/kwin/untrusted.txt 2>&1
-          if grep -q "didn't let Hearth" shots/kwin/untrusted.txt; then echo "::notice title=KWin screens: untrusted::plain python3 was refused, as it should be: $(head -c 200 shots/kwin/untrusted.txt)"
-          else echo "::notice title=KWin screens: untrusted::plain python3 wasn't refused (newer KWin than Debian's 6.3 has no per-program check here): $(head -c 300 shots/kwin/untrusted.txt | tr '\n' '|')"; fi
+          # First programs KWin and the helper don't know: hearth-kwin-cast started by anything but hearth-portal or
+          # hearth-screens must refuse (exit 3), and so must its streams and remote input for hearth-screens.
+          python3 -c 'import subprocess, sys; sys.exit(subprocess.call(["/usr/libexec/hearth/hearth-kwin-cast", "shot", "workspace"], stdout=subprocess.DEVNULL))' 2> shots/kwin/untrusted.txt
+          rc=$?; [ $rc = 3 ] && echo "::notice title=KWin screens: untrusted::hearth-kwin-cast refused a program that isn't hearth-portal or hearth-screens (exit 3): $(head -c 200 shots/kwin/untrusted.txt)" \
+            || fail "hearth-kwin-cast didn't refuse an unknown program (exit $rc): $(head -c 300 shots/kwin/untrusted.txt | tr '\n' '|')"
+          timeout 40 gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/ScreenShot2 --method org.kde.KWin.ScreenShot2.CaptureWorkspace '{}' 0 > shots/kwin/untrusted-gdbus.txt 2>&1
+          echo "::notice title=KWin screens: untrusted::gdbus straight to ScreenShot2: $(head -c 300 shots/kwin/untrusted-gdbus.txt | tr '\n' '|')"
           timeout 40 hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
           if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
             echo "::notice title=KWin screens: screenshot::hearth-screenshot took a picture through KWin's ScreenShot2 (permission check on): $(cat shots/kwin/screenshot-size.txt)"
           elif grep -q -i 'NoAuthorized\|not authorized\|didn.t let Hearth' shots/kwin/screenshot-check.txt; then
-            fail "KWin refused hearth-screenshot (hearth-screenshot.desktop's trust didn't work): $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
+            fail "KWin refused hearth-screenshot (hearth-kwin-cast.desktop's trust didn't work): $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
           else
             fail "hearth-screenshot under KWin: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-300) KWin: $(grep -v -i locale shots/kwin/kwin.log | tail -3 | tr '\n' '|' | cut -c1-300)"
           fi
