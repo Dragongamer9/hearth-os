@@ -158,8 +158,9 @@ labwc_size; IN=$(labwc_display)
 wait_up 60
 sleep 8
 shot kwin-5-twice-card
-# The card's own keys: Escape closes it (labwc's virtual keyboard), then the page.
-[ -n "$IN" ] && WAYLAND_DISPLAY=$IN wtype -k Escape 2>/dev/null; sleep 2
+# The card off the screen for the page's picture: Mantel restarted (the autostart's watcher starts it again; the
+# notice was shown, so the card doesn't come back).
+pkill -TERM -x quickshell; sleep 12
 ipc "$IN" settings page your-desktop; sleep 3
 shot kwin-6-your-desktop-paused
 ipc "$IN" settings close

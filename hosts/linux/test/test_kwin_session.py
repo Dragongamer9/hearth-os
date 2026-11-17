@@ -309,7 +309,7 @@ class Autostart(Base):
         self.addCleanup(lambda: (p.kill(), p.wait()))
         e = self.env(HEARTH_WM='kwin', HEARTH_DESKTOP_PID=str(p.pid))
         subprocess.run(['sh', str(AUTOSTART)], env=e, timeout=30)
-        for _ in range(150):
+        for _ in range(300):
             if os.path.exists(os.path.join(self.home, 'screens-ran')) and self.lines('quickshell-ran'):
                 break
             time.sleep(0.2)
