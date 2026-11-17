@@ -82,7 +82,6 @@ jobs:
           printf '#!/bin/sh\necho "$*" >> /tmp/nimbus-mode-asked\n' > /tmp/fakebin/nimbus-mode && chmod +x /tmp/fakebin/nimbus-mode
           export PATH="/tmp/fakebin:$PATH"
           echo "::notice title=render devices::$(ls -l /dev/dri 2>&1 | tr '\n' '|' | cut -c1-400)"
-          # With the lock screen part of KWin running (as in the session): KWin checks it before Super on its own.
           # KWin needs real input for the key checks: on a virtual screen KWin 6 reads no input devices, and nested in a
           # labwc it never shows a frame. So KWin runs on a virtual KMS screen (the kernel's vkms) like on a real
           # device, reading the uinput keyboard through libinput. KWin on its own virtual screen if that fails (the key
@@ -98,7 +97,7 @@ jobs:
           for c in /sys/class/drm/card[0-9]*; do case "$c" in *-*) continue;; esac; ls -d "$c"-* >/dev/null 2>&1 && VKMS=/dev/dri/$(basename "$c"); done
           echo "::notice title=KMS::screen card: ${VKMS:-none} ($(ls /sys/class/drm | tr '\n' ' '))"
           if [ -n "$VKMS" ]; then
-            KWIN_DRM_DEVICES=$VKMS /tmp/kwin_wayland --drm --xwayland --socket wayland-hearth "$X11ENV" >shots/kwin.log 2>&1 &
+            KWIN_DRM_DEVICES=$VKMS /tmp/kwin_wayland --drm --xwayland --no-lockscreen --socket wayland-hearth "$X11ENV" >shots/kwin.log 2>&1 &
             for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
           fi
           if [ ! -S "$XDG_RUNTIME_DIR/wayland-hearth" ]; then
