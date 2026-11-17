@@ -1,7 +1,9 @@
 # Hearth Desktop Mode on KWin: Super pressed and let go on its own opens Mantel's app menu (like labwc's Super_L),
-# through hearth-kwin-bridge (org.hearth.Windows). Read through XDG_CONFIG_DIRS: your own kwinrc wins.
+# through hearth-kwin-bridge (org.hearth.Windows). Read through XDG_CONFIG_DIRS: your own kwinrc wins, except for
+# this key: it's fixed ([$i], KConfig's "immutable") because a Meta= left from KDE Plasma (1.13) points at plasmashell,
+# which doesn't run here, and Super would open nothing. What Super opens is Settings › Desktop › App menu's choice.
 [ModifierOnlyShortcuts]
-Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher
+Meta[$i]=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher
 
 # Four virtual desktops named like labwc's (rc.xml <desktops>), for the taskbar's desktop buttons and "Move to desktop".
 [Desktops]

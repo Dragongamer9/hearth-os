@@ -49,6 +49,7 @@ var PAGES = [
     { id: "datetime", file: "SetDateTime.qml", cat: "system", label: "Date & time", icon: "clock", desc: "Time zone, 24-hour clock", words: "clock time zone 24-hour", old: "Date & time" },
     { id: "region", file: "SetRegion.qml", cat: "system", label: "Region & language", icon: "globe", desc: "Language, and how dates, numbers, money and measurements are written", words: "language locale formats region country numbers currency money date format measurement metric imperial paper a4 letter translation" },
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
+    { id: "search", file: "SetSearch.qml", cat: "system", label: "Search", icon: "search", desc: "The file index, searching inside documents, and what the app menus' search finds", words: "file index indexing baloo krunner find files contents documents calculator units currency web shortcuts emoji commands" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
 
     // ---- Network & internet (Wi-Fi is the landing, as in the mockup; Tailscale follows it under "Reach your devices from anywhere")
@@ -68,6 +69,7 @@ var PAGES = [
     { id: "phone", file: "SetPhone.qml", cat: "bt", label: "Phone", icon: "phone", desc: "Your phone linked with the KDE Connect app: notifications, messages, files, calls", words: "kde connect kdeconnect android iphone mobile sms text messages notifications reply clipboard share send files ring find my phone touchpad remote input presentation remote calls mute ringer run commands battery browse phone files sftp contacts photo" },
     { id: "phone-messages", file: "SetPhoneMessages.qml", cat: "bt", parent: "phone", label: "Messages", icon: "chat", desc: "Your phone's text messages: read and send", words: "sms text messages conversations send a text", hidden: true },
     // ---- end Phone link
+    { id: "kwin-tablet", file: "SetKwinTablet.qml", cat: "bt", label: "Drawing tablet & touchscreen", icon: "edit", desc: "Pen tablet's screen and area, pressure, pen buttons; touchscreen screen and calibration", words: "kwin tablet wacom pen stylus pressure buttons touchscreen calibrate calibration map screen" },
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
     { id: "thunderbolt", file: "SetThunderbolt.qml", cat: "bt", label: "Thunderbolt", icon: "link", desc: "Docks, drives and screens on Thunderbolt or USB4: allow them, or forget them", words: "thunderbolt usb4 dock egpu bolt boltctl authorize allow device security" },
 
@@ -79,13 +81,20 @@ var PAGES = [
     { id: "appearance", file: "SetAppearance.qml", cat: "pers", label: "Personalization", icon: "palette", words: "look theme accent colour color wallpaper dark light mode sunset transparency clock", old: "Appearance", landing: true },
     { id: "bar-dock", file: "SetBarDock.qml", cat: "pers", label: "Bar and dock", icon: "window", desc: "Where the bar goes, the dock, auto-hide, the app menu and the right-click menu", words: "taskbar panel dock autohide islands bar layout edge app menu start tiles classic centred right-click context menu windows 11 compact", status: "bar" },
     { id: "fonts", file: "SetFonts.qml", cat: "pers", label: "Fonts, cursor & icons", icon: "doc", desc: "The font and its size, font smoothing, the mouse cursor, the icon theme", words: "font fonts size monospace fixed width terminal antialiasing smoothing hinting dpi cursor pointer size icon theme icons qt gtk" },
+    // Mantel on KWin (1.14, docs/KWIN-SETTINGS.md): KWin's own settings, Hearth's pages (greyed under labwc)
+    { id: "kwin-effects", file: "SetKwinEffects.qml", cat: "pers", label: "Window effects", icon: "sparkle", desc: "Animation speed, overview, Alt+Tab, blur, wobbly windows, minimize and open effects, dimming", words: "kwin effects animation speed overview present windows desktop grid alt tab switcher blur translucency transparent wobbly magic lamp squash fade glide scale dim inactive shake cursor mouse click track" },
+    { id: "kwin-desktops", file: "SetKwinDesktops.qml", cat: "pers", label: "Virtual desktops", icon: "desktops", desc: "How many desktops, their names, rows, switching animation", words: "kwin virtual desktops workspaces rows names wrap slide switch" },
+    { id: "kwin-tiling", file: "SetKwinTiling.qml", cat: "pers", label: "Tiling", icon: "grid", desc: "Each screen's tile layout, dragging windows to edges, snapping", words: "kwin tiling tiles layout columns quick tile snap edges corners maximize" },
+    { id: "kwin-edges", file: "SetKwinEdges.qml", cat: "pers", label: "Screen edges", icon: "display", desc: "Hot corners, edges, touchscreen swipes, sticky edges between screens", words: "kwin hot corners screen edges electric borders touch swipe edge barrier" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
     { id: "apps", file: "SetApps.qml", cat: "apps", label: "Installed apps", icon: "store", desc: "Apps from Debian packages, Flathub and AppImages; uninstall", words: "install uninstall packages deb flatpak appimage", old: "Apps" },
+    { id: "store", file: "SetStore.qml", cat: "apps", label: "App store", icon: "store", desc: "Find and install apps from Flathub, updates and sources", words: "discover flathub flatpak install get apps software center store updates sources remotes reviews ratings screenshots" },
     { id: "winapps", file: "SetWinApps.qml", cat: "apps", label: "Windows apps", icon: "window", desc: "Windows programs (.exe, .msi) with the Proton built into Hearth OS: open, Proton, remove", words: "windows exe msi proton wine dxvk vkd3d ge-proton program installer" },
     { id: "defaults", file: "SetDefaults.qml", cat: "apps", label: "Default apps", icon: "grid", desc: "Which app opens web links, pictures, music and more", words: "default apps browser terminal", old: "Default apps" },
     { id: "services", file: "SetServices.qml", cat: "apps", label: "Background services", icon: "gear", desc: "Programs that run in the background for you, and whether they start when you sign in", words: "background services systemd daemons startup autostart user services" },
+    { id: "kwin-rules", file: "SetKwinRules.qml", cat: "apps", label: "Window rules", icon: "window", desc: "Make an app's windows open where, how big and how you want", words: "kwin window rules position size desktop keep above no border opacity tearing app class" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
     { id: "claude", file: "SetClaude.qml", cat: "apps", label: "Claude", icon: "chat", desc: "Claude on this PC", words: "ai assistant", old: "Claude" },
 
@@ -100,6 +109,7 @@ var PAGES = [
     { id: "discord", file: "SetDiscord.qml", cat: "gaming", label: "Discord", icon: "chat", desc: "Which Discord the bar opens, what you're playing on Discord, friends joining", words: "friends chat invite rich presence playing join dorion matrix", old: "Friends" },
     { id: "remote", file: "SetRemote.qml", cat: "gaming", label: "Remote play", icon: "play", desc: "Stream this PC's games to your phone or TV, play another PC here, or use this PC from anywhere", words: "moonlight sunshine stream anywhere remote desktop work tailscale", old: "Remote play" },
     { id: "controller", file: "SetController.qml", cat: "gaming", label: "Controller", icon: "pad", desc: "Controller mouse, button layout, what games see, remapping", words: "gamepad buttons pad", old: "Controller" },
+    { id: "kwin-games", file: "SetKwinGames.qml", cat: "gaming", label: "Full-screen games & X11 apps", icon: "pad", desc: "Tearing in full-screen games, keys X11 apps can see, scaling X11 apps", words: "kwin tearing vsync latency xwayland x11 push to talk eavesdrop scaling blurry" },
     { id: "handheld", file: "SetHandheld.qml", cat: "gaming", label: "Handheld", icon: "bolt", desc: "Power limit, fans, lights and back buttons (Handheld Daemon)", words: "hhd tdp rgb lights fans", old: "Handheld" },
 
     // ---- Accounts
@@ -133,6 +143,7 @@ var PAGES = [
     { id: "privacy", file: "SetCategory.qml", cat: "privacy", label: "Privacy & security", icon: "shield", landing: true },
     { id: "player-count", file: "SetAbout.qml", cat: "privacy", label: "Player count", icon: "users", desc: "Hearth OS's anonymous count of running devices", words: "privacy counter telemetry anonymous", old: "About › Privacy", props: { part: "privacy" }, status: "countMe" },
     { id: "firmware", file: "SetFirmware.qml", cat: "privacy", label: "Firmware & device security", icon: "shield", desc: "Secure Boot, the TPM security chip, firmware updates for this PC's parts", words: "firmware fwupd lvfs bios uefi update secure boot tpm hsi security chip" },
+    { id: "passwords", file: "SetPasswords.qml", cat: "privacy", label: "Passwords", icon: "key", desc: "Sign-ins apps keep in the password store, keyrings, lock", words: "keyring gnome keyring kwallet wallet secret service saved passwords sign-ins remove lock unlock" },
 
     // ---- Accessibility (the page is the landing)
     { id: "accessibility", file: "SetAccessibility.qml", cat: "a11y", label: "Accessibility", icon: "access", words: "magnifier contrast text size screen reader colour filters reduce motion", old: "Accessibility", landing: true },

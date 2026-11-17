@@ -6,6 +6,7 @@ sys.dont_write_bytecode = True   # keep desktop/shell clean (it ships as-is)
 import importlib.machinery
 import importlib.util
 import json
+import math
 import pathlib
 import re
 import shutil
@@ -101,7 +102,7 @@ class Shortcuts(unittest.TestCase):
         self.assertEqual(kb.qt_key('Meta+Left'), 0x10000000 | 0x01000012)
         self.assertEqual(kb.qt_key('Meta+Shift+Backtab'), 0x12000000 | 0x01000002)
         self.assertEqual(kb.qt_key('Meta+0'), 0x10000030)
-        self.assertIn('Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
+        self.assertIn('Meta[$i]=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
         self.assertFalse((KWIN / 'xdg' / 'kglobalshortcutsrc').exists(), 'kglobalaccel never reads a default file')
 
     def test_extra_ids_and_launcher(self):
@@ -185,6 +186,36 @@ class KdeKeysFix(unittest.TestCase):
         self.assertEqual(k.sets, [], 'restored keys were changed again')
 
 
+    def test_settings_button_puts_kdes_keys_back(self):
+        # Settings › Keyboard › Bring back KDE's own shortcuts (review, Nov 17): what changed is read without D-Bus
+        # or writing; a key that can't be put back now is tried again next time, never marked as done.
+        self.assertEqual(kb.changed_kde_keys(), {'changed': [], 'count': 0})
+        k = self.fake()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        ch = kb.changed_kde_keys()
+        self.assertEqual(sorted(c['key'] for c in ch['changed']), ['kwin/Grid View', 'kwin/Window Quick Tile Left'])
+        real = k.set
+
+        def flaky(aid, keys):
+            if aid[1] == 'Grid View':
+                raise RuntimeError('kglobalaccel is not there')
+            real(aid, keys)
+        k.set = flaky
+        back = kb.restore_kde_keys(k)
+        self.assertIn('kwin/Window Quick Tile Left', back)
+        self.assertNotIn('kwin/Grid View', back)
+        self.assertEqual([c['key'] for c in kb.changed_kde_keys()['changed']], ['kwin/Grid View'])
+        k.set = real
+        k.sets.clear()
+        self.assertEqual(kb.restore_kde_keys(k), ['kwin/Grid View'], 'only what is still to put back')
+        self.assertEqual(k.get(['kwin', 'Grid View']), [[MG]])
+        self.assertEqual(kb.changed_kde_keys()['count'], 0)
+        page = (LINUX / 'desktop' / 'shell' / 'SetKeyboard.qml').read_text()
+        self.assertIn('"Bring back KDE\'s own shortcuts"', page)
+        self.assertIn('["keys", "restore", "--json"]', page)
+        self.assertIn("Settings › Keyboard › Bring back KDE", (LINUX / 'desktop' / 'shell' / 'hearth-kwin-bridge').read_text())
+
+
 class Script(unittest.TestCase):
     def test_render_fills_everything(self):
         src = kb.render()
@@ -249,6 +280,100 @@ class Frames(unittest.TestCase):
         for b in ('close', 'minimize', 'maximize', 'restore'):
             ids = {e.get('id') for e in ET.fromstring(files[b + '.svg']).iter() if e.get('id')}
             self.assertEqual(ids, {'active-center', 'inactive-center', 'hover-center', 'pressed-center', 'deactivated-center'}, b)
+
+    def _parts(self, svg):
+        """{id: (x, y, w, h)} of decoration.svg's parts (each group's first rect is its size, as KSvg reads it)."""
+        out = {}
+        for g in ET.fromstring(svg).iter('{http://www.w3.org/2000/svg}g'):
+            r = g.find('{http://www.w3.org/2000/svg}rect')
+            out[g.get('id')] = tuple(float(r.get(k)) for k in ('x', 'y', 'width', 'height'))
+        return out
+
+    def test_shadow_like_labwcs(self):
+        """A soft drop shadow round the frame, as labwc's (60 px at 38 % in front, 40 px at 25 % behind, no offset),
+        in Aurorae's padding; the rounded corners still fit."""
+        ha = self.ha
+        self.assertEqual(ha.SHADOW['active'], (60, 0x60 / 255.0))
+        self.assertEqual(ha.SHADOW['inactive'], (40, 0x40 / 255.0))
+        P = ha.PAD
+        self.assertEqual(P, 42)
+        # Darkest at the frame's edge, fading to nothing by the padding's edge; the window in front's is darker.
+        for st in ('active', 'inactive'):
+            a = [ha.shadow_alpha(st, d) for d in range(P + 1)]
+            self.assertTrue(all(x >= y for x, y in zip(a, a[1:])), st)
+            self.assertLess(a[-1], 0.005, st)
+        self.assertGreater(ha.shadow_alpha('active', 0), ha.shadow_alpha('inactive', 0))
+        self.assertAlmostEqual(ha.shadow_alpha('active', 0), 0.376 * math.exp(-4.5 * 0.09), places=3)
+        self.assertEqual(ha.shadow_alpha('inactive', 28), 0.0)            # 40 px, 30 % of it under the window
+        for radius, R in ((10, 10), (3, 3), (0, 1), (40, 16)):
+            files = ha.build(self.cols, radius)
+            parts = self._parts(files['decoration.svg'])
+            for pre in ('decoration-', 'decoration-inactive-'):
+                self.assertEqual(parts[pre + 'topleft'][2:], (P + R, P + ha.TITLE_H), (pre, radius))
+                self.assertEqual(parts[pre + 'topright'][2:], (P + R, P + ha.TITLE_H))
+                self.assertEqual(parts[pre + 'top'][3], P + ha.TITLE_H)
+                self.assertEqual(parts[pre + 'left'][2], P + R)
+                self.assertEqual(parts[pre + 'right'][2], P + R)
+                self.assertEqual(parts[pre + 'bottom'][3], P + ha.BORDER)
+                self.assertEqual(parts[pre + 'bottomleft'][2:], (P + R, P + ha.BORDER))
+                self.assertEqual(parts[pre + 'bottomright'][2:], (P + R, P + ha.BORDER))
+            # The rounded corner is still there (an arc of the radius in the title colour).
+            self.assertIn('A %d %d 0 0 1' % (R, R), files['decoration.svg'])
+            # Nothing reaches past its part (no strokes, every rect inside its part's size): KSvg would shrink the part
+            # and leave a light seam where it meets the next one.
+            self.assertNotIn('stroke', files['decoration.svg'])
+            for g in ET.fromstring(files['decoration.svg']).iter('{http://www.w3.org/2000/svg}g'):
+                rects = g.findall('{http://www.w3.org/2000/svg}rect')
+                x, y, w, h = (float(rects[0].get(k)) for k in ('x', 'y', 'width', 'height'))
+                for rr in rects[1:]:
+                    rx, ry, rw, rh = (float(rr.get(k)) for k in ('x', 'y', 'width', 'height'))
+                    self.assertTrue(rx >= x and ry >= y and rx + rw <= x + w and ry + rh <= y + h, (g.get('id'), radius))
+        files = ha.build(self.cols, 10)
+        svg = files['decoration.svg']
+        root = ET.fromstring(svg)
+        ns = '{http://www.w3.org/2000/svg}'
+        grads = {g.get('id'): g for g in root.iter() if g.tag in (ns + 'linearGradient', ns + 'radialGradient')}
+        self.assertTrue(grads)
+        first = lambda gid: float(grads[gid].findall(ns + 'stop')[0].get('stop-opacity'))
+        last = lambda gid: float(grads[gid].findall(ns + 'stop')[-1].get('stop-opacity'))
+        self.assertAlmostEqual(first('s0t'), ha.shadow_alpha('active', 0), places=3)
+        self.assertAlmostEqual(first('s1t'), ha.shadow_alpha('inactive', 0), places=3)
+        for gid in grads:
+            self.assertLess(last(gid), 0.005, gid)
+            self.assertTrue(all(s.get('stop-color') == '#000000' for s in grads[gid].findall(ns + 'stop')), gid)
+        # Every shadow is the same distance all round: no offset (labwc's sits straight behind the window).
+        for side in ('t', 'b', 'l', 'r'):
+            stops = [float(s.get('stop-opacity')) for s in grads['s0' + side].findall(ns + 'stop')]
+            self.assertEqual(stops, [float(s.get('stop-opacity')) for s in grads['s0t'].findall(ns + 'stop')], side)
+        # Aurorae's padding is the shadow's room, and it's switched on.
+        rc = files['hearthrc']
+        for k in ('PaddingTop', 'PaddingBottom', 'PaddingLeft', 'PaddingRight'):
+            self.assertIn('%s=%d\n' % (k, P), rc)
+        self.assertIn('Shadow=true\n', rc)
+        self.assertNotIn('Shadow=false', rc)
+        for k in ('TitleEdgeTopMaximized', 'TitleEdgeBottomMaximized', 'TitleEdgeLeftMaximized', 'TitleEdgeRightMaximized'):
+            self.assertIn(k + '=0\n', rc)
+        self.assertIn('X-Hearth-Frames=1', files['metadata.desktop'])
+
+    def test_maximized_no_shadow(self):
+        """A maximized window: flat title colour, no shadow, no border (KWin leaves the padding out)."""
+        files = self.ha.build(self.cols, 10)
+        root = ET.fromstring(files['decoration.svg'])
+        groups = {g.get('id'): g for g in root.iter('{http://www.w3.org/2000/svg}g')}
+        for pre, bg in (('decoration-maximized-', self.cols['window.active.title.bg.color']),
+                        ('decoration-maximized-inactive-', self.cols['window.inactive.title.bg.color'])):
+            for part in ('topleft', 'top', 'topright', 'left', 'center', 'right', 'bottomleft', 'bottom', 'bottomright'):
+                g = groups[pre + part]
+                fills = [r.get('fill') for r in g.iter() if r.get('fill') and r.get('fill-opacity') != '0']
+                self.assertTrue(fills and all(f.lower() == bg.lower() for f in fills), (pre, part, fills))
+                self.assertFalse(any('url(' in f for f in fills), (pre, part))
+
+    def test_look_change_new_name(self):
+        """The shadow doesn't stop each look getting its own hearth-<hex> folder, and the same look keeps its name."""
+        a = self.ha.version_name(self.cols, 10)
+        self.assertEqual(a, self.ha.version_name(self.cols, 10))
+        self.assertNotEqual(a, self.ha.version_name(self.cols, 4))
+        self.assertNotEqual(a, self.ha.version_name(dict(self.cols, **{'window.active.title.bg.color': '#123456'}), 10))
 
     def test_writes_only_its_own_folder(self):
         with tempfile.TemporaryDirectory() as d:

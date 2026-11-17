@@ -13,9 +13,11 @@ it; a decoration someone chose in their own ~/.config/kwinrc wins. After a look 
 again and asks KWin to reconfigure (only under KWin), so the frames follow the look live.
 
 The colours are labwc's (themerc-override keys), so the two window managers' frames match; build() gets them already
-mapped to the chosen look and accent.
+mapped to the chosen look and accent. So is the drop shadow (SHADOW: labwc's sizes and opacities, in front and behind),
+drawn in Aurorae's padding round the frame; a maximized window has none and sits edge to edge.
 """
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -44,46 +46,146 @@ def rgb_text(h):
     return ','.join(str(int(h[i:i + 2], 16)) for i in (0, 2, 4))
 
 
+# The drop shadow, as labwc's (labwc-theme(5) defaults; Hearth's themerc-override doesn't change them): 60 px for the
+# window in front at #00000060 (38 %), 40 px behind it at #00000040 (25 %), straight behind the window (labwc has no
+# offset), starting 30 % of its size under the window's edge (labwc's SSD_SHADOW_INSET) and fading out like a gaussian.
+# Aurorae draws a shadow in the frame's padding (the PaddingLeft/Right/Top/Bottom space round the window, made the
+# window's shadow by KWin and left out when it's maximized), one size for both, so the padding is the bigger one's
+# visible part and the smaller shadow fades out inside it.
+SHADOW = {'active': (60, 0x60 / 255.0), 'inactive': (40, 0x40 / 255.0)}
+SHADOW_INSET = 0.3
+PAD = int(round(SHADOW['active'][0] * (1 - SHADOW_INSET)))      # 42
+
+
+def shadow_alpha(state, d):
+    """The shadow's opacity D px outside the frame's edge (STATE: 'active' or 'inactive')."""
+    size, a = SHADOW[state]
+    t = (d + SHADOW_INSET * size) / float(size)
+    return 0.0 if t >= 1 else a * math.exp(-4.5 * t * t)
+
+
+def _stops(state, span, inner=0):
+    """Gradient stops from the frame's edge (INNER px into the gradient) out to SPAN px."""
+    out = []
+    n = 12
+    for i in range(n + 1):
+        d = PAD * i / float(n)
+        off = (inner + d) / float(span)
+        out.append('<stop offset="%.4f" stop-color="#000000" stop-opacity="%.4f"/>' % (min(off, 1.0), shadow_alpha(state, d)))
+    if inner:
+        out.insert(0, '<stop offset="0" stop-color="#000000" stop-opacity="%.4f"/>' % shadow_alpha(state, 0))
+    return ''.join(out)
+
+
 def frame_svg(c, radius):
-    """decoration.svg: the frame in nine parts, active and inactive. Top corners rounded (labwc rounds the title bar's
-    top corners only); the window's own content stays square below."""
+    """decoration.svg: the frame in nine parts, active and inactive, each with its shadow on the outside (PAD px, see
+    SHADOW), plus flat ones for a maximized window (no shadow, no border). Top corners rounded (labwc rounds the title
+    bar's top corners only); the window's own content stays square below.
+
+    Each part is a group whose first rect is its size (KSvg takes a part's size from its bounds). The sides are PAD + R
+    wide (R the corner radius) so the rounded corner fits whichever way KSvg sizes the corners; the client covers all
+    but the outer PAD + 1 px of them (Aurorae places it by the hearthrc borders and the padding)."""
     r = max(0, min(int(radius), 16))
-    parts = []
-    for prefix, bg, line in (('', c['active.bg'], c['active.border']), ('inactive-', c['inactive.bg'], c['inactive.border'])):
-        R = max(r, 1)
-        # Corners are R x TITLE_H at the top, BORDER x BORDER at the bottom; edges stretch.
-        def rect(eid, x, y, w, h, fill):
-            parts.append('<rect id="decoration-%s%s" x="%d" y="%d" width="%d" height="%d" fill="%s"/>' % (prefix, eid, x, y, w, h, fill))
-        oy = 0 if prefix == '' else 200        # the inactive set below the active one
-        ox = 0
-        # top-left: a rounded corner filled with the title colour, the border on its outside
-        tl = ('<g id="decoration-%stopleft"><rect x="%d" y="%d" width="%d" height="%d" fill="none"/>'
-              '<path d="M %d %d L %d %d A %d %d 0 0 1 %d %d L %d %d L %d %d Z" fill="%s"/>'
-              '<path d="M %.1f %d L %.1f %d A %.1f %.1f 0 0 1 %d %.1f" fill="none" stroke="%s" stroke-width="%d"/></g>') % (
-            prefix, ox, oy, R, TITLE_H,
-            ox, oy + TITLE_H, ox, oy + R, R, R, ox + R, oy, ox + R, oy + TITLE_H, ox, oy + TITLE_H, bg,
-            ox + 0.5, oy + TITLE_H, ox + 0.5, oy + R, R - 0.5, R - 0.5, ox + R, oy + 0.5, line, BORDER)
-        parts.append(tl)
-        ox2 = ox + R + 20
-        parts.append(('<g id="decoration-%stop"><rect x="%d" y="%d" width="10" height="%d" fill="%s"/>'
-                      '<rect x="%d" y="%d" width="10" height="%d" fill="%s"/></g>') % (prefix, ox2, oy, TITLE_H, bg, ox2, oy, BORDER, line))
-        ox3 = ox2 + 30
-        tr = ('<g id="decoration-%stopright"><rect x="%d" y="%d" width="%d" height="%d" fill="none"/>'
-              '<path d="M %d %d L %d %d A %d %d 0 0 1 %d %d L %d %d Z" fill="%s"/>'
-              '<path d="M %d %.1f A %.1f %.1f 0 0 1 %.1f %d L %.1f %d" fill="none" stroke="%s" stroke-width="%d"/></g>') % (
-            prefix, ox3, oy, R, TITLE_H,
-            ox3, oy + TITLE_H, ox3, oy, R, R, ox3 + R, oy + R, ox3 + R, oy + TITLE_H, bg,
-            ox3, oy + 0.5, R - 0.5, R - 0.5, ox3 + R - 0.5, oy + R, ox3 + R - 0.5, oy + TITLE_H, line, BORDER)
-        parts.append(tr)
-        by = oy + TITLE_H + 40
-        rect('left', ox, by, BORDER, 10, line)
-        rect('right', ox + 20, by, BORDER, 10, line)
-        rect('center', ox + 40, by, 10, 10, bg)
-        rect('bottomleft', ox, by + 30, BORDER, BORDER, line)
-        rect('bottom', ox + 20, by + 30, 10, BORDER, line)
-        rect('bottomright', ox + 40, by + 30, BORDER, BORDER, line)
+    R = max(r, BORDER)
+    P = PAD
+    W = P + R                      # the sides' and corners' width
+    TH = P + TITLE_H               # the top parts' height
+    BH = P + BORDER                # the bottom parts' height
+    defs, parts = [], []
+
+    def group(eid, x, y, w, h, body):
+        parts.append('<g id="%s"><rect x="%d" y="%d" width="%d" height="%d" fill="#000000" fill-opacity="0"/>%s</g>'
+                     % (eid, x, y, w, h, body))
+
+    def box(x, y, w, h, fill):
+        return '<rect x="%s" y="%s" width="%s" height="%s" fill="%s"/>' % (x, y, w, h, fill)
+
+    def corner(x, y, rr, h, line, fill, right):
+        """A rounded title bar corner RR wide and H tall at (X, Y): the border as the outer shape in LINE, the title
+        colour as the inner one, both filled (a stroke's bounds reach half its width past the part, and KSvg would
+        shrink the part to fit: a light seam where it meets the next one)."""
+        def shape(inset):
+            r2 = rr - inset
+            if right:
+                x0, x1 = x, x + rr - inset          # the arc on the right
+                arc = ('L %s %s A %s %s 0 0 1 %s %s' % (x1 - r2, y + inset, r2, r2, x1, y + rr)) if r2 > 0 else 'L %s %s' % (x1, y + inset)
+                return 'M %s %s L %s %s %s L %s %s Z' % (x0, y + h, x0, y + inset, arc, x1, y + h)
+            x0, x1 = x + inset, x + rr               # the arc on the left
+            arc = ('L %s %s A %s %s 0 0 1 %s %s' % (x0, y + rr, r2, r2, x0 + r2, y + inset)) if r2 > 0 else 'L %s %s' % (x0, y + inset)
+            return 'M %s %s %s L %s %s L %s %s Z' % (x0, y + h, arc, x1, y + inset, x1, y + h)
+        return ('<path d="%s" fill="%s"/><path d="%s" fill="%s"/>' % (shape(0), line, shape(BORDER), fill))
+
+    def lin(gid, state, x1, y1, x2, y2):
+        defs.append('<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">%s</linearGradient>'
+                    % (gid, x1, y1, x2, y2, _stops(state, P)))
+        return 'url(#%s)' % gid
+
+    def rad(gid, state, cx, cy, inner):
+        defs.append('<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%s" cy="%s" fx="%s" fy="%s" r="%s">%s</radialGradient>'
+                    % (gid, cx, cy, cx, cy, inner + P, _stops(state, inner + P, inner)))
+        return 'url(#%s)' % gid
+
+    sets = (('', 'active', c['active.bg'], c['active.border']), ('inactive-', 'inactive', c['inactive.bg'], c['inactive.border']))
+    for k, (prefix, state, bg, line) in enumerate(sets):
+        oy = k * 400                       # the inactive set below the active one
+        g = 's%d' % k
+        e = 'decoration-' + prefix
+        # top-left: the shadow round the rounded corner (centred on the arc's centre), the corner in the title colour,
+        # the border on its outside, then the left side's shadow and border down to the title bar's bottom.
+        x0, y0 = 0, oy
+        cx, cy = x0 + P + R, y0 + P + R
+        body = box(x0, y0, W, P + R, rad(g + 'tl', state, cx, cy, R))
+        body += box(x0, y0 + P + R, P, TITLE_H - R, lin(g + 'tll', state, x0 + P, 0, x0, 0)) if TITLE_H > R else ''
+        body += corner(x0 + P, y0 + P, R, TH - P, line, bg, False)
+        group(e + 'topleft', x0, y0, W, TH, body)
+        # top: the shadow above, the border, the title colour
+        x0 = W + 20
+        body = box(x0, y0, 10, P, lin(g + 't', state, 0, y0 + P, 0, y0)) + box(x0, y0 + P, 10, TITLE_H, bg) + box(x0, y0 + P, 10, BORDER, line)
+        group(e + 'top', x0, y0, 10, TH, body)
+        # top-right: top-left mirrored
+        x0 = W + 50
+        cx = x0                            # the arc's centre (the window's right edge is at x0 + R)
+        body = box(x0, y0, W, P + R, rad(g + 'tr', state, cx, cy, R))
+        body += box(x0 + R, y0 + P + R, P, TITLE_H - R, lin(g + 'trr', state, x0 + R, 0, x0 + R + P, 0)) if TITLE_H > R else ''
+        body += corner(x0, y0 + P, R, TH - P, line, bg, True)
+        group(e + 'topright', x0, y0, W, TH, body)
+        # the sides, the middle (under the window), the bottom
+        by = y0 + TH + 40
+        x0 = 0
+        group(e + 'left', x0, by, W, 10, box(x0, by, P, 10, lin(g + 'l', state, x0 + P, 0, x0, 0)) + box(x0 + P, by, BORDER, 10, line)
+              + box(x0 + P + BORDER, by, R - BORDER, 10, bg) if R > BORDER else
+              box(x0, by, P, 10, lin(g + 'l', state, x0 + P, 0, x0, 0)) + box(x0 + P, by, BORDER, 10, line))
+        x0 = W + 20
+        group(e + 'center', x0, by, 10, 10, box(x0, by, 10, 10, bg))
+        x0 = W + 50
+        group(e + 'right', x0, by, W, 10, (box(x0, by, R - BORDER, 10, bg) if R > BORDER else '')
+              + box(x0 + R - BORDER, by, BORDER, 10, line) + box(x0 + R, by, P, 10, lin(g + 'r', state, x0 + R, 0, x0 + R + P, 0)))
+        by += 30
+        # bottom corners: square (labwc's are); the shadow round them centred on the frame's outer corner
+        x0 = 0
+        group(e + 'bottomleft', x0, by, W, BH,
+              box(x0, by, P, BORDER, lin(g + 'bll', state, x0 + P, 0, x0, 0))
+              + box(x0, by + BORDER, P, P, rad(g + 'bl', state, x0 + P, by + BORDER, 0))
+              + box(x0 + P, by + BORDER, R, P, lin(g + 'blb', state, 0, by + BORDER, 0, by + BORDER + P))
+              + box(x0 + P, by, R, BORDER, line))
+        x0 = W + 20
+        group(e + 'bottom', x0, by, 10, BH, box(x0, by, 10, BORDER, line) + box(x0, by + BORDER, 10, P, lin(g + 'b', state, 0, by + BORDER, 0, by + BORDER + P)))
+        x0 = W + 50
+        group(e + 'bottomright', x0, by, W, BH,
+              box(x0, by, R, BORDER, line)
+              + box(x0, by + BORDER, R, P, lin(g + 'brb', state, 0, by + BORDER, 0, by + BORDER + P))
+              + box(x0 + R, by + BORDER, P, P, rad(g + 'br', state, x0 + R, by + BORDER, 0))
+              + box(x0 + R, by, P, BORDER, lin(g + 'brr', state, x0 + R, 0, x0 + R + P, 0)))
+        # Maximized: flat title colour, no shadow, no border (KWin leaves the padding out then; Fitts' law at the edges).
+        my = by + BH + 40
+        for j, part in enumerate(('topleft', 'top', 'topright', 'left', 'center', 'right', 'bottomleft', 'bottom', 'bottomright')):
+            mx = (j % 3) * 20
+            yy = my + (j // 3) * 20
+            mid = 'decoration-maximized' + ('-inactive' if prefix else '') + '-' + part
+            group(mid, mx, yy, 10 if j % 3 == 1 else 1, 10 if j // 3 == 1 else 1, box(mx, yy, 10 if j % 3 == 1 else 1, 10 if j // 3 == 1 else 1, bg))
+    width = 2 * W + 60
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="400" viewBox="0 0 200 400">\n'
+            '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="800" viewBox="0 0 %d 800">\n<defs>%s</defs>\n' % (width, width, ''.join(defs))
             + '\n'.join(parts) + '\n</svg>\n')
 
 
@@ -128,7 +230,7 @@ def rc(c):
         'TitleAlignment=Center',
         'TitleVerticalAlignment=Center',
         'Animation=120',
-        'Shadow=false',
+        'Shadow=true',
         'DecorationPosition=0',
         '',
         '[Layout]',
@@ -137,7 +239,9 @@ def rc(c):
         'TitleBorderLeft=8', 'TitleBorderRight=8',
         'ButtonWidth=%d' % BUTTON_W, 'ButtonHeight=%d' % BUTTON_H, 'ButtonSpacing=2', 'ButtonMarginTop=0',
         'ExplicitButtonSpacer=10',
-        'PaddingTop=0', 'PaddingBottom=0', 'PaddingLeft=0', 'PaddingRight=0',
+        # The shadow's room (see SHADOW); KWin leaves it out for a maximized window, whose title bar sits flush.
+        'PaddingTop=%d' % PAD, 'PaddingBottom=%d' % PAD, 'PaddingLeft=%d' % PAD, 'PaddingRight=%d' % PAD,
+        'TitleEdgeTopMaximized=0', 'TitleEdgeBottomMaximized=0', 'TitleEdgeLeftMaximized=0', 'TitleEdgeRightMaximized=0',
         '',
     ])
 
