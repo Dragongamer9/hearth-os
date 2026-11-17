@@ -435,7 +435,7 @@ def extras_check(procs):
     try:
         import evdev
         from evdev import ecodes as e
-        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTALT, e.KEY_TAB, e.KEY_ESC, e.KEY_LEFTMETA, e.KEY_W]}, name='Hearth test keyboard 2')
+        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTALT, e.KEY_TAB, e.KEY_ESC, e.KEY_LEFTMETA, e.KEY_W, e.KEY_DOWN, e.KEY_RIGHT, e.KEY_UP]}, name='Hearth test keyboard 2')
         time.sleep(2)
     except Exception as ex:
         kbd = None
@@ -451,8 +451,10 @@ def extras_check(procs):
             kbd.write(e.EV_KEY, getattr(e, n), 0); kbd.syn(); time.sleep(0.03)
         time.sleep(0.5)
 
+    ipc('browserpick', 'close')          # the first-run "Pick your browser" card would cover the pictures
     for t in ('Test A', 'Test B'):
         ipc('winlist', 'act', t, 'activate')
+        wait(lambda: (win(t) or {}).get('minimized') is False, 5)
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'left-half'}))
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'right-half'}))
     wait(lambda: (win('Test A') or {}).get('zone') == 'left-half' and (win('Test B') or {}).get('zone') == 'right-half')
@@ -536,8 +538,14 @@ def extras_check(procs):
     time.sleep(0.5)
     do({'op': 'menu'})
     time.sleep(1.5)
+    # KWin puts scripts' entries under its menu's last group ("Extensions" here): the keys walk to it and open it.
+    # (Up from nothing picked: the last entry, Close; once more: Extensions, just above it.)
+    for _ in range(2):
+        key('KEY_UP', hold=0.03)
+    key('KEY_RIGHT')
+    time.sleep(1)
     shot('window-menu-extras')
-    key('KEY_ESC')
+    key('KEY_ESC'); key('KEY_ESC')
 
     # ---- force closing a frozen window: KWin's click-a-window first (then Esc), then the prompt for a stopped app
     ipc('forceclose', 'start')
@@ -588,6 +596,7 @@ def extras_check(procs):
           kk.get('kwin/Hearth kill-window', kk))
 
     # ---- the keys in Settings › Keyboard › Keyboard shortcuts
+    ipc('browserpick', 'close')
     ipc('settings', 'page', 'keyboard:shortcuts')
     time.sleep(4)
     shot('shortcuts')

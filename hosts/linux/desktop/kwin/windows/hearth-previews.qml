@@ -12,6 +12,7 @@
 // without this script Mantel keeps its plain labels. labwc has no way to show another app's window, so Mantel only
 // asks on KWin.
 import QtQuick
+import QtQuick.Window as QW
 import org.kde.kwin
 
 Item {
@@ -98,7 +99,8 @@ Item {
         }
     }
 
-    Window {
+    // QtQuick's Window (org.kde.kwin has a Window type of its own: KWin's windows, which can't be made here).
+    QW.Window {
         id: pop
         visible: false
         flags: Qt.BypassWindowManagerHint | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus
