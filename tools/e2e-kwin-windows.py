@@ -237,6 +237,14 @@ def title_matches(name, theme, label):
         w = tuple(int(want[i:i + 2], 16) for i in (1, 3, 5))
         im = Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB')
         got = im.getpixel((300, 58))
+        try:
+            dj = open(os.path.join(os.environ['HOME'], '.local', 'share', 'nimbus', 'desktop.json')).read()[:300]
+        except OSError as ex:
+            dj = str(ex)
+        cache = os.path.join(os.environ['HOME'], '.cache')
+        caches = ' '.join(sorted(os.listdir(cache))) if os.path.isdir(cache) else 'none'
+        log('::notice title=frame facts %s::desktop.json %s | decoration.svg mtime %d, %d bytes | ~/.cache: %s' % (
+            label, dj.replace('\n', ' '), os.path.getmtime(os.path.join(theme, 'decoration.svg')), len(svg), caches[:800]))
         log('::notice title=frame pixels %s::size %s; column at x=300: %s' % (label, im.size, ' '.join('%d:#%02x%02x%02x' % ((y,) + im.getpixel((300, y))) for y in range(0, 120, 6))))
         ok = max(abs(a - b) for a, b in zip(w, got)) <= 12
         check('the title bar has the look\'s colour (%s)' % label, ok, 'theme %s, picture %s' % (want, '#%02x%02x%02x' % got))
