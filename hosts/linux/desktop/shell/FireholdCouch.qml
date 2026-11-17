@@ -4,6 +4,7 @@
 // sizes are scaled from that (k). The controller's buttons come from Firehold.qml (press); the mouse and touch work
 // too, and moving the mouse is Desk (Automatic).
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -345,17 +346,30 @@ PanelWindow {
             readonly property var game: cw.fh.continueGame
             readonly property var win: cw.fh.windowFor(game)
             x: 72 * cw.k; y: 136 * cw.k; width: 1776 * cw.k; height: 440 * cw.k
-            FhGrad { anchors.fill: parent; radius: 24 * cw.k; angle: 110; stops: [[0, "#2b1a2e"], [0.55, "#5b2b1a"], [1, "#a3541e"]] }
+            // (Drawn by Qt itself, not a Canvas: under the software renderer a canvas this big under changing text drew the
+            // rest of the page shifted.)
+            Rectangle {
+                anchors.fill: parent; radius: 24 * cw.k
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: "#2b1a2e" }
+                    GradientStop { position: 0.55; color: "#5b2b1a" }
+                    GradientStop { position: 1; color: "#a3541e" }
+                }
+            }
             FhArt { anchors.fill: parent; radius: 24 * cw.k; source: hero.game ? (hero.game.hero || "") : ""; opacity: 0.35 }
             // The game's art (a dashed frame until there's a picture).
             Item {
+                id: art
                 x: parent.width - 60 * cw.k - width; y: 50 * cw.k; width: 640 * cw.k; height: 340 * cw.k
                 FhArt { id: heroArt; anchors.fill: parent; radius: 18 * cw.k; source: hero.game ? (hero.game.wide || hero.game.hero || hero.game.cover || "") : "" }
-                Canvas {
+                Shape {
                     anchors.fill: parent; visible: !heroArt.ready
-                    onPaint: { const c = getContext("2d"); c.reset(); c.strokeStyle = "rgba(255,255,255,0.25)"; c.lineWidth = 2 * cw.k; c.setLineDash([3, 3]);
-                               const r = 18 * cw.k, w = width - 2, h = height - 2; c.beginPath(); c.moveTo(1 + r, 1); c.arcTo(1 + w, 1, 1 + w, 1 + h, r); c.arcTo(1 + w, 1 + h, 1, 1 + h, r);
-                               c.arcTo(1, 1 + h, 1, 1, r); c.arcTo(1, 1, 1 + w, 1, r); c.closePath(); c.stroke(); }
+                    ShapePath {
+                        strokeColor: Qt.rgba(1, 1, 1, 0.25); strokeWidth: 2 * cw.k; fillColor: "transparent"
+                        strokeStyle: ShapePath.DashLine; dashPattern: [1.5, 1.5]
+                        PathRectangle { x: 1; y: 1; width: art.width - 2; height: art.height - 2; radius: 18 * cw.k }
+                    }
                 }
                 T { anchors.centerIn: parent; visible: !heroArt.ready; text: "Game art"; color: Qt.rgba(1, 1, 1, 0.6); font.pixelSize: 18 * cw.k }
             }
