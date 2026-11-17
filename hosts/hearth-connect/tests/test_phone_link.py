@@ -549,6 +549,7 @@ class PhoneLink(unittest.TestCase):
         # A choice never saved (an older PC): its own enabled unit still counts as on; without one, off.
         os.remove(sp)
         self.assertEqual(subprocess.run([BIN, '--enabled-check'], env=self.env).returncode, 1)
+        os.makedirs(wants, exist_ok=True)   # systemctl --user disable may have taken the empty folder away too
         os.symlink('/dev/null', legacy)
         self.assertEqual(subprocess.run([BIN, '--enabled-check'], env=self.env).returncode, 0)
         os.remove(legacy)
