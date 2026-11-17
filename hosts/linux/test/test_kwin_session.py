@@ -113,7 +113,7 @@ class KWinStart(Base):
         self.assertEqual(self.fails(), '')
 
     def test_kwin_missing_opens_labwc_and_says_why(self):
-        r, log = self.session()
+        r, log = self.session(HEARTH_KWIN_BIN='hearth-no-kwin-here')
         self.assertIn("KWin (kwin_wayland) isn't installed; labwc instead", log)
         self.assertEqual(len(self.lines('labwc-ran')), 1, log)
         self.assertIn('wm=labwc', self.lines('labwc-ran')[0])
