@@ -199,6 +199,146 @@ def keys_check():
     kbd.close()
 
 
+PAD_LOG = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus', 'pad.log')
+
+
+def pad_log():
+    try:
+        with open(PAD_LOG, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def focus():
+    try:
+        return json.loads(ipc('focus', 'state'))
+    except ValueError:
+        return {}
+
+
+def pad_and_focus_check():
+    """The controller in Desktop Mode on KWin (Mantel's hearth-pad, started by Pad.qml, reading a uinput gamepad and
+    typing through its own uinput keyboard, which KWin reads through libinput): View + D-pad snaps, View + B closes the
+    window, LB / RB switch windows. Then a real keyboard types into each of Mantel's panels (the app menu, Quick
+    Access, Hearth Settings): the keys must reach the panel that's open (layer shell's keyboard focus under KWin)."""
+    try:
+        import evdev
+        from evdev import ecodes as e, AbsInfo
+        stick = AbsInfo(0, -32768, 32767, 16, 128, 0)
+        hat = AbsInfo(0, -1, 1, 0, 0, 0)
+        pad = evdev.UInput({e.EV_KEY: [e.BTN_SOUTH, e.BTN_EAST, e.BTN_NORTH, e.BTN_WEST, e.BTN_TL, e.BTN_TR, e.BTN_SELECT,
+                                       e.BTN_START, e.BTN_MODE, e.BTN_THUMBL, e.BTN_THUMBR],
+                            e.EV_ABS: [(e.ABS_X, stick), (e.ABS_Y, stick), (e.ABS_RX, stick), (e.ABS_RY, stick),
+                                       (e.ABS_HAT0X, hat), (e.ABS_HAT0Y, hat)]},
+                           name='Test Gamepad', vendor=0x045e, product=0x028e, version=0x110, bustype=0x03)
+        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTCTRL, e.KEY_F, e.KEY_D, e.KEY_I, e.KEY_S, e.KEY_P, e.KEY_L, e.KEY_A, e.KEY_Y,
+                                       e.KEY_DOWN, e.KEY_RIGHT, e.KEY_ESC, e.KEY_BACKSPACE]}, name='Test keyboard')
+    except Exception as ex:
+        check('a virtual controller and keyboard for the controller checks', False, ex)
+        return
+    found = wait(lambda: 'Test Gamepad' in pad_log(), 15)
+    check('hearth-pad finds the controller under KWin', found, pad_log()[-400:])
+
+    def btn(code, down):
+        pad.write(e.EV_KEY, code, 1 if down else 0)
+        pad.syn()
+        time.sleep(0.08)
+
+    def dpad(axis, v):
+        pad.write(e.EV_ABS, axis, v)
+        pad.syn()
+        time.sleep(0.08)
+
+    def view_with(fn):
+        btn(e.BTN_SELECT, True)
+        time.sleep(0.15)
+        fn()
+        time.sleep(0.15)
+        btn(e.BTN_SELECT, False)
+        time.sleep(0.8)
+
+    def press(*codes):
+        for c in codes:
+            kbd.write(e.EV_KEY, c, 1); kbd.syn(); time.sleep(0.03)
+        for c in reversed(codes):
+            kbd.write(e.EV_KEY, c, 0); kbd.syn(); time.sleep(0.03)
+        time.sleep(0.4)
+
+    # View + D-pad left: Super+Left, Hearth's snap.
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'center'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'center')
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'))
+    time.sleep(0.5)
+    view_with(lambda: (dpad(e.ABS_HAT0X, -1), dpad(e.ABS_HAT0X, 0)))
+    check('controller: View + D-pad left snaps the window to the left half',
+          wait(lambda: (win('Test A') or {}).get('zone') == 'left-half', 6), [win('Test A'), pad_log()[-300:]])
+    view_with(lambda: (dpad(e.ABS_HAT0X, 1), dpad(e.ABS_HAT0X, 0)))
+    check('controller: View + D-pad right snaps it to the right half',
+          wait(lambda: (win('Test A') or {}).get('zone') == 'right-half', 6), win('Test A'))
+    # LB / RB: the window switcher (Alt+Tab, KWin's own), the other window comes in front.
+    before = listed().get('active')
+    btn(e.BTN_TR, True)
+    btn(e.BTN_TR, False)
+    time.sleep(1.6)                    # the switcher closes by itself (hearth-pad's ALT_HOLD)
+    after = wait(lambda: listed().get('active') not in (None, before) and listed().get('active'), 6)
+    check('controller: RB switches to the other window', after, [before, listed().get('active')])
+    before = listed().get('active')
+    btn(e.BTN_TL, True)
+    btn(e.BTN_TL, False)
+    time.sleep(1.6)
+    check('controller: LB switches back', wait(lambda: listed().get('active') not in (None, before), 6), [before, listed().get('active')])
+    # View + B: Super+Q closes the window in front (a window of its own for it).
+    p = subprocess.Popen(['foot', '--app-id=hearth.test.pad', '--title=Test Pad', 'sleep', '600'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    wait(lambda: win('Test Pad'), 15)
+    ipc('winlist', 'act', 'Test Pad', 'activate')
+    wait(lambda: listed().get('active') == (win('Test Pad') or {}).get('id'))
+    time.sleep(0.5)
+    view_with(lambda: (btn(e.BTN_EAST, True), btn(e.BTN_EAST, False)))
+    check('controller: View + B closes the window in front', wait(lambda: listed().get('windows') is not None and not win('Test Pad'), 8),
+          [w.get('title') for w in listed().get('windows', [])])
+    try:
+        p.kill()
+    except OSError:
+        pass
+    pad.close()
+
+    # Keyboard focus on each panel: what's typed shows up in that panel.
+    ipc('launcher', 'open')
+    time.sleep(1.2)
+    press(e.KEY_D)
+    press(e.KEY_I)
+    press(e.KEY_S)
+    check('typing reaches the app menu (keyboard focus on the panel)', wait(lambda: focus().get('launcher', {}).get('typed') == 'dis', 4),
+          focus().get('launcher'))
+    press(e.KEY_ESC)
+    ipc('launcher', 'close')
+    time.sleep(0.6)
+    ipc('quick', 'toggle')
+    time.sleep(1.2)
+    first = focus().get('quick', {}).get('current')
+    press(e.KEY_DOWN)
+    press(e.KEY_RIGHT)
+    check('the arrow keys move along Quick Access (keyboard focus on the panel)',
+          wait(lambda: focus().get('quick', {}).get('current') not in ('', None, first), 4), [first, focus().get('quick')])
+    press(e.KEY_ESC)
+    check('Esc closes Quick Access', wait(lambda: focus().get('quick', {}).get('shown') is False, 4), focus().get('quick'))
+    ipc('settings', 'open')
+    time.sleep(3)
+    press(e.KEY_LEFTCTRL, e.KEY_F)
+    press(e.KEY_D)
+    press(e.KEY_I)
+    press(e.KEY_S)
+    press(e.KEY_P)
+    check('typing reaches Hearth Settings\' search (its window has the keys)', wait(lambda: focus().get('settings', {}).get('query') == 'disp', 4),
+          focus().get('settings'))
+    ipc('settings', 'close')
+    kbd.close()
+    time.sleep(1)
+
+
 def crop(name, box, out):
     """OUT_DIR/kwin-OUT.png: part of the picture NAME (the frames close up), and whether it's more than one colour."""
     try:
@@ -407,6 +547,8 @@ def main():
 
     # Real key presses (a uinput keyboard, read by KWin through libinput): KDE's own keys must not win over Mantel's.
     keys_check()
+    # The controller (View + D-pad, View + B, LB / RB) and keyboard focus on each panel, with real devices.
+    pad_and_focus_check()
 
     # Snap layouts' flyout from the shortcut (the bridge runs its command), then a zone picked the way the flyout does.
     try:

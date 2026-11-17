@@ -296,6 +296,83 @@ class ScreenCast(unittest.TestCase):
             del os.environ['HEARTH_KWIN_CAST']
 
 
+class ScreenCast114(unittest.TestCase):
+    """1.14: an area of a screen, PickColor, touch for remote control."""
+    OUTS = [{'name': 'DP-1', 'desc': 'Main', 'x': 0, 'y': 0, 'w': 3840, 'h': 2160, 'scale': 2},
+            {'name': 'HDMI-A-1', 'desc': 'TV', 'x': 3072, 'y': 0, 'w': 1920, 'h': 1080, 'scale': 1}]
+
+    def test_area_only_when_kwin_can_stream_a_region(self):
+        r = hs.build_request('cast', '', hs.MONITOR, False, self.OUTS, [], '/x', False, version=3)
+        self.assertTrue(r['area'])
+        self.assertFalse(hs.build_request('cast', '', hs.MONITOR, False, self.OUTS, [], '/x', False, version=2)['area'])
+        self.assertFalse(hs.build_request('cast', '', hs.WINDOW, False, self.OUTS, [], '/x', False, version=5)['area'])
+        self.assertFalse(hs.build_request('shot', '', hs.MONITOR, False, self.OUTS, [], '/x', False, version=5)['area'])
+
+    def test_area_in_desktop_pixels(self):
+        sizes = {'DP-1': (3072, 1728), 'HDMI-A-1': (1920, 1080)}        # DP-1 at 125 %
+        self.assertEqual(hs.area_target({'kind': 'area', 'name': 'DP-1', 'fx': 0, 'fy': 0, 'fw': 0.5, 'fh': 1}, self.OUTS, sizes),
+                         (0, 0, 1536, 1728))
+        self.assertEqual(hs.area_target({'kind': 'area', 'name': 'HDMI-A-1', 'fx': 0.5, 'fy': 0.5, 'fw': 0.5, 'fh': 0.5}, self.OUTS, sizes),
+                         (3072 + 960, 540, 960, 540))
+        # Never outside the screen, never empty; an unknown screen is nothing.
+        x, y, w, h = hs.area_target({'name': 'HDMI-A-1', 'fx': 0.9, 'fy': -1, 'fw': 5, 'fh': 0}, self.OUTS, sizes)
+        self.assertLessEqual(x + w, 3072 + 1920)
+        self.assertGreaterEqual(h, 16)
+        self.assertIsNone(hs.area_target({'name': 'DP-9', 'fx': 0, 'fy': 0, 'fw': 1, 'fh': 1}, self.OUTS, sizes))
+
+    def test_area_results(self):
+        class S:
+            node = 9
+        r = hs.stream_results([S()], {'kind': 'area', 'name': 'DP-1'}, self.OUTS, 2, (10, 20, 640, 360))
+        props = r['streams'][0][1]
+        self.assertEqual(props['source_type'], ('u', hs.MONITOR))
+        self.assertEqual(props['position'], ('(ii)', (10, 20)))
+        self.assertEqual(props['size'], ('(ii)', (640, 360)))
+        self.assertNotIn('restore_data', r)       # only a whole screen is remembered
+
+    def test_pick_color(self):
+        self.assertEqual(hs.parse_pick('color 1.000000 0.500000 0.000000\n'), (1.0, 0.5, 0.0))
+        self.assertEqual(hs.parse_pick('cancelled\n'), 'cancel')
+        self.assertIsNone(hs.parse_pick('failed no KWin\n'))
+        self.assertIn('org.kde.kwin.ColorPicker', read('os/system_files/usr/share/applications/hearth-kwin-cast.desktop'))
+        src = read('hosts/linux/desktop/kwin-helpers/hearth-kwin-cast.c')
+        self.assertIn('"/ColorPicker", "org.kde.kwin.ColorPicker", "pick"', src)
+        self.assertIn('self.pick_color(conn, handle, inv)', read('hosts/linux/desktop/shell/hearth_screencast.py'))
+
+    def test_touch_lines(self):
+        d = tempfile.mkdtemp()
+        fake, log = os.path.join(d, 'cast'), os.path.join(d, 'lines')
+        with open(fake, 'w') as f:
+            f.write('#!/bin/sh\necho ready\ncat > "%s"\n' % log)
+        os.chmod(fake, 0o755)
+        os.environ['HEARTH_KWIN_CAST'] = fake
+        try:
+            ri = hs.RemoteInput()
+            self.assertTrue(ri.ok)
+            ri.touch('d', 0, 100.5, 200)
+            ri.touch('m', 0, 110, 210)
+            ri.touch('d', 1, 5, 5)
+            ri.touch('u', 0)
+            self.assertFalse(ri.touch('d', 99, 0, 0))
+            ri.stop()                      # finger 1 is lifted
+            lines = open(log).read().split('\n')
+        finally:
+            del os.environ['HEARTH_KWIN_CAST']
+        self.assertEqual(lines[:4], ['td 0 100.500000 200.000000', 'tf', 'tm 0 110.000000 210.000000', 'tf'])
+        self.assertIn('tu 0', lines)
+        self.assertEqual(lines.count('tu 1'), 1)
+        src = read('hosts/linux/desktop/kwin-helpers/hearth-kwin-cast.c')
+        for call in ('org_kde_kwin_fake_input_touch_down', 'org_kde_kwin_fake_input_touch_up', 'org_kde_kwin_fake_input_touch_frame'):
+            self.assertIn(call, src)
+        self.assertIn('KEYBOARD | POINTER | TOUCHSCREEN', read('hosts/linux/desktop/shell/hearth_screencast.py'))
+
+    def test_picker_has_the_area(self):
+        q = read('hosts/linux/desktop/shell/cast-picker.qml')
+        for part in ('{ id: "area", label: "Area", on: root.hasArea }', 'kind: "area", name: areaOut.name', '"Left half"', '"Middle"',
+                     'function area(x: real, y: real, w: real, h: real)', 'Qt.CrossCursor'):
+            self.assertIn(part, q)
+
+
 class LockCheck(unittest.TestCase):
     """Never lock on KWin unless its locker will show Hearth's lock screen (a lockout on a handheld otherwise). It goes
     by KWin's own environment, and only a test run that shows Hearth's lock screen loading passes."""
