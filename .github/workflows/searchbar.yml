@@ -1,0 +1,216 @@
+# The search bar (1.14, like KDE's KRunner: SearchBar.qml, search-bar.js, test_search_bar.py, docs/KDE-FEATURES-1.14.md):
+# unit tests, then Desktop Mode on a virtual 1920 × 1080 screen (labwc headless + Quickshell on Fedora, with the labwc
+# folder hearth-system labwc-config makes, as on Hearth): Alt+Space and Alt+F2 open it, apps / Settings / files / sums /
+# web shortcuts in it, "?" help, the order from Settings › Search, typing on the desktop, the controller's way in, and
+# Alt+Space left to the keyboard layout switch when Settings › Keyboard picks it. Fails on shell errors in these files,
+# a setting written by itself, or a check below. Pictures: the "shots" jobs' SHOT notices (tools/shot-notices.py).
+name: Search bar (1.14)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/w3-searchbar]
+    paths: ['hosts/linux/desktop/shell/SearchBar.qml', 'hosts/linux/desktop/shell/search-bar.js', 'hosts/linux/test/test_search_bar.py', '.github/workflows/searchbar.yml']
+
+concurrency:
+  group: searchbar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  labwc:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme python3-gobject dbus-daemon dbus-tools libnotify nodejs sqlite >/dev/null
+          dnf -y install wl-clipboard wtype foot hicolor-icon-theme rsms-inter-fonts kcalc >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_search_bar.py' -v 2>&1 | tail -30
+          for t in test_search_bar test_kwin_windows test_search_plugins test_hearth_search test_menu_search test_labwc_rc test_hearth_settings_basics test_settings_redesign test_settings_persistence test_win_tools; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" >/tmp/$t.out 2>&1 || echo "::error title=$t::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/$t.out | head -6 | tr '\n' '|' | cut -c1-900)"
+          done
+          ! grep -lE '^(FAIL|ERROR):' /tmp/test_*.out
+
+      - name: Desktop Mode with the search bar
+        shell: bash
+        run: |
+          mkdir -p shots/post shots/full
+          exec > >(tee shots/step.log) 2>&1
+          set +e +o pipefail
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          FAIL() { echo "::error title=search bar::$*"; touch shots/FAILED; }
+          SAY() { echo "::notice title=search bar::$*"; }
+          SH="$NIMBUS_SHARE/desktop/shell"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 $SH/hearth-browser asked >/dev/null 2>&1 || true   # the "Pick your browser" question, answered before
+          # Files for the file index to find
+          mkdir -p "$HOME/Documents/Taxes" "$HOME/Desktop"
+          printf 'the quarterly budget numbers\n' > "$HOME/Documents/budget-report.txt"
+          : > "$HOME/Documents/Taxes/Budget-2026.ods"
+          python3 $SH/hearth-search index >/dev/null 2>&1 || echo "::warning title=file index::no index"
+          # ---- the desktop, from the labwc folder hearth-system makes (as on Hearth)
+          start_labwc() {
+            CONF=$(python3 $SH/hearth-system labwc-config | tail -1)
+            labwc -C "$CONF" >>shots/labwc.log 2>&1 &
+            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+            export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+            wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          }
+          start_labwc
+          grep -c 'call searchbar' "$CONF/rc.xml" | sed 's/^/searchbar binds in the made rc.xml: /'
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          st() { q searchbar state; }
+          shown() { st | python3 -c 'import json,sys; print(json.load(sys.stdin)["shown"])' 2>/dev/null; }
+          shot() { sleep "${2:-2}"; grim "shots/full/$1.png" || echo "::warning title=pictures::no picture $1"; }
+          # the bar's part of the screen: the top centre
+          crop() { python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]); im.crop((400, 0, 1520, 760)).save(sys.argv[2])' "shots/full/$1.png" "shots/post/$1.png"; }
+          for i in $(seq 1 60); do [ -n "$(st)" ] && break; sleep 2; done
+          [ -n "$(st)" ] || FAIL "SearchBar.qml didn't load: $(grep -E 'SearchBar|search-bar' "$LOG" | head -6 | cut -c1-220 | tr '\n' '|')"
+          sleep 8
+          C="$HOME/.config"
+          [ ! -e "$C/hearth/search.json" ] || FAIL "search.json was written before anything was changed"
+          # ---- 1. Alt+Space opens it (labwc's binding), Esc closes it
+          wtype -M alt -k space -m alt; sleep 2
+          [ "$(shown)" = "True" ] && SAY "Alt+Space opened the bar" || FAIL "Alt+Space didn't open the bar: $(st | head -c 300)"
+          shot sb-01-empty 1
+          wtype -k Escape; sleep 1
+          [ "$(shown)" = "False" ] || FAIL "Esc didn't close the bar"
+          wtype -M alt -k F2 -m alt; sleep 2
+          [ "$(shown)" = "True" ] && SAY "Alt+F2 opened the bar" || FAIL "Alt+F2 didn't open the bar"
+          # ---- 2. what it finds, typed for real
+          wtype "terminal"; sleep 3
+          s=$(st); echo "::notice title=terminal::$(echo "$s" | head -c 900)"
+          echo "$s" | grep -q '"kind":"app"' || FAIL "typing terminal found no app: $(echo "$s" | head -c 400)"
+          shot sb-02-apps 1
+          q searchbar type "(3+4)*2^3"; shot sb-03-calc 2
+          echo "$(st)" | grep -q '"plugin":"calc"' || FAIL "the calculator didn't answer in the bar: $(st | head -c 400)"
+          q searchbar type "budget"; shot sb-04-files 4
+          echo "::notice title=budget::$(st | head -c 900)"
+          q searchbar type "gg:hearth os"; shot sb-05-web 2
+          q searchbar type "display"; shot sb-06-settings 2
+          before=$(st)
+          # ---- 3. "?" help
+          q searchbar type "?"; shot sb-07-help 2
+          h=$(st); echo "::notice title=help::$(echo "$h" | head -c 900)"
+          echo "$h" | grep -q '"kind":"help"' || FAIL "? showed no help: $(echo "$h" | head -c 300)"
+          # Enter on a help row puts its prefix in the field
+          q searchbar move 1; q searchbar enter; sleep 1
+          echo "::notice title=after help Enter::$(st | head -c 300)"
+          # ---- 4. Settings › Search: the order (Settings first), saved only as it's changed
+          echo '{"pluginOrder": ["pages", "apps"]}' | python3 $SH/hearth-search prefs-set >/dev/null
+          sleep 2
+          q searchbar type "se"; sleep 3
+          s=$(st); echo "::notice title=order::$(echo "$s" | head -c 900)"
+          python3 - "$s" <<'PY' || FAIL "Settings didn't come first after putting them first: $s"
+          import json, sys
+          rows = [r["plugin"] for r in json.loads(sys.argv[1])["rows"] if r["group"] != "Best match"]
+          # Settings (pages) before apps, and both there
+          sys.exit(0 if "pages" in rows and "apps" in rows and rows.index("pages") < rows.index("apps") else 1)
+          PY
+          shot sb-08-settings-first 1
+          q searchbar close
+          q settings page search:bar; shot sb-09-settings-search 5
+          q settings close
+          # ---- 5. typing on the desktop opens it with those letters
+          q searchbar close; sleep 1
+          wtype "firefox"; sleep 2
+          if [ "$(shown)" = "True" ]; then SAY "typing on the desktop opened the bar: $(st | head -c 200)"
+          else echo "::warning title=desktop typing::the desktop didn't have the keyboard here (no pointer to click it); opening it the way Desktop.qml does"; q searchbar desk "firefox"; fi
+          shot sb-10-typed-on-desktop 2
+          q searchbar close
+          # ---- 6. the controller: Y on the desktop opens it with the on-screen keyboard
+          q searchbar pad; shot sb-11-controller 3
+          echo "::notice title=controller::$(q pad state) / keyboard: $(q keyboard state | head -c 200)"
+          q pad state | grep -q '"keys":true' || FAIL "the controller doesn't type keys in the bar: $(q pad state)"
+          q searchbar close; sleep 1
+          q keyboard close
+          # ---- 7. Alt+Space as the layout switch: labwc lets it through, Alt+F2 still opens the bar
+          echo '{"layouts": [{"layout": "us", "variant": ""}, {"layout": "de", "variant": ""}], "switch": "grp:alt_space_toggle", "delay": 600, "rate": 25}' \
+            | python3 $SH/hearth-system keyboard-set > shots/keyboard-set.txt 2>&1
+          cat shots/keyboard-set.txt
+          CONF=$(python3 $SH/hearth-system labwc-config | tail -1)
+          grep 'A-space' "$CONF/rc.xml" | tee shots/alt-space-line.txt
+          grep -q 'key="A-space"><action name="None"' "$CONF/rc.xml" || FAIL "labwc still binds Alt+Space while it switches layouts: $(cat shots/alt-space-line.txt)"
+          LABWC_PID=$(pgrep -x labwc | head -1) labwc --reconfigure 2>/dev/null || kill -HUP "$(pgrep -x labwc | head -1)"
+          sleep 4
+          wtype -M alt -k space -m alt; sleep 2
+          [ "$(shown)" = "False" ] && SAY "Alt+Space left to the layout switch" || { FAIL "Alt+Space opened the bar while it's the layout switch"; q searchbar close; }
+          wtype -M alt -k F2 -m alt; sleep 2
+          [ "$(shown)" = "True" ] && SAY "Alt+F2 opened the bar with Alt+Space as the layout switch" || FAIL "Alt+F2 didn't open the bar with Alt+Space as the layout switch"
+          q searchbar close
+          q searchbar key; sleep 1
+          [ "$(shown)" = "False" ] || FAIL "the bar took Alt+Space (searchbar key) while it's the layout switch"
+          q settings page keyboard; shot sb-12-keyboard-layout-switch 5
+          q settings close
+          # ---- what was written, the shell's log
+          cat "$C/hearth/search.json" > shots/search.json 2>/dev/null
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d == {"pluginOrder": ["pages", "apps"]} else 1)' "$C/hearth/search.json" \
+            || FAIL "search.json has more than what was changed: $(cat "$C/hearth/search.json" | head -c 300)"
+          cp "$LOG" shots/shell.log 2>/dev/null
+          P='(SearchBar|SetSearch|SetKeyboard|Desktop|Pad|SettingsNav)\.qml|search-bar\.js'
+          if grep -E "$P" "$LOG" | grep -E "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read|failed to load|unavailable|couldn't load)" >/dev/null 2>&1; then
+            FAIL "$(grep -E "$P" "$LOG" | grep -E 'Error|Cannot|non-existent|not a type|not defined|Unable|Expected|Syntax|unavailable|load' | sort -u | head -8 | cut -c1-260 | tr '\n' '|')"
+          fi
+          grep -E "$P|search bar" "$LOG" | sed 's/^.*file:\/\/[^ ]*shell\///' | sort -u | head -10 | while read -r l; do echo "::warning title=shell log::${l:0:400}"; done
+          for n in sb-02-apps sb-03-calc sb-04-files sb-05-web sb-06-settings sb-07-help sb-08-settings-first sb-10-typed-on-desktop; do crop $n; done
+          cp shots/full/sb-01-empty.png shots/full/sb-09-settings-search.png shots/full/sb-11-controller.png shots/full/sb-12-keyboard-layout-switch.png shots/post/ 2>/dev/null
+          ls -la shots/post
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: searchbar-labwc
+          path: shots
+          retention-days: 14
+
+      - name: Fail if something went wrong
+        if: always()
+        run: test ! -e shots/FAILED
+
+  shots:
+    needs: [labwc]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/shot-notices.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: searchbar-labwc
+          path: a
+        continue-on-error: true
+      - run: |
+          mkdir -p shots/post; cp a/post/*.png shots/post/ 2>/dev/null || true
+          pip install --quiet pillow >/dev/null 2>&1 || true
+      - name: Pictures 1
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 0
+      - name: Pictures 2
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 1
+      - name: Pictures 3
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
+      - name: Pictures 4
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4

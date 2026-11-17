@@ -2,7 +2,7 @@
 // widgets are on it) and New activity. Opens from the bar's activity button, Quick Access, Super+A (labwc / KWin
 // key bindings call `ipc call activities switcher`) and with the controller.
 //   ← → / LB RB   pick          A / Enter   switch to it (on New activity: make one)
-//   X / Menu key  change it: name, icon, wallpaper, its own pinned apps, delete     B / Esc   close
+//   X / Menu key  change it: name, icon, wallpaper, its own pinned apps, its recent files, delete     B / Esc   close
 // Everything here is something you choose; each change merges one activity's key into activities.json.
 import QtQuick
 import QtQuick.Layouts
@@ -29,7 +29,7 @@ PanelWindow {
     readonly property int count: acts.length + 1          // + New activity
     property int at: 0
     property bool editing: false
-    property int editRow: 0                                // 0 name, 1 icon, 2 wallpaper, 3 pins, 4 delete
+    property int editRow: 0                                // 0 name, 1 icon, 2 wallpaper, 3 pins, 4 recent files, 5 delete
     property int editCol: 0
     readonly property var sel: at < acts.length ? acts[at] : null
     readonly property var walls: ["", "builtin:slate-dusk", "builtin:slate-horizon", "builtin:slate-nebula", "builtin:slate-facets", "anim:lava", "anim:aurora"]
@@ -53,16 +53,17 @@ PanelWindow {
             if (sw.editing) {
                 if (k === Qt.Key_Escape || k === Qt.Key_Menu) sw.editing = false;
                 else if (k === Qt.Key_Up) sw.editRow = Math.max(0, sw.editRow - 1);
-                else if (k === Qt.Key_Down) sw.editRow = Math.min(sw.sel && sw.sel.id !== "default" ? 4 : 3, sw.editRow + 1);
+                else if (k === Qt.Key_Down) sw.editRow = Math.min(sw.sel && sw.sel.id !== "default" ? 5 : 4, sw.editRow + 1);
                 else if (k === Qt.Key_Left) sw.editCol = Math.max(0, sw.editCol - 1);
-                else if (k === Qt.Key_Right) sw.editCol = Math.min(sw.editRow === 1 ? A.ICONS.length - 1 : sw.editRow === 2 ? sw.walls.length - 1 : 0, sw.editCol + 1);
+                else if (k === Qt.Key_Right) sw.editCol = Math.min(sw.editRow === 1 ? A.ICONS.length - 1 : sw.editRow === 2 ? sw.walls.length - 1 : sw.editRow === 4 ? A.RECENT.length - 1 : 0, sw.editCol + 1);
                 else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
                     if (!sw.sel) return;
                     if (sw.editRow === 0) nameField.input.forceActiveFocus();
                     else if (sw.editRow === 1) Activities.setIcon(sw.sel.id, A.ICONS[sw.editCol]);
                     else if (sw.editRow === 2) Activities.setWallpaper(sw.sel.id, sw.walls[sw.editCol]);
                     else if (sw.editRow === 3) Activities.setOwnPins(sw.sel.id, !sw.sel.pins);
-                    else if (sw.editRow === 4) { Activities.remove(sw.sel.id); sw.editing = false; sw.at = 0; }
+                    else if (sw.editRow === 4) Activities.setRecent(sw.sel.id, A.RECENT[Math.min(sw.editCol, A.RECENT.length - 1)]);
+                    else if (sw.editRow === 5) { Activities.remove(sw.sel.id); sw.editing = false; sw.at = 0; }
                 }
                 else return;
                 event.accepted = true;
@@ -229,11 +230,34 @@ PanelWindow {
                     WBtn { text: "Its own"; on: sw.sel && !!sw.sel.pins; onClicked: if (sw.sel) Activities.setOwnPins(sw.sel.id, true) }
                     Text { text: "Pin and unpin while you're on it"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                 }
+                // Recent files (1.14): its own list, every activity's, or nothing remembered while you're on it.
+                RowLayout {
+                    spacing: 10
+                    Text { Layout.preferredWidth: 120; text: "Recent files"; color: sw.editRow === 4 ? Theme.accent : Theme.muted; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                    Repeater {
+                        model: A.RECENT
+                        delegate: WBtn {
+                            required property var modelData
+                            required property int index
+                            text: A.RECENT_WORDS[modelData]
+                            icon: modelData === "off" ? "lock" : modelData === "all" ? "link" : "clock"
+                            on: !!sw.sel && sw.sel.recent === modelData
+                            border.width: sw.editRow === 4 && sw.editCol === index ? Theme.focusWidth : 0
+                            onClicked: if (sw.sel) Activities.setRecent(sw.sel.id, modelData)
+                        }
+                    }
+                }
+                Text {
+                    Layout.leftMargin: 130
+                    text: !sw.sel ? "" : sw.sel.recent === "off" ? "Files you open on " + sw.sel.name + " aren't remembered (Files, the menu and jump lists)"
+                        : sw.sel.recent === "all" ? "Shows the files you opened on any activity" : "Shows only the files you opened on " + sw.sel.name
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                }
                 RowLayout {
                     visible: sw.sel && sw.sel.id !== "default"
                     spacing: 10
                     Text { Layout.preferredWidth: 120; text: ""; }
-                    WBtn { text: "Delete this activity"; icon: "trash"; border.width: sw.editRow === 4 ? Theme.focusWidth : 0; onClicked: { Activities.remove(sw.sel.id); sw.editing = false; sw.at = 0; } }
+                    WBtn { text: "Delete this activity"; icon: "trash"; border.width: sw.editRow === 5 ? Theme.focusWidth : 0; onClicked: { Activities.remove(sw.sel.id); sw.editing = false; sw.at = 0; } }
                     Text { text: "Its windows and widgets move to Main"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                 }
             }

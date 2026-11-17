@@ -137,7 +137,7 @@ fn draw_screen<R>(
     lock: Option<&LockView>,
 ) -> Result<(Size<i32, Physical>, Vec<u8>), String>
 where
-    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer>,
+    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer> + crate::render::GameFilter,
     R::TextureId: Clone + Send + 'static,
 {
     let size = output_size(output).ok_or("the screen has no mode")?;
@@ -230,7 +230,7 @@ pub fn run_captures<R>(
     lock: Option<&LockView>,
     now: Duration,
 ) where
-    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer>,
+    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer> + crate::render::GameFilter,
     R::TextureId: Clone + Send + 'static,
 {
     if !captures.wants(output) {

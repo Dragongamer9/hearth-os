@@ -41,6 +41,7 @@ Singleton {
 
     property var navTarget: null
     property string pageAnchor: ""    // a part of the page to open at ("appearance:bar": Settings › Appearance › Bar and dock)
+    property real anchorAt: 0         // when it was asked for (a page loaded more than once in a moment still sees it)
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
     function openPage(p) { if (settingsApp) settingsApp.open(p); }
     // (pageAnchor above: Settings opened at a part of a page, "keyboard:osk", "appearance:bar"; the page or its SetExpander goes there.)
@@ -78,6 +79,9 @@ Singleton {
     property bool discordShown: false // its "Which Discord?" chooser is open
     property var winTools: null       // Device Manager, Run and the Super+X menu (WinTools.qml): the Start button's right-click
     property bool winxShown: false    // the Super+X menu is open
+    // 1.14: the search bar (SearchBar.qml, Alt+Space): the controller types keys while it's open; Desktop.qml and Pad.qml open it.
+    property var searchBar: null
+    property bool searchBarShown: false
     // 1.14: desktop widgets and activities (Widgets.qml sets these; Quick Access and the desktop's menu use them, so
     // they never depend on Widgets.qml having loaded).
     property var widgets: null        // Widgets.qml: openGallery(screen), startArrange(screen), openActivities()
@@ -85,6 +89,13 @@ Singleton {
     property string activityIcon: ""
     property bool activitiesMany: false
     property bool widgetsShown: false // desktop widgets: Add widgets, Arrange, a widget's settings, the activity switcher (Widgets.qml)
+    // Firehold's Couch (Firehold.qml, a hidden preview; all false / null while it's locked): fireholdShown, a Couch
+    // screen is in front and takes the controller's buttons as they are (hearth-pad's fhpad); fireholdCouch, the
+    // Couch posture is on (Guide goes to it); fireholdPad(button, down), where those buttons go.
+    property bool fireholdShown: false
+    property bool fireholdCouch: false
+    property var fireholdPad: null
+    property bool fireholdDesk: false  // Firehold's Desk bar and dock are up (FireholdDesk.qml): Mantel's own step aside
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;

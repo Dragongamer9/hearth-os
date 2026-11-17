@@ -5,18 +5,23 @@ desktop's screen-sharing portal (KWin's or labwc's: the person picks a screen or
   hearth-record status                 JSON: recording or not (since, file, what, sound, encoder), your choices, the
                                        last recordings, what this PC can do (portal, GStreamer, encoders)
   hearth-record start [--what screen|window|any] [--sound none|desktop|mic|both] [--fps 30|60]
+                      [--format mp4|webm|mkv|gif] [--quality low|medium|high]
                                        start (the portal asks at the PC what to share); answers once it's recording
   hearth-record stop                   stop and save; answers with the file
   hearth-record toggle                 start with your choices, or stop (the keyboard shortcut)
-  hearth-record set KEY VALUE          what, sound, fps, pointer (on|off): your choices, saved only when you change one
+  hearth-record set KEY VALUE          what, sound, fps, format, quality, pointer (on|off), popup (on|off): your
+                                       choices, saved only when you change one
   hearth-record run ...                (internal) the recording itself, started by start in its own session
 
 Your choices: ~/.config/nimbus/record.json through hearth_settings_io (atomic, .bak, merged; defaults filled in when
 read, never saved). Opening the panel only reads. Recordings go to Videos/Recordings (xdg-user-dir VIDEOS). What's
 recording now: $XDG_RUNTIME_DIR/hearth-record/state.json, which the bar's capture dot (CaptureIndicator.qml) watches.
-The video is H.264 in an MP4 written in fragments (playable even after a power cut), encoded on the graphics card when
-GStreamer has an encoder for it (NVENC, VA-API), else x264; a graphics-card encoder that fails in the first seconds
-is replaced by x264 by itself. Output: one JSON line; failures print "error: ..." and exit 1.
+The format (1.14): MP4 (H.264 in fragments, playable even after a power cut; the default), MKV (H.264, AAC or Opus
+sound), WebM (VP9 on the graphics card or VP8, Opus sound) or GIF (no sound: recorded as H.264 first, then made into
+a GIF by ffmpeg when you stop: state "converting"). H.264 is encoded on the graphics card when GStreamer has an encoder
+for it (NVENC, VA-API), else x264; a graphics-card encoder that fails in the first seconds is replaced by the next one
+by itself. Quality: high (the bitrate it always had), medium or low (smaller files). The "popup" choice is the small
+Recording pop-up with Stop (Recorder.qml). Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import json
 import os
@@ -38,8 +43,14 @@ SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'record.json')
 RUNTIME = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-record')
 STATE = os.path.join(RUNTIME, 'state.json')
 LOG = os.path.join(RUNTIME, 'last.log')
-DEFAULTS = {'what': 'any', 'sound': 'desktop', 'fps': 30, 'pointer': True}
-CHOICES = {'what': ('screen', 'window', 'any'), 'sound': ('none', 'desktop', 'mic', 'both'), 'fps': (30, 60)}
+DEFAULTS = {'what': 'any', 'sound': 'desktop', 'fps': 30, 'pointer': True, 'format': 'mp4', 'quality': 'high', 'popup': True}
+CHOICES = {'what': ('screen', 'window', 'any'), 'sound': ('none', 'desktop', 'mic', 'both'), 'fps': (30, 60),
+           'format': ('mp4', 'webm', 'mkv', 'gif'), 'quality': ('low', 'medium', 'high')}
+QUALITY = {'high': 1.0, 'medium': 0.55, 'low': 0.3}
+# GIF: frames a second and the widest it's made, by quality.
+GIF = {'high': (20, 1600), 'medium': (15, 1280), 'low': (10, 800)}
+EXTENSIONS = ('.mp4', '.mkv', '.webm', '.gif')
+BUSY = ('starting', 'recording', 'stopping', 'converting')
 # Encoders in the order they're tried; the hardware ones need their GStreamer plugin and a card that can.
 ENCODERS = [
     ('nvh264enc', 'nvh264enc preset=low-latency-hq rc-mode=vbr bitrate={kbps}', 'NVENC'),
@@ -48,7 +59,12 @@ ENCODERS = [
     ('x264enc', 'x264enc speed-preset=superfast tune=zerolatency bitrate={kbps} key-int-max={gop}', 'x264'),
     ('openh264enc', 'openh264enc bitrate={bps}', 'OpenH264'),
 ]
-SOFTWARE = ('x264enc', 'openh264enc')
+SOFTWARE = ('x264enc', 'openh264enc', 'vp8enc')
+# WebM's encoders: VP9 on the graphics card, else VP8 (fast enough in software).
+WEBM_ENCODERS = [
+    ('vavp9enc', 'vavp9enc bitrate={kbps}', 'VA-API VP9'),
+    ('vp8enc', 'vp8enc deadline=1 cpu-used=8 threads=4 end-usage=cbr target-bitrate={bps} keyframe-max-dist={gop}', 'VP8'),
+]
 
 
 def out(obj):
@@ -84,7 +100,7 @@ def read_state():
     except Exception:
         return {'state': 'idle'}
     pid = st.get('pid')
-    if st.get('state') in ('starting', 'recording', 'stopping') and not ours(pid):
+    if st.get('state') in BUSY and not ours(pid):
         st = {'state': 'idle', 'last': st.get('file', ''), 'error': st.get('error', '')}
     return st
 
@@ -134,14 +150,22 @@ def gst_has(name):
         return False
 
 
-def encoders():
-    return [e for e in ENCODERS if gst_has(e[0])]
+def encoders(fmt='mp4'):
+    return [e for e in (WEBM_ENCODERS if fmt == 'webm' else ENCODERS) if gst_has(e[0])]
+
+
+def can_formats():
+    """Which formats this PC can record (the panel greys out the others, with why)."""
+    h264 = bool(encoders('mp4'))
+    return {'mp4': h264 and gst_has('mp4mux'), 'mkv': h264 and gst_has('matroskamux'),
+            'webm': bool(encoders('webm')) and gst_has('webmmux'),
+            'gif': h264 and gst_has('matroskamux') and bool(shutil.which('ffmpeg'))}
 
 
 def recent(n=5):
     d = videos_dir()
     try:
-        files = [os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith(('.mp4', '.mkv'))]
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith(EXTENSIONS) and not f.startswith('.')]
     except OSError:
         return []
     files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
@@ -161,20 +185,21 @@ def cmd_status():
     st = read_state()
     encs = encoders()
     return out({
-        'state': st.get('state', 'idle'), 'recording': st.get('state') == 'recording',
+        'format': st.get('format', ''), 'state': st.get('state', 'idle'), 'recording': st.get('state') == 'recording',
         'since': st.get('since', 0), 'file': st.get('file', ''), 'what': st.get('what', ''),
         'sound': st.get('sound', ''), 'encoder': st.get('encoder', ''), 'error': st.get('error', ''),
         'last': st.get('last', ''),
         'choices': load(), 'folder': videos_dir(), 'recent': recent(),
         'can': {'portal': ok, 'portalWhy': why, 'gst': bool(shutil.which('gst-launch-1.0')) and gst_has('pipewiresrc'),
-                'encoders': [e[2] for e in encs], 'mp4': gst_has('mp4mux'), 'aac': gst_has('avenc_aac') or gst_has('fdkaacenc') or gst_has('voaacenc')},
+                'encoders': [e[2] for e in encs], 'mp4': gst_has('mp4mux'), 'aac': gst_has('avenc_aac') or gst_has('fdkaacenc') or gst_has('voaacenc'),
+                'formats': can_formats()},
     })
 
 
 def cmd_set(key, value):
-    if key == 'pointer':
+    if key in ('pointer', 'popup'):
         if value not in ('on', 'off'):
-            return fail('pointer is on or off')
+            return fail('%s is on or off' % key)
         v = value == 'on'
     elif key == 'fps':
         try:
@@ -197,11 +222,13 @@ def cmd_set(key, value):
 
 def parse_opts(args):
     c = load()
-    o = {'what': c['what'], 'sound': c['sound'], 'fps': int(c['fps']), 'pointer': bool(c['pointer'])}
+    o = {'what': c['what'], 'sound': c['sound'], 'fps': int(c['fps']), 'pointer': bool(c['pointer']),
+         'format': c['format'] if c.get('format') in CHOICES['format'] else 'mp4',
+         'quality': c['quality'] if c.get('quality') in CHOICES['quality'] else 'high'}
     i = 0
     while i < len(args):
         a = args[i]
-        if a in ('--what', '--sound', '--fps') and i + 1 < len(args):
+        if a in ('--what', '--sound', '--fps', '--format', '--quality') and i + 1 < len(args):
             k = a[2:]
             v = int(args[i + 1]) if k == 'fps' and args[i + 1].isdigit() else args[i + 1]
             if v not in CHOICES[k]:
@@ -222,17 +249,18 @@ def cmd_start(args):
     except ValueError as e:
         return fail(str(e))
     st = read_state()
-    if st.get('state') in ('starting', 'recording', 'stopping'):
-        return fail('already recording (stop it first)')
+    if st.get('state') in BUSY:
+        return fail('already recording (stop it first)' if st.get('state') != 'converting' else 'the last recording is still being made into a GIF')
     if not shutil.which('gst-launch-1.0'):
         return fail("GStreamer (gst-launch-1.0) isn't on this system")
     os.makedirs(RUNTIME, exist_ok=True)
-    argv = [sys.executable, SELF, 'run', '--what', o['what'], '--sound', o['sound'], '--fps', str(o['fps'])]
+    argv = [sys.executable, SELF, 'run', '--what', o['what'], '--sound', o['sound'], '--fps', str(o['fps']),
+            '--format', o['format'], '--quality', o['quality']]
     if not o['pointer']:
         argv.append('--no-pointer')
     with open(LOG, 'w') as lg:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=lg, stderr=lg, start_new_session=True, close_fds=True)
-    write_state({'state': 'starting', 'pid': p.pid, 'since': 0, 'what': o['what'], 'sound': o['sound']})
+    write_state({'state': 'starting', 'pid': p.pid, 'since': 0, 'what': o['what'], 'sound': o['sound'], 'format': o['format']})
     # The portal may ask at the PC first: wait for the answer (a few minutes at most).
     deadline = time.time() + 200
     while time.time() < deadline:
@@ -260,7 +288,7 @@ def cmd_start(args):
 
 def cmd_stop():
     st = read_state()
-    if st.get('state') not in ('starting', 'recording', 'stopping'):
+    if st.get('state') not in BUSY:
         return out({'ok': True, 'file': st.get('last', ''), 'was': False})
     pid = st.get('pid')
     if not signal_ours(pid, signal.SIGTERM):
@@ -271,6 +299,8 @@ def cmd_stop():
     deadline = time.time() + 30
     while time.time() < deadline and ours(pid):
         time.sleep(0.2)
+        if read_state_raw().get('state') == 'converting':
+            deadline = max(deadline, time.time() + 1)      # making the GIF: as long as ffmpeg takes (it has its own limit)
     if ours(pid):
         signal_ours(pid, signal.SIGKILL)
         write_state({'state': 'idle', 'last': st.get('file', ''), 'error': "the recording didn't stop by itself, so it was ended"})
@@ -280,23 +310,47 @@ def cmd_stop():
 
 def cmd_toggle():
     st = read_state()
-    if st.get('state') in ('starting', 'recording', 'stopping'):
+    if st.get('state') in BUSY:
         return cmd_stop()
     return cmd_start([])
 
 
 # ---- the recording itself
-def pipeline(fd, node, o, enc, path, aac):
-    kbps = 40000 if o['fps'] >= 60 else 24000
+def kbps_for(o):
+    """The video bitrate: high is what Hearth always recorded with; medium and low make smaller files."""
+    base = 40000 if o['fps'] >= 60 else 24000
+    if o.get('format') == 'gif':
+        return base                     # the H.264 in between is kept good: the GIF's own size is set by GIF
+    return int(base * QUALITY.get(o.get('quality', 'high'), 1.0))
+
+
+def aac_encoder():
+    return 'avenc_aac bitrate=192000' if gst_has('avenc_aac') else 'fdkaacenc' if gst_has('fdkaacenc') else 'voaacenc'
+
+
+def pipeline(fd, node, o, enc, path, aac, fmt=None):
+    """The gst-launch description. FMT (mp4 | mkv | webm | gif) is o['format'] when not given; AAC: the old
+    mp4-or-mkv choice (True: MP4 with AAC sound; False: MKV with Opus)."""
+    fmt = fmt or o.get('format') or ('mp4' if aac else 'mkv')
+    kbps = kbps_for(o)
     e = enc[1].format(kbps=kbps, bps=kbps * 1000, gop=o['fps'] * 2)
+    parse = '' if fmt == 'webm' else ' ! h264parse'
     v = ('pipewiresrc fd=%d path=%d do-timestamp=true ! queue ! videoconvert ! '
-         'videorate ! video/x-raw,framerate=%d/1 ! queue ! %s ! h264parse ! queue ! mux.' % (fd, node, o['fps'], e))
-    if aac:
-        aenc = 'avenc_aac bitrate=192000' if gst_has('avenc_aac') else 'fdkaacenc' if gst_has('fdkaacenc') else 'voaacenc'
+         'videorate ! video/x-raw,framerate=%d/1 ! queue ! %s%s ! queue ! mux.' % (fd, node, o['fps'], e, parse))
+    if fmt == 'mp4' and aac:
+        aenc = aac_encoder()
         mux = 'mp4mux name=mux fragment-duration=1000 ! filesink location="%s"' % path
+    elif fmt == 'webm':
+        aenc = 'opusenc bitrate=160000'
+        mux = 'webmmux name=mux ! filesink location="%s"' % path
+    elif fmt == 'mkv' and aac:
+        aenc = aac_encoder()
+        mux = 'matroskamux name=mux ! filesink location="%s"' % path
     else:
         aenc = 'opusenc bitrate=160000'
         mux = 'matroskamux name=mux ! filesink location="%s"' % path
+    if fmt == 'gif':
+        return mux + ' ' + v           # a GIF has no sound
     a = ''
     src = {'desktop': ['@DEFAULT_MONITOR@'], 'mic': ['@DEFAULT_SOURCE@'], 'both': ['@DEFAULT_MONITOR@', '@DEFAULT_SOURCE@']}.get(o['sound'], [])
     if len(src) == 1:
@@ -321,7 +375,7 @@ def cmd_run(args):
         raise
     finally:
         st = read_state_raw()
-        if st.get('state') in ('starting', 'recording', 'stopping') and st.get('pid') == os.getpid():
+        if st.get('state') in BUSY and st.get('pid') == os.getpid():
             write_state({'state': 'idle', 'last': st.get('file', ''), 'error': st.get('error', '')})
 
 
@@ -367,36 +421,59 @@ def _run(args):
         return 0
     folder = videos_dir()
     os.makedirs(folder, exist_ok=True)
-    encs = encoders()
+    fmt = o.get('format', 'mp4')
+    if fmt != 'mp4' and not can_formats().get(fmt):
+        sess.close()
+        write_state({'state': 'idle', 'error': {'webm': "this PC can't record WebM (GStreamer's vp8enc and webmmux are missing)",
+                                                'gif': "making GIFs needs ffmpeg, which isn't installed",
+                                                'mkv': "GStreamer's matroskamux is missing"}.get(fmt, 'that format can\'t be recorded here')})
+        return 1
+    encs = encoders(fmt)
     if not encs:
         sess.close()
         write_state({'state': 'idle', 'error': 'GStreamer has no H.264 encoder here (gstreamer1.0-plugins-ugly gives x264)'})
         return 1
-    aac = gst_has('mp4mux') and (gst_has('avenc_aac') or gst_has('fdkaacenc') or gst_has('voaacenc'))
-    if not aac and not gst_has('opusenc'):
-        o['sound'] = 'none'
-    ext = '.mp4' if gst_has('mp4mux') else '.mkv'
-    if ext == '.mkv':
+    have_aac = gst_has('avenc_aac') or gst_has('fdkaacenc') or gst_has('voaacenc')
+    if fmt == 'mp4':
+        aac = gst_has('mp4mux') and have_aac
+        if not aac:
+            fmt = 'mkv'                  # no MP4 muxer or AAC here: MKV, as before
+        if fmt == 'mkv' and not gst_has('opusenc'):
+            o['sound'] = 'none'
+    elif fmt == 'mkv':
+        aac = have_aac
+        if not aac and not gst_has('opusenc'):
+            o['sound'] = 'none'
+    elif fmt == 'webm':
         aac = False
+        if not gst_has('opusenc'):
+            o['sound'] = 'none'
+    else:                                # gif
+        aac = False
+        o['sound'] = 'none'
+    o['format'] = fmt
     if '"' in folder or '\\' in folder:
         folder = os.path.join(HOME, 'Videos', 'Recordings')
         os.makedirs(folder, exist_ok=True)
     stamp = time.strftime('%Y-%m-%d %H-%M-%S')
+    ext = '.' + fmt
     path = os.path.join(folder, 'Recording %s%s' % (stamp, ext))
     n = 2
     while os.path.exists(path):
         path = os.path.join(folder, 'Recording %s (%d)%s' % (stamp, n, ext))
         n += 1
+    # A GIF is recorded as H.264 in a hidden MKV next to it first, and made into the GIF when you stop.
+    rec_path = os.path.join(folder, '.%s.part.mkv' % os.path.basename(path)) if fmt == 'gif' else path
     rc = 1
     for i, enc in enumerate(encs):
         fd = sess.fd()
         # One argument: gst-launch joins its arguments into one description anyway, and the file name has spaces.
-        cmd = ['gst-launch-1.0', '-e', '-q', pipeline(fd, sess.node(), o, enc, path, aac)]
+        cmd = ['gst-launch-1.0', '-e', '-q', pipeline(fd, sess.node(), o, enc, rec_path, aac, fmt)]
         started = time.time()
         child['p'] = subprocess.Popen(cmd, pass_fds=(fd,), stdin=subprocess.DEVNULL)
         os.close(fd)
         write_state({'state': 'recording', 'pid': os.getpid(), 'since': int(started), 'file': path, 'what': o['what'],
-                     'sound': o['sound'], 'encoder': enc[2]})
+                     'sound': o['sound'], 'encoder': enc[2], 'format': fmt, 'quality': o.get('quality', 'high')})
         asked = 0.0
         while child['p'].poll() is None:
             time.sleep(0.2)
@@ -412,15 +489,29 @@ def _run(args):
                     pass
         rc = child['p'].returncode
         quick = time.time() - started < 4 and not stopping['now']
-        # A graphics-card encoder that fails straight away: the next one (x264 last), into the same file.
+        # A graphics-card encoder that fails straight away: the next one (the software one last), into the same file.
         if rc != 0 and quick and enc[0] not in SOFTWARE and i + 1 < len(encs):
             try:
-                os.remove(path)
+                os.remove(rec_path)
             except OSError:
                 pass
             continue
         break
     sess.close()
+    if fmt == 'gif':
+        ok = os.path.exists(rec_path) and os.path.getsize(rec_path) > 0
+        if ok:
+            write_state({'state': 'converting', 'pid': os.getpid(), 'since': 0, 'file': path, 'format': 'gif'})
+            ok, why = make_gif(rec_path, path, o.get('quality', 'high'))
+        else:
+            why = ''
+        try:
+            os.remove(rec_path)
+        except OSError:
+            pass
+        if not ok:
+            write_state({'state': 'idle', 'error': "the GIF couldn't be made%s" % (': ' + why if why else ' (see %s)' % LOG)})
+            return 1
     ok = os.path.exists(path) and os.path.getsize(path) > 0
     if not ok:
         write_state({'state': 'idle', 'error': "the recording couldn't be written (GStreamer stopped: see %s)" % LOG})
@@ -430,6 +521,33 @@ def _run(args):
         subprocess.run(['notify-send', '-a', 'Recorder', '-i', 'hearth-recorder', 'Recording saved',
                         '%s in %s' % (os.path.basename(path), os.path.dirname(path))], timeout=10, check=False)
     return 0
+
+
+def gif_command(src, dest, quality='high'):
+    """ffmpeg's two-pass GIF (its own palette, so colours stay right): frames a second and width by quality."""
+    fps, width = GIF.get(quality, GIF['high'])
+    vf = ("fps=%d,scale='min(%d,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];"
+          "[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" % (fps, width))
+    return ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-vf', vf, '-loop', '0', '-f', 'gif', dest]
+
+
+def make_gif(src, dest, quality='high'):
+    """SRC (the H.264 recording) made into a GIF at DEST, written to a temporary name first. (ok, why)."""
+    if not shutil.which('ffmpeg'):
+        return False, "ffmpeg isn't installed"
+    tmp = os.path.join(os.path.dirname(dest), '.%s.part.gif' % os.path.basename(dest))
+    try:
+        r = subprocess.run(gif_command(src, tmp, quality), capture_output=True, text=True, errors='replace', timeout=1800)
+    except subprocess.TimeoutExpired:
+        r = None
+    if r is None or r.returncode != 0 or not os.path.isfile(tmp) or os.path.getsize(tmp) == 0:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False, ('ffmpeg took too long' if r is None else (r.stderr.strip().splitlines() or ['ffmpeg failed'])[-1][:200])
+    os.replace(tmp, dest)
+    return True, ''
 
 
 def main(argv):
