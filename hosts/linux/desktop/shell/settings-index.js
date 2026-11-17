@@ -1040,6 +1040,10 @@ var ENTRIES = [
 "p": "fonts"
 },
 {
+"t": "Sub-pixel order",
+"p": "fonts"
+},
+{
 "t": "Hinting",
 "p": "fonts"
 },
@@ -3145,6 +3149,11 @@ var ENTRIES = [
 "i": "palette"
 },
 {
+"t": "Apps follow Hearth",
+"p": "look-more",
+"i": "palette"
+},
+{
 "t": "Show it now",
 "p": "look-more",
 "d": "A preview: clicks go straight through it",
@@ -3479,9 +3488,19 @@ var ENTRIES = [
 "i": "moon"
 },
 {
+"t": "Hybrid sleep",
+"p": "power",
+"i": "sleep"
+},
+{
 "t": "Hibernate isn't available",
 "p": "power",
 "i": "moon"
+},
+{
+"t": "Hybrid sleep isn't available",
+"p": "power",
+"i": "sleep"
 },
 {
 "t": "Restart",
@@ -4053,6 +4072,12 @@ var ENTRIES = [
 "p": "sound-apps"
 },
 {
+"t": "No app is recording right now",
+"p": "sound-apps",
+"d": "Join a call or start recording and it shows up here",
+"i": "mic"
+},
+{
 "t": "Scroll on an app to change its volume",
 "p": "sound-apps",
 "d": "With the mouse over an app's icon in the dock, scroll up for louder and down for quieter",
@@ -4476,6 +4501,27 @@ var ENTRIES = [
 "t": "Next picture now",
 "p": "wallpaper-more",
 "i": "forward"
+},
+{
+"t": "Picture of the day",
+"p": "wallpaper-more",
+"i": "image"
+},
+{
+"t": "From",
+"p": "wallpaper-more",
+"i": "globe"
+},
+{
+"t": "Look again now",
+"p": "wallpaper-more",
+"d": "Downloaded once a day and kept for a week, so it works offline too",
+"i": "sync"
+},
+{
+"t": "A wallpaper for light and one for dark",
+"p": "wallpaper-more",
+"i": "moon"
 },
 {
 "t": "Wi-Fi",

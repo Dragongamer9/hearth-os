@@ -195,6 +195,43 @@ Scope {
         onExited: code => { if (code === 127) SettingsNav.toast("Moving an app's sound needs pw-metadata (PipeWire's tools)"); }
     }
 
+    // ------------------------------------------------ which microphone each app records from (1.14, Apps' sound)
+    // Apps recording (capture streams: a stream that takes sound in), grouped by app like the players, and the
+    // microphones. "Record from…" points the app's streams at one microphone through hearth-sound route (WirePlumber
+    // moves them and remembers it for that app); "The default microphone" puts them back. Nothing is saved by Hearth.
+    readonly property var inputs: nodes.filter(n => n.audio && !n.isSink && !n.isStream && !String(n.name || "").endsWith(".monitor"))
+    readonly property var recStreams: nodes.filter(n => n.audio && n.isStream && n.isSink && !(n.properties && (n.properties["stream.monitor"] === "true" || n.properties["stream.capture.sink"] === "true")))
+    readonly property var source: Pipewire.defaultAudioSource
+    PwObjectTracker { objects: [mx.source].concat(mx.recStreams).concat(mx.inputs).filter(Boolean) }
+    function recNodesOf(key) { return recStreams.filter(n => keyOf(n) === key); }
+    readonly property string recJoined: {
+        if (mx.fix) return (mx.fix.recording || []).map(a => a.name).join("\n");
+        return M.group(recStreams.map(n => ({ id: n.id, key: keyOf(n) }))).map(g => g.key).join("\n");
+    }
+    readonly property var recKeys: recJoined === "" ? [] : recJoined.split("\n")
+    readonly property var inList: mx.fix ? (mx.fix.inputs || []).map(o => ({ name: o.name, node: null }))
+        : inputs.map(n => ({ name: devName(n), node: n }))
+    readonly property string defaultIn: mx.fix ? String(mx.fix.defaultIn || "") : (source ? devName(source) : "No microphone")
+    property var taken: ({})            // {app: microphone name} chosen in this session; "" = the default
+    function inOf(key) {
+        if (mx.fix) { const a = (mx.fix.recording || []).find(x => x.name === key); return a && a.in ? a.in : ""; }
+        return taken[key] || "";
+    }
+    function takeFrom(key, o) {
+        const t = Object.assign({}, taken); t[key] = o && o.name ? o.name : ""; taken = t;
+        if (mx.fix) { const f = JSON.parse(JSON.stringify(mx.fix)); const a = (f.recording || []).find(x => x.name === key); if (a) a.in = o && o.name ? o.name : ""; mx.fix = f; return; }
+        const ids = recNodesOf(key).map(n => String(n.id));
+        if (!ids.length) return;
+        const dev = o ? o.node : null;
+        const serial = dev ? String(dev.properties && dev.properties["object.serial"] ? dev.properties["object.serial"] : dev.id) : "-1";
+        inMover.command = ["python3", Quickshell.shellDir + "/hearth-sound", "route", serial, dev ? String(dev.id) : "-1"].concat(ids);
+        inMover.running = true;
+    }
+    Process {
+        id: inMover
+        stdout: StdioCollector { onStreamFinished: { const t = text.trim(); if (t.startsWith("error: ")) SettingsNav.toast(t.slice(7)); } }
+    }
+
     // The outputs (the picker and "Play on…"): [{name, node}]
     readonly property var outList: mx.fix ? (mx.fix.outputs || []).map(o => ({ name: o.name, node: null }))
         : outputs.map(n => ({ name: devName(n), node: n }))

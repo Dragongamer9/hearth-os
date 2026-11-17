@@ -5,7 +5,7 @@ hearth-admin lid, which writes only /etc/systemd/logind.conf.d/60-hearth-lid.con
 awake (logind's inhibitors), whether this PC can hibernate (and why not), and the battery's health, charge cycles and
 energy history (UPower). Reads only; nothing here writes a file.
 
-  hearth-powerset status                  JSON: {lid, inhibitors, hibernate, batteries}
+  hearth-powerset status                  JSON: {lid, inhibitors, hibernate, hybrid, batteries}
   hearth-powerset history PATH KIND HOURS JSON: {points: [[time, value, state]]}: UPower's history of a battery
                                           (KIND charge | rate; HOURS 1..168)
 Output: one JSON line; failures print "error: ..." and exit 1.
@@ -168,6 +168,29 @@ def hibernate_check(sysfs=None, proc=None, can=None):
     return r
 
 
+def hybrid_check(hib, sysfs=None, can=None):
+    """{can, why}: Hybrid sleep (sleep, with everything also saved to the drive in case the power goes) is offered only
+    where Hibernate is (hib from hibernate_check), the PC can also sleep, and logind agrees (CanHybridSleep)."""
+    sysfs = sysfs or SYS
+    r = {'can': False, 'why': ''}
+    if not hib or not hib.get('can'):
+        r['why'] = 'Hybrid sleep needs Hibernate to work on this PC'
+        return r
+    states = read(os.path.join(sysfs, 'power', 'state')).split()
+    if 'mem' not in states and 'freeze' not in states:
+        r['why'] = "This PC can't sleep, so it can't use hybrid sleep"
+        return r
+    if can is None:
+        code, out = run(['busctl', 'call', 'org.freedesktop.login1', '/org/freedesktop/login1',
+                         'org.freedesktop.login1.Manager', 'CanHybridSleep']) if shutil.which('busctl') else (127, '')
+        can = out.split('"')[1] if code == 0 and '"' in out else ''
+    if can == 'yes':
+        r['can'] = True
+    else:
+        r['why'] = "The system says this PC can't use hybrid sleep right now (%s)" % (can or 'no answer')
+    return r
+
+
 # ------------------------------------------------------------------ batteries
 def parse_upower(text):
     """upower -i's "key: value" lines (the battery part)."""
@@ -245,8 +268,22 @@ def parse_history(text):
 
 
 def status():
-    return {'lid': dict(lid(), present=has_lid()), 'inhibitors': inhibitors(), 'hibernate': hibernate_check(),
-            'batteries': batteries()}
+    hib = hibernate_check()
+    r = {'lid': dict(lid(), present=has_lid()), 'inhibitors': inhibitors(), 'hibernate': hib,
+         'hybrid': hybrid_check(hib), 'batteries': batteries()}
+    # The Desktop Mode test's pictures only (desktop-test.yml): a stand-in answer for Hibernate and Hybrid sleep from a
+    # file in your own runtime folder. It only changes what the page shows; logind still decides what the PC can do.
+    pv = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/nonexistent', 'hearth-powerset-preview.json')
+    if os.path.isfile(pv):
+        try:
+            with open(pv) as f:
+                d = json.load(f)
+            for k in ('hibernate', 'hybrid'):
+                if isinstance(d.get(k), dict):
+                    r[k] = dict(r[k], **d[k])
+        except (OSError, ValueError):
+            pass
+    return r
 
 
 def main(argv):

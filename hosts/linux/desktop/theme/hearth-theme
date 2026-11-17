@@ -280,6 +280,18 @@ def title_font(lk):
     return f if f not in (None, '', 'sans-serif') and ',' not in str(f) else 'Noto Sans'
 
 
+def apps_follow(d):
+    """"Apps follow Hearth" (desktop.json "appsFollow", Settings › Personalization › Window frames & app colours): Qt,
+    KDE and GTK apps take Hearth's colours unless it's false. Missing or anything else = on, as before."""
+    return not (isinstance(d, dict) and d.get('appsFollow') is False)
+
+
+def kde_own_scheme(mode):
+    """With "Apps follow Hearth" off, KDE apps get KDE's own Breeze scheme (only while kdeglobals is Hearth's)."""
+    return '[UiSettings]\nColorScheme=%s\n\n[Icons]\nTheme=%s\n' % (
+        ('BreezeLight', 'breeze') if mode == 'light' else ('BreezeDark', 'breeze-dark'))
+
+
 def read(path):
     try:
         with open(path) as f:
@@ -362,7 +374,9 @@ def main():
     themerc = cap_radii(themerc, cap, r'(corner-radius:\s*)(\d+)')
     themerc = themerc.replace('# Hearth colors', '# Written by hearth-theme (%s, %s, accent %s) from Hearth colors' % (look, mode, m.accent), 1)
     # 1.14: the window frames tinted with the accent (desktop.json "frameTint", 0-100; missing or 0 = as before).
-    frame_tint = (load(os.path.join(DATA, 'nimbus', 'desktop.json'), {}) or {}).get('frameTint', 0)
+    desk = load(os.path.join(DATA, 'nimbus', 'desktop.json'), {}) or {}
+    frame_tint = desk.get('frameTint', 0) if isinstance(desk, dict) else 0
+    follow = apps_follow(desk)
     try:
         import hearth_aurorae as _ha
         themerc = _ha.tint_themerc(themerc, m.accent if isinstance(m.accent, str) else hexc(m.accent), frame_tint)
@@ -414,7 +428,10 @@ def main():
     # ones, and color-schemes/Hearth.colors (the live copy written above) has both.
     # The window title font for KWin's frames (labwc's ActiveWindow font: the look's font, 10 pt, bold), in [WM].
     kde_wm = re.sub(r'(?m)^\[WM\]\n', '[WM]\nactiveFont=%s,10,-1,5,700,0,0,0,0,0\n' % title_font(lk), kde, count=1)
-    if not cur or cur.startswith(KDE_MARK):
+    if not follow:
+        if cur.startswith(KDE_MARK):
+            write_kdeglobals(kg, cur, kde_own_scheme(mode))
+    elif not cur or cur.startswith(KDE_MARK):
         # merged in (kwin-pages: KWin's own keys in kdeglobals stay), with the window title font (kwin-windows)
         write_kdeglobals(kg, cur, kde_wm.rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n\n[Icons]\nTheme=%s\n' % (
             'breeze' if mode == 'light' else 'breeze-dark'))
@@ -437,7 +454,8 @@ def main():
             subprocess.run([sys.executable, system, 'labwc-config'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
             subprocess.run(['labwc', '--reconfigure'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for k, v in (('HEARTH_THEME_DIR', OUT), ('HEARTH_SCHEME', mode), ('HEARTH_GNOME_ACCENT', gnome_accent(m.accent))):
+    for k, v in (('HEARTH_THEME_DIR', OUT), ('HEARTH_SCHEME', mode), ('HEARTH_GNOME_ACCENT', gnome_accent(m.accent)),
+                 ('HEARTH_APPS_FOLLOW', '1' if follow else '0')):
         if "'" not in v:
             print("%s='%s'" % (k, v))
     return 0

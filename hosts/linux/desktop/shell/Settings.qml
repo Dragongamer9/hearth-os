@@ -66,6 +66,9 @@ Singleton {
     property int sleepBattery: -1        // on battery: go to sleep after (minutes, 0 never); -1 = as plugged in
     property var wallScreens: ({})       // a picture per screen: {screen name: path}; a screen not in it shows `wallpaper`
     property var wallShow: ({})          // slideshow: {on, folder, minutes, shuffle}
+    property var wallPotd: ({})          // picture of the day: {on, source: "bing"|"apod"|"wikimedia"}; off unless you turn it on
+    property var wallPair: ({})          // a light and a dark wallpaper that follow the look: {on, light, dark}
+    property bool appsFollow: true       // Qt, KDE and GTK apps take Hearth's colours (theme/hearth-theme, theme/apply.sh)
     property int frameTint: 0            // window frames tinted with the accent, 0–100 % (hearth-theme)
     property string signinSplash: ""     // the splash after signing in: "" (none) | "flame" | "logo" | "plain"
     property var removable: ({})         // what happens when a drive is plugged in: {storage: "ask"|"open"|"nothing"}
@@ -90,6 +93,7 @@ Singleton {
         .concat(["restoreApps"])
         .concat(["dockScrollVolume", "pttOn", "pttKey", "screenOffBattery", "sleepBattery", "wallScreens", "wallShow", "frameTint",
                  "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
+        .concat(["wallPotd", "wallPair", "appsFollow"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
@@ -134,6 +138,9 @@ Singleton {
     onWallScreensChanged: save("wallScreens")
     onWallShowChanged: save("wallShow")
     onFrameTintChanged: save("frameTint")
+    onWallPotdChanged: save("wallPotd")
+    onWallPairChanged: save("wallPair")
+    onAppsFollowChanged: save("appsFollow")
     onSigninSplashChanged: save("signinSplash")
     onRemovableChanged: save("removable")
     onUsbNotifyChanged: save("usbNotify")

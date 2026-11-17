@@ -159,7 +159,10 @@ class SettingsNeverChangeByThemselves(unittest.TestCase):
         w = (SHELL / 'Wallpaper.qml').read_text()
         # (1.14: a screen's own picture or the slideshow first, WallShow.qml; else Theme.wall as before.)
         self.assertIn('readonly property string wall: WallShow.forScreen(root.screen ? root.screen.name : "")', w)
-        self.assertIn('return typeof own === "string" && own !== "" ? own : current !== "" ? current : Theme.wall;', (SHELL / 'WallShow.qml').read_text())
+        # (1.14: then the picture of the day and the light/dark pair, both off unless you turn them on.)
+        ws = (SHELL / 'WallShow.qml').read_text()
+        self.assertIn('return typeof own === "string" && own !== "" ? own : base;', ws)
+        self.assertIn('readonly property string base: current !== "" ? current : potdPath !== "" ? potdPath : pairWall !== "" ? pairWall : Theme.wall', ws)
 
     def test_from_wallpaper_only_runs_when_you_ask(self):
         a = code((SHELL / 'SetAppearance.qml').read_text())
