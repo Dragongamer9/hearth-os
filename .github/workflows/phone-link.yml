@@ -1,0 +1,239 @@
+# Phone link (docs/PHONE-LINK.md): Hearth Connect (hosts/hearth-connect, KDE Connect's protocol) with every feature
+# KDE Connect's phone app has, Settings › Phone, the Quick Access tile and the notifications' Reply box.
+#   build:      unit tests and the release build
+#   fake-phone: the service against a pretend phone over localhost TLS (tests/test_phone_link.py: discovery, pairing
+#               with the verification key, a packet for every feature), on Ubuntu with X
+#   kwin:       the same tests inside KWin (kwin_wayland --virtual, HEARTH_WM=kwin): the clipboard through
+#               wl-clipboard, notifications, input
+#   shots:      Desktop Mode (labwc + Mantel) at 1920x1080 with the pretend phone paired: every new page, tile and
+#               notice as SHOT notices (and the PNGs as a download)
+# The real KDE Connect daemon is checked in link-apps.yml.
+name: Phone link
+
+on:
+  push:
+    branches: [feature/phone-link]
+    paths: ['hosts/hearth-connect/**', 'hosts/linux/desktop/shell/SetPhone*.qml', 'hosts/linux/desktop/shell/PhoneStatus.qml',
+            'hosts/linux/desktop/shell/NotifReply.qml', 'hosts/linux/desktop/shell/hearth-phone', '.github/workflows/phone-link.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: phone-link-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    name: Build and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-connect
+      - name: WebKit and GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+      - name: Python syntax
+        run: |
+          python3 -m py_compile hosts/hearth-connect/tests/fake_phone.py hosts/hearth-connect/tests/test_phone_link.py hosts/linux/desktop/shell/hearth-phone
+          sh -n hosts/hearth-connect/tests/post-shot.sh
+      - name: Unit tests
+        working-directory: hosts/hearth-connect
+        run: |
+          set -o pipefail
+          cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A10 test.log | head -90 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build
+        working-directory: hosts/hearth-connect
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A14 build.log | head -100 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          w=$(grep -cE '^warning' build.log || true); echo "::notice title=build::$(du -h target/release/hearth-connect | cut -f1), $w warnings"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-connect-bin
+          path: hosts/hearth-connect/target/release/hearth-connect
+          retention-days: 7
+
+  fake-phone:
+    name: Against a pretend phone (Ubuntu, X)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: hearth-connect-bin, path: /tmp/hc }
+      - name: What it needs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 xvfb xclip dbus python3-gi gir1.2-glib-2.0 openssl >/dev/null
+          chmod +x /tmp/hc/hearth-connect
+          sudo modprobe uinput 2>/dev/null || true; sudo chmod 666 /dev/uinput 2>/dev/null || true
+      - name: The tests
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          set +e
+          (cd hosts/hearth-connect/tests && DISPLAY=:99 HEARTH_CONNECT_BIN=/tmp/hc/hearth-connect /usr/bin/python3 -m unittest -v test_phone_link) > tests.log 2>&1; code=$?
+          cat tests.log
+          echo "::notice title=pretend phone::$(grep -E ' \.\.\. (ok|FAIL|ERROR|skipped)' tests.log | sed -E 's/^test_([0-9]+)_([a-z_]+) .* \.\.\. /\1 \2: /' | tr '\n' '|' | cut -c1-3900)"
+          if [ $code -ne 0 ]; then
+            echo "::error title=pretend phone failures::$(sed -n '/^\(FAIL\|ERROR\):/,/^------/p' tests.log | grep -vE '^\s*File \"/usr' | tr '\n' '|' | cut -c1-3900)"
+          fi
+          exit $code
+
+  kwin:
+    name: Inside KWin (HEARTH_WM=kwin)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged
+    steps:
+      - name: KWin and what the tests need
+        run: |
+          dnf -y install kwin-wayland wl-clipboard wtype dbus-daemon python3 python3-gobject openssl procps-ng webkit2gtk4.1 gtk3 libsoup3 mesa-dri-drivers >/dev/null 2>&1 \
+            || dnf -y install kwin wl-clipboard wtype dbus-daemon python3 python3-gobject openssl procps-ng webkit2gtk4.1 gtk3 libsoup3 mesa-dri-drivers >/dev/null
+          command -v kwin_wayland
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: hearth-connect-bin, path: /tmp/hc }
+      - name: The tests inside KWin
+        shell: bash
+        run: |
+          chmod +x /tmp/hc/hearth-connect
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home; mkdir -p "$XDG_RUNTIME_DIR" "$HOME"; chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"; export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export KWIN_COMPOSE=Q
+          kwin_wayland --virtual --no-lockscreen --no-global-shortcuts --socket wayland-kw --width 1920 --height 1080 > kwin.log 2>&1 &
+          for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-kw" ] && break; sleep 1; done
+          export WAYLAND_DISPLAY=wayland-kw HEARTH_WM=kwin
+          [ -S "$XDG_RUNTIME_DIR/wayland-kw" ] || { echo "::error title=kwin::KWin didn't start: $(tail -c 1500 kwin.log | tr '\n' '|')"; exit 1; }
+          echo "::notice title=kwin::$(kwin_wayland --version 2>/dev/null) running at 1920x1080"
+          set +e
+          (cd hosts/hearth-connect/tests && HEARTH_CONNECT_BIN=/tmp/hc/hearth-connect python3 -m unittest -v test_phone_link) > tests.log 2>&1; code=$?
+          cat tests.log
+          echo "::notice title=inside KWin::$(grep -E ' \.\.\. (ok|FAIL|ERROR|skipped)' tests.log | sed -E 's/^test_([0-9]+)_([a-z_]+) .* \.\.\. /\1 \2: /' | tr '\n' '|' | cut -c1-3900)"
+          if [ $code -ne 0 ]; then
+            echo "::error title=inside KWin failures::$(sed -n '/^\(FAIL\|ERROR\):/,/^------/p' tests.log | grep -vE '^\s*File \"/usr' | tr '\n' '|' | cut -c1-3900)"
+          fi
+          exit $code
+
+  shots:
+    name: Screenshots (${{ matrix.set }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        set: [pairing, phone]
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 \
+            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon libnotify wl-clipboard rsms-inter-fonts \
+            webkit2gtk4.1 gtk3 libsoup3 openssl ImageMagick python3-gobject >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: hearth-connect-bin, path: /tmp/hc }
+      - name: Desktop Mode with a phone linked
+        shell: bash
+        run: |
+          mkdir -p shots
+          install -m755 /tmp/hc/hearth-connect /usr/local/bin/hearth-connect
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          ICONS="$HOME/.local/share/icons/hicolor"
+          for d in branding/icons/png/*x*; do mkdir -p "$ICONS/$(basename "$d")/apps" && cp "$d"/*.png "$ICONS/$(basename "$d")/apps/"; done
+          labwc -C hosts/linux/desktop/labwc > shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          # Phone link on, as the person would (Settings › Phone's switch runs this): the service starts in the session.
+          export HEARTH_CONNECT_TEST=1
+          hearth-connect --call rename '{"name":"Hearth PC"}' 2>/dev/null || true
+          hearth-connect --turn-on > shots/turn-on.txt 2>&1 || echo "::error title=Phone link::--turn-on failed: $(cat shots/turn-on.txt)"
+          hearth-connect --call rename '{"name":"Hearth PC"}' >/dev/null 2>&1 || true
+          if [ "${{ matrix.set }}" = pairing ]; then export SCENE_ASKING=1; else export SCENE_CALL=1; fi
+          python3 hosts/hearth-connect/tests/fake_phone.py scene > shots/scene.log 2>&1 &
+          for i in $(seq 1 60); do grep -q '"id"' shots/scene.log && break; sleep 1; done
+          PID=$(grep -o '"id": "[0-9a-f]*"' shots/scene.log | head -1 | cut -d'"' -f4)
+          echo "phone: $PID"; cat shots/scene.log
+          if [ "${{ matrix.set }}" = pairing ]; then
+            ipc settings page phone; sleep 3; grim shots/phone-pair-request.png || true
+            hearth-connect --call accept "{\"id\":\"$PID\"}" || true
+            sleep 4
+            grim shots/phone-notification-reply.png || true
+            ipc settings close; ipc settings page phone; sleep 4; grim shots/phone-page.png || true
+            ipc settings close; sleep 1; ipc quick toggle; sleep 3; grim shots/quick-access-phone.png || true; ipc quick toggle
+          else
+            sleep 4
+            ipc settings page phone; sleep 4; grim shots/phone-page-call.png || true
+            ipc settings close; ipc settings page phone:notifications; sleep 4; grim shots/phone-notifications.png || true
+            ipc settings close; ipc settings page phone:commands; sleep 4; grim shots/phone-commands.png || true
+            ipc settings close; ipc settings page phone-messages; sleep 5; grim shots/phone-messages.png || true
+            ipc settings close; ipc settings page phone-messages:7; sleep 5; grim shots/phone-conversation.png || true
+          fi
+          hearth-connect --call state > shots/state.json 2>&1 || true
+          grep -E "(SetPhone|SetPhoneMessages|PhoneStatus|NotifReply|Notifications|QuickAccess)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          if grep -qE "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read|Expected token)" shots/shell-errors.txt; then
+            echo "::error title=Phone link pages::$(sort -u shots/shell-errors.txt | head -8 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Phone link pages::no QML errors ($(wc -l < shots/shell-errors.txt) lines mention them)"
+          fi
+          ls -la shots
+      - name: SHOT 1
+        if: always()
+        run: if [ "${{ matrix.set }}" = pairing ]; then sh hosts/hearth-connect/tests/post-shot.sh phone-pair-request shots/phone-pair-request.png; else sh hosts/hearth-connect/tests/post-shot.sh phone-page-call shots/phone-page-call.png; fi
+      - name: SHOT 2
+        if: always()
+        run: if [ "${{ matrix.set }}" = pairing ]; then sh hosts/hearth-connect/tests/post-shot.sh phone-page shots/phone-page.png; else sh hosts/hearth-connect/tests/post-shot.sh phone-notifications shots/phone-notifications.png; fi
+      - name: SHOT 3
+        if: always()
+        run: if [ "${{ matrix.set }}" = pairing ]; then sh hosts/hearth-connect/tests/post-shot.sh quick-access-phone shots/quick-access-phone.png; else sh hosts/hearth-connect/tests/post-shot.sh phone-commands shots/phone-commands.png; fi
+      - name: SHOT 4
+        if: always()
+        run: if [ "${{ matrix.set }}" = pairing ]; then sh hosts/hearth-connect/tests/post-shot.sh phone-notification-reply shots/phone-notification-reply.png; else sh hosts/hearth-connect/tests/post-shot.sh phone-messages shots/phone-messages.png; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phone-link-shots-${{ matrix.set }}
+          path: shots
+      - name: Failed?
+        if: always()
+        run: test ! -f shots/FAILED
+
+  shots-conversation:
+    name: Screenshot (a conversation)
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: phone-link-shots-phone, path: shots }
+        continue-on-error: true
+      - name: SHOT 5
+        run: sudo apt-get install -y -qq imagemagick >/dev/null 2>&1 || true; sh hosts/hearth-connect/tests/post-shot.sh phone-conversation shots/phone-conversation.png

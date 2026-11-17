@@ -57,6 +57,12 @@ pub struct PairedDev {
     pub input: bool,
     #[serde(default = "yes")]
     pub notifications: bool,
+    /// Pause what's playing here while the phone rings or is in a call (plugins/telephony.rs).
+    #[serde(default = "yes")]
+    pub pause_on_call: bool,
+    /// The phone may start the commands set up in Settings › Phone (plugins/runcommand.rs).
+    #[serde(default = "yes")]
+    pub commands: bool,
     #[serde(default)]
     pub last_ip: Option<String>,
 }
@@ -138,7 +144,7 @@ impl Daemon {
         lock(&self.clients).retain(|c| c.send(line.clone()).is_ok());
     }
 
-    fn changed(&self) { self.emit("state", json!({})); }
+    pub(crate) fn changed(&self) { self.emit("state", json!({})); }
 
     pub fn identity_packet(&self, tcp_port: Option<u16>, target: Option<&str>) -> Packet {
         let name = lock(&self.name).clone();
@@ -153,16 +159,36 @@ impl Daemon {
         if let Ok(v) = serde_json::to_value(&list) { let _ = crate::appfile::write_json_private(&self.home.join("paired.json"), &v); }
     }
 
+    /// Only this service's own keys change; the rest of settings.json (Phone link on or off, written by
+    /// `hearth-connect --turn-on/--turn-off`) is kept as it is (merge-on-write).
     fn save_settings(&self) {
-        let v = json!({"name": *lock(&self.name), "manual": lock(&self.manual).iter().map(|i| i.to_string()).collect::<Vec<_>>()});
-        let _ = crate::appfile::write_json_private(&self.home.join("settings.json"), &v);
+        let name = lock(&self.name).clone();
+        let manual: Vec<String> = lock(&self.manual).iter().map(|i| i.to_string()).collect();
+        let _ = std::fs::create_dir_all(&self.home);
+        let _ = crate::appfile::update(&self.home.join("settings.json"), |cur| {
+            let mut o = cur.and_then(|v| v.as_object().cloned()).unwrap_or_default();
+            o.insert("name".into(), json!(name));
+            o.insert("manual".into(), json!(manual));
+            (Some(Value::Object(o)), ())
+        });
     }
 
     pub fn is_paired(&self, id: &str) -> bool { lock(&self.paired).contains_key(id) }
 
-    fn paired_dev(&self, id: &str) -> Option<PairedDev> { lock(&self.paired).get(id).cloned() }
+    pub(crate) fn paired_dev(&self, id: &str) -> Option<PairedDev> { lock(&self.paired).get(id).cloned() }
 
-    fn device_name(&self, id: &str) -> String {
+    /// Paired phones linked right now.
+    pub fn linked_paired(&self) -> Vec<String> {
+        let linked: Vec<String> = lock(&self.devices).iter().filter(|(_, d)| d.link.is_some()).map(|(k, _)| k.clone()).collect();
+        linked.into_iter().filter(|k| self.is_paired(k)).collect()
+    }
+
+    /// Does the phone say it sends this kind of packet (its identity's outgoingCapabilities)?
+    pub fn peer_offers(&self, id: &str, kind: &str) -> bool {
+        lock(&self.devices).get(id).map(|d| d.peer.outgoing.iter().any(|k| k == kind)).unwrap_or(false)
+    }
+
+    pub(crate) fn device_name(&self, id: &str) -> String {
         lock(&self.devices).get(id).map(|d| d.peer.name.clone()).or_else(|| self.paired_dev(id).map(|p| p.name)).unwrap_or_else(|| "Your phone".into())
     }
 
@@ -208,7 +234,7 @@ impl Daemon {
         l.tx.send(p.line()).map_err(|_| "The phone isn't connected right now".to_string())
     }
 
-    fn send_body(&self, id: &str, kind: &str, body: Value) -> Result<(), String> { self.send(id, &Packet::new(kind, body)) }
+    pub(crate) fn send_body(&self, id: &str, kind: &str, body: Value) -> Result<(), String> { self.send(id, &Packet::new(kind, body)) }
 
     // ------------------------------------------------------------------ links
 
@@ -268,6 +294,7 @@ impl Daemon {
                 }
             }
         }
+        if !lock(&self.devices).get(&id).map(|d| d.link.is_some()).unwrap_or(false) { crate::plugins::link_lost(self, &id); }
         self.changed();
     }
 
@@ -277,6 +304,7 @@ impl Daemon {
         let _ = self.send_body(id, "kdeconnect.mousepad.keyboardstate", json!({"state": true}));
         if self.paired_dev(id).map(|p| p.notifications).unwrap_or(true) { let _ = self.send_body(id, "kdeconnect.notification.request", json!({"request": true})); }
         let _ = self.send_body(id, "kdeconnect.mpris.request", json!({"requestPlayerList": true}));
+        crate::plugins::on_paired_link(self, id);
     }
 
     // ------------------------------------------------------------------ packets
@@ -300,6 +328,8 @@ impl Daemon {
                 self.changed();
             }
             "kdeconnect.share.request" => self.share_in(id, &from, &p, &pd),
+            // A picture taken with the phone's camera because you asked (Take a photo): kept without asking.
+            "kdeconnect.photo" => { let mut asked = pd.clone(); asked.auto_accept = true; self.share_in(id, &from, &p, &asked) }
             "kdeconnect.notification" => if pd.notifications { self.notification_in(id, &from, &p) },
             "kdeconnect.clipboard" | "kdeconnect.clipboard.connect" => if pd.clipboard {
                 let content = p.str("content").unwrap_or("").to_string();
@@ -331,11 +361,12 @@ impl Daemon {
                 self.notify_desktop(&format!("{from} is looking for this PC"), "Here I am!", "find-location", true);
                 self.emit("ring", json!({"device": id, "from": from}));
             }
-            _ => {}
+            // The features in plugins/ (run commands, calls, messages, presenter, volume, browsing the phone).
+            _ => { crate::plugins::handle(self, id, &from, &p, &pd); }
         }
     }
 
-    fn notify_desktop(&self, summary: &str, body: &str, icon: &str, urgent: bool) {
+    pub(crate) fn notify_desktop(&self, summary: &str, body: &str, icon: &str, urgent: bool) {
         let (s, b, i) = (summary.to_string(), body.to_string(), icon.to_string());
         tokio::task::spawn_blocking(move || desktop::notify(&s, &b, &i, 0, urgent));
     }
@@ -379,7 +410,7 @@ impl Daemon {
                 }
             }
         }
-        if forget { lock(&self.paired).remove(id); self.save_paired(); }
+        if forget { lock(&self.paired).remove(id); self.save_paired(); crate::plugins::forget(self, id); }
         if store { self.store_pair(id); }
         if let Some((ev, data)) = event {
             if ev == "pair-request" {
@@ -396,7 +427,7 @@ impl Daemon {
         let info = lock(&self.devices).get(id).and_then(|d| d.link.as_ref().map(|l| (d.peer.clone(), l.cert.clone(), l.ip)));
         let Some((peer, cert, ip)) = info else { return };
         lock(&self.paired).insert(id.to_string(), PairedDev { id: id.into(), name: peer.name.clone(), kind: peer.kind.clone(), cert: crate::hex(&cert),
-            auto_accept: false, clipboard: true, input: true, notifications: true, last_ip: Some(ip.to_string()) });
+            auto_accept: false, clipboard: true, input: true, notifications: true, pause_on_call: true, commands: true, last_ip: Some(ip.to_string()) });
         self.save_paired();
         self.emit("paired", json!({"device": id, "from": peer.name}));
         self.on_paired_link(id);
@@ -444,11 +475,12 @@ impl Daemon {
     }
 
     /// Unpair (tell the phone if it's there) and forget it.
-    pub fn unpair(&self, id: &str) -> Result<Value, String> {
+    pub fn unpair(self: &Arc<Self>, id: &str) -> Result<Value, String> {
         let _ = self.send_body(id, "kdeconnect.pair", json!({"pair": false}));
         if let Some(d) = lock(&self.devices).get_mut(id) { d.pair = Pair::None; d.notifications.clear(); d.battery = None; }
         lock(&self.paired).remove(id);
         self.save_paired();
+        crate::plugins::forget(self, id);
         self.emit("unpaired", json!({"device": id}));
         self.changed();
         Ok(json!({}))
@@ -573,7 +605,7 @@ impl Daemon {
 
     // ------------------------------------------------------------------ notifications
 
-    fn notification_in(&self, id: &str, from: &str, p: &Packet) {
+    fn notification_in(self: &Arc<Self>, id: &str, from: &str, p: &Packet) {
         let nid = p.str("id").unwrap_or("").to_string();
         if nid.is_empty() { return; }
         if p.bool("isCancel") {
@@ -602,7 +634,8 @@ impl Daemon {
             let summary = match (app.is_empty(), title.is_empty()) { (false, false) if app != title => format!("{app}: {title}"), (false, _) => app, _ => title };
             let body = entry["text"].as_str().unwrap_or("").to_string();
             let summary = if summary.is_empty() { from.to_string() } else { summary };
-            let r = desktop::notify(&summary, &body, "smartphone", replaces, false);
+            // In Mantel's pop-up: the phone's own buttons, and a Reply box when the app can take replies (messages).
+            let r = crate::plugins::notify_bus::phone_notification(self, id, &entry, &summary, &body, replaces);
             if let Some(n) = r { if let Some(d) = lock(&self.devices).get_mut(id) { d.notif_ids.insert(nid.clone(), n); } }
         }
         self.emit("notifications", json!({"device": id}));
@@ -724,7 +757,8 @@ impl Daemon {
                 "keyboard": d.map(|d| d.keyboard).unwrap_or(false),
                 "players": d.map(|d| d.players.clone()).unwrap_or_default(), "playing": d.map(|d| json!(d.playing)).unwrap_or(json!({})),
                 "notifications": d.map(|d| json!(d.notifications)).unwrap_or(json!([])),
-                "options": pd.map(|p| json!({"autoAccept": p.auto_accept, "clipboard": p.clipboard, "input": p.input, "notifications": p.notifications})),
+                "options": pd.map(|p| json!({"autoAccept": p.auto_accept, "clipboard": p.clipboard, "input": p.input, "notifications": p.notifications, "pauseOnCall": p.pause_on_call, "commands": p.commands})),
+                "plugins": crate::plugins::device_state(id),
             })
         }).collect();
         drop(g);
@@ -737,6 +771,7 @@ impl Daemon {
             "devices": devices, "files": files, "texts": json!(*lock(&self.texts)), "log": json!(*lock(&self.log)),
             "folder": self.dest.to_string_lossy(), "firewall": *lock(&self.firewall), "inputReady": input.ready(), "inputError": input.error,
             "oldProtocol": json!(*lock(&self.old_protocol)), "manual": lock(&self.manual).iter().map(|i| i.to_string()).collect::<Vec<_>>(),
+            "commands": crate::plugins::runcommand::list(&self.home),
         })
     }
 
@@ -788,9 +823,11 @@ impl Daemon {
                 {
                     let mut g = lock(&self.paired);
                     let p = g.get_mut(&id).ok_or("Pair with it first")?;
-                    match key.as_str() { "autoAccept" => p.auto_accept = on, "clipboard" => p.clipboard = on, "input" => p.input = on, "notifications" => p.notifications = on, _ => return Err("unknown option".into()) }
+                    match key.as_str() { "autoAccept" => p.auto_accept = on, "clipboard" => p.clipboard = on, "input" => p.input = on, "notifications" => p.notifications = on,
+                        "pauseOnCall" => p.pause_on_call = on, "commands" => p.commands = on, _ => return Err("unknown option".into()) }
                 }
                 self.save_paired();
+                if key == "commands" { crate::plugins::runcommand::send_list(self, &id); }
                 if key == "notifications" && on { let _ = self.send_body(&id, "kdeconnect.notification.request", json!({"request": true})); }
                 self.changed();
                 Ok(json!({}))
@@ -822,6 +859,7 @@ impl Daemon {
                 Ok(json!({}))
             }
             "quit" => { let _ = self.stop_tx.send(true); Ok(json!({})) }
+            c if crate::plugins::knows(c) => crate::plugins::command(self, c, a).await,
             _ => Err(format!("unknown command {cmd}")),
         }
     }
