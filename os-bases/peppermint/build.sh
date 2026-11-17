@@ -569,6 +569,8 @@ fi
 # and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
 # tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
 optional sane-utils sane-airscan traceroute iputils-tracepath iw
+# 1.14: a dictionary for spell checking in KDE and GTK apps (Settings › Region & language › Spell check).
+optional hunspell-en-us
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
