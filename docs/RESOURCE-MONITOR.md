@@ -126,7 +126,7 @@ because you pressed it.
 - `hosts/linux/desktop/shell/ResmonBoard.qml`: the board painter
 - `os/system_files/usr/libexec/nimbus/hearth-hwinfo`, `os/system_files/usr/share/polkit-1/rules.d/49-hearth-hwinfo.rules`
 - `os/system_files/usr/bin/hearth-resmon`, `os/system_files/usr/share/applications/hearth-resmon.desktop`
-- Tests: `hosts/linux/test/test_resource_monitor.py`, using sample machines in `hosts/linux/test/fixtures/resmon/` (the
-  owner's i7-14700F / B760 / RTX 5070 / 2 × 16 GB DDR5; dad's ASRock FM2A88X Extreme6+ / A10 Richland / 4 × 8 GB DDR3 /
+- Tests: `hosts/linux/test/test_resource_monitor.py`, using sample machines in `hosts/linux/test/fixtures/resmon/` (an
+  i7-14700F / B760 / RTX 5070 / 2 × 16 GB DDR5 desktop; an ASRock FM2A88X Extreme6+ / A10 Richland / 4 × 8 GB DDR3 /
   R9 390 / hard drive; a laptop; a ROG Ally). Desktop Mode's CI draws the board from each (desktop-test.yml,
   `ipc resmon fixture <file>`).

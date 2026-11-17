@@ -24,11 +24,14 @@ kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, sc
   hearth-screens plan MODE           Super+P's choice as changes: MODE main | other | extend | mirror; prints
                                      {changes, prev, names} (the switcher applies them, then keep or prev)
   hearth-screens option JSON         {"x11Scale": bool} (kdeglobals [KScreen]), {"barrier": {"px", "corner"}} (kwinrc
-                                     [EdgeBarrier]), {"desktopsMainOnly": bool}, {"autoBrightness": bool} (screens.json)
+                                     [EdgeBarrier]), {"desktopsMainOnly": bool}, {"autoBrightness": bool, "autoBrightnessOffset": -40..40}
+                                     (screens.json)
   hearth-screens ddc | ddc-set SCREEN PCT
                                      external screens' brightness over DDC/CI (ddcutil; nothing saved: the screen keeps it)
   hearth-screens brightness SCREEN PCT   a screen newer KWin controls itself (kscreen-doctor brightness)
-  hearth-screens light | autobright  the light sensor; auto-brightness's loop (while screens.json says so)
+  hearth-screens light | autobright  the light sensor (iio-sensor-proxy's, else the kernel's); auto-brightness's
+                                     loop (while screens.json says so; a brightness set by hand pauses it until the
+                                     light changes)
   New per-screen keys under KWin (apply / set / screens.json): priority (1 = the main screen), overscan (0–100),
   rgbRange (automatic | full | limited), sdrGamut (colour intensity, 0–100, HDR on), colorPower (efficiency |
   accuracy), hdrCal {peak, avg, min} (nits; None = what the screen says), edr (never | always, newer KWin)
@@ -413,7 +416,7 @@ def saved():
         for name, e in parse_display_sh(sh).items():
             outs.setdefault(name, {}).update(e)
     return {'outputs': outs, 'tearing': data.get('tearing'), 'desktopsMainOnly': bool(data.get('desktopsMainOnly')),
-            'autoBrightness': bool(data.get('autoBrightness'))}
+            'autoBrightness': bool(data.get('autoBrightness')), 'autoBrightnessOffset': clamp_offset(data.get('autoBrightnessOffset', 0))}
 
 
 def entry_of(o):
@@ -997,12 +1000,18 @@ def kwin_brightness(name, pct):
 
 
 # ------------------------------------------------------------------ auto-brightness (an ambient light sensor)
+# The sensor through iio-sensor-proxy (net.hadess.SensorProxy on the system bus: HasAmbientLight, ClaimLight,
+# LightLevel, LightLevelUnit), as KDE and GNOME read it; the kernel's IIO files only where the proxy isn't running.
+# HEARTH_SCREENS_SENSOR_BUS=session: a stand-in proxy on the session bus (the tests' fake sensor).
 
 IIO = os.environ.get('HEARTH_SCREENS_IIO', '/sys/bus/iio/devices')
+PROXY = ('net.hadess.SensorProxy', '/net/hadess/SensorProxy', 'net.hadess.SensorProxy')
+OFFSET_MIN, OFFSET_MAX = -40, 40
+STATUS = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-autobright.json')
 
 
 def light_sensor():
-    """The ambient light sensor's lux file and scale, or None (no sensor: the row is hidden)."""
+    """The kernel's ambient light sensor's lux file and scale, or None."""
     for d in sorted(glob.glob(os.path.join(IIO, 'iio:device*'))):
         for f in ('in_illuminance_input', 'in_illuminance_raw'):
             p = os.path.join(d, f)
@@ -1016,7 +1025,7 @@ def light_sensor():
     return None
 
 
-def lux():
+def sysfs_lux():
     s = light_sensor()
     if not s:
         return None
@@ -1026,28 +1035,206 @@ def lux():
         return None
 
 
+class ProxyLight:
+    """iio-sensor-proxy's light sensor. claim() holds it for as long as this connection lives (the proxy reads the
+    sensor only while someone has claimed it); read() is the newest level in lux."""
+
+    def __init__(self):
+        self.bus = None
+        self.claimed = False
+        Gio, GLib = _gio()
+        self.Gio, self.GLib = Gio, GLib
+        if not Gio:
+            return
+        try:
+            kind = Gio.BusType.SESSION if os.environ.get('HEARTH_SCREENS_SENSOR_BUS') == 'session' else Gio.BusType.SYSTEM
+            self.bus = Gio.bus_get_sync(kind, None)
+        except Exception as e:  # noqa: BLE001
+            io.log_event('light sensor: no bus: %s' % e)
+
+    def _call(self, iface, method, args=None, sig=None):
+        if not self.bus:
+            return None
+        try:
+            return self.bus.call_sync(PROXY[0], PROXY[1], iface, method, self.GLib.Variant(sig, args) if sig else None, None,
+                                      self.Gio.DBusCallFlags.NO_AUTO_START, 2000, None)
+        except Exception:  # noqa: BLE001 (not running: no sensor through the proxy)
+            return None
+
+    def prop(self, name):
+        r = self._call('org.freedesktop.DBus.Properties', 'Get', (PROXY[2], name), '(ss)')
+        return r.unpack()[0] if r is not None else None
+
+    def present(self):
+        return self.prop('HasAmbientLight') is True
+
+    def claim(self):
+        self.claimed = self._call(PROXY[2], 'ClaimLight') is not None
+        return self.claimed
+
+    def release(self):
+        if self.claimed:
+            self._call(PROXY[2], 'ReleaseLight')
+            self.claimed = False
+
+    def read(self):
+        v = self.prop('LightLevel')
+        if v is None:
+            return None
+        # "vendor" units have no fixed scale: read as lux (the "how bright" offset evens it out).
+        return max(0.0, float(v))
+
+
+class SysfsLight:
+    def present(self):
+        return light_sensor() is not None
+
+    def claim(self):
+        return True
+
+    def release(self):
+        pass
+
+    def read(self):
+        return sysfs_lux()
+
+
+def light_source():
+    """The light sensor to read ('proxy' first), or (None, None): no sensor and the rows stay hidden."""
+    p = ProxyLight()
+    if p.present():
+        return 'iio-sensor-proxy', p
+    s = SysfsLight()
+    if s.present():
+        return 'sysfs', s
+    return None, None
+
+
+def lux():
+    _, src = light_source()
+    return src.read() if src else None
+
+
 def lux_to_pct(lx):
     """Dim rooms low, daylight full: 10 % at 0 lux, about 70 % at 300 lux (an office), 100 % from about 3000."""
     import math
     return int(max(5, min(100, round(10 + 22.5 * math.log10(1 + lx)))))
 
 
-def autobright():
-    """Runs while Settings › Display's Auto-brightness is on (the shell starts it; screens.json says so): every few
-    seconds the laptop screen follows the room, in small steps. Ends by itself when it's turned off or there's no
-    sensor or backlight."""
-    if not light_sensor() or not have('brightnessctl'):
-        return {'running': False, 'why': 'no light sensor or brightnessctl'}
-    last = None
-    while saved().get('autoBrightness'):
-        lx = lux()
-        if lx is not None:
-            want = lux_to_pct(lx)
-            if last is None or abs(want - last) >= 4:
+def clamp_offset(v):
+    try:
+        return max(OFFSET_MIN, min(OFFSET_MAX, int(round(float(v)))))
+    except (TypeError, ValueError):
+        return 0
+
+
+class AutoBright:
+    """Auto-brightness's thinking, one reading at a time (no I/O: the loop below and the tests feed it).
+
+    The light is smoothed (an average that follows the room in about ten seconds, in log lux, so a hand over the
+    sensor or a passing shadow doesn't flicker the screen), turned into a brightness, moved by the "how bright"
+    offset, and the screen is moved there in small steps. A brightness someone set by hand (keys, Quick settings,
+    the slider) pauses it until the room's light really changes."""
+    ALPHA = 0.3          # how much of each new reading goes into the average
+    STEP = 6             # at most this much per reading, so it fades
+    DEADBAND = 3         # smaller changes than this are left alone
+    HAND = 3             # the screen differs from what was set by more than this: someone changed it
+    RESUME = 0.3         # log10(1 + lux) has moved this far since the pause (about twice or half the light)
+
+    def __init__(self):
+        self.smooth = None   # log10(1 + lux)
+        self.last = None     # the brightness this set last
+        self.paused = False
+        self.paused_at = None
+
+    def tick(self, lx, current, offset=0):
+        """lx: the sensor's lux (None: no reading); current: the screen's brightness now (%, None: unknown).
+        Returns the brightness to set, or None."""
+        import math
+        if lx is None:
+            return None
+        v = math.log10(1 + max(0.0, lx))
+        self.smooth = v if self.smooth is None else self.smooth + self.ALPHA * (v - self.smooth)
+        if current is not None and self.last is not None and not self.paused and abs(current - self.last) > self.HAND:
+            self.paused, self.paused_at = True, self.smooth
+            io.log_event('auto-brightness: paused (brightness set by hand to %d%%)' % current)
+        if self.paused:
+            if abs(self.smooth - self.paused_at) < self.RESUME:
+                return None
+            self.paused, self.paused_at = False, None
+            self.last = current
+            io.log_event('auto-brightness: the light changed, following the room again')
+        target = max(1, min(100, lux_to_pct(10 ** self.smooth - 1) + clamp_offset(offset)))
+        base = current if current is not None else self.last
+        if base is None:
+            self.last = target
+            return target
+        if abs(target - base) < self.DEADBAND:
+            if current is not None:
+                self.last = current
+            return None
+        want = base + max(-self.STEP, min(self.STEP, target - base))
+        self.last = want
+        return want
+
+
+def backlight_pct():
+    """The built-in screen's brightness now (brightnessctl's backlight class, the same path the slider and keys use)."""
+    rc, out, _ = RUN(['brightnessctl', '-m', '-c', 'backlight'], timeout=5)
+    try:
+        return int(out.strip().splitlines()[0].split(',')[3].rstrip('%')) if rc == 0 else None
+    except (IndexError, ValueError):
+        return None
+
+
+def _status(d):
+    try:
+        io.write_json(STATUS, d)    # $XDG_RUNTIME_DIR: what Settings shows (paused or following), not a setting
+    except OSError:
+        pass
+
+
+def autobright(interval=2.0, rounds=None):
+    """Runs while Settings › Display's Auto-brightness is on (the shell starts it; screens.json says so). Ends by
+    itself when it's turned off, or there's no sensor or backlight (logged; nothing else depends on it)."""
+    name, src = light_source()
+    if not src or not have('brightnessctl') or backlight_pct() is None:
+        why = 'no light sensor' if not src else 'no backlight Hearth can set'
+        io.log_event('auto-brightness: not running: %s' % why)
+        return {'running': False, 'why': why}
+    if not src.claim():
+        io.log_event("auto-brightness: the light sensor couldn't be claimed")
+        return {'running': False, 'why': "the light sensor couldn't be claimed"}
+    ab, n, was = AutoBright(), 0, None
+    try:
+        while True:
+            sv = saved()
+            if not sv.get('autoBrightness'):
+                break
+            lx = src.read()
+            want = ab.tick(lx, backlight_pct(), sv.get('autoBrightnessOffset', 0))
+            if want is not None:
                 RUN(['brightnessctl', '-q', '-c', 'backlight', 'set', '%d%%' % want], timeout=5)
-                last = want
-        time.sleep(4)
+            now = {'paused': ab.paused, 'lux': None if lx is None else round(lx, 1), 'source': name}
+            if now != was:
+                _status(now)
+                was = now
+            n += 1
+            if rounds is not None and n >= rounds:
+                break
+            time.sleep(interval)
+    finally:
+        src.release()
+        _status({'paused': False, 'running': False})
     return {'running': False}
+
+
+def autobright_status():
+    try:
+        d = json.loads(_text(STATUS))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 # ------------------------------------------------------------------ Super+P: one screen, extend, mirror
@@ -1116,6 +1303,14 @@ def icc_profiles():
     return got[:20]
 
 
+def auto_status(sv):
+    """Settings › Display's Auto-brightness rows: shown only with a light sensor."""
+    name, _ = light_source()
+    st = autobright_status() if sv['autoBrightness'] else {}
+    return {'capable': name is not None, 'source': name, 'on': sv['autoBrightness'], 'offset': sv['autoBrightnessOffset'],
+            'paused': bool(st.get('paused')), 'lux': st.get('lux')}
+
+
 def info(wmname=None, live=None):
     wmname = wmname or wm()
     live = live if live is not None else read(wmname)
@@ -1137,7 +1332,7 @@ def info(wmname=None, live=None):
         'x11Scale': x11_scale_status(wmname),
         'barrier': barrier_status(wmname),
         'desktops': desktops_status(wmname, sv),
-        'autoBrightness': {'capable': light_sensor() is not None, 'on': sv['autoBrightness']},
+        'autoBrightness': auto_status(sv),
         'switch': switch_state(live),
     }
 
@@ -1591,7 +1786,7 @@ def main(argv):
             print(json.dumps({'mode': mode, 'changes': {'outputs': ch}, 'prev': {'outputs': prev}, 'names': sorted(ch)}))
         elif cmd == 'option':
             # Settings › Display's own switches that aren't a screen's: {"x11Scale": bool, "barrier": {px, corner},
-            # "desktopsMainOnly": bool, "autoBrightness": bool}. screens.json keeps Hearth's, KDE's files KDE's.
+            # "desktopsMainOnly": bool, "autoBrightness": bool, "autoBrightnessOffset": int}. screens.json keeps Hearth's, KDE's files KDE's.
             o = json.loads(arg or '{}')
             wmname = wm()
             extra = {}
@@ -1606,9 +1801,11 @@ def main(argv):
                 main_desktops(bool(o['desktopsMainOnly']))
                 extra['desktopsMainOnly'] = bool(o['desktopsMainOnly'])
             if 'autoBrightness' in o:
-                if o['autoBrightness'] and not light_sensor():
+                if o['autoBrightness'] and not light_source()[1]:
                     raise Refused('This PC has no light sensor.')
                 extra['autoBrightness'] = bool(o['autoBrightness'])
+            if 'autoBrightnessOffset' in o:
+                extra['autoBrightnessOffset'] = clamp_offset(o['autoBrightnessOffset'])
             if extra:
                 save_entries({}, extra)
             print(json.dumps(info(wmname)))
@@ -1620,7 +1817,8 @@ def main(argv):
             kwin_brightness(argv[2], argv[3])
             print(json.dumps({'name': argv[2], 'value': int(argv[3])}))
         elif cmd == 'light':
-            print(json.dumps({'sensor': light_sensor() is not None, 'lux': lux()}))
+            name, src = light_source()
+            print(json.dumps({'sensor': src is not None, 'source': name, 'lux': src.read() if src else None}))
         elif cmd == 'autobright':
             print(json.dumps(autobright()))
         elif cmd == 'shot':
