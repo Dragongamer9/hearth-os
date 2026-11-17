@@ -280,9 +280,9 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 ### Passwords, wallet, vaults
 
 - [x] Password store (Secret Service, unlocked at login, a manager page) — SetPasswords.qml (needs testing on a device)
-- [ ] SSH and GPG passphrases asked in Hearth's look (S)
-- [ ] Vaults: encrypted folders in the tray, auto-lock, offline-only — Hearth has: Briefcase (`hearth-briefcase`) (M)
-- [ ] Password prompts for admin actions (Polkit agent) in Hearth's look — partly: Mantel's own agent (PolkitPrompt.qml, polkit-actions.js, hearth-polkit-fallback with the classic agent as fallback); test_hearth_polkit_mantel.py, capture-polkit-test.yml pictures. Left: fingerprint (with fprintd below) (S)
+- [x] SSH and GPG passphrases asked in Hearth's look — AskPass.qml, hearth-askpass (SSH_ASKPASS from nimbus-session), pinentry-hearth (the image's pinentry; the classic prompts when Mantel isn't there); test_net_signin_114.py "test_pinentry_speaks_assuan", "test_the_answer_comes_back_through_a_private_fifo", desktop-test picture ss-askpass (needs testing on a device)
+- [ ] Vaults: encrypted folders in the tray, auto-lock, offline-only — partly: SetVaults.qml, hearth-vaults (gocryptfs or CryFS), the bar's vault button (VaultStore.qml), lock after idle and when the screen locks (Lock.qml); test_net_signin_114.py "test_create_unlock_lock_and_the_password_only_on_stdin", desktop-test picture ss-vaults. Left: offline-only (S)
+- [x] Password prompts for admin actions (Polkit agent) in Hearth's look — Mantel's own agent (PolkitPrompt.qml, polkit-actions.js, hearth-polkit-fallback with the classic agent as fallback); test_hearth_polkit_mantel.py, capture-polkit-test.yml pictures; fingerprint next to the password (hearth-fingerprint-polkit, docs/FINGERPRINT.md; fingerprint-pam.yml; picture ss-polkit-finger) (needs testing on a device)
 
 ### Activities
 
@@ -303,12 +303,12 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Wi-Fi networks, hidden, forget, properties, hotspot — `SetWifi.qml`, `DeviceSettings.qml`, SetHotspot.qml
 - [x] Tailscale — `SetHomeTailscale.qml`
-- [ ] Wired, mobile broadband, editing any connection — partly: Connection details (DNS, metered, random MAC, IP by hand, IPv6, auto-connect: SetNetDetails.qml, hearth-network; test_system_settings_114.py "test_details_args_are_checked"). Left: wired and mobile broadband (SIM, APN), 802.1X/enterprise Wi-Fi (L)
-- [ ] VPN — partly: WireGuard and OpenVPN from their file, connect, OpenVPN account asked when connecting (SetVpn.qml, hearth-network; test_system_settings_114.py "test_vpn_password_goes_on_stdin_never_argv"). Left: IPsec/StrongSwan, L2TP, PPTP, OpenConnect, SSTP, Fortinet (M)
-- [ ] Wi-Fi QR codes (show one, scan one) (S)
+- [x] Wired, mobile broadband, editing any connection — SetNetDetails.qml, hearth-network (DNS, metered, MAC, IP by hand, IPv6, auto-connect, MTU, 802.1X PEAP/TTLS/TLS/PWD for Wi-Fi and wired, mobile broadband APN/PIN/roaming, adding wired, mobile and enterprise Wi-Fi); test_net_signin_114.py "test_8021x_is_checked_and_its_password_goes_to_the_editor", "test_mobile_broadband", pictures ss-net-add, ss-net-mobile (needs testing on a device)
+- [x] VPN — SetVpn.qml, hearth-network: WireGuard and OpenVPN from their file; IPsec (strongSwan or Libreswan), L2TP, PPTP, OpenConnect, SSTP and Fortinet by hand, each only with its NetworkManager plugin (a note names the missing package); test_net_signin_114.py "test_vpn_by_hand_puts_the_password_on_stdin_only", "test_a_missing_plugin_says_which_one_and_adds_nothing", picture ss-vpn-add (needs testing on a device)
+- [ ] Wi-Fi QR codes (show one, scan one) — partly: show one (SetNetDetails.qml "Share", hearth-network wifi-qr through qrencode); test_net_signin_114.py "test_wifi_qr_goes_through_qrencodes_stdin", picture ss-net-qr. Left: scan one (S)
 - [x] Proxy settings (none, automatic, by hand) — SetProxy.qml, hearth-network; test_system_settings_114.py "test_proxy_saved_with_settings_io_and_handed_on" (needs testing on a device)
-- [ ] Firewall page (M)
-- [ ] Duplicate a connection, network speed in the tray (S)
+- [x] Firewall page — SetFirewall.qml, hearth-firewall (firewalld or ufw; SSH and Tailscale kept when it turns on; off, opening a port and letting everything in ask for a password); test_net_signin_114.py "test_turning_on_keeps_ssh_and_tailscale_and_ssh_cant_be_closed", picture ss-firewall (needs testing on a device)
+- [x] Duplicate a connection, network speed in the tray — hearth-network duplicate (SetNetDetails.qml), NetSpeed.qml in Bar.qml and Islands.qml (Settings › Bar and dock, off by default); test_net_signin_114.py "test_duplicate_names_the_copy_and_never_autoconnects", "test_net_speed_is_off_until_turned_on", the bar in every ss-* picture (needs testing on a device)
 - [x] "Share this folder" (SMB) in Files' Properties — FileProperties.qml Sharing tab through hearth-home-server; test_files_extras.py: "test_share_this_folder_through_home_server"; files-extras.yml "files-x9-sharing" (needs testing on a device)
 
 ### Online accounts
@@ -319,11 +319,11 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Users: add, remove, account type, picture, password — `SetUsers.qml` (account type: test_system_settings_114.py "test_user_type_plan")
 - [x] Sign in automatically, lock after sleep — `SetSignin.qml`
-- [ ] Fingerprint sign-in and enrolling fingers (fprintd) (M)
-- [ ] Cropping the account picture (S)
+- [x] Fingerprint sign-in and enrolling fingers (fprintd) — SetSignin.qml, hearth-fingerprint, hearth-fingerprint-pam, Lock.qml and kwin-lock (next to the password, never instead), docs/FINGERPRINT.md; fingerprint-pam.yml (the password always works, 30 checks), picture ss-signin-finger. The login screen keeps the password only (it unlocks the keyring) (needs testing on a device)
+- [x] Cropping the account picture — SetUsers.qml (drag and zoom in a circle, 512 × 512); picture ss-users-crop (needs testing on a device)
 - [ ] Login screen settings and Hearth's own login screen — partly: the greetd greeter (os/system_files/usr/share/hearth/greeter, hearth-login-screen, hearth-greetd.service with SDDM coming back by itself), Sign-in options switch with Preview (LoginScreenSwitch.qml), Login screen page with a background (SetLoginScreen.qml); test_hearth_login_screen.py, login-greetd-test.yml. Left: it's off by default and SDDM is still the display manager until it's proven on a device (S)
 - [ ] First-run account setup on pre-installed PCs: check Game Mode's first-time setup covers it (S)
-- [ ] Switch user and the extra log out choices (M)
+- [x] Switch user and the extra log out choices — PowerMenu.qml, hearth-session-actions (Switch user through SDDM/LightDM, Hibernate, Restart into firmware setup, Log out; each only where it works), Launcher "More choices…"; test_net_signin_114.py "test_switch_user_needs_a_display_manager_seat", picture ss-power-menu (needs testing on a device)
 
 ### Region, language, time
 

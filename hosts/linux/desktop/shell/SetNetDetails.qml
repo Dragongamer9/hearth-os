@@ -40,15 +40,19 @@ SetPage {
     }
     function pick(u) {
         uuid = u; manual = false; d = null; qr = null; showPw = false; editEap = false; say("");
-        job.run(["details", u], r => { page.d = r; if (page.anchorWant === "qr" && r.kind === "wifi") { page.anchorWant = ""; page.showQr(); } }, e => page.say(e, true));
+        job.run(["details", u], r => { page.d = r; if (page.anchorWant === "mobile" && r.kind === "mobile") { page.anchorWant = ""; page.showSoon(mobApn); } if (page.anchorWant === "qr" && r.kind === "wifi") { page.anchorWant = ""; page.showQr(); } }, e => page.say(e, true));
     }
+    // Opened at a part: once laid out, that part is scrolled into view (the page is a Flickable).
+    property var showTarget: null
+    function showSoon(it) { showTarget = it; showTimer.restart(); }
+    Timer { id: showTimer; interval: 700; onTriggered: { const it = page.showTarget; if (!it || !it.visible) return; const y = it.mapToItem(page.contentItem, 0, 0).y; page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - 60)); } }
     // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
     Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
     Component.onCompleted: {
         const a = SettingsNav.pageAnchor;
         if (["qr", "mobile", "wired", "add-wired", "add-mobile", "add-enterprise"].includes(a)) {
             anchorDone.restart();
-            if (a.startsWith("add-")) adding = a.slice(4); else anchorWant = a;
+            if (a.startsWith("add-")) { adding = a.slice(4); showSoon(a === "add-enterprise" ? entSsid : a === "add-mobile" ? addMobName : wiredName); } else anchorWant = a;
         }
         load();
     }
@@ -60,7 +64,7 @@ SetPage {
     }
     function showQr() {
         say("");
-        job.run(["wifi-qr", page.uuid], r => page.qr = r, e => page.say(e, true), "", "qr");
+        job.run(["wifi-qr", page.uuid], r => { page.qr = r; page.showSoon(qrBox); }, e => page.say(e, true), "", "qr");
     }
     function eapReq() {
         return { eap: eapKind.current, identity: eapId.text.trim(), anonymous: eapAnon.text.trim(), caCert: eapCa.text.trim(),

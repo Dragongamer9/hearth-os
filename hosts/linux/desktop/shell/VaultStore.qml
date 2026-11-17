@@ -30,10 +30,35 @@ Singleton {
         out.push({ label: "Vaults settings", icon: "gear", run: () => openSettings("vaults") });
         return out;
     }
+    // The list itself is vaults.json (read here, watched: a vault made or forgotten shows at once); which ones are
+    // unlocked comes from hearth-vaults list (the mount table), every 15 seconds and whenever the file changes.
+    readonly property string listFile: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/vaults.json"
+    FileView {
+        id: file
+        path: root.listFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            let o = null;
+            try { o = JSON.parse(text()); } catch (e) { o = null; }
+            const vs = o && o.vaults && typeof o.vaults === "object" ? o.vaults : {};
+            const open = {};
+            for (const v of root.vaults) open[v.id] = v.open;
+            root.vaults = Object.keys(vs).map(id => ({ id: id, name: vs[id].name || id, open: !!open[id], mount: "", backend: vs[id].backend || "gocryptfs" }));
+            root.refresh();
+        }
+        onLoadFailed: root.vaults = []
+    }
     Process {
         id: list
-        command: ["sh", "-c", "[ -e \"$HOME/.config/nimbus/vaults.json\" ] || { echo '{\"vaults\": []}'; exit 0; }; exec python3 \"$0\" list", root.helper]
-        stdout: StdioCollector { onStreamFinished: { try { const o = JSON.parse(text.trim().split("\n").pop() || "{}"); root.vaults = (o && o.vaults) || []; } catch (e) {} } }
+        command: ["sh", "-c", "[ -e \"$1\" ] || { echo '{\"vaults\": []}'; exit 0; }; exec python3 \"$0\" list", root.helper, root.listFile]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { const o = JSON.parse(text.trim().split("\n").pop() || "{}"); if (o && Array.isArray(o.vaults)) root.vaults = o.vaults; }
+                catch (e) { console.warn("VaultStore: hearth-vaults list didn't answer in JSON"); }
+            }
+        }
     }
     Process {
         id: run
