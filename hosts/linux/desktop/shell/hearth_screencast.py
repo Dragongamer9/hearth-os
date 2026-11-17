@@ -38,6 +38,8 @@ HELPER_DEFAULT = '/usr/libexec/hearth/hearth-kwin-cast'
 SC_IFACE = 'org.freedesktop.impl.portal.ScreenCast'
 SS_IFACE = 'org.freedesktop.impl.portal.Screenshot'
 SESSION_IFACE = 'org.freedesktop.impl.portal.Session'
+ACCESS_IFACE = 'org.freedesktop.impl.portal.Access'
+ACCESS_QML = os.path.join(HERE, 'access-prompt.qml')
 REQ_IFACE = 'org.freedesktop.impl.portal.Request'
 WIN_IFACE = 'org.hearth.KWinWindows'
 WIN_PATH = '/org/hearth/KWinWindows'
@@ -73,10 +75,17 @@ XML = '''<node>
     <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
   <property name="version" type="u" access="read"/>
 </interface>
+<interface name="%s">
+  <method name="AccessDialog"><arg type="o" name="handle" direction="in"/><arg type="s" name="app_id" direction="in"/>
+    <arg type="s" name="parent_window" direction="in"/><arg type="s" name="title" direction="in"/>
+    <arg type="s" name="subtitle" direction="in"/><arg type="s" name="body" direction="in"/>
+    <arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+</interface>
 <interface name="%s"><method name="Close"/><signal name="Closed"/><property name="version" type="u" access="read"/></interface>
 <interface name="%s"><method name="Close"/></interface>
 <interface name="%s"><method name="Report"><arg type="s" name="token" direction="in"/><arg type="s" name="windows" direction="in"/></method></interface>
-</node>''' % (SC_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD, SS_IFACE, SESSION_IFACE, REQ_IFACE, WIN_IFACE)
+</node>''' % (SC_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD, SS_IFACE, ACCESS_IFACE, SESSION_IFACE, REQ_IFACE, WIN_IFACE)
 
 WINDOW_SCRIPT = r'''
 var out = [];
@@ -323,6 +332,47 @@ def run_picker(req, holder=None, env=None):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def run_access(req, holder=None, env=None):
+    """access-prompt.qml in its own Quickshell until it answers: True (Allow), False (Don't allow or closed)."""
+    qs = quickshell()
+    if not qs:
+        log('Quickshell is missing: no question, so nothing is allowed')
+        return False
+    tmp = tempfile.mkdtemp(prefix='hearth-access-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+    rq, rs = os.path.join(tmp, 'request.json'), os.path.join(tmp, 'result.json')
+    try:
+        with open(rq, 'w') as f:
+            json.dump(req, f)
+        e = dict(env or os.environ)
+        e.update({'HEARTH_ACCESS_REQUEST': rq, 'HEARTH_ACCESS_RESULT': rs})
+        out = picker_log()
+        proc = subprocess.Popen([qs, '-p', ACCESS_QML], env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                start_new_session=True)
+        if out is not subprocess.DEVNULL:
+            out.close()
+        if holder is not None:
+            holder['proc'] = proc
+        try:
+            proc.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+        try:
+            with open(rs) as f:
+                return json.load(f).get('grant') is True
+        except (OSError, ValueError, AttributeError):
+            return False
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def access_request(app_id, title, subtitle, body, options):
+    """What the Allow? question shows (the portal's own words; the app's name when it has one)."""
+    def text(v, limit):
+        return str(v or '')[:limit]
+    return {'app': text(app_id, 200), 'title': text(title, 300), 'subtitle': text(subtitle, 500), 'body': text(body, 1500),
+            'grant': text(options.get('grant_label'), 60), 'deny': text(options.get('deny_label'), 60)}
+
+
 # ---------------------------------------------------------------------- streams
 
 class Stream:
@@ -472,6 +522,7 @@ class Portal:
         self.sc_info = node.lookup_interface(SC_IFACE)
         self.ss_info = node.lookup_interface(SS_IFACE)
         self.session_info = node.lookup_interface(SESSION_IFACE)
+        self.access_info = node.lookup_interface(ACCESS_IFACE)
         self.req_info = node.lookup_interface(REQ_IFACE)
         self.win_info = node.lookup_interface(WIN_IFACE)
         self.windows = WindowLister(bus_name)
@@ -480,6 +531,7 @@ class Portal:
     def register(self, conn, path):
         conn.register_object(path, self.sc_info, self.on_call, self.get_prop, None)
         conn.register_object(path, self.ss_info, self.on_call, self.get_prop, None)
+        conn.register_object(path, self.access_info, self.on_call, None, None)
         conn.register_object(WIN_PATH, self.win_info, self.on_windows, None, None)
 
     def get_prop(self, conn, sender, path, iface, prop):
@@ -524,6 +576,9 @@ class Portal:
             elif iface == SS_IFACE and method == 'Screenshot':
                 handle, app_id, parent, options = params.unpack()
                 self.screenshot(conn, handle, app_id, bool(options.get('interactive', False)), inv)
+            elif iface == ACCESS_IFACE and method == 'AccessDialog':
+                handle, app_id, parent, title, subtitle, body, options = params.unpack()
+                self.access(conn, handle, access_request(app_id, title, subtitle, body, options), inv)
             elif iface == SS_IFACE and method == 'PickColor':
                 inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
             else:
@@ -631,6 +686,29 @@ class Portal:
                         conn.unregister_object(reg)
                     self.busy(-1)
                     inv.return_value(self.GLib.Variant('(ua{sv})', (resp, results_variant(self.GLib, res))))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---- Allow? (xdg-desktop-portal asks before an app's first screenshot, and for other permissions)
+    def access(self, conn, handle, req, inv):
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp = 2
+            try:
+                granted = run_access(req, holder)
+                resp = 1 if holder['closed'] else (0 if granted else 1)
+            except Exception as e:
+                log('the Allow? question failed: %r' % e)
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, {})))
                     return False
                 self.GLib.idle_add(done)
         threading.Thread(target=work, daemon=True).start()

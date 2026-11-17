@@ -15,7 +15,7 @@ on:
   push:
     branches: [feature/kwin-input]
     paths: ['hosts/linux/desktop/shell/hearth-type', 'hosts/linux/desktop/shell/hearth_screencast.py',
-            'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/Lock.qml',
+            'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/Lock.qml', 'hosts/linux/desktop/shell/access-prompt.qml', 'hosts/linux/desktop/shell/hearth-lockcheck',
             'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
             'hosts/linux/desktop/kwin-helpers/**', 'hosts/linux/desktop/kwin-lock/**', 'hosts/linux/desktop/kwin/**',
             'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml',
@@ -40,16 +40,26 @@ jobs:
           bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/out 2>&1 | tee /tmp/build.log || {
             echo "::error title=helpers (Debian)::$(grep -E 'error|warning' /tmp/build.log | head -8 | tr '\n' '|' | cut -c1-900)"; exit 1; }
           echo "::notice title=helpers (Debian)::built: $(ls /tmp/out | tr '\n' ' ')"
-      - name: What Debian's KWin screen locker reads (the lock screen package it loads)
-        continue-on-error: true
+      - name: Debian's KWin screen locker is there and finds Hearth's lock screen (as the image checks)
         shell: bash
         run: |
           set +e
-          apt-get install -y -qq --no-install-recommends kscreenlocker binutils > /tmp/apt.log 2>&1 || echo "::warning title=Debian kscreenlocker::$(tail -3 /tmp/apt.log | tr '\n' '|')"
+          apt-get update -qq
+          echo "::notice title=Debian screen locker packages::$(apt-cache search screenlocker | tr '\n' '|') kwin-wayland needs: $(apt-cache depends kwin-wayland 2>/dev/null | grep -i lock | tr '\n' ' ')"
+          # The same lookup as os-bases/peppermint/build.sh.
+          KSL=""; for p in kscreenlocker libkscreenlocker6 libkscreenlocker5; do apt-cache show "$p" >/dev/null 2>&1 && { KSL=$p; break; }; done
+          echo "::notice title=Debian kscreenlocker::picked '$KSL'"
+          apt-get install -y -qq --no-install-recommends $KSL binutils python3 > /tmp/apt.log 2>&1 || echo "::error title=Debian kscreenlocker::$(tail -3 /tmp/apt.log | tr '\n' '|')"
           g=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
           echo "::notice title=Debian kscreenlocker::$(dpkg-query -W kscreenlocker 2>/dev/null) $g"
           [ -n "$g" ] && echo "::notice title=Debian greeter strings::$(strings "$g" | grep -iE 'shell|theme|lookandfeel|lockscreenmainscript|APIVersion|plasmashellrc|kdeglobals' | sort -u | head -40 | tr '\n' '|' | cut -c1-1800)"
           [ -n "$g" ] && echo "::notice title=Debian greeter help::$(QT_QPA_PLATFORM=offscreen "$g" --help 2>&1 | tr '\n' '|' | cut -c1-1200)"
+          [ -n "$g" ] || { echo "::error title=Debian kscreenlocker::no kscreenlocker_greet"; exit 1; }
+          mkdir -p /usr/share/plasma/shells /usr/share/plasma/look-and-feel
+          cp -a hosts/linux/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
+          r=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_GREETER="$g" XDG_RUNTIME_DIR=/tmp python3 hosts/linux/desktop/shell/hearth-lockcheck); rc=$?
+          echo "::notice title=Debian hearth-lockcheck (with the greeter's own test run)::exit $rc $r"
+          exit $rc
 
   kwin:
     runs-on: ubuntu-latest
@@ -194,6 +204,8 @@ jobs:
         run: f=shots/cast-frame.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT cast-frame $i::$part"; done || true
       - name: Picture (shot-picker)
         run: f=shots/shot-picker.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT shot-picker $i::$part"; done || true
+      - name: Picture (access-prompt)
+        run: f=shots/access-prompt.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT access-prompt $i::$part"; done || true
       - name: Picture (lock-greeter)
         run: f=shots/lock-greeter.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-greeter $i::$part"; done || true
       - name: Picture (lock-wrong-password)

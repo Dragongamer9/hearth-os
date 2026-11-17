@@ -1388,7 +1388,14 @@ command -v update-desktop-database >/dev/null && update-desktop-database -q /usr
 # wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
 test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
-optional kscreenlocker
+# KWin's screen locker (its greeter shows Hearth's lock screen). Required: Mantel on KWin locks through it, and
+# hearth-lockcheck refuses to lock without it. Its Debian name is looked up, then the greeter must be there.
+KSL=""
+for p in kscreenlocker libkscreenlocker6 libkscreenlocker5; do have_pkg "$p" && { KSL=$p; break; }; done
+[ -n "$KSL" ] || { echo "KWin's screen locker (kscreenlocker) isn't in the repositories"; apt-cache search screenlocker; exit 1; }
+"${APT[@]}" "$KSL"
+KSL_GREETER=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
+[ -x "$KSL_GREETER" ] || { echo "kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 mkdir -p /usr/share/plasma/shells
 rm -rf /usr/share/plasma/shells/org.hearth.mantel-lock
 cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
@@ -1399,6 +1406,9 @@ rm -rf /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
 cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
 python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["KPackageStructure"]="Plasma/LookAndFeel"; json.dump(m, open(p,"w"), indent=4)' \
   /usr/share/plasma/look-and-feel/org.hearth.mantel-lock/metadata.json
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-lockcheck
+# The lock screen must be complete where the greeter looks (never a lock that can't show its screen: red flag 2).
+PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck --no-probe
 rm -rf /usr/share/nimbus/desktop/kwin-helpers
 # For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
 # screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.
@@ -1408,6 +1418,7 @@ default=gtk
 org.freedesktop.impl.portal.FileChooser=hearth
 org.freedesktop.impl.portal.ScreenCast=hearth
 org.freedesktop.impl.portal.Screenshot=hearth
+org.freedesktop.impl.portal.Access=hearth
 PORTALS
 # ---- end of Mantel on KWin: typing, the lock screen, screen sharing
 
