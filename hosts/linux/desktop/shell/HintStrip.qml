@@ -12,7 +12,9 @@ PanelWindow {
     property double now: Date.now()
     Timer { interval: 1000; running: true; repeat: true; onTriggered: strip.now = Date.now() }
     readonly property bool recent: DeskState.padSeen > 0 && now - DeskState.padSeen < 12000
-    visible: recent && !Theme.hints
+    // Not while a menu or dialog is open (DeskState.overlayShown): it has its own A / B row, and the strip showed
+    // through behind it.
+    visible: recent && !Theme.hints && !DeskState.overlayShown
     anchors { bottom: true; left: true; right: true }
     implicitHeight: 48
     implicitWidth: 0

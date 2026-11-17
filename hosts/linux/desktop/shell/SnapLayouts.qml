@@ -6,7 +6,7 @@
 //
 // It uses Mantel's own snapping: the halves are Super+Left / Super+Right, the other zones labwc regions behind hidden
 // Super+Ctrl+Shift+F1–F11 keys (rc.xml), typed with wtype once this flyout has closed and your window has the keyboard
-// again. The zones are in snap-layouts.js. Loaded by shell.qml through a Loader: a problem here only loses this.
+// again. On KWin (HEARTH_WM=kwin) WinList asks KWin's hearthwindows script instead. The zones are in snap-layouts.js. Loaded by shell.qml through a Loader: a problem here only loses this.
 //   quickshell ipc -p <shell folder> call snap open|close|toggle|state
 import QtQuick
 import Quickshell
@@ -32,7 +32,7 @@ Scope {
     }
     function open() {
         if (shown) return;
-        win = ToplevelManager.activeToplevel;
+        win = WinList.activeToplevel;
         atScreen = screenOf(win);
         current = 0;
         mouseLit = false;
@@ -50,6 +50,8 @@ Scope {
         const had = win !== null;
         close();
         if (!had) { SettingsNav.toast("Click a window first, then press Super+Z"); return; }
+        // KWin takes no typed keys: WinList asks KWin's hearthwindows script to put the window there (the same zones).
+        if (WinList.kwin) { WinList.snap(win, q.id); return; }
         // A moment for the flyout to close and your window to have the keyboard again, then labwc's shortcut.
         typer.command = ["sh", "-c", "sleep 0.3; exec wtype \"$@\"", "sh"].concat(Snap.wtypeArgs(q));
         typer.running = true;
