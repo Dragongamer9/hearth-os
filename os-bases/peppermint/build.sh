@@ -1859,6 +1859,38 @@ if [ "$(systemctl --global is-enabled hearth-vnc.service 2>/dev/null)" = enabled
 optional qrencode
 chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
 
+# ------------------------------------------------------------------ 1.14: network, sign-in and vaults (docs/FINGERPRINT.md)
+# NetworkManager's VPN plugins for Settings › VPN's "Set up a VPN by hand" (each kind shows only when its plugin is here),
+# fprintd for fingerprints, CryFS as the second kind of vault (gocryptfs is required above). All optional: a missing
+# one only hides that choice.
+optional network-manager-strongswan network-manager-l2tp network-manager-pptp network-manager-openconnect \
+  network-manager-sstp network-manager-fortisslvpn fprintd libpam-fprintd cryfs
+# NetworkManager starts its own IPsec and L2TP daemons when a VPN connects: the system-wide ones the plugins bring stay
+# off, so nothing listens on the network at start.
+systemctl disable strongswan-starter.service strongswan.service ipsec.service xl2tpd.service 2>/dev/null || true
+# RED FLAG: a fingerprint is never the only way in. libpam-fprintd's own pam-auth-update profile would put the reader in
+# front of EVERY password (login, sudo, SDDM): take it out, so common-auth stays password-only, and use Hearth's
+# guarded setup instead (hearth-fingerprint-pam: the lock screen's own service next to the password, and one
+# never-blocking block in polkit-1; turned on per person in Settings). Checked again here and in fingerprint-pam.yml.
+if [ -e /usr/share/pam-configs/fprintd ] && command -v pam-auth-update >/dev/null; then
+  # --disable, not --remove: it stays "seen" and off, so a later pam-auth-update (another package) never puts it back.
+  DEBIAN_FRONTEND=noninteractive pam-auth-update --package --disable fprintd || echo "::warning::pam-auth-update couldn't turn fprintd's profile off"
+fi
+if grep -qs pam_fprintd /etc/pam.d/common-auth; then
+  echo "::error::common-auth asks for a fingerprint: that would put the reader in front of every password"; exit 1
+fi
+FP=/usr/libexec/nimbus/hearth-fingerprint-pam
+if [ -x "$FP" ] && [ -e /usr/lib/x86_64-linux-gnu/security/pam_fprintd.so -o -e /lib/x86_64-linux-gnu/security/pam_fprintd.so ]; then
+  if python3 "$FP" install && python3 "$FP" check; then echo "fingerprint: polkit-1 and kde-fingerprint set up (off for everyone until turned on)"
+  else echo "::warning::fingerprint: setup didn't check out, taken out again (passwords only)"; python3 "$FP" uninstall || true; fi
+else
+  echo "fingerprint: fprintd's PAM module isn't here, so no fingerprint setup (passwords only)"
+fi
+# GnuPG's passphrase prompt in Hearth's look (pinentry-hearth: the classic pinentry when Mantel isn't there).
+if update-alternatives --query pinentry >/dev/null 2>&1; then
+  update-alternatives --install /usr/bin/pinentry pinentry /usr/libexec/nimbus/pinentry-hearth 95 || echo "::warning::pinentry-hearth wasn't made the pinentry"
+fi
+
 # ------------------------------------------------------------------ system settings Bazzite/Fedora came with
 # Hearth's administrators group (the installer puts the first account in it; the polkit rules use it). In
 # /etc/group now (the installer adds the account against the image's /etc) and in sysusers.d for later.
@@ -2188,4 +2220,9 @@ command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and boo
 # The last step: every file marked with the piece it belongs to (os-bases/peppermint/components.py), so the rechunk
 # step in base-peppermint.yml gives each Debian package and each Hearth app its own layers and a device downloads only
 # what changed. Never fails the build (unmarked files only make updates bigger).
+# RED FLAG (docs/FINGERPRINT.md), once more at the very end: common-auth (login, sudo, SDDM) never asks for a
+# fingerprint, whatever ran pam-auth-update after the fingerprint setup above.
+if grep -qs pam_fprintd /etc/pam.d/common-auth; then
+  echo "::error::common-auth asks for a fingerprint at the end of the build: that would put the reader in front of every password"; exit 1
+fi
 python3 /ctx/components.py / /usr/lib/sysimage/dpkg || echo "components: marking files failed; updates stay big"

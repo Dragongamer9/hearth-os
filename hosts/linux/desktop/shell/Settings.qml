@@ -66,6 +66,7 @@ Singleton {
     property bool kbdLights: false       // the keyboard's RGB lights follow the accent (KbdLights.qml, hearth-kbd-lights); Settings › Appearance
     property bool confirmLogout: false   // Log out asks first (LeaveConfirm.qml); Settings › Startup. Off: today's, logs out at once
     property string leaveDefault: ""     // what the power menu has picked when it opens: "" (Lock, today's) | "Sleep" | "Restart" | "Shut down" | "Log out" | "Game Mode"; Settings › Startup
+    property bool netSpeed: false        // the network's speed next to its icon in the bar (Settings › Bar and dock; 1.14)
     property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     // ---- 1.14, more of KDE System Settings (docs/SETTINGS-MORE-1.14.md). Missing = the default, never written by itself.
     property bool dockScrollVolume: true // scrolling on an app's dock icon changes that app's volume (Sound › Apps' sound)
@@ -110,6 +111,7 @@ Singleton {
                  "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
         .concat(["wallPotd", "wallPair", "appsFollow"])
         .concat(["btReceive", "btReceiveFolder", "btReceiveTrusted", "inkNotify"])
+        .concat(["netSpeed"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
@@ -174,6 +176,7 @@ Singleton {
     onBtReceiveFolderChanged: save("btReceiveFolder")
     onBtReceiveTrustedChanged: save("btReceiveTrusted")
     onInkNotifyChanged: save("inkNotify")
+    onNetSpeedChanged: save("netSpeed")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

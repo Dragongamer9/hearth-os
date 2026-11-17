@@ -1,0 +1,69 @@
+pragma Singleton
+
+// Your vaults for the bar's vault button (1.14, hearth-vaults, SetVaults.qml): read every 15 seconds, only once you have
+// a vaults list; lock one or all from the bar. Unlocking asks for the password in Settings › Vaults.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+Singleton {
+    id: root
+    property var vaults: []
+    readonly property var opened: vaults.filter(v => v.open)
+    // The shell's own folder (a singleton's Qt.resolvedUrl isn't always this file's folder).
+    readonly property string helper: Quickshell.shellDir + "/hearth-vaults"
+    readonly property string tip: opened.length ? opened.map(v => v.name).join(", ") + (opened.length === 1 ? " is unlocked" : " are unlocked") : "Vaults: all locked"
+    function refresh() { file.reload(); if (!list.running) list.running = true; }
+    function act(args) { run.command = ["python3", helper].concat(args); run.running = true; }
+    // The bar's menu: lock or open each unlocked vault, unlock (in Settings) each locked one. openSettings(page).
+    function menu(openSettings) {
+        const out = [];
+        for (const v of vaults) {
+            const one = v;
+            if (one.open) {
+                out.push({ label: "Lock " + one.name, icon: "lock", run: () => root.act(["lock", one.id]) });
+                out.push({ label: "Open " + one.name, icon: "folder", run: () => Quickshell.execDetached(["xdg-open", one.mount]) });
+            } else {
+                out.push({ label: "Unlock " + one.name + "…", icon: "vault", run: () => openSettings("vaults:" + one.id) });
+            }
+        }
+        if (opened.length > 1) out.push({ label: "Lock them all", icon: "lock", run: () => root.act(["lock-all"]) });
+        out.push({ label: "Vaults settings", icon: "gear", run: () => openSettings("vaults") });
+        return out;
+    }
+    // The list itself is vaults.json (read here, watched: a vault made or forgotten shows at once); which ones are
+    // unlocked comes from hearth-vaults list (the mount table), every 15 seconds and whenever the file changes.
+    readonly property string listFile: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/vaults.json"
+    FileView {
+        id: file
+        path: root.listFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            let o = null;
+            try { o = JSON.parse(text()); } catch (e) { o = null; }
+            const vs = o && o.vaults && typeof o.vaults === "object" ? o.vaults : {};
+            const open = {};
+            for (const v of root.vaults) open[v.id] = v.open;
+            root.vaults = Object.keys(vs).map(id => ({ id: id, name: vs[id].name || id, open: !!open[id], mount: "", backend: vs[id].backend || "gocryptfs" }));
+            if (!list.running) list.running = true;
+        }
+        onLoadFailed: root.vaults = []
+    }
+    Process {
+        id: list
+        command: ["sh", "-c", "[ -e \"$1\" ] || { echo '{\"vaults\": []}'; exit 0; }; exec python3 \"$0\" list", root.helper, root.listFile]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { const o = JSON.parse(text.trim().split("\n").pop() || "{}"); if (o && Array.isArray(o.vaults)) root.vaults = o.vaults; }
+                catch (e) { console.warn("VaultStore: hearth-vaults list didn't answer in JSON"); }
+            }
+        }
+    }
+    Process {
+        id: run
+        stdout: StdioCollector { onStreamFinished: { const err = text.split("\n").find(l => l.startsWith("error: ")); if (err) SettingsNav.toast(err.slice(7)); root.refresh(); } }
+    }
+    Timer { interval: 15000; repeat: true; running: true; triggeredOnStart: true; onTriggered: root.refresh() }
+}

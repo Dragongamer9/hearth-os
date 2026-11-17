@@ -175,7 +175,9 @@ PanelWindow {
             { label: "Sleep", icon: "sleep", run: () => root.power("sleep") },
             { label: "Restart", icon: "restart", run: () => root.power("restart") },
             { label: "Shut down", icon: "power", run: () => root.power("shutdown") },
-            { label: "Log out", icon: "logout", run: () => root.power("logout") }
+            { label: "Log out", icon: "logout", run: () => root.power("logout") },
+            // 1.14: Switch user, Hibernate, Restart into firmware setup (the power menu, where they work here)
+            { label: "More choices…", icon: "menu", run: () => { root.shown = false; Buttons.powerMenuRequested(); } }
         ]);
     }
 

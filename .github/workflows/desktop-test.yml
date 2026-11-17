@@ -104,6 +104,9 @@ jobs:
           # 1.14, KDE System Settings' areas: VPN, hotspot, proxy, connection details, firmware, region, fonts, services,
           # login screen (fake nmcli / fwupdmgr / localectl / systemctl answers; secrets only on stdin).
           python3 -m unittest discover -s hosts/linux/test -p 'test_system_settings_114.py' -v
+          # 1.14, network and sign-in (KDE's missing parts): VPNs by hand, 802.1X, mobile broadband, Wi-Fi QR codes,
+          # Duplicate, the firewall, fingerprint sign-in's PAM side, Vaults, SSH/GPG passphrases, the power menu's choices.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_net_signin_114.py' -v
           # 1.14, Window effects' and Virtual desktops' extras: second switcher, hide the pointer after a time, show FPS /
           # paint, KWin's scripts, the Desktop Cube.
           python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_effects_extras.py' -v
@@ -293,18 +296,20 @@ jobs:
           dnf -y install glibc-langpack-de glibc-langpack-fr >/dev/null 2>&1 || true
           cat > /tmp/fakebin/nmcli <<'FAKE'
           #!/bin/sh
-          W=0f5d6a3e-1b2c-4d5e-8f90-123456789abc; V=22222222-2222-3333-4444-555555555555; G=33333333-2222-3333-4444-555555555555; H=44444444-2222-3333-4444-555555555555
+          W=0f5d6a3e-1b2c-4d5e-8f90-123456789abc; V=22222222-2222-3333-4444-555555555555; G=33333333-2222-3333-4444-555555555555; H=44444444-2222-3333-4444-555555555555; M=66666666-2222-3333-4444-555555555555
           case "$*" in
             *"NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT connection show"*)
-              printf 'Home Wi-Fi:%s:802-11-wireless:wlan0:yes:yes\nWired connection 1:55555555-2222-3333-4444-555555555555:802-3-ethernet::no:yes\nWork VPN:%s:vpn::no:no\nhome-wg:%s:wireguard:home-wg:yes:no\nHearth Hotspot:%s:802-11-wireless::no:no\n' $W $V $G $H ;;
-            *"DEVICE,TYPE,STATE device"*) printf 'wlan0:wifi:connected\neth0:ethernet:unavailable\nhome-wg:wireguard:connected\n' ;;
+              printf 'Home Wi-Fi:%s:802-11-wireless:wlan0:yes:yes\nWired connection 1:55555555-2222-3333-4444-555555555555:802-3-ethernet::no:yes\nWork VPN:%s:vpn::no:no\nhome-wg:%s:wireguard:home-wg:yes:no\nHearth Hotspot:%s:802-11-wireless::no:no\nPhone plan:%s:gsm::no:yes\n' $W $V $G $H $M ;;
+            *"DEVICE,TYPE,STATE device"*) printf 'wlan0:wifi:connected\neth0:ethernet:unavailable\nhome-wg:wireguard:connected\ncdc-wdm0:gsm:disconnected\n' ;;
+            *"802-11-wireless-security.psk connection show uuid $W"*) echo firelight-2026 ;;
+            *"-t connection show uuid $M"*) printf 'connection.id:Phone plan\nconnection.type:gsm\nconnection.autoconnect:yes\nconnection.metered:yes\nipv4.method:auto\nipv4.addresses:\nipv4.gateway:--\nipv4.dns:\nipv4.ignore-auto-dns:no\nipv6.method:auto\nipv6.dns:\ngsm.apn:fast.t-mobile.com\ngsm.username:\ngsm.home-only:yes\nGENERAL.DEVICES:\n' ;;
             *"vpn.service-type"*) echo org.freedesktop.NetworkManager.openvpn ;;
             *"802-11-wireless.mode connection show uuid $H"*) echo ap ;;
             *"802-11-wireless.mode"*) echo infrastructure ;;
             *"WIFI-PROPERTIES.AP"*) echo yes ;;
             *"connection.type"*) echo 802-11-wireless ;;
             *"-t connection show uuid $H"*) printf '802-11-wireless.ssid:Hearth Den\n802-11-wireless.band:a\n' ;;
-            *"-t connection show uuid"*) printf 'connection.id:Home Wi-Fi\nconnection.type:802-11-wireless\nconnection.autoconnect:yes\nconnection.metered:no\nipv4.method:auto\nipv4.addresses:\nipv4.gateway:--\nipv4.dns:1.1.1.1,9.9.9.9\nipv4.ignore-auto-dns:no\nipv6.method:auto\nipv6.dns:\n802-11-wireless.cloned-mac-address:stable\nGENERAL.DEVICES:wlan0\nIP4.ADDRESS[1]:192.168.1.42/24\nIP4.GATEWAY:192.168.1.1\nIP4.DNS[1]:1.1.1.1\nIP4.DNS[2]:9.9.9.9\nIP6.ADDRESS[1]:fd00::42/64\n' ;;
+            *"-t connection show uuid"*) printf 'connection.id:Home Wi-Fi\nconnection.type:802-11-wireless\n802-11-wireless.ssid:Home Wi-Fi\n802-11-wireless-security.key-mgmt:wpa-psk\nconnection.autoconnect:yes\nconnection.metered:no\nipv4.method:auto\nipv4.addresses:\nipv4.gateway:--\nipv4.dns:1.1.1.1,9.9.9.9\nipv4.ignore-auto-dns:no\nipv6.method:auto\nipv6.dns:\n802-11-wireless.cloned-mac-address:stable\nGENERAL.DEVICES:wlan0\nIP4.ADDRESS[1]:192.168.1.42/24\nIP4.GATEWAY:192.168.1.1\nIP4.DNS[1]:1.1.1.1\nIP4.DNS[2]:9.9.9.9\nIP6.ADDRESS[1]:fd00::42/64\n' ;;
             *) [ -x /usr/bin/nmcli ] && exec /usr/bin/nmcli "$@" ;;
           esac
           FAKE
@@ -362,6 +367,59 @@ jobs:
           rm -f /tmp/fakebin/boltctl "$NA"; [ -n "$HW_MADE" ] && rm -f "$HW"; rm -rf /tmp/fake-sys
           [ -e /tmp/notify-apps.json.before ] && mv -f /tmp/notify-apps.json.before "$NA"
           ipc settings close
+          # ---- 1.14, network and sign-in (test_net_signin_114.py): VPN plugins (only their .name files: l2tp, OpenConnect and
+          # strongSwan here; PPTP, SSTP and Fortinet show their "not on this system" note), qrencode for the Wi-Fi code, a
+          # stand-in fingerprint reader (fprintd-list / fprintd-enroll), firewalld (firewall-cmd), two vaults, a picture
+          # to crop, the network speed in the bar. Everything put back afterwards.
+          dnf -y install qrencode >/dev/null 2>&1 || true
+          VD=/usr/lib/NetworkManager/VPN; mkdir -p "$VD"; VMADE=""
+          for n in l2tp openconnect strongswan; do [ -e "$VD/nm-$n-service.name" ] || { printf '[VPN Connection]\nname=%s\nservice=org.freedesktop.NetworkManager.%s\n' $n $n > "$VD/nm-$n-service.name"; VMADE="$VMADE $VD/nm-$n-service.name"; }; done
+          printf '#!/bin/sh\nprintf "Using device /net/reactivated/Fprint/Device/0\\nFingerprints for user %%s on Goodix MOC Fingerprint Sensor (press):\\n - #0: right-index-finger\\n" "$1"\n' > /tmp/fakebin/fprintd-list
+          printf '#!/bin/sh\necho "Using device /net/reactivated/Fprint/Device/0"; echo "Enrolling left-index-finger finger."\nfor i in 1 2 3 4; do sleep 0.6; echo "Enroll result: enroll-stage-passed"; done\nsleep 90\n' > /tmp/fakebin/fprintd-enroll
+          cat > /tmp/fakebin/firewall-cmd <<'FAKE'
+          #!/bin/sh
+          case "$*" in
+            --state) echo running ;;
+            --get-default-zone) echo public ;;
+            --list-ports) echo "25565/tcp 8080/tcp" ;;
+            --list-services) echo "ssh dhcpv6-client mdns" ;;
+            --list-rich-rules) for n in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do echo "rule family=\"ipv4\" source address=\"$n\" port port=\"1714-1764\" protocol=\"tcp\" accept"; done ;;
+            "--zone=trusted --list-interfaces") echo tailscale0 ;;
+            *) exit 2 ;;
+          esac
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/firewall-cmd
+          chmod +x /tmp/fakebin/fprintd-list /tmp/fakebin/fprintd-enroll /tmp/fakebin/firewall-cmd
+          FWMADE=""; if [ ! -e /usr/libexec/nimbus/hearth-firewall ]; then mkdir -p /usr/libexec/nimbus; cp os/system_files/usr/libexec/nimbus/hearth-firewall /usr/libexec/nimbus/; FWMADE=1; fi
+          FPMADE=""; if [ ! -e /etc/nimbus/fingerprint/lock ]; then mkdir -p /etc/nimbus/fingerprint; id -un > /etc/nimbus/fingerprint/lock; FPMADE=1; fi
+          PMADE=""; for f in hearth-fingerprint hearth-fingerprint-polkit; do [ -e /etc/pam.d/$f ] || { cp os-bases/peppermint/system_files/etc/pam.d/$f /etc/pam.d/; PMADE="$PMADE /etc/pam.d/$f"; }; done
+          VJ="$HOME/.config/nimbus/vaults.json"; [ -e "$VJ" ] && cp -p "$VJ" /tmp/vaults.json.before
+          printf '{"vaults": {"private": {"name": "Private", "backend": "gocryptfs", "idle": 15, "lockOnLock": true}, "taxes": {"name": "Taxes 2026", "backend": "cryfs", "idle": 60, "lockOnLock": true}}}\n' > "$VJ"
+          mkdir -p "$HOME/Pictures"; cp hosts/linux/desktop/shell/images/wallpapers/slate-dusk.jpg "$HOME/Pictures/aaa-hearth-crop-test.jpg" 2>/dev/null || true
+          DJ="$HOME/.local/share/nimbus/desktop.json"; python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$DJ" '{"netSpeed": true}' >/dev/null || true
+          # Some traffic for the bar's speed (a download thrown away), then the vault button and the speed have been read.
+          ( curl -sL -o /dev/null --max-time 60 --limit-rate 3M https://download.fedoraproject.org/pub/fedora/linux/releases/42/Everything/x86_64/os/images/install.img || true ) &
+          sleep 16
+          ss vpn:add-l2tp ss-vpn-add; ss net-details:qr ss-net-qr; ss net-details:add-enterprise ss-net-add; ss net-details:mobile ss-net-mobile
+          ss firewall ss-firewall; ss signin:enroll ss-signin-finger; pkill -f fprintd-enroll || true
+          ss users:crop ss-users-crop; ss vaults:new ss-vaults
+          ipc settings close
+          ipc powermenu demo; sleep 2; grim shots/system-settings/ss-power-menu.png || true; ipc powermenu close
+          ipc askpass demo; sleep 2; grim shots/system-settings/ss-askpass.png || true; ipc askpass close
+          ipc polkit demoFinger; sleep 2; grim shots/system-settings/ss-polkit-finger.png || true; ipc polkit close
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$DJ" '{"netSpeed": null}' >/dev/null || true
+          rm -f "$VJ" "$HOME/Pictures/aaa-hearth-crop-test.jpg" /tmp/fakebin/fprintd-list /tmp/fakebin/fprintd-enroll /tmp/fakebin/firewall-cmd $VMADE $PMADE
+          [ -e /tmp/vaults.json.before ] && mv -f /tmp/vaults.json.before "$VJ"
+          [ -n "$FWMADE" ] && rm -f /usr/libexec/nimbus/hearth-firewall; [ -n "$FPMADE" ] && rm -rf /etc/nimbus/fingerprint
+          for f in ss-vpn-add ss-net-qr ss-net-add ss-net-mobile ss-firewall ss-signin-finger ss-users-crop ss-vaults ss-power-menu ss-askpass ss-polkit-finger; do
+            [ -s "shots/system-settings/$f.png" ] || echo "::warning title=Network and sign-in::no picture for $f"
+          done
+          if grep -E "(Set(Firewall|Vaults|Signin|Users|NetDetails|Vpn|BarDock)|AskPass|PowerMenu|NetSpeed|VaultStore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)|(Bar|Islands|Lock)\.qml.*(NetSpeed|VaultStore|fpPam|fpCheck|vaultLock|fpInfo)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Network and sign-in::$(grep -E "(Set(Firewall|Vaults|Signin|Users|NetDetails|Vpn|BarDock)|AskPass|PowerMenu|NetSpeed|VaultStore)\.qml|(Bar|Islands|Lock)\.qml.*(NetSpeed|VaultStore|fpPam|fpCheck|vaultLock|fpInfo)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Network and sign-in::no QML errors from the 1.14 network and sign-in pages"
+          fi
           rm -f "$PX" /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/mokutil /tmp/fakebin/localectl /tmp/fakebin/systemctl
           [ -e /tmp/proxy.json.before ] && mv -f /tmp/proxy.json.before "$PX"
           if grep -E "(Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users|Thunderbolt|Sound|Power|Notifications|Startup)|NotifyRules|SessionRestore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
@@ -3107,7 +3165,8 @@ jobs:
                ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged,
                ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic,
                ss-bluetooth-receive, ss-bt-receive-ask, ss-info-sensors, ss-info-modules, ss-info-interrupts, ss-scan-pdf, ss-ink-levels,
-               ss-ink-notice, ss-firmware-history, ss-language-packs]
+               ss-ink-notice, ss-firmware-history, ss-language-packs,
+               ss-vpn-add, ss-net-qr, ss-net-add, ss-net-mobile, ss-firewall, ss-signin-finger, ss-users-crop, ss-vaults, ss-power-menu, ss-askpass, ss-polkit-finger]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

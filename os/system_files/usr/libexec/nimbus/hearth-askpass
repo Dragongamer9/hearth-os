@@ -1,0 +1,45 @@
+#!/usr/bin/python3
+"""hearth-askpass: SSH_ASKPASS in Hearth's look (1.14). ssh (and ssh-add, git over ssh) runs it with the question as
+its one argument when there's no terminal to ask in; it prints the answer. Mantel shows the question (AskPass.qml);
+without Mantel (another desktop, a crash) the classic askpass asks instead (ksshaskpass, gnome-ssh-askpass,
+ssh-askpass), so a passphrase can always be typed. nimbus-session sets SSH_ASKPASS to this file when nothing else did.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+CLASSIC = ['/usr/bin/ksshaskpass', '/usr/lib/openssh/gnome-ssh-askpass', '/usr/libexec/openssh/gnome-ssh-askpass',
+           '/usr/lib/ssh/ssh-askpass', '/usr/bin/ssh-askpass', '/usr/libexec/openssh/ssh-askpass', '/usr/bin/lxqt-openssh-askpass']
+
+
+def classic(argv):
+    me = os.path.realpath(__file__)
+    for p in CLASSIC:
+        if os.access(p, os.X_OK) and os.path.realpath(p) != me:
+            os.execv(p, [p] + argv)
+    return 1
+
+
+def main(argv):
+    prompt = ' '.join(argv) or 'Passphrase:'
+    try:
+        import hearth_askpass as ha
+        if ha.mantel_here():
+            confirm = os.environ.get('SSH_ASKPASS_PROMPT') == 'confirm'
+            visible = os.environ.get('SSH_ASKPASS_PROMPT') == 'none' or '(yes/no' in prompt
+            kind = 'confirm' if confirm else ('visible' if visible else 'secret')
+            r = ha.ask(kind, 'SSH', prompt, '' if confirm else ('Answer' if visible else 'Passphrase'))
+            if r is not None:
+                ok, answer = r
+                if not ok:
+                    return 1
+                if not confirm:
+                    sys.stdout.write(answer + '\n')
+                return 0
+    except Exception:  # noqa: BLE001 - anything wrong here: ask the classic way instead
+        pass
+    return classic(argv)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

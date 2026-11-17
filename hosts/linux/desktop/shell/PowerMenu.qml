@@ -3,23 +3,46 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 
 PanelWindow {
     id: root
     property bool shown: false
     property int sel: 0
+    // 1.14, KDE's Leave screen: Switch user, Hibernate, Restart into firmware setup and Log out too, each only where it
+    // works here (hearth-session-actions can, asked each time the menu opens).
+    property var can: ({})
+    readonly property string actions: decodeURIComponent(Qt.resolvedUrl("hearth-session-actions").toString().replace(/^file:\/\//, ""))
     readonly property var items: [
-        { icon: "lock", label: "Lock", cmd: ["sh", "-c", "exec quickshell ipc -p \"$NIMBUS_SHARE/desktop/shell\" call lock lock"] },
-        { icon: "sleep", label: "Sleep", cmd: ["python3", Buttons.helper, "sleep", "Desktop Mode: power menu"] },
-        { icon: "restart", label: "Restart", cmd: ["systemctl", "reboot"] },
+        { icon: "lock", label: "Lock", cmd: ["sh", "-c", "exec quickshell ipc -p \"$NIMBUS_SHARE/desktop/shell\" call lock lock"] }
+    ].concat(can.switchUser && can.otherAccounts > 0 ? [{ icon: "switch-user", label: "Switch user", cmd: ["python3", actions, "switch-user"] }] : []).concat([
+        { icon: "sleep", label: "Sleep", cmd: ["python3", Buttons.helper, "sleep", "Desktop Mode: power menu"] }
+    ]).concat(can.hibernate ? [{ icon: "moon", label: "Hibernate", cmd: ["python3", actions, "hibernate"] }] : []).concat([
+        { icon: "restart", label: "Restart", cmd: ["systemctl", "reboot"] }
+    ]).concat(can.firmware ? [{ icon: "cpu", label: "Restart into firmware setup", cmd: ["python3", actions, "firmware"] }] : []).concat([
         { icon: "power", label: "Shut down", cmd: ["systemctl", "poweroff"] },
+        { icon: "logout", label: "Log out", cmd: [], logout: true },
         { icon: "pad", label: "Game Mode", cmd: ["nimbus-mode", "game"] },
         { icon: "close", label: "Cancel", cmd: [] }
-    ]
-    function open() { sel = 0; shown = true; }
+    ])
+    Process {
+        id: canProc
+        command: ["python3", root.actions, "can"]
+        stdout: StdioCollector { onStreamFinished: { try { const o = JSON.parse(text.trim().split("\n").pop() || "{}"); if (o && typeof o === "object") root.can = o; } catch (e) {} } }
+    }
+    function open() { sel = 0; shown = true; canProc.running = false; canProc.running = true; }
+    IpcHandler {
+        target: "powermenu"
+        function open(): void { root.open(); }
+        function close(): void { root.shown = false; }
+        function demo(): void { root.can = { switchUser: true, otherAccounts: 1, hibernate: true, firmware: true }; root.sel = 0; root.shown = true; }
+    }
     function pick(i) {
         shown = false;
+        // Log out from here always asks first (LeaveConfirm.qml): logging out ends every app within seconds, and a
+        // D-pad press one row too far mustn't lose work. Without the question (it didn't load), as Leave.qml does.
+        if (items[i] && items[i].logout) { if (Leave.canAsk) Leave.confirmRequested(); else Leave.now(); return; }
         const c = items[i] ? items[i].cmd : [];
         if (c.length) Quickshell.execDetached(c);
     }

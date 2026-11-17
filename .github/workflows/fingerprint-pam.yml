@@ -1,0 +1,88 @@
+# RED FLAG check for fingerprint sign-in (docs/FINGERPRINT.md): a fingerprint is never the only way in, and Hearth's PAM
+# setup can't lock anyone out. On Debian trixie (the image's base), set up exactly as os-bases/peppermint/build.sh does,
+# then with a test account: its password still works for polkit, login, sudo and "other", with the fingerprint off,
+# turned on, without fprintd running and without pam_fprintd at all; a wrong password still fails; the lock screen's
+# fingerprint service never takes a password; common-auth and the other stacks are untouched; uninstall gives
+# polkit-1 back byte for byte. A few minutes, no image build.
+name: Fingerprint sign-in (PAM)
+
+on:
+  push:
+    branches: [main, bughunt, 'feature/**']
+    paths: ['os/system_files/usr/libexec/nimbus/hearth-fingerprint-pam', 'os-bases/peppermint/system_files/etc/pam.d/**', '.github/workflows/fingerprint-pam.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pam:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PAM's tools, fprintd's module, polkit and sudo
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 pamtester libpam-fprintd fprintd polkitd sudo login >/dev/null
+          ls -l /etc/pam.d /usr/lib/pam.d 2>/dev/null | head -60
+      - name: Set it up the way the image build does
+        run: |
+          set -e
+          # build.sh: fprintd's own profile out of common-auth (it would put the reader in front of every password).
+          if [ -e /usr/share/pam-configs/fprintd ]; then DEBIAN_FRONTEND=noninteractive pam-auth-update --package --disable fprintd; fi
+          if grep -qs pam_fprintd /etc/pam.d/common-auth; then echo "::error title=PAM::common-auth still asks for a fingerprint"; exit 1; fi
+          [ -e /etc/pam.d/polkit-1 ] && echo "::notice title=PAM::/etc/pam.d/polkit-1 is there" || echo "::notice title=PAM::polkit-1 only in /usr/lib/pam.d"
+          cp -a /etc/pam.d /tmp/pam.before
+          cp os-bases/peppermint/system_files/etc/pam.d/hearth-fingerprint os-bases/peppermint/system_files/etc/pam.d/hearth-fingerprint-polkit /etc/pam.d/
+          mkdir -p /usr/libexec/nimbus
+          install -m 755 os/system_files/usr/libexec/nimbus/hearth-fingerprint-pam /usr/libexec/nimbus/
+          python3 /usr/libexec/nimbus/hearth-fingerprint-pam install
+          python3 /usr/libexec/nimbus/hearth-fingerprint-pam check
+          echo "::notice title=polkit-1 now::$(grep -v '^#' /etc/pam.d/polkit-1 | grep . | tr '\n' '|' | cut -c1-600)"
+          # --disable keeps it off for good: another pam-auth-update run (any package's) doesn't bring it back.
+          DEBIAN_FRONTEND=noninteractive pam-auth-update --package
+          if grep -qs pam_fprintd /etc/pam.d/common-auth; then echo "::error title=PAM::a later pam-auth-update put fprintd back into common-auth"; exit 1; fi
+          useradd -m -s /bin/bash hearthtest
+          echo 'hearthtest:Hearth-Test-1' | chpasswd
+      - name: The password always works, a wrong one never does
+        shell: bash
+        run: |
+          set +e
+          fails=0; : > /tmp/results.txt
+          ok() {   # service, password: must authenticate within 20 s
+            local t0=$SECONDS
+            if echo "$2" | timeout 25 pamtester "$1" hearthtest authenticate >/tmp/pt.log 2>&1 && [ $((SECONDS - t0)) -le 20 ]; then echo "ok   $1 ($3) in $((SECONDS - t0)) s" | tee -a /tmp/results.txt
+            else echo "::error title=Locked out::$1 ($3): the right password didn't work: $(tr '\n' ' ' </tmp/pt.log | cut -c1-200)"; fails=$((fails + 1)); fi
+          }
+          bad() {  # service, password: must be refused
+            if echo "$2" | timeout 25 pamtester "$1" hearthtest authenticate >/tmp/pt.log 2>&1; then echo "::error title=Let in::$1 ($3) took a wrong password"; fails=$((fails + 1))
+            else echo "ok   $1 ($3) refused" | tee -a /tmp/results.txt; fi
+          }
+          round() {
+            for s in polkit-1 login sudo other; do ok $s Hearth-Test-1 "$1"; bad $s wrong-password "$1"; done
+            # The lock screen's fingerprint services never take a password (the lock screen's own password one does).
+            for s in hearth-fingerprint kde-fingerprint; do bad $s Hearth-Test-1 "$1"; done
+          }
+          round "fingerprint off"
+          echo '{"polkit": true, "lock": true}' | PKEXEC_UID=$(id -u hearthtest) python3 /usr/libexec/nimbus/hearth-fingerprint-pam places-set hearthtest
+          grep -qx hearthtest /etc/nimbus/fingerprint/polkit || { echo "::error title=PAM::places-set didn't list the account"; fails=$((fails + 1)); }
+          round "fingerprint on, fprintd not running"
+          M=$(find / -name pam_fprintd.so -path '*security*' 2>/dev/null | head -1)
+          if [ -n "$M" ]; then mv "$M" /tmp/pam_fprintd.so.away; else echo "::warning title=PAM::pam_fprintd.so not found"; fi
+          round "fingerprint on, pam_fprintd missing"
+          if [ -n "$M" ]; then mv /tmp/pam_fprintd.so.away "$M"; fi
+          echo '{"polkit": false, "lock": false}' | python3 /usr/libexec/nimbus/hearth-fingerprint-pam places-set hearthtest
+          ! grep -qsx hearthtest /etc/nimbus/fingerprint/polkit || { echo "::error title=PAM::places-set didn't take the account out"; fails=$((fails + 1)); }
+          echo "::notice title=PAM results::$(grep -c . /tmp/results.txt) checks passed, $fails failed: $(tr '\n' '|' </tmp/results.txt | cut -c1-900)"
+          [ "$fails" -eq 0 ]
+      - name: Nothing else changed, and uninstall puts polkit-1 back
+        shell: bash
+        run: |
+          d=$(diff -r /tmp/pam.before /etc/pam.d | grep -v -E 'polkit-1|kde-fingerprint|hearth-fingerprint' || true)
+          [ -z "$d" ] || { echo "::error title=PAM::other PAM files changed: $(echo "$d" | head -5 | tr '\n' '|')"; exit 1; }
+          python3 /usr/libexec/nimbus/hearth-fingerprint-pam uninstall
+          if [ -e /tmp/pam.before/polkit-1 ]; then cmp /tmp/pam.before/polkit-1 /etc/pam.d/polkit-1 || { echo "::error title=PAM::uninstall didn't give polkit-1 back byte for byte"; exit 1; }
+          else [ ! -e /etc/pam.d/polkit-1 ] || { echo "::error title=PAM::uninstall left a copied polkit-1 behind"; exit 1; }; fi
+          echo Hearth-Test-1 | pamtester polkit-1 hearthtest authenticate
+          echo "::notice title=Fingerprint sign-in::the password works everywhere with the fingerprint off, on, without fprintd and without pam_fprintd; uninstall gives polkit-1 back"

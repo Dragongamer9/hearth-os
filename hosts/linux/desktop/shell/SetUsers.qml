@@ -1,4 +1,5 @@
-// Hearth Settings › Users: the accounts on this device, your picture and password, adding a standard or
+// Hearth Settings › Users: the accounts on this device, your picture (1.14: cropped to the part you want, moved and
+// zoomed in a circle like the login screen shows it) and password, adding a standard or
 // administrator account, and removing one (keeping or deleting its files). Administrators are the "wheel"
 // group, as Hearth's installer sets up. Everything that needs root goes through hearth-admin, which checks
 // the names strictly.
@@ -24,8 +25,25 @@ SetPage {
 
     function say(t, bad) { message = t; messageBad = !!bad; }
     property int stamp: 0                 // new pictures under the same file name show at once
+    property string cropping: ""          // the picture being cropped (1.14)
     function load() { job.run(["users"], r => { page.stamp++; page.st = r; }); }
-    Component.onCompleted: load()
+    // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
+    Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
+    Component.onCompleted: {
+        load();
+        // Settings opened at users:crop (the pictures): the cropper with the first picture in Pictures.
+        if (SettingsNav.pageAnchor === "crop") { anchorDone.restart(); picking = true; job.run(["pictures"], r => { page.pictures = r.pictures || []; if (page.pictures.length) page.startCrop(page.pictures[0]); }); }
+    }
+    function startCrop(p) { cropping = p; cropImg.zoom = 1; cropImg.dx = 0; cropImg.dy = 0; }
+    // The square inside the circle, at 512 × 512, then hearth-system picture-set (as before). The copy is in your
+    // runtime folder (memory, yours only) and gone at sign-out.
+    readonly property string cropFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-face-crop.png"
+    function useCrop() {
+        cropView.grabToImage(r => {
+            if (!r.saveToFile(page.cropFile)) { page.say("Couldn't save the cropped picture.", true); return; }
+            job.run(["picture-set", page.cropFile], x => { page.cropping = ""; page.picking = false; page.say(x.loginScreen ? "Picture changed." : "Picture changed (the login screen keeps its own until Hearth's admin helper is there)."); page.load(); }, e => page.say(e, true), "", "picture");
+        }, Qt.size(512, 512));
+    }
     SetJob { id: job; helper: "hearth-system" }
     SetJob { id: admin; helper: "/usr/libexec/nimbus/hearth-admin"; admin: true }
     function runAdmin(args, input, label, okText, after) {
@@ -95,7 +113,81 @@ SetPage {
                     sourceSize: Qt.size(160, 160)
                     asynchronous: true
                 }
-                onActivated: job.run(["picture-set", modelData], r => { page.picking = false; page.say(r.loginScreen ? "Picture changed." : "Picture changed (the login screen keeps its own until Hearth's admin helper is there)."); page.load(); }, e => page.say(e, true), "", "picture")
+                onActivated: page.startCrop(modelData)
+            }
+        }
+    }
+    // ---- Crop (1.14): drag the picture, zoom with the slider or the mouse wheel; what's in the circle is used.
+    SetBase {
+        visible: page.cropping !== ""
+        interactive: false
+        Layout.fillWidth: true
+        implicitHeight: 380
+        RowLayout {
+            anchors { fill: parent; margins: 20 }
+            spacing: 28
+            Item {
+                implicitWidth: 320; implicitHeight: 320
+                Item {
+                    id: cropView
+                    anchors.fill: parent
+                    clip: true
+                    Rectangle { anchors.fill: parent; color: Theme.panel3 }
+                    Image {
+                        id: cropImg
+                        property real zoom: 1
+                        property real dx: 0
+                        property real dy: 0
+                        source: page.cropping !== "" ? page.fileUrl(page.cropping) : ""
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectCrop
+                        sourceSize: Qt.size(1024, 1024)
+                        width: parent.width * zoom; height: parent.height * zoom
+                        x: (parent.width - width) / 2 + dx
+                        y: (parent.height - height) / 2 + dy
+                    }
+                }
+                // The circle the picture is shown in (not part of the saved picture: it's next to cropView).
+                Rectangle {
+                    anchors.fill: parent; radius: width / 2
+                    color: "transparent"; border.width: 3; border.color: Theme.accent
+                }
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: { const g = getContext("2d"); g.reset(); g.fillStyle = "rgba(0,0,0,0.45)"; g.beginPath(); g.rect(0, 0, width, height); g.arc(width / 2, height / 2, width / 2, 0, 2 * Math.PI, true); g.fill(); }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    property real lx: 0
+                    property real ly: 0
+                    cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                    onPressed: m => { lx = m.x; ly = m.y; }
+                    onPositionChanged: m => {
+                        const lim = (cropView.width * cropImg.zoom - cropView.width) / 2;
+                        cropImg.dx = Math.max(-lim, Math.min(lim, cropImg.dx + m.x - lx));
+                        cropImg.dy = Math.max(-lim, Math.min(lim, cropImg.dy + m.y - ly));
+                        lx = m.x; ly = m.y;
+                    }
+                    onWheel: w => { cropImg.zoom = Math.max(1, Math.min(4, cropImg.zoom + (w.angleDelta.y > 0 ? 0.1 : -0.1))); const lim = (cropView.width * cropImg.zoom - cropView.width) / 2; cropImg.dx = Math.max(-lim, Math.min(lim, cropImg.dx)); cropImg.dy = Math.max(-lim, Math.min(lim, cropImg.dy)); }
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Text { text: "Crop your picture"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Drag it to move it, and zoom in until your face fills the circle. That's how the login screen and the password prompts show you."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                SetSlider {
+                    Layout.fillWidth: true
+                    icon: "search"; title: "Zoom"
+                    value: (cropImg.zoom - 1) / 3
+                    valueText: Math.round(cropImg.zoom * 100) + "%"
+                    onMoved: v => { cropImg.zoom = 1 + v * 3; const lim = (cropView.width * cropImg.zoom - cropView.width) / 2; cropImg.dx = Math.max(-lim, Math.min(lim, cropImg.dx)); cropImg.dy = Math.max(-lim, Math.min(lim, cropImg.dy)); }
+                }
+                RowLayout {
+                    spacing: 10
+                    CaptureBtn { primary: true; icon: "check"; text: job.what === "picture" ? "Saving…" : "Use this picture"; onActivated: page.useCrop() }
+                    CaptureBtn { icon: "close"; text: "Cancel"; onActivated: page.cropping = "" }
+                }
             }
         }
     }

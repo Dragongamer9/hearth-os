@@ -18,6 +18,14 @@ from scratch). Each page is a `Set*.qml` in `hosts/linux/desktop/shell` with a s
 | Power: charge limit | System › Power | `hearth-hwset` (Task Manager's) | `/etc/hearth/hardware.json` |
 | Notifications for each app | System › Notifications | `hearth-notify`, read by `NotifyRules.qml` | `~/.config/nimbus/notify-apps.json` |
 | Reopen my apps from last time | System › Startup | `SessionRestore.qml` | `restoreApps` in desktop.json (off by default); the list in `~/.local/state/hearth/open-apps.json` |
+| VPN by hand (IPsec, L2TP, PPTP, OpenConnect, SSTP, Fortinet), 802.1X, mobile broadband, Wi-Fi QR code, Duplicate, MTU | Network & internet › VPN, Connection details | `hearth-network` | nothing: NetworkManager's own (passwords through `nmcli connection edit` on stdin). Each VPN kind only when its plugin is installed |
+| Firewall | Privacy & security | `hearth-firewall` (root: `hearth-admin firewall-*`) | nothing (firewalld's or ufw's). Off, opening a port and letting everything in ask for an administrator's password |
+| Vaults | Privacy & security, the bar | `hearth-vaults` | `~/.config/nimbus/vaults.json` (gocryptfs/CryFS keep the files) |
+| Fingerprint | Accounts › Sign-in options | `hearth-fingerprint`, root: `hearth-fingerprint-pam` | fprintd's fingers; `/etc/nimbus/fingerprint/{lock,polkit}`. docs/FINGERPRINT.md |
+| Picture cropping | Accounts › Your account | `hearth-system picture-set` | `~/.face` as before |
+| SSH and GPG passphrases | anywhere (AskPass.qml) | `hearth-askpass` (SSH_ASKPASS), `pinentry-hearth` | nothing |
+| Switch user, Hibernate, Restart into firmware setup, Log out | the power menu | `hearth-session-actions` | nothing |
+| Network speed in the bar | Personalization › Bar and dock | `NetSpeed.qml` | `netSpeed` in desktop.json (off by default) |
 
 ## Firmware: what Hearth installs (red flag: never leave a device unable to start)
 

@@ -35,7 +35,9 @@ Scope {
     readonly property string inputPrompt: demo ? "Password:" : flow ? flow.inputPrompt : ""
     readonly property bool visibleResponse: demo ? false : flow ? flow.responseVisible : false
     readonly property bool needsAnswer: demo ? true : flow ? flow.isResponseRequired : false
-    readonly property string extra: demo ? "" : flow ? flow.supplementaryMessage : ""
+    property bool demoFinger: false
+    onDemoChanged: if (!demo) demoFinger = false
+    readonly property string extra: demo ? (demoFinger ? "Place your right index finger on the fingerprint reader" : "") : flow ? flow.supplementaryMessage : ""
     readonly property bool extraIsError: demo ? false : flow ? flow.supplementaryIsError : false
     readonly property var about: Act.describe(actionId)
     readonly property string prog: Act.program(message)
@@ -134,6 +136,7 @@ Scope {
         function state(): string { return JSON.stringify({ registered: agent.isRegistered, active: pk.active, demo: pk.demo, action: pk.actionId, busy: pk.busy }); }
         function demo(): void { pk.demo = true; }
         function demoWrong(): void { pk.demo = true; pk.wrong = "That password isn't right. Try again."; }
+        function demoFinger(): void { pk.demoFinger = true; pk.demo = true; }
         function close(): void { pk.cancel(); }
     }
 
@@ -291,8 +294,16 @@ Scope {
                                 onActivated: { reveal = !reveal; field.forceActiveFocus(); }
                             }
                         }
+                        // 1.14: with a fingerprint turned on for administrator prompts (docs/FINGERPRINT.md), polkit's
+                        // PAM asks for a finger first; the password box takes over after a moment or a wrong finger.
+                        Row {
+                            visible: !pk.busy && pk.wrong === "" && /finger|swipe/i.test(pk.extra)
+                            spacing: 8
+                            Icon { anchors.verticalCenter: parent.verticalCenter; name: "fingerprint"; size: 22; color: Theme.accent }
+                            Text { anchors.verticalCenter: parent.verticalCenter; text: "Touch the fingerprint reader, or wait a moment and type your password"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
+                        }
                         Text {
-                            visible: pk.wrong !== "" || pk.extra !== "" || pk.busy
+                            visible: (pk.wrong !== "" || pk.extra !== "" || pk.busy) && !(!pk.busy && pk.wrong === "" && /finger|swipe/i.test(pk.extra))
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
                             text: pk.busy ? "Checking…" : pk.wrong !== "" ? pk.wrong : pk.extra
                             color: pk.busy ? Theme.muted : (pk.wrong !== "" || pk.extraIsError) ? Theme.danger : Theme.muted

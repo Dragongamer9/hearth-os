@@ -61,6 +61,10 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      (Beta Experimental) hearth-peppermint:testing. Ubuntu and CachyOS are
                                      archived: refused. Download progress like update; the new system
                                      starts at the next restart
+  hearth-admin firewall-status|firewall-on|firewall-off|firewall-allow|firewall-remove|firewall-incoming deny|allow
+                                     Settings › Privacy & security › Firewall (1.14): see hearth-firewall
+  hearth-admin fingerprint-places    stdin {"lock": bool, "polkit": bool}: where your fingerprint is used (1.14):
+                                     see hearth-fingerprint-pam; only your own name in its list files
   hearth-admin hibernate-setup       room on the drive (a swap file the size of memory) so the PC can turn
                                      off with Quick Resume games kept, and the boot options to come back to it
   hearth-admin hibernate-reboot      restart and keep games: save memory to the drive (hibernate), restart by
@@ -2915,6 +2919,18 @@ def main(argv):
         caller()
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-sysset-admin')
         os.execv(sys.executable, [sys.executable, helper, cmd] + argv[2:])
+    elif cmd in ('firewall-status', 'firewall-on', 'firewall-off', 'firewall-allow', 'firewall-remove', 'firewall-incoming'):
+        # Settings › Privacy & security › Firewall (1.14, hearth-firewall): its own script checks every argument again.
+        # firewall-off, firewall-allow and firewall-incoming always ask for an administrator's password (49-hearth-admin.rules).
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-firewall')
+        sub = 'admin-status' if cmd == 'firewall-status' else cmd[9:]
+        os.execv(sys.executable, [sys.executable, helper, sub] + argv[2:])
+    elif cmd == 'fingerprint-places' and len(argv) == 2:
+        # Settings › Sign-in options › Fingerprint (1.14): where YOUR finger is used (lock screen, admin prompts). Only
+        # the list file of the person who asked; no PAM file is changed (hearth-fingerprint-pam, docs/FINGERPRINT.md).
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-fingerprint-pam')
+        os.execv(sys.executable, [sys.executable, helper, 'places-set', caller().pw_name])
     elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-ventoy', 'usb-finish'):
         # Make a bootable USB (Hearth Disks): its own script checks the drive and does the one step.
         caller()
