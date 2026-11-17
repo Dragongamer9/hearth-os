@@ -19,20 +19,7 @@ SetPage {
     function nameOf(id) { const l = st ? st.locales.find(x => x.id === id) : null; return l ? l.name : id; }
 
     function say(t, bad) { message = t; messageBad = !!bad; }
-    function load() { job.run(["status"], r => { page.st = r; page.preview(); }, e => page.say(e, true)); }
-    function preview() {
-        if (!st) return;
-        const f = st.formats;
-        job.run(["preview", f.LC_NUMERIC || st.lang], n => {
-            job.run(["preview", f.LC_TIME || st.lang], t => {
-                job.run(["preview", f.LC_MONETARY || st.lang], m => {
-                    job.run(["preview", f.LC_MEASUREMENT || st.lang], u => {
-                        job.run(["preview", f.LC_PAPER || st.lang], p => page.look = { number: n.number, date: t.longDate, time: t.time, money: m.money, metric: u.metric, paper: p.paper });
-                    });
-                });
-            });
-        });
-    }
+    function load() { job.run(["status"], r => { page.st = r; page.look = r.look; }, e => page.say(e, true)); }
     Component.onCompleted: load()
     SetJob { id: job; helper: "hearth-region" }
     SetJob { id: admin; helper: "/usr/libexec/nimbus/hearth-admin"; admin: true }
@@ -68,7 +55,7 @@ SetPage {
         SetRow {
             interactive: false; chevron: false; icon: "info"
             title: page.look ? page.look.date + " · " + page.look.time : "…"
-            sub: page.look ? page.look.number + " · " + page.look.money + " · " + (page.look.metric ? "Metric" : "US units") + " · " + page.look.paper + " paper" : ""
+            sub: page.look ? [page.look.number, page.look.money, page.look.metric ? "Metric" : "US units", page.look.paper ? page.look.paper + " paper" : ""].filter(x => x).join(" · ") : ""
         }
         SetExpander {
             icon: "gear"; title: "Change one of them"; sub: "Numbers, dates, money, measurements or paper from another region"

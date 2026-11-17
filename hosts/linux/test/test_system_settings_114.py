@@ -375,7 +375,22 @@ class Region(Home):
         ls = self.r.locales('C\nC.utf8\nPOSIX\nde_DE.utf8\nen_US.utf8\nen_US.UTF-8\nja_JP.eucJP\n')
         self.assertEqual([l['id'] for l in ls], ['en_US.UTF-8', 'de_DE.UTF-8', 'C.UTF-8'])
         self.assertEqual(ls[1]['name'], 'German (Germany)')
-        self.assertEqual(ls[0]['name'], 'en_US')     # no i18n file: its code
+        self.assertEqual(ls[0]['name'], 'English (United States)')     # no i18n file: Hearth's own names
+
+    def test_the_language_in_use_is_always_listed_and_shown(self):
+        def fake(cmd, env=None, timeout=20):
+            if cmd[0] == 'localectl':
+                return 0, '   System Locale: LANG=en_US.UTF-8\n                  LC_TIME=xx_YY.UTF-8\n'
+            if cmd[:2] == ['locale', '-a']:
+                return 0, 'C.utf8\n'
+            return 0, ''
+        with mock.patch.object(self.r, 'run', fake):
+            st = self.r.status()
+        ids = {l['id']: l for l in st['locales']}
+        self.assertTrue(ids['en_US.UTF-8']['missing'])
+        self.assertIn('not on this system', ids['en_US.UTF-8']['name'])
+        self.assertIn('xx_YY.UTF-8', ids)
+        self.assertEqual(st['look']['number'], '1234567.89')     # falls back to plain C, never empty
 
     def test_preview_of_the_c_locale(self):
         p = self.r.preview('C.UTF-8')

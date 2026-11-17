@@ -21,6 +21,23 @@ FORMAT_KEYS = ('LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAP
 SAMPLE = datetime.datetime(2026, 12, 24, 18, 30)
 
 
+# Names for when /usr/share/i18n/locales isn't there (or has no language line): the languages the image builds.
+LANGS = {'en': 'English', 'de': 'German', 'fr': 'French', 'es': 'Spanish', 'it': 'Italian', 'pt': 'Portuguese',
+         'nl': 'Dutch', 'sv': 'Swedish', 'da': 'Danish', 'nb': 'Norwegian Bokmål', 'fi': 'Finnish', 'pl': 'Polish',
+         'cs': 'Czech', 'sk': 'Slovak', 'hu': 'Hungarian', 'ro': 'Romanian', 'bg': 'Bulgarian', 'el': 'Greek',
+         'ru': 'Russian', 'uk': 'Ukrainian', 'tr': 'Turkish', 'he': 'Hebrew', 'ar': 'Arabic', 'ja': 'Japanese',
+         'ko': 'Korean', 'zh': 'Chinese', 'th': 'Thai', 'vi': 'Vietnamese', 'id': 'Indonesian', 'ms': 'Malay',
+         'hi': 'Hindi'}
+LANDS = {'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia', 'IE': 'Ireland',
+         'NZ': 'New Zealand', 'IN': 'India', 'ZA': 'South Africa', 'DE': 'Germany', 'AT': 'Austria', 'CH': 'Switzerland',
+         'FR': 'France', 'BE': 'Belgium', 'ES': 'Spain', 'MX': 'Mexico', 'AR': 'Argentina', 'IT': 'Italy',
+         'PT': 'Portugal', 'BR': 'Brazil', 'NL': 'Netherlands', 'SE': 'Sweden', 'DK': 'Denmark', 'NO': 'Norway',
+         'FI': 'Finland', 'PL': 'Poland', 'CZ': 'Czechia', 'SK': 'Slovakia', 'HU': 'Hungary', 'RO': 'Romania',
+         'BG': 'Bulgaria', 'GR': 'Greece', 'RU': 'Russia', 'UA': 'Ukraine', 'TR': 'Türkiye', 'IL': 'Israel',
+         'EG': 'Egypt', 'SA': 'Saudi Arabia', 'JP': 'Japan', 'KR': 'South Korea', 'CN': 'China', 'TW': 'Taiwan',
+         'HK': 'Hong Kong', 'TH': 'Thailand', 'VN': 'Vietnam', 'ID': 'Indonesia', 'MY': 'Malaysia'}
+
+
 class Fail(Exception):
     pass
 
@@ -93,6 +110,9 @@ def locales(text):
         seen.add(n)
         base = n.split('.')[0]
         lang, terr = identification(base)
+        code, _, land = base.partition('_')
+        lang = lang or LANGS.get(code, '')
+        terr = terr or LANDS.get(land, land)
         if n == 'C.UTF-8':
             lang, terr = 'Computer default', ''
         name = lang + (' (' + terr + ')' if terr else '') if lang else base
@@ -114,8 +134,30 @@ def status():
                 break
     lang = norm(cur.get('LANG', 'C.UTF-8'))
     code, out = run(['locale', '-a'])
-    return {'lang': lang, 'formats': {k: norm(cur[k]) for k in FORMAT_KEYS if cur.get(k)},
-            'locales': locales(out if code == 0 else '')}
+    ls = locales(out if code == 0 else '')
+    formats = {k: norm(cur[k]) for k in FORMAT_KEYS if cur.get(k)}
+    # What's in use is always listed, even when this system can't make it any more (it says so).
+    for v in [lang] + list(formats.values()):
+        if not any(l['id'] == v for l in ls):
+            base = v.split('.')[0]
+            c, _, land = base.partition('_')
+            name = (LANGS.get(c, base) + (' (' + LANDS.get(land, land) + ')' if land else '')) + ' · not on this system'
+            ls.append({'id': v, 'name': name, 'language': c, 'territory': land, 'missing': True})
+    return {'lang': lang, 'formats': formats, 'locales': ls, 'look': look(lang, formats)}
+
+
+def look(lang, formats):
+    """How the formats in use write things; each part from its own setting, or plain C when that can't be shown."""
+    def pv(key):
+        for loc in (formats.get(key) or lang, lang, 'C.UTF-8'):
+            try:
+                return preview(loc)
+            except Fail:
+                continue
+        return {}
+    n, t, m, u, p = (pv(k) for k in FORMAT_KEYS)
+    return {'number': n.get('number', ''), 'date': t.get('longDate', ''), 'time': t.get('time', ''),
+            'money': m.get('money', ''), 'metric': u.get('metric', True), 'paper': p.get('paper', '')}
 
 
 def keyword(loc, cat, key):
