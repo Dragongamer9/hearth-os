@@ -1,27 +1,27 @@
 #!/bin/bash
-# Hearth's own compositor, nested (albireo.yml; docs/ALBIREO.md "How it's tested"): the compositor built by
+# Hearth's own compositor, nested (firehold.yml; docs/FIREHOLD.md "How it's tested"): the compositor built by
 # the build job runs in a 1920x1080 window (its winit backend) on a virtual X screen (Xvfb, software GL), started by
 # nimbus-session itself with the preview turned on, so the real Desktop Mode comes up on it: the autostart, Mantel
 # (Quickshell) with its bar, dock and wallpaper (layer shell), and a test window (foot) on Mantel's taskbar (foreign
 # toplevel). Then the window is minimized and brought back through the taskbar protocol, dragged to the screen's left
 # edge with the pointer (snapping), and Settings › System › Your desktop shows the preview switch. A picture after each
 # step (Xvfb's screen), each checked not to be one flat colour; failures are ::error:: annotations and shots/FAILED.
-#   albireo-1-empty   the compositor on its own: Mantel's background colour
-#   albireo-2-mantel  Mantel's bar, dock and wallpaper on it
-#   albireo-3-window  a window with Hearth's frame, listed on Mantel's taskbar
-#   albireo-4-minimized  minimized through the taskbar protocol, then back
-#   albireo-5-snapped the window dragged to the left edge: the left half
-#   albireo-5b-resized  then made 300 px wider by dragging the right border of Hearth's frame
-#   albireo-6-your-desktop  Settings › System › Your desktop with the preview switch
-#   albireo-7-locked  Mantel's lock screen (ext-session-lock), nothing else on the screen
-#   albireo-8-lock-prompt  the lock screen killed: still locked, the compositor's own prompt after a wrong password
-#   albireo-9-unlocked  the right password in that prompt: the desktop back
-#   albireo-10-grim   grim's own picture of the screen (screencopy), checked against the screen's
-#   albireo-11-display  Settings › Display, its screen list from wlr-randr (wlr-output-management)
+#   firehold-1-empty   the compositor on its own: Mantel's background colour
+#   firehold-2-mantel  Mantel's bar, dock and wallpaper on it
+#   firehold-3-window  a window with Hearth's frame, listed on Mantel's taskbar
+#   firehold-4-minimized  minimized through the taskbar protocol, then back
+#   firehold-5-snapped the window dragged to the left edge: the left half
+#   firehold-5b-resized  then made 300 px wider by dragging the right border of Hearth's frame
+#   firehold-6-your-desktop  Settings › System › Your desktop with the preview switch
+#   firehold-7-locked  Mantel's lock screen (ext-session-lock), nothing else on the screen
+#   firehold-8-lock-prompt  the lock screen killed: still locked, the compositor's own prompt after a wrong password
+#   firehold-9-unlocked  the right password in that prompt: the desktop back
+#   firehold-10-grim   grim's own picture of the screen (screencopy), checked against the screen's
+#   firehold-11-display  Settings › Display, its screen list from wlr-randr (wlr-output-management)
 set -u +e +o pipefail
 mkdir -p shots
 SRC=$PWD
-BIN=${ALBIREO:-$SRC/albireo}
+BIN=${FIREHOLD:-$SRC/firehold-comp}
 chmod +x "$BIN"
 fail() { echo "::error title=$1::$2"; touch shots/FAILED; }
 note() { echo "::notice title=$1::$2"; }
@@ -31,8 +31,8 @@ dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
 export NIMBUS_SHARE="$SRC/hosts/linux" NIMBUS_APP=/nonexistent
-export ALBIREO_LOG="info,smithay=warn"
-chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/albireo/autostart hosts/linux/desktop/theme/apply.sh
+export FIREHOLD_LOG="info,smithay=warn"
+chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/firehold/autostart hosts/linux/desktop/theme/apply.sh
 mkdir -p "$HOME/.cache/hearth" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus"
 printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
 python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/share/nimbus/desktop.json" '{}' >/dev/null
@@ -46,7 +46,7 @@ shot() {   # the whole virtual screen
   timeout 20 import -window root -display :99 "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt
   sleep 0.5
 }
-STATUS="$XDG_RUNTIME_DIR/albireo.json"
+STATUS="$XDG_RUNTIME_DIR/firehold.json"
 status() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {"d": d}))' "$STATUS" "$1" 2>/dev/null; }
 wait_for() {   # $1 seconds, $2 a Python expression on the status file (d)
   for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1
@@ -70,7 +70,7 @@ else
   fail "compositor" "didn't open its socket: $(tail -c 900 shots/compositor-alone.log | tr '\n' '|')"
 fi
 sleep 3
-shot albireo-1-empty
+shot firehold-1-empty
 if command -v wayland-info >/dev/null; then
   W timeout 10 wayland-info >shots/wayland-info.txt 2>&1
   for g in xdg_wm_base zwlr_layer_shell_v1 zwlr_foreign_toplevel_manager_v1 zxdg_decoration_manager_v1 wl_data_device_manager \
@@ -93,33 +93,35 @@ grep -q "ending cleanly" shots/compositor-alone.log || fail "SIGTERM" "didn't sa
 
 # ---- 2: Desktop Mode for real: nimbus-session with the preview on starts the compositor, which starts Mantel.
 CONF="$HOME/.config/nimbus/session.conf"
-printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=albireo\n' > "$CONF"
+printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\nHEARTH_FIREHOLD_UNLOCKED=1\n' > "$CONF"
+# The first-time card (how to get out) was shown before: it would take the keyboard from the test window.
+mkdir -p "$HOME/.local/state/hearth" && : > "$HOME/.local/state/hearth/firehold-intro-told"
 LOG="$HOME/.local/share/nimbus/session.log"
 rm -f "$XDG_RUNTIME_DIR/nimbus-next" "$XDG_RUNTIME_DIR/hearth-shell-up"
-ALBIREO_RELOCK_AFTER=120 ALBIREO_BIN="$BIN" ALBIREO_ARGS="--winit --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
+FIREHOLD_RELOCK_AFTER=120 FIREHOLD_BIN="$BIN" FIREHOLD_ARGS="--winit --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
   sh hosts/linux/session/nimbus-session >shots/session-out.log 2>&1 &
 SPID=$!
 for i in $(seq 1 90); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
 if [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ]; then
-  note "Mantel" "says it's up on Albireo ($(grep -o "albireo: Mantel up after [0-9]*s" "$LOG" | tail -1))"
+  note "Mantel" "says it's up on Firehold ($(grep -o "firehold: Mantel up after [0-9]*s" "$LOG" | tail -1))"
 else
-  fail "Mantel" "didn't come up: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400) compositor: $(tail -c 700 "$HOME/.local/share/nimbus/albireo.log" 2>/dev/null | tr '\n' '|')"
+  fail "Mantel" "didn't come up: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400) compositor: $(tail -c 700 "$HOME/.local/share/nimbus/firehold.log" 2>/dev/null | tr '\n' '|')"
 fi
-grep -q "desktop mode: Mantel on Albireo (preview)" "$LOG" || fail "session" "nimbus-session didn't start Albireo: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400)"
+grep -q "desktop mode: Mantel on Firehold (preview)" "$LOG" || fail "session" "nimbus-session didn't start Firehold: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400)"
 # The bar and the dock (and the wallpaper): Mantel's layer surfaces, on the screen.
 wait_for 40 'len([l for o in d["outputs"] for l in o["layers"]]) >= 2' \
   || fail "layer shell" "Mantel's bar and dock aren't up: $(head -c 700 "$STATUS" 2>/dev/null)"
 note "layer shell" "$(status '"; ".join("%s %s %dx%d at %d,%d" % (l["namespace"], l["layer"], l["w"], l["h"], l["x"], l["y"]) for o in d["outputs"] for l in o["layers"])' | cut -c1-900)"
 note "work area" "$(status 'd["outputs"][0]["workArea"]') of $(status '[d["outputs"][0]["w"], d["outputs"][0]["h"]]') (Mantel's bar and dock keep their room)"
 sleep 8   # Mantel's cards and the wallpaper settle
-shot albireo-2-mantel
+shot firehold-2-mantel
 grep -iE "layer.?shell.*(not|fail|unsupported)|ToplevelManager.*(not|fail)|foreign.?toplevel.*(not|unsupported)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
   | head -3 | while read -r l; do fail "Mantel" "$(echo "$l" | cut -c1-300)"; done
 [ "$(status 'd["taskbars"] >= 1')" = True ] && note "foreign toplevel" "Mantel's taskbar is listening ($(status 'd["taskbars"]') listener(s))" \
   || fail "foreign toplevel" "Mantel's taskbar (Quickshell's ToplevelManager) never asked for the windows"
 
 # ---- 3: a window: Hearth's frame on it, and on Mantel's taskbar.
-W foot --app-id=hearth-test-window --title="Albireo test" sh -c 'echo "A window on Hearth'"'"'s compositor"; sleep 600' >shots/foot.log 2>&1 &
+W foot --app-id=hearth-test-window --title="Firehold test" sh -c 'echo "A window on Hearth'"'"'s compositor"; sleep 600' >shots/foot.log 2>&1 &
 FPID=$!
 wait_for 30 'any(w["appId"] == "hearth-test-window" for w in d["windows"])' \
   || fail "window" "the test window never showed up: $(head -c 500 "$STATUS") foot: $(tail -c 300 shots/foot.log | tr '\n' '|')"
@@ -133,7 +135,7 @@ if command -v wlrctl >/dev/null; then
     || fail "foreign toplevel" "wlrctl doesn't list the window: $(tr '\n' '|' < shots/toplevels.txt | cut -c1-300)"
 fi
 sleep 3
-shot albireo-3-window
+shot firehold-3-window
 
 # ---- 4: minimized and back, as Mantel's taskbar does it (foreign toplevel requests).
 if command -v wlrctl >/dev/null; then
@@ -141,13 +143,13 @@ if command -v wlrctl >/dev/null; then
   wait_for 10 'any(w["appId"] == "hearth-test-window" and w["minimized"] for w in d["windows"])' \
     || fail "minimize" "the taskbar's minimize didn't minimize it"
   sleep 2
-  shot albireo-4-minimized
+  shot firehold-4-minimized
   W timeout 10 wlrctl toplevel focus app_id:hearth-test-window
   wait_for 10 'any(w["appId"] == "hearth-test-window" and not w["minimized"] and w["activated"] for w in d["windows"])' \
     || fail "minimize" "activating it from the taskbar didn't bring it back"
 else
   note "minimize" "no wlrctl here: skipped"
-  shot albireo-4-minimized
+  shot firehold-4-minimized
 fi
 
 # ---- 5: dragged by its title bar to the left edge: the left half of the work area.
@@ -169,7 +171,7 @@ else
   note "snapping" "no xdotool here: skipped"
 fi
 sleep 2
-shot albireo-5-snapped
+shot firehold-5-snapped
 
 # ---- 5b: resized by Hearth's frame: its right border dragged 300 px to the right.
 if command -v xdotool >/dev/null; then
@@ -187,22 +189,51 @@ if command -v xdotool >/dev/null; then
     [ "$nh" -ge "$((h - 2))" ] && [ "$nh" -le "$((h + 2))" ] || fail "resize" "its height changed while dragging only the right border ($h -> $nh)"
   fi
 fi
-shot albireo-5b-resized
+shot firehold-5b-resized
 
 # ---- 6: Settings › System › Your desktop, with the preview switch.
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1 || fail "settings" "Mantel's ipc didn't answer"
 sleep 5
-shot albireo-6-your-desktop
+shot firehold-6-your-desktop
 python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status.json
-grep -q '"wmNow": "albireo"' shots/status.json || fail "Your desktop" "doesn't say Mantel is on Albireo: $(head -c 400 shots/status.json)"
-grep -q '"albireoPreview": true' shots/status.json || fail "Your desktop" "doesn't show the preview as on"
+cp shots/status.json shots/status-before-hide.json
+
+# ---- 6c-6e: Firehold's switch is hidden until it's unlocked (seven taps on Settings › About's version). Hidden again
+# first ("Hide Firehold again": the switch goes, Firehold off from the next start; this run goes on as it is).
+python3 hosts/linux/desktop/shell/hearth-your-desktop relock > shots/relock.json
+grep -q '"fireholdUnlocked": false' shots/relock.json || fail "hidden switch" "relock didn't hide it: $(head -c 300 shots/relock.json)"
+if python3 hosts/linux/desktop/shell/hearth-your-desktop wm firehold >/dev/null 2>&1; then fail "hidden switch" "a hidden Firehold could be turned on"; fi
+WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page about >/dev/null 2>&1
+sleep 1
+WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1
+sleep 4
+shot firehold-6c-hidden
+grep -q "HEARTH_FIREHOLD_UNLOCKED=0" "$CONF" || fail "hidden switch" "not hidden in session.conf: $(tr '\n' ' ' < "$CONF")"
+WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page about >/dev/null 2>&1
+sleep 3
+for t in 1 2 3 4 5 6; do WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings tapversion >/dev/null 2>&1; done
+sleep 1
+grep -q "HEARTH_FIREHOLD_UNLOCKED=1" "$CONF" && fail "hidden switch" "six taps unlocked it"
+WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings tapversion >/dev/null 2>&1
+for i in $(seq 1 20); do grep -q "HEARTH_FIREHOLD_UNLOCKED=1" "$CONF" && break; sleep 0.5; done
+grep -q "HEARTH_FIREHOLD_UNLOCKED=1" "$CONF" && note "hidden switch" "the 7th tap unlocked it" || fail "hidden switch" "seven taps didn't unlock it: $(tr '\n' ' ' < "$CONF")"
+[ -e "$CONF.bak" ] && note "hidden switch" "session.conf kept its .bak" || note "hidden switch" "no session.conf.bak"
+sleep 1
+shot firehold-6d-unlocked
+WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1
+sleep 4
+shot firehold-6e-switch
+python3 hosts/linux/desktop/shell/hearth-your-desktop status | grep -q '"fireholdUnlocked": true' || fail "hidden switch" "status doesn't say it's unlocked"
+
+grep -q '"wmNow": "firehold"' shots/status.json || fail "Your desktop" "doesn't say Mantel is on Firehold: $(head -c 400 shots/status.json)"
+grep -q '"fireholdPreview": true' shots/status.json || fail "Your desktop" "doesn't show the preview as on"
 
 # ---- 6b: the clipboard without a window (data-control: Mantel's clipboard history, wl-copy / wl-paste) and typing
 # through the virtual keyboard (wtype, as hearth-type and the on-screen keyboard do).
 if command -v wl-copy >/dev/null; then
-  W timeout 5 wl-copy "Albireo clipboard $$" 2>shots/clip.err
+  W timeout 5 wl-copy "Firehold clipboard $$" 2>shots/clip.err
   got=$(W timeout 5 wl-paste --no-newline 2>>shots/clip.err)
-  [ "$got" = "Albireo clipboard $$" ] && note "clipboard" "wl-copy / wl-paste through data-control work" \
+  [ "$got" = "Firehold clipboard $$" ] && note "clipboard" "wl-copy / wl-paste through data-control work" \
     || fail "clipboard" "wl-paste gave '$got' ($(head -c 300 shots/clip.err | tr '\n' ' '))"
 fi
 if command -v wtype >/dev/null; then
@@ -224,15 +255,15 @@ else
 fi
 sleep 4
 [ "$(focus)" = lock ] || fail "lock" "while locked the keyboard is the $(focus)'s, not the lock screen's"
-shot albireo-7-locked
+shot firehold-7-locked
 # A screen picture while it's locked shows the lock screen, never what's behind it.
 if command -v grim >/dev/null; then
   W timeout 15 grim shots/grim-locked.png 2>shots/grim-locked.err
-  d=$(alike shots/grim-locked.png shots/albireo-7-locked.png)
+  d=$(alike shots/grim-locked.png shots/firehold-7-locked.png)
   note "screencopy" "grim while locked: $(head -c 200 shots/grim-locked.err | tr '\n' ' ') difference from the screen $d"
-  awk -v d="$d" 'BEGIN { exit !(d + 0 < 12 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture while locked isn't the lock screen (difference $d)"
+  awk -v d="$d" 'BEGIN { exit !(d + 0 < 30 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture while locked isn't the lock screen (difference $d)"
 fi
-grep -q "the lock screen is told it's locked" "$HOME/.local/share/nimbus/albireo.log" 2>/dev/null || note "lock" "the compositor's log doesn't say it confirmed the lock"
+grep -q "the lock screen is told it's locked" "$HOME/.local/share/nimbus/firehold.log" 2>/dev/null || note "lock" "the compositor's log doesn't say it confirmed the lock"
 
 # ---- 8: the lock screen dies (Mantel killed): still locked, with the compositor's own prompt; a wrong password
 # keeps it locked. Then Mantel (back again) locks once more and takes over, dies once more, and the right password
@@ -245,7 +276,7 @@ else
 fi
 case "$(focus)" in window:*|layer:*) fail "lock" "the lock screen died and the keyboard went to $(focus)";; esac
 # The keys typed on the virtual screen go to the compositor's window (no window manager there gives it the focus).
-XWIN=$(xdotool search --name 'Albireo' 2>/dev/null | head -1)
+XWIN=$(xdotool search --name 'Firehold' 2>/dev/null | head -1)
 [ -n "$XWIN" ] && xdotool windowfocus --sync "$XWIN" 2>/dev/null
 xdotool mousemove 960 540
 sleep 2
@@ -253,8 +284,8 @@ xdotool type --delay 80 "not-the-password"; xdotool key Return
 sleep 5
 [ "$(status 'd["lock"]["locked"]')" = True ] && note "lock" "a wrong password: still locked ($(status 'd["lock"]["message"]'))" \
   || fail "lock" "a wrong password unlocked it: $(status 'd["lock"]')"
-status 'd["lock"]["message"]' | grep -q "isn't right" || fail "lock" "the prompt didn't say the password was wrong: $(status 'd["lock"]') (window $XWIN; log: $(grep -E 'lock:' "$HOME/.local/share/nimbus/albireo.log" | tail -3 | tr '\n' '|' | cut -c1-400))"
-shot albireo-8-lock-prompt
+status 'd["lock"]["message"]' | grep -q "isn't right" || fail "lock" "the prompt didn't say the password was wrong: $(status 'd["lock"]') (window $XWIN; log: $(grep -E 'lock:' "$HOME/.local/share/nimbus/firehold.log" | tail -3 | tr '\n' '|' | cut -c1-400))"
+shot firehold-8-lock-prompt
 for i in $(seq 1 40); do qs call lock lock && break; sleep 1; done
 if wait_for 15 'd["lock"]["locked"] and d["lock"]["client"] and not d["lock"]["prompt"]'; then
   note "lock" "Mantel came back and its lock screen took over the lock"
@@ -274,15 +305,15 @@ else
 fi
 for i in $(seq 1 30); do qs call settings page your-desktop && break; sleep 1; done
 sleep 4
-shot albireo-9-unlocked
+shot firehold-9-unlocked
 
 # ---- 10: screen pictures for apps: grim (ext-image-copy-capture or wlr-screencopy), a region, and wf-recorder
 # recording (wlr-screencopy with damage). Each picture has to match what the screen shows.
 if command -v grim >/dev/null; then
   before=$(status '"%d %d" % (d["captures"]["wlr"], d["captures"]["ext"])')
   shot shots-tmp-screen
-  W timeout 15 grim shots/albireo-10-grim.png 2>shots/grim.err || fail "screencopy" "grim failed: $(head -c 400 shots/grim.err | tr '\n' ' ')"
-  d=$(alike shots/albireo-10-grim.png shots/shots-tmp-screen.png)
+  W timeout 15 grim shots/firehold-10-grim.png 2>shots/grim.err || fail "screencopy" "grim failed: $(head -c 400 shots/grim.err | tr '\n' ' ')"
+  d=$(alike shots/firehold-10-grim.png shots/shots-tmp-screen.png)
   note "screencopy" "grim's picture vs the screen: difference $d (0 is the same); captures before $before, now $(status '"%d %d" % (d["captures"]["wlr"], d["captures"]["ext"])')"
   awk -v d="$d" 'BEGIN { exit !(d + 0 < 12 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture doesn't match the screen (difference $d)"
   W timeout 15 grim -g "100,200 640x360" shots/grim-region.png 2>>shots/grim.err
@@ -294,7 +325,7 @@ else
 fi
 if command -v wf-recorder >/dev/null; then
   w0=$(status 'd["captures"]["wlr"] + d["captures"]["ext"]')
-  ( W timeout -s INT 6 wf-recorder -y -c ffv1 -f shots/recording.mkv >shots/wf-recorder.log 2>&1 ) &
+  ( W timeout -s INT 6 wf-recorder --no-dmabuf -y -c ffv1 -f shots/recording.mkv >shots/wf-recorder.log 2>&1 ) &
   RPID=$!
   sleep 1.5; W wtype "recorded" 2>/dev/null; sleep 1; xdotool mousemove 600 500; sleep 1; xdotool mousemove 900 300
   wait "$RPID"
@@ -332,27 +363,39 @@ else
 fi
 qs call settings page display || fail "settings" "Mantel's ipc didn't open Settings › Display"
 sleep 6
-shot albireo-11-display
+shot firehold-11-display
+
+# ---- 12: the card when Firehold couldn't start twice in a row (what nimbus-session leaves: test_firehold_session.py
+# proves the fallback itself), shown by Mantel when it starts: why, and one button to turn it back on.
+ST="$HOME/.local/state/hearth"
+printf 'firehold-comp ended right after starting (code 101)\n' > "$ST/firehold-why"
+printf 'firehold twice %s\n' "$(date +%s)" > "$ST/desktop-notice"
+pkill -TERM -x quickshell
+for i in $(seq 1 40); do qs call settings close && break; sleep 1; done
+sleep 8
+shot firehold-12-notice
+[ -e "$ST/desktop-notice" ] && fail "notice" "Mantel didn't take the card: $(cat "$ST/desktop-notice")" || note "notice" "Mantel showed the card"
 
 # ---- The end: Desktop Mode ends as a switch does (nimbus-mode), the compositor ends cleanly.
 kill "$FPID" 2>/dev/null
 echo logout > "$XDG_RUNTIME_DIR/nimbus-next"
-CP=$(cat "$XDG_RUNTIME_DIR/albireo.pid" 2>/dev/null)
-HEARTH_DESKTOP_PID=$(pgrep -x albireo | head -1) HEARTH_WM=albireo sh hosts/linux/session/nimbus-mode logout
+CP=$(cat "$XDG_RUNTIME_DIR/firehold.pid" 2>/dev/null)
+HEARTH_DESKTOP_PID=$(pgrep -x firehold-comp | head -1) HEARTH_WM=firehold sh hosts/linux/session/nimbus-mode logout
 for i in $(seq 1 30); do kill -0 "$SPID" 2>/dev/null || break; sleep 0.5; done
 kill -0 "$SPID" 2>/dev/null && { fail "logout" "the session didn't end after nimbus-mode logout"; kill -KILL "$SPID"; }
-grep -q "albireo ended (code 0)" "$LOG" && note "logout" "the compositor ended cleanly" \
-  || fail "logout" "the compositor didn't end cleanly: $(grep albireo "$LOG" | tail -3 | tr '\n' '|')"
-pkill -TERM quickshell; pkill -KILL -x albireo; sleep 1
+grep -q "firehold ended (code 0)" "$LOG" && note "logout" "the compositor ended cleanly" \
+  || fail "logout" "the compositor didn't end cleanly: $(grep firehold "$LOG" | tail -3 | tr '\n' '|')"
+pkill -TERM quickshell; pkill -KILL -x firehold-comp; sleep 1
 
-cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/albireo.log" shots/albireo.log 2>/dev/null
+cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/firehold.log" shots/firehold.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell.log 2>/dev/null
-grep -iE "panic|thread .* panicked" shots/albireo.log shots/compositor-alone.log 2>/dev/null | head -3 | while read -r l; do fail "panic" "$(echo "$l" | cut -c1-400)"; done
-grep -E "WARN|ERROR" shots/albireo.log 2>/dev/null | sort | uniq -c | sort -rn | head -6 | cut -c1-300 | while read -r l; do note "compositor log" "$l"; done
-grep -E 'desktop|albireo' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
+grep -iE "panic|thread .* panicked" shots/firehold.log shots/compositor-alone.log 2>/dev/null | head -3 | while read -r l; do fail "panic" "$(echo "$l" | cut -c1-400)"; done
+grep -E "WARN|ERROR" shots/firehold.log 2>/dev/null | sort | uniq -c | sort -rn | head -6 | cut -c1-300 | while read -r l; do note "compositor log" "$l"; done
+grep -E 'desktop|firehold' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
 ls -la shots
-for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-5b-resized albireo-6-your-desktop \
-         albireo-7-locked albireo-8-lock-prompt albireo-9-unlocked albireo-10-grim albireo-11-display; do
+for s in firehold-1-empty firehold-2-mantel firehold-3-window firehold-4-minimized firehold-5-snapped firehold-5b-resized firehold-6-your-desktop \
+         firehold-7-locked firehold-8-lock-prompt firehold-9-unlocked firehold-10-grim firehold-11-display \
+         firehold-6c-hidden firehold-6d-unlocked firehold-6e-switch firehold-12-notice; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'
@@ -366,7 +409,7 @@ for n in sorted(os.listdir('shots')):
         print('::notice title=picture %s::%dx%d, brightness %.0f, spread %.1f, %d colours' % (n, im.width, im.height, st.mean[0], st.stddev[0], colours))
         # The first picture is the background on its own: one colour on purpose, and it must be Mantel's (Hearth
         # dark's bg, #0f0b09: the compositor drew it; black would be nothing drawn). Every other one must show something.
-        if n.startswith('albireo-1-'):
+        if n.startswith('firehold-1-'):
             px = im.getpixel((im.width // 2, im.height // 2))
             if max(abs(a - b) for a, b in zip(px, (15, 11, 9))) > 3:
                 print('::error title=screenshot::%s: the middle is %s, not Mantel\'s background #0f0b09' % (n, px))

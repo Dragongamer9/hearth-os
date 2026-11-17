@@ -1371,6 +1371,11 @@ fn hearth_shortcut(
     if let Some(a) = crate::keybinds::builtin(modified) {
         return Some(KeyAction::Hearth(vec![a]));
     }
+    if crate::keybinds::leave_key(crate::keybinds::Mods::of(&modifiers), raw)
+        || crate::keybinds::leave_key(crate::keybinds::Mods::of(&modifiers), modified)
+    {
+        return Some(KeyAction::Hearth(vec![crate::keybinds::Action::LeaveForKwin]));
+    }
     keymap
         .find(crate::keybinds::Mods::of(&modifiers), raw, false)
         .map(|b| KeyAction::Hearth(b.actions.clone()))

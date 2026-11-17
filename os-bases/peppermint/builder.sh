@@ -9,6 +9,8 @@
 #   Quickshell  not in trixie (Desktop Mode's taskbar, launcher, settings)
 #   RyzenAdj    not in Debian (power limit on AMD handhelds without ASUS firmware attributes; hearth-admin)
 #   Handheld Daemon  not in Debian: built from its tagged source into its own venv at /usr/lib/hhd
+#   Firehold  Hearth's own compositor (hosts/firehold-comp, 2.0 preview: docs/FIREHOLD.md), to /usr/libexec/hearth/firehold-comp;
+#            nothing starts it unless Settings › Your desktop › Firehold (preview) is turned on
 #
 # It also writes:
 #   /debs/*.deb   placeholder packages telling dpkg that libostree-1-1, ostree and ostree-boot are provided by
@@ -187,6 +189,16 @@ mkdir -p /output/usr/bin
 ln -sf ../lib/hhd/bin/hhd /output/usr/bin/hhd
 ln -sf ../lib/hhd/bin/hhdctl /output/usr/bin/hhdctl
 mkdir -p /output/usr/share && echo "${HHD_REF#v}" > /output/usr/share/hearth-hhd-version
+
+# ------------------------------------------------------------------ Firehold (hosts/firehold-comp, copied in by the Containerfile)
+# Smithay's libraries (seat, input, udev, keyboard maps, pixman); GBM, DRM, EGL and Wayland are installed above. Its
+# version is the source's (no version line: the owner picks every version number).
+apt-get install -y --no-install-recommends libseat-dev libinput-dev libudev-dev libxkbcommon-dev libpixman-1-dev
+cp -a /src-firehold-comp /src/firehold-comp
+rm -rf /src/firehold-comp/target
+(cd /src/firehold-comp && cargo build --release)
+install -Dm755 /src/firehold-comp/target/release/firehold-comp /output/usr/libexec/hearth/firehold-comp
+/output/usr/libexec/hearth/firehold-comp --help | grep -q "usage: firehold-comp"
 
 # ------------------------------------------------------------------ the Debian packages all of the above link against
 mkdir -p /output/usr/share/hearth

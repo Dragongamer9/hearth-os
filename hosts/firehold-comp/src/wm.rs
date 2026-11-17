@@ -1,7 +1,7 @@
 //! Hearth's window management on top of Anvil's: minimizing (Mantel's taskbar and Show desktop), activating, closing,
 //! snapping to the screen's edges (dragging a window there, or Super+Left/Right/Up), Alt/Super+Tab, Mantel's
 //! keyboard shortcuts from rc.xml, the taskbar list (foreign_toplevel.rs), the autostart, and a small status file
-//! for tests and Hearth ($XDG_RUNTIME_DIR/albireo.json: the screens, Mantel's layer surfaces and the
+//! for tests and Hearth ($XDG_RUNTIME_DIR/firehold.json: the screens, Mantel's layer surfaces and the
 //! windows). After every round of client requests `hearth_tick` runs.
 
 use std::{
@@ -439,6 +439,17 @@ impl<B: Backend + 'static> HearthState<B> {
             }
             // The backend's (udev.rs: the session switches consoles).
             Action::VtSwitch(_) => {}
+            Action::LeaveForKwin => {
+                if self.lock.locked {
+                    // Never a way around the lock screen.
+                    return;
+                }
+                info!("Ctrl+Alt+Backspace: leaving Firehold for KWin");
+                if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+                    let _ = std::fs::write(std::path::Path::new(&dir).join("firehold-leave"), b"kwin\n");
+                }
+                self.running.store(false, Ordering::SeqCst);
+            }
         }
     }
 
@@ -546,7 +557,7 @@ impl<B: Backend + 'static> HearthState<B> {
         }
     }
 
-    /// $XDG_RUNTIME_DIR/albireo.json, when it changed: for the tests, and for Hearth to see what's up.
+    /// $XDG_RUNTIME_DIR/firehold.json, when it changed: for the tests, and for Hearth to see what's up.
     fn write_status(&mut self) {
         self.last_status.0 = std::time::Instant::now();
         let outputs: Vec<serde_json::Value> = self
@@ -621,7 +632,7 @@ impl<B: Backend + 'static> HearthState<B> {
             return;
         }
         let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") else { return };
-        let path = std::path::Path::new(&dir).join("albireo.json");
+        let path = std::path::Path::new(&dir).join("firehold.json");
         let tmp = path.with_extension("json.tmp");
         if std::fs::write(&tmp, &text).and_then(|_| std::fs::rename(&tmp, &path)).is_ok() {
             self.last_status.1 = text;
@@ -642,7 +653,7 @@ impl<B: Backend + 'static> HearthState<B> {
     /// Ending: the status file goes (nothing of the person's is touched).
     pub fn cleanup(&mut self) {
         if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
-            let _ = std::fs::remove_file(std::path::Path::new(&dir).join("albireo.json"));
+            let _ = std::fs::remove_file(std::path::Path::new(&dir).join("firehold.json"));
         }
     }
 }

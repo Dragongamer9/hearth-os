@@ -1,6 +1,6 @@
 //! tearing-control-v1: games say they'd rather tear than wait for the screen (no vsync). The hint is kept per
 //! surface (`wants_tearing`), so games that ask for it find the protocol as on KWin; the frames themselves still wait
-//! for the screen until Smithay can flip asynchronously (it can't in 0.7: docs/ALBIREO.md, stage 3).
+//! for the screen until Smithay can flip asynchronously (it can't in 0.7: docs/FIREHOLD.md, stage 3).
 
 use std::sync::Mutex;
 

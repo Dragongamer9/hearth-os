@@ -1,12 +1,12 @@
 #!/bin/sh
 # Run when Desktop Mode starts: by labwc, or (1.14) by KWin through desktop/kwin/autostart, or (2.0 preview) by
-# Albireo, Hearth's own compositor, through desktop/albireo/autostart. HEARTH_WM says which
+# Firehold, Hearth's own compositor, through desktop/firehold/autostart. HEARTH_WM says which
 # (nimbus-session sets it); HEARTH_DESKTOP_PID is the window manager's process id either way (labwc's LABWC_PID; under
 # KWin our parent, KWin itself), for everything started from here that asks "is Desktop Mode up?" (nimbus-mode).
 SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
-if [ "${HEARTH_WM:-}" = kwin ] || [ "${HEARTH_WM:-}" = albireo ]; then
-  # KWin, or (2.0 preview) Hearth's own compositor (desktop/albireo/autostart): our parent is it.
+if [ "${HEARTH_WM:-}" = kwin ] || [ "${HEARTH_WM:-}" = firehold ]; then
+  # KWin, or (2.0 preview) Hearth's own compositor (desktop/firehold/autostart): our parent is it.
   [ -n "${HEARTH_DESKTOP_PID:-}" ] || HEARTH_DESKTOP_PID=$PPID
   unset LABWC_PID
 else

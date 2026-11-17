@@ -2848,11 +2848,6 @@ var ENTRIES = [
 "d": "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
 },
 {
-"t": "Albireo (preview)",
-"p": "your-desktop",
-"i": "desktops"
-},
-{
 "t": "Running now",
 "p": "your-desktop"
 },

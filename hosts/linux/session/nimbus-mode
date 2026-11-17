@@ -47,7 +47,7 @@ case "$1" in
       # D-Bus) while Desktop Mode is up, it's this user's labwc or KWin that has to end, or the switch never happens.
       pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null \
         || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null || pkill -TERM -u "$(id -u)" -x kwin_wayland 2>/dev/null \
-        || pkill -TERM -u "$(id -u)" -x albireo 2>/dev/null
+        || pkill -TERM -u "$(id -u)" -x firehold-comp 2>/dev/null
     fi ;;
   *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current" >&2; exit 2 ;;
 esac
