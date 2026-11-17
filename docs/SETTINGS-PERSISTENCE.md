@@ -11,6 +11,7 @@ lost or flip without the person touching it, and what 1.1 does about each. Rules
 |---|---|---|
 | Rust | `hosts/hearth-core/src/settings_file.rs` (`read`, `read_json`, `update_json`, `merge_json`, `update_text`, `write_json`, `write_text`) | Hearth app, core service, Game Mode bridge |
 | Python | `hosts/linux/desktop/shell/hearth_settings_io.py` (`load_json`, `update_json`, `merge_json`, `write_json`, `write_text`, `update_text`, `conf_set_text`, `notice`) | Mantel helpers, hearth-theme, hearth-wallpaper |
+| Python, KDE's INI files | `hosts/linux/desktop/shell/hearth_kconfig.py` (`update(path, {group: {key: value or None}})`, `effective(name)`): only the changed keys, comments and other groups kept, KDE's QLockFile too, a file that can't be parsed never written (docs/KWIN-SETTINGS.md) | hearth-kwin-settings, hearth-access on KWin |
 | QML | `hosts/linux/desktop/shell/SettingsWriter.qml` (`merge({key: value})`, `repair()`), which runs `hearth_settings_io.py merge` | Settings.qml, Buttons.qml, SetKeyboard.qml |
 | Shell | `python3 hearth_settings_io.py merge/conf-set/conf-strip/write/notice`, or the session's `strip_mode_args` (flock, mktemp, sync, .bak, mv) | nimbus-session |
 | Node (old Linux host) | `hosts/linux/src/settings-file.js` (`writeSettings`, `readSettings`, `mergeSettings`) | system-admin.js, display.js, profiles.js |

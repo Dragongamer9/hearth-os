@@ -320,8 +320,8 @@ def typing():
 # ------------------------------------------------------------------ 3. KWin's screen sharing through hearth-kwin-cast
 def cast_helper():
     # Two windows, so the picker's Windows tab has something to show.
-    for title, text in (('Notes – Hearth', 'Shopping: bread, milk, ember logs\\nCall Dad about Trains 2010'),
-                        ('Trains 2010 timetable', 'Express 08:15  Platform 2\\nLocal 08:40  Platform 1')):
+    for title, text in (('Notes – Hearth', 'Shopping: bread, milk, firewood\\nWater the plants'),
+                        ('Bus timetable', 'Express 08:15  Platform 2\\nLocal 08:40  Platform 1')):
         PROCS.append(subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
             import gi, sys; gi.require_version("Gtk", "3.0")
             from gi.repository import Gtk
