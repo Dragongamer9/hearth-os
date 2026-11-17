@@ -397,7 +397,6 @@ jobs:
           # Put everything back.
           for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do rm -f "/tmp/fakebin/$f"; done
           rm -f "$HOME"/.config/autostart/hearth-cmd-*.desktop "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.config/KDE/Sonnet.conf" "$HOME/.config/nimbus/my-looks.json"
-          rm -f "$HOME/.local/state/nimbus/welcome.json"
           cp -p "$SM/desktop.json" "$D"; sleep 3
           SMQ='(Set(SoundSpeakers|SoundApps|PushToTalk|PowerProfiles|PowerAwake|Battery|Autostart|FileTypes|MenuEditor|WallpaperMore|MyLooks|LookMore|Languages|Spellcheck|InputMethods|AppPermissions|BtDevices|PrintQueue|Scanners|UsbDevices|InfoCenter|Panel|Power|Sound|Fonts|Region|Firmware|Updates|Bluetooth|Printers|About)|PushToTalk|FirmwareWatch|OomWatch|DeviceWatch|Welcome|SigninSplash|WallShow|Wallpaper|Dock|Mixer|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
           if grep -E "$SMQ" "$LOG" >/dev/null 2>&1; then
