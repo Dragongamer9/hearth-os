@@ -165,11 +165,12 @@
     <keybind key="W-A-3"><action name="SendToDesktop" to="3" follow="no" /></keybind>
     <keybind key="W-A-4"><action name="SendToDesktop" to="4" follow="no" /></keybind>
     <!-- Screenshots go to Pictures/Screenshots and the clipboard, with a notification to open them.
-         Print Screen: the whole screen. Shift+Print Screen or Super+Shift+S: drag a box around what you want.
-         Ctrl+Print Screen: the whole screen to the clipboard only. -->
+         Print Screen: the whole screen. Shift+Print Screen: drag a box around what you want. Ctrl+Print Screen: the
+         whole screen to the clipboard only. Super+Shift+S: Hearth Capture's area picker, then its markup editor (1.14;
+         the quick box above when Mantel isn't running). -->
     <keybind key="Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot'" /></keybind>
     <keybind key="S-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
-    <keybind key="W-S-s"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'" /></keybind>
+    <keybind key="W-S-s"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh capture-region'" /></keybind>
     <keybind key="C-Print"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-clipboard'" /></keybind>
     <!-- ==== Hearth Recorder (hosts/hearth-recorder): Super+Alt+R records the screen and again stops and saves it
          (Videos/Recordings, with a notification); Super+Alt+Shift+R drags a box around an area to record;

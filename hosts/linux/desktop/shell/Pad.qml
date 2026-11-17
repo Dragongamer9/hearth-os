@@ -38,6 +38,7 @@ Scope {
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || (active !== null && active.title === "Resource Monitor")   // ResourceMonitor.qml (LB / RB switch its tabs: hearth-pad)
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
+        || SettingsNav.captureShown || SettingsNav.polkitShown   // 1.14: Capture's pages and area picker, the password prompt
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
@@ -58,6 +59,8 @@ Scope {
         if (SettingsNav.discordShown) return "Discord chooser";
         if (SettingsNav.winxShown) return "Super+X menu";
         if (DeskState.overlayShown) return "desktop menu";
+        if (SettingsNav.polkitShown) return "password prompt";
+        if (SettingsNav.captureShown) return "Capture";
         return "window: " + (active !== null ? ((active.appId || "") + " " + (active.title || "")).trim().slice(0, 60) : "?");
     }
     // keys {on, why, ttl}: hearth-pad lets it lapse after ttl seconds unless it's said again (keysBeat repeats it while

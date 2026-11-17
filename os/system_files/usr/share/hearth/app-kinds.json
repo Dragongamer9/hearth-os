@@ -272,10 +272,12 @@
   },
   "screenshot": {
    "label": "Screenshots",
-   "_note": "Hearth Classic takes screenshots itself (Mantel: Print Screen, Quick Access), so it shows none.",
+   "_note": "Hearth Classic: Hearth Capture, Mantel's own screenshot tool (1.14, Capture.qml); Print Screen and Quick Access still save one right away.",
    "mimes": [],
    "apps": {
-    "Nimbus": [],
+    "Nimbus": [
+     "hearth-screenshot.desktop"
+    ],
     "KDE": [
      "org.kde.spectacle.desktop",
      "hearth-capture.desktop"

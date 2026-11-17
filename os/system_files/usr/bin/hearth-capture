@@ -1,0 +1,15 @@
+#!/bin/sh
+# Opens Hearth Capture, Hearth's own screenshot tool in Desktop Mode (Mantel, 1.14: in place of KDE's Spectacle).
+#   hearth-capture            the window (take, recent, edit)
+#   hearth-capture MODE       straight to taking one: area | window | screen | all
+#   hearth-capture --recent   the recent screenshots
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+case "$1" in
+  "")        set -- open ;;
+  --recent)  set -- recent ;;
+  area|window|screen|all) set -- take "$1" ;;
+  *) echo "usage: hearth-capture [area|window|screen|all|--recent]" >&2; exit 2 ;;
+esac
+if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$SHELL_DIR" call capture "$@" >/dev/null 2>&1; then exit 0; fi
+echo "hearth-capture: Hearth's desktop (Mantel) isn't running; open it from Desktop Mode." >&2
+exit 1

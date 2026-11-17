@@ -1,0 +1,85 @@
+#!/bin/sh
+# hearth-polkit-fallback: password prompts always work in Desktop Mode (RED FLAG). Mantel draws Hearth's own prompt
+# (PolkitPrompt.qml) and, while its polkit agent is registered, keeps quickshell's PID in
+# $XDG_RUNTIME_DIR/hearth-polkit-mantel. This waits a few seconds for that; when it isn't there (Quickshell without
+# its Polkit module, another agent got there first, polkit couldn't be reached) it starts the classic agent, the first
+# one found of the same list as labwc/autostart and nimbus-watchdog. Then it keeps watching: if the shell stops (a
+# crash, a restart) the classic agent is started at once, so pkexec never fails with "No authentication agent".
+#   hearth-polkit-fallback [SESSION_PID]   runs until SESSION_PID (the compositor) is gone; then stops its agent
+# HEARTH_POLKIT=classic: the classic agent only (Mantel's prompt is off then too). Never sees or handles a password.
+WAIT="${HEARTH_POLKIT_WAIT:-6}"
+POLL="${HEARTH_POLKIT_POLL:-2}"
+MARK="${XDG_RUNTIME_DIR:-/tmp}/hearth-polkit-mantel"
+SESSION_PID="${1:-$HEARTH_SESSION_PID}"
+CLASSIC=""
+RESTARTS=0
+
+# The classic agents, in order (keep the same as labwc/autostart and session/nimbus-watchdog).
+AGENTS="${HEARTH_POLKIT_AGENTS:-}"
+if [ -z "$AGENTS" ]; then
+  for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
+               /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 \
+               /usr/libexec/polkit-gnome-authentication-agent-1 \
+               /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
+               /usr/libexec/polkit-kde-authentication-agent-1 \
+               /usr/lib/polkit-kde-authentication-agent-1 \
+               /usr/libexec/polkit-mate-authentication-agent-1 \
+               /usr/lib/x86_64-linux-gnu/mate-polkit/polkit-mate-authentication-agent-1 \
+               lxpolkit \
+               lxqt-policykit-agent; do
+    AGENTS="$AGENTS $agent"
+  done
+fi
+
+# Mantel's agent is registered: the marker names a running quickshell.
+mantel_up() {
+  [ "$HEARTH_POLKIT" = classic ] && return 1
+  [ -s "$MARK" ] || return 1
+  p=$(head -c 20 "$MARK" 2>/dev/null | tr -dc 0-9)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null || return 1
+  [ -r "/proc/$p/comm" ] || return 0
+  case "$(cat "/proc/$p/comm" 2>/dev/null)" in quickshell*|qs|.quickshell*) return 0 ;; esac
+  return 1
+}
+classic_running() { [ -n "$CLASSIC" ] && kill -0 "$CLASSIC" 2>/dev/null; }
+start_classic() {
+  for a in $AGENTS; do
+    if command -v "$a" >/dev/null 2>&1; then
+      "$a" >/dev/null 2>&1 &
+      CLASSIC=$!
+      echo "hearth-polkit-fallback: Mantel's password prompt isn't registered; started $a" >&2
+      return 0
+    fi
+  done
+  CLASSIC=""
+  echo "hearth-polkit-fallback: no classic polkit agent is installed" >&2
+  return 1
+}
+stop_classic() { if [ -n "$CLASSIC" ]; then kill "$CLASSIC" 2>/dev/null; CLASSIC=""; fi; }
+trap 'stop_classic; exit 0' TERM INT HUP
+
+if [ "$HEARTH_POLKIT" = classic ]; then start_classic; fi
+
+# A few seconds for Mantel's agent to register (the shell starts in parallel with this).
+if [ "$HEARTH_POLKIT" != classic ]; then
+  n=0
+  while [ "$n" -lt $((WAIT * 4)) ] && ! mantel_up; do sleep 0.25; n=$((n + 1)); done
+fi
+was_up=no
+if mantel_up; then was_up=yes; elif ! classic_running; then start_classic; fi
+
+while :; do
+  sleep "$POLL"
+  if [ -n "$SESSION_PID" ] && ! kill -0 "$SESSION_PID" 2>/dev/null; then stop_classic; exit 0; fi
+  if mantel_up; then was_up=yes; continue; fi
+  if [ "$was_up" = yes ]; then
+    # The shell stopped: a fresh classic agent (one started earlier may have failed to register while Mantel had it).
+    was_up=no
+    stop_classic
+    start_classic
+  elif ! classic_running && [ "$RESTARTS" -lt 20 ]; then
+    # The classic agent ended (crashed): again, a limited number of times.
+    RESTARTS=$((RESTARTS + 1))
+    start_classic
+  fi
+done

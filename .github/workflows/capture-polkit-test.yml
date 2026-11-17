@@ -1,0 +1,180 @@
+# Hearth Capture (Mantel's own screenshot tool, 1.14) and Hearth's own password prompt (Mantel's polkit agent): their
+# unit tests, then Desktop Mode for real on a 1920×1080 virtual screen (labwc headless + Quickshell on Fedora, as in
+# desktop-test.yml) with a picture of each new view: Capture's Take page, the area picker, the markup editor with every
+# tool, Read text and QR code on a test picture, Recent, and the password prompt (with the on-screen keyboard). The
+# pictures are SHOT notices ("SHOT <name> <n>", a JPEG in base64 pieces), two per job (a job keeps 50 notices).
+# polkit itself can't ask in a container (no logind session), so the prompt is shown with made-up details
+# (`polkit demo`); the fallback to the classic agent is tested by test_hearth_polkit_mantel.py.
+name: Capture and password prompt test
+
+on:
+  workflow_dispatch:
+  # A new workflow can only be dispatched once it's on main: until then, a push to this branch runs it.
+  push:
+    branches: [feature/capture-polkit]
+  pull_request:
+    paths: ['hosts/linux/desktop/shell/Capture*.qml', 'hosts/linux/desktop/shell/PolkitPrompt.qml', 'hosts/linux/desktop/shell/capture-draw.js',
+            'hosts/linux/desktop/shell/polkit-actions.js', 'hosts/linux/desktop/shell/hearth-capture-helper', 'hosts/linux/desktop/shell/hearth-polkit-fallback',
+            '.github/workflows/capture-polkit-test.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  views:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell, tesseract, zbar and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-gobject \
+            google-noto-sans-fonts rsms-inter-fonts adwaita-icon-theme hicolor-icon-theme dbus-daemon dbus-tools libnotify wl-clipboard wtype \
+            nodejs python3-pillow >/dev/null
+          # Read text and QR codes: the tools Hearth Capture uses when they're there (optional parts of the image).
+          dnf -y install tesseract tesseract-langpack-eng zbar qrencode >/dev/null || echo "::warning title=tools::tesseract / zbar not installed"
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_capture.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_polkit_mantel.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_polkit_agent.py'
+          python3 -m unittest discover -s hosts/linux/test -p 'test_app_kinds.py'
+          python3 -m unittest discover -s hosts/linux/test -p 'test_labwc_rc.py'
+
+      - name: Start Desktop Mode and take the pictures
+        shell: bash
+        run: |
+          mkdir -p shots
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/Pictures" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh hosts/linux/desktop/shell/hearth-capture-helper hosts/linux/desktop/shell/hearth-polkit-fallback
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # Quickshell's Polkit module: the real one when this Quickshell has it; otherwise a stand-in with the same
+          # names (never registered), so the prompt's picture can still be taken. Said either way.
+          QML_DIR=$(ls -d /usr/lib64/qt6/qml /usr/lib/qt6/qml 2>/dev/null | head -1)
+          if [ -d "$QML_DIR/Quickshell/Services/Polkit" ]; then echo "::notice title=polkit module::Quickshell's own Polkit module"
+          else
+            echo "::warning title=polkit module::this Quickshell has no Polkit module: a stand-in is used for the picture"
+            mkdir -p /tmp/qml/Quickshell/Services/Polkit
+            printf 'module Quickshell.Services.Polkit\nPolkitAgent 1.0 PolkitAgent.qml\n' > /tmp/qml/Quickshell/Services/Polkit/qmldir
+            printf 'import QtQuick\nQtObject { property bool isRegistered: false; property bool isActive: false; property var flow: null; property string path: "" }\n' > /tmp/qml/Quickshell/Services/Polkit/PolkitAgent.qml
+            export QML_IMPORT_PATH=/tmp/qml QML2_IMPORT_PATH=/tmp/qml
+          fi
+          # A picture with text and a QR code, for Read text and QR code.
+          qrencode -s 8 -m 2 -o /tmp/qr.png "https://hearthos.fun/capture" 2>/dev/null || true
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          im = Image.new('RGB', (1600, 900), '#f4ece3'); d = ImageDraw.Draw(im)
+          try:
+              f = ImageFont.truetype('/usr/share/fonts/google-noto/NotoSans-Regular.ttf', 64); g = ImageFont.truetype('/usr/share/fonts/google-noto/NotoSans-Regular.ttf', 40)
+          except OSError:
+              f = g = ImageFont.load_default()
+          d.text((80, 120), 'Hearth Capture reads this text', fill='#111111', font=f)
+          d.text((80, 240), 'Server address: 192.168.1.20 port 8080', fill='#333333', font=g)
+          d.rectangle((80, 360, 700, 760), outline='#ff8a3d', width=8)
+          try:
+              q = Image.open('/tmp/qr.png').convert('RGB').resize((420, 420)); im.paste(q, (1040, 340))
+          except OSError:
+              pass
+          im.save('/tmp/capture-test.png')
+          PY
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          q() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" 2>&1 | tail -n1; }
+          shot() { grim "shots/$1.png" && echo "took $1"; }
+          note() { echo "::notice title=$1::$(echo "$2" | cut -c1-3000)"; }
+
+          # ---- Hearth Capture
+          q capture open; sleep 4; shot capture-take
+          q capture take area; sleep 6
+          note "capture after take" "$(q capture state)"
+          q capture pick 460,250,1000,560; sleep 2; shot capture-picker
+          q capture pickTake; sleep 4
+          q capture sample; sleep 4; shot capture-editor
+          note "capture editor" "$(q capture state)"
+          q capture save; sleep 5
+          note "capture saved" "$(q capture state)"
+          ls -la "$HOME/Pictures/Screenshots" 2>&1 | tail -3
+          q capture edit /tmp/capture-test.png; sleep 3
+          q capture qr; sleep 6
+          note "capture qr" "$(q capture state)"
+          q capture ocr; sleep 12; shot capture-ocr
+          note "capture ocr" "$(q capture state)"
+          q capture recent; sleep 4; shot capture-recent
+          q capture close; sleep 2
+
+          # ---- the password prompt
+          note "polkit state" "$(q polkit state)"
+          q polkit demo; sleep 3; shot polkit-prompt
+          q keyboard open; sleep 3; shot polkit-keyboard
+          q keyboard close; q polkit close; sleep 2
+
+          # Problems the shell said about the new files.
+          bad=$(grep -iE "Capture|CaptureEditor|CaptureBtn|CaptureGlyph|PolkitPrompt|capture-draw|polkit-actions" "$LOG" 2>/dev/null | grep -iE "error|warn|TypeError|ReferenceError|is not|Cannot|unavailable|not installed|failed" | head -10 || true)
+          if [ -n "$bad" ]; then echo "$bad" | cut -c1-300 | while IFS= read -r l; do echo "::warning title=shell log::$l"; done; fi
+          grep -iE "polkit" "$LOG" | head -5 | cut -c1-300 | while IFS= read -r l; do echo "::notice title=shell polkit::$l"; done || true
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture-polkit-shots
+          path: shots
+          retention-days: 7
+
+  # The pictures as notices: two per job (each up to 18 pieces of 3800 characters, nine per step).
+  shots:
+    needs: views
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pair: ["capture-take capture-picker", "capture-editor capture-ocr", "capture-recent polkit-prompt", "polkit-keyboard"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: capture-polkit-shots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - ${{ matrix.pair }} <<'PY'
+          import base64, io, os, sys
+          from PIL import Image
+          for i, name in enumerate(sys.argv[1:]):
+              p = 'shots/%s.png' % name
+              if not os.path.exists(p):
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((1280, 55), (1152, 50), (1024, 45), (960, 40), (880, 34), (800, 30), (720, 26)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width)), Image.LANCZOS).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 18 * 3800:
+                      break
+              s = base64.b64encode(b.getvalue()).decode()
+              parts = [s[j:j + 3800] for j in range(0, len(s), 3800)][:18]
+              open('part-%d-name' % i, 'w').write(name)
+              open('part-%d-a' % i, 'w').write('\n'.join('%d %s' % (k + 1, x) for k, x in enumerate(parts[:9])) + '\n')
+              open('part-%d-b' % i, 'w').write('\n'.join('%d %s' % (k + 10, x) for k, x in enumerate(parts[9:])) + ('\n' if parts[9:] else ''))
+          PY
+      - name: Picture 1 (part 1)
+        run: '[ -f part-0-a ] && while read -r i part; do echo "::notice title=SHOT $(cat part-0-name) $i::$part"; done < part-0-a || true'
+      - name: Picture 1 (part 2)
+        run: '[ -s part-0-b ] && while read -r i part; do echo "::notice title=SHOT $(cat part-0-name) $i::$part"; done < part-0-b || true'
+      - name: Picture 2 (part 1)
+        run: '[ -f part-1-a ] && while read -r i part; do echo "::notice title=SHOT $(cat part-1-name) $i::$part"; done < part-1-a || true'
+      - name: Picture 2 (part 2)
+        run: '[ -s part-1-b ] && while read -r i part; do echo "::notice title=SHOT $(cat part-1-name) $i::$part"; done < part-1-b || true'
