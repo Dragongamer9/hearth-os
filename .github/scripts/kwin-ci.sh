@@ -45,10 +45,17 @@ start() {
       '<keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard>' \
       '<windowRules><windowRule identifier="*" serverDecoration="no"><action name="MoveTo" x="0" y="0"/></windowRule></windowRules>' \
       '</labwc_config>' > "$HOME/.config/labwc/rc.xml"
-    ( unset HEARTH_WM XDG_CONFIG_DIRS WAYLAND_DISPLAY QT_QPA_PLATFORM GDK_BACKEND
-      WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
-        labwc -d >shots/outer.log 2>&1 & )
-    for i in $(seq 1 20); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+    # KWin shows its window to labwc only through GPU buffers (dmabuf): labwc renders with GLES on a render node
+    # (vgem + Mesa's llvmpipe, no GPU needed); pixman (no dmabuf) only if that won't start.
+    modprobe vgem 2>/dev/null
+    for renderer in gles2 pixman; do
+      ( unset HEARTH_WM XDG_CONFIG_DIRS WAYLAND_DISPLAY QT_QPA_PLATFORM GDK_BACKEND LIBGL_ALWAYS_SOFTWARE
+        WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=$renderer WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
+          labwc -d >shots/outer.log 2>&1 & )
+      for i in $(seq 1 20); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+      ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && { echo "::notice title=labwc::renderer $renderer ($(ls /dev/dri 2>/dev/null | tr '\n' ' '))"; break; }
+      pkill labwc; sleep 1
+    done
     OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
     [ -n "$OUTER" ] || { echo "::error title=labwc::didn't start: $(tail -5 shots/outer.log | tr '\n' '|' | cut -c1-500)"; return 1; }
     echo "$OUTER" > /tmp/kwin-ci-outer
