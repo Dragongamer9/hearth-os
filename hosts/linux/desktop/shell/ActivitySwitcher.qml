@@ -167,13 +167,13 @@ PanelWindow {
             visible: sw.editing && sw.sel !== null
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 760
-            Layout.preferredHeight: editCol.implicitHeight + 36
+            Layout.preferredHeight: editBox.implicitHeight + 36
             radius: Theme.r(18)
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.97)
             border.width: 1; border.color: Theme.line
             MouseArea { anchors.fill: parent }
             ColumnLayout {
-                id: editCol
+                id: editBox
                 anchors { fill: parent; margins: 18 }
                 spacing: 12
                 RowLayout {

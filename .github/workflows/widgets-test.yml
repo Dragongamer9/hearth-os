@@ -44,6 +44,7 @@ jobs:
           set -x
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
@@ -105,7 +106,8 @@ jobs:
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
           LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
           SH="$NIMBUS_SHARE/desktop/shell"
-          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null; }
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
           shot() { sleep "${2:-2}"; grim "shots/post/$1.png" || echo "::warning title=widgets::no picture $1"; }
           for i in $(seq 1 60); do [ -n "$(q widgets count)" ] && break; sleep 2; done
           [ -n "$(q widgets count)" ] || { echo "::error title=widgets::Widgets.qml didn't load: $(grep -E 'Widget|Activit' "$LOG" | head -8 | cut -c1-220 | tr '\n' '|')"; touch shots/FAILED; }
@@ -154,6 +156,7 @@ jobs:
           q activities switchTo default; shot 02b-back-to-main 5
           echo "::notice title=activities::$(q activities list); on Work: folder=$fold photos=$pho apps=$apps news=$news timer=$tim quicknotes=$qn"
           q widgets list > shots/widgets-list.json; cat shots/widgets-list.json
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' shots/widgets-list.json || echo "::error title=widgets::ipc widgets list isn't JSON: $(head -c 300 shots/widgets-list.json)"
 
           # ---- each widget on its own (cut from the desktop pictures), and the bar
           python3 - shots/post shots/widgets-list.json <<'PY'

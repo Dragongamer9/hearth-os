@@ -61,7 +61,7 @@ PanelWindow {
         id: panel
         anchors.centerIn: parent
         width: Math.min(parent.width - 80, g.cols * 250 + 60)
-        height: Math.min(parent.height - 80, head.height + gridV.contentHeight + foot.height + 70)
+        height: Math.min(parent.height - 80, 66 + 52 + Math.ceil(g.cards.length / g.cols) * 196 + 36 + 80)
         Frame { anchors.fill: parent; rad: Theme.r(22); solid: true }
         MouseArea { anchors.fill: parent }          // clicks on the panel don't close it
         ColumnLayout {
