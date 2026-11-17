@@ -133,14 +133,13 @@ jobs:
           [ ! -e "$C/search.json" ] || FAIL "search.json was written before anything was changed (settings must never change by themselves)"
           # a program to kill (no window, so nothing takes the keyboard from the menu)
           cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
-          # The runner's disk is nearly full, so the "drive almost full" pop-up (SpaceWatch.qml) comes up 90 s after the
-          # start and takes the keyboard: wait for it and close it before the pictures.
-          while [ $(( $(date +%s) - T0 )) -lt 105 ]; do sleep 2; done; q desktop close; sleep 2
+          # wtype's first key on a new virtual keyboard can be lost (as desktop-test.yml does: a Shift first)
+          wtype -k Shift_L; sleep 1
           # the menu opened once, so the plugins' data is read (bookmarks, contacts, calendar, notes, time zones)
           q launcher open; sleep 4; q launcher close; sleep 1
           shot() { q launcher query "$2"; sleep "${3:-3}"; grim "shots/post/$1.png" || echo "::warning title=pictures::no picture $1"; }
-          # the "asks first" dialog came up: the menu (its search box and first rows) went away for it
-          asked() { python3 -c 'import sys; from PIL import Image, ImageChops; a=Image.open(sys.argv[1]).convert("L").crop((370,180,1550,320)); b=Image.open(sys.argv[2]).convert("L").crop((370,180,1550,320)); d=ImageChops.difference(a,b).histogram(); n=sum(d[40:]); print(n); sys.exit(0 if n > 2000 else 1)' "shots/post/$1.png" "shots/post/$2.png" && say "$2: the dialog came up" || FAIL "$2: Enter didn't bring up the dialog that asks first"; }
+          # the "asks first" dialog came up: the menu (its "Apps / Games" header) went away for it
+          asked() { python3 -c 'import sys; from PIL import Image, ImageChops; a=Image.open(sys.argv[1]).convert("L").crop((340,115,900,170)); b=Image.open(sys.argv[2]).convert("L").crop((340,115,900,170)); d=ImageChops.difference(a,b).histogram(); n=sum(d[40:]); print(n); sys.exit(0 if n > 1500 else 1)' "shots/post/$1.png" "shots/post/$2.png" && say "$2: the dialog came up" || FAIL "$2: Enter didn't bring up the dialog that asks first"; }
           chk() { got=$(q launcher answers "$1"); case "$got" in *"$2"*) say "“$1” → ${got:0:300}" ;; *) FAIL "“$1” didn't answer $2: ${got:0:400}" ;; esac; }
           shot 01-bookmarks "hearth"; chk "hearth" '"plugin":"browser"'; q launcher close
           shot 02-activities "work"; chk "work" '"type":"activity"'; q launcher close
@@ -161,12 +160,11 @@ jobs:
           shot 14-calendar "raid"; chk "raid" 'Raid night'; q launcher close
           shot 15-notes "coffee"; chk "coffee" 'Shopping list'; q launcher close
           q settings page search; sleep 5; grim shots/post/16-settings-search.png; q settings close
-          # the whole page at once, its plugins' switches too: a tall screen for this picture
-          wlr-randr --output HEADLESS-1 --custom-mode 1920x2400 > shots/randr-tall.log 2>&1 || true; sleep 3
-          say "tall screen: $(wlr-randr 2>&1 | grep -E 'current' | head -2 | tr '\n' ' ') $(cat shots/randr-tall.log | tr '\n' ' ' | cut -c1-200)"
-          q settings page search; sleep 6; grim shots/post/17-settings-search-plugins.png 2> shots/grim-tall.log || say "grim (tall): $(cut -c1-200 shots/grim-tall.log)"
+          # down the page to the plugins' switches with the keyboard (into the page, then down; the page follows the focus)
+          q settings page search; sleep 5; wtype -k Right; sleep 0.5
+          for i in $(seq 1 16); do wtype -k Down; sleep 0.2; done; sleep 2; grim shots/post/17-settings-search-plugins.png
+          for i in $(seq 1 12); do wtype -k Down; sleep 0.2; done; sleep 2; grim shots/post/18-settings-search-plugins-2.png
           q settings close
-          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 2
           [ ! -e "$C/search.json" ] || FAIL "search.json was written by opening the menu or Settings › Search"
           cp "$LOG" shots/shell.log 2>/dev/null
           P='(Launcher|SearchSources|MenuSearch|SetSearch|DeskDialog)\.qml|search/[a-z]+\.js'
@@ -175,6 +173,11 @@ jobs:
           fi
           grep -E "$P" "$LOG" | sed 's/^.*file:\/\/[^ ]*shell\///' | sort -u | head -8 | while read -r l; do echo "::warning title=shell log::${l:0:400}"; done
           ls -la shots/post
+
+      - name: What the search did (shell log)
+        if: always()
+        run: |
+          grep -aE "search: " shots/shell.log | sed 's/^.*search: /search: /' | head -8 | while read -r l; do echo "::notice title=search actions::$l"; done || true
 
       - uses: actions/upload-artifact@v4
         if: always()
