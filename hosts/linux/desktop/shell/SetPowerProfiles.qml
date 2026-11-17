@@ -59,6 +59,7 @@ SetPage {
             spacing: 10
             Rectangle { implicitWidth: 34; implicitHeight: 34; radius: 17; color: SetStyle.tint(Theme.accent, 0.16); Icon { anchors.centerIn: parent; name: col2.icon; size: 18; color: Theme.accent } }
             ColumnLayout {
+                Layout.fillWidth: true
                 spacing: 0
                 Text { text: col2.head; color: Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold }
                 Text { visible: col2.note !== ""; text: col2.note; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
