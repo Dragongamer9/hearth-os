@@ -24,7 +24,11 @@ kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, sc
   hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-
                                      a screenshot as PNG: grim under labwc; KWin's org.kde.KWin.ScreenShot2 under KWin
                                      (run it through hearth-screenshot: KWin only answers the program
-                                     hearth-screenshot.desktop names)
+                                     hearth-screenshot.desktop names; this re-runs itself through it when it can)
+  hearth-screens grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE|-
+                                     Capture's screenshots: MODE screen (--screen: a name, or 1 = the first screen
+                                     that's on; else the active one), all, window (the active window: KWin's; under
+                                     labwc only with --geometry), area (--geometry). Exit 3: no window to take
 
 One source of truth: ~/.config/nimbus/screens.json, written only by `keep` / `set` (never by get, info or restore),
 through hearth_settings_io (atomic, .bak, merged, a damaged file restored from .bak and never overwritten with
@@ -393,6 +397,10 @@ def save_entries(entries, extra=None):
 
 class Refused(Exception):
     pass
+
+
+class NoWindow(Refused):
+    """grab window: no window to take (exit 3)."""
 
 
 def _mode_of(o, want):
@@ -894,9 +902,14 @@ def kwin_shot(o):
     opts = {'include-cursor': GLib.Variant('b', o['cursor']), 'native-resolution': GLib.Variant('b', True)}
     fds = Gio.UnixFDList.new()
     idx = fds.append(w)
-    if o['geometry']:
+    if o.get('window'):
+        opts['include-decoration'] = GLib.Variant('b', True)
+        method, args, sig = 'CaptureActiveWindow', (opts, idx), '(a{sv}h)'
+    elif o['geometry']:
         x, y, gw, gh = o['geometry']
         method, args, sig = 'CaptureArea', (x, y, gw, gh, opts, idx), '(iiuua{sv}h)'
+    elif o.get('activeScreen'):
+        method, args, sig = 'CaptureActiveScreen', (opts, idx), '(a{sv}h)'
     elif o['output']:
         method, args, sig = 'CaptureScreen', (o['output'], opts, idx), '(sa{sv}h)'
     else:
@@ -908,6 +921,8 @@ def kwin_shot(o):
     except Exception as e:  # noqa: BLE001
         os.close(w)
         msg = str(e)
+        if 'NoActiveWindow' in msg:
+            raise NoWindow('There is no window to take a picture of.')
         if 'NoAuthorized' in msg or 'not authorized' in msg.lower():
             raise Refused("KWin didn't let Hearth take a screenshot: run it through hearth-screenshot "
                           "(hearth-screenshot.desktop lets that one program use org.kde.KWin.ScreenShot2).")
@@ -937,17 +952,121 @@ def _read_all(fd):
     return b''.join(parts)
 
 
-def shot(argv):
-    if wm() != 'kwin':
-        os.execvp('grim', ['grim'] + argv)
-    o = parse_shot_args(argv)
-    data = kwin_shot(o)
-    if o['file'] == '-':
+TRUSTED_PY = '/usr/libexec/nimbus/hearth-shot-python'
+
+
+def as_trusted(argv):
+    """Under KWin, run again through hearth-shot-python (the program hearth-screenshot.desktop names, which KWin 6.3
+    lets use its screenshot interface), when this isn't it already."""
+    if os.access(TRUSTED_PY, os.X_OK) and os.path.realpath(sys.executable) != os.path.realpath(TRUSTED_PY) \
+            and not os.environ.get('HEARTH_SCREENS_TRUSTED'):
+        os.environ['HEARTH_SCREENS_TRUSTED'] = '1'
+        os.execv(TRUSTED_PY, [TRUSTED_PY, os.path.realpath(__file__)] + argv)
+
+
+def _write(data, out):
+    if out == '-':
         sys.stdout.buffer.write(data)
         sys.stdout.buffer.flush()
     else:
-        with open(o['file'], 'wb') as f:
+        with open(out, 'wb') as f:
             f.write(data)
+
+
+def shot(argv):
+    if wm() != 'kwin':
+        os.execvp('grim', ['grim'] + argv)
+    as_trusted(['shot'] + argv)
+    o = parse_shot_args(argv)
+    _write(kwin_shot(o), o['file'])
+
+
+def parse_grab_args(argv):
+    """grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE (Capture's way of asking)."""
+    if not argv or argv[0] not in ('screen', 'all', 'window', 'area'):
+        raise Refused('grab what? screen, all, window or area')
+    o = {'mode': argv[0], 'screen': None, 'geometry': None, 'cursor': False, 'out': None}
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        v = argv[i + 1] if i + 1 < len(argv) else None
+        if a == '--screen' and v is not None:
+            o['screen'] = v
+            i += 2
+        elif a == '--geometry' and v is not None:
+            m = re.match(r'^\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*$', v)
+            if not m or int(m.group(3)) == 0 or int(m.group(4)) == 0:
+                raise Refused('Not an area: %s (it\'s X,Y,WIDTH,HEIGHT)' % v)
+            o['geometry'] = tuple(int(x) for x in m.groups())
+            i += 2
+        elif a == '--out' and v is not None:
+            o['out'] = v
+            i += 2
+        elif a == '--pointer':
+            o['cursor'] = True
+            i += 1
+        else:
+            raise Refused('Unknown option %s' % a)
+    if not o['out']:
+        raise Refused('Where should the picture go? (--out FILE, or --out - for the output)')
+    if o['mode'] == 'area' and not o['geometry']:
+        raise Refused('An area needs --geometry X,Y,WIDTH,HEIGHT')
+    return o
+
+
+def screen_name(want, outs):
+    """--screen: a screen's name, or its number among the screens that are on (1 = the first; 0 counts as the first too)."""
+    on = [o['name'] for o in outs if o.get('enabled')]
+    if want in on:
+        return want
+    try:
+        n = int(want)
+    except (TypeError, ValueError):
+        raise Refused('There is no screen called %s.' % want)
+    n = n - 1 if n >= 1 else 0
+    if n >= len(on):
+        raise Refused('There is no screen %s (there are %d).' % (want, len(on)))
+    return on[n]
+
+
+def grim_args(o, outs):
+    """The grim command for a grab under labwc."""
+    a = ['grim']
+    if o['cursor']:
+        a.append('-c')
+    if o['mode'] == 'area' or (o['mode'] == 'window' and o['geometry']):
+        x, y, w, h = o['geometry']
+        a += ['-g', '%d,%d %dx%d' % (x, y, w, h)]
+    elif o['mode'] == 'window':
+        # labwc tells no program which window is active: Capture gives its place (--geometry) or gets exit 3.
+        raise NoWindow("labwc can't say which window is active; give the window's place with --geometry.")
+    elif o['mode'] == 'screen':
+        name = screen_name(o['screen'], outs) if o['screen'] is not None else next((x['name'] for x in outs if x.get('enabled')), None)
+        if name:
+            a += ['-o', name]
+    return a + [o['out']]
+
+
+def grab(argv):
+    o = parse_grab_args(argv)
+    if wm() != 'kwin':
+        cmd = grim_args(o, read('labwc') if o['mode'] == 'screen' else [])
+        os.execvp(cmd[0], cmd)
+    as_trusted(['grab'] + argv)
+    k = {'geometry': None, 'output': None, 'cursor': o['cursor'], 'file': o['out']}
+    if o['mode'] == 'window':
+        if o['geometry']:
+            k['geometry'] = o['geometry']
+        else:
+            k['window'] = True
+    elif o['mode'] == 'area':
+        k['geometry'] = o['geometry']
+    elif o['mode'] == 'screen':
+        if o['screen'] is not None:
+            k['output'] = screen_name(o['screen'], read('kwin'))
+        else:
+            k['activeScreen'] = True
+    _write(kwin_shot(k), o['out'])
 
 
 # ------------------------------------------------------------------
@@ -987,8 +1106,13 @@ def main(argv):
             print(json.dumps(night(json.loads(arg) if arg.strip() else None)))
         elif cmd == 'shot':
             shot(argv[2:])
+        elif cmd == 'grab':
+            grab(argv[2:])
         else:
             sys.exit(__doc__)
+    except NoWindow as e:
+        print('error: %s' % e)
+        sys.exit(3)
     except Refused as e:
         print('error: %s' % e)
         sys.exit(1)

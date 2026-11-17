@@ -2,7 +2,9 @@
 the saved settings (screens.json + display.sh: never lost, never written by reading, a damaged file never replaced
 with defaults), restore at start (no unlisted mode, never every screen off), KWin's Night Light / tearing in kwinrc,
 screenshots' pictures, and the pages and helpers that use it."""
+import contextlib
 import importlib.machinery
+import io
 import importlib.util
 import json
 import os
@@ -361,6 +363,37 @@ class Screenshots(unittest.TestCase):
         self.assertEqual(hs.parse_shot_args(['-o', 'DP-1', '-c', '-'])['output'], 'DP-1')
         with self.assertRaises(hs.Refused):
             hs.parse_shot_args(['-g', 'nonsense', 'x.png'])
+
+
+class Grab(unittest.TestCase):
+    """Capture's grab: MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE; exit 3 when there's no window."""
+    def test_arguments(self):
+        o = hs.parse_grab_args(['area', '--geometry', '10,20,300,200', '--pointer', '--out', '/tmp/a.png'])
+        self.assertEqual((o['mode'], o['geometry'], o['cursor'], o['out']), ('area', (10, 20, 300, 200), True, '/tmp/a.png'))
+        for bad in (['nope', '--out', 'x'], ['screen'], ['area', '--out', 'x'], ['area', '--geometry', '1,2,0,4', '--out', 'x'], ['all', '--out', 'x', '--what']):
+            with self.assertRaises(hs.Refused):
+                hs.parse_grab_args(bad)
+
+    def test_labwc_uses_grim(self):
+        with mock.patch.object(hs, 'RUN', FakeRun(wlr=WLR)):
+            outs = hs.read('labwc')
+        g = lambda *a: hs.grim_args(hs.parse_grab_args(list(a)), outs)
+        self.assertEqual(g('all', '--out', 'f.png'), ['grim', 'f.png'])
+        self.assertEqual(g('screen', '--screen', '2', '--pointer', '--out', '-'), ['grim', '-c', '-o', 'eDP-1', '-'])
+        self.assertEqual(g('screen', '--screen', 'DP-1', '--out', 'f.png'), ['grim', '-o', 'DP-1', 'f.png'])
+        self.assertEqual(g('screen', '--out', 'f.png'), ['grim', '-o', 'DP-1', 'f.png'])
+        self.assertEqual(g('area', '--geometry', '5,6,70,80', '--out', 'f.png'), ['grim', '-g', '5,6 70x80', 'f.png'])
+        self.assertEqual(g('window', '--geometry', '5,6,70,80', '--out', 'f.png'), ['grim', '-g', '5,6 70x80', 'f.png'])
+        with self.assertRaises(hs.NoWindow):
+            g('window', '--out', 'f.png')
+        with self.assertRaises(hs.Refused):
+            g('screen', '--screen', '9', '--out', 'f.png')
+
+    def test_no_window_exits_3(self):
+        with mock.patch.dict(os.environ, {'HEARTH_WM': 'labwc'}), self.assertRaises(SystemExit) as e, \
+                contextlib.redirect_stdout(io.StringIO()):
+            hs.main(['hearth-screens', 'grab', 'window', '--out', '/tmp/x.png'])
+        self.assertEqual(e.exception.code, 3)
 
 
 class Wiring(unittest.TestCase):
