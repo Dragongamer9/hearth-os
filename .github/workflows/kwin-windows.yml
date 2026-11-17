@@ -178,10 +178,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          dnf -y install dnf5-plugins cpio rpm >/dev/null
+          dnf -y install dnf5-plugins cpio rpm tar xz >/dev/null
           cd /tmp && dnf -y download --source aurorae --enablerepo=fedora-source,updates-source >/dev/null 2>&1
           ls /tmp/*.src.rpm || { echo "::warning title=aurorae::no source rpm"; exit 0; }
-          mkdir -p src && cd src && rpm2cpio /tmp/aurorae*.src.rpm | cpio -idm 2>/dev/null && tar xf aurorae-*.tar.* 2>/dev/null
+          mkdir -p src && cd src && rpm2cpio /tmp/aurorae*.src.rpm | cpio -idm 2>/dev/null; ls | tr '\n' ' ' | sed 's/^/::notice title=aurorae srpm::/'; echo
+          for t in aurorae-*.tar.*; do tar xf "$t"; done
           find . -name '*.cpp' | grep -i -E 'svg|v2|decoration|theme' | head -30 | tr '\n' ' ' | sed 's/^/::notice title=aurorae files::/'; echo
           for f in $(grep -rl -E 'decoration-inactive|"decoration"|QStringLiteral\("decoration' --include=*.cpp . | head -6); do
             grep -n -E 'decoration|FrameSvg|setElementPrefix|elementPrefix|hasElement|imagePath|svgz|\.svg|opaque|mask|setImagePath|paint|fill' "$f" | head -80 > /tmp/g.txt
