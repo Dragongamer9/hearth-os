@@ -130,17 +130,17 @@ jobs:
           sleep 8
           C="$HOME/.config/hearth"
           [ ! -e "$C/search.json" ] || FAIL "search.json was written before anything was changed (settings must never change by themselves)"
-          foot --app-id hearth-demo-foot sh -c 'sleep 600' >/dev/null 2>&1 &
-          sleep 2
+          # a program to kill (no window, so nothing takes the keyboard from the menu)
+          cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
           # the menu opened once, so the plugins' data is read (bookmarks, contacts, calendar, notes, time zones)
           q launcher open; sleep 4; q launcher close; sleep 1
           shot() { q launcher query "$2"; sleep "${3:-3}"; grim "shots/post/$1.png" || echo "::warning title=pictures::no picture $1"; }
           chk() { got=$(q launcher answers "$1"); case "$got" in *"$2"*) say "“$1” → ${got:0:300}" ;; *) FAIL "“$1” didn't answer $2: ${got:0:400}" ;; esac; }
           shot 01-bookmarks "hearth"; chk "hearth" '"plugin":"browser"'; q launcher close
           shot 02-activities "work"; chk "work" '"type":"activity"'; q launcher close
-          shot 03-kill "kill foot"; chk "kill foot" '"type":"kill"'
+          shot 03-kill "kill hearth-demo"; chk "kill hearth-demo" '"type":"kill"'
           wtype -k Return; sleep 2; grim shots/post/04-kill-asks-first.png; wtype -k Escape; sleep 1
-          pgrep -f 'sleep 600' >/dev/null && say "Kill asked first and Cancel kept foot running" || FAIL "foot was killed without saying yes"
+          pgrep -f 'hearth-demo-timer' >/dev/null && say "Kill asked first and Cancel kept it running" || FAIL "it was killed without saying yes"
           q launcher close
           shot 05-world-clock "3pm london to tokyo"; chk "3pm london to tokyo" 'in Tokyo'; q launcher close
           shot 06-spell "spell recieve" 4; chk "spell recieve" 'receive'; q launcher close
@@ -154,7 +154,9 @@ jobs:
           shot 14-calendar "raid"; chk "raid" 'Raid night'; q launcher close
           shot 15-notes "coffee"; chk "coffee" 'Shopping list'; q launcher close
           q settings page search; sleep 5; grim shots/post/16-settings-search.png
-          for i in 1 2 3 4 5 6; do wtype -k Next 2>/dev/null; sleep 0.3; done; sleep 2; grim shots/post/17-settings-search-plugins.png; q settings close
+          # down to the plugins' switches with the keyboard (the page follows the focus)
+          for i in $(seq 1 22); do wtype -k Tab 2>/dev/null; sleep 0.15; done; sleep 2; grim shots/post/17-settings-search-plugins.png
+          for i in $(seq 1 12); do wtype -k Tab 2>/dev/null; sleep 0.15; done; sleep 2; grim shots/post/18-settings-search-plugins-2.png; q settings close
           [ ! -e "$C/search.json" ] || FAIL "search.json was written by opening the menu or Settings › Search"
           cp "$LOG" shots/shell.log 2>/dev/null
           P='(Launcher|SearchSources|MenuSearch|SetSearch|DeskDialog)\.qml|search/[a-z]+\.js'
@@ -181,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v4
         with:
