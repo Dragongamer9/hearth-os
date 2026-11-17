@@ -58,6 +58,7 @@ jobs:
           SAY() { echo "::notice title=search bar::$*"; }
           SH="$NIMBUS_SHARE/desktop/shell"
           echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 $SH/hearth-browser asked >/dev/null 2>&1 || true   # the "Pick your browser" question, answered before
           # Files for the file index to find
           mkdir -p "$HOME/Documents/Taxes" "$HOME/Desktop"
           printf 'the quarterly budget numbers\n' > "$HOME/Documents/budget-report.txt"
@@ -115,12 +116,13 @@ jobs:
           # ---- 4. Settings › Search: the order (Settings first), saved only as it's changed
           echo '{"pluginOrder": ["pages", "apps"]}' | python3 $SH/hearth-search prefs-set >/dev/null
           sleep 2
-          q searchbar type "display"; sleep 2
+          q searchbar type "se"; sleep 3
           s=$(st); echo "::notice title=order::$(echo "$s" | head -c 900)"
           python3 - "$s" <<'PY' || FAIL "Settings didn't come first after putting them first: $s"
           import json, sys
-          rows = [r for r in json.loads(sys.argv[1])["rows"] if r["group"] != "Best match"]
-          sys.exit(0 if rows and rows[0]["plugin"] == "pages" else 1)
+          rows = [r["plugin"] for r in json.loads(sys.argv[1])["rows"] if r["group"] != "Best match"]
+          # Settings (pages) before apps, and both there
+          sys.exit(0 if "pages" in rows and "apps" in rows and rows.index("pages") < rows.index("apps") else 1)
           PY
           shot sb-08-settings-first 1
           q searchbar close
