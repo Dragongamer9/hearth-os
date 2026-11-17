@@ -2238,6 +2238,47 @@ var ENTRIES = [
 "i": "bell"
 },
 {
+"t": "Phone link",
+"p": "phone",
+"i": "phone"
+},
+{
+"t": "Decline",
+"p": "phone",
+"i": "close"
+},
+{
+"t": "Close the phone's files",
+"p": "phone",
+"i": "close"
+},
+{
+"t": "Messages",
+"p": "phone",
+"i": "chat"
+},
+{
+"t": "Dismiss",
+"p": "phone",
+"d": "On the phone too",
+"i": "close"
+},
+{
+"t": "Phone not listed?",
+"p": "phone",
+"i": "help"
+},
+{
+"t": "Files from your phone",
+"p": "phone",
+"i": "folder"
+},
+{
+"t": "All conversations",
+"p": "phone-messages",
+"i": "back"
+},
+{
 "t": "Battery",
 "p": "power"
 },

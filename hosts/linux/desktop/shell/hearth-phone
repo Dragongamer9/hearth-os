@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""hearth-phone: Settings › Phone's and the Quick Access tile's way to Hearth Connect (hosts/hearth-connect), the
+service that links your phone with KDE Connect's protocol. It talks to the running service over its socket (the same
+one the Hearth Connect window uses, only this user can open it) and never keeps anything itself: the service and
+`hearth-connect --turn-on/--turn-off` own every setting (settings.json, paired.json, commands.json).
+
+  hearth-phone state           {"installed", "enabled", "running", "state": <the service's state or null>}
+  hearth-phone call CMD        one request to the service; its arguments as JSON on stdin (HEARTH_INPUT); its answer
+  hearth-phone on | off        Phone link on (starts the service, and at every sign-in) or off (stops it)
+  hearth-phone tile            a short line for Quick Access: {"enabled", "running", "phones": [...], "line"}
+
+One JSON line on stdout, or "error: <what went wrong>" and exit code 1 (SetJob.qml reads both).
+"""
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+
+BIN = os.environ.get('HEARTH_CONNECT_BIN') or shutil.which('hearth-connect') or '/usr/bin/hearth-connect'
+
+
+def socket_path():
+    p = os.environ.get('HEARTH_CONNECT_SOCKET')
+    if p:
+        return p
+    run = '/run/user/%d' % os.getuid()
+    base = run if os.path.isdir(run) else (os.environ.get('XDG_RUNTIME_DIR') or '/tmp')
+    return os.path.join(base, 'hearth', 'connect.sock')
+
+
+def call(cmd, args=None, timeout=20):
+    """One request to the running service: its answer, or raises RuntimeError with its message."""
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect(socket_path())
+    except OSError:
+        s.close()
+        raise RuntimeError("Phone link isn't running")
+    try:
+        s.sendall((json.dumps({'id': 1, 'cmd': cmd, 'args': args or {}}) + '\n').encode())
+        buf = b''
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                raise RuntimeError('The service closed the connection')
+            buf += chunk
+            while b'\n' in buf:
+                line, buf = buf.split(b'\n', 1)
+                try:
+                    v = json.loads(line)
+                except ValueError:
+                    continue
+                if 'event' in v:
+                    continue
+                if v.get('ok'):
+                    return v.get('data')
+                raise RuntimeError(v.get('error') or 'That didn\'t work')
+    finally:
+        s.close()
+
+
+def running():
+    try:
+        call('state', timeout=3)
+        return True
+    except (RuntimeError, OSError):
+        return False
+
+
+def enabled():
+    if not os.path.exists(BIN):
+        return False
+    try:
+        out = subprocess.run([BIN, '--is-enabled'], capture_output=True, text=True, timeout=10).stdout.strip().splitlines()
+        return bool(json.loads(out[-1]).get('enabled')) if out else False
+    except (OSError, ValueError, subprocess.SubprocessError, IndexError):
+        return False
+
+
+def state():
+    st = None
+    try:
+        st = call('state', timeout=5)
+    except (RuntimeError, OSError):
+        st = None
+    return {'installed': os.path.exists(BIN), 'enabled': enabled(), 'running': st is not None, 'state': st}
+
+
+def tile_line(s):
+    """Quick Access: 'Off', 'Looking for your phone', 'Pixel 8 · 81%'..."""
+    if not s['installed']:
+        return 'Not installed'
+    if not s['running']:
+        return 'Off'
+    phones = [d for d in (s['state'] or {}).get('devices', []) if d.get('paired')]
+    near = [d for d in phones if d.get('reachable')]
+    if not phones:
+        return 'No phone paired'
+    if not near:
+        return phones[0]['name'] + ' · not connected'
+    d = near[0]
+    b = d.get('battery')
+    return d['name'] + (' · %d%%' % b['charge'] if b and b.get('charge', -1) >= 0 else ' · connected')
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    what = argv[0]
+    try:
+        if what == 'state':
+            out = state()
+        elif what == 'tile':
+            s = state()
+            phones = [{'id': d['id'], 'name': d['name'], 'reachable': d.get('reachable'), 'battery': d.get('battery')}
+                      for d in (s['state'] or {}).get('devices', []) if d.get('paired')]
+            out = {'enabled': s['enabled'], 'running': s['running'], 'installed': s['installed'], 'phones': phones, 'line': tile_line(s)}
+        elif what == 'call' and len(argv) >= 2:
+            raw = os.environ.get('HEARTH_INPUT') or ''
+            if not raw and not sys.stdin.isatty():
+                raw = sys.stdin.read()
+            args = json.loads(raw) if raw.strip() else {}
+            out = call(argv[1], args)
+            if out is None:
+                out = {}
+            if not isinstance(out, dict):
+                out = {'list': out}
+        elif what in ('on', 'off'):
+            if not os.path.exists(BIN):
+                raise RuntimeError("Hearth Connect isn't installed")
+            p = subprocess.run([BIN, '--turn-on' if what == 'on' else '--turn-off'], capture_output=True, text=True, timeout=30)
+            if p.returncode != 0:
+                raise RuntimeError((p.stderr or p.stdout).strip().splitlines()[-1] if (p.stderr or p.stdout).strip() else 'That didn\'t work')
+            out = state()
+        else:
+            print('error: unknown request ' + what)
+            return 1
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
