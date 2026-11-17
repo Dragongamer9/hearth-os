@@ -107,6 +107,11 @@ jobs:
           # 1.14, Window effects' and Virtual desktops' extras: second switcher, hide the pointer after a time, show FPS /
           # paint, KWin's scripts, the Desktop Cube.
           python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_effects_extras.py' -v
+          # 1.14, Accessibility's KWin parts: dwell click (hearth-dwell), one window inverted, toggle keys and the modifier
+          # keys' sound; with hearth-access's own tests and the KWin pages' (which check its filters on KWin).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_dwell.py' -v
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_access.py'
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py'
 
       - name: Start Desktop Mode
         shell: bash
@@ -544,6 +549,36 @@ jobs:
           # with a button to make one (nothing written: the K1/K2 check below).
           ipc settings close; ipc settings windowRules foot "Terminal"; sleep 3; grim shots/kwin-pages/wb-4-window-rules-for-a-window.png || true
           ipc settings state | grep -q '"page":"kwin-rules"' || { echo "::error title=KWin pages::Special window settings didn't open Window rules: $(ipc settings state | cut -c1-200)"; touch shots/FAILED; }
+          # Dwell click and one window inverted turned on (saved settings: under labwc nothing runs for them), the page
+          # down at Dwell click, then its ring as it fills (shown through its IPC, at the screen's middle and close up).
+          AJ="$HOME/.config/nimbus/accessibility.json"; [ -e "$AJ" ] && cp -f "$AJ" /tmp/accessibility.json.before
+          mkdir -p "$HOME/.config/nimbus"
+          python3 -c 'import json, sys; p = sys.argv[1]
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          d.update(dwellClick=True, dwellDelay=1200, dwellClickType="double", invertWindow=True); json.dump(d, open(p, "w"))' "$AJ"
+          kpd() { ipc settings close; ipc settings page accessibility; sleep 3; kdown "$1" "$2"; }
+          kpd 14 ac-1-invert-one-window; kpd 20 ac-2-typing-sounds; kpd 27 ac-3-dwell-click
+          ipc settings close; sleep 1
+          ipc dwell demo 960 540 0.65 left; sleep 1; grim shots/kwin-pages/ac-4-dwell-ring.png || true
+          grim -g "800,450 320x180" shots/kwin-pages/ac-5-dwell-ring-close.png || true
+          ipc dwell demo 960 540 0.3 double; sleep 1; grim -g "800,450 320x180" shots/kwin-pages/ac-6-dwell-ring-double.png || true
+          dnf -y install python3-pillow >/dev/null 2>&1 || true
+          # The ring has to sit on the pointer: its middle at 960,540 (the screen's), not pushed below the bar.
+          python3 - shots/kwin-pages/ac-4-dwell-ring.png <<'PY' || { echo "::error title=Dwell click::the ring isn't on the pointer"; touch shots/FAILED; }
+          import sys
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          im = Image.open(sys.argv[1]).convert('RGB')
+          ys = [y for y in range(380, 700) for x in range(940, 981) if (lambda p: p[2] > 200 and p[2] - p[0] > 80)(im.getpixel((x, y)))]
+          mid = (min(ys) + max(ys)) / 2 if ys else -1
+          print('::notice title=Dwell click::ring middle at y=%.0f (pointer at 540)' % mid)
+          sys.exit(0 if abs(mid - 540) <= 6 else 1)
+          PY
+          ipc dwell hide
+          rm -f "$AJ"; [ -e /tmp/accessibility.json.before ] && mv -f /tmp/accessibility.json.before "$AJ"
           ipc settings close; sleep 1
           rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
           K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
@@ -551,8 +586,8 @@ jobs:
           [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
           [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
           [ "$K0" != "$K1" ] || echo "::notice title=KWin pages::labwc run left no KWin files (as it should)"
-          if grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
-            echo "::error title=KWin pages::$(grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          if grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=KWin pages::$(grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
             touch shots/FAILED
           fi
           echo "::notice title=KWin pages::$(ls shots/kwin-pages | tr '\n' ' ')"
@@ -3128,6 +3163,8 @@ jobs:
           - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube"
           - "19-mouse-buttons 20-mouse-buttons-press"
           - "wb-0-labwc-window-behaviour wb-1-window-behaviour wb-2-window-behaviour-title-bar wb-3-window-behaviour-super-drag wb-4-window-rules-for-a-window"
+          - "ac-1-invert-one-window ac-2-typing-sounds ac-3-dwell-click ac-4-dwell-ring ac-5-dwell-ring-close"
+          - "ac-6-dwell-ring-double"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

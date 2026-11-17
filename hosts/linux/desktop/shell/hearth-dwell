@@ -1,0 +1,441 @@
+#!/usr/bin/python3
+"""hearth-dwell: dwell click (Settings › Accessibility › Dwell click, 1.14). Rest the pointer and it clicks: a ring at
+the pointer fills while it waits (Dwell.qml draws it), then one click of the chosen kind. Moving the pointer away or
+pressing Esc stops the countdown, and after a click (or Esc) nothing more happens until the pointer moves away and
+rests again, so it can never keep clicking. Every click is a press and its release together (no drag, no held
+button), so no button is ever left down. Off by default (accessibility.json "dwellClick").
+
+Mantel on KWin only (HEARTH_WM=kwin): where the pointer is comes from a small KWin script (workspace.cursorPos,
+loaded through KWin's Scripting D-Bus API) that tells this service over D-Bus (org.hearth.Dwell); labwc has no way to
+tell a program where the pointer is. The clicks go through a virtual mouse (/dev/uinput with python3-evdev, the
+same access hearth-pad and hearth-type have; udev rule 70-hearth-uinput.rules), so they land where the pointer is.
+Esc: while a ring fills, the script's "Hearth: cancel the dwell click" action gets the Esc key (kglobalaccel); it is
+given back the moment the ring ends, and `hearth-dwell release` (run by Mantel at every start and whenever this
+service ends) makes sure it's free.
+
+  hearth-dwell serve     the service (Dwell.qml starts it while dwell click is on). One JSON line each on stdout:
+                         {"t": "ready"} | {"t": "ring", "x", "y", "p" (0..1), "kind"} | {"t": "hide"} |
+                         {"t": "click", "kind"} | {"t": "error", "text"}
+  hearth-dwell release   Esc back to the apps (and the script unloaded)
+  hearth-dwell status    JSON: the settings it uses and whether it can run here
+Exit codes: 2 python3-evdev or GLib's Python missing, 3 no access to /dev/uinput, 4 not on KWin (Dwell.qml doesn't
+restart those).
+"""
+import json
+import math
+import os
+import signal
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+SETTINGS_JSON = os.path.join(CONFIG, 'nimbus', 'accessibility.json')
+KINDS = ('left', 'double', 'right', 'middle')
+DEFAULTS = {'dwellClick': False, 'dwellDelay': 1000, 'dwellClickType': 'left', 'dwellTolerance': 10}
+SETTLE_MS = 150           # the pointer has to be still this long before the ring shows (no ring while just slowing)
+ESC_KEY = 0x01000000      # Qt::Key_Escape
+BUS_NAME, OBJ, IFACE = 'org.hearth.Dwell', '/org/hearth/Dwell', 'org.hearth.Dwell'
+PLUGIN = 'hearthdwell'
+CANCEL_ACTION = 'HearthDwellCancel'
+CANCEL_TITLE = 'Hearth: cancel the dwell click'
+
+# The KWin script: where the pointer is (only when it moved at least a pixel), and Esc's action (no key of its own:
+# this service gives it Esc only while a ring fills). Plain ES5 (KWin's script engine); numbers go as one string,
+# because KWin's callDBus would send them as doubles.
+SCRIPT = r'''
+var BUS = "%(bus)s", OBJ = "%(obj)s", IFACE = "%(iface)s";
+var lx = -1e9, ly = -1e9;
+function onCursor() {
+    var p = workspace.cursorPos;
+    if (!p) return;
+    var x = Math.round(p.x), y = Math.round(p.y);
+    if (x === lx && y === ly) return;
+    lx = x; ly = y;
+    callDBus(BUS, OBJ, IFACE, "Pos", x + "," + y);
+}
+if (workspace.cursorPosChanged) workspace.cursorPosChanged.connect(onCursor);
+else callDBus(BUS, OBJ, IFACE, "Problem", "this KWin doesn't say where the pointer is");
+registerShortcut("%(action)s", "%(title)s", "", function () { callDBus(BUS, OBJ, IFACE, "Cancel"); });
+onCursor();
+''' % {'bus': BUS_NAME, 'obj': OBJ, 'iface': IFACE, 'action': CANCEL_ACTION, 'title': CANCEL_TITLE}
+
+INTROSPECTION = '''<node><interface name="%s">
+<method name="Pos"><arg type="s" direction="in"/></method>
+<method name="Cancel"/>
+<method name="Problem"><arg type="s" direction="in"/></method>
+</interface></node>''' % IFACE
+
+
+def log(text):
+    print('hearth-dwell: %s' % text, file=sys.stderr, flush=True)
+
+
+# ---------------------------------------------------------------------- settings (read only: hearth-access writes them)
+def clean(raw):
+    out = dict(DEFAULTS)
+    if not isinstance(raw, dict):
+        return out
+    if isinstance(raw.get('dwellClick'), bool):
+        out['dwellClick'] = raw['dwellClick']
+    for k, lo, hi in (('dwellDelay', 300, 3000), ('dwellTolerance', 3, 40)):
+        v = raw.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = int(round(max(lo, min(hi, float(v)))))
+    if raw.get('dwellClickType') in KINDS:
+        out['dwellClickType'] = raw['dwellClickType']
+    return out
+
+
+def load_settings(path=None):
+    """The dwell settings; never writes anything (a damaged file gives the defaults here and is left as it is)."""
+    path = path or SETTINGS_JSON
+    try:
+        import hearth_settings_io as hsio
+        return clean(hsio.load_json(path, None))
+    except ImportError:
+        pass
+    try:
+        with open(path) as f:
+            return clean(json.load(f))
+    except (OSError, ValueError):
+        return clean(None)
+
+
+# ---------------------------------------------------------------------- the countdown (no I/O: test_hearth_dwell.py)
+class Dweller:
+    """Turns pointer positions and the time into ring / hide / click events.
+
+    armed: a click may still happen at this resting place. It is disarmed by a click and by Esc, and armed again only
+    when the pointer moves further than `tolerance` from where it rested, so it never clicks twice in one place."""
+
+    def __init__(self, delay=1000, tolerance=10, kind='left', settle=SETTLE_MS):
+        self.delay, self.tolerance, self.kind, self.settle = delay, tolerance, kind, settle
+        self.anchor = None          # (x, y) where the pointer rests
+        self.since = 0.0            # when it came to rest there (ms)
+        self.armed = False
+        self.showing = False        # a ring is on screen
+
+    def configure(self, s):
+        self.delay, self.tolerance, self.kind = s['dwellDelay'], s['dwellTolerance'], s['dwellClickType']
+
+    def _hide(self):
+        if self.showing:
+            self.showing = False
+            return [{'t': 'hide'}]
+        return []
+
+    def move(self, x, y, now):
+        """The pointer is at x, y (ms clock `now`)."""
+        if self.anchor is not None and math.hypot(x - self.anchor[0], y - self.anchor[1]) <= self.tolerance:
+            return []               # still resting (small wobbles don't restart it)
+        # The first place it hears of isn't armed: that's where the pointer was when dwell click was turned on (on
+        # its own switch), and clicking there would turn it straight off again.
+        first = self.anchor is None
+        self.anchor, self.since, self.armed = (x, y), now, not first
+        return self._hide()
+
+    def cancel(self):
+        """Esc (or dwell click turned off): no click here; the next one needs the pointer to move away first."""
+        self.armed = False
+        return self._hide()
+
+    def tick(self, now):
+        if not self.armed or self.anchor is None:
+            return self._hide()
+        waited = now - self.since - self.settle
+        if waited < 0:
+            return []
+        p = min(1.0, waited / float(max(1, self.delay)))
+        if p >= 1.0:
+            self.armed = False
+            self.showing = False
+            return [{'t': 'hide'}, {'t': 'click', 'kind': self.kind, 'x': self.anchor[0], 'y': self.anchor[1]}]
+        self.showing = True
+        return [{'t': 'ring', 'x': self.anchor[0], 'y': self.anchor[1], 'p': round(p, 3), 'kind': self.kind}]
+
+    @property
+    def counting(self):
+        return self.showing
+
+
+# ---------------------------------------------------------------------- the virtual mouse
+BUTTONS = {'left': 'BTN_LEFT', 'double': 'BTN_LEFT', 'right': 'BTN_RIGHT', 'middle': 'BTN_MIDDLE'}
+
+
+class Clicker:
+    def __init__(self, dev=None):
+        if dev is None:
+            from evdev import UInput, ecodes as e
+            self.e = e
+            dev = UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE], e.EV_REL: [e.REL_X, e.REL_Y]},
+                         name='Hearth dwell click', version=0x3)
+        else:
+            from types import SimpleNamespace
+            self.e = SimpleNamespace(EV_KEY=1, EV_SYN=0, SYN_REPORT=0, BTN_LEFT=272, BTN_RIGHT=273, BTN_MIDDLE=274)
+        self.dev = dev
+
+    def _press(self, code):
+        e = self.e
+        try:
+            self.dev.write(e.EV_KEY, code, 1)
+            self.dev.syn()
+            time.sleep(0.02)
+        finally:
+            # The release always goes, whatever happened to the press: a button is never left down.
+            self.dev.write(e.EV_KEY, code, 0)
+            self.dev.syn()
+
+    def click(self, kind):
+        code = getattr(self.e, BUTTONS.get(kind, 'BTN_LEFT'))
+        self._press(code)
+        if kind == 'double':
+            time.sleep(0.08)
+            self._press(code)
+
+    def close(self):
+        try:
+            self.dev.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------- Esc (kglobalaccel)
+class EscKey:
+    """Gives the script's cancel action the Esc key while a ring fills, and takes it back after (KF6 key lists, KF5's
+    as the fallback, as hearth-kwin-bridge's KdeKeys)."""
+    AID = ['kwin', CANCEL_ACTION, 'KWin', CANCEL_TITLE]
+
+    def __init__(self, bus, Gio, GLib):
+        self.bus, self.Gio, self.GLib = bus, Gio, GLib
+        self.held = None            # unknown at first: release() always sets it
+
+    def _set(self, keys):
+        V = self.GLib.Variant
+        def call(method, args):
+            return self.bus.call_sync('org.kde.kglobalaccel', '/kglobalaccel', 'org.kde.KGlobalAccel', method, args,
+                                      None, self.Gio.DBusCallFlags.NONE, 3000, None)
+        try:
+            call('setForeignShortcutKeys', V('(asa(ai))', (self.AID, [([k, 0, 0, 0],) for k in keys])))
+        except self.GLib.Error:
+            call('setForeignShortcut', V('(asai)', (self.AID, list(keys))))
+
+    def hold(self, on):
+        if self.held == on:
+            return
+        try:
+            self._set([ESC_KEY] if on else [])
+            self.held = on
+        except Exception as e:
+            self.held = None if not on else False
+            log('Esc %s: %s' % ('take' if on else 'give back', getattr(e, 'message', e)))
+
+
+# ---------------------------------------------------------------------- the service
+def gi_modules():
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    return Gio, GLib
+
+
+def kwin_call(bus, Gio, GLib, path, iface, method, args=None, reply=None):
+    return bus.call_sync('org.kde.KWin', path, iface, method, args, GLib.VariantType.new(reply) if reply else None,
+                         Gio.DBusCallFlags.NONE, 5000, None)
+
+
+def unload_script(bus, Gio, GLib):
+    try:
+        if kwin_call(bus, Gio, GLib, '/Scripting', 'org.kde.kwin.Scripting', 'isScriptLoaded', GLib.Variant('(s)', (PLUGIN,)), '(b)').unpack()[0]:
+            kwin_call(bus, Gio, GLib, '/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', GLib.Variant('(s)', (PLUGIN,)), '(b)')
+    except GLib.Error:
+        pass
+
+
+def script_path():
+    rt = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    d = os.path.join(rt, 'hearth')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return os.path.join(d, 'hearth-dwell.js')
+
+
+class Service:
+    def __init__(self):
+        self.Gio, self.GLib = gi_modules()
+        self.bus = self.Gio.bus_get_sync(self.Gio.BusType.SESSION, None)
+        self.loop = self.GLib.MainLoop()
+        self.settings = load_settings()
+        self.mtime = self._mtime()
+        self.dw = Dweller()
+        self.dw.configure(self.settings)
+        self.esc = EscKey(self.bus, self.Gio, self.GLib)
+        self.clicker = None
+        self.reg = 0
+        self.ended = False
+
+    @staticmethod
+    def _mtime():
+        try:
+            return os.stat(SETTINGS_JSON).st_mtime
+        except OSError:
+            return 0
+
+    def say(self, obj):
+        try:
+            sys.stdout.write(json.dumps(obj) + '\n')
+            sys.stdout.flush()
+        except (BrokenPipeError, OSError):
+            self.quit()
+
+    def events(self, evs):
+        for ev in evs:
+            if ev['t'] == 'click':
+                self.esc.hold(False)
+                try:
+                    self.clicker.click(ev['kind'])
+                except Exception as e:
+                    self.say({'t': 'error', 'text': 'the click didn\'t go through: %s' % e})
+                    continue
+            self.say(ev)
+        self.esc.hold(self.dw.counting)
+
+    def on_call(self, conn, sender, path, iface, method, params, inv):
+        try:
+            if method == 'Pos':
+                x, y = (int(v) for v in params.unpack()[0].split(',')[:2])
+                self.events(self.dw.move(x, y, time.monotonic() * 1000))
+            elif method == 'Cancel':
+                self.events(self.dw.cancel())
+            elif method == 'Problem':
+                self.say({'t': 'error', 'text': params.unpack()[0]})
+        except (ValueError, TypeError):
+            pass
+        inv.return_value(None)
+
+    def tick(self):
+        self.events(self.dw.tick(time.monotonic() * 1000))
+        return True
+
+    def check_settings(self):
+        m = self._mtime()
+        if m != self.mtime:
+            self.mtime = m
+            self.settings = load_settings()
+            self.dw.configure(self.settings)
+            if not self.settings['dwellClick']:
+                self.quit()
+        return True
+
+    def load_script(self):
+        GLib = self.GLib
+        path = script_path()
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            f.write(SCRIPT)
+        os.replace(tmp, path)
+        unload_script(self.bus, self.Gio, GLib)
+        sid = kwin_call(self.bus, self.Gio, GLib, '/Scripting', 'org.kde.kwin.Scripting', 'loadScript',
+                        GLib.Variant('(ss)', (path, PLUGIN)), '(i)').unpack()[0]
+        if sid < 0:
+            raise RuntimeError('KWin would not load the pointer script')
+        try:
+            kwin_call(self.bus, self.Gio, GLib, '/Scripting/Script%d' % sid, 'org.kde.kwin.Script', 'run')
+        except GLib.Error:
+            kwin_call(self.bus, self.Gio, GLib, '/%d' % sid, 'org.kde.kwin.Script', 'run')
+
+    def quit(self):
+        if self.ended:
+            return
+        self.ended = True
+        try:
+            self.esc.hold(False)
+        finally:
+            unload_script(self.bus, self.Gio, self.GLib)
+            if self.clicker:
+                self.clicker.close()
+            self.loop.quit()
+
+    def run(self):
+        Gio, GLib = self.Gio, self.GLib
+        try:
+            self.clicker = Clicker()
+        except ImportError:
+            self.say({'t': 'error', 'text': 'python3-evdev is missing, so dwell click can\'t click'})
+            return 2
+        except OSError as e:
+            self.say({'t': 'error', 'text': 'no access to /dev/uinput, so dwell click can\'t click (%s)' % e})
+            return 3
+        node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION)
+        self.reg = self.bus.register_object(OBJ, node.interfaces[0], self.on_call, None, None)
+        Gio.bus_own_name_on_connection(self.bus, BUS_NAME, Gio.BusNameOwnerFlags.REPLACE, None, None)
+        self.esc.hold(False)
+        try:
+            self.load_script()
+        except Exception as e:
+            self.say({'t': 'error', 'text': 'KWin\'s pointer script didn\'t load: %s' % getattr(e, 'message', e)})
+            self.quit()
+            return 1
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, lambda *a: (self.quit(), False)[1])
+        GLib.io_add_watch(GLib.IOChannel.unix_new(0), GLib.PRIORITY_DEFAULT, GLib.IO_HUP | GLib.IO_ERR,
+                          lambda *a: (self.quit(), False)[1])
+        GLib.timeout_add(40, self.tick)
+        GLib.timeout_add(1000, self.check_settings)
+        self.say({'t': 'ready'})
+        try:
+            self.loop.run()
+        finally:
+            self.quit()
+        return 0
+
+
+def release():
+    """Esc back to the apps and the script unloaded: safe to run any time, also when nothing was taken."""
+    try:
+        Gio, GLib = gi_modules()
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    except Exception as e:
+        return {'ok': False, 'why': str(e)}
+    unload_script(bus, Gio, GLib)
+    k = EscKey(bus, Gio, GLib)
+    k.hold(False)
+    return {'ok': k.held is False}
+
+
+def status():
+    try:
+        import evdev  # noqa: F401
+        has_evdev = True
+    except ImportError:
+        has_evdev = False
+    return {'settings': load_settings(), 'kwin': os.environ.get('HEARTH_WM') == 'kwin', 'evdev': has_evdev,
+            'uinput': os.access('/dev/uinput', os.W_OK), 'kinds': list(KINDS)}
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    if c == 'status':
+        print(json.dumps(status()), flush=True)
+        return 0
+    if c == 'release':
+        print(json.dumps(release()), flush=True)
+        return 0
+    if c == 'serve':
+        if os.environ.get('HEARTH_WM') != 'kwin':
+            print(json.dumps({'t': 'error', 'text': 'dwell click needs Mantel on KWin'}), flush=True)
+            return 4
+        try:
+            svc = Service()
+        except (ImportError, ValueError) as e:
+            print(json.dumps({'t': 'error', 'text': 'GLib\'s Python is missing: %s' % e}), flush=True)
+            return 2
+        return svc.run()
+    print(__doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
