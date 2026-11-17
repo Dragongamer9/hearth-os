@@ -4045,6 +4045,11 @@ var ENTRIES = [
 "i": "globe"
 },
 {
+"t": "Tell me when app updates are there",
+"p": "store",
+"i": "bell"
+},
+{
 "t": "Update all apps",
 "p": "store",
 "i": "update"
