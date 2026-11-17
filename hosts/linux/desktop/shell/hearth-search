@@ -4,10 +4,12 @@
 The index: the names of everything in your folders (Home by default), and, if you turn it on, the text inside common
 documents (text files, OpenDocument, Word/Excel/PowerPoint, PDFs with pdftotext), in one SQLite FTS5 database
 (~/.local/share/hearth/search/index.db, only yours: 0600). The app menus' search (hearth-appmenu files) and Hearth
-Files' search ask it first and walk the folders only when there's no index yet. hearth-search.service runs `watch`
-at the lowest priority (nice 19, idle I/O): a quick pass for what changed every few minutes, paused on battery (unless
-you allow it), off when indexing is off. Hidden folders, caches, game libraries, build folders and the folders you
-leave out are never read.
+Files' search ask it first (and still look in the folders it doesn't read, and in folders changed since it last
+caught up); with no index, or a damaged one (moved aside and made again, logged), they walk the folders.
+hearth-search.service runs `watch` at the lowest priority (nice 19, idle I/O): a full pass at start, then inotify says
+which folders changed and only those are looked at again, with a full pass every 6 hours (every 30 minutes when not
+every folder could be watched); paused on battery (unless you allow it), off when indexing is off. Hidden folders,
+caches, game libraries, build folders and the folders you leave out are never read.
 
 Settings (Settings › Search; ~/.config/hearth/search.json through hearth_settings_io: atomic, .bak, merge-on-write;
 defaults are never written, only what you change):
@@ -18,6 +20,8 @@ defaults are never written, only what you change):
   hearth-search query TEXT [--limit N] [--contents] [--under DIR]
                                        JSON list [{path, name, folder, dir, when, snippet?}], or null with no index
   hearth-search index [--full]         one pass now (--full reads every file again)
+  hearth-search update DIR...          only these folders again (what inotify saw change)
+  hearth-search unindexed DIR          JSON: folders under DIR the index doesn't read (Hearth Files looks in them itself)
   hearth-search rebuild                start again from nothing (in the background)
   hearth-search watch                  the service: a pass now and then, while indexing is on
   hearth-search enabled                exit 0 when indexing is on (the service's ExecCondition)
@@ -72,7 +76,6 @@ ZIP_XML = {'.odt': ['content.xml'], '.ods': ['content.xml'], '.odp': ['content.x
            '.pptx': None, '.xlsx': ['xl/sharedStrings.xml'], '.epub': None}
 BODY_MAX = 64 * 1024            # the first 64 KB of text of each document
 READ_MAX = 8 * 1024 * 1024      # documents bigger than this are named, not read
-PASS_EVERY = 300                # seconds between passes in `watch`
 
 
 class Fail(Exception):
@@ -143,12 +146,14 @@ def excluded(pr=None):
 
 # ------------------------------------------------------------------ power
 def on_battery(base='/sys/class/power_supply'):
-    """True when a battery is there and no charger is plugged in."""
+    """True when a battery is there and nothing charges it: any charger that's online (mains, USB, USB-C/PD), or a
+    battery that says it's charging or full, means plugged in, whatever order the supplies are listed in. Batteries of
+    devices (scope Device: controllers, mice) don't count."""
     try:
-        names = os.listdir(base)
+        names = sorted(os.listdir(base))
     except OSError:
         return False
-    batt, mains = False, None
+    batt = plugged = False
     for n in names:
         def rd(f):
             try:
@@ -157,16 +162,16 @@ def on_battery(base='/sys/class/power_supply'):
             except OSError:
                 return ''
         t = rd('type')
-        if t == 'Battery' and rd('scope') != 'Device':
+        if t == 'Battery':
+            if rd('scope') == 'Device':
+                continue
             batt = True
             if rd('status') in ('Charging', 'Full', 'Not charging'):
-                mains = True if mains is None else mains
-        elif t in ('Mains', 'USB', 'USB_C', 'USB_PD'):
+                plugged = True
+        elif t in ('Mains', 'USB', 'USB_C', 'USB_PD', 'USB_PD_DRP', 'USB_DCP', 'USB_CDP', 'USB_ACA', 'Wireless'):
             if rd('online') == '1':
-                mains = True
-            elif mains is None:
-                mains = False
-    return batt and not mains
+                plugged = True
+    return batt and not plugged
 
 
 def paused_why(pr=None):
@@ -194,8 +199,28 @@ def connect(path=DB):
         CREATE INDEX IF NOT EXISTS files_name ON files(name COLLATE NOCASE);
         CREATE INDEX IF NOT EXISTS files_parent ON files(parent);
         CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(name, body, tokenize='unicode61 remove_diacritics 2');
+        CREATE TABLE IF NOT EXISTS unindexed (path TEXT PRIMARY KEY);
     ''')
     return db
+
+
+def quarantine(why, path=DB):
+    """A damaged index: moved aside (only the newest damaged copy is kept), logged, and made again from nothing on the
+    next pass. Never a crash loop, never a search that fails: searches walk the folders until it's back."""
+    stamp = time.strftime('%Y%m%d-%H%M%S')
+    d = os.path.dirname(path)
+    with contextlib.suppress(OSError):
+        for f in os.listdir(d):
+            if f.startswith('index.db.broken-'):
+                os.unlink(os.path.join(d, f))
+    for suffix in ('', '-wal', '-shm'):
+        with contextlib.suppress(OSError):
+            os.replace(path + suffix, '%s.broken-%s%s' % (path, stamp, suffix))
+    with contextlib.suppress(Exception):
+        sio.log_event('search index was damaged (%s): moved aside as index.db.broken-%s, being made again' % (str(why)[:160], stamp))
+    if path == DB:
+        with contextlib.suppress(Exception):
+            write_state(complete=False, lastResult=None, repaired=int(time.time() * 1000))
 
 
 def fts5_ok():
@@ -292,8 +317,9 @@ def low_priority():
         ctypes.CDLL(None, use_errno=True).syscall(251 if os.uname().machine == 'x86_64' else 30, 1, 0, 3 << 13)
 
 
-def walk(root, skip):
-    """(path, name, parent, isdir, stat) for everything under root, hidden and skipped folders left out."""
+def walk(root, skip, skipped=None):
+    """(path, name, parent, isdir, stat) for everything under root, hidden and skipped folders left out (skipped: a
+    set that gets the skipped and left-out folders, so Hearth Files can still look in them itself)."""
     stack = [root]
     while stack:
         d = stack.pop()
@@ -311,9 +337,104 @@ def walk(root, skip):
                 continue
             if isdir:
                 if e.name in SKIP_DIRS or e.path in skip:
+                    if skipped is not None:
+                        skipped.add(e.path)
                     continue
                 stack.append(e.path)
             yield e.path, e.name, d, isdir, st
+
+
+def put(db, old, path, name, parent, isdir, st, contents):
+    """One file or folder into the index (new, or changed since it was last seen). Returns 'added' / 'changed'."""
+    want_body = contents and not isdir
+    body = body_of(path, st.st_size) if want_body else ''
+    if old:
+        db.execute('UPDATE files SET name=?, parent=?, dir=?, mtime=?, size=?, read=? WHERE id=?',
+                   (name, parent, int(isdir), st.st_mtime, st.st_size, int(want_body), old[1]))
+        db.execute('DELETE FROM fts WHERE rowid=?', (old[1],))
+        db.execute('INSERT INTO fts(rowid, name, body) VALUES (?, ?, ?)', (old[1], name, body))
+        return 'changed'
+    cur = db.execute('INSERT INTO files(path, name, parent, dir, mtime, size, read) VALUES (?,?,?,?,?,?,?)',
+                     (path, name, parent, int(isdir), st.st_mtime, st.st_size, int(want_body)))
+    db.execute('INSERT INTO fts(rowid, name, body) VALUES (?, ?, ?)', (cur.lastrowid, name, body))
+    return 'added'
+
+
+def unchanged(old, st, isdir, contents):
+    return old and abs(old[0] - st.st_mtime) < 0.001 and (old[2] == 1 or not (contents and not isdir))
+
+
+def drop_tree(db, path):
+    """A folder (or file) and everything that was indexed inside it."""
+    esc = path.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    ids = [r[0] for r in db.execute("SELECT id FROM files WHERE path = ? OR path LIKE ? ESCAPE '\\'", (path, esc + '/%'))]
+    for i in ids:
+        db.execute('DELETE FROM files WHERE id=?', (i,))
+        db.execute('DELETE FROM fts WHERE rowid=?', (i,))
+    db.execute("DELETE FROM unindexed WHERE path = ? OR path LIKE ? ESCAPE '\\'", (path, esc + '/%'))
+    return len(ids)
+
+
+def under_any(p, folders):
+    return any(p == f or p.startswith(f.rstrip('/') + '/') for f in folders)
+
+
+def update_dirs(dirs, db_path=DB, pr=None):
+    """Only these folders looked at again (what inotify said changed): their new, changed and gone items, and
+    everything inside new folders. Returns the counts, or None when the index has to be made in full instead."""
+    pr = pr or prefs()
+    contents = bool(pr.get('contents'))
+    skip = excluded(pr)
+    rs = roots(pr)
+    db = connect(db_path)
+    added = changed = removed = 0
+    try:
+        for d in sorted(set(dirs)):
+            if not under_any(d, rs) or any(part.startswith('.') or part in SKIP_DIRS for part in d[len(HOME):].split('/')) \
+                    or under_any(d, skip):
+                continue
+            if not os.path.isdir(d):
+                removed += drop_tree(db, d)
+                continue
+            known = {r[0]: (r[1], r[2], r[3]) for r in db.execute('SELECT path, mtime, id, read FROM files WHERE parent = ?', (d,))}
+            here = set()
+            try:
+                entries = list(os.scandir(d))
+            except OSError:
+                continue
+            for e in entries:
+                if e.name.startswith('.'):
+                    continue
+                try:
+                    isdir = e.is_dir(follow_symlinks=False)
+                    st = e.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if isdir and (e.name in SKIP_DIRS or e.path in skip):
+                    db.execute('INSERT OR IGNORE INTO unindexed(path) VALUES (?)', (e.path,))
+                    continue
+                here.add(e.path)
+                old = known.get(e.path)
+                if not unchanged(old, st, isdir, contents):
+                    r = put(db, old, e.path, e.name, d, isdir, st, contents)
+                    added += r == 'added'
+                    changed += r == 'changed'
+                if isdir and not old:
+                    skipped = set()
+                    for path, name, parent, sub_isdir, sst in walk(e.path, skip, skipped):
+                        o2 = db.execute('SELECT mtime, id, read FROM files WHERE path=?', (path,)).fetchone()
+                        if not unchanged(o2, sst, sub_isdir, contents):
+                            r = put(db, o2, path, name, parent, sub_isdir, sst, contents)
+                            added += r == 'added'
+                            changed += r == 'changed'
+                    for sp in skipped:
+                        db.execute('INSERT OR IGNORE INTO unindexed(path) VALUES (?)', (sp,))
+            for path in set(known) - here:
+                removed += drop_tree(db, path)
+        db.commit()
+    finally:
+        db.close()
+    return {'ok': True, 'added': added, 'changed': changed, 'removed': removed}
 
 
 def index(full=False, db_path=DB, pr=None, stop=None, budget=None):
@@ -324,32 +445,26 @@ def index(full=False, db_path=DB, pr=None, stop=None, budget=None):
     contents = bool(pr.get('contents'))
     skip = excluded(pr)
     rs = roots(pr)
-    db = connect(db_path)
+    try:
+        db = connect(db_path)
+    except sqlite3.DatabaseError as e:
+        quarantine(e, db_path)
+        db = connect(db_path)
     started = time.time()
     known = {row[0]: (row[1], row[2], row[3]) for row in db.execute('SELECT path, mtime, id, read FROM files')}
     seen, added, changed, n = set(), 0, 0, 0
     stopped = ''
+    skipped = set()
     for r in rs:
-        for path, name, parent, isdir, st in walk(r, skip):
+        for path, name, parent, isdir, st in walk(r, skip, skipped):
             n += 1
             seen.add(path)
             old = known.get(path)
-            want_body = contents and not isdir
-            if old and not full and abs(old[0] - st.st_mtime) < 0.001 and (old[2] == 1 or not want_body):
-                pass
-            else:
-                body = body_of(path, st.st_size) if want_body else ''
-                if old:
-                    db.execute('UPDATE files SET name=?, parent=?, dir=?, mtime=?, size=?, read=? WHERE id=?',
-                               (name, parent, int(isdir), st.st_mtime, st.st_size, int(want_body), old[1]))
-                    db.execute('DELETE FROM fts WHERE rowid=?', (old[1],))
-                    db.execute('INSERT INTO fts(rowid, name, body) VALUES (?, ?, ?)', (old[1], name, body))
-                    changed += 1
-                else:
-                    cur = db.execute('INSERT INTO files(path, name, parent, dir, mtime, size, read) VALUES (?,?,?,?,?,?,?)',
-                                     (path, name, parent, int(isdir), st.st_mtime, st.st_size, int(want_body)))
-                    db.execute('INSERT INTO fts(rowid, name, body) VALUES (?, ?, ?)', (cur.lastrowid, name, body))
+            if full or not unchanged(old, st, isdir, contents):
+                if put(db, old, path, name, parent, isdir, st, contents) == 'added':
                     added += 1
+                else:
+                    changed += 1
             if n % 500 == 0:
                 db.commit()
                 time.sleep(0.01)                   # be gentle
@@ -373,6 +488,9 @@ def index(full=False, db_path=DB, pr=None, stop=None, budget=None):
             elif rd and not contents:
                 db.execute('UPDATE files SET read=0 WHERE id=?', (fid,))
                 db.execute('UPDATE fts SET body=? WHERE rowid=?', ('', fid))
+        db.execute('DELETE FROM unindexed')
+    for sp in skipped:
+        db.execute('INSERT OR IGNORE INTO unindexed(path) VALUES (?)', (sp,))
     db.commit()
     total = db.execute('SELECT COUNT(*) FROM files').fetchone()[0]
     db.close()
@@ -397,13 +515,93 @@ def fts_words(text):
     return ' '.join('"%s"*' % w.replace('"', '') for w in words) if words else ''
 
 
-def query(text, limit=24, contents=False, under=None, db_path=DB):
-    """[{path, name, folder, dir, when, snippet?}] best first, or None when there's no index to ask."""
+def fresh_hits(db, q, under, rs, known_paths, limit):
+    """What the index hasn't caught up with yet: folders whose time changed since they were indexed (something was
+    added, renamed or removed in them) looked at directly, new folders inside them too. Folders are only stat'ed,
+    so this is quick even for a big home folder."""
+    ql = q.lower()
+    out = []
+    skip = excluded()
+    base = [os.path.normpath(os.path.abspath(os.path.expanduser(under)))] if under else rs
+    esc = lambda p: p.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    dirs = {}
+    for b in base:
+        dirs.setdefault(b, None)
+        for p, mt in db.execute("SELECT path, mtime FROM files WHERE dir=1 AND (path = ? OR path LIKE ? ESCAPE '\\')", (b, esc(b) + '/%')):
+            dirs[p] = mt
+    stack = []
+    for d, mt in dirs.items():
+        try:
+            if mt is None or abs(os.stat(d).st_mtime - mt) >= 0.001:
+                stack.append(d)
+        except OSError:
+            continue
+    seen = set()
+    while stack and len(out) < limit:
+        d = stack.pop()
+        if d in seen:
+            continue
+        seen.add(d)
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            if e.name.startswith('.'):
+                continue
+            try:
+                isdir = e.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            if isdir and (e.name in SKIP_DIRS or e.path in skip):
+                continue
+            if isdir and e.path not in dirs:
+                stack.append(e.path)                  # a new folder: everything in it is new
+            if ql in e.name.lower() and e.path not in known_paths:
+                try:
+                    mt = e.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    continue
+                out.append({'path': e.path, 'name': e.name, 'folder': folder_label(d), 'dir': isdir, 'when': int(mt * 1000),
+                            'starts': e.name.lower().startswith(ql)})
+    return out
+
+
+def query(text, limit=24, contents=False, under=None, db_path=DB, fresh=True):
+    """[{path, name, folder, dir, when, snippet?}] best first, or None when there's no index to ask (none yet, or a
+    damaged one, which is moved aside to be made again)."""
     q = (text or '').strip()
     if not os.path.exists(db_path) or (db_path == DB and not read_state().get('complete')):
         return None
     if len(q) < 2:
         return []
+    try:
+        return _query(q, limit, contents, under, db_path, fresh)
+    except sqlite3.DatabaseError as e:
+        if 'locked' not in str(e).lower():
+            quarantine(e, db_path)
+        return None
+
+
+def unindexed_under(root, db_path=DB):
+    """The folders under ROOT the index doesn't read (build folders, node_modules, game libraries, your left-out
+    folders), for Hearth Files to look in itself. None when there's no index."""
+    if not os.path.exists(db_path):
+        return None
+    r = os.path.normpath(os.path.abspath(os.path.expanduser(root)))
+    esc = r.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    try:
+        db = sqlite3.connect('file:%s?mode=ro' % db_path, uri=True, timeout=5)
+        try:
+            return sorted(p for (p,) in db.execute("SELECT path FROM unindexed WHERE path LIKE ? ESCAPE '\\'", (esc.rstrip('/') + '/%',))
+                          if os.path.isdir(p))
+        finally:
+            db.close()
+    except sqlite3.DatabaseError:
+        return None
+
+
+def _query(q, limit, contents, under, db_path, fresh):
     db = sqlite3.connect('file:%s?mode=ro' % db_path, uri=True, timeout=5)
     try:
         like = '%' + q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
@@ -434,6 +632,8 @@ def query(text, limit=24, contents=False, under=None, db_path=DB):
                                      'when': int(r[4] * 1000), 'starts': False, 'snippet': snip}
                         order.append(fid)
         res = [hits[i] for i in order if os.path.lexists(hits[i]['path'])]
+        if fresh:
+            res += fresh_hits(db, q, under, roots(), {h['path'] for h in res}, limit)
         res.sort(key=lambda h: (not h['starts'], 'snippet' in h and not h['starts'], -h['when']))
         for h in res:
             del h['starts']
@@ -486,19 +686,136 @@ def rebuild():
     return {'ok': True, 'started': True}
 
 
+class Inotify:
+    """Linux inotify through ctypes (no extra package): which folders had something added, removed, renamed or saved."""
+    MASK = 0x2 | 0x4 | 0x8 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400 | 0x800   # MODIFY ATTRIB CLOSE_WRITE MOVED_* CREATE DELETE*
+    def __init__(self):
+        import ctypes
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.fd = self.libc.inotify_init1(0o4000 | 0o2000000)                   # IN_NONBLOCK | IN_CLOEXEC
+        if self.fd < 0:
+            raise OSError(ctypes.get_errno(), 'inotify_init1')
+        self.wds, self.paths, self.full = {}, {}, False
+        try:
+            with open('/proc/sys/fs/inotify/max_user_watches') as f:
+                self.cap = max(1000, int(f.read()) // 2)                        # leave half for other apps
+        except (OSError, ValueError):
+            self.cap = 4000
+
+    def add(self, path):
+        if path in self.paths:
+            return True
+        if len(self.wds) >= self.cap:
+            self.full = True
+            return False
+        wd = self.libc.inotify_add_watch(self.fd, os.fsencode(path), self.MASK)
+        if wd < 0:
+            self.full = self.full or len(self.wds) > 100
+            return False
+        self.wds[wd], self.paths[path] = path, wd
+        return True
+
+    def read(self, timeout):
+        """{folder: True} that changed, waiting up to TIMEOUT seconds for the first one."""
+        import select
+        import struct
+        changed = {}
+        r, _, _ = select.select([self.fd], [], [], timeout)
+        if not r:
+            return changed
+        try:
+            data = os.read(self.fd, 65536)
+        except BlockingIOError:
+            return changed
+        i = 0
+        while i + 16 <= len(data):
+            wd, mask, _cookie, ln = struct.unpack_from('iIII', data, i)
+            name = data[i + 16:i + 16 + ln].split(b'\0', 1)[0].decode('utf-8', 'surrogateescape')
+            i += 16 + ln
+            d = self.wds.get(wd)
+            if mask & 0x4000:                                                    # IN_Q_OVERFLOW: too much at once
+                changed['*'] = True
+                continue
+            if mask & 0x8000:                                                    # IN_IGNORED: the folder is gone
+                self.wds.pop(wd, None)
+                if d:
+                    self.paths.pop(d, None)
+                    changed[os.path.dirname(d)] = True
+                continue
+            if d and not name.startswith('.'):
+                changed[d] = True
+        return changed
+
+
+def watch_dirs(ino, db_path=DB):
+    for r in roots():
+        ino.add(r)
+    with contextlib.closing(sqlite3.connect('file:%s?mode=ro' % db_path, uri=True, timeout=5)) as db:
+        for (p,) in db.execute('SELECT path FROM files WHERE dir=1 ORDER BY length(path)'):
+            if not ino.add(p) and ino.full:
+                break
+
+
+FULL_EVERY = 6 * 3600          # a full pass now and then even with inotify (anything it missed)
+FULL_EVERY_PARTIAL = 1800      # more often when not every folder could be watched (or there's no inotify)
+
+
+def guarded(fn, *a, **kw):
+    """Runs one indexing step; a damaged database is moved aside (made again on the next pass) instead of crashing."""
+    try:
+        return fn(*a, **kw)
+    except sqlite3.DatabaseError as e:
+        if 'locked' in str(e).lower():
+            return None
+        quarantine(e)
+        return None
+    except Fail:
+        return None
+
+
 def watch():
-    """The service: a pass now, then one every PASS_EVERY seconds while indexing is on; waits while on battery."""
+    """The service: a full pass at start, then only the folders inotify says changed (a few seconds after they settle),
+    and a full pass every few hours. Waits while on battery (changes are kept and caught up after). Stops when
+    indexing is turned off. A damaged index is moved aside and made again, logged, never a crash loop."""
     low_priority()
+    ino = None
+    with contextlib.suppress(OSError, AttributeError):
+        ino = Inotify()
+    last_full, pending, settle = 0.0, set(), 0.0
     while True:
         pr = prefs()
         why = paused_why(pr)
         if why == 'off':
             return 0
-        if not why:
+        every = FULL_EVERY if ino and not ino.full else FULL_EVERY_PARTIAL
+        if not why and (time.time() - last_full > every or '*' in pending or not read_state().get('complete')):
             with contextlib.suppress(Fail):
                 with one_at_a_time():
-                    index(pr=pr, stop=lambda: paused_why())
-        time.sleep(PASS_EVERY if not why else 120)
+                    r = guarded(index, pr=pr, stop=lambda: paused_why())
+            if r and not r.get('stopped'):
+                last_full, pending = time.time(), set()
+                if ino:
+                    with contextlib.suppress(sqlite3.Error):
+                        watch_dirs(ino)
+        if ino:
+            got = ino.read(60 if not pending else 5)
+            if got:
+                pending |= set(got)
+                settle = time.time()
+            elif pending and not why and time.time() - settle >= 5:
+                dirs = {d for d in pending if d != '*'}
+                with contextlib.suppress(Fail):
+                    with one_at_a_time():
+                        guarded(update_dirs, dirs, pr=pr)
+                pending -= dirs
+                for d in dirs:                                  # new folders get watched too
+                    if os.path.isdir(d):
+                        with contextlib.suppress(OSError):
+                            for e in os.scandir(d):
+                                if e.is_dir(follow_symlinks=False) and not e.name.startswith('.') and e.name not in SKIP_DIRS:
+                                    ino.add(e.path)
+        else:
+            time.sleep(120 if why else 300)
 
 
 # ------------------------------------------------------------------ currency rates
@@ -582,7 +899,7 @@ def main(argv):
             i = 0
             while i < len(rest):
                 if rest[i] == '--limit':
-                    limit = max(1, min(500, int(rest[i + 1]))); i += 2; continue
+                    limit = max(1, min(5000, int(rest[i + 1]))); i += 2; continue
                 if rest[i] == '--contents':
                     contents = True; i += 1; continue
                 if rest[i] == '--under':
@@ -592,7 +909,16 @@ def main(argv):
         elif cmd == 'index':
             low_priority()
             with one_at_a_time():
-                out(index(full='--full' in rest, stop=lambda: paused_why() == 'off' and 'off'))
+                try:
+                    out(index(full='--full' in rest, stop=lambda: paused_why() == 'off' and 'off'))
+                except sqlite3.DatabaseError as e:
+                    quarantine(e)
+                    out(index(full=True, stop=lambda: paused_why() == 'off' and 'off'))
+        elif cmd == 'update' and rest:
+            with one_at_a_time():
+                out(guarded(update_dirs, [os.path.abspath(x) for x in rest]))
+        elif cmd == 'unindexed' and len(rest) == 1:
+            out(unindexed_under(rest[0]))
         elif cmd == 'rebuild':
             out(rebuild())
         elif cmd == 'watch':
