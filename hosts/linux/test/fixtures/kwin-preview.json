@@ -1,0 +1,120 @@
+{
+ "_about": "Test preview only (desktop-test.yml): what hearth-kwin-settings shows for KWin's effects, screens and input devices when HEARTH_KWIN_FIXTURE points here and $XDG_RUNTIME_DIR/hearth-kwin-preview exists. Never used on a real session.",
+ "version": "6.3.6",
+ "effects": [
+  "backgroundcontrast",
+  "blur",
+  "colorblindnesscorrection",
+  "desktopchangeosd",
+  "dialogparent",
+  "diminactive",
+  "dimscreen",
+  "eyeonscreen",
+  "fade",
+  "fadedesktop",
+  "fadingpopups",
+  "fallapart",
+  "frozenapp",
+  "glide",
+  "hidecursor",
+  "invert",
+  "kscreen",
+  "login",
+  "logout",
+  "magiclamp",
+  "magnifier",
+  "maximize",
+  "mouseclick",
+  "mousemark",
+  "overview",
+  "scale",
+  "shakecursor",
+  "sheet",
+  "slide",
+  "slideback",
+  "slidingpopups",
+  "snaphelper",
+  "squash",
+  "startupfeedback",
+  "systembell",
+  "thumbnailaside",
+  "touchpoints",
+  "trackmouse",
+  "translucency",
+  "windowaperture",
+  "windowview",
+  "wobblywindows",
+  "zoom"
+ ],
+ "outputs": [
+  {
+   "name": "HEADLESS-1",
+   "uuid": "e3d3d5c4-af96-5514-988a-a5cf444294bf",
+   "model": "Virtual screen",
+   "maker": ""
+  }
+ ],
+ "devices": [
+  {
+   "sysName": "event5",
+   "name": "ELAN0676:00 04F3:3195 Touchpad",
+   "pointer": true,
+   "touchpad": true,
+   "tapFingerCount": 3,
+   "tapToClick": true,
+   "naturalScroll": true,
+   "supportsNaturalScroll": true,
+   "disableWhileTyping": true,
+   "supportsDisableWhileTyping": true,
+   "scrollFactor": 1.0
+  },
+  {
+   "sysName": "event7",
+   "name": "Logitech G305",
+   "pointer": true,
+   "pointerAcceleration": 0.0,
+   "supportsPointerAcceleration": true
+  },
+  {
+   "sysName": "event12",
+   "name": "Wacom Intuos S Pen",
+   "tabletTool": true,
+   "pointer": true,
+   "mapToWorkspace": false,
+   "outputName": "HEADLESS-1",
+   "supportsOutputArea": true,
+   "outputArea": [
+    0,
+    0,
+    1,
+    1
+   ],
+   "supportsInputArea": false,
+   "supportsLeftHanded": true,
+   "leftHanded": false,
+   "pressureCurve": "0,0.35;0.4,1;",
+   "defaultPressureCurve": "0,0;1,1;",
+   "supportsPressureRange": true,
+   "pressureRangeMin": 0.05,
+   "pressureRangeMax": 0.9
+  },
+  {
+   "sysName": "event13",
+   "name": "Wacom Intuos S Pad",
+   "tabletPad": true,
+   "tabletPadButtonCount": 4
+  },
+  {
+   "sysName": "event14",
+   "name": "ILITEK Multi-Touch",
+   "touch": true,
+   "supportsDisableEvents": true,
+   "enabled": true,
+   "outputName": "HEADLESS-1",
+   "orientationDBus": 0,
+   "supportsCalibrationMatrix": true,
+   "calibrationMatrix": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1",
+   "defaultCalibrationMatrix": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
+  }
+ ]
+}
