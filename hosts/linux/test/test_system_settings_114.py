@@ -216,6 +216,22 @@ class Network(Home):
             self.assertEqual(json.load(open(self.n.PROXY_JSON))['http'], 'proxy.lan:3128')   # merge: the rest is kept
             self.assertTrue(os.path.exists(self.n.PROXY_JSON + '.bak'))
 
+    def test_proxy_without_settings_io_still_keeps_a_backup_and_never_saves_over_damage(self):
+        # The fallback for when hearth_settings_io can't be imported (review, Nov 17): atomic, .bak, merged.
+        with mock.patch.object(self.n, 'hsio', None), mock.patch.object(self.n, 'run', FakeNm([])), \
+                mock.patch.object(self.n.shutil, 'which', return_value=None):
+            self.n.proxy_set({'mode': 'manual', 'http': 'proxy.lan:3128'})
+            first = open(self.n.PROXY_JSON).read()
+            self.n.proxy_set({'mode': 'none'})
+            self.assertEqual(open(self.n.PROXY_JSON + '.bak').read(), first)
+            self.assertEqual(json.load(open(self.n.PROXY_JSON))['http'], 'proxy.lan:3128')
+            with open(self.n.PROXY_JSON, 'w') as f:
+                f.write('{"mode": "man')                            # damaged
+            with self.assertRaises(self.n.Fail):
+                self.n.proxy_set({'mode': 'none'})
+            self.assertEqual(open(self.n.PROXY_JSON).read(), '{"mode": "man')
+        self.assertEqual([f for f in os.listdir(os.path.dirname(self.n.PROXY_JSON)) if f.endswith('.tmp')], [])
+
     def test_proxy_env_of_your_own_is_left_alone(self):
         os.makedirs(os.path.dirname(self.n.PROXY_ENV))
         open(self.n.PROXY_ENV, 'w').write('http_proxy=http://mine:8080\n')
@@ -459,6 +475,23 @@ class Lookset(Home):
         with mock.patch.object(self.l.shutil, 'which', return_value=None):
             self.assertEqual(self.l.apply(), [])
         self.assertFalse(os.path.exists(self.c))
+
+    def test_without_settings_io_still_keeps_a_backup_and_never_saves_over_damage(self):
+        with mock.patch.object(self.l, 'hsio', None), mock.patch.object(self.l.shutil, 'which', return_value=None):
+            self.l.set_({'font': 'Inter'})
+            first = open(self.l.SAVED).read()
+            self.l.set_({'fontSize': 12})
+            self.assertEqual(open(self.l.SAVED + '.bak').read(), first)
+            self.assertEqual(json.load(open(self.l.SAVED)), {'font': 'Inter', 'fontSize': 12})
+            with open(self.l.SAVED, 'w') as f:
+                f.write('not json')
+            with self.assertRaises(self.l.Fail):
+                self.l.set_({'fontSize': 11})
+            self.assertEqual(open(self.l.SAVED).read(), 'not json')
+            self.l.write(os.path.join(self.c, 'x.conf'), 'a\n')
+            self.l.write(os.path.join(self.c, 'x.conf'), 'b\n')
+            self.assertEqual(open(os.path.join(self.c, 'x.conf.bak')).read(), 'a\n')
+        self.assertEqual([f for f in os.listdir(os.path.dirname(self.l.SAVED)) if f.endswith('.tmp')], [])
 
     def test_set_saves_merges_and_hands_on_only_to_hearths_files(self):
         qt = os.path.join(self.c, 'qt6ct', 'qt6ct.conf'); os.makedirs(os.path.dirname(qt))

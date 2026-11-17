@@ -107,7 +107,7 @@ class Shortcuts(unittest.TestCase):
         self.assertEqual(kb.qt_key('Meta+Left'), 0x10000000 | 0x01000012)
         self.assertEqual(kb.qt_key('Meta+Shift+Backtab'), 0x12000000 | 0x01000002)
         self.assertEqual(kb.qt_key('Meta+0'), 0x10000030)
-        self.assertIn('Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
+        self.assertIn('Meta[$i]=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
         self.assertFalse((KWIN / 'xdg' / 'kglobalshortcutsrc').exists(), 'kglobalaccel never reads a default file')
 
     def test_kwin_views_and_force_close(self):
@@ -255,6 +255,36 @@ class KdeKeysFix(unittest.TestCase):
         k.sets.clear()
         kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
         self.assertEqual(k.sets, [], 'restored keys were changed again')
+
+
+    def test_settings_button_puts_kdes_keys_back(self):
+        # Settings › Keyboard › Bring back KDE's own shortcuts (review, Nov 17): what changed is read without D-Bus
+        # or writing; a key that can't be put back now is tried again next time, never marked as done.
+        self.assertEqual(kb.changed_kde_keys(), {'changed': [], 'count': 0})
+        k = self.fake()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        ch = kb.changed_kde_keys()
+        self.assertEqual(sorted(c['key'] for c in ch['changed']), ['kwin/Grid View', 'kwin/Window Quick Tile Left'])
+        real = k.set
+
+        def flaky(aid, keys):
+            if aid[1] == 'Grid View':
+                raise RuntimeError('kglobalaccel is not there')
+            real(aid, keys)
+        k.set = flaky
+        back = kb.restore_kde_keys(k)
+        self.assertIn('kwin/Window Quick Tile Left', back)
+        self.assertNotIn('kwin/Grid View', back)
+        self.assertEqual([c['key'] for c in kb.changed_kde_keys()['changed']], ['kwin/Grid View'])
+        k.set = real
+        k.sets.clear()
+        self.assertEqual(kb.restore_kde_keys(k), ['kwin/Grid View'], 'only what is still to put back')
+        self.assertEqual(k.get(['kwin', 'Grid View']), [[MG]])
+        self.assertEqual(kb.changed_kde_keys()['count'], 0)
+        page = (LINUX / 'desktop' / 'shell' / 'SetKeyboard.qml').read_text()
+        self.assertIn('"Bring back KDE\'s own shortcuts"', page)
+        self.assertIn('["keys", "restore", "--json"]', page)
+        self.assertIn("Settings › Keyboard › Bring back KDE", (LINUX / 'desktop' / 'shell' / 'hearth-kwin-bridge').read_text())
 
 
 class Script(unittest.TestCase):
