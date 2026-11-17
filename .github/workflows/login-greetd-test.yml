@@ -1,0 +1,200 @@
+# Hearth's own login screen (1.14, greetd + Hearth's greeter; a test, off by default): its helpers' tests (the switch,
+# the fallback to SDDM, automatic sign-in in both login screens), then the greeter for real in cage on a virtual
+# 1920x1080 screen, talking to a stand-in greetd (.github/scripts/fake-greetd.py) over GREETD_SOCK: accounts, a wrong
+# password, a locked account, the session and power menus, the on-screen keyboard, the controller's focus, Bigger text,
+# then signing in (the session greetd is asked to start is checked). Pictures as notices: "SHOT login-<view> <n>".
+name: Login screen (greetd) test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['os/system_files/usr/share/hearth/greeter/**', 'os/system_files/usr/libexec/nimbus/hearth-login-screen',
+            'os/system_files/usr/libexec/nimbus/hearth-session-start', 'os/system_files/usr/libexec/nimbus/hearth-greeter',
+            '.github/workflows/login-greetd-test.yml', '.github/scripts/fake-greetd.py']
+
+permissions:
+  contents: read
+
+jobs:
+  greeter:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 30
+    steps:
+      - name: Install cage, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git cage labwc grim wlr-randr python3 procps-ng ImageMagick dbus-daemon qt6-qtsvg \
+            google-noto-sans-fonts systemd >/dev/null
+          dnf -y install rsms-inter-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true; cage -h 2>&1 | head -3 || true
+
+      - uses: actions/checkout@v4
+
+      - name: The helpers' tests
+        run: |
+          python3 -m unittest hosts/linux/test/test_hearth_login_screen.py -v 2>&1 | tail -45
+          python3 -m unittest hosts/linux/test/test_hearth_login_screen.py
+          python3 -m unittest hosts/linux/test/test_settings_persistence.py hosts/linux/test/test_settings_redesign.py
+
+      - name: The units load (systemd-analyze verify)
+        run: |
+          set -x
+          d=$(mktemp -d)
+          cp os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-greetd.service os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-login-*.service "$d/"
+          out=$(SYSTEMD_UNIT_PATH="$d:" systemd-analyze verify --man=no "$d"/*.service 2>&1 || true)
+          echo "$out"
+          bad=$(echo "$out" | grep -v -E 'not found|No such file|is not executable|Failed to prepare|Command .* is not|plymouth|display-manager|sddm|nimbus-autologin|hearth-unlock|Unit .* not found' || true)
+          if [ -n "$bad" ]; then echo "::warning title=units::$(echo "$bad" | head -5 | tr '\n' '|')"; fi
+
+      - name: Start the greeter with a stand-in greetd
+        shell: bash
+        run: |
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          # The greeter as the image has it: its folder plus Mantel's on-screen keyboard (build.sh copies the same files).
+          G=/tmp/greeter; rm -rf $G; cp -a os/system_files/usr/share/hearth/greeter $G
+          cp hosts/linux/desktop/shell/OskBoard.qml hosts/linux/desktop/shell/OskKey.qml $G/
+          mkdir -p $G/osk && cp hosts/linux/desktop/shell/osk/hearth-osk.js $G/osk/
+          # Made-up accounts (alex with a picture), sessions as the image installs them, two keyboard layouts.
+          F=/tmp/fixture; mkdir -p $F/icons $F/sessions
+          printf 'root:x:0:0:root:/root:/bin/bash\n_greetd:x:990:990::/var/lib/greetd:/usr/sbin/nologin\nalex:x:1000:1000:Alex Fire,,,:/home/alex:/bin/bash\nsam:x:1001:1001:Sam Ash:/home/sam:/bin/bash\njordan:x:1002:1002:Jordan:/home/jordan:/bin/bash\n' > $F/passwd
+          magick -size 256x256 radial-gradient:'#ffb36b'-'#7a2d0c' -fill '#2a1206' -font DejaVu-Sans -pointsize 120 -gravity center -annotate 0 'A' $F/icons/alex 2>/dev/null \
+            || convert -size 256x256 radial-gradient:'#ffb36b'-'#7a2d0c' $F/icons/alex
+          file $F/icons/alex || true
+          for f in nimbus.desktop hearth-classic.desktop hearth-kde.desktop hearth-gnome.desktop; do
+            sed 's#/usr/local/bin/nimbus-session#/bin/sh#g' hosts/linux/session/$f > $F/sessions/$f
+          done
+          printf 'XKBMODEL="pc105"\nXKBLAYOUT="us,de"\nXKBVARIANT=""\n' > $F/keyboard
+          export HEARTH_GREETER_PASSWD=$F/passwd HEARTH_GREETER_ICONS=$F/icons HEARTH_GREETER_SESSIONS=$F/sessions \
+            HEARTH_GREETER_KEYBOARD=$F/keyboard HEARTH_GREETER_STATE=$F/state.json HEARTH_GREETER_TEST=1 \
+            HEARTH_GREETER_ASSETS="$PWD/os/system_files/usr/share/sddm/themes/hearth" \
+            HEARTH_GREETER_STATUS='{"battery":{"present":true,"percent":76,"charging":false},"wifi":{"present":true,"on":true,"connected":true,"name":"Fireside","signal":82,"wired":false}}'
+          # The stand-in greetd.
+          export GREETD_SOCK=$XDG_RUNTIME_DIR/greetd.sock
+          python3 .github/scripts/fake-greetd.py "$GREETD_SOCK" shots/greetd.log &
+          for i in $(seq 1 20); do [ -S "$GREETD_SOCK" ] && break; sleep 0.25; done
+          # cage on a virtual screen, as hearth-greeter starts it (without the real card and seat).
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 XDG_SESSION_TYPE=wayland
+          cage -s -d -- sh -c 'echo "$WAYLAND_DISPLAY" > /tmp/xdg/wd; exec quickshell -p /tmp/greeter' > shots/greeter.log 2>&1 &
+          echo $! > /tmp/cage.pid
+          for i in $(seq 1 40); do [ -s /tmp/xdg/wd ] && break; sleep 0.25; done
+          export WAYLAND_DISPLAY=$(cat /tmp/xdg/wd)
+          wlr-randr || true
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || wlr-randr --output HEADLESS-1 --mode 1920x1080 || echo "::warning title=Login screen::couldn't set 1920x1080 in cage"
+          sleep 4
+          q() { quickshell ipc -p /tmp/greeter call greeter "$@"; }
+          shot() {   # shot NAME: the screen, as a JPEG small enough for the notices
+            grim shots/$1.png || return 0
+            for qual in 78 68 58 48; do magick shots/$1.png -quality $qual shots/$1.jpg; [ $(stat -c %s shots/$1.jpg) -lt 140000 ] && break; done
+            echo "$1: $(magick identify -format '%wx%h' shots/$1.png) $(stat -c %s shots/$1.jpg) bytes"
+          }
+          waitfor() {   # waitfor PYTHON-EXPRESSION-ON-d (the greeter's state)
+            for i in $(seq 1 40); do s=$(q state 2>/dev/null); python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if ($1) else 1)" "$s" 2>/dev/null && return 0; sleep 0.25; done
+            echo "::error title=Login screen::waited for $1; state: $s"; return 1
+          }
+          fail=0
+          waitfor "d['users'] == 3 and len(d['sessions']) >= 3" || fail=1
+          q state
+          shot 1-users
+          # the controller: arrows (the D-pad through hearth-greeter-pad) move the ring
+          q key right; q key right
+          waitfor "d['focus'].startswith('User ') and d['focus'] != 'User alex'" || fail=1
+          shot 2-controller-focus
+          q pick alex
+          waitfor "d['view'] == 'password' and d['user'] == 'alex'" || fail=1
+          q type hunter2; q caps true
+          shot 3-password
+          q signIn
+          waitfor "d['kind'] == 'wrong' and not d['busy']" || fail=1
+          q caps false
+          shot 4-wrong-password
+          q pick sam; q type guess; q signIn
+          waitfor "d['kind'] == 'locked' and not d['busy']" || fail=1
+          shot 5-account-locked
+          q pick alex
+          q menu session
+          waitfor "d['menu'] == 'session' and d['layer'] == 'menu'" || fail=1
+          q key down
+          shot 6-session-picker
+          q session desktop; q menu ""
+          q menu power
+          waitfor "d['menu'] == 'power'" || fail=1
+          shot 7-power-menu
+          q key enter
+          waitfor "d['power'] == 'sleep' and d['menu'] == ''" || fail=1
+          [ -f $XDG_RUNTIME_DIR/hearth-greeter-ok ] || { echo "::error title=Login screen::the greeter's Sleep didn't leave its mark for the watch"; fail=1; }
+          q osk true
+          waitfor "d['osk'] and d['oskReady']" || fail=1
+          sleep 0.5; q key right; q key right; q key down
+          shot 8-on-screen-keyboard
+          q osk false
+          q menu access; q big true
+          sleep 0.5
+          shot 9-accessibility-big-text
+          q big false; q menu ""
+          [ -f $XDG_RUNTIME_DIR/hearth-greeter-ready ] || { echo "::error title=Login screen::no ready mark (hearth-login-screen's watch would fall back)"; fail=1; }
+          # Signing in: Desktop Mode picked, the right password; the greeter quits once greetd has the session.
+          q type hearth; q signIn
+          for i in $(seq 1 40); do grep -q start_session shots/greetd.log && break; sleep 0.25; done
+          sleep 1
+          cat shots/greetd.log
+          python3 - <<'PY' || fail=1
+          import json
+          ev = [json.loads(l) for l in open('shots/greetd.log')]
+          starts = [e for e in ev if e['event'] == 'start_session']
+          assert starts, 'no start_session'
+          s = starts[-1]
+          assert s['user'] == 'alex' and s['ready'], s
+          assert s['cmd'] == ['/usr/libexec/nimbus/hearth-session-start', 'nimbus.desktop'], s['cmd']
+          for want in ('XDG_SESSION_TYPE=wayland', 'HEARTH_LOGIN_MODE=desktop', 'XDG_CURRENT_DESKTOP=Nimbus', 'XDG_SESSION_DESKTOP=nimbus'):
+              assert want in s['env'], (want, s['env'])
+          answers = [e for e in ev if e['event'] == 'answer']
+          assert [a['right'] for a in answers] == [False, False, True], answers
+          assert 'hearth' not in open('shots/greetd.log').read().replace('hearth-session-start', ''), 'a password in the log'
+          print('::notice title=Login screen::signed in: greetd was asked to start %s with %s' % (s['cmd'], s['env']))
+          PY
+          state=$(cat $F/state.json 2>/dev/null); echo "greeter state: $state"
+          echo "$state" | grep -q '"lastUser":"alex"' || echo "$state" | grep -q '"lastUser": "alex"' || { echo "::error title=Login screen::the last account wasn't remembered"; fail=1; }
+          sleep 1
+          if kill -0 $(cat /tmp/cage.pid) 2>/dev/null; then echo "::error title=Login screen::the greeter didn't quit after greetd took the session"; fail=1; fi
+          if grep -E "ReferenceError|TypeError|is not a type|is not installed|Cannot assign|Type .* unavailable|Error:" shots/greeter.log | grep -v "Binding loop"; then
+            echo "::error title=Login screen QML::$(grep -E 'ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable|Error:' shots/greeter.log | head -5 | tr '\n' '|')"; fail=1
+          fi
+          ls -la shots
+          exit $fail
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: login-greetd-shots
+          path: shots
+
+  # Each picture as notices on its own job (a job takes 50 notices, a step 10).
+  pictures:
+    needs: greeter
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: [1-users, 2-controller-focus, 3-password, 4-wrong-password, 5-account-locked, 6-session-picker, 7-power-menu, 8-on-screen-keyboard, 9-accessibility-big-text]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: login-greetd-shots
+          path: shots
+      - name: Picture (parts 1-10)
+        run: f=shots/${{ matrix.shot }}.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | sed -n '1,10p' | while read -r i part; do echo "::notice title=SHOT login-${{ matrix.shot }} $i::$part"; done || true
+      - name: Picture (parts 11-20)
+        run: f=shots/${{ matrix.shot }}.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | sed -n '11,20p' | while read -r i part; do echo "::notice title=SHOT login-${{ matrix.shot }} $i::$part"; done || true
+      - name: Picture (parts 21-30)
+        run: f=shots/${{ matrix.shot }}.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | sed -n '21,30p' | while read -r i part; do echo "::notice title=SHOT login-${{ matrix.shot }} $i::$part"; done || true
+      - name: Picture (parts 31-40)
+        run: f=shots/${{ matrix.shot }}.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | sed -n '31,40p' | while read -r i part; do echo "::notice title=SHOT login-${{ matrix.shot }} $i::$part"; done || true

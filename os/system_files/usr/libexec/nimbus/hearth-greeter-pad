@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 """hearth-greeter-pad: the controller works on Hearth's login screen.
 
-While the login screen (sddm-greeter, or Plasma Login Manager's greeter) is up, controller buttons become keys for it: the D-pad and left stick
-are the arrow keys, A is Enter, B is Backspace, Start is Enter, Y clears. Nothing happens at any other time
+While the login screen (sddm-greeter, Plasma Login Manager's greeter, or Hearth's own in cage) is up, controller buttons become keys for it: the D-pad and left stick
+are the arrow keys, A is Enter, B is Backspace, Start is Enter, Y clears, X is Tab (Hearth's own login screen: the
+on-screen keyboard; SDDM's theme ignores it). Nothing happens at any other time
 (Hearth reads the controller itself once you're signed in). Runs as a system service (hearth-greeter-pad).
 """
 import os
@@ -16,7 +17,7 @@ try:
 except ImportError:
     sys.exit(0)
 
-KEYS = {e.BTN_SOUTH: e.KEY_ENTER, e.BTN_EAST: e.KEY_BACKSPACE, e.BTN_NORTH: e.KEY_ESC, e.BTN_START: e.KEY_ENTER,
+KEYS = {e.BTN_SOUTH: e.KEY_ENTER, e.BTN_EAST: e.KEY_BACKSPACE, e.BTN_NORTH: e.KEY_ESC, e.BTN_START: e.KEY_ENTER, e.BTN_WEST: e.KEY_TAB,
         e.BTN_DPAD_UP: e.KEY_UP, e.BTN_DPAD_DOWN: e.KEY_DOWN, e.BTN_DPAD_LEFT: e.KEY_LEFT, e.BTN_DPAD_RIGHT: e.KEY_RIGHT,
         e.BTN_TL: e.KEY_LEFT, e.BTN_TR: e.KEY_RIGHT}
 HAT = {(e.ABS_HAT0X, -1): e.KEY_LEFT, (e.ABS_HAT0X, 1): e.KEY_RIGHT, (e.ABS_HAT0Y, -1): e.KEY_UP, (e.ABS_HAT0Y, 1): e.KEY_DOWN}
@@ -30,9 +31,10 @@ def greeter_up():
             continue
         try:
             with open(f'/proc/{pid}/comm') as f:
-                # SDDM's greeter (Bazzite), or Plasma Login Manager's (Hearth OS on Anatase); /proc's names stop at
+                # SDDM's greeter (Bazzite), or Plasma Login Manager's (Hearth OS on Anatase), or cage running
+                # Hearth's own login screen (1.14, greetd; nothing else in Hearth runs cage); /proc's names stop at
                 # 15 characters. Not the login managers themselves: they stay running during the session.
-                if f.read().strip().startswith(('sddm-greeter', 'plasmalogin-gre', 'plasma-login-gr')):
+                if f.read().strip().startswith(('sddm-greeter', 'plasmalogin-gre', 'plasma-login-gr', 'cage')):
                     return True
         except OSError:
             pass

@@ -1,0 +1,199 @@
+#!/usr/bin/python3
+"""greeter-info: what Hearth's login screen shows, read only (it runs as the greeter's account and writes nothing).
+
+  greeter-info info      the accounts (name, full name, picture), the sessions, the keyboard layouts, the screen reader
+  greeter-info status    battery and Wi-Fi
+  greeter-info caps      whether Caps Lock is on (the keyboards' LEDs)
+
+Test folders (CI): HEARTH_GREETER_PASSWD, HEARTH_GREETER_ICONS, HEARTH_GREETER_SESSIONS (folders, colon separated),
+HEARTH_GREETER_KEYBOARD, HEARTH_GREETER_STATUS (a JSON answer for status), HEARTH_GREETER_LEDS.
+"""
+import glob
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+
+PASSWD = os.environ.get('HEARTH_GREETER_PASSWD', '/etc/passwd')
+ICONS = os.environ.get('HEARTH_GREETER_ICONS', '/var/lib/AccountsService/icons')
+SESSIONS = [d for d in os.environ.get('HEARTH_GREETER_SESSIONS', '/usr/share/wayland-sessions:/usr/local/share/wayland-sessions').split(':') if d]
+KEYBOARD = os.environ.get('HEARTH_GREETER_KEYBOARD', '/etc/default/keyboard')
+LEDS = os.environ.get('HEARTH_GREETER_LEDS', '/sys/class/leds')
+NO_SHELLS = ('nologin', 'false', 'sync', 'halt', 'shutdown')
+# Hearth's own session file is shown as three choices; Hearth Classic (the same Mantel) isn't listed again.
+HEARTH = 'nimbus.desktop'
+SKIP = {'hearth-classic.desktop', 'hearth-plasma.desktop', 'hearth-cosmic.desktop'}
+
+
+def users():
+    out = []
+    try:
+        with open(PASSWD, encoding='utf-8', errors='replace') as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        p = line.split(':')
+        if len(p) < 7:
+            continue
+        name, uid, gecos, shell = p[0], p[2], p[4], p[6]
+        try:
+            uid = int(uid)
+        except ValueError:
+            continue
+        if uid < 1000 or uid >= 60000 or os.path.basename(shell) in NO_SHELLS:
+            continue
+        pic = os.path.join(ICONS, name)
+        out.append({'name': name, 'real': gecos.split(',')[0].strip() or name,
+                    'picture': pic if os.path.isfile(pic) and os.access(pic, os.R_OK) else ''})
+    return out
+
+
+def entry(path):
+    vals, section = {}, ''
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                s = line.strip()
+                if s.startswith('[') and s.endswith(']'):
+                    section = s[1:-1]
+                elif section == 'Desktop Entry' and '=' in s and not s.startswith('#'):
+                    k, v = s.split('=', 1)
+                    vals.setdefault(k.strip(), v.strip())
+    except OSError:
+        return None
+    return vals
+
+
+def tryexec_ok(v):
+    t = v.get('TryExec', '')
+    if not t:
+        return True
+    return os.access(t, os.X_OK) if t.startswith('/') else shutil.which(t) is not None
+
+
+def sessions():
+    found, seen = [], set()
+    for d in SESSIONS:
+        for path in sorted(glob.glob(os.path.join(d, '*.desktop'))):
+            name = os.path.basename(path)
+            if name in seen:
+                continue
+            seen.add(name)
+            v = entry(path)
+            if not v or v.get('Hidden', '').lower() == 'true' or v.get('NoDisplay', '').lower() == 'true':
+                continue
+            if not tryexec_ok(v):
+                continue
+            found.append((name, v))
+    out = []
+    names = {n for n, _ in found}
+    if HEARTH in names:
+        v = dict(found)[HEARTH]
+        dn = v.get('DesktopNames', 'Nimbus').strip(';').replace(';', ':')
+        out += [
+            {'id': 'hearth', 'file': HEARTH, 'mode': '', 'names': dn, 'name': 'Hearth', 'sub': 'Starts where you chose (Settings › Gaming › Start in)'},
+            {'id': 'game', 'file': HEARTH, 'mode': 'game', 'names': dn, 'name': 'Game Mode', 'sub': 'Steam Game Mode, or the Game Mode you picked'},
+            {'id': 'desktop', 'file': HEARTH, 'mode': 'desktop', 'names': dn, 'name': 'Desktop Mode', 'sub': 'Mantel, Hearth\'s desktop'},
+        ]
+    for name, v in found:
+        if name == HEARTH or name in SKIP:
+            continue
+        out.append({'id': name[:-8], 'file': name, 'mode': '', 'names': v.get('DesktopNames', '').strip(';').replace(';', ':'),
+                    'name': v.get('Name', name[:-8]), 'sub': v.get('Comment', '')})
+    return out
+
+
+def layouts():
+    try:
+        with open(KEYBOARD, encoding='utf-8', errors='replace') as f:
+            text = f.read()
+    except OSError:
+        return ['us']
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('XKBLAYOUT='):
+            try:
+                v = ' '.join(shlex.split(s.split('=', 1)[1]))
+            except ValueError:
+                v = s.split('=', 1)[1].strip('"\'')
+            return [x.strip() for x in v.split(',') if x.strip()] or ['us']
+    return ['us']
+
+
+def battery():
+    for d in sorted(glob.glob('/sys/class/power_supply/*')):
+        try:
+            with open(os.path.join(d, 'type')) as f:
+                if f.read().strip() != 'Battery':
+                    continue
+            with open(os.path.join(d, 'capacity')) as f:
+                cap = int(f.read().strip())
+            status = ''
+            try:
+                with open(os.path.join(d, 'status')) as f:
+                    status = f.read().strip()
+            except OSError:
+                pass
+            return {'present': True, 'percent': cap, 'charging': status in ('Charging', 'Full')}
+        except (OSError, ValueError):
+            continue
+    return {'present': False}
+
+
+def wifi():
+    has = any(os.path.isdir(os.path.join(d, 'wireless')) for d in glob.glob('/sys/class/net/*'))
+    out = {'present': has, 'on': False, 'connected': False, 'name': '', 'signal': 0, 'wired': False}
+    if not shutil.which('nmcli'):
+        return out
+    try:
+        r = subprocess.run(['nmcli', '-t', '-f', 'WIFI', 'general'], capture_output=True, text=True, timeout=5)
+        out['on'] = r.stdout.strip() == 'enabled'
+        r = subprocess.run(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device'], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            p = line.split(':')
+            if len(p) >= 3 and p[1] == 'connected':
+                if p[0] == 'wifi':
+                    out['connected'], out['name'] = True, p[2]
+                elif p[0] == 'ethernet':
+                    out['wired'] = True
+        if out['connected']:
+            r = subprocess.run(['nmcli', '-t', '-f', 'ACTIVE,SIGNAL', 'device', 'wifi'], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.splitlines():
+                if line.startswith('yes:'):
+                    out['signal'] = int(line.split(':')[1] or 0)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    return out
+
+
+def caps():
+    for p in glob.glob(os.path.join(LEDS, '*::capslock', 'brightness')):
+        try:
+            with open(p) as f:
+                if f.read().strip() not in ('', '0'):
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'info'
+    if cmd == 'info':
+        print(json.dumps({'users': users(), 'sessions': sessions(), 'layouts': layouts(),
+                          'screenReader': bool(shutil.which('orca'))}))
+    elif cmd == 'status':
+        fake = os.environ.get('HEARTH_GREETER_STATUS')
+        print(fake if fake else json.dumps({'battery': battery(), 'wifi': wifi()}))
+    elif cmd == 'caps':
+        print(json.dumps({'caps': caps()}))
+    else:
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

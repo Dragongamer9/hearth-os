@@ -1,0 +1,619 @@
+#!/usr/bin/python3
+"""hearth-login-screen: Hearth's own login screen (greetd + Hearth's greeter), with SDDM always there to fall back to.
+
+1.14, a test (off unless you turn it on: Settings › Accounts › Sign-in options › Hearth's own login screen). SDDM stays
+the display manager: display-manager.service keeps pointing at sddm.service and nothing here ever changes that link.
+Instead, each start decides which of the two runs, and anything that goes wrong means SDDM:
+
+  hearth-login-select.service (before either login screen) runs `select`. Only when everything below holds does it
+  write /run/hearth/login-greetd (/run is empty at every start, so a start where this didn't run, or failed, or took
+  too long, has no such file):
+    - you turned it on (/etc/hearth/login-screen.json {"screen": "hearth"}; only `on` and `off` write it, through
+      hearth_settings_io: atomic, .bak, merged);
+    - it isn't paused after failing twice in a row (/var/lib/hearth/login-screen-state.json, see below);
+    - not the live or Recovery USB, no hearth.login=sddm or hearth.clean on the boot line, no multi-seat;
+    - greetd, cage, Quickshell, the greeter, its account (_greetd) and greetd's PAM file are all there;
+    - automatic sign-in (what nimbus-autologin wrote for SDDM, the one source of truth) names a Wayland session.
+  sddm.service has a drop-in (ConditionPathExists=!/run/hearth/login-greetd): without the file SDDM starts as before.
+  hearth-greetd.service only starts with it (ConditionPathExists=/run/hearth/login-greetd). The two never Conflict=
+  each other (conflicting jobs in one boot transaction could drop graphical.target); the file decides.
+
+  greetd's settings are written at every start into /run/hearth/greetd.toml (never /etc): the greeter
+  (/usr/libexec/nimbus/hearth-greeter, as _greetd), and with automatic sign-in on, greetd's initial_session for the
+  same account and session SDDM would sign into (Relogin=true: hearth-session-start --relogin signs in again when the
+  session ends, as SDDM does).
+
+  Falling back (`fallback`, run by hearth-login-fallback.service from hearth-greetd.service's OnFailure=, and by
+  `watch`): greetd failed to start, the greeter crashed (greetd ends when its greeter exits without a session), or
+  hearth-login-watch.service saw neither the greeter on screen (it writes $XDG_RUNTIME_DIR/hearth-greeter-ready) nor
+  an automatic sign-in within 60 s. Then: the file is removed, greetd stopped, SDDM started; once per start. Not
+  while the PC is shutting down.
+  A start that showed the greeter but ended without anyone signing in and without the greeter's own Restart / Shut
+  down / Sleep or a clean shutdown (a black screen someone held the power button on) counts as a failure at the next
+  start. Two failures in a row: paused, SDDM at every start until you turn it on again (Settings: "Turn on again"),
+  and you're told after you sign in (hearth-login-notice, a user service: `notice`). Any sign-in through it resets
+  the count. Your setting itself is never changed by any of this.
+
+Commands:
+  status                     what's set, what this start uses and why (JSON; anyone)
+  on | off                   the setting (root: Settings runs it through pkexec; takes effect at the next start)
+  preview                    the greeter in a window in your session, signing in off (anyone)
+  notice                     tell the person once about a fallback (the user service)
+  select | watch | fallback WHY | run-greetd     the start-up steps (systemd only)
+Python standard library only (and hearth_settings_io, next to Mantel's shell).
+"""
+import fcntl
+import json
+import os
+import pwd
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+ROOT = os.environ.get('HEARTH_LOGIN_ROOT', '')     # tests: every path below lives under this folder
+
+
+def P(path):
+    return ROOT + path
+
+
+SETTINGS_IO_DIR = os.environ.get('HEARTH_SETTINGS_IO_DIR', '/usr/share/nimbus/desktop/shell')
+SETTING = P('/etc/hearth/login-screen.json')
+STATE = P('/var/lib/hearth/login-screen-state.json')
+RUN = P('/run/hearth')
+FLAG = RUN + '/login-greetd'
+MODE = RUN + '/login-mode.json'
+GREETD_CONF = RUN + '/greetd.toml'
+FELL_BACK = RUN + '/login-fell-back'
+LOCK = RUN + '/.login-screen.lock'
+SDDM_CONF_DIRS = [P('/usr/lib/sddm/sddm.conf.d'), P('/etc/sddm.conf.d')]
+SDDM_MAIN = P('/etc/sddm.conf')
+SESSION_DIRS = [P('/usr/share/wayland-sessions'), P('/usr/local/share/wayland-sessions')]
+XSESSION_DIRS = [P('/usr/share/xsessions'), P('/usr/local/share/xsessions')]
+GREETER_USER = '_greetd'
+GREETER = '/usr/libexec/nimbus/hearth-greeter'
+SESSION_START = '/usr/libexec/nimbus/hearth-session-start'
+GREETER_DIR = '/usr/share/hearth/greeter'
+GREETD_BINS = ['/usr/sbin/greetd', '/usr/bin/greetd']
+CAGE_BINS = ['/usr/bin/cage']
+QUICKSHELL_BINS = ['/usr/bin/quickshell', '/usr/local/bin/quickshell']
+PAM_FILE = P('/etc/pam.d/greetd')
+CMDLINE = P('/proc/cmdline')
+BOOT_ID = P('/proc/sys/kernel/random/boot_id')
+LIVE_MARKS = [P('/etc/hearth-live'), P('/etc/hearth-recovery')]
+SEATS = P('/etc/hearth/seats.json')
+SESSIONS_RUN = P('/run/systemd/sessions')
+USER_RUN = P('/run/user')
+SYSTEMCTL = os.environ.get('HEARTH_LOGIN_SYSTEMCTL', 'systemctl')
+TIMEOUT = int(os.environ.get('HEARTH_LOGIN_TIMEOUT', '60'))
+MAX_FAILS = 2
+VT = 7
+UNIT = 'hearth-greetd.service'
+SDDM_UNIT = 'sddm.service'
+
+
+def log(msg):
+    print('hearth-login-screen: ' + msg, file=sys.stderr, flush=True)
+
+
+def sio():
+    if SETTINGS_IO_DIR not in sys.path:
+        sys.path.insert(0, SETTINGS_IO_DIR)
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+def now():
+    return time.strftime('%Y-%m-%dT%H:%M:%S')
+
+
+def boot_id():
+    try:
+        with open(BOOT_ID) as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def read_json(path):
+    """Read only (never repairs or writes: for status and the user's notice)."""
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def first(paths):
+    for p in paths:
+        if os.path.isfile(P(p)) and os.access(P(p), os.X_OK):
+            return p
+    return ''
+
+
+def write_run(path, text, mode=0o644):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = '%s.%d.tmp' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def rm(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def write_mode(mode, why, **extra):
+    d = {'mode': mode, 'why': why, 'at': now(), 'boot': boot_id()}
+    d.update(extra)
+    try:
+        write_run(MODE, json.dumps(d) + '\n')
+    except OSError as e:
+        log('could not write %s: %s' % (MODE, e))
+    log('this start: %s (%s)' % ('Hearth\'s login screen' if mode == 'greetd' else 'SDDM', why))
+
+
+def setting_on():
+    try:
+        return sio().load_json(SETTING, {}).get('screen') == 'hearth'
+    except Exception as e:        # unreadable helper or file: SDDM
+        log('setting not readable (%s): SDDM' % e)
+        return False
+
+
+def update_state(change):
+    return sio().update_json(STATE, change)
+
+
+# ------------------------------------------------------------------ SDDM's automatic sign-in (nimbus-autologin)
+def _ini_autologin(path, into):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return
+    section = ''
+    for line in lines:
+        s = line.strip()
+        if not s or s[0] in '#;':
+            continue
+        if s.startswith('[') and s.endswith(']'):
+            section = s[1:-1].strip()
+            continue
+        if section == 'Autologin' and '=' in s:
+            k, v = s.split('=', 1)
+            into[k.strip()] = v.strip()
+
+
+def sddm_autologin():
+    """SDDM's [Autologin] as SDDM reads it: its conf.d folders (the system's, then /etc's, each in name order; the
+    later file wins) and /etc/sddm.conf over all of them. (user, session, relogin) or None."""
+    vals = {}
+    for d in SDDM_CONF_DIRS:
+        try:
+            names = sorted(n for n in os.listdir(d) if n.endswith('.conf'))
+        except OSError:
+            continue
+        for n in names:
+            _ini_autologin(os.path.join(d, n), vals)
+    _ini_autologin(SDDM_MAIN, vals)
+    user = vals.get('User', '')
+    if not user:
+        return None
+    return user, vals.get('Session', ''), vals.get('Relogin', 'false').lower() == 'true'
+
+
+def find_session(name):
+    """('wayland', path) / ('x11', path) / (None, '') for a session file name such as nimbus.desktop."""
+    if not name:
+        return None, ''
+    if not name.endswith('.desktop'):
+        name += '.desktop'
+    if '/' in name:
+        return None, ''
+    for d in SESSION_DIRS:
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return 'wayland', p
+    for d in XSESSION_DIRS:
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return 'x11', p
+    return None, ''
+
+
+def toml_str(s):
+    return json.dumps(s, ensure_ascii=False)
+
+
+class Problem(Exception):
+    pass
+
+
+def greetd_config(auto):
+    out = ['# Hearth: written by hearth-login-screen at every start (not a setting; /run is empty at the next one).',
+           '[terminal]', 'vt = %d' % VT, '',
+           '[default_session]', 'command = ' + toml_str(GREETER), 'user = ' + toml_str(GREETER_USER), '']
+    if auto:
+        user, session, relogin = auto
+        try:
+            pwd.getpwnam(user)
+        except KeyError:
+            raise Problem('automatic sign-in names an account that isn\'t there (%s)' % user)
+        kind, _ = find_session(session)
+        if kind == 'x11':
+            raise Problem('automatic sign-in starts an X11 session (%s)' % session)
+        if kind is None:
+            raise Problem('automatic sign-in names a session that isn\'t there (%s)' % (session or 'none'))
+        cmd = [SESSION_START] + (['--relogin'] if relogin else []) + [os.path.basename(session if session.endswith('.desktop') else session + '.desktop')]
+        out += ['[initial_session]', 'command = ' + toml_str(shlex.join(cmd)), 'user = ' + toml_str(user), '']
+    return '\n'.join(out)
+
+
+def cmdline_words():
+    try:
+        with open(CMDLINE) as f:
+            return f.read().split()
+    except OSError:
+        return []
+
+
+def requirements():
+    """'' when Hearth's login screen can start here, else why not (plain words)."""
+    for m in LIVE_MARKS:
+        if os.path.exists(m):
+            return 'the live or Recovery USB uses its own sign-in'
+    words = cmdline_words()
+    if 'hearth.login=sddm' in words:
+        return 'hearth.login=sddm is on the boot line'
+    if any(w == 'hearth.clean' or w.startswith('hearth.clean=') for w in words):
+        return 'a clean start (hearth.clean)'
+    if os.path.exists(SEATS):
+        return 'more than one seat is set up (SDDM runs those)'
+    if not first(GREETD_BINS):
+        return 'greetd isn\'t installed'
+    if not first(CAGE_BINS):
+        return 'cage isn\'t installed'
+    if not first(QUICKSHELL_BINS):
+        return 'Quickshell isn\'t installed'
+    for p in (GREETER, SESSION_START):
+        if not first([p]):
+            return '%s is missing' % p
+    if not os.path.isfile(P(GREETER_DIR + '/shell.qml')):
+        return 'the greeter\'s files are missing'
+    if not os.path.isfile(PAM_FILE):
+        return 'greetd\'s PAM file is missing'
+    try:
+        pwd.getpwnam(GREETER_USER)
+    except KeyError:
+        return 'the greeter\'s account (%s) isn\'t there' % GREETER_USER
+    return ''
+
+
+# ------------------------------------------------------------------ the start-up steps
+def count_failure(st, why, boot):
+    st['failures'] = int(st.get('failures') or 0) + 1
+    st['last'] = {'at': now(), 'boot': boot, 'why': why}
+    st.pop('pending', None)
+    if st['failures'] >= MAX_FAILS:
+        st['tripped'] = True
+        st['trippedAt'] = st['last']['at']
+    return st
+
+
+def cmd_select():
+    for p in (FLAG, GREETD_CONF, FELL_BACK):
+        rm(p)
+    boot = boot_id()
+    if not setting_on():
+        # Off: nothing to count, nothing pending.
+        if os.path.exists(STATE):
+            update_state(lambda st: st.pop('pending', None) and None)
+        write_mode('sddm', 'Hearth\'s login screen is off')
+        return 0
+
+    def previous(st):
+        p = st.get('pending')
+        if isinstance(p, dict) and p.get('boot') and p.get('boot') != boot:
+            why = ('the last start with Hearth\'s login screen ended before anyone signed in' if p.get('shown')
+                   else 'Hearth\'s login screen didn\'t show at the last start')
+            count_failure(st, why, p.get('boot'))
+        return st
+    st = update_state(previous)
+    if st.get('tripped'):
+        write_mode('sddm', 'paused: Hearth\'s login screen didn\'t work twice in a row', tripped=True)
+        return 0
+    problem = requirements()
+    if problem:
+        write_mode('sddm', problem)
+        return 0
+    try:
+        conf = greetd_config(sddm_autologin())
+    except Problem as e:
+        write_mode('sddm', str(e))
+        return 0
+    write_run(GREETD_CONF, conf + '\n')
+    update_state(lambda st: st.__setitem__('pending', {'boot': boot, 'at': now(), 'shown': False}))
+    write_mode('greetd', 'turned on in Settings')
+    write_run(FLAG, now() + '\n')       # last: until here, SDDM
+    return 0
+
+
+def systemctl(*args, timeout=30):
+    try:
+        r = subprocess.run([SYSTEMCTL] + list(args), capture_output=True, text=True, timeout=timeout)
+        return r.returncode, (r.stdout or '').strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, str(e)
+
+
+def shutting_down():
+    _, out = systemctl('is-system-running', timeout=10)
+    if out.splitlines()[:1] == ['stopping']:
+        return True
+    _, jobs = systemctl('list-jobs', '--no-legend', timeout=10)
+    return any(t in jobs for t in ('shutdown.target', 'reboot.target', 'poweroff.target', 'halt.target', 'kexec.target'))
+
+
+class locked:
+    def __enter__(self):
+        os.makedirs(RUN, exist_ok=True)
+        self.fd = os.open(LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *a):
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
+
+
+def cmd_fallback(why):
+    with locked():
+        if shutting_down():
+            log('shutting down: no fallback (%s)' % why)
+            return 0
+        if os.path.exists(FELL_BACK):
+            systemctl('start', '--no-block', SDDM_UNIT)
+            return 0
+        write_run(FELL_BACK, why + '\n')
+        boot = boot_id()
+        st = update_state(lambda s: count_failure(s, why, boot))
+        rm(FLAG)
+        write_mode('sddm', 'fell back: ' + why, fellBack=True, tripped=bool(st.get('tripped')))
+        systemctl('stop', UNIT, timeout=40)
+        rc, out = systemctl('start', '--no-block', SDDM_UNIT)
+        log('SDDM started instead (%s)%s' % (why, '' if rc == 0 else ': systemctl said ' + out))
+        if st.get('tripped'):
+            log('paused after %d failures in a row: SDDM until it\'s turned on again' % st.get('failures', 0))
+    return 0
+
+
+def mark_good(why):
+    def ok(st):
+        st['failures'] = 0
+        st.pop('pending', None)
+        st['lastGood'] = {'at': now(), 'boot': boot_id(), 'why': why}
+        return st
+    update_state(ok)
+    log('working: ' + why)
+
+
+def greeter_runtime():
+    try:
+        return os.path.join(USER_RUN, str(pwd.getpwnam(GREETER_USER).pw_uid))
+    except KeyError:
+        return ''
+
+
+def signed_in_through_greetd():
+    """A user session (not the greeter's) that greetd opened, from logind's own records."""
+    try:
+        names = os.listdir(SESSIONS_RUN)
+    except OSError:
+        return False
+    for n in names:
+        if n.endswith('.ref'):
+            continue
+        vals = {}
+        try:
+            with open(os.path.join(SESSIONS_RUN, n)) as f:
+                for line in f:
+                    if '=' in line:
+                        k, v = line.rstrip('\n').split('=', 1)
+                        vals[k] = v
+        except OSError:
+            continue
+        if vals.get('SERVICE', '').startswith('greetd') and vals.get('CLASS') == 'user':
+            return True
+    return False
+
+
+def cmd_watch(poll=1.0):
+    start = time.monotonic()
+    shown = [False]
+
+    def stop(*_):
+        if shown[0]:
+            mark_good('shut down cleanly with the greeter up')
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, stop)
+    rt = greeter_runtime()
+    while True:
+        if not os.path.exists(FLAG):
+            return 0
+        if signed_in_through_greetd():
+            mark_good('signed in')
+            return 0
+        if rt and os.path.exists(os.path.join(rt, 'hearth-greeter-ok')):
+            mark_good('the greeter\'s Restart, Shut down or Sleep')
+            return 0
+        if not shown[0] and rt and os.path.exists(os.path.join(rt, 'hearth-greeter-ready')):
+            shown[0] = True
+
+            def seen(st):
+                if isinstance(st.get('pending'), dict):
+                    st['pending']['shown'] = True
+                return st
+            update_state(seen)
+            write_mode('greetd', 'turned on in Settings', shown=True)
+        elapsed = time.monotonic() - start
+        if elapsed > 3:
+            _, state = systemctl('is-active', UNIT, timeout=10)
+            if state in ('failed', 'inactive'):
+                return cmd_fallback('greetd stopped (%s)' % state)
+        if not shown[0] and elapsed > TIMEOUT:
+            return cmd_fallback('it didn\'t show within %d s' % TIMEOUT)
+        time.sleep(poll if not shown[0] else poll * 2)
+
+
+def cmd_run_greetd():
+    exe = first(GREETD_BINS)
+    if not exe or not os.path.isfile(GREETD_CONF):
+        log('greetd or its settings are missing: SDDM')
+        return 1
+    os.execv(P(exe), [exe, '--config', GREETD_CONF])
+
+
+# ------------------------------------------------------------------ Settings
+def cmd_status():
+    st = read_json(STATE)
+    mode = read_json(MODE)
+    problem = requirements()
+    auto = None
+    try:
+        a = sddm_autologin()
+        auto = {'user': a[0], 'session': a[1], 'relogin': a[2]} if a else None
+    except Exception:
+        pass
+    setting = read_json(SETTING).get('screen') or 'sddm'
+    print(json.dumps({
+        'on': setting == 'hearth', 'setting': setting,
+        'thisStart': mode.get('mode') or 'sddm', 'why': mode.get('why') or '', 'fellBack': bool(mode.get('fellBack')),
+        'tripped': bool(st.get('tripped')), 'failures': int(st.get('failures') or 0), 'last': st.get('last'),
+        'canStart': problem == '', 'cannot': problem, 'autologin': auto,
+    }))
+    return 0
+
+
+def cmd_set(on):
+    if os.geteuid() != 0 and not ROOT:
+        print('error: run through pkexec')
+        return 1
+    io = sio()
+    io.merge_json(SETTING, {'screen': 'hearth' if on else 'sddm'})
+    if on:
+        # Turning it on (again) starts the count over and lifts a pause.
+        def again(st):
+            for k in ('tripped', 'trippedAt', 'pending'):
+                st.pop(k, None)
+            st['failures'] = 0
+            return st
+        io.update_json(STATE, again)
+    print(json.dumps({'ok': True, 'on': on, 'applies': 'next start'}))
+    return 0
+
+
+def cmd_preview():
+    qs = shutil.which('quickshell')
+    if not qs:
+        print('error: Quickshell isn\'t installed')
+        return 1
+    env = dict(os.environ, HEARTH_GREETER_PREVIEW='1')
+    env.pop('GREETD_SOCK', None)
+    subprocess.Popen([qs, '-p', os.environ.get('HEARTH_GREETER_DIR', GREETER_DIR)], env=env, start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(json.dumps({'ok': True}))
+    return 0
+
+
+def notice_text(st):
+    if st.get('tripped'):
+        return ('Hearth\'s login screen didn\'t work twice in a row (%s), so the usual login screen is back at every '
+                'start. Settings › Accounts › Sign-in options › Turn on again tries it again.' % ((st.get('last') or {}).get('why') or 'no reason given'))
+    return ('Hearth\'s login screen didn\'t work at this start (%s), so the usual login screen was used. It\'s tried '
+            'again at the next start.' % ((st.get('last') or {}).get('why') or 'no reason given'))
+
+
+def cmd_notice(tries=40, wait=15):
+    st = read_json(STATE)
+    last = st.get('last') or {}
+    if not last.get('at'):
+        return 0
+    mode = read_json(MODE)
+    if not (st.get('tripped') or mode.get('fellBack')):
+        return 0
+    seen_dir = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state'), 'nimbus')
+    seen = os.path.join(seen_dir, 'login-screen-notice-seen')
+    ev = '%s %s' % (last.get('at'), 'tripped' if st.get('tripped') else 'fell-back')
+    try:
+        with open(seen) as f:
+            if f.read().strip() == ev:
+                return 0
+    except OSError:
+        pass
+    text = notice_text(st)
+    try:
+        sio().log_event('notice: ' + text)
+    except Exception:
+        pass
+    for _ in range(tries):     # a notification server may come up a bit after signing in (Desktop Mode)
+        if shutil.which('notify-send'):
+            try:
+                r = subprocess.run(['notify-send', '-a', 'Hearth', '-u', 'normal', 'Login screen', text],
+                                   capture_output=True, timeout=20)
+                if r.returncode == 0:
+                    break
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        time.sleep(wait)
+    try:
+        os.makedirs(seen_dir, exist_ok=True)
+        write_run(seen, ev + '\n')
+    except OSError:
+        pass
+    return 0
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'status':
+        return cmd_status()
+    if cmd in ('on', 'off') and len(argv) == 2:
+        return cmd_set(cmd == 'on')
+    if cmd == 'preview':
+        return cmd_preview()
+    if cmd == 'notice':
+        return cmd_notice()
+    if cmd in ('select', 'watch', 'fallback', 'run-greetd'):
+        # The start-up steps run from systemd only (pkexec's rule allows on/off only, too).
+        if not os.environ.get('INVOCATION_ID') and not ROOT:
+            print('error: %s runs from systemd' % cmd)
+            return 1
+        if cmd == 'select':
+            try:
+                return cmd_select()
+            except Exception as e:     # anything at all: SDDM (no file written)
+                rm(FLAG)
+                write_mode('sddm', 'error: %s' % e)
+                return 0
+        if cmd == 'watch':
+            return cmd_watch()
+        if cmd == 'fallback':
+            return cmd_fallback(' '.join(argv[2:]) or 'greetd failed')
+        return cmd_run_greetd()
+    print('usage: hearth-login-screen status | on | off | preview | notice')
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

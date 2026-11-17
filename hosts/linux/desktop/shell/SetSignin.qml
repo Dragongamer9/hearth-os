@@ -71,6 +71,9 @@ SetPage {
         onToggled: v => page.runAdmin(["autologin", v ? "on" : "off"], "", "autologin", () => page.say(v ? "Hearth will sign you in automatically." : "The login screen will show at start."))
     }
 
+    // Hearth's own login screen (1.14, a test): its own block (LoginScreenSwitch.qml), so the Users / Login screen pages can take it as it is.
+    LoginScreenSwitch { visible: page.canAdmin }
+
     SetSwitch {
         icon: "lock"; title: "Ask for my password after sleep"; sub: "Locked when it wakes, on the desktop and in Game Mode. Lock any time with Super+L or the power menu."
         checked: Settings.lockOnWake
