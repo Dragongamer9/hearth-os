@@ -19,7 +19,8 @@ PanelWindow {
     readonly property var items: (notice.what === "kwin" && notice.kind === "twice"
             ? [{ icon: "check", label: "Use KWin again", sub: "From the next time Desktop Mode starts", cmd: "kwin" },
                { icon: "close", label: "Stay on labwc", sub: "Settings › System › Your desktop changes it any time", cmd: "" }]
-            : [{ icon: "check", label: "Got it", sub: notice.what === "kwin" ? "Mantel works the same on labwc" : "Mantel is your desktop", cmd: "" }])
+            : [{ icon: "check", label: "Got it", sub: notice.what === "kwin" ? "Mantel works the same on labwc"
+                   : notice.what === "kwin-lock" ? "The screen won't lock until it's fixed" : "Mantel is your desktop", cmd: "" }])
         .concat([{ icon: "desktops", label: "Open Your desktop in Settings", sub: "Settings › System › Your desktop", cmd: "settings" }])
     function pick(i) {
         shown = false;

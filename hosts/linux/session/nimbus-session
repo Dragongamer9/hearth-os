@@ -522,9 +522,19 @@ run_kwin() {
   echo "--- $(date '+%F %T') Desktop Mode (KWin)" >>"$KWIN_LOG"
   auto="$SHARE/desktop/kwin/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
   rm -f "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed" "$RUN/hearth-kwin-inverted"
+  # The lock guard (red flag 2: never a lockout): without Hearth's lock screen, KWin runs without its screen locker
+  # (--no-lockscreen) and Lock.qml says why it won't lock. Images never get here (their build fails when
+  # hearth-lockcheck --as-kwin does). The person is told once, through Hearth's own notice (DesktopNotice.qml, not a
+  # notification Do not disturb could hide); told again if it breaks again after working.
   lock=--no-lockscreen
-  if kwin_lock_ready; then lock=""; log "kwin: Hearth's lock screen is there; KWin's screen locker on"
-  else log "kwin: Hearth's lock screen isn't there; KWin without its screen locker (--no-lockscreen)"; fi
+  if kwin_lock_ready; then lock=""; log "kwin: Hearth's lock screen is there; KWin's screen locker on"; rm -f "$DESK_STATE/kwin-lock-off-told"
+  else
+    why=$(kwin_lock_why)
+    log "kwin: Hearth's lock screen isn't there ($why); KWin without its screen locker (--no-lockscreen)"
+    if [ -z "$HEARTH_SEAT" ] && [ ! -e "$DESK_STATE/kwin-lock-off-told" ]; then
+      mkdir -p "$DESK_STATE"; : >"$DESK_STATE/kwin-lock-off-told"; desk_notice kwin-lock "$why"
+    fi
+  fi
   (
     unset LABWC_PID WLR_NO_HARDWARE_CURSORS
     if [ -f "$CONF/environment" ]; then
@@ -546,7 +556,15 @@ run_kwin() {
     [ -z "$lock" ] && export PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock
     # $lock: --no-lockscreen unless Hearth's lock screen is there (kwin_lock_ready).
     # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland $3 $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto" "$lock"
+    # Right before KWin starts, the environment it gets goes to $XDG_RUNTIME_DIR/hearth/kwin.env (env -0, mode 600 in a
+    # 700 folder, written whole then moved in place): hearth-lockcheck reads it when KWin's own /proc environ can't be
+    # read (KWin's file capability). A failed write never stops KWin: it's logged, and Lock.qml then won't lock.
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID
+      d="${XDG_RUNTIME_DIR:-/tmp}/hearth"
+      if ! ( umask 077; mkdir -p "$d" && chmod 700 "$d" && env -0 >"$d/kwin.env.tmp" && mv -f "$d/kwin.env.tmp" "$d/kwin.env" ) 2>/dev/null; then
+        rm -f "$d/kwin.env.tmp" 2>/dev/null; echo "nimbus-session: couldn'"'"'t write $d/kwin.env (the lock check will say so)" >&2
+      fi
+      exec "$1" --xwayland $3 $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto" "$lock"
   ) >>"$KWIN_LOG" 2>&1 &
   kpid=$!
   echo "$kpid" >"$RUN/hearth-kwin.pid"
@@ -598,9 +616,15 @@ kwin_lock_ready() {
   for g in /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet; do [ -x "$g" ] && return 0; done
   return 1
 }
+# Which part of Hearth's lock screen is missing (for the notice and the log): nopackage or nolocker.
+kwin_lock_why() {
+  [ -f "${HEARTH_LOCK_PKG:-/usr/share/plasma/shells/org.hearth.mantel-lock}/contents/lockscreen/LockScreen.qml" ] || { echo nopackage; return; }
+  echo nolocker
+}
 # Leaving KWin: the activation environment (D-Bus and systemd's, which the autostart gave KWin's values) back to this
 # session's own, so what starts in Game Mode next doesn't think it's in KWin.
 wm_env_back() {
+  rm -f "$RUN/hearth/kwin.env" "$RUN/hearth/kwin.env.tmp"   # KWin's environment (run_kwin): only while it runs
   if have systemctl; then
     timeout 4 systemctl --user unset-environment HEARTH_WM PLASMA_DEFAULT_SHELL >/dev/null 2>&1
     if [ -n "${XDG_CONFIG_DIRS:-}" ]; then timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_CONFIG_DIRS >/dev/null 2>&1
@@ -613,7 +637,7 @@ wm_env_back() {
 settle_kwin() {
   pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
   pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -f 'kwin_wayland_wrapper' 2>/dev/null
-  rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed"
+  rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed" "$RUN/hearth/kwin.env" "$RUN/hearth/kwin.env.tmp"
   sleep 1
   return 0
 }

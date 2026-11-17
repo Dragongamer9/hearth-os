@@ -45,6 +45,9 @@ class Base(unittest.TestCase):
         self.conf = os.path.join(self.home, '.config', 'nimbus', 'session.conf')
         os.makedirs(os.path.dirname(self.conf))
         self.state = os.path.join(self.home, '.local', 'state', 'hearth')
+        # The lock guard's notice (no lock screen in these tests) already told: the other notices are each test's own.
+        os.makedirs(self.state)
+        open(os.path.join(self.state, 'kwin-lock-off-told'), 'w').close()
         # The share as the image has it: labwc's folder (its environment) and KWin's.
         shutil.copytree(ROOT / 'hosts/linux/desktop/labwc', os.path.join(self.share, 'desktop', 'labwc'))
         shutil.copytree(ROOT / 'hosts/linux/desktop/kwin', os.path.join(self.share, 'desktop', 'kwin'))
@@ -114,6 +117,58 @@ class KWinStart(Base):
         self.assertTrue(os.path.exists(os.path.join(self.home, '.local/share/nimbus/kwin.log')))
         self.assertEqual(self.notice(), [])
         self.assertEqual(self.fails(), '')
+
+    def test_kwin_env_written_before_kwin_starts(self):
+        # KWin's stand-in copies kwin.env as it is the moment KWin starts: it's there already, NUL-separated, mode 600 in
+        # a 700 folder, with what KWin itself got (its own pid as HEARTH_DESKTOP_PID, Hearth's desktop names).
+        self.write_bin('kwin_wayland', '#!/bin/sh\nf="$XDG_RUNTIME_DIR/hearth/kwin.env"\n'
+                       '[ -f "$f" ] && cp "$f" "$HOME/env-at-start" && stat -c %a "$f" "$XDG_RUNTIME_DIR/hearth" > "$HOME/env-modes"\n'
+                       'echo "pid=$$" > "$HOME/kwin-pid"\n' + KWIN_WORKS.split('\n', 1)[1])
+        r, log = self.session()
+        got = os.path.join(self.home, 'env-at-start')
+        self.assertTrue(os.path.exists(got), log)
+        env = dict(x.split('=', 1) for x in open(got, 'rb').read().decode().split('\0') if '=' in x)
+        self.assertEqual(env.get('HEARTH_DESKTOP_PID'), self.lines('kwin-pid')[0][4:])
+        self.assertEqual(env.get('XDG_CURRENT_DESKTOP'), 'Hearth:Nimbus:KDE')
+        self.assertEqual(env.get('HEARTH_WM'), 'kwin')
+        self.assertEqual(self.lines('env-modes'), ['600', '700'])
+        # gone once KWin has ended (the session ended or switched)
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'hearth', 'kwin.env')))
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'hearth', 'kwin.env.tmp')))
+        src = SESSION.read_text()
+        body = src[src.index('run_kwin() {'):src.index('\n}\n', src.index('run_kwin() {'))]
+        self.assertLess(body.index('env -0 >"$d/kwin.env.tmp" && mv -f "$d/kwin.env.tmp" "$d/kwin.env"'), body.index('exec "$1" --xwayland'))
+
+    def test_kwin_env_that_cant_be_written_never_stops_kwin(self):
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        open(os.path.join(self.run_dir, 'hearth'), 'w').close()      # a file where the folder goes: the write fails
+        r, log = self.session()
+        self.assertIn('kwin: Mantel up after', log)
+        self.assertEqual(self.lines('labwc-ran'), [])
+        self.assertIn("couldn't write", open(os.path.join(self.home, '.local/share/nimbus/kwin.log')).read())
+
+    def test_lock_guard_tells_once_through_hearths_notice(self):
+        os.remove(os.path.join(self.state, 'kwin-lock-off-told'))    # (Base keeps the other tests' notices to their own)
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        r, log = self.session()                                       # no lock screen package here
+        self.assertIn('--no-lockscreen', '\n'.join(self.lines('kwin-ran')))
+        self.assertIn('shell=unset', '\n'.join(self.lines('kwin-ran')))
+        p = os.path.join(self.state, 'desktop-notice')
+        self.assertEqual([l.split()[:2] for l in open(p).read().splitlines()], [['kwin-lock', 'nopackage']])
+        st = self.helper('status')
+        self.assertIn("Hearth's lock screen isn't installed correctly", json.dumps(st))
+        os.remove(p)
+        self.session()                                                # told once
+        self.assertFalse(os.path.exists(p))
+        # working again, then broken again: told again
+        pkg = os.path.join(self.tmp, 'lockpkg')
+        os.makedirs(os.path.join(pkg, 'contents', 'lockscreen'))
+        open(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml'), 'w').close()
+        self.write_bin('greeter', '#!/bin/sh\n')
+        self.session(HEARTH_LOCK_PKG=pkg, HEARTH_LOCK_GREETER=os.path.join(self.bin, 'greeter'))
+        self.assertFalse(os.path.exists(p))
+        self.session(HEARTH_LOCK_PKG=pkg)                             # the package, no locker
+        self.assertEqual([l.split()[:2] for l in open(p).read().splitlines()], [['kwin-lock', 'nolocker']])
 
     def test_kwin_locker_only_with_hearths_lock_screen(self):
         self.write_bin('kwin_wayland', KWIN_WORKS)

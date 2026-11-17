@@ -66,6 +66,16 @@ emergency screen, which on a handheld without a keyboard would be a lockout. So:
   installed, the package complete, and the greeter's test run with KWin's environment must show Hearth's lock screen
   loading (a positive sign; an error, a fallback or silence all fail). The test run is cached per change and made at
   Mantel's start. If anything fails it **doesn't lock**: a critical notification and a toast say why.
+- **The session's guard** (nimbus-session `run_kwin`, red flag 2: a device must never be locked out): when Hearth's
+  lock screen package or KWin's locker (`kscreenlocker_greet`) isn't there, KWin starts with `--no-lockscreen` and
+  without `PLASMA_DEFAULT_SHELL`, so nothing can lock with a lock screen that can't show. You're told once, through
+  Hearth's own notice ("The lock screen is off", DesktopNotice.qml, which Do not disturb can't hide; the details in
+  Settings › System › Your desktop and session.log), and Lock.qml says why each time you lock. Told again if it
+  breaks again after working. On real images this never trips: their build fails first (above).
+- **KWin's environment for the check**: right before kwin_wayland starts, run_kwin writes the exact environment KWin
+  gets to `$XDG_RUNTIME_DIR/hearth/kwin.env` (`env -0`; mode 600 in a 700 folder; written whole, then moved into
+  place), since KWin's file capability hides its `/proc/<pid>/environ`. A failed write doesn't stop KWin (it's
+  logged; Lock.qml then won't lock). It's removed when KWin ends.
 - CI (`kwin-input.yml`) checks all of this, and on Debian trixie (`lock-debian`) locks for real, types a wrong
   password with hearth-type (still locked) and the right one (unlocked: PAM).
 - Left: something else asking the system to lock (`loginctl lock-session`, an app's "lock now") goes to KWin's
