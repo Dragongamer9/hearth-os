@@ -57,7 +57,7 @@ jobs:
           set +e -x
           # Logs can't be downloaded here: what went wrong goes on the run page as notices.
           report() {
-            for f in shots/greeter-cage.log shots/greeter.log shots/greetd.log; do
+            for f in shots/greeter-cage.log shots/greeter.log shots/labwc.log shots/greetd.log; do
               [ -s "$f" ] && echo "::notice title=LOG $f::$(tail -c 2500 "$f" | tr '\n' '|')"
             done
             echo "::notice title=LOG step::$(grep -v '^+' shots/step.log | tail -c 2500 | tr '\n' '|')"
@@ -102,11 +102,14 @@ jobs:
           printf '%s\n' '<?xml version="1.0"?>' '<labwc_config>' '<core><decoration>client</decoration></core>' \
             '<windowRules><windowRule identifier="*" serverDecoration="no"><action name="ToggleFullscreen"/></windowRule></windowRules>' '</labwc_config>' > /tmp/labwc/rc.xml
           : > /tmp/labwc/autostart
-          labwc -C /tmp/labwc -s 'sh -c "echo \$WAYLAND_DISPLAY > /tmp/xdg/wd; wlr-randr --output HEADLESS-1 --custom-mode 1920x1080; sleep 0.5; exec quickshell -p /tmp/greeter"' > shots/greeter.log 2>&1 &
-          echo $! > /tmp/cage.pid
-          for i in $(seq 1 40); do [ -s /tmp/xdg/wd ] && break; sleep 0.25; done
-          export WAYLAND_DISPLAY=$(cat /tmp/xdg/wd)
-          sleep 5
+          rm -f $XDG_RUNTIME_DIR/wayland-*
+          labwc -C /tmp/labwc > shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || echo "::warning title=Login screen::couldn't set 1920x1080"
+          sleep 1
+          quickshell -p /tmp/greeter > shots/greeter.log 2>&1 &
+          sleep 6
           wlr-randr || true
           q() { quickshell ipc -p /tmp/greeter call greeter "$@"; }
           shot() {   # shot NAME: the screen, as a JPEG small enough for the notices
