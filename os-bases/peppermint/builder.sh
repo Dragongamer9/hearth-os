@@ -170,6 +170,12 @@ apt-get install -y --no-install-recommends plasma-wayland-protocols >/dev/null
 bash /src/hearth-kwin-helpers/build.sh /src/hearth-kwin-helpers/out
 install -Dm755 /src/hearth-kwin-helpers/out/hearth-kwin-im /output/usr/libexec/hearth/hearth-kwin-im
 install -Dm755 /src/hearth-kwin-helpers/out/hearth-kwin-cast /output/usr/libexec/hearth/hearth-kwin-cast
+# The Plasma/Shell package type KWin's screen locker reads Hearth's lock screen as (trixie ships none):
+# kwin-lock/install.sh puts it in place in the image.
+apt-get install -y --no-install-recommends libkf6package-dev libkf6coreaddons-dev >/dev/null
+cmake -S /src/hearth-kwin-helpers/shell-package -B /src/hearth-shell-package -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build /src/hearth-shell-package
+install -Dm644 /src/hearth-shell-package/hearth_plasma_shell.so /output/usr/lib/hearth/hearth_plasma_shell.so
 
 # ------------------------------------------------------------------ RyzenAdj
 fetch FlyGoat/RyzenAdj "$RYZENADJ_REF" ryzenadj
