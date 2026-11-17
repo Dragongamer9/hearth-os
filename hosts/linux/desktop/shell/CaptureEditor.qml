@@ -48,14 +48,14 @@ Item {
         shapes = []; live = null; undoStack = []; redoStack = []; panel = ""; toast = ""; lastSaved = "";
         crop = cap && cap.crop ? Object.assign({}, cap.crop) : null;
         tool = "arrow"; editingText = false;
-        ink.loadImage(url); outC.loadImage(url);
         ink.requestPaint();
     }
     Connections { target: ed.cap; function onShotSeqChanged() { ed.start(); } }
-    onUrlChanged: { if (url !== "") { ink.loadImage(url); outC.loadImage(url); } }
+    // The picture's pixels for the canvases come from probe (an Image item: drawImage takes one, loaded already).
+    readonly property bool ready: probe.status === Image.Ready
 
     function stateObj() {
-        return { tool: tool, shapes: shapes.length, crop: crop, width: imgW, height: imgH, panel: panel, ocr: ocrState,
+        return { tool: tool, shapes: shapes.length, ready: ready, exportError: exportError, crop: crop, width: imgW, height: imgH, panel: panel, ocr: ocrState,
                  text: ocrText.slice(0, 400), qr: qrCodes, qrState: qrState, toast: toast, saved: lastSaved, busy: busy };
     }
     function say(t) { toast = t; toastTimer.restart(); }
@@ -84,20 +84,26 @@ Item {
         ]));
     }
 
-    // ------------------------------------------------ saving: the picture drawn 1:1 on outC, written to a file
+    // ------------------------------------------------ saving: the picture drawn 1:1 on outC, as a PNG
     property var exporting: null
-    function exportTo(path, cb) {
-        if (imgW <= 0) { cb(false); return; }
+    property string exportError: ""
+    function exportTo(cb) {
+        if (!ready || imgW <= 0) { cb(""); return; }
         const v = crop || full;
-        exporting = { path: path, cb: cb, v: v };
+        exporting = { cb: cb, v: v };
         outC.width = v.w; outC.height = v.h;
         outC.canvasSize = Qt.size(v.w, v.h);
-        if (outC.isImageLoaded(url)) outC.requestPaint(); else outC.loadImage(url);
+        outC.requestPaint();
     }
     function finished(cb) {
-        // The picture as it is now, in a new file of the editor's own (the helper's temporary folder).
+        // The picture as it is now (a PNG from the canvas), written by the helper to a new file of its own (its
+        // temporary folder): the picture taken is never changed.
         busy = true;
-        cap.run(["tmp"], t => exportTo(t.path, ok => { busy = false; cb(ok ? t.path : ""); }));
+        exportTo(d => {
+            const b64 = d.indexOf("base64,") >= 0 ? d.slice(d.indexOf("base64,") + 7) : "";
+            if (b64.length < 64) { busy = false; exportError = "the canvas gave no picture (" + d.length + ")"; cb(""); return; }
+            cap.run(["put"], j => { busy = false; if (!j.ok) exportError = j.error || "put failed"; cb(j.ok ? j.path : ""); }, b64);
+        });
     }
     function saveAndCopy() {
         finished(p => {
@@ -244,15 +250,14 @@ Item {
                 anchors.fill: parent
                 onWidthChanged: requestPaint()
                 onHeightChanged: requestPaint()
-                onImageLoaded: requestPaint()
+                Connections { target: ed; function onReadyChanged() { ink.requestPaint(); } }
                 onPaint: {
                     const c = getContext("2d");
                     c.reset();
                     c.clearRect(0, 0, width, height);
                     const list = ed.live ? ed.shapes.concat([ed.live]) : ed.shapes;
-                    const u = ed.url;
                     Draw.paint(c, list, ed.sc, ed.view.x, ed.view.y,
-                               isImageLoaded(u) ? (sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(u, sx, sy, sw, sh, dx, dy, dw, dh) : null,
+                               ed.ready ? (sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(probe, sx, sy, sw, sh, dx, dy, dw, dh) : null,
                                width, height);
                 }
             }
@@ -460,22 +465,20 @@ Item {
         Canvas {
             id: outC
             width: 1; height: 1
-            onImageLoaded: if (ed.exporting) requestPaint()
             onPaint: {
                 const e = ed.exporting;
-                if (!e || !isImageLoaded(ed.url)) return;
+                if (!e) return;
                 const c = getContext("2d");
                 c.reset();
-                const u = ed.url, v = e.v;
-                c.drawImage(u, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
-                Draw.paint(c, ed.shapes, 1, v.x, v.y, (sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(u, sx, sy, sw, sh, dx, dy, dw, dh), v.w, v.h);
+                const v = e.v;
+                c.drawImage(probe, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
+                Draw.paint(c, ed.shapes, 1, v.x, v.y, (sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(probe, sx, sy, sw, sh, dx, dy, dw, dh), v.w, v.h);
             }
             onPainted: {
                 const e = ed.exporting;
                 if (!e) return;
                 ed.exporting = null;
-                const ok = save(e.path);
-                e.cb(ok);
+                e.cb(toDataURL("image/png"));
             }
         }
     }

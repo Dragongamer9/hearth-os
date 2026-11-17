@@ -423,6 +423,7 @@ Scope {
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.preferredWidth: 560
+                            Layout.maximumWidth: 560
                             spacing: 14
                             Text { text: "What to capture"; color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
                             GridLayout {
