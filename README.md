@@ -139,7 +139,9 @@ store. (Hearth for Android is back: [docs/ANDROID.md](docs/ANDROID.md).) What ea
 
 Hearth OS (including Ember, Mantel and Hearth's apps) is free software under the **GNU General Public License v3.0
 or later** ([LICENSE](LICENSE)). Parts from other projects keep their own licenses (Debian, gamescope, Decky Loader,
-Handheld Daemon and the libraries the apps use).
+Handheld Daemon and the libraries the apps use). Add-ons that Settings downloads only when you ask (Ollama, Jellyfin,
+ComfyUI, Kokoro, Colibri and others) are never in the image and keep their makers' licenses: Colibri, for example, is
+Apache-2.0 (Copyright 2026 Vincenzo Fornaro), and each model keeps its authors' license.
 
 Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft or Debian. Steam, Epic
 Games, GOG and Xbox are trademarks of their owners.

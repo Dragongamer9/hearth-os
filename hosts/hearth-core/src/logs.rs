@@ -353,6 +353,16 @@ pub fn report(version: &str) -> String {
               echo '(the start before)'; journalctl -b -1 -u $u --no-pager -o short-iso 2>/dev/null | grep -v -E '\\[INF\\]|level=INFO' | tail -20; echo; \
             done; \
             echo '--- what started, paused or stopped them (this start):'; journalctl -b --no-pager -o short-iso 2>/dev/null | grep -i -E 'jellyfin|ollama|comfyui|kokoro' | grep -v -E 'hearth-(jellyfin|ollama|comfyui|kokoro)\\[|\\[INF\\]|level=INFO' | tail -40"));
+        // Colibri (1.14, the second AI engine): your own user service, its download and install units, and what
+        // hearth-colibri says (engine, model, download, speed; no keys: Colibri has none here).
+        body.push_str(&sh("if systemctl --user cat hearth-colibri.service >/dev/null 2>&1; then \
+              echo '--- hearth-colibri (your user service):'; \
+              systemctl --user show hearth-colibri.service hearth-colibri.timer -p Id,ActiveState,SubState,Result,NRestarts,ExecMainStatus,UnitFileState,ActiveEnterTimestamp,InactiveEnterTimestamp 2>/dev/null; \
+              echo '(this start)'; journalctl --user -b -u hearth-colibri.service --no-pager -o short-iso 2>/dev/null | tail -60; \
+              echo '(the start before)'; journalctl --user -b -1 -u hearth-colibri.service --no-pager -o short-iso 2>/dev/null | tail -20; \
+              echo '(downloads and installs)'; journalctl --user -b --no-pager -o short-iso 2>/dev/null | grep -E 'hearth-colibri-(download|install)' | tail -30; \
+              echo '(what hearth-colibri says)'; timeout 20 python3 /usr/share/nimbus/desktop/shell/hearth-colibri status 2>&1 | head -c 3000; echo; \
+              tail -n 40 \"${XDG_DATA_HOME:-$HOME/.local/share}/hearth/colibri/setup/logs/install.log\" 2>/dev/null; echo; fi"));
         let helper = "/usr/share/nimbus/desktop/shell/hearth-server-mode";
         if Path::new(helper).exists() {
             body.push_str(&format!("\n--- Server mode's status:\n{}\n--- Ithil's brain (what the dashboard reads):\n{}\n",

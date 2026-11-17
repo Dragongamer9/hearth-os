@@ -643,19 +643,23 @@ systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev
 # checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
 HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
          nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-colibri.timer; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
 # AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): user services with no [Install] (only their timers, off here,
 # or Settings start them), and nothing of theirs in the image: no ComfyUI for new accounts, no Kokoro image in Podman's storage.
-for u in hearth-comfyui.service hearth-kokoro.service; do
+for u in hearth-comfyui.service hearth-kokoro.service hearth-colibri.service; do
   if grep -q '^\[Install\]' "/usr/lib/systemd/user/$u" 2>/dev/null; then echo "::error::$u has an [Install] section: only its timer may start it"; exit 1; fi
 done
+# Colibri (1.14, docs/SERVER-MODE.md): its engine and models are downloaded only when the owner asks, into his Home.
+if [ -e /etc/skel/.local/share/hearth/colibri ] || [ -e /etc/skel/colibri-models ] || ls /etc/systemd/user/*.wants/hearth-colibri.* >/dev/null 2>&1; then
+  echo "::error::Colibri is in the image: it's installed only when the owner asks"; exit 1
+fi
 if [ -e /etc/skel/ComfyUI ] || ls /etc/systemd/user/*.wants/hearth-comfyui.* /etc/systemd/user/*.wants/hearth-kokoro.* >/dev/null 2>&1 \
    || grep -qs kokoro /var/lib/containers/storage/overlay-images/images.json; then
   echo "::error::ComfyUI or Kokoro is in the image: they're installed only when the owner asks"; exit 1
@@ -1090,7 +1094,7 @@ cp -a /usr/share/nimbus/desktop/shell/osk/hearth-osk.js /usr/share/hearth/greete
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/kwin/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
-chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/shell/hearth-colibri /usr/share/nimbus/desktop/server/labwc/autostart
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package

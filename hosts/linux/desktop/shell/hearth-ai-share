@@ -85,6 +85,7 @@ MAX_ANSWER = 2 << 20
 # The AI services Hearth knows, found by asking them (never by assuming what installed them). Ports as their makers set them.
 SERVICES = (
     {'kind': 'chat', 'engine': 'ollama', 'port': 11434, 'app': 'ollama', 'label': 'Chat (Ollama)'},
+    {'kind': 'chat', 'engine': 'colibri', 'port': 11440, 'app': 'colibri', 'label': 'Chat (Colibri)'},   # 1.14: hearth-colibri
     {'kind': 'voice', 'engine': 'kokoro-fastapi', 'port': 8880, 'app': 'kokoro', 'label': 'Voices (Kokoro)'},
     {'kind': 'image', 'engine': 'comfyui', 'port': 8188, 'app': 'comfyui', 'label': 'Pictures (ComfyUI)'},
     {'kind': 'stt', 'engine': 'whisper', 'port': 8000, 'app': 'whisper', 'label': 'Speech to text (whisper)'},
@@ -339,6 +340,12 @@ def probe(svc, get=local_get):
         ps = get(port, '/api/ps')
         return {'healthy': True, 'models': names(tags['models'], 'name'),
                 'loaded': names((ps or {}).get('models') if isinstance(ps, dict) else [], 'name')}
+    if eng == 'colibri':
+        h = get(port, '/health')
+        if not isinstance(h, dict) or 'status' not in h:
+            return None
+        m = get(port, '/v1/models')
+        return {'healthy': h.get('status') == 'ok', 'models': names((m or {}).get('data') if isinstance(m, dict) else [], 'id')}
     if eng == 'kokoro-fastapi':
         v = get(port, '/v1/audio/voices')
         if not isinstance(v, dict) or not isinstance(v.get('voices'), list):
@@ -378,7 +385,7 @@ def home_server_ai():
     d = sio.load_json(HOME_SERVER, {}, repair=False) if os.path.exists(HOME_SERVER) else {}
     d = d if isinstance(d, dict) else {}
     on = lambda k: isinstance(d.get(k), dict) and d[k].get('on') is True  # noqa: E731
-    return {e for e, k in (('ollama', 'ai'), ('comfyui', 'pictures'), ('kokoro-fastapi', 'voices')) if on(k)}
+    return {e for e, k in (('ollama', 'ai'), ('colibri', 'colibri'), ('comfyui', 'pictures'), ('kokoro-fastapi', 'voices')) if on(k)}
 
 
 def detect(ts_ips=(), get=local_get, table=None):
@@ -481,7 +488,7 @@ def document(cfg=None, ts=None, found=None):
             base = 'http://%s:%d' % (host if ':' not in host else '[%s]' % host, s['port'])
             out = {'kind': s['kind'], 'engine': s['engine'], 'url': base, 'healthy': s['healthy'] and s['reachable'],
                    'reachable': s['reachable'], 'busy': s['busy']}
-            if s['engine'] in ('ollama', 'kokoro-fastapi') or (s['engine'] == 'whisper' and s['port'] == 8000):
+            if s['engine'] in ('ollama', 'colibri', 'kokoro-fastapi') or (s['engine'] == 'whisper' and s['port'] == 8000):
                 out['openai'] = base + '/v1'
             for k in ('models', 'voices', 'loaded'):
                 if k in s:
