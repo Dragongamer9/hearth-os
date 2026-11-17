@@ -180,6 +180,13 @@ pub fn run_headless() {
                 if locked {
                     state.lock_frame_drawn(&output);
                 }
+                crate::state::update_primary_scanout_output(
+                    &state.space,
+                    &output,
+                    &state.dnd_icon,
+                    &state.cursor_status,
+                    &states,
+                );
                 state.post_repaint(&output, frame_target, None, &states);
             }
             Err(e) => warn!("headless: drawing failed: {e}"),
