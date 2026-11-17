@@ -2349,6 +2349,11 @@ var ENTRIES = [
 "d": "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"
 },
 {
+"t": "Bring back KDE's own shortcuts",
+"p": "keyboard",
+"i": "undo"
+},
+{
 "t": "How many",
 "p": "kwin-desktops",
 "d": "Super+Ctrl+Left / Right switch between them; three or four fingers sideways on a touchpad",
