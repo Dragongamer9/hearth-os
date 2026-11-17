@@ -66,6 +66,21 @@ pub struct PairedDev {
     /// The phone may set this PC's volume and mute (plugins/systemvolume.rs).
     #[serde(default = "yes")]
     pub volume: bool,
+    /// The phone may lock this PC (plugins/lock.rs; never unlock it).
+    #[serde(default = "yes")]
+    pub lock: bool,
+    /// This PC's notifications go to the phone (plugins/sendnotify.rs). Off until the person turns it on.
+    #[serde(default)]
+    pub send_notifications: bool,
+    /// Keep this PC awake (no screen-off, no sleep) while the phone is linked. Off until turned on.
+    #[serde(default)]
+    pub stay_awake: bool,
+    /// Mute this PC's sound during calls too (plugins/telephony.rs). Off until turned on.
+    #[serde(default)]
+    pub mute_on_call: bool,
+    /// Pause (and mute) only once a call is answered, not while it rings.
+    #[serde(default)]
+    pub pause_talking_only: bool,
     #[serde(default)]
     pub last_ip: Option<String>,
 }
@@ -109,6 +124,10 @@ pub struct Daemon {
     pub firewall: Mutex<Value>,
     pub stop_tx: watch::Sender<bool>,
     my_battery: Mutex<Option<(i64, bool)>>,
+    /// The logind "block" inhibitor held while a phone that keeps this PC awake is linked (systemd-inhibit reading
+    /// a pipe from this service: it lets go when the phone goes, the switch goes off, or the service ends).
+    awake: Mutex<Option<(std::process::Child, std::process::ChildStdin)>>,
+    awake_failed: Mutex<bool>,
 }
 
 fn now_secs() -> i64 { crate::now_ms() / 1000 }
@@ -130,7 +149,7 @@ impl Daemon {
             files: Mutex::new(vec![]), texts: Mutex::new(VecDeque::new()), log: Mutex::new(VecDeque::new()), tcp_port: AtomicU16::new(0),
             announce: Notify::new(), gen: AtomicU64::new(0), recent: Mutex::new(HashMap::new()), clip_last: Mutex::new(String::new()),
             manual: Mutex::new(manual), old_protocol: Mutex::new(HashMap::new()),
-            firewall: Mutex::new(json!({"ok": true, "firewall": "unmanaged"})), stop_tx, my_battery: Mutex::new(None),
+            firewall: Mutex::new(json!({"ok": true, "firewall": "unmanaged"})), stop_tx, my_battery: Mutex::new(None), awake: Mutex::new(None), awake_failed: Mutex::new(false),
         })
     }
 
@@ -189,6 +208,11 @@ impl Daemon {
     /// Does the phone say it sends this kind of packet (its identity's outgoingCapabilities)?
     pub fn peer_offers(&self, id: &str, kind: &str) -> bool {
         lock(&self.devices).get(id).map(|d| d.peer.outgoing.iter().any(|k| k == kind)).unwrap_or(false)
+    }
+
+    /// Does the phone say it takes this kind of packet (its identity's incomingCapabilities)?
+    pub fn peer_accepts(&self, id: &str, kind: &str) -> bool {
+        lock(&self.devices).get(id).map(|d| d.peer.incoming.iter().any(|k| k == kind)).unwrap_or(false)
     }
 
     pub(crate) fn device_name(&self, id: &str) -> String {
@@ -436,7 +460,8 @@ impl Daemon {
         let info = lock(&self.devices).get(id).and_then(|d| d.link.as_ref().map(|l| (d.peer.clone(), l.cert.clone(), l.ip)));
         let Some((peer, cert, ip)) = info else { return };
         lock(&self.paired).insert(id.to_string(), PairedDev { id: id.into(), name: peer.name.clone(), kind: peer.kind.clone(), cert: crate::hex(&cert),
-            auto_accept: false, clipboard: true, input: true, notifications: true, pause_on_call: true, commands: true, volume: true, last_ip: Some(ip.to_string()) });
+            auto_accept: false, clipboard: true, input: true, notifications: true, pause_on_call: true, commands: true, volume: true,
+            lock: true, send_notifications: false, stay_awake: false, mute_on_call: false, pause_talking_only: false, last_ip: Some(ip.to_string()) });
         self.save_paired();
         self.emit("paired", json!({"device": id, "from": peer.name}));
         self.on_paired_link(id);
@@ -530,14 +555,14 @@ impl Daemon {
         if let Some(text) = p.str("text") {
             let v = json!({"device": id, "from": from, "text": text, "at": crate::now_ms()});
             { let mut t = lock(&self.texts); t.push_front(v.clone()); t.truncate(30); }
-            self.notify_desktop(&format!("{from} shared text"), &text.chars().take(200).collect::<String>(), "edit-paste", false);
+            crate::plugins::share_notice(self, id, from, "text", text);
             self.emit("text", v);
             return;
         }
         if let Some(url) = p.str("url") {
             let v = json!({"device": id, "from": from, "url": url, "at": crate::now_ms()});
             { let mut t = lock(&self.texts); t.push_front(v.clone()); t.truncate(30); }
-            self.notify_desktop(&format!("{from} shared a link"), url, "applications-internet", false);
+            crate::plugins::share_notice(self, id, from, "url", url);
             self.emit("url", v);
         }
     }
@@ -705,8 +730,12 @@ impl Daemon {
     pub async fn housekeeping(self: Arc<Self>, mut stop: watch::Receiver<bool>) {
         let mut tick = 0u64;
         loop {
-            tokio::select! { _ = tokio::time::sleep(Duration::from_secs(2)) => {}, _ = stop.changed() => return }
+            tokio::select! { _ = tokio::time::sleep(Duration::from_secs(2)) => {}, _ = stop.changed() => { self.set_awake(false); return } }
             tick += 1;
+            // Keep this PC awake while a phone that asks for it is linked; the lock state to phones that lock it.
+            let awake = self.linked_paired().iter().any(|k| self.paired_dev(k).map(|p| p.stay_awake).unwrap_or(false));
+            self.set_awake(awake);
+            if tick % 2 == 0 { crate::plugins::lock::watch(&self); }
             // Pairing timeouts.
             let expired: Vec<String> = lock(&self.devices).iter().filter(|(_, d)| match d.pair {
                 Pair::Requested { at, .. } | Pair::RequestedByPeer { at, .. } => at.elapsed() > PAIR_TIMEOUT, _ => false
@@ -744,6 +773,43 @@ impl Daemon {
         }
     }
 
+    /// Holds (or lets go of) the inhibitor that keeps this PC from going idle or to sleep. A failure is only noted:
+    /// nothing about starting or the phone link depends on it.
+    pub fn set_awake(&self, on: bool) {
+        let mut g = lock(&self.awake);
+        // It ended by itself (no logind here, say): told once, and not started again until the switch is next on.
+        let ended = g.as_mut().map(|(c, _)| c.try_wait().ok().flatten().is_some()).unwrap_or(false);
+        if ended {
+            *g = None;
+            *lock(&self.awake_failed) = true;
+            drop(g);
+            self.emit("warning", json!({"text": "Couldn't keep this PC awake for the phone (the system didn't allow it)"}));
+            return;
+        }
+        if !on { *lock(&self.awake_failed) = false; }
+        if on == g.is_some() || (on && *lock(&self.awake_failed)) { return; }
+        if !on {
+            // Its pipe closed, it lets go by itself; killed only if it hasn't within a second.
+            if let Some((mut c, pipe)) = g.take() {
+                drop(pipe);
+                let mut gone = false;
+                for _ in 0..20 { if c.try_wait().ok().flatten().is_some() { gone = true; break; } std::thread::sleep(Duration::from_millis(50)); }
+                if !gone { let _ = c.kill(); }
+                let _ = c.wait();
+            }
+            drop(g);
+            self.emit("awake", json!({"on": false}));
+            return;
+        }
+        let child = std::process::Command::new("systemd-inhibit")
+            .args(["--what=idle:sleep", "--who=Hearth Connect", "--why=A phone is linked and set to keep this PC awake", "--mode=block", "cat"])
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+        match child {
+            Ok(mut c) => { if let Some(pipe) = c.stdin.take() { *g = Some((c, pipe)); drop(g); self.emit("awake", json!({"on": true})); } else { let _ = c.kill(); } }
+            Err(e) => { drop(g); *lock(&self.awake_failed) = true; self.emit("warning", json!({"text": format!("Couldn't keep this PC awake for the phone: {e}")})); }
+        }
+    }
+
     // ------------------------------------------------------------------ the window's requests
 
     pub fn snapshot(&self) -> Value {
@@ -768,7 +834,11 @@ impl Daemon {
                 "keyboard": d.map(|d| d.keyboard).unwrap_or(false),
                 "players": d.map(|d| d.players.clone()).unwrap_or_default(), "playing": d.map(|d| json!(d.playing)).unwrap_or(json!({})),
                 "notifications": d.map(|d| json!(d.notifications)).unwrap_or(json!([])),
-                "options": pd.map(|p| json!({"autoAccept": p.auto_accept, "clipboard": p.clipboard, "input": p.input, "notifications": p.notifications, "pauseOnCall": p.pause_on_call, "commands": p.commands, "volume": p.volume})),
+                "options": pd.map(|p| json!({"autoAccept": p.auto_accept, "clipboard": p.clipboard, "input": p.input, "notifications": p.notifications, "pauseOnCall": p.pause_on_call, "commands": p.commands, "volume": p.volume,
+                    "lock": p.lock, "sendNotifications": p.send_notifications, "stayAwake": p.stay_awake, "muteOnCall": p.mute_on_call, "pauseTalkingOnly": p.pause_talking_only})),
+                // What the phone's KDE Connect lets this PC do there: type and move its pointer, lock this PC.
+                "remoteInput": d.map(|d| d.peer.incoming.iter().any(|k| k == "kdeconnect.mousepad.request")).unwrap_or(false),
+                "canLock": d.map(|d| d.peer.outgoing.iter().any(|k| k == "kdeconnect.lock.request")).unwrap_or(false),
                 "plugins": crate::plugins::device_state(id),
             })
         }).collect();
@@ -783,6 +853,8 @@ impl Daemon {
             "folder": self.dest.to_string_lossy(), "firewall": *lock(&self.firewall), "inputReady": input.ready(), "inputError": input.error,
             "oldProtocol": json!(*lock(&self.old_protocol)), "manual": lock(&self.manual).iter().map(|i| i.to_string()).collect::<Vec<_>>(),
             "commands": crate::plugins::runcommand::list(&self.home),
+            "awake": lock(&self.awake).is_some(),
+            "notifyOut": crate::plugins::sendnotify::prefs(&self.home), "notifyApps": crate::plugins::sendnotify::seen(),
         })
     }
 
@@ -835,11 +907,14 @@ impl Daemon {
                     let mut g = lock(&self.paired);
                     let p = g.get_mut(&id).ok_or("Pair with it first")?;
                     match key.as_str() { "autoAccept" => p.auto_accept = on, "clipboard" => p.clipboard = on, "input" => p.input = on, "notifications" => p.notifications = on,
-                        "pauseOnCall" => p.pause_on_call = on, "commands" => p.commands = on, "volume" => p.volume = on, _ => return Err("unknown option".into()) }
+                        "pauseOnCall" => p.pause_on_call = on, "commands" => p.commands = on, "volume" => p.volume = on,
+                        "lock" => p.lock = on, "sendNotifications" => p.send_notifications = on, "stayAwake" => p.stay_awake = on,
+                        "muteOnCall" => p.mute_on_call = on, "pauseTalkingOnly" => p.pause_talking_only = on, _ => return Err("unknown option".into()) }
                 }
                 self.save_paired();
                 if key == "commands" { crate::plugins::runcommand::send_list(self, &id); }
                 if key == "notifications" && on { let _ = self.send_body(&id, "kdeconnect.notification.request", json!({"request": true})); }
+                if key == "stayAwake" { let awake = self.linked_paired().iter().any(|k| self.paired_dev(k).map(|p| p.stay_awake).unwrap_or(false)); self.set_awake(awake); }
                 self.changed();
                 Ok(json!({}))
             }

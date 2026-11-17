@@ -80,3 +80,29 @@ Files: `Activities.qml` (the model), `ActivitySwitcher.qml`, `ActivityChip.qml` 
   Meta+Ctrl+Q / Meta+Shift+Ctrl+Q → `activities next` / `activities previous`.
 - **The desktop's right-click menu**: keep the "Add widgets…", "Arrange widgets" and "Activities…" items
   (Desktop.qml, through `SettingsNav.widgets`).
+
+## Round 2 (1.14): more widgets, the bar's own items, more panels
+
+Written for Hearth from KDE Plasma's list (docs/KDE-FEATURES-1.14.md), the same on KWin and labwc. CI:
+`.github/workflows/notify-widgets.yml` (pictures of each), `hosts/linux/test/test_notify_widgets_114.py`.
+
+- **New widgets** (widget-layout.js CATALOG): **Web page** (`WidgetWeb.qml`: the page drawn every few minutes by a
+  browser with no window, in a profile of its own, `hearth-widgets webshot`; shown as a picture so a heavy page can't
+  slow the desktop; click opens it), **Calculator** (`WidgetCalc.qml`, widget-tools.js `calc`: never eval),
+  **Colour picker** (`WidgetColour.qml`: KWin's picker or slurp + grim, `hearth-widgets pick-colour`; hex, RGB, HSL),
+  **Keyboard indicator** (`WidgetKeys.qml`: Caps / Num Lock and the layout), **Pager** (`WidgetPager.qml`: desktops
+  with window outlines under KWin; labwc doesn't say which desktop a window is on), **Window list**
+  (`WidgetWindowlist.qml`). The last four (and the colour picker) can also go in the bar.
+- **Clocks**: binary and fuzzy styles (widget-tools.js `fuzzy`, `binaryColumns`). **Calendars** (calendars.js):
+  Islamic (tabular), Hebrew, Persian, Julian and Indian dates under each day, and holidays (ten countries plus Islamic,
+  Jewish and Persian days), in the calendar widget and the clock's panel; world clocks in the clock's panel
+  (Settings › Date & time).
+- **The bar's own items** (BarLayout.qml, BarArrange.qml; right-click the bar, or Settings › Bar and dock › Arrange the
+  bar): every item at the start or the end, in any order, or hidden. Game Mode stays last; the flame can't be hidden.
+- **More panels** (ExtraPanels.qml): extra bars on any edge of any screen, each with what you choose (app menu, your
+  apps, window list, pager, clock, tray, status, notifications, layout, Game Mode, bar widgets); Clone the main bar.
+- **Tray**: copies and downloads (KDE job progress), printing (lpstat), disks and devices (open, safely remove),
+  camera / microphone in use, background apps (the portal's monitor, else Flatpak), the keyboard layout.
+- **Quick Access**: a light / dark tile (turning Auto off says so; Settings › Appearance turns it back on).
+- Files: `~/.config/nimbus/bar.json` (`items`, `p:<id>` per panel, `clockZones`, `clockAlt`, `clockHolidays`), written
+  only when you change one (SettingsWriter: merged, atomic, `.bak`).

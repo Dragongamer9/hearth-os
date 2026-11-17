@@ -63,6 +63,7 @@ pub const INCOMING: &[&str] = &[
     "kdeconnect.runcommand.request", "kdeconnect.telephony", "kdeconnect.sms.messages", "kdeconnect.presenter",
     "kdeconnect.systemvolume.request", "kdeconnect.sftp", "kdeconnect.contacts.response_uids_timestamps",
     "kdeconnect.contacts.response_vcards", "kdeconnect.connectivity_report", "kdeconnect.photo",
+    "kdeconnect.lock.request", "kdeconnect.notification.request", "kdeconnect.mousepad.echo",
 ];
 
 /// Packets Hearth Connect sends.
@@ -76,6 +77,8 @@ pub const OUTGOING: &[&str] = &[
     "kdeconnect.sms.request_conversation", "kdeconnect.systemvolume", "kdeconnect.sftp.request",
     "kdeconnect.contacts.request_all_uids_timestamps", "kdeconnect.contacts.request_vcards_by_uid",
     "kdeconnect.connectivity_report.request", "kdeconnect.photo.request",
+    // round 2: lock state, this PC's notifications, this PC as the phone's keyboard and mouse
+    "kdeconnect.lock", "kdeconnect.notification", "kdeconnect.mousepad.request",
 ];
 
 pub struct Me<'a> {

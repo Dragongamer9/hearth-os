@@ -42,6 +42,33 @@ A saved mode the screen doesn't list now is left out (and you're told, once). It
 small sharp screen with no saved scale gets 125% or 150%, the same rule labwc's autostart uses. Then it sets KWin's
 Night Light and tearing.
 
+## 1.14's KDE rows (Mantel on KWin)
+
+| Row on Settings › Display | Where it lives | Keep needed? |
+|---|---|---|
+| Make this the main screen | KWin's priority (`kscreen-doctor output.N.priority.1`), every screen's kept in screens.json | no |
+| Colour intensity (HDR on) | KWin's SDR gamut wideness (`sdrGamut.0-100`), screens.json `sdrGamut` | no |
+| Colour accuracy | KWin's colour power trade-off (`colorPowerTradeoff.preferEfficiency/preferAccuracy`), screens.json `colorPower` | no |
+| Calibrate HDR (HDR on, a screen KWin knows the brightness of) | `HdrCalibrate.qml`: three test pictures; KWin's `maxBrightnessOverride`, `maxAverageBrightnessOverride`, `minBrightnessOverride`; screens.json `hdrCal {peak, avg, min}` | yes (Finish) |
+| Extended Dynamic Range (newer KWin only; hidden on 6.3) | `edrPolicy`, screens.json `edr` | yes |
+| Overscan, RGB range (screens that have them) | `overscan.0-100`, `rgbrange.automatic/full/limited`, screens.json | yes |
+| Scaling X11 apps | kdeglobals `[KScreen] XwaylandClientsScale` (the same key as Gaming › Full-screen games & X11 apps) | no |
+| Sticky edge between screens, sticky corners | kwinrc `[EdgeBarrier] EdgeBarrier`, `CornerBarrier` (also on Screen edges) | no |
+| Virtual desktops: every screen / main screen only | screens.json `desktopsMainOnly`; `hearth-main-desktops.js` (a KWin script that keeps the other screens' windows on every desktop and puts back only those when turned off). "Each its own" needs a newer KWin | no |
+| Brightness of an external screen | DDC/CI through `ddcutil` (`hearth-screens ddc`, `ddc-set`), or KWin's own control where a newer KWin has it; nothing saved (the screen keeps it) | no |
+| Auto-brightness (a light sensor only) | screens.json `autoBrightness`; the shell runs `hearth-screens autobright` while it's on | no |
+| Night light: sunset to sunrise, fade | desktop.json `nightMode: "location"`, `nightPlace`, `nightLat`, `nightLon` (your town, looked up by name), `nightFade` (minutes); KWin's `Mode=Location` with the fixed place (never its network lookup), wlsunset's `-l/-L` and `-d` | no |
+
+Hidden because KWin 6.3 (Debian 13) has no way to set them: colour depth (bits per colour), reduce red tint, each
+screen with its own desktops, mirroring.
+
+**Super+P** (`ScreenSwitcher.qml`, both compositors): This screen only, Duplicate (says why it can't), Extend, Second
+screen only. `hearth-screens plan MODE` works out the changes; the switcher applies them and waits 15 s for Keep, going
+back by itself otherwise.
+
+Preview (CI pictures only): `HEARTH_SCREENS_FIXTURE=<folder>` with `kscreen.json`, `kscreen.txt` and `ddc.json`
+(`hosts/linux/test/fixtures/screens-preview`): the screens come from there and nothing is sent to KWin.
+
 ## Screenshots under KWin
 
 KWin answers `org.kde.KWin.ScreenShot2` only for a program whose `.desktop` file lists that interface in

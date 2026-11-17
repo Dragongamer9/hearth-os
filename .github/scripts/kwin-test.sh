@@ -4,8 +4,13 @@
 # through KWin's screenshot API. labwc's fallback runs headless; grim takes its pictures):
 #   A  KWin, with 1.13's KDE Plasma still picked: the "KDE Plasma and GNOME were retired" card     kwin-1-retired-card
 #   B  KWin: Mantel's bar up (layer shell), the desktop and Settings › System › Your desktop         kwin-2-desktop, kwin-3-your-desktop
+#      Settings › Keyboard on KWin: keyboard.json's layouts are KWin's at the start, and a layout set in Settings is
+#      KWin's active one right away (org.kde.keyboard); the KWin-only rows                            kwin-9-keyboard-kwin
 #   C  KWin ending right away: the safe start opens Mantel on labwc, with its card                  kwin-4-fallback-card
 #   D  the same on the next sign-in: twice in a row, labwc until KWin is turned back on              kwin-5-twice-card, kwin-6-your-desktop-paused
+#   E  KWin with your own kscreenlockerrc / kwinrc from KDE Plasma (Autolock, LockOnResume, an input method): Hearth's
+#      fixed keys win and the card says which (once); Settings › Keyboard's "Bring back KDE's own shortcuts"
+#                                                                                                    kwin-7-kde-settings-card, kwin-8-keyboard-kde-keys
 # Failures are ::error:: annotations and shots/FAILED (logs can't always be read here).
 set -u +e +o pipefail
 mkdir -p shots
@@ -122,6 +127,8 @@ end_session
 
 # ---- B: KWin: the desktop and Settings › System › Your desktop.
 printf 'NIMBUS_START_MODE=desktop\n' > "$CONF"
+# Settings › Keyboard as someone saved it on labwc: two layouts, faster repeat, Num Lock on, a compose key.
+printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json"
 start_session B
 wait_up 90 || fail "KWin" "Mantel didn't come up under KWin the second time"
 sleep 10
@@ -131,9 +138,68 @@ ipc wayland-hearth settings page your-desktop; sleep 3
 shot kwin-3-your-desktop
 ipc wayland-hearth settings close
 python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status-B.json
+# Keyboard: KWin started with keyboard.json in its kxkbrc / kcminputrc (input-watch, in the background).
+kbd_layouts() { gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.getLayoutsList 2>&1 | tr '\n' ' ' | cut -c1-300; }
+kbd_active() {   # the short name of KWin's active layout
+  i=$(gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.getLayout 2>/dev/null | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
+  gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.getLayoutsList 2>/dev/null \
+    | python3 -c 'import re,sys; l=re.findall(r"\(\x27([^\x27]*)\x27, \x27[^\x27]*\x27, \x27[^\x27]*\x27\)", sys.stdin.read()); i=int(sys.argv[1] or -1); print(l[i] if 0 <= i < len(l) else "?")' "$i"
+}
+for i in $(seq 1 15); do grep -q '^LayoutList=de,fr$' "$HOME/.config/kxkbrc" 2>/dev/null && break; sleep 1; done
+cp "$HOME/.config/kxkbrc" shots/kxkbrc-B.txt 2>/dev/null; cp "$HOME/.config/kcminputrc" shots/kcminputrc-B.txt 2>/dev/null
+grep -q '^LayoutList=de,fr$' "$HOME/.config/kxkbrc" 2>/dev/null || fail "keyboard" "KWin's kxkbrc didn't get your layouts at the start: $(tr '\n' '|' < "$HOME/.config/kxkbrc" 2>/dev/null | cut -c1-300)"
+grep -q '^Options=grp:alt_shift_toggle,compose:ralt$' "$HOME/.config/kxkbrc" 2>/dev/null || fail "keyboard" "kxkbrc's Options: $(grep Options "$HOME/.config/kxkbrc" 2>/dev/null)"
+grep -q '^SwitchMode=Window$' "$HOME/.config/kxkbrc" 2>/dev/null || fail "keyboard" "kxkbrc has no SwitchMode=Window"
+for l in RepeatDelay=300 RepeatRate=40 NumLock=0; do grep -q "^$l\$" "$HOME/.config/kcminputrc" 2>/dev/null || fail "keyboard" "kcminputrc has no $l: $(tr '\n' '|' < "$HOME/.config/kcminputrc" 2>/dev/null | cut -c1-300)"; done
+sleep 2
+a=$(kbd_active); echo "::notice title=keyboard at the start::KWin's layouts: $(kbd_layouts); active: $a"
+[ "$a" = de ] || fail "keyboard" "KWin's active layout at the start is '$a', not de (KWin: $(kbd_layouts))"
+# Set in Settings (what SetKeyboard.qml sends): French first. KWin's active layout is French right away.
+m=$(printf '%s' '{"layouts": [{"layout": "fr", "variant": ""}, {"layout": "de", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40}' \
+  | HEARTH_WM=kwin python3 hosts/linux/desktop/shell/hearth-system keyboard-set 2>&1 | tail -1)
+echo "::notice title=keyboard-set on KWin::$m"
+echo "$m" | grep -q '"reloaded": true' || fail "keyboard" "keyboard-set on KWin didn't say KWin took it: $(echo "$m" | cut -c1-300)"
+sleep 2
+a=$(kbd_active); echo "::notice title=keyboard after Settings::KWin's layouts: $(kbd_layouts); active: $a"
+[ "$a" = fr ] || fail "keyboard" "the layout set in Settings (fr) isn't KWin's active one: '$a' (KWin: $(kbd_layouts))"
+grep -q '"numlock": "on"' "$HOME/.config/nimbus/keyboard.json" || fail "keyboard" "keyboard.json lost Num Lock (merge-on-write): $(head -c 300 "$HOME/.config/nimbus/keyboard.json")"
+command -v wayland-info >/dev/null && echo "::notice title=keyboard repeat (wayland-info)::$(WAYLAND_DISPLAY=wayland-hearth timeout 10 wayland-info 2>/dev/null | grep -i 'repeat' | head -2 | tr '\n\t' '| ')"
+ipc wayland-hearth settings page keyboard; sleep 4
+shot kwin-9-keyboard-kwin
+ipc wayland-hearth settings close
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null
 end_session
+
+# ---- E: your own KDE files from 1.13: Hearth's fixed keys win, the card says which; the KDE shortcuts button.
+mkdir -p "$HOME/.config" "$HOME/.local/state/nimbus"
+printf '[Daemon]\nAutolock=true\nLockOnResume=true\nTimeout=1\n' > "$HOME/.config/kscreenlockerrc"
+printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop\n\n[NightColor]\nActive=false\n' > "$HOME/.config/kwinrc"
+cp "$HOME/.config/kscreenlockerrc" /tmp/kscreenlockerrc-before; cp "$HOME/.config/kwinrc" /tmp/kwinrc-before
+# What the bridge changed once (as on a PC that had KDE's default keys): the button puts them back.
+python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/state/nimbus/kwin-keys.json" \
+  '{"done": {"kwin/Window Quick Tile Left": {"was": [[285212690]], "now": [], "title": "", "at": 1}, "kwin/Show Desktop": {"was": [[268435524]], "now": [], "title": "", "at": 1}, "kwin/Grid View": {"was": [[268435527]], "now": [], "title": "", "at": 1}}}' >/dev/null
+start_session E
+wait_up 90 || fail "KWin" "Mantel didn't come up under KWin with your own KDE files"
+sleep 10
+shot kwin-7-kde-settings-card
+grep -q '^kwin-mine autolock+lockonresume+inputmethod' "$STATE/desktop-notice.shown" 2>/dev/null \
+  || fail "your KDE settings" "the card wasn't shown (state: $(cat "$STATE"/desktop-notice* 2>/dev/null | tr '\n' '|'))"
+# Your own lines are all still there (KDE's own kconf_update may add its [$Version] lines; Hearth never changes yours).
+for f in kscreenlockerrc kwinrc; do
+  cmp -s "$HOME/.config/$f" /tmp/$f-before 2>/dev/null || echo "::notice title=your KDE settings ($f)::$(diff /tmp/$f-before "$HOME/.config/$f" 2>/dev/null | tr '\n' '|' | cut -c1-400)"
+done
+for l in 'Autolock=true' 'LockOnResume=true' 'Timeout=1'; do grep -qxF "$l" "$HOME/.config/kscreenlockerrc" || fail "your KDE settings" "your kscreenlockerrc lost $l"; done
+grep -qxF 'InputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop' "$HOME/.config/kwinrc" || fail "your KDE settings" "your kwinrc's InputMethod was changed"
+gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true \
+  && fail "your KDE settings" "KWin is locked by itself"
+pkill -TERM -x quickshell; sleep 12      # the card off the screen (shown once: it doesn't come back)
+ipc wayland-hearth settings page keyboard:kde-keys; sleep 4
+shot kwin-8-keyboard-kde-keys
+ipc wayland-hearth settings close
+python3 hosts/linux/desktop/shell/hearth-kwin-bridge keys changed > shots/kde-keys-E.json
+end_session
+rm -f "$HOME/.config/kscreenlockerrc" "$HOME/.config/kwinrc"
 
 # ---- C: KWin ending right away: Mantel on labwc, with the card.
 : > /tmp/kwin-crash
@@ -173,7 +239,7 @@ cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/kwin.log"
 cp "$HOME/.local/share/nimbus/labwc.log" shots/labwc.log 2>/dev/null
 grep -E 'desktop|kwin|labwc' "$LOG" | tail -30 | cut -c1-200 | while read -r l; do echo "::notice title=session::$l"; done | head -8
 ls -la shots
-for s in kwin-1-retired-card kwin-2-desktop kwin-3-your-desktop kwin-4-fallback-card kwin-5-twice-card kwin-6-your-desktop-paused; do
+for s in kwin-1-retired-card kwin-2-desktop kwin-3-your-desktop kwin-4-fallback-card kwin-5-twice-card kwin-6-your-desktop-paused kwin-7-kde-settings-card kwin-8-keyboard-kde-keys kwin-9-keyboard-kwin; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'

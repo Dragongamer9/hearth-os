@@ -397,7 +397,6 @@ jobs:
           # Put everything back.
           for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do rm -f "/tmp/fakebin/$f"; done
           rm -f "$HOME"/.config/autostart/hearth-cmd-*.desktop "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.config/KDE/Sonnet.conf" "$HOME/.config/nimbus/my-looks.json"
-          rm -f "$HOME/.local/state/nimbus/welcome.json"
           cp -p "$SM/desktop.json" "$D"; sleep 3
           SMQ='(Set(SoundSpeakers|SoundApps|PushToTalk|PowerProfiles|PowerAwake|Battery|Autostart|FileTypes|MenuEditor|WallpaperMore|MyLooks|LookMore|Languages|Spellcheck|InputMethods|AppPermissions|BtDevices|PrintQueue|Scanners|UsbDevices|InfoCenter|Panel|Power|Sound|Fonts|Region|Firmware|Updates|Bluetooth|Printers|About)|PushToTalk|FirmwareWatch|OomWatch|DeviceWatch|Welcome|SigninSplash|WallShow|Wallpaper|Dock|Mixer|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
           if grep -E "$SMQ" "$LOG" >/dev/null 2>&1; then
@@ -2685,6 +2684,47 @@ jobs:
           ipc settings close
           echo "::notice title=KWin screens: grab::$(echo "$gr" | cut -c1-900)"
           [ -s shots/kwin/shot-errors.txt ] && echo "::warning title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt | tr '\n' '|' | cut -c1-500)"
+          # ---- 1.14's KDE rows for the pictures. KWin's virtual screens have no HDR, overscan, RGB range, colour accuracy
+          # or DDC/CI, so the shell starts again with a preview of two screens (hosts/linux/test/fixtures/screens-preview:
+          # an HDR monitor and a TV; nothing is sent to KWin), a light sensor, and night light from sunset to sunrise in
+          # Austin with a 15 minute fade. Then Super+P's switcher and the screen-sharing picker's Area.
+          pkill quickshell; sleep 2
+          mkdir -p /tmp/iio/iio:device0 && echo 120 > /tmp/iio/iio:device0/in_illuminance_input
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/share/nimbus/desktop.json" \
+            '{"nightMode": "location", "nightPlace": "Austin", "nightLat": 30.2672, "nightLon": -97.7431, "nightFade": 15}' >/dev/null
+          HEARTH_SCREENS_FIXTURE=$PWD/hosts/linux/test/fixtures/screens-preview HEARTH_SCREENS_IIO=/tmp/iio \
+            quickshell -p hosts/linux/desktop/shell >shots/kwin/shell-preview.log 2>&1 &
+          sleep 25
+          scr :bright kwin-6-brightness-and-night; scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
+          scr :several kwin-9-several-screens
+          # Full-screen overlays go to the shell's first screen: both screens are taken, before and with the overlay
+          # (the shots job keeps the screen that changed).
+          shotall() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
+          ipc settings close; shotall before-10; ipc settings page display:calibrate; sleep 5; shotall kwin-10-hdr-calibrate
+          ipc settings close
+          shotall before-11; ipc screens switcher; sleep 2; shotall kwin-11-super-p
+          echo "::notice title=KWin screens: Super+P::$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call screens state 2>&1 | tail -1 | cut -c1-300)"
+          ipc screens close
+          grep -A9 '^\[NightColor\]' "$HOME/.config/kwinrc" > shots/kwin/nightcolor-location.txt 2>&1
+          grep -q 'Mode=Location' shots/kwin/nightcolor-location.txt && grep -q 'LatitudeFixed=30.2672' shots/kwin/nightcolor-location.txt && grep -q 'TransitionTime=15' shots/kwin/nightcolor-location.txt \
+            || fail "Night light by location didn't reach kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor-location.txt)"
+          if grep -E "(SetDisplay|HdrCalibrate|ScreenSwitcher|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell-preview.log >/dev/null; then
+            fail "preview: $(grep -E "(SetDisplay|HdrCalibrate|ScreenSwitcher|shell)\.qml" shots/kwin/shell-preview.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          fi
+          # The screen-sharing picker on its own (as hearth_screencast.py starts it), on its Area tab: this screen's
+          # picture as the thumb, the middle of it picked.
+          cp shots/kwin/kwin-1-display-top.png /tmp/thumb-0.png 2>/dev/null
+          printf '%s' '{"kind": "cast", "app": "org.mozilla.firefox", "multiple": false, "desktop": false, "area": true, "windows": [], "screens": [{"name": "Virtual-0", "label": "Virtual-0", "w": 1920, "h": 1080, "thumb": "/tmp/thumb-0.png"}, {"name": "Virtual-1", "label": "Virtual-1", "w": 1920, "h": 1080, "thumb": "/tmp/thumb-0.png"}]}' > /tmp/cast-req.json
+          HEARTH_CAST_REQUEST=/tmp/cast-req.json HEARTH_CAST_RESULT=/tmp/cast-res.json quickshell -p hosts/linux/desktop/shell/cast-picker.qml >shots/kwin/cast-picker.log 2>&1 &
+          shotall before-12
+          sleep 8
+          CP="quickshell ipc -p $PWD/hosts/linux/desktop/shell/cast-picker.qml call cast"
+          $CP tab area; $CP preset 4; sleep 2; shotall kwin-12-area-picker
+          echo "::notice title=KWin screens: area picker::$($CP state 2>&1 | tail -1 | cut -c1-300)"
+          $CP share; sleep 2
+          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["kind"] == "area" and r["name"] == "Virtual-0" and abs(r["fw"] - 0.6) < 0.01, r; print(r)' /tmp/cast-res.json > shots/kwin/cast-res.txt 2>&1 \
+            || fail "the area picker's answer: $(head -c 300 shots/kwin/cast-res.txt) $(grep -i -E 'error|warn' shots/kwin/cast-picker.log | head -4 | tr '\n' '|' | cut -c1-400)"
+          pkill -f cast-picker.qml
           # Screen off and on (Settings › Power's idle screen-off under KWin), near the end: this nested KWin on software GL
           # may quit when its screen comes back.
           sh hosts/linux/desktop/shell/hearth-screen-power check || fail "hearth-screen-power can't under KWin"
@@ -2737,8 +2777,8 @@ jobs:
                   if len(base64.b64encode(b.getvalue())) <= 6 * 3800:
                       break
               open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
-          if len(glob.glob('shots/kwin/kwin-*.png')) < 5:
-              flat.append('only %d of the 5 pictures were taken' % len(glob.glob('shots/kwin/kwin-*.png')))
+          if len(glob.glob('shots/kwin/kwin-*.png')) < 12:
+              flat.append('only %d of the 12 pictures were taken' % len(glob.glob('shots/kwin/kwin-*.png')))
           if flat:
               print('::error title=KWin screens: pictures::(nearly) one colour or missing: ' + '; '.join(flat))
               open('shots/kwin/FAILED', 'w').write('flat pictures')
@@ -2767,6 +2807,60 @@ jobs:
       - name: Fail if something didn't work
         if: always()
         run: test ! -e shots/kwin/FAILED
+
+  # 1.14's new Display rows, Super+P and the Area picker (kwin-screens' pictures 6-12) as SHOT notices: a job of their
+  # own, since kwin-screens' own notices are near the 50 a job keeps (a JPEG in base64 pieces of 3800, one step each).
+  kwin-screens-shots:
+    needs: kwin-screens
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kwin-screens
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, glob, io
+          from PIL import Image
+          for p in sorted(glob.glob('shots/kwin-*.png')):
+              n = int(p.split('kwin-')[1].split('-')[0])
+              if n < 6:
+                  continue
+              im = Image.open(p).convert('RGB')
+              if im.width >= 2 * im.height * 1.5:          # both screens side by side: the one the overlay is on
+                  from PIL import ImageChops, ImageStat
+                  halves = lambda x: [x.crop((0, 0, x.width // 2, x.height)), x.crop((x.width // 2, 0, x.width, x.height))]
+                  cur = halves(im)
+                  try:
+                      was = halves(Image.open('shots/before-%d.png' % n).convert('RGB').resize(im.size))
+                      im = cur[max(range(2), key=lambda i: sum(ImageStat.Stat(ImageChops.difference(cur[i], was[i])).mean))]
+                  except OSError:
+                      im = max(cur, key=lambda h: sum(ImageStat.Stat(h).stddev))
+              for w, q in ((1000, 55), (900, 45), (800, 38), (700, 30), (600, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q, optimize=True)
+                  if len(base64.b64encode(b.getvalue())) <= 7 * 3800:
+                      break
+              open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+              print(p, len(b.getvalue()))
+          PY
+      - name: Picture (kwin-6-brightness-and-night)
+        run: f=shots/kwin-6-brightness-and-night.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-6-brightness-and-night $i::$part"; done || true
+      - name: Picture (kwin-7-hdr-colour-intensity)
+        run: f=shots/kwin-7-hdr-colour-intensity.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-7-hdr-colour-intensity $i::$part"; done || true
+      - name: Picture (kwin-8-picture-signal)
+        run: f=shots/kwin-8-picture-signal.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-8-picture-signal $i::$part"; done || true
+      - name: Picture (kwin-9-several-screens)
+        run: f=shots/kwin-9-several-screens.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-9-several-screens $i::$part"; done || true
+      - name: Picture (kwin-10-hdr-calibrate)
+        run: f=shots/kwin-10-hdr-calibrate.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-10-hdr-calibrate $i::$part"; done || true
+      - name: Picture (kwin-11-super-p)
+        run: f=shots/kwin-11-super-p.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-11-super-p $i::$part"; done || true
+      - name: Picture (kwin-12-area-picker)
+        run: f=shots/kwin-12-area-picker.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-12-area-picker $i::$part"; done || true
 
   # 1.14 System Settings' pages (the system-settings-shots artifact): each picture as SHOT notices, one job per picture
   # (a JPEG at 1920x1080 in base64 pieces of 3800, title "SHOT <name> <n>"; nine a step, five steps: a job keeps 50).

@@ -38,6 +38,8 @@ fn run_daemon() -> i32 {
             tokio::spawn(async move { if let Err(e) = ipc::serve(d, &sock, stop).await { eprintln!("socket: {e}"); } });
         }
         tokio::spawn(d.clone().housekeeping(stop.clone()));
+        // This PC's notifications to phones that want them (a bus watch; if it can't, the rest goes on without it).
+        hearth_connect::plugins::sendnotify::start(d.clone());
         // The firewall: open to the local network while the service runs (not in tests).
         let manage_fw = std::env::var("HEARTH_CONNECT_TEST").as_deref() != Ok("1") && std::path::Path::new(hearth_connect_fw::HELPER).exists();
         if manage_fw {

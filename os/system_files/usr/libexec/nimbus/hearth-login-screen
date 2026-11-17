@@ -30,9 +30,11 @@ Instead, each start decides which of the two runs, and anything that goes wrong 
   counting it comes after and can't stop that. Once per start; not while the PC is shutting down. If someone is
   still signed in through greetd (it ended under them), SDDM waits until that session ends (hearth-login-wait), so
   SDDM's automatic sign-in never makes a second session.
-  A start that showed the greeter but ended without anyone signing in and without the greeter's own Restart / Shut
-  down / Sleep or a clean shutdown (a black screen someone held the power button on) counts as a failure at the next
-  start. Two failures in a row: paused, SDDM at every start until you turn it on again (Settings: "Turn on again"),
+  A sign-in only counts as working once the session has stayed up for 60 s (HEARTH_LOGIN_GOOD_SECS): a session that
+  ends sooner (it crashed right after signing in) is noted, and a second one in the same start means SDDM, counted as
+  a failure. A start that showed the greeter but ended without anyone signing in (or whose session never stayed up)
+  and without the greeter's own Restart / Shut down / Sleep or a clean shutdown (a black screen someone held the power
+  button on) counts as a failure at the next start. Two failures in a row: paused, SDDM at every start until you turn it on again (Settings: "Turn on again"),
   and you're told after you sign in (hearth-login-notice, a user service: `notice`). Any sign-in through it resets
   the count. Your setting itself is never changed by any of this.
 
@@ -70,6 +72,7 @@ FLAG = RUN + '/login-greetd'
 MODE = RUN + '/login-mode.json'
 GREETD_CONF = RUN + '/greetd.toml'
 FELL_BACK = RUN + '/login-fell-back'
+FALLING = RUN + '/login-falling-back'      # a fallback under way (greetd's ExecStopPost then leaves it to that one)
 LOCK = RUN + '/.login-screen.lock'
 SDDM_CONF_DIRS = [P('/usr/lib/sddm/sddm.conf.d'), P('/etc/sddm.conf.d')]
 SDDM_MAIN = P('/etc/sddm.conf')
@@ -91,6 +94,10 @@ SESSIONS_RUN = P('/run/systemd/sessions')
 USER_RUN = P('/run/user')
 SYSTEMCTL = os.environ.get('HEARTH_LOGIN_SYSTEMCTL', 'systemctl')
 TIMEOUT = int(os.environ.get('HEARTH_LOGIN_TIMEOUT', '60'))
+# A sign-in only counts as working once its session has stayed up this long: one that ends sooner (crashed right
+# after signing in) doesn't reset the count, and the second one in a start is SDDM.
+GOOD_SECS = float(os.environ.get('HEARTH_LOGIN_GOOD_SECS', '60'))
+MAX_EARLY = 2
 MAX_FAILS = 2
 VT = 7
 UNIT = 'hearth-greetd.service'
@@ -314,7 +321,7 @@ def count_failure(st, why, boot):
 
 
 def cmd_select():
-    for p in (FLAG, GREETD_CONF, FELL_BACK):
+    for p in (FLAG, GREETD_CONF, FELL_BACK, FALLING):
         rm(p)
     boot = boot_id()
     if not setting_on():
@@ -327,7 +334,8 @@ def cmd_select():
     def previous(st):
         p = st.get('pending')
         if isinstance(p, dict) and p.get('boot') and p.get('boot') != boot:
-            why = ('the last start with Hearth\'s login screen ended before anyone signed in' if p.get('shown')
+            why = ('the session ended right after signing in at the last start with Hearth\'s login screen' if p.get('early')
+                   else 'the last start with Hearth\'s login screen ended before anyone signed in' if p.get('shown')
                    else 'Hearth\'s login screen didn\'t show at the last start')
             count_failure(st, why, p.get('boot'))
         return st
@@ -394,7 +402,12 @@ def start_sddm(why):
         rm(FLAG)
     except OSError as e:
         log('could not remove %s (%s)' % (FLAG, e))
-    systemctl('stop', UNIT, timeout=40)
+    if os.environ.get('SERVICE_RESULT'):
+        # Run from greetd's own ExecStopPost: greetd is already stopping, and waiting for that stop from inside it
+        # would wait on itself.
+        systemctl('stop', '--no-block', UNIT, timeout=10)
+    else:
+        systemctl('stop', UNIT, timeout=40)
     rc, out = systemctl('start', '--no-block', SDDM_UNIT)
     log('SDDM started instead (%s)%s' % (why, '' if rc == 0 else ': systemctl said ' + out))
 
@@ -410,7 +423,12 @@ def cmd_fallback(why):
         systemctl('start', '--no-block', 'hearth-login-wait.service')
         log('greetd stopped (%s) while someone is signed in: SDDM once that session ends' % why)
         return 0
+    if os.environ.get('SERVICE_RESULT') and os.path.exists(FALLING):
+        # greetd's ExecStopPost while a fallback is already stopping it: that one starts SDDM and counts it.
+        log('greetd ended during a fallback already under way (%s)' % why)
+        return 0
     first = not os.path.exists(FELL_BACK)
+    safe('noting the fallback', write_run, FALLING, why + '\n')
     start_sddm(why)                     # first, always; recording it comes after
     if not first:
         return 0
@@ -481,9 +499,11 @@ def signed_in_through_greetd():
 
 def cmd_watch(poll=1.0):
     """Every step that records something is guarded: nothing but SIGTERM can keep the 60 s fallback from happening.
-    The unit also has OnFailure=hearth-login-fallback.service, for anything this misses."""
+    The unit also has OnFailure=hearth-login-fallback.service, for anything this misses. A sign-in marks the start as
+    working only once its session has stayed up GOOD_SECS; MAX_EARLY sessions that end sooner mean SDDM."""
     start = time.monotonic()
     shown = [False]
+    since, early = None, 0              # when the signed-in session was first seen; sessions that ended too soon
 
     def stop(*_):
         if shown[0]:
@@ -494,9 +514,31 @@ def cmd_watch(poll=1.0):
     while True:
         if not os.path.exists(FLAG):
             return 0
+        t = time.monotonic()
+        elapsed = t - start
         if safe('looking for a sign-in', signed_in_through_greetd):
-            safe('recording a sign-in', mark_good, 'signed in')
-            return 0
+            if since is None:
+                since = t
+                log('signed in: counted as working once the session has stayed up %d s' % GOOD_SECS)
+            if t - since >= GOOD_SECS:
+                safe('recording a sign-in', mark_good, 'signed in (the session stayed up %d s)' % GOOD_SECS)
+                return 0
+        elif since is not None:
+            up, since = t - since, None
+            early += 1
+            log('the session ended %d s after signing in (%d of %d)' % (up, early, MAX_EARLY))
+
+            def ended(st):
+                if isinstance(st.get('pending'), dict):
+                    st['pending']['early'] = early
+                return st
+            safe('recording a session that ended early', update_state, ended)
+            if early >= MAX_EARLY:
+                return cmd_fallback('the session ended right after signing in, %d times' % early)
+            # As at the start: the greeter has to come back on screen (or someone sign in again) within TIMEOUT.
+            shown[0], start, elapsed = False, t, 0
+            if rt:
+                safe('clearing the greeter\'s ready mark', rm, os.path.join(rt, 'hearth-greeter-ready'))
         if rt and os.path.exists(os.path.join(rt, 'hearth-greeter-ok')):
             safe('recording the greeter\'s power button', mark_good, 'the greeter\'s Restart, Shut down or Sleep')
             return 0
@@ -509,14 +551,13 @@ def cmd_watch(poll=1.0):
                 return st
             safe('recording that it showed', update_state, seen)
             safe('noting this start', write_mode, 'greetd', 'turned on in Settings', shown=True)
-        elapsed = time.monotonic() - start
         if elapsed > 3:
             _, state = systemctl('is-active', UNIT, timeout=10)
             if state in ('failed', 'inactive'):
                 return cmd_fallback('greetd stopped (%s)' % state)
-        if not shown[0] and elapsed > TIMEOUT:
+        if not shown[0] and since is None and elapsed > TIMEOUT:
             return cmd_fallback('it didn\'t show within %d s' % TIMEOUT)
-        time.sleep(poll if not shown[0] else poll * 2)
+        time.sleep(poll if not shown[0] and since is None else poll * 2)
 
 
 def cmd_run_greetd():

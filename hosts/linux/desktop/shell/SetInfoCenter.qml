@@ -14,9 +14,11 @@ SetPage {
         { p: "sensors", id: "info-sensors", t: "Temperatures & fans" }, { p: "modules", id: "info-modules", t: "Kernel modules" }, { p: "interrupts", id: "info-interrupts", t: "Interrupts" }]
     readonly property string which: part || "cpu"
     property string find: ""
-    function load() { info = null; job.run([which], r => page.info = r, e => page.info = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
-    Component.onCompleted: Qt.callLater(load)
-    onWhichChanged: Qt.callLater(load)
+    function load() { page.info = null; job.run([which], r => page.info = r, e => page.info = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
+    property bool ready: false
+    Component.onCompleted: { ready = true; load(); }
+    onWhichChanged: if (ready) reload.restart()
+    Timer { id: reload; interval: 1; onTriggered: page.load() }
     SetJob { id: job; helper: "hearth-info" }
     // Temperatures and fans (and interrupts' counts) move: read again every 2 s while the page is open, without
     // clearing it first.
