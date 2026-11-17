@@ -80,3 +80,43 @@ Home server) shows "<device> is using this PC through Moonlight" while a device 
 - `os/system_files/usr/libexec/nimbus/hearth-home-server-helper`: `remote-fw tailscale [PORT] | off | load` (root).
 - `os/system_files/usr/lib/systemd/system/hearth-remote-desktop-firewall.service`: the boot unit (off in the image).
 - Tests: `hosts/linux/test/test_hearth_remote_desktop.py`.
+
+## Remote desktop with a VNC app
+
+Settings › System › **Remote desktop** is the other way in: this PC's desktop in any **VNC** app that does VeNCrypt
+(TLS): TigerVNC Viewer (Windows, Mac, Linux), Remmina and KRDC (Linux), bVNC / AVNC (Android). It's slower than
+Moonlight for games, but it needs nothing on the PC but the switch, works on every desktop Hearth has (KWin and labwc),
+and any VNC app can use it. Remote play above stays for games.
+
+1. Turn on **Remote desktop** and **set a password** (at least 8 characters). It's kept in your keyring, never in a file.
+2. On the other device, sign in to Tailscale and connect your VNC app to the name shown (like `gaming-pc.tail1234.ts.net`).
+   Pick VeNCrypt / TLS if it asks. If it asks whether to trust this PC, check the fingerprint Settings shows.
+3. The first time, this PC asks **at the PC** to allow sharing the screen (the desktop's own question). On KDE's KWin
+   that answer is remembered; on the classic labwc desktop it may ask each time someone connects.
+
+**Who can connect:** Tailscale addresses only, or your home network too when you choose it; never the internet (other
+addresses are dropped before anything is sent). Every connection is a notification and a dot under the bar with
+**Disconnect**. Five wrong passwords lock that address out for five minutes. **View only** lets them watch without typing
+or clicking.
+
+**Keyboard and mouse:** on KWin through the desktop's own remote control (the RemoteDesktop portal); on labwc, whose
+portal can only share the screen, through a virtual keyboard and mouse (uinput, which Hearth lets the person at the PC
+use; US layout); if neither works it's view only and Settings says why. The clipboard isn't shared.
+
+**How it works** (hearth-vnc, `hearth-vnc --help`): RFB 3.8 with VeNCrypt only: X509Plain (this PC's own certificate,
+made on first use in `~/.local/share/nimbus/vnc/`) for everyone, and TLSPlain (anonymous TLS) only for Tailscale
+addresses, whose WireGuard tunnel already proves who they are. The screen comes from the screen-sharing portal through
+GStreamer (pipewiresrc), only while someone is connected, up to 20 frames a second, and only the 64x64 tiles that
+changed are sent (ZRLE, or Raw). Choices in `~/.config/nimbus/remote-vnc.json` (on, reach, viewOnly), written only when
+you change one. `hearth-vnc.service` is a user service that isn't enabled: the switch starts it, and Desktop Mode
+starts it again at sign-in only while the switch is on.
+
+## Recording the screen (the Recorder panel)
+
+The Recorder panel (`quickshell ipc ... call record open`, the dot under the bar while recording, and Super+Alt+R where
+the Hearth Recorder app can't record) records a screen or a window through the same screen-sharing portal, so it
+works on KWin and labwc alike: this PC's sound, the microphone or both, 30 or 60 frames a second, the pointer or not.
+It encodes on the graphics card (NVENC, VA-API) when GStreamer can, else x264 (a graphics-card encoder that fails in
+the first seconds is replaced by itself), into an MP4 written in fragments, so a power cut doesn't lose the recording.
+Recordings go to Videos/Recordings with a notification. Its helper is hearth-record; your choices are in
+`~/.config/nimbus/record.json`, written only when you change one.

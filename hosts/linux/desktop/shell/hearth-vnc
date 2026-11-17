@@ -1,0 +1,1228 @@
+#!/usr/bin/python3
+"""hearth-vnc: Settings › Remote desktop (SetRemoteDesktop.qml). This PC's desktop in any VNC app (TigerVNC, Remmina,
+KRDC, RealVNC-compatible viewers that do VeNCrypt), on your other devices through Tailscale, or your home network too.
+Never the internet. Off by default; nothing about it is on in the image.
+
+The screen comes from the desktop's screen-sharing portal (hearth_screencast: KWin's, or labwc's wlr backend), the
+keyboard and mouse through the portal's RemoteDesktop on KWin; on labwc (whose portal has no RemoteDesktop) through a
+virtual keyboard and mouse (uinput, which Hearth lets the person at the PC use), else it's view-only and says so.
+The portal asks at the PC the first time; KWin remembers that answer (its restore token, kept in the state folder).
+
+Security: VeNCrypt only. Every connection is TLS: X509Plain (this PC's own certificate, made here, its SHA-256
+fingerprint shown in Settings to compare with what the viewer shows) for everyone, and TLSPlain (anonymous TLS) only
+for Tailscale addresses, whose WireGuard tunnel already proves who they are. The password is in your keyring
+(libsecret, secret-tool), never in a file, never logged or shown. Connections from anywhere but Tailscale (and your home
+network when you chose it) are refused before anything is sent; 5 wrong passwords lock that address out for 5 minutes.
+Every connection is a notification and the bar's capture dot (CaptureIndicator.qml) until it ends.
+
+Files:
+  ~/.config/nimbus/remote-vnc.json     your choices: on, reach (tailscale|home), viewOnly. Written only when you change
+                                       one, through hearth_settings_io (atomic, .bak, merged; defaults never saved)
+  ~/.local/share/nimbus/vnc/           this PC's certificate and key (0600), made the first time it's turned on
+  ~/.local/state/nimbus/vnc-portal.json  the portal's restore token (not a setting)
+  $XDG_RUNTIME_DIR/hearth-vnc/         who's connected now (clients.json, watched by the bar) and the control socket
+
+  hearth-vnc status                    JSON: on, running, reach, viewOnly, password set, keyring, input (portal|uinput|
+                                       none), addresses, port, fingerprint, who's connected, tips
+  hearth-vnc set on|reach|viewOnly V   on on|off (starts or stops hearth-vnc.service), reach tailscale|home, viewOnly on|off
+  hearth-vnc password                  the new password on stdin (HEARTH_INPUT); at least 8 characters
+  hearth-vnc forget-password           take it out of the keyring (nobody can connect until there's a new one)
+  hearth-vnc disconnect ID|all         end that connection (or all of them)
+  hearth-vnc session                   Desktop Mode's autostart: starts the service if it's on; never fails
+  hearth-vnc serve                     the server (hearth-vnc.service)
+Output: one JSON line; failures print "error: ..." and exit 1. No shell anywhere: every command is an argument list.
+"""
+import hashlib
+import ipaddress
+import json
+import os
+import shutil
+import socket
+import ssl
+import struct
+import subprocess
+import sys
+import threading
+import time
+import zlib
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+DATA_HOME = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'remote-vnc.json')
+CERT_DIR = os.path.join(DATA_HOME, 'nimbus', 'vnc')
+CERT = os.path.join(CERT_DIR, 'cert.pem')
+KEY = os.path.join(CERT_DIR, 'key.pem')
+PORTAL_STATE = os.path.join(STATE_HOME, 'nimbus', 'vnc-portal.json')
+RUNTIME = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-vnc')
+CLIENTS = os.path.join(RUNTIME, 'clients.json')
+CONTROL = os.path.join(RUNTIME, 'control')
+UNIT = 'hearth-vnc.service'
+PORT = int(os.environ.get('HEARTH_VNC_PORT') or 5900)
+DEFAULTS = {'on': False, 'reach': 'tailscale', 'viewOnly': False}
+SECRET_ATTRS = ['app', 'hearth-vnc', 'kind', 'password']
+MIN_PASSWORD = 8
+
+TAILSCALE_NETS = [ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48')]
+HOME_NETS = [ipaddress.ip_network(n) for n in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fe80::/10', 'fc00::/7')]
+LOOPBACK = [ipaddress.ip_network('127.0.0.0/8'), ipaddress.ip_network('::1/128')]
+
+# RFB
+SEC_VENCRYPT = 19
+VENC_TLSPLAIN, VENC_X509PLAIN = 259, 262
+ENC_RAW, ENC_ZRLE, ENC_DESKTOPSIZE = 0, 16, -223
+TILE = 64
+MAX_FPS = 20
+FAIL_LIMIT, LOCKOUT = 5, 300
+
+
+def out(obj):
+    print(json.dumps(obj))
+    return 0
+
+
+def fail(msg):
+    print('error: ' + msg)
+    return 1
+
+
+def run(cmd, timeout=10, inp=None):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        return p.returncode, p.stdout, p.stderr
+    except Exception as e:
+        return 127, '', str(e)
+
+
+def load():
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+# ---- who may connect
+def peer_allowed(ip, reach):
+    """'tailscale', 'home', 'local' or '' (refused). Never the internet."""
+    try:
+        a = ipaddress.ip_address(ip.split('%')[0])
+    except ValueError:
+        return ''
+    if getattr(a, 'ipv4_mapped', None):
+        a = a.ipv4_mapped
+    if any(a in n for n in LOOPBACK):
+        return 'local'
+    if any(a in n for n in TAILSCALE_NETS):
+        return 'tailscale'
+    if reach == 'home' and any(a in n for n in HOME_NETS):
+        return 'home'
+    return ''
+
+
+# ---- the password (libsecret)
+def password_get():
+    """(password or None, why)."""
+    if not shutil.which('secret-tool'):
+        return None, "the keyring tool (secret-tool) isn't installed"
+    code, so, se = run(['secret-tool', 'lookup'] + SECRET_ATTRS, 15)
+    if code == 0 and so:
+        return so.rstrip('\n'), ''
+    if 'locked' in (se or '').lower() or 'dismissed' in (se or '').lower():
+        return None, 'the keyring is locked'
+    return None, ''
+
+
+def cmd_password():
+    pw = os.environ.get('HEARTH_INPUT') or ''
+    if not pw:
+        pw = sys.stdin.read() if not sys.stdin.isatty() else ''
+    pw = pw.rstrip('\n')
+    if len(pw) < MIN_PASSWORD:
+        return fail('use at least %d characters' % MIN_PASSWORD)
+    if len(pw) > 255:
+        return fail('use at most 255 characters')
+    if not shutil.which('secret-tool'):
+        return fail("the keyring tool (secret-tool) isn't installed")
+    code, _o, se = run(['secret-tool', 'store', '--label=Hearth remote desktop (VNC)'] + SECRET_ATTRS, 20, inp=pw)
+    if code != 0:
+        return fail("couldn't keep it in your keyring" + (': ' + se.strip().splitlines()[-1] if se.strip() else ''))
+    return out({'ok': True})
+
+
+def cmd_forget():
+    if shutil.which('secret-tool'):
+        run(['secret-tool', 'clear'] + SECRET_ATTRS, 15)
+    return out({'ok': True})
+
+
+# ---- this PC's certificate
+def ensure_cert():
+    if os.path.exists(CERT) and os.path.exists(KEY):
+        return True
+    if not shutil.which('openssl'):
+        return False
+    os.makedirs(CERT_DIR, mode=0o700, exist_ok=True)
+    name = 'Hearth remote desktop ' + (socket.gethostname() or 'PC')
+    old = os.umask(0o077)
+    try:
+        code, _o, _e = run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
+                            '-keyout', KEY + '.tmp', '-out', CERT + '.tmp', '-days', '3650', '-subj', '/CN=' + name[:60]], 60)
+    finally:
+        os.umask(old)
+    if code != 0:
+        return False
+    os.replace(KEY + '.tmp', KEY)
+    os.replace(CERT + '.tmp', CERT)
+    os.chmod(KEY, 0o600)
+    return True
+
+
+def fingerprint():
+    try:
+        with open(CERT, encoding='ascii') as f:
+            der = ssl.PEM_cert_to_DER_cert(f.read())
+    except Exception:
+        return ''
+    h = hashlib.sha256(der).hexdigest().upper()
+    return ':'.join(h[i:i + 2] for i in range(0, len(h), 2))
+
+
+# ---- the desktop
+def input_kind(view_only, rd_version):
+    """How the keyboard and mouse get in: portal, uinput, or none (view-only), and why when none."""
+    if view_only:
+        return 'none', 'view-only (your choice)'
+    if rd_version:
+        return 'portal', ''
+    if os.access('/dev/uinput', os.W_OK):
+        try:
+            import evdev  # noqa: F401
+            return 'uinput', ''
+        except Exception:
+            return 'none', 'this desktop lets apps see the screen but not type or click, and python3-evdev is missing'
+    return 'none', "this desktop lets apps see the screen but not type or click, and this account can't make a virtual keyboard"
+
+
+def service_active():
+    return run(['systemctl', '--user', 'is-active', '--quiet', UNIT], 5)[0] == 0
+
+
+def addresses():
+    res = {'tailscale': {}, 'home': []}
+    if shutil.which('tailscale'):
+        code, so, _e = run(['tailscale', 'status', '--json', '--peers=false'], 6)
+        if code == 0:
+            try:
+                s = json.loads(so).get('Self') or {}
+                ips = s.get('TailscaleIPs') or []
+                res['tailscale'] = {'name': (s.get('DNSName') or '').rstrip('.'), 'ip': next((i for i in ips if ':' not in i), ips[0] if ips else ''),
+                                    'running': json.loads(so).get('BackendState') == 'Running'}
+            except Exception:
+                pass
+    code, so, _e = run(['ip', '-j', '-4', 'addr', 'show', 'scope', 'global'], 5)
+    if code == 0:
+        try:
+            for link in json.loads(so):
+                if (link.get('ifname') or '').startswith(('tailscale', 'docker', 'virbr', 'br-', 'veth')):
+                    continue
+                for a in link.get('addr_info') or []:
+                    if peer_allowed(a.get('local', ''), 'home') == 'home':
+                        res['home'].append(a['local'])
+        except Exception:
+            pass
+    return res
+
+
+def read_clients():
+    try:
+        with open(CLIENTS, encoding='utf-8') as f:
+            c = json.load(f)
+    except Exception:
+        return {}
+    try:
+        os.kill(int(c.get('pid')), 0)
+    except Exception:
+        return {}
+    return c
+
+
+def cmd_status():
+    s = load()
+    try:
+        import hearth_screencast as hs
+        ok, why, rd = hs.available()
+    except Exception as e:
+        ok, why, rd = False, str(e), 0
+    kind, kind_why = input_kind(bool(s['viewOnly']), rd)
+    has_pw = False
+    keyring = 'ok'
+    if not shutil.which('secret-tool'):
+        keyring = 'missing'
+    else:
+        pw, why_pw = password_get()
+        has_pw = bool(pw)
+        if why_pw == 'the keyring is locked':
+            keyring = 'locked'
+    c = read_clients()
+    running = bool(c) or service_active()
+    tips = []
+    if s['on'] and not has_pw:
+        tips.append('Set a password: nobody can connect without one')
+    if s['on'] and not ok:
+        tips.append("The screen can't be shared on this desktop: " + why)
+    try:
+        with open(PORTAL_STATE, encoding='utf-8') as f:
+            approved = bool(json.load(f).get('token'))
+    except Exception:
+        approved = False
+    return out({
+        'on': bool(s['on']), 'running': running, 'reach': s['reach'], 'viewOnly': bool(s['viewOnly']),
+        'password': has_pw, 'keyring': keyring, 'input': kind, 'inputWhy': kind_why, 'portal': ok, 'portalWhy': why,
+        'remoteDesktopPortal': rd, 'approved': approved, 'port': PORT, 'fingerprint': fingerprint(),
+        'addresses': addresses() if s['on'] else {'tailscale': {}, 'home': []},
+        'clients': c.get('clients', []), 'error': c.get('error', ''), 'tips': tips,
+        'can': {'openssl': bool(shutil.which('openssl')), 'gst': bool(shutil.which('gst-launch-1.0')), 'secretTool': keyring != 'missing'},
+    })
+
+
+def cmd_set(key, value):
+    s = load()
+    if key == 'on':
+        if value not in ('on', 'off'):
+            return fail('on is on or off')
+        on = value == 'on'
+        if on and not ensure_cert():
+            return fail("couldn't make this PC's certificate (openssl is missing)")
+        if s['on'] != on:
+            sio.merge_json(SETTINGS, {'on': on}, who='Remote desktop')
+        if on:
+            run(['systemctl', '--user', 'reset-failed', UNIT], 5)
+            code, _o, se = run(['systemctl', '--user', 'start', UNIT], 30)
+            note = '' if code == 0 else "It's on, but the server didn't start: " + (se.strip().splitlines() or ['?'])[-1]
+            return out({'ok': True, 'note': note})
+        run(['systemctl', '--user', 'stop', UNIT], 30)
+        return out({'ok': True})
+    if key == 'reach':
+        if value not in ('tailscale', 'home'):
+            return fail('reach is tailscale or home')
+        v = value
+    elif key == 'viewOnly':
+        if value not in ('on', 'off'):
+            return fail('viewOnly is on or off')
+        v = value == 'on'
+    else:
+        return fail('unknown setting ' + key)
+    if s.get(key) != v:
+        sio.merge_json(SETTINGS, {key: v}, who='Remote desktop')
+        control({'cmd': 'reload'})
+    return out({'ok': True})
+
+
+def control(msg, timeout=5):
+    try:
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c.settimeout(timeout)
+        c.connect(CONTROL)
+        c.sendall((json.dumps(msg) + '\n').encode())
+        data = b''
+        while not data.endswith(b'\n'):
+            chunk = c.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        c.close()
+        return json.loads(data or b'{}')
+    except Exception:
+        return None
+
+
+def cmd_disconnect(who):
+    r = control({'cmd': 'kick', 'id': who})
+    if r is None:
+        return out({'ok': True, 'note': 'nobody is connected'})
+    return out(r)
+
+
+def cmd_session():
+    try:
+        if load().get('on') and not service_active():
+            run(['systemctl', '--user', 'start', '--no-block', UNIT], 10)
+    except Exception:
+        pass
+    return out({'ok': True})
+
+
+# ======================================================================== the RFB server
+def p8(v):
+    return struct.pack('!B', v)
+
+
+def p16(v):
+    return struct.pack('!H', v)
+
+
+def p32(v):
+    return struct.pack('!I', v)
+
+
+def recv_exact(sock, n):
+    buf = b''
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise ConnectionError('closed')
+        buf += chunk
+    return buf
+
+
+# Our pixel format: 32 bits, depth 24, little-endian, true colour, R<<16 G<<8 B: BGRx in memory, as GStreamer gives it.
+SERVER_PF = struct.pack('!BBBBHHHBBB3x', 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
+
+
+class PixelFormat:
+    def __init__(self, raw=SERVER_PF):
+        (self.bpp, self.depth, self.big, self.true, self.rmax, self.gmax, self.bmax,
+         self.rs, self.gs, self.bs) = struct.unpack('!BBBBHHHBBB3x', raw)
+        self.fast = (self.bpp == 32 and self.true and self.rmax == self.gmax == self.bmax == 255
+                     and sorted((self.rs, self.gs, self.bs)) in ([0, 8, 16], [8, 16, 24]))
+        self.bypp = max(1, self.bpp // 8)
+        if self.fast:
+            def pos(shift):
+                b = shift // 8
+                return 3 - b if self.big else b
+            self.pos = (pos(self.bs), pos(self.gs), pos(self.rs))      # where B, G, R go
+            low = max(self.rs, self.gs, self.bs) <= 16
+            # CPIXEL: the 3 bytes that hold the colour (RFB 7.7.6)
+            self.cdrop = (3 if not self.big else 0) if low else (0 if not self.big else 3)
+        else:
+            def table(mx, sh):
+                return [((v * mx + 127) // 255) << sh for v in range(256)]
+            self.rt, self.gt, self.bt = table(self.rmax, self.rs), table(self.gmax, self.gs), table(self.bmax, self.bs)
+            fmt = {1: 'B', 2: 'H', 4: 'I'}.get(self.bypp, 'I')
+            self.packer = struct.Struct(('>' if self.big else '<') + fmt)
+
+    def convert(self, bgrx, cpixel=False):
+        """BGRx bytes to this format's pixels (ZRLE's CPIXELs with cpixel)."""
+        if self.fast:
+            if self.pos == (0, 1, 2):
+                o = bytearray(bgrx)
+            else:
+                o = bytearray(len(bgrx))
+                o[self.pos[0]::4] = bgrx[0::4]
+                o[self.pos[1]::4] = bgrx[1::4]
+                o[self.pos[2]::4] = bgrx[2::4]
+            if cpixel:
+                del o[self.cdrop::4]
+            return o
+        o = bytearray()
+        pk, rt, gt, bt = self.packer.pack, self.rt, self.gt, self.bt
+        for i in range(0, len(bgrx), 4):
+            o += pk(rt[bgrx[i + 2]] | gt[bgrx[i + 1]] | bt[bgrx[i]])
+        return o
+
+    def csize(self):
+        return 3 if self.fast else self.bypp
+
+
+def dirty_tiles(old, new, w, h, rect=None):
+    """[(tx, ty, tw, th)] of 64x64 tiles that changed (all of them when old is None), clipped to rect's tiles."""
+    stride = w * 4
+    x0, y0, x1, y1 = (0, 0, w, h) if rect is None else (rect[0], rect[1], min(w, rect[0] + rect[2]), min(h, rect[1] + rect[3]))
+    tiles = []
+    for ty in range((y0 // TILE) * TILE, y1, TILE):
+        th = min(TILE, h - ty)
+        if old is not None:
+            a, b = ty * stride, (ty + th) * stride
+            if old[a:b] == new[a:b]:
+                continue
+        for tx in range((x0 // TILE) * TILE, x1, TILE):
+            tw = min(TILE, w - tx)
+            if old is not None:
+                same = True
+                for row in range(ty, ty + th):
+                    s = row * stride + tx * 4
+                    if old[s:s + tw * 4] != new[s:s + tw * 4]:
+                        same = False
+                        break
+                if same:
+                    continue
+            tiles.append((tx, ty, tw, th))
+    return tiles
+
+
+def runs(tiles):
+    """Tiles side by side in a band joined into one rectangle each (fewer headers)."""
+    rects = []
+    for t in tiles:
+        if rects and rects[-1][1] == t[1] and rects[-1][0] + rects[-1][2] == t[0] and rects[-1][3] == t[3]:
+            r = rects[-1]
+            rects[-1] = (r[0], r[1], r[2] + t[2], r[3])
+        else:
+            rects.append(t)
+    return rects
+
+
+def region(frame, w, x, y, rw, rh):
+    stride = w * 4
+    if x == 0 and rw == w:
+        return frame[y * stride:(y + rh) * stride]
+    return b''.join(frame[(row * stride) + x * 4:(row * stride) + (x + rw) * 4] for row in range(y, y + rh))
+
+
+def zrle_rect(z, pf, frame, w, x, y, rw, rh):
+    """One ZRLE rectangle's data (after its header): u32 length, then the zlib stream's next part."""
+    parts = []
+    cs = pf.csize()
+    for ty in range(y, y + rh, TILE):
+        th = min(TILE, y + rh - ty)
+        for tx in range(x, x + rw, TILE):
+            tw = min(TILE, x + rw - tx)
+            px = pf.convert(region(frame, w, tx, ty, tw, th), cpixel=True)
+            first = bytes(px[:cs])
+            if px == first * (tw * th):
+                parts.append(b'\x01' + first)       # one colour
+            else:
+                parts.append(b'\x00' + bytes(px))   # raw CPIXELs
+    data = z.compress(b''.join(parts)) + z.flush(zlib.Z_SYNC_FLUSH)
+    return p32(len(data)) + data
+
+
+class Capture:
+    """The screen: GStreamer reads the portal's PipeWire stream and hands BGRx frames on a pipe."""
+
+    def __init__(self, sess):
+        self.sess = sess
+        self.cond = threading.Condition()
+        self.frame = None
+        self.serial = 0
+        self.size = (0, 0)
+        self.error = ''
+        self.proc = None
+        self.stopped = False
+        self.restart_wanted = False
+
+    def start(self):
+        import hearth_screencast as hs
+        self.hs = hs
+        fd = self.sess.fd()
+        r, wfd = os.pipe()
+        desc = ('pipewiresrc fd=%d path=%d do-timestamp=true ! videorate drop-only=true max-rate=%d ! videoconvert ! '
+                'video/x-raw,format=BGRx ! fdsink fd=%d sync=false' % (fd, self.sess.node(), MAX_FPS, wfd))
+        self.proc = subprocess.Popen(['gst-launch-1.0', '-v', desc], pass_fds=(fd, wfd), stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        os.close(fd)
+        os.close(wfd)
+        self.rfd = r
+        self.got_size = threading.Event()
+        threading.Thread(target=self._caps, daemon=True, name='caps').start()
+        threading.Thread(target=self._frames, daemon=True, name='frames').start()
+        if not self.got_size.wait(15):
+            self.error = "the screen didn't come (GStreamer's PipeWire plugin may be missing)"
+            self.stop()
+            raise RuntimeError(self.error)
+
+    def _caps(self):
+        for line in self.proc.stdout:
+            if 'GstFdSink' in line and 'caps =' in line:
+                s = self.hs.caps_size(line)
+                if s and s != self.size:
+                    if self.size != (0, 0):
+                        self.restart_wanted = True     # a new resolution: the pipeline starts again at the new size
+                        with self.cond:
+                            self.cond.notify_all()
+                        return
+                    self.size = s
+                    self.got_size.set()
+        with self.cond:
+            self.stopped = True
+            self.cond.notify_all()
+
+    def _frames(self):
+        self.got_size.wait()
+        w, h = self.size
+        n = w * h * 4
+        f = os.fdopen(self.rfd, 'rb', buffering=0)
+        while not self.stopped and not self.restart_wanted:
+            buf = bytearray(n)
+            mv = memoryview(buf)
+            got = 0
+            while got < n:
+                k = f.readinto(mv[got:])
+                if not k:
+                    with self.cond:
+                        self.stopped = True
+                        self.cond.notify_all()
+                    return
+                got += k
+            with self.cond:
+                self.frame = bytes(buf)
+                self.serial += 1
+                self.cond.notify_all()
+
+    def wait(self, serial, timeout):
+        with self.cond:
+            if (self.serial == serial or self.frame is None) and not self.stopped and not self.restart_wanted:
+                self.cond.wait(timeout)
+            return self.frame, self.serial
+
+    def stop(self):
+        self.stopped = True
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(5)
+            except Exception:
+                self.proc.kill()
+        with self.cond:
+            self.cond.notify_all()
+
+
+# keysym -> evdev key name, for uinput (US layout; the viewer sends Shift itself)
+def _keymap():
+    m = {}
+    for c in 'abcdefghijklmnopqrstuvwxyz':
+        m[ord(c)] = m[ord(c.upper())] = 'KEY_' + c.upper()
+    for i, c in enumerate('1234567890'):
+        m[ord(c)] = 'KEY_' + c
+    for c, k in zip('!@#$%^&*()', '1234567890'):
+        m[ord(c)] = 'KEY_' + k
+    for chars, k in (('-_', 'MINUS'), ('=+', 'EQUAL'), ('[{', 'LEFTBRACE'), (']}', 'RIGHTBRACE'), ('\\|', 'BACKSLASH'),
+                     (';:', 'SEMICOLON'), ('\'"', 'APOSTROPHE'), ('`~', 'GRAVE'), (',<', 'COMMA'), ('.>', 'DOT'),
+                     ('/?', 'SLASH'), (' ', 'SPACE')):
+        for c in chars:
+            m[ord(c)] = 'KEY_' + k
+    named = {0xff08: 'BACKSPACE', 0xff09: 'TAB', 0xff0d: 'ENTER', 0xff1b: 'ESC', 0xffff: 'DELETE', 0xff50: 'HOME',
+             0xff51: 'LEFT', 0xff52: 'UP', 0xff53: 'RIGHT', 0xff54: 'DOWN', 0xff55: 'PAGEUP', 0xff56: 'PAGEDOWN',
+             0xff57: 'END', 0xff63: 'INSERT', 0xff61: 'SYSRQ', 0xff67: 'COMPOSE', 0xffe1: 'LEFTSHIFT', 0xffe2: 'RIGHTSHIFT',
+             0xffe3: 'LEFTCTRL', 0xffe4: 'RIGHTCTRL', 0xffe5: 'CAPSLOCK', 0xffe7: 'LEFTMETA', 0xffe8: 'RIGHTMETA',
+             0xffe9: 'LEFTALT', 0xffea: 'RIGHTALT', 0xffeb: 'LEFTMETA', 0xffec: 'RIGHTMETA', 0xfe03: 'RIGHTALT',
+             0xff13: 'PAUSE', 0xff14: 'SCROLLLOCK', 0xff7f: 'NUMLOCK', 0xff8d: 'KPENTER'}
+    for i in range(12):
+        named[0xffbe + i] = 'F%d' % (i + 1)
+    for k, v in named.items():
+        m[k] = 'KEY_' + v
+    return m
+
+
+KEYMAP = _keymap()
+
+
+class UInputBackend:
+    def __init__(self, size):
+        import evdev
+        from evdev import ecodes as e
+        self.e = e
+        keys = sorted({getattr(e, n) for n in KEYMAP.values() if hasattr(e, n)})
+        self.kbd = evdev.UInput({e.EV_KEY: keys}, name='Hearth remote desktop keyboard')
+        w, h = size
+        self.w, self.h = w, h
+        self.ptr = evdev.UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE],
+                                 e.EV_ABS: [(e.ABS_X, evdev.AbsInfo(0, 0, max(1, w - 1), 0, 0, 0)),
+                                            (e.ABS_Y, evdev.AbsInfo(0, 0, max(1, h - 1), 0, 0, 0))],
+                                 e.EV_REL: [e.REL_WHEEL, e.REL_HWHEEL]}, name='Hearth remote desktop pointer')
+
+    def key(self, keysym, down):
+        n = KEYMAP.get(keysym)
+        code = getattr(self.e, n, None) if n else None
+        if code is not None:
+            self.kbd.write(self.e.EV_KEY, code, 1 if down else 0)
+            self.kbd.syn()
+
+    def pointer(self, x, y):
+        self.ptr.write(self.e.EV_ABS, self.e.ABS_X, x)
+        self.ptr.write(self.e.EV_ABS, self.e.ABS_Y, y)
+        self.ptr.syn()
+
+    def button(self, code, down):
+        self.ptr.write(self.e.EV_KEY, code, 1 if down else 0)
+        self.ptr.syn()
+
+    def scroll(self, axis, steps):
+        self.ptr.write(self.e.EV_REL, self.e.REL_HWHEEL if axis else self.e.REL_WHEEL, -steps if not axis else steps)
+        self.ptr.syn()
+
+    def close(self):
+        for d in (self.kbd, self.ptr):
+            try:
+                d.close()
+            except Exception:
+                pass
+
+
+BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
+
+
+class Server:
+    def __init__(self, frames=None, password=None, settings=None):
+        self.settings = settings or load()
+        self.clients = {}
+        self.lock = threading.RLock()
+        self.next_id = 1
+        self.fails = {}                 # ip -> (count, until)
+        self.sess = None
+        self.capture = frames           # a test passes a fake capture
+        self.backend = None
+        self.input = 'none'
+        self.input_why = ''
+        self.error = ''
+        self._password = password       # tests only; otherwise the keyring, read at each sign-in
+        self.idle_timer = None
+        self.ctx_x509 = None
+        self.ctx_anon = None
+        self.stopping = False
+
+    # ---- TLS
+    def tls(self):
+        if self.ctx_x509 is None and os.path.exists(CERT):
+            c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            c.minimum_version = ssl.TLSVersion.TLSv1_2
+            c.load_cert_chain(CERT, KEY)
+            self.ctx_x509 = c
+        if self.ctx_anon is None:
+            c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            c.minimum_version = c.maximum_version = ssl.TLSVersion.TLSv1_2   # anonymous suites are TLS 1.2 only
+            c.set_ciphers('aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:@SECLEVEL=0')
+            self.ctx_anon = c
+
+    def password(self):
+        if self._password is not None:
+            return self._password, ''
+        return password_get()
+
+    # ---- the screen, shared by every connection, open only while someone is connected
+    def ensure_capture(self):
+        with self.lock:
+            if self.idle_timer:
+                self.idle_timer.cancel()
+                self.idle_timer = None
+            if self.capture and not self.capture.stopped and not getattr(self.capture, 'restart_wanted', False):
+                return self.capture
+            if self.capture and getattr(self.capture, 'fake', False):
+                return self.capture
+            if self.capture:
+                self.capture.stop()
+                self.capture = None
+            import hearth_screencast as hs
+            if self.sess is None or self.sess.closed.is_set():
+                ok, why, rd = hs.available()
+                if not ok:
+                    raise RuntimeError(why)
+                view_only = bool(load().get('viewOnly'))
+                self.input, self.input_why = input_kind(view_only, rd)
+                token = ''
+                try:
+                    with open(PORTAL_STATE, encoding='utf-8') as f:
+                        token = json.load(f).get('token', '')
+                except Exception:
+                    pass
+                s = hs.Session()
+                if self.input == 'portal':
+                    s.remote_desktop(hs.MONITOR, hs.CURSOR_EMBEDDED, token, 2)
+                else:
+                    s.screencast(hs.MONITOR, hs.CURSOR_EMBEDDED, token, 2)
+                if s.restore_token:
+                    os.makedirs(os.path.dirname(PORTAL_STATE), exist_ok=True)
+                    sio.write_json(PORTAL_STATE, {'token': s.restore_token, 'time': int(time.time())})
+                s.on_closed = self.portal_closed
+                self.sess = s
+            cap = Capture(self.sess)
+            cap.start()
+            self.capture = cap
+            if self.input == 'uinput' and self.backend is None:
+                try:
+                    self.backend = UInputBackend(cap.size)
+                except Exception as e:
+                    self.input, self.input_why = 'none', "couldn't make the virtual keyboard and mouse (%s)" % e
+            self.publish()
+            return cap
+
+    def portal_closed(self):
+        # Stopped at the PC (the desktop's own "sharing" indicator): everyone is disconnected.
+        self.kick('all')
+
+    def release_capture_later(self):
+        with self.lock:
+            if self.clients or self.idle_timer:
+                return
+            self.idle_timer = threading.Timer(15, self.release_capture)
+            self.idle_timer.daemon = True
+            self.idle_timer.start()
+
+    def release_capture(self):
+        with self.lock:
+            self.idle_timer = None
+            if self.clients:
+                return
+            if self.capture and not getattr(self.capture, 'fake', False):
+                self.capture.stop()
+                self.capture = None
+            if self.backend:
+                self.backend.close()
+                self.backend = None
+            if self.sess:
+                self.sess.close()
+                self.sess = None
+            self.publish()
+
+    # ---- who's connected (the bar's dot and Settings watch this file)
+    def publish(self):
+        data = {'pid': os.getpid(), 'port': PORT, 'input': self.input, 'inputWhy': self.input_why, 'error': self.error,
+                'clients': [{'id': c.id, 'ip': c.ip, 'name': c.name, 'via': c.via, 'since': c.since, 'viewOnly': c.view_only}
+                            for c in self.clients.values() if c.authed]}
+        try:
+            os.makedirs(RUNTIME, mode=0o700, exist_ok=True)
+            tmp = CLIENTS + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+            os.replace(tmp, CLIENTS)
+        except OSError:
+            pass
+
+    def kick(self, who):
+        with self.lock:
+            targets = list(self.clients.values()) if who == 'all' else [c for c in self.clients.values() if str(c.id) == str(who)]
+        for c in targets:
+            c.close()
+        return {'ok': True, 'disconnected': len(targets)}
+
+    # ---- wrong passwords
+    def locked_out(self, ip):
+        n, until = self.fails.get(ip, (0, 0))
+        return n >= FAIL_LIMIT and time.time() < until
+
+    def failed(self, ip):
+        n, until = self.fails.get(ip, (0, 0))
+        if until and time.time() > until:
+            n = 0
+        n += 1
+        self.fails[ip] = (n, time.time() + LOCKOUT)
+        return n
+
+    # ---- serving
+    def handle(self, sock, addr):
+        via = peer_allowed(addr[0], self.settings.get('reach', 'tailscale'))
+        if not via:
+            sock.close()                  # nothing is sent to an address that isn't allowed
+            return
+        c = Client(self, sock, addr[0], via)
+        try:
+            c.serve()
+        except (ConnectionError, OSError, ssl.SSLError, struct.error):
+            pass
+        finally:
+            c.close()
+            with self.lock:
+                if self.clients.pop(c.id, None) is not None:
+                    self.publish()
+            if c.authed:
+                notify('Remote desktop', '%s disconnected' % (c.name or c.ip))
+            self.release_capture_later()
+
+    def listen(self, host='::', port=PORT):
+        self.tls()
+        try:
+            if '.' in host:
+                raise OSError('an IPv4 address')
+            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except OSError:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            host = '0.0.0.0' if host == '::' else host
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        s.listen(8)
+        self.sock = s
+        return s
+
+    def accept_forever(self):
+        while not self.stopping:
+            try:
+                cs, addr = self.sock.accept()
+            except OSError:
+                if self.stopping:
+                    return
+                continue
+            threading.Thread(target=self.handle, args=(cs, addr), daemon=True, name='client').start()
+
+    def control_server(self):
+        try:
+            os.makedirs(RUNTIME, mode=0o700, exist_ok=True)
+            try:
+                os.unlink(CONTROL)
+            except FileNotFoundError:
+                pass
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.bind(CONTROL)
+            os.chmod(CONTROL, 0o600)
+            s.listen(4)
+        except OSError:
+            return
+        while not self.stopping:
+            try:
+                c, _a = s.accept()
+            except OSError:
+                continue
+            try:
+                c.settimeout(5)
+                msg = json.loads(c.makefile().readline() or '{}')
+                if msg.get('cmd') == 'kick':
+                    r = self.kick(msg.get('id', 'all'))
+                elif msg.get('cmd') == 'reload':
+                    self.settings = load()
+                    view_only = bool(self.settings.get('viewOnly'))
+                    with self.lock:
+                        for cl in self.clients.values():
+                            cl.view_only = view_only or self.input == 'none'
+                    self.publish()
+                    r = {'ok': True}
+                else:
+                    r = {'ok': False}
+                c.sendall((json.dumps(r) + '\n').encode())
+            except Exception:
+                pass
+            finally:
+                c.close()
+
+
+def notify(title, body):
+    if shutil.which('notify-send'):
+        try:
+            subprocess.Popen(['notify-send', '-a', 'Remote desktop', '-i', 'preferences-desktop-remote-desktop', title, body],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+
+def peer_name(ip):
+    if not shutil.which('tailscale'):
+        return ''
+    code, so, _e = run(['tailscale', 'whois', '--json', ip], 4)
+    if code != 0:
+        return ''
+    try:
+        n = json.loads(so).get('Node') or {}
+        return (n.get('ComputedName') or n.get('Name') or '').split('.')[0]
+    except Exception:
+        return ''
+
+
+class Client:
+    def __init__(self, server, sock, ip, via):
+        self.srv = server
+        self.sock = sock
+        self.ip = ip
+        self.via = via
+        self.name = ''
+        self.id = 0
+        self.since = int(time.time())
+        self.authed = False
+        self.view_only = True
+        self.pf = PixelFormat()
+        self.encodings = [ENC_RAW]
+        self.send_lock = threading.Lock()
+        self.want = threading.Condition()
+        self.request = None             # (incremental, x, y, w, h) waiting for an answer
+        self.closed = False
+        self.sent = None                # the frame this viewer has now
+        self.sent_size = None
+        self.mask = 0
+        self.z = zlib.compressobj(1)
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        with self.want:
+            self.want.notify_all()
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+    def send(self, data):
+        with self.send_lock:
+            self.sock.sendall(data)
+
+    def refuse(self, reason):
+        self.send(p32(1) + p32(len(reason)) + reason.encode())
+        raise ConnectionError(reason)
+
+    def serve(self):
+        s = self.sock
+        s.settimeout(30)
+        s.sendall(b'RFB 003.008\n')
+        ver = recv_exact(s, 12)
+        if not ver.startswith(b'RFB 003.'):
+            raise ConnectionError('not VNC')
+        minor = int(ver[8:11] or b'0')
+        if minor < 7:
+            # RFB 3.3 can't do VeNCrypt: a reason and goodbye
+            msg = b'This PC needs a VNC app with VeNCrypt (TLS), like TigerVNC or Remmina'
+            s.sendall(p32(0) + p32(len(msg)) + msg)
+            raise ConnectionError('old viewer')
+        if self.srv.locked_out(self.ip):
+            msg = b'Too many wrong passwords from this address: try again in a few minutes'
+            s.sendall(p8(0) + p32(len(msg)) + msg)
+            raise ConnectionError('locked out')
+        s.sendall(p8(1) + p8(SEC_VENCRYPT))
+        if recv_exact(s, 1)[0] != SEC_VENCRYPT:
+            raise ConnectionError('no VeNCrypt')
+        # VeNCrypt 0.2
+        s.sendall(b'\x00\x02')
+        if recv_exact(s, 2) != b'\x00\x02':
+            s.sendall(b'\x01')
+            raise ConnectionError('VeNCrypt version')
+        s.sendall(b'\x00')
+        subs = [VENC_X509PLAIN] if self.srv.ctx_x509 else []
+        if self.via in ('tailscale', 'local'):
+            subs.append(VENC_TLSPLAIN)       # anonymous TLS only inside Tailscale's own tunnel (or this PC)
+        if not subs:
+            raise ConnectionError('no certificate')
+        s.sendall(p8(len(subs)) + b''.join(p32(x) for x in subs))
+        pick = struct.unpack('!I', recv_exact(s, 4))[0]
+        if pick not in subs:
+            s.sendall(b'\x00')
+            raise ConnectionError('subtype')
+        s.sendall(b'\x01')
+        ctx = self.srv.ctx_x509 if pick == VENC_X509PLAIN else self.srv.ctx_anon
+        self.sock = s = ctx.wrap_socket(s, server_side=True)
+        ulen, plen = struct.unpack('!II', recv_exact(s, 8))
+        if ulen > 1024 or plen > 1024:
+            raise ConnectionError('too long')
+        recv_exact(s, ulen)                  # the user name: any (the password is what counts)
+        given = recv_exact(s, plen)
+        want, why = self.srv.password()
+        if not want:
+            self.refuse('Remote desktop has no password yet: set one in Settings on this PC' if not why else
+                        'This PC can\'t check passwords right now (%s)' % why)
+        if not hmac_eq(given, want.encode()):
+            n = self.srv.failed(self.ip)
+            pause(min(3, n))
+            self.refuse('Wrong password')
+        self.srv.fails.pop(self.ip, None)
+        s.sendall(p32(0))
+        recv_exact(s, 1)                     # ClientInit's shared flag: everyone shares
+        cap = self.srv.ensure_capture()
+        frame, serial = cap.wait(-1, 5)
+        w, h = cap.size
+        name = ('Hearth · ' + (socket.gethostname() or 'PC')).encode()
+        s.sendall(p16(w) + p16(h) + SERVER_PF + p32(len(name)) + name)
+        s.settimeout(None)
+        with self.srv.lock:
+            self.id = self.srv.next_id
+            self.srv.next_id += 1
+            self.authed = True
+            self.view_only = bool(self.srv.settings.get('viewOnly')) or self.srv.input == 'none'
+            self.srv.clients[self.id] = self
+            self.srv.publish()
+        threading.Thread(target=self._name, daemon=True).start()
+        threading.Thread(target=self.writer, args=(cap,), daemon=True, name='writer').start()
+        self.reader(cap)
+
+    def _name(self):
+        if self.via == 'tailscale':
+            self.name = peer_name(self.ip)
+        notify('Someone is using this PC', '%s is connected to this PC with remote desktop%s' % (
+            self.name or self.ip, ' (view only)' if self.view_only else ''))
+        with self.srv.lock:
+            self.srv.publish()
+
+    def reader(self, cap):
+        s = self.sock
+        while not self.closed:
+            t = recv_exact(s, 1)[0]
+            if t == 0:                                   # SetPixelFormat
+                raw = recv_exact(s, 19)[3:]
+                pf = PixelFormat(raw)
+                if pf.true:
+                    self.pf = pf
+                    self.sent = None
+            elif t == 2:                                 # SetEncodings
+                n = struct.unpack('!xH', recv_exact(s, 3))[0]
+                self.encodings = list(struct.unpack('!%di' % n, recv_exact(s, 4 * n)))
+                self.z = zlib.compressobj(1)
+            elif t == 3:                                 # FramebufferUpdateRequest
+                inc, x, y, w, h = struct.unpack('!BHHHH', recv_exact(s, 9))
+                with self.want:
+                    if self.request is None or not inc:
+                        self.request = (inc, x, y, w, h)
+                    self.want.notify_all()
+            elif t == 4:                                 # KeyEvent
+                down, key = struct.unpack('!B2xI', recv_exact(s, 7))
+                if not self.view_only:
+                    self.key(key, down)
+            elif t == 5:                                 # PointerEvent
+                mask, x, y = struct.unpack('!BHH', recv_exact(s, 5))
+                if not self.view_only:
+                    self.pointer(self.srv.capture or cap, mask, x, y)
+            elif t == 6:                                 # ClientCutText (the clipboard isn't shared)
+                n = struct.unpack('!3xI', recv_exact(s, 7))[0]
+                if n > 1 << 20:
+                    raise ConnectionError('clipboard too big')
+                recv_exact(s, n)
+            else:
+                raise ConnectionError('unknown message %d' % t)
+
+    def key(self, keysym, down):
+        b = self.srv.backend
+        if self.srv.input == 'portal' and self.srv.sess:
+            self.srv.sess.key(keysym, down)
+        elif b:
+            b.key(keysym, down)
+
+    def pointer(self, cap, mask, x, y):
+        sess, b = self.srv.sess, self.srv.backend
+        if self.srv.input == 'portal' and sess:
+            fw, fh = cap.size
+            sw, sh = sess.size()
+            if sw and sh and fw and fh:
+                sess.pointer_abs(x * sw / fw, y * sh / fh)
+            else:
+                sess.pointer_abs(x, y)
+            press = sess.button
+            wheel = sess.scroll
+        elif b:
+            b.pointer(x, y)
+            press = b.button
+            wheel = b.scroll
+        else:
+            return
+        changed = mask ^ self.mask
+        for bit, code in ((1, BTN_LEFT), (2, BTN_MIDDLE), (4, BTN_RIGHT)):
+            if changed & bit:
+                press(code, bool(mask & bit))
+        for bit, axis, steps in ((8, 0, -1), (16, 0, 1), (32, 1, -1), (64, 1, 1)):
+            if mask & bit and not self.mask & bit:
+                wheel(axis, steps)
+        self.mask = mask
+
+    def writer(self, cap):
+        serial = -1
+        try:
+            while not self.closed:
+                with self.want:
+                    while self.request is None and not self.closed:
+                        self.want.wait(1)
+                    if self.closed:
+                        return
+                    req = self.request
+                inc = req[0]
+                frame, new_serial = cap.wait(serial if inc else -2, 1.0)
+                if frame is None or (cap.stopped and not getattr(cap, 'fake', False)):
+                    if getattr(cap, 'restart_wanted', False) or cap.stopped:
+                        try:
+                            cap = self.srv.ensure_capture()
+                        except Exception:
+                            self.close()
+                            return
+                    continue
+                w, h = cap.size
+                rects = []
+                if self.sent_size != (w, h):
+                    if self.sent_size is not None:
+                        if ENC_DESKTOPSIZE not in self.encodings:
+                            self.close()           # this viewer can't follow a new resolution: it connects again
+                            return
+                        rects.append(p16(0) + p16(0) + p16(w) + p16(h) + struct.pack('!i', ENC_DESKTOPSIZE))
+                    self.sent = None
+                    self.sent_size = (w, h)
+                if inc and self.sent is not None and new_serial == serial:
+                    continue
+                tiles = dirty_tiles(self.sent if inc else None, frame, w, h, req[1:])
+                serial = new_serial
+                if not tiles and not rects:
+                    self.sent = frame
+                    continue
+                with self.want:
+                    self.request = None
+                use_zrle = ENC_ZRLE in self.encodings
+                body = []
+                for (x, y, rw, rh) in runs(tiles):
+                    if use_zrle:
+                        body.append(p16(x) + p16(y) + p16(rw) + p16(rh) + struct.pack('!i', ENC_ZRLE) +
+                                    zrle_rect(self.z, self.pf, frame, w, x, y, rw, rh))
+                    else:
+                        body.append(p16(x) + p16(y) + p16(rw) + p16(rh) + struct.pack('!i', ENC_RAW) +
+                                    bytes(self.pf.convert(region(frame, w, x, y, rw, rh))))
+                allr = rects + body
+                self.send(p8(0) + b'\x00' + p16(len(allr)) + b''.join(allr))
+                self.sent = frame
+        except (OSError, ssl.SSLError, ConnectionError):
+            self.close()
+
+
+def pause(seconds):
+    time.sleep(seconds)
+
+
+def hmac_eq(a, b):
+    import hmac
+    return hmac.compare_digest(a, b)
+
+
+def cmd_serve():
+    s = load()
+    if not s.get('on'):
+        return fail("remote desktop is off (Settings › Remote desktop)")
+    ensure_cert()
+    srv = Server()
+    try:
+        srv.listen()
+    except OSError as e:
+        return fail("couldn't listen on port %d (%s): is another VNC server running?" % (PORT, e.strerror or e))
+    import signal
+
+    def bye(*_a):
+        srv.stopping = True
+        srv.kick('all')
+        try:
+            srv.sock.close()
+        except OSError:
+            pass
+        try:
+            os.unlink(CLIENTS)
+        except OSError:
+            pass
+        os._exit(0)
+    signal.signal(signal.SIGTERM, bye)
+    signal.signal(signal.SIGINT, bye)
+    srv.publish()
+    threading.Thread(target=srv.control_server, daemon=True, name='control').start()
+    srv.accept_forever()
+    return 0
+
+
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help'):
+        print(__doc__)
+        return 0
+    c = argv[0]
+    try:
+        if c == 'status':
+            return cmd_status()
+        if c == 'set' and len(argv) == 3:
+            return cmd_set(argv[1], argv[2])
+        if c == 'password':
+            return cmd_password()
+        if c == 'forget-password':
+            return cmd_forget()
+        if c == 'disconnect' and len(argv) == 2:
+            return cmd_disconnect(argv[1])
+        if c == 'session':
+            return cmd_session()
+        if c == 'serve':
+            return cmd_serve()
+    except Exception as e:
+        return fail(str(e) or e.__class__.__name__)
+    return fail('unknown command (see hearth-vnc --help)')
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

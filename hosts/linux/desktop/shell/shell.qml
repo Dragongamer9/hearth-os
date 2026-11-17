@@ -11,6 +11,7 @@
 //   resmon open|tab <pc|overview|cpu|memory|disk|network|gpu>|select <part>|close|toggle (ResourceMonitor.qml)
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
+//   record open|close|toggle|start|stop|startStop|state (Recorder.qml)
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -241,6 +242,11 @@ ShellRoot {
     Loader { source: "Clipboard.qml" }
     Loader { source: "Mixer.qml" }
     Loader { source: "SnapLayouts.qml" }
+    // Recording the screen (Recorder.qml, hearth-record) and the capture dot that shows whenever the screen is being
+    // recorded or someone is connected with Remote desktop (CaptureIndicator.qml, hearth-vnc). Loaded by file name: a
+    // problem in either only loses it.
+    Loader { source: "Recorder.qml" }
+    Loader { source: "CaptureIndicator.qml" }
     // Discord (Discord.qml): the bar's button, its small window and chooser; IPC targets "discord" and "friends". Loaded
     // separately like MediaKeys, so a problem in it only loses Discord, never the shell.
     Loader { source: "Discord.qml" }
