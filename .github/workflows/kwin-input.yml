@@ -18,7 +18,8 @@ on:
             'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/Lock.qml',
             'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
             'hosts/linux/desktop/kwin-helpers/**', 'hosts/linux/desktop/kwin-lock/**', 'hosts/linux/desktop/kwin/**',
-            'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml']
+            'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml',
+            '.github/scripts/kwin-ci.sh']
   workflow_dispatch:
 
 concurrency:
@@ -85,66 +86,50 @@ jobs:
           sed "s#/usr/share/nimbus/desktop/shell#$PWD/hosts/linux/desktop/shell#" os/system_files/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service \
             > /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service
 
-      - name: KWin with Hearth's pieces, and the checks
-        timeout-minutes: 25
+      - name: KWin in labwc - typing, the on-screen keyboard, the lock screen
+        timeout-minutes: 15
         shell: bash
         run: |
           set +e +o pipefail
           mkdir -p shots
-          exec > >(tee shots/step.log) 2>&1
-          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
-          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
-          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
-          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-          # What Hearth's KWin session gives KWin (the session branch's environment; here only what these checks need):
-          # HEARTH_WM, the desktop name portals.conf goes by, Hearth's KWin defaults (kscreenlockerrc from this branch)
-          # and the input method line for kwinrc.
-          mkdir -p /tmp/kwin-ci-xdg
-          printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/hearth-kwin-im.desktop\nVirtualKeyboardEnabled=true\n' > /tmp/kwin-ci-xdg/kwinrc
-          export HEARTH_WM=kwin XDG_CURRENT_DESKTOP=Hearth:KDE XDG_SESSION_DESKTOP=Hearth XDG_SESSION_TYPE=wayland
-          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/xdg:/tmp/kwin-ci-xdg:/etc/xdg"
-          export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 QT_QUICK_BACKEND=software
-          # KWin finds hearth-kwin-cast's .desktop file through KService's cache.
-          command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1
-          # PipeWire before KWin (its screen sharing connects at start).
-          pipewire >shots/pipewire.log 2>&1 &
-          sleep 1; wireplumber >shots/wireplumber.log 2>&1 &
-          sleep 2
-          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
-          modprobe uinput 2>/dev/null; ls -l /dev/uinput || echo "::warning title=typing::no /dev/uinput"
-          for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
-          udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
-          # The outer labwc: holds KWin as one undecorated 1920x1080 window at 0,0 (grim takes the pictures from it) and
-          # passes uinput keyboards to it (libinput).
-          mkdir -p "$HOME/.config/labwc"
-          cat > "$HOME/.config/labwc/rc.xml" <<'XML'
-          <labwc_config>
-            <keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard>
-            <windowRules><windowRule identifier="*" serverDecoration="no"><action name="MoveTo" x="0" y="0"/></windowRule></windowRules>
-          </labwc_config>
-          XML
-          sed -i 's/^          //' "$HOME/.config/labwc/rc.xml"
-          ( unset HEARTH_WM XDG_CONFIG_DIRS; WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
-            labwc >shots/outer.log 2>&1 & )
-          for i in $(seq 1 20); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
-          OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
-          [ -n "$OUTER" ] || { echo "::error title=labwc::didn't start: $(tail -5 shots/outer.log | tr '\n' '|' | cut -c1-500)"; exit 1; }
-          WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
-          WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --socket wayland-hearth >shots/kwin.log 2>&1 &
-          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
-          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
-          sleep 4
-          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland GDK_BACKEND=wayland OUTER
-          # xdg-desktop-portal, started by hand with this environment (no systemd here).
-          XDP=""; for x in /usr/libexec/xdg-desktop-portal /usr/lib/xdg-desktop-portal; do [ -x "$x" ] && { XDP="$x"; break; }; done
-          "$XDP" -r -v > shots/xdg-desktop-portal.log 2>&1 &
-          sleep 2
-          timeout 900 python3 hosts/linux/test/kwin_e2e.py shots; rc=$?
-          echo "::notice title=KWin log::$(grep -iE 'input ?method|screencast|screen ?lock|ksld|greeter|pipewire' shots/kwin.log | grep -v '^$' | tail -12 | tr '\n' '|' | cut -c1-1500)"
-          echo "::notice title=portal log::$(grep -iE 'hearth|screencast|screenshot|error|backend' shots/xdg-desktop-portal.log | tail -10 | tr '\n' '|' | cut -c1-1500)"
-          pkill -f kscreenlocker_greet; pkill quickshell; pkill -f hearth-kwin; pkill -f xdg-desktop-portal; pkill -f /tmp/kwin_wayland; pkill wireplumber; pkill pipewire; pkill labwc
-          sleep 2; pkill -9 -f /tmp/kwin_wayland; pkill dbus-daemon
+          bash .github/scripts/kwin-ci.sh start nested > shots/start-nested.log 2>&1; grep '^::' shots/start-nested.log
+          source .github/scripts/kwin-ci.sh env
+          timeout 600 python3 hosts/linux/test/kwin_e2e.py shots nested > shots/e2e-nested.log 2>&1; rc=$?
+          grep '^::' shots/e2e-nested.log
+          bash .github/scripts/kwin-ci.sh stop >/dev/null 2>&1
           exit $rc
+
+      - name: KWin on its own screen - screen sharing, screenshots, the portals
+        if: always()
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set +e +o pipefail
+          # A render node for KWin's OpenGL (software: vgem + llvmpipe), if the runner's kernel has vgem.
+          modprobe vgem 2>/dev/null; ls /dev/dri 2>/dev/null | tr '\n' ' '; echo
+          bash .github/scripts/kwin-ci.sh start virtual > shots/start-virtual.log 2>&1; grep '^::' shots/start-virtual.log
+          source .github/scripts/kwin-ci.sh env
+          timeout 600 python3 hosts/linux/test/kwin_e2e.py shots virtual > shots/e2e-virtual.log 2>&1; rc=$?
+          grep '^::' shots/e2e-virtual.log
+          bash .github/scripts/kwin-ci.sh stop >/dev/null 2>&1
+          exit $rc
+
+      - name: What the logs say
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          cp /tmp/home/.local/share/nimbus/cast-picker.log shots/ 2>/dev/null
+          t() { [ -f "$2" ] && echo "::notice title=$1::$(grep -aiE "$3" "$2" | tail -${4:-10} | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-1800)"; }
+          t "KWin (nested)" shots/kwin-nested.log 'opengl|qpainter|composit|egl|screencast|input ?method|locker|greeter|error|fail' 14
+          t "KWin (virtual)" shots/kwin-virtual.log 'opengl|qpainter|composit|egl|screencast|screenshot|error|fail|pipewire' 14
+          t "labwc: input devices" shots/outer.log 'hearth|keyboard|libinput|new input|device' 10
+          t "portal (virtual)" shots/xdg-desktop-portal-virtual.log 'hearth|screencast|screenshot|error|fail|backend|warn' 12
+          t "cast picker" shots/cast-picker.log '.' 10
+          t "greeter" shots/greeter.log '.' 10
+          t "Lock.qml check" shots/lock.log 'warn|error|lock|fail' 8
+          t "on-screen keyboard" shots/osk.log 'warn|error|fail|hearth' 8
+          t "e2e (virtual) stderr" shots/e2e-virtual.log 'hearth-screencast|Traceback|Error|error' 10
 
       - name: Keep the pictures and logs
         if: always()
