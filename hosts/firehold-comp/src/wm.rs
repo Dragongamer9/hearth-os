@@ -516,6 +516,7 @@ impl<B: Backend + 'static> HearthState<B> {
         self.minimized.retain(|m| m.window.alive());
         self.lock_tick();
         self.output_management_tick();
+        self.fullscreen_sweep();
         self.game_tick();
         self.handle_toplevel_requests();
         let infos = self.toplevel_infos();
