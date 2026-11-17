@@ -170,7 +170,7 @@ Scope {
         // Files' Act as administrator: a system file that isn't yours changes through hearth-admin (pkexec asks for an
         // administrator's password; hearth-files-admin never touches what starts the PC).
         const adm = admin && single && info && (args[0] === "chown" || !info.mine) && ["chmod", "rename", "chown"].indexOf(args[0]) >= 0;
-        const cmd = adm ? ["pkexec", "/usr/libexec/nimbus/hearth-admin", "files-" + args[0]].concat(args.slice(1)) : ["python3", helper].concat(args);
+        const cmd = adm ? ["pkexec", "/usr/libexec/nimbus/hearth-files-admin", "files-" + args[0]].concat(args.slice(1)) : ["python3", helper].concat(args);
         const p = callComp.createObject(pr, { command: cmd, cb: cb || null });
         p.running = true;
     }
