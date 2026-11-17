@@ -167,7 +167,9 @@ Singleton {
         id: applyTimer
         interval: 600
         onTriggered: {
-            if (root.appliedKey === "" ) { root.appliedKey = root.key; return; }   // the first settle: labwc's autostart already ran it
+            // The first settle: labwc's autostart already ran it. Under KWin nothing has, and KWin's window frames
+            // (Hearth's Aurorae theme) are written by it, so it runs now.
+            if (root.appliedKey === "" && Quickshell.env("HEARTH_WM") !== "kwin") { root.appliedKey = root.key; return; }
             if (root.appliedKey === root.key) return;
             root.appliedKey = root.key;
             Quickshell.execDetached(["sh", Quickshell.shellDir + "/../theme/apply.sh"]);
