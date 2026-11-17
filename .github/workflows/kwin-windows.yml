@@ -148,6 +148,11 @@ jobs:
             'm=$(convert "shots/$1.png" -format "%[fx:mean]" info: 2>/dev/null); awk -v m="${m:-1}" "BEGIN{exit !(m < 0.01)}" && echo "::warning title=picture::$1 came out black"' \
             'pgrep -f /tmp/kwin_wayland >/dev/null || echo "::error title=KWin::KWin is not running any more (after the picture $1)"; exit 0' > /tmp/shot.sh
           export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
+          # Diagnostic: a frame before Mantel starts, with the theme's title as it was written (no reload involved).
+          WAYLAND_DISPLAY=wayland-hearth foot --app-id=early --title=Early sleep 30 >/dev/null 2>&1 &
+          sleep 4; bash /tmp/shot.sh kwin-early; pkill -f 'title=Early'
+          python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]).convert("RGB"); print("::notice title=early frame::size %s; column x=960: %s" % (im.size, " ".join("%d:#%02x%02x%02x" % ((y,) + im.getpixel((960, y))) for y in range(0, im.size[1], 12))))' shots/kwin-early.png 2>&1 | head -c 3000
+          grep -o 'id="decoration-top"><rect [^>]*' "$HOME/.local/share/aurorae/themes/hearth/decoration.svg" | sed 's/^/::notice title=early theme::/'
           quickshell -p "$NIMBUS_SHARE/desktop/shell" >shots/shell.log 2>&1 &
           sleep 12
           timeout 300 python3 tools/e2e-kwin-windows.py "$NIMBUS_SHARE/desktop/shell" shots 'bash /tmp/shot.sh "$1"' > shots/e2e.log 2>&1
@@ -168,27 +173,6 @@ jobs:
         with:
           name: kwin-windows
           path: shots
-
-  # How this KWin's Aurorae (v2, the KSvg engine) reads a theme's decoration.svg: its source, as notices (diagnostic).
-  aurorae-source:
-    runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:44
-    steps:
-      - name: Aurorae's source
-        shell: bash
-        run: |
-          set +e
-          dnf -y install dnf5-plugins cpio rpm tar xz >/dev/null
-          cd /tmp && dnf -y download --source aurorae --enablerepo=fedora-source,updates-source >/dev/null 2>&1
-          ls /tmp/*.src.rpm || { echo "::warning title=aurorae::no source rpm"; exit 0; }
-          mkdir -p src && cd src && rpm2cpio /tmp/aurorae*.src.rpm | cpio -idm 2>/dev/null; ls | tr '\n' ' ' | sed 's/^/::notice title=aurorae srpm::/'; echo
-          for t in aurorae-*.tar.*; do tar xf "$t"; done
-          find . -name '*.cpp' | grep -i -E 'svg|v2|decoration|theme' | head -30 | tr '\n' ' ' | sed 's/^/::notice title=aurorae files::/'; echo
-          for f in $(grep -rl -E 'decoration-inactive|"decoration"|QStringLiteral\("decoration' --include=*.cpp . | head -6); do
-            grep -n -E 'decoration|FrameSvg|setElementPrefix|elementPrefix|hasElement|imagePath|svgz|\.svg|opaque|mask|setImagePath|paint|fill' "$f" | head -80 > /tmp/g.txt
-            split -b 3500 /tmp/g.txt /tmp/part-
-            n=0; for p in /tmp/part-*; do n=$((n+1)); echo "::notice title=aurorae $f $n::$(tr '\n' '|' < $p | sed 's/%/%25/g')"; done; rm -f /tmp/part-*
-          done
 
   # The pictures, small, as notices (artifacts can't be read from here), in a job of their own so the checks' own
   # results aren't buried under them.
@@ -227,3 +211,5 @@ jobs:
         run: f=shots/kwin-frame-zoom.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-zoom $i::$part"; done || true
       - name: Picture (frame-probe)
         run: f=shots/kwin-frame-probe.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-probe $i::$part"; done || true
+      - name: Picture (early)
+        run: f=shots/kwin-early.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-early $i::$part"; done || true
