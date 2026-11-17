@@ -78,6 +78,14 @@ class Mockups(unittest.TestCase):
                         for n, line, m in c['items'] if not m or m.group(1) != 'x']
         self.assertEqual(bad, [], 'RED FLAG: a mockup must be built completely before its release\n' + '\n'.join(bad))
 
+    def test_a_future_release_doesnt_block_this_one(self):
+        # Firehold's mockups ship in 2.0: open parts there never stop a 1.x release.
+        c = checklists().get('firehold.md')
+        self.assertIsNotNone(c)
+        self.assertEqual(c['release'], '2.0')
+        newest = max((vkey(v) for v in released()), default=(0,))
+        self.assertGreater(vkey('2.0'), newest, 'Firehold\'s mockups are for 2.0, after every release so far')
+
     def test_every_mockup_picture_has_a_checklist(self):
         listed = {f for c in checklists().values() for f in c['mockups']}
         pics = sorted(str(p.relative_to(MOCKS)) for p in MOCKS.rglob('*') if p.suffix.lower() in PICTURES)

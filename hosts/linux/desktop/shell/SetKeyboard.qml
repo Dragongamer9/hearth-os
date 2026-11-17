@@ -3,7 +3,10 @@
 // on-screen keyboard (Hearth's shared one, docs/OSK.md: ~/.config/nimbus/osk.json, the same file as Game Mode's
 // Settings › Keyboard).
 // Saved by hearth-system to ~/.config/labwc/environment (XKB_DEFAULT_LAYOUT etc.) and ~/.config/nimbus/keyboard.json;
-// labwc reloads them (labwc --reconfigure).
+// labwc reloads them (labwc --reconfigure). With Mantel on KWin the same file goes into KWin's kxkbrc [Layout] and
+// kcminputrc [Keyboard] (hearth-kwin-settings keyboard-apply, also at every KWin start), and three more rows show:
+// Num Lock at start, the compose key, and one layout for everything or per app / per window (KWin only; labwc has
+// none of them, so they're hidden there).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -21,6 +24,11 @@ SetPage {
     property string switchKey: ""
     property int delay: 600
     property int rate: 25
+    readonly property bool kwin: !!(st && st.kwin)
+    // KWin only; null = never picked (not sent, so KWin's own counts).
+    property var numlock: null
+    property var compose: null
+    property var switchMode: null
     property string message: ""
     property bool messageBad: false
     readonly property var switchChoices: [
@@ -39,6 +47,9 @@ SetPage {
             page.switchKey = r.switch || "";
             page.delay = r.delay || 600;
             page.rate = r.rate || 25;
+            page.numlock = r.numlock === undefined ? null : r.numlock;
+            page.compose = r.compose === undefined ? null : r.compose;
+            page.switchMode = r.switchMode === undefined ? null : r.switchMode;
         });
     }
     Component.onCompleted: {
@@ -61,6 +72,9 @@ SetPage {
     SetJob { id: job; helper: "hearth-system" }
     function apply() {
         const req = { layouts: layouts.map(l => ({ layout: l.layout, variant: l.variant })), switch: switchKey, delay: delay, rate: rate };
+        if (numlock !== null) req.numlock = numlock;
+        if (compose !== null) req.compose = compose;
+        if (switchMode !== null) req.switchMode = switchMode;
         job.run(["keyboard-set"], r => page.say(r.reloaded ? "Saved and in use." : "Saved. It's used from the next time you sign in to Desktop Mode."),
             e => page.say(e, true), JSON.stringify(req), "save");
     }
@@ -141,6 +155,14 @@ SetPage {
         text: "Alt+Space switches layouts now, so the search bar opens with Alt+F2."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
+    SetChoice {
+        visible: page.kwin && page.layouts.length > 1
+        icon: "kbd"
+        title: "Remember the layout"; sub: "One layout for everything, or each app or window keeps the one you switched it to"
+        options: [{ value: "Global", label: "Everywhere" }, { value: "WinClass", label: "Per app" }, { value: "Window", label: "Per window" }]
+        current: page.switchMode === null ? "Global" : page.switchMode
+        onChosen: v => { page.switchMode = v; page.apply(); }
+    }
 
     SetHeader { text: "Typing" }
     SetSlider {
@@ -154,6 +176,23 @@ SetPage {
         value: (page.rate - 5) / 55
         valueText: page.rate + " per second"
         onMoved: v => { page.rate = Math.round(5 + v * 55); later.restart(); }
+    }
+    SetChoice {
+        visible: page.kwin
+        icon: "kbd"
+        title: "Num Lock when Desktop Mode starts"; sub: "Used from the next time Desktop Mode starts"
+        options: [{ value: "on", label: "On" }, { value: "off", label: "Off" }, { value: "keep", label: "As it was" }]
+        current: page.numlock === null ? "keep" : page.numlock
+        onChosen: v => { page.numlock = v; page.apply(); }
+    }
+    SetChoice {
+        visible: page.kwin
+        icon: "kbd"
+        title: "Compose key"; sub: "Press it, then two keys, to type a letter that isn't on the keyboard: Compose, e, ' types é"
+        options: [{ value: "", label: "None" }, { value: "compose:ralt", label: "Right Alt" }, { value: "compose:rwin", label: "Right Super" },
+            { value: "compose:menu", label: "Menu" }, { value: "compose:rctrl", label: "Right Ctrl" }, { value: "compose:caps", label: "Caps Lock" }]
+        current: page.compose === null ? "" : page.compose
+        onChosen: v => { page.compose = v; page.apply(); }
     }
     SetField { placeholder: "Try typing here" }
     Text {
