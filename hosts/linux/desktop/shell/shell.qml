@@ -256,8 +256,7 @@ ShellRoot {
     // looking and none of its own windows (Settings, Task Manager, Files) is open.
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
     Loader { source: "SpaceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.openStorage = () => settings.open("storage"); } }   // 1.11: main drive almost full
-    Loader { source: "BatteryWatch.qml" }
-    Loader { source: "MantelLookExport.qml" }   // 1.14: Mantel's look for KDE Plasma and GNOME (hearth-desktop-look)      // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
+    Loader { source: "BatteryWatch.qml" }   // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {
@@ -279,6 +278,9 @@ ShellRoot {
     Lock { id: lockScreen }
     LiveWelcome { id: liveWelcome; settingsApp: settings }
     SteamFallback { id: steamFallback }   // "Steam Game Mode didn't start" with "Try Steam Game Mode again"
+    // Why Desktop Mode started the way it did (1.14: KDE Plasma / GNOME retired), once; loaded by file name, so a
+    // problem in it never costs the shell.
+    Loader { source: "DesktopNotice.qml"; onLoaded: item.settingsApp = settings }
     Pad {
         id: pad
         settings: settings

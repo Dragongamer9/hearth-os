@@ -16,7 +16,7 @@
 # (a lock in $XDG_RUNTIME_DIR); runs only while the desktop's compositor does; never fails in a way that matters:
 # without quickshell, python3, the files or a display it says so and ends, and the desktop goes on without a controller.
 desk="$1"; who="${2:-session}"
-# 1.13: KDE Plasma (docs/DESKTOPS.md) is "kde" in nimbus-session; its controller is the same as Hearth Plasma's.
+# 1.13: KDE Plasma (retired in 1.14, docs/archive/DESKTOPS-KDE-GNOME.md) was "kde" in nimbus-session; its controller was the same as Hearth Plasma's.
 want="$desk"
 [ "$desk" = kde ] && desk=plasma
 SHARE_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}"

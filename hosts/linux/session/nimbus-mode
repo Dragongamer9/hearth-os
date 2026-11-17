@@ -3,18 +3,13 @@
 #   nimbus-mode game      go to Game Mode: the one picked in Settings › Gaming › Game Mode (Steam Game Mode unless
 #                         you picked Hearth Game Mode: docs/HEARTH-GAME-MODE.md; the installer on the live USB)
 #   nimbus-mode hearth    go to Hearth Game Mode now (also "try again" after it didn't start: its pause ends)
-#   nimbus-mode desktop   go to Desktop Mode (Mantel, KDE Plasma or GNOME: the one picked in Settings)
+#   nimbus-mode desktop   go to Desktop Mode (Mantel)
 #   nimbus-mode steam     go to Steam Game Mode (also "try again" after it didn't start)
 #   nimbus-mode server    go to Server mode (docs/SERVER-MODE.md; Game Mode instead when it's off or can't start)
 #   nimbus-mode logout    end the session (back to the login screen)
 #   nimbus-mode current   print the mode you're in
 
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
-# 1.13: KDE Plasma and GNOME (nimbus-session's run_kde / run_gnome) leave their process ids here while they run.
-kde_pid=$(cat "$RUN/hearth-kde.pid" 2>/dev/null)
-kde_up() { [ -n "$kde_pid" ] && kill -0 "$kde_pid" 2>/dev/null; }
-gnome_pid=$(cat "$RUN/hearth-gnome.pid" 2>/dev/null)
-gnome_up() { [ -n "$gnome_pid" ] && kill -0 "$gnome_pid" 2>/dev/null; }
 # Steam Game Mode (nimbus-session's run_steam_mode) leaves the session's process id here while it runs.
 steam_pid=$(cat "$RUN/hearth-steam-mode.pid" 2>/dev/null)
 steam_up() { [ -n "$steam_pid" ] && kill -0 "$steam_pid" 2>/dev/null; }
@@ -22,7 +17,7 @@ case "$1" in
   current)
     server_pid=$(cat "$RUN/hearth-server-mode.pid" 2>/dev/null)
     if [ "$HEARTH_SERVER_MODE" = 1 ] || { [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null && [ "$(cat "$RUN/nimbus-mode-now" 2>/dev/null)" = server ]; }; then echo server
-    elif [ -n "$LABWC_PID" ] || kde_up || gnome_up; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+    elif [ -n "$LABWC_PID" ]; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
   game|desktop|logout|steam|server|hearth)
     # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
     # asked for and isn't started again.)
@@ -36,22 +31,6 @@ case "$1" in
       labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID"
       # If an app keeps the desktop from closing, close it anyway so the switch can't hang.
       pid="$LABWC_PID"; setsid sh -c "sleep 4; kill -0 $pid 2>/dev/null && kill -KILL $pid" >/dev/null 2>&1 </dev/null &
-    elif kde_up; then
-      # KDE's own sign-out without asking (apps close properly and Plasma saves its settings); KWin and Plasma are
-      # ended by force after 8 seconds so the switch can't hang.
-      { qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout || qdbus org.kde.Shutdown /Shutdown org.kde.Shutdown.logout \
-        || dbus-send --session --type=method_call --dest=org.kde.Shutdown /Shutdown org.kde.Shutdown.logout; } >/dev/null 2>&1 \
-        || kill -TERM "$kde_pid"
-      me=$(id -u)
-      setsid sh -c "sleep 8; kill -0 $kde_pid 2>/dev/null || exit 0; pkill -TERM -u $me -x plasmashell; pkill -TERM -u $me -x kwin_wayland; sleep 3; kill -KILL $kde_pid 2>/dev/null; pkill -KILL -u $me -x kwin_wayland" >/dev/null 2>&1 </dev/null &
-    elif gnome_up; then
-      # GNOME's own sign-out without asking; GNOME Shell and the session are ended by force after 8 seconds.
-      { timeout 5 gnome-session-quit --logout --no-prompt \
-        || timeout 5 gdbus call --session --dest org.gnome.SessionManager --object-path /org/gnome/SessionManager --method org.gnome.SessionManager.Logout 1 \
-        || dbus-send --session --type=method_call --dest=org.gnome.SessionManager /org/gnome/SessionManager org.gnome.SessionManager.Logout uint32:1; } >/dev/null 2>&1 \
-        || kill -TERM "$gnome_pid"
-      me=$(id -u)
-      setsid sh -c "sleep 8; kill -0 $gnome_pid 2>/dev/null || exit 0; pkill -TERM -u $me -x gnome-shell; sleep 3; kill -KILL $gnome_pid 2>/dev/null; pkill -KILL -u $me -x gnome-shell" >/dev/null 2>&1 </dev/null &
     elif steam_up; then
       # Steam Game Mode: Steam closes properly first (its settings and cloud saves), then its gamescope ends, by
       # force after 8 seconds so the switch can't hang.
