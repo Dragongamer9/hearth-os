@@ -8,7 +8,7 @@ name: Files extras
 
 on:
   push:
-    branches: [feature/kwin-phone-files, feature/kwin-1.14]
+    branches: [feature/kwin-phone-files, feature/files-admin-fix, feature/kwin-1.14]
     paths: ['hosts/linux/desktop/shell/FileManager.qml', 'hosts/linux/desktop/shell/FileProperties.qml', 'hosts/linux/desktop/shell/Files*.qml',
             'hosts/linux/desktop/shell/hearth-files', 'hosts/linux/desktop/shell/hearth_files_extras.py', 'hosts/linux/desktop/shell/SetRecentFiles.qml',
             'os/system_files/usr/libexec/nimbus/hearth-files-admin', 'hosts/linux/test/test_files_extras.py', '.github/workflows/files-extras.yml']
