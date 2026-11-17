@@ -134,8 +134,10 @@ jobs:
         run: |
           f=shots/colibri/${{ matrix.name }}.jpg
           [ -f "$f" ] || { echo "::error title=Colibri shots::${{ matrix.name }}.jpg is missing"; exit 1; }
-          base64 -w0 "$f" | fold -w 3800 > /tmp/parts
-          n=$(wc -l < /tmp/parts)
+          # fold leaves the last piece without a newline: add one so `read` gets it, and count from the size itself.
+          { base64 -w0 "$f" | fold -w 3800; echo; } | grep -v '^$' > /tmp/parts
+          b=$(base64 -w0 "$f" | wc -c); n=$(( (b + 3799) / 3800 ))
+          [ "$(wc -l < /tmp/parts)" -eq "$n" ] || { echo "::error title=Colibri shots::${{ matrix.name }}: $(wc -l < /tmp/parts) pieces cut, $n expected"; exit 1; }
           if [ "$n" -gt 8 ]; then echo "::error title=Colibri shots::${{ matrix.name }} has $n pieces (8 at most)"; exit 1; fi
           echo "::notice title=SHOT-PARTS colibri-${{ matrix.name }} $n::$(sha256sum "$f" | cut -c1-16)"
           i=0
