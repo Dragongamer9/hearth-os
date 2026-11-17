@@ -7,7 +7,8 @@ name: KWin test
 
 on:
   push:
-    branches: [main]
+    # The KWin branches too: a workflow that isn't on main yet can't be started by hand.
+    branches: [main, 'feature/kwin-*']
     paths: ['hosts/linux/session/**', 'hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/labwc/autostart', '.github/workflows/kwin-test.yml', '.github/scripts/kwin-test.sh']
   workflow_dispatch:
 
