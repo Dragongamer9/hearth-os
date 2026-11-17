@@ -592,6 +592,8 @@ fi
 # and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
 # tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
 optional sane-utils sane-airscan traceroute iputils-tracepath iw
+# 1.14: a dictionary for spell checking in KDE and GTK apps (Settings › Region & language › Spell check).
+optional hunspell-en-us
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
@@ -1886,6 +1888,11 @@ systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard
 # hearth-diskguard (1.11): frees its 2 GB emergency reserve at start-up when the system drive is nearly full
 systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
+# Screen power saving (1.14, hearth-screen-psr, Settings › Display): Intel laptops' Panel Self Refresh switched at
+# runtime through the driver's own switch (Auto: off on Alder Lake-N / Twin Lake, where it can stall the screen).
+# Never a start option or the boot menu; a simple service nothing waits for.
+chmod 755 /usr/libexec/nimbus/hearth-screen-psr
+systemctl enable hearth-screen-psr.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts the PC down cleanly (no lost files from a
 # battery that just dies). Hearth's BatteryWatch.qml says so at 10%, 5% and 3%, and hibernates instead where a
 # hibernation has come back before on this PC (/var/lib/hearth/hibernate-proven).

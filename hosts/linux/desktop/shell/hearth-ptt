@@ -1,0 +1,123 @@
+#!/usr/bin/python3
+"""hearth-ptt: push to talk (Settings › Sound › Push to talk, 1.14): while it runs the microphone in use is muted, and
+holding the key you picked unmutes it; letting go mutes it again. Mantel on KWin only: the key goes through KWin's
+global shortcuts (KGlobalAccel's "pressed" and "released" signals, component "hearth-ptt"), so it works in every app
+and game without Hearth reading the keyboard. Started by Mantel (PushToTalk.qml) only while the switch is on; when it
+stops (switched off, signing out, a problem) the microphone gets back the mute it had before. As you, no root; the
+choice itself lives in desktop.json (pttOn, pttKey), written only by Settings.
+
+  hearth-ptt run KEY        until stopped (SIGTERM); KEY one of KEYS below
+  hearth-ptt keys           JSON: the keys you can pick
+Output: "log: ..." lines; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+
+# Qt key codes (with modifiers) for KGlobalAccel's setShortcut: a few keys that type nothing in games and chats.
+QT_META, QT_ALT, QT_CTRL = 0x10000000, 0x08000000, 0x04000000
+KEYS = {
+    'f13': ('F13', 0x0100003c), 'f14': ('F14', 0x0100003d), 'pause': ('Pause', 0x01000008),
+    'scrolllock': ('Scroll Lock', 0x01000026), 'ctrl-grave': ('Ctrl+`', QT_CTRL | 0x60),
+    'meta-alt-space': ('Super+Alt+Space', QT_META | QT_ALT | 0x20), 'ctrl-alt-t': ('Ctrl+Alt+T', QT_CTRL | QT_ALT | 0x54),
+}
+COMPONENT = ['hearth-ptt', 'push-to-talk', 'Hearth', 'Push to talk']
+
+
+class Fail(Exception):
+    pass
+
+
+def log(t):
+    print('log: ' + t, flush=True)
+
+
+def mute(on):
+    subprocess.run(['pactl', 'set-source-mute', '@DEFAULT_SOURCE@', '1' if on else '0'],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+
+
+def muted_now():
+    try:
+        p = subprocess.run(['pactl', 'get-source-mute', '@DEFAULT_SOURCE@'], capture_output=True, text=True, timeout=5)
+        return 'yes' in p.stdout.lower()
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def run(key):
+    if key not in KEYS:
+        raise Fail('not a push-to-talk key')
+    if os.environ.get('HEARTH_WM') != 'kwin':
+        raise Fail('push to talk needs Mantel on KWin')
+    try:
+        import dbus
+        import dbus.mainloop.glib
+        from gi.repository import GLib
+    except ImportError as e:
+        raise Fail("python3-dbus or python3-gi isn't installed (%s)" % e)
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+    try:
+        kga = dbus.Interface(bus.get_object('org.kde.kglobalaccel', '/kglobalaccel'), 'org.kde.KGlobalAccel')
+        kga.doRegister(dbus.Array(COMPONENT, signature='s'))
+        # 0x2 = NoAutoloading: the key Hearth sets, not one KGlobalAccel remembered from before.
+        kga.setShortcut(dbus.Array(COMPONENT, signature='s'), dbus.Array([KEYS[key][1]], signature='i'), dbus.UInt32(0x2))
+        path = kga.getComponent(COMPONENT[0])
+    except dbus.DBusException as e:
+        raise Fail("KWin's global shortcuts didn't answer (%s)" % e.get_dbus_name())
+    before = muted_now()
+    state = {'held': False}
+
+    def pressed(comp, action, ts):
+        if action == COMPONENT[1] and not state['held']:
+            state['held'] = True
+            mute(False)
+
+    def released(comp, action, ts):
+        if action == COMPONENT[1] and state['held']:
+            state['held'] = False
+            mute(True)
+    comp = bus.get_object('org.kde.kglobalaccel', path)
+    comp.connect_to_signal('globalShortcutPressed', pressed, dbus_interface='org.kde.kglobalaccel.Component')
+    comp.connect_to_signal('globalShortcutReleased', released, dbus_interface='org.kde.kglobalaccel.Component')
+    mute(True)
+    log('push to talk on %s' % KEYS[key][0])
+    loop = GLib.MainLoop()
+
+    def stop(*_):
+        loop.quit()
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        loop.run()
+    finally:
+        # The microphone as it was before push to talk; the key let go.
+        mute(before)
+        try:
+            kga.setInactive(dbus.Array(COMPONENT, signature='s'))
+        except Exception:
+            pass
+        log('push to talk off')
+    return {'ok': True}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['keys']:
+            print(json.dumps({'keys': [{'id': k, 'label': v[0]} for k, v in KEYS.items()]}))
+            return 0
+        if argv[:1] == ['run'] and len(argv) == 2:
+            run(argv[1])
+            return 0
+        print(__doc__)
+        return 2
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

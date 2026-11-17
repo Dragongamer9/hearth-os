@@ -1,0 +1,7 @@
+[
+ {"name": "alsa_output.pci-0000_00_1f.3.analog-surround-51", "description": "Speakers (Realtek) 5.1", "mute": false,
+  "channel_map": "front-left,front-right,rear-left,rear-right,front-center,lfe",
+  "volume": {"front-left": {"value": 45875}, "front-right": {"value": 39321}, "rear-left": {"value": 45875}, "rear-right": {"value": 39321}, "front-center": {"value": 45875}, "lfe": {"value": 45875}}},
+ {"name": "alsa_output.usb-Headset.analog-stereo", "description": "Headset (USB)", "mute": false, "channel_map": "front-left,front-right",
+  "volume": {"front-left": {"value": 52428}, "front-right": {"value": 52428}}}
+]

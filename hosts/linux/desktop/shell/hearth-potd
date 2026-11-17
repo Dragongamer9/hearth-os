@@ -1,0 +1,225 @@
+#!/usr/bin/python3
+"""hearth-potd: the wallpaper's picture of the day (Settings › Personalization › Wallpaper per screen, slideshow & picture
+of the day; 1.14, KDE's "Picture of the Day" in Hearth's look). Off unless you turn it on (desktop.json "wallPotd");
+WallShow.qml runs this when it's on, at sign-in and every few hours. Each day's picture is downloaded once and kept in
+~/.cache/hearth/potd (the last 7 days); without the internet the newest one kept is shown. Writes no settings.
+
+  hearth-potd fetch  SOURCE   today's picture (downloaded once a day): JSON {path, title, credit, source, date, cached}
+  hearth-potd cached SOURCE   the newest picture kept, without the internet (same JSON), or an error
+  hearth-potd sources         JSON [{id, name, site}]
+SOURCE is bing, apod (NASA's Astronomy Picture of the Day) or wikimedia (Wikimedia Commons' picture of the day).
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import datetime
+import glob
+import html
+import json
+import os
+import re
+import sys
+import urllib.parse
+import urllib.request
+
+HOME = os.path.expanduser('~')
+CACHE = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache'), 'hearth', 'potd')
+KEEP_DAYS = 7
+MAX_BYTES = 40 * 1024 * 1024
+TIMEOUT = 25
+UA = 'HearthOS-wallpaper/1.0'
+SOURCES = [
+    {'id': 'bing', 'name': 'Bing', 'site': 'www.bing.com'},
+    {'id': 'apod', 'name': "NASA's Astronomy Picture of the Day", 'site': 'apod.nasa.gov'},
+    {'id': 'wikimedia', 'name': 'Wikimedia Commons', 'site': 'commons.wikimedia.org'},
+]
+# Pictures only come from these hosts (a page can't point the download somewhere else).
+HOSTS = {'bing': ('www.bing.com', 'bing.com'), 'apod': ('apod.nasa.gov',),
+         'wikimedia': ('upload.wikimedia.org',)}
+EXTS = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
+
+
+class Fail(Exception):
+    pass
+
+
+def today():
+    return datetime.date.today()
+
+
+def get(url, limit=4 * 1024 * 1024):
+    req = urllib.request.Request(url, headers={'User-Agent': UA})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            data = r.read(limit + 1)
+            ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+    except (OSError, ValueError) as e:
+        raise Fail('couldn\'t reach %s (%s)' % (urllib.parse.urlsplit(url).hostname or url, getattr(e, 'reason', e)))
+    if len(data) > limit:
+        raise Fail('the download was too big')
+    return data, ctype
+
+
+# ------------------------------------------------------------------ what each site says today's picture is
+def parse_bing(text):
+    d = json.loads(text)
+    img = (d.get('images') or [None])[0] or {}
+    url = img.get('url') or ''
+    if not url:
+        raise Fail('Bing has no picture today')
+    if url.startswith('/'):
+        url = 'https://www.bing.com' + url
+    credit = img.get('copyright') or ''
+    return {'url': url, 'title': img.get('title') or credit.split(' (')[0], 'credit': credit}
+
+
+def parse_apod(text):
+    m = re.search(r'<a\s+href="(image/[^"]+\.(?:jpe?g|png|webp))"', text, re.I)
+    if not m:
+        raise Fail("today's Astronomy Picture of the Day is a video, not a picture")
+    t = re.search(r'<title>\s*APOD:\s*[^-<]*-\s*([^<]+?)\s*</title>', text, re.I | re.S)
+    c = re.search(r'(?:Image\s+)?Credit[^:]*:\s*</b>(.*?)</center>', text, re.I | re.S)
+    credit = re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', '', c.group(1)))).strip() if c else ''
+    return {'url': 'https://apod.nasa.gov/apod/' + m.group(1), 'title': html.unescape(t.group(1)) if t else 'Astronomy Picture of the Day',
+            'credit': credit[:200]}
+
+
+def parse_wikimedia(text, max_width=3840):
+    d = json.loads(text)
+    im = d.get('image') or {}
+    orig = im.get('image') or {}
+    thumb = im.get('thumbnail') or {}
+    url = orig.get('source') or ''
+    if not url:
+        raise Fail('Wikimedia has no picture today')
+    # A very big original comes as Wikimedia's own smaller copy (any width can be asked of its thumbnails).
+    if (orig.get('width') or 0) > max_width and thumb.get('source'):
+        url = re.sub(r'/\d+px-', '/%dpx-' % max_width, thumb['source'], count=1)
+    title = (im.get('title') or '').replace('File:', '', 1)
+    title = re.sub(r'\.(jpe?g|png|webp|tiff?)$', '', title, flags=re.I).replace('_', ' ')
+    artist = ((im.get('artist') or {}).get('text') or '').strip()
+    return {'url': url, 'title': ((im.get('description') or {}).get('text') or title)[:200], 'credit': artist[:200]}
+
+
+def page_url(source, day):
+    if source == 'bing':
+        return 'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=en-US'
+    if source == 'apod':
+        return 'https://apod.nasa.gov/apod/astropix.html'
+    if source == 'wikimedia':
+        return 'https://api.wikimedia.org/feed/v1/wikipedia/en/featured/%04d/%02d/%02d' % (day.year, day.month, day.day)
+    raise Fail('unknown source ' + str(source))
+
+
+def allowed(source, url):
+    p = urllib.parse.urlsplit(url)
+    return p.scheme == 'https' and (p.hostname or '') in HOSTS.get(source, ())
+
+
+# ------------------------------------------------------------------ the cache
+def check_source(source):
+    if source not in HOSTS:
+        raise Fail('the source is bing, apod or wikimedia')
+    return source
+
+
+def kept(source):
+    out = []
+    for f in glob.glob(os.path.join(CACHE, source + '-*.json')):
+        m = re.search(r'-(\d{4}-\d{2}-\d{2})\.json$', f)
+        if not m:
+            continue
+        try:
+            with open(f) as fh:
+                meta = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(meta, dict) and os.path.isfile(meta.get('path') or ''):
+            out.append((m.group(1), meta))
+    return [meta for _, meta in sorted(out, key=lambda x: x[0], reverse=True)]
+
+
+def tidy(source, day):
+    """Only this program's own files in its own folder, older than KEEP_DAYS."""
+    oldest = (day - datetime.timedelta(days=KEEP_DAYS - 1)).isoformat()
+    for f in glob.glob(os.path.join(CACHE, source + '-*')):
+        m = re.search(r'-(\d{4}-\d{2}-\d{2})\.(json|jpg|png|webp)$', f)
+        if m and m.group(1) < oldest:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
+def write_atomic(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+def fetch(source, day=None, getter=None):
+    source = check_source(source)
+    day = day or today()
+    getter = getter or get
+    stamp = day.isoformat()
+    for meta in kept(source):
+        if meta.get('date') == stamp:
+            return dict(meta, cached=True)
+    text, _ = getter(page_url(source, day))
+    text = text.decode('utf-8', 'replace') if isinstance(text, bytes) else text
+    try:
+        info = {'bing': parse_bing, 'apod': parse_apod, 'wikimedia': parse_wikimedia}[source](text)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise Fail("couldn't read what %s sent" % source)
+    if not allowed(source, info['url']):
+        raise Fail('the picture isn\'t on %s' % HOSTS[source][0])
+    data, ctype = getter(info['url'], MAX_BYTES)
+    ext = EXTS.get(ctype) or (os.path.splitext(urllib.parse.urlsplit(info['url']).path)[1].lower() if not ctype.startswith('text') else '')
+    if ext == '.jpeg':
+        ext = '.jpg'
+    if ext not in ('.jpg', '.png', '.webp') or len(data) < 1024:
+        raise Fail('%s didn\'t send a picture' % source)
+    path = os.path.join(CACHE, '%s-%s%s' % (source, stamp, ext))
+    write_atomic(path, data)
+    meta = {'path': path, 'title': info.get('title') or '', 'credit': info.get('credit') or '', 'source': source, 'date': stamp}
+    write_atomic(os.path.join(CACHE, '%s-%s.json' % (source, stamp)), (json.dumps(meta) + '\n').encode())
+    tidy(source, day)
+    return dict(meta, cached=False)
+
+
+def cached(source):
+    source = check_source(source)
+    k = kept(source)
+    if not k:
+        raise Fail('no picture of the day kept yet')
+    return dict(k[0], cached=True)
+
+
+def main(argv):
+    cmd = argv[0] if argv else ''
+    try:
+        if cmd == 'fetch' and len(argv) == 2:
+            try:
+                r = fetch(argv[1])
+            except Fail as e:
+                # Offline, or today's is a video: the newest one kept, saying why.
+                try:
+                    r = dict(cached(argv[1]), note=str(e))
+                except Fail:
+                    raise e
+        elif cmd == 'cached' and len(argv) == 2:
+            r = cached(argv[1])
+        elif cmd == 'sources':
+            r = SOURCES
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

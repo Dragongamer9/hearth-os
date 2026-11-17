@@ -1,0 +1,17 @@
+# Screen power saving (Panel Self Refresh) on Intel laptops' built-in screens, from Settings › Display (hearth-screen-psr,
+# /etc/hearth/screen-power.json; Auto without one). 1.14: off by itself on Alder Lake-N / Twin Lake, where it can
+# stall the screen. Only the graphics driver's own runtime switch is changed (debugfs), never the start options or the
+# boot menu. Nothing waits for it: it's a simple service (no target waits for it to finish), not ordered before the
+# login screen or Game Mode, a failure is ignored ("-"), and it gives up after 40 seconds.
+[Unit]
+Description=Hearth: screen power saving on Intel built-in screens (PSR)
+After=systemd-modules-load.service sys-kernel-debug.mount
+ConditionPathExists=/sys/class/drm
+
+[Service]
+Type=simple
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-screen-psr apply
+RuntimeMaxSec=40
+
+[Install]
+WantedBy=multi-user.target
