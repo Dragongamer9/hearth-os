@@ -79,7 +79,7 @@ SetPage {
     // (Settings keeps a page loaded, so a second "phone:commands" while it's open is heard too.)
     property string anchor: ""
     function takeAnchor() {
-        console.log("Phone link: Settings › Phone at '" + SettingsNav.pageAnchor + "'");
+        console.info("Phone link: Settings › Phone at '" + SettingsNav.pageAnchor + "'");
         if (!["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) return;
         anchor = SettingsNav.pageAnchor;
         SettingsNav.pageAnchor = "";
@@ -91,10 +91,21 @@ SetPage {
         id: anchorFocus; interval: 700
         onTriggered: {
             const to = { notifications: notifHead, commands: cmdName, pair: ipField }[page.anchor];
-            console.log("Phone link: going to " + page.anchor + " (" + (to && to.visible) + ")");
+            console.info("Phone link: going to " + page.anchor + " (" + (to && to.visible) + ")");
             page.anchor = "";
+            page.anchorTarget = to || null;
             if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
         }
+    }
+    // Settings puts the focus on a page's first card once the window is up (SettingsFrame enterPage): here that's
+    // the part asked for, when one was.
+    property var anchorTarget: null
+    function focusFirst() {
+        if (anchor !== "") { anchorFocus.restart(); return; }
+        const to = anchorTarget;
+        anchorTarget = null;
+        if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); return; }
+        if (phoneSwitch.visible) phoneSwitch.forceActiveFocus();
     }
     // A moment later: when Settings loads the page again, the new one takes the part in Component.onCompleted.
     Timer { id: anchorLater; interval: 300; onTriggered: page.takeAnchor() }
@@ -116,6 +127,7 @@ SetPage {
         kind: "bad"; title: "Hearth Connect isn't installed"; sub: "It comes with Hearth OS. Updating Hearth puts it back."
     }
     SetSwitch {
+        id: phoneSwitch
         visible: !!page.st && page.st.installed
         icon: "phone"; title: "Phone link"
         sub: page.on ? "Phones on your Wi-Fi find this PC as " + (page.s ? page.s.name : "") : "Off: this PC doesn't listen for phones"
