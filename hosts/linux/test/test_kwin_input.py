@@ -35,6 +35,7 @@ def load(name, path):
 
 ht = load('hearth_type', os.path.join(SHELL, 'hearth-type'))
 import hearth_screencast as hs  # noqa: E402
+lc = load('hearth_lockcheck', os.path.join(SHELL, 'hearth-lockcheck'))
 
 
 def read(*p):
@@ -293,6 +294,92 @@ class ScreenCast(unittest.TestCase):
             self.assertIn('DP-9', s.error)
         finally:
             del os.environ['HEARTH_KWIN_CAST']
+
+
+class LockCheck(unittest.TestCase):
+    """Never lock on KWin unless its locker will show Hearth's lock screen (a lockout on a handheld otherwise)."""
+
+    def setUp(self):
+        self.env = dict(os.environ)
+        self.d = tempfile.mkdtemp()
+        os.environ['XDG_DATA_HOME'] = os.path.join(self.d, 'home')
+        os.environ['XDG_DATA_DIRS'] = os.path.join(self.d, 'share')
+        os.environ['XDG_RUNTIME_DIR'] = os.path.join(self.d, 'run')
+        os.environ['PLASMA_DEFAULT_SHELL'] = lc.PACKAGE
+        self.greeter = os.path.join(self.d, 'greet')
+        self.greet_says('Locked at 1')
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.env)
+
+    def greet_says(self, text):
+        with open(self.greeter, 'w') as f:
+            f.write('#!/bin/sh\necho "%s"\n' % text)
+        os.chmod(self.greeter, 0o755)
+        os.environ['HEARTH_LOCK_GREETER'] = self.greeter
+
+    def install(self, kind='shells', api='2', qml=True):
+        p = os.path.join(self.d, 'share', 'plasma', kind, lc.PACKAGE)
+        os.makedirs(os.path.join(p, 'contents', 'lockscreen'), exist_ok=True)
+        with open(os.path.join(p, 'metadata.json'), 'w') as f:
+            json.dump({'X-Plasma-APIVersion': api}, f)
+        q = os.path.join(p, 'contents', 'lockscreen', 'LockScreen.qml')
+        if qml:
+            open(q, 'w').write('Item {}')
+        elif os.path.exists(q):
+            os.unlink(q)
+
+    def test_no_greeter(self):
+        os.environ['HEARTH_LOCK_GREETER'] = '/nonexistent'
+        lc.GREETERS[:] = []
+        self.assertFalse(lc.check()['ok'])
+
+    def test_no_package(self):
+        self.assertIn('isn\'t where', lc.check()['why'])
+
+    def test_incomplete_package(self):
+        self.install(api='1')
+        self.assertFalse(lc.check()['ok'])
+        self.install(qml=False, api='2')
+        self.assertFalse(lc.check(False)['ok'])
+
+    def test_shell_package_needs_the_env(self):
+        self.install()
+        self.assertTrue(lc.check()['ok'])
+        os.environ['PLASMA_DEFAULT_SHELL'] = 'org.kde.plasma.desktop'
+        self.assertFalse(lc.check()['ok'])
+        self.install('look-and-feel')
+        self.assertTrue(lc.check()['ok'])
+
+    def test_greeter_that_cant_load_it(self):
+        self.install()
+        self.greet_says('kscreenlocker_greet: Failed to load lockscreen QML, falling back to built-in locker')
+        r = lc.check()
+        self.assertFalse(r['ok'])
+        self.assertIn('Failed to load lockscreen QML', r['why'])
+
+    def test_lock_qml_asks_first(self):
+        lock = read('hosts/linux/desktop/shell/Lock.qml')
+        self.assertLess(lock.index('out=$(python3'), lock.index('org.freedesktop.ScreenSaver.Lock'))
+        self.assertIn('"nolock ', lock)
+        b = read('os-bases/peppermint/build.sh')
+        self.assertIn('hearth-lockcheck --no-probe', b)
+        self.assertIn('kscreenlocker_greet isn\'t installed', b)
+
+
+class Access(unittest.TestCase):
+    def test_request(self):
+        r = hs.access_request('org.mozilla.firefox', 'Allow Firefox to take screenshots?', '', 'x' * 5000,
+                              {'grant_label': 'Allow', 'deny_label': 'Deny'})
+        self.assertEqual(r['title'], 'Allow Firefox to take screenshots?')
+        self.assertEqual(len(r['body']), 1500)
+        self.assertEqual((r['grant'], r['deny']), ('Allow', 'Deny'))
+
+    def test_registered(self):
+        self.assertIn('org.freedesktop.impl.portal.Access;', read('os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal'))
+        self.assertIn('org.freedesktop.impl.portal.Access=hearth', read('os-bases/peppermint/build.sh'))
+        self.assertIn('<interface name="org.freedesktop.impl.portal.Access">', hs.XML)
 
 
 class Wiring(unittest.TestCase):

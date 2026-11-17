@@ -44,6 +44,28 @@ D-pad and A) as Lock.qml, plain QtQuick, checking the password with PAM through 
 (`hosts/linux/desktop/kwin/xdg/kscreenlockerrc`) pick it and turn off KWin's own automatic locking and lock on resume,
 so Mantel's settings (Lock when waking, idle) stay the only ones deciding.
 
+### Never a lockout
+
+KWin's locker is fail-safe the strict way: if its lock screen can't load, it keeps everything covered by its own
+emergency screen, which on a handheld without a keyboard would be a lockout. So:
+
+- **The image build fails** without KWin's screen locker (`kscreenlocker`, its greeter `kscreenlocker_greet`) or
+  without Hearth's lock screen complete where the greeter looks (`hearth-lockcheck --no-probe` in `build.sh`, and
+  checks in `base-peppermint.yml`).
+- **Lock.qml asks `hearth-lockcheck` before every lock on KWin**: the greeter is installed, Hearth's package is where
+  it looks (the Plasma shell package named by `PLASMA_DEFAULT_SHELL`, API version 2, its `LockScreen.qml`; or the
+  look-and-feel package for older lockers), and the greeter's own test run off screen doesn't report that it
+  couldn't load it (done once per change and at Mantel's start, cached in `$XDG_RUNTIME_DIR/hearth/lockcheck.json`).
+  If anything is missing it **doesn't lock**: a critical notification and a toast say why. Checked in CI.
+- Left: something else asking the system to lock (`loginctl lock-session`, an app's "lock now") goes to KWin's
+  locker straight, without Hearth's check. The image build's checks make that safe as long as the image is whole.
+
+**If the screen ever is stuck locked** (KWin's emergency screen, or a lock screen that won't take the password):
+from another computer `ssh` in, or on the device press Ctrl+Alt+F3 for a text console and sign in, then run
+`loginctl list-sessions` to find Desktop Mode's session, then `loginctl unlock-session <ID>` (from another console a
+bare `loginctl unlock-session` would unlock that console's own session, not the desktop's), or
+`sudo loginctl unlock-sessions` for all of them. Restarting the device also ends it.
+
 ## Screen sharing and screenshots
 
 `hearth-portal filechooser` (D-Bus `org.freedesktop.impl.portal.desktop.hearth`) also serves
@@ -56,11 +78,14 @@ so Mantel's settings (Lock when waking, idle) stay the only ones deciding.
   the app stops or KWin ends it (window closed).
 - Screenshot: the whole desktop without questions, or the picker with "interactive"; saved in Pictures/Screenshots.
   PickColor isn't offered yet.
+- "Allow?" questions (xdg-desktop-portal's Access, e.g. before an app's first screenshot) are Hearth's too:
+  `access-prompt.qml` (Allow / Don't allow, keyboard and D-pad, nothing allowed unless you pick Allow). On labwc
+  they stay GTK's.
 - KWin gives its screencast protocol and screenshot interface only to a program whose .desktop file asks for them,
   found by path, so those calls go through `hearth-kwin-cast` (`kwin-helpers/hearth-kwin-cast.c`,
   `/usr/libexec/hearth`, `hearth-kwin-cast.desktop`). The window list comes from a KWin script calling back.
-- Registered in `hearth.portal` (`Interfaces=…FileChooser;…ScreenCast;…Screenshot;`) and, for the KWin session,
-  `/usr/share/xdg-desktop-portal/hearth-portals.conf` (`XDG_CURRENT_DESKTOP=Hearth:KDE`). labwc keeps
+- Registered in `hearth.portal` (`Interfaces=…FileChooser;…ScreenCast;…Screenshot;…Access;`) and, for the KWin session,
+  `/usr/share/xdg-desktop-portal/hearth-portals.conf` (`XDG_CURRENT_DESKTOP=Hearth:KDE`; ScreenCast, Screenshot, Access and FileChooser = hearth). labwc keeps
   `nimbus-portals.conf` (wlr).
 
 ## Built and tested

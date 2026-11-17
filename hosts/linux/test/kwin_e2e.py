@@ -435,13 +435,24 @@ def portals():
         check('closing the session stops the stream', left == '', left)
 
     SS = 'org.freedesktop.portal.Screenshot'
-    # The person already allowed screenshots for this app (otherwise xdg-desktop-portal first asks through an Access
-    # dialog, which comes from xdg-desktop-portal-gtk on Hearth and isn't installed here).
-    pr = run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.impl.portal.PermissionStore', '--object-path',
-              '/org/freedesktop/impl/portal/PermissionStore', '--method', 'org.freedesktop.impl.portal.PermissionStore.SetPermission',
-              'screenshot', 'true', 'screenshot', '', "['yes']"])
-    note('screenshot permission', 'exit %d %s' % (pr.returncode, (pr.stderr or '').strip()[:200]))
-    r = portal(SS, 'Screenshot', '(sa{sv})', ['', {'interactive': GLib.Variant('b', False)}])
+    # The first screenshot asks "Allow?" (xdg-desktop-portal's Access, Hearth's access-prompt.qml): it's answered
+    # Allow the way a person would, then the screenshot is taken.
+    access_qml = os.path.join(SHELL, 'access-prompt.qml')
+    asked = {}
+
+    def drive_access():
+        end = time.time() + 30
+        while time.time() < end:
+            code, out = qs_ipc(access_qml, 'access', 'state')
+            if code == 0 and out.startswith('{'):
+                asked['st'] = out
+                time.sleep(2)
+                grim('access-prompt')
+                qs_ipc(access_qml, 'access', 'grant')
+                return
+            time.sleep(0.5)
+    r = portal(SS, 'Screenshot', '(sa{sv})', ['', {'interactive': GLib.Variant('b', False)}], drive_access)
+    check('Hearth asks "Allow?" before an app\'s first screenshot (Access, Hearth-drawn)', bool(asked.get('st')), asked)
     uri = r[1].get('uri', '') if r and r[0] == 0 else ''
     path = uri[7:] if uri.startswith('file://') else ''
     from urllib.parse import unquote  # noqa: E402
@@ -506,18 +517,33 @@ def lock():
         }
     }
     ''')
-    lk = subprocess.Popen(['quickshell', '-p', lock_qml], stdout=open(os.path.join(SHOTS, 'lock.log'), 'w'), stderr=subprocess.STDOUT)
-    time.sleep(5)
-    qs_ipc(lock_qml, 'lock', 'lock')
-
 
     def active():
         r = run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.ScreenSaver', '--object-path', '/ScreenSaver',
                  '--method', 'org.freedesktop.ScreenSaver.GetActive'])
         return 'true' in r.stdout
 
+    lcheck = run([sys.executable, os.path.join(INSTALLED, 'hearth-lockcheck')], timeout=30)
+    check('hearth-lockcheck: KWin\'s locker will show Hearth\'s lock screen here', lcheck.returncode == 0, lcheck.stdout.strip())
+    # Where the lock screen isn't found, Lock.qml must not lock (no lockout) and must say so.
+    bad = subprocess.Popen(['quickshell', '-p', lock_qml], env=dict(os.environ, PLASMA_DEFAULT_SHELL='org.kde.plasma.desktop'),
+                           stdout=open(os.path.join(SHOTS, 'lock-refused.log'), 'w'), stderr=subprocess.STDOUT)
+    time.sleep(5)
+    qs_ipc(lock_qml, 'lock', 'lock')
+    time.sleep(6)
+    st_bad = qs_ipc(lock_qml, 'lock', 'state')[1]
+    with open(os.path.join(SHOTS, 'lock-refused.log'), errors='replace') as f:
+        refused_log = f.read()
+    check('without Hearth\'s lock screen, Lock.qml doesn\'t lock and says why', not active() and '"locked":false' in st_bad.replace(' ', '')
+          and 'not locked' in refused_log, 'ScreenSaver active %s; Lock.qml %s; %s' % (active(), st_bad, refused_log[-300:]))
+    bad.terminate()
+    time.sleep(1)
+    lk = subprocess.Popen(['quickshell', '-p', lock_qml], stdout=open(os.path.join(SHOTS, 'lock.log'), 'w'), stderr=subprocess.STDOUT)
+    time.sleep(5)
+    qs_ipc(lock_qml, 'lock', 'lock')
 
-    ok = wait_for(active, 12)
+
+    ok = wait_for(active, 20)
     time.sleep(4)
     st = qs_ipc(lock_qml, 'lock', 'state')[1]
     grim('lock-real')

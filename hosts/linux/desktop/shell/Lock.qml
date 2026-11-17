@@ -28,22 +28,32 @@ Scope {
         if (!locked) { typed = ""; message = ""; locked = true; }
     }
 
-    // KWin: lock through its locker and check it really locked; if it didn't, say so loudly (never a silent
-    // "locked" that isn't).
+    // KWin: first hearth-lockcheck (is KWin's locker there, and will it show Hearth's lock screen? If it couldn't, KWin
+    // would keep the screen covered by its emergency screen: on a handheld without a keyboard, a lockout). Only then
+    // lock through KWin's locker, and check it really locked. Either failing: say so loudly, never a silent "locked".
+    readonly property string lockcheck: decodeURIComponent(Qt.resolvedUrl("hearth-lockcheck").toString().replace(/^file:\/\//, ""))
     Process {
         id: kwinLock
-        command: ["sh", "-c", "gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.Lock >/dev/null 2>&1; for i in 1 2 3 4 5 6 7 8 9 10; do gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true && { echo locked; exit 0; }; sleep 0.5; done; echo failed"]
+        command: ["sh", "-c", "out=$(python3 \"$0\") || { echo \"nolock $out\"; exit 0; }; gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.Lock >/dev/null 2>&1; for i in 1 2 3 4 5 6 7 8 9 10; do gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true && { echo locked; exit 0; }; sleep 0.5; done; echo failed", root.lockcheck]
         stdout: SplitParser {
             onRead: l => {
-                if (l.trim() === "locked") { root.locked = true; return; }
+                const line = l.trim();
+                if (line === "locked") { root.locked = true; return; }
                 root.locked = false;
-                console.warn("Lock: KWin's screen locker didn't lock");
-                SettingsNav.toast("The screen couldn't be locked. KWin's screen locker didn't answer");
+                let why = "KWin's screen locker didn't answer";
+                if (line.indexOf("nolock ") === 0) {
+                    try { why = JSON.parse(line.slice(7)).why || why; } catch (e) { why = "the lock screen isn't ready"; }
+                    why += ". Hearth didn't lock, so you can't be locked out";
+                }
+                console.warn("Lock: not locked: " + why);
+                SettingsNav.toast("The screen isn't locked: " + why);
                 Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Hearth", "The screen isn't locked",
-                    "KWin's screen locker didn't answer, so nothing is covering your desktop. Try Lock again, or sign out."]);
+                    why + ". Nothing is covering your desktop. Try Lock again, or sign out."]);
             }
         }
     }
+    // Warms hearth-lockcheck's test of the lock screen at start, so the first lock doesn't wait for it.
+    Process { running: root.onKwin; command: ["python3", root.lockcheck] }
     Process {
         running: root.onKwin
         command: ["gdbus", "monitor", "--session", "--dest", "org.freedesktop.ScreenSaver", "--object-path", "/ScreenSaver"]
