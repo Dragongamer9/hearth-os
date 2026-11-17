@@ -33,3 +33,25 @@ Hearth puts inside them depends on Mantel.
    in Mantel, the apps KDE's packages added in KDE, GNOME's in GNOME; apps you install show everywhere. The switch in
    Settings (`/etc/hearth/desktops.json`, with a .bak) turns it off. The kinds table now prefers KDE's and GNOME's
    own apps there (Dolphin, Konsole, Kate, Okular, Gwenview; Files, Console, Text Editor, Calculator, Loupe).
+
+## Mantel's look in KDE Plasma and GNOME (1.14)
+
+The owner, Nov 16: KDE and GNOME look exactly like Mantel, bar included, and follow it (this replaces "their own
+look" from Nov 14). Settings › System › Your desktop › **KDE and GNOME look like Mantel** (on unless you turn it off:
+session.conf's `HEARTH_DESKTOP_LOOK`).
+
+- Mantel writes what it shows: `~/.local/state/hearth/mantel-look.json` (MantelLookExport.qml: the look, light or
+  dark, the accent and colours, font, corners, the bar layout) and `mantel-wallpaper.png` (Wallpaper.qml: the
+  wallpaper as shown, a moving one as one still moment, without the desktop clock).
+- `hearth-desktop-look` puts it in, each time the desktop starts (time-limited, never in the way of starting):
+  - **KDE** (before Plasma): Mantel's colour scheme (hearth-theme's, under a name that changes with its colours),
+    Breeze dark or light, icons and font in kdeglobals; (once Plasma is up) the colour scheme applied, the wallpaper,
+    and the panels laid out as Mantel's: the top bar (Hearth's start menu, tray, Hearth's tray item, clock) and the
+    floating dock with your apps in the middle at the bottom, or One main bar on Mantel's edge. The panels are only
+    rebuilt when Mantel's layout changes.
+  - **GNOME** (before GNOME): dark or light, the nearest GNOME accent, font, the wallpaper, and the bar: GNOME's top bar
+    with Dash to Dock floating at the bottom (Mantel's top bar and dock), or Dash to Panel on Mantel's edge (One main
+    bar), in Mantel's panel colour. GTK apps' colours come from hearth-theme (gtk-3.0 / gtk-4.0 gtk.css).
+- Off: nothing is written; KDE's and GNOME's own settings stay as they are.
+- Not the same: GNOME's own top bar keeps GNOME's dark colours (changing it needs a Shell theme), and GNOME's accents
+  are its nine (the nearest is used).

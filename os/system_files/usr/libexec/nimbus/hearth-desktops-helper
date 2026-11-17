@@ -56,7 +56,9 @@ DESKTOPS = {
     'gnome': {'label': 'GNOME', 'packages': ['gnome-shell', 'gnome-session', 'gnome-control-center', 'gnome-settings-daemon',
                                              'nautilus', 'gnome-console', 'gnome-text-editor', 'gnome-system-monitor',
                                              'gnome-shell-extension-prefs', 'gnome-disk-utility', 'loupe', 'evince',
-                                             'gnome-calculator', 'xdg-desktop-portal-gnome', 'gdm3-'],
+                                             'gnome-calculator', 'xdg-desktop-portal-gnome', 'gdm3-',
+                                             # 1.14: Mantel's dock and One main bar in GNOME (hearth-desktop-look)
+                                             'gnome-shell-extension-dashtodock', 'gnome-shell-extension-dash-to-panel'],
               'core': 4,
               'check': ['/usr/bin/gnome-session', '/usr/bin/gnome-shell'], 'remove': ['gnome-shell', 'gnome-session', 'gnome-control-center']},
 }

@@ -491,12 +491,19 @@ desk_companion() {
 # in XDG_DATA_DIRS for KDE only (/usr/share/hearth-kde: plasma/layout-templates); a panel you already have stays.
 run_kde() {
   [ -d /usr/share/hearth-kde ] && case ":$XDG_DATA_DIRS:" in *":/usr/share/hearth-kde:"*) ;; *) XDG_DATA_DIRS="/usr/share/hearth-kde:$XDG_DATA_DIRS"; export XDG_DATA_DIRS ;; esac
+  # 1.14: Mantel's look in Plasma (hearth-desktop-look; off with Settings › Your desktop's switch). Time-limited and
+  # never in the way: Plasma starts whatever happens here.
+  dl="$SHARE/desktop/shell/hearth-desktop-look"
+  [ -f "$dl" ] && { timeout 40 python3 "$dl" kde-pre >/dev/null 2>&1 || log "desktop look: KDE before-start step didn't finish"; ( sleep 3; timeout 90 python3 "$dl" kde-post >/dev/null 2>&1 ) & }
   log "desktop mode: KDE Plasma"; desk_run kde "$(dirname "$LOG")/kde.log" startplasma-wayland kwin_wayland plasmashell; r=$?; XDG_DATA_DIRS=$(printf '%s' "$XDG_DATA_DIRS" | sed 's#^/usr/share/hearth-kde:##'); export XDG_DATA_DIRS; return "$r"; }
 run_gnome() {
   log "desktop mode: GNOME"
   cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   # GNOME's first-sign-in assistant isn't Hearth's (Hearth's own first-time setup already ran).
   [ -e "$cfg/gnome-initial-setup-done" ] || { mkdir -p "$cfg" && echo yes >"$cfg/gnome-initial-setup-done"; }
+  # 1.14: Mantel's look in GNOME (hearth-desktop-look), time-limited, never in the way.
+  dl="$SHARE/desktop/shell/hearth-desktop-look"
+  [ -f "$dl" ] && { timeout 40 python3 "$dl" gnome-pre >/dev/null 2>&1 || log "desktop look: GNOME before-start step didn't finish"; }
   desk_run gnome "$(dirname "$LOG")/gnome.log" gnome-session gnome-shell
 }
 # What a desktop leaves behind, so the next mode starts clean, and the session's environment back to Hearth's.

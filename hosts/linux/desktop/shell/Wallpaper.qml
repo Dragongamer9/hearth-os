@@ -36,6 +36,22 @@ PanelWindow {
     readonly property bool covered: !!front && front.minimized !== true && (front.fullscreen === true || front.maximized === true)
     readonly property bool moving: !Settings.reduceMotion && !covered && !onBattery && !DeskState.locked && !DeskState.screenOff
     readonly property bool gpu: gpuProbe.gpu
+    // 1.14: the wallpaper as Mantel shows it (a moving one as one still moment, without the desktop clock), saved for
+    // KDE Plasma and GNOME (MantelLookExport.qml, hearth-desktop-look), a few seconds after it changes. Main screen only.
+    property bool grabbing: false
+    readonly property string stillPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/hearth/mantel-wallpaper.png"
+    onWallChanged: if (primary) stillTimer.restart()
+    onPrimaryChanged: if (primary) stillTimer.restart()
+    Timer { id: stillTimer; interval: 5000; running: root.primary; onTriggered: root.saveStill() }
+    function saveStill() {
+        if (!contentItem || width < 10 || height < 10) return;
+        Quickshell.execDetached(["mkdir", "-p", stillPath.replace(/\/[^/]*$/, "")]);
+        grabbing = true;
+        Qt.callLater(() => {
+            const ok = contentItem.grabToImage(r => { r.saveToFile(root.stillPath); root.grabbing = false; }, Qt.size(width, height));
+            if (!ok) grabbing = false;
+        });
+    }
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu
 
@@ -403,6 +419,7 @@ PanelWindow {
     Loader {
         anchors.fill: parent
         active: root.primary && Theme.deskClock
+        visible: !root.grabbing
         source: "DeskClock.qml"
     }
 }
