@@ -3,7 +3,9 @@
 // says so with "Update all" and "See updates". Update all updates every app that asks for nothing new (an update that
 // wants new permissions waits for you in Settings › App store › Updates, where you see what it asks for), then says
 // how it went. Off: Settings › App store › Updates › "Tell me when app updates are there" (store.json notifyUpdates).
-// Loaded by file name from shell.qml, so a problem here only loses the notice. Changes no setting.
+// The notices come from "Hearth App store": an ordinary notice (not one of Hearth's warnings), so Do Not Disturb and
+// Settings › Notifications apply to it. Loaded by file name from shell.qml, so a problem here only loses the notice.
+// Changes no setting.
 //   quickshell ipc -p <shell folder> call storewatch check     look now (and tell even if it was told before)
 import QtQuick
 import Quickshell
@@ -37,7 +39,7 @@ Scope {
         const names = r.names.slice(0, 3).join(", ") + (r.count > 3 ? " and " + (r.count - 3) + " more" : "");
         let body = names + ".";
         if (r.waiting > 0) body += " " + r.waiting + (r.waiting === 1 ? " asks" : " ask") + " for new permissions: look at " + (r.waiting === 1 ? "it" : "them") + " in the App store first.";
-        notice.command = ["notify-send", "-a", "Hearth", "-i", "system-software-update", "--action=update=Update all",
+        notice.command = ["notify-send", "-a", "Hearth App store", "-i", "system-software-update", "--action=update=Update all",
                           "--action=open=See updates", r.count + (r.count === 1 ? " app update is ready" : " app updates are ready"), body];
         notice.running = true;
     }
@@ -67,7 +69,7 @@ Scope {
                     title = "Apps couldn't be updated";
                     body = err.startsWith("error: ") ? err.slice(7) : "Try again from Settings › App store › Updates.";
                 }
-                done.command = ["notify-send", "-a", "Hearth", "-i", "system-software-update", "--action=open=Open the App store", title, body];
+                done.command = ["notify-send", "-a", "Hearth App store", "-i", "system-software-update", "--action=open=Open the App store", title, body];
                 done.running = true;
             }
         }

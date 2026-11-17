@@ -58,8 +58,9 @@ SetPage {
     // Also when Settings is opened at one while this page is already loaded (Settings keeps it).
     function openAnchor(first) {
         const a = SettingsNav.pageAnchor || "";
-        const mine = a === "updates" || a === "sources" || a === "drivers" || a.startsWith("app-") || a.startsWith("review-");
-        if (mine) SettingsNav.pageAnchor = "";
+        // Cleared a little later, not at once: Settings can load the page twice when it opens (the controller look and
+        // the mouse look swap as the pointer arrives), and the second copy must still open at the part asked for.
+        if (isMine(a)) anchorClear.restart();
         if (a === "updates") loadUpdates();
         else if (a === "sources") loadSources();
         else if (a === "drivers") go("drivers");
@@ -67,6 +68,8 @@ SetPage {
         else if (a.startsWith("app-")) { if (!home) loadHome(); openApp(a.slice(4).replace(/_/g, ".")); }
         else if (first) loadHome();
     }
+    function isMine(a) { return a === "updates" || a === "sources" || a === "drivers" || a.startsWith("app-") || a.startsWith("review-"); }
+    Timer { id: anchorClear; interval: 2500; onTriggered: if (page.isMine(SettingsNav.pageAnchor || "")) SettingsNav.pageAnchor = "" }
     Component.onCompleted: openAnchor(true)
     Connections { target: SettingsNav; function onPageAnchorChanged() { if (SettingsNav.pageAnchor !== "") page.openAnchor(false); } }
     SetJob { id: reader; helper: "hearth-store" }
