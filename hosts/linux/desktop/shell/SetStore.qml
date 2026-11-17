@@ -41,18 +41,18 @@ SetPage {
     function stars(n) { const f = Math.round(n || 0); return "★★★★★".slice(0, f) + "☆☆☆☆☆".slice(0, 5 - f); }
     function mb(b) { return !b ? "" : b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB"; }
     // Deep links (Settings' "page:part"): store:updates, store:sources, store:app-org_kde_krita (an app's page; "_" for ".").
-    // Also when Settings is opened at one while this page is already loaded (Settings keeps it).
+    // Also when Settings is opened at one while this page is already loaded. The part asked for stays set for a few
+    // seconds (the frame can load a page twice as it opens: the second one still goes there), not cleared here.
     function openAnchor(first) {
         const a = SettingsNav.pageAnchor || "";
-        const mine = a === "updates" || a === "sources" || a.startsWith("app-");
-        if (mine) SettingsNav.pageAnchor = "";
-        if (a === "updates") loadUpdates();
-        else if (a === "sources") loadSources();
-        else if (a.startsWith("app-")) { if (!home) loadHome(); openApp(a.slice(4).replace(/_/g, ".")); }
+        const fresh = Date.now() - SettingsNav.anchorAt < 4000;
+        if (fresh && a === "updates") loadUpdates();
+        else if (fresh && a === "sources") loadSources();
+        else if (fresh && a.startsWith("app-")) { if (!home) loadHome(); openApp(a.slice(4).replace(/_/g, ".")); }
         else if (first) loadHome();
     }
     Component.onCompleted: openAnchor(true)
-    Connections { target: SettingsNav; function onPageAnchorChanged() { if (SettingsNav.pageAnchor !== "") page.openAnchor(false); } }
+    Connections { target: SettingsNav; function onAnchorAtChanged() { if (SettingsNav.pageAnchor !== "") page.openAnchor(false); } }
     SetJob { id: reader; helper: "hearth-store" }
     SetJob { id: worker; helper: "hearth-store" }
     // B on an app's page goes back to the list it came from.
