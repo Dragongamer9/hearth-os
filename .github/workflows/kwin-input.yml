@@ -60,6 +60,9 @@ jobs:
           cp -a hosts/linux/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
           r=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_GREETER="$g" XDG_RUNTIME_DIR=/tmp python3 hosts/linux/desktop/shell/hearth-lockcheck); rc=$?
           echo "::notice title=Debian hearth-lockcheck (with the greeter's own test run)::exit $rc $r"
+          echo "::notice title=Debian package types::$(ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>&1 | tr '\n' ' ') owners: $(dpkg -S /usr/lib/*/qt6/plugins/kf6/packagestructure/* 2>/dev/null | cut -d: -f1 | sort -u | tr '\n' ' ')"
+          out=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen timeout 8 "$g" --testing 2>&1 | grep -v 'no notify signal' | head -30 | tr '\n' '|')
+          echo "::notice title=Debian greeter test run::$(printf '%s' "$out" | cut -c1-3000)"
           exit $rc
 
   kwin:
