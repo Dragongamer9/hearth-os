@@ -327,12 +327,31 @@ class CalendarAccounts(unittest.TestCase):
         return {'title': title, 'date': date, 'lastDate': date, 'allDay': False, 'start': start, 'end': start + 1, 'uid': uid}
 
     def test_both_merged_in_order_each_once(self):
-        self.fake('hearth-time', json.dumps({'events': [self.ev('Dentist', '2026-11-18', 300, 'a')]}))
-        acc = [self.ev('Standup', '2026-11-17', 100, 'b'), self.ev('Dentist', '2026-11-18', 300, 'a')]
+        # Hearth Time shows the accounts' calendars too (no uid, tz or recurring in its answer): the same event once
+        self.fake('hearth-time', json.dumps({'events': [self.ev('Dentist', '2026-11-18', 300)]}))
+        weekly = [dict(self.ev('Standup', d, t, 'b'), tz='Europe/Berlin', recurring=True)
+                  for d, t in (('2026-11-17', 100), ('2026-11-24', 200))]
+        acc = weekly + [dict(self.ev('Dentist', '2026-11-18', 300, 'a'), tz='America/Chicago', recurring=False)]
         self.fake('hearth-accounts', json.dumps({'events': acc, 'errors': []}))
         self.hw.accounts_cmd = lambda: [os.path.join(self.bin, 'hearth-accounts')]
         got = self.hw.events()['events']
-        self.assertEqual([e['title'] for e in got], ['Standup', 'Dentist'])
+        self.assertEqual([e['title'] for e in got], ['Standup', 'Dentist', 'Standup'])   # each time of a series
+        self.assertEqual([e.get('tz') for e in got], ['Europe/Berlin', 'America/Chicago', 'Europe/Berlin'])
+        self.assertEqual([e.get('recurring') for e in got], [True, False, True])
+        self.assertEqual(got[1]['uid'], 'a')
+
+    def test_hearth_time_asked_for_the_two_weeks(self):
+        log = os.path.join(self.tmp, 'time-args')
+        p = os.path.join(self.bin, 'hearth-time')
+        with open(p, 'w') as f:
+            f.write('#!/bin/sh\necho "$@" > %s\necho \'{"events": []}\'\n' % log)
+        os.chmod(p, 0o755)
+        self.hw.accounts_cmd = lambda: None
+        self.hw.events()
+        import datetime
+        today = datetime.date.today()
+        with open(log) as f:
+            self.assertEqual(f.read().split(), ['--events', today.isoformat(), (today + datetime.timedelta(days=15)).isoformat()])
 
     def test_without_accounts_or_hearth_accounts(self):
         self.fake('hearth-time', json.dumps({'events': [self.ev('Mine', '2026-11-17', 5)]}))

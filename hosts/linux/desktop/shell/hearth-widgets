@@ -369,18 +369,28 @@ def account_events():
 
 
 def events():
-    """Hearth Time's events and the online accounts' (Calendar on), in time order, each event once."""
-    d = _last_json(['hearth-time', '--events'], 10)
+    """Hearth Time's events and the online accounts' (Calendar on), in time order, each event once.
+
+    Hearth Time also shows the accounts' calendars (from its own copy, with your changes not sent yet), and the
+    accounts' own answer is the newest from the server: the same event from both is shown once, Hearth Time's, with
+    the account's time zone (tz) and whether it repeats (recurring) added."""
+    today = datetime.date.today()
+    last = today + datetime.timedelta(days=EVENT_DAYS)
+    d = _last_json(['hearth-time', '--events', today.isoformat(), last.isoformat()], 10)
     mine = (d.get('events') or []) if d else []
-    out, seen = [], set()
+    out, at = [], {}
     for e in list(mine) + list(account_events()):
         if not isinstance(e, dict):
             continue
-        k = (e.get('uid'), e.get('start')) if e.get('uid') else None
-        if k and k in seen:
+        k = (str(e.get('title') or '').strip(), e.get('start'), bool(e.get('allDay')))
+        if e.get('start') is not None and k in at:
+            first = at[k]
+            for f in ('tz', 'recurring', 'uid', 'account', 'calendar'):
+                if f in e and not first.get(f):
+                    first[f] = e[f]
             continue
-        if k:
-            seen.add(k)
+        e = dict(e)
+        at[k] = e
         out.append(e)
     out.sort(key=lambda e: (str(e.get('date') or ''), e.get('start') or 0, str(e.get('title') or '')))
     return {'events': out}
