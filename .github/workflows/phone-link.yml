@@ -12,7 +12,7 @@ name: Phone link
 
 on:
   push:
-    branches: [feature/phone-link]
+    branches: [feature/phone-link, feature/kwin-1.14]
     paths: ['hosts/hearth-connect/**', 'hosts/linux/desktop/shell/SetPhone*.qml', 'hosts/linux/desktop/shell/PhoneStatus.qml',
             'hosts/linux/desktop/shell/NotifReply.qml', 'hosts/linux/desktop/shell/hearth-phone', '.github/workflows/phone-link.yml']
   workflow_dispatch:

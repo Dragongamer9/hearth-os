@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   # A new workflow can only be dispatched once it's on main: until then, a push to this branch runs it.
   push:
-    branches: [feature/capture-polkit]
+    branches: [feature/capture-polkit, feature/kwin-1.14]
   pull_request:
     paths: ['hosts/linux/desktop/shell/Capture*.qml', 'hosts/linux/desktop/shell/PolkitPrompt.qml', 'hosts/linux/desktop/shell/capture-draw.js',
             'hosts/linux/desktop/shell/polkit-actions.js', 'hosts/linux/desktop/shell/hearth-capture-helper', 'hosts/linux/desktop/shell/hearth-polkit-fallback',
