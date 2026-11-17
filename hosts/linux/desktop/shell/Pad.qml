@@ -42,6 +42,7 @@ Scope {
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
         || SettingsNav.widgetsShown   // desktop widgets and activities (Widgets.qml)
+        || SettingsNav.fireholdShown  // Firehold's Couch (a hidden preview): its buttons go to it as they are (fhpad)
         || SettingsNav.searchBarShown   // the search bar (SearchBar.qml, Alt+Space)
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
     // The window in front (WinList: labwc's foreign-toplevel list, or KWin's through hearth-kwin-bridge): hearth-pad decides from its app id whether the app reads
@@ -50,6 +51,7 @@ Scope {
     // What has the keys (hearth-pad's pad.log says it, so a controller that "only does D-pad and A" shows why).
     function keysWhy() {
         if (!keysContext) return "";
+        if (SettingsNav.fireholdShown) return "Firehold";   // hearth-pad sends this one's buttons as they are
         if (launcher.shown) return "launcher";
         if (quick.shown) return "Quick Access";
         if (powerMenu.shown) return "power menu";
@@ -113,6 +115,13 @@ Scope {
         send({ cmd: "pause", on: fullscreenApp });
         send({ cmd: "mouse", on: mouseOn });
         send({ cmd: "speed", value: Settings.pointerSpeed });
+        send({ cmd: "firehold", on: SettingsNav.fireholdCouch });
+    }
+    // Firehold's Couch (Firehold.qml): Guide goes to it while the Couch posture is on.
+    Connections {
+        target: SettingsNav
+        function onFireholdCouchChanged() { pad.send({ cmd: "firehold", on: SettingsNav.fireholdCouch }); }
+        function onFireholdShownChanged() { pad.sendKeys(); }
     }
     Connections {
         target: Settings
@@ -178,6 +187,7 @@ Scope {
         case "toast": help.toast(m.text); break;
         case "mouse": mouseOn = m.on; break;
         case "used": SettingsNav.padUsed(); break;
+        case "fhpad": DeskState.padSeen = Date.now(); if (SettingsNav.fireholdPad) SettingsNav.fireholdPad(m.b || "", m.down !== false); break;
         case "owner": owner = m.app || ""; ownerMouse = m.mouse === true; break;
         }
     }

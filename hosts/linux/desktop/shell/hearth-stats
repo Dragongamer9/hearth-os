@@ -4,7 +4,11 @@
   hearth-stats            one JSON line now
   hearth-stats --watch N  a JSON line every N seconds (Mantel runs this only while the island or the dashboard shows)
 
-{"cpu": 23, "cpuTemp": 58, "gpu": 41, "gpuTemp": 61, "ram": 5.1, "ramTotal": 16.0, "fps": 144}
+{"cpu": 23, "cpuTemp": 58, "gpu": 41, "gpuTemp": 61, "ram": 5.1, "ramTotal": 16.0, "fps": 144, "gpuWatts": 18.2,
+ "cpuWatts": 9.5, "batteryWatts": 14.1}
+Watts (Firehold's performance overlay): the GPU's from its hwmon power1_average / power1_input (amdgpu, i915/xe) or
+nvidia-smi's power.draw; the CPU's from RAPL's energy counter between two readings (when this user may read it); the
+battery's power_now while it's running on battery. Each only when there's a real source.
 A value that can't be read is left out (the shell then hides it). Only reads /proc and /sys, never writes anything.
 
 FPS: a desktop shell can't measure another program's frame rate on labwc, so it's only shown when MangoHud is
@@ -14,6 +18,8 @@ import glob
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 
@@ -144,6 +150,66 @@ def fps(home, now=None):
         return None
 
 
+def gpu_watts(root='/sys/class/hwmon'):
+    """The GPU's power draw in watts: hwmon (amdgpu, radeon, xe, i915, nouveau), else nvidia-smi; None without one."""
+    for d in sorted(glob.glob(os.path.join(root, 'hwmon*'))):
+        if read(os.path.join(d, 'name')).strip() not in ('amdgpu', 'radeon', 'xe', 'i915', 'nouveau'):
+            continue
+        for f in ('power1_average', 'power1_input'):
+            v = read(os.path.join(d, f)).strip()
+            if v.isdigit() and int(v) > 0:
+                return round(int(v) / 1e6, 1)
+    nv = shutil.which('nvidia-smi')
+    if nv:
+        try:
+            r = subprocess.run([nv, '--query-gpu=power.draw', '--format=csv,noheader,nounits'], capture_output=True,
+                               text=True, timeout=2, check=False)
+            v = float(r.stdout.strip().splitlines()[0])
+            if v > 0:
+                return round(v, 1)
+        except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+            pass
+    return None
+
+
+RAPL = {}
+
+
+def cpu_watts(root='/sys/class/powercap', now=None):
+    """The CPU package's power from RAPL's energy counter (µJ) since the last call; None the first time, or when the
+    counter can't be read (often root's only), or it wrapped."""
+    f = None
+    for d in sorted(glob.glob(os.path.join(root, '*rapl:0'))):
+        if os.path.isfile(os.path.join(d, 'energy_uj')):
+            f = os.path.join(d, 'energy_uj')
+            break
+    if not f:
+        return None
+    v = read(f).strip()
+    if not v.isdigit():
+        return None
+    now = time.monotonic() if now is None else now
+    prev = RAPL.get(f)
+    RAPL[f] = (int(v), now)
+    if not prev or now <= prev[1] or int(v) < prev[0]:
+        return None
+    return round((int(v) - prev[0]) / 1e6 / (now - prev[1]), 1)
+
+
+def battery_watts(root='/sys/class/power_supply'):
+    """What the whole device draws while it's on battery (power_now, µW; or current_now × voltage_now)."""
+    for d in sorted(glob.glob(os.path.join(root, 'BAT*'))):
+        if read(os.path.join(d, 'status')).strip() != 'Discharging':
+            continue
+        p = read(os.path.join(d, 'power_now')).strip()
+        if p.isdigit() and int(p) > 0:
+            return round(int(p) / 1e6, 1)
+        c, u = read(os.path.join(d, 'current_now')).strip(), read(os.path.join(d, 'voltage_now')).strip()
+        if c.isdigit() and u.isdigit() and int(c) > 0:
+            return round(int(c) * int(u) / 1e12, 1)
+    return None
+
+
 def snapshot(prev_cpu, home):
     now_cpu = cpu_times(read('/proc/stat'))
     out = {}
@@ -164,6 +230,10 @@ def snapshot(prev_cpu, home):
     f = fps(home)
     if f is not None:
         out['fps'] = f
+    for k, fn in (('gpuWatts', gpu_watts), ('cpuWatts', cpu_watts), ('batteryWatts', battery_watts)):
+        w = fn()
+        if w is not None:
+            out[k] = w
     return out, now_cpu
 
 

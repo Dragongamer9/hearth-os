@@ -35,7 +35,7 @@ kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, sc
   New per-screen keys under KWin (apply / set / screens.json): priority (1 = the main screen), overscan (0–100),
   rgbRange (automatic | full | limited), sdrGamut (colour intensity, 0–100, HDR on), colorPower (efficiency |
   accuracy), hdrCal {peak, avg, min} (nits; None = what the screen says), edr (never | always, newer KWin)
-  hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-
+  hearth-screens shot [-g "X,Y WxH"] [-o SCREEN] [-c] [--window ID] FILE|-
                                      a screenshot as PNG: grim under labwc; KWin's org.kde.KWin.ScreenShot2 under KWin,
                                      through hearth-kwin-cast shot (the one small program KWin trusts for it,
                                      hearth-kwin-cast.desktop; it answers only hearth-portal and hearth-screens)
@@ -1519,10 +1519,17 @@ def raw_to_rgb(data, width, height, stride, fmt):
 
 
 def parse_shot_args(argv):
-    o = {'geometry': None, 'output': None, 'cursor': False, 'file': None}
+    o = {'geometry': None, 'output': None, 'cursor': False, 'file': None, 'windowId': None}
     i = 0
     while i < len(argv):
         a = argv[i]
+        if a == '--window' and i + 1 < len(argv):
+            # One window by KWin's id (WinList's wid): Firehold's Everything open shows its picture.
+            if not re.match(r'^\{?[0-9A-Fa-f-]{36}\}?$', argv[i + 1]):
+                raise Refused('Not a window id: %s' % argv[i + 1])
+            o['windowId'] = argv[i + 1]
+            i += 2
+            continue
         if a == '-g' and i + 1 < len(argv):
             m = re.match(r'^\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)\s*$', argv[i + 1])
             if not m:
@@ -1552,7 +1559,9 @@ KWIN_CAST = os.environ.get('HEARTH_KWIN_CAST') or '/usr/libexec/hearth/hearth-kw
 def kwin_cast_args(o):
     """hearth-kwin-cast shot's arguments for a screenshot asked for with parse_shot_args / grab: at the screen's own
     resolution, with the pointer when asked."""
-    if o.get('window'):
+    if o.get('windowId'):
+        a = ['window', o['windowId']]            # one window by KWin's id (Firehold's Everything open)
+    elif o.get('window'):
         a = ['active-window']
     elif o['geometry']:
         x, y, gw, gh = o['geometry']
