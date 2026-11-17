@@ -276,6 +276,17 @@ optional kglobalacceld xdg-desktop-portal-kde
 optional milou
 # The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
 # cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
+# The image check says what it brings with it (packages, size) and warns if that is a Plasma session or a login manager.
+if have_pkg kwin-addons; then
+  ka_new=$(apt-get install -s "${APT[@]:3}" kwin-addons 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ' || true)
+  ka_kb=0
+  for p in $ka_new; do s=$(apt-cache show "$p" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}'); ka_kb=$((ka_kb + ${s:-0})); done
+  echo "::notice title=kwin-addons::$(echo $ka_new | wc -w) new package(s), $((ka_kb / 1024)) MB installed: $(echo "$ka_new" | cut -c1-3000)" || true
+  case " $ka_new " in
+    *" plasma-workspace "*|*" plasma-desktop "*|*" plasma-session"*|*" sddm "*|*" kde-plasma-desktop "*|*" plasma-workspace-wayland "*)
+      echo "::warning title=kwin-addons::it brings a Plasma session or a login manager: $(echo "$ka_new" | tr ' ' '\n' | grep -E '^(plasma|sddm|kde-plasma)' | tr '\n' ' ')";;
+  esac
+fi
 optional kwin-addons
 # kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
 if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
