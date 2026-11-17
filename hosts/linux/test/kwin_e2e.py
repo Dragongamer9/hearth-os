@@ -130,6 +130,37 @@ def click_middle():
         note('click', repr(ex))
 
 
+def keys_diagnosis():
+    """Why uinput keys didn't reach the field: does the device send them, and do they arrive without the input method?"""
+    seen = []
+    try:
+        import evdev
+        dev = next((evdev.InputDevice(p) for p in evdev.list_devices() if evdev.InputDevice(p).name == 'Hearth typing keyboard'), None)
+        if dev:
+            def reader():
+                for ev in dev.read_loop():
+                    if ev.type == evdev.ecodes.EV_KEY:
+                        seen.append((ev.code, ev.value))
+            threading.Thread(target=reader, daemon=True).start()
+    except Exception as e:
+        note('keys: reading the device', repr(e))
+    other = '/tmp/hearth-entry-plain.txt'
+    with open(other, 'w') as f:
+        f.write('')
+    pl = subprocess.Popen([sys.executable, '/tmp/hearth-entry-app.py', other],
+                          env=dict(os.environ, GTK_IM_MODULE='gtk-im-context-simple'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(5)
+    run([sys.executable, HT, '-k', 'x', '-k', 'y', '-k', 'z'])
+    time.sleep(2)
+    try:
+        got = open(other).read()
+    except OSError:
+        got = None
+    note('keys diagnosis', 'device sent %d key events; a GTK field without the input method got %r; input method: %s'
+         % (len(seen), got, im_state()))
+    pl.terminate()
+
+
 def qs_ipc(path, *args):
     r = run(['quickshell', 'ipc', '-p', path, 'call'] + list(args), timeout=10)
     return r.returncode, (r.stdout or '').strip()
@@ -208,6 +239,8 @@ def typing():
     r = run([sys.executable, HT, '-M', 'ctrl', '-k', 'a', '-m', 'ctrl', '-k', 'Delete'], timeout=20)
     wait_for(lambda: entry_text() == '', 6)
     check('hearth-type shortcuts on KWin (Ctrl+A, Delete)', entry_text() == '', 'the field has %r' % entry_text())
+    if entry_text() != '':
+        keys_diagnosis()
     r = run([sys.executable, HT, '--', 'Hearth on KWin: ü ß é ✓ 😀'], timeout=20)
     time.sleep(1.5)
     grim('kwin-typed-unicode')
@@ -429,6 +462,11 @@ def lock():
         with open(glog, errors='replace') as f:
             gl = f.read()
         bad = [l for l in gl.splitlines() if 'LockScreen.qml' in l and ('rror' in l or 'is not' in l or 'Cannot' in l)]
+        note('greeter: its first lines', ' | '.join(gl.splitlines()[:14])[:1500])
+        h = run([greeter, '--help'])
+        note('greeter: --help', ' | '.join((h.stdout + h.stderr).splitlines())[:900])
+        st = run(['sh', '-c', 'strings "$0" | grep -iE "shell|theme|lookandfeel|lockscreenmainscript|APIVersion|plasmashellrc|kdeglobals" | sort -u | head -40', greeter])
+        note('greeter: what it reads', ' | '.join(st.stdout.splitlines())[:1500])
         check('Hearth\'s lock screen loads in KWin\'s locker without QML errors', alive and not bad,
               ('still running; ' if alive else 'it ended; ') + ' | '.join(bad[:5]) + ' | ' + gl[-400:])
 
