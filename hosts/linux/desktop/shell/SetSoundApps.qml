@@ -15,8 +15,9 @@ SetPage {
     readonly property var outs: mixer ? mixer.outList : []
     readonly property var ins: mixer ? mixer.inList : []
     // `settings page sound-apps:mic` opens it at the microphones (the Desktop Mode test's picture); only scrolls.
-    function reveal() { if (SettingsNav.pageAnchor === "mic") { SettingsNav.pageAnchor = ""; revealTimer.start(); } }
-    Timer { id: revealTimer; interval: 600; onTriggered: page.contentY = Math.max(0, Math.min(micCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)) }
+    // The anchor stays until the timer: opening Settings can make the page twice in a row, and the second must see it.
+    function reveal() { if (SettingsNav.pageAnchor === "mic") revealTimer.start(); }
+    Timer { id: revealTimer; interval: 600; onTriggered: { if (SettingsNav.pageAnchor === "mic") SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(micCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)); } }
     Component.onCompleted: reveal()
 
     SetCardGroup {
