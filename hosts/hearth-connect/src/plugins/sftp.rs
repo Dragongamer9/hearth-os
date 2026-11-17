@@ -32,10 +32,10 @@ pub fn mount_dir(id: &str) -> PathBuf {
 }
 
 pub fn browse(d: &Daemon, id: &str) -> Result<Value, String> {
-    if let Some(m) = super::with(id, |s| s.mounted.clone()) { return Ok(json!({"path": m})); }
+    if let Some(m) = super::with(id, |s| s.sftp.mounted.clone()) { return Ok(json!({"path": m})); }
     if !crate::desktop::has("sshfs") { return Err("Browsing the phone needs sshfs, which isn't installed".into()); }
     d.send_body(id, "kdeconnect.sftp.request", json!({"startBrowsing": true}))?;
-    super::with(id, |s| { s.waiting = true; s.error = None; });
+    super::with(id, |s| { s.sftp.waiting = true; s.sftp.error = None; });
     d.changed();
     Ok(json!({"waiting": true}))
 }
@@ -44,7 +44,7 @@ pub fn browse(d: &Daemon, id: &str) -> Result<Value, String> {
 fn safe(s: &str) -> bool { !s.is_empty() && !s.starts_with('-') && s.len() < 512 && !s.chars().any(|c| c.is_control()) }
 
 fn fail(d: &Arc<Daemon>, id: &str, e: String) {
-    super::with(id, |s| { s.waiting = false; s.error = Some(e.clone()); });
+    super::with(id, |s| { s.sftp.waiting = false; s.sftp.error = Some(e.clone()); });
     d.emit("browse-failed", json!({"device": id, "error": e}));
     d.changed();
 }
@@ -69,7 +69,8 @@ pub fn packet(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet) {
         unmount_dir(&dir);
         let host = if ip.is_ipv6() { format!("{user}@[{ip}]:{root}") } else { format!("{user}@{ip}:{root}") };
         let mut c = crate::desktop::cmd("sshfs");
-        c.arg(&host).arg(&dir).args(["-p", &port.to_string(), "-o", "password_stdin", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+        let port_s = port.to_string();
+        c.arg(&host).arg(&dir).args(["-p", port_s.as_str(), "-o", "password_stdin", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
             "-o", "reconnect", "-o", "ServerAliveInterval=15", "-o", "HostKeyAlgorithms=+ssh-rsa", "-o", "PubkeyAcceptedKeyTypes=+ssh-rsa"])
             .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
         let mut ch = match c.spawn() { Ok(ch) => ch, Err(e) => return fail(&d, &id, format!("Couldn't start sshfs: {e}")) };
@@ -93,7 +94,7 @@ pub fn packet(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet) {
             let rel = p.strip_prefix(root.as_str()).unwrap_or(p.as_str()).trim_start_matches('/');
             json!({"name": names.get(i).cloned().unwrap_or_else(|| p.clone()), "path": dir.join(rel).to_string_lossy()})
         }).collect();
-        super::with(&id, |s| { s.mounted = Some(shown.clone()); s.waiting = false; s.error = None; s.folders = folders; });
+        super::with(&id, |s| { s.sftp.mounted = Some(shown.clone()); s.sftp.waiting = false; s.sftp.error = None; s.sftp.folders = folders; });
         d.emit("browse-ready", json!({"device": id, "path": shown}));
         d.changed();
     });
@@ -106,6 +107,6 @@ fn unmount_dir(dir: &Path) {
 }
 
 pub fn unmount(id: &str) {
-    let was = super::with(id, |s| { s.waiting = false; s.folders.clear(); s.mounted.take() });
+    let was = super::with(id, |s| { s.sftp.waiting = false; s.sftp.folders.clear(); s.sftp.mounted.take() });
     if was.is_some() { unmount_dir(&mount_dir(id)); }
 }

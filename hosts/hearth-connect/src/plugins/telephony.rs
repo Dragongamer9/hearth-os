@@ -37,7 +37,7 @@ pub fn packet(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet, pd: &PairedDev)
     }
     match event.as_str() {
         "ringing" | "talking" => {
-            let first = super::with(id, |s| { let f = s.state.is_empty(); s.state = event.clone(); s.who = who.clone(); f });
+            let first = super::with(id, |s| { let f = s.call.state.is_empty(); s.call.state = event.clone(); s.call.who = who.clone(); f });
             if first && event == "ringing" {
                 let (d2, id2) = (d.clone(), id.to_string());
                 let n = super::notify_bus::notify(&format!("{who} is calling"), &format!("On {from}"), "smartphone", 0, true,
@@ -45,7 +45,7 @@ pub fn packet(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet, pd: &PairedDev)
                     Arc::new(move |ev| if let super::notify_bus::Event::Action(k) = ev {
                         if k == "mute" { let _ = d2.send_body(&id2, "kdeconnect.telephony.request_mute", json!({})); }
                     }));
-                if let Some(n) = n { super::with(id, |s| s.notif = n); }
+                if let Some(n) = n { super::with(id, |s| s.call.notif = n); }
             }
             if first && pd.pause_on_call { pause(d, id); }
             d.emit("call", json!({"device": id, "state": event, "who": who}));
@@ -65,27 +65,27 @@ fn pause(d: &Arc<Daemon>, id: &str) {
     std::thread::spawn(move || {
         let mut paused = vec![];
         for (name, _) in crate::desktop::players() {
-            let st = crate::desktop::cmd("playerctl").args(["-p", &name, "status"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-            if st == "Playing" && crate::desktop::cmd("playerctl").args(["-p", &name, "pause"]).status().map(|s| s.success()).unwrap_or(false) { paused.push(name); }
+            let st = crate::desktop::cmd("playerctl").args(["-p", name.as_str(), "status"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+            if st == "Playing" && crate::desktop::cmd("playerctl").args(["-p", name.as_str(), "pause"]).status().map(|s| s.success()).unwrap_or(false) { paused.push(name); }
         }
         // The call may have ended while this ran: then they play again right away.
-        let ended = super::with(&id, |s| if s.state.is_empty() { true } else { s.paused.extend(paused.iter().cloned()); false });
+        let ended = super::with(&id, |s| if s.call.state.is_empty() { true } else { s.call.paused.extend(paused.iter().cloned()); false });
         if ended { resume(&paused); }
         if !paused.is_empty() { d.emit("media-paused", json!({"device": id, "players": paused})); }
     });
 }
 
 fn resume(players: &[String]) {
-    for name in players { let _ = crate::desktop::cmd("playerctl").args(["-p", name, "play"]).status(); }
+    for name in players { let _ = crate::desktop::cmd("playerctl").args(["-p", name.as_str(), "play"]).status(); }
 }
 
 /// The call is over (or the phone went away): what Hearth paused plays again, the notification goes.
 pub fn end(d: &Arc<Daemon>, id: &str) {
     let (paused, notif, was) = super::with(id, |s| {
-        let was = !s.state.is_empty();
-        s.state.clear();
-        s.who.clear();
-        (std::mem::take(&mut s.paused), std::mem::take(&mut s.notif), was)
+        let was = !s.call.state.is_empty();
+        s.call.state.clear();
+        s.call.who.clear();
+        (std::mem::take(&mut s.call.paused), std::mem::take(&mut s.call.notif), was)
     });
     if notif != 0 { super::notify_bus::close(notif); }
     if !paused.is_empty() {
