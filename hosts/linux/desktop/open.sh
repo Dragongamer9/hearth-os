@@ -42,9 +42,8 @@ done_shot() {
 }
 
 # The screenshot itself, grim's way (grab [-g "X,Y WxH"] FILE|-): grim under labwc; under Mantel on KWin
-# (HEARTH_WM=kwin) KWin's ScreenShot2 through hearth-screenshot (the one program hearth-screenshot.desktop lets KWin
-# answer; docs/SCREENS.md), or hearth-screens itself where that isn't installed (a session that set
-# KWIN_SCREENSHOT_NO_PERMISSION_CHECKS).
+# (HEARTH_WM=kwin) KWin's ScreenShot2 through hearth-screenshot (hearth-screens, through the small helper
+# hearth-kwin-cast that KWin trusts; docs/SCREENS.md), or hearth-screens itself where hearth-screenshot isn't installed.
 grab() {
   if [ "${HEARTH_WM:-}" = kwin ]; then
     if have hearth-screenshot; then hearth-screenshot "$@"; else python3 "$(dirname "$0")/shell/hearth-screens" shot "$@"; fi

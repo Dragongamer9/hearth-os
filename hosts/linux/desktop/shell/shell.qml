@@ -8,6 +8,7 @@
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <processes|performance[:cpu|memory|disk|net|gpu]|startup|details|services|settings>|close|toggle   files open <path>|home|toggle|close
 //   devices open|close|toggle|scan   run open|close|toggle   winx open|close|toggle (WinTools.qml)
+//   searchbar toggle|open|close|key|type <text>|state (SearchBar.qml, Alt+Space)
 //   resmon open|tab <pc|overview|cpu|memory|disk|network|gpu>|select <part>|close|toggle (ResourceMonitor.qml)
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
@@ -245,6 +246,7 @@ ShellRoot {
     Loader { source: "SnapLayouts.qml" }
     // Force close a frozen window (Ctrl+Alt+Esc, KWin only): loaded by file name like the rest here.
     Loader { source: "ForceClose.qml" }
+    Loader { source: "ScreenSwitcher.qml" }   // Super+P (1.14)
     // Recording the screen (Recorder.qml, hearth-record) and the capture dot that shows whenever the screen is being
     // recorded or someone is connected with Remote desktop (CaptureIndicator.qml, hearth-vnc). Loaded by file name: a
     // problem in either only loses it.
@@ -270,6 +272,7 @@ ShellRoot {
     // looking and none of its own windows (Settings, Task Manager, Files) is open.
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
     Loader { source: "SpaceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.openStorage = () => settings.open("storage"); } }   // 1.11: main drive almost full
+    Loader { source: "StoreWatch.qml"; onLoaded: item.openStore = part => settings.open("store:" + part) }   // 1.14: app updates notice
     Loader { source: "BatteryWatch.qml" }   // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
@@ -277,6 +280,13 @@ ShellRoot {
         source: "WinTools.qml"
         onLoaded: item.wire({ tasks: tasks, files: files, settings: settings, launcher: launcher, lockScreen: lockScreen })
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Device Manager, Run and the Super+X menu (WinTools.qml) couldn't load")
+    }
+    // The search bar (1.14, Alt+Space, like KRunner: SearchBar.qml): loaded by file name, so a problem in it only loses
+    // the bar, never the shell. IPC target "searchbar".
+    Loader {
+        source: "SearchBar.qml"
+        onLoaded: item.wire({ launcher: launcher })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the search bar (SearchBar.qml) couldn't load")
     }
     // Resource Monitor (docs/RESOURCE-MONITOR.md): loaded by file name, so a problem in it only loses that window, never
     // the shell. IPC target "resmon" (hearth-resmon).
@@ -336,15 +346,36 @@ ShellRoot {
         }
         Process {
             running: !night.kwin && night.available && Settings.nightLight
+            // Sunset to sunrise at your place (-l/-L); otherwise your times; -d the fade (Settings.nightFade minutes).
             command: Settings.nightMode === "always"
                 ? ["wlsunset", "-t", String(Settings.nightTemp), "-T", String(Settings.nightTemp + 1), "-S", "00:00", "-s", "00:01", "-d", "60"]
-                : ["wlsunset", "-t", String(Settings.nightTemp), "-T", "6500", "-S", Settings.nightTo, "-s", Settings.nightFrom, "-d", "1800"]
+                : Settings.nightMode === "location" && Settings.nightPlace !== ""
+                ? ["wlsunset", "-t", String(Settings.nightTemp), "-T", "6500", "-l", String(Settings.nightLat), "-L", String(Settings.nightLon), "-d", String(Math.max(1, Settings.nightFade) * 60)]
+                : ["wlsunset", "-t", String(Settings.nightTemp), "-T", "6500", "-S", Settings.nightTo, "-s", Settings.nightFrom, "-d", String(Math.max(1, Settings.nightFade) * 60)]
         }
         // KWin: whenever one of them changes (and once Settings has loaded), KWin's Night Light is set to match.
-        readonly property string want: [Settings.loaded, Settings.nightLight, Settings.nightTemp, Settings.nightMode, Settings.nightFrom, Settings.nightTo].join("|")
+        readonly property string want: [Settings.loaded, Settings.nightLight, Settings.nightTemp, Settings.nightMode, Settings.nightFrom, Settings.nightTo,
+            Settings.nightPlace, Settings.nightLat, Settings.nightLon, Settings.nightFade].join("|")
         onWantChanged: if (kwin && Settings.loaded) kwinNight.restart()
         Timer { id: kwinNight; interval: 400; onTriggered: Quickshell.execDetached(["python3", Quickshell.shellDir + "/hearth-screens", "night",
-            JSON.stringify({ nightLight: Settings.nightLight, nightTemp: Settings.nightTemp, nightMode: Settings.nightMode, nightFrom: Settings.nightFrom, nightTo: Settings.nightTo })]) }
+            JSON.stringify({ nightLight: Settings.nightLight, nightTemp: Settings.nightTemp, nightMode: Settings.nightMode, nightFrom: Settings.nightFrom, nightTo: Settings.nightTo,
+                             nightPlace: Settings.nightPlace, nightLat: Settings.nightLat, nightLon: Settings.nightLon, nightFade: Settings.nightFade })]) }
+    }
+
+    // Auto-brightness (Settings › Display, a laptop with a light sensor; off until turned on): hearth-screens autobright
+    // reads iio-sensor-proxy while screens.json says so and ends by itself when it's turned off or can't (logged).
+    // Nothing at start depends on it.
+    Scope {
+        id: autoBright
+        property bool on: false
+        FileView {
+            path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/screens.json"
+            watchChanges: true
+            onFileChanged: reload()
+            onLoaded: { try { autoBright.on = JSON.parse(text()).autoBrightness === true; } catch (e) { autoBright.on = false; } }
+            onLoadFailed: autoBright.on = false
+        }
+        Process { running: autoBright.on; command: ["python3", Quickshell.shellDir + "/hearth-screens", "autobright"] }
     }
 
     Component.onCompleted: { SettingsNav.pad = pad; SettingsNav.help = help; }
@@ -362,6 +393,15 @@ ShellRoot {
     IpcHandler {
         target: "lock"
         function lock(): void { lockScreen.lock(); }
+    }
+    // Where the keys go (checks: kwin-windows.yml types into each panel with a real keyboard).
+    IpcHandler {
+        target: "focus"
+        function state(): string {
+            return JSON.stringify({ launcher: { shown: launcher.shown, typed: launcher.typedText || "" },
+                                    quick: { shown: quick.shown, current: quick.current || "" },
+                                    settings: { shown: settings.shown, query: settings.query || "" } });
+        }
     }
     IpcHandler {
         target: "brightness"
@@ -391,6 +431,8 @@ ShellRoot {
         function close(): void { settings.close(); }
         function toggle(): void { settings.toggle(); }
         // 1.14: which look Settings shows, as if the controller (pad) or the mouse (mouse) was used last (checks).
+        // One tap on Settings › About's version (SettingsNav.tapVersion: seven in a row unlock the hidden preview).
+        function tapversion(): void { SettingsNav.tapVersion(); }
         function look(kind: string): void { if (kind === "pad") SettingsNav.padUsed(); else { SettingsNav.padAt = 0; SettingsNav.input = "mouse"; } }
     }
     IpcHandler {

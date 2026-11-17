@@ -48,8 +48,18 @@ lacks gets written for Mantel. KWin draws, moves and snaps the windows; Mantel i
     Their colours are Hearth's KDE scheme. Hot corners are Settings › Screen edges (SetKwinEdges.qml).
   - The keys are listed in Settings › Keyboard › Keyboard shortcuts (`hearth-system shortcuts` reads shortcuts.json
     under KWin). Checked in kwin-windows.yml (pictures `kwin-preview-zoom`, `kwin-alt-tab`, ...).
-- **Not yet under KWin** (their own branches): keyboard layouts and pointer settings applied live, screens, the
+- **Settings › Keyboard under KWin**: layouts, the switch shortcut, key repeat, and (KWin only) Num Lock at start, the
+  compose key and one layout per app or window go into KWin's kxkbrc / kcminputrc at every KWin start and when saved
+  (`hearth-kwin-settings keyboard-apply`, docs/KWIN-SETTINGS.md).
+- **Not yet under KWin** (their own branches): screens, the
   magnifier and Mantel's own window list and workspaces through KWin.
+
+## Firehold, Hearth's own desktop (2.0)
+
+For 2.0 Mantel gets a window manager that is Hearth's own (the owner, Nov 16): `hosts/firehold-comp`, on Smithay.
+It isn't on by default; when it's turned on, the session tries it first and falls back to KWin (then labwc) with
+the same safe start. The plan, what it does so far and how it's tested:
+[FIREHOLD](FIREHOLD.md).
 
 ## KDE Plasma and GNOME: retired in 1.14
 

@@ -81,6 +81,20 @@
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call run toggle'"
   },
   {
+   "id": "searchbar",
+   "title": "Search bar (like KRunner)",
+   "keys": "Alt+Space",
+   "labwc": "A-space",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar key'"
+  },
+  {
+   "id": "searchbar-2",
+   "title": "Search bar (like KRunner)",
+   "keys": "Alt+F2",
+   "labwc": "A-F2",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar toggle'"
+  },
+  {
    "id": "winx",
    "title": "Quick links menu",
    "keys": "Meta+X",
@@ -478,6 +492,13 @@
    "keys": "Meta+Z",
    "labwc": "W-z",
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'"
+  },
+  {
+   "id": "screens-switch",
+   "title": "Screen switcher (one screen, extend)",
+   "keys": "Meta+P",
+   "labwc": "W-p",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call screens switcher'"
   }
  ],
  "kwinOwn": [
@@ -555,6 +576,11 @@
    "labwc": "W-Escape",
    "kwin": "view_actual_size (KWin zoom; Meta+Esc here)",
    "keys": "Meta+Esc"
+  },
+  {
+   "labwc": "A-F3",
+   "kwin": "Window Operations Menu",
+   "keys": "Alt+F3"
   }
  ],
  "skipped": [
@@ -618,6 +644,14 @@
   {
    "title": "Task Manager (always on top)",
    "keepAbove": true
+  },
+  {
+   "id": "picture-in-picture",
+   "titles": ["Picture-in-Picture", "Picture in picture"],
+   "apps": ["firefox", "firefox-esr", "org.mozilla.firefox", "librewolf", "io.gitlab.librewolf-community", "chromium",
+            "chromium-browser", "org.chromium.chromium", "google-chrome", "com.google.chrome", "brave-browser",
+            "com.brave.browser", "microsoft-edge", "vivaldi-stable"],
+   "keepAbove": true
   }
  ],
  "kwinOnly": [
@@ -659,6 +693,7 @@
   }
  ],
  "kdeKeys": [
+  {"component": "org.kde.kscreen.desktop", "action": "ShowOSD", "keys": [], "why": "Super+P is Hearth's screen switcher"},
   {
    "component": "kwin",
    "action": "Window Quick Tile Left",

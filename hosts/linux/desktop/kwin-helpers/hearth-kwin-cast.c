@@ -15,12 +15,20 @@
  *   hearth-kwin-cast input
  *       remote control (the RemoteDesktop portal, after you allowed it): KWin's fake input; one command per line on
  *       stdin: "m DX DY" (pointer motion), "a X Y" (pointer to a place, KWin's coordinates), "b BUTTON 1|0" (evdev
- *       button code, down/up), "x AXIS VALUE" (0 vertical, 1 horizontal scroll), "k KEYCODE 1|0" (evdev key code).
+ *       button code, down/up), "x AXIS VALUE" (0 vertical, 1 horizontal scroll), "k KEYCODE 1|0" (evdev key code),
+ *       "td ID X Y" / "tm ID X Y" / "tu ID" (a finger down, moving, up; KWin's coordinates), "tf" (the touch frame).
  *       Ends when stdin closes; prints "ready" once KWin took it.
- *   hearth-kwin-cast shot screen NAME | window UUID | workspace | area X Y W H  [CURSOR 0|1]
+ *   hearth-kwin-cast pick
+ *       KWin's colour picker (org.kde.KWin /ColorPicker: the pointer becomes a crosshair until you click; Esc cancels):
+ *       prints "color R G B" (0 to 1) or "cancelled".
+ *   hearth-kwin-cast shot screen NAME | window UUID | active-window | active-screen | workspace | area X Y W H
+ *                         [CURSOR 0|1 [FULL 0|1]]
  *       a screenshot: one line "W H STRIDE FORMAT SCALE" (FORMAT: Qt's QImage format number) and the raw pixels.
+ *       FULL 1 (the default) is the screen's own resolution (native-resolution: a 4K screen at 200 % gives 3840 wide);
+ *       0 is the size the desktop works in. Used by the portal and by hearth-screens (Print Screen, Capture,
+ *       hearth-screenshot), so KWin trusts this one small program instead of a whole Python.
  * Exit codes: 1 failed, 2 KWin didn't give this program what it asked for (its .desktop file isn't installed),
- *             3 not started by hearth-portal (see parent_is_portal).
+ *             3 not started by hearth-portal or hearth-screens (see trusted_parent), 4 no active window to take.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -230,6 +238,15 @@ static int do_input(void) {
             org_kde_kwin_fake_input_axis(fake, i ? WL_POINTER_AXIS_HORIZONTAL_SCROLL : WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_double(a));
         } else if (line[0] == 'k' && sscanf(line + 1, "%d %d", &i, &j) == 2 && i > 0 && i < 0x300 && v >= ORG_KDE_KWIN_FAKE_INPUT_KEYBOARD_KEY_SINCE_VERSION) {
             org_kde_kwin_fake_input_keyboard_key(fake, (uint32_t)i, j ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+        } else if (line[0] == 't' && (line[1] == 'd' || line[1] == 'm') && sscanf(line + 2, "%d %lf %lf", &i, &a, &b) == 3 &&
+                   i >= 0 && i < 64 && v >= ORG_KDE_KWIN_FAKE_INPUT_TOUCH_DOWN_SINCE_VERSION) {
+            if (line[1] == 'd') org_kde_kwin_fake_input_touch_down(fake, (uint32_t)i, wl_fixed_from_double(a), wl_fixed_from_double(b));
+            else org_kde_kwin_fake_input_touch_motion(fake, (uint32_t)i, wl_fixed_from_double(a), wl_fixed_from_double(b));
+        } else if (line[0] == 't' && line[1] == 'u' && sscanf(line + 2, "%d", &i) == 1 && i >= 0 && i < 64 &&
+                   v >= ORG_KDE_KWIN_FAKE_INPUT_TOUCH_UP_SINCE_VERSION) {
+            org_kde_kwin_fake_input_touch_up(fake, (uint32_t)i);
+        } else if (line[0] == 't' && line[1] == 'f' && v >= ORG_KDE_KWIN_FAKE_INPUT_TOUCH_FRAME_SINCE_VERSION) {
+            org_kde_kwin_fake_input_touch_frame(fake);
         } else {
             continue;
         }
@@ -272,8 +289,10 @@ static guint32 dict_u(GVariant *d, const char *k) {
     return v;
 }
 
+#define SHOT_USAGE "hearth-kwin-cast: shot screen NAME | window UUID | active-window | active-screen | workspace | area X Y W H [CURSOR 0|1 [FULL 0|1]]\n"
+
 static int do_shot(int argc, char **argv) {
-    if (argc < 1) { fprintf(stderr, "hearth-kwin-cast: shot screen NAME | window UUID | workspace | area X Y W H\n"); return 1; }
+    if (argc < 1) { fprintf(stderr, SHOT_USAGE); return 1; }
     GError *err = NULL;
     GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
     if (!bus) { fprintf(stderr, "hearth-kwin-cast: no session bus: %s\n", err->message); return 1; }
@@ -286,9 +305,10 @@ static int do_shot(int argc, char **argv) {
     if (strcmp(kind, "screen") == 0 || strcmp(kind, "window") == 0) rest = 2;
     else if (strcmp(kind, "area") == 0) rest = 5;
     int cursor = argc > rest ? atoi(argv[rest]) : 0;
+    int full = argc > rest + 1 ? atoi(argv[rest + 1]) : 1;
     g_variant_builder_add(&ob, "{sv}", "include-cursor", g_variant_new_boolean(cursor != 0));
-    g_variant_builder_add(&ob, "{sv}", "native-resolution", g_variant_new_boolean(TRUE));
-    if (strcmp(kind, "window") == 0) {
+    g_variant_builder_add(&ob, "{sv}", "native-resolution", g_variant_new_boolean(full != 0));
+    if (strcmp(kind, "window") == 0 || strcmp(kind, "active-window") == 0) {
         g_variant_builder_add(&ob, "{sv}", "include-decoration", g_variant_new_boolean(TRUE));
         g_variant_builder_add(&ob, "{sv}", "include-shadow", g_variant_new_boolean(FALSE));
     }
@@ -296,12 +316,14 @@ static int do_shot(int argc, char **argv) {
     const char *method;
     if (strcmp(kind, "screen") == 0 && argc >= 2) { method = "CaptureScreen"; params = g_variant_new("(sa{sv}h)", argv[1], &ob, 0); }
     else if (strcmp(kind, "window") == 0 && argc >= 2) { method = "CaptureWindow"; params = g_variant_new("(sa{sv}h)", argv[1], &ob, 0); }
+    else if (strcmp(kind, "active-window") == 0) { method = "CaptureActiveWindow"; params = g_variant_new("(a{sv}h)", &ob, 0); }
+    else if (strcmp(kind, "active-screen") == 0) { method = "CaptureActiveScreen"; params = g_variant_new("(a{sv}h)", &ob, 0); }
     else if (strcmp(kind, "workspace") == 0) { method = "CaptureWorkspace"; params = g_variant_new("(a{sv}h)", &ob, 0); }
     else if (strcmp(kind, "area") == 0 && argc >= 5) {
         method = "CaptureArea";
         params = g_variant_new("(iiuua{sv}h)", atoi(argv[1]), atoi(argv[2]), (guint32)strtoul(argv[3], NULL, 10),
                                (guint32)strtoul(argv[4], NULL, 10), &ob, 0);
-    } else { fprintf(stderr, "hearth-kwin-cast: shot screen NAME | window UUID | workspace | area X Y W H\n"); return 1; }
+    } else { g_variant_builder_clear(&ob); fprintf(stderr, SHOT_USAGE); return 1; }
     GUnixFDList *fds = g_unix_fd_list_new_from_array(&pfd[1], 1);   /* takes the write end */
     struct reader rd = { pfd[0], g_byte_array_new() };
     pthread_t th;
@@ -313,7 +335,7 @@ static int do_shot(int argc, char **argv) {
     if (!res) {
         fprintf(stderr, "hearth-kwin-cast: %s failed: %s\n", method, err->message);
         int code = (strstr(err->message, "NoAuthorized") || strstr(err->message, "not authorized") ||
-                    strstr(err->message, "Unauthorized")) ? 2 : 1;
+                    strstr(err->message, "Unauthorized")) ? 2 : strstr(err->message, "NoActiveWindow") ? 4 : 1;
         close(pfd[0]);
         pthread_cancel(th);
         return code;
@@ -340,12 +362,35 @@ static int do_shot(int argc, char **argv) {
     return 0;
 }
 
-/* Only Hearth's portal backend may use this program: KWin trusts it by its path (its .desktop file), so anything
- * else running it could capture the screen. Its parent must be the interpreter running hearth-portal, a file owned
- * by root that nobody else can change, in a folder owned by root that nobody else can change. Not a wall against
- * code running as you (it can start hearth-portal itself), but no other program gets screen capture just by running
- * this one. There's no switch to turn this off. */
-static int parent_is_portal(void) {
+/* ------------------------------------------------------------------ colour picker (org.kde.KWin /ColorPicker) */
+
+static int do_pick(void) {
+    GError *err = NULL;
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (!bus) { printf("failed no session bus\n"); return 1; }
+    /* No time limit worth speaking of: the person is choosing a spot. */
+    GVariant *res = g_dbus_connection_call_sync(bus, "org.kde.KWin", "/ColorPicker", "org.kde.kwin.ColorPicker", "pick",
+                                                NULL, G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, 110000, NULL, &err);
+    if (!res) {
+        int cancelled = err && err->message && strstr(err->message, "ancel") != NULL;
+        printf(cancelled ? "cancelled\n" : "failed %s\n", err && err->message ? err->message : "");
+        return cancelled ? 0 : 1;
+    }
+    guint32 argb = 0;
+    g_variant_get(res, "(u)", &argb);
+    printf("color %.6f %.6f %.6f\n", ((argb >> 16) & 255) / 255.0, ((argb >> 8) & 255) / 255.0, (argb & 255) / 255.0);
+    return 0;
+}
+
+/* Only Hearth's portal backend and hearth-screens may use this program: KWin trusts it by its path (its .desktop
+ * file), so anything else running it could capture the screen. Its parent must be the interpreter running
+ * hearth-portal or hearth-screens, a file owned by root that nobody else can change, in a folder owned by root that
+ * nobody else can change. Not a wall against code running as you (it can start those itself), but no other program
+ * gets screen capture just by running this one, and KWin trusts this small program instead of a whole Python.
+ * There's no switch to turn this off.
+ * Returns 1 for hearth-portal (everything), 2 for hearth-screens (screenshots and the list of screens only), 0 for
+ * anything else. */
+static int trusted_parent(void) {
     char path[64], buf[8192];
     snprintf(path, sizeof path, "/proc/%d/cmdline", (int)getppid());
     FILE *f = fopen(path, "r");
@@ -361,25 +406,35 @@ static int parent_is_portal(void) {
     char real[4096];
     if (!realpath(script, real)) return 0;
     const char *base = strrchr(real, '/');
-    if (!base || strcmp(base + 1, "hearth-portal") != 0) return 0;
+    int who = 0;
+    if (base && strcmp(base + 1, "hearth-portal") == 0) who = 1;
+    else if (base && strcmp(base + 1, "hearth-screens") == 0) who = 2;
+    if (!who) return 0;
     struct stat st;
     if (stat(real, &st) != 0 || st.st_uid != 0 || (st.st_mode & 022)) return 0;
     char dir[4096];
     snprintf(dir, sizeof dir, "%.*s", (int)(base - real), real);
     if (stat(dir, &st) != 0 || st.st_uid != 0 || (st.st_mode & 022)) return 0;
-    return 1;
+    return who;
 }
 
 int main(int argc, char **argv) {
-    if (!parent_is_portal()) {
-        fprintf(stderr, "hearth-kwin-cast: only Hearth's portal backend (hearth-portal) may use this\n");
+    int who = trusted_parent();
+    if (!who) {
+        fprintf(stderr, "hearth-kwin-cast: only Hearth's portal backend (hearth-portal) or hearth-screens may use this\n");
         printf("failed only Hearth's portal backend may use this\n");
+        return 3;
+    }
+    /* hearth-screens takes screenshots; streams, remote input and the colour picker stay the portal's. */
+    if (who == 2 && !(argc >= 2 && (strcmp(argv[1], "shot") == 0 || strcmp(argv[1], "outputs") == 0))) {
+        fprintf(stderr, "hearth-kwin-cast: hearth-screens may only take screenshots\n");
         return 3;
     }
     if (argc >= 2 && strcmp(argv[1], "outputs") == 0) return do_outputs();
     if (argc >= 2 && strcmp(argv[1], "stream") == 0) return do_stream(argc - 2, argv + 2);
     if (argc >= 2 && strcmp(argv[1], "shot") == 0) return do_shot(argc - 2, argv + 2);
     if (argc >= 2 && strcmp(argv[1], "input") == 0) return do_input();
+    if (argc >= 2 && strcmp(argv[1], "pick") == 0) return do_pick();
     fprintf(stderr, "usage: hearth-kwin-cast outputs | stream ... | shot ...\n");
     return 1;
 }

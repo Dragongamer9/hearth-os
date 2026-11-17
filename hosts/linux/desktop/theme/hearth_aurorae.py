@@ -26,7 +26,12 @@ NAME = 'hearth'
 TITLE_H = 30            # the title bar, as labwc's (padding.height 6 + a 10 pt font + the border) rounded up
 BUTTON_W, BUTTON_H = 34, 24
 GLYPH = 10              # the button pictures' glyph size
-BORDER = 1              # labwc's border.width
+BORDER = 1              # the outline round the frame (labwc's border.width)
+SIDE = 4                # the sides' and the bottom's thickness: the outline, then the title colour (room for the
+                        # rounded bottom corners: KWin draws the window's own square corners over the frame)
+BOTTOM_R_MAX = 13       # the largest bottom corner the window's square corner still fits inside (SIDE * 3.4)
+OUTLINE = (0.22, 0.12)  # the outline: the border colour this far towards the title text (active, inactive), a light
+                        # line round the window like Plasma's, so it stands out on a dark wallpaper
 
 
 def themerc_colors(text):
@@ -77,20 +82,41 @@ def _stops(state, span, inner=0):
     return ''.join(out)
 
 
+def mix(a, b, t):
+    """Colour A moved T of the way towards B (both #rrggbb)."""
+    a, b = a.lstrip('#'), b.lstrip('#')
+    return '#' + ''.join('%02x' % int(round(int(a[i:i + 2], 16) * (1 - t) + int(b[i:i + 2], 16) * t)) for i in (0, 2, 4))
+
+
+def outline_color(c, state):
+    """The outline's colour for STATE ('active' / 'inactive'): the border colour lifted towards the text (OUTLINE)."""
+    k = OUTLINE[0 if state == 'active' else 1]
+    return mix(c[state + '.border'], c[state + '.text'], k)
+
+
+def bottom_radius(radius):
+    """The bottom corners' radius: the look's, as far as the window's square corner still fits inside the frame."""
+    return max(0, min(int(radius), 16, BOTTOM_R_MAX))
+
+
 def frame_svg(c, radius):
     """decoration.svg: the frame in nine parts, active and inactive, each with its shadow on the outside (PAD px, see
-    SHADOW), plus flat ones for a maximized window (no shadow, no border). Top corners rounded (labwc rounds the title
-    bar's top corners only); the window's own content stays square below.
+    SHADOW), plus flat ones for a maximized window (no shadow, no border). All four corners rounded (the bottom ones as
+    far as the window's own square corner fits inside, bottom_radius), with a 1 px outline all round (outline_color).
 
-    Each part is a group whose first rect is its size (KSvg takes a part's size from its bounds). The sides are PAD + R
-    wide (R the corner radius) so the rounded corner fits whichever way KSvg sizes the corners; the client covers all
-    but the outer PAD + 1 px of them (Aurorae places it by the hearthrc borders and the padding)."""
+    Each part is a group whose first rect is its size (KSvg takes a part's size from its bounds). The sides are PAD + K
+    wide (K the corner radius, at least SIDE) so the rounded corner fits whichever way KSvg sizes the corners; the
+    client covers all but the outer PAD + SIDE px of them (Aurorae places it by the hearthrc borders and the padding).
+    The bottom parts are PAD + KB tall the same way (KB the bottom radius, at least SIDE)."""
     r = max(0, min(int(radius), 16))
-    R = max(r, BORDER)
+    R = max(r, BORDER)             # the top corners' arc
+    K = max(R, SIDE)               # the corners' and sides' inner width
+    RB = bottom_radius(r)          # the bottom corners' arc
+    KB = max(RB, SIDE)             # the bottom parts' inner height
     P = PAD
-    W = P + R                      # the sides' and corners' width
+    W = P + K                      # the sides' and corners' width
     TH = P + TITLE_H               # the top parts' height
-    BH = P + BORDER                # the bottom parts' height
+    BH = P + KB                    # the bottom parts' height
     defs, parts = [], []
 
     def group(eid, x, y, w, h, body):
@@ -115,6 +141,21 @@ def frame_svg(c, radius):
             return 'M %s %s %s L %s %s L %s %s Z' % (x0, y + h, arc, x1, y + inset, x1, y + h)
         return ('<path d="%s" fill="%s"/><path d="%s" fill="%s"/>' % (shape(0), line, shape(BORDER), fill))
 
+    def bottom_corner(x, y, line, fill, right):
+        """A bottom corner K wide and KB tall at (X, Y) (the frame's outer edge on the left, or the right, and at the
+        bottom): the outline as the outer shape, the title colour inside it, the outer corner rounded RB."""
+        def shape(inset):
+            r2 = RB - inset
+            top, bot = y, y + KB - inset
+            if right:
+                x0, x1 = x, x + K - inset                       # the outer edge on the right
+                turn = ('L %s %s A %s %s 0 0 1 %s %s' % (x1, bot - r2, r2, r2, x1 - r2, bot)) if r2 > 0 else 'L %s %s' % (x1, bot)
+                return 'M %s %s L %s %s %s L %s %s Z' % (x0, top, x1, top, turn, x0, bot)
+            x0, x1 = x + inset, x + K                           # the outer edge on the left
+            turn = ('L %s %s A %s %s 0 0 1 %s %s' % (x0 + r2, bot, r2, r2, x0, bot - r2)) if r2 > 0 else 'L %s %s' % (x0, bot)
+            return 'M %s %s L %s %s %s L %s %s Z' % (x1, top, x1, bot, turn, x0, top)
+        return '<path d="%s" fill="%s"/><path d="%s" fill="%s"/>' % (shape(0), line, shape(BORDER), fill)
+
     def lin(gid, state, x1, y1, x2, y2):
         defs.append('<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">%s</linearGradient>'
                     % (gid, x1, y1, x2, y2, _stops(state, P)))
@@ -125,57 +166,65 @@ def frame_svg(c, radius):
                     % (gid, cx, cy, cx, cy, inner + P, _stops(state, inner + P, inner)))
         return 'url(#%s)' % gid
 
-    sets = (('', 'active', c['active.bg'], c['active.border']), ('inactive-', 'inactive', c['inactive.bg'], c['inactive.border']))
+    sets = (('', 'active', c['active.bg'], outline_color(c, 'active')), ('inactive-', 'inactive', c['inactive.bg'], outline_color(c, 'inactive')))
     for k, (prefix, state, bg, line) in enumerate(sets):
         oy = k * 400                       # the inactive set below the active one
         g = 's%d' % k
         e = 'decoration-' + prefix
         # top-left: the shadow round the rounded corner (centred on the arc's centre), the corner in the title colour,
-        # the border on its outside, then the left side's shadow and border down to the title bar's bottom.
+        # the outline on its outside, then the left side's shadow and outline down to the title bar's bottom.
         x0, y0 = 0, oy
         cx, cy = x0 + P + R, y0 + P + R
-        body = box(x0, y0, W, P + R, rad(g + 'tl', state, cx, cy, R))
+        body = box(x0, y0, P + R, P + R, rad(g + 'tl', state, cx, cy, R))
+        body += box(x0 + P + R, y0, K - R, P, lin(g + 'tlt', state, 0, y0 + P, 0, y0)) if K > R else ''
         body += box(x0, y0 + P + R, P, TITLE_H - R, lin(g + 'tll', state, x0 + P, 0, x0, 0)) if TITLE_H > R else ''
         body += corner(x0 + P, y0 + P, R, TH - P, line, bg, False)
+        if K > R:
+            body += box(x0 + P + R, y0 + P, K - R, BORDER, line) + box(x0 + P + R, y0 + P + BORDER, K - R, TITLE_H - BORDER, bg)
         group(e + 'topleft', x0, y0, W, TH, body)
-        # top: the shadow above, the border, the title colour
+        # top: the shadow above, the outline, the title colour
         x0 = W + 20
         body = box(x0, y0, 10, P, lin(g + 't', state, 0, y0 + P, 0, y0)) + box(x0, y0 + P, 10, TITLE_H, bg) + box(x0, y0 + P, 10, BORDER, line)
         group(e + 'top', x0, y0, 10, TH, body)
-        # top-right: top-left mirrored
+        # top-right: top-left mirrored (the window's right edge is at x0 + K)
         x0 = W + 50
-        cx = x0                            # the arc's centre (the window's right edge is at x0 + R)
-        body = box(x0, y0, W, P + R, rad(g + 'tr', state, cx, cy, R))
-        body += box(x0 + R, y0 + P + R, P, TITLE_H - R, lin(g + 'trr', state, x0 + R, 0, x0 + R + P, 0)) if TITLE_H > R else ''
-        body += corner(x0, y0 + P, R, TH - P, line, bg, True)
+        cx = x0 + K - R                    # the arc's centre
+        body = box(cx, y0, P + R, P + R, rad(g + 'tr', state, cx, cy, R))
+        body += box(x0, y0, K - R, P, lin(g + 'trt', state, 0, y0 + P, 0, y0)) if K > R else ''
+        body += box(x0 + K, y0 + P + R, P, TITLE_H - R, lin(g + 'trr', state, x0 + K, 0, x0 + K + P, 0)) if TITLE_H > R else ''
+        body += corner(cx, y0 + P, R, TH - P, line, bg, True)
+        if K > R:
+            body += box(x0, y0 + P, K - R, BORDER, line) + box(x0, y0 + P + BORDER, K - R, TITLE_H - BORDER, bg)
         group(e + 'topright', x0, y0, W, TH, body)
-        # the sides, the middle (under the window), the bottom
+        # the sides (shadow, outline, the title colour inwards), the middle (under the window), the bottom
         by = y0 + TH + 40
         x0 = 0
         group(e + 'left', x0, by, W, 10, box(x0, by, P, 10, lin(g + 'l', state, x0 + P, 0, x0, 0)) + box(x0 + P, by, BORDER, 10, line)
-              + box(x0 + P + BORDER, by, R - BORDER, 10, bg) if R > BORDER else
-              box(x0, by, P, 10, lin(g + 'l', state, x0 + P, 0, x0, 0)) + box(x0 + P, by, BORDER, 10, line))
+              + box(x0 + P + BORDER, by, K - BORDER, 10, bg))
         x0 = W + 20
         group(e + 'center', x0, by, 10, 10, box(x0, by, 10, 10, bg))
         x0 = W + 50
-        group(e + 'right', x0, by, W, 10, (box(x0, by, R - BORDER, 10, bg) if R > BORDER else '')
-              + box(x0 + R - BORDER, by, BORDER, 10, line) + box(x0 + R, by, P, 10, lin(g + 'r', state, x0 + R, 0, x0 + R + P, 0)))
+        group(e + 'right', x0, by, W, 10, box(x0, by, K - BORDER, 10, bg) + box(x0 + K - BORDER, by, BORDER, 10, line)
+              + box(x0 + K, by, P, 10, lin(g + 'r', state, x0 + K, 0, x0 + K + P, 0)))
         by += 30
-        # bottom corners: square (labwc's are); the shadow round them centred on the frame's outer corner
+        # bottom corners: rounded RB (bottom_radius), the shadow round them centred on the arc's centre. The frame's
+        # bottom edge is at by + KB.
+        fy = by + KB
         x0 = 0
-        group(e + 'bottomleft', x0, by, W, BH,
-              box(x0, by, P, BORDER, lin(g + 'bll', state, x0 + P, 0, x0, 0))
-              + box(x0, by + BORDER, P, P, rad(g + 'bl', state, x0 + P, by + BORDER, 0))
-              + box(x0 + P, by + BORDER, R, P, lin(g + 'blb', state, 0, by + BORDER, 0, by + BORDER + P))
-              + box(x0 + P, by, R, BORDER, line))
+        body = box(x0, by, P, KB - RB, lin(g + 'bll', state, x0 + P, 0, x0, 0)) if KB > RB else ''
+        body += box(x0, fy - RB, P + RB, P + RB, rad(g + 'bl', state, x0 + P + RB, fy - RB, RB))
+        body += box(x0 + P + RB, fy, K - RB, P, lin(g + 'blb', state, 0, fy, 0, fy + P)) if K > RB else ''
+        body += bottom_corner(x0 + P, by, line, bg, False)
+        group(e + 'bottomleft', x0, by, W, BH, body)
         x0 = W + 20
-        group(e + 'bottom', x0, by, 10, BH, box(x0, by, 10, BORDER, line) + box(x0, by + BORDER, 10, P, lin(g + 'b', state, 0, by + BORDER, 0, by + BORDER + P)))
+        group(e + 'bottom', x0, by, 10, BH, box(x0, by, 10, KB - BORDER, bg) + box(x0, fy - BORDER, 10, BORDER, line)
+              + box(x0, fy, 10, P, lin(g + 'b', state, 0, fy, 0, fy + P)))
         x0 = W + 50
-        group(e + 'bottomright', x0, by, W, BH,
-              box(x0, by, R, BORDER, line)
-              + box(x0, by + BORDER, R, P, lin(g + 'brb', state, 0, by + BORDER, 0, by + BORDER + P))
-              + box(x0 + R, by + BORDER, P, P, rad(g + 'br', state, x0 + R, by + BORDER, 0))
-              + box(x0 + R, by, P, BORDER, lin(g + 'brr', state, x0 + R, 0, x0 + R + P, 0)))
+        body = bottom_corner(x0, by, line, bg, True)
+        body += box(x0 + K, by, P, KB - RB, lin(g + 'brr', state, x0 + K, 0, x0 + K + P, 0)) if KB > RB else ''
+        body += box(x0 + K - RB, fy - RB, P + RB, P + RB, rad(g + 'br', state, x0 + K - RB, fy - RB, RB))
+        body += box(x0, fy, K - RB, P, lin(g + 'brb', state, 0, fy, 0, fy + P)) if K > RB else ''
+        group(e + 'bottomright', x0, by, W, BH, body)
         # Maximized: flat title colour, no shadow, no border (KWin leaves the padding out then; Fitts' law at the edges).
         my = by + BH + 40
         for j, part in enumerate(('topleft', 'top', 'topright', 'left', 'center', 'right', 'bottomleft', 'bottom', 'bottomright')):
@@ -234,7 +283,7 @@ def rc(c):
         'DecorationPosition=0',
         '',
         '[Layout]',
-        'BorderLeft=%d' % BORDER, 'BorderRight=%d' % BORDER, 'BorderBottom=%d' % BORDER, 'BorderTop=0',
+        'BorderLeft=%d' % SIDE, 'BorderRight=%d' % SIDE, 'BorderBottom=%d' % SIDE, 'BorderTop=0',
         'TitleHeight=%d' % (TITLE_H - 4), 'TitleEdgeTop=2', 'TitleEdgeBottom=2', 'TitleEdgeLeft=6', 'TitleEdgeRight=4',
         'TitleBorderLeft=8', 'TitleBorderRight=8',
         'ButtonWidth=%d' % BUTTON_W, 'ButtonHeight=%d' % BUTTON_H, 'ButtonSpacing=2', 'ButtonMarginTop=0',
