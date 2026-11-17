@@ -45,14 +45,13 @@ SetPage {
         job.run(["list"], r => { page.accounts = r.accounts || []; page.loaded = true; }, e => { page.loaded = true; page.say(e, true); });
         job.run(["providers"], r => page.prov = r || {});
     }
-    // Opened at a form (`online-accounts:add-nextcloud`), now or when Settings is opened here again.
+    // Opened at a form (`online-accounts:add-nextcloud`): Settings loads the page afresh each time it opens one, so
+    // the page takes the anchor once it's made (as SetExpander does).
     function takeAnchor() {
         const a = SettingsNav.pageAnchor;
         if (a.startsWith("add-") && kinds.find(o => o.id === a.slice(4))) { SettingsNav.pageAnchor = ""; adding = ""; openForm(a.slice(4)); }
     }
     Component.onCompleted: { load(); takeAnchor(); }
-    onVisibleChanged: if (visible) { load(); takeAnchor(); }
-    Connections { target: SettingsNav; function onPageAnchorChanged() { page.takeAnchor(); } }
     function openForm(k) {
         if (flowing) return;
         adding = adding === k ? "" : k;
