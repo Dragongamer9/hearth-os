@@ -15,7 +15,7 @@ written for Hearth from scratch.
   Passwords, the App store, Files' terminal panel and split view) are merged into feature/kwin-1.14 now; their lines
   are recounted from the integration branch.
 
-Counts (done · partly · missing), recounted on feature/kwin-1.14: Stage 1 28 · 1 · 0, Stage 2 49 · 7 · 19, Stage 3 96 · 16 · 50.
+Counts (done · partly · missing), recounted on feature/kwin-1.14: Stage 1 29 · 0 · 0, Stage 2 52 · 6 · 18, Stage 3 96 · 16 · 50.
 
 ---
 
@@ -29,7 +29,7 @@ Counts (done · partly · missing), recounted on feature/kwin-1.14: Stage 1 28 �
 - [x] **(review, Nov 17)** No lockout or setting change from KDE Plasma's leftovers — kwin/xdg/kscreenlockerrc: "Autolock[$i]=false", kwin/xdg/kwinrc: "InputMethod[$ei]=", kwin/windows/xdg/kwinrc: "Meta[$i]="; hearth-your-desktop `kwin-overrides` (the one-time "Some of your KDE settings aren't used here" card); nimbus-session `kwin_lock_ready`: "hearth-lockcheck --as-kwin", kept per image in kwin-lock-proven; hearth-login-screen: "GOOD_SECS"; hearth-screens `kwinrc_set`: "io.update_text(KWINRC"; SetKeyboard.qml: "Bring back KDE's own shortcuts"; hearth-network / hearth-lookset `plain_write`; test_kwin_session.py "test_the_lock_screen_must_really_load_before_kwins_locker_is_on", "test_your_kde_settings_that_hearth_overrides_are_told_once"; kwin-input.yml lock-debian (KWin 6.3: "KWin didn't lock by itself after 80 s idle"); kwin-test.yml pictures "kwin-7-kde-settings-card", "kwin-8-keyboard-kde-keys" (needs testing on a device)
 - [x] Xwayland apps and games — nimbus-session: "--xwayland"; kwin-windows.yml "KWin's X server for the X11 window" (36d3f1a) (needs testing on a device)
 - [x] Settings › Your desktop says KWin, and Safe start still works — SetYourDesktop.qml: "KWin didn't start this time, so labwc", "Safe start"; hearth-your-desktop; test_kwin_session.py "test_wm_writes_only_its_line_with_a_backup", "test_safe_graphics_is_labwc" (needs testing on a device)
-- [ ] **(found in this audit)** Keyboard layouts, key repeat and pointer settings applied under KWin — partly: the pointer settings are (hearth-kwin-settings pointer-apply / input-watch, from feature/kwin-pages). Left: keyboard layouts and key repeat (feature/w3-keyboard) (M)
+- [x] **(found in this audit)** Keyboard layouts, key repeat and pointer settings applied under KWin — labwc/autostart: "hearth-kwin-settings\" input-watch"; hearth-kwin-settings `keyboard_apply`: "keyboard_changes(saved", `input_watch`: "keyboard_apply()"; hearth-system `keyboard_set`: "'keyboard-apply'"; test_kwin_keyboard.py "test_writes_kwins_files_once_with_a_backup", "test_input_watch_applies_the_keyboard_first"; kwin-test.sh B: "the layout set in Settings (fr) isn't KWin's active one", picture "kwin-9-keyboard-kwin" (needs testing on a device)
 
 ### Windows
 
@@ -82,7 +82,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Fractional scaling per screen and the X11 apps' scaling choice — per-screen scale (hearth-screens); SetDisplay.qml "Scaling X11 apps" (kdeglobals [KScreen] XwaylandClientsScale through hearth-kwin-settings set, the same key as SetKwinGames.qml); test_hearth_screens.py "test_kde_files_change_only_their_keys" (needs testing on a device)
 - [x] Night light: by location, custom times, always on, warmth, fade, Quick settings tile — SetDisplay.qml "Sunset to sunrise" (your town by name: hearth-widgets places), "Fade"; Settings.qml nightPlace/nightLat/nightLon/nightFade; KWin `Mode=Location` (hearth-screens "LatitudeFixed"), wlsunset "-l" / "-d"; test_hearth_screens.py "test_night_by_location_and_fade"; kwin-screens job "Night light by location didn't reach kwinrc"; picture "kwin-6-brightness-and-night" (needs testing on a device)
 - [ ] Reduce red tint at low brightness (AMD laptops) — not in KWin 6.3 (Plasma 6.7): hidden (hearth-screens `redTint` "capable": False) until a KWin that has it (S)
-- [ ] Automatic brightness from the light sensor (S)
+- [x] Automatic brightness from the light sensor — hearth-screens "class ProxyLight" (iio-sensor-proxy ClaimLight / LightLevel), "class AutoBright" (smoothed, small steps, a brightness set by hand pauses it until the light changes), SetDisplay.qml title: "Auto-brightness" and title: "How bright" (off by default, shown only with a sensor); test_hearth_screens.py "test_auto_brightness_loop_with_a_fake_sensor", "test_auto_brightness_reads_iio_sensor_proxy"; CI picture kwin-6-brightness-and-night (needs testing on a device)
 - [x] Brightness for external screens (DDC/CI) — SetDisplay.qml "Brightness · " per screen; hearth-screens `ddc` / `ddc-set` (ddcutil, guarded: missing ddcutil or i2c-dev says why; nothing saved, the screen keeps it) or KWin's own control on a newer KWin (`brightness`); test_hearth_screens.py "test_ddc"; picture "kwin-6-brightness-and-night" (needs testing on a device)
 - [x] Overscan, allow tearing, wide colour gamut — SetDisplay.qml "Overscan" (Keep needed; hearth-screens "overscan."), tearing (kwinrc `[Compositing] AllowTearing`), wide colour (hearth-screens); test_hearth_screens.py "test_kwin_commands_for_the_new_keys"; picture "kwin-8-picture-signal" (needs testing on a device)
 - [ ] Virtual desktops only on the main screen, or per screen — partly: "Main screen only" (SetDisplay.qml "Virtual desktops", hearth-main-desktops.js: the other screens' windows on every desktop, put back when off; screens.json `desktopsMainOnly`, loaded again at start); test_hearth_screens.py "test_main_desktops_script". Left: each screen its own desktops needs a newer KWin than 6.3 (shown greyed) (S)
@@ -144,7 +144,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Touchpad: the missing rows (disable with a mouse, middle-click emulation, scroll speed, edge scrolling, click method) — hearth-kwin-settings pointer-apply, SetMouse.qml (needs testing on a device)
 - [ ] Mouse: acceleration profile, scroll speed, middle-click paste, per-device (S)
 - [ ] Mouse buttons: re-map extra buttons (M)
-- [ ] Keyboard: Num Lock at start, layouts per window, compose key, typing delay (S)
+- [x] Keyboard: Num Lock at start, layouts per window, compose key, typing delay — SetKeyboard.qml: "Num Lock when Desktop Mode starts", "Compose key", "Remember the layout" (KWin only: "visible: page.kwin"), "Wait before a held key repeats"; hearth-kwin-settings: "NUMLOCK = {'on': '0'", "SWITCH_MODES", "'RepeatDelay'"; test_kwin_keyboard.py "test_layouts_switch_compose_mode_repeat_numlock", "test_rows_are_kwin_only"; kwin-test.sh: "kcminputrc has no $l" (needs testing on a device)
 - [x] Touchscreen: which screen, turn it off — SetKwinTablet.qml, KwinCalibrate.qml (needs testing on a device)
 - [x] Drawing tablets — SetKwinTablet.qml, KwinCalibrate.qml (needs testing on a device)
 - [ ] Game controllers as regular mouse/keyboard input left off — partly: Hearth's controller mouse (hearth-pad). Left: KWin's option explicitly off in Hearth's kwinrc defaults (S)

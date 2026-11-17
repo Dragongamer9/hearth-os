@@ -184,6 +184,10 @@ optional avahi-utils
 # documents) and pdftoppm draws PDFs' first page as their preview in Files (poppler-utils, about 1 MB). Optional:
 # without it PDFs are found by name and shown with their icon.
 optional poppler-utils
+# Auto-brightness (Settings › Display, 1.14): iio-sensor-proxy reads a laptop's or handheld's light sensor for
+# hearth-screens (net.hadess.SensorProxy, as KDE and GNOME use it). udev starts it only on a PC with a sensor; off in
+# Settings until you turn it on. Optional: without it the kernel's sensor files are read instead.
+optional iio-sensor-proxy
 command -v gio secret-tool
 # Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
 # (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.
@@ -2065,6 +2069,12 @@ echo "sddm shared/default-x-display-manager select sddm" | debconf-set-selection
 # SDDM is still the display manager after everything above (Hearth's own login screen never takes its place).
 test "$(readlink /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service
 if [ -f /etc/X11/default-display-manager ]; then grep -qx /usr/bin/sddm /etc/X11/default-display-manager; fi
+# Debian's own greetd.service never runs at start-up (it would take a screen from SDDM or Hearth's hearth-greetd):
+# turned off if the package turned it on, and the build stops if it still is.
+if [ -e /usr/lib/systemd/system/greetd.service ]; then
+  systemctl disable greetd.service >/dev/null 2>&1 || true
+  if systemctl is-enabled --quiet greetd.service 2>/dev/null; then echo "build: Debian's greetd.service is enabled" >&2; exit 1; fi
+fi
 mkdir -p /usr/share/hearth/debconf && cp -a /var/cache/debconf/. /usr/share/hearth/debconf/
 # The core of the system stays at the image's own versions (apt can't swap them under Hearth: systemd, udev, glibc,
 # D-Bus, Mesa), generated from what's installed (systemd-boot is left to the boot-chain pin: never from apt).
