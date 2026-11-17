@@ -647,7 +647,7 @@ PanelWindow {
                             Text { Layout.fillWidth: true; text: ans.modelData.title; color: Theme.text; font.pixelSize: 17; font.weight: Font.DemiBold; font.family: Theme.font; elide: Text.ElideRight }
                             Text { Layout.fillWidth: true; text: ans.modelData.group + " · " + (ans.modelData.sub || ""); color: Theme.muted; font.pixelSize: 12; font.family: Theme.font; elide: Text.ElideRight }
                         }
-                        Text { visible: ans.index === 0 && ans.modelData.top; text: "Enter"; color: Theme.accent; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold }
+                        Text { visible: ans.index === 0 && !!ans.modelData.top; text: "Enter"; color: Theme.accent; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold }
                     }
                     MouseArea { id: ansArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.runAnswer(ans.modelData) }
                 }
