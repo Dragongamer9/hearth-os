@@ -149,14 +149,15 @@ class Prompt(unittest.TestCase):
         q = code((SHELL / 'PolkitPrompt.qml').read_text())
         self.assertIn('import Quickshell.Services.Polkit', q)
         self.assertIn('PolkitAgent { id: agent }', q)
-        submit = q.split('function submit()')[1].split('function cancel()')[0]
-        self.assertIn('field.text = "";', submit)            # the field is emptied as it's sent
+        submit = q.split('function submit(v)')[1].split('function cancel()')[0]
+        self.assertIn('clearField();', submit)               # the field is emptied as it's sent
         self.assertIn('flow.submit(v)', submit)
+        self.assertIn('function onClearField() { field.text = "";', q)
+        self.assertEqual(re.findall(r'pk\.submit\(([^)]*)\)', q), ['field.text', 'field.text'])
         # Never printed, kept or handed to anything else.
         for line in q.splitlines():
             if 'console.' in line or 'Process' in line or 'command' in line or 'writer' in line:
                 self.assertNotIn('field.text', line)
-                self.assertNotIn('submit(', line)
         self.assertIn('TextInput.Password', q)
         self.assertIn('Qt.ImhSensitiveData', q)
 

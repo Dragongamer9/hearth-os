@@ -75,21 +75,23 @@ Scope {
     Connections {
         target: pk.flow
         ignoreUnknownSignals: true
-        function onIsResponseRequiredChanged() { if (pk.flow && pk.flow.isResponseRequired) { pk.busy = false; field.text = ""; field.forceActiveFocus(); } }
-        function onAuthenticationFailed() { pk.busy = false; pk.wrong = "That password isn't right. Try again."; pk.shakes++; field.text = ""; }
+        function onIsResponseRequiredChanged() { if (pk.flow && pk.flow.isResponseRequired) { pk.busy = false; pk.clearField(); } }
+        function onAuthenticationFailed() { pk.busy = false; pk.wrong = "That password isn't right. Try again."; pk.shakes++; pk.clearField(); }
     }
 
-    function submit() {
+    // The field lives in the prompt's window: it's emptied (and focused) from there when this asks.
+    signal clearField()
+    // V: what was typed, handed straight to polkit; the window empties the field as it calls this.
+    function submit(v) {
+        clearField();
         if (!needsAnswer || busy) return;
-        const v = field.text;
-        field.text = "";
         wrong = "";
         if (demo) { wrong = "That password isn't right. Try again."; shakes++; return; }
         busy = true;
         flow.submit(v);
     }
     function cancel() {
-        field.text = "";
+        clearField();
         if (demo) { demo = false; return; }
         if (flow) flow.cancelAuthenticationRequest();
     }
@@ -119,6 +121,7 @@ Scope {
             color: "#b3060809"
             Component.onCompleted: focusLater.start()
             Timer { id: focusLater; interval: 50; onTriggered: field.forceActiveFocus() }
+            Connections { target: pk; function onClearField() { field.text = ""; field.forceActiveFocus(); } }
             MouseArea { anchors.fill: parent }
 
             Rectangle {
@@ -239,7 +242,7 @@ Scope {
                                 color: Theme.text; font.family: Theme.font; font.pixelSize: 18
                                 clip: true
                                 inputMethodHints: Qt.ImhHiddenText | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
-                                onAccepted: pk.submit()
+                                onAccepted: pk.submit(field.text)
                                 Keys.onEscapePressed: pk.cancel()
                                 Keys.onDownPressed: allowBtn.forceActiveFocus()
                                 Text {
@@ -274,7 +277,7 @@ Scope {
                         CaptureBtn { icon: "kbd"; text: "Keyboard"; onActivated: { field.forceActiveFocus(); if (SettingsNav.pad) SettingsNav.pad.openKeyboard(); } }
                         Item { Layout.fillWidth: true }
                         CaptureBtn { id: cancelBtn; text: "Cancel"; onActivated: pk.cancel(); }
-                        CaptureBtn { id: allowBtn; primary: true; icon: "lock"; text: "Allow"; enabledLook: !pk.busy; onActivated: pk.submit(); }
+                        CaptureBtn { id: allowBtn; primary: true; icon: "lock"; text: "Allow"; enabledLook: !pk.busy; onActivated: pk.submit(field.text); }
                     }
                     Text {
                         Layout.fillWidth: true; wrapMode: Text.WordWrap

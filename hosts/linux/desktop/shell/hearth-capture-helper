@@ -306,9 +306,9 @@ def ocr(path, lang='eng'):
 def qr(path):
     if not have('zbarimg'):
         return {'ok': False, 'missing': 'zbarimg'}
-    r = subprocess.run(['zbarimg', '-q', '--raw', '-Sbinary', path], capture_output=True, timeout=60)
+    r = subprocess.run(['zbarimg', '-q', '--raw', path], capture_output=True, timeout=60)
     if r.returncode not in (0, 4):     # 4: no code found
-        r = subprocess.run(['zbarimg', '-q', '--raw', path], capture_output=True, timeout=60)
+        return {'ok': False, 'error': (r.stderr.decode('utf-8', 'replace').strip().split('\n') or [''])[-1][:200] or 'zbarimg failed'}
     text = r.stdout.decode('utf-8', 'replace')
     codes = [c for c in text.split('\n') if c.strip()] if r.returncode == 0 else []
     return {'ok': True, 'codes': codes}

@@ -29,6 +29,7 @@ Item {
     property string ocrText: ""
     property var qrCodes: []
     property string qrState: ""
+    property string qrError: ""
     property string saveAsPath: ""
     property bool saveAsExists: false
     property string toast: ""
@@ -56,7 +57,7 @@ Item {
 
     function stateObj() {
         return { tool: tool, shapes: shapes.length, ready: ready, exportError: exportError, crop: crop, width: imgW, height: imgH, panel: panel, ocr: ocrState,
-                 text: ocrText.slice(0, 400), qr: qrCodes, qrState: qrState, toast: toast, saved: lastSaved, busy: busy };
+                 text: ocrText.slice(0, 400), qr: qrCodes, qrState: qrState, qrError: qrError, toast: toast, saved: lastSaved, busy: busy };
     }
     function say(t) { toast = t; toastTimer.restart(); }
     Timer { id: toastTimer; interval: 5000; onTriggered: ed.toast = "" }
@@ -153,7 +154,7 @@ Item {
         panel = "qr"; qrState = "busy"; qrCodes = [];
         finished(p => {
             if (!p) { qrState = "error"; return; }
-            cap.run(["qr", p], j => { if (j.missing) qrState = "missing"; else { qrState = "done"; qrCodes = j.codes || []; } });
+            cap.run(["qr", p], j => { if (j.missing) qrState = "missing"; else if (!j.ok) { qrState = "error"; qrError = j.error || ""; } else { qrState = "done"; qrCodes = j.codes || []; } });
         });
     }
 
@@ -429,7 +430,7 @@ Item {
                 Text {
                     visible: ed.qrState !== "done" || ed.qrCodes.length === 0
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: ed.qrState === "busy" ? "Looking…" : ed.qrState === "missing" ? "Reading QR codes needs zbarimg (zbar-tools), which isn't installed on this PC." : "No QR code in the picture."
+                    text: ed.qrState === "busy" ? "Looking…" : ed.qrState === "missing" ? "Reading QR codes needs zbarimg (zbar-tools), which isn't installed on this PC." : ed.qrState === "error" ? "Couldn't read it. " + ed.qrError : "No QR code in the picture."
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                 }
                 Repeater {
