@@ -347,13 +347,13 @@ def main():
                                                                          'font': lk.get('font') if lk.get('font') not in (None, 'sans-serif') else 'sans'}) + '\n')
     # KWin (Mantel on KWin): Hearth's own Aurorae window frames, the same colours, corners and buttons as labwc's
     # (theme/hearth_aurorae.py), in ~/.local/share/aurorae/themes/hearth only.
-    kwin_changed = False
+    kwin_changed, kwin_theme = False, ''
     try:
         import hearth_aurorae
         cols = {k: m.color(v) for k, v in hearth_aurorae.themerc_colors(read(os.path.join(DESKTOP, 'labwc', 'themerc-override'))).items()}
         cols['danger'] = hexc(m.tgt['danger']) if 'danger' in m.tgt else '#e5484d'
         radius = min(int(lk.get('windowCorner') or 10), cap) if cap else int(lk.get('windowCorner') or 10)
-        kwin_changed = hearth_aurorae.write_theme(DATA, cols, radius, write_setting)
+        kwin_changed, kwin_theme = hearth_aurorae.write_theme(DATA, cols, radius, write_setting)
     except Exception as e:
         print('hearth-theme: KWin window frames: %s' % e, file=sys.stderr)
     # Hearth's own apps (hosts/hearth-apptheme): theme.css and theme.json in ~/.config/hearth.
@@ -390,8 +390,16 @@ def main():
     if not cur or cur.startswith(KDE_MARK):
         write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde_wm).rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n'
               '\n[Icons]\nTheme=%s\n' % ('breeze' if mode == 'light' else 'breeze-dark'))
-    if kwin_changed and os.environ.get('HEARTH_WM') == 'kwin':
-        # KWin reads the frames again (no restart); the person's own decoration choice in ~/.config/kwinrc still wins.
+    if kwin_changed and kwin_theme and os.environ.get('HEARTH_WM') == 'kwin':
+        # KWin keeps a theme it has loaded, so the look's own theme name is picked in ~/.config/kwinrc, only while the
+        # decoration there is Hearth's (or none was chosen: Hearth's KWin defaults pick "hearth"); then KWin reloads.
+        try:
+            import hearth_aurorae
+            rcpath = os.path.join(CONF, 'kwinrc')
+            if hsio is not None:
+                hsio.update_text(rcpath, lambda t: hearth_aurorae.kwinrc_pick(t, kwin_theme) or t)
+        except Exception as e:
+            print('hearth-theme: kwinrc: %s' % e, file=sys.stderr)
         subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if labwc_changed:
