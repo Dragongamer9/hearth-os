@@ -322,11 +322,29 @@ jobs:
           ss() { ipc settings close; ipc settings page "$1"; sleep 5; grim "shots/system-settings/$2.png" || true; }
           ss vpn ss-vpn; ss hotspot ss-hotspot; ss proxy ss-proxy; ss net-details ss-net-details; ss firmware ss-firmware
           ss region ss-region; ss fonts ss-fonts; ss services ss-services; ss login-screen ss-login-screen
+          # Thunderbolt (a dock allowed always, a drive waiting), Power with a battery that has a charge limit (a stand-in
+          # /sys for hearth-hwset), Notifications with three apps (Discord with a sound and on the lock screen), and
+          # Startup's Reopen my apps switch.
+          printf '#!/bin/sh\ncase "$1" in list) cat "%s/hosts/linux/test/fixtures/boltctl-list.txt" ;; domains) printf " ● d0\\n   ├─ security:    user\\n" ;; *) exit 1 ;; esac\n' "$PWD" > /tmp/fakebin/boltctl
+          chmod +x /tmp/fakebin/boltctl
+          FS=/tmp/fake-sys/class/power_supply/BAT0; mkdir -p "$FS"
+          printf 'Battery\n' > $FS/type; printf '73\n' > $FS/capacity; printf 'Discharging\n' > $FS/status; printf '80\n' > $FS/charge_control_end_threshold
+          printf '52000000\n' > $FS/energy_full; printf '57000000\n' > $FS/energy_full_design; printf '212\n' > $FS/cycle_count
+          HW=/usr/libexec/nimbus/hearth-hwset; HW_MADE=""; if [ ! -e "$HW" ]; then mkdir -p /usr/libexec/nimbus; HW_MADE=1
+            printf '#!/usr/bin/python3\nimport os, runpy, sys\nos.environ["HEARTH_SYS"] = "/tmp/fake-sys"\nos.environ["HEARTH_HWSET_SETTINGS"] = "/tmp/fake-sys/hardware.json"\nsys.argv[0] = "%s"\nrunpy.run_path(sys.argv[0], run_name="__main__")\n' "$PWD/os/system_files/usr/libexec/nimbus/hearth-hwset" > "$HW"; chmod +x "$HW"; fi
+          NA="$HOME/.config/nimbus/notify-apps.json"; [ -e "$NA" ] && cp -p "$NA" /tmp/notify-apps.json.before
+          printf '{"apps": {"Discord": {"sound": true, "lockScreen": true}, "Thunderbird": {"priority": "high"}}}\n' > "$NA"
+          for a in Discord Thunderbird Steam; do notify-send -a "$a" "A message from $a" "For Settings › Notifications" 2>/dev/null || true; done
+          sleep 9
+          ss thunderbolt ss-thunderbolt; ss power ss-power; ss notifications ss-notifications; ss startup ss-startup
+          ipc settings close
+          rm -f /tmp/fakebin/boltctl "$NA"; [ -n "$HW_MADE" ] && rm -f "$HW"; rm -rf /tmp/fake-sys
+          [ -e /tmp/notify-apps.json.before ] && mv -f /tmp/notify-apps.json.before "$NA"
           ipc settings close
           rm -f "$PX" /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/mokutil /tmp/fakebin/localectl /tmp/fakebin/systemctl
           [ -e /tmp/proxy.json.before ] && mv -f /tmp/proxy.json.before "$PX"
-          if grep -E "Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
-            echo "::error title=System settings::$(grep -E "Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          if grep -E "(Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users|Thunderbolt|Sound|Power|Notifications|Startup)|NotifyRules|SessionRestore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=System settings::$(grep -E "(Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users|Thunderbolt|Sound|Power|Notifications|Startup)|NotifyRules|SessionRestore)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
             touch shots/FAILED
           else
             echo "::notice title=System settings::$(ls shots/system-settings | wc -l) pictures of the 1.14 system pages, no QML errors from them"
@@ -1913,6 +1931,12 @@ jobs:
           wtype -k Down; wtype -k Return; sleep 1
           echo "mixer: $(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call mixer state)"
           wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Return; sleep 1; grim $o/05-mixer-outputs.png || true
+          # Settings › Sound (1.14) with the same stand-in apps, and a stand-in sound card list (pactl) for its profiles.
+          ipc mixer close; mkdir -p shots/system-settings
+          printf '#!/bin/sh\n[ "$2" = list ] && exec cat "%s/hosts/linux/test/fixtures/pactl-cards.json"; exit 0\n' "$PWD" > /tmp/fakebin/pactl; chmod +x /tmp/fakebin/pactl
+          ipc settings page sound; sleep 4; grim shots/system-settings/ss-sound.png || true; ipc settings close
+          rm -f /tmp/fakebin/pactl
+          [ -e "$VOL" ] && [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])) == {"Cyberpunk 2077": 0.95})' "$VOL")" != True ] && bad "opening Settings › Sound changed app-volumes.json: $(cat "$VOL" | tr -d '\n ')"
           wtype -k Escape; sleep 0.5; wtype -k Escape; sleep 1
           ipc settings page sound; sleep 2; grim $o/06-settings-sound.png || true; ipc settings close
           # ---- Snap layouts: a window to snap, Super+Z (here over IPC), Right to the right half, Enter.
@@ -2233,7 +2257,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen]
+        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

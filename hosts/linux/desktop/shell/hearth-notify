@@ -1,0 +1,96 @@
+#!/usr/bin/python3
+"""hearth-notify: each app's notification settings (Hearth Settings › Notifications, 1.14), kept in
+~/.config/nimbus/notify-apps.json through hearth_settings_io (atomic, .bak, merge on write: only the app you changed).
+An app that isn't in the file has the defaults: allowed, no sound, not on the lock screen, normal priority. Pop-ups on or
+off stay where they were (desk.json's muted list, hearth-desk mute-app), so nothing you set before moves.
+NotifyRules.qml reads the file; Notifications.qml and Lock.qml follow it.
+
+  hearth-notify get                    JSON: {apps: {NAME: {allow, sound, lockScreen, priority}}}
+  hearth-notify set NAME KEY VALUE     allow on|off · sound on|off · lockScreen on|off · priority low|normal|high
+  hearth-notify reset NAME             back to the defaults (the app comes out of the file)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_settings_io as hsio
+
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+FILE = os.path.join(CONFIG, 'nimbus', 'notify-apps.json')
+DEFAULTS = {'allow': True, 'sound': False, 'lockScreen': False, 'priority': 'normal'}
+VALUES = {'allow': ('on', 'off'), 'sound': ('on', 'off'), 'lockScreen': ('on', 'off'), 'priority': ('low', 'normal', 'high')}
+
+
+class Fail(Exception):
+    pass
+
+
+def check_name(name):
+    if not isinstance(name, str) or not 0 < len(name) <= 120 or any(ord(c) < 32 for c in name):
+        raise Fail('not an app name')
+    return name
+
+
+def get():
+    raw = hsio.load_json(FILE, {})
+    apps = raw.get('apps') if isinstance(raw.get('apps'), dict) else {}
+    return {'apps': {k: v for k, v in apps.items() if isinstance(v, dict)}, 'defaults': DEFAULTS}
+
+
+def set_(name, key, value):
+    check_name(name)
+    if key not in VALUES or value not in VALUES[key]:
+        raise Fail('unknown setting')
+    v = value if key == 'priority' else value == 'on'
+
+    def change(d):
+        apps = d.get('apps') if isinstance(d.get('apps'), dict) else {}
+        app = dict(apps.get(name) or {})
+        if v == DEFAULTS[key]:
+            app.pop(key, None)            # only what differs from the defaults is kept
+        else:
+            app[key] = v
+        if app:
+            apps[name] = app
+        else:
+            apps.pop(name, None)
+        d['apps'] = apps
+        return d
+    hsio.update_json(FILE, change)
+    return get()
+
+
+def reset(name):
+    check_name(name)
+
+    def change(d):
+        apps = d.get('apps') if isinstance(d.get('apps'), dict) else {}
+        apps.pop(name, None)
+        d['apps'] = apps
+        return d
+    hsio.update_json(FILE, change)
+    return get()
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['get']:
+            r = get()
+        elif argv[:1] == ['set'] and len(argv) == 4:
+            r = set_(argv[1], argv[2], argv[3])
+        elif argv[:1] == ['reset'] and len(argv) == 2:
+            r = reset(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

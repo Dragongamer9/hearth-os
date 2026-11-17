@@ -177,6 +177,7 @@ ShellRoot {
     Binding { target: DeskState; property: "overlayShown"; value: popMenu.shown || deskDialog.shown || calendar.shown }
     // ---- end taskbar & desktop
     Notifications {}
+    SessionRestore {}
     QuickAccess {
         id: quick
         mouseOn: pad.mouseOn

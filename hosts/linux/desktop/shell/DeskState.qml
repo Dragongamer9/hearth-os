@@ -142,7 +142,7 @@ Singleton {
     }
 
     // ------------------------------------------------ notification history
-    function remember(n) {
+    function remember(n, onLock) {
         const img = String(n.image || "");
         const item = {
             key: ++seq,
@@ -152,7 +152,8 @@ Singleton {
             icon: n.appIcon || "",
             entry: n.desktopEntry || "",
             image: /^(file:\/\/|\/)/.test(img) ? img : "",
-            time: new Date()
+            time: new Date(),
+            lock: onLock === true          // its app shows on the lock screen (Settings › Notifications, 1.14)
         };
         if (!item.summary && !item.body) return;
         history = [item].concat(history).slice(0, 100);

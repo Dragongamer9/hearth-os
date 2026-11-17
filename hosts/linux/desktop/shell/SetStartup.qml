@@ -153,6 +153,14 @@ SetPage {
         }
     }
 
+    // 1.14: reopen the apps from last time in Desktop Mode (SessionRestore.qml), off unless you turn it on.
+    SetHeader { text: "When you sign in" }
+    SetSwitch {
+        icon: "restart"; title: "Reopen my apps from last time"
+        sub: "The apps open when you signed out or left Desktop Mode open again (not games or Steam)"
+        checked: Settings.restoreApps
+        onToggled: v => Settings.restoreApps = v
+    }
     SetHeader { visible: page.scheduled; text: "When it's time to change" }
     SetRow { visible: page.scheduled; icon: "pad"; chevron: false; interactive: false; title: "If a game is running"; sub: "Server mode never closes your game: the change waits until it ends"; value: "Wait until the game ends" }
     SetRow { visible: page.scheduled; icon: "desktops"; chevron: false; interactive: false; title: "If you're in Desktop Mode"; sub: "Unsaved work stays open: the schedule never switches away from Desktop Mode"; value: "Stay" }

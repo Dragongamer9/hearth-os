@@ -1,0 +1,24 @@
+ ● Lenovo ThinkPad Thunderbolt 3 Dock #2
+   ├─ type:          peripheral
+   ├─ name:          ThinkPad Thunderbolt 3 Dock
+   ├─ vendor:        Lenovo
+   ├─ uuid:          00f1e0b0-1c2d-4e5f-8a9b-0c1d2e3f4a5b
+   ├─ generation:    Thunderbolt 3
+   ├─ status:        authorized
+   │  ├─ domain:     0d038780-b0fc-3405-ffff-ffffffffffff
+   │  ├─ rx speed:   40 Gb/s = 2 lanes * 20 Gb/s
+   │  └─ authflags:  none
+   ├─ authorized:    Mon 16 Nov 2026 10:00:00 UTC
+   ├─ connected:     Mon 16 Nov 2026 10:00:00 UTC
+   └─ stored:        Mon 16 Nov 2026 09:00:00 UTC
+      ├─ policy:     auto
+      └─ key:        no
+
+ ○ OWC Envoy Express
+   ├─ type:          peripheral
+   ├─ name:          Envoy Express
+   ├─ vendor:        OWC
+   ├─ uuid:          11111111-2222-3333-4444-555555555555
+   ├─ generation:    Thunderbolt 3
+   ├─ status:        connected
+   └─ stored:        no
