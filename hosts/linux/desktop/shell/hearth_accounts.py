@@ -31,6 +31,10 @@ The API for Hearth's apps (JSON on stdout, one object; "error: ..." on a failure
   hearth-accounts calendars [ID]              every calendar of the accounts with "calendar" on
   hearth-accounts events [--from YYYY-MM-DD] [--days N]   their events, the calendar widget's shape
   hearth-accounts addressbooks [ID]           every address book of the accounts with "contacts" on
+  hearth-accounts cal-objects ID URL [--from YYYY-MM-DD] [--days N]   a calendar's event objects {href, etag, ics}
+  hearth-accounts cal-put ID    < JSON        {"url", "ics", "etag"}: an event saved, only over that etag
+  hearth-accounts cal-delete ID < JSON        {"url", "etag"}: an event deleted, only over that etag
+  hearth-accounts cal-edit      < JSON        {"ics", "uid", "change", "scope": all|this, "occ", "op"}: the new ics
   hearth-accounts mount ID                    the account's files mounted with gvfs: {"path"}
   hearth-accounts unmount ID
 
@@ -60,6 +64,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import hearth_settings_io as sio  # noqa: E402
+import hearth_ical  # noqa: E402
 
 KINDS = ('nextcloud', 'dav', 'webdav', 'imap', 'google', 'microsoft')
 USES = ('calendar', 'contacts', 'files', 'mail')
@@ -374,7 +379,8 @@ def discover(server, cred, kind):
         if not homeset:
             continue
         hurl = urllib.parse.urljoin(base, homeset)
-        want = ['<d:resourcetype/>', '<d:displayname/>'] + (['<ical:calendar-color/>', '<c:supported-calendar-component-set/>'] if kind == 'c' else [])
+        want = ['<d:resourcetype/>', '<d:displayname/>'] + (['<ical:calendar-color/>', '<c:supported-calendar-component-set/>',
+                                                            '<d:current-user-privilege-set/>'] if kind == 'c' else [])
         hb, items = propfind(hurl, cred, want, '1')
         out = []
         coll = 'calendar' if kind == 'c' else 'addressbook'
@@ -389,9 +395,15 @@ def discover(server, cred, kind):
             name_el = p.get(_tag('d', 'displayname'))
             color_el = p.get(_tag('ical', 'calendar-color'))
             u = urllib.parse.urljoin(hb, href)
-            out.append({'url': u, 'name': (name_el.text or '').strip() if name_el is not None and name_el.text else
-                        urllib.parse.unquote(u.rstrip('/').rsplit('/', 1)[-1]),
-                        'color': (color_el.text or '').strip()[:7] if color_el is not None and color_el.text else ''})
+            item = {'url': u, 'name': (name_el.text or '').strip() if name_el is not None and name_el.text else
+                    urllib.parse.unquote(u.rstrip('/').rsplit('/', 1)[-1]),
+                    'color': (color_el.text or '').strip()[:7] if color_el is not None and color_el.text else ''}
+            if kind == 'c':
+                # A calendar that's shared with you to look at (or a holidays one): its events can't be changed.
+                privs = p.get(_tag('d', 'current-user-privilege-set'))
+                item['readOnly'] = privs is not None and not any(
+                    x.tag in (_tag('d', 'write'), _tag('d', 'write-content'), _tag('d', 'all')) for x in privs.iter())
+            out.append(item)
         return out
     if last and 'Wrong user name' in str(last):
         raise last
@@ -444,10 +456,23 @@ def _when(value, params):
     return t.astimezone(), False         # floating: this device's time
 
 
-def parse_events(ics, calendar='', color='', account=''):
-    out = []
+def _zone_of(params, value):
+    """The event's own zone as Hearth writes it: 'UTC', an IANA name, or '' (floating local time, or all-day)."""
+    v = (value or '').strip()
+    if params.get('VALUE') == 'DATE' or re.fullmatch(r'\d{8}', v):
+        return ''
+    if v.endswith('Z'):
+        return 'UTC'
+    return params.get('TZID', '')
+
+
+def parse_events(ics, calendar='', color='', account='', window=None):
+    """The events of a VCALENDAR in the widget's shape. A repeating event the server didn't expand (some ignore
+    RFC 4791's expand) is expanded here for WINDOW (start, end: aware datetimes), its EXDATEs and changed times
+    (RECURRENCE-ID) taken into account."""
+    raw = []
     for block in re.findall(r'BEGIN:VEVENT\n(.*?)END:VEVENT', _unfold(ics), re.S):
-        ev, depth = {}, 0
+        ev, depth = {'EXDATE': []}, 0
         for line in block.split('\n'):
             if line.startswith('BEGIN:'):
                 depth += 1
@@ -456,22 +481,66 @@ def parse_events(ics, calendar='', color='', account=''):
             if depth or not line:
                 continue
             name, params, val = _parse_prop(line)
-            if name in ('DTSTART', 'DTEND'):
+            if name in ('DTSTART', 'DTEND', 'RECURRENCE-ID'):
                 try:
                     ev[name] = _when(val, params)
+                    if name == 'DTSTART':
+                        ev['TZ'] = _zone_of(params, val)
                 except ValueError:
                     pass
-            elif name in ('SUMMARY', 'LOCATION', 'UID', 'DURATION', 'STATUS'):
-                ev[name] = _unescape(val)
-        if 'DTSTART' not in ev or ev.get('STATUS', '').upper() == 'CANCELLED':
+            elif name == 'EXDATE':
+                for x in val.split(','):
+                    try:
+                        ev['EXDATE'].append(_when(x, params)[0])
+                    except ValueError:
+                        pass
+            elif name in ('SUMMARY', 'LOCATION', 'UID', 'DURATION', 'STATUS', 'RRULE'):
+                ev[name] = _unescape(val) if name != 'RRULE' else val.strip()
+        if 'DTSTART' in ev:
+            raw.append(ev)
+    # Times of a repeating event that were changed on their own (they replace that time of the series).
+    moved = {}
+    for ev in raw:
+        if 'RECURRENCE-ID' in ev:
+            moved.setdefault(ev.get('UID', ''), []).append(ev['RECURRENCE-ID'][0])
+    out = []
+    for ev in raw:
+        if ev.get('STATUS', '').upper() == 'CANCELLED':
             continue
         start, all_day = ev['DTSTART']
         end = ev.get('DTEND', (None, all_day))[0]
         if end is None:
             dur = _duration(ev.get('DURATION', ''))
             end = start + (dur if dur else (dt.timedelta(days=1) if all_day else dt.timedelta(0)))
-        out.append(_event(ev.get('SUMMARY') or '(no title)', start, end, all_day, ev.get('LOCATION', ''),
-                          calendar, color, account, ev.get('UID', '')))
+        args = (ev.get('LOCATION', ''), calendar, color, account, ev.get('UID', ''))
+        title = ev.get('SUMMARY') or '(no title)'
+        recurring = bool(ev.get('RRULE')) or 'RECURRENCE-ID' in ev
+        if ev.get('RRULE') and 'RECURRENCE-ID' not in ev and window:
+            for s, e in _series(start, end, all_day, ev['RRULE'], ev['EXDATE'] + moved.get(ev.get('UID', ''), []), window):
+                out.append(_event(title, s, e, all_day, *args, tz=ev.get('TZ', ''), recurring=True))
+            continue
+        out.append(_event(title, start, end, all_day, *args, tz=ev.get('TZ', ''), recurring=recurring))
+    return out
+
+
+def _series(start, end, all_day, rule, skip, window):
+    """(start, end) of each time of a repeating event in WINDOW, in its own wall-clock time (so it stays at 9:00
+    across a clock change)."""
+    length = end - start
+    if all_day:
+        wall = lambda d: dt.datetime.combine(d if not isinstance(d, dt.datetime) else d.date(), dt.time())
+        back = lambda w: w.date()
+    else:
+        tz = start.tzinfo
+        wall = lambda d: (d.astimezone(tz) if isinstance(d, dt.datetime) else dt.datetime.combine(d, dt.time(), tz)).replace(tzinfo=None)
+        back = lambda w: w.replace(tzinfo=tz) if tz is not None else w.astimezone()
+    lo = wall(window[0]) - (length if isinstance(length, dt.timedelta) else dt.timedelta(0)) - dt.timedelta(days=2)
+    hi = wall(window[1]) + dt.timedelta(days=2)
+    ex = [wall(x) for x in skip]
+    out = []
+    for w in hearth_ical.expand(rule, wall(start), lo, hi, ex):
+        s = back(w)
+        out.append((s, s + length))
     return out
 
 
@@ -483,8 +552,9 @@ def _duration(s):
     return dt.timedelta(weeks=w, days=d, hours=h, minutes=mi, seconds=se)
 
 
-def _event(title, start, end, all_day, location, calendar, color, account, uid):
-    """The calendar widget's / Hearth Time's shape: date and lastDate (this device's dates), start and end in ms."""
+def _event(title, start, end, all_day, location, calendar, color, account, uid, tz='', recurring=False):
+    """The calendar widget's / Hearth Time's shape: date and lastDate (this device's dates), start and end in ms,
+    and the event's own zone (tz: 'UTC', an IANA name, or '' for floating time and all-day events)."""
     if all_day:
         first = start if isinstance(start, dt.date) and not isinstance(start, dt.datetime) else start.date()
         last_excl = end if isinstance(end, dt.date) and not isinstance(end, dt.datetime) else end.date()
@@ -497,7 +567,7 @@ def _event(title, start, end, all_day, location, calendar, color, account, uid):
         s_ms, e_ms = int(ls.timestamp() * 1000), int(le.timestamp() * 1000)
     return {'title': title, 'date': first.isoformat(), 'lastDate': last.isoformat(), 'allDay': all_day,
             'start': s_ms, 'end': e_ms, 'location': location, 'color': color, 'calendar': calendar,
-            'account': account, 'uid': uid}
+            'account': account, 'uid': uid, 'tz': '' if all_day else tz, 'recurring': bool(recurring)}
 
 
 def caldav_events(cal_url, cred, start, end, calendar='', color='', account=''):
@@ -512,7 +582,7 @@ def caldav_events(cal_url, cred, start, end, calendar='', color='', account=''):
     for _href_, props in multistatus(r.text()):
         el = props.get(_tag('c', 'calendar-data'))
         if el is not None and el.text:
-            out += parse_events(el.text, calendar, color, account)
+            out += parse_events(el.text, calendar, color, account, (start, end))
     s_ms, e_ms = start.timestamp() * 1000, end.timestamp() * 1000
     return [e for e in out if e['end'] > s_ms and e['start'] < e_ms or e['start'] == e['end'] and s_ms <= e['start'] < e_ms]
 
@@ -540,7 +610,7 @@ def graph_events(api, token, start, end, account=''):
             if allday:
                 s, en = s.date(), en.date()
             out.append(_event(e.get('subject') or '(no title)', s, en, allday, ((e.get('location') or {}).get('displayName') or ''),
-                              'Calendar', '', account, e.get('iCalUId') or ''))
+                              'Calendar', '', account, e.get('iCalUId') or '', tz='UTC'))
         url = d.get('@odata.nextLink')
         if not url:
             break
@@ -953,11 +1023,16 @@ def calendars(aid=None):
     for a in _uses('calendar', aid):
         try:
             if a['kind'] == 'microsoft':
-                out.append({'account': a['id'], 'name': 'Calendar', 'url': '', 'color': ''})
+                out.append({'account': a['id'], 'name': 'Calendar', 'url': '', 'color': '', 'readOnly': True,
+                            'accountName': a.get('name', ''), 'kind': a['kind']})
                 continue
             cals = discover(_cal_root(a), _dav_cred(a), 'c')
+            # Google: changing events needs the full calendar scope (accounts signed in with calendar.readonly
+            # can only look until they sign in again).
+            ro = a['kind'] == 'google' and not re.search(r'auth/calendar(\s|$)', keyring_get(a['id']).get('scope') or '')
             for c in cals:
-                out.append(dict(c, account=a['id']))
+                out.append(dict(c, account=a['id'], accountName=a.get('name', ''), kind=a['kind'],
+                                readOnly=bool(c.get('readOnly')) or ro))
             if a['kind'] in ('nextcloud', 'dav'):
                 change_accounts(lambda lst: [dict(x, calendars=cals) if x.get('id') == a['id'] else x for x in lst]
                                 if any(x.get('id') == a['id'] and x.get('calendars') != cals for x in lst) else lst)
@@ -974,7 +1049,7 @@ def addressbooks(aid=None):
                 continue          # Microsoft's contacts: Graph (/me/contacts) with `token`, no CardDAV
             root = provider('google').get('carddav') if a['kind'] == 'google' else (a.get('dav') or a.get('server'))
             for b in discover(root, _dav_cred(a), 'card'):
-                out.append(dict(b, account=a['id']))
+                out.append(dict(b, account=a['id'], accountName=a.get('name', ''), kind=a['kind'], user=a.get('user', '')))
         except Fail as e:
             errors.append({'account': a['id'], 'name': a.get('name'), 'error': str(e)})
     return {'addressbooks': out, 'errors': errors}
@@ -999,6 +1074,115 @@ def events(start_day=None, days=31, aid=None):
             errors.append({'account': a['id'], 'name': a.get('name'), 'error': str(e)})
     out.sort(key=lambda e: (e['start'], e['title']))
     return {'events': out, 'errors': errors}
+
+
+# ------------------------------------------------------------------ changing events (Hearth Time's Calendar)
+#
+# Hearth Time keeps a copy of each account calendar's event objects ({href, etag, ics}) and its own changes until the
+# server has them. A change goes up with If-Match: the etag of the copy it was made on, so a change someone made on
+# another device in the meantime is never overwritten: the server says 412 and Hearth gets the server's version
+# back ({"conflict": true, "server": {...}}) to show the person both. Nothing here keeps anything: Hearth Time does.
+
+def _hosts(a):
+    """The hosts this account's password or token may be sent to."""
+    roots = [a.get('server'), a.get('dav')] + [c.get('url') for c in (a.get('calendars') or []) if isinstance(c, dict)]
+    if a.get('kind') == 'google':
+        roots += [provider('google').get('caldav'), provider('google').get('carddav')]
+    return {urllib.parse.urlsplit(r).netloc.lower() for r in roots if r}
+
+
+def _own(a, url):
+    """URL must be on the account's own server: an app can't have the password sent anywhere else."""
+    check_url(url or '')
+    if urllib.parse.urlsplit(url).netloc.lower() not in _hosts(a):
+        raise Fail("That address isn't on this account's server.")
+    if a.get('kind') == 'microsoft':
+        raise Fail("Microsoft calendars can only be read here.")
+    return url
+
+
+def cal_objects(aid, url, start, end):
+    """The event objects of the calendar at URL with a time between START and END (aware datetimes), as the server
+    keeps them (not expanded): [{href, etag, ics}]."""
+    a = find(aid)
+    _own(a, url)
+    f = lambda t: t.astimezone(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    body = ('<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            '<d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR">'
+            '<c:comp-filter name="VEVENT"><c:time-range start="%s" end="%s"/></c:comp-filter></c:comp-filter></c:filter>'
+            '</c:calendar-query>') % (f(start), f(end))
+    r = http('REPORT', url, body, {'Depth': '1', 'Content-Type': 'application/xml; charset=utf-8'}, _dav_cred(a), ok=(207,))
+    out = []
+    for href, props in multistatus(r.text()):
+        data, etag = props.get(_tag('c', 'calendar-data')), props.get(_tag('d', 'getetag'))
+        if data is None or not data.text or 'BEGIN:VEVENT' not in data.text:
+            continue
+        out.append({'href': urllib.parse.urljoin(r.url, href), 'etag': (etag.text or '').strip() if etag is not None else '',
+                    'ics': data.text})
+    return {'objects': out}
+
+
+def _server_copy(url, cred):
+    r = http('GET', url, None, {'Accept': 'text/calendar'}, cred, ok=None)
+    if r.status in (404, 410):
+        return None
+    if r.status != 200:
+        raise Fail('The server answered %d when Hearth looked at the event again.' % r.status)
+    return {'ics': r.text(), 'etag': r.headers.get('ETag') or ''}
+
+
+def _answer(r, url, cred, what):
+    if r.status == 412:
+        theirs = _server_copy(url, cred)
+        return {'conflict': True, 'gone': theirs is None, 'server': theirs}
+    if 400 <= r.status < 500 and r.status not in (401, 408, 429):
+        return {'refused': True, 'status': r.status,
+                'message': "The server didn't take %s (it answered %d)%s." % (
+                    what, r.status, ': you may only be allowed to look at this calendar' if r.status in (403, 405) else '')}
+    raise Fail('The server answered %d when %s was sent.' % (r.status, what))
+
+
+def cal_put(aid, v):
+    """{url, ics, etag}: the object at URL becomes ICS, only if the server's copy still has ETAG (with no etag:
+    only if there's none yet). {"ok", "etag", "ics"?} or {"conflict", "gone", "server"} or {"refused", "message"}."""
+    a = find(aid)
+    url, ics, etag = _own(a, v.get('url') or ''), v.get('ics') or '', (v.get('etag') or '').strip()
+    if 'BEGIN:VCALENDAR' not in ics:
+        raise Fail('That is not an event.')
+    cred = _dav_cred(a)
+    h = {'Content-Type': 'text/calendar; charset=utf-8'}
+    h['If-Match' if etag else 'If-None-Match'] = etag or '*'
+    r = http('PUT', url, ics, h, cred, ok=None)
+    if 200 <= r.status < 300:
+        new = r.headers.get('ETag') or ''
+        if new:
+            return {'ok': True, 'etag': new}
+        # The server changed the event as it saved it (and so sent no etag): Hearth keeps the server's version.
+        theirs = _server_copy(url, cred) or {}
+        return {'ok': True, 'etag': theirs.get('etag', ''), 'ics': theirs.get('ics', '')}
+    if r.status in (404, 410) and etag:
+        return {'conflict': True, 'gone': True, 'server': None}
+    return _answer(r, url, cred, 'the change')
+
+
+def cal_delete(aid, v):
+    """{url, etag}: deletes the object, only if the server's copy still has ETAG."""
+    a = find(aid)
+    url, etag = _own(a, v.get('url') or ''), (v.get('etag') or '').strip()
+    cred = _dav_cred(a)
+    r = http('DELETE', url, None, {'If-Match': etag} if etag else {}, cred, ok=None)
+    if 200 <= r.status < 300 or r.status in (404, 410):
+        return {'ok': True}
+    return _answer(r, url, cred, 'the deletion')
+
+
+def cal_edit(v):
+    """{ics, uid, change, scope, occ, op}: the object with the change made (hearth_ical.edit). Nothing is sent."""
+    try:
+        return hearth_ical.edit(v.get('ics') or '', v.get('uid') or '', v.get('change') or {}, v.get('scope') or 'all',
+                                v.get('occ') or '', v.get('op') or 'save', v.get('defaultTz'))
+    except ValueError as e:
+        raise Fail(str(e))
 
 
 # ------------------------------------------------------------------ files (gvfs, davs://)
@@ -1182,6 +1366,24 @@ def main(argv):
                 else:
                     raise Fail('events [--from YYYY-MM-DD] [--days N] [--account ID]')
             out = events(start, days, aid)
+        elif c == 'cal-objects' and len(rest) >= 2:
+            start, days = dt.date.today() - dt.timedelta(days=62), 500
+            i = 2
+            while i < len(rest):
+                if rest[i] == '--from' and i + 1 < len(rest):
+                    start = dt.date.fromisoformat(rest[i + 1]); i += 2
+                elif rest[i] == '--days' and i + 1 < len(rest):
+                    days = max(1, min(int(rest[i + 1]), 1500)); i += 2
+                else:
+                    raise Fail('cal-objects ID URL [--from YYYY-MM-DD] [--days N]')
+            s0 = dt.datetime.combine(start, dt.time()).astimezone()
+            out = cal_objects(rest[0], rest[1], s0, s0 + dt.timedelta(days=days))
+        elif c == 'cal-put' and len(rest) == 1:
+            out = cal_put(rest[0], read_input())
+        elif c == 'cal-delete' and len(rest) == 1:
+            out = cal_delete(rest[0], read_input())
+        elif c == 'cal-edit' and not rest:
+            out = cal_edit(read_input())
         elif c == 'mount' and len(rest) == 1:
             out = mount(rest[0])
         elif c == 'unmount' and len(rest) == 1:

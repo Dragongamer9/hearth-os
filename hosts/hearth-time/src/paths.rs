@@ -1,6 +1,7 @@
 //! Where each app keeps its things. HEARTH_TIME_HOME (tests, CI) puts all of them under one folder instead.
 //!   Clock     ~/.config/hearth-clock/clock.json
-//!   Calendar  ~/.local/share/hearth-calendar/calendar.json, subscribed calendars in subs/<id>.ics next to it
+//!   Calendar  ~/.local/share/hearth-calendar/calendar.json, subscribed calendars in subs/<id>.ics next to it,
+//!             Online accounts' calendars in accounts.json next to it
 //!   Notes     ~/Documents/Notes (*.md; pasted pictures in images/; deleted notes in .trash/; pins in .pinned)
 //!   Weather   ~/.config/hearth-weather/weather.json; the forecast and the summary in ~/.cache/hearth-weather
 //!   Service   ~/.local/state/hearth-time (what has rung already, the "stop ringing" flag)
@@ -22,6 +23,8 @@ pub fn clock_file() -> PathBuf { config().join("hearth-clock").join("clock.json"
 pub fn calendar_dir() -> PathBuf { data().join("hearth-calendar") }
 pub fn calendar_file() -> PathBuf { calendar_dir().join("calendar.json") }
 pub fn subs_dir() -> PathBuf { calendar_dir().join("subs") }
+/// Online accounts' calendars: their events as the servers keep them, and changes made here not sent yet (accounts.rs).
+pub fn accounts_file() -> PathBuf { calendar_dir().join("accounts.json") }
 pub fn weather_file() -> PathBuf { config().join("hearth-weather").join("weather.json") }
 pub fn weather_cache() -> PathBuf { cache().join("hearth-weather") }
 pub fn service_dir() -> PathBuf { state().join("hearth-time") }

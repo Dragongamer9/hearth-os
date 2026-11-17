@@ -69,6 +69,20 @@ main.full { grid-template-columns:1fr; }
 .sub .dot { width:.9em; height:.9em; border-radius:50%; background:var(--c); grid-row:span 2; }
 .sub .e { color:var(--danger); font-size:.8em; grid-column:2 / 4; }
 .files { display:flex; flex-direction:column; gap:.4em; max-height:40vh; overflow:auto; padding:3px; }
+.ev .st { grid-column:2; color:var(--muted); font-size:.75em; font-weight:500; }
+.ev:has(.st) .bar { grid-row:span 4; }
+.ev.conflict { border-color:var(--danger); }
+.ev.conflict .st { color:var(--danger); }
+.pill.conflict { outline:2px solid var(--danger); outline-offset:-2px; }
+.tg .blk.conflict { border-left-color:var(--danger); }
+.cmp { display:grid; grid-template-columns:1fr 1fr; gap:.8em; margin:.8em 0; }
+.cmp .card { display:flex; flex-direction:column; gap:.25em; padding:.8em 1em; }
+.cmp .card h3 { margin:0 0 .2em; font-size:.85em; color:var(--muted); font-weight:600; }
+.cmp .card .t { font-weight:600; font-size:1.05em; }
+.cmp .card .d { color:var(--muted); font-size:.85em; }
+.cmp .card.theirs { border-color:color-mix(in srgb, var(--ember) 60%, var(--line)); }
+.tag { font-size:.72em; padding:.1em .55em; border-radius:999px; background:var(--panel3); color:var(--muted); margin-left:.4em; vertical-align:middle; }
+.calpick .chip .dot { display:inline-block; width:.7em; height:.7em; border-radius:50%; background:var(--c); margin-right:.4em; }
 @media (max-width: 820px) { main { grid-template-columns:1fr; } .side { display:none; } }
 </style>
 </head>
@@ -99,7 +113,7 @@ main.full { grid-template-columns:1fr; }
 <script>
 'use strict';
 const { $, $$, esc, icon, invoke, pad2, ymd, parseYmd } = H;
-const S = { view: 'month', cur: new Date(), occ: [], subs: [], settings: { weekStart: 1, defaultReminder: 10 }, loading: 0 };
+const S = { view: 'month', cur: new Date(), occ: [], subs: [], accounts: { calendars: [], conflicts: [], waiting: 0 }, settings: { weekStart: 1, defaultReminder: 10 }, loading: 0 };
 S.cur.setHours(0, 0, 0, 0);
 try { const v = localStorage.getItem('cal.view'); if (v) S.view = v; } catch { }
 $('[data-act="prev"]').innerHTML = icon('back'); $('[data-act="next"]').innerHTML = icon('fwd');
@@ -129,7 +143,63 @@ async function load() {
   render();
 }
 async function loadMeta() {
-  try { const r = await invoke('cal_get'); S.subs = r.subs || []; Object.assign(S.settings, r.settings || {}); } catch { }
+  try { const r = await invoke('cal_get'); S.subs = r.subs || []; Object.assign(S.settings, r.settings || {}); if (r.accounts) S.accounts = r.accounts; } catch { }
+}
+// Online accounts' calendars (Settings › Accounts › Online accounts): changes are kept here first, then sent; a
+// change made on another device meanwhile is never overwritten (the person chooses: showConflict).
+const isAcct = id => String(id || '').startsWith('acct-');
+const acctCal = id => S.accounts.calendars.find(c => c.id === id);
+const writableCals = () => [{ id: 'local', name: 'On this computer', color: 'var(--ember)' }, ...S.accounts.calendars.filter(c => !c.readOnly && !c.hidden && c.url).map(c => ({ id: c.id, name: c.name, account: c.accountName, color: c.color }))];
+let syncing = false;
+async function syncAccounts(loud = false) {
+  if (syncing || !S.accounts.available) return;
+  syncing = true;
+  try { S.accounts = await invoke('acct_refresh'); if (!H.dialogOpen()) await load(); if (loud) H.toast('Calendars are up to date'); }
+  catch (x) { if (loud) H.toast(String(x), 5000); }
+  syncing = false;
+  if (S.accounts.conflicts?.length && !H.dialogOpen()) showConflict(S.accounts.conflicts[0]);
+}
+const describeWhen = d => {
+  if (!d) return '';
+  if (d.allDay) { const a = fromIso(d.start), b = addDays(fromIso(d.end || d.start), -1); return sameDay(a, b) || b < a ? `${H.fmtDate(a)} · All day` : `${H.fmtDate(a, { short: true })} – ${H.fmtDate(b, { short: true })} · All day`; }
+  const tz = d.tz && d.tz !== 'UTC' ? d.tz.replace(/_/g, ' ') : d.tz === 'UTC' ? 'UTC' : '';
+  return `${H.fmtDate(fromIso(d.start))} · ${d.start.slice(11, 16)} – ${(d.end || d.start).slice(11, 16)}${tz ? ` (${tz} time)` : ''}`;
+};
+function showConflict(k) {
+  if (!k) return;
+  const name = k.mine?.title || k.theirs?.title || '(No title)';
+  const card = (cls, head, d, none) => `<div class="card ${cls}"><h3>${head}</h3>${d ? `<span class="t">${esc(d.title || '(No title)')}</span><span class="d">${esc(describeWhen(d))}</span>${d.location ? `<span class="d">${esc(d.location)}</span>` : ''}` : `<span class="d">${none}</span>`}</div>`;
+  const where = `${esc(k.calendarName || 'the calendar')}${k.accountName ? ` (${esc(k.accountName)})` : ''}`;
+  let text, a, b;
+  if (k.why === 'refused') {
+    text = `Your change to “${esc(name)}” in ${where} wasn't taken by the server: ${esc(k.message || '')}`;
+    a = 'Undo my change'; b = 'Try again';
+  } else if (k.why === 'gone') {
+    text = `“${esc(name)}” was deleted on another device while your change to it was waiting to be sent. Nothing has been sent over it.`;
+    a = k.deleting ? 'OK' : 'Let it go'; b = k.deleting ? '' : 'Put mine back';
+  } else {
+    text = `“${esc(name)}” in ${where} was changed on another device while your ${k.deleting ? 'deletion' : 'change'} was waiting to be sent. Nothing has been overwritten: choose which to keep.`;
+    a = "Keep the other device's"; b = k.deleting ? 'Delete it anyway' : 'Keep mine';
+  }
+  const cmp = k.why === 'refused' ? '' : `<div class="cmp">${card('mine', 'Yours (on this computer)', k.mine, k.deleting ? 'Deleted' : '')}${card('theirs', k.why === 'gone' ? 'On the server now' : 'Changed on the other device', k.theirs, 'Deleted')}</div>`;
+  const d = H.dialog(`<h2>${k.why === 'refused' ? 'Not saved on the server' : 'Changed in two places'}</h2><p class="muted">${text}</p>${cmp}
+    <div class="row end"><button class="btn f" data-k="theirs" data-autofocus>${esc(a)}</button>${b ? `<button class="btn primary f" data-k="mine">${esc(b)}</button>` : ''}</div>`, { wide: true });
+  d.addEventListener('click', async ev => {
+    const btn = ev.target.closest('[data-k]'); if (!btn) return;
+    H.closeDialog();
+    try {
+      const r = await invoke('acct_resolve', { id: k.id, keep: btn.dataset.k });
+      H.toast(r.status === 'sent' ? 'Done' : r.status === 'waiting' ? 'Kept here; it goes to the server when it can be reached' : 'Still changed in two places');
+    } catch (x) { H.toast(String(x), 5000); }
+    await loadMeta(); await load();
+    const next = S.accounts.conflicts?.find(c => c.id !== k.id);
+    if (next) showConflict(next);
+  });
+}
+function savedText(r, cal) {
+  if (r.status === 'conflict') { showConflict(r.conflict); return null; }
+  if (r.status === 'waiting') return `Saved on this computer: it goes to ${cal?.accountName || 'the server'} when it can be reached`;
+  return null;
 }
 
 // ------------------------------------------------------------------------------------------------ drawing
@@ -155,10 +225,12 @@ function render() {
     $(`#view [data-date="${CSS.escape(keep)}"], #view [data-key="${CSS.escape(keep)}"]`)?.focus({ preventScroll: true });
   }
 }
+const syncText = o => o.sync === 'conflict' ? 'Changed in two places: choose which to keep' : o.sync === 'pending' ? 'Not sent yet' : '';
 function evCard(o) {
-  return `<button class="ev f" style="--c:${esc(colorOf(o))}" data-ev="${esc(o.id)}" data-occ="${esc(o.occ)}" data-key="ev:${esc(o.id)}:${esc(o.occ)}">
-    <span class="bar"></span><span class="tt">${esc(o.title)}${o.recurring ? icon('repeat') : ''}${o.reminders?.length ? icon('bell') : ''}</span>
-    <span class="wh">${esc(timeText(o))}</span>${o.location ? `<span class="lo">${esc(o.location)}</span>` : ''}</button>`;
+  const st = syncText(o), cal = acctCal(o.calendar);
+  return `<button class="ev f ${o.sync === 'conflict' ? 'conflict' : ''}" style="--c:${esc(colorOf(o))}" data-ev="${esc(o.id)}" data-occ="${esc(o.occ)}" data-key="ev:${esc(o.id)}:${esc(o.occ)}">
+    <span class="bar"></span><span class="tt">${esc(o.title)}${o.recurring ? icon('repeat') : ''}${o.reminders?.length ? icon('bell') : ''}${o.sync === 'conflict' ? icon('flag') : o.sync === 'pending' ? icon('refresh') : ''}</span>
+    <span class="wh">${esc(timeText(o))}${cal ? ` · ${esc(cal.name)}` : ''}</span>${o.location ? `<span class="lo">${esc(o.location)}</span>` : ''}${st ? `<span class="st">${esc(st)}</span>` : ''}</button>`;
 }
 function drawMonth() {
   const [a] = range(); const today = new Date();
@@ -168,7 +240,7 @@ function drawMonth() {
     const d = addDays(a, i), list = onDay(d);
     const shown = list.slice(0, 3);
     cells += `<div class="cell f ${d.getMonth() !== S.cur.getMonth() ? 'out' : ''} ${sameDay(d, today) ? 'today' : ''} ${sameDay(d, S.cur) ? 'sel' : ''}" tabindex="0" data-date="${ymd(d)}" role="gridcell" aria-label="${esc(H.fmtDate(d, { year: true }))}">
-      <span class="dn">${d.getDate()}</span>${shown.map(o => `<span class="pill ${o.allDay ? 'all' : ''}" style="--c:${esc(colorOf(o))}">${o.allDay ? '' : esc(H.fmtTime(o.start, { noAp: true })) + ' '}${esc(o.title)}</span>`).join('')}${list.length > 3 ? `<span class="pill more">+${list.length - 3} more</span>` : ''}</div>`;
+      <span class="dn">${d.getDate()}</span>${shown.map(o => `<span class="pill ${o.allDay ? 'all' : ''} ${o.sync === 'conflict' ? 'conflict' : ''}" style="--c:${esc(colorOf(o))}">${o.allDay ? '' : esc(H.fmtTime(o.start, { noAp: true })) + ' '}${esc(o.title)}</span>`).join('')}${list.length > 3 ? `<span class="pill more">+${list.length - 3} more</span>` : ''}</div>`;
   }
   $('#view').innerHTML = `<div class="month"><div class="dow">${[0, 1, 2, 3, 4, 5, 6].map(i => `<span>${H.DAYS[(ws + i) % 7].slice(0, 3)}</span>`).join('')}</div><div class="cells">${cells}</div></div>`;
 }
@@ -202,7 +274,7 @@ function drawTime(n) {
   const heads = days.map(d => `<button class="head f ${sameDay(d, today) ? 'today' : ''} ${sameDay(d, S.cur) ? 'sel' : ''}" data-date="${ymd(d)}" data-act="pick-day"><div class="muted" style="font-size:.75em">${H.DAYS[d.getDay()].slice(0, 3)}</div><div class="d">${d.getDate()}</div></button>`).join('');
   const alld = days.map(d => `<div class="col">${onDay(d).filter(o => o.allDay).map(o => `<button class="pill all f" style="--c:${esc(colorOf(o))};text-align:left" data-ev="${esc(o.id)}" data-occ="${esc(o.occ)}" data-key="ev:${esc(o.id)}:${esc(o.occ)}:${ymd(d)}">${esc(o.title)}</button>`).join('')}</div>`).join('');
   const cols = days.map(d => {
-    const blocks = layoutDay(onDay(d), d).map(it => `<button class="blk f" style="--c:${esc(colorOf(it.o))};top:calc(${it.top} * var(--hh));height:calc(${Math.max(it.h, .4)} * var(--hh) - 2px);left:calc(${it.col / it.n * 100}% + 2px);width:calc(${100 / it.n}% - 4px)" data-ev="${esc(it.o.id)}" data-occ="${esc(it.o.occ)}" data-key="ev:${esc(it.o.id)}:${esc(it.o.occ)}"><b>${esc(it.o.title)}</b><span>${esc(H.fmtTime(it.o.start))}${it.o.location ? ' · ' + esc(it.o.location) : ''}</span></button>`).join('');
+    const blocks = layoutDay(onDay(d), d).map(it => `<button class="blk f ${it.o.sync === 'conflict' ? 'conflict' : ''}" style="--c:${esc(colorOf(it.o))};top:calc(${it.top} * var(--hh));height:calc(${Math.max(it.h, .4)} * var(--hh) - 2px);left:calc(${it.col / it.n * 100}% + 2px);width:calc(${100 / it.n}% - 4px)" data-ev="${esc(it.o.id)}" data-occ="${esc(it.o.occ)}" data-key="ev:${esc(it.o.id)}:${esc(it.o.occ)}"><b>${esc(it.o.title)}</b><span>${esc(H.fmtTime(it.o.start))}${it.o.location ? ' · ' + esc(it.o.location) : ''}</span></button>`).join('');
     const nl = sameDay(d, today) ? `<div class="nowline" style="top:calc(${(today.getHours() + today.getMinutes() / 60)} * var(--hh))"></div>` : '';
     return `<div class="day" data-day="${ymd(d)}">${blocks}${nl}</div>`;
   }).join('');
@@ -256,21 +328,36 @@ async function openEvent(id, occ) {
   let e = null;
   try { e = await invoke('cal_event', { id }); } catch { }
   if (!e) { H.toast('That event is gone'); load(); return; }
-  if (o?.readOnly || e.calendar !== 'local') { showDetails(e, o); return; }
+  if (o?.sync === 'conflict' || e.sync === 'conflict') { const k = S.accounts.conflicts.find(c => c.id === id); if (k) return showConflict(k); }
+  if (o?.readOnly || (e.calendar !== 'local' && !isAcct(e.calendar))) { showDetails(e, o); return; }
+  // A repeating event in an account's calendar: this time only, or every time (as other calendar apps ask).
+  if (isAcct(e.calendar) && o?.recurring) {
+    const d = H.dialog(`<h2>${esc(e.title || '(No title)')}</h2><p class="muted">It repeats. Change just ${esc(H.fmtDate(new Date(o.start), { short: true }))}, or every time?</p>
+      <div class="row end"><button class="btn f" data-a="cancel">Cancel</button><button class="btn f" data-a="this" data-autofocus>This time only</button><button class="btn primary f" data-a="all">Every time</button></div>`);
+    d.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-a]'); if (!b) return;
+      H.closeDialog();
+      if (b.dataset.a === 'this') editEvent({ ...e, title: o.title, location: o.location, notes: o.notes, allDay: o.allDay, start: iso(new Date(o.start), o.allDay), end: iso(new Date(o.end), o.allDay), tz: null, rrule: null, reminders: o.reminders || [] }, null, o, 'this');
+      else if (b.dataset.a === 'all') editEvent(e, null, o, 'all');
+    });
+    return;
+  }
   editEvent(e, null, o);
 }
 function showDetails(e, o) {
-  const sub = S.subs.find(s => s.id === e.calendar);
+  const sub = S.subs.find(s => s.id === e.calendar) || acctCal(e.calendar);
   const d = H.dialog(`<h2>${esc(e.title || '(No title)')}</h2><dl class="det">
     <dt>When</dt><dd>${esc(o ? (o.allDay ? H.fmtDate(new Date(o.start)) + ' · All day' : H.fmtDate(new Date(o.start)) + ' · ' + timeText(o)) : e.start)}</dd>
     ${e.rrule ? `<dt>Repeats</dt><dd>${esc(REPEATS.find(r => r[0] === splitRule(e.rrule).base)?.[1] || e.rrule)}</dd>` : ''}
     ${e.location ? `<dt>Where</dt><dd>${esc(e.location)}</dd>` : ''}${e.notes ? `<dt>Notes</dt><dd>${esc(e.notes)}</dd>` : ''}
-    <dt>Calendar</dt><dd>${esc(sub?.name || 'Subscribed calendar')} (read-only: it comes from the web)</dd></dl>
+    <dt>Calendar</dt><dd>${esc(sub?.name || 'Subscribed calendar')}${sub?.accountName ? ` · ${esc(sub.accountName)} (you can only look at this calendar)` : ' (read-only: it comes from the web)'}</dd></dl>
     <div class="row end"><button class="btn primary f" data-a="close" data-autofocus>Close</button></div>`);
   d.addEventListener('click', ev => { if (ev.target.closest('[data-a="close"]')) H.closeDialog(); });
 }
-function editEvent(e, at, o) {
+function editEvent(e, at, o, scope = 'all') {
   const isNew = !e;
+  const cals = writableCals();
+  let target = e ? e.calendar : (cals.find(c => c.id === S.lastCal) ? S.lastCal : 'local');
   if (isNew) {
     const s = at ? new Date(at) : (() => { const x = new Date(S.cur); const n = new Date(); x.setHours(sameDay(x, n) ? Math.min(23, n.getHours() + 1) : 9, 0, 0, 0); return x; })();
     e = { id: '', title: '', allDay: false, start: iso(s), end: iso(new Date(s.getTime() + 3600000)), rrule: null, reminders: S.settings.defaultReminder >= 0 ? [S.settings.defaultReminder ?? 10] : [], location: '', notes: '', tz: null, exdates: [] };
@@ -278,12 +365,16 @@ function editEvent(e, at, o) {
   const s = fromIso(e.start), en = fromIso(e.end || e.start);
   const rule = splitRule(e.rrule);
   const known = REPEATS.some(r => r[0] === rule.base);
-  const d = H.dialog(`<h2>${isNew ? 'New event' : 'Edit event'}${e.rrule && !isNew ? ' <span class="badge">repeats: changes apply to every time</span>' : ''}</h2>
+  const tc = acctCal(target);
+  const badge = scope === 'this' ? ' <span class="badge">this time only</span>' : e.rrule && !isNew ? ' <span class="badge">repeats: changes apply to every time</span>' : '';
+  const calField = isNew && cals.length > 1 ? `<div class="field"><label>Calendar</label><div class="chips calpick" id="calpick">${cals.map(c => `<button class="chip f ${c.id === target ? 'on' : ''}" data-cal="${esc(c.id)}" style="--c:${esc(c.color || 'var(--ember)')}"><span class="dot"></span>${esc(c.name)}${c.account ? `<small>${esc(c.account)}</small>` : ''}</button>`).join('')}</div></div>`
+    : tc ? `<div class="field"><label>Calendar</label><div class="muted">${esc(tc.name)} · ${esc(tc.accountName || '')}</div></div>` : '';
+  const d = H.dialog(`<h2>${isNew ? 'New event' : 'Edit event'}${badge}</h2>${calField}
     <div class="field"><input class="inp f" id="ttl" maxlength="200" placeholder="Title" value="${esc(e.title)}" autocomplete="off"></div>
     <div class="row" style="justify-content:space-between"><span class="label" style="margin:0">All day</span><button class="switch f ${e.allDay ? 'on' : ''}" id="allday" aria-label="All day"></button></div>
     <div class="field"><label>Starts</label><div class="spins">${dateSpins('s', s)}<span class="tpart spins" ${e.allDay ? 'hidden' : ''}>${timeSpins('s', s)}</span></div></div>
     <div class="field"><label>Ends</label><div class="spins">${dateSpins('e', e.allDay ? addDays(en, -1) : en)}<span class="tpart spins" ${e.allDay ? 'hidden' : ''}>${timeSpins('e', en)}</span></div></div>
-    <div class="field"><label>Repeats</label><div class="chips" id="rep">${REPEATS.map(([v, l]) => `<button class="chip f ${rule.base === v ? 'on' : ''}" data-rep="${esc(v)}">${l}</button>`).join('')}${known ? '' : `<button class="chip f on" data-rep="${esc(rule.base)}">Custom (from an import)</button>`}</div>
+    <div class="field" ${scope === 'this' ? 'hidden' : ''}><label>Repeats</label><div class="chips" id="rep">${REPEATS.map(([v, l]) => `<button class="chip f ${rule.base === v ? 'on' : ''}" data-rep="${esc(v)}">${l}</button>`).join('')}${known ? '' : `<button class="chip f on" data-rep="${esc(rule.base)}">Custom (from an import)</button>`}</div>
       <div class="chips" id="repend" style="margin-top:.45em" ${rule.base ? '' : 'hidden'}><button class="chip f ${rule.end === 'never' ? 'on' : ''}" data-end="never">Forever</button><button class="chip f ${rule.end === 'count' ? 'on' : ''}" data-end="count">A number of times</button><button class="chip f ${rule.end === 'until' ? 'on' : ''}" data-end="until">Until a date</button></div>
       <div class="spins" id="endcount" style="margin-top:.45em" ${rule.end === 'count' ? '' : 'hidden'}>${H.spin('cnt', rule.count, 2, 999, { cap: 'Times', wrap: false, pad: 0 })}</div>
       <div class="spins" id="enduntil" style="margin-top:.45em" ${rule.end === 'until' ? '' : 'hidden'}>${dateSpins('u', rule.until || addDays(s, 30))}</div></div>
@@ -305,6 +396,7 @@ function editEvent(e, at, o) {
   });
   d.addEventListener('click', async ev => {
     const b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.cal) { target = b.dataset.cal; $$('#calpick .chip', d).forEach(c => c.classList.toggle('on', c === b)); return; }
     if (b.id === 'allday') { b.classList.toggle('on'); $$('.tpart', d).forEach(t => t.hidden = b.classList.contains('on')); return; }
     if ('rep' in b.dataset) { $$('#rep .chip', d).forEach(c => c.classList.toggle('on', c === b)); $('#repend', d).hidden = !b.dataset.rep; if (!b.dataset.rep) { $('#endcount', d).hidden = $('#enduntil', d).hidden = true; } return; }
     if (b.dataset.end) { $$('#repend .chip', d).forEach(c => c.classList.toggle('on', c === b)); $('#endcount', d).hidden = b.dataset.end !== 'count'; $('#enduntil', d).hidden = b.dataset.end !== 'until'; return; }
@@ -323,12 +415,19 @@ function editEvent(e, at, o) {
         if (endKind === 'count') rrule += `;COUNT=${$('[data-spin="cnt"]', d).dataset.v}`;
         if (endKind === 'until') { const u = readSpins(d, 'u', false); rrule += `;UNTIL=${u.getFullYear()}${pad2(u.getMonth() + 1)}${pad2(u.getDate())}T235959`; }
       }
-      const ev2 = { ...e, title: $('#ttl', d).value.trim(), allDay: all, start: iso(st, all), end: iso(et, all), rrule, reminders: $$('#rem .chip.on', d).map(c => +c.dataset.rem), location: $('#loc', d).value.trim(), notes: $('#nts', d).value };
+      const ev2 = { ...e, calendar: target, title: $('#ttl', d).value.trim(), allDay: all, start: iso(st, all), end: iso(et, all), rrule: scope === 'this' ? null : rrule, reminders: $$('#rem .chip.on', d).map(c => +c.dataset.rem), location: $('#loc', d).value.trim(), notes: $('#nts', d).value };
       try {
-        await invoke('cal_put', { event: ev2 });
-        H.closeDialog(); S.cur = new Date(st); S.cur.setHours(0, 0, 0, 0); await load(); focusCursor();
-        H.toast(isNew ? 'Event added' : 'Saved');
-      } catch (x) { H.toast(String(x)); }
+        let note = null;
+        if (isAcct(target)) {
+          b.disabled = true;
+          const r = await invoke('acct_save', { event: ev2, scope, occ: scope === 'this' ? o?.occ : null });
+          H.closeDialog(); note = savedText(r, acctCal(target));
+          if (r.status === 'conflict') { await loadMeta(); load(); return; }
+        } else { await invoke('cal_put', { event: ev2 }); H.closeDialog(); }
+        if (isNew) { S.lastCal = target; try { localStorage.setItem('cal.lastCal', target); } catch { } }
+        S.cur = new Date(st); S.cur.setHours(0, 0, 0, 0); await loadMeta(); await load(); focusCursor();
+        H.toast(note || (isNew ? 'Event added' : 'Saved'), note ? 5000 : 3200);
+      } catch (x) { b.disabled = false; H.toast(String(x), 5000); }
     }
   });
 }
@@ -340,12 +439,18 @@ async function deleteEvent(e, o) {
       const b = ev.target.closest('[data-a]'); if (!b) return;
       H.closeDialog();
       if (b.dataset.a === 'cancel') return;
-      await invoke('cal_delete', { id: e.id, occ: b.dataset.a === 'one' ? o.occ : null }).catch(x => H.toast(String(x)));
-      load();
+      await removeEvent(e, b.dataset.a === 'one' ? o.occ : null);
     });
     return;
   }
-  if (await H.ask(`Delete "${e.title || '(No title)'}"?`, '', 'Delete', true)) { await invoke('cal_delete', { id: e.id, occ: null }).catch(x => H.toast(String(x))); load(); }
+  if (await H.ask(`Delete "${e.title || '(No title)'}"?`, isAcct(e.calendar) ? `It's deleted from ${acctCal(e.calendar)?.name || 'the calendar'} on every device.` : '', 'Delete', true)) await removeEvent(e, null);
+}
+async function removeEvent(e, occ) {
+  try {
+    if (isAcct(e.calendar)) { const r = await invoke('acct_delete', { id: e.id, occ }); const t = savedText(r, acctCal(e.calendar)); if (t) H.toast(t, 5000); }
+    else await invoke('cal_delete', { id: e.id, occ });
+  } catch (x) { H.toast(String(x), 5000); }
+  await loadMeta(); load();
 }
 
 // ------------------------------------------------------------------------------------------------ import, export, subscribe
@@ -355,6 +460,7 @@ function menu() {
     <button class="chip f" data-m="export">${icon('export')} Export to an .ics file<small>Your events, for another calendar app or a backup</small></button>
     <button class="chip f" data-m="subscribe">${icon('link')} Subscribe to a calendar<small>An online .ics address (holidays, a team, a sports schedule); kept up to date</small></button>
     <button class="chip f" data-m="subs">${icon('cal')} Subscribed calendars<small>${S.subs.length ? S.subs.length + ' subscribed' : 'None yet'}</small></button>
+    ${S.accounts.available ? `<button class="chip f" data-m="accounts">${icon('globe')} Online accounts' calendars<small>${S.accounts.calendars.length ? `${S.accounts.calendars.length} calendar${S.accounts.calendars.length === 1 ? '' : 's'}${S.accounts.waiting ? ` · ${S.accounts.waiting} change${S.accounts.waiting === 1 ? '' : 's'} not sent yet` : ''}` : 'Sign in in Settings › Accounts › Online accounts'}</small></button>` : ''}
     <button class="chip f" data-m="week">${icon('cal')} Weeks start on ${S.settings.weekStart === 0 ? 'Sunday' : 'Monday'}<small>Choose to switch to ${S.settings.weekStart === 0 ? 'Monday' : 'Sunday'}</small></button>
   </div><div class="row end"><button class="btn f" data-m="close">Close</button></div>`);
   d.addEventListener('click', async e => {
@@ -364,6 +470,7 @@ function menu() {
     if (m === 'import') return importDialog();
     if (m === 'subscribe') return subscribeDialog();
     if (m === 'subs') return subsDialog();
+    if (m === 'accounts') return accountsDialog();
     if (m === 'week') { S.settings.weekStart = S.settings.weekStart === 0 ? 1 : 0; await invoke('cal_settings', { settings: { weekStart: S.settings.weekStart } }).catch(() => { }); H.closeDialog(); load(); return; }
     if (m === 'export') { H.closeDialog(); try { const p = await invoke('cal_export'); H.toast(`Saved to ${p}`, 6000); } catch (x) { H.toast(String(x)); } }
   });
@@ -411,6 +518,21 @@ function subsDialog() {
     if (b.dataset.hide) { const s = S.subs.find(x => x.id === b.dataset.hide); await invoke('cal_sub_set', { id: s.id, hidden: !s.hidden }).catch(() => { }); }
     if (b.dataset.del && await H.ask('Unsubscribe?', 'Its events leave your calendar.', 'Unsubscribe', true)) await invoke('cal_unsubscribe', { id: b.dataset.del }).catch(() => { });
     await loadMeta(); load(); if (b.dataset.hide || b.dataset.del) { H.closeDialog(); subsDialog(); }
+  });
+}
+
+function accountsDialog() {
+  const list = S.accounts.calendars;
+  const d = H.dialog(`<h2>Online accounts' calendars</h2><p class="muted">The calendars of the accounts you signed in to in Settings › Accounts › Online accounts (with Calendar on). Changes you make are kept on this computer first and sent to the account; with no connection they wait, and they're never sent over a change made on another device.</p>
+    <div class="subs">${list.length ? list.map(c => `<div class="card sub" style="--c:${esc(c.color)}"><span class="dot"></span><div><b>${esc(c.name)}</b>${c.readOnly ? '<span class="tag">look only</span>' : ''}<div class="muted" style="font-size:.78em">${esc(c.accountName || '')}${c.updated ? ` · updated ${esc(H.ago ? H.ago(c.updated) : new Date(c.updated).toLocaleString())}` : ''}</div></div>
+      <div class="row"><button class="btn f" data-hide="${esc(c.id)}">${c.hidden ? 'Show' : 'Hide'}</button></div>${c.error ? `<div class="e">${esc(c.error)}</div>` : ''}</div>`).join('') : '<p class="muted">No calendars yet: add an account in Settings › Accounts › Online accounts and switch Calendar on.</p>'}</div>
+    ${S.accounts.waiting ? `<p class="muted">${S.accounts.waiting} change${S.accounts.waiting === 1 ? '' : 's'} made here not sent yet.</p>` : ''}
+    <div class="row end"><button class="btn f" data-a="sync">${icon('refresh')}Sync now</button><button class="btn primary f" data-a="close" data-autofocus>Done</button></div>`, { wide: true });
+  d.addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.a === 'close') { H.closeDialog(); return; }
+    if (b.dataset.a === 'sync') { b.disabled = true; H.closeDialog(); await syncAccounts(true); return; }
+    if (b.dataset.hide) { const c = acctCal(b.dataset.hide); await invoke('acct_cal_set', { id: c.id, hidden: !c.hidden }).catch(() => { }); await loadMeta(); load(); H.closeDialog(); accountsDialog(); }
   });
 }
 
@@ -499,7 +621,11 @@ async function openWith(o) {
 }
 
 // ------------------------------------------------------------------------------------------------ start
-loadMeta().then(() => setView(S.view)).then(() => invoke('init')).then(i => openWith(i && i.open)).catch(() => { });
+try { S.lastCal = localStorage.getItem('cal.lastCal') || ''; } catch { }
+loadMeta().then(() => setView(S.view)).then(() => invoke('init')).then(i => openWith(i && i.open))
+  .then(() => { if (S.accounts.conflicts?.length && !H.dialogOpen()) showConflict(S.accounts.conflicts[0]); })
+  .then(() => syncAccounts()).catch(() => { });
+setInterval(() => { if (!H.dialogOpen() && document.visibilityState === 'visible') syncAccounts(); }, 5 * 60 * 1000);
 
 // ------------------------------------------------------------------------------------------------ sample data (no app)
 window.DEMO = (() => {
@@ -514,6 +640,12 @@ window.DEMO = (() => {
   add('e5', 'Mum\'s birthday', ymd(addDays(t, 5)), ymd(addDays(t, 6)), { allDay: true, rrule: 'FREQ=YEARLY' });
   add('e6', 'Code review', iso(at(0, 15, 30)), iso(at(0, 16, 30)));
   add('e7', 'Holiday', ymd(addDays(t, 12)), ymd(addDays(t, 15)), { allDay: true, calendar: 'sub1', color: '#9bd36a' });
+  add('acct-demo|team', 'Team meeting', iso(at(1, 15)), iso(at(1, 16)), { calendar: 'acct-demo', color: '#0082c9', rrule: 'FREQ=WEEKLY' });
+  add('acct-demo|dentist', 'Dentist (check-up)', iso(at(3, 10)), iso(at(3, 11)), { calendar: 'acct-demo', color: '#0082c9', location: 'Smile Clinic', sync: /[?&]conflict/.test(location.search) ? 'conflict' : 'pending' });
+  const demoAccounts = { available: true, waiting: 1, calendars: [{ id: 'acct-demo', name: 'Personal', accountName: 'Nextcloud', color: '#0082c9', url: 'https://cloud.example.com/remote.php/dav/calendars/you/personal/', readOnly: false, updated: Date.now() - 600000, error: '' },
+    { id: 'acct-hol', name: 'Holidays', accountName: 'Google', color: '#9bd36a', url: 'https://apidata.googleusercontent.com/caldav/v2/x/events/', readOnly: true, updated: Date.now() - 600000, error: '' }],
+    conflicts: /[?&]conflict/.test(location.search) ? [{ id: 'acct-demo|dentist', calendar: 'acct-demo', calendarName: 'Personal', accountName: 'Nextcloud', why: 'changed',
+      mine: { title: 'Dentist (check-up)', start: iso(at(3, 15)), end: iso(at(3, 16)), location: 'Smile Clinic' }, theirs: { title: 'Dentist (Dr Lee is away)', start: iso(at(3, 10)), end: iso(at(3, 11)), location: 'Smile Clinic', tz: 'America/New_York' } }] : [] };
   const expand = (from, to) => {
     const out = [];
     for (const e of ev) {
@@ -529,7 +661,7 @@ window.DEMO = (() => {
       }
       for (const s of starts) {
         const a = s.getTime(), b = a + len;
-        if (a < to && b > from) out.push({ id: e.id, calendar: e.calendar, title: e.title, location: e.location, notes: e.notes, allDay: e.allDay, start: a, end: b, date: ymd(s), lastDate: ymd(new Date(b - (e.allDay ? 86400000 : 1))), occ: iso(s, e.allDay), recurring: !!e.rrule, readOnly: e.calendar !== 'local', color: e.color || '', reminders: e.reminders });
+        if (a < to && b > from) out.push({ id: e.id, sync: e.sync || '', calendar: e.calendar, title: e.title, location: e.location, notes: e.notes, allDay: e.allDay, start: a, end: b, date: ymd(s), lastDate: ymd(new Date(b - (e.allDay ? 86400000 : 1))), occ: iso(s, e.allDay), recurring: !!e.rrule, readOnly: e.calendar !== 'local' && !e.calendar.startsWith('acct-'), color: e.color || '', reminders: e.reminders });
       }
     }
     return out.sort((x, y) => x.start - y.start);
@@ -537,7 +669,12 @@ window.DEMO = (() => {
   return (cmd, a) => {
     switch (cmd) {
       case 'init': return { app: 'calendar', open: /[?&]open=ics/.test(location.search) ? { kind: 'file', value: '/home/you/Downloads/school-term.ics' } : null };
-      case 'cal_get': return { settings: { weekStart: 1, defaultReminder: 10 }, subs: [{ id: 'sub1', name: 'Holidays', url: 'https://example.com/holidays.ics', color: '#9bd36a', updated: Date.now() - 3600000, error: '' }], mtime: 1 };
+      case 'cal_get': return { settings: { weekStart: 1, defaultReminder: 10 }, subs: [{ id: 'sub1', name: 'Holidays', url: 'https://example.com/holidays.ics', color: '#9bd36a', updated: Date.now() - 3600000, error: '' }], mtime: 1, accounts: demoAccounts };
+      case 'acct_refresh': return demoAccounts;
+      case 'acct_save': { const e = { ...a.event, id: a.event.id || 'acct-demo|n' + Date.now() }; const i = ev.findIndex(x => x.id === e.id); if (i >= 0) ev[i] = e; else ev.push(e); return { id: e.id, status: 'waiting', error: '' }; }
+      case 'acct_delete': { const i = ev.findIndex(x => x.id === a.id); if (i >= 0) ev.splice(i, 1); return { status: 'sent' }; }
+      case 'acct_resolve': demoAccounts.conflicts = []; return { status: 'sent' };
+      case 'acct_cal_set': return null;
       case 'cal_range': return expand(a.from, a.to);
       case 'cal_event': return ev.find(e => e.id === a.id) || null;
       case 'cal_put': { const e = { ...a.event, id: a.event.id || 'n' + Date.now() }; const i = ev.findIndex(x => x.id === e.id); if (i >= 0) ev[i] = e; else ev.push(e); return e; }

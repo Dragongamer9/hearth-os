@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       shots:
-        description: 'Up to 4 screenshots to put on the run as notices (small copies), e.g. ring,clock,calendar,notes'
+        description: 'Up to 4 screenshots to put on the run as notices (small copies), e.g. ring,clock,calendar,notes or acct-conflict,acct-month,acct-agenda,acct-editor'
         type: string
         default: ''
 
@@ -152,6 +152,66 @@ jobs:
             sleep 1
           done
           echo "::notice title=window classes::$classes"
+      # Online accounts' calendars (docs/ONLINE-ACCOUNTS.md), from end to end: the fake CalDAV server in
+      # hosts/linux/test/fake_dav.py on this machine, the real hearth-accounts with a stand-in keyring (a file here,
+      # holding only the fake server's throwaway password), and Calendar's own code (accounts.rs): changes sent with
+      # If-Match, a new event, "this time only", one time deleted, a change kept with no connection and sent later,
+      # and a change made on "another device" in between: a conflict, nothing overwritten. Then the app at 1920x1080.
+      - name: Online accounts' calendars (fake CalDAV server, screenshots)
+        run: |
+          set -o pipefail
+          export HEARTH_TIME_HOME="$RUNNER_TEMP/acct"
+          mkdir -p "$HEARTH_TIME_HOME" "$RUNNER_TEMP/abin" shots
+          python3 ../linux/test/fake_dav.py 5233 > fake-dav.log 2>&1 &
+          for i in $(seq 30); do curl -s -o /dev/null http://127.0.0.1:5233/ && break; sleep 1; done
+          cat > "$RUNNER_TEMP/abin/secret-tool" <<'PY'
+          #!/usr/bin/env python3
+          import json, os, sys
+          db = os.environ['FAKE_KEYRING']
+          try:
+              items = json.load(open(db))
+          except Exception:
+              items = {}
+          cmd, attrs = sys.argv[1], [a for a in sys.argv[2:] if not a.startswith('--label=')]
+          key = json.dumps(attrs)
+          if cmd == 'store':
+              items[key] = sys.stdin.read()
+          elif cmd == 'lookup':
+              if key not in items:
+                  sys.exit(1)
+              sys.stdout.write(items[key]); sys.exit(0)
+          elif cmd == 'clear':
+              items.pop(key, None)
+          json.dump(items, open(db, 'w'))
+          PY
+          printf '#!/bin/sh\nexec python3 %s "$@"\n' "$GITHUB_WORKSPACE/hosts/linux/desktop/shell/hearth_accounts.py" > "$RUNNER_TEMP/abin/hearth-accounts"
+          chmod +x "$RUNNER_TEMP/abin/secret-tool" "$RUNNER_TEMP/abin/hearth-accounts"
+          export HEARTH_SECRET_TOOL="$RUNNER_TEMP/abin/secret-tool" FAKE_KEYRING="$RUNNER_TEMP/abin/keyring.json" \
+            HEARTH_ACCOUNTS_FILE="$HEARTH_TIME_HOME/online-accounts.json" XDG_STATE_HOME="$HEARTH_TIME_HOME/state" \
+            HEARTH_ACCOUNTS_BIN="$RUNNER_TEMP/abin/hearth-accounts"
+          echo '{"server": "http://127.0.0.1:5233/", "user": "bob", "password": "ci-only-fake-dav-password"}' | "$HEARTH_ACCOUNTS_BIN" add-dav | tail -1
+          HEARTH_TIME_DAV_TEST=1 HEARTH_TIME_DAV_CONTROL=http://127.0.0.1:5233 cargo test --lib accounts:: -- --nocapture --test-threads=1 2>&1 | tee acct.log \
+            || { echo "::error title=account calendars::$(grep -E '(panicked|assert|error)' -A8 acct.log | head -40 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=account calendars::$(grep -E '^sent, a new event|^test result' acct.log | tr '\n' ' ' | cut -c1-1500)"
+          # The taskbar's calendar (hearth-time --events) has the account's events too.
+          out=$(./target/release/hearth-time --events "$(date +%F)" "$(date -d '+21 days' +%F)")
+          echo "$out" | python3 -c 'import json,sys; t=[e["title"] for e in json.load(sys.stdin)["events"]]; print(t); assert "Haircut with Sam" in t and "Lisbon trip" in t, t'
+          export DISPLAY=:96 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :96 -screen 0 1920x1080x24 >/dev/null 2>&1 &
+          sleep 2
+          shot() { import -window root "shots/$1.png" || true; }
+          dbus-run-session -- ./target/release/hearth-time --app calendar > run-acct.log 2>&1 &
+          sleep 10
+          w=$(xdotool search --onlyvisible --name '^Calendar$' | tail -1)
+          xdotool windowmove "$w" 0 0 windowsize "$w" 1920 1080 2>/dev/null || true
+          xdotool windowactivate --sync "$w" 2>/dev/null || true
+          sleep 3; shot acct-conflict
+          xdotool key Escape; sleep 1; xdotool key m; sleep 2; shot acct-month
+          xdotool key a; sleep 2; shot acct-agenda
+          xdotool key w; sleep 2; shot acct-week
+          xdotool key n; sleep 2; shot acct-editor
+          pkill -f 'hearth-time --app calendar' || true
+          python3 -c "import json; v=json.load(open('$HEARTH_TIME_HOME/data/hearth-calendar/accounts.json')); k=[o for l in v['objects'].values() for o in l if o.get('conflict')]; assert len(k)==1, k; print('conflict kept:', k[0]['conflict']['why'])"
       # Started by hand with "shots": a small copy of a screenshot as notices (base64 JPEG in pieces; at most 10 notices
       # a step), for looking at it where the artifact can't be downloaded.
       - name: Screenshot 1 as notices
