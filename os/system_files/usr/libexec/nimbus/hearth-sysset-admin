@@ -5,8 +5,9 @@ own command line; each command does one narrow job, checks its input and runs pr
 
   firmware-refresh                 fwupd's list of firmware from the LVFS (fwupdmgr refresh --force)
   firmware-update DEVICE_ID        install the newest firmware for one device (fwupdmgr update ID -y --no-reboot-check:
-                                   never restarts by itself). System firmware (UEFI) only on mains power. Always asks
-                                   for an administrator's password (49-hearth-admin.rules)
+                                   never restarts by itself). Always asks for an administrator's password
+                                   (49-hearth-admin.rules). System firmware (is_system_firmware: UEFI, flashrom, an
+                                   internal part updated at restart) is refused in 1.14: it touches booting
   locale KEY=VALUE...              the system's language and formats (localectl set-locale): LANG, LC_NUMERIC, LC_TIME,
                                    LC_MONETARY, LC_MEASUREMENT, LC_PAPER; each VALUE one the system has (locale -a).
                                    Used from the next sign-in
@@ -95,6 +96,14 @@ def firmware_refresh():
     print(json.dumps({'ok': True}))
 
 
+def is_system_firmware(dev):
+    """The one rule for "system firmware" (also in hearth-sysset-admin and the page): the PC's own firmware (UEFI
+    capsules, flashrom) or an internal part that is only updated while the PC restarts. These touch how the PC starts."""
+    flags = dev.get('Flags') or []
+    plugin = dev.get('Plugin') or ''
+    return plugin.startswith('uefi') or plugin == 'flashrom' or ('internal' in flags and 'needs-reboot' in flags)
+
+
 def device_is_system(device_id):
     code, out = run(['fwupdmgr', 'get-devices', '--json'], timeout=120)
     try:
@@ -103,7 +112,7 @@ def device_is_system(device_id):
         devs = []
     for d in devs:
         if d.get('DeviceId') == device_id:
-            return (d.get('Plugin') or '').startswith('uefi') or d.get('Plugin') == 'flashrom', True
+            return is_system_firmware(d), True
     return False, False
 
 
@@ -114,8 +123,11 @@ def firmware_update(device_id):
     system, found = device_is_system(device_id)
     if not found:
         fail('fwupd doesn\'t know that device (look again)')
-    if system and not on_mains():
-        fail('plug in the charger first: system firmware is only updated on mains power')
+    if system:
+        # 1.14: the PC's own firmware changes how it starts (the owner's rule: an update must never leave a device unable
+        # to start), so it isn't installed from Hearth; Settings shows it with this reason. on_mains() stays for later.
+        fail('system firmware isn\'t installed from Hearth yet: it changes how this PC starts. Back up, then use your '
+             'PC maker\'s update tool or its firmware setup')
     print('log: updating firmware for %s' % device_id, flush=True)
     code, out = run(['fwupdmgr', 'update', device_id, '-y', '--no-reboot-check'], timeout=1800)
     if code != 0:
@@ -247,6 +259,31 @@ def picture_kind(data):
     return None
 
 
+MAX_SIDE = 8192
+
+
+def picture_size(data):
+    """(width, height) from a PNG's IHDR or a JPEG's frame header, or None when it can't be read."""
+    if data.startswith(b'\x89PNG\r\n\x1a\n') and len(data) >= 24 and data[12:16] == b'IHDR':
+        return int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
+    if data.startswith(b'\xff\xd8'):
+        i = 2
+        while i + 9 < len(data):
+            if data[i] != 0xFF:
+                return None
+            marker = data[i + 1]
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                i += 2
+                continue
+            seg = int.from_bytes(data[i + 2:i + 4], 'big')
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                return int.from_bytes(data[i + 7:i + 9], 'big'), int.from_bytes(data[i + 5:i + 7], 'big')
+            if seg < 2:
+                return None
+            i += 2 + seg
+    return None
+
+
 def login_background(data, directory=None):
     directory = directory or LOGIN_DIR
     path = os.path.join(directory, 'background')
@@ -260,6 +297,9 @@ def login_background(data, directory=None):
         raise ValueError('the picture is too big (20 MB at most)')
     if not picture_kind(data):
         raise ValueError('use a PNG or JPEG picture')
+    size = picture_size(data)
+    if not size or not all(0 < x <= MAX_SIDE for x in size):
+        raise ValueError('the picture can be up to %d by %d pixels' % (MAX_SIDE, MAX_SIDE))
     os.makedirs(directory, mode=0o755, exist_ok=True)
     tmp = path + '.tmp'
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)

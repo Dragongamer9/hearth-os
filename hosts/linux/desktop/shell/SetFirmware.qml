@@ -1,7 +1,8 @@
 // Hearth Settings › Privacy & security › Firmware & device security: Secure Boot, the TPM and fwupd's Host Security ID
 // (read only), and firmware for this PC's parts from the LVFS (fwupd): what's there, what has an update, and installing
 // one when you press (through hearth-admin, which always asks for an administrator's password and never restarts by
-// itself). System firmware (UEFI) asks twice, only on mains power, and is put in at the next restart by the PC itself.
+// itself). System firmware (UEFI, flashrom, internal parts updated at restart: hearth-firmware is_system_firmware) is
+// shown with its update but not installed from Hearth in 1.14: it changes how the PC starts (docs/SYSTEM-SETTINGS.md).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -92,7 +93,7 @@ SetPage {
                     icon: dr.modelData.system ? "cpu" : "box"
                     title: dr.modelData.name
                     sub: (dr.modelData.vendor ? dr.modelData.vendor + " · " : "") + (dr.modelData.version ? "Version " + dr.modelData.version : "") + (dr.modelData.update ? " → " + dr.modelData.update.version : dr.modelData.updatable ? " · up to date" : "")
-                    chip: dr.modelData.update ? "Update" : ""
+                    chip: dr.modelData.update ? (dr.modelData.system ? "Update (not from Hearth)" : "Update") : ""
                     chipKind: "warn"
                     onActivated: { page.picked = page.picked === dr.modelData.id ? "" : dr.modelData.id; page.confirm = ""; }
                 }
@@ -108,22 +109,22 @@ SetPage {
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
                     }
                     SetRow {
-                        visible: !!dr.modelData.update && page.confirm === ""
+                        visible: !!dr.modelData.update && dr.modelData.system
+                        interactive: false; chevron: false; icon: "info"
+                        title: "Not installed from Hearth"
+                        sub: "System firmware changes how this PC starts. Back up first (Updates & recovery › Backup and help), then use your PC maker's update tool or its firmware setup"
+                    }
+                    SetRow {
+                        visible: !!dr.modelData.update && dr.modelData.installable && page.confirm === ""
                         icon: "update"; chevron: false; title: "Update to " + (dr.modelData.update ? dr.modelData.update.version : "")
-                        sub: dr.modelData.system ? "System firmware: put in by the PC while it restarts. Keep it plugged in" : "Takes a minute; keep the device connected"
+                        sub: "Takes a minute; keep the device connected"
                         onActivated: page.confirm = dr.modelData.id
                     }
                     SetRow {
-                        visible: page.confirm === dr.modelData.id
-                        icon: "warn"; danger: dr.modelData.system; chevron: false
-                        title: dr.modelData.system ? "This changes your PC's own firmware. Continue?" : "Yes, update " + dr.modelData.name
-                        sub: dr.modelData.system ? "Hearth OS stays as it is. Don't turn the PC off while the firmware updater runs at the restart" : "Asks for an administrator's password"
-                        onActivated: { if (dr.modelData.system) page.confirm = dr.modelData.id + "!"; else page.update(dr.modelData); }
-                    }
-                    SetRow {
-                        visible: page.confirm === dr.modelData.id + "!"
-                        icon: "update"; danger: true; chevron: false; title: "Yes, update the system firmware"
-                        sub: page.st && page.st.power.ac === false ? "Plug in the charger first" : "Asks for an administrator's password; nothing restarts until you do"
+                        visible: page.confirm === dr.modelData.id && dr.modelData.installable
+                        icon: "warn"; chevron: false
+                        title: "Yes, update " + dr.modelData.name
+                        sub: "Asks for an administrator's password; nothing restarts by itself"
                         onActivated: page.update(dr.modelData)
                     }
                     SetRow { visible: page.confirm !== ""; title: "Cancel"; chevron: false; onActivated: page.confirm = "" }

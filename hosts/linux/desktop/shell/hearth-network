@@ -61,8 +61,10 @@ class Fail(Exception):
 
 
 def run(cmd, input=None, timeout=60):
+    # HEARTH_INPUT (SetJob's copy of stdin: maybe a VPN or hotspot password) never reaches nmcli's environment.
+    env = {k: v for k, v in os.environ.items() if k != 'HEARTH_INPUT'}
     try:
-        p = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout, env=env)
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, '', str(e)
     return p.returncode, p.stdout, p.stderr
@@ -401,6 +403,8 @@ def hotspot_check(req):
         raise Fail('the name is 1 to 32 letters')
     if pw and (not 8 <= len(pw) <= 63 or not all(32 <= ord(ch) < 127 for ch in pw)):
         raise Fail('the password is 8 to 63 letters, numbers or symbols')
+    if pw != pw.strip():
+        raise Fail("the password can't start or end with a space")
     if band not in ('', 'bg', 'a'):
         raise Fail('the band is 2.4 GHz (bg) or 5 GHz (a)')
     return ssid, pw, band
@@ -625,7 +629,7 @@ def proxy_set(req):
 
 
 def stdin_json():
-    raw = os.environ.get('HEARTH_INPUT')
+    raw = os.environ.pop('HEARTH_INPUT', None)
     if raw is None:
         raw = '' if sys.stdin.isatty() else sys.stdin.read()
     if not raw.strip():

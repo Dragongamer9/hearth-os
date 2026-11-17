@@ -23,11 +23,14 @@ Scope {
         onNotification: n => {
             // Each app's settings (1.14, NotifyRules.qml): not allowed = not kept or shown at all (urgent ones too);
             // low priority = only the list; high = pops up even with Do Not Disturb; a sound when it pops up.
+            // Hearth's own are always allowed, and Hearth's own urgent ones always pop up (NotifyRules.isHearth).
             const rule = NotifyRules.rule(n.appName);
+            const critical = n.urgency === NotificationUrgency.Critical;
             if (!rule.allow) { n.dismiss(); return; }
             DeskState.remember(n, rule.lockScreen);
-            const urgent = n.urgency === NotificationUrgency.Critical || rule.priority === "high";
-            if (rule.priority === "low" && n.urgency !== NotificationUrgency.Critical) return;
+            const urgent = critical || rule.priority === "high";
+            if (critical && NotifyRules.isHearth(n.appName)) { n.tracked = true; return; }
+            if (rule.priority === "low" && !critical) return;
             if ((DeskState.dnd || DeskState.isMuted(n.appName)) && !urgent) return;
             n.tracked = true;
             if (rule.sound && !DeskState.dnd) NotifyRules.playSound();

@@ -102,6 +102,20 @@ class Network(Home):
         with self.assertRaises(self.n.Fail):
             self.n.vpn_up('$(reboot)')
 
+    def test_hearth_input_never_reaches_nmcli(self):
+        seen = {}
+        class P:
+            returncode = 0; stdout = ''; stderr = ''
+        def fake(cmd, **kw):
+            seen['env'] = kw.get('env')
+            return P()
+        with mock.patch.dict(os.environ, {'HEARTH_INPUT': '{"password": "s3cret"}'}), mock.patch.object(self.n.subprocess, 'run', fake):
+            self.assertEqual(self.n.stdin_json(), {'password': 's3cret'})
+            self.assertNotIn('HEARTH_INPUT', os.environ)
+            os.environ['HEARTH_INPUT'] = 'again'
+            self.n.run(['nmcli', 'device'])
+        self.assertNotIn('HEARTH_INPUT', seen['env'])
+
     def test_vpn_import_checks_the_file_and_never_autoconnects(self):
         d = os.path.join(self.home, 'Downloads'); os.makedirs(d)
         wg = os.path.join(d, 'home-vpn.conf'); open(wg, 'w').write('[Interface]\n')
@@ -168,7 +182,8 @@ class Network(Home):
         self.assertIn('ap', add); self.assertIn('shared', add)
         self.assertEqual(add[add.index('connection.autoconnect') + 1], 'no')   # never starts by itself
         for bad in ({'ssid': '', 'password': '12345678'}, {'ssid': 'x' * 33, 'password': '12345678'},
-                    {'ssid': 'Den', 'password': 'short'}, {'ssid': 'Den', 'password': 'émoji-passé'}, {'ssid': 'Den', 'band': '6g'}):
+                    {'ssid': 'Den', 'password': 'short'}, {'ssid': 'Den', 'password': 'émoji-passé'}, {'ssid': 'Den', 'band': '6g'},
+                    {'ssid': 'Den', 'password': ' leading1'}, {'ssid': 'Den', 'password': 'trailing1 '}):
             with self.assertRaises(self.n.Fail, msg=bad):
                 self.n.hotspot_check(bad)
 
@@ -320,13 +335,22 @@ class SysAdmin(Home):
 
     def test_login_background(self):
         d = os.path.join(self.home, 'login')
-        png = b'\x89PNG\r\n\x1a\n' + b'0' * 100
+        png = b'\x89PNG\r\n\x1a\n' + b'\x00\x00\x00\rIHDR' + (1920).to_bytes(4, 'big') + (1080).to_bytes(4, 'big') + b'0' * 100
         r = self.a.login_background(png, d)
         self.assertEqual(open(r['background'], 'rb').read(), png)
         self.assertEqual(os.stat(r['background']).st_mode & 0o777, 0o644)   # the greeter (sddm) reads it
         with self.assertRaises(ValueError):
             self.a.login_background(b'<svg/>', d)
         self.assertEqual(open(r['background'], 'rb').read(), png)           # a bad picture changes nothing
+        huge = b'\x89PNG\r\n\x1a\n' + b'\x00\x00\x00\rIHDR' + (20000).to_bytes(4, 'big') + (1000).to_bytes(4, 'big') + b'0' * 10
+        with self.assertRaises(ValueError):
+            self.a.login_background(huge, d)                               # over 8192 a side
+        jpg = b'\xff\xd8\xff\xe0\x00\x10' + b'J' * 14 + b'\xff\xc0\x00\x11\x08' + (9000).to_bytes(2, 'big') + (100).to_bytes(2, 'big') + b'\x03' + b'0' * 9
+        self.assertEqual(self.a.picture_size(jpg), (100, 9000))
+        with self.assertRaises(ValueError):
+            self.a.login_background(jpg, d)
+        self.assertIn('sourceSize.width: 3840; sourceSize.height: 2160',
+                      (ROOT / 'os' / 'system_files' / 'usr' / 'share' / 'sddm' / 'themes' / 'hearth' / 'Main.qml').read_text())
         self.assertEqual(self.a.login_background(b'', d)['background'], '')
         self.assertFalse(os.path.exists(os.path.join(d, 'background')))
 
@@ -343,14 +367,27 @@ class SysAdmin(Home):
         with mock.patch.dict(os.environ, {'PKEXEC_UID': str(os.getuid())}), mock.patch.object(self.a, 'run', fake):
             out = io.StringIO()
             with redirect_stdout(out), self.assertRaises(SystemExit):
-                self.a.firmware_update('a' * 40)            # system firmware on battery: refused
-            self.assertIn('charger', out.getvalue())
+                self.a.firmware_update('a' * 40)            # system firmware: never from Hearth in 1.14
+            self.assertIn("isn't installed from Hearth", out.getvalue())
             self.assertFalse(any('update' in c for c in calls))
             with redirect_stdout(io.StringIO()):
                 self.a.firmware_update('b' * 40)
             self.assertEqual(calls[-1], ['fwupdmgr', 'update', 'b' * 40, '-y', '--no-reboot-check'])
             with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
                 self.a.firmware_update('b' * 40 + ' --force')
+
+    def test_one_rule_for_system_firmware(self):
+        fw = load(SHELL / 'hearth-firmware', 'hearth_firmware_rule')
+        cases = [({'Plugin': 'uefi_capsule'}, True), ({'Plugin': 'uefi_dbx'}, True), ({'Plugin': 'flashrom'}, True),
+                 ({'Plugin': 'nvme', 'Flags': ['internal', 'needs-reboot']}, True), ({'Plugin': 'nvme', 'Flags': ['internal']}, False),
+                 ({'Plugin': 'logitech_hidpp', 'Flags': ['updatable']}, False)]
+        for dev, want in cases:
+            self.assertEqual(self.a.is_system_firmware(dev), want, dev)
+            self.assertEqual(fw.is_system_firmware(dev), want, dev)
+        ds = fw.parse_devices(DEVICES, UPDATES)
+        self.assertEqual({d['name']: d['installable'] for d in ds}, {'Unifying Receiver': True, 'System Firmware': False, 'TPM': False})
+        self.assertIn('docs/SYSTEM-SETTINGS.md', (SHELL / 'SetFirmware.qml').read_text())
+        self.assertIn('never installs', (ROOT / 'docs' / 'SYSTEM-SETTINGS.md').read_text())
 
     def test_hearth_admin_hands_these_on(self):
         src = (NIMBUS / 'hearth-admin').read_text()
@@ -515,7 +552,7 @@ class Services(Home):
             self.s.set_('syncthing.service', False)
             self.assertIn(['systemctl', '--user', 'disable', '--now', 'syncthing.service'], calls)
             self.assertFalse(any('mask' in c for c in calls))
-            for bad in ('pipewire.service', 'hearth-companion.service', 'x; reboot.service', 'nimbus-shell.service', 'thing.timer'):
+            for bad in ('pipewire.service', 'speech-dispatcher.service', 'obex.service', 'hearth-companion.service', 'x; reboot.service', 'nimbus-shell.service', 'thing.timer'):
                 with self.assertRaises(self.s.Fail, msg=bad):
                     self.s.set_(bad, False)
             with self.assertRaises(self.s.Fail):
@@ -682,7 +719,8 @@ class NotifyApps(Home):
         self.n.reset('Discord')
         self.assertEqual(self.n.get()['apps'], {})
         self.assertTrue(os.path.exists(self.n.FILE + '.bak'))
-        for bad in (('Discord', 'volume', 'on'), ('Discord', 'priority', 'urgent'), ('', 'sound', 'on'), ('a\nb', 'sound', 'on')):
+        for bad in (('Discord', 'volume', 'on'), ('Discord', 'priority', 'urgent'), ('', 'sound', 'on'), ('a\nb', 'sound', 'on'),
+                    ('Hearth', 'allow', 'off'), ('Hearth settings', 'allow', 'off'), ('Task Manager', 'allow', 'off')):
             with self.assertRaises(self.n.Fail):
                 self.n.set_(*bad)
 
@@ -690,6 +728,8 @@ class NotifyApps(Home):
         q = (SHELL / 'Notifications.qml').read_text()
         self.assertIn('const rule = NotifyRules.rule(n.appName);', q)
         self.assertIn('if (!rule.allow) { n.dismiss(); return; }', q)
+        self.assertIn('if (critical && NotifyRules.isHearth(n.appName)) { n.tracked = true; return; }', q)
+        self.assertIn('if (isHearth(app)) r.allow = true;', (SHELL / 'NotifyRules.qml').read_text())
         self.assertIn('rule.priority === "high"', q)
         lock = (SHELL / 'Lock.qml').read_text()
         self.assertIn('h.lock && h.time >= root.lockedAt', lock)
@@ -705,6 +745,7 @@ class Restore(unittest.TestCase):
         r = (SHELL / 'SessionRestore.qml').read_text()
         self.assertIn('if (Settings.restoreApps) startTimer.restart(); else restored = true;', r)
         self.assertIn('hearth-apps-restored', r)
+        self.assertIn('typeof WinList !== "undefined"', r)
         self.assertRegex(r, r'skip: /\^\(steam')
         self.assertIn('Settings.restoreApps = v', (SHELL / 'SetStartup.qml').read_text())
         self.assertIn('SessionRestore {}', (SHELL / 'shell.qml').read_text())

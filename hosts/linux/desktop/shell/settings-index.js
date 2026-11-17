@@ -676,9 +676,10 @@ var ENTRIES = [
 "i": "info"
 },
 {
-"t": "Yes, update the system firmware",
+"t": "Not installed from Hearth",
 "p": "firmware",
-"i": "update"
+"d": "System firmware changes how this PC starts. Back up first (Updates & recovery › Backup and help), then use your PC maker's update tool or its firmware setup",
+"i": "info"
 },
 {
 "t": "Cancel",
@@ -2395,6 +2396,11 @@ var ENTRIES = [
 "t": "Notifications",
 "p": "notifications",
 "d": "Off: nothing from this app is shown or kept, urgent ones neither"
+},
+{
+"t": "Always allowed",
+"p": "notifications",
+"d": "Hearth's own messages (warnings, pairing requests, settings put back) can't be turned off; its urgent ones always pop up"
 },
 {
 "t": "Pop-ups",

@@ -47,6 +47,7 @@ SetPage {
                 visible: !!page.st && page.st.background !== ""
                 source: page.st && page.st.background ? "file://" + page.st.background + "?" + page.bust : ""
                 fillMode: Image.PreserveAspectCrop; asynchronous: true; cache: false
+                sourceSize.width: 1280; sourceSize.height: 720
             }
             Rectangle { anchors.fill: parent; visible: !!page.st && page.st.background !== ""; color: "#000000"; opacity: 0.45 }
             Column {

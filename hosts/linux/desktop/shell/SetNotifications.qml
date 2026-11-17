@@ -65,9 +65,15 @@ SetPage {
                 title: modelData
                 sub: page.ruleText(modelData)
                 SetSwitch {
+                    visible: !NotifyRules.isHearth(ax.modelData)
                     title: "Notifications"; sub: "Off: nothing from this app is shown or kept, urgent ones neither"
                     checked: ax.r.allow
                     onToggled: v => page.setRule(ax.modelData, "allow", v ? "on" : "off")
+                }
+                SetRow {
+                    visible: NotifyRules.isHearth(ax.modelData)
+                    interactive: false; chevron: false
+                    title: "Always allowed"; sub: "Hearth's own messages (warnings, pairing requests, settings put back) can't be turned off; its urgent ones always pop up"
                 }
                 SetSwitch {
                     visible: ax.r.allow
