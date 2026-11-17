@@ -49,7 +49,7 @@ jobs:
           # The same steps as the image (os-bases/peppermint/build.sh): desktop/kwin-lock/install.sh.
           apt-get install -y -qq --no-install-recommends binutils python3 >/dev/null 2>&1
           bash hosts/linux/desktop/kwin-lock/install.sh hosts/linux/desktop/kwin-lock > /tmp/install.log 2>&1; irc=$?
-          echo "::notice title=Debian install.sh::exit $irc $(tail -6 /tmp/install.log | tr '\n' '|' | cut -c1-1500)"
+          echo "::notice title=Debian install.sh::exit $irc $(grep -v "^\(Setting up\|Unpacking\|Selecting\|Preparing\|Processing\|debconf\)" /tmp/install.log | tail -8 | tr '\n' '|' | cut -c1-1500)"
           g=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
           [ -n "$g" ] && echo "::notice title=Debian greeter strings::$(strings "$g" | grep -iE 'shell|theme|lookandfeel|lockscreenmainscript|APIVersion' | sort -u | head -30 | tr '\n' '|' | cut -c1-1500)"
           [ "$irc" = 0 ] || exit 1
