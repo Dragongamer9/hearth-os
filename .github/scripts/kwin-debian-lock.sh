@@ -16,6 +16,8 @@ setup() {
   apt-get install -y -qq --no-install-recommends kwin-wayland labwc grim wlr-randr dbus dbus-bin python3 python3-evdev \
     python3-gi gir1.2-glib-2.0 udev kmod libgl1-mesa-dri libegl-mesa0 xwayland passwd libpam-runtime \
     fonts-noto-core binutils ca-certificates >/tmp/apt.log 2>&1 || { echo "::error title=Debian lock (setup)::$(tail -5 /tmp/apt.log | tr '\n' '|')"; exit 1; }
+  apt-get install -y -qq --no-install-recommends libkscreenlocker6 plasma-framework >/dev/null 2>&1
+  echo "::notice title=Debian Plasma/Shell::$(grep -rlF 'Plasma/Shell' /usr/lib/x86_64-linux-gnu/qt6/plugins/kf6 /usr/lib/x86_64-linux-gnu/libPlasma*.so* /usr/lib/x86_64-linux-gnu/libKScreenLocker*.so* /usr/lib/x86_64-linux-gnu/libexec/kscreenlocker_greet 2>/dev/null | tr '\n' ' ') types: $(ls /usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/packagestructure/ 2>/dev/null | tr '\n' ' ')"
   bash -x hosts/linux/desktop/kwin-lock/install.sh hosts/linux/desktop/kwin-lock >/tmp/install.log 2>&1 \
     || { echo "::error title=Debian lock (install.sh)::$(grep -E 'install.sh' /tmp/install.log | tail -6 | tr '\n' '|')"; exit 1; }
   echo "::notice title=Debian lock (install.sh)::$(grep -E '^install.sh' /tmp/install.log | tr '\n' '|')"
