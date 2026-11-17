@@ -304,6 +304,8 @@ class LockCheck(unittest.TestCase):
         self.env = dict(os.environ)
         self.d = tempfile.mkdtemp()
         os.environ['XDG_RUNTIME_DIR'] = os.path.join(self.d, 'run')
+        self.qtw = lc.qt_wayland
+        lc.qt_wayland = lambda: True
         self.kenv = {'PLASMA_DEFAULT_SHELL': lc.PACKAGE, 'XDG_DATA_DIRS': os.path.join(self.d, 'share'),
                      'HOME': os.path.join(self.d, 'home')}
         self.greeter = os.path.join(self.d, 'greet')
@@ -311,6 +313,7 @@ class LockCheck(unittest.TestCase):
         self.saved = list(lc.GREETERS)
 
     def tearDown(self):
+        lc.qt_wayland = self.qtw
         lc.GREETERS[:] = self.saved
         os.environ.clear()
         os.environ.update(self.env)
@@ -385,6 +388,11 @@ class LockCheck(unittest.TestCase):
         self.greet_says('something else entirely')          # no failure seen, but no sign it loaded either
         self.assertFalse(lc.check(kenv=self.kenv)['ok'])
 
+    def test_needs_qt_wayland(self):
+        self.install()
+        lc.qt_wayland = lambda: False
+        self.assertIn('qt6-wayland', lc.check(kenv=self.kenv)['why'])
+
     def test_env_file_format(self):
         self.assertEqual(lc.parse_env(b'A=1\0PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock\0junk\0'),
                          {'A': '1', 'PLASMA_DEFAULT_SHELL': 'org.hearth.mantel-lock'})
@@ -418,6 +426,22 @@ class Access(unittest.TestCase):
         self.assertIn('org.freedesktop.impl.portal.Access;', read('os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal'))
         self.assertIn('org.freedesktop.impl.portal.Access=hearth', read('os-bases/peppermint/build.sh'))
         self.assertIn('<interface name="org.freedesktop.impl.portal.Access">', hs.XML)
+
+
+class Remote(unittest.TestCase):
+    def test_keysyms(self):
+        self.assertEqual(hs.keysym_keys(0xff0d), ['KEY_ENTER'])
+        self.assertEqual(hs.keysym_keys(0x41), ['KEY_LEFTSHIFT', 'KEY_A'])
+        self.assertEqual(hs.keysym_keys(0x21), ['KEY_LEFTSHIFT', 'KEY_1'])
+        self.assertEqual(hs.keysym_keys(0xffbe), ['KEY_F1'])
+        self.assertIsNone(hs.keysym_keys(0x1f525 + 0x1000000))        # 🔥: no key for it
+        self.assertEqual(hs.keycode('KEY_ENTER'), 28)
+
+    def test_registered(self):
+        self.assertIn('org.freedesktop.impl.portal.RemoteDesktop;', read('os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal'))
+        self.assertIn('org.freedesktop.impl.portal.RemoteDesktop=hearth', read('os-bases/peppermint/build.sh'))
+        self.assertIn('<interface name="org.freedesktop.impl.portal.RemoteDesktop">', hs.XML)
+        self.assertIn('org_kde_kwin_fake_input', read('os/system_files/usr/share/applications/hearth-kwin-cast.desktop'))
 
 
 class Wiring(unittest.TestCase):

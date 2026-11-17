@@ -19,7 +19,14 @@ KSL=$(pick kscreenlocker libkscreenlocker6 libkscreenlocker5) || { echo "install
 PLS=$(pick libplasma6 libplasma5 || true)
 PFW=""
 # The lock screen is plain QtQuick + QtQuick.Layouts (Quickshell needs them too).
-"${APT[@]}" "$KSL" ${PLS:+"$PLS"} ${PFW:+"$PFW"} qml6-module-qtquick qml6-module-qtquick-layouts
+# qt6-wayland and layer-shell-qt: the greeter is a Wayland client of KWin shown as a layer surface (without either it
+# can't start, and KWin stays on its emergency screen).
+LSQ=$(pick layer-shell-qt liblayershellqtinterface6 || true)
+"${APT[@]}" "$KSL" ${PLS:+"$PLS"} ${PFW:+"$PFW"} ${LSQ:+"$LSQ"} qml6-module-qtquick qml6-module-qtquick-layouts qt6-wayland
+for f in /usr/lib/*/qt6/plugins/wayland-shell-integration/liblayer-shell.so /usr/lib64/qt6/plugins/wayland-shell-integration/liblayer-shell.so; do
+  [ -f "$f" ] && LAYER_OK=1
+done
+[ -n "${LAYER_OK:-}" ] || { echo "install.sh: Qt's layer-shell integration (layer-shell-qt) isn't installed ($LSQ)"; exit 1; }
 GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null || true) | head -1)
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 

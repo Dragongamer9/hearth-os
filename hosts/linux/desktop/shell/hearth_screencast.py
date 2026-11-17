@@ -39,6 +39,9 @@ SC_IFACE = 'org.freedesktop.impl.portal.ScreenCast'
 SS_IFACE = 'org.freedesktop.impl.portal.Screenshot'
 SESSION_IFACE = 'org.freedesktop.impl.portal.Session'
 ACCESS_IFACE = 'org.freedesktop.impl.portal.Access'
+RD_IFACE = 'org.freedesktop.impl.portal.RemoteDesktop'
+RD_VERSION = 2
+KEYBOARD, POINTER, TOUCHSCREEN = 1, 2, 4
 ACCESS_QML = os.path.join(HERE, 'access-prompt.qml')
 REQ_IFACE = 'org.freedesktop.impl.portal.Request'
 WIN_IFACE = 'org.hearth.KWinWindows'
@@ -54,7 +57,28 @@ RESTORE_VERSION = 1
 
 _REQ_METHOD = '<arg type="o" name="handle" direction="in"/><arg type="o" name="session_handle" direction="in"/>' \
               '<arg type="s" name="app_id" direction="in"/>'
-XML = '''<node>
+_N = '<arg type="o" name="session_handle" direction="in"/><arg type="a{sv}" name="options" direction="in"/>'
+RD_XML = '''<interface name="%s">
+  <method name="CreateSession">%s<arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="SelectDevices">%s<arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="Start">%s<arg type="s" name="parent_window" direction="in"/><arg type="a{sv}" name="options" direction="in"/>
+    <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
+  <method name="NotifyPointerMotion">%s<arg type="d" name="dx" direction="in"/><arg type="d" name="dy" direction="in"/></method>
+  <method name="NotifyPointerMotionAbsolute">%s<arg type="u" name="stream" direction="in"/><arg type="d" name="x" direction="in"/><arg type="d" name="y" direction="in"/></method>
+  <method name="NotifyPointerButton">%s<arg type="i" name="button" direction="in"/><arg type="u" name="state" direction="in"/></method>
+  <method name="NotifyPointerAxis">%s<arg type="d" name="dx" direction="in"/><arg type="d" name="dy" direction="in"/></method>
+  <method name="NotifyPointerAxisDiscrete">%s<arg type="u" name="axis" direction="in"/><arg type="i" name="steps" direction="in"/></method>
+  <method name="NotifyKeyboardKeycode">%s<arg type="i" name="keycode" direction="in"/><arg type="u" name="state" direction="in"/></method>
+  <method name="NotifyKeyboardKeysym">%s<arg type="i" name="keysym" direction="in"/><arg type="u" name="state" direction="in"/></method>
+  <method name="NotifyTouchDown">%s<arg type="u" name="stream" direction="in"/><arg type="u" name="slot" direction="in"/><arg type="d" name="x" direction="in"/><arg type="d" name="y" direction="in"/></method>
+  <method name="NotifyTouchMotion">%s<arg type="u" name="stream" direction="in"/><arg type="u" name="slot" direction="in"/><arg type="d" name="x" direction="in"/><arg type="d" name="y" direction="in"/></method>
+  <method name="NotifyTouchUp">%s<arg type="u" name="slot" direction="in"/></method>
+  <property name="AvailableDeviceTypes" type="u" access="read"/>
+  <property name="version" type="u" access="read"/>
+</interface>''' % ((RD_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD) + (_N,) * 10)
+XML = ('''<node>
 <interface name="%s">
   <method name="CreateSession">%s<arg type="a{sv}" name="options" direction="in"/>
     <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
@@ -82,10 +106,11 @@ XML = '''<node>
     <arg type="a{sv}" name="options" direction="in"/>
     <arg type="u" name="response" direction="out"/><arg type="a{sv}" name="results" direction="out"/></method>
 </interface>
+<!--RD-->
 <interface name="%s"><method name="Close"/><signal name="Closed"/><property name="version" type="u" access="read"/></interface>
 <interface name="%s"><method name="Close"/></interface>
 <interface name="%s"><method name="Report"><arg type="s" name="token" direction="in"/><arg type="s" name="windows" direction="in"/></method></interface>
-</node>''' % (SC_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD, SS_IFACE, ACCESS_IFACE, SESSION_IFACE, REQ_IFACE, WIN_IFACE)
+</node>''' % (SC_IFACE, _REQ_METHOD, _REQ_METHOD, _REQ_METHOD, SS_IFACE, ACCESS_IFACE, SESSION_IFACE, REQ_IFACE, WIN_IFACE)).replace('<!--RD-->', RD_XML)
 
 WINDOW_SCRIPT = r'''
 var out = [];
@@ -479,6 +504,100 @@ def screenshot_path(now=None):
     return p
 
 
+# ---------------------------------------------------------------------- remote control (RemoteDesktop)
+
+# X keysyms that aren't characters → kernel keys.
+KEYSYMS = {0xff08: 'KEY_BACKSPACE', 0xff09: 'KEY_TAB', 0xff0d: 'KEY_ENTER', 0xff8d: 'KEY_KPENTER', 0xff1b: 'KEY_ESC',
+           0xffff: 'KEY_DELETE', 0xff63: 'KEY_INSERT', 0xff50: 'KEY_HOME', 0xff57: 'KEY_END', 0xff55: 'KEY_PAGEUP',
+           0xff56: 'KEY_PAGEDOWN', 0xff51: 'KEY_LEFT', 0xff52: 'KEY_UP', 0xff53: 'KEY_RIGHT', 0xff54: 'KEY_DOWN',
+           0xffe1: 'KEY_LEFTSHIFT', 0xffe2: 'KEY_RIGHTSHIFT', 0xffe3: 'KEY_LEFTCTRL', 0xffe4: 'KEY_RIGHTCTRL',
+           0xffe9: 'KEY_LEFTALT', 0xffea: 'KEY_RIGHTALT', 0xfe03: 'KEY_RIGHTALT', 0xffeb: 'KEY_LEFTMETA',
+           0xffec: 'KEY_RIGHTMETA', 0xffe5: 'KEY_CAPSLOCK', 0xff67: 'KEY_COMPOSE', 0xff61: 'KEY_SYSRQ', 0x20: 'KEY_SPACE'}
+for _i in range(12):
+    KEYSYMS[0xffbe + _i] = 'KEY_F%d' % (_i + 1)
+# Kernel key codes for when python3-evdev isn't there (the rest of the letters, digits and signs come from it).
+KEYCODES = {'KEY_ESC': 1, 'KEY_BACKSPACE': 14, 'KEY_TAB': 15, 'KEY_ENTER': 28, 'KEY_LEFTCTRL': 29, 'KEY_LEFTSHIFT': 42,
+            'KEY_RIGHTSHIFT': 54, 'KEY_LEFTALT': 56, 'KEY_SPACE': 57, 'KEY_CAPSLOCK': 58, 'KEY_KPENTER': 96,
+            'KEY_RIGHTCTRL': 97, 'KEY_SYSRQ': 99, 'KEY_RIGHTALT': 100, 'KEY_HOME': 102, 'KEY_UP': 103, 'KEY_PAGEUP': 104,
+            'KEY_LEFT': 105, 'KEY_RIGHT': 106, 'KEY_END': 107, 'KEY_DOWN': 108, 'KEY_PAGEDOWN': 109, 'KEY_INSERT': 110,
+            'KEY_DELETE': 111, 'KEY_LEFTMETA': 125, 'KEY_RIGHTMETA': 126, 'KEY_COMPOSE': 127, 'KEY_F11': 87, 'KEY_F12': 88}
+for _i in range(10):
+    KEYCODES['KEY_F%d' % (_i + 1)] = 59 + _i
+
+
+def keycode(name):
+    if name in KEYCODES:
+        return KEYCODES[name]
+    try:
+        from evdev import ecodes
+        return getattr(ecodes, name, None)
+    except ImportError:
+        return None
+
+
+_HT = []
+
+
+def keysym_keys(sym):
+    """An X keysym → the kernel keys that type it on a US layout (modifiers first), or None."""
+    if sym in KEYSYMS:
+        return [KEYSYMS[sym]]
+    ch = chr(sym) if 0x20 < sym < 0x100 else (chr(sym - 0x1000000) if sym > 0x1000000 else None)
+    if not ch:
+        return None
+    if not _HT:
+        try:
+            import importlib.machinery
+            import importlib.util
+            loader = importlib.machinery.SourceFileLoader('hearth_type', os.path.join(HERE, 'hearth-type'))
+            spec = importlib.util.spec_from_loader('hearth_type', loader)
+            mod = importlib.util.module_from_spec(spec)
+            loader.exec_module(mod)
+            _HT.append(mod)
+        except Exception as e:
+            log('no hearth-type tables: %r' % e)
+            return None
+    return _HT[0].char_keys(ch, 'us')
+
+
+class RemoteInput:
+    """hearth-kwin-cast input: KWin's fake input for one RemoteDesktop session."""
+
+    def __init__(self):
+        self.proc = subprocess.Popen([helper(), 'input'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, text=True, bufsize=1, start_new_session=True)
+        line = self.proc.stdout.readline().strip()
+        self.ok = line == 'ready'
+        self.error = '' if self.ok else (line or 'no answer')
+        self.held = set()
+
+    def send(self, line):
+        if self.proc.poll() is not None:
+            return False
+        try:
+            self.proc.stdin.write(line + '\n')
+            self.proc.stdin.flush()
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def key(self, code, down):
+        if not isinstance(code, int) or not 0 < code < 0x300:
+            return False
+        (self.held.add if down else self.held.discard)(code)
+        return self.send('k %d %d' % (code, 1 if down else 0))
+
+    def stop(self):
+        for c in list(self.held):
+            self.send('k %d 0' % c)
+        if self.proc.poll() is None:
+            try:
+                self.proc.stdin.close()
+                self.proc.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                self.proc.terminate()
+
+
 # ---------------------------------------------------------------------- D-Bus
 
 def variant(GLib, sig, val):
@@ -523,6 +642,7 @@ class Portal:
         self.ss_info = node.lookup_interface(SS_IFACE)
         self.session_info = node.lookup_interface(SESSION_IFACE)
         self.access_info = node.lookup_interface(ACCESS_IFACE)
+        self.rd_info = node.lookup_interface(RD_IFACE)
         self.req_info = node.lookup_interface(REQ_IFACE)
         self.win_info = node.lookup_interface(WIN_IFACE)
         self.windows = WindowLister(bus_name)
@@ -533,6 +653,7 @@ class Portal:
         conn.register_object(path, self.sc_info, self.on_call, self.get_prop, None)
         conn.register_object(path, self.ss_info, self.on_call, self.get_prop, None)
         conn.register_object(path, self.access_info, self.on_call, None, None)
+        conn.register_object(path, self.rd_info, self.on_call, self.get_prop, None)
         conn.register_object(WIN_PATH, self.win_info, self.on_windows, None, None)
 
     def get_prop(self, conn, sender, path, iface, prop):
@@ -540,6 +661,8 @@ class Portal:
         if iface == SC_IFACE:
             return GLib.Variant('u', {'AvailableSourceTypes': MONITOR | WINDOW, 'AvailableCursorModes': 7,
                                       'version': SC_VERSION}.get(prop, 0))
+        if iface == RD_IFACE:
+            return GLib.Variant('u', {'AvailableDeviceTypes': KEYBOARD | POINTER, 'version': RD_VERSION}.get(prop, 0))
         if iface == SS_IFACE and prop == 'version':
             return GLib.Variant('u', SS_VERSION)
         if iface == SESSION_IFACE and prop == 'version':
@@ -582,6 +705,8 @@ class Portal:
             inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only xdg-desktop-portal may call this')
             return
         try:
+            if iface == RD_IFACE:
+                return self.on_remote(conn, method, params, inv)
             if iface == SC_IFACE and method == 'CreateSession':
                 handle, session_handle, app_id, options = params.unpack()
                 self.create_session(conn, session_handle, app_id)
@@ -592,6 +717,7 @@ class Portal:
                 if not s:
                     inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
                     return
+                s['cast'] = True
                 s['types'] = int(options.get('types', MONITOR)) or MONITOR
                 s['multiple'] = bool(options.get('multiple', False))
                 s['cursor'] = cursor_mode(int(options.get('cursor_mode', CURSOR_EMBEDDED)))
@@ -618,7 +744,8 @@ class Portal:
     # ---- sessions
     def create_session(self, conn, session_handle, app_id):
         s = {'app': app_id, 'streams': [], 'types': MONITOR, 'cursor': CURSOR_EMBEDDED, 'persist': 0,
-             'restore': None, 'multiple': False, 'conn': conn}
+             'restore': None, 'multiple': False, 'conn': conn, 'cast': False, 'devices': 0, 'input': None,
+             'positions': {}}
 
         def on_session(c, sender, path, iface, method, params, inv):
             if not self.from_frontend(c, sender):
@@ -639,6 +766,8 @@ class Portal:
             return
         for st in s['streams']:
             st.stop()
+        if s.get('input'):
+            s['input'].stop()
         if signal:
             try:
                 s['conn'].emit_signal(None, session_handle, SESSION_IFACE, 'Closed', None)
@@ -690,30 +819,132 @@ class Portal:
         def work():
             resp, res = 2, {}
             try:
-                outputs, version = list_outputs()
-                choice = restore_target(s['restore'], outputs) if s.get('restore') else None
-                if choice is None:
-                    wins = self.windows.list() if s['types'] & WINDOW else []
-                    thumbs = tempfile.mkdtemp(prefix='hearth-cast-thumbs-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
-                    try:
-                        req = build_request('cast', app_id, s['types'], s['multiple'], outputs, wins, thumbs)
-                        choice = run_picker(req, holder)
-                    finally:
-                        shutil.rmtree(thumbs, ignore_errors=True)
-                if holder['closed'] or choice is None:
-                    resp = 1
-                else:
-                    target = ('output', choice['name']) if choice['kind'] == 'screen' else ('window', choice['id'])
-                    st = Stream(target, s['cursor'])
-                    if st.wait_node() is None:
-                        log('KWin didn\'t share %s: %s' % (' '.join(target), st.error))
-                        st.stop()
-                    else:
-                        s['streams'].append(st)
-                        resp, res = 0, stream_results([st], choice, outputs, s['persist'])
-                        self.GLib.timeout_add_seconds(2, self.watch_streams, session_handle)
+                resp, res = self.cast(s, app_id, holder, session_handle)
             except Exception as e:
                 log('sharing failed: %r' % e)
+            finally:
+                def done():
+                    if reg:
+                        conn.unregister_object(reg)
+                    self.busy(-1)
+                    inv.return_value(self.GLib.Variant('(ua{sv})', (resp, results_variant(self.GLib, res))))
+                    return False
+                self.GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def cast(self, s, app_id, holder, session_handle):
+        """The picker (or the remembered screen), then KWin's stream: (response, results)."""
+        outputs, version = list_outputs()
+        choice = restore_target(s['restore'], outputs) if s.get('restore') else None
+        if choice is None:
+            wins = self.windows.list() if s['types'] & WINDOW else []
+            thumbs = tempfile.mkdtemp(prefix='hearth-cast-thumbs-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+            try:
+                req = build_request('cast', app_id, s['types'], s['multiple'], outputs, wins, thumbs)
+                choice = run_picker(req, holder)
+            finally:
+                shutil.rmtree(thumbs, ignore_errors=True)
+        if holder['closed'] or choice is None:
+            return 1, {}
+        target = ('output', choice['name']) if choice['kind'] == 'screen' else ('window', choice['id'])
+        st = Stream(target, s['cursor'])
+        if st.wait_node() is None:
+            log('KWin didn\'t share %s: %s' % (' '.join(target), st.error))
+            st.stop()
+            return 2, {}
+        s['streams'].append(st)
+        if choice['kind'] == 'screen':
+            o = next((o for o in outputs if o['name'] == choice['name']), None)
+            if o:
+                s['positions'][st.node] = (o['x'], o['y'])
+        self.GLib.timeout_add_seconds(2, self.watch_streams, session_handle)
+        return 0, stream_results([st], choice, outputs, s['persist'])
+
+    # ---- remote control (RemoteDesktop: VNC, remote help apps)
+    def on_remote(self, conn, method, params, inv):
+        GLib = self.GLib
+        if method == 'CreateSession':
+            handle, session_handle, app_id, options = params.unpack()
+            self.create_session(conn, session_handle, app_id)
+            return inv.return_value(GLib.Variant('(ua{sv})', (0, {'session_id': GLib.Variant('s', session_handle)})))
+        if method == 'SelectDevices':
+            handle, session_handle, app_id, options = params.unpack()
+            s = self.sessions.get(session_handle)
+            if not s:
+                return inv.return_value(GLib.Variant('(ua{sv})', (2, {})))
+            s['devices'] = (int(options.get('types', KEYBOARD | POINTER)) or KEYBOARD | POINTER) & (KEYBOARD | POINTER)
+            return inv.return_value(GLib.Variant('(ua{sv})', (0, {})))
+        if method == 'Start':
+            handle, session_handle, app_id, parent, options = params.unpack()
+            return self.remote_start(conn, handle, session_handle, app_id, inv)
+        # Notify*: (session_handle, options, ...) from xdg-desktop-portal, for a session that was allowed.
+        args = params.unpack()
+        s = self.sessions.get(args[0])
+        ri = s.get('input') if s else None
+        if not ri:
+            return inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'This session has no remote control')
+        if method == 'NotifyPointerMotion' and s['devices'] & POINTER:
+            ri.send('m %f %f' % (args[2], args[3]))
+        elif method == 'NotifyPointerMotionAbsolute' and s['devices'] & POINTER:
+            ox, oy = s['positions'].get(args[2], (0, 0))
+            ri.send('a %f %f' % (ox + args[3], oy + args[4]))
+        elif method == 'NotifyPointerButton' and s['devices'] & POINTER:
+            ri.send('b %d %d' % (args[2], 1 if args[3] else 0))
+        elif method == 'NotifyPointerAxis' and s['devices'] & POINTER:
+            if args[3]:
+                ri.send('x 0 %f' % args[3])
+            if args[2]:
+                ri.send('x 1 %f' % args[2])
+        elif method == 'NotifyPointerAxisDiscrete' and s['devices'] & POINTER:
+            ri.send('x %d %f' % (1 if args[2] else 0, args[3] * 15.0))
+        elif method == 'NotifyKeyboardKeycode' and s['devices'] & KEYBOARD:
+            ri.key(args[2], bool(args[3]))
+        elif method == 'NotifyKeyboardKeysym' and s['devices'] & KEYBOARD:
+            keys = keysym_keys(args[2]) or []
+            for name in (keys if args[3] else list(reversed(keys))):
+                ri.key(keycode(name), bool(args[3]))
+        elif method.startswith('NotifyTouch'):
+            return inv.return_dbus_error('org.freedesktop.DBus.Error.NotSupported', 'No touch here')
+        inv.return_value(None)
+
+    def remote_start(self, conn, handle, session_handle, app_id, inv):
+        s = self.sessions.get(session_handle)
+        if not s:
+            return inv.return_value(self.GLib.Variant('(ua{sv})', (2, {})))
+        holder = {'closed': False}
+        reg = self.request_object(conn, handle, holder)
+        self.busy(1)
+
+        def work():
+            resp, res = 2, {}
+            try:
+                name = (app_id or '').replace('.desktop', '').split('.')[-1] or 'An app'
+                what = ' and '.join(w for b, w in ((KEYBOARD, 'the keyboard'), (POINTER, 'the mouse'))
+                                    if s['devices'] & b) or 'the keyboard and the mouse'
+                ok = run_access({'app': app_id or '', 'title': 'Allow %s to control this computer?' % (name[:1].upper() + name[1:]),
+                                 'subtitle': 'It can use %s as if it were you, until it stops.' % what,
+                                 'body': 'Only allow apps you trust, like your own remote desktop.',
+                                 'grant': 'Allow control', 'deny': "Don't allow"}, holder)
+                if holder['closed'] or not ok:
+                    resp = 1
+                    return
+                res = {}
+                if s.get('cast'):
+                    resp, res = self.cast(s, app_id, holder, session_handle)
+                    if resp != 0:
+                        return
+                ri = RemoteInput()
+                if not ri.ok:
+                    log('KWin didn\'t give remote control: %s' % ri.error)
+                    ri.stop()
+                    resp, res = 2, {}
+                    return
+                s['input'] = ri
+                res['devices'] = ('u', s['devices'] or (KEYBOARD | POINTER))
+                resp = 0
+            except Exception as e:
+                log('remote control failed: %r' % e)
+                resp, res = 2, {}
             finally:
                 def done():
                     if reg:

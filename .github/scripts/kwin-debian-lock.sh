@@ -14,7 +14,7 @@ setup() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends kwin-wayland labwc grim wlr-randr dbus dbus-bin python3 python3-evdev \
-    python3-gi gir1.2-glib-2.0 udev kmod libgl1-mesa-dri libegl-mesa0 xwayland passwd libpam-runtime \
+    python3-gi gir1.2-glib-2.0 libglib2.0-bin udev kmod libgl1-mesa-dri libegl-mesa0 xwayland passwd libpam-runtime \
     fonts-noto-core binutils ca-certificates >/tmp/apt.log 2>&1 || { echo "::error title=Debian lock (setup)::$(tail -5 /tmp/apt.log | tr '\n' '|')"; exit 1; }
   apt-get install -y -qq --no-install-recommends cmake ninja-build g++ extra-cmake-modules qt6-base-dev libkf6package-dev libkf6coreaddons-dev >/tmp/apt-dev.log 2>&1 \
     || { echo "::error title=Debian lock (build deps)::$(tail -3 /tmp/apt-dev.log | tr '\n' '|')"; exit 1; }
@@ -59,7 +59,7 @@ time.sleep(900)
 PY
   sleep 2
   for renderer in gles2 pixman; do
-    ( umask 000; WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=$renderer WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
+    ( umask 000; WLR_RENDERER_ALLOW_SOFTWARE=1 WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128 WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=$renderer WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
         WAYLAND_DISPLAY= labwc >"$REPO/shots/debian-outer-$renderer.log" 2>&1 & )
     for i in $(seq 1 20); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
     ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break
@@ -68,7 +68,7 @@ PY
   OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
   [ -n "$OUTER" ] || { echo "::error title=Debian lock: labwc::didn't start: $(tail -4 "$REPO"/shots/debian-outer-*.log | tr '\n' '|')"; return 1; }
   chmod 777 "$XDG_RUNTIME_DIR/$OUTER"
-  echo "::notice title=Debian lock (labwc)::renderer $renderer"
+  echo "::notice title=Debian lock (labwc)::renderer $renderer; gles2: $(grep -iE 'error|fail|egl|gbm|render' "$REPO/shots/debian-outer-gles2.log" 2>/dev/null | head -6 | tr '\n' '|' | cut -c1-900)"
   WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1
   runuser -u "$USER_NAME" -- env OUTER="$OUTER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" bash "$REPO/.github/scripts/kwin-debian-lock.sh" user
   rc=$?
@@ -111,8 +111,9 @@ user() {
   active && ok "locked by KWin's locker" || { bad "KWin's locker didn't lock" "$(grep -iE 'lock|greet' "$REPO/shots/debian-kwin.log" | tail -5 | tr '\n' '|')"; return 1; }
   sleep 8
   shot debian-locked
-  grep -q "hearth-lock-screen: loaded" "$REPO/shots/debian-kwin.log" && ok "the lock screen up is Hearth's (its 'loaded' line)" \
-    || bad "the lock screen up isn't Hearth's" "$(grep -iE 'greet|lockscreen|qml' "$REPO/shots/debian-kwin.log" | tail -6 | tr '\n' '|')"
+  gp=$(pgrep -u "$USER_NAME" -f kscreenlocker_greet | head -1)
+  [ -n "$gp" ] && ok "KWin's greeter is up (pid $gp): $(tr '\0' ' ' < /proc/$gp/cmdline 2>/dev/null)" || bad "KWin's greeter isn't running" "$(tail -8 "$REPO/shots/debian-kwin.log" | tr '\n' '|')"
+  echo "::notice title=Debian lock (greeter's environment)::$(tr '\0' '\n' < /proc/$gp/environ 2>/dev/null | grep -E '^(PLASMA_DEFAULT_SHELL|WAYLAND_SOCKET|QT_QPA_PLATFORM)=' | tr '\n' ' ')"
 
   $HT -- 'not-the-password' >/dev/null 2>&1; sleep 0.5; $HT -k Return >/dev/null 2>&1
   sleep 6

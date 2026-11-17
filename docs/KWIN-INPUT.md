@@ -94,6 +94,10 @@ bare `loginctl unlock-session` would unlock that console's own session, not the 
 - `hearth-kwin-cast` works only when its parent is `hearth-portal` (a root-owned file nobody else can change). The
   risk left, for the owner to know: KWin trusts the helper by its path, and any program running as you could still
   start `hearth-portal cast shot …` itself, or read the screen in other ways a desktop can't stop (as on X11).
+- Remote control (`org.freedesktop.impl.portal.RemoteDesktop`, e.g. VNC): Hearth asks "Allow … to control this
+  computer?" (access-prompt.qml), optionally with the screen picker when the app also shares the screen, then the
+  app's keys and pointer go to KWin through its fake input (`hearth-kwin-cast input`; keycodes, keysyms on a US layout,
+  relative and absolute pointer, buttons, scrolling; no touch yet). It ends when the app closes the session.
 - "Allow?" questions (xdg-desktop-portal's Access, e.g. before an app's first screenshot) are Hearth's too:
   `access-prompt.qml` (Allow / Don't allow, keyboard and D-pad, nothing allowed unless you pick Allow). On labwc
   they stay GTK's.
