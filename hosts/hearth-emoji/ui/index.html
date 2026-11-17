@@ -382,7 +382,7 @@ document.addEventListener('click', e => {
 });
 // Right-click (or long press) copies without typing.
 // For two people who can each have a tone, it opens Two skin tones instead (its Copy button copies).
-document.addEventListener('contextmenu', e => { const c = e.target.closest('.cell'); if (c) { e.preventDefault(); if (!openPair(c)) choose(c, true); } });
+document.addEventListener('contextmenu', e => { if (pair) { e.preventDefault(); return; } const c = e.target.closest('.cell'); if (c) { e.preventDefault(); if (!openPair(c)) choose(c, true); } });
 // Clicking another window closes the picker, as on other systems.
 let blurTimer = 0;
 window.addEventListener('blur', () => { if (!T) return; blurTimer = setTimeout(() => { if (!document.hasFocus()) close(); }, 300); });

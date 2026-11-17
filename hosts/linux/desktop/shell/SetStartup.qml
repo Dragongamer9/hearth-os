@@ -165,8 +165,13 @@ SetPage {
     SetHeader { text: "When you leave" }
     SetSwitch {
         id: confirmRow
-        // `settings page startup:leave` opens the page at it
-        Component.onCompleted: if (SettingsNav.pageAnchor === "leave") { SettingsNav.pageAnchor = ""; Qt.callLater(() => confirmRow.forceActiveFocus()); }
+        // `settings page startup:leave` opens the page at it (once the schedule above has loaded and been laid out)
+        Component.onCompleted: if (SettingsNav.pageAnchor === "leave") { SettingsNav.pageAnchor = ""; toLeave.start(); }
+        Timer {
+            id: toLeave
+            interval: 1200
+            onTriggered: { const y = confirmRow.mapToItem(page.contentItem, 0, 0).y; page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - 60)); confirmRow.forceActiveFocus(); }
+        }
         icon: "logout"; title: "Confirm before logging out"
         sub: "Log out (in the app menu, Super+X and the desktop's menu) asks first, so a stray click can't close your apps"
         checked: Settings.confirmLogout
