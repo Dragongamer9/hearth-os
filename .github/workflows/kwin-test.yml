@@ -36,6 +36,8 @@ jobs:
             python3 python3-dbus python3-gobject python3-pillow qt6ct google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon dbus-tools \
             libnotify wl-clipboard wtype kmod >/dev/null
           dnf -y install --skip-unavailable wayland-utils rsms-inter-fonts plasma-breeze >/dev/null || true
+          # The Desktop Cube (Debian's kwin-addons is kdeplasma-addons' KWin part): its Super+C checked against KWin's own default.
+          dnf -y install --skip-unavailable --setopt=install_weak_deps=False kdeplasma-addons >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           for b in kwin_wayland labwc quickshell grim; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
