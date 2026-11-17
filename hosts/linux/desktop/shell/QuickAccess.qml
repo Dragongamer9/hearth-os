@@ -16,7 +16,7 @@ PanelWindow {
     id: root
     property bool shown: false
     property bool mouseOn: true          // controller mouse (from hearth-pad)
-    property bool nightAvailable: false  // wlsunset installed
+    property bool nightAvailable: false  // wlsunset installed (labwc), or KWin's own Night Light
     signal mouseToggled(bool enable)
     signal keyboardRequested()
     signal settingsRequested()
@@ -274,7 +274,7 @@ PanelWindow {
                     rowSpacing: 10
                     Tile { navId: "wifi"; icon: "wifi"; label: "Wi-Fi"; detail: !root.wifiKnown ? "Not available" : root.wifiOn ? "On" : "Off"; lit: root.wifiOn; enabled: root.wifiKnown; page: "wifi" }
                     Tile { navId: "bluetooth"; icon: "bt"; label: "Bluetooth"; detail: !root.btPresent ? "No adapter" : !root.btPowered ? "Off" : root.btConnected.length ? root.btConnected.join(", ") : "On"; lit: root.btPresent && root.btPowered; page: "bluetooth" }
-                    Tile { navId: "night"; icon: "moon"; label: "Night light"; detail: root.nightAvailable ? "Sunset to sunrise" : "Not installed"; lit: Settings.nightLight; enabled: root.nightAvailable }
+                    Tile { navId: "night"; icon: "moon"; label: "Night light"; detail: root.nightAvailable ? (Settings.nightMode === "always" ? "All the time" : Settings.nightFrom + " to " + Settings.nightTo) : "Not installed"; lit: Settings.nightLight; enabled: root.nightAvailable }
                     Tile { navId: "mouse"; icon: "mouse"; label: "Controller mouse"; detail: root.mouseOn ? "On" : "Off"; lit: root.mouseOn }
                     Tile { navId: "dnd"; icon: "bell-off"; label: "Do not disturb"; detail: DeskState.dnd ? "On" : "Off"; lit: DeskState.dnd }
                     Tile { navId: "keyboard"; icon: "kbd"; label: "Keyboard"; detail: "On-screen" }

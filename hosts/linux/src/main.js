@@ -688,6 +688,7 @@ async function screenshot() {
   if (overlayWasOn) { await overlayLook(false, false); await new Promise(r => setTimeout(r, 450)); }
   if (wasVisible) { win.hide(); await new Promise(r => setTimeout(r, 450)); }
   const tries = [
+    ['hearth-screenshot', [file]],                      // Desktop Mode on labwc (grim) or KWin (ScreenShot2)
     ['grim', [file]],                                   // wlroots desktops (Desktop Mode)
     ['spectacle', ['-b', '-n', '-f', '-o', file]],      // KDE
     ['gnome-screenshot', ['-f', file]],                 // GNOME

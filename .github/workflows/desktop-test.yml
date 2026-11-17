@@ -49,6 +49,8 @@ jobs:
       - name: Looks and apps theme tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+          # Screens on labwc and KWin (hearth-screens, docs/SCREENS.md): parse/build, saved settings never lost.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_screens.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
           # Sub themes (1.10): every one there, readable (WCAG AA) in dark and light, nothing changes after updating, a broken
@@ -292,6 +294,24 @@ jobs:
           wtype -M ctrl -k f -m ctrl; sleep 1; wtype wifi 2>/dev/null || true; sleep 2; grim shots/settings-redesign/44-handheld-search.png || true
           ipc settings close
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 3
+          # ---- Screens (1.14, docs/SCREENS.md): hearth-screens under labwc answers in wlr-randr's shape and writes nothing
+          # when read; Settings › Display with its new rows (under labwc HDR, VRR, tearing and colour profiles say they
+          # need Mantel on KWin). Pictures: shots/screens/labwc-*.png (posted by the screens-shots job).
+          mkdir -p shots/screens
+          SH=hosts/linux/desktop/shell/hearth-screens
+          python3 $SH get > shots/screens/get.json 2>&1; python3 $SH info > shots/screens/info.json 2>&1
+          python3 -c 'import json,sys; o=json.load(open(sys.argv[1])); assert o and o[0]["name"] and "hdr" in o[0] and "rotation" in o[0], o' shots/screens/get.json \
+            || { echo "::error title=Screens::hearth-screens get under labwc: $(head -c 400 shots/screens/get.json)"; touch shots/FAILED; }
+          echo "::notice title=Screens (labwc)::$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["wm"], [(o["name"], o["scale"], o["rotation"], [m for m in o["modes"] if m.get("current")][:1]) for o in d["outputs"]], d["tearing"], d["mirror"])' shots/screens/info.json 2>&1 | cut -c1-600)"
+          # display:<part> opens the page scrolled to that part (SetDisplay.qml's goToAnchor).
+          scr() { ipc settings close; ipc settings page "display$1"; sleep 4; grim "shots/screens/$2.png" || true; }
+          scr "" labwc-1-display-top; scr :hdr labwc-2-hdr-and-colour; scr :games labwc-3-games-and-smoothness; scr :layout labwc-4-scale-rotation-mirror
+          ipc settings close
+          if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null; then
+            echo "::error title=Screens::$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess)\.qml" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          # ---- end of Screens
           # Two other looks (the test sets them in desktop.json, then puts the file back exactly as it was).
           D="$HOME/.local/share/nimbus/desktop.json"; cp "$D" /tmp/desktop.json.before
           for lk in glass hearth; do
@@ -2152,3 +2172,204 @@ jobs:
         run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
       - name: Picture (gm-fallback)
         run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true
+
+  # Screens (1.14, docs/SCREENS.md): Settings › Display's pictures under labwc (the desktop job's shots/screens) as
+  # notices, a JPEG in base64 pieces titled "SHOT <name> <n>", one picture a step (a job keeps 50 notices).
+  screens-shots:
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, glob, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for p in sorted(glob.glob('shots/screens/*.png')):
+              im = Image.open(p).convert('RGB')
+              print(p, im.size)
+              for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+          PY
+      - name: Picture (labwc-1-display-top)
+        run: f=shots/screens/labwc-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-1-display-top $i::$part"; done || true
+      - name: Picture (labwc-2-hdr-and-colour)
+        run: f=shots/screens/labwc-2-hdr-and-colour.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-2-hdr-and-colour $i::$part"; done || true
+      - name: Picture (labwc-3-games-and-smoothness)
+        run: f=shots/screens/labwc-3-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-3-games-and-smoothness $i::$part"; done || true
+      - name: Picture (labwc-4-scale-rotation-mirror)
+        run: f=shots/screens/labwc-4-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-4-scale-rotation-mirror $i::$part"; done || true
+
+  # Screens under KWin (Mantel on KWin, 1.14, docs/SCREENS.md): KWin (Fedora's) on a 1920×1080 screen inside a headless
+  # labwc, with HEARTH_WM=kwin as the session gives it. Checks hearth-screens against the real kscreen-doctor (get, set
+  # and keep, restore), KWin's Night Light settings, screen off and on (KWin's DPMS), and a screenshot through
+  # hearth-screenshot with KWin's permission check on (hearth-screenshot.desktop as the images install it). Then
+  # Settings › Display in the real shell, its pictures as SHOT notices. Problems are ::error:: annotations.
+  kwin-screens:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install KWin, kscreen-doctor and Quickshell
+        run: |
+          dnf -y install dnf5-plugins git kwin libkscreen kf6-kservice labwc grim wlr-randr xorg-x11-server-Xwayland mesa-dri-drivers \
+            python3 python3-gobject python3-pillow dbus-daemon dbus-tools glib2 qt6-qtsvg procps-ng google-noto-sans-fonts \
+            breeze-icon-theme adwaita-icon-theme rsms-inter-fonts wtype >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland kscreen-doctor quickshell; do command -v $b >/dev/null || echo "::error title=KWin screens::$b isn't installed"; done
+          kwin_wayland --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Screens and Settings › Display under KWin
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots/kwin
+          exec > >(tee shots/kwin/step.log) 2>&1
+          fail() { echo "::error title=KWin screens::$*"; touch shots/kwin/FAILED; }
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 NIMBUS_SHARE="$PWD/hosts/linux" HEARTH_WM=kwin
+          export KSCREEN_BACKEND=KWayland KSCREEN_BACKEND_INPROCESS=1
+          # The images' screenshot trust (os-bases/peppermint/build.sh, os/system_files): hearth-screenshot runs this
+          # checkout's hearth-screens through its own Python, which hearth-screenshot.desktop names. No
+          # KWIN_SCREENSHOT_NO_PERMISSION_CHECKS: KWin checks for real.
+          install -d /usr/libexec/nimbus /usr/share/nimbus/desktop
+          ln -f "$(readlink -f /usr/bin/python3)" /usr/libexec/nimbus/hearth-shot-python 2>/dev/null || cp "$(readlink -f /usr/bin/python3)" /usr/libexec/nimbus/hearth-shot-python
+          install -Dm644 os/system_files/usr/share/applications/hearth-screenshot.desktop /usr/share/applications/hearth-screenshot.desktop
+          install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/bin/hearth-screenshot
+          ln -sfn "$PWD/hosts/linux/desktop/shell" /usr/share/nimbus/desktop/shell
+          kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+          # Settings as someone might have them: night light on in the evenings, warmer than the default.
+          mkdir -p "$HOME/.local/share/nimbus"
+          echo '{"nightLight": true, "nightTemp": 3400, "nightMode": "times", "nightFrom": "20:00", "nightTo": "07:00"}' > "$HOME/.local/share/nimbus/desktop.json"
+          # A headless labwc holds KWin as a 1920×1080 window (grim on it is the backup picture), as in plasma-test.yml.
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/kwin/outer.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          [ -n "$OUTER" ] && WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
+          # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          if [ -n "$OUTER" ]; then
+            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
+          else
+            /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
+          fi
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { fail "KWin didn't start: $(tail -5 shots/kwin/kwin.log | tr '\n' '|' | cut -c1-500)"; exit 1; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
+          sleep 3
+          SH=hosts/linux/desktop/shell/hearth-screens
+          # ---- hearth-screens against the real kscreen-doctor
+          kscreen-doctor -o > shots/kwin/kscreen-o.txt 2>&1; kscreen-doctor -j > shots/kwin/kscreen-j.json 2>&1
+          python3 $SH get > shots/kwin/get.json 2>&1
+          N=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["name"])' shots/kwin/get.json 2>/dev/null)
+          [ -n "$N" ] || fail "hearth-screens get found no screen: $(head -c 300 shots/kwin/get.json) | kscreen-doctor: $(head -c 300 shots/kwin/kscreen-o.txt | tr '\n' '|')"
+          echo "::notice title=KWin screens: get::$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))[0]; print(o["name"], o["description"], o["scale"], o["rotation"], [(m["width"], m["height"], round(m["refresh"])) for m in o["modes"] if m["current"]], "hdr", o["hdr"], "vrr", o["vrr"], "icc", o["icc"])' shots/kwin/get.json 2>&1 | cut -c1-600)"
+          python3 $SH set "{\"outputs\": {\"$N\": {\"scale\": 1.25}}}" > shots/kwin/set.json 2>&1
+          got=$(python3 -c 'import json,sys; print([o["scale"] for o in json.load(open(sys.argv[1]))["outputs"] if o["name"] == sys.argv[2]][0])' shots/kwin/set.json "$N" 2>&1)
+          [ "$got" = 1.25 ] || fail "set scale 1.25: KWin says $got ($(head -c 300 shots/kwin/set.json))"
+          grep -q '"scale": 1.25' "$HOME/.config/nimbus/screens.json" || fail "set didn't keep the scale in screens.json: $(head -c 300 "$HOME/.config/nimbus/screens.json")"
+          grep -q "wlr-randr --output '$N' --on .*--scale 1.25" "$HOME/.config/nimbus/display.sh" || fail "display.sh (labwc's) doesn't have it: $(cat "$HOME/.config/nimbus/display.sh" | tr '\n' '|')"
+          # restore with the scale back at 1 (as after a restart): it puts 1.25 back; a saved mode the screen doesn't list is left out.
+          kscreen-doctor "output.$N.scale.1" >/dev/null 2>&1; sleep 1
+          python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["outputs"][sys.argv[2]]["mode"]={"w":7680,"h":4320,"r":60}; open(p,"w").write(json.dumps(d))' "$HOME/.config/nimbus/screens.json" "$N"
+          python3 $SH restore > shots/kwin/restore.json 2>&1
+          echo "::notice title=KWin screens: restore::$(head -c 500 shots/kwin/restore.json)"
+          grep -q 7680 shots/kwin/restore.json || fail "restore didn't leave out the mode the screen doesn't list"
+          python3 $SH get | grep -q '"scale": 1.25' || fail "restore didn't put the scale back"
+          python3 $SH set "{\"outputs\": {\"$N\": {\"scale\": 1}}}" >/dev/null 2>&1
+          # Night Light: kwinrc from Settings, and KWin's own answer.
+          grep -A6 '^\[NightColor\]' "$HOME/.config/kwinrc" > shots/kwin/nightcolor.txt 2>&1
+          grep -q 'NightTemperature=3400' shots/kwin/nightcolor.txt && grep -q 'Active=true' shots/kwin/nightcolor.txt || fail "Night Light isn't in kwinrc: $(tr '\n' '|' < shots/kwin/nightcolor.txt)"
+          sleep 2
+          nl=$(gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/NightLight --method org.freedesktop.DBus.Properties.GetAll org.kde.KWin.NightLight 2>&1 | cut -c1-500)
+          echo "::notice title=KWin screens: Night Light::$nl"
+          # Tearing (kwinrc's Compositing AllowTearing) and back.
+          python3 $SH set '{"tearing": false}' >/dev/null 2>&1; grep -q 'AllowTearing=false' "$HOME/.config/kwinrc" || fail "tearing off didn't reach kwinrc"
+          python3 $SH set '{"tearing": true}' >/dev/null 2>&1
+          # Screen off and on (Settings › Power's idle screen-off under KWin).
+          sh hosts/linux/desktop/shell/hearth-screen-power check || fail "hearth-screen-power can't under KWin"
+          sh hosts/linux/desktop/shell/hearth-screen-power off; off=$?; sleep 2
+          dpms=$(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)
+          sh hosts/linux/desktop/shell/hearth-screen-power on; sleep 2
+          echo "::notice title=KWin screens: screen off::exit $off; while off: $dpms; on again: $(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)"
+          # A screenshot through KWin's ScreenShot2 with its permission check on.
+          hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
+          if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
+            echo "::notice title=KWin screens: screenshot::hearth-screenshot took a picture through KWin's ScreenShot2 (permission check on): $(cat shots/kwin/screenshot-size.txt)"
+          else
+            fail "hearth-screenshot under KWin: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
+          fi
+          # ---- Mantel's Settings › Display in the real shell
+          quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
+          sleep 25
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          shot() { hearth-screenshot "shots/kwin/$1.png" 2>>shots/kwin/shot-errors.txt || { [ -n "$OUTER" ] && WAYLAND_DISPLAY=$OUTER grim "shots/kwin/$1.png"; }; }
+          scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
+          scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
+          ipc settings close
+          if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell.log >/dev/null; then
+            fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          fi
+          ls -la shots/kwin
+          pkill quickshell; pkill -f /tmp/kwin_wayland; pkill labwc; pkill dbus-daemon
+          true
+
+      - name: Make the JPEGs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, glob, io
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for p in sorted(glob.glob('shots/kwin/kwin-*.png')):
+              im = Image.open(p).convert('RGB')
+              print(p, im.size)
+              for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 7 * 3800:
+                      break
+              open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+          PY
+      - name: Picture (kwin-1-display-top)
+        if: always()
+        run: f=shots/kwin/kwin-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-1-display-top $i::$part"; done || true
+      - name: Picture (kwin-2-night-light)
+        if: always()
+        run: f=shots/kwin/kwin-2-night-light.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-2-night-light $i::$part"; done || true
+      - name: Picture (kwin-3-hdr-and-colour)
+        if: always()
+        run: f=shots/kwin/kwin-3-hdr-and-colour.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-3-hdr-and-colour $i::$part"; done || true
+      - name: Picture (kwin-4-games-and-smoothness)
+        if: always()
+        run: f=shots/kwin/kwin-4-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-4-games-and-smoothness $i::$part"; done || true
+      - name: Picture (kwin-5-scale-rotation-mirror)
+        if: always()
+        run: f=shots/kwin/kwin-5-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-5-scale-rotation-mirror $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kwin-screens
+          path: shots/kwin
+          retention-days: 14
+      - name: Fail if something didn't work
+        if: always()
+        run: test ! -e shots/kwin/FAILED

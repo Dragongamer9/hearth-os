@@ -205,7 +205,8 @@ def card_static(sys_root='/sys'):
     gl = re.search(r'OpenGL (?:core profile )?version string:\s*([\d.]+)', _cmd_out(['eglinfo', '-B']) or _cmd_out(['glxinfo', '-B']))
     screens = []
     try:
-        for o in json.loads(_cmd_out(['wlr-randr', '--json']) or '[]'):
+        # hearth-screens get: the screens in wlr-randr's shape under labwc and under KWin alike.
+        for o in json.loads(_cmd_out([sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-screens'), 'get'], timeout=15) or '[]'):
             if not o.get('enabled', True):
                 continue
             m = next((x for x in o.get('modes', []) if x.get('current')), None)

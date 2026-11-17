@@ -9,6 +9,11 @@ import Quickshell.Io
 Singleton {
     id: root
     property bool nightLight: false      // warm the screen from sunset to sunrise
+    // Night light's details (Settings › Display, 1.14; wlsunset under labwc, KWin's Night Light under KWin)
+    property int nightTemp: 3700         // how warm (K)
+    property string nightMode: "times"   // "times" (from nightFrom to nightTo) | "always"
+    property string nightFrom: "19:30"
+    property string nightTo: "07:00"
     property string wallpaper: ""        // a picture file; "" = the look's own (Hearth: the animated fireside, Steam-style: Slate Tide); "builtin:<name>" = one of images/wallpapers; "anim:lava" / "anim:aurora" = the other moving ones
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
@@ -65,7 +70,12 @@ Singleton {
         .concat(["shareStatus"])
         .concat(["menuStyle"])
         .concat(["subTheme", "wallMatch"])
+        .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
     onNightLightChanged: save("nightLight")
+    onNightTempChanged: save("nightTemp")
+    onNightModeChanged: save("nightMode")
+    onNightFromChanged: save("nightFrom")
+    onNightToChanged: save("nightTo")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
     onPointerSpeedChanged: save("pointerSpeed")

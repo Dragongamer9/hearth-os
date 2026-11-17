@@ -660,7 +660,7 @@ def status():
     return {'settings': s, 'startIn': start_in(), 'pin': bool(secret_read().get('pin')), 'host': host,
             'url': 'http://%s:%d' % (host, PORT), 'port': PORT, 'pauses': pauses_view(hsd, s),
             'spinDown': (hsd.get('power') or {}).get('spinDown', 0), 'sleepIdle': (hsd.get('power') or {}).get('sleepIdle', 0),
-            'webActive': unit_active(WEB_UNIT, True), 'tsIp': ts_ip4(), 'now': mode_now(), 'wlopm': bool(shutil.which('wlopm')),
+            'webActive': unit_active(WEB_UNIT, True), 'tsIp': ts_ip4(), 'now': mode_now(), 'wlopm': bool(shutil.which('wlopm')) or (os.environ.get('HEARTH_WM') == 'kwin' and bool(shutil.which('kscreen-doctor'))),
             'nvidia': bool(shutil.which('nvidia-smi'))}
 
 
@@ -1124,7 +1124,7 @@ def dash():
             'busy': bool(loaded and asking) or bool(running_q or pending_q) or bool(b.get('running')) or bool(rq.get('streaming')),
             'web': {'on': srv['web']['on'] is True, 'url': 'http://%s:%d' % (socket.gethostname().split('.')[0], PORT)},
             'idle': {'dim': srv['dim'], 'off': srv['off'], 'idlePower': srv['idlePower'] is True, 'idleMinutes': srv['idleMinutes'],
-                     'wlopm': bool(shutil.which('wlopm'))},
+                     'wlopm': bool(shutil.which('wlopm')) or (os.environ.get('HEARTH_WM') == 'kwin' and bool(shutil.which('kscreen-doctor')))},
             'live': {'vram': round(((g or {}).get('memUsed') or 0) / 1024, 1), 'power': (g or {}).get('power'), 'rx': r['rx'], 'tx': r['tx'],
                      'storage': round(100 * used / total) if total else None, 'cpu': r['cpu'], 'cpuTemp': ct,
                      'gpuBusy': (g or {}).get('busy'), 'gpuTemp': (g or {}).get('temp'), 'online': online},
@@ -1686,8 +1686,8 @@ def leaving():
     except OSError:
         pass
     countdown_clear()
-    if shutil.which('wlopm'):
-        run(['wlopm', '--on', '*'], 5)
+    if shutil.which('wlopm') or os.environ.get('HEARTH_WM') == 'kwin':
+        run(['sh', os.path.join(HERE, 'hearth-screen-power'), 'on'], 12)
     return res
 
 

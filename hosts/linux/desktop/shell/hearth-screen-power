@@ -1,0 +1,26 @@
+#!/bin/sh
+# Every screen off or back on (Settings › Power's "Turn the screen off after", Server mode's dashboard), on both of
+# Mantel's compositors (docs/SCREENS.md): wlopm under labwc, KWin's own DPMS (kscreen-doctor --dpms, KWin's
+# org_kde_kwin_dpms; KWin turns the screens back on at the next key, click or touch by itself) under KWin.
+#   hearth-screen-power off | on
+#   hearth-screen-power check      exit 0 when this desktop can turn its screens off
+kwin=0
+if [ "${HEARTH_WM:-}" = kwin ]; then kwin=1
+elif [ -z "${HEARTH_WM:-}" ]; then case "${XDG_CURRENT_DESKTOP:-}" in *KDE*) command -v kscreen-doctor >/dev/null 2>&1 && kwin=1 ;; esac
+fi
+if [ "$kwin" = 1 ]; then
+  command -v kscreen-doctor >/dev/null 2>&1 || exit 1
+  case "$1" in
+    check) exit 0 ;;
+    on|off) KSCREEN_BACKEND=${KSCREEN_BACKEND:-KWayland} exec timeout 10 kscreen-doctor --dpms "$1" >/dev/null 2>&1 ;;
+  esac
+else
+  command -v wlopm >/dev/null 2>&1 || exit 1
+  case "$1" in
+    check) exit 0 ;;
+    on) exec wlopm --on '*' ;;
+    off) exec wlopm --off '*' ;;
+  esac
+fi
+echo "usage: hearth-screen-power on | off | check" >&2
+exit 2
