@@ -147,8 +147,38 @@ Scope {
         if (mx.fix) setFix(key, a => { a.muted = m; });
         else for (const n of nodesOf(key)) if (n.audio) n.audio.muted = m;
     }
+    // Where an app plays (Settings › Sound › Apps' sound, 1.14): the output it was sent to in this session, else the
+    // output in use (an app follows the default output until it's sent somewhere).
+    property var sent: ({})
+    function outOf(key) {
+        if (mx.fix) { const a = fixApp(key); return a && a.out ? a.out : defaultOut; }
+        return sent[key] || defaultOut;
+    }
+    // Scrolling on an app's dock icon (Dock.qml, 1.14): the app playing sound whose name matches one of NAMES (its
+    // window's app id, its menu name) gets 5% louder or quieter, remembered like its slider. True when one matched.
+    function keyFor(names) {
+        const want = (names || []).map(n => String(n || "").toLowerCase().replace(/\.desktop$/, "").split(".").pop()).filter(n => n.length > 1);
+        for (const k of appKeys) {
+            const lk = k.toLowerCase();
+            if (want.some(n => lk === n || lk.indexOf(n) >= 0 || n.indexOf(lk) >= 0)) return k;
+        }
+        if (!mx.fix) for (const n of streams) {
+            const p = n.properties || {};
+            const bin = String(p["application.process.binary"] || "").toLowerCase(), id = String(p["application.id"] || "").toLowerCase();
+            if (want.some(w => (bin && (bin === w || bin.indexOf(w) >= 0)) || (id && id.indexOf(w) >= 0))) return keyOf(n);
+        }
+        return "";
+    }
+    function stepFor(names, up) {
+        const k = keyFor(names);
+        if (!k) return false;
+        setVol(k, volOf(k) + (up ? 0.05 : -0.05), true);
+        SettingsNav.toast(k + " · " + Math.round(volOf(k) * 100) + "%");
+        return true;
+    }
     // "Play on…": WirePlumber moves the app's sound when its target changes (pw-metadata, part of PipeWire).
     function sendTo(key, o) {
+        if (o && o.name) { const s = Object.assign({}, sent); s[key] = o.name; sent = s; }
         if (mx.fix) { setFix(key, a => { a.out = o.name; }); return; }
         const out = o ? o.node : null;
         if (!out) return;
@@ -163,6 +193,43 @@ Scope {
     Process {
         id: mover
         onExited: code => { if (code === 127) SettingsNav.toast("Moving an app's sound needs pw-metadata (PipeWire's tools)"); }
+    }
+
+    // ------------------------------------------------ which microphone each app records from (1.14, Apps' sound)
+    // Apps recording (capture streams: a stream that takes sound in), grouped by app like the players, and the
+    // microphones. "Record from…" points the app's streams at one microphone through hearth-sound route (WirePlumber
+    // moves them and remembers it for that app); "The default microphone" puts them back. Nothing is saved by Hearth.
+    readonly property var inputs: nodes.filter(n => n.audio && !n.isSink && !n.isStream && !String(n.name || "").endsWith(".monitor"))
+    readonly property var recStreams: nodes.filter(n => n.audio && n.isStream && n.isSink && !(n.properties && (n.properties["stream.monitor"] === "true" || n.properties["stream.capture.sink"] === "true")))
+    readonly property var source: Pipewire.defaultAudioSource
+    PwObjectTracker { objects: [mx.source].concat(mx.recStreams).concat(mx.inputs).filter(Boolean) }
+    function recNodesOf(key) { return recStreams.filter(n => keyOf(n) === key); }
+    readonly property string recJoined: {
+        if (mx.fix) return (mx.fix.recording || []).map(a => a.name).join("\n");
+        return M.group(recStreams.map(n => ({ id: n.id, key: keyOf(n) }))).map(g => g.key).join("\n");
+    }
+    readonly property var recKeys: recJoined === "" ? [] : recJoined.split("\n")
+    readonly property var inList: mx.fix ? (mx.fix.inputs || []).map(o => ({ name: o.name, node: null }))
+        : inputs.map(n => ({ name: devName(n), node: n }))
+    readonly property string defaultIn: mx.fix ? String(mx.fix.defaultIn || "") : (source ? devName(source) : "No microphone")
+    property var taken: ({})            // {app: microphone name} chosen in this session; "" = the default
+    function inOf(key) {
+        if (mx.fix) { const a = (mx.fix.recording || []).find(x => x.name === key); return a && a.in ? a.in : ""; }
+        return taken[key] || "";
+    }
+    function takeFrom(key, o) {
+        const t = Object.assign({}, taken); t[key] = o && o.name ? o.name : ""; taken = t;
+        if (mx.fix) { const f = JSON.parse(JSON.stringify(mx.fix)); const a = (f.recording || []).find(x => x.name === key); if (a) a.in = o && o.name ? o.name : ""; mx.fix = f; return; }
+        const ids = recNodesOf(key).map(n => String(n.id));
+        if (!ids.length) return;
+        const dev = o ? o.node : null;
+        const serial = dev ? String(dev.properties && dev.properties["object.serial"] ? dev.properties["object.serial"] : dev.id) : "-1";
+        inMover.command = ["python3", Quickshell.shellDir + "/hearth-sound", "route", serial, dev ? String(dev.id) : "-1"].concat(ids);
+        inMover.running = true;
+    }
+    Process {
+        id: inMover
+        stdout: StdioCollector { onStreamFinished: { const t = text.trim(); if (t.startsWith("error: ")) SettingsNav.toast(t.slice(7)); } }
     }
 
     // The outputs (the picker and "Play on…"): [{name, node}]

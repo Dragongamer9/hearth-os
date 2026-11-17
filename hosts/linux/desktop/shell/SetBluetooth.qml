@@ -78,6 +78,13 @@ SetPage {
             onActivated: { page.busy = modelData.mac; page.run("bluetoothctl --timeout 20 " + (modelData.connected ? "disconnect " : "connect ") + modelData.mac, modelData.name + (modelData.connected ? " disconnected" : " connected")); }
         }
     }
+    // 1.14: each device's battery, Trust and Block, and sending files (SetBtDevices.qml).
+    SetRow {
+        visible: page.on && page.paired.length > 0
+        icon: "gear"; chevron: true; title: "Trust, block, batteries and sending files"
+        sub: "Each paired device's settings"
+        onActivated: SettingsNav.openPage("bluetooth-devices")
+    }
     Text { visible: page.on && !page.paired.length; text: "No devices yet. Put a controller or headphones in pairing mode, then look for devices."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
     SetHeader { text: page.scanning ? "New devices · looking…" : "New devices"; visible: page.on }

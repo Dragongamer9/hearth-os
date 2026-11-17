@@ -64,6 +64,24 @@ Singleton {
     property bool restoreApps: false     // reopen the apps that were open when you signed out (SessionRestore.qml; 1.14)
     property bool netSpeed: false        // the network's speed next to its icon in the bar (Settings › Bar and dock; 1.14)
     property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
+    // ---- 1.14, more of KDE System Settings (docs/SETTINGS-MORE-1.14.md). Missing = the default, never written by itself.
+    property bool dockScrollVolume: true // scrolling on an app's dock icon changes that app's volume (Sound › Apps' sound)
+    property bool pttOn: false           // push to talk (Sound › Push to talk; Mantel on KWin)
+    property string pttKey: "f13"        // hearth-ptt's key id
+    property int screenOffBattery: -1    // on battery: turn the screen off after (minutes, 0 never); -1 = as plugged in
+    property int sleepBattery: -1        // on battery: go to sleep after (minutes, 0 never); -1 = as plugged in
+    property var wallScreens: ({})       // a picture per screen: {screen name: path}; a screen not in it shows `wallpaper`
+    property var wallShow: ({})          // slideshow: {on, folder, minutes, shuffle}
+    property var wallPotd: ({})          // picture of the day: {on, source: "bing"|"apod"|"wikimedia"}; off unless you turn it on
+    property var wallPair: ({})          // a light and a dark wallpaper that follow the look: {on, light, dark}
+    property bool appsFollow: true       // Qt, KDE and GTK apps take Hearth's colours (theme/hearth-theme, theme/apply.sh)
+    property int frameTint: 0            // window frames tinted with the accent, 0–100 % (hearth-theme)
+    property string signinSplash: ""     // the splash after signing in: "" (none) | "flame" | "logo" | "plain"
+    property var removable: ({})         // what happens when a drive is plugged in: {storage: "ask"|"open"|"nothing"}
+    property bool usbNotify: true        // a notice when a new USB device is plugged in (Devices › USB devices)
+    property bool firmwareNotify: true   // a notice when firmware updates are there (Firmware & device security)
+    property bool welcomeAfterUpdates: true   // the Welcome screen once after each new version
+    property bool oomNotice: true        // a notice with tips when memory ran out
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
     // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
@@ -80,6 +98,9 @@ Singleton {
         .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
         .concat(["nightPlace", "nightLat", "nightLon", "nightFade"])
         .concat(["restoreApps"])
+        .concat(["dockScrollVolume", "pttOn", "pttKey", "screenOffBattery", "sleepBattery", "wallScreens", "wallShow", "frameTint",
+                 "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
+        .concat(["wallPotd", "wallPair", "appsFollow"])
         .concat(["netSpeed"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
@@ -121,6 +142,23 @@ Singleton {
     onSubThemeChanged: save("subTheme")
     onWallMatchChanged: save("wallMatch")
     onRestoreAppsChanged: save("restoreApps")
+    onDockScrollVolumeChanged: save("dockScrollVolume")
+    onPttOnChanged: save("pttOn")
+    onPttKeyChanged: save("pttKey")
+    onScreenOffBatteryChanged: save("screenOffBattery")
+    onSleepBatteryChanged: save("sleepBattery")
+    onWallScreensChanged: save("wallScreens")
+    onWallShowChanged: save("wallShow")
+    onFrameTintChanged: save("frameTint")
+    onWallPotdChanged: save("wallPotd")
+    onWallPairChanged: save("wallPair")
+    onAppsFollowChanged: save("appsFollow")
+    onSigninSplashChanged: save("signinSplash")
+    onRemovableChanged: save("removable")
+    onUsbNotifyChanged: save("usbNotify")
+    onFirmwareNotifyChanged: save("firmwareNotify")
+    onWelcomeAfterUpdatesChanged: save("welcomeAfterUpdates")
+    onOomNoticeChanged: save("oomNotice")
     onNetSpeedChanged: save("netSpeed")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
