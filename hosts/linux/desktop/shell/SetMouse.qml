@@ -4,6 +4,8 @@
 // With Mantel on KWin the same file is put on KWin's devices (hearth-kwin-settings pointer-apply), and a few more of
 // KWin's own show (scroll speed, middle-click, tap-and-drag, how the touchpad clicks, its gestures): under labwc
 // they're shown greyed, as needing Mantel on KWin. The controller's pointer speed is on the Controller page.
+// Middle-click paste is KWin's own (kwinrc [Wayland] EnablePrimarySelection, read when KWin starts), written through
+// hearth-kwin-settings; the extra buttons are on their own page (SetMouseButtons.qml).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -77,6 +79,17 @@ SetPage {
             checked: !!page.mouse.middle
             onToggled: v => page.change("mouse", "middle", v)
         }
+        SetSwitch {
+            enabled: kw.live; opacity: kw.live ? 1 : 0.45
+            icon: "mouse"; title: "Paste with the middle button"
+            sub: "Select text, then click the middle button (the wheel) to paste it. Used from the next time you sign in" + page.kwinNote
+            checked: kw.b("kwinrc", "Wayland", "EnablePrimarySelection", true)
+            onToggled: v => {
+                kw.set("kwinrc", "Wayland", "EnablePrimarySelection", v);
+                page.say("Saved. Middle-click paste is " + (v ? "on" : "off") + " from the next time you sign in to Desktop Mode.");
+            }
+        }
+        SetLinkCard { target: "mouse-buttons"; enabled: true }
     }
     SetCardGroup {
         title: "Touchpad"

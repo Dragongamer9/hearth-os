@@ -5,6 +5,7 @@
   "backgroundcontrast",
   "blur",
   "colorblindnesscorrection",
+  "cube",
   "desktopchangeosd",
   "dialogparent",
   "diminactive",
@@ -30,6 +31,8 @@
   "scale",
   "shakecursor",
   "sheet",
+  "showfps",
+  "showpaint",
   "slide",
   "slideback",
   "slidingpopups",
@@ -116,5 +119,11 @@
    "calibrationMatrix": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1",
    "defaultCalibrationMatrix": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
   }
+ ],
+ "scripts": [
+  "desktopchangeosd",
+  "minimizeall",
+  "synchronizeskipswitcher",
+  "videowall"
  ]
 }

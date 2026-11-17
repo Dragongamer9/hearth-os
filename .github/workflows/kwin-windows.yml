@@ -14,7 +14,7 @@ on:
   push:
     branches: [bughunt, 'feature/kwin-*']
     paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/Dock.qml', 'hosts/linux/desktop/shell/TaskStrip.qml',
-            'hosts/linux/desktop/shell/SnapLayouts.qml', 'hosts/linux/desktop/shell/ForceClose.qml', 'hosts/linux/desktop/shell/hearth_screencast.py',
+            'hosts/linux/desktop/shell/SnapLayouts.qml', 'hosts/linux/desktop/shell/ForceClose.qml', 'hosts/linux/desktop/shell/SetKwinRules.qml', 'hosts/linux/desktop/shell/hearth_screencast.py',
             'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/SetKeyboard.qml', 'os/system_files/usr/share/kwin/tabbox/**', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/HintStrip.qml', 'hosts/linux/desktop/theme/**', 'hosts/linux/desktop/shell/Theme.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
             'hosts/linux/test/test_kwin_windows.py', 'hosts/linux/test/kwin-windows-mock.js', 'tools/e2e-kwin-windows.py',
             '.github/workflows/kwin-windows.yml']
@@ -292,3 +292,20 @@ jobs:
         run: f=shots/kwin-desktop-grid.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-desktop-grid $i::$part"; done || true
       - name: Picture (shortcuts)
         run: f=shots/kwin-shortcuts.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-shortcuts $i::$part"; done || true
+
+  # Window menu › More actions (shade, no title bar and frame, special window settings) and Window rules opened for a window.
+  pictures-extras-3:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kwin-windows
+          path: shots
+      - name: ImageMagick
+        run: command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; } || true
+      - name: Picture (window-more-actions)
+        run: f=shots/kwin-window-more-actions.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-window-more-actions $i::$part"; done || true
+      - name: Picture (window-special-settings)
+        run: f=shots/kwin-window-special-settings.png; [ -f "$f" ] && convert "$f" -resize 720x -quality 38 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT kwin-window-special-settings $i::$part"; done || true

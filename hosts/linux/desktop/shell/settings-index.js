@@ -2530,6 +2530,16 @@ var ENTRIES = [
 "d": "In Screen edges"
 },
 {
+"t": "Desktop cube",
+"p": "kwin-desktops",
+"i": "box"
+},
+{
+"t": "Open the cube now",
+"p": "kwin-desktops",
+"i": "box"
+},
+{
 "t": "How long to push before it happens",
 "p": "kwin-edges",
 "i": "clock"
@@ -2653,7 +2663,7 @@ var ENTRIES = [
 {
 "t": "Look",
 "p": "kwin-effects",
-"d": "What Alt+Tab shows while you hold it",
+"d": "What Alt+Tab shows while you hold it. Alt+` shows only the windows of the app you're on, in the same look",
 "i": "window"
 },
 {
@@ -2675,6 +2685,18 @@ var ENTRIES = [
 {
 "t": "Order",
 "p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Second switcher's look",
+"p": "kwin-effects",
+"d": "A switcher of its own, set up apart from Alt+Tab",
+"i": "window"
+},
+{
+"t": "Which apps",
+"p": "kwin-effects",
+"d": "Only the app you're on: Super+Tab goes between that app's windows",
 "i": "grid"
 },
 {
@@ -2789,9 +2811,39 @@ var ENTRIES = [
 "i": "mouse"
 },
 {
+"t": "Hide the pointer when the mouse is still",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
 "t": "Show touches on a touchscreen",
 "p": "kwin-effects",
 "i": "pad"
+},
+{
+"t": "Minimize every window with Super+Shift+D",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Video wall",
+"p": "kwin-effects",
+"i": "display"
+},
+{
+"t": "Leave out of Alt+Tab what's left off the taskbar",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Show FPS",
+"p": "kwin-effects",
+"i": "cpu"
+},
+{
+"t": "Show paint",
+"p": "kwin-effects",
+"i": "edit"
 },
 {
 "t": "Allow tearing in full-screen games",
@@ -2859,6 +2911,11 @@ var ENTRIES = [
 {
 "t": "Which screen",
 "p": "kwin-rules"
+},
+{
+"t": "One pointer for the pen and the mouse",
+"p": "kwin-tablet",
+"i": "mouse"
 },
 {
 "t": "Screen it draws on",
@@ -2979,6 +3036,74 @@ var ENTRIES = [
 "t": "Only snap when windows would overlap",
 "p": "kwin-tiling",
 "i": "window"
+},
+{
+"t": "Which window gets the keyboard",
+"p": "kwin-behaviour",
+"i": "kbd"
+},
+{
+"t": "Wait before the focus follows",
+"p": "kwin-behaviour",
+"i": "clock"
+},
+{
+"t": "Raise the window under the pointer",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Raise after",
+"p": "kwin-behaviour",
+"i": "clock"
+},
+{
+"t": "Clicking a window brings it to the front",
+"p": "kwin-behaviour",
+"d": "Off: a window you click in stays where it is in the stack",
+"i": "mouse"
+},
+{
+"t": "The pointer comes first",
+"p": "kwin-behaviour",
+"d": "When a window closes or you switch desktops, the window under the pointer gets the keyboard, not the last one you used",
+"i": "mouse"
+},
+{
+"t": "Stop windows taking the keyboard",
+"p": "kwin-behaviour",
+"i": "pin"
+},
+{
+"t": "Double-click",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Middle-click",
+"p": "kwin-behaviour",
+"i": "mouse"
+},
+{
+"t": "Turning the wheel",
+"p": "kwin-behaviour",
+"i": "mouse"
+},
+{
+"t": "Hold",
+"p": "kwin-behaviour",
+"d": "Pressed on its own, Super still opens the app menu",
+"i": "kbd"
+},
+{
+"t": "Where new windows open",
+"p": "kwin-behaviour",
+"i": "window"
+},
+{
+"t": "Just one app's windows",
+"p": "kwin-behaviour",
+"d": "A window rule opens them where, how big and how you want"
 },
 {
 "t": "Share this device's AI",
@@ -3145,6 +3270,11 @@ var ENTRIES = [
 },
 {
 "t": "Middle-click with both buttons",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Paste with the middle button",
 "p": "mouse",
 "i": "mouse"
 },
