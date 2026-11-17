@@ -1469,7 +1469,18 @@ Scope {
             return;
         }
         if (!p.path && p.device) return mountPlace(p, true);
+        if (p.account && !p.path) return accountOpen(p);
         navigate(p.path, "");
+    }
+    // An online account's files (Settings › Accounts › Online accounts): mounted with gvfs (davs://), the password
+    // from the keyring (hearth_accounts.py), then opened.
+    function accountOpen(p) {
+        say("Opening “" + p.label + "”…");
+        call(["account-open", p.account], (r, err) => {
+            if (err) return ask("Couldn't open “" + p.label + "”", err, "OK", () => {});
+            refreshPlaces();
+            if (r.path) navigate(r.path, "");
+        });
     }
     // ================================================ your devices' shared folders (hearth_netshares.py)
     // One click: mounted with gvfs and opened (the home name at home, the Tailscale name away). The first time it asks
@@ -5720,7 +5731,7 @@ Scope {
         property color tint: Theme.text
         property real size: 20
         readonly property string hearthIcon: kind.startsWith("bc:") ? "bc-" + kind.slice(3)
-            : ({ start: "home", home: "user", games: "pad", device: "desktops", network: "server", netroot: "server", howto: "help", apps: "grid" })[kind] || ""
+            : ({ start: "home", home: "user", games: "pad", device: "desktops", cloud: "cloud", network: "server", netroot: "server", howto: "help", apps: "grid" })[kind] || ""
         readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸", pictures: "▲", music: "♪", desktop: "▭" })[kind] || ""
         // Windows 11-style: your folders in yellow, drives as drive glyphs (WinGlyph.qml draws the big ones).
         readonly property bool yellow: ["documents", "downloads", "videos", "pictures", "music", "desktop", "folder"].indexOf(kind) >= 0
