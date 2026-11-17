@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
   push:
     branches-ignore: ['ci/**']
-    paths: ['hosts/linux/desktop/shell/hearth-vnc', 'hosts/linux/desktop/shell/hearth-record', 'hosts/linux/desktop/shell/hearth_screencast.py',
+    paths: ['hosts/linux/desktop/shell/hearth-vnc', 'hosts/linux/desktop/shell/hearth-record', 'hosts/linux/desktop/shell/hearth_portal_client.py',
             'hosts/linux/desktop/shell/SetRemoteDesktop.qml', 'hosts/linux/desktop/shell/Recorder.qml', 'hosts/linux/desktop/shell/CaptureIndicator.qml',
             'hosts/linux/test/test_remote_record.py', 'os/system_files/usr/lib/systemd/user/hearth-vnc.service', '.github/workflows/remote-record.yml']
 
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -o pipefail
           sudo apt-get install -y python3-gi >/dev/null 2>&1 || true
-          for f in hearth-vnc hearth-record hearth_screencast.py; do python3 -m py_compile "hosts/linux/desktop/shell/$f"; done
+          for f in hearth-vnc hearth-record hearth_portal_client.py; do python3 -m py_compile "hosts/linux/desktop/shell/$f"; done
           python3 -m unittest discover -s hosts/linux/test -p 'test_remote_record.py' -v 2>&1 | tee /tmp/t.log || {
             msg=$(grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -20 | cut -c1-250 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
             echo "::error title=remote desktop and recorder tests::$msg"; exit 1; }
