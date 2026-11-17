@@ -26,10 +26,12 @@ SetPage {
     property int stamp: 0                 // new pictures under the same file name show at once
     property string cropping: ""          // the picture being cropped (1.14)
     function load() { job.run(["users"], r => { page.stamp++; page.st = r; }); }
+    // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
+    Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
     Component.onCompleted: {
         load();
         // Settings opened at users:crop (the pictures): the cropper with the first picture in Pictures.
-        if (SettingsNav.pageAnchor === "crop") { SettingsNav.pageAnchor = ""; picking = true; job.run(["pictures"], r => { page.pictures = r.pictures || []; if (page.pictures.length) page.startCrop(page.pictures[0]); }); }
+        if (SettingsNav.pageAnchor === "crop") { anchorDone.restart(); picking = true; job.run(["pictures"], r => { page.pictures = r.pictures || []; if (page.pictures.length) page.startCrop(page.pictures[0]); }); }
     }
     function startCrop(p) { cropping = p; cropImg.zoom = 1; cropImg.dx = 0; cropImg.dy = 0; }
     // The square inside the circle, at 512 × 512, then hearth-system picture-set (as before). The copy is in your

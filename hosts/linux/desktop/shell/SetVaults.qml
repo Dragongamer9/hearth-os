@@ -25,13 +25,15 @@ SetPage {
     function say(t, bad) { message = t; messageBad = !!bad; }
     function load() { job.run(["list"], r => page.st = r, e => page.say(e, true)); }
     // Settings opened at vaults:<id> (the bar's "Unlock…"): that vault's password field; vaults:new: the new vault form.
+    // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
+    Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
     Component.onCompleted: {
         const a = SettingsNav.pageAnchor;
-        if (a === "new") { creating = true; SettingsNav.pageAnchor = ""; }
-        else if (/^[a-z0-9-]+$/.test(a)) { picked = a; asking = a; SettingsNav.pageAnchor = ""; }
+        if (a === "new") { creating = true; anchorDone.restart(); }
+        else if (/^[a-z0-9-]+$/.test(a)) { picked = a; asking = a; anchorDone.restart(); }
         load();
     }
-    Component.onDestruction: { pw.text = ""; npw.text = ""; npw2.text = ""; }
+    Component.onDestruction: { npw.text = ""; npw2.text = ""; }   // (each vault's own field is emptied as it unlocks)
     Timer { interval: 10000; repeat: true; running: page.visible && !job.busy; onTriggered: page.load() }
     SetJob { id: job; helper: "hearth-vaults" }
     function idleWord(m) { return m === 0 ? "Never by itself" : m < 60 ? m + " minutes unused" : (m / 60) + (m === 60 ? " hour unused" : " hours unused"); }

@@ -42,10 +42,12 @@ SetPage {
         uuid = u; manual = false; d = null; qr = null; showPw = false; editEap = false; say("");
         job.run(["details", u], r => { page.d = r; if (page.anchorWant === "qr" && r.kind === "wifi") { page.anchorWant = ""; page.showQr(); } }, e => page.say(e, true));
     }
+    // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
+    Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
     Component.onCompleted: {
         const a = SettingsNav.pageAnchor;
         if (["qr", "mobile", "wired", "add-wired", "add-mobile", "add-enterprise"].includes(a)) {
-            SettingsNav.pageAnchor = "";
+            anchorDone.restart();
             if (a.startsWith("add-")) adding = a.slice(4); else anchorWant = a;
         }
         load();
