@@ -45,6 +45,7 @@ Singleton {
     property bool locked: false            // the lock screen is up (Lock.qml): moving wallpapers pause
     property bool screenOff: false         // the screen was turned off for idling (IdlePower.qml): they pause too
     property var shownDesktop: null        // Show desktop: {windows, front} that were minimized for it
+    property double previewAt: 0           // KWin's window previews last shown or hidden (the dock's and taskbar's, so moving between apps is quick)
 
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-desk").toString().replace(/^file:\/\//, ""))
     readonly property string filesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-files").toString().replace(/^file:\/\//, ""))
