@@ -17,6 +17,8 @@ import "settings-pages.js" as Reg
 Scope {
     id: app
     property bool shown: false
+    // What's typed in Settings' search (the KWin checks look that keys reach the window).
+    property string query: ""
     property string page: "home"
     // On the live USB, "Install Hearth" shows (System, and a banner on Home).
     property bool live: false
@@ -72,6 +74,7 @@ Scope {
             onVisibleChanged: if (!visible) app.shown = false
             // Opens on Home every time (a page asked for by name, or by a notification, opens that page instead).
             Component.onCompleted: if (app.page === "") app.page = "home"
+            Binding { target: app; property: "query"; value: frameLoader.item && typeof frameLoader.item.query === "string" ? frameLoader.item.query : "" }
 
             // The frame, loaded by file name: if it fails, the plain list instead (Settings always opens).
             // 1.14: the controller look (SettingsFrameB.qml) while a controller is what you use, the keyboard-and-mouse
