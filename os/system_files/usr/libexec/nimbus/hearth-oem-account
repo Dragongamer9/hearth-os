@@ -1,0 +1,111 @@
+#!/usr/bin/python3
+"""hearth-oem-account: a PC that came with Hearth OS already on it (put on by the maker or a shop with
+`bootc install`, not with Hearth's installer) has no account yet, so nothing could sign in and first-time setup
+never came up. At every start, before nimbus-autologin: when there's no account with uid 1000 on an installed Hearth
+(not the live or installer USB), this makes a stand-in one, "hearth" (shown as "Hearth"), with no password and
+administrator rights, and leaves /var/lib/hearth/oem-setup.json. nimbus-autologin then signs it in, nimbus-session
+sees the file and opens Hearth's first-time setup, and setup's "Make it yours" step (ui/index.html, hearth-admin
+oem-finish) sets your name, password and time zone and removes the file.
+
+Never stops a start: anything that goes wrong is logged and it exits 0 (the login screen still comes up).
+"""
+import json
+import os
+import pwd
+import subprocess
+import sys
+import time
+
+ROOT = os.environ.get('HEARTH_OEM_ROOT', '')          # tests: a pretend / (the commands come from PATH)
+USER = 'hearth'
+FULL = 'Hearth'
+UID = 1000
+MARK = '/var/lib/hearth/oem-setup.json'
+LIVE_MARKS = ('/etc/hearth-live', '/etc/hearth-installer')
+ADMIN_GROUPS = ('wheel', 'sudo')
+EXTRA_GROUPS = ('video', 'netdev', 'systemd-journal', 'dialout')
+
+
+def p(path):
+    return ROOT + path
+
+
+def log(msg):
+    print('hearth-oem-account: ' + msg, flush=True)
+
+
+def uid_taken(uid=UID, getpwuid=pwd.getpwuid):
+    try:
+        getpwuid(uid)
+        return True
+    except KeyError:
+        return False
+
+
+def group_names(path=None):
+    try:
+        with open(path or p('/etc/group')) as f:
+            return {l.split(':', 1)[0] for l in f if ':' in l}
+    except OSError:
+        return set()
+
+
+def people(getpwall=pwd.getpwall):
+    """Accounts people sign in with (uid 1000 up to 59999), whatever made them."""
+    try:
+        return [u.pw_name for u in getpwall() if 1000 <= u.pw_uid < 60000]
+    except Exception:
+        return ['?']   # can't tell: do nothing
+
+
+def plan(getpwuid=pwd.getpwuid, groups=None, getpwall=pwd.getpwall):
+    """What to do at this start: None (nothing) or the useradd arguments for the stand-in account. Only when there's
+    no account at all (uid 1000 free and no other person's account either)."""
+    if any(os.path.exists(p(m)) for m in LIVE_MARKS):
+        return None
+    if uid_taken(UID, getpwuid) or people(getpwall):
+        return None
+    have = group_names() if groups is None else set(groups)
+    extra = [g for g in ADMIN_GROUPS + EXTRA_GROUPS if g in have]
+    args = ['useradd', '-m', '-u', str(UID), '-c', FULL, '-s', '/bin/bash']
+    if extra:
+        args += ['-G', ','.join(extra)]
+    return args + [USER]
+
+
+def write_mark(user=USER):
+    path = p(MARK)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'user': user, 'uid': UID, 'at': int(time.time())}, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def main():
+    args = plan()
+    if args is None:
+        return 0
+    log('no account yet (a pre-installed PC): making the stand-in account "%s" for first-time setup' % USER)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        log('useradd failed: ' + (r.stderr or r.stdout).strip()[:300])
+        return 0
+    # No password: signing in, the lock screen and system changes just need Enter (pam_unix nullok), like the
+    # installer's "No password". Setup asks for one.
+    r = subprocess.run(['passwd', '-d', USER], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        log('passwd -d failed: ' + (r.stderr or r.stdout).strip()[:300])
+    write_mark()
+    log('done; first-time setup asks for your name, password and time zone')
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except Exception as e:   # never a stop at start-up
+        log('error: %s' % e)
+        sys.exit(0)

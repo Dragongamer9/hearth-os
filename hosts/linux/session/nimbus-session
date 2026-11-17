@@ -1627,8 +1627,10 @@ steam_game_unwatch() { [ -n "$SG_WATCH_PID" ] && kill "$SG_WATCH_PID" 2>/dev/nul
 # sign-in) and the old Game Mode screens aren't needed: setup is only pending with HEARTH_LEGACY_SETUP=1 in
 # session.conf (a developer switch). Until it's done (or skipped: Hearth writes setupDone in library.json), "game" then
 # means Hearth's app for it (mode "setup"); a setup run that ends without asking for anything goes to Steam Game Mode.
+# A pre-installed PC (hearth-oem-account made the stand-in account and /var/lib/hearth/oem-setup.json) has had no
+# installer, so setup is pending there too: it asks for your name, password and time zone.
 setup_pending() {
-  [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || return 1
+  [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || [ -e "${HEARTH_OEM_MARK:-/var/lib/hearth/oem-setup.json}" ] || return 1
   [ -z "$HEARTH_SEAT" ] && can_game || return 1
   ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
 }

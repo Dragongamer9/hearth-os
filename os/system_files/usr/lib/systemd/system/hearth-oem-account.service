@@ -1,0 +1,15 @@
+[Unit]
+Description=Hearth: a stand-in account for first-time setup on a pre-installed PC
+# Before the autologin is written and the login screen starts; never holds either up (no Requires/Wants on them).
+Before=nimbus-autologin.service display-manager.service hearth-groups.service
+After=local-fs.target systemd-sysusers.service
+ConditionPathExists=!/etc/hearth-live
+ConditionPathExists=!/etc/hearth-installer
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/libexec/nimbus/hearth-oem-account
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

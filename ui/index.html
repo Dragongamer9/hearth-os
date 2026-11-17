@@ -1626,7 +1626,7 @@ function openStartPage(p){
   if(p==='recomps'){ if(typeof SHOP==='object') SHOP.store='recomps'; navigate('shop',{},false); return; }
   if(['stores','library','downloads'].includes(p)) navigate(p,{},false);
 }
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(LINUX&&!OVERLAY&&hasFeat('gameModeChoice')) gmStart(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(LINUX&&!OVERLAY&&hasFeat('gameModeChoice')) gmStart(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.oemSetup&&!i.live) setupOem(true); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -10447,7 +10447,8 @@ function act(el){
     case 'swDl': return call('switch.download',{url:SW.s.isoUrl}).then(r=>{ SW.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'swUsb': return swUsb(+d.disk, d.name);
     case 'swRestart': return swRestart();
-    case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : setupGo(1);
+    case 'setupNext': return SETUP_STEPS[S.setupStep||0]==='done' ? setupFinish() : SETUP_STEPS[S.setupStep||0]==='account' ? oemNext() : setupGo(1);
+    case 'oemEdit': return oemEdit(d.v);
     case 'setupSkip': return setupFinish();
     case 'setupBrowser': return call('browser.act',{action:d.v==='chrome'?'pick-chrome':'pick-firefox'}).then(r=>{ BROWSER.s=r; render(null,true); }).catch(e=>toast(e.message));
     case 'profRetry': PROF.err=null; render('pr-retry',true); return loadProfiles();
@@ -12885,6 +12886,38 @@ function expiredSheet(store, why){
 // everything here is also in Settings later.
 // browser (1.12): Hearth OS (Linux) only, so on other hosts the list is one shorter and B always goes back one step.
 const SETUP_STEPS=['controller','welcome','wifi',...(LINUX?['browser']:[]),'accounts','controls','games','done'];
+// A pre-installed PC (hearth-oem-account: no installer, a stand-in account): "Make it yours" after the internet,
+// for your name, password and time zone (hearth-admin oem-finish). host.info's oemSetup says so.
+const OEM={full:'', password:'', nopassword:false, tz:'', busy:false, done:false};
+function setupOem(on){
+  if(!on || SETUP_STEPS.includes('account')) return;
+  SETUP_STEPS.splice(SETUP_STEPS.indexOf('wifi')+1, 0, 'account');
+  if(!OEM.tz){ try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; OEM.tz = z && z!=='Etc/UTC' ? z : 'UTC'; }catch(e){ OEM.tz='UTC'; } }
+}
+function oemWhy(){
+  if(!OEM.full.trim()) return 'Type your name';
+  if(/[:,=\\]/.test(OEM.full)) return 'Your name can\'t have : , = or \\ in it';
+  if(!OEM.nopassword && OEM.password.length<4) return 'Choose a password (at least 4 characters), or turn on No password';
+  return '';
+}
+async function oemEdit(what){
+  if(what==='full'){ const v=await openPrompt({title:'Your name', value:OEM.full}); if(v==null) return; OEM.full=v.trim(); }
+  if(what==='password'){ const a=await openPrompt({title:'Choose a password', secret:true, min:1}); if(a==null) return;
+    const b=await openPrompt({title:'The same password again', secret:true}); if(b==null) return;
+    if(a!==b) return toast('The passwords don\'t match'); OEM.password=a; }
+  if(what==='nopass'){ OEM.nopassword=!OEM.nopassword; if(OEM.nopassword) OEM.password=''; }
+  if(what==='tz') return openSheet({title:'Time zone', items: OSI_TZ.map(z=>({label:z.replace(/_/g,' ').replace('/',' · '), icon: z===OEM.tz?'check':'info', run:()=>{ OEM.tz=z; render('oem-tz'); }}))});
+  render('oem-'+what);
+}
+function oemNext(){
+  if(OEM.done) return setupGo(1);
+  const why=oemWhy(); if(why) return toast(why);
+  if(!host){ OEM.done=true; return setupGo(1); }
+  OEM.busy=true; render(null,true);
+  call('setup.oemFinish',{full:OEM.full.trim(), password:OEM.nopassword?'':OEM.password, nopassword:OEM.nopassword, timezone:OEM.tz},60000)
+    .then(()=>{ OEM.done=true; OEM.password=''; HOSTINFO.oemSetup=false; toast('Your account is set up'); setupGo(1); })
+    .catch(e=>toast(e.message)).finally(()=>{ OEM.busy=false; render(null,true); });
+}
 // ---------- "Connect a controller": the first screen on the live USB and at first start ----------
 // Waits for a controller (USB, Bluetooth or the device's own), with Skip for a keyboard or mouse.
 function padState(){
@@ -12975,6 +13008,16 @@ function viewSetup(){
       <h1>Welcome to ${APP}</h1><p class="lead">Let's get you online, sign in to your game stores and bring your games over. It takes a couple of minutes, and you can skip anything.</p>
       <div class="acts">${next('Let\'s go')}${skip}</div></div>`;
   else if(st==='wifi') body=`<h1>Connect to the internet</h1><p class="lead">Store sign-ins, downloads and updates need it.</p><div class="rows" style="max-height:50vh;overflow:auto">${pageWifi()}</div><div class="acts">${next(S.sys.wifi&&S.sys.wifi.ssid?'Next':'Skip for now')}</div>`;
+  else if(st==='account'){
+    const row=(k,ic,t,v,sub)=>`<button class="row" data-f data-k="oem-${k}" data-act="oemEdit" data-v="${k}"><span class="ricon">${I[ic]||I.info}</span><div class="rt"><b>${t}</b><small>${sub}</small></div><div class="rv">${v} ›</div></button>`;
+    body=`<h1>Make it yours</h1><p class="lead">This PC came with ${APP} on it. Your name, a password for system changes and the lock screen, and your time zone. It still starts straight into ${APP}.</p><div class="rows">
+      ${row('full','user','Your name', esc(OEM.full)||'Choose', 'Shown on the lock screen and in Settings › Users')}
+      ${OEM.nopassword?'':row('password','lock','Password', OEM.password?'•'.repeat(Math.min(12,OEM.password.length)):'Choose', 'You\'ll need it for system changes')}
+      <button class="row" data-f data-k="oem-nopass" data-act="oemEdit" data-v="nopass"><span class="ricon">${I.lock}</span><div class="rt"><b>No password</b><small>${OEM.nopassword?'Anyone who picks up this PC can use it and make system changes. Add one later in Settings › Sign-in.':'Signing in and system changes just need Enter'}</small></div><div class="sw ${OEM.nopassword?'on':''}"></div></button>
+      ${row('tz',I.clock?'clock':'info','Time zone', esc((OEM.tz||'UTC').replace(/_/g,' ')), 'For the clock')}
+      ${OEM.done?`<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>Saved</b><small>Change any of it later in Settings</small></div></div>`:''}
+    </div><div class="acts">${next(OEM.busy?'Saving…':'Next')}${skip}</div>`;
+  }
   else if(st==='browser'){
     // Your browser (1.12): Hearth Browser (Firefox) or Google Chrome, downloaded from Google when picked.
     const b=BROWSER.s||{}, ch=b.choice||{}, cur=ch.browser||'firefox', busy=b.state&&b.state!=='idle';
