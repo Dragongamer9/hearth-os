@@ -93,7 +93,10 @@ grep -q "ending cleanly" shots/compositor-alone.log || fail "SIGTERM" "didn't sa
 
 # ---- 2: Desktop Mode for real: nimbus-session with the preview on starts the compositor, which starts Mantel.
 CONF="$HOME/.config/nimbus/session.conf"
-printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\nHEARTH_FIREHOLD_UNLOCKED=1\n' > "$CONF"
+printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\n' > "$CONF"
+FHJ="$HOME/.config/nimbus/firehold.json"
+printf '{"firehold": {"unlocked": true}}\n' > "$FHJ"
+unlocked_now() { python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["firehold"]["unlocked"] is True else 1)' "$FHJ" 2>/dev/null; }
 # The first-time card (how to get out) was shown before: it would take the keyboard from the test window.
 mkdir -p "$HOME/.local/state/hearth" && : > "$HOME/.local/state/hearth/firehold-intro-told"
 LOG="$HOME/.local/share/nimbus/session.log"
@@ -208,16 +211,16 @@ sleep 1
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1
 sleep 4
 shot firehold-6c-hidden
-grep -q "HEARTH_FIREHOLD_UNLOCKED=0" "$CONF" || fail "hidden switch" "not hidden in session.conf: $(tr '\n' ' ' < "$CONF")"
+unlocked_now && fail "hidden switch" "not hidden in firehold.json: $(cat "$FHJ")"
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page about >/dev/null 2>&1
 sleep 3
 for t in 1 2 3 4 5 6; do WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings tapversion >/dev/null 2>&1; done
 sleep 1
-grep -q "HEARTH_FIREHOLD_UNLOCKED=1" "$CONF" && fail "hidden switch" "six taps unlocked it"
+unlocked_now && fail "hidden switch" "six taps unlocked it"
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings tapversion >/dev/null 2>&1
-for i in $(seq 1 20); do grep -q "HEARTH_FIREHOLD_UNLOCKED=1" "$CONF" && break; sleep 0.5; done
-grep -q "HEARTH_FIREHOLD_UNLOCKED=1" "$CONF" && note "hidden switch" "the 7th tap unlocked it" || fail "hidden switch" "seven taps didn't unlock it: $(tr '\n' ' ' < "$CONF")"
-[ -e "$CONF.bak" ] && note "hidden switch" "session.conf kept its .bak" || note "hidden switch" "no session.conf.bak"
+for i in $(seq 1 20); do unlocked_now && break; sleep 0.5; done
+unlocked_now && note "hidden switch" "the 7th tap unlocked it ($(cat "$FHJ" | tr -d '\n'))" || fail "hidden switch" "seven taps didn't unlock it: $(cat "$FHJ" 2>&1)"
+[ -e "$FHJ.bak" ] && note "hidden switch" "firehold.json kept its .bak" || note "hidden switch" "no firehold.json.bak"
 sleep 1
 shot firehold-6d-unlocked
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1

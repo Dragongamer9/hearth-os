@@ -27,7 +27,7 @@ status() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(ev
 wait_for() { for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1; }
 W() { WAYLAND_DISPLAY=wayland-hearth "$@"; }
 
-printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\nHEARTH_FIREHOLD_UNLOCKED=1\n' > "$HOME/.config/nimbus/session.conf"; mkdir -p "$HOME/.local/state/hearth" && : > "$HOME/.local/state/hearth/firehold-intro-told"
+printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\n' > "$HOME/.config/nimbus/session.conf"; printf '{"firehold": {"unlocked": true}}\n' > "$HOME/.config/nimbus/firehold.json"; mkdir -p "$HOME/.local/state/hearth" && : > "$HOME/.local/state/hearth/firehold-intro-told"
 LOG="$HOME/.local/share/nimbus/session.log"
 FIREHOLD_BIN="$BIN" FIREHOLD_ARGS="--headless --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
   sh hosts/linux/session/nimbus-session >shots/session-out.log 2>&1 &

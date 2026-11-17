@@ -34,6 +34,9 @@ import hearth_settings_io as sio  # noqa: E402
 E = os.environ.get
 CONFIG_HOME = E('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
 SESSION_CONF = os.path.join(CONFIG_HOME, 'nimbus', 'session.conf')
+# Firehold's own settings file: {"firehold": {"unlocked": true}} once it's unlocked on this device (the flag
+# firehold.unlocked, also read by the Firehold screens helper). Written only through hearth_settings_io.
+FIREHOLD_JSON = os.path.join(CONFIG_HOME, 'nimbus', 'firehold.json')
 RUN = E('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
 STATE_HOME = E('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
 DESK_STATE = os.path.join(STATE_HOME, 'hearth')
@@ -175,15 +178,26 @@ def wm_now():
 
 
 def unlocked():
-    """Firehold stays hidden until it's unlocked (session.conf's HEARTH_FIREHOLD_UNLOCKED=1, written by `unlock`)."""
-    return conf_value('HEARTH_FIREHOLD_UNLOCKED') == '1'
+    """Firehold stays hidden until it's unlocked: firehold.json's firehold.unlocked, written by `unlock`."""
+    d = sio.load_json(FIREHOLD_JSON, {})
+    f = d.get('firehold') if isinstance(d.get('firehold'), dict) else {}
+    return f.get('unlocked') is True or d.get('firehold.unlocked') is True
+
+
+def set_unlocked(on):
+    def change(d):
+        if not isinstance(d.get('firehold'), dict):
+            d['firehold'] = {}
+        d['firehold']['unlocked'] = bool(on)
+        d.pop('firehold.unlocked', None)
+    sio.update_json(FIREHOLD_JSON, change)
 
 
 def cmd_unlock(on):
     """The 7th tap on the version in Settings › About (SettingsNav.qml), or "Hide Firehold again" (on=False: Firehold
-    off, the choice before back, Try once dropped, hidden again). Atomic, with .bak, merged into session.conf."""
+    off, the choice before back, Try once dropped, hidden again). Atomic, with .bak, merged (hearth_settings_io)."""
     if on:
-        sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_FIREHOLD_UNLOCKED', '1'))
+        set_unlocked(True)
         sio.log_event('desktop: Firehold (preview) unlocked')
         return status()
     drop_once()
@@ -194,8 +208,9 @@ def cmd_unlock(on):
             before = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM_BEFORE=["']?([a-z]*)''', t, re.M)
             back = before[-1] if before and before[-1] in ('kwin', 'labwc') else 'kwin'
             t = sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', back)
-        return sio.conf_set_text(t, 'HEARTH_FIREHOLD_UNLOCKED', '0')
+        return t
     sio.update_text(SESSION_CONF, change)
+    set_unlocked(False)
     sio.log_event('desktop: Firehold (preview) hidden again')
     return status()
 
@@ -317,9 +332,9 @@ def migrate_old_name():
             if not (cur and cur[-1] == OLD_NAME):
                 return t
             # Turned on by hand before Firehold was hidden: it stays on (and so shown) for this person.
-            t = sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', 'firehold')
-            return sio.conf_set_text(t, 'HEARTH_FIREHOLD_UNLOCKED', '1')
+            return sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', 'firehold')
         sio.update_text(SESSION_CONF, change)
+        set_unlocked(True)
     try:
         with open(FAILS, encoding='utf-8') as f:
             lines = f.readlines()
