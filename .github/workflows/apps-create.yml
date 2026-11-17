@@ -200,10 +200,9 @@ jobs:
           # medium-light, second dark).
           xdotool key Escape; sleep 0.5; xdotool key ctrl+equal; sleep 1; import -window root shots/emoji-large.png || true
           xdotool key ctrl+minus ctrl+minus; sleep 1; import -window root shots/emoji-small.png || true
-          # (right-click on the first answer, handshake: the cell's middle is 31, 141 px into the window at medium size)
+          # ("handshake" finds the two hands first; Right Right goes to the handshake, Shift+F10 is its menu key)
           xdotool key ctrl+equal; xdotool type --delay 80 'handshake'; sleep 1
-          eval "$(xdotool getwindowgeometry --shell "$w" 2>/dev/null)" || true
-          xdotool mousemove $((${X:-470}+31)) $((${Y:-170}+141)) click 3; sleep 0.8
+          xdotool key Down; sleep 0.3; xdotool key Right Right; sleep 0.3; xdotool key shift+F10; sleep 0.8
           xdotool key Right Down Right Right Right Right; sleep 1; import -window root shots/emoji-two-tones.png || true
           xdotool key Escape; sleep 0.3
           cp "$HOME/.local/share/hearth/emoji.json" shots/emoji-saved.json 2>/dev/null || true
