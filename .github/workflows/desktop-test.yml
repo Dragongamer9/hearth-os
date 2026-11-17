@@ -48,6 +48,8 @@ jobs:
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
+          # 1.14's Info Center and Spell check pictures: Vulkan (lavapipe) and OpenGL answers, lsusb, a dictionary.
+          dnf -y install vulkan-tools mesa-vulkan-drivers mesa-demos usbutils hunspell-en-US >/dev/null 2>&1 || true
 
       - uses: actions/checkout@v4
 
@@ -119,6 +121,8 @@ jobs:
           printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          # Hearth's checks: stand-in answers some helpers take only in tests (hearth-powerset's preview file).
+          export HEARTH_CHECKS=1
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
           # ---- Hearth Files as every app's file chooser: the portal backend and FileChooser=hearth for Nimbus, the way
           # the images install them (os/system_files, base-*.yml), with the backend run from this checkout.
@@ -361,6 +365,81 @@ jobs:
           else
             echo "::notice title=System settings::$(ls shots/system-settings | wc -l) pictures of the 1.14 system pages, no QML errors from them"
           fi
+          # ---- 1.14, more of KDE's System Settings (test_settings_more_114.py, docs/SETTINGS-MORE-1.14.md): each new page
+          # at 1920x1080 with stand-in answers in /tmp/fakebin (only for these pictures; anything else goes to the real
+          # program) and a few of your own files, all put back afterwards. Posted by the system-settings-shots job as ss-*.
+          SM=/tmp/sm-before; mkdir -p "$SM"; D="$HOME/.local/share/nimbus/desktop.json"; cp -p "$D" "$SM/desktop.json"
+          SMF="$PWD/hosts/linux/test/fixtures/settings-more"
+          for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do
+            printf '#!/bin/sh\nexec python3 "%s/fake.py" %s "$@"\n' "$SMF" "$f" > "/tmp/fakebin/$f"; chmod +x "/tmp/fakebin/$f"
+          done
+          # Your own things for the pictures: a command at sign-in, a look saved, languages in order, words to leave alone.
+          printf '{"name": "Mount my NAS", "command": "rclone mount nas: ~/NAS"}' | python3 hosts/linux/desktop/shell/hearth-autostart add-command || true
+          mkdir -p "$HOME/.config/environment.d" "$HOME/.config/KDE" "$HOME/.config/nimbus"
+          printf '# Written by Hearth Settings \xe2\x80\xba Region & language; delete this file to keep your own.\nLANGUAGE=de_DE:fr_FR:en_US\n' > "$HOME/.config/environment.d/60-hearth-language.conf"
+          printf '[General]\ndefaultLanguage=en_US\nignore_en_US=Hearth,KWin,Mantel\n' > "$HOME/.config/KDE/Sonnet.conf"
+          cp "$SMF/my-looks.json" "$HOME/.config/nimbus/my-looks.json"
+          # An app that opens pictures and text, so File types has kinds to show (the runner's apps open none).
+          mkdir -p "$HOME/.local/share/applications"
+          printf '[Desktop Entry]\nType=Application\nName=Hearth Viewer (test)\nExec=true %%f\nMimeType=image/png;image/jpeg;image/webp;text/plain;text/markdown;application/pdf;video/mp4;audio/mpeg;\n' > "$HOME/.local/share/applications/hearth-test-viewer.desktop"
+          python3 - "$D" "$PWD/hosts/linux/desktop/shell/images/wallpapers" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d.update(frameTint=45, signinSplash="flame", wallShow={"on": True, "folder": sys.argv[2], "minutes": 30, "shuffle": False},
+                   wallScreens={"HEADLESS-1": "builtin:slate-dusk"}, screenOffBattery=5, sleepBattery=15)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          sleep 4
+          ss power-profiles ss-power-profiles; ss power-awake ss-power-awake; ss battery ss-battery
+          ss autostart ss-autostart; ss file-types ss-file-types; ss menu-editor:foot ss-menu-editor; ss app-permissions ss-app-permissions
+          ss wallpaper-more ss-wallpaper-more; ss my-looks ss-my-looks; ss look-more ss-look-more; ss fonts:small ss-fonts-small
+          # 1.14 settings bits (test_settings_bits_114.py): the picture of the day (today's kept in the cache, so no
+          # internet), the light/dark pair, "Apps follow Hearth", the sub-pixel order, Hybrid sleep (a stand-in answer).
+          WP="$PWD/hosts/linux/desktop/shell/images/wallpapers"; PC="$HOME/.cache/hearth/potd"; mkdir -p "$PC"; TD=$(date +%F)
+          cp "$WP/$(ls "$WP" | grep -m1 '\.jpg$')" "$PC/bing-$TD.jpg"
+          printf '{"path": "%s", "title": "Lake Bled at dawn, Slovenia", "credit": "A stand-in for the Desktop Mode test", "source": "bing", "date": "%s"}\n' "$PC/bing-$TD.jpg" "$TD" > "$PC/bing-$TD.json"
+          FCI="$HOME/.config/nimbus/fonts-cursor-icons.json"; [ -e "$FCI" ] && cp -p "$FCI" "$SM/fci.json"
+          printf '{"antialias": "rgba", "subpixel": "bgr"}\n' > "$FCI"
+          printf '{"hibernate": {"can": true, "why": "", "proven": false}, "hybrid": {"can": true, "why": ""}}\n' > "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"
+          python3 - "$D" "$WP" <<'PY'
+          import json, os, sys
+          p, wp = sys.argv[1], sys.argv[2]; d = json.load(open(p)); jpg = sorted(f for f in os.listdir(wp) if f.endswith(".jpg"))
+          d.update(wallPotd={"on": True, "source": "bing"}, wallPair={"on": True, "light": os.path.join(wp, jpg[-1]), "dark": os.path.join(wp, jpg[0])})
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          sleep 4
+          ss wallpaper-more:potd ss-wallpaper-potd; ss look-more:apps ss-look-apps; ss fonts:smoothing ss-fonts-subpixel; ss power:off ss-power-hybrid
+          rm -rf "$PC" "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"; rm -f "$FCI"; [ -e "$SM/fci.json" ] && mv -f "$SM/fci.json" "$FCI"
+          ss languages ss-languages; ss spellcheck ss-spellcheck; ss input-methods ss-input-methods
+          ss bluetooth-devices ss-bluetooth-devices; ss print-queue ss-print-queue; ss scanners ss-scanners; ss usb-devices ss-usb-devices
+          ss info-cpu ss-info-cpu; ss info-gpu ss-info-gpu; ss info-memory ss-info-memory; ss info-graphics ss-info-graphics
+          ss info-pci ss-info-pci; ss info-usb ss-info-usb
+          # Updates with one ready to download: "Shut down when it's done" (a stand-in hearth-admin through a stand-in pkexec).
+          AD_MADE=""; if [ ! -e /usr/libexec/nimbus/hearth-admin ]; then mkdir -p /usr/libexec/nimbus; AD_MADE=1
+            printf '%s\n' '#!/bin/sh' 'case "$1" in update-status) echo "{\"booted\":{\"version\":\"1.13.0\"},\"staged\":null,\"available\":{\"version\":\"1.14.0\"},\"rollback\":{\"version\":\"1.12.0\"},\"rollbackQueued\":false}" ;; esac' > /usr/libexec/nimbus/hearth-admin
+            chmod +x /usr/libexec/nimbus/hearth-admin; fi
+          printf '#!/bin/sh\nexec "$@"\n' > /tmp/fakebin/pkexec; chmod +x /tmp/fakebin/pkexec
+          ss updates ss-updates-shutdown
+          rm -f /tmp/fakebin/pkexec; [ -n "$AD_MADE" ] && rm -f /usr/libexec/nimbus/hearth-admin
+          ipc settings close
+          # The sign-in splash (its preview), the Welcome screen, the out-of-memory notice and a USB drive plugged in.
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call splash preview flame || true; sleep 0.9; grim shots/system-settings/ss-signin-splash.png || true; sleep 3
+          ipc welcome preview 1.14; sleep 1; grim shots/system-settings/ss-welcome.png || true; ipc welcome close
+          ipc oomwatch test; sleep 1; grim shots/system-settings/ss-oom-notice.png || true; wtype -k Escape; sleep 1
+          ipc devicewatch drive /dev/sdz1 "Holiday photos"; sleep 1; grim shots/system-settings/ss-drive-plugged.png || true; wtype -k Escape; sleep 1
+          # Put everything back.
+          for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do rm -f "/tmp/fakebin/$f"; done
+          rm -f "$HOME/.local/share/applications/hearth-test-viewer.desktop"
+          rm -f "$HOME"/.config/autostart/hearth-cmd-*.desktop "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.config/KDE/Sonnet.conf" "$HOME/.config/nimbus/my-looks.json"
+          cp -p "$SM/desktop.json" "$D"; sleep 3
+          SMQ='(Set(SoundSpeakers|SoundApps|PushToTalk|PowerProfiles|PowerAwake|Battery|Autostart|FileTypes|MenuEditor|WallpaperMore|MyLooks|LookMore|Languages|Spellcheck|InputMethods|AppPermissions|BtDevices|PrintQueue|Scanners|UsbDevices|InfoCenter|Panel|Power|Sound|Fonts|Region|Firmware|Updates|Bluetooth|Printers|About)|PushToTalk|FirmwareWatch|OomWatch|DeviceWatch|Welcome|SigninSplash|WallShow|Wallpaper|Dock|Mixer|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
+          if grep -E "$SMQ" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Settings (more of KDE's)::$(grep -E "$SMQ" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Settings (more of KDE's)::$(ls shots/system-settings | wc -l) pictures in system-settings, no QML errors from the new pages"
+          fi
+          # ---- end of more of KDE's System Settings
           # ---- Mantel on KWin's Settings pages (1.14, docs/KWIN-SETTINGS.md): first as they are under labwc (greyed, with
           # "Needs Mantel on KWin"), then in the preview with saved settings, at 1920×1080 (the kwin-pages-shots jobs post
           # them as SHOT notices). Opening them writes nothing; labwc's own files are as they were.
@@ -2033,8 +2112,14 @@ jobs:
           wtype -k Up; wtype -k Up; wtype -k Up; wtype -k Return; sleep 1; grim $o/05-mixer-outputs.png || true
           # Settings › Sound (1.14) with the same stand-in apps, and a stand-in sound card list (pactl) for its profiles.
           ipc mixer close; mkdir -p shots/system-settings
-          printf '#!/bin/sh\n[ "$2" = list ] && exec cat "%s/hosts/linux/test/fixtures/pactl-cards.json"; exit 0\n' "$PWD" > /tmp/fakebin/pactl; chmod +x /tmp/fakebin/pactl
+          printf '#!/bin/sh\ncase "$2 $3" in "list cards") exec cat "%s/hosts/linux/test/fixtures/pactl-cards.json" ;; "list sinks") exec cat "%s/hosts/linux/test/fixtures/pactl-sinks.json" ;; esac\n[ "$1" = get-default-sink ] && echo alsa_output.pci-0000_00_1f.3.analog-surround-51\nexit 0\n' "$PWD" "$PWD" > /tmp/fakebin/pactl; chmod +x /tmp/fakebin/pactl
           ipc settings page sound; sleep 4; grim shots/system-settings/ss-sound.png || true; ipc settings close
+          # 1.14, more of KDE's Sound (test_settings_more_114.py): Speakers & balance, Apps' sound, Push to talk.
+          for pg in sound-speakers sound-apps push-to-talk; do ipc settings page $pg; sleep 4; grim shots/system-settings/ss-$pg.png || true; ipc settings close; done
+          ipc settings page sound-apps:mic; sleep 4; grim shots/system-settings/ss-sound-apps-mic.png || true; ipc settings close   # which microphone each app uses (1.14)
+          if grep -E "(SetSound[A-Za-z]*|SetPushToTalk|Mixer|Dock)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
+            bad "sound pages: $(grep -E '(SetSound[A-Za-z]*|SetPushToTalk|Mixer|Dock)\.qml' "$LOG" | sort -u | head -5 | cut -c1-220 | tr '\n' '|')"
+          fi
           rm -f /tmp/fakebin/pactl
           [ -e "$VOL" ] && [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])) == {"Cyberpunk 2077": 0.95})' "$VOL")" != True ] && bad "opening Settings › Sound changed app-volumes.json: $(cat "$VOL" | tr -d '\n ')"
           wtype -k Escape; sleep 0.5; wtype -k Escape; sleep 1
@@ -2843,7 +2928,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound, ss-users-oem]
+        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound, ss-users-oem,
+               ss-sound-speakers, ss-sound-apps, ss-push-to-talk, ss-power-profiles, ss-power-awake, ss-battery, ss-autostart, ss-file-types,
+               ss-menu-editor, ss-app-permissions, ss-wallpaper-more, ss-my-looks, ss-look-more, ss-fonts-small, ss-languages, ss-spellcheck,
+               ss-input-methods, ss-bluetooth-devices, ss-print-queue, ss-scanners, ss-usb-devices, ss-info-cpu, ss-info-gpu, ss-info-memory,
+               ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged,
+               ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

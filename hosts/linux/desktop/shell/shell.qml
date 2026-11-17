@@ -155,6 +155,8 @@ ShellRoot {
             list.push({ separator: true });
             list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
             list.push({ label: "Add to desktop", short: "To desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            // 1.14: the menu editor (Settings › Apps › App menu editor) opened at this app.
+            list.push({ label: "Edit app…", icon: "edit", run: () => { launcher.shown = false; SettingsNav.menuEdit = entry.id; settings.open("menu-editor"); } });
             // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.
@@ -283,6 +285,15 @@ ShellRoot {
     // 1.14: once the desktop has settled, tells you once if Screen power saving was turned off by itself on this laptop
     // (hearth-screen-psr notice: Alder Lake-N / Twin Lake screens can freeze with it; Settings › Display turns it back on).
     Timer { interval: 45000; running: true; onTriggered: Quickshell.execDetached(["sh", "-c", "[ -x /usr/libexec/nimbus/hearth-screen-psr ] && exec python3 /usr/libexec/nimbus/hearth-screen-psr notice >/dev/null 2>&1 || true"]) }
+    // 1.14, more of KDE's System Settings (docs/SETTINGS-MORE-1.14.md): push to talk, firmware and out-of-memory notices,
+    // drives and USB devices plugged in, the Welcome screen after an update, the splash after signing in. Each loaded by
+    // file name, so a problem in one only loses that one; none of them can hold the desktop up.
+    Loader { source: "PushToTalk.qml" }
+    Loader { source: "FirmwareWatch.qml"; onLoaded: item.settings = settings }
+    Loader { source: "OomWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; } }
+    Loader { source: "DeviceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; item.openFiles = p => files.open(p); } }
+    Loader { source: "Welcome.qml"; onLoaded: item.settings = settings }
+    Loader { source: "SigninSplash.qml" }
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {

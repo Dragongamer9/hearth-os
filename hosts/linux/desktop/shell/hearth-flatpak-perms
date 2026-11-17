@@ -1,0 +1,173 @@
+#!/usr/bin/python3
+"""hearth-flatpak-perms: Hearth Settings › Apps › App permissions (1.14, KDE's Flatpak Permissions page), as you (no
+root). What each app from Flathub may reach (the internet, sound, your files, devices, Bluetooth, the screen), as the
+app asks for it and as you changed it; a change is Flatpak's own override for you (flatpak override --user), so it
+works the same in every desktop, and Reset takes your changes out. Only Flatpak's own options, always as argument lists.
+
+  hearth-flatpak-perms list               JSON: {apps: [{id, name, origin}]}
+  hearth-flatpak-perms get APP            JSON: {id, perms: [{key, label, sub, app, now, changed}]}
+  hearth-flatpak-perms set APP KEY on|off one permission (your override)
+  hearth-flatpak-perms reset APP          all your changes for APP taken out
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import re
+import shutil
+import subprocess
+import sys
+
+APP_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$')
+# key: (label, sub, context group, value, flatpak's on flag, off flag)
+PERMS = [
+    ('network', 'Internet', 'Reach the internet and your network', 'shared', 'network', '--share=network', '--unshare=network'),
+    ('pulseaudio', 'Sound', 'Play sound and use the microphone', 'sockets', 'pulseaudio', '--socket=pulseaudio', '--nosocket=pulseaudio'),
+    ('home', 'Your home folder', 'Open and change your files', 'filesystems', 'home', '--filesystem=home', '--nofilesystem=home'),
+    ('host', 'All files', 'Every file on this PC, drives too', 'filesystems', 'host', '--filesystem=host', '--nofilesystem=host'),
+    ('xdg-download', 'Downloads', 'Your Downloads folder', 'filesystems', 'xdg-download', '--filesystem=xdg-download', '--nofilesystem=xdg-download'),
+    ('xdg-pictures', 'Pictures', 'Your Pictures folder', 'filesystems', 'xdg-pictures', '--filesystem=xdg-pictures', '--nofilesystem=xdg-pictures'),
+    ('xdg-documents', 'Documents', 'Your Documents folder', 'filesystems', 'xdg-documents', '--filesystem=xdg-documents', '--nofilesystem=xdg-documents'),
+    ('devices', 'Devices', 'Controllers, webcams, USB devices', 'devices', 'all', '--device=all', '--nodevice=all'),
+    ('dri', 'Graphics card', 'Draw with the graphics card (games, video)', 'devices', 'dri', '--device=dri', '--nodevice=dri'),
+    ('bluetooth', 'Bluetooth', 'Talk to Bluetooth devices directly', 'sockets', 'bluetooth', '--allow=bluetooth', '--disallow=bluetooth'),
+    ('wayland', 'Wayland windows', 'Its windows on the screen (Wayland)', 'sockets', 'wayland', '--socket=wayland', '--nosocket=wayland'),
+    ('x11', 'X11 windows', 'Older-style windows (X11): such apps can see other X11 apps', 'sockets', 'x11', '--socket=x11', '--nosocket=x11'),
+]
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=30):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def need():
+    if not shutil.which('flatpak'):
+        raise Fail("Flatpak isn't on this system")
+
+
+def parse_list(text):
+    out = []
+    for line in text.splitlines():
+        f = line.split('\t')
+        if len(f) >= 2 and APP_RE.match(f[0].strip()):
+            out.append({'id': f[0].strip(), 'name': f[1].strip() or f[0].strip(), 'origin': f[2].strip() if len(f) > 2 else ''})
+    seen, uniq = set(), []
+    for a in sorted(out, key=lambda a: a['name'].lower()):
+        if a['id'] not in seen:
+            seen.add(a['id'])
+            uniq.append(a)
+    return uniq
+
+
+def apps():
+    need()
+    code, out, err = run(['flatpak', 'list', '--app', '--columns=application,name,origin'])
+    if code != 0:
+        raise Fail("couldn't list the apps")
+    return {'apps': parse_list(out)}
+
+
+def context(text):
+    """{group: [values]} of an ini's [Context] (metadata or an override); a value starting with ! is a removal."""
+    out, sec = {}, ''
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith('[') and line.endswith(']'):
+            sec = line[1:-1]
+        elif sec == 'Context' and '=' in line:
+            k, v = line.split('=', 1)
+            out[k.strip()] = [x for x in v.split(';') if x]
+    return out
+
+
+def has(ctx, group, value):
+    """True / False / None (not said) for one value in a context group; file access counts with :ro etc."""
+    vals = ctx.get(group, [])
+    for v in vals:
+        base = v.split(':', 1)[0]
+        if base == '!' + value:
+            return False
+        if base == value:
+            return True
+    return None
+
+
+def perms_of(meta, over):
+    m, o = context(meta), context(over)
+    # Bluetooth in Flatpak is "features=bluetooth"
+    if 'features' in m:
+        m['sockets'] = m.get('sockets', []) + [x for x in m['features'] if x == 'bluetooth']
+    if 'features' in o:
+        o['sockets'] = o.get('sockets', []) + [x.replace('!bluetooth', '!bluetooth') for x in o['features'] if x.lstrip('!') == 'bluetooth']
+    out = []
+    for key, label, sub, group, value, _, _ in PERMS:
+        a = bool(has(m, group, value))
+        ov = has(o, group, value)
+        out.append({'key': key, 'label': label, 'sub': sub, 'app': a, 'now': a if ov is None else ov, 'changed': ov is not None and ov != a})
+    return out
+
+
+def check_app(app):
+    if not APP_RE.match(app or ''):
+        raise Fail('not a Flatpak app')
+
+
+def get(app):
+    need()
+    check_app(app)
+    code, meta, err = run(['flatpak', 'info', '-M', app])
+    if code != 0:
+        raise Fail("that app isn't installed")
+    code, over, err = run(['flatpak', 'override', '--user', '--show', app])
+    return {'id': app, 'perms': perms_of(meta, over if code == 0 else '')}
+
+
+def set_perm(app, key, on):
+    need()
+    check_app(app)
+    p = next((x for x in PERMS if x[0] == key), None)
+    if not p or on not in ('on', 'off'):
+        raise Fail('not a permission')
+    code, out, err = run(['flatpak', 'override', '--user', p[5] if on == 'on' else p[6], app])
+    if code != 0:
+        raise Fail((err or out).strip()[:200] or 'Flatpak said no')
+    return get(app)
+
+
+def reset(app):
+    need()
+    check_app(app)
+    code, out, err = run(['flatpak', 'override', '--user', '--reset', app])
+    if code != 0:
+        raise Fail((err or out).strip()[:200] or 'Flatpak said no')
+    return get(app)
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['list']:
+            r = apps()
+        elif argv[:1] == ['get'] and len(argv) == 2:
+            r = get(argv[1])
+        elif argv[:1] == ['set'] and len(argv) == 4:
+            r = set_perm(argv[1], argv[2], argv[3])
+        elif argv[:1] == ['reset'] and len(argv) == 2:
+            r = reset(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

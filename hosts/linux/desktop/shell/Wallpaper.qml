@@ -23,7 +23,8 @@ PanelWindow {
     // Hearth Settings › Appearance picks a picture (Settings.wallpaper); older setups used wallpaper.jpg/.png.
     // "" = the look's own (Theme.qml / theme/palettes.json: Hearth's fireside, Steam-style's Slate Tide).
     // (Theme.wall: with a sub theme and Match sub theme on, its wallpaper; yours always wins.)
-    readonly property string wall: Theme.wall
+    // 1.14: this screen's own picture, or the slideshow's, else Theme.wall (WallShow.qml).
+    readonly property string wall: WallShow.forScreen(root.screen ? root.screen.name : "")
     readonly property string anim: wall.startsWith("anim:") ? wall.slice(5) : ""
     readonly property string picture: anim ? "" : wall
     readonly property bool custom: !anim && (chosen.status === Image.Ready || (!picture && (jpg.status === Image.Ready || png.status === Image.Ready)))

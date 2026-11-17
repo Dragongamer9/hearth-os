@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""hearth-menu: Hearth Settings › Apps › App menu editor (1.14, KDE's Menu Editor and "Edit Application…"), as you (no
+root). An app's name, description, icon, command, category, "run in a terminal" and "show in the menu" changed the way
+the desktop entry spec says: your own copy of its entry in ~/.local/share/applications (which comes before the
+system's), marked X-Hearth-Edited=true, so the system's file is never touched and "Put back" removes just your copy.
+New entries (your own command in the menu) are hearth-menu-<name>.desktop there too.
+
+  hearth-menu list               JSON: {apps: [{id, name, comment, icon, exec, categories, terminal, hidden, yours}]}
+  hearth-menu save ID            stdin {"name", "comment", "icon", "exec", "category", "terminal", "hidden"} (only
+                                 the keys you changed)
+  hearth-menu new                stdin {"name", "comment", "icon", "exec", "category", "terminal"}
+  hearth-menu reset ID           your copy taken out (only one Hearth made); the system's entry comes back
+Files written atomically (hearth_settings_io). Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+ID_RE = re.compile(r'^[A-Za-z0-9_.+-]{1,200}\.desktop$')
+MARK = 'X-Hearth-Edited'
+CATEGORIES = {'AudioVideo': 'Music and video', 'Development': 'Programming', 'Education': 'Learning', 'Game': 'Games',
+              'Graphics': 'Graphics', 'Network': 'Internet', 'Office': 'Office', 'Science': 'Science',
+              'Settings': 'Settings', 'System': 'System', 'Utility': 'Accessories'}
+FIELDS = {'name': 'Name', 'comment': 'Comment', 'icon': 'Icon', 'exec': 'Exec'}
+
+
+class Fail(Exception):
+    pass
+
+
+def files_helper():
+    loader = importlib.machinery.SourceFileLoader('hearth_files', os.path.join(HERE, 'hearth-files'))
+    spec = importlib.util.spec_from_loader('hearth_files', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def apps_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share'), 'applications')
+
+
+def read(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def main_category(cats):
+    for c in [x for x in (cats or '').split(';') if x]:
+        if c in CATEGORIES:
+            return c
+    return ''
+
+
+def listing(hf=None):
+    hf = hf or files_helper()
+    out = []
+    for did, (path, f) in hf.desktop_entries().items():
+        if f.get('Type', 'Application') != 'Application' or not f.get('Exec') or f.get('Hidden', '').lower() == 'true':
+            continue
+        yours = path.startswith(apps_dir() + os.sep) and MARK + '=true' in read(path)
+        out.append({'id': did, 'name': f.get('Name', did[:-8]), 'comment': f.get('Comment', ''), 'icon': f.get('Icon', ''),
+                    'exec': f.get('Exec', ''), 'category': main_category(f.get('Categories')),
+                    'terminal': f.get('Terminal', '').lower() == 'true', 'hidden': f.get('NoDisplay', '').lower() == 'true',
+                    'yours': yours, 'own': yours and did.startswith('hearth-menu-')})
+    out.sort(key=lambda a: a['name'].lower())
+    return {'apps': out, 'categories': [{'id': k, 'label': v} for k, v in CATEGORIES.items()]}
+
+
+def set_entry(text, key, value, drop_localized=False):
+    """Sets key in [Desktop Entry] (None removes it); drop_localized also removes key[xx] so the new value shows in
+    every language."""
+    out, sec, done = [], None, False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('['):
+            if sec == '[Desktop Entry]' and not done and value is not None:
+                while out and not out[-1].strip():
+                    out.pop()
+                out.append('%s=%s' % (key, value))
+                out.append('')
+                done = True
+            sec = s
+            out.append(line)
+            continue
+        if sec == '[Desktop Entry]' and '=' in s:
+            k = s.split('=', 1)[0].strip()
+            if k == key:
+                if not done and value is not None:
+                    out.append('%s=%s' % (key, value))
+                    done = True
+                continue
+            if drop_localized and re.match(re.escape(key) + r'\[[^\]]+\]$', k):
+                continue
+        out.append(line)
+    if not done and value is not None:
+        if sec is None:
+            out.insert(0, '[Desktop Entry]')
+        if sec in (None, '[Desktop Entry]'):
+            out.append('%s=%s' % (key, value))
+        else:
+            i = next(i for i, l in enumerate(out) if l.strip() == '[Desktop Entry]')
+            out.insert(i + 1, '%s=%s' % (key, value))
+    return '\n'.join(out).rstrip('\n') + '\n'
+
+
+def clean(req, new=False):
+    if not isinstance(req, dict):
+        raise Fail('bad input')
+    out = {}
+    for k, v in req.items():
+        if k in ('name', 'comment', 'icon', 'exec'):
+            v = '' if v is None else str(v).strip()
+            if re.search(r'[\x00-\x1f\x7f]', v) or len(v) > (2000 if k == 'exec' else 200):
+                raise Fail('%s must be one line' % k)
+            if k in ('name', 'exec') and not v:
+                raise Fail('an app needs a name and a command' if new else '%s can\'t be empty' % k)
+            out[k] = v
+        elif k == 'category':
+            if v not in CATEGORIES and v != '':
+                raise Fail('not a menu category')
+            out[k] = v
+        elif k in ('terminal', 'hidden'):
+            out[k] = bool(v)
+        else:
+            raise Fail('unknown field ' + k)
+    return out
+
+
+def apply(text, ch, mark=True):
+    for k, key in FIELDS.items():
+        if k in ch:
+            text = set_entry(text, key, ch[k] or None, drop_localized=k in ('name', 'comment'))
+    if 'category' in ch:
+        cats = [c for c in re.split(r';', next((l.split('=', 1)[1] for l in text.splitlines() if l.startswith('Categories=')), '')) if c and c not in CATEGORIES]
+        text = set_entry(text, 'Categories', ';'.join(([ch['category']] if ch['category'] else []) + cats) + ';')
+    if 'terminal' in ch:
+        text = set_entry(text, 'Terminal', 'true' if ch['terminal'] else 'false')
+    if 'hidden' in ch:
+        text = set_entry(text, 'NoDisplay', 'true' if ch['hidden'] else None)
+    return set_entry(text, MARK, 'true') if mark else text
+
+
+def write(path, text):
+    import hearth_settings_io as hsio
+    hsio.write_text(path, text)
+
+
+def save(did, req, hf=None):
+    if not ID_RE.match(did or ''):
+        raise Fail('not an app')
+    hf = hf or files_helper()
+    e = hf.desktop_entries().get(did)
+    if not e:
+        raise Fail("that app isn't installed")
+    ch = clean(req)
+    text = read(e[0])
+    # Your own entry that Hearth didn't make stays yours: changed in place, never marked (so Put back can't delete it).
+    yours = os.path.realpath(e[0]).startswith(os.path.realpath(apps_dir()) + os.sep) and MARK + '=true' not in text
+    dest = e[0] if yours else os.path.join(apps_dir(), did)
+    write(dest, apply(text, ch, mark=not yours))
+    return {'ok': True, 'id': did}
+
+
+def new(req):
+    ch = clean(req, new=True)
+    if 'name' not in ch or 'exec' not in ch:
+        raise Fail('an app needs a name and a command')
+    base = re.sub(r'[^a-z0-9]+', '-', ch['name'].lower()).strip('-')[:40] or 'app'
+    did, i = 'hearth-menu-%s.desktop' % base, 2
+    while os.path.exists(os.path.join(apps_dir(), did)):
+        did, i = 'hearth-menu-%s-%d.desktop' % (base, i), i + 1
+    text = '[Desktop Entry]\nType=Application\n'
+    ch.setdefault('category', 'Utility')
+    write(os.path.join(apps_dir(), did), apply(text, ch))
+    return {'ok': True, 'id': did}
+
+
+def reset(did):
+    if not ID_RE.match(did or ''):
+        raise Fail('not an app')
+    p = os.path.join(apps_dir(), did)
+    if not os.path.isfile(p) or MARK + '=true' not in read(p):
+        raise Fail("there's no change of Hearth's to put back for that app")
+    os.remove(p)
+    return {'ok': True}
+
+
+def stdin_json():
+    raw = os.environ.get('HEARTH_INPUT')
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read()
+    try:
+        return json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('bad input')
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['list']:
+            r = listing()
+        elif argv[:1] == ['save'] and len(argv) == 2:
+            r = save(argv[1], stdin_json())
+        elif argv[:1] == ['new']:
+            r = new(stdin_json())
+        elif argv[:1] == ['reset'] and len(argv) == 2:
+            r = reset(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

@@ -21,7 +21,9 @@ ColumnLayout {
     function markInset() { for (const c of body.children) if (c.inset !== undefined) c.inset = true; }
     Component.onCompleted: {
         markInset();
-        if (anchor !== "" && SettingsNav.pageAnchor === anchor) { SettingsNav.pageAnchor = ""; open = true; Qt.callLater(() => head.forceActiveFocus()); }
+        // The anchor is cleared a moment later, not here: opening Settings can make the page twice in a row (the frame
+        // loads it when the page changes and again when the window comes up), and the second one must still see it.
+        if (anchor !== "" && SettingsNav.pageAnchor === anchor) { const a = anchor; open = true; Qt.callLater(() => { head.forceActiveFocus(); }); Qt.callLater(() => { if (SettingsNav.pageAnchor === a) SettingsNav.pageAnchor = ""; }); }
     }
 
     SetRow {

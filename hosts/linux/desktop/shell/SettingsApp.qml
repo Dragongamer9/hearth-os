@@ -44,7 +44,7 @@ Scope {
         p = p || "";
         if (Reg.ALIASES[p]) p = Reg.ALIASES[p];
         // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page or its expander goes there).
-        const m = /^([\w-]+):([\w-]+)$/.exec(p);
+        const m = /^([\w-]+):([\w.-]+)$/.exec(p);   // (a part may have dots: an app id, menu-editor:org.kde.kcalc)
         if (m && Reg.resolve(m[1]) !== "") { SettingsNav.pageAnchor = m[2]; SettingsNav.anchorAt = Date.now(); p = m[1]; }
         const id = Reg.resolve(p);
         // A page only on the live USB stays closed elsewhere; anything unknown opens Home.
