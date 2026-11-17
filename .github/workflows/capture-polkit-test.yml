@@ -56,17 +56,6 @@ jobs:
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh hosts/linux/desktop/shell/hearth-capture-helper hosts/linux/desktop/shell/hearth-polkit-fallback
           dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-          # Quickshell's Polkit module: the real one when this Quickshell has it; otherwise a stand-in with the same
-          # names (never registered), so the prompt's picture can still be taken. Said either way.
-          QML_DIR=$(ls -d /usr/lib64/qt6/qml /usr/lib/qt6/qml 2>/dev/null | head -1)
-          if [ -d "$QML_DIR/Quickshell/Services/Polkit" ]; then echo "::notice title=polkit module::Quickshell's own Polkit module"
-          else
-            echo "::warning title=polkit module::this Quickshell has no Polkit module: a stand-in is used for the picture"
-            mkdir -p /tmp/qml/Quickshell/Services/Polkit
-            printf 'module Quickshell.Services.Polkit\nPolkitAgent 1.0 PolkitAgent.qml\n' > /tmp/qml/Quickshell/Services/Polkit/qmldir
-            printf 'import QtQuick\nQtObject { property bool isRegistered: false; property bool isActive: false; property var flow: null; property string path: "" }\n' > /tmp/qml/Quickshell/Services/Polkit/PolkitAgent.qml
-            export QML_IMPORT_PATH=/tmp/qml QML2_IMPORT_PATH=/tmp/qml
-          fi
           # A picture with text and a QR code, for Read text and QR code.
           qrencode -s 8 -m 2 -o /tmp/qr.png "https://hearthos.fun/capture" 2>/dev/null || true
           python3 - <<'PY'
@@ -96,14 +85,18 @@ jobs:
           note() { echo "::notice title=$1::$(echo "$2" | cut -c1-3000)"; }
 
           # ---- Hearth Capture
+          q browserpick close; sleep 2     # 1.12's one-time "Pick your browser" card stays out of the pictures
+          note "zbarimg on the test QR" "$(zbarimg -q --raw /tmp/qr.png 2>&1 | head -3)"
           q capture open; sleep 4; shot capture-take
           q capture take area; sleep 6
           note "capture after take" "$(q capture state)"
           q capture pick 460,250,1000,560; sleep 2; shot capture-picker
           q capture pickTake; sleep 4
-          q capture sample; sleep 4; shot capture-editor
-          note "capture editor" "$(q capture state)"
-          q capture save; sleep 5
+          note "capture cropped" "$(q capture state)"
+          # The editor with every tool, on a picture with text (blur and pixelate show on something).
+          q capture edit /tmp/capture-test.png; sleep 3
+          q capture sample; sleep 5; shot capture-editor
+          q capture save; sleep 6
           note "capture saved" "$(q capture state)"
           ls -la "$HOME/Pictures/Screenshots" 2>&1 | tail -3 || true
           q capture edit /tmp/capture-test.png; sleep 3
