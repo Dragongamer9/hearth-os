@@ -1,0 +1,170 @@
+#!/usr/bin/python3
+"""hearth-region: Hearth Settings' Region & language page (System), as you (no root). Reads the system's language and
+formats (localectl status) and the languages this system has (locale -a, named from /usr/share/i18n/locales), and shows
+how each looks (numbers, dates, money, measurement, paper). Changing them goes through /usr/libexec/nimbus/hearth-admin
+locale KEY=VALUE... (localectl set-locale): the whole device, from the next sign-in, like the login screen.
+
+  hearth-region status             JSON: {lang, formats: {LC_NUMERIC...}, locales: [{id, name, language, territory}]}
+  hearth-region preview LOCALE     JSON: {number, date, time, money, metric, paper} as LOCALE writes them
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import datetime
+import json
+import locale
+import os
+import re
+import subprocess
+import sys
+
+I18N = os.environ.get('HEARTH_I18N_DIR', '/usr/share/i18n/locales')
+FORMAT_KEYS = ('LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAPER')
+SAMPLE = datetime.datetime(2026, 12, 24, 18, 30)
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, env=None, timeout=20):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+    return p.returncode, p.stdout
+
+
+def parse_localectl(text):
+    """`localectl status`: the System Locale lines (LANG=..., LC_TIME=...)."""
+    out, on = {}, False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('System Locale:'):
+            on = True
+            s = s.split(':', 1)[1].strip()
+        elif on and re.match(r'^[A-Z_]+=', s) is None:
+            on = False
+        if on:
+            m = re.match(r'^([A-Z_]+)=(\S+)$', s)
+            if m:
+                out[m.group(1)] = m.group(2)
+    return out
+
+
+def parse_locale_conf(text):
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r'^\s*([A-Z_]+)=["\']?([^"\'\s]+)', line)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def norm(v):
+    """en_US.utf8 / en_US.UTF-8 -> en_US.UTF-8 (the form localectl writes)."""
+    return re.sub(r'\.utf-?8', '.UTF-8', v, flags=re.I)
+
+
+def identification(base):
+    """language and territory from /usr/share/i18n/locales/<base>."""
+    lang = terr = ''
+    try:
+        with open(os.path.join(I18N, base), errors='replace') as f:
+            text = f.read(20000)
+    except OSError:
+        return '', ''
+    m = re.search(r'^language\s+"([^"]*)"', text, re.M)
+    if m:
+        lang = m.group(1)
+    m = re.search(r'^territory\s+"([^"]*)"', text, re.M)
+    if m:
+        terr = m.group(1)
+    return lang, terr
+
+
+def locales(text):
+    out, seen = [], set()
+    for l in text.splitlines():
+        l = l.strip()
+        if not l or l in ('C', 'POSIX') or not re.search(r'\.utf-?8', l, re.I):
+            continue
+        n = norm(l)
+        if n in seen:
+            continue
+        seen.add(n)
+        base = n.split('.')[0]
+        lang, terr = identification(base)
+        if n == 'C.UTF-8':
+            lang, terr = 'Computer default', ''
+        name = lang + (' (' + terr + ')' if terr else '') if lang else base
+        out.append({'id': n, 'name': name, 'language': lang or base.split('_')[0], 'territory': terr})
+    out.sort(key=lambda x: (x['id'] == 'C.UTF-8', x['name'].lower()))
+    return out
+
+
+def status():
+    code, out = run(['localectl', 'status'])
+    cur = parse_localectl(out) if code == 0 else {}
+    if not cur:
+        for p in ('/etc/locale.conf', '/etc/default/locale'):
+            try:
+                cur = parse_locale_conf(open(p).read())
+            except OSError:
+                continue
+            if cur:
+                break
+    lang = norm(cur.get('LANG', 'C.UTF-8'))
+    code, out = run(['locale', '-a'])
+    return {'lang': lang, 'formats': {k: norm(cur[k]) for k in FORMAT_KEYS if cur.get(k)},
+            'locales': locales(out if code == 0 else '')}
+
+
+def keyword(loc, cat, key):
+    env = dict(os.environ, LC_ALL=loc)
+    code, out = run(['locale', '-k', cat], env=env)
+    m = re.search(r'^%s=(.*)$' % re.escape(key), out, re.M)
+    return m.group(1).strip('"') if m else ''
+
+
+def preview(loc):
+    if not re.match(r'^[A-Za-z]{1,3}(_[A-Z]{2})?(\.[A-Za-z0-9-]+)?(@[a-z]+)?$', loc or ''):
+        raise Fail('not a language')
+    try:
+        locale.setlocale(locale.LC_ALL, loc)
+    except locale.Error:
+        raise Fail("%s isn't on this system" % loc)
+    try:
+        number = locale.format_string('%.2f', 1234567.89, grouping=True)
+        try:
+            money = locale.currency(1234.5, grouping=True)
+        except ValueError:
+            money = ''
+        date = SAMPLE.strftime('%x')
+        long_date = SAMPLE.strftime('%A %d %B %Y')
+        time_ = SAMPLE.strftime('%X')
+    finally:
+        locale.setlocale(locale.LC_ALL, 'C')
+    metric = keyword(loc, 'LC_MEASUREMENT', 'measurement') != '2'
+    height = keyword(loc, 'LC_PAPER', 'height')
+    paper = 'Letter' if height == '279' else 'A4' if height in ('297', '') else height + ' mm'
+    return {'number': number, 'money': money, 'date': date, 'longDate': long_date, 'time': time_,
+            'metric': metric, 'paper': paper}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['status']:
+            r = status()
+        elif argv[:1] == ['preview'] and len(argv) == 2:
+            r = preview(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

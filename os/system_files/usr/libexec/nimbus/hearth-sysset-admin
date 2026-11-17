@@ -1,0 +1,299 @@
+#!/usr/bin/python3
+"""hearth-sysset-admin: the root half of Hearth Settings' system pages added for 1.14 (firmware, region and language,
+account type, the login screen's picture). Run only by hearth-admin (pkexec, Hearth's polkit rule), which hands it its
+own command line; each command does one narrow job, checks its input and runs programs with argument lists.
+
+  firmware-refresh                 fwupd's list of firmware from the LVFS (fwupdmgr refresh --force)
+  firmware-update DEVICE_ID        install the newest firmware for one device (fwupdmgr update ID -y --no-reboot-check:
+                                   never restarts by itself). System firmware (UEFI) only on mains power. Always asks
+                                   for an administrator's password (49-hearth-admin.rules)
+  locale KEY=VALUE...              the system's language and formats (localectl set-locale): LANG, LC_NUMERIC, LC_TIME,
+                                   LC_MONETARY, LC_MEASUREMENT, LC_PAPER; each VALUE one the system has (locale -a).
+                                   Used from the next sign-in
+  user-type NAME standard|admin    make an account an administrator (the wheel group) or not. Never yourself, never
+                                   the last administrator, never a system account
+  login-background                 the login screen's picture; stdin: a PNG or JPEG (empty stdin: back to Hearth's
+                                   fireside). Stored in /var/lib/hearth/login-screen/background; the theme falls back
+                                   to its own look whenever the file is missing or can't be read
+Output: "log: ..." lines, then one JSON line. Exit 1 with "error: ..." on failure.
+"""
+import glob
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+
+DEVICE_ID_RE = re.compile(r'^[0-9a-f]{40}$')
+LOCALE_KEYS = ('LANG', 'LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAPER', 'LC_ADDRESS',
+               'LC_TELEPHONE', 'LC_NAME')
+LOCALE_RE = re.compile(r'^[A-Za-z]{2,3}(_[A-Z]{2})?(\.(UTF-8|utf8))?(@[a-z]+)?$|^C\.UTF-8$')
+USERNAME_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
+ADMIN_GROUP = 'wheel'
+ADMIN_GROUPS = ('wheel', 'sudo', 'admin')
+UID_MIN, UID_MAX = 1000, 59999
+LOGIN_DIR = os.environ.get('HEARTH_LOGIN_DIR', '/var/lib/hearth/login-screen')
+PICTURE_MAX = 20 * 1024 * 1024
+SYS = os.environ.get('HEARTH_SYSFS', '/sys')
+PASSWD_FILE = '/etc/passwd'
+GROUP_FILE = '/etc/group'
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def run(cmd, input=None, timeout=600):
+    """Tests replace it. Returns (code, output)."""
+    try:
+        r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout,
+                           env=dict(os.environ, LC_ALL='C'))
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, str(e)
+
+
+def last_line(out, default):
+    return ((out or '').strip().splitlines() or [default])[-1][:300]
+
+
+def caller():
+    uid = os.environ.get('PKEXEC_UID')
+    if not uid or not uid.isdigit():
+        fail('run this through hearth-admin (pkexec)')
+    return pwd.getpwuid(int(uid))
+
+
+# ------------------------------------------------------------------ firmware
+def on_mains(sysfs=None):
+    """True on mains power or with no battery at all (a desktop)."""
+    sysfs = sysfs or SYS
+    batt, ac = False, False
+    for d in glob.glob(os.path.join(sysfs, 'class', 'power_supply', '*')):
+        try:
+            typ = open(os.path.join(d, 'type')).read().strip()
+        except OSError:
+            continue
+        if typ == 'Battery':
+            batt = True
+        elif typ == 'Mains':
+            try:
+                ac = ac or open(os.path.join(d, 'online')).read().strip() == '1'
+            except OSError:
+                pass
+    return ac or not batt
+
+
+def firmware_refresh():
+    caller()
+    code, out = run(['fwupdmgr', 'refresh', '--force'], timeout=300)
+    # 2: already up to date
+    if code not in (0, 2):
+        fail('couldn\'t get the firmware list (%s)' % last_line(out, 'fwupdmgr failed'))
+    print(json.dumps({'ok': True}))
+
+
+def device_is_system(device_id):
+    code, out = run(['fwupdmgr', 'get-devices', '--json'], timeout=120)
+    try:
+        devs = json.loads(out).get('Devices') or []
+    except ValueError:
+        devs = []
+    for d in devs:
+        if d.get('DeviceId') == device_id:
+            return (d.get('Plugin') or '').startswith('uefi') or d.get('Plugin') == 'flashrom', True
+    return False, False
+
+
+def firmware_update(device_id):
+    caller()
+    if not isinstance(device_id, str) or not DEVICE_ID_RE.fullmatch(device_id):
+        fail('not a device id')
+    system, found = device_is_system(device_id)
+    if not found:
+        fail('fwupd doesn\'t know that device (look again)')
+    if system and not on_mains():
+        fail('plug in the charger first: system firmware is only updated on mains power')
+    print('log: updating firmware for %s' % device_id, flush=True)
+    code, out = run(['fwupdmgr', 'update', device_id, '-y', '--no-reboot-check'], timeout=1800)
+    if code != 0:
+        fail('the firmware update didn\'t go through (%s). Nothing was changed' % last_line(out, 'fwupdmgr failed'))
+    print(json.dumps({'ok': True, 'restart': system or 'restart' in out.lower() or 'reboot' in out.lower()}))
+
+
+# ------------------------------------------------------------------ region and language
+def norm_locale(v):
+    return re.sub(r'\.utf-?8', '.utf8', v, flags=re.I)
+
+
+def system_locales():
+    code, out = run(['locale', '-a'], timeout=20)
+    return {norm_locale(l.strip()) for l in out.splitlines() if l.strip()} if code == 0 else set()
+
+
+def locale_args(args, known):
+    """KEY=VALUE arguments checked: (list for localectl) or raises ValueError."""
+    if not args or len(args) > len(LOCALE_KEYS):
+        raise ValueError('give LANG=... and the formats to change')
+    out, seen = [], set()
+    for a in args:
+        if '=' not in a:
+            raise ValueError('use KEY=VALUE')
+        k, v = a.split('=', 1)
+        if k not in LOCALE_KEYS or k in seen:
+            raise ValueError('%s isn\'t a language or format setting' % k)
+        seen.add(k)
+        if v == '' and k != 'LANG':
+            continue        # empty: follow the language
+        if not LOCALE_RE.fullmatch(v) or norm_locale(v) not in known:
+            raise ValueError('%s isn\'t on this system' % v)
+        out.append('%s=%s' % (k, v))
+    if not any(x.startswith('LANG=') for x in out):
+        raise ValueError('LANG is needed')
+    return out
+
+
+def set_locale(args):
+    caller()
+    try:
+        values = locale_args(args, system_locales())
+    except ValueError as e:
+        fail(str(e))
+    code, out = run(['localectl', 'set-locale'] + values, timeout=60)
+    if code != 0:
+        fail('couldn\'t change the language (%s)' % last_line(out, 'localectl failed'))
+    print(json.dumps({'ok': True, 'locale': values}))
+
+
+# ------------------------------------------------------------------ account type
+def read_text(path):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def accounts(passwd_text, group_text):
+    admins, groups = set(), set()
+    for line in group_text.splitlines():
+        f = line.split(':')
+        if f:
+            groups.add(f[0])
+        if len(f) >= 4 and f[0] in ADMIN_GROUPS:
+            admins.update(x for x in f[3].split(',') if x)
+    out = []
+    for line in passwd_text.splitlines():
+        f = line.split(':')
+        if len(f) < 7 or not f[2].isdigit():
+            continue
+        if UID_MIN <= int(f[2]) <= UID_MAX and not f[6].endswith(('nologin', '/false')):
+            out.append({'name': f[0], 'admin': f[0] in admins})
+    return out, groups
+
+
+def user_type_plan(name, kind, me, accts, groups):
+    """The gpasswd commands for user-type, or raises ValueError with why not."""
+    if not isinstance(name, str) or not USERNAME_RE.fullmatch(name):
+        raise ValueError('not a valid account name')
+    if kind not in ('standard', 'admin'):
+        raise ValueError('the account type is standard or admin')
+    acct = next((a for a in accts if a['name'] == name), None)
+    if not acct:
+        raise ValueError('there\'s no such account (system accounts can\'t be changed here)')
+    if name == me:
+        raise ValueError('you can\'t change your own account type (ask another administrator)')
+    if kind == 'admin':
+        if acct['admin']:
+            return []
+        if ADMIN_GROUP not in groups:
+            raise ValueError('the administrators group (%s) is missing' % ADMIN_GROUP)
+        return [['gpasswd', '-a', name, ADMIN_GROUP]]
+    if not acct['admin']:
+        return []
+    if not any(a['admin'] and a['name'] != name for a in accts):
+        raise ValueError('this is the last administrator')
+    members = {}
+    for line in read_text(GROUP_FILE).splitlines():
+        f = line.split(':')
+        if len(f) >= 4:
+            members[f[0]] = f[3].split(',')
+    return [['gpasswd', '-d', name, g] for g in ADMIN_GROUPS if name in members.get(g, [])] or \
+           [['gpasswd', '-d', name, ADMIN_GROUP]]
+
+
+def user_type(name, kind):
+    me = caller().pw_name
+    accts, groups = accounts(read_text(PASSWD_FILE), read_text(GROUP_FILE))
+    try:
+        plan = user_type_plan(name, kind, me, accts, groups)
+    except ValueError as e:
+        fail(str(e))
+    for cmd in plan:
+        code, out = run(cmd, timeout=30)
+        if code != 0:
+            fail('couldn\'t change the account type (%s)' % last_line(out, 'gpasswd failed'))
+    print(json.dumps({'ok': True, 'user': name, 'admin': kind == 'admin', 'next': 'from their next sign-in'}))
+
+
+# ------------------------------------------------------------------ the login screen's picture
+def picture_kind(data):
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'jpeg'
+    return None
+
+
+def login_background(data, directory=None):
+    directory = directory or LOGIN_DIR
+    path = os.path.join(directory, 'background')
+    if not data:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        return {'ok': True, 'background': ''}
+    if len(data) > PICTURE_MAX:
+        raise ValueError('the picture is too big (20 MB at most)')
+    if not picture_kind(data):
+        raise ValueError('use a PNG or JPEG picture')
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    tmp = path + '.tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+    return {'ok': True, 'background': path}
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        fail('needs root (run through hearth-admin)')
+    cmd, rest = (argv[1] if len(argv) > 1 else ''), argv[2:]
+    if cmd == 'firmware-refresh' and not rest:
+        firmware_refresh()
+    elif cmd == 'firmware-update' and len(rest) == 1:
+        firmware_update(rest[0])
+    elif cmd == 'locale' and rest:
+        set_locale(rest)
+    elif cmd == 'user-type' and len(rest) == 2:
+        user_type(rest[0], rest[1])
+    elif cmd == 'login-background' and not rest:
+        caller()
+        data = sys.stdin.buffer.read(PICTURE_MAX + 1)
+        try:
+            print(json.dumps(login_background(data)))
+        except (ValueError, OSError) as e:
+            fail(str(e))
+    else:
+        fail('usage: firmware-refresh | firmware-update ID | locale KEY=VALUE... | user-type NAME standard|admin | login-background')
+
+
+if __name__ == '__main__':
+    main(sys.argv)

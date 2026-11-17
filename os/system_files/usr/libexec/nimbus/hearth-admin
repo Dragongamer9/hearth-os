@@ -79,6 +79,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      add a printer (driverless IPP Everywhere first, then a matching driver)
   hearth-admin printer-remove NAME   remove a printer
   hearth-admin printer-default NAME  the printer everyone prints to unless they pick another
+  hearth-admin firmware-refresh | firmware-update DEVICE_ID | locale KEY=VALUE... | user-type NAME standard|admin
+              | login-background
+                                     Settings › Firmware & security, Region & language, Users' account type and Login
+                                     screen (1.14): see hearth-sysset-admin. firmware-update always asks for an
+                                     administrator's password (49-hearth-admin.rules) and never restarts by itself
   hearth-admin home-repair           your own home folder: the folders Flatpak, Apps and the Debian box write to
                                      given back to you when root or a deleted account owns them, and a container
                                      id range for you (see hearth-home-repair). No arguments: only ever the
@@ -2807,6 +2812,12 @@ def main(argv):
     elif cmd == 'write-file' and len(argv) == 3:
         caller()
         write_file(argv[2])
+    elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background'):
+        # Settings' system pages added in 1.14 (firmware, region, account type, the login screen's picture): their own
+        # script checks every argument again.
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-sysset-admin')
+        os.execv(sys.executable, [sys.executable, helper, cmd] + argv[2:])
     elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-ventoy', 'usb-finish'):
         # Make a bootable USB (Hearth Disks): its own script checks the drive and does the one step.
         caller()

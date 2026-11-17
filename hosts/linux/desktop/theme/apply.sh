@@ -88,4 +88,9 @@ if command -v gsettings >/dev/null 2>&1; then
     [ -d /usr/share/themes/adw-gtk3-dark ] && gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark 2>/dev/null
   fi
 fi
+# Your fonts, cursor and icon theme (Settings › Personalization › Fonts, cursor & icons): handed on again over what's
+# above, so a look change never undoes them. Nothing happens when you chose none.
+if command -v python3 >/dev/null 2>&1 && [ -f "$SHARE/desktop/shell/hearth-lookset" ]; then
+  python3 "$SHARE/desktop/shell/hearth-lookset" apply >/dev/null 2>&1
+fi
 exit 0

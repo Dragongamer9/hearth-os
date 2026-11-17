@@ -1,0 +1,202 @@
+#!/usr/bin/python3
+"""hearth-firmware: Hearth Settings' Firmware & device security page (Privacy & security), as you (no root). Reads
+fwupd (fwupdmgr --json), Secure Boot (mokutil, or the SecureBoot EFI variable) and the TPM (/sys/class/tpm). Getting
+new firmware lists and installing firmware go through /usr/libexec/nimbus/hearth-admin (firmware-refresh,
+firmware-update), which only runs fwupdmgr with a checked device id.
+
+  hearth-firmware status     JSON: {uefi, secureBoot: on|off|unsupported|unknown, setupMode, tpm: {present, version},
+                             fwupd, power: {ac, battery}}
+  hearth-firmware devices    JSON: {devices: [{id, name, vendor, version, updatable, system, needsReboot,
+                             update: {version, summary, urgency, size} | null}]}
+  hearth-firmware security   JSON: {hsi: "HSI:1", level, items: [{name, ok, level, result}]} (fwupd's Host Security ID)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+SB_VAR = 'SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c'
+SETUP_VAR = 'SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c'
+SYS = os.environ.get('HEARTH_SYSFS', '/sys')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=60):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def read(path, default=''):
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def efivar_flag(name):
+    """An EFI boolean variable: 4 bytes of attributes, then the value. None when it isn't there."""
+    data = read(os.path.join(SYS, 'firmware', 'efi', 'efivars', name), b'')
+    if len(data) < 5:
+        return None
+    return data[4] == 1
+
+
+def parse_sb_state(text):
+    t = (text or '').lower()
+    if 'secureboot enabled' in t:
+        return 'on'
+    if 'secureboot disabled' in t:
+        return 'off'
+    if "doesn't support" in t or 'not supported' in t:
+        return 'unsupported'
+    return 'unknown'
+
+
+def secure_boot():
+    uefi = os.path.isdir(os.path.join(SYS, 'firmware', 'efi'))
+    if not uefi:
+        return 'unsupported', False
+    state = 'unknown'
+    if shutil.which('mokutil'):
+        code, out, err = run(['mokutil', '--sb-state'], timeout=10)
+        state = parse_sb_state(out + err)
+    if state == 'unknown':
+        v = efivar_flag(SB_VAR)
+        state = 'unknown' if v is None else ('on' if v else 'off')
+    return state, bool(efivar_flag(SETUP_VAR))
+
+
+def tpm():
+    for d in sorted(glob.glob(os.path.join(SYS, 'class', 'tpm', 'tpm*'))):
+        v = read(os.path.join(d, 'tpm_version_major'), b'').decode(errors='replace').strip()
+        return {'present': True, 'version': (v + '.0') if v.isdigit() else ''}
+    return {'present': False, 'version': ''}
+
+
+def power():
+    ac, batt = None, None
+    for d in glob.glob(os.path.join(SYS, 'class', 'power_supply', '*')):
+        typ = read(os.path.join(d, 'type'), b'').decode(errors='replace').strip()
+        if typ == 'Mains':
+            ac = (ac or False) or read(os.path.join(d, 'online'), b'0').strip() == b'1'
+        elif typ == 'Battery':
+            c = read(os.path.join(d, 'capacity'), b'').strip()
+            if c.isdigit():
+                batt = int(c)
+    return {'ac': ac, 'battery': batt}
+
+
+def status():
+    sb, setup = secure_boot()
+    return {'uefi': os.path.isdir(os.path.join(SYS, 'firmware', 'efi')), 'secureBoot': sb, 'setupMode': setup,
+            'tpm': tpm(), 'fwupd': bool(shutil.which('fwupdmgr')), 'power': power()}
+
+
+def fwupd_json(args):
+    if not shutil.which('fwupdmgr'):
+        raise Fail("fwupd isn't on this system")
+    code, out, err = run(['fwupdmgr'] + args + ['--json'], timeout=120)
+    try:
+        return json.loads(out) if out.strip() else {}
+    except ValueError:
+        if code != 0:
+            # 2: nothing to do (no updatable devices, no updates)
+            return {}
+        raise Fail('fwupd answered something unexpected')
+
+
+def release_of(dev):
+    rels = dev.get('Releases') or []
+    if not rels:
+        return None
+    r = rels[0]
+    return {'version': r.get('Version', ''), 'summary': r.get('Summary', ''), 'urgency': r.get('Urgency', ''),
+            'size': r.get('Size', 0), 'description': re.sub(r'<[^>]+>', ' ', r.get('Description', '') or '').strip()[:600]}
+
+
+def device_entry(d):
+    flags = d.get('Flags') or []
+    plugin = d.get('Plugin', '')
+    system = plugin in ('uefi_capsule', 'uefi', 'flashrom') or 'internal' in flags and 'needs-reboot' in flags
+    return {'id': d.get('DeviceId', ''), 'name': d.get('Name', ''), 'vendor': d.get('Vendor', ''),
+            'version': d.get('Version', ''), 'updatable': 'updatable' in flags, 'system': system,
+            'needsReboot': 'needs-reboot' in flags or plugin.startswith('uefi'), 'plugin': plugin, 'update': None}
+
+
+def parse_devices(devs_json, updates_json):
+    out, seen = [], {}
+    for d in devs_json.get('Devices') or []:
+        if not d.get('DeviceId') or not d.get('Name'):
+            continue
+        e = device_entry(d)
+        seen[e['id']] = e
+        out.append(e)
+    for d in updates_json.get('Devices') or []:
+        e = seen.get(d.get('DeviceId', ''))
+        if e is None:
+            e = device_entry(d)
+            out.append(e)
+        e['update'] = release_of(d)
+    # Updates first, then what can be updated, then by name.
+    out.sort(key=lambda e: (e['update'] is None, not e['updatable'], e['name'].lower()))
+    return out
+
+
+def devices():
+    return {'devices': parse_devices(fwupd_json(['get-devices']), fwupd_json(['get-updates']))}
+
+
+def parse_security(js):
+    items = []
+    for a in js.get('SecurityAttributes') or []:
+        flags = a.get('Flags') or []
+        level = a.get('HsiLevel', 0) or 0
+        items.append({'name': a.get('Name') or a.get('AppstreamId', ''), 'ok': 'success' in flags, 'level': level,
+                      'result': a.get('HsiResult', ''), 'id': a.get('AppstreamId', '')})
+    level = 0
+    for lv in range(1, 6):
+        need = [i for i in items if i['level'] == lv]
+        if need and all(i['ok'] for i in need):
+            level = lv
+        else:
+            break
+    items.sort(key=lambda i: (i['ok'], i['level'] or 9, i['name']))
+    return {'hsi': js.get('HostSecurityId') or 'HSI:%d' % level, 'level': level, 'items': items}
+
+
+def security():
+    return parse_security(fwupd_json(['security']))
+
+
+def main(argv):
+    cmd = argv[0] if argv else ''
+    try:
+        if cmd == 'status':
+            r = status()
+        elif cmd == 'devices':
+            r = devices()
+        elif cmd == 'security':
+            r = security()
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

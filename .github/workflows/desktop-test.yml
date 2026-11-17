@@ -89,6 +89,9 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_shell_extras.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_labwc_rc.py'
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_settings_basics.py'
+          # 1.14, KDE System Settings' areas: VPN, hotspot, proxy, connection details, firmware, region, fonts, services,
+          # login screen (fake nmcli / fwupdmgr / localectl / systemctl answers; secrets only on stdin).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_system_settings_114.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -268,6 +271,66 @@ jobs:
           wtype -k Return; sleep 3; grim shots/settings-redesign/35-search-opened-the-setting.png || true
           rs home 36-home; wtype -M ctrl -k f -m ctrl; sleep 1; wtype appearance 2>/dev/null || true; sleep 2; grim shots/settings-redesign/36-search-old-name.png || true
           wtype -k Escape; wtype -k Escape; ipc settings close
+          # ---- 1.14, System Settings' areas (test_system_settings_114.py): each new page at 1920x1080 with stand-in
+          # NetworkManager, fwupd, localectl and systemd --user answers (in /tmp/fakebin only for these pictures; anything
+          # else goes to the real program), then everything put back. The system-settings-shots job posts them as SHOT notices.
+          mkdir -p shots/system-settings
+          dnf -y install glibc-langpack-de glibc-langpack-fr >/dev/null 2>&1 || true
+          cat > /tmp/fakebin/nmcli <<'FAKE'
+          #!/bin/sh
+          W=0f5d6a3e-1b2c-4d5e-8f90-123456789abc; V=22222222-2222-3333-4444-555555555555; G=33333333-2222-3333-4444-555555555555; H=44444444-2222-3333-4444-555555555555
+          case "$*" in
+            *"NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT connection show"*)
+              printf 'Home Wi-Fi:%s:802-11-wireless:wlan0:yes:yes\nWired connection 1:55555555-2222-3333-4444-555555555555:802-3-ethernet::no:yes\nWork VPN:%s:vpn::no:no\nhome-wg:%s:wireguard:home-wg:yes:no\nHearth Hotspot:%s:802-11-wireless::no:no\n' $W $V $G $H ;;
+            *"DEVICE,TYPE,STATE device"*) printf 'wlan0:wifi:connected\neth0:ethernet:unavailable\nhome-wg:wireguard:connected\n' ;;
+            *"vpn.service-type"*) echo org.freedesktop.NetworkManager.openvpn ;;
+            *"802-11-wireless.mode connection show uuid $H"*) echo ap ;;
+            *"802-11-wireless.mode"*) echo infrastructure ;;
+            *"WIFI-PROPERTIES.AP"*) echo yes ;;
+            *"connection.type"*) echo 802-11-wireless ;;
+            *"-t connection show uuid $H"*) printf '802-11-wireless.ssid:Hearth Den\n802-11-wireless.band:a\n' ;;
+            *"-t connection show uuid"*) printf 'connection.id:Home Wi-Fi\nconnection.type:802-11-wireless\nconnection.autoconnect:yes\nconnection.metered:no\nipv4.method:auto\nipv4.addresses:\nipv4.gateway:--\nipv4.dns:1.1.1.1,9.9.9.9\nipv4.ignore-auto-dns:no\nipv6.method:auto\nipv6.dns:\n802-11-wireless.cloned-mac-address:stable\nGENERAL.DEVICES:wlan0\nIP4.ADDRESS[1]:192.168.1.42/24\nIP4.GATEWAY:192.168.1.1\nIP4.DNS[1]:1.1.1.1\nIP4.DNS[2]:9.9.9.9\nIP6.ADDRESS[1]:fd00::42/64\n' ;;
+            *) [ -x /usr/bin/nmcli ] && exec /usr/bin/nmcli "$@" ;;
+          esac
+          FAKE
+          cat > /tmp/fakebin/fwupdmgr <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            get-devices) echo '{"Devices":[{"Name":"System Firmware","DeviceId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","Vendor":"Framework","Version":"3.05","Plugin":"uefi_capsule","Flags":["internal","updatable","needs-reboot"]},{"Name":"Unifying Receiver","DeviceId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Vendor":"Logitech","Version":"RQR12.10","Plugin":"logitech_hidpp","Flags":["updatable"]},{"Name":"Samsung SSD 980 PRO 1TB","DeviceId":"cccccccccccccccccccccccccccccccccccccccc","Vendor":"Samsung","Version":"5B2QGXA7","Plugin":"nvme","Flags":["internal","updatable"]}]}' ;;
+            get-updates) echo '{"Devices":[{"Name":"Unifying Receiver","DeviceId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Releases":[{"Version":"RQR12.11","Summary":"Firmware for the Logitech Unifying receiver","Description":"<p>This release fixes a security problem.</p>","Urgency":"high","Size":66000}]}]}' ;;
+            security) echo '{"HostSecurityId":"HSI:1! (v2.0.8)","SecurityAttributes":[{"AppstreamId":"org.fwupd.hsi.Tpm.Version20","Name":"TPM v2.0","HsiLevel":1,"HsiResult":"found","Flags":["success"]},{"AppstreamId":"org.fwupd.hsi.Uefi.SecureBoot","Name":"UEFI secure boot","HsiLevel":1,"HsiResult":"enabled","Flags":["success"]},{"AppstreamId":"org.fwupd.hsi.Iommu","Name":"IOMMU","HsiLevel":2,"HsiResult":"not-found","Flags":[]}]}' ;;
+            *) exit 2 ;;
+          esac
+          FAKE
+          printf '#!/bin/sh\necho "SecureBoot enabled"\n' > /tmp/fakebin/mokutil
+          printf '#!/bin/sh\nprintf "   System Locale: LANG=en_US.UTF-8\\n                  LC_TIME=de_DE.UTF-8\\n       VC Keymap: us\\n"\n' > /tmp/fakebin/localectl
+          cat > /tmp/fakebin/systemctl <<'FAKE'
+          #!/bin/sh
+          if [ "$1" = --user ] && [ "$2" = list-unit-files ]; then
+            printf 'syncthing.service enabled enabled\nmpd.service disabled enabled\nopentabletdriver.service disabled enabled\nhearth-companion.service enabled enabled\npipewire.service enabled enabled\nwireplumber.service enabled enabled\nxdg-desktop-portal.service static -\n'; exit 0
+          fi
+          if [ "$1" = --user ] && [ "$2" = show ]; then
+            printf 'Id=syncthing.service\nDescription=Syncthing - Open Source Continuous File Synchronization\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=mpd.service\nDescription=Music Player Daemon\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n\nId=opentabletdriver.service\nDescription=OpenTabletDriver Daemon\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n\nId=hearth-companion.service\nDescription=Hearth companion\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=pipewire.service\nDescription=PipeWire Multimedia Service\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=wireplumber.service\nDescription=Multimedia Service Session Manager\nActiveState=active\nSubState=running\nUnitFileState=enabled\n'; exit 0
+          fi
+          exec /usr/bin/systemctl "$@"
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/systemctl
+          chmod +x /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/mokutil /tmp/fakebin/localectl /tmp/fakebin/systemctl
+          # A proxy set by hand, for its picture (removed again below).
+          PX="$HOME/.config/nimbus/proxy.json"; [ -e "$PX" ] && cp -p "$PX" /tmp/proxy.json.before
+          printf '{"mode": "manual", "http": "proxy.lan:3128", "https": "proxy.lan:3128", "socks": "", "ignore": "localhost, 127.0.0.0/8, ::1, .lan"}\n' > "$PX"
+          ss() { ipc settings close; ipc settings page "$1"; sleep 5; grim "shots/system-settings/$2.png" || true; }
+          ss vpn ss-vpn; ss hotspot ss-hotspot; ss proxy ss-proxy; ss net-details ss-net-details; ss firmware ss-firmware
+          ss region ss-region; ss fonts ss-fonts; ss services ss-services; ss login-screen ss-login-screen
+          ipc settings close
+          rm -f "$PX" /tmp/fakebin/nmcli /tmp/fakebin/fwupdmgr /tmp/fakebin/mokutil /tmp/fakebin/localectl /tmp/fakebin/systemctl
+          [ -e /tmp/proxy.json.before ] && mv -f /tmp/proxy.json.before "$PX"
+          if grep -E "Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=System settings::$(grep -E "Set(Vpn|Hotspot|Proxy|NetDetails|Firmware|Region|Fonts|Services|LoginScreen|Users)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=System settings::$(ls shots/system-settings | wc -l) pictures of the 1.14 system pages, no QML errors from them"
+          fi
           # 1.14, the new Settings: the keyboard-and-mouse Home (A1) and Display (A2), then the controller look (B1, B2):
           # Quick, System › Display, the help panel, LB / RB, X Default asked first, and back to A with the mouse.
           mkdir -p shots/settings-new
@@ -2109,6 +2172,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          name: system-settings-shots
+          path: shots/system-settings
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
           name: desktop-screenshots
           path: shots
           retention-days: 14
@@ -2152,3 +2223,52 @@ jobs:
         run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
       - name: Picture (gm-fallback)
         run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true
+
+  # 1.14 System Settings' pages (the system-settings-shots artifact): each picture as SHOT notices, one job per picture
+  # (a JPEG at 1920x1080 in base64 pieces of 3800, title "SHOT <name> <n>"; nine a step, five steps: a job keeps 50).
+  system-settings-shots:
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: system-settings-shots
+          path: shots
+      - name: Make the JPEG
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - "${{ matrix.shot }}" <<'PY'
+          import base64, io, os, sys
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          p = 'shots/%s.png' % sys.argv[1]
+          if not os.path.exists(p):
+              raise SystemExit(0)
+          im = Image.open(p).convert('RGB')
+          for w, q in ((1920, 72), (1920, 60), (1920, 50), (1920, 40), (1600, 45), (1280, 45)):
+              b = io.BytesIO(); (im if w == im.width else im.resize((w, round(im.height * w / im.width)))).save(b, 'JPEG', quality=q, optimize=True)
+              if len(base64.b64encode(b.getvalue())) <= 45 * 3800:
+                  break
+          open('shot.jpg', 'wb').write(b.getvalue())
+          print('%s: %dx%d, %d bytes' % (p, im.width, im.height, len(b.getvalue())))
+          PY
+          [ -f shot.jpg ] && base64 -w0 shot.jpg | fold -w 3800 | nl -ba -w2 -s' ' > parts.txt || : > parts.txt
+          echo "::notice title=SHOT ${{ matrix.shot }} parts::$(wc -l < parts.txt)"
+      - name: Picture 1-9
+        run: sed -n '1,9p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 10-18
+        run: sed -n '10,18p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 19-27
+        run: sed -n '19,27p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 28-36
+        run: sed -n '28,36p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture 37-45
+        run: sed -n '37,45p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done

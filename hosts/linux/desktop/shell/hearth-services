@@ -1,0 +1,143 @@
+#!/usr/bin/python3
+"""hearth-services: Hearth Settings' Background services page (Apps), as you (no root). Your own background services
+(systemd --user): what each is, whether it's running, whether it starts when you sign in, and switching that. Hearth's
+own services and the ones the desktop needs (sound, the session bus, the portals, the keyring) are listed but locked:
+switching them off would break Desktop Mode or Game Mode. systemd keeps the choice (its own enable/disable): Hearth
+keeps no file for it.
+
+  hearth-services list             JSON: {services: [{id, name, running, enabled, state, locked, why}]}
+  hearth-services set UNIT on|off  start it now and at every sign-in, or stop it and keep it off
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import re
+import subprocess
+import sys
+
+UNIT_RE = re.compile(r'^[A-Za-z0-9:_.\\-]{1,200}\.service$')
+# Never switched from here: Hearth's own, and what the desktop and sound stand on.
+LOCKED = [
+    (r'^(nimbus|hearth)[-.@]', "Hearth's own: it's switched on its own page in Settings"),
+    (r'^(pipewire|wireplumber|pulseaudio|filter-chain)', 'Sound'),
+    (r'^(dbus|dbus-broker)', 'Apps talk to each other through it'),
+    (r'^xdg-(desktop-portal|document-portal|permission-store|user-dirs)', 'File choosers, screen sharing and app permissions'),
+    (r'^(at-spi|orca)', 'Accessibility'),
+    (r'^(gnome-keyring|gcr-ssh-agent|ssh-agent|gpg-agent|kwalletd)', 'Your saved passwords'),
+    (r'^(gvfs|tracker|localsearch)', 'Drives, phones and network folders in the file manager'),
+    (r'^(plasma-|kwin|kde|ksmserver|kded)', "The desktop's own"),
+    (r'^(systemd-|init|basic|graphical-session|default)', 'systemd'),
+    (r'^(flatpak-|podman|steam|decky)', 'Apps and games need it'),
+]
+TOGGLE_STATES = ('enabled', 'disabled', 'enabled-runtime', 'linked', 'masked')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=30):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def lock_reason(unit):
+    for pat, why in LOCKED:
+        if re.search(pat, unit):
+            return why
+    return ''
+
+
+def parse_unit_files(text):
+    """`systemctl --user list-unit-files --type=service --no-legend`: name, state (and the preset)."""
+    out = {}
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[0].endswith('.service') and '@.' not in f[0]:
+            out[f[0]] = f[1]
+    return out
+
+
+def parse_show(text):
+    """`systemctl --user show -p ...` for several units: blocks of KEY=VALUE split by blank lines."""
+    out, cur = {}, {}
+    for line in text.splitlines() + ['']:
+        if not line.strip():
+            if cur.get('Id'):
+                out[cur['Id']] = cur
+            cur = {}
+            continue
+        k, _, v = line.partition('=')
+        cur[k] = v
+    return out
+
+
+def services():
+    code, out, err = run(['systemctl', '--user', 'list-unit-files', '--type=service', '--no-legend', '--no-pager'])
+    if code != 0 and not out:
+        raise Fail("couldn't ask systemd (%s)" % (err.strip().splitlines() or ['no answer'])[-1][:120])
+    files = {u: s for u, s in parse_unit_files(out).items() if s in TOGGLE_STATES}
+    info = {}
+    if files:
+        code, out, _ = run(['systemctl', '--user', 'show', '--no-pager', '-p', 'Id,Description,ActiveState,SubState,UnitFileState']
+                           + sorted(files))
+        info = parse_show(out)
+    rows = []
+    for u, state in files.items():
+        i = info.get(u, {})
+        why = lock_reason(u)
+        rows.append({'id': u, 'name': i.get('Description') or u[:-8], 'running': i.get('ActiveState') == 'active',
+                     'sub': i.get('SubState', ''), 'enabled': (i.get('UnitFileState') or state).startswith('enabled') or state == 'linked',
+                     'state': i.get('UnitFileState') or state, 'locked': bool(why), 'why': why})
+    rows.sort(key=lambda r: (r['locked'], r['name'].lower()))
+    return {'services': rows}
+
+
+def set_(unit, on):
+    if not UNIT_RE.match(unit or '') or '@.' in unit:
+        raise Fail('not a service name')
+    why = lock_reason(unit)
+    if why:
+        raise Fail("this one isn't switched here (%s)" % why)
+    code, out, _ = run(['systemctl', '--user', 'list-unit-files', '--type=service', '--no-legend', '--no-pager', unit])
+    if unit not in parse_unit_files(out):
+        raise Fail("there's no such service of yours")
+    def must(cmd):
+        code, out, err = run(cmd, timeout=60)
+        if code != 0:
+            raise Fail((err or out).strip().splitlines()[-1][:200] if (err or out).strip() else 'systemd said no')
+    if on:
+        # Masked by Hearth earlier (a service every account starts): unmasked first.
+        if parse_unit_files(out).get(unit) == 'masked':
+            must(['systemctl', '--user', 'unmask', unit])
+        must(['systemctl', '--user', 'enable', '--now', unit])
+    else:
+        must(['systemctl', '--user', 'disable', '--now', unit])
+        # A service every account starts (enabled for all, in /etc/systemd/user) stays enabled after disable: it's
+        # masked for you instead, which "on" undoes.
+        code, out, _ = run(['systemctl', '--user', 'is-enabled', unit])
+        if out.strip().startswith('enabled'):
+            must(['systemctl', '--user', 'mask', '--now', unit])
+    return {'ok': True, 'id': unit, 'on': on}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['list']:
+            r = services()
+        elif argv[:1] == ['set'] and len(argv) == 3 and argv[2] in ('on', 'off'):
+            r = set_(argv[1], argv[2] == 'on')
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
