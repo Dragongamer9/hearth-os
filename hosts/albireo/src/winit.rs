@@ -230,6 +230,7 @@ pub fn run_winit() {
                 output.change_current_state(Some(mode), None, None, None);
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
+                state.lock_output_changed(&output);
             }
             WinitEvent::Input(event) => state.process_input_event_windowed(event, OUTPUT_NAME),
             _ => (),
@@ -249,6 +250,8 @@ pub fn run_winit() {
                     .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
                     .unwrap_or_default();
             state.pre_repaint(&output, frame_target);
+            let lock_view = state.lock.view(&output);
+            let locked = lock_view.is_some();
 
             let backend = &mut state.backend_data.backend;
 
@@ -361,6 +364,7 @@ pub fn run_winit() {
                     damage_tracker,
                     age,
                     show_window_preview,
+                    lock_view.as_ref(),
                 )
                 .map_err(|err| match err {
                     OutputDamageTrackerError::Rendering(err) => err.into(),
@@ -416,6 +420,9 @@ pub fn run_winit() {
                         )
                     }
 
+                    if locked {
+                        state.lock_frame_drawn(&output);
+                    }
                     // Send frame events so that client start drawing their next frame
                     state.post_repaint(&output, frame_target, None, &states);
                 }

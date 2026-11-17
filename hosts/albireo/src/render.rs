@@ -2,12 +2,13 @@ use smithay::{
     backend::renderer::{
         damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
         element::{
-            surface::WaylandSurfaceRenderElement,
+            memory::MemoryRenderBufferRenderElement,
+            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
             },
-            AsRenderElements, RenderElement, Wrap,
+            AsRenderElements, Kind, RenderElement, Wrap,
         },
         Color32F, ImportAll, ImportMem, Renderer,
     },
@@ -22,6 +23,7 @@ use smithay::{
 use crate::drawing::FpsElement;
 use crate::{
     drawing::{clear_color, PointerRenderElement, CLEAR_COLOR_FULLSCREEN},
+    lock::LockView,
     shell::{FullscreenSurface, WindowElement, WindowRenderElement},
 };
 
@@ -30,6 +32,7 @@ smithay::backend::renderer::element::render_elements! {
         R: ImportAll + ImportMem;
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,
+    Memory=MemoryRenderBufferRenderElement<R>,
     #[cfg(feature = "debug")]
     // Note: We would like to borrow this element instead, but that would introduce
     // a feature-dependent lifetime, which introduces a lot more feature bounds
@@ -43,6 +46,7 @@ impl<R: Renderer> std::fmt::Debug for CustomRenderElements<R> {
         match self {
             Self::Pointer(arg0) => f.debug_tuple("Pointer").field(arg0).finish(),
             Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
+            Self::Memory(arg0) => f.debug_tuple("Memory").field(arg0).finish(),
             #[cfg(feature = "debug")]
             Self::Fps(arg0) => f.debug_tuple("Fps").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
@@ -142,11 +146,46 @@ pub fn output_elements<R>(
     custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
     renderer: &mut R,
     show_window_preview: bool,
+    lock: Option<&LockView>,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
+    // Locked (lock.rs): the lock screen (or the built-in prompt) and the pointer, nothing else, ever.
+    if let Some(view) = lock {
+        let scale = output.current_scale().fractional_scale();
+        let mut elements: Vec<OutputRenderElements<R, WindowRenderElement<R>>> =
+            custom_elements.into_iter().map(OutputRenderElements::from).collect();
+        match view {
+            LockView::Surface(surface) => {
+                let surf: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
+                    renderer,
+                    surface,
+                    (0, 0),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                );
+                elements.extend(surf.into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Surface(e))));
+            }
+            LockView::Prompt(buffer) => {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    (0.0, 0.0),
+                    buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elements.push(OutputRenderElements::Custom(CustomRenderElements::Memory(e)));
+                }
+            }
+            LockView::Cover => {}
+        }
+        return (elements, clear_color());
+    }
     if let Some(window) = output
         .user_data()
         .get::<FullscreenSurface>()
@@ -199,12 +238,13 @@ pub fn render_output<'a, 'd, R>(
     damage_tracker: &'d mut OutputDamageTracker,
     age: usize,
     show_window_preview: bool,
+    lock: Option<&LockView>,
 ) -> Result<RenderOutputResult<'d>, OutputDamageTrackerError<R::Error>>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, lock);
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }

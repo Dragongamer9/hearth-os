@@ -298,14 +298,14 @@ fn to_u8(c: f32) -> u8 {
     (c.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
 
-struct Canvas {
-    w: i32,
-    h: i32,
-    px: Vec<u8>,
+pub(crate) struct Canvas {
+    pub(crate) w: i32,
+    pub(crate) h: i32,
+    pub(crate) px: Vec<u8>,
 }
 
 impl Canvas {
-    fn new(w: i32, h: i32, bg: theme::Rgba) -> Canvas {
+    pub(crate) fn new(w: i32, h: i32, bg: theme::Rgba) -> Canvas {
         let mut px = vec![0u8; (w * h * 4) as usize];
         for p in px.chunks_exact_mut(4) {
             p[0] = to_u8(bg[2]);
@@ -317,7 +317,7 @@ impl Canvas {
     }
 
     /// Paints `c` over a pixel with coverage `a` (0..1).
-    fn blend(&mut self, x: i32, y: i32, c: theme::Rgba, a: f32) {
+    pub(crate) fn blend(&mut self, x: i32, y: i32, c: theme::Rgba, a: f32) {
         if x < 0 || y < 0 || x >= self.w || y >= self.h || a <= 0.0 {
             return;
         }
@@ -330,7 +330,7 @@ impl Canvas {
         self.px[i + 3] = 255;
     }
 
-    fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: theme::Rgba) {
+    pub(crate) fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: theme::Rgba) {
         for yy in y.max(0)..(y + h).min(self.h) {
             for xx in x.max(0)..(x + w).min(self.w) {
                 self.blend(xx, yy, c, 1.0);
@@ -339,7 +339,7 @@ impl Canvas {
     }
 
     /// A rectangle with rounded corners (radius r), anti-aliased.
-    fn round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, c: theme::Rgba) {
+    pub(crate) fn round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, c: theme::Rgba) {
         for yy in (y.floor() as i32)..((y + h).ceil() as i32) {
             for xx in (x.floor() as i32)..((x + w).ceil() as i32) {
                 let (px, py) = (xx as f32 + 0.5, yy as f32 + 0.5);
@@ -352,7 +352,7 @@ impl Canvas {
     }
 
     /// A line from (x0, y0) to (x1, y1), `t` thick, anti-aliased.
-    fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, t: f32, c: theme::Rgba) {
+    pub(crate) fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, t: f32, c: theme::Rgba) {
         let (minx, maxx) = (x0.min(x1) - t, x0.max(x1) + t);
         let (miny, maxy) = (y0.min(y1) - t, y0.max(y1) + t);
         let (dx, dy) = (x1 - x0, y1 - y0);
@@ -370,7 +370,7 @@ impl Canvas {
 }
 
 /// The font for titles: Mantel's (theme.json's "font"), else the usual sans fonts, found with fontconfig.
-fn font() -> Option<&'static fontdue::Font> {
+pub(crate) fn font() -> Option<&'static fontdue::Font> {
     static FONT: OnceLock<Option<fontdue::Font>> = OnceLock::new();
     FONT.get_or_init(|| {
         let family = theme::current().font;
@@ -453,6 +453,26 @@ fn draw_text(cv: &mut Canvas, text: &str, size: f32, x: f32, max_w: f32, center_
     if n < glyphs.len() {
         draw(cv, &ell.0, &ell.1, pen);
     }
+}
+
+/// One line of text centred on `center_x`, its baseline at `baseline` (the lock prompt's lines). Returns its width.
+pub(crate) fn draw_text_line(cv: &mut Canvas, text: &str, size: f32, center_x: f32, baseline: f32, c: theme::Rgba) -> f32 {
+    let Some(f) = font() else { return 0.0 };
+    let glyphs: Vec<(fontdue::Metrics, Vec<u8>)> = text.chars().map(|ch| f.rasterize(ch, size)).collect();
+    let total: f32 = glyphs.iter().map(|(m, _)| m.advance_width).sum();
+    let mut pen = center_x - total / 2.0;
+    for (m, bmp) in &glyphs {
+        let gx = (pen + m.xmin as f32).round() as i32;
+        let gy = (baseline - m.height as f32 - m.ymin as f32).round() as i32;
+        for row in 0..m.height {
+            for col in 0..m.width {
+                let a = bmp[row * m.width + col] as f32 / 255.0;
+                cv.blend(gx + col as i32, gy + row as i32, c, a);
+            }
+        }
+        pen += m.advance_width;
+    }
+    total
 }
 
 fn draw_bar(k: &DrawKey, t: &theme::Theme) -> Vec<u8> {

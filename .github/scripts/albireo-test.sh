@@ -12,6 +12,9 @@
 #   albireo-4-minimized  minimized through the taskbar protocol, then back
 #   albireo-5-snapped the window dragged to the left edge: the left half
 #   albireo-6-your-desktop  Settings › System › Your desktop with the preview switch
+#   albireo-7-locked  Mantel's lock screen (ext-session-lock), nothing else on the screen
+#   albireo-8-lock-prompt  the lock screen killed: still locked, the compositor's own prompt after a wrong password
+#   albireo-9-unlocked  the right password in that prompt: the desktop back
 set -u +e +o pipefail
 mkdir -p shots
 SRC=$PWD
@@ -80,7 +83,7 @@ CONF="$HOME/.config/nimbus/session.conf"
 printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=albireo\n' > "$CONF"
 LOG="$HOME/.local/share/nimbus/session.log"
 rm -f "$XDG_RUNTIME_DIR/nimbus-next" "$XDG_RUNTIME_DIR/hearth-shell-up"
-ALBIREO_BIN="$BIN" ALBIREO_ARGS="--winit --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
+ALBIREO_RELOCK_AFTER=120 ALBIREO_BIN="$BIN" ALBIREO_ARGS="--winit --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
   sh hosts/linux/session/nimbus-session >shots/session-out.log 2>&1 &
 SPID=$!
 for i in $(seq 1 90); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
@@ -163,6 +166,60 @@ python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status.json
 grep -q '"wmNow": "albireo"' shots/status.json || fail "Your desktop" "doesn't say Mantel is on Albireo: $(head -c 400 shots/status.json)"
 grep -q '"albireoPreview": true' shots/status.json || fail "Your desktop" "doesn't show the preview as on"
 
+# ---- 7: the lock screen (ext-session-lock): Super+L's command locks, and nothing behind it has the keyboard.
+# (This run's compositor waits 120 s before asking Mantel to lock again, so step 8 sees its own prompt.)
+LOCKPW=hearthtest42
+echo "root:$LOCKPW" | chpasswd 2>>shots/lock.log || fail "lock" "couldn't give the test user a password"
+qs() { WAYLAND_DISPLAY=wayland-hearth timeout 10 quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" "$@" >/dev/null 2>&1; }
+focus() { status 'd["keyboardFocus"]'; }
+qs call lock lock || fail "lock" "Mantel's ipc didn't answer the lock call"
+if wait_for 20 'd["lock"]["locked"] and d["lock"]["client"] and d["lock"]["surfaces"] >= 1'; then
+  note "lock" "locked by Mantel's lock screen ($(status 'd["lock"]["surfaces"]') lock surface(s)); the keyboard is the $(focus)'s"
+else
+  fail "lock" "Mantel's lock screen didn't lock: $(status 'd["lock"]') shell: $(grep -i lock "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null | tail -3 | tr '\n' '|' | cut -c1-300)"
+fi
+sleep 4
+[ "$(focus)" = lock ] || fail "lock" "while locked the keyboard is the $(focus)'s, not the lock screen's"
+shot albireo-7-locked
+grep -q "the lock screen is told it's locked" "$HOME/.local/share/nimbus/albireo.log" 2>/dev/null || note "lock" "the compositor's log doesn't say it confirmed the lock"
+
+# ---- 8: the lock screen dies (Mantel killed): still locked, with the compositor's own prompt; a wrong password
+# keeps it locked. Then Mantel (back again) locks once more and takes over, dies once more, and the right password
+# in the prompt unlocks: never unlocked by itself, nobody locked out.
+pkill -KILL -x quickshell
+if wait_for 10 'd["lock"]["locked"] and d["lock"]["prompt"] and not d["lock"]["client"]'; then
+  note "lock" "the lock screen died: still locked, the built-in prompt is up"
+else
+  fail "lock" "after the lock screen died: $(status 'd["lock"]')"
+fi
+case "$(focus)" in window:*|layer:*) fail "lock" "the lock screen died and the keyboard went to $(focus)";; esac
+sleep 2
+xdotool type --delay 80 "not-the-password"; xdotool key Return
+sleep 5
+[ "$(status 'd["lock"]["locked"]')" = True ] && note "lock" "a wrong password: still locked ($(status 'd["lock"]["message"]'))" \
+  || fail "lock" "a wrong password unlocked it: $(status 'd["lock"]')"
+status 'd["lock"]["message"]' | grep -q "isn't right" || fail "lock" "the prompt didn't say the password was wrong: $(status 'd["lock"]')"
+shot albireo-8-lock-prompt
+for i in $(seq 1 40); do qs call lock lock && break; sleep 1; done
+if wait_for 15 'd["lock"]["locked"] and d["lock"]["client"] and not d["lock"]["prompt"]'; then
+  note "lock" "Mantel came back and its lock screen took over the lock"
+else
+  fail "lock" "Mantel's lock screen didn't take over: $(status 'd["lock"]')"
+fi
+sleep 3
+pkill -KILL -x quickshell
+wait_for 10 'd["lock"]["prompt"]' || fail "lock" "the second time the lock screen died there was no prompt: $(status 'd["lock"]')"
+sleep 7   # the last wrong try's wait is long over; type the right one
+xdotool type --delay 80 "$LOCKPW"; xdotool key Return
+if wait_for 15 'not d["lock"]["locked"]'; then
+  note "lock" "the right password in the built-in prompt unlocked it; the keyboard is back with $(focus)"
+else
+  fail "lock" "the right password didn't unlock it: $(status 'd["lock"]') ($(ls -l /usr/sbin/unix_chkpwd 2>&1))"
+fi
+for i in $(seq 1 30); do qs call settings page your-desktop && break; sleep 1; done
+sleep 4
+shot albireo-9-unlocked
+
 # ---- The end: Desktop Mode ends as a switch does (nimbus-mode), the compositor ends cleanly.
 kill "$FPID" 2>/dev/null
 echo logout > "$XDG_RUNTIME_DIR/nimbus-next"
@@ -180,7 +237,8 @@ grep -iE "panic|thread .* panicked" shots/albireo.log shots/compositor-alone.log
 grep -E "WARN|ERROR" shots/albireo.log 2>/dev/null | sort | uniq -c | sort -rn | head -6 | cut -c1-300 | while read -r l; do note "compositor log" "$l"; done
 grep -E 'desktop|albireo' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
 ls -la shots
-for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-6-your-desktop; do
+for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-6-your-desktop \
+         albireo-7-locked albireo-8-lock-prompt albireo-9-unlocked; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'

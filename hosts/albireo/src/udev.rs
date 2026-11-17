@@ -1393,6 +1393,8 @@ impl HearthState<UdevData> {
         };
 
         self.pre_repaint(&output, frame_target);
+        let lock_view = self.lock.view(&output);
+        let locked = lock_view.is_some();
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -1460,11 +1462,15 @@ impl HearthState<UdevData> {
             &self.dnd_icon,
             &mut self.cursor_status,
             self.show_window_preview,
+            lock_view.as_ref(),
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();
                 self.post_repaint(&output, frame_target, dmabuf_feedback, &states);
+                if locked {
+                    self.lock_frame_drawn(&output);
+                }
                 !has_rendered
             }
             Err(err) => {
@@ -1542,6 +1548,7 @@ fn render_surface<'a>(
     dnd_icon: &Option<DndIcon>,
     cursor_status: &mut CursorImageStatus,
     show_window_preview: bool,
+    lock_view: Option<&crate::lock::LockView>,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1619,7 +1626,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, lock_view);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

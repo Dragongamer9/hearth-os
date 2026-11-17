@@ -194,6 +194,8 @@ pub struct HearthState<BackendData: Backend + 'static> {
     pub keymap: crate::keybinds::Keymap,
     /// Super_L pressed with nothing else since (its onRelease bind: Mantel's launcher).
     pub lone_modifier: Option<Keysym>,
+    /// The session lock (lock.rs): Mantel's lock screen, and the built-in prompt if it goes away.
+    pub lock: crate::lock::LockState,
 }
 
 #[derive(Debug)]
@@ -725,6 +727,7 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
         seat.add_keyboard(XkbConfig::default(), delay, rate)
             .expect("Failed to initialize the keyboard");
         let foreign_toplevel_state = crate::foreign_toplevel::ForeignToplevelState::new::<BackendData>(&dh);
+        let lock = crate::lock::LockState::new::<BackendData>(&dh);
         let idle_notifier_state = IdleNotifierState::<Self>::new(&dh, handle.clone());
         IdleInhibitManagerState::new::<Self>(&dh);
         let stop = Arc::new(AtomicBool::new(false));
@@ -797,6 +800,7 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             last_status: (std::time::Instant::now(), String::new()),
             keymap,
             lone_modifier: None,
+            lock,
         }
     }
 
@@ -1114,6 +1118,8 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
                 }
             });
         }
+
+        self.lock_send_frames(output, time);
 
         let dh = self.display_handle.clone();
         for client in clients.into_values() {

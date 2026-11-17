@@ -13,6 +13,7 @@ pub mod focus;
 pub mod foreign_toplevel;
 pub mod input_handler;
 pub mod keybinds;
+pub mod lock;
 pub mod options;
 pub mod render;
 pub mod shell;
