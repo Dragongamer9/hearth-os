@@ -2848,6 +2848,11 @@ var ENTRIES = [
 "d": "Mantel shows Hearth's apps, KDE shows KDE's, GNOME shows GNOME's. Apps you installed (Bazaar, Flatpak, Steam, .deb) show on every desktop."
 },
 {
+"t": "KDE and GNOME look like Mantel",
+"p": "your-desktop",
+"d": "Mantel's look, light or dark, accent, wallpaper, font and its bar and dock, each time KDE or GNOME starts. Change the look in Personalization; off leaves KDE's and GNOME's own settings as they are."
+},
+{
 "t": "Pick at the login screen too",
 "p": "your-desktop",
 "d": "Hearth Classic, KDE Plasma and GNOME are listed when you sign in. Game Mode's power menu › Switch to Desktop opens the one picked here."

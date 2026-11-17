@@ -21,7 +21,7 @@ SetPage {
         if (s === "downloaded") { const w = wantPick; wantPick = ""; run(["pick", w], "Downloaded · Desktop Mode opens " + (w === "kde" ? "KDE Plasma" : "GNOME") + " ✓"); }
         else if (["starting", "downloading", "installing"].indexOf(s) < 0) wantPick = "";
     }
-    Component.onCompleted: refresh()
+    Component.onCompleted: { refresh(); lookJob.run(["status"], r => page.lookSt = r, () => {}); }
     SetJob { id: job; helper: "hearth-desktops" }
     SetJob { id: act; helper: "hearth-desktops" }
     readonly property bool busy: !!st && ["kde", "gnome"].some(d => ["starting", "downloading", "installing", "removing"].indexOf(((st.desktops || {})[d] || {}).state) >= 0)
@@ -143,6 +143,16 @@ SetPage {
         showState: false
         checked: !page.st || page.st.ownApps !== false
         onToggled: on => page.run(["own-apps", on ? "on" : "off"], on ? "Each desktop shows its own apps" : "Every desktop shows every app")
+    }
+    // 1.14: KDE Plasma and GNOME look like Mantel and follow it (hearth-desktop-look), on unless you turn it off.
+    SetJob { id: lookJob; helper: "hearth-desktop-look" }
+    property var lookSt: null
+    SetSwitch {
+        title: "KDE and GNOME look like Mantel"
+        sub: "Mantel's look, light or dark, accent, wallpaper, font and its bar and dock, each time KDE or GNOME starts. Change the look in Personalization; off leaves KDE's and GNOME's own settings as they are."
+        showState: false
+        checked: !page.lookSt || page.lookSt.on !== false
+        onToggled: on => lookJob.run([on ? "on" : "off"], r => { page.lookSt = r; SettingsNav.toast(on ? "KDE and GNOME follow Mantel's look" : "KDE and GNOME keep their own look"); }, e => SettingsNav.toast(e))
     }
     SetDropdown {
         title: "Pick at the login screen too"
