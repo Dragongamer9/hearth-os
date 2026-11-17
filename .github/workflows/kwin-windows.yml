@@ -1,0 +1,116 @@
+# Mantel on KWin: the window list (docs: desktop/kwin/windows/hearth-windows.js and desktop/shell/hearth-kwin-bridge).
+#   1. checks: the bridge's and the script's tests (test_kwin_windows.py: shortcuts the same as labwc's, the script run
+#      against a pretend KWin), the script's JavaScript.
+#   2. end to end (tools/e2e-kwin-windows.py): KWin on a virtual screen (inside a headless labwc, like the Plasma test,
+#      so grim takes the pictures) with Hearth's KWin defaults, Mantel started with HEARTH_WM=kwin, two test windows:
+#      the list, minimize/activate/maximize, snapping and Super+arrows, desktops, Super+Z, the bridge restarting, KWin's
+#      window menu. Small copies of the pictures are notices (SHOT ...), the full ones in the kwin-windows artifact.
+# Failures are ::error:: annotations (logs can't always be read).
+name: Mantel on KWin (windows)
+
+on:
+  push:
+    branches: [bughunt, 'feature/kwin-*']
+    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
+            'hosts/linux/test/test_kwin_windows.py', 'hosts/linux/test/kwin-windows-mock.js', 'tools/e2e-kwin-windows.py',
+            '.github/workflows/kwin-windows.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: kwin-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kwin:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install KWin, labwc, Quickshell and the checking tools
+        run: |
+          dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin labwc grim wlr-randr \
+            foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify >/dev/null
+          dnf -y install rsms-inter-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland labwc quickshell foot grim; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          kwin_wayland --version || true; quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Checks (shortcuts, the script against a pretend KWin)
+        shell: bash
+        run: |
+          set +e
+          fail=0
+          python3 hosts/linux/desktop/shell/hearth-kwin-bridge render > /tmp/hearth-windows.js || fail=1
+          node --check /tmp/hearth-windows.js 2>/tmp/js.err || { echo "::error title=KWin script::$(tr '\n' ' ' </tmp/js.err | cut -c1-600)"; fail=1; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_windows.py' -v >/tmp/py.out 2>&1 \
+            || { echo "::error title=tests::$(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' /tmp/py.out | head -8 | tr '\n' '|' | cut -c1-900)"; fail=1; }
+          tail -3 /tmp/py.out
+          exit $fail
+
+      - name: Mantel on KWin, end to end
+        if: always()
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export NIMBUS_SHARE="$PWD/hosts/linux" QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
+          # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          # A headless labwc holds KWin as a 1920x1080 window, so grim takes the pictures (as in the Plasma test).
+          mkdir -p "$HOME/.config/labwc"
+          printf '<labwc_config><keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard></labwc_config>\n' > "$HOME/.config/labwc/rc.xml"
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/outer.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          # Hearth's KWin defaults (four desktops, Super on its own, Mantel's keys freed) the way the session gives them.
+          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg"
+          if [ -n "$OUTER" ]; then
+            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          else
+            /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          fi
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
+          printf '%s\n' '#!/bin/bash' "WAYLAND_DISPLAY=$OUTER grim \"shots/\$1.png\" 2>/dev/null || echo \"::warning title=picture::\$1 not taken\"" > /tmp/shot.sh
+          quickshell -p "$NIMBUS_SHARE/desktop/shell" >shots/shell.log 2>&1 &
+          sleep 12
+          timeout 300 python3 tools/e2e-kwin-windows.py "$NIMBUS_SHARE/desktop/shell" shots 'bash /tmp/shot.sh "$1"' > shots/e2e.log 2>&1
+          rc=$?
+          cat shots/e2e.log
+          cp "$XDG_RUNTIME_DIR/hearth/windows.json" shots/ 2>/dev/null || true
+          grep -iE "hearth-kwin-bridge|window list|WinList|hearthwindows" shots/shell.log | head -20 | while IFS= read -r l; do echo "::notice title=shell log::$(echo "$l" | cut -c1-300)"; done
+          grep -iE "hearthwindows|script" shots/kwin.log | head -10 | while IFS= read -r l; do echo "::warning title=KWin log::$(echo "$l" | cut -c1-300)"; done
+          grep -E "ERROR|TypeError|ReferenceError" shots/shell.log | grep -iE "WinList|DeskSwitcher|SnapLayouts|Bar.qml|Dock.qml|TaskStrip" | head -8 | while IFS= read -r l; do echo "::error title=shell::$(echo "$l" | cut -c1-300)"; done
+          pkill -f quickshell; pkill -f /tmp/kwin_wayland; pkill labwc; pkill dbus-daemon
+          exit $rc
+
+      # Small copies of the pictures as notices (artifacts can't be read from here), one step each.
+      - name: Picture (taskbar)
+        if: always()
+        run: f=shots/kwin-taskbar.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-taskbar $i::$part"; done || true
+      - name: Picture (halves)
+        if: always()
+        run: f=shots/kwin-halves.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-halves $i::$part"; done || true
+      - name: Picture (snap layouts)
+        if: always()
+        run: f=shots/kwin-snap-layouts.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-snap-layouts $i::$part"; done || true
+      - name: Picture (window menu)
+        if: always()
+        run: f=shots/kwin-window-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-window-menu $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kwin-windows
+          path: shots

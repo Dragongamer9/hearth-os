@@ -29,7 +29,7 @@ PanelWindow {
     readonly property bool custom: !anim && (chosen.status === Image.Ready || (!picture && (jpg.status === Image.Ready || png.status === Image.Ready)))
     // Moving wallpapers stay cheap: they hold still with Reduce motion, behind a fullscreen or maximized window, on battery,
     // while the screen is locked or off. The Slate ones also need a GPU (still with software rendering).
-    readonly property var front: ToplevelManager.activeToplevel
+    readonly property var front: WinList.activeToplevel
     readonly property bool onBattery: UPower.onBattery === true
     // 1.14 (the owner's laptop felt slow): also behind a maximized window, where the wallpaper can't be seen but was
     // still drawn every frame.

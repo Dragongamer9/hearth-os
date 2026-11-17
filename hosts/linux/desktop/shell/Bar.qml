@@ -67,7 +67,7 @@ PanelWindow {
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);
         }
-        for (const t of ToplevelManager.toplevels.values) {
+        for (const t of WinList.toplevels.values) {
             const own = ownWindow(t);
             const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
@@ -120,7 +120,7 @@ PanelWindow {
 
     // ---- Show desktop (the strip at the end of the bar, like Windows): every window minimized, then back.
     function toggleShowDesktop() {
-        const open = ToplevelManager.toplevels.values.filter(t => !t.minimized);
+        const open = WinList.toplevels.values.filter(t => !t.minimized);
         if (open.length) {
             const front = open.find(t => t.activated) || null;
             DeskState.shownDesktop = { windows: open, front: front };
@@ -130,7 +130,7 @@ PanelWindow {
         const was = DeskState.shownDesktop;
         DeskState.shownDesktop = null;
         if (!was) return;
-        const still = ToplevelManager.toplevels.values;
+        const still = WinList.toplevels.values;
         was.windows.filter(t => still.indexOf(t) >= 0 && t !== was.front).forEach(t => t.minimized = false);
         if (was.front && still.indexOf(was.front) >= 0) was.front.activate();
     }
@@ -167,8 +167,10 @@ PanelWindow {
         if (portrait) return Qt.point(bar.width + 4, p.y - 20);
         return Qt.point(p.x - (menu ? menu.cardWidth / 2 : 134), (screen ? screen.height : 1080) - bar.height + 2);
     }
-    // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window.
+    // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window;
+    // on KWin (which takes no typed keys) WinList asks KWin's hearthwindows script.
     function moveToDesktop(win, n) {
+        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;
