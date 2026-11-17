@@ -268,9 +268,10 @@ class Guards(unittest.TestCase):
                     t = p.read_text(errors='ignore')
                 except OSError:
                     continue
-                if re.search(r'\bFirehold\b', t):
+                # The 2.0 line may say what Firehold will be; nothing about the preview or how to unlock it (the owner's rule).
+                if re.search(r'(?i)firehold \(preview\)|firehold\.json|firehold\.unlocked|tap(ping)? the (hearth os )?version', t):
                     hits.append(str(p.relative_to(ROOT)))
-        self.assertEqual(hits, [], 'Firehold is a hidden preview: keep it out of public docs and the site')
+        self.assertEqual(hits, [], 'Firehold is a hidden preview: nothing about the preview or its unlock on the site')
         for name in ('firehold.js', 'Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'hearth-firehold'):
             self.assertNotRegex((SHELL / name).read_text(), r'(?i)albireo', name)
 
