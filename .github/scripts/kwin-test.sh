@@ -217,7 +217,8 @@ ipc wayland-hearth filemanager close
 # virtual desktops (KWin's own: WinList.desktops) listed by the desktops plugin.
 cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
 ipc wayland-hearth launcher open; sleep 3; ipc wayland-hearth launcher close
-chk() { got=$(qk launcher answers "$1"); case "$got" in *"$2"*) echo "::notice title=search plugins (KWin)::$1 → $(echo "$got" | cut -c1-200)" ;; *) fail "search plugins (KWin)" "\"$1\" didn't answer $2: $(echo "$got" | cut -c1-300)" ;; esac; }
+# Some answers come a moment later (kill looks the program up first: "Looking for …"): asked again for up to 10 s.
+chk() { for _ in $(seq 1 10); do got=$(qk launcher answers "$1"); case "$got" in *"$2"*) break;; esac; sleep 1; done; case "$got" in *"$2"*) echo "::notice title=search plugins (KWin)::$1 → $(echo "$got" | cut -c1-200)" ;; *) fail "search plugins (KWin)" "\"$1\" didn't answer $2: $(echo "$got" | cut -c1-300)" ;; esac; }
 chk "3pm london to tokyo" 'in Tokyo'
 chk "#ff8800" 'rgb(255, 136, 0)'
 chk "kill hearth-demo" '"type":"kill"'
