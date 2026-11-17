@@ -156,7 +156,7 @@ fi
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
-can_desktop() { have labwc || have kwin_wayland; }   # Mantel: on KWin (1.14), labwc the fallback (run_classic)
+can_desktop() { have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}"; }   # Mantel: on KWin (1.14), labwc the fallback (run_classic)
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
 # console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
@@ -438,6 +438,7 @@ companion_stop() {
 # stay on labwc. What Mantel and everything it starts are told: HEARTH_WM=kwin|labwc, and HEARTH_DESKTOP_PID (the
 # window manager's process id; labwc also sets LABWC_PID, which is never set under KWin: labwc --reconfigure would
 # send its signal to KWin).
+KWIN_BIN="${HEARTH_KWIN_BIN:-kwin_wayland}"   # (tests: one that isn't there)
 KWIN_UP_SECS="${HEARTH_KWIN_UP_SECS:-45}"
 KWIN_EARLY_SECS="${HEARTH_KWIN_EARLY_SECS:-15}"
 desktop_wm_choice() {
@@ -451,7 +452,7 @@ desktop_wm() {
   if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then log "desktop: safe graphics this time, labwc instead of KWin"; echo labwc; return 0; fi
   if [ -e "$RUN/hearth-kwin-failed" ]; then log "desktop: KWin didn't start earlier this sign-in, labwc instead"; echo labwc; return 0; fi
   if [ "$(desk_fails kwin)" -ge 2 ]; then log "desktop: KWin didn't start twice in a row; labwc until it's turned back on in Settings"; echo labwc; return 0; fi
-  if ! have kwin_wayland; then
+  if ! have "$KWIN_BIN"; then
     log "desktop: KWin (kwin_wayland) isn't installed; labwc instead"
     [ -e "$RUN/hearth-kwin-missing-told" ] || { : >"$RUN/hearth-kwin-missing-told"; desk_notice kwin missing; }
     echo labwc; return 0
@@ -529,7 +530,7 @@ run_kwin() {
     [ -d "$xdg" ] && case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$xdg:"*) ;; *) XDG_CONFIG_DIRS="$xdg:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
     export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin
     # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec kwin_wayland --xwayland --no-lockscreen $HEARTH_KWIN_ARGS "$1"' sh "$auto"
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland --no-lockscreen $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto"
   ) >>"$KWIN_LOG" 2>&1 &
   kpid=$!
   echo "$kpid" >"$RUN/hearth-kwin.pid"
