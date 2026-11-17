@@ -24,10 +24,6 @@ Right=None
 Bottom=None
 Left=None
 
-# The Super key alone opens Mantel's launcher (Mantel's own shortcuts), not KDE's (there's no Plasma here).
-[ModifierOnlyShortcuts]
-Meta=
-
 # Breeze window borders with Hearth's colours (theme/apply.sh writes kdeglobals), buttons on the right.
 [org.kde.kdecoration2]
 library=org.kde.breeze
