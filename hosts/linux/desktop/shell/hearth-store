@@ -1,0 +1,383 @@
+#!/usr/bin/python3
+"""hearth-store: Settings › App store (like KDE Discover), Hearth's own, for Flathub and your other Flatpak sources.
+Bazaar (hearth-flatpak open-bazaar) stays installed; this is the controller-friendly store inside Hearth Settings.
+
+  hearth-store home                    JSON: popular, trending and new apps (Flathub), and the categories
+  hearth-store category NAME [PAGE]    JSON: apps in a Flathub category (AudioVideo, Game, Office…)
+  hearth-store search WORDS            JSON: Flathub's search
+  hearth-store app APP_ID              JSON: one app: name, developer, summary, description (plain text), screenshots,
+                                       license, links, download size, its rating (ODRS: stars, how many) and a few
+                                       reviews, and whether it's installed (yours or the system's)
+  hearth-store install APP_ID [--system]   progress lines, then JSON (yours, --user, unless --system)
+  hearth-store remove APP_ID           (hearth-flatpak remove)
+  hearth-store updates                 JSON: Flatpak updates (yours and the system's); the system image and firmware
+                                       are Settings › Updates' and Settings › Firmware's (links)
+  hearth-store update [APP_ID...]      progress lines, then JSON (every Flatpak without APP_IDs)
+  hearth-store sources                 JSON: Flatpak sources (remotes): name, title, URL, yours or the system's, on/off
+  hearth-store source-add NAME URL     add a source for you (--user): a https:// .flatpakrepo file or repo URL
+  hearth-store source-remove NAME [--system]
+Flathub's answers are kept for a while (~/.cache/hearth/store), so the store opens offline with what it saw last
+(said so: "cached": true). Failures print "error: ..." and exit 1. Progress lines are "progress: <0-100> <what>".
+"""
+import hashlib
+import html
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.parse
+
+HOME = os.path.expanduser('~')
+CACHE = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache'), 'hearth', 'store')
+FLATHUB = 'https://flathub.org/api/v2'
+ODRS = 'https://odrs.gnome.org/1.0/reviews/api'
+CATEGORIES = [('AudioVideo', 'Audio & video', 'film'), ('Development', 'Developer tools', 'kbd'), ('Education', 'Education', 'bulb'),
+              ('Game', 'Games', 'pad'), ('Graphics', 'Graphics & photos', 'image'), ('Network', 'Internet', 'globe'),
+              ('Office', 'Office', 'doc'), ('Science', 'Science', 'sparkle'), ('System', 'System', 'gear'), ('Utility', 'Utilities', 'box')]
+ID_RE = re.compile(r'^[A-Za-z_][\w-]*(\.[A-Za-z_][\w-]*){2,}$')
+NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
+TTL = 6 * 3600
+
+
+class Fail(Exception):
+    pass
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+# ------------------------------------------------------------------ the web (cached)
+def fetch(url, body=None, timeout=12):
+    import urllib.request
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, headers={'User-Agent': 'Hearth-OS-Store', 'Accept': 'application/json',
+                                                           **({'Content-Type': 'application/json'} if data else {})})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read(4_000_000).decode('utf-8'))
+
+
+def cached(key, url, body=None, ttl=None, getter=None):
+    """(answer, from_cache). Fresh enough: the cache. Else the web; offline: the cache however old, said so."""
+    ttl = TTL if ttl is None else min(ttl, TTL)
+    os.makedirs(CACHE, mode=0o700, exist_ok=True)
+    path = os.path.join(CACHE, hashlib.sha1(key.encode()).hexdigest() + '.json')
+    try:
+        if time.time() - os.path.getmtime(path) < ttl:
+            with open(path) as f:
+                return json.load(f), False
+    except (OSError, ValueError):
+        pass
+    try:
+        data = (getter or fetch)(url, body)
+    except Exception as e:  # offline, or the site is down
+        try:
+            with open(path) as f:
+                return json.load(f), True
+        except (OSError, ValueError):
+            raise Fail("Flathub can't be reached right now (" + str(e)[:80] + ')')
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+    return data, False
+
+
+def card(h):
+    """One app in a list: {id, name, summary, icon, developer, installs}."""
+    return {'id': h.get('app_id') or h.get('id') or '', 'name': h.get('name') or '', 'summary': h.get('summary') or '',
+            'icon': h.get('icon') or '', 'developer': h.get('developer_name') or '', 'installs': h.get('installs_last_month') or 0,
+            'verified': bool(h.get('verification_verified') or (h.get('metadata') or {}).get('flathub::verification::verified') == 'true')}
+
+
+def hits(data):
+    lst = data.get('hits') if isinstance(data, dict) else data
+    return [card(h) for h in (lst or []) if isinstance(h, dict) and (h.get('app_id') or h.get('id'))]
+
+
+def home(getter=None):
+    out, old = {'categories': [{'id': c, 'label': l, 'icon': i} for c, l, i in CATEGORIES]}, False
+    for key, path in (('popular', 'collection/popular'), ('trending', 'collection/trending'), ('new', 'collection/recently-added')):
+        try:
+            d, c = cached(key, FLATHUB + '/' + path + '?page=1&per_page=24', getter=getter)
+            out[key] = hits(d)
+            old = old or c
+        except Fail:
+            out[key] = []
+    if not any(out[k] for k in ('popular', 'trending', 'new')):
+        raise Fail("Flathub can't be reached right now, and there's nothing saved from before")
+    out['cached'] = old
+    return out
+
+
+def category(name, page=1, getter=None):
+    if name not in [c[0] for c in CATEGORIES]:
+        raise Fail('Unknown category')
+    d, old = cached('cat:%s:%d' % (name, page), FLATHUB + '/collection/category/%s?page=%d&per_page=48' % (name, page), getter=getter)
+    return {'apps': hits(d), 'cached': old, 'page': page, 'more': isinstance(d, dict) and (d.get('totalPages') or 1) > page}
+
+
+def search(words, getter=None):
+    q = (words or '').strip()
+    if len(q) < 2:
+        return {'apps': [], 'cached': False}
+    d, old = cached('search:' + q.lower(), FLATHUB + '/search', body={'query': q, 'filters': []}, ttl=1800, getter=getter)
+    return {'apps': hits(d)[:60], 'cached': old}
+
+
+def plain(desc):
+    """AppStream's description (a little HTML) as plain text with paragraphs and bullets."""
+    t = re.sub(r'<li>\s*', '• ', desc or '')
+    t = re.sub(r'</(p|li|ul|ol)>', '\n', t)
+    t = re.sub(r'<[^>]+>', '', t)
+    t = html.unescape(t)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(l.strip() for l in t.splitlines())).strip()
+
+
+def shots(a):
+    out = []
+    for s in a.get('screenshots') or []:
+        sizes = s.get('sizes') or {}
+        best = None
+        for k, url in sizes.items():
+            m = re.match(r'(\d+)x(\d+)', k)
+            if m and int(m.group(1)) <= 1280 and (not best or int(m.group(1)) > best[0]):
+                best = (int(m.group(1)), url)
+        if best:
+            out.append({'url': best[1], 'caption': s.get('caption') or ''})
+    return out[:8]
+
+
+def ratings(app_id, getter=None):
+    try:
+        d, _ = cached('stars:' + app_id, ODRS + '/ratings/' + urllib.parse.quote(app_id), ttl=86400, getter=getter)
+    except Fail:
+        return None
+    if not isinstance(d, dict) or not d.get('total'):
+        return None
+    total = int(d.get('total') or 0)
+    stars = sum(int(d.get('star%d' % i) or 0) * i for i in range(1, 6))
+    counted = sum(int(d.get('star%d' % i) or 0) for i in range(1, 6))
+    return {'total': total, 'average': round(stars / counted, 1) if counted else 0}
+
+
+def reviews(app_id, getter=None):
+    # ODRS asks for a "user hash" (to count votes once); Hearth sends the same anonymous one for everybody.
+    body = {'app_id': app_id, 'user_hash': '0' * 40, 'locale': 'en_US', 'distro': 'Hearth OS', 'version': 'unknown', 'limit': 5}
+    try:
+        d, _ = cached('reviews:' + app_id, ODRS + '/fetch', body=body, ttl=86400, getter=getter)
+    except Fail:
+        return []
+    out = []
+    for r in d if isinstance(d, list) else []:
+        if isinstance(r, dict) and r.get('summary'):
+            out.append({'who': r.get('reviewer_name') or 'Someone', 'stars': round((r.get('rating') or 0) / 20),
+                        'summary': r.get('summary'), 'text': r.get('description') or '', 'when': int(r.get('date_created') or 0) * 1000})
+    return out[:5]
+
+
+def installed_where(app_id):
+    where = []
+    for inst in ('--user', '--system'):
+        r = run_flatpak(['info', inst, app_id], timeout=20, check=False)
+        if r.returncode == 0:
+            where.append('yours' if inst == '--user' else 'system')
+    return where
+
+
+def app(app_id, getter=None):
+    if not ID_RE.match(app_id or ''):
+        raise Fail("That isn't an app id")
+    a, old = cached('app:' + app_id, FLATHUB + '/appstream/' + urllib.parse.quote(app_id), getter=getter)
+    if not isinstance(a, dict) or not a:
+        raise Fail("Flathub doesn't know that app")
+    size = None
+    try:
+        s, _ = cached('summary:' + app_id, FLATHUB + '/summary/' + urllib.parse.quote(app_id), getter=getter)
+        size = (s or {}).get('download_size') or None
+    except Fail:
+        pass
+    urls = a.get('urls') or {}
+    return {'id': app_id, 'name': a.get('name') or app_id, 'summary': a.get('summary') or '', 'developer': a.get('developer_name') or '',
+            'icon': a.get('icon') or '', 'description': plain(a.get('description')), 'screenshots': shots(a),
+            'license': a.get('project_license') or '', 'homepage': urls.get('homepage') or '', 'help': urls.get('help') or '',
+            'size': size, 'ratings': ratings(app_id, getter), 'reviews': reviews(app_id, getter),
+            'installed': installed_where(app_id) if getter is None else [], 'cached': old,
+            'verified': bool((a.get('metadata') or {}).get('flathub::verification::verified') == 'true')}
+
+
+# ------------------------------------------------------------------ flatpak
+def run_flatpak(args, timeout=1800, check=True):
+    exe = os.environ.get('HEARTH_FLATPAK') or shutil.which('flatpak')
+    if not exe:
+        raise Fail("Flatpak isn't installed")
+    try:
+        r = subprocess.run([exe] + args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise Fail('Flatpak took too long')
+    if check and r.returncode != 0:
+        lines = [l for l in (r.stderr or r.stdout or '').strip().splitlines() if l.strip()]
+        raise Fail(re.sub(r'^error:\s*', '', lines[-1], flags=re.I) if lines else 'Flatpak failed')
+    return r
+
+
+def stream_flatpak(args, what):
+    """Runs flatpak, turning its progress into progress lines."""
+    exe = os.environ.get('HEARTH_FLATPAK') or shutil.which('flatpak')
+    if not exe:
+        raise Fail("Flatpak isn't installed")
+    progress(2, what)
+    p = subprocess.Popen([exe] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    last = ''
+    for line in p.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        last = line
+        m = re.search(r'(\d{1,3})%', line)
+        if m:
+            progress(int(m.group(1)), what)
+    if p.wait() != 0:
+        raise Fail(re.sub(r'^error:\s*', '', last, flags=re.I) or 'Flatpak failed')
+    progress(100, what)
+
+
+def check_id(app_id):
+    if not ID_RE.match(app_id or ''):
+        raise Fail("That isn't an app id")
+    return app_id
+
+
+def install(app_id, system=False):
+    check_id(app_id)
+    stream_flatpak(['install', '-y', '--noninteractive', '--system' if system else '--user', 'flathub', app_id], 'Installing ' + app_id)
+    return {'ok': True, 'installed': app_id}
+
+
+def remove(app_id):
+    check_id(app_id)
+    r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth-flatpak'), 'remove', app_id],
+                       capture_output=True, text=True, timeout=1800)
+    last = (r.stdout.strip().splitlines() or [''])[-1]
+    if r.returncode != 0:
+        raise Fail(last[7:] if last.startswith('error: ') else 'Removing failed')
+    return {'ok': True, 'removed': app_id}
+
+
+def columns(text, names):
+    rows = []
+    for line in (text or '').splitlines():
+        if not line.strip():
+            continue
+        parts = line.split('\t')
+        rows.append({n: (parts[i].strip() if i < len(parts) else '') for i, n in enumerate(names)})
+    return rows
+
+
+def updates():
+    out = []
+    for inst, who in (('--user', 'yours'), ('--system', 'system')):
+        r = run_flatpak(['remote-ls', inst, '--updates', '--columns=application,name,version,branch,origin,download-size'], timeout=120, check=False)
+        if r.returncode == 0:
+            for row in columns(r.stdout, ['id', 'name', 'version', 'branch', 'origin', 'size']):
+                if row['id']:
+                    row['where'] = who
+                    out.append(row)
+    return {'flatpaks': out, 'system': {'page': 'updates', 'label': 'Hearth OS updates'}, 'firmware': {'page': 'firmware', 'label': 'Firmware'}}
+
+
+def update(ids):
+    for a in ids:
+        check_id(a)
+    done = []
+    for inst in ('--user', '--system'):
+        args = ['update', '-y', '--noninteractive', inst] + ids
+        try:
+            stream_flatpak(args, 'Updating ' + (', '.join(ids) if ids else 'your apps' if inst == '--user' else "the system's apps"))
+            done.append(inst[2:])
+        except Fail as e:
+            if ids and 'not installed' in str(e).lower():
+                continue
+            if inst == '--system' and ('permission' in str(e).lower() or 'not allowed' in str(e).lower()):
+                continue
+            raise
+    return {'ok': True, 'updated': ids or 'all', 'where': done}
+
+
+def sources():
+    out = []
+    for inst, who in (('--user', 'yours'), ('--system', 'system')):
+        r = run_flatpak(['remotes', inst, '--show-disabled', '--columns=name,title,url,options'], timeout=30, check=False)
+        if r.returncode == 0:
+            for row in columns(r.stdout, ['name', 'title', 'url', 'options']):
+                if row['name']:
+                    row['where'] = who
+                    row['enabled'] = 'disabled' not in row['options']
+                    out.append(row)
+    return {'sources': out}
+
+
+def source_add(name, url):
+    if not NAME_RE.match(name or ''):
+        raise Fail('A source name is letters, numbers, dots and dashes')
+    u = urllib.parse.urlparse(url or '')
+    if u.scheme != 'https' or not u.netloc:
+        raise Fail('Use a https:// address (a .flatpakrepo file, or the source\'s address)')
+    # Only a .flatpakrepo file: it carries the key that checks the source's apps (never --no-gpg-verify).
+    if not u.path.endswith('.flatpakrepo'):
+        raise Fail('Use the source\'s .flatpakrepo file: it carries the key that checks its apps')
+    run_flatpak(['remote-add', '--user', '--if-not-exists', name, url], timeout=60)
+    return {'ok': True, 'added': name}
+
+
+def source_remove(name, system=False):
+    if not NAME_RE.match(name or ''):
+        raise Fail('Unknown source')
+    if name == 'flathub' and system:
+        raise Fail("Flathub for everyone stays: Hearth's apps come from it")
+    run_flatpak(['remote-delete', '--system' if system else '--user', '--force', name], timeout=60)
+    return {'ok': True, 'removed': name}
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    c, rest = argv[0], argv[1:]
+    try:
+        if c == 'home':
+            out = home()
+        elif c == 'category' and rest:
+            out = category(rest[0], int(rest[1]) if len(rest) > 1 and rest[1].isdigit() else 1)
+        elif c == 'search':
+            out = search(' '.join(rest))
+        elif c == 'app' and len(rest) == 1:
+            out = app(rest[0])
+        elif c == 'install' and rest:
+            out = install(rest[0], '--system' in rest)
+        elif c == 'remove' and len(rest) == 1:
+            out = remove(rest[0])
+        elif c == 'updates':
+            out = updates()
+        elif c == 'update':
+            out = update(rest)
+        elif c == 'sources':
+            out = sources()
+        elif c == 'source-add' and len(rest) == 2:
+            out = source_add(rest[0], rest[1])
+        elif c == 'source-remove' and rest:
+            out = source_remove(rest[0], '--system' in rest)
+        else:
+            raise Fail('Unknown command')
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

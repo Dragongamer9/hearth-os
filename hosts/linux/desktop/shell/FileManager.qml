@@ -71,6 +71,8 @@ Scope {
     property bool hidden: false
     property bool showExt: true                // View › File name extensions
     property bool detailsPane: false           // the details pane on the right (the Details button, Alt+P)
+    property bool termPanel: false             // the terminal panel under the files (F4; FilesTerminal.qml), this window only
+    property bool splitView: false             // a second folder beside this one (F9; FilesSplitPane.qml), this window only
     readonly property string homePage: "hearth:home"   // the Home page: Quick access and recent files
     readonly property bool onHome: path === homePage
     // This PC (FilesThisPc.qml) and Installed apps (FilesApps.qml): Hearth's own pages, like the Home page.
@@ -1578,6 +1580,19 @@ Scope {
     readonly property var viewNames: ({ large: "Large icons", grid: "Medium icons", small: "Small icons", tiles: "Tiles", compact: "List", details: "Details" })
     function setShowExt(on) { showExt = on; rememberView(); say(on ? "Showing file name extensions" : "Hiding file name extensions"); }
     function toggleDetails() { detailsPane = !detailsPane; rememberView(); }
+    // Compare (two files or two folders selected): the same, or what differs (text files: the changed lines in the
+    // read-only text editor). hearth-files compare.
+    function compareTwo(paths) {
+        if (!paths || paths.length !== 2) return;
+        call(["compare", paths[0], paths[1]], (r, err) => {
+            if (err) return say(err, true);
+            if (r.same) return say("“" + base(paths[0]) + "” and “" + base(paths[1]) + "” are the same");
+            if (r.diff) { say(r.changed + (r.changed === 1 ? " line differs" : " lines differ") + ": the differences are open in the text editor"); call(["open-text", r.diff, "--readonly"], () => {}); return; }
+            if (r.differ !== undefined) return say("Different: " + [r.onlyA.length ? r.onlyA.length + " only in “" + base(paths[0]) + "”" : "", r.onlyB.length ? r.onlyB.length + " only in “" + base(paths[1]) + "”" : "",
+                                                                    r.differ.length ? r.differ.length + " changed" : ""].filter(x => x).join(", ") + (r.differ.length ? " (" + r.differ.slice(0, 3).join(", ") + (r.differ.length > 3 ? "…" : "") + ")" : ""));
+            say("They're different (" + r.sizes.map(x => x + " bytes").join(" and ") + ")");
+        });
+    }
     // A file's name as shown: without its extension when View › File name extensions is off (never for folders
     // or names that are only an extension, like .bashrc).
     function shownName(e) {
@@ -1863,6 +1878,7 @@ Scope {
             if (n === 1 && isArchive(e) && writable) q.push({ id: "extracthere", label: "Extract here", icon: "archive" });
             if (e.dir && n === 1 && !e.briefcase) q.push({ id: "lockbc", label: "Lock as a Briefcase", icon: "lock" });
             if (e.dir && n === 1) q.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd" });
+            if (n === 2 && targets().every(p => p.indexOf("/") === 0)) q.push({ id: "compare", label: "Compare", icon: "copy" });
             if (n === 1 && e.path.indexOf("/") === 0) q.push({ id: "prevver", label: "Restore previous versions", icon: "clock" });
             q.push({ id: "copywin", label: "Copy as path", key: "C:\\…", icon: "link" });
             q.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" }, { id: "more", label: "Show more options", icon: "menu" });
@@ -1922,6 +1938,8 @@ Scope {
             const bmPath = e ? (e.dir ? e.path : "") : (listing && !onHome ? listing.path : "");
             if (bmPath && !places.some(p => p.bookmark && p.path === bmPath)) items.push({ id: "bookmark", label: "Pin to the left menu", key: "Ctrl+D", icon: "pin" });
             if ((!e && !onHome) || (e && e.dir)) items.push({ id: "terminal", label: "Open in Terminal", key: "Shift+F4", icon: "kbd", group: "Open" });
+            if (!e && !picking) items.push({ id: "termpanel", label: termPanel ? "Hide the terminal panel" : "Terminal panel", key: "F4", icon: "kbd", group: "View" },
+                                           { id: "splitview", label: splitView ? "Close split view" : "Split view", key: "F9", icon: "grid", group: "View" });
             if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
@@ -2457,6 +2475,9 @@ Scope {
         case "terminal":
             call(["terminal", e && e.dir ? e.path : onHome ? home : listing.path], (r, err) => { if (err) say(err, true); });
             break;
+        case "termpanel": termPanel = !termPanel; break;
+        case "splitview": splitView = !splitView; break;
+        case "compare": compareTwo(targets()); break;
         case "props":
             if (onCView || (e && e.cv)) { showCProps(onFolder ? null : e); break; }
             if (onSpecial) { if (onThisPc && current && current.path.indexOf("/") === 0) properties([current.path]); break; }
@@ -3291,6 +3312,8 @@ Scope {
                     if (e.key === Qt.Key_F5) { app.reload(); app.refreshPlaces(); e.accepted = true; return; }
                     if (e.key === Qt.Key_F3) { win.focusSearch(); e.accepted = true; return; }
                     if (e.key === Qt.Key_F4 && shift) { app.runMenu("terminal"); e.accepted = true; return; }
+                    if (e.key === Qt.Key_F4 && !app.picking) { app.termPanel = !app.termPanel; if (app.termPanel) Qt.callLater(() => termPane.focusInput()); e.accepted = true; return; }
+                    if (e.key === Qt.Key_F9 && !app.picking) { app.splitView = !app.splitView; e.accepted = true; return; }
                     if (e.key === Qt.Key_Back) { app.goBack(); e.accepted = true; return; }
                     if (e.key === Qt.Key_Forward) { app.goForward(); e.accepted = true; return; }
                     if (app.zone === "places") return win.placesKey(e);
@@ -4696,6 +4719,18 @@ Scope {
                             }
                         }
 
+                        // ------------------------------------------------ the terminal panel (F4, FilesTerminal.qml)
+                        FilesTerminal {
+                            id: termPane
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? Math.max(150, Math.min(260, win.height * 0.28)) : 0
+                            visible: app.termPanel && !app.picking
+                            folder: app.listing && app.listing.path ? app.listing.path : app.home
+                            onCdRequested: p => app.navigate(p, "")
+                            onCloseRequested: { app.termPanel = false; keys.forceActiveFocus(); }
+                            onTerminalRequested: app.call(["terminal", folder], (r, err) => { if (err) app.say(err, true); })
+                        }
+
                         // ------------------------------------------------ bottom bar: status, search, or progress
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
                         Rectangle {
@@ -4813,6 +4848,23 @@ Scope {
                             onLongPressed: (r, c) => { if (app.oskEngine) app.oskEngine.longPress(r, c); }
                             onAltPicked: i => { if (app.oskEngine) app.oskEngine.pickAlt(i); }
                         }
+                    }
+
+                    // ------------------------------------------------ split view (F9, FilesSplitPane.qml): a second folder
+                    FilesSplitPane {
+                        id: splitPane
+                        visible: app.splitView && !app.picking
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: visible ? Math.round(win.width * 0.36) : 0
+                        helper: app.helper
+                        path: app.listing && app.listing.path ? app.listing.path : app.home
+                        selCount: visible ? app.targets().length : 0
+                        onCopyHere: dest => app.transferTo("copy", app.targets(), dest)
+                        onMoveHere: dest => app.transferTo("move", app.targets(), dest)
+                        onOpenLeft: p => app.navigate(p, "")
+                        onOpenFile: p => app.call(["open", p], (r, err) => { if (err) app.say(err, true); })
+                        onCloseRequested: app.splitView = false
+                        onDroppedHere: drop => app.dropOn(drop, splitPane.path)
                     }
 
                     // ------------------------------------------------ the details pane (the Details button, Alt+P)

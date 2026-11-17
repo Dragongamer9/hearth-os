@@ -2271,6 +2271,29 @@ def extract(archive, dest, here=False):
 
 
 # ---------------------------------------------------------------------- search
+def indexed_search(root, query, limit):
+    """hearth-search query --under ROOT, or None (no index, it's off, or ROOT isn't in the folders it covers)."""
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth-search')
+    if not os.path.exists(helper):
+        return None
+    try:
+        st = json.loads(subprocess.run([sys.executable, helper, 'status'], capture_output=True, text=True, timeout=5).stdout or '{}')
+        pr = st.get('prefs') or {}
+        if not st.get('complete') or not pr.get('indexing', True):
+            return None
+        covered = [os.path.normpath(os.path.expanduser(f if f.startswith(('/', '~')) else '~/' + f)) for f in pr.get('folders') or ['~']]
+        if not any((root + '/').startswith(c.rstrip('/') + '/') for c in covered):
+            return None
+        if any(part.startswith('.') for part in root.split('/')):
+            return None
+        r = subprocess.run([sys.executable, helper, 'query', '--limit', str(min(limit, 500)), '--under', root, query],
+                           capture_output=True, text=True, timeout=10)
+        hits = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else None
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
+    return hits if isinstance(hits, list) else None
+
+
 def search(path, query, hidden=False, limit=5000):
     """Looks below path for names containing query (or matching it, with * and ?): a "found: {entry}" line
     for each, then {"ok": true, "count": n, "truncated": bool}. Stops on SIGTERM (the Stop button)."""
@@ -2287,6 +2310,20 @@ def search(path, query, hidden=False, limit=5000):
         raise Cancelled()
     signal.signal(signal.SIGTERM, stop)
     n, truncated = 0, False
+    # The file index (hearth-search, like Baloo) answers at once when it covers this folder (not for hidden files or
+    # * ? patterns); its hits carry "snippet" when Settings › Search reads documents' text. Else: the walk below.
+    hits = None if hidden or glob else indexed_search(root, query.strip(), limit)
+    if hits is not None:
+        for h in hits:
+            e = entry(h['path'], h['name'])
+            if not e:
+                continue
+            e['where'] = os.path.relpath(os.path.dirname(h['path']), root)
+            if h.get('snippet'):
+                e['snippet'] = h['snippet']
+            print('found: ' + json.dumps(e), flush=True)
+            n += 1
+        return {'ok': True, 'count': n, 'truncated': n >= limit, 'indexed': True}
     try:
         for d, dirs, files in os.walk(root, followlinks=False):
             if not hidden:
@@ -2557,6 +2594,7 @@ def thumbs(paths):
     in the shared freedesktop cache, so other apps can use them too. 'have' lists every path (videos and PDFs) whose
     thumbnail is there and up to date, so Files only shows thumbnails that exist (no "Cannot open" in the log)."""
     tool = shutil.which('ffmpegthumbnailer') or shutil.which('ffmpeg')
+    pdftool = shutil.which('pdftoppm')            # PDFs' first page (poppler-utils), like Dolphin's previews
     made, have = [], []
     for path in paths[:60]:
         p = os.path.abspath(path)
@@ -2568,11 +2606,15 @@ def thumbs(paths):
         except OSError:
             continue
         mime = mimetypes.guess_type(p)[0] or ''
-        if not tool or not mime.startswith('video/') or len(made) >= 30:
+        pdf = mime == 'application/pdf'
+        if len(made) >= 30 or not ((pdf and pdftool) or (tool and mime.startswith('video/'))):
             continue
         os.makedirs(os.path.dirname(out), mode=0o700, exist_ok=True)
         tmp = out + '.%d.tmp.png' % os.getpid()
-        if tool.endswith('ffmpegthumbnailer'):
+        if pdf:
+            # pdftoppm writes <prefix>.png with -singlefile
+            argv = [pdftool, '-png', '-singlefile', '-f', '1', '-l', '1', '-scale-to', '256', p, tmp[:-4]]
+        elif tool.endswith('ffmpegthumbnailer'):
             argv = [tool, '-i', p, '-o', tmp, '-s', '256', '-c', 'png']
         else:
             argv = [tool, '-v', 'error', '-y', '-ss', '3', '-i', p, '-frames:v', '1', '-vf', 'scale=256:-1', tmp]
@@ -2586,7 +2628,59 @@ def thumbs(paths):
             pass
         if os.path.exists(tmp):
             os.unlink(tmp)
-    return {'ok': bool(tool), 'made': made, 'have': have}
+    return {'ok': bool(tool or pdftool), 'made': made, 'have': have}
+
+
+def compare(a, b, out_dir=None):
+    """Compares two files or two folders (like Dolphin's Compare files, without Kompare): same or not, and what's
+    different. Two text files: the differing lines, as a unified diff saved for the read-only text editor
+    (~/.cache/hearth/files/compare.diff). Two folders: what's only on one side and what differs in both."""
+    import difflib
+    import filecmp
+    pa, pb = (os.path.abspath(os.path.expanduser(x)) for x in (a, b))
+    for x in (pa, pb):
+        if not lexists(x):
+            raise Fail('“' + os.path.basename(x) + "” isn't there any more")
+    if os.path.isdir(pa) != os.path.isdir(pb):
+        raise Fail('Pick two files or two folders')
+    res = {'ok': True, 'a': pa, 'b': pb, 'same': False, 'diff': ''}
+    if os.path.isdir(pa):
+        only_a, only_b, differ, n = [], [], [], 0
+
+        def walk(rel):
+            nonlocal n
+            c = filecmp.dircmp(os.path.join(pa, rel), os.path.join(pb, rel))
+            only_a.extend(os.path.join(rel, x) for x in c.left_only)
+            only_b.extend(os.path.join(rel, x) for x in c.right_only)
+            _, mism, errs = filecmp.cmpfiles(c.left, c.right, c.common_files, shallow=False)
+            differ.extend(os.path.join(rel, x) for x in mism + errs)
+            n += len(c.common_files)
+            for d in c.common_dirs:
+                if n < 20000:
+                    walk(os.path.join(rel, d))
+        walk('')
+        res.update(same=not (only_a or only_b or differ), onlyA=sorted(only_a)[:200], onlyB=sorted(only_b)[:200],
+                   differ=sorted(differ)[:200], checked=n)
+        return res
+    if os.path.getsize(pa) == os.path.getsize(pb) and filecmp.cmp(pa, pb, shallow=False):
+        res['same'] = True
+        return res
+    res['sizes'] = [os.path.getsize(pa), os.path.getsize(pb)]
+    if looks_text(pa) and looks_text(pb) and max(res['sizes']) < 8 * 1024 * 1024:
+        with open(pa, encoding='utf-8', errors='replace') as f:
+            la = f.readlines()
+        with open(pb, encoding='utf-8', errors='replace') as f:
+            lb = f.readlines()
+        diff = list(difflib.unified_diff(la, lb, os.path.basename(pa), os.path.basename(pb)))
+        res['changed'] = sum(1 for l in diff if l[:1] in '+-' and not l.startswith(('+++', '---')))
+        d = out_dir or os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'files')
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        res['diff'] = os.path.join(d, 'compare.diff')
+        tmp = res['diff'] + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.writelines(diff)
+        os.replace(tmp, res['diff'])
+    return res
 
 
 def terminal(path):
@@ -4263,6 +4357,8 @@ def cmd(argv):
         out = peek(rest[0])
     elif c == 'thumbs' and rest:
         out = thumbs(rest)
+    elif c == 'compare' and len(rest) == 2:
+        out = compare(rest[0], rest[1])
     elif c == 'terminal' and len(rest) == 1:
         out = terminal(rest[0])
     elif c == 'appimage-info' and len(rest) == 1:

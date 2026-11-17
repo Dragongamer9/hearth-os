@@ -15,7 +15,7 @@ Item {
     property bool chips: true
     property real k: 1                       // bigger for the Start screen
     property int current: 0
-    readonly property var result: menu ? menu.searchAll(query, filter) : ({ best: null, apps: [], games: [], pages: [], files: [] })
+    readonly property var result: menu ? menu.searchAll(query, filter) : ({ best: null, answers: [], apps: [], games: [], pages: [], files: [] })
     readonly property var rows: menu ? menu.flatResults(result) : []
     readonly property var row: rows[Math.min(current, rows.length - 1)] || null
     readonly property var filters: [["all", "All"], ["apps", "Apps"], ["games", "Games"], ["pages", "Settings"], ["files", "Files"]]
@@ -95,9 +95,10 @@ Item {
                                     source: rowItem.modelData.kind === "game" ? (rowItem.modelData.item.icon || rowItem.modelData.item.cover || "") : ""
                                 }
                                 Rectangle {
-                                    anchors.fill: parent; visible: rowItem.modelData.kind === "page" || rowItem.modelData.kind === "file" || (rowItem.modelData.kind === "game" && !rowItem.modelData.item.icon && !rowItem.modelData.item.cover)
+                                    anchors.fill: parent; visible: rowItem.modelData.kind === "page" || rowItem.modelData.kind === "file" || rowItem.modelData.kind === "answer" || (rowItem.modelData.kind === "game" && !rowItem.modelData.item.icon && !rowItem.modelData.item.cover)
                                     radius: Theme.r(8); color: Theme.panel3
-                                    Icon { anchors.centerIn: parent; size: 18 * ms.k; name: rowItem.modelData.kind === "page" ? (rowItem.modelData.item.icon || "gear") : rowItem.modelData.kind === "game" ? "pad" : rowItem.modelData.item.dir ? "folder" : "file" }
+                                    Icon { anchors.centerIn: parent; size: 18 * ms.k; visible: !(rowItem.modelData.kind === "answer" && rowItem.modelData.item.glyph); name: rowItem.modelData.kind === "page" ? (rowItem.modelData.item.icon || "gear") : rowItem.modelData.kind === "answer" ? (rowItem.modelData.item.icon || "search") : rowItem.modelData.kind === "game" ? "pad" : rowItem.modelData.item.dir ? "folder" : "file" }
+                                    Text { anchors.centerIn: parent; visible: rowItem.modelData.kind === "answer" && !!rowItem.modelData.item.glyph; text: rowItem.modelData.kind === "answer" ? (rowItem.modelData.item.glyph || "") : ""; font.pixelSize: 20 * ms.k }
                                 }
                             }
                             ColumnLayout {
@@ -122,7 +123,7 @@ Item {
                     width: parent.width - 40
                     visible: ms.rows.length === 0
                     horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-                    text: ms.query.trim() === "" ? "Type to search apps, games, Settings and files" : "Nothing matches \"" + ms.query + "\""
+                    text: ms.query.trim() === "" ? "Type to search apps, games, Settings and files · 2+2, 10 km to mi, gg:words, >command, :emoji" : "Nothing matches \"" + ms.query + "\""
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 * ms.k
                 }
             }
@@ -144,7 +145,8 @@ Item {
                         Rectangle {
                             anchors.fill: parent; visible: !!ms.row && ms.row.kind !== "app"; radius: Theme.r(16); color: Theme.panel3; clip: true
                             Image { anchors.fill: parent; visible: status === Image.Ready; fillMode: Image.PreserveAspectCrop; asynchronous: true; source: ms.row && ms.row.kind === "game" ? (ms.row.item.cover || ms.row.item.icon || "") : "" }
-                            Icon { anchors.centerIn: parent; size: 30 * ms.k; visible: !ms.row || ms.row.kind !== "game"; name: !ms.row ? "file" : ms.row.kind === "page" ? (ms.row.item.icon || "gear") : ms.row.item.dir ? "folder" : "file" }
+                            Icon { anchors.centerIn: parent; size: 30 * ms.k; visible: !ms.row || (ms.row.kind !== "game" && !(ms.row.kind === "answer" && ms.row.item.glyph)); name: !ms.row ? "file" : ms.row.kind === "page" ? (ms.row.item.icon || "gear") : ms.row.kind === "answer" ? (ms.row.item.icon || "search") : ms.row.item.dir ? "folder" : "file" }
+                            Text { anchors.centerIn: parent; visible: !!ms.row && ms.row.kind === "answer" && !!ms.row.item.glyph; text: ms.row && ms.row.kind === "answer" ? (ms.row.item.glyph || "") : ""; font.pixelSize: 40 * ms.k }
                         }
                     }
                     Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: ms.menu ? ms.menu.rowTitle(ms.row) : ""; wrapMode: Text.Wrap; color: Theme.text; font.family: Theme.font; font.pixelSize: 19 * ms.k; font.weight: Font.DemiBold }
@@ -154,7 +156,9 @@ Item {
                         model: {
                             const r = ms.row;
                             if (!r || !ms.menu) return [];
-                            const out = [{ label: r.kind === "game" ? "Play" : "Open", icon: r.kind === "game" ? "pad" : "open", run: () => ms.menu.openRow(r) }];
+                            const act = r.kind === "answer" && r.item.action ? r.item.action.type : "";
+                            const out = [{ label: r.kind === "game" ? "Play" : act === "copy" ? "Copy" : act === "command" ? "Run" : act === "window" ? "Switch to it" : "Open",
+                                           icon: r.kind === "game" ? "pad" : act === "copy" ? "clipboard" : "open", run: () => ms.menu.openRow(r) }];
                             if (r.kind === "app") for (const j of ms.menu.jumpList(r.item).slice(0, 5)) out.push(j);
                             if (r.kind === "app") out.push({ label: DeskState.isPinned(r.item.id) ? "Unpin" : "Pin to the bar", icon: DeskState.isPinned(r.item.id) ? "unpin" : "pin", run: () => DeskState.togglePin(r.item.id) });
                             if (r.kind === "file") out.push({ label: "Open the folder it's in", icon: "folder", run: () => ms.menu.openFolder(r.item.path.replace(/\/[^/]*$/, "") || "/") });

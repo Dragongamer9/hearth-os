@@ -1,0 +1,616 @@
+#!/usr/bin/python3
+"""hearth-search: Hearth's file index (like KDE's Baloo) and the search plugins' helpers (like KRunner's).
+
+The index: the names of everything in your folders (Home by default), and, if you turn it on, the text inside common
+documents (text files, OpenDocument, Word/Excel/PowerPoint, PDFs with pdftotext), in one SQLite FTS5 database
+(~/.local/share/hearth/search/index.db, only yours: 0600). The app menus' search (hearth-appmenu files) and Hearth
+Files' search ask it first and walk the folders only when there's no index yet. hearth-search.service runs `watch`
+at the lowest priority (nice 19, idle I/O): a quick pass for what changed every few minutes, paused on battery (unless
+you allow it), off when indexing is off. Hidden folders, caches, game libraries, build folders and the folders you
+leave out are never read.
+
+Settings (Settings › Search; ~/.config/hearth/search.json through hearth_settings_io: atomic, .bak, merge-on-write;
+defaults are never written, only what you change):
+  indexing (true)  contents (false)  folders (["~"])  exclude ([])  onBattery (false)  pluginsOff ({})  currencyOnline (true)
+
+  hearth-search status                 JSON: settings, files indexed, last pass, paused (and why), database size
+  hearth-search prefs-set              JSON on stdin (HEARTH_INPUT): only these keys change (null puts a default back)
+  hearth-search query TEXT [--limit N] [--contents] [--under DIR]
+                                       JSON list [{path, name, folder, dir, when, snippet?}], or null with no index
+  hearth-search index [--full]         one pass now (--full reads every file again)
+  hearth-search rebuild                start again from nothing (in the background)
+  hearth-search watch                  the service: a pass now and then, while indexing is on
+  hearth-search enabled                exit 0 when indexing is on (the service's ExecCondition)
+  hearth-search rates [--if-old]       save the European Central Bank's daily currency rates for the search's
+                                       currency plugin (~/.cache/hearth/search/rates.json); --if-old: only when
+                                       they're more than a day old; offline: nothing changes, the old ones stay
+  hearth-search run --terminal|--plain COMMAND
+                                       the search's ">command" (in a terminal that waits for Enter, or on its own)
+Failures print "error: ..." and exit 1.
+"""
+import contextlib
+import fcntl
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shlex
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+import zipfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.dont_write_bytecode = True
+import hearth_settings_io as sio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+CACHE = os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')
+PREFS = os.path.join(CONFIG, 'hearth', 'search.json')
+DB_DIR = os.path.join(DATA, 'hearth', 'search')
+DB = os.path.join(DB_DIR, 'index.db')
+STATE = os.path.join(DB_DIR, 'state.json')
+RATES = os.path.join(CACHE, 'hearth', 'search', 'rates.json')
+ECB = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+
+DEFAULTS = {'indexing': True, 'contents': False, 'folders': ['~'], 'exclude': [], 'onBattery': False,
+            'pluginsOff': {}, 'currencyOnline': True}
+PLUGINS = ['calc', 'units', 'currency', 'web', 'commands', 'emoji', 'recent', 'windows']
+# Never read: build output, caches, game libraries and Windows prefixes (huge, and nothing anyone searches for).
+SKIP_DIRS = {'node_modules', '__pycache__', 'target', 'build', 'dist', '.git', 'venv', '.venv', 'site-packages',
+             'steamapps', 'compatdata', 'shadercache', 'Prefixes', 'drive_c', 'dosdevices', 'lost+found'}
+TEXT_EXT = {'.txt', '.md', '.markdown', '.rst', '.csv', '.tsv', '.log', '.json', '.xml', '.yaml', '.yml', '.toml', '.ini',
+            '.conf', '.cfg', '.py', '.js', '.ts', '.qml', '.rs', '.c', '.h', '.cpp', '.hpp', '.java', '.kt', '.go', '.sh',
+            '.html', '.htm', '.css', '.tex', '.srt', '.org', '.desktop'}
+ZIP_XML = {'.odt': ['content.xml'], '.ods': ['content.xml'], '.odp': ['content.xml'], '.docx': ['word/document.xml'],
+           '.pptx': None, '.xlsx': ['xl/sharedStrings.xml'], '.epub': None}
+BODY_MAX = 64 * 1024            # the first 64 KB of text of each document
+READ_MAX = 8 * 1024 * 1024      # documents bigger than this are named, not read
+PASS_EVERY = 300                # seconds between passes in `watch`
+
+
+class Fail(Exception):
+    pass
+
+
+def out(obj):
+    print(json.dumps(obj, ensure_ascii=False))
+
+
+# ------------------------------------------------------------------ settings
+def prefs():
+    data = sio.load_json(PREFS, {})
+    return sio.with_defaults(data if isinstance(data, dict) else {}, DEFAULTS)
+
+
+def clean_change(changes):
+    """Only known keys with the right kind of value; None puts a key back to its default (removes it)."""
+    if not isinstance(changes, dict):
+        raise Fail('Settings must be a JSON object')
+    ok = {}
+    for k, v in changes.items():
+        if k not in DEFAULTS:
+            raise Fail('Unknown setting: ' + str(k))
+        if v is None:
+            ok[k] = None
+        elif k in ('indexing', 'contents', 'onBattery', 'currencyOnline'):
+            if not isinstance(v, bool):
+                raise Fail(k + ' must be true or false')
+            ok[k] = v
+        elif k in ('folders', 'exclude'):
+            if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
+                raise Fail(k + ' must be a list of folders')
+            ok[k] = [x.strip() for x in v]
+        elif k == 'pluginsOff':
+            if not isinstance(v, dict) or any(p not in PLUGINS or not isinstance(b, bool) for p, b in v.items()):
+                raise Fail('pluginsOff must be {plugin: true/false}')
+            ok[k] = {p: True for p, b in v.items() if b}
+    return ok
+
+
+def prefs_set(changes):
+    sio.merge_json(PREFS, clean_change(changes), who='you')
+    return prefs()
+
+
+def expand(p):
+    # normpath, not realpath: on Hearth /home is a link to /var/home, and paths are shown the way you know them
+    p = os.path.expanduser(p)
+    return os.path.normpath(p) if os.path.isabs(p) else os.path.normpath(os.path.join(HOME, p))
+
+
+def roots(pr=None):
+    pr = pr or prefs()
+    rs = []
+    for f in pr.get('folders') or ['~']:
+        r = expand(f)
+        if os.path.isdir(r) and r not in rs:
+            rs.append(r)
+    # one inside another: only the outer one
+    return [r for r in rs if not any(o != r and (r + os.sep).startswith(o + os.sep) for o in rs)]
+
+
+def excluded(pr=None):
+    pr = pr or prefs()
+    return {expand(x) for x in pr.get('exclude') or []} | {os.path.normpath(CACHE), os.path.normpath(DB_DIR)}
+
+
+# ------------------------------------------------------------------ power
+def on_battery(base='/sys/class/power_supply'):
+    """True when a battery is there and no charger is plugged in."""
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return False
+    batt, mains = False, None
+    for n in names:
+        def rd(f):
+            try:
+                with open(os.path.join(base, n, f)) as fh:
+                    return fh.read().strip()
+            except OSError:
+                return ''
+        t = rd('type')
+        if t == 'Battery' and rd('scope') != 'Device':
+            batt = True
+            if rd('status') in ('Charging', 'Full', 'Not charging'):
+                mains = True if mains is None else mains
+        elif t in ('Mains', 'USB', 'USB_C', 'USB_PD'):
+            if rd('online') == '1':
+                mains = True
+            elif mains is None:
+                mains = False
+    return batt and not mains
+
+
+def paused_why(pr=None):
+    pr = pr or prefs()
+    if not pr.get('indexing', True):
+        return 'off'
+    if not pr.get('onBattery') and on_battery():
+        return 'battery'
+    return ''
+
+
+# ------------------------------------------------------------------ the database
+def connect(path=DB):
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    new = not os.path.exists(path)
+    db = sqlite3.connect(path, timeout=10)
+    if new:
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
+    db.execute('PRAGMA journal_mode=WAL')
+    db.execute('PRAGMA synchronous=NORMAL')
+    db.executescript('''
+        CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+            parent TEXT NOT NULL, dir INTEGER NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL, read INTEGER NOT NULL DEFAULT 0);
+        CREATE INDEX IF NOT EXISTS files_name ON files(name COLLATE NOCASE);
+        CREATE INDEX IF NOT EXISTS files_parent ON files(parent);
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(name, body, tokenize='unicode61 remove_diacritics 2');
+    ''')
+    return db
+
+
+def fts5_ok():
+    try:
+        sqlite3.connect(':memory:').execute('CREATE VIRTUAL TABLE t USING fts5(x)')
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def read_state():
+    try:
+        with open(STATE) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(**kw):
+    d = read_state()
+    d.update(kw)
+    os.makedirs(DB_DIR, mode=0o700, exist_ok=True)
+    sio.write_json(STATE, d)
+
+
+# ------------------------------------------------------------------ reading documents
+def strip_xml(raw):
+    t = re.sub(rb'<(text:p|text:h|w:p|a:p|si|p|br|div|h\d)[ >/]', b'\n\\g<0>', raw)
+    t = re.sub(rb'<[^>]+>', b' ', t)
+    t = t.decode('utf-8', 'replace')
+    for a, b in (('&lt;', '<'), ('&gt;', '>'), ('&quot;', '"'), ('&apos;', "'"), ('&amp;', '&')):
+        t = t.replace(a, b)
+    return re.sub(r'[ \t]+', ' ', t)
+
+
+def body_of(path, size):
+    """The text inside a document (up to BODY_MAX), or '' when it isn't one Hearth reads."""
+    ext = os.path.splitext(path)[1].lower()
+    if size > READ_MAX:
+        return ''
+    try:
+        if ext in TEXT_EXT:
+            with open(path, 'rb') as f:
+                raw = f.read(BODY_MAX)
+            if b'\0' in raw[:4096]:
+                return ''
+            t = raw.decode('utf-8', 'replace')
+            return strip_xml(raw) if ext in ('.html', '.htm', '.xml') else t
+        if ext in ZIP_XML:
+            with zipfile.ZipFile(path) as z:
+                names = ZIP_XML[ext]
+                if names is None:
+                    names = sorted(n for n in z.namelist() if re.match(r'(ppt/slides/slide\d+\.xml|.*\.x?html?)$', n))[:60]
+                parts, n = [], 0
+                for name in names:
+                    with contextlib.suppress(KeyError):
+                        raw = z.read(name)[:BODY_MAX * 4]
+                        parts.append(strip_xml(raw))
+                        n += len(parts[-1])
+                    if n > BODY_MAX:
+                        break
+                return '\n'.join(parts)[:BODY_MAX]
+        if ext == '.pdf' and shutil.which('pdftotext'):
+            r = subprocess.run(['pdftotext', '-l', '20', '-enc', 'UTF-8', path, '-'], capture_output=True, timeout=10)
+            return r.stdout[:BODY_MAX].decode('utf-8', 'replace') if r.returncode == 0 else ''
+    except (OSError, zipfile.BadZipFile, subprocess.TimeoutExpired, RuntimeError, ValueError):
+        return ''
+    return ''
+
+
+# ------------------------------------------------------------------ indexing
+@contextlib.contextmanager
+def one_at_a_time():
+    os.makedirs(DB_DIR, mode=0o700, exist_ok=True)
+    f = open(os.path.join(DB_DIR, 'lock'), 'w')
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        raise Fail('The index is being made already')
+    try:
+        yield
+    finally:
+        f.close()
+
+
+def low_priority():
+    with contextlib.suppress(OSError):
+        os.nice(19 - os.nice(0))
+    # idle I/O (ioprio_set(IOPRIO_WHO_PROCESS, 0, IOPRIO_CLASS_IDLE << 13)); the service sets it too
+    with contextlib.suppress(Exception):
+        import ctypes
+        ctypes.CDLL(None, use_errno=True).syscall(251 if os.uname().machine == 'x86_64' else 30, 1, 0, 3 << 13)
+
+
+def walk(root, skip):
+    """(path, name, parent, isdir, stat) for everything under root, hidden and skipped folders left out."""
+    stack = [root]
+    while stack:
+        d = stack.pop()
+        try:
+            it = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in it:
+            if e.name.startswith('.'):
+                continue
+            try:
+                isdir = e.is_dir(follow_symlinks=False)
+                st = e.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if isdir:
+                if e.name in SKIP_DIRS or e.path in skip:
+                    continue
+                stack.append(e.path)
+            yield e.path, e.name, d, isdir, st
+
+
+def index(full=False, db_path=DB, pr=None, stop=None, budget=None):
+    """One pass: new and changed files in, gone ones out. stop(): True to stop early (battery, turned off)."""
+    pr = pr or prefs()
+    if not fts5_ok():
+        raise Fail("This system's SQLite has no full-text search (FTS5)")
+    contents = bool(pr.get('contents'))
+    skip = excluded(pr)
+    rs = roots(pr)
+    db = connect(db_path)
+    started = time.time()
+    known = {row[0]: (row[1], row[2], row[3]) for row in db.execute('SELECT path, mtime, id, read FROM files')}
+    seen, added, changed, n = set(), 0, 0, 0
+    stopped = ''
+    for r in rs:
+        for path, name, parent, isdir, st in walk(r, skip):
+            n += 1
+            seen.add(path)
+            old = known.get(path)
+            want_body = contents and not isdir
+            if old and not full and abs(old[0] - st.st_mtime) < 0.001 and (old[2] == 1 or not want_body):
+                pass
+            else:
+                body = body_of(path, st.st_size) if want_body else ''
+                if old:
+                    db.execute('UPDATE files SET name=?, parent=?, dir=?, mtime=?, size=?, read=? WHERE id=?',
+                               (name, parent, int(isdir), st.st_mtime, st.st_size, int(want_body), old[1]))
+                    db.execute('DELETE FROM fts WHERE rowid=?', (old[1],))
+                    db.execute('INSERT INTO fts(rowid, name, body) VALUES (?, ?, ?)', (old[1], name, body))
+                    changed += 1
+                else:
+                    cur = db.execute('INSERT INTO files(path, name, parent, dir, mtime, size, read) VALUES (?,?,?,?,?,?,?)',
+                                     (path, name, parent, int(isdir), st.st_mtime, st.st_size, int(want_body)))
+                    db.execute('INSERT INTO fts(rowid, name, body) VALUES (?, ?, ?)', (cur.lastrowid, name, body))
+                    added += 1
+            if n % 500 == 0:
+                db.commit()
+                time.sleep(0.01)                   # be gentle
+                why = stop() if stop else ''
+                if why:
+                    stopped = why
+                    break
+                if budget and time.time() - started > budget:
+                    stopped = 'time'
+                    break
+        if stopped:
+            break
+    removed = 0
+    if not stopped:
+        # Gone, or no longer in a folder that's indexed (left out, contents turned off: their text goes too).
+        for path, (mt, fid, rd) in known.items():
+            if path not in seen:
+                db.execute('DELETE FROM files WHERE id=?', (fid,))
+                db.execute('DELETE FROM fts WHERE rowid=?', (fid,))
+                removed += 1
+            elif rd and not contents:
+                db.execute('UPDATE files SET read=0 WHERE id=?', (fid,))
+                db.execute('UPDATE fts SET body=? WHERE rowid=?', ('', fid))
+    db.commit()
+    total = db.execute('SELECT COUNT(*) FROM files').fetchone()[0]
+    db.close()
+    res = {'ok': True, 'files': total, 'added': added, 'changed': changed, 'removed': removed,
+           'seconds': round(time.time() - started, 2), 'stopped': stopped}
+    if db_path == DB:
+        write_state(lastPass=int(time.time() * 1000), lastResult=res, complete=not stopped or read_state().get('complete', False))
+    return res
+
+
+# ------------------------------------------------------------------ asking it
+def folder_label(d):
+    if d == HOME:
+        return 'Home'
+    if d.startswith(HOME + '/'):
+        return ' › '.join(d[len(HOME) + 1:].split('/'))
+    return d
+
+
+def fts_words(text):
+    words = re.findall(r'\w+', text, re.UNICODE)
+    return ' '.join('"%s"*' % w.replace('"', '') for w in words) if words else ''
+
+
+def query(text, limit=24, contents=False, under=None, db_path=DB):
+    """[{path, name, folder, dir, when, snippet?}] best first, or None when there's no index to ask."""
+    q = (text or '').strip()
+    if not os.path.exists(db_path) or (db_path == DB and not read_state().get('complete')):
+        return None
+    if len(q) < 2:
+        return []
+    db = sqlite3.connect('file:%s?mode=ro' % db_path, uri=True, timeout=5)
+    try:
+        like = '%' + q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        args = [like]
+        where = "name LIKE ? ESCAPE '\\'"
+        if under:
+            u = os.path.normpath(os.path.abspath(os.path.expanduser(under)))
+            where += " AND (parent = ? OR parent LIKE ? ESCAPE '\\')"
+            args += [u, u.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '/%']
+        rows = db.execute('SELECT id, path, name, parent, dir, mtime FROM files WHERE ' + where +
+                          ' ORDER BY (lower(name) LIKE ?) DESC, mtime DESC LIMIT ?', args + [q.lower() + '%', limit * 3]).fetchall()
+        hits = {r[0]: {'path': r[1], 'name': r[2], 'folder': folder_label(r[3]), 'dir': bool(r[4]), 'when': int(r[5] * 1000),
+                       'starts': r[2].lower().startswith(q.lower())} for r in rows}
+        order = [r[0] for r in rows]
+        if contents:
+            m = fts_words(q)
+            if m:
+                with contextlib.suppress(sqlite3.Error):
+                    for fid, snip in db.execute("SELECT rowid, snippet(fts, 1, '[', ']', '…', 10) FROM fts WHERE body MATCH ? ORDER BY rank LIMIT ?",
+                                                (m, limit * 2)).fetchall():
+                        if fid in hits:
+                            hits[fid]['snippet'] = snip
+                            continue
+                        r = db.execute('SELECT path, name, parent, dir, mtime FROM files WHERE id=?', (fid,)).fetchone()
+                        if not r or (under and not (r[2] + '/').startswith(os.path.normpath(os.path.abspath(os.path.expanduser(under))) + '/')):
+                            continue
+                        hits[fid] = {'path': r[0], 'name': r[1], 'folder': folder_label(r[2]), 'dir': bool(r[3]),
+                                     'when': int(r[4] * 1000), 'starts': False, 'snippet': snip}
+                        order.append(fid)
+        res = [hits[i] for i in order if os.path.lexists(hits[i]['path'])]
+        res.sort(key=lambda h: (not h['starts'], 'snippet' in h and not h['starts'], -h['when']))
+        for h in res:
+            del h['starts']
+        return res[:limit]
+    finally:
+        db.close()
+
+
+def status():
+    pr = prefs()
+    st = read_state()
+    files = 0
+    if os.path.exists(DB):
+        with contextlib.suppress(sqlite3.Error):
+            db = sqlite3.connect('file:%s?mode=ro' % DB, uri=True, timeout=5)
+            files = db.execute('SELECT COUNT(*) FROM files').fetchone()[0]
+            db.close()
+    size = sum(os.path.getsize(os.path.join(DB_DIR, f)) for f in os.listdir(DB_DIR)
+               if f.startswith('index.db')) if os.path.isdir(DB_DIR) else 0
+    return {'prefs': pr, 'files': files, 'bytes': size, 'lastPass': st.get('lastPass'), 'last': st.get('lastResult'),
+            'complete': bool(st.get('complete')), 'paused': paused_why(pr), 'battery': on_battery(), 'fts5': fts5_ok(),
+            'pdf': bool(shutil.which('pdftotext')), 'roots': [folder_label(r) for r in roots(pr)],
+            'running': running(), 'plugins': PLUGINS}
+
+
+def running():
+    try:
+        f = open(os.path.join(DB_DIR, 'lock'), 'w')
+    except OSError:
+        return False
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return False
+    except OSError:
+        return True
+    finally:
+        f.close()
+
+
+def rebuild():
+    """Starts again from nothing, in the background (the index is gone until the new one is made)."""
+    if running():
+        raise Fail('The index is being made right now; try again in a moment')
+    for f in ('index.db', 'index.db-wal', 'index.db-shm'):
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(os.path.join(DB_DIR, f))
+    write_state(complete=False, lastResult=None)
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), 'index', '--full'], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return {'ok': True, 'started': True}
+
+
+def watch():
+    """The service: a pass now, then one every PASS_EVERY seconds while indexing is on; waits while on battery."""
+    low_priority()
+    while True:
+        pr = prefs()
+        why = paused_why(pr)
+        if why == 'off':
+            return 0
+        if not why:
+            with contextlib.suppress(Fail):
+                with one_at_a_time():
+                    index(pr=pr, stop=lambda: paused_why())
+        time.sleep(PASS_EVERY if not why else 120)
+
+
+# ------------------------------------------------------------------ currency rates
+def parse_ecb(xml):
+    date = re.search(r"time=['\"](\d{4}-\d{2}-\d{2})['\"]", xml)
+    rates = {c: float(r) for c, r in re.findall(r"currency=['\"]([A-Z]{3})['\"]\s+rate=['\"]([\d.]+)['\"]", xml)}
+    if not date or len(rates) < 5:
+        raise Fail("The ECB's answer wasn't what Hearth expected")
+    rates['EUR'] = 1.0
+    return {'date': date.group(1), 'source': 'ecb', 'rates': rates}
+
+
+def rates(if_old=False, fetch=None):
+    if not prefs().get('currencyOnline', True):
+        return {'ok': True, 'skipped': 'off'}
+    if if_old:
+        with contextlib.suppress(OSError):
+            if time.time() - os.path.getmtime(RATES) < 86400:
+                return {'ok': True, 'skipped': 'fresh'}
+    try:
+        if fetch:
+            xml = fetch()
+        else:
+            import urllib.request
+            with urllib.request.urlopen(urllib.request.Request(ECB, headers={'User-Agent': 'Hearth-OS'}), timeout=8) as r:
+                xml = r.read(200000).decode('utf-8', 'replace')
+    except Exception as e:  # offline: the saved (or built-in) rates stay
+        return {'ok': False, 'offline': True, 'why': str(e)[:120]}
+    data = parse_ecb(xml)
+    os.makedirs(os.path.dirname(RATES), exist_ok=True)
+    sio.write_json(RATES, data)
+    return {'ok': True, 'date': data['date'], 'count': len(data['rates'])}
+
+
+# ------------------------------------------------------------------ ">command"
+def files_module():
+    path = os.path.join(HERE, 'hearth-files')
+    loader = importlib.machinery.SourceFileLoader('hearth_files_mod', path)
+    spec = importlib.util.spec_from_loader('hearth_files_mod', loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def run(cmd, terminal=True):
+    cmd = (cmd or '').strip()
+    if not cmd:
+        raise Fail('Type a command after >')
+    if terminal:
+        argv = files_module().terminal_argv(['sh', '-c', cmd], HOME, title=cmd.split()[0])
+    else:
+        try:
+            argv = shlex.split(cmd)
+        except ValueError:
+            argv = ['sh', '-c', cmd]
+        if not argv:
+            raise Fail('Type a command after >')
+    subprocess.Popen(argv, cwd=HOME, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ the command line
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    cmd, rest = argv[0], argv[1:]
+    try:
+        if cmd == 'status':
+            out(status())
+        elif cmd == 'prefs-set':
+            raw = os.environ.get('HEARTH_INPUT') or sys.stdin.read()
+            try:
+                changes = json.loads(raw or '{}')
+            except ValueError:
+                raise Fail('Settings must be JSON')
+            out({'ok': True, 'prefs': prefs_set(changes)})
+        elif cmd == 'query':
+            limit, contents, under, words = 24, False, None, []
+            i = 0
+            while i < len(rest):
+                if rest[i] == '--limit':
+                    limit = max(1, min(500, int(rest[i + 1]))); i += 2; continue
+                if rest[i] == '--contents':
+                    contents = True; i += 1; continue
+                if rest[i] == '--under':
+                    under = rest[i + 1]; i += 2; continue
+                words.append(rest[i]); i += 1
+            out(query(' '.join(words), limit, contents or prefs().get('contents'), under))
+        elif cmd == 'index':
+            low_priority()
+            with one_at_a_time():
+                out(index(full='--full' in rest, stop=lambda: paused_why() == 'off' and 'off'))
+        elif cmd == 'rebuild':
+            out(rebuild())
+        elif cmd == 'watch':
+            return watch()
+        elif cmd == 'enabled':
+            return 0 if prefs().get('indexing', True) else 1
+        elif cmd == 'rates':
+            out(rates(if_old='--if-old' in rest))
+        elif cmd == 'run':
+            term = '--plain' not in rest
+            out(run(' '.join(a for a in rest if a not in ('--terminal', '--plain')), term))
+        else:
+            raise Fail('Unknown command: ' + cmd)
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

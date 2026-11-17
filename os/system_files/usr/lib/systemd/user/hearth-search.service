@@ -1,0 +1,22 @@
+# Hearth's file index (hearth-search watch; like KDE's Baloo): the names of what's in your folders, and the text inside
+# documents if Settings › Search reads it, for the app menus' search and Hearth Files' search. The lowest priority
+# there is (nice 19, idle I/O, a small CPU share), paused on battery unless you allow it. Never part of sign-in or Game
+# Mode starting: nothing wants it (no [Install]); Desktop Mode's autostart and Settings › Search start it with
+# --no-block after sign-in, and ExecCondition skips it (not a failure) when indexing is off.
+[Unit]
+Description=Hearth file index (search)
+After=graphical-session.target
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+ExecCondition=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-search enabled
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-search watch
+Restart=on-failure
+RestartSec=60
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+IOWeight=10
+MemoryHigh=300M
+TimeoutStopSec=10

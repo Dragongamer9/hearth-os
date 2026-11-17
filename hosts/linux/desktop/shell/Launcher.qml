@@ -19,6 +19,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
 import "menu-search.js" as Score
+import "search/runners.js" as Runners
 
 PanelWindow {
     id: root
@@ -52,6 +53,7 @@ PanelWindow {
     // the focus ring. False: nothing took it (the on-screen keyboard opens as usual).
     function padY() { return shown && styled && typeof styleLoader.item.padY === "function" && styleLoader.item.padY() === true; }
     function openTab(t) { setTab(t); shown = true; }
+    function searchFor(t) { setTab("apps"); shown = true; if (styled) openMenuSearch(); else { search.text = t; search.cursorPosition = t.length; } }
     function setTab(t) {
         if (tab === t) return;
         tab = t;
@@ -72,6 +74,7 @@ PanelWindow {
 
     visible: shown
     onShownChanged: {
+        if (shown) freshRates();
         if (!shown) { fileHits = []; return; }
         search.text = ""; folderOpen = false; grid.currentIndex = 0; tabFocus = false; loadGames(); systemList.running = true;
         if (styled) { styleLoader.item.opened(); readRecentFiles(); if (styleLoader.item.wantsLive) readLive(); }
@@ -243,12 +246,51 @@ PanelWindow {
         id: filesProc
         stdout: StdioCollector { onStreamFinished: { try { const r = JSON.parse(text.trim().split("\n").pop() || "[]"); if (Array.isArray(r)) root.fileHits = r; } catch (e) {} } }
     }
-    // {best, apps, games, pages, files} for a query; filter: all | apps | games | pages | files.
+    // ---- search plugins (search/runners.js, like KRunner's): sums, units, currency, web shortcuts, ">commands",
+    // emoji, recent documents, open windows. Settings › Search turns each on or off (~/.config/hearth/search.json,
+    // hearth-search; this only reads it). Currency rates: hearth-search's saved ECB rates, else the built-in ones.
+    property var windowList: []                // [{id, title, appId}]: filled by the window-list work (KWin); empty until then
+    property var activateWindow: null          // function(id): from the same work
+    readonly property string searchHelper: decodeURIComponent(Qt.resolvedUrl("hearth-search").toString().replace(/^file:\/\//, ""))
+    readonly property string searchConf: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/hearth/search.json"
+    readonly property string ratesFile: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/hearth/search/rates.json"
+    property var searchPrefs: ({})
+    property var rates: null
+    FileView { path: root.searchConf; watchChanges: true; onFileChanged: reload(); onLoaded: { try { root.searchPrefs = JSON.parse(text()) || {}; } catch (e) { root.searchPrefs = {}; } } onLoadFailed: root.searchPrefs = ({}) }
+    FileView { path: root.ratesFile; watchChanges: true; onFileChanged: reload(); onLoaded: { try { root.rates = JSON.parse(text()); } catch (e) { root.rates = null; } } onLoadFailed: root.rates = null }
+    // Today's currency rates when online (at most once a day; hearth-search rates --if-old), unless Settings › Search says not to.
+    function freshRates() { if (root.searchPrefs.currencyOnline !== false) Quickshell.execDetached(["python3", root.searchHelper, "rates", "--if-old"]); }
+    function answersFor(raw) {
+        const off = (root.searchPrefs && typeof root.searchPrefs.pluginsOff === "object" && root.searchPrefs.pluginsOff) || {};
+        return Runners.run(raw, { rates: root.rates, recent: root.recentFiles, windows: root.windowList || [], off: off });
+    }
+    // The Hearth menu's own answers (the other styles get them through searchAll).
+    readonly property var hearthAnswers: shown && !styled && tab === "apps" && search.text.trim() !== "" ? answersFor(search.text) : []
+    function enterPressed() {
+        if (tabFocus) { tabFocus = false; return; }
+        if (hearthAnswers.length && hearthAnswers[0].top && (hearthAnswers[0].plugin === "commands" || grid.currentIndex <= 0)) { runAnswer(hearthAnswers[0]); return; }
+        launch(matches[grid.currentIndex]);
+    }
+    function runAnswer(a) {
+        if (!a || !a.action) return;
+        const x = a.action;
+        if (x.type === "copy") Quickshell.execDetached(["wl-copy", "--", String(x.value)]);
+        else if (x.type === "url") Quickshell.execDetached(["xdg-open", x.value]);
+        else if (x.type === "command") Quickshell.execDetached(["python3", root.searchHelper, "run", x.terminal ? "--terminal" : "--plain", x.value]);
+        else if (x.type === "file") { if (x.dir) openFolder(x.value); else openFile(x.value); return; }
+        else if (x.type === "window") { if (typeof root.activateWindow === "function") root.activateWindow(x.value); }
+        shown = false;
+    }
+    // {best, answers, apps, games, pages, files} for a query; filter: all | apps | games | pages | files.
     function searchAll(q, filter) {
+        const raw = q || "";
         q = (q || "").trim().toLowerCase();
-        const out = { best: null, apps: [], games: [], pages: [], files: [] };
+        const out = { best: null, answers: [], apps: [], games: [], pages: [], files: [] };
         if (!q) return out;
         const f = filter || "all";
+        if (f === "all") out.answers = answersFor(raw);
+        // A command (">…") is only a command.
+        if (out.answers.length && out.answers[0].plugin === "commands") { out.best = { kind: "answer", item: out.answers[0] }; return out; }
         // Ranked (menu-search.js): exact and starting names first, then words, initials, the program's own name,
         // Windows' names (explorer, cmd, notepad…), one typo, and what you open often a little higher.
         const sa = a => Score.appScore(q, a, root.uses), sg = g => Score.itemScore(q, g.title, g.source || ""), sp = p => Score.itemScore(q, p.name, p.words);
@@ -263,7 +305,8 @@ PanelWindow {
         if (out.pages.length) cands.push({ kind: "page", item: out.pages[0], s: sp(out.pages[0]) - 1 });
         cands.sort((a, b) => b.s - a.s);
         const pick = cands.length ? { kind: cands[0].kind, item: cands[0].item } : out.files.length ? { kind: "file", item: out.files[0] } : null;
-        out.best = pick;
+        // A sum, a conversion or a web shortcut is the best match when it's there (Enter copies or opens it).
+        out.best = out.answers.length && out.answers[0].top ? { kind: "answer", item: out.answers[0] } : pick;
         return out;
     }
     // A result as one flat row list (for the keyboard / controller): [{kind, item, group}], the best match first.
@@ -271,20 +314,24 @@ PanelWindow {
         const rows = [];
         if (r.best) rows.push({ kind: r.best.kind, item: r.best.item, group: "Best match" });
         const skip = r.best ? r.best.item : null;
+        for (const x of (r.answers || [])) if (x !== skip && x.plugin !== "recent" && x.plugin !== "emoji") rows.push({ kind: "answer", item: x, group: x.group });
         for (const a of r.apps) if (a !== skip) rows.push({ kind: "app", item: a, group: "Apps" });
         for (const g of r.games) if (g !== skip) rows.push({ kind: "game", item: g, group: "Games" });
         for (const p of r.pages) if (p !== skip) rows.push({ kind: "page", item: p, group: "Settings" });
         for (const f of r.files) if (f !== skip) rows.push({ kind: "file", item: f, group: "Files" });
+        for (const x of (r.answers || [])) if (x !== skip && (x.plugin === "recent" || x.plugin === "emoji")) rows.push({ kind: "answer", item: x, group: x.group });
         return rows;
     }
     function openRow(row) {
         if (!row) return;
         if (row.kind === "file") { if (row.item.dir) openFolder(row.item.path); else openFile(row.item.path); }
+        else if (row.kind === "answer") runAnswer(row.item);
         else launch(row.item);
     }
-    function rowTitle(row) { return !row ? "" : row.kind === "game" ? row.item.title : row.kind === "file" ? row.item.name : row.item.name || ""; }
+    function rowTitle(row) { return !row ? "" : row.kind === "game" ? row.item.title : row.kind === "file" ? row.item.name : row.kind === "answer" ? row.item.title : row.item.name || ""; }
     function rowSub(row) {
         if (!row) return "";
+        if (row.kind === "answer") return row.item.sub || "";
         if (row.kind === "app") return "App" + (row.item.genericName ? " · " + row.item.genericName : row.item.comment ? " · " + row.item.comment : "");
         if (row.kind === "game") return "Game" + (row.item.source ? " · " + row.item.source : "");
         if (row.kind === "page") return "Settings page";
@@ -535,8 +582,8 @@ PanelWindow {
                     onTextChanged: grid.currentIndex = 0
                     Keys.onEscapePressed: { if (root.tabFocus) root.tabFocus = false; else if (root.folderOpen && !search.text) root.closeFolder(); else root.shown = false; }
                     Keys.onMenuPressed: root.menuFor(grid.currentIndex)
-                    Keys.onReturnPressed: { if (root.tabFocus) root.tabFocus = false; else root.launch(root.matches[grid.currentIndex]); }
-                    Keys.onEnterPressed: { if (root.tabFocus) root.tabFocus = false; else root.launch(root.matches[grid.currentIndex]); }
+                    Keys.onReturnPressed: root.enterPressed()
+                    Keys.onEnterPressed: root.enterPressed()
                     Keys.onTabPressed: root.nextTab()
                     Keys.onBacktabPressed: root.nextTab()
                     Keys.onDownPressed: { if (root.tabFocus) root.tabFocus = false; else grid.moveCurrentIndexDown(); }
@@ -563,6 +610,40 @@ PanelWindow {
                         color: Theme.muted
                         font: search.font
                     }
+                }
+            }
+
+            // What the search plugins answer (search/runners.js): a sum, a conversion, a web shortcut, a command, emoji.
+            // The first one is what Enter does when it's a sum, a conversion, a shortcut or a command.
+            Repeater {
+                model: root.hearthAnswers.slice(0, 3)
+                delegate: Rectangle {
+                    id: ans
+                    required property var modelData
+                    required property int index
+                    Layout.fillWidth: true
+                    implicitHeight: 58
+                    radius: Theme.r(14)
+                    color: ansArea.containsMouse ? Theme.panel3 : Qt.rgba(Theme.panel2.r, Theme.panel2.g, Theme.panel2.b, 0.85)
+                    border.width: index === 0 && modelData.top ? 2 : 1
+                    border.color: index === 0 && modelData.top ? Theme.accent : Theme.line
+                    RowLayout {
+                        anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
+                        spacing: 14
+                        Rectangle {
+                            implicitWidth: 38; implicitHeight: 38; radius: Theme.r(10); color: Theme.panel3
+                            Icon { anchors.centerIn: parent; visible: !ans.modelData.glyph; name: ans.modelData.icon || "search"; size: 20 }
+                            Text { anchors.centerIn: parent; visible: !!ans.modelData.glyph; text: ans.modelData.glyph || ""; font.pixelSize: 22 }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text { Layout.fillWidth: true; text: ans.modelData.title; color: Theme.text; font.pixelSize: 17; font.weight: Font.DemiBold; font.family: Theme.font; elide: Text.ElideRight }
+                            Text { Layout.fillWidth: true; text: ans.modelData.group + " · " + (ans.modelData.sub || ""); color: Theme.muted; font.pixelSize: 12; font.family: Theme.font; elide: Text.ElideRight }
+                        }
+                        Text { visible: ans.index === 0 && ans.modelData.top; text: "Enter"; color: Theme.accent; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold }
+                    }
+                    MouseArea { id: ansArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.runAnswer(ans.modelData) }
                 }
             }
 
