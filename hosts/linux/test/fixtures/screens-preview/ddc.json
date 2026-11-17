@@ -1,0 +1,12 @@
+{
+ "available": true,
+ "why": "",
+ "screens": [
+  {
+   "name": "HDMI-A-1",
+   "bus": 6,
+   "value": 60,
+   "max": 100
+  }
+ ]
+}
