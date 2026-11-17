@@ -90,7 +90,7 @@ PanelWindow {
                                 }
                                 Text {
                                     visible: one.game
-                                    text: one.game ? F.gameLine("", one.win.minimized, fr.fh.frameLimit, fr.vrr) : ""
+                                    text: one.game ? " · " + F.gameLine("", one.win.minimized, fr.fh.frameLimit, fr.vrr) : ""
                                     color: F.C.muted; font.family: F.font(Theme.font); font.pixelSize: 14; font.weight: Font.Medium
                                 }
                             }
