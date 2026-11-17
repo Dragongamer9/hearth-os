@@ -25,22 +25,29 @@ PFW=$(pick plasma-framework || true)
 GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null || true) | head -1)
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 
-if ! ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>/dev/null | grep -qi shell; then
+# The package types already there (from what's installed), else the one plugin from whichever Debian package has it.
+have_shell_type() { find /usr/lib/*/qt6/plugins/kf6/packagestructure/ -iname '*shell*' 2>/dev/null | grep -q .; }
+if ! have_shell_type; then
   tmp=$(mktemp -d)
-  ( cd "$tmp" && apt-get download plasma-workspace >/dev/null )
-  deb=$(ls "$tmp"/plasma-workspace_*.deb | head -1)
-  dpkg-deb -x "$deb" "$tmp/x"
-  found=$(find "$tmp/x" -path '*kf6/packagestructure/*' -iname '*shell*.so' -print -quit)
-  [ -n "$found" ] || found=$(find "$tmp/x" -ipath '*packagestructure*' -iname '*shell*' -print -quit)
-  [ -n "$found" ] || { echo "install.sh: plasma-workspace has no shell package type; it has: $(find "$tmp/x" -ipath '*structure*' -o -ipath '*kpackage*' | head -20 | tr '\n' ' ')"; \
-    echo "libplasma has: $( (dpkg -L "${PLS:-libplasma6}" 2>/dev/null || true) | grep -iE 'plugins|structure' | head -30 | tr '\n' ' ' || true)"; \
-    echo "plasma packages: $( (apt-cache search --names-only 'plasma' || true) | cut -d' ' -f1 | grep -iE 'lib|framework|data' | tr '\n' ' ' || true)"; exit 1; }
-  missing=$(ldd "$found" | awk '/not found/{print $1}')
-  [ -z "$missing" ] || { echo "install.sh: the shell package type needs libraries that aren't installed: $missing"; exit 1; }
-  dest="/${found#"$tmp/x/"}"
-  install -Dm644 "$found" "$dest"
-  echo "install.sh: Plasma/Shell package type from $(basename "$deb"): $dest"
+  seen=""
+  for pkg in libplasma6 plasma-framework libplasmaquick6 plasma-workspace plasma-desktop; do
+    apt-cache show "$pkg" >/dev/null 2>&1 || continue
+    ( cd "$tmp" && apt-get download "$pkg" >/dev/null 2>&1 ) || continue
+    deb=$(ls "$tmp"/"$pkg"_*.deb 2>/dev/null | head -1 || true)
+    [ -n "$deb" ] || continue
+    rm -rf "$tmp/x" && dpkg-deb -x "$deb" "$tmp/x"
+    seen="$seen $pkg:[$(find "$tmp/x" -ipath '*packagestructure*' -name '*.so' -printf '%f ' 2>/dev/null || true)]"
+    found=$(find "$tmp/x" -ipath '*packagestructure*' -iname '*shell*.so' -print -quit)
+    [ -n "$found" ] || continue
+    missing=$(ldd "$found" | awk '/not found/{print $1}')
+    [ -z "$missing" ] || { echo "install.sh: the shell package type ($pkg) needs libraries that aren't installed: $missing"; exit 1; }
+    dest="/${found#"$tmp/x/"}"
+    install -Dm644 "$found" "$dest"
+    echo "install.sh: Plasma/Shell package type from $(basename "$deb"): $dest"
+    break
+  done
   rm -rf "$tmp"
+  have_shell_type || { echo "install.sh: no Debian package here has the Plasma/Shell package type;$seen"; exit 1; }
 fi
 
 # KWin's locker checks the password with PAM's "kde" service: Debian's common-auth if no package brought one.
