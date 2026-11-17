@@ -366,6 +366,9 @@ jobs:
           printf '# Written by Hearth Settings \xe2\x80\xba Region & language; delete this file to keep your own.\nLANGUAGE=de_DE:fr_FR:en_US\n' > "$HOME/.config/environment.d/60-hearth-language.conf"
           printf '[General]\ndefaultLanguage=en_US\nignore_en_US=Hearth,KWin,Mantel\n' > "$HOME/.config/KDE/Sonnet.conf"
           cp "$SMF/my-looks.json" "$HOME/.config/nimbus/my-looks.json"
+          # An app that opens pictures and text, so File types has kinds to show (the runner's apps open none).
+          mkdir -p "$HOME/.local/share/applications"
+          printf '[Desktop Entry]\nType=Application\nName=Hearth Viewer (test)\nExec=true %%f\nMimeType=image/png;image/jpeg;image/webp;text/plain;text/markdown;application/pdf;video/mp4;audio/mpeg;\n' > "$HOME/.local/share/applications/hearth-test-viewer.desktop"
           python3 - "$D" "$PWD/hosts/linux/desktop/shell/images/wallpapers" <<'PY'
           import json, sys
           p = sys.argv[1]; d = json.load(open(p))
@@ -375,7 +378,7 @@ jobs:
           PY
           sleep 4
           ss power-profiles ss-power-profiles; ss power-awake ss-power-awake; ss battery ss-battery
-          ss autostart ss-autostart; ss file-types ss-file-types; ss menu-editor:org.kde.kcalc ss-menu-editor; ss app-permissions ss-app-permissions
+          ss autostart ss-autostart; ss file-types ss-file-types; ss menu-editor:foot ss-menu-editor; ss app-permissions ss-app-permissions
           ss wallpaper-more ss-wallpaper-more; ss my-looks ss-my-looks; ss look-more ss-look-more; ss fonts:small ss-fonts-small
           ss languages ss-languages; ss spellcheck ss-spellcheck; ss input-methods ss-input-methods
           ss bluetooth-devices ss-bluetooth-devices; ss print-queue ss-print-queue; ss scanners ss-scanners; ss usb-devices ss-usb-devices
@@ -391,11 +394,12 @@ jobs:
           ipc settings close
           # The sign-in splash (its preview), the Welcome screen, the out-of-memory notice and a USB drive plugged in.
           quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call splash preview flame || true; sleep 0.9; grim shots/system-settings/ss-signin-splash.png || true; sleep 3
-          ipc welcome show 1.14; sleep 1; grim shots/system-settings/ss-welcome.png || true; ipc welcome close
+          ipc welcome preview 1.14; sleep 1; grim shots/system-settings/ss-welcome.png || true; ipc welcome close
           ipc oomwatch test; sleep 1; grim shots/system-settings/ss-oom-notice.png || true; wtype -k Escape; sleep 1
           ipc devicewatch drive /dev/sdz1 "Holiday photos"; sleep 1; grim shots/system-settings/ss-drive-plugged.png || true; wtype -k Escape; sleep 1
           # Put everything back.
           for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do rm -f "/tmp/fakebin/$f"; done
+          rm -f "$HOME/.local/share/applications/hearth-test-viewer.desktop"
           rm -f "$HOME"/.config/autostart/hearth-cmd-*.desktop "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.config/KDE/Sonnet.conf" "$HOME/.config/nimbus/my-looks.json"
           cp -p "$SM/desktop.json" "$D"; sleep 3
           SMQ='(Set(SoundSpeakers|SoundApps|PushToTalk|PowerProfiles|PowerAwake|Battery|Autostart|FileTypes|MenuEditor|WallpaperMore|MyLooks|LookMore|Languages|Spellcheck|InputMethods|AppPermissions|BtDevices|PrintQueue|Scanners|UsbDevices|InfoCenter|Panel|Power|Sound|Fonts|Region|Firmware|Updates|Bluetooth|Printers|About)|PushToTalk|FirmwareWatch|OomWatch|DeviceWatch|Welcome|SigninSplash|WallShow|Wallpaper|Dock|Mixer|IdlePower|QuickAccess)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
