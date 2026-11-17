@@ -2225,7 +2225,10 @@ jobs:
   # Settings › Display in the real shell, its pictures as SHOT notices. Problems are ::error:: annotations.
   kwin-screens:
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:44
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # KWin composites only with a render device: the kernel's vgem module gives one (the host's /dev and modules).
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
     steps:
       - name: Install KWin, kscreen-doctor and Quickshell
         run: |
@@ -2268,6 +2271,7 @@ jobs:
           # If it can't start here, KWin inside a headless labwc instead (as plasma-test.yml; grim on labwc is then the
           # backup picture).
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland   # it carries a file capability a container can't grant
+          modprobe vgem 2>/dev/null || echo "::warning title=KWin screens::no vgem module (KWin may not composite)"
           OUTER=
           WAYLAND_DISPLAY= /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin.log 2>&1 &
           for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
@@ -2316,23 +2320,13 @@ jobs:
           echo "::notice title=KWin screens: kwinrc::$(tr '\n' '|' < shots/kwin/nightcolor.txt) kwriteconfig6: $(command -v kwriteconfig6 || echo none)"
           nl=$(gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/NightLight --method org.freedesktop.DBus.Properties.GetAll org.kde.KWin.NightLight 2>&1 | cut -c1-500)
           echo "::notice title=KWin screens: Night Light::$nl"
-          # ---- Mantel's Settings › Display in the real shell. The pictures come from grim on a headless labwc holding
-          # KWin as a 1920×1080 window (as plasma-test.yml): KWin on this CPU-only runner has no render device, and its
-          # screenshot interface brings it down (the screenshot check below, last).
-          if [ -z "$OUTER" ]; then
-            pkill -f /tmp/kwin_wayland; sleep 2; rm -f "$XDG_RUNTIME_DIR/wayland-hearth"*
-            WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/kwin/outer.log 2>&1 &
-            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
-            OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
-            WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
-            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin2.log 2>&1 &
-            for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
-            sleep 3
-          fi
+          echo "::notice title=KWin screens: KWin::$(grep -iE 'OpenGL|EGL|llvmpipe|render device|composit' shots/kwin/kwin.log | head -4 | tr '\n' '|' | cut -c1-500); /dev/dri: $(ls /dev/dri 2>&1 | tr '\n' ' ')"
+          # ---- Mantel's Settings › Display in the real shell; its pictures through hearth-screenshot (KWin's
+          # ScreenShot2 with its permission check on), or grim when KWin runs inside labwc.
           quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
           sleep 25
           ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
-          shot() { WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png" 2>>shots/kwin/shot-errors.txt; }
+          shot() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
           scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
           scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
           ipc settings close
@@ -2360,7 +2354,7 @@ jobs:
           elif grep -q -i 'NoAuthorized\|not authorized\|didn.t let Hearth' shots/kwin/screenshot-check.txt; then
             fail "KWin refused hearth-screenshot (hearth-screenshot.desktop's trust didn't work): $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
           else
-            echo "::warning title=KWin screens: screenshot::KWin let hearth-screenshot in, then couldn't take the picture on this runner: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-300) KWin: $(grep -v -i locale shots/kwin/kwin2.log | tail -3 | tr '\n' '|' | cut -c1-300)"
+            fail "hearth-screenshot under KWin: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-300) KWin: $(grep -v -i locale shots/kwin/kwin.log | tail -3 | tr '\n' '|' | cut -c1-300)"
           fi
           # Tearing (kwinrc's Compositing AllowTearing, then KWin's reconfigure, as KDE's own settings do) last: this
           # nested KWin on software GL may quit when it reconfigures its compositor.
