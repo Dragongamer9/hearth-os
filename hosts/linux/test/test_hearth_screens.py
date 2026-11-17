@@ -677,15 +677,52 @@ class Wiring(unittest.TestCase):
             self.assertIn('on%sChanged: save("%s")' % (k[0].upper() + k[1:], k), s)
 
     def test_screenshot_trust_for_kwin(self):
-        d = (REPO / 'os' / 'system_files' / 'usr' / 'share' / 'applications' / 'hearth-screenshot.desktop').read_text()
-        self.assertIn('X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2', d)
-        self.assertIn('Exec=/usr/libexec/nimbus/hearth-shot-python ', d)
+        # KWin trusts the small C helper for screenshots, never a copy of Python (any script it ran could take them).
+        apps = REPO / 'os' / 'system_files' / 'usr' / 'share' / 'applications'
+        self.assertFalse((apps / 'hearth-screenshot.desktop').exists())
+        d = (apps / 'hearth-kwin-cast.desktop').read_text()
+        self.assertIn('Exec=/usr/libexec/hearth/hearth-kwin-cast', d)
+        self.assertIn('org.kde.KWin.ScreenShot2', d)
         w = (REPO / 'os' / 'system_files' / 'usr' / 'bin' / 'hearth-screenshot').read_text()
-        self.assertIn('py=/usr/libexec/nimbus/hearth-shot-python', w)
+        self.assertNotIn('hearth-shot-python', w)
+        self.assertIn('exec python3 "$SHELL_DIR/hearth-screens" shot "$@"', w)
         self.assertIn('exec grim "$@"', w)
         b = (REPO / 'os-bases' / 'peppermint' / 'build.sh').read_text()
-        self.assertIn('/usr/libexec/nimbus/hearth-shot-python', b)
+        self.assertIn('rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop', b)
+        self.assertNotIn('cp -p "$py" /usr/libexec/nimbus/hearth-shot-python', b)
         self.assertIn('optional libkscreen-bin', b)
+        s = (SHELL / 'hearth-screens').read_text()
+        self.assertNotIn('hearth-shot-python', s)
+        c = (REPO / 'hosts' / 'linux' / 'desktop' / 'kwin-helpers' / 'hearth-kwin-cast.c').read_text()
+        for x in ('"CaptureActiveWindow"', '"CaptureActiveScreen"', '"native-resolution", g_variant_new_boolean(full != 0)',
+                  'strcmp(base + 1, "hearth-screens") == 0) who = 2', 'hearth-screens may only take screenshots'):
+            self.assertIn(x, c)
+
+    def test_kwin_shot_asks_hearth_kwin_cast(self):
+        o = {'geometry': None, 'output': None, 'cursor': False, 'file': '-'}
+        self.assertEqual(hs.kwin_cast_args(o), ['shot', 'workspace', '0', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, window=True, cursor=True)), ['shot', 'active-window', '1', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, geometry=(10, -5, 300, 200))), ['shot', 'area', '10', '-5', '300', '200', '0', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, activeScreen=True)), ['shot', 'active-screen', '0', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, output='DP-1')), ['shot', 'screen', 'DP-1', '0', '1'])
+        w, h, st, fmt, data = hs.parse_cast_shot(b'2 1 8 4 1\n' + bytes(range(8)))
+        self.assertEqual((w, h, st, fmt, len(data)), (2, 1, 8, 4, 8))
+        with self.assertRaises(hs.Refused):
+            hs.parse_cast_shot(b'4 4 16 4 1\nshort')
+        with self.assertRaises(hs.Refused):
+            hs.parse_cast_shot(b'no header')
+        # The helper's exit codes: 4 no window (Capture's exit 3), anything else a plain reason.
+        fake = os.path.join(tempfile.mkdtemp(), 'fake-cast')
+        with open(fake, 'w') as f:
+            f.write('#!/bin/sh\necho "hearth-kwin-cast: CaptureActiveWindow failed: NoActiveWindow" >&2\nexit 4\n')
+        os.chmod(fake, 0o755)
+        old = hs.KWIN_CAST
+        hs.KWIN_CAST = fake
+        try:
+            with self.assertRaises(hs.NoWindow):
+                hs.kwin_shot(dict(o, window=True))
+        finally:
+            hs.KWIN_CAST = old
 
 
 if __name__ == '__main__':
