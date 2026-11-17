@@ -18,14 +18,16 @@ Scope {
     property var pages: ({})
     property string seen: ""
     property bool seenRead: false
+    property bool firstEver: false            // no record at all: a new install (first-time setup welcomed you)
+    property string forceVer: ""              // `welcome show VERSION`
     readonly property string statePath: Quickshell.env("HOME") + "/.local/state/nimbus/welcome.json"
-    readonly property string shortVer: { const m = /^(\d+)\.(\d+)/.exec(version); return m ? m[1] + "." + m[2] : version; }
+    readonly property string shortVer: { const v = forceVer || version; const m = /^(\d+)\.(\d+)/.exec(v); return m ? m[1] + "." + m[2] : v; }
     readonly property var pg: pages[shortVer] || pages["default"] || { title: "Welcome", sub: "", items: [] }
     SettingsWriter { id: writer; path: wl.statePath }
     FileView {
         path: wl.statePath
         onLoaded: { try { wl.seen = String(JSON.parse(text()).seen || ""); } catch (e) { wl.seen = ""; } wl.seenRead = true; }
-        onLoadFailed: wl.seenRead = true
+        onLoadFailed: { wl.firstEver = true; wl.seenRead = true; }
     }
     FileView {
         path: Quickshell.shellDir + "/welcome.json"
@@ -38,11 +40,14 @@ Scope {
     }
     Timer { interval: 90000; running: true; onTriggered: wl.maybe() }
     function maybe() {
-        if (!Settings.welcomeAfterUpdates || !seenRead || version === "" || shortVer === seen || Quickshell.env("HEARTH_SEAT")) return;
+        if (!seenRead || version === "" || shortVer === seen || Quickshell.env("HEARTH_SEAT")) return;
+        // Once per version after an update; a new install (nothing recorded yet) is only recorded, not shown.
+        if (firstEver || !Settings.welcomeAfterUpdates) { seen = shortVer; writer.merge({ seen: shortVer }); return; }
         shown = true;
     }
     function close() {
         shown = false;
+        if (forceVer !== "") { forceVer = ""; return; }      // a preview: nothing recorded
         if (version !== "" && seen !== shortVer) { seen = shortVer; writer.merge({ seen: shortVer }); }
     }
     function go(page) { close(); if (settings) settings.open(page); }
@@ -50,7 +55,7 @@ Scope {
         target: "welcome"
         function open(): void { wl.shown = true; }
         // A version's page shown as it would be (Desktop Mode test's picture); doesn't mark anything as seen until closed.
-        function show(v: string): void { if (v) wl.version = v; wl.shown = true; }
+        function show(v: string): void { wl.forceVer = v; wl.shown = true; }
         function close(): void { wl.close(); }
     }
 

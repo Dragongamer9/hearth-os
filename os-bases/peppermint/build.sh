@@ -266,6 +266,9 @@ optional aurorae
 [ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
   || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
+# KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
+# (org.kde.milou): without it they don't open (Present windows still does).
+optional milou
 if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
 command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
@@ -1111,6 +1114,8 @@ for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop 
   dpkg-divert --list "/usr/share/$f" | grep -q . || dpkg-divert --local --no-rename --divert "/usr/share/hearth/desktop-sessions/$(echo "$f" | tr / -)" --add "/usr/share/$f"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
+# 1.14: Hearth's own system sounds (desktop/sounds, GPL-3.0 like Hearth) as a freedesktop sound theme other apps can use too.
+mkdir -p /usr/share/sounds && ln -sfn /usr/share/nimbus/desktop/sounds/hearth /usr/share/sounds/hearth || echo "warning: couldn't link Hearth's sound theme"
 # Hearth's own login screen uses Mantel's on-screen keyboard: its board, keys and engine, copied next to the greeter.
 mkdir -p /usr/share/hearth/greeter
 cp -a /usr/share/nimbus/desktop/shell/OskBoard.qml /usr/share/nimbus/desktop/shell/OskKey.qml /usr/share/hearth/greeter/
@@ -2062,6 +2067,12 @@ echo "sddm shared/default-x-display-manager select sddm" | debconf-set-selection
 # SDDM is still the display manager after everything above (Hearth's own login screen never takes its place).
 test "$(readlink /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service
 if [ -f /etc/X11/default-display-manager ]; then grep -qx /usr/bin/sddm /etc/X11/default-display-manager; fi
+# Debian's own greetd.service never runs at start-up (it would take a screen from SDDM or Hearth's hearth-greetd):
+# turned off if the package turned it on, and the build stops if it still is.
+if [ -e /usr/lib/systemd/system/greetd.service ]; then
+  systemctl disable greetd.service >/dev/null 2>&1 || true
+  if systemctl is-enabled --quiet greetd.service 2>/dev/null; then echo "build: Debian's greetd.service is enabled" >&2; exit 1; fi
+fi
 mkdir -p /usr/share/hearth/debconf && cp -a /var/cache/debconf/. /usr/share/hearth/debconf/
 # The core of the system stays at the image's own versions (apt can't swap them under Hearth: systemd, udev, glibc,
 # D-Bus, Mesa), generated from what's installed (systemd-boot is left to the boot-chain pin: never from apt).

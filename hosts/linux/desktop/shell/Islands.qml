@@ -187,19 +187,12 @@ PanelWindow {
     readonly property var front: WinList.activeToplevel
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
-    // The newest notification, shown in the pill for a few seconds (not with Do not disturb).
+    // The newest notification that popped up, shown in the pill for a few seconds (1.14: DeskState.popped, so quiet
+    // ones, Do Not Disturb and automatic quiet stay quiet here too).
     property var flash: null
-    property int seenSeq: -1
     Connections {
         target: DeskState
-        function onHistoryChanged() {
-            const n = DeskState.history[0];
-            if (!n || n.key === isl.seenSeq) return;
-            isl.seenSeq = n.key;
-            if (DeskState.dnd || DeskState.isMuted(n.app)) return;
-            isl.flash = n;
-            flashTimer.restart();
-        }
+        function onPopped(n) { isl.flash = n; flashTimer.restart(); }
     }
     Timer { id: flashTimer; interval: 5000; onTriggered: isl.flash = null }
 
@@ -242,6 +235,16 @@ PanelWindow {
                 rightMargin: isl.edge === "right" ? isl.gapOut : isl.edge === "left" ? isl.gapIn : inner.along
             }
 
+            // Right-click the bar itself (between its islands): arrange the bar's items, add a panel (1.14, BarArrange.qml).
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+                onClicked: mouse => isl.statusMenu(inner, "The bar", [
+                    { label: "Arrange the bar…", icon: "grid", run: () => BarLayout.arranging = true },
+                    { label: "Add a panel…", icon: "plus", run: () => { BarLayout.arranging = true; BarLayout.arrangeTab = "panels"; } },
+                    { label: "Bar and dock settings", icon: "gear", run: () => isl.settingsRequested("bar-dock") }
+                ])
+            }
             // One full-width bar (Steam-style, Zen, and One main bar in those looks): a flat strip along the edge.
             Rectangle {
                 anchors.fill: parent
@@ -273,6 +276,7 @@ PanelWindow {
                 // ---- start island: the flame, the desktops, the window in front
                 Island {
                     id: leftIsland
+                    visible: isl.zoneItems("start").length > 0
                     along: (isl.vertical ? leftRow.implicitHeight : leftRow.implicitWidth) + (isl.floating ? 16 : 4)
                     GridLayout {
                         id: leftRow
@@ -282,69 +286,8 @@ PanelWindow {
                         columns: isl.vertical ? 1 : -1
                         rowSpacing: 8 * isl.k
                         columnSpacing: 8 * isl.k
-                        IslandButton {
-                            objectName: "appMenuButton"
-                            id: startMenuBtn
-                            tip: "Apps (Super)"
-                            onClicked: isl.launcherRequested()
-                            onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(isl.screen, startMenuBtn, isl.edge)   // the Super+X menu
-                            Image { anchors.centerIn: parent; width: 26 * isl.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
-                        }
-                        Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)
-                            objectName: "menuSearchField"
-                            visible: isl.menuSearchShown
-                            Layout.alignment: Qt.AlignCenter
-                            implicitWidth: 300; implicitHeight: Math.max(26, isl.islandH - 14)
-                            radius: Theme.r(8)
-                            color: msa.containsMouse ? Theme.panel3 : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
-                            border.width: isl.menuQuery !== "" ? 2 : 1
-                            border.color: isl.menuQuery !== "" ? Theme.accent : Theme.line
-                            Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; color: Theme.muted }
-                            Text {
-                                anchors { left: parent.left; right: parent.right; leftMargin: 36; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                                text: isl.menuQuery !== "" ? isl.menuQuery : "Type to search"
-                                color: isl.menuQuery !== "" ? Theme.text : Theme.muted
-                                elide: Text.ElideLeft
-                                font.family: Theme.font; font.pixelSize: 14
-                            }
-                            MouseArea { id: msa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; onClicked: isl.menuSearchRequested() }
-                        }
-                        Text {   // Console: the big clock sits next to the mark
-                            visible: isl.shelf
-                            text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm")
-                            color: Theme.text; font.family: Theme.font; font.pixelSize: 38; font.weight: Font.DemiBold
-                            Text { anchors { left: parent.right; leftMargin: 6; baseline: parent.baseline } visible: !Settings.clock24; text: Qt.formatTime(clock.date, "AP"); color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 }
-                        }
-                        Loader {
-                            id: desks
-                            Layout.alignment: Qt.AlignCenter
-                            visible: !isl.shelf && status === Loader.Ready && !!item && item.wanted
-                            active: !isl.shelf
-                            source: "DeskSwitcher.qml"
-                            onLoaded: { item.island = true; item.portrait = Qt.binding(() => isl.vertical); item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20); }
-                        }
-                        // ---- Activities (1.14, Activities.qml): the one you're on, once you have more than one
-                        Loader {
-                            Layout.alignment: Qt.AlignCenter
-                            visible: !isl.shelf && status === Loader.Ready && !!item && item.wanted
-                            active: !isl.shelf
-                            source: "ActivityChip.qml"
-                            onLoaded: item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20)
-                        }
-                        RowLayout {   // the window in front (across the top or bottom, without your apps in the bar)
-                            visible: !isl.compact && !isl.shelf && !isl.vertical && !isl.holdsApps && isl.front !== null && (isl.front.title || "") !== ""
-                            spacing: 8
-                            Rectangle { visible: desks.visible; implicitWidth: 1; implicitHeight: 22; color: Theme.line }
-                            AppIcon { size: 20; appId: isl.front ? (isl.front.appId || "") : ""; icon: "" }
-                            Text {
-                                Layout.maximumWidth: 260
-                                text: isl.front ? (isl.front.title || "") : ""
-                                elide: Text.ElideRight
-                                color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                                font.capitalization: isl.gaming ? Font.AllUppercase : Font.MixedCase
-                                font.letterSpacing: isl.gaming ? 1.5 : 0
-                            }
-                        }
+                        // 1.14: the bar's own items in your order (Arrange the bar: BarArrange.qml, BarLayout.qml)
+                        Repeater { model: isl.zoneItems("start"); delegate: BarSlot {} }
                     }
                 }
 
@@ -427,83 +370,7 @@ PanelWindow {
                         columns: isl.vertical ? 1 : -1
                         rowSpacing: isl.shelf ? 12 : 2
                         columnSpacing: isl.shelf ? 12 : 2
-                        Repeater {
-                            model: (isl.compact || isl.vertical) && !Theme.hints ? [] : SystemTray.items
-                            delegate: IslandButton {
-                                id: tray
-                                required property SystemTrayItem modelData
-                                narrow: !isl.shelf
-                                tip: (modelData.tooltipTitle || modelData.title || modelData.id || "")
-                                    + (modelData.tooltipDescription ? "\n" + modelData.tooltipDescription.replace(/<[^>]*>/g, "") : "")
-                                onClicked: { if (modelData.onlyMenu && modelData.hasMenu) showMenu(); else modelData.activate(); }
-                                onMiddleClicked: modelData.secondaryActivate()
-                                onRightClicked: { if (modelData.hasMenu) showMenu(); else modelData.secondaryActivate(); }
-                                onScrolled: delta => modelData.scroll(delta, false)
-                                function showMenu() { const p = tray.mapToItem(null, 0, tray.height); modelData.display(isl, p.x, isl.edge === "bottom" ? p.y - tray.height - 8 : p.y + 8); }
-                                IconImage { anchors.centerIn: parent; implicitSize: 20 * isl.k; source: tray.modelData.icon }
-                            }
-                        }
-                        IslandButton {   // Discord (Discord.qml): its small window by the bar
-                            id: discordIsl
-                            visible: !isl.compact
-                            tip: "Discord"
-                            onClicked: if (SettingsNav.discord) { const p = discordIsl.mapToItem(null, discordIsl.width / 2, discordIsl.height / 2); SettingsNav.discord.toggle(isl.edge === "left" || isl.edge === "right" ? p.y : p.x); }
-                            Icon { anchors.centerIn: parent; name: "chat"; size: 20 * isl.k }
-                        }
-                        IslandButton {   // on-screen keyboard
-                            visible: !isl.compact
-                            tip: "Keyboard"
-                            onClicked: isl.keyboardRequested()
-                            Icon { anchors.centerIn: parent; name: "kbd"; size: 20 * isl.k }
-                        }
-                        IslandButton {   // network
-                            id: net
-                            tip: isl.netName ? "Connected to " + isl.netName : "Not connected"
-                            onClicked: isl.quickRequested()
-                            onRightClicked: isl.statusMenu(net, net.tip, [
-                                { label: "Wi-Fi settings", icon: "wifi", run: () => isl.settingsRequested("wifi") },
-                                { label: "Quick settings", icon: "menu", run: () => isl.quickRequested() }
-                            ])
-                            Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.netKind === "wifi" ? "wifi" : isl.netKind === "ethernet" ? "wired" : "offline" }
-                        }
-                        IslandButton {   // Bluetooth
-                            id: bt
-                            visible: isl.btPresent && !isl.compact
-                            tip: !isl.btPowered ? "Bluetooth is off" : isl.btConnected.length ? "Connected: " + isl.btConnected.join(", ") : "Bluetooth is on"
-                            onClicked: isl.quickRequested()
-                            onRightClicked: isl.statusMenu(bt, bt.tip, [
-                                { label: isl.btPowered ? "Turn Bluetooth off" : "Turn Bluetooth on", icon: "bt", run: () => { btSet.command = ["bluetoothctl", "power", isl.btPowered ? "off" : "on"]; btSet.running = true; } },
-                                { label: "Bluetooth settings", icon: "gear", run: () => isl.settingsRequested("bluetooth") }
-                            ])
-                            Icon { anchors.centerIn: parent; name: "bt"; size: 18 * isl.k; color: !isl.btPowered ? Theme.muted : isl.btConnected.length ? Theme.accent : Theme.text }
-                        }
-                        IslandButton {   // volume
-                            id: vol
-                            visible: isl.audio !== null
-                            tip: (isl.audio && isl.audio.muted ? "Muted" : "Volume " + isl.volPct + "%") + "\nScroll to change, middle-click to mute"
-                            onClicked: isl.quickRequested()
-                            onMiddleClicked: if (isl.audio) isl.audio.muted = !isl.audio.muted
-                            onRightClicked: isl.soundMenu(vol)
-                            onScrolled: delta => { if (isl.audio) isl.audio.volume = Math.max(0, Math.min(Buttons.maxVolume, isl.audio.volume + (delta > 0 ? 0.05 : -0.05))); }
-                            Icon { anchors.centerIn: parent; size: 19 * isl.k; name: !isl.audio || isl.audio.muted ? "vol-mute" : isl.volPct > 33 ? "vol" : "vol-low" }
-                        }
-                        IslandButton {   // battery
-                            id: battBtn
-                            visible: isl.hasBatt
-                            wideLabel: isl.vertical ? "" : isl.battPct + "%"
-                            tip: isl.battPct + "%" + (isl.charging ? ", charging" : "")
-                            onClicked: isl.quickRequested()
-                            onRightClicked: isl.statusMenu(battBtn, battBtn.tip, [{ label: "Power settings", icon: "power", run: () => isl.settingsRequested("power") }])
-                            Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.charging ? "batt-charging" : isl.battPct > 20 ? "batt" : "batt-low" }
-                        }
-                        IslandButton {   // notifications
-                            visible: !isl.compact || DeskState.unseen > 0
-                            tip: DeskState.dnd ? "Do not disturb is on" : DeskState.unseen > 0 ? DeskState.unseen + (DeskState.unseen === 1 ? " new notification" : " new notifications") : "Notifications"
-                            badge: DeskState.dnd ? 0 : DeskState.unseen
-                            onClicked: isl.calendarRequested()
-                            onRightClicked: DeskState.setDnd(!DeskState.dnd)
-                            Icon { anchors.centerIn: parent; name: DeskState.dnd ? "bell-off" : "bell"; size: 19 * isl.k; color: DeskState.dnd ? Theme.muted : Theme.text }
-                        }
+                        Repeater { model: isl.zoneItems("end"); delegate: BarSlot {} }
                     }
                 }
 
@@ -568,6 +435,366 @@ PanelWindow {
                     }
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ the bar's own items (1.14)
+    // Each can go at the start or the end of the bar, in any order, or be hidden (BarLayout.qml; Settings › Bar and
+    // dock › Arrange the bar, or right-click the bar). Game Mode always stays, last.
+    function zoneItems(z) {
+        const l = BarLayout.layout[z] || [];
+        const out = [];
+        for (const id of l) {
+            out.push(id);
+            if (id === "menu" && isl.shelf) out.push("shelfclock");    // Console: the big clock sits next to the mark
+        }
+        return out;
+    }
+    function compFor(id) {
+        switch (id) {
+        case "menu": return cMenu;
+        case "search": return cSearch;
+        case "shelfclock": return cShelfClock;
+        case "desktops": return cDesks;
+        case "activity": return cActivity;
+        case "window": return cWindow;
+        case "jobs": return cJobs;
+        case "tray": return cTray;
+        case "background": return cBackground;
+        case "privacy": return cPrivacy;
+        case "printers": return cPrinters;
+        case "disks": return cDisks;
+        case "discord": return cDiscord;
+        case "keyboard": return cKeyboard;
+        case "layout": return cLayout;
+        case "network": return cNetwork;
+        case "bluetooth": return cBluetooth;
+        case "volume": return cVolume;
+        case "battery": return cBattery;
+        case "notifications": return cNotifications;
+        }
+        return null;
+    }
+    component BarSlot: Loader {
+        required property string modelData
+        Layout.alignment: Qt.AlignCenter
+        visible: status === Loader.Ready && !!item && item.wanted !== false
+        sourceComponent: isl.compFor(modelData)
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the bar's " + modelData + " couldn't load")
+    }
+
+    Component {
+        id: cMenu
+        IslandButton {
+            objectName: "appMenuButton"
+            id: startMenuBtn
+            tip: "Apps (Super)"
+            onClicked: isl.launcherRequested()
+            onRightClicked: if (SettingsNav.winTools) SettingsNav.winTools.winxFrom(isl.screen, startMenuBtn, isl.edge)   // the Super+X menu
+            Image { anchors.centerIn: parent; width: 26 * isl.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
+        }
+    }
+    Component {
+        id: cSearch
+        Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)
+            objectName: "menuSearchField"
+            readonly property bool wanted: isl.menuSearchShown
+            implicitWidth: 300; implicitHeight: Math.max(26, isl.islandH - 14)
+            radius: Theme.r(8)
+            color: msa.containsMouse ? Theme.panel3 : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
+            border.width: isl.menuQuery !== "" ? 2 : 1
+            border.color: isl.menuQuery !== "" ? Theme.accent : Theme.line
+            Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; color: Theme.muted }
+            Text {
+                anchors { left: parent.left; right: parent.right; leftMargin: 36; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                text: isl.menuQuery !== "" ? isl.menuQuery : "Type to search"
+                color: isl.menuQuery !== "" ? Theme.text : Theme.muted
+                elide: Text.ElideLeft
+                font.family: Theme.font; font.pixelSize: 14
+            }
+            MouseArea { id: msa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; onClicked: isl.menuSearchRequested() }
+        }
+    }
+    Component {
+        id: cShelfClock
+        Text {   // Console: the big clock sits next to the mark
+            readonly property bool wanted: isl.shelf
+            text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm")
+            color: Theme.text; font.family: Theme.font; font.pixelSize: 38; font.weight: Font.DemiBold
+            Text { anchors { left: parent.right; leftMargin: 6; baseline: parent.baseline } visible: !Settings.clock24; text: Qt.formatTime(clock.date, "AP"); color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 }
+        }
+    }
+    Component {
+        id: cDesks
+        Loader {
+            id: desks
+            readonly property bool wanted: !isl.shelf && status === Loader.Ready && !!item && item.wanted
+            active: !isl.shelf
+            source: "DeskSwitcher.qml"
+            onLoaded: { item.island = true; item.portrait = Qt.binding(() => isl.vertical); item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20); }
+        }
+    }
+    Component {
+        id: cActivity
+        // ---- Activities (1.14, Activities.qml): the one you're on, once you have more than one
+        Loader {
+            readonly property bool wanted: !isl.shelf && status === Loader.Ready && !!item && item.wanted
+            active: !isl.shelf
+            source: "ActivityChip.qml"
+            onLoaded: item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20)
+        }
+    }
+    Component {
+        id: cWindow
+        RowLayout {   // the window in front (across the top or bottom, without your apps in the bar)
+            readonly property bool wanted: !isl.compact && !isl.shelf && !isl.vertical && !isl.holdsApps && isl.front !== null && (isl.front.title || "") !== ""
+            spacing: 8
+            AppIcon { size: 20; appId: isl.front ? (isl.front.appId || "") : ""; icon: "" }
+            Text {
+                Layout.maximumWidth: 260
+                text: isl.front ? (isl.front.title || "") : ""
+                elide: Text.ElideRight
+                color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                font.capitalization: isl.gaming ? Font.AllUppercase : Font.MixedCase
+                font.letterSpacing: isl.gaming ? 1.5 : 0
+            }
+        }
+    }
+    Component {
+        id: cTray
+        GridLayout {   // apps' own tray icons (StatusNotifierItem)
+            readonly property bool wanted: trayRep.count > 0
+            flow: isl.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
+            rows: isl.vertical ? -1 : 1
+            columns: isl.vertical ? 1 : -1
+            rowSpacing: isl.shelf ? 12 : 2
+            columnSpacing: isl.shelf ? 12 : 2
+            Repeater {
+                id: trayRep
+                model: (isl.compact || isl.vertical) && !Theme.hints ? [] : SystemTray.items
+                delegate: IslandButton {
+                    id: tray
+                    required property SystemTrayItem modelData
+                    narrow: !isl.shelf
+                    tip: (modelData.tooltipTitle || modelData.title || modelData.id || "")
+                        + (modelData.tooltipDescription ? "\n" + modelData.tooltipDescription.replace(/<[^>]*>/g, "") : "")
+                    onClicked: { if (modelData.onlyMenu && modelData.hasMenu) showMenu(); else modelData.activate(); }
+                    onMiddleClicked: modelData.secondaryActivate()
+                    onRightClicked: { if (modelData.hasMenu) showMenu(); else modelData.secondaryActivate(); }
+                    onScrolled: delta => modelData.scroll(delta, false)
+                    function showMenu() { const p = tray.mapToItem(null, 0, tray.height); modelData.display(isl, p.x, isl.edge === "bottom" ? p.y - tray.height - 8 : p.y + 8); }
+                    IconImage { anchors.centerIn: parent; implicitSize: 20 * isl.k; source: tray.modelData.icon }
+                }
+            }
+        }
+    }
+    // ---- copies and downloads (KDE's job progress, NotifyHub.qml): a ring with how far they are; click for the list
+    Component {
+        id: cJobs
+        IslandButton {
+            id: jobsBtn
+            wanted: NotifyHub.runningJobs.length > 0
+            tip: NotifyHub.runningJobs.map(j => j.title + (j.percent >= 0 ? " · " + j.percent + "%" : "")).join("\n") + "\nClick for details"
+            onClicked: isl.calendarRequested()
+            onRightClicked: isl.statusMenu(jobsBtn, "Copies and downloads", NotifyHub.runningJobs.map(j => ({
+                label: (j.suspended ? "Resume " : "Pause ") + j.title, icon: j.suspended ? "play" : "pause", enabled: j.suspendable,
+                run: () => NotifyHub.jobAction(j.id, j.suspended ? "resume" : "suspend") })).concat(NotifyHub.runningJobs.filter(j => j.killable).map(j => ({
+                label: "Cancel " + j.title, icon: "close", run: () => NotifyHub.jobAction(j.id, "cancel") }))))
+            Ring { anchors.centerIn: parent; size: 22 * isl.k; value: NotifyHub.jobsPercent }
+            Icon { anchors.centerIn: parent; name: "sync"; size: 12 * isl.k; color: Theme.accent }
+        }
+    }
+    // ---- apps running in the background (no window of their own): the portal's list, else Flatpak's
+    Component {
+        id: cBackground
+        IslandButton {
+            id: bgBtn
+            wanted: NotifyHub.backgroundApps.length > 0 && !isl.compact
+            badge: NotifyHub.backgroundApps.length > 1 ? NotifyHub.backgroundApps.length : 0
+            tip: "Running in the background:\n" + NotifyHub.backgroundApps.map(a => isl.appLabel(a.app) + (a.message ? " · " + a.message : "")).join("\n")
+            onClicked: isl.statusMenu(bgBtn, "Background apps", NotifyHub.backgroundApps.map(a => ({ label: "Quit " + isl.appLabel(a.app), icon: "close", run: () => NotifyHub.send({ op: "quitApp", app: a.app }) }))
+                .concat([{ separator: true }, { label: "Apps settings", icon: "gear", run: () => isl.settingsRequested("apps") }]))
+            onRightClicked: clicked()
+            Icon { anchors.centerIn: parent; name: "rocket"; size: 18 * isl.k }
+        }
+    }
+    function appLabel(id) { const e = id ? DesktopEntries.byId(id) : null; return e ? e.name : String(id || "An app").split(".").pop(); }
+    // ---- the camera or the microphone in use: always shown while they are (never hidden by compact screens)
+    Component {
+        id: cPrivacy
+        IslandButton {
+            id: privBtn
+            readonly property var cam: NotifyHub.cameraApps
+            readonly property var micUsers: NotifyHub.micApps
+            wanted: cam.length > 0 || micUsers.length > 0
+            wideLabel: ""
+            tip: (cam.length ? "Camera in use: " + cam.map(a => a.name).join(", ") : "") + (cam.length && micUsers.length ? "\n" : "")
+                + (micUsers.length ? (NotifyHub.micMuted ? "Microphone (muted) wanted by: " : "Microphone in use: ") + micUsers.join(", ") : "")
+            onClicked: isl.statusMenu(privBtn, "In use now", cam.map(a => ({ label: "Camera: " + a.name, icon: "cam", enabled: false }))
+                .concat(micUsers.map(a => ({ label: "Microphone: " + a, icon: "mic", enabled: false })))
+                .concat([{ separator: true }, { label: NotifyHub.micMuted ? "Unmute the microphone" : "Mute the microphone", icon: "mic", run: () => { if (NotifyHub.mic) NotifyHub.mic.muted = !NotifyHub.mic.muted; } },
+                         { label: "Sound settings", icon: "gear", run: () => isl.settingsRequested("sound") }]))
+            onRightClicked: clicked()
+            Rectangle { anchors.centerIn: parent; width: privRow.implicitWidth + 10; height: 22 * isl.k; radius: height / 2; color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) }
+            Row {
+                id: privRow
+                anchors.centerIn: parent
+                spacing: 2
+                Icon { visible: privBtn.cam.length > 0; name: "cam"; size: 15 * isl.k; color: Theme.accent }
+                Icon { visible: privBtn.micUsers.length > 0; name: "mic"; size: 15 * isl.k; color: NotifyHub.micMuted ? Theme.muted : Theme.accent }
+            }
+        }
+    }
+    // ---- printing: while something is waiting to print
+    Component {
+        id: cPrinters
+        IslandButton {
+            id: prBtn
+            wanted: NotifyHub.printJobs.length > 0
+            badge: NotifyHub.printJobs.length
+            tip: NotifyHub.printJobs.length === 1 ? "1 document printing on " + NotifyHub.printJobs[0].printer : NotifyHub.printJobs.length + " documents waiting to print"
+            onClicked: isl.statusMenu(prBtn, "Printing", NotifyHub.printJobs.map(j => ({ label: "Cancel " + j.job + (j.size ? " (" + Math.max(1, Math.round(j.size / 1024)) + " KB)" : ""), icon: "close", run: () => NotifyHub.send({ op: "cancelPrint", job: j.job }) }))
+                .concat([{ separator: true }, { label: "Printers", icon: "printer", run: () => isl.settingsRequested("printers") }]))
+            onRightClicked: clicked()
+            Icon { anchors.centerIn: parent; name: "printer"; size: 18 * isl.k }
+        }
+    }
+    // ---- disks and devices: USB sticks, cards and other plugged-in drives (open, safely remove)
+    Component {
+        id: cDisks
+        IslandButton {
+            id: dkBtn
+            wanted: NotifyHub.disks.length > 0
+            tip: NotifyHub.disks.map(d => d.name + (d.size ? " · " + d.size : "") + (d.mount ? "" : " (not open)")).join("\n")
+            onClicked: {
+                const list = [];
+                for (const d of NotifyHub.disks) {
+                    list.push({ label: (d.mount ? "Open " : "Open ") + d.name + (d.size ? "  " + d.size : ""), icon: "drive", run: () => { if (d.mount) Quickshell.execDetached(["xdg-open", d.mount]); else NotifyHub.disk("mount", d.path); } });
+                    if (d.mount) list.push({ label: "Safely remove " + d.name, icon: "close", run: () => NotifyHub.disk("unmount", d.path) });
+                    else list.push({ label: "Eject " + d.name, icon: "close", run: () => NotifyHub.disk("eject", d.drive || d.path) });
+                }
+                list.push({ separator: true }, { label: "Storage settings", icon: "gear", run: () => isl.settingsRequested("storage") });
+                isl.statusMenu(dkBtn, "Disks and devices", list);
+            }
+            onRightClicked: clicked()
+            Icon { anchors.centerIn: parent; name: "drive"; size: 18 * isl.k }
+        }
+    }
+    Component {
+        id: cDiscord
+        IslandButton {   // Discord (Discord.qml): its small window by the bar
+            id: discordIsl
+            wanted: !isl.compact
+            tip: "Discord"
+            onClicked: if (SettingsNav.discord) { const p = discordIsl.mapToItem(null, discordIsl.width / 2, discordIsl.height / 2); SettingsNav.discord.toggle(isl.edge === "left" || isl.edge === "right" ? p.y : p.x); }
+            Icon { anchors.centerIn: parent; name: "chat"; size: 20 * isl.k }
+        }
+    }
+    Component {
+        id: cKeyboard
+        IslandButton {   // on-screen keyboard
+            wanted: !isl.compact
+            tip: "Keyboard"
+            onClicked: isl.keyboardRequested()
+            Icon { anchors.centerIn: parent; name: "kbd"; size: 20 * isl.k }
+        }
+    }
+    // ---- the keyboard layout, once you have more than one (click: the next one; right-click: pick)
+    Component {
+        id: cLayout
+        IslandButton {
+            id: layBtn
+            wanted: (NotifyHub.layout.layouts || []).length > 1
+            tip: NotifyHub.layoutName + (NotifyHub.layout.canSwitch ? "\nClick for the next layout" : "\nSwitch with your layout keys")
+            onClicked: if (NotifyHub.layout.canSwitch) NotifyHub.nextLayout(); else isl.settingsRequested("keyboard")
+            onRightClicked: isl.statusMenu(layBtn, "Keyboard layout", (NotifyHub.layout.layouts || []).map((l, i) => ({ label: l.name, checked: i === NotifyHub.layout.index ? true : undefined, enabled: NotifyHub.layout.canSwitch, run: () => NotifyHub.setLayout(i) }))
+                .concat([{ separator: true }, { label: "Keyboard settings", icon: "gear", run: () => isl.settingsRequested("keyboard") }]))
+            Text { anchors.centerIn: parent; text: NotifyHub.layoutShort; color: Theme.text; font.family: Theme.font; font.pixelSize: 12 * isl.k; font.bold: true }
+        }
+    }
+    Component {
+        id: cNetwork
+        IslandButton {   // network
+            id: net
+            tip: isl.netName ? "Connected to " + isl.netName : "Not connected"
+            onClicked: isl.quickRequested()
+            onRightClicked: isl.statusMenu(net, net.tip, [
+                { label: "Wi-Fi settings", icon: "wifi", run: () => isl.settingsRequested("wifi") },
+                { label: "Quick settings", icon: "menu", run: () => isl.quickRequested() }
+            ])
+            Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.netKind === "wifi" ? "wifi" : isl.netKind === "ethernet" ? "wired" : "offline" }
+        }
+    }
+    Component {
+        id: cBluetooth
+        IslandButton {   // Bluetooth
+            id: bt
+            wanted: isl.btPresent && !isl.compact
+            tip: !isl.btPowered ? "Bluetooth is off" : isl.btConnected.length ? "Connected: " + isl.btConnected.join(", ") : "Bluetooth is on"
+            onClicked: isl.quickRequested()
+            onRightClicked: isl.statusMenu(bt, bt.tip, [
+                { label: isl.btPowered ? "Turn Bluetooth off" : "Turn Bluetooth on", icon: "bt", run: () => { btSet.command = ["bluetoothctl", "power", isl.btPowered ? "off" : "on"]; btSet.running = true; } },
+                { label: "Bluetooth settings", icon: "gear", run: () => isl.settingsRequested("bluetooth") }
+            ])
+            Icon { anchors.centerIn: parent; name: "bt"; size: 18 * isl.k; color: !isl.btPowered ? Theme.muted : isl.btConnected.length ? Theme.accent : Theme.text }
+        }
+    }
+    Component {
+        id: cVolume
+        IslandButton {   // volume
+            id: vol
+            wanted: isl.audio !== null
+            tip: (isl.audio && isl.audio.muted ? "Muted" : "Volume " + isl.volPct + "%") + "\nScroll to change, middle-click to mute"
+            onClicked: isl.quickRequested()
+            onMiddleClicked: if (isl.audio) isl.audio.muted = !isl.audio.muted
+            onRightClicked: isl.soundMenu(vol)
+            onScrolled: delta => { if (isl.audio) isl.audio.volume = Math.max(0, Math.min(Buttons.maxVolume, isl.audio.volume + (delta > 0 ? 0.05 : -0.05))); }
+            Icon { anchors.centerIn: parent; size: 19 * isl.k; name: !isl.audio || isl.audio.muted ? "vol-mute" : isl.volPct > 33 ? "vol" : "vol-low" }
+        }
+    }
+    Component {
+        id: cBattery
+        IslandButton {   // battery
+            id: battBtn
+            wanted: isl.hasBatt
+            wideLabel: isl.vertical ? "" : isl.battPct + "%"
+            tip: isl.battPct + "%" + (isl.charging ? ", charging" : "")
+            onClicked: isl.quickRequested()
+            onRightClicked: isl.statusMenu(battBtn, battBtn.tip, [{ label: "Power settings", icon: "power", run: () => isl.settingsRequested("power") }])
+            Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.charging ? "batt-charging" : isl.battPct > 20 ? "batt" : "batt-low" }
+        }
+    }
+    Component {
+        id: cNotifications
+        IslandButton {   // notifications (1.14: also when it's quiet by itself, and why)
+            wanted: !isl.compact || DeskState.unseen > 0
+            tip: DeskState.dnd ? "Do not disturb is on" : NotifyHub.autoReason !== "" ? "Quiet " + NotifyHub.autoLabel + (NotifyHub.missed ? " · " + NotifyHub.missed + " waiting" : "")
+                : DeskState.unseen > 0 ? DeskState.unseen + (DeskState.unseen === 1 ? " new notification" : " new notifications") : "Notifications"
+            badge: NotifyHub.quiet ? 0 : DeskState.unseen
+            onClicked: isl.calendarRequested()
+            onRightClicked: DeskState.setDnd(!DeskState.dnd)
+            Icon { anchors.centerIn: parent; name: NotifyHub.quiet ? "bell-off" : "bell"; size: 19 * isl.k; color: NotifyHub.quiet ? Theme.muted : Theme.text }
+            Rectangle {   // automatic quiet: a small moon by the bell
+                visible: NotifyHub.autoReason !== "" && !DeskState.dnd
+                x: parent.width / 2 + 3; y: parent.height / 2 + 1; width: 10; height: 10; radius: 5
+                color: Theme.accent; border.color: Theme.panel; border.width: 1
+            }
+        }
+    }
+    // A thin progress ring (the jobs button, the dock's icons)
+    component Ring: Canvas {
+        property real size: 22
+        property int value: -1
+        width: size; height: size
+        onValueChanged: requestPaint()
+        onPaint: {
+            const g = getContext("2d"); g.reset();
+            const r = width / 2 - 2;
+            g.lineWidth = 2.5; g.strokeStyle = Theme.css(Theme.text, 0.18);
+            g.beginPath(); g.arc(width / 2, height / 2, r, 0, Math.PI * 2); g.stroke();
+            if (value < 0) return;
+            g.strokeStyle = Theme.css(Theme.accent, 1); g.lineCap = "round";
+            g.beginPath(); g.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.02, value / 100)); g.stroke();
         }
     }
 
@@ -651,6 +878,7 @@ PanelWindow {
 
     component IslandButton: Item {
         id: btn
+        property bool wanted: true         // shown at all (the bar's own items, BarSlot)
         property string tip: ""
         property bool narrow: false
         property int badge: 0

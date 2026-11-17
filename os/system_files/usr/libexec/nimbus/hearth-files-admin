@@ -1,0 +1,346 @@
+#!/usr/bin/python3
+"""hearth-files-admin: Hearth Files' "Act as administrator" (Dolphin's admin mode): the few file changes Files makes as
+root, for folders outside your home. Run by Hearth Files through `pkexec /usr/libexec/nimbus/hearth-files-admin`: it has
+its own polkit action (fun.hearthos.files-admin, /usr/share/polkit-1/actions/fun.hearthos.files-admin.policy), which
+always asks for an administrator's password and keeps that answer a few minutes for this program only (never for
+pkexec in general).
+
+  hearth-files-admin files-mkdir PATH            a new folder
+  hearth-files-admin files-new-file PATH         a new empty file
+  hearth-files-admin files-rename PATH NEWNAME   rename in place
+  hearth-files-admin files-delete PATH...        delete for good (there's no Trash for system files)
+  hearth-files-admin files-copy SRC... DEST [--decide JSON] [--default rename|replace|skip]
+  hearth-files-admin files-move SRC... DEST [--decide JSON] [--default rename|replace|skip]
+  hearth-files-admin files-chmod PATH MODE       permissions as an octal number
+  hearth-files-admin files-chown PATH USER GROUP owner and group (names that exist on this PC)
+
+Every path is checked again here, and for copies and moves every name made in the destination too: absolute and plain
+(no "..", no links anywhere on the way: each folder is opened one step at a time with O_NOFOLLOW and the change is made
+relative to it, so a folder swapped for a link meanwhile can't redirect it), never in, or resolving into, the parts that
+start the PC (/boot, /efi, the system image under /usr and /sysroot, /etc/fstab, the kernel's and the boot menu's settings),
+never /proc, /sys, /dev or /run, and never a top-level folder itself ("/etc" can't be deleted or renamed). The result
+is one JSON line like hearth-files'; a failure is "error: ..." and exit 1.
+"""
+import grp
+import json
+import os
+import pwd
+import re
+import shutil
+import stat
+import sys
+
+# The PC has to keep starting (the owner's rule): these are never changed from Files, even as administrator.
+REFUSED = ('/boot', '/efi', '/sysroot', '/ostree', '/proc', '/sys', '/dev', '/run', '/bin', '/sbin', '/lib', '/lib32',
+           '/lib64', '/usr', '/etc/fstab', '/etc/crypttab', '/etc/kernel', '/etc/default/grub', '/etc/grub.d',
+           '/etc/dracut.conf', '/etc/dracut.conf.d', '/etc/initramfs-tools', '/etc/sudoers', '/etc/sudoers.d',
+           '/etc/pam.d', '/etc/shadow', '/etc/gshadow', '/etc/passwd', '/etc/group', '/etc/polkit-1', '/etc/bootc',
+           '/var/lib', '/etc/security', '/etc/login.defs', '/etc/nsswitch.conf', '/etc/systemd', '/etc/NetworkManager',
+           '/etc/ssh')
+ALLOWED_UNDER_REFUSED = ('/usr/local',)
+
+
+class Fail(Exception):
+    pass
+
+
+def refused(path):
+    """Is PATH (plain and absolute) one of the places Files never changes, or inside one?"""
+    if any(path == a or path.startswith(a + '/') for a in ALLOWED_UNDER_REFUSED):
+        return False
+    return any(path == r or path.startswith(r + '/') for r in REFUSED)
+
+
+SAFE = 'is part of what starts this PC or runs it: Hearth keeps it safe (change it in Settings, or with Hearth\'s system tools)'
+
+
+def check(path, must_exist=True, into=False):
+    """PATH if Files may change it as root. INTO: a folder things are put into (it may be a top-level one, but it has to
+    be a real folder, not a link). Neither the path nor where it really leads may be a refused place, and no folder on
+    the way may be a link."""
+    if not isinstance(path, str) or not path.startswith('/') or '\0' in path or len(path) > 4096:
+        raise Fail('give the full path')
+    if os.path.normpath(path) != path or path.startswith('//'):
+        raise Fail('the path has to be written plainly (no "..", "." or "//")')
+    if path == '/' or (path.count('/') == 1 and not into):
+        raise Fail('top-level folders (%s) are never changed this way' % path)
+    if refused(path):
+        raise Fail('%s %s' % (path, SAFE))
+    home = home_of_caller()
+    if home and (path == home or path.startswith(home + '/')):
+        raise Fail('that\'s in your home folder: change it as yourself (Act as administrator is for system folders)')
+    parent = os.path.dirname(path)
+    # A folder anyone can write to (/tmp, /var/tmp): another user could swap names there under root's feet.
+    for d in [parent] + ([path] if into else []):
+        try:
+            m = os.stat(d, follow_symlinks=False).st_mode
+            if stat.S_ISDIR(m) and m & stat.S_IWOTH:        # (a link's own mode means nothing: links are refused below)
+                raise Fail('%s is a folder anyone can change, so nothing is changed in it as administrator' % d)
+        except FileNotFoundError:
+            pass
+    if os.path.realpath(parent) != parent:
+        raise Fail('the path goes through a link: open the real folder (%s)' % os.path.realpath(parent))
+    real = os.path.realpath(path)
+    if refused(real):
+        raise Fail('%s leads to %s, which %s' % (path, real, SAFE))
+    if into:
+        if os.path.islink(path) or real != path:
+            raise Fail('%s is a link: open the real folder (%s)' % (path, real))
+        if not os.path.isdir(path):
+            raise Fail('the destination has to be a folder')
+    if must_exist and not os.path.lexists(path):
+        raise Fail('“%s” isn\'t there any more' % os.path.basename(path))
+    return path
+
+
+def open_dir(path):
+    """An fd for the folder PATH, opened one name at a time from / with O_NOFOLLOW: a link anywhere on the way (even one
+    put there after check()) fails instead of being followed."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open('/', flags)
+    try:
+        for part in [x for x in path.split('/') if x]:
+            try:
+                nfd = os.open(part, flags, dir_fd=fd)
+            except OSError as e:
+                if e.errno in (40, 20):          # ELOOP, ENOTDIR: a link or not a folder
+                    raise Fail('%s goes through a link or something that isn\'t a folder: nothing was changed' % path)
+                raise
+            os.close(fd)
+            fd = nfd
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def home_of_caller():
+    uid = os.environ.get('PKEXEC_UID')
+    if uid and uid.isdigit():
+        try:
+            return os.path.realpath(pwd.getpwuid(int(uid)).pw_dir)
+        except KeyError:
+            return None
+    return None
+
+
+def valid_name(name):
+    if not name or name in ('.', '..') or '/' in name or '\0' in name or len(os.fsencode(name)) > 255:
+        raise Fail('that name can\'t be used')
+    return name
+
+
+def unique(target):
+    if not os.path.lexists(target):
+        return target
+    d, base = os.path.split(target)
+    stem, ext = (base, '') if os.path.isdir(target) else os.path.splitext(base)
+    n = 1
+    while True:
+        n += 1
+        t = os.path.join(d, '%s (%d)%s' % (stem, n, ext))
+        if not os.path.lexists(t):
+            return t
+
+
+def remove_at(dfd, name):
+    """Deletes NAME in the folder DFD for good; a link is removed itself, never followed (rmtree's fd-based walk)."""
+    st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+    if stat.S_ISDIR(st.st_mode):
+        shutil.rmtree(name, dir_fd=dfd)
+    else:
+        os.unlink(name, dir_fd=dfd)
+
+
+def copy_file_at(src, dfd, name):
+    """A file (or a link, as a link) copied to NAME in the folder DFD, never through a link there."""
+    if os.path.islink(src):
+        os.symlink(os.readlink(src), name, dir_fd=dfd)
+        return
+    with open(src, 'rb') as fi:
+        fo = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=dfd)
+        with os.fdopen(fo, 'wb') as f:
+            shutil.copyfileobj(fi, f, 1 << 20)
+            st = os.fstat(fi.fileno())
+            os.fchmod(f.fileno(), stat.S_IMODE(st.st_mode))
+            os.utime(f.fileno(), ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
+def transfer(args, move):
+    decide, default = {}, 'rename'
+    rest = []
+    i = 0
+    while i < len(args):
+        if args[i] == '--decide' and i + 1 < len(args):
+            try:
+                decide = json.loads(args[i + 1])
+            except ValueError:
+                raise Fail('bad choices')
+            if not isinstance(decide, dict):
+                raise Fail('bad choices')
+            i += 2
+        elif args[i] == '--default' and i + 1 < len(args) and args[i + 1] in ('rename', 'replace', 'skip'):
+            default = args[i + 1]
+            i += 2
+        else:
+            rest.append(args[i])
+            i += 1
+    if len(rest) < 2:
+        raise Fail('what to copy, and where')
+    srcs, dest = rest[:-1], rest[-1]
+    # The destination is changed as root: checked (a real folder, no link anywhere). Sources are only read when
+    # copying, so anything readable will do; moving changes them too, so they're checked like the destination.
+    check(dest, into=True)
+    items, skipped = [], []
+    for s in srcs:
+        if move:
+            check(s)
+        elif not isinstance(s, str) or not s.startswith('/') or os.path.normpath(s) != s or not os.path.lexists(s):
+            raise Fail('“%s” isn\'t there any more' % os.path.basename(str(s)))
+        name = valid_name(os.path.basename(s))
+        if os.path.realpath(s) == os.path.realpath(dest) or (os.path.isdir(s) and (os.path.realpath(dest) + '/').startswith(os.path.realpath(s) + '/')):
+            raise Fail('a folder can\'t go into itself')
+        target = os.path.join(dest, name)
+        how = decide.get(name, default) if os.path.lexists(target) else 'go'
+        if how not in ('go', 'skip', 'rename', 'replace'):
+            raise Fail('bad choices')
+        if how == 'skip':
+            skipped.append(s)
+            continue
+        if how == 'rename':
+            target = unique(target)
+        # Every name made (or replaced) in the destination is checked like any other path: copying a folder called
+        # pam.d into /etc, or fstab, sudoers.d, grub into /etc/default, is refused before anything is touched.
+        check(target, must_exist=False)
+        tname = os.path.basename(target)
+        dfd = open_dir(dest)
+        try:
+            if how == 'replace' and os.path.lexists(target):
+                remove_at(dfd, tname)
+            if move:
+                sfd = open_dir(os.path.dirname(s))
+                try:
+                    try:
+                        os.rename(name, tname, src_dir_fd=sfd, dst_dir_fd=dfd)
+                    except OSError as e:
+                        if e.errno != 18:            # EXDEV: another drive, so copy, then delete the original
+                            raise
+                        if os.path.isdir(s) and not os.path.islink(s):
+                            shutil.copytree(s, target, symlinks=True)
+                        else:
+                            copy_file_at(s, dfd, tname)
+                        remove_at(sfd, name)
+                finally:
+                    os.close(sfd)
+            elif os.path.isdir(s) and not os.path.islink(s):
+                if os.path.lexists(target):
+                    raise Fail('“%s” is already there' % tname)
+                os.mkdir(tname, 0o700, dir_fd=dfd)       # made here without following links, then filled
+                tfd = os.open(tname, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dfd)
+                os.close(tfd)
+                shutil.copytree(s, target, symlinks=True, dirs_exist_ok=True)
+                os.chmod(tname, stat.S_IMODE(os.stat(s).st_mode), dir_fd=dfd)
+            else:
+                copy_file_at(s, dfd, tname)
+        finally:
+            os.close(dfd)
+        items.append(target)
+        print('progress: ' + json.dumps({'done': len(items), 'total': len(srcs), 'speed': 0, 'file': name}), flush=True)
+    return {'ok': True, 'items': items, 'skipped': skipped}
+
+
+def at_parent(p):
+    """(fd of P's folder, P's name) for a change made relative to that folder."""
+    return open_dir(os.path.dirname(p)), os.path.basename(p)
+
+
+def main(argv):
+    if len(argv) < 2:
+        raise Fail(__doc__.strip().splitlines()[0])
+    if os.geteuid() == 0 and not (os.environ.get('PKEXEC_UID') or '').isdigit():
+        raise Fail('run this through pkexec')
+    c, a = argv[1], argv[2:]
+    if c in ('files-mkdir', 'files-new-file') and len(a) == 1:
+        p = check(a[0], must_exist=False)
+        valid_name(os.path.basename(p))
+        dfd, name = at_parent(p)
+        try:
+            if c == 'files-mkdir':
+                os.mkdir(name, 0o755, dir_fd=dfd)
+            else:
+                os.close(os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644, dir_fd=dfd))
+        finally:
+            os.close(dfd)
+        return {'ok': True, 'path': p}
+    if c == 'files-rename' and len(a) == 2:
+        p = check(a[0])
+        new = valid_name(a[1].strip())
+        dest = check(os.path.join(os.path.dirname(p), new), must_exist=False)
+        if os.path.lexists(dest) and dest != p:
+            raise Fail('there\'s already something called “%s” here' % new)
+        dfd, name = at_parent(p)
+        try:
+            os.rename(name, new, src_dir_fd=dfd, dst_dir_fd=dfd)
+        finally:
+            os.close(dfd)
+        return {'ok': True, 'path': dest}
+    if c == 'files-delete' and a:
+        ps = [check(x) for x in a]                     # all checked before any is deleted
+        gone = []
+        for p in ps:
+            dfd, name = at_parent(p)
+            try:
+                remove_at(dfd, name)
+            finally:
+                os.close(dfd)
+            gone.append(p)
+        return {'ok': True, 'deleted': gone}
+    if c in ('files-copy', 'files-move'):
+        return transfer(a, c == 'files-move')
+    if c == 'files-chmod' and len(a) == 2:
+        p = check(a[0])
+        if not re.fullmatch(r'[0-7]{1,4}', a[1]):
+            raise Fail('that isn\'t a permission number')
+        dfd, name = at_parent(p)
+        try:
+            st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+            if stat.S_ISLNK(st.st_mode):
+                raise Fail('a shortcut\'s permissions are the ones of what it points to')
+            if not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+                raise Fail('only files and folders')
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
+            try:
+                now = os.fstat(fd)
+                if (now.st_dev, now.st_ino) != (st.st_dev, st.st_ino):
+                    raise Fail('it was replaced by something else meanwhile: nothing was changed')
+                os.fchmod(fd, int(a[1], 8))
+                mode = stat.S_IMODE(os.fstat(fd).st_mode)
+            finally:
+                os.close(fd)
+        finally:
+            os.close(dfd)
+        return {'ok': True, 'mode': mode}
+    if c == 'files-chown' and len(a) == 3:
+        p = check(a[0])
+        try:
+            uid, gid = pwd.getpwnam(a[1]).pw_uid, grp.getgrnam(a[2]).gr_gid
+        except KeyError:
+            raise Fail('there\'s no such account or group on this PC')
+        dfd, name = at_parent(p)
+        try:
+            os.chown(name, uid, gid, dir_fd=dfd, follow_symlinks=False)
+        finally:
+            os.close(dfd)
+        return {'ok': True, 'owner': a[1], 'group': a[2]}
+    raise Fail('unknown request')
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv)), flush=True)
+    except Fail as e:
+        print('error: ' + str(e)[0].upper() + str(e)[1:], flush=True)
+        sys.exit(1)
+    except OSError as e:
+        print('error: ' + (e.strerror or str(e)) + (' (' + e.filename + ')' if getattr(e, 'filename', None) else ''), flush=True)
+        sys.exit(1)
