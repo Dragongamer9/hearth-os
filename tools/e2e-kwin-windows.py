@@ -242,9 +242,16 @@ def frames_check(procs):
         "w.connect('destroy', Gtk.main_quit); w.show_all(); Gtk.main()"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         env=dict(os.environ, GDK_BACKEND='wayland')))
     c = wait(lambda: win('Test CSD'), 15)
+    if c:
+        ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test CSD', 'zone': 'center'}))
+        time.sleep(2)
+        c = win('Test CSD') or c
+        shot('frame-csd-full')
+        crop('frame-csd-full', (200, 60, 1720, 300), 'frame-csd')
     check('an app that draws its own title bar has no second frame', c and c.get('framed') is False, c or [w.get('title') for w in listed().get('windows', [])])
     if c:
         ipc('winlist', 'act', 'Test CSD', 'close')
+        wait(lambda: not win('Test CSD'), 8)
     # The pictures: Test A in the top left quarter (in front, then behind Test B), then maximized; then another look.
     for t in ('Test A', 'Test B'):
         ipc('winlist', 'act', t, 'activate')
@@ -257,11 +264,11 @@ def frames_check(procs):
     many, size = crop('frame-full', (0, 30, 1000, 230), 'frame-active')
     check('the frame picture (active) is more than one colour', many, size)
     ipc('winlist', 'act', 'Test B', 'activate')
-    wait(lambda: listed().get('active') == (win('Test B') or {}).get('id'))
+    b_front = wait(lambda: listed().get('active') == (win('Test B') or {}).get('id'), 8)
     time.sleep(1.5)
     shot('frame-full-2')
     many, size = crop('frame-full-2', (0, 30, 1000, 230), 'frame-inactive')
-    check('the frame picture (inactive) is more than one colour', many, size)
+    check('the frame picture (inactive) is more than one colour', many and b_front, (size, 'Test B in front' if b_front else 'Test B never came in front'))
     ipc('winlist', 'act', 'Test A', 'maximize')
     wait(lambda: (win('Test A') or {}).get('maximized') is True)
     time.sleep(1.5)
@@ -276,7 +283,7 @@ def frames_check(procs):
     desk({'look': 'hearth', 'accent': '#ffd166'})
     changed = wait(lambda: open(os.path.join(theme, 'decoration.svg')).read() != before, 20)
     check('a look change writes new frames', changed, 'decoration.svg unchanged')
-    time.sleep(3)
+    time.sleep(8)                       # the shell's own look change settles (it fades) and KWin draws the new frames
     shot('frame-full-4')
     many, size = crop('frame-full-4', (0, 30, 1000, 230), 'frame-hearth-gold')
     check('the frame picture (Hearth look, gold) is more than one colour', many, size)
