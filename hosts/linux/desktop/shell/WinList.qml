@@ -208,10 +208,10 @@ Singleton {
             }
             return wl.send(c);
         }
-        // Live previews of the window with this title, at a place on screen (checks: x, y in KWin's coordinates, the
+        // Live previews of the window with this title ("*": every window), at a place on screen (checks: x, y in KWin's coordinates, the
         // card's bottom middle), the way the dock asks for them.
         function previewAt(title: string, x: int, y: int): bool {
-            const w = (wl.toplevels ? wl.toplevels.values : []).filter(t => title === "" || t.title === title);
+            const w = (wl.toplevels ? wl.toplevels.values : []).filter(t => title === "*" || t.title === title);
             if (!w.length || !wl.kwin) return false;
             return wl.send({ op: "preview", ids: w.map(t => wl.widOf(t)), at: { x: x, y: y }, key: "check" });
         }
