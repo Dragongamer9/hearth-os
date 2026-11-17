@@ -369,6 +369,7 @@ jobs:
           kdown() { wtype -k Right; sleep 1; for i in $(seq 1 "$1"); do wtype -k Down; done; sleep 1; grim "shots/kwin-pages/$2.png" || true; }
           kp kwin-effects 00-labwc-needs-kwin
           kp mouse 00-labwc-mouse
+          kp kwin-behaviour wb-0-labwc-window-behaviour
           K0=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
           L0=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
           # Saved settings to show: three named desktops, a tile layout for the screen, two window rules, a few effects.
@@ -385,6 +386,10 @@ jobs:
             > "$HOME/.config/kwinrulesrc"
           printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
           printf '%s\n' '[ButtonRebinds][Mouse]' 'ExtraButton1=Key,Alt+Left' 'ExtraButton5=Key,Meta+W' > "$HOME/.config/kcminputrc"
+          # Window behaviour (SetKwinWindows.qml): focus follows the pointer with raise on hover, a middle click closes,
+          # Super + right button opens the window menu.
+          printf '%s\n' '' '[Windows]' 'FocusPolicy=FocusFollowsMouse' 'AutoRaise=true' 'AutoRaiseInterval=500' '' '[MouseBindings]' \
+            'CommandActiveTitlebar2=Close' 'CommandInactiveTitlebar2=Close' 'CommandAll3=Operations menu' >> "$HOME/.config/kwinrc"
           touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
           K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
@@ -405,6 +410,13 @@ jobs:
           # (mouse-buttons:press); the middle-click paste switch is in 21, the pen-and-mouse pointer switch in 09.
           kp mouse-buttons 19-mouse-buttons
           kp mouse-buttons:press 20-mouse-buttons-press
+          kp kwin-behaviour wb-1-window-behaviour; kdown 10 wb-2-window-behaviour-title-bar
+          # Further down with Down only: Right on a choice would pick the next option (and save it).
+          for i in $(seq 1 5); do wtype -k Down; done; sleep 1; grim shots/kwin-pages/wb-3-window-behaviour-super-drag.png || true
+          # A window menu's More actions › "Special window settings…" (here as its IPC): Window rules for that app,
+          # with a button to make one (nothing written: the K1/K2 check below).
+          ipc settings close; ipc settings windowRules foot "Terminal"; sleep 3; grim shots/kwin-pages/wb-4-window-rules-for-a-window.png || true
+          ipc settings state | grep -q '"page":"kwin-rules"' || { echo "::error title=KWin pages::Special window settings didn't open Window rules: $(ipc settings state | cut -c1-200)"; touch shots/FAILED; }
           ipc settings close; sleep 1
           rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
           K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
@@ -2867,7 +2879,9 @@ jobs:
           - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
           - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
           - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 21-mouse-on-kwin 13-touchpad-on-kwin"
-          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube 19-mouse-buttons 20-mouse-buttons-press"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube"
+          - "19-mouse-buttons 20-mouse-buttons-press"
+          - "wb-0-labwc-window-behaviour wb-1-window-behaviour wb-2-window-behaviour-title-bar wb-3-window-behaviour-super-drag wb-4-window-rules-for-a-window"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

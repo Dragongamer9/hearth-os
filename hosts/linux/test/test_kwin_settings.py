@@ -193,12 +193,58 @@ class Helper(Env):
         with self.assertRaises(K.Fail):
             K.set_file('kwinrc', json.dumps({'Compositing][x': {'Backend': 'XRender'}}))
         with self.assertRaises(K.Fail):
-            K.set_file('kwinrc', json.dumps({'MouseBindings': {'CommandAll1': 'Move'}}))
+            K.set_file('kwinrc', json.dumps({'MouseBindings': {'CommandWindow1': 'Nothing'}}))   # clicks in windows stay KWin's
         with self.assertRaises(K.Fail):
             K.set_file('passwd', json.dumps({}))
         out = K.set_file('kwinrc', json.dumps({'Plugins': {'wobblywindowsEnabled': True}}))
         self.assertEqual(out['files']['kwinrc']['Plugins']['wobblywindowsEnabled'], 'true')
         self.assertEqual(self.read('kwinrc'), '[Plugins]\nwobblywindowsEnabled=true\n')
+
+    def test_window_behaviour(self):
+        # Settings › Window behaviour (SetKwinWindows.qml): [Windows] focus and placement, [MouseBindings] title bar and
+        # Super+drag; only the keys changed are written and a key set back to KWin's default (null) is taken out.
+        self.write('kwinrc', SAMPLE)
+        K.set_file('kwinrc', json.dumps({'Windows': {'FocusPolicy': 'FocusFollowsMouse', 'AutoRaise': True, 'AutoRaiseInterval': 400,
+                                                     'FocusStealingPreventionLevel': 3, 'Placement': 'UnderMouse'},
+                                         'MouseBindings': {'CommandActiveTitlebar2': 'Close', 'CommandInactiveTitlebar2': 'Close',
+                                                           'CommandAllKey': 'Alt', 'CommandAll3': 'Operations menu',
+                                                           'CommandTitlebarWheel': 'Shade/Unshade'}}))
+        text = self.read('kwinrc')
+        for line in ('FocusPolicy=FocusFollowsMouse', 'AutoRaise=true', 'AutoRaiseInterval=400', 'FocusStealingPreventionLevel=3',
+                     'Placement=UnderMouse', 'ElectricBorderDelay=150', '[MouseBindings]', 'CommandActiveTitlebar2=Close',
+                     'CommandAllKey=Alt', 'CommandAll3=Operations menu', 'CommandTitlebarWheel=Shade/Unshade', 'blurEnabled=false'):
+            self.assertIn(line, text)
+        self.assertEqual(text.count('[Windows]'), 1)
+        K.set_file('kwinrc', json.dumps({'Windows': {'FocusPolicy': None}, 'MouseBindings': {'CommandAllKey': None}}))
+        text = self.read('kwinrc')
+        self.assertNotIn('FocusPolicy', text)
+        self.assertNotIn('CommandAllKey', text)
+        self.assertIn('CommandAll3=Operations menu', text)
+        with self.assertRaises(K.Fail):
+            K.set_file('kwinrc', json.dumps({'MouseBindings': {'CommandAll1': 'Move', 'CommandWindowWheel': 'Nothing'}}))
+        self.assertNotIn('CommandAll1', self.read('kwinrc'), 'a refused change writes none of its keys')
+
+    def test_window_behaviour_page_writes_only_what_it_may(self):
+        # Every [Windows] / [MouseBindings] key the page sets is one hearth-kwin-settings lets through, and the page
+        # writes nothing when it opens (only from onChosen / onToggled / onMoved).
+        qml = (SHELL / 'SetKwinWindows.qml').read_text()
+        used = set(re.findall(r'"(Windows|MouseBindings)",\s*"(\w+)"', qml))
+        self.assertTrue(used, 'the page names its keys')
+        for g, k in used:
+            self.assertTrue(K.allowed('kwinrc', g), g)
+            only = K.ONLY_KEYS['kwinrc'].get(g)
+            if only is not None:
+                self.assertIn(k, only)
+        for k in ('FocusPolicy', 'AutoRaise', 'AutoRaiseInterval', 'DelayFocusInterval', 'ClickRaise', 'NextFocusPrefersMouse',
+                  'FocusStealingPreventionLevel', 'TitlebarDoubleClickCommand', 'Placement'):
+            self.assertIn(('Windows', k), used)
+        for k in K.ONLY_KEYS['kwinrc']['MouseBindings']:
+            self.assertIn(('MouseBindings', k), used)
+        self.assertIn('KwinGate', qml)
+        self.assertNotIn('Component.onCompleted', qml)
+        page = re.search(r'\{ id: "kwin-behaviour", file: "SetKwinWindows.qml", cat: "pers"[^}]*\}', (SHELL / 'settings-pages.js').read_text())
+        self.assertTrue(page, 'Personalization › Window behaviour is in settings-pages.js')
+        self.assertIn('"kwin-behaviour"', (SHELL / 'settings-index.js').read_text())
 
     def test_status_under_labwc_is_not_live(self):
         with mock.patch.dict(os.environ, {'HEARTH_WM': '', 'LABWC_PID': '42'}):
