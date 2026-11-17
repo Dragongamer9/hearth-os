@@ -72,7 +72,8 @@ Everything Mantel and Hearth use today on labwc or KWin, and where each stands. 
 | gamma control, or Hearth's own night light and colour filters | Night light (wlsunset), hearth-gamma (inverted colours) | **phase 2**: wlr-gamma-control on real screens (the card's colour ramp; one app per screen, as on labwc; back to normal when it lets go); nested there's no ramp (apps are told "failed"). Hearth's own built-in filters: stage 3 |
 | screencast for the portal (PipeWire) | screen sharing in Discord, browsers, OBS | stage 3: the path is there (xdg-desktop-portal-wlr's screencast uses wlr-screencopy with damage, now offered); the portal's config for Firehold and dmabuf copies come with it |
 | tearing-control | games that want no vsync | **phase 2**: offered and the hint kept per surface; frames still wait for the screen until Smithay can flip asynchronously (0.7 can't): stage 3 |
-| VRR (FreeSync / G-Sync) | games | stage 3 |
+| VRR (FreeSync / G-Sync) | games | **game rows**: on for a screen while a fullscreen game is on it (per game, on by default), only on screens that switch without a modeset; see "Games: the Guide's rows" |
+| Frame limit, resolution scaling, direct scanout | the Guide over a game (mockup 3) | **game rows**: see "Games: the Guide's rows" |
 | multi-GPU, Nvidia | gaming laptops, the owner's RTX 5070 PC | from Anvil (it renders on one GPU and copies to the others); needs proving on Nvidia: stage 3 |
 | HDR and colour management | HDR screens | stage 4 (Smithay's support is still young) |
 | multi-seat (hearth-seats: a second player's own screen, keyboard and pad) | Couch co-op | stage 4 (stays on labwc until then) |
@@ -97,6 +98,59 @@ Only Ctrl+Alt+F1..F12 (switching consoles) still works.
   the prompt too.
 - Tested in `firehold-test.sh` (steps 7 and 8): locked by Mantel, Mantel killed (still locked, the prompt, a wrong
   password stays locked), Mantel back and taking over, killed again, the right password unlocks.
+
+## Games: the Guide's rows
+
+The Guide over a game (mockup `docs/mockups/firehold/3-in-game.png`) has three rows that only Firehold's own
+compositor can do. They are built in `hosts/firehold-comp/src/game.rs` (with `render.rs` and `udev.rs`), for "the
+game": the window that is fullscreen on a screen.
+
+- **Frame limit** (Off, 30, 40, 60, 90, 120, the screen's rate). The game's frame callbacks, and its FIFO barrier
+  (Vulkan's FIFO through wp-fifo), stop coming with the screen's frames and come from a timer of their own at the limit,
+  the way gamescope limits a game. Nothing else waits: Mantel, the Guide and every other window keep the screen's pace.
+  A limit at or above a real screen's rate needs no timer (the screen paces the game already); "the screen's rate" is
+  the same as vsync.
+- **Resolution scaling** (Off, Quality 1/1.5, Balanced 1/1.7, Performance 1/2 on each side, FSR 1's ratios). The game
+  is told a smaller fullscreen size (1920 x 1080 at Quality: 1280 x 720) and its client gets the matching scale, so
+  Smithay maps its buffers, the pointer and touch, and the screens it's told about between the two sizes. The
+  compositor draws it full screen with a linear filter and a contrast-adaptive sharpening pass (FSR 1's RCAS / AMD's
+  CAS style: sharpens less where the contrast is already high, so edges don't ring), a GLES shader made once per GPU.
+  If that shader can't be made, plain linear is used and the log says so. The Guide's label is the size it draws at
+  in the screen's pixels ("Quality · 1440p" on a 4K screen). X11 games (through XWayland, which all X11 apps share)
+  aren't scaled yet: the row says so (`scalingNote`) and the game draws at the screen's size.
+- **Direct to the display** (on by default). While the game is fullscreen with nothing over it, its own buffer may go
+  straight onto the screen's primary plane in any format the plane takes (Smithay's `DrmCompositor`, with
+  `ALLOW_PRIMARY_PLANE_SCANOUT_ANY`); the kernel's test commit decides, and when it says no the frame is composited as
+  always. While it's sharpening, the game is always composited (the shader needs the GPU). Off for a game: always
+  composited. Whether the last frame went straight to the display is in the status (`scanout`) and the log.
+  `FIREHOLD_DISABLE_DIRECT_SCANOUT` still turns all of it off. **VRR (adaptive sync)** goes on for that screen while
+  the game is fullscreen (per game, on by default), only when the screen can switch without a modeset (no black
+  flash); it goes off again when the game leaves. A failure is logged and the screen keeps its fixed rate.
+
+**The interface the Guide uses** (FireholdGuide.qml on `feature/firehold-shell` calls the helper):
+
+| Name | What |
+|---|---|
+| `hearth-firehold-game status` (`hosts/linux/desktop/shell`) | one JSON line: `{"ok", "running", "backend", "game": {"appId", "title", "x11", "output", "outputSize", "refresh", "frameLimit" (`"off"`, a number or `"screen"`), "frameLimitLabel", "frameLimitActive", "pacedFps", "scaling", "scalingLabel" (`"Quality · 1440p"`), "renderSize", "configureSize", "scalingNote", "sharpen", "sharpenActive", "direct", "scanout" (`"direct"`, `"composited"`, `"unknown"`), "scanoutChoice", "vrr", "vrrActive", "vrrScreen" (`"yes"`, `"no"`, `"needs-modeset"`, `"unknown"`, `"nested"`)} or null}`. Writes nothing (opening the Guide changes nothing) |
+| `hearth-firehold-game set KEY VALUE [APP]` | `frameLimit off\|30\|40\|60\|90\|120\|screen`, `scaling off\|quality\|balanced\|performance`, `direct on\|off`, `vrr on\|off`, `sharpen on\|off`, for the fullscreen game (or the app id APP); prints the new status, or `error: ...` and exits 1 |
+| `hearth-firehold-game step KEY up\|down [APP]` | the Guide's ‹ › (the next or previous value, round); prints the new status |
+| `$XDG_RUNTIME_DIR/firehold-game-<WAYLAND_DISPLAY>.sock` | the compositor's control socket: one line in (`status`, `reload`), one JSON line out. Only the helper needs it |
+| `~/.config/hearth/firehold-games.json` | `{"games": {"<app id>": {"frameLimit", "scaling", "direct", "vrr", "sharpen"}}}`. Written only by the helper, through `hearth_settings_io` (atomic, `.bak`, merged under the lock); a key that's missing is its default and is never written. The compositor reads it at start, when it changes and on `reload`, and never writes it; a file it can't read leaves it with what it had (the helper puts it back from `.bak` the next time it saves) |
+| `$XDG_RUNTIME_DIR/firehold.json`'s `game` | the same status, for tests |
+
+**Safety.** Nothing here can stop Firehold from starting: a control socket that can't be made, a timer that can't
+start, a shader that can't compile, a plane that refuses the game's buffer and a screen that won't switch VRR are each
+logged (`Firehold game: ...` in `firehold.log`) and the game is drawn the normal way. The session ladder is untouched.
+
+**Tests** (`.github/workflows/firehold.yml`, job `game`; `.github/scripts/firehold-game-test.sh`, nested and headless):
+a stand-in game in plain Python (`firehold-game-client.py`: fullscreen, shared memory, a 200-pixel white square)
+chosen for through the helper exactly as the Guide does. It measures the frame callbacks with no limit, at 30 (27–33
+a second) and at 60; checks the size the game is told at Quality (1280 x 720) and Performance (960 x 540) and that
+grim's picture of the screen has the square upscaled (300 and 400 pixels); that `status` writes nothing, that the
+file is written with its `.bak`, that a damaged file is left alone by the compositor; Direct's choice on and off; a
+clean end. Pictures: `firehold-gn-1-native`, `-2-quality`, `-3-performance` (nested) and `firehold-gh-2-quality`
+(headless). Direct scanout and VRR need a real screen: `cargo test` checks their decisions (`game.rs`), and on a
+device the log says which way each frame went. `hosts/linux/test/test_firehold_game.py` checks the helper.
 
 ## The stages
 
@@ -142,7 +196,8 @@ Sizes are rough: S is a session or two, M about a week of sessions, L several we
   and the portals take their labwc ways, which the compositor's protocols are built to match), `HEARTH_WM=firehold`,
   `HEARTH_DESKTOP_PID` (its own process id), labwc's `rc.xml` for the shortcuts and key repeat, `theme.json` for the
   colours. It writes only `$XDG_RUNTIME_DIR/firehold.json` (what's on the screens, the lock, screen pictures
-  taken, for tests and Hearth) and its log, `~/.local/share/nimbus/firehold.log`. Screen changes from wlr-randr last
+  taken, the game, for tests and Hearth), its log, `~/.local/share/nimbus/firehold.log`, and the game rows' control socket
+  (`$XDG_RUNTIME_DIR/firehold-game-<socket>.sock`, removed when it ends). It only reads `~/.config/hearth/firehold-games.json`. Screen changes from wlr-randr last
   until it ends; nothing of yours is saved by it.
 - **Ending.** nimbus-mode ends it like KWin (a signal to `HEARTH_DESKTOP_PID`, forced after 4 seconds); it ends cleanly
   on SIGTERM, SIGINT and SIGHUP.
@@ -181,7 +236,7 @@ Building and testing happen only in GitHub Actions.
   screens) and `headless.rs` (no screen), `state.rs` (the protocols), `lock.rs` (the lock screen and its prompt),
   `screencopy.rs` (screen pictures), `output_management.rs` (wlr-randr), `gamma.rs` (colour ramps), `edid.rs`
   (screens' names), `tearing.rs`, `shell/` (windows, layer surfaces, XWayland, Hearth's frames in `ssd.rs`),
-  `wm.rs` (minimize, snap, focus, the status file), `foreign_toplevel.rs` (Mantel's taskbar), `keybinds.rs` (rc.xml),
+  `wm.rs` (minimize, snap, focus, the status file), `game.rs` (the Guide's game rows), `foreign_toplevel.rs` (Mantel's taskbar), `keybinds.rs` (rc.xml),
   `theme.rs` (Mantel's colours), `input_handler.rs`, `render.rs`, `drawing.rs`.
 - Session: `hosts/linux/session/nimbus-session` (`run_firehold`, `firehold_ok`), `nimbus-mode`,
   `hosts/linux/desktop/firehold/autostart` (runs Desktop Mode's one autostart).

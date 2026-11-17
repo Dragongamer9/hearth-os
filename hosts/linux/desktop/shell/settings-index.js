@@ -516,6 +516,16 @@ var ENTRIES = [
 "i": "clipboard"
 },
 {
+"t": "Selection history",
+"p": "clipboard",
+"i": "clipboard"
+},
+{
+"t": "Keep the clipboard and selection in step",
+"p": "clipboard",
+"i": "sync"
+},
+{
 "t": "Open clipboard history",
 "p": "clipboard",
 "d": "Super+V",
@@ -3772,6 +3782,32 @@ var ENTRIES = [
 "i": "cloud"
 },
 {
+"t": "Alt+Space or Alt+F2 opens it at the top of the screen",
+"p": "search",
+"d": "Like KDE's KRunner: everything the app menus find, in the order below. Type ? in it to see what you can type. When Settings › Keyboard switches layouts with Alt+Space, Alt+F2 opens it.",
+"i": "search"
+},
+{
+"t": "Type on the desktop to search",
+"p": "search",
+"d": "With the desktop in front, typing opens the search bar with what you typed",
+"i": "kbd"
+},
+{
+"t": "Move up",
+"p": "search"
+},
+{
+"t": "Move down",
+"p": "search"
+},
+{
+"t": "Hearth's own order",
+"p": "search",
+"d": "Put the groups back in the order Hearth started with",
+"i": "restart"
+},
+{
 "t": "Use Server mode",
 "p": "hs-server",
 "d": "Show it next to Game Mode and Desktop Mode: in Start in, here and on the dashboard. Off by default; Game Mode stays where your PC starts unless you choose Server mode",
@@ -4053,6 +4089,11 @@ var ENTRIES = [
 "t": "Website",
 "p": "store",
 "i": "globe"
+},
+{
+"t": "Tell me when app updates are there",
+"p": "store",
+"i": "bell"
 },
 {
 "t": "Update all apps",
