@@ -143,7 +143,6 @@ jobs:
           # shift the rest of a picture taken then, so the picture is taken right after a full repaint, away from :00.)
           while [ "$(date +%S)" -gt 45 ] || [ "$(date +%S)" -lt 3 ]; do sleep 1; done
           q firehold tab home; sleep 4; q firehold redraw; shot 01-couch-home 2
-          for h in title continue hero; do q firehold hide $h; q firehold tab library; sleep 1; q firehold tab home; shot 01x-home-without-$h 3; done; q firehold hide ""
           q firehold filter epic; shot 05b-library-epic 3; q firehold filter all
           q firehold search "deep"; shot 05c-library-search 3; q firehold search ""
           q firehold tab apps; shot 07-apps 4
