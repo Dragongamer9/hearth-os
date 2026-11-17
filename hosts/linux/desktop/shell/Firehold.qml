@@ -6,9 +6,9 @@
 // › Couch and Desk is FireholdSettings.qml. Works on KWin and labwc today (WinList); what needs Firehold's own
 // compositor (firehold-comp) is drawn but says so.
 //
-// Locked, nothing of it shows or runs: it's only read from ~/.config/nimbus/firehold.json's "firehold.unlocked".
-// TODO(merge with feature/hearth-compositor): the unlock (tap the version in Settings › About 7 times) is being added
-// there; once it's in, read its flag here instead of this file's key if it lives elsewhere.
+// Locked, nothing of it shows or runs: it's only read from ~/.config/nimbus/firehold.json.
+// Unlocked by tapping the Hearth OS version in Settings › About seven times (SettingsNav.tapVersion, which writes
+// {"firehold": {"unlocked": true}}; the flat key "firehold.unlocked" is read too).
 // Loaded by file name from shell.qml, so a problem in any of it only loses Firehold, never Desktop Mode.
 //   quickshell ipc -p <shell folder> call firehold state | couch | desk | tab <home|library|apps|store> | open <switcher|guide|settings|home>
 //                                                  | press <button> | filter <key> | search <text> | close | library
@@ -63,7 +63,7 @@ Scope {
         o[key] = value;
         writer.merge(o);
     }
-    readonly property bool unlocked: cfg["firehold.unlocked"] === true
+    readonly property bool unlocked: (cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true
     readonly property string mode: ["auto", "couch", "desk"].indexOf(cfg.posture) >= 0 ? cfg.posture : "auto"
     readonly property var perScreen: cfg.perScreen && typeof cfg.perScreen === "object" ? cfg.perScreen : ({})
     readonly property string startIn: ["couch", "desk", "last"].indexOf(cfg.startIn) >= 0 ? cfg.startIn : "desk"

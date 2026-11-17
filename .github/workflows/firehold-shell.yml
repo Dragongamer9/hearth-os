@@ -108,8 +108,9 @@ jobs:
           q settings page about; shot 00b-locked-about 4; q settings close
           [ ! -e "$F" ] || fail "firehold.json was written while it's locked"
 
-          # ---- unlocked (TODO: the 7 taps in Settings › About come from feature/hearth-compositor; the flag directly here)
-          python3 "$IO" merge "$F" '{"firehold.unlocked": true}'
+          # ---- unlocked: seven taps on the version in Settings › About (SettingsNav.tapVersion)
+          for i in 1 2 3 4 5 6 7; do q settings tapversion; sleep 0.3; done
+          sleep 2; cat "$F"
           for i in $(seq 1 20); do q firehold state | grep -q '"unlocked":true' && break; sleep 1; done
           for i in $(seq 1 30); do q firehold state | grep -q '"games":1[0-9]' && break; sleep 2; done
           echo "::notice title=firehold::unlocked: $(q firehold state | head -c 900)"
@@ -151,7 +152,7 @@ jobs:
           q firehold close; q settings page about; shot 09-about-row 4; q settings close
           # A choice: Always Couch (the settings panel with the controller: right, A), then back to Automatic
           q firehold open settings; sleep 2; q firehold press right; q firehold press a; sleep 2
-          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("posture")=="couch" and d.get("firehold.unlocked") is True else 1)' "$F" || fail "Always Couch wasn't saved as one key: $(cat "$F")"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("posture")=="couch" and d.get("firehold", {}).get("unlocked") is True else 1)' "$F" || fail "Always Couch wasn't saved as one key: $(cat "$F")"
           shot 06b-settings-always-couch 2
           q firehold press left; q firehold press a; sleep 2; q firehold press b
           cp "$F" shots/firehold.json; cat "$F"
@@ -294,7 +295,7 @@ jobs:
           w retroarch "Pixel Rally"; w steam_app_1000 "Ember Trails" 100x28
           sleep 3
           echo "::notice title=firehold kwin::windows: $(q winlist state | head -c 700)"
-          python3 "$SH/hearth_settings_io.py" merge "$F" '{"firehold.unlocked": true}'
+          python3 "$SH/hearth_settings_io.py" merge "$F" '{"firehold": {"unlocked": true}}'
           for i in $(seq 1 30); do q firehold state | grep -q '"games":1[0-9]' && break; sleep 2; done
           # 1. Couch Home
           q firehold couch; sleep 3; q firehold tab library; sleep 2; q firehold tab home; shot k01-couch-home 4
