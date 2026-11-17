@@ -365,8 +365,10 @@ class LockCheck(unittest.TestCase):
         self.assertIn('"nolock ', lock)
         b = read('os-bases/peppermint/build.sh')
         self.assertIn('XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck\n', b)
-        self.assertIn('libplasma6', b)
-        self.assertIn('kscreenlocker_greet isn\'t installed', b)
+        self.assertIn('kwin-lock/install.sh', b)
+        i = read('hosts/linux/desktop/kwin-lock/install.sh')
+        self.assertIn('kscreenlocker_greet isn\'t installed', i)
+        self.assertIn('libplasma6', i)
 
 
 class Access(unittest.TestCase):
@@ -414,7 +416,7 @@ class Wiring(unittest.TestCase):
         # (older: "Lockscreen QML outdated", it falls back to Plasma's own).
         self.assertEqual(meta['KPackageStructure'], 'Plasma/Shell')
         self.assertGreaterEqual(int(meta['X-Plasma-APIVersion']), 2)
-        self.assertIn('/usr/share/plasma/shells/org.hearth.mantel-lock', read('os-bases/peppermint/build.sh'))
+        self.assertIn('for kind in shells look-and-feel', read('hosts/linux/desktop/kwin-lock/install.sh'))
         qml = read('hosts/linux/desktop/kwin-lock/contents/lockscreen/LockScreen.qml')
         self.assertIn('authenticator.respond', qml)
         self.assertIn('Qt.quit()', qml)

@@ -1388,27 +1388,10 @@ command -v update-desktop-database >/dev/null && update-desktop-database -q /usr
 # wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
 test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
-# KWin's screen locker (its greeter shows Hearth's lock screen). Required: Mantel on KWin locks through it, and
-# hearth-lockcheck refuses to lock without it. Its Debian name is looked up, then the greeter must be there.
-KSL=""
-for p in kscreenlocker libkscreenlocker6 libkscreenlocker5; do have_pkg "$p" && { KSL=$p; break; }; done
-[ -n "$KSL" ] || { echo "KWin's screen locker (kscreenlocker) isn't in the repositories"; apt-cache search screenlocker; exit 1; }
-"${APT[@]}" "$KSL"
-KSL_GREETER=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
-[ -x "$KSL_GREETER" ] || { echo "kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
-# The greeter reads Hearth's lock screen as a Plasma/Shell package: that package type comes from libplasma (Debian's
-# libkscreenlocker6 doesn't pull it in; without it: "Invalid metadata for package structure Plasma/Shell").
-for p in libplasma6 libplasma5; do have_pkg "$p" && { "${APT[@]}" "$p"; break; }; done
-mkdir -p /usr/share/plasma/shells
-rm -rf /usr/share/plasma/shells/org.hearth.mantel-lock
-cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
-# Older kscreenlockers (before the shell package) take the lock screen from the look-and-feel package named in
-# kscreenlockerrc [Greeter] Theme: the same files there, as a Plasma/LookAndFeel package.
-mkdir -p /usr/share/plasma/look-and-feel
-rm -rf /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
-cp -a /usr/share/nimbus/desktop/kwin-lock /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
-python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["KPackageStructure"]="Plasma/LookAndFeel"; json.dump(m, open(p,"w"), indent=4)' \
-  /usr/share/plasma/look-and-feel/org.hearth.mantel-lock/metadata.json
+# KWin's screen locker, the package type it reads Hearth's lock screen as, and the lock screen itself (shell and
+# look-and-feel package): desktop/kwin-lock/install.sh, the same steps kwin-input.yml checks. Fails the build if any
+# is missing (a lock screen that can't show would be a lockout).
+bash /usr/share/nimbus/desktop/kwin-lock/install.sh /usr/share/nimbus/desktop/kwin-lock
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-lockcheck
 # The lock screen must be complete where the greeter looks (never a lock that can't show its screen: red flag 2).
 # With the greeter's own test run (off screen): it must load Hearth's lock screen, or the image isn't built.
