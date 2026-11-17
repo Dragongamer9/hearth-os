@@ -4850,7 +4850,7 @@ Scope {
                                         }
                                         if (app.clip.paths.length) s += " · " + app.plural(app.clip.paths.length, "item") + (app.clip.mode === "cut" ? " to move" : " copied");
                                         if (app.onCView) s += " · double-click a folder to open it";
-                                        else if (app.listing && !app.listing.writable && !app.listing.error) s += " · read-only";
+                                        else if (app.listing && !app.listing.writable && !app.listing.error) s += extras.adminHere ? " · as administrator" : " · read-only";
                                         return s;
                                     }
                                     color: app.note !== "" && app.noteError ? Theme.danger : app.note !== "" ? Theme.text : Theme.muted

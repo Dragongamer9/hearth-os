@@ -190,6 +190,9 @@ jobs:
             ipc settings close; sleep 1; ipc quick toggle; sleep 3; grim shots/quick-access-phone.png || true; ipc quick toggle
           elif [ "${{ matrix.set }}" = round2 ]; then
             sleep 4
+            # Two apps' notifications here, so "Send this PC's notifications" lists apps to leave out.
+            notify-send -a Thunderbird "New mail" "From Ada: lunch?" || true; notify-send -a Steam "Friend online" "Grace is playing" || true
+            sleep 2
             ( sleep 45; quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call browserpick close ) >/dev/null 2>&1 &
             ipc settings page phone:shared; sleep 5; grim shots/phone-shared.png || true
             ipc settings close; ipc settings page phone:remote; sleep 5; grim shots/phone-remote.png || true

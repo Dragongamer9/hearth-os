@@ -15,7 +15,7 @@ Item {
 
     Rectangle {
         visible: m.git !== "" && m.git !== "ignored"
-        width: Math.max(14, m.size * 0.3); height: width
+        width: Math.min(28, Math.max(14, m.size * 0.3)); height: width
         radius: width / 2
         anchors { right: parent.right; bottom: parent.bottom; rightMargin: -2; bottomMargin: -2 }
         color: m.fx ? m.fx.gitColor(m.git) : "transparent"

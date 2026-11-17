@@ -56,6 +56,7 @@ Scope {
         function group(g: string): void { ipc.get().setGroup(g); }
         function tagmenu(): void { ipc.get().fx.tagMenu(ipc.get().targets()); }
         function tag(name: string): void { ipc.get().open(""); ipc.get().fx.openTag(name); }
+        function place(id: string): void { const i = ipc.get().places.findIndex(q => q.id === id); if (i >= 0) { ipc.get().zone = "places"; ipc.get().placeIndex = i; } }
         function admin(on: string): void { ipc.get().fx.admin = on === "on"; ipc.get().reload(); }
         function where(): string { const f = ipc.peek(); return f && f.shown ? f.path + "|" + (f.current ? f.current.name : "") : ""; }
         // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.

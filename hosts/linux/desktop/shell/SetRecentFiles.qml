@@ -14,8 +14,8 @@ SetPage {
     property string msg: ""
     property bool bad: false
     property string confirmAll: ""
-    readonly property var p: st && st.prefs ? st.prefs : ({ remember: true, keepDays: 0, leaveOut: [] })
-    readonly property var left: p.leaveOut || []
+    readonly property var rp: st && st.prefs ? st.prefs : ({ remember: true, keepDays: 0, leaveOut: [] })
+    readonly property var leftOut: rp.leaveOut || []
     function say(t, b) { msg = t; bad = !!b; }
     function refresh() { job.run(["recent-prefs"], r => page.st = r, e => page.say(e, true)); }
     function set(change, ok) {
@@ -33,15 +33,15 @@ SetPage {
     }
     SetSwitch {
         icon: "clock"; title: "Remember the files I open"
-        sub: page.p.remember ? "Recent files show in Files, the launcher and jump lists" : "Off: nothing is kept, and what was kept is forgotten"
-        checked: page.p.remember !== false
+        sub: page.rp.remember ? "Recent files show in Files, the launcher and jump lists" : "Off: nothing is kept, and what was kept is forgotten"
+        checked: page.rp.remember !== false
         onToggled: v => page.set({ remember: v }, v ? "Recent files are remembered" : "Recent files are off")
     }
     SetChoice {
-        visible: page.p.remember !== false
+        visible: page.rp.remember !== false
         icon: "calendar"; title: "Keep them for"; sub: "Older ones are forgotten"
         options: [{ value: 0, label: "Always" }, { value: 1, label: "A day" }, { value: 7, label: "A week" }, { value: 30, label: "A month" }, { value: 90, label: "3 months" }, { value: 365, label: "A year" }]
-        current: page.p.keepDays || 0
+        current: page.rp.keepDays || 0
         onChosen: v => page.set({ keepDays: v }, "Kept " + ({ 0: "always", 1: "for a day", 7: "for a week", 30: "for a month", 90: "for 3 months", 365: "for a year" })[v])
     }
     Text { visible: page.msg !== ""; text: page.msg; color: page.bad ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.leftMargin: 4 }
@@ -63,20 +63,20 @@ SetPage {
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     Repeater {
-        model: page.left
+        model: page.leftOut
         delegate: SetRow {
             required property string modelData
             icon: modelData.indexOf("/") === 0 ? "folder" : "grid"; title: modelData; sub: "Select to remember it again"; chevron: false
-            onActivated: page.set({ leaveOut: page.left.filter(x => x !== modelData) }, "“" + modelData + "” is remembered again")
+            onActivated: page.set({ leaveOut: page.leftOut.filter(x => x !== modelData) }, "“" + modelData + "” is remembered again")
         }
     }
     Repeater {
-        model: page.st && page.st.apps ? page.st.apps.filter(a => page.left.indexOf(a) < 0).slice(0, 12) : []
+        model: page.st && page.st.apps ? page.st.apps.filter(a => page.leftOut.indexOf(a) < 0).slice(0, 12) : []
         delegate: SetSwitch {
             required property string modelData
             icon: "grid"; title: modelData; sub: "Remember what it opens"
             checked: true
-            onToggled: v => { if (!v) page.set({ leaveOut: page.left.concat([modelData]) }, "Files opened with " + modelData + " aren't remembered"); }
+            onToggled: v => { if (!v) page.set({ leaveOut: page.leftOut.concat([modelData]) }, "Files opened with " + modelData + " aren't remembered"); }
         }
     }
     SetField {
@@ -85,7 +85,7 @@ SetPage {
         onSubmitted: t => {
             const f = t.trim().replace(/\/+$/, "");
             if (f.indexOf("/") !== 0) return page.say("Type the folder's full path, starting with /", true);
-            page.set({ leaveOut: page.left.concat([f]) }, "Files in “" + f + "” aren't remembered");
+            page.set({ leaveOut: page.leftOut.concat([f]) }, "Files in “" + f + "” aren't remembered");
             folderField.text = "";
         }
     }
