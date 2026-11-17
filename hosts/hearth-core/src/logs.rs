@@ -365,6 +365,9 @@ pub fn report(version: &str) -> String {
         for (f, name) in DESKTOP_LOGS {
             if let Ok(t) = std::fs::read_to_string(data.join(f)) { body.push_str(&format!("\n--- {name} ({f}):\n{}\n", tail(&t, 150))); }
         }
+        // 1.14 (the owner, Nov 16: KDE wasn't installing): the downloads of KDE Plasma and GNOME, their progress, the
+        // record of what was added, and the last lines of each download's own run (hearth-desktops-helper's units).
+        body.push_str(&format!("\n--- Downloading KDE Plasma and GNOME (Settings › Your desktop):\n{}\n", sh("timeout 20 python3 /usr/share/nimbus/desktop/shell/hearth-desktops status 2>&1 | head -c 3000; echo; for n in kde gnome; do echo \"-- $n:\"; cat /run/hearth/desktops/$n.json /var/lib/hearth/desktops/$n.json 2>/dev/null; echo; journalctl -b --no-pager -o short-iso -u hearth-desktop-$n 2>/dev/null | tail -30; done")));
         section("Desktop Mode: Hearth Plasma, GNOME and COSMIC", body);
     }
     // Hearth Theater (docs/THEATER.md): its own log (start, the renderer and graphics it got, pages that loaded or
@@ -446,6 +449,10 @@ pub fn report(version: &str) -> String {
     section("Processor and graphics load", sh("top -b -n 1 -w 160 2>/dev/null | head -24 || ps -eo pcpu=,comm= --sort=-pcpu | head -15; \
         [ -e /proc/driver/nvidia/version ] && command -v nvidia-smi >/dev/null && { echo; nvidia-smi --query-gpu=name,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,power.draw --format=csv; echo; nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv; } || true"));
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
+    // 1.14 (the owner's laptop, Nov 16: 3.4 GB free but 23 MB "available", kswapd busy all the time): the kernel's
+    // memory values in use, which files set them, and Hearth's memory settings, so a "keep this much free" that's too
+    // much for the PC shows.
+    section("Memory settings in use", sh("for k in swappiness watermark_scale_factor min_free_kbytes watermark_boost_factor page-cluster; do printf '%s = %s\\n' \"vm.$k\" \"$(cat /proc/sys/vm/$k 2>/dev/null)\"; done; echo; grep -rsH -E 'vm\\.(swappiness|watermark|min_free)' /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d /usr/lib/sysctl.d 2>/dev/null | head -20; echo; cat /etc/hearth/memory.json 2>/dev/null | head -40; echo; grep -E 'MemFree|MemAvailable|SwapCached|Zswap|Shmem:' /proc/meminfo"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
     // Steam: the folders Hearth looks in, the one it uses, its account file's counts (no names or ids), the games'
     // records per library, the owned-games list and Steam's processes (steam::report).
