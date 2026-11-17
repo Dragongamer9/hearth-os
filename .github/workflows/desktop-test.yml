@@ -2289,8 +2289,10 @@ jobs:
           N=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["name"])' shots/kwin/get.json 2>/dev/null)
           [ -n "$N" ] || fail "hearth-screens get found no screen: $(head -c 300 shots/kwin/get.json) | kscreen-doctor: $(head -c 300 shots/kwin/kscreen-o.txt | tr '\n' '|')"
           echo "::notice title=KWin screens: get::$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))[0]; print(o["name"], o["description"], o["scale"], o["rotation"], [(m["width"], m["height"], round(m["refresh"])) for m in o["modes"] if m["current"]], "hdr", o["hdr"], "vrr", o["vrr"], "icc", o["icc"])' shots/kwin/get.json 2>&1 | cut -c1-600)"
+          echo "::notice title=KWin screens: kscreen-doctor scale::$(kscreen-doctor "output.$N.scale.1.25" 2>&1 | tr '\n' '|' | cut -c1-300) then: $(kscreen-doctor -o 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'Scale|Geometry' | tr '\n\t' '| ')"
+          kscreen-doctor "output.$N.scale.1" >/dev/null 2>&1; sleep 1
           python3 $SH set "{\"outputs\": {\"$N\": {\"scale\": 1.25}}}" > shots/kwin/set.json 2>&1
-          got=$(python3 -c 'import json,sys; print([o["scale"] for o in json.load(open(sys.argv[1]))["outputs"] if o["name"] == sys.argv[2]][0])' shots/kwin/set.json "$N" 2>&1)
+          got=$(python3 -c 'import json,sys; print([o["scale"] for o in json.loads(open(sys.argv[1]).read().splitlines()[-1])["outputs"] if o["name"] == sys.argv[2]][0])' shots/kwin/set.json "$N" 2>&1)
           [ "$got" = 1.25 ] || fail "set scale 1.25: KWin says $(echo "$got" | tail -2 | tr '\n' '|') (set: $(tail -c 400 shots/kwin/set.json | tr '\n' '|'))"
           grep -q '"scale": 1.25' "$HOME/.config/nimbus/screens.json" || fail "set didn't keep the scale in screens.json: $(head -c 300 "$HOME/.config/nimbus/screens.json")"
           grep -q "wlr-randr --output '$N' --on .*--scale 1.25" "$HOME/.config/nimbus/display.sh" || fail "display.sh (labwc's) doesn't have it: $(cat "$HOME/.config/nimbus/display.sh" | tr '\n' '|')"
@@ -2309,12 +2311,6 @@ jobs:
           echo "::notice title=KWin screens: kwinrc::$(tr '\n' '|' < shots/kwin/nightcolor.txt) kwriteconfig6: $(command -v kwriteconfig6 || echo none)"
           nl=$(gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/NightLight --method org.freedesktop.DBus.Properties.GetAll org.kde.KWin.NightLight 2>&1 | cut -c1-500)
           echo "::notice title=KWin screens: Night Light::$nl"
-          # Screen off and on (Settings › Power's idle screen-off under KWin).
-          sh hosts/linux/desktop/shell/hearth-screen-power check || fail "hearth-screen-power can't under KWin"
-          sh hosts/linux/desktop/shell/hearth-screen-power off; off=$?; sleep 2
-          dpms=$(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)
-          sh hosts/linux/desktop/shell/hearth-screen-power on; sleep 2
-          echo "::notice title=KWin screens: screen off::exit $off; while off: $dpms; on again: $(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)"
           # A screenshot through KWin's ScreenShot2 with its permission check on.
           hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
           if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
@@ -2337,6 +2333,13 @@ jobs:
           fi
           echo "::notice title=KWin screens: shell log::$(grep -v -i locale shots/kwin/shell.log | grep -i -E 'error|warn|qml' | sort -u | tail -12 | tr '\n' '|' | cut -c1-1000)"
           echo "::notice title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt 2>/dev/null | tr '\n' '|' | cut -c1-500)"
+          # Screen off and on (Settings › Power's idle screen-off under KWin), near the end: this nested KWin on software GL
+          # may quit when its screen comes back.
+          sh hosts/linux/desktop/shell/hearth-screen-power check || fail "hearth-screen-power can't under KWin"
+          sh hosts/linux/desktop/shell/hearth-screen-power off; off=$?; sleep 2
+          dpms=$(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)
+          sh hosts/linux/desktop/shell/hearth-screen-power on; sleep 2
+          echo "::notice title=KWin screens: screen off::exit $off; while off: $dpms; on again: $(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)"
           # Tearing (kwinrc's Compositing AllowTearing, then KWin's reconfigure, as KDE's own settings do) last: this
           # nested KWin on software GL may quit when it reconfigures its compositor.
           python3 $SH set '{"tearing": false}' >/dev/null 2>&1; grep -q 'AllowTearing=false' "$HOME/.config/kwinrc" || fail "tearing off didn't reach kwinrc"
