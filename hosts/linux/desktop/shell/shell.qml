@@ -153,6 +153,8 @@ ShellRoot {
             list.push({ separator: true });
             list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", short: pinned ? "Unpin" : "Pin", icon: pinned ? "unpin" : "pin", quick: true, run: () => DeskState.togglePin(entry.id) });
             list.push({ label: "Add to desktop", short: "To desktop", icon: "plus", quick: true, run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
+            // 1.14: the menu editor (Settings › Apps › App menu editor) opened at this app.
+            list.push({ label: "Edit app…", icon: "edit", run: () => { launcher.shown = false; SettingsNav.menuEdit = entry.id; settings.open("menu-editor"); } });
             // Apps installed from Flathub: Uninstall… asks, then hearth-flatpak removes it (Bazaar can too).
             if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
                 // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.

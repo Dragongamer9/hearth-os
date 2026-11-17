@@ -1,0 +1,208 @@
+#!/usr/bin/python3
+"""hearth-autostart: Hearth Settings › Apps › Autostart (1.14, KDE's Autostart page), as you (no root). The apps and
+commands that start when you sign in are the XDG autostart files (~/.config/autostart over /etc/xdg/autostart), the
+same list Task Manager › Startup shows and Desktop Mode starts (hearth-tasks autostart-run); this adds adding an app,
+adding a command, and removing one you added. A system one is never deleted: turning it off writes your own copy
+with Hidden=true (hearth-tasks' rule), and on again removes that copy.
+
+  hearth-autostart list                 JSON: {items: [{file, name, sub, on, canChange, yours, command}]}
+  hearth-autostart add-app DESKTOP_ID   start this installed app at sign-in (a copy of its menu entry)
+  hearth-autostart add-command          stdin {"name": "...", "command": "..."}: run this at sign-in
+  hearth-autostart set FILE on|off      turn one on or off
+  hearth-autostart remove FILE          remove one you added (yours only)
+Files are written atomically (hearth_settings_io's write_text: a temporary file, fsync, rename). Output: one JSON line;
+failures print "error: ..." and exit 1.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shlex
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+ID_RE = re.compile(r'^[A-Za-z0-9_.+-]{1,200}\.desktop$')
+MARK = 'X-Hearth-Autostart=true'
+
+
+class Fail(Exception):
+    pass
+
+
+def tasks():
+    loader = importlib.machinery.SourceFileLoader('hearth_tasks', os.path.join(HERE, 'hearth-tasks'))
+    spec = importlib.util.spec_from_loader('hearth_tasks', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def data_dirs():
+    home = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
+    return [home] + [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+
+
+def find_app(desktop_id):
+    for d in data_dirs():
+        p = os.path.join(d, 'applications', desktop_id)
+        if os.path.isfile(p):
+            return p
+        # Flatpak's and others' exported folders use the same names.
+    return None
+
+
+def write(path, text):
+    if hsio:
+        hsio.write_text(path, text)
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+
+
+def items(t=None):
+    t = t or tasks()
+    user, system = t.autostart_dirs()
+    out = []
+    for e in t.autostart_entries(user, system):
+        if e['kind'] != 'autostart':
+            continue                         # Hearth's own parts aren't listed here (Task Manager shows them)
+        fn = e['id'].split(':', 1)[1]
+        mine = os.path.join(user, fn)
+        text = t.read(mine, '') or '' if os.path.exists(mine) else ''
+        de = t.parse_desktop(text) if text else {}
+        sys_has = any(os.path.exists(os.path.join(d, fn)) for d in system or [])
+        out.append({'file': fn, 'name': e['name'], 'sub': e['sub'], 'on': e['on'], 'canChange': e['canChange'],
+                    'yours': os.path.exists(mine) and not sys_has, 'added': MARK in text,
+                    'command': de.get('Exec', '') if MARK in text else ''})
+    return {'items': out}
+
+
+def add_app(desktop_id, t=None):
+    t = t or tasks()
+    if not ID_RE.match(desktop_id or ''):
+        raise Fail('not an app')
+    src = find_app(desktop_id)
+    if not src:
+        raise Fail("that app isn't installed")
+    text = t.read(src, '') or ''
+    de = t.parse_desktop(text)
+    if not de.get('Exec'):
+        raise Fail("that app has nothing to start")
+    user, _ = t.autostart_dirs()
+    dest = os.path.join(user, desktop_id)
+    text = t.set_key(text, 'Hidden', 'false')
+    text = t.set_key(text, 'X-Hearth-Autostart', 'true')
+    # Only the main entry: actions (other groups) aren't started.
+    text = text.split('\n[Desktop Action', 1)[0].rstrip('\n') + '\n'
+    write(dest, text)
+    return {'ok': True, 'file': desktop_id}
+
+
+def clean_name(n):
+    n = (n or '').strip()
+    if not 1 <= len(n) <= 80 or re.search(r'[\x00-\x1f\x7f]', n):
+        raise Fail('give it a name (up to 80 letters)')
+    return n
+
+
+def exec_line(command):
+    """The desktop entry's Exec= for a command line: run through sh -c, quoted the way the spec asks."""
+    c = (command or '').strip()
+    if not 1 <= len(c) <= 2000 or re.search(r'[\x00-\x08\x0a-\x1f\x7f]', c):
+        raise Fail('the command must be one line')
+    arg = c.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%')
+    return 'sh -c "%s"' % arg
+
+
+def file_for(name, user):
+    base = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:40] or 'command'
+    fn, i = 'hearth-cmd-%s.desktop' % base, 2
+    while os.path.exists(os.path.join(user, fn)):
+        fn, i = 'hearth-cmd-%s-%d.desktop' % (base, i), i + 1
+    return fn
+
+
+def add_command(req, t=None):
+    t = t or tasks()
+    if not isinstance(req, dict):
+        raise Fail('bad input')
+    name = clean_name(req.get('name'))
+    ex = exec_line(req.get('command'))
+    user, _ = t.autostart_dirs()
+    fn = file_for(name, user)
+    text = ('[Desktop Entry]\nType=Application\nName=%s\nComment=A command you added in Settings › Autostart\nExec=%s\n'
+            'Terminal=false\nHidden=false\n%s\n') % (name, ex, MARK)
+    write(os.path.join(user, fn), text)
+    return {'ok': True, 'file': fn}
+
+
+def remove(fn, t=None):
+    t = t or tasks()
+    if not ID_RE.match(fn or ''):
+        raise Fail('not a startup entry')
+    user, system = t.autostart_dirs()
+    if any(os.path.exists(os.path.join(d, fn)) for d in system or []):
+        raise Fail("that one comes with the system: turn it off instead")
+    p = os.path.join(user, fn)
+    if not os.path.isfile(p):
+        raise Fail("that one isn't there any more")
+    os.remove(p)
+    return {'ok': True}
+
+
+def set_on(fn, on, t=None):
+    t = t or tasks()
+    if not ID_RE.match(fn or '') or on not in ('on', 'off'):
+        raise Fail('not a startup entry')
+    try:
+        t.set_autostart(fn, on == 'on')
+    except t.Fail as e:
+        raise Fail(str(e))
+    return {'ok': True}
+
+
+def stdin_json():
+    raw = os.environ.get('HEARTH_INPUT')
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read()
+    try:
+        return json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('bad input')
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['list']:
+            r = items()
+        elif argv[:1] == ['add-app'] and len(argv) == 2:
+            r = add_app(argv[1])
+        elif argv[:1] == ['add-command']:
+            r = add_command(stdin_json())
+        elif argv[:1] == ['set'] and len(argv) == 3:
+            r = set_on(argv[1], argv[2])
+        elif argv[:1] == ['remove'] and len(argv) == 2:
+            r = remove(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

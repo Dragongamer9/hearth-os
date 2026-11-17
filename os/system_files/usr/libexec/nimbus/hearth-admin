@@ -2812,7 +2812,7 @@ def main(argv):
     elif cmd == 'write-file' and len(argv) == 3:
         caller()
         write_file(argv[2])
-    elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background'):
+    elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background', 'lid'):
         # Settings' system pages added in 1.14 (firmware, region, account type, the login screen's picture): their own
         # script checks every argument again.
         caller()
