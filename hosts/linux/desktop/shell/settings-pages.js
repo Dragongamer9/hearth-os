@@ -58,6 +58,7 @@ var PAGES = [
     { id: "bluetooth", file: "SetBluetooth.qml", cat: "bt", label: "Bluetooth", icon: "bt", desc: "Headphones, controllers and other wireless devices", words: "headphones headset speaker pair devices", old: "Bluetooth", status: "bt" },
     { id: "keyboard", file: "SetKeyboard.qml", cat: "bt", label: "Keyboard", icon: "kbd", desc: "Layouts, typing, the on-screen keyboard, shortcuts", words: "layout on-screen osk typing shortcuts", old: "Keyboard" },
     { id: "mouse", file: "SetMouse.qml", cat: "bt", label: "Mouse & touchpad", icon: "mouse", desc: "Pointer speed, scrolling, tapping", words: "touchpad pointer cursor speed", old: "Mouse & touchpad" },
+    { id: "kwin-tablet", file: "SetKwinTablet.qml", cat: "bt", label: "Drawing tablet & touchscreen", icon: "edit", desc: "Pen tablet's screen and area, pressure, pen buttons; touchscreen screen and calibration", words: "kwin tablet wacom pen stylus pressure buttons touchscreen calibrate calibration map screen" },
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
 
     // ---- Hearth Link (its own category; the page is the landing)
@@ -67,12 +68,18 @@ var PAGES = [
     // ---- Personalization
     { id: "appearance", file: "SetAppearance.qml", cat: "pers", label: "Personalization", icon: "palette", words: "look theme accent colour color wallpaper dark light mode sunset transparency clock", old: "Appearance", landing: true },
     { id: "bar-dock", file: "SetBarDock.qml", cat: "pers", label: "Bar and dock", icon: "window", desc: "Where the bar goes, the dock, auto-hide, the app menu and the right-click menu", words: "taskbar panel dock autohide islands bar layout edge app menu start tiles classic centred right-click context menu windows 11 compact", status: "bar" },
+    // Mantel on KWin (1.14, docs/KWIN-SETTINGS.md): KWin's own settings, Hearth's pages (greyed under labwc)
+    { id: "kwin-effects", file: "SetKwinEffects.qml", cat: "pers", label: "Window effects", icon: "sparkle", desc: "Animation speed, overview, Alt+Tab, blur, wobbly windows, minimize and open effects, dimming", words: "kwin effects animation speed overview present windows desktop grid alt tab switcher blur translucency transparent wobbly magic lamp squash fade glide scale dim inactive shake cursor mouse click track" },
+    { id: "kwin-desktops", file: "SetKwinDesktops.qml", cat: "pers", label: "Virtual desktops", icon: "desktops", desc: "How many desktops, their names, rows, switching animation", words: "kwin virtual desktops workspaces rows names wrap slide switch" },
+    { id: "kwin-tiling", file: "SetKwinTiling.qml", cat: "pers", label: "Tiling", icon: "grid", desc: "Each screen's tile layout, dragging windows to edges, snapping", words: "kwin tiling tiles layout columns quick tile snap edges corners maximize" },
+    { id: "kwin-edges", file: "SetKwinEdges.qml", cat: "pers", label: "Screen edges", icon: "display", desc: "Hot corners, edges, touchscreen swipes, sticky edges between screens", words: "kwin hot corners screen edges electric borders touch swipe edge barrier" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
     { id: "apps", file: "SetApps.qml", cat: "apps", label: "Installed apps", icon: "store", desc: "Apps from Debian packages, Flathub and AppImages; uninstall", words: "install uninstall packages deb flatpak appimage", old: "Apps" },
     { id: "winapps", file: "SetWinApps.qml", cat: "apps", label: "Windows apps", icon: "window", desc: "Windows programs (.exe, .msi) with the Proton built into Hearth OS: open, Proton, remove", words: "windows exe msi proton wine dxvk vkd3d ge-proton program installer" },
     { id: "defaults", file: "SetDefaults.qml", cat: "apps", label: "Default apps", icon: "grid", desc: "Which app opens web links, pictures, music and more", words: "default apps browser terminal", old: "Default apps" },
+    { id: "kwin-rules", file: "SetKwinRules.qml", cat: "apps", label: "Window rules", icon: "window", desc: "Make an app's windows open where, how big and how you want", words: "kwin window rules position size desktop keep above no border opacity tearing app class" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
     { id: "claude", file: "SetClaude.qml", cat: "apps", label: "Claude", icon: "chat", desc: "Claude on this PC", words: "ai assistant", old: "Claude" },
 
@@ -87,6 +94,7 @@ var PAGES = [
     { id: "discord", file: "SetDiscord.qml", cat: "gaming", label: "Discord", icon: "chat", desc: "Which Discord the bar opens, what you're playing on Discord, friends joining", words: "friends chat invite rich presence playing join dorion matrix", old: "Friends" },
     { id: "remote", file: "SetRemote.qml", cat: "gaming", label: "Remote play", icon: "play", desc: "Stream this PC's games to your phone or TV, play another PC here, or use this PC from anywhere", words: "moonlight sunshine stream anywhere remote desktop work tailscale", old: "Remote play" },
     { id: "controller", file: "SetController.qml", cat: "gaming", label: "Controller", icon: "pad", desc: "Controller mouse, button layout, what games see, remapping", words: "gamepad buttons pad", old: "Controller" },
+    { id: "kwin-games", file: "SetKwinGames.qml", cat: "gaming", label: "Full-screen games & X11 apps", icon: "pad", desc: "Tearing in full-screen games, keys X11 apps can see, scaling X11 apps", words: "kwin tearing vsync latency xwayland x11 push to talk eavesdrop scaling blurry" },
     { id: "handheld", file: "SetHandheld.qml", cat: "gaming", label: "Handheld", icon: "bolt", desc: "Power limit, fans, lights and back buttons (Handheld Daemon)", words: "hhd tdp rgb lights fans", old: "Handheld" },
 
     // ---- Accounts

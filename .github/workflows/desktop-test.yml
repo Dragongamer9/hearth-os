@@ -206,6 +206,9 @@ jobs:
           # Desktop Mode's settings file there from the start (the shell watches it once it exists: the keyboard looks'
           # light-mode pictures below change it while the shell runs).
           mkdir -p "$HOME/.local/share/nimbus"; [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md) in their preview: their test devices and screen. Only
+          # used once $XDG_RUNTIME_DIR/hearth-kwin-preview exists (below); until then they show "Needs Mantel on KWin".
+          export HEARTH_KWIN_FIXTURE="$PWD/hosts/linux/test/fixtures/kwin-preview.json"
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -268,6 +271,51 @@ jobs:
           wtype -k Return; sleep 3; grim shots/settings-redesign/35-search-opened-the-setting.png || true
           rs home 36-home; wtype -M ctrl -k f -m ctrl; sleep 1; wtype appearance 2>/dev/null || true; sleep 2; grim shots/settings-redesign/36-search-old-name.png || true
           wtype -k Escape; wtype -k Escape; ipc settings close
+          # ---- Mantel on KWin's Settings pages (1.14, docs/KWIN-SETTINGS.md): first as they are under labwc (greyed, with
+          # "Needs Mantel on KWin"), then in the preview with saved settings, at 1920×1080 (the kwin-pages-shots jobs post
+          # them as SHOT notices). Opening them writes nothing; labwc's own files are as they were.
+          mkdir -p shots/kwin-pages
+          kp() { ipc settings close; ipc settings page "$1"; sleep 3; grim "shots/kwin-pages/$2.png" || true; }
+          kdown() { wtype -k Right; sleep 1; for i in $(seq 1 "$1"); do wtype -k Down; done; sleep 1; grim "shots/kwin-pages/$2.png" || true; }
+          kp kwin-effects 00-labwc-needs-kwin
+          kp mouse 00-labwc-mouse
+          K0=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum)
+          L0=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum)
+          # Saved settings to show: three named desktops, a tile layout for the screen, two window rules, a few effects.
+          mkdir -p "$HOME/.config"
+          printf '%s\n' '[Desktops]' 'Id_1=6a1f0c62-1b1d-4c8e-9d2f-000000000001' 'Name_1=Main' 'Id_2=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'Name_2=Games' \
+            'Id_3=6a1f0c62-1b1d-4c8e-9d2f-000000000003' 'Name_3=Work' 'Number=3' 'Rows=1' '' '[Plugins]' 'wobblywindowsEnabled=true' 'diminactiveEnabled=true' \
+            '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
+            '[Tiling][e3d3d5c4-af96-5514-988a-a5cf444294bf]' 'tiles={"layoutDirection":"horizontal","tiles":[{"width":0.3},{"width":0.4},{"width":0.3,"layoutDirection":"vertical","tiles":[{"height":0.5},{"height":0.5}]}]}' \
+            > "$HOME/.config/kwinrc"
+          printf '%s\n' '[General]' 'count=2' 'rules=1d0b1f5e-0000-4000-8000-000000000001,1d0b1f5e-0000-4000-8000-000000000002' '' \
+            '[1d0b1f5e-0000-4000-8000-000000000001]' 'Description=Steam on the Games desktop' 'wmclass=steam' 'wmclassmatch=1' 'desktops=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'desktopsrule=3' 'noborder=true' 'noborderrule=2' '' \
+            '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
+            > "$HOME/.config/kwinrulesrc"
+          printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
+          touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
+          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum)
+          kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
+          kp kwin-desktops 03-virtual-desktops
+          kp kwin-tiling 04-tiling
+          kp kwin-edges 05-screen-edges; kdown 12 06-screen-edges-touch
+          kp kwin-rules 07-window-rules; wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim shots/kwin-pages/08-window-rule-open.png || true
+          kp kwin-tablet 09-tablet-and-touchscreen; kdown 12 10-touchscreen
+          kp kwin-games 11-games-and-x11-apps
+          kp mouse 12-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
+          kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
+          ipc settings close; sleep 1
+          rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
+          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum)
+          L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum)
+          [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
+          [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
+          [ "$K0" != "$K1" ] || echo "::notice title=KWin pages::labwc run left no KWin files (as it should)"
+          if grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=KWin pages::$(grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          fi
+          echo "::notice title=KWin pages::$(ls shots/kwin-pages | tr '\n' ' ')"
           # 1.14, the new Settings: the keyboard-and-mouse Home (A1) and Display (A2), then the controller look (B1, B2):
           # Quick, System › Display, the help panel, LB / RB, X Default asked first, and back to A with the mouse.
           mkdir -p shots/settings-new
@@ -2152,3 +2200,69 @@ jobs:
         run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
       - name: Picture (gm-fallback)
         run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true
+
+  # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md): their pictures as notices (a JPEG in base64 pieces, title
+  # "SHOT kwin-<which> <n>", at most 9 a picture), five pictures a job (a job keeps 50 notices). Taken at 1920×1080.
+  kwin-pages-shots:
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
+          - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
+          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse"
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      # The JPEGs first (as small as needed to fit in 9 notices), then one step a picture: a step keeps 10 notices.
+      - name: Make the JPEGs
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['PART'].split():
+              p = 'shots/kwin-pages/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT kwin-%s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((960, 45), (800, 40), (720, 35), (640, 30), (560, 25), (480, 22)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/kwin-pages/%s.jpg' % name, 'wb').write(b.getvalue())
+              print('%s: %dx%d from %dx%d, %d bytes' % (name, w, round(im.height * w / im.width), im.width, im.height, len(b.getvalue())))
+          PY
+      - name: Picture 1
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f1); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 2
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f2); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 3
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f3); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 4
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f4); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
+      - name: Picture 5
+        env:
+          PART: ${{ matrix.part }}
+        run: n=$(echo "$PART" | cut -d' ' -f5); f=shots/kwin-pages/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT kwin-$n $i::$part"; done || true
