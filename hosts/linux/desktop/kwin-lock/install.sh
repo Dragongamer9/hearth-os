@@ -3,9 +3,9 @@
 # os-bases/peppermint/build.sh and .github/workflows/kwin-input.yml (the same steps in both), as root.
 #   install.sh SOURCE_FOLDER   (this folder: metadata.json, contents/lockscreen/LockScreen.qml)
 # 1. KWin's screen locker: Debian's libkscreenlocker6 (kscreenlocker_greet).
-# 2. The "Plasma/Shell" package type the greeter reads the lock screen as. KDE ships it only inside
-#    plasma-workspace (the whole Plasma desktop, which Hearth doesn't install), so only that one plugin is taken
-#    from plasma-workspace's package, and every library it needs must already be there.
+# 2. The "Plasma/Shell" package type the greeter reads the lock screen as: libplasma's plugins (Debian's
+#    plasma-framework; not the Plasma desktop). If this Debian has it elsewhere, it's looked for in plasma-workspace's
+#    package and only that one plugin taken, with every library it needs already there.
 # 3. The lock screen itself, as that shell package (and as a look-and-feel package for older lockers).
 # Fails (exit 1) when any of it is missing: a lock screen that can't show would be a lockout.
 set -Eeuo pipefail
@@ -18,8 +18,10 @@ APT=(apt-get install -y --no-install-recommends)
 pick() { for p in "$@"; do apt-cache show "$p" >/dev/null 2>&1 && { echo "$p"; return 0; }; done; return 1; }
 KSL=$(pick kscreenlocker libkscreenlocker6 libkscreenlocker5) || { echo "install.sh: KWin's screen locker isn't in the repositories"; exit 1; }
 PLS=$(pick libplasma6 libplasma5 || true)
+# plasma-framework: libplasma's plugins, among them the Plasma/Shell package type (not the Plasma desktop).
+PFW=$(pick plasma-framework || true)
 # The lock screen is plain QtQuick + QtQuick.Layouts (Quickshell needs them too).
-"${APT[@]}" "$KSL" ${PLS:+"$PLS"} qml6-module-qtquick qml6-module-qtquick-layouts
+"${APT[@]}" "$KSL" ${PLS:+"$PLS"} ${PFW:+"$PFW"} qml6-module-qtquick qml6-module-qtquick-layouts
 GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null || true) | head -1)
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 
