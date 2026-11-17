@@ -7,7 +7,7 @@ name: Colibri
 
 on:
   push:
-    branches: ['feature/colibri']
+    branches: ['feature/colibri', feature/kwin-1.14]
     paths: ['hosts/linux/desktop/shell/hearth-colibri', 'hosts/linux/desktop/shell/hearth_ai_engines.py', 'hosts/linux/desktop/shell/SetAIEngine.qml',
             'hosts/linux/test/test_hearth_colibri.py', 'hosts/linux/test/colibri_shots_fixture.py', 'hosts/linux/test/fixtures/fake-coli.py',
             'os/system_files/usr/share/hearth/ai-models.json', '.github/workflows/colibri.yml']
