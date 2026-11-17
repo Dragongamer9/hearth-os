@@ -357,8 +357,9 @@ ShellRoot {
                              nightPlace: Settings.nightPlace, nightLat: Settings.nightLat, nightLon: Settings.nightLon, nightFade: Settings.nightFade })]) }
     }
 
-    // Auto-brightness (Settings › Display, a laptop with a light sensor): hearth-screens autobright runs while
-    // screens.json says so and ends by itself when it's turned off. Nothing at start depends on it.
+    // Auto-brightness (Settings › Display, a laptop with a light sensor; off until turned on): hearth-screens autobright
+    // reads iio-sensor-proxy while screens.json says so and ends by itself when it's turned off or can't (logged).
+    // Nothing at start depends on it.
     Scope {
         id: autoBright
         property bool on: false

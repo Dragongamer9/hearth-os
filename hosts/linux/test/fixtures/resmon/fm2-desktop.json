@@ -431,5 +431,5 @@
 "/sys/devices/pci0000:00/0000:00:15.1/driver": "/sys/bus/pci/drivers/pcieport",
 "/sys/devices/virtual/net-fixture/enp3s0/device": "/sys/devices/pci0000:00/0000:00:15.1/0000:03:00.0"
 },
-"name": "dad-fm2"
+"name": "fm2-desktop"
 }
