@@ -23,7 +23,20 @@ SetPage {
         commands: ["Commands", "Type > and a command to run it, in the terminal or on its own", "kbd"],
         emoji: ["Emoji", "heart, thumbs up, or :fire for emoji only; Enter copies it", "sparkle"],
         recent: ["Recent documents", "Files you opened lately", "clock"],
-        windows: ["Open windows", "Switch to a window by its title", "window"]
+        windows: ["Open windows", "Switch to a window by its title", "window"],
+        browser: ["Bookmarks and browser history", "Firefox's and Chromium's, read from a copy (the browser is never touched)", "globe"],
+        desktops: ["Virtual desktops and activities", "desktop 2, or an activity's name: Enter switches to it", "desktops"],
+        kill: ["Kill an app", "kill firefox: closes your own program after asking", "close"],
+        worldclock: ["World clock", "time in tokyo, 3pm london to new york", "clock"],
+        spell: ["Spell check and dictionary", "spell recieve, define hearth (hunspell; meanings on Wiktionary)", "check"],
+        chars: ["Special characters", "degree, euro, em dash, e acute, u+00e9; Enter copies it", "kbd"],
+        colours: ["Colours", "#ff8800, rgb(255, 136, 0), hsl(32, 100%, 50%): a swatch, and each form to copy", "palette"],
+        power: ["Power and session", "sleep, lock, restart, shut down, log out (asks first when it closes your apps)", "power"],
+        media: ["Media control", "play, pause, next, previous: for what's playing", "play"],
+        store: ["App store results", "install krita: apps on Flathub (only looked up when you type install or store)", "store"],
+        contacts: ["Contacts", "People in Hearth Contacts by name, e-mail or phone; Enter copies the e-mail", "user"],
+        events: ["Calendar events", "What's coming up in Hearth Calendar; today, tomorrow, this week", "calendar"],
+        notes: ["Notes", "Hearth Notes by title and by what's in them", "edit"]
     })
 
     function say(t, bad) { message = t; messageBad = !!bad; }

@@ -142,6 +142,7 @@ ShellRoot {
     Launcher {
         id: launcher
         popMenu: popMenu
+        dialog: deskDialog
         onSettingsRequested: settings.open("")
         onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {

@@ -1,0 +1,207 @@
+# Hearth 1.14's newer search plugins (test_search_plugins_114.py, docs/KDE-FEATURES-1.14.md): bookmarks and browser
+# history, virtual desktops and activities, kill an app, world clock, spell check and dictionary, special characters,
+# colours, power and session, media control, App store results, Hearth contacts, calendar events and notes.
+# Unit tests, then Desktop Mode on a virtual 1920 x 1080 screen (labwc headless + Quickshell on Fedora) with made-up
+# data (a Firefox profile, contacts, a calendar, notes, an activity, a pretend music player): each plugin's answer in
+# the Hearth menu, the "asks first" dialogs of Kill and Restart (cancelled), and Settings › Search.
+# Pictures: the "shots" jobs' SHOT notices (tools/shot-notices.py) and the artifact.
+name: Search plugins (1.14)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/w3-search-plugins]
+    paths: ['hosts/linux/desktop/shell/search/**', 'hosts/linux/desktop/shell/SearchSources.qml', 'hosts/linux/desktop/shell/hearth-search-sources',
+            'hosts/linux/test/test_search_plugins_114.py', '.github/workflows/search-plugins.yml']
+
+concurrency:
+  group: search-plugins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  labwc:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme python3-gobject dbus-daemon dbus-tools libnotify nodejs >/dev/null
+          dnf -y install wl-clipboard wtype foot hicolor-icon-theme rsms-inter-fonts hunspell hunspell-en-US google-noto-emoji-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true; hunspell -v 2>&1 | head -1 || echo "::warning title=setup::no hunspell"
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_search_plugins_114.py' -v 2>&1 | tail -40
+          for t in test_search_plugins_114 test_search_plugins test_hearth_search test_settings_persistence; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" >/tmp/$t.out 2>&1 || echo "::error title=$t::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/$t.out | head -6 | tr '\n' '|' | cut -c1-900)"
+          done
+          ! grep -lE '^(FAIL|ERROR):' /tmp/test_*.out
+
+      - name: Desktop Mode, the plugins
+        shell: bash
+        run: |
+          mkdir -p shots/post
+          exec > >(tee shots/step.log) 2>&1
+          set +e +o pipefail
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          export LANG=en_US.UTF-8 LC_ALL=C.UTF-8 TZ=America/Chicago
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          FAIL() { echo "::error title=search plugins::$*"; touch shots/FAILED; }
+          SH="$NIMBUS_SHARE/desktop/shell"
+          # ---- made-up data: a Firefox profile, contacts, a calendar, notes, an activity (no real person or account)
+          python3 - <<'PY'
+          import json, os, sqlite3, datetime
+          H = os.environ['HOME']
+          d = os.path.join(H, '.mozilla/firefox/demo.default-release'); os.makedirs(d, exist_ok=True)
+          c = sqlite3.connect(os.path.join(d, 'places.sqlite'))
+          c.executescript('''PRAGMA journal_mode=WAL;
+            CREATE TABLE moz_places (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER, hidden INTEGER, frecency INTEGER);
+            CREATE TABLE moz_bookmarks (id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, title TEXT, lastModified INTEGER);
+            INSERT INTO moz_places VALUES (1, 'https://hearthos.fun/', 'Hearth OS', 30, 0, 900), (2, 'https://hearthos.fun/docs/', 'Hearth OS docs', 12, 0, 500),
+                                          (3, 'https://flathub.org/apps/org.kde.krita', 'Krita on Flathub', 4, 0, 200);
+            INSERT INTO moz_bookmarks VALUES (1, 1, 1, 'Hearth OS', 5), (2, 1, 3, 'Krita on Flathub', 4);''')
+          c.commit(); c.close()
+          b = os.path.join(H, '.local/share/hearth-contacts/books/local'); os.makedirs(b, exist_ok=True)
+          open(os.path.join(b, 'sam.vcf'), 'w').write('BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Sam Rivera\r\nEMAIL:sam@example.org\r\nTEL:+1 555 0100\r\nORG:Hollow Pines Guild\r\nEND:VCARD\r\n')
+          open(os.path.join(b, 'samira.vcf'), 'w').write('BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Samira Okafor\r\nEMAIL:samira@example.org\r\nEND:VCARD\r\n')
+          cal = os.path.join(H, '.local/share/hearth-calendar'); os.makedirs(cal, exist_ok=True)
+          t = datetime.date.today(); n = t + datetime.timedelta(days=1)
+          json.dump({'events': [{'id': '1', 'calendar': 'local', 'title': 'Raid night', 'start': t.isoformat() + 'T23:00:00', 'end': t.isoformat() + 'T23:45:00', 'location': 'Discord'},
+                                {'id': '2', 'calendar': 'local', 'title': 'Raid prep: mech loadouts', 'start': n.isoformat() + 'T19:00:00', 'end': n.isoformat() + 'T20:00:00', 'location': ''}]},
+                    open(os.path.join(cal, 'calendar.json'), 'w'))
+          nd = os.path.join(H, 'Documents/Notes'); os.makedirs(nd, exist_ok=True)
+          open(os.path.join(nd, 'Shopping list.md'), 'w').write('# Shopping list\n- [ ] milk\n- [ ] coffee beans\n')
+          open(os.path.join(nd, 'Game ideas.md'), 'w').write('# Game ideas\nQuad mech: a coffee break animation between waves\n')
+          json.dump({'current': 'default', 'act:work': {'name': 'Work', 'icon': 'doc', 'wallpaper': '', 'pins': None, 'order': 1},
+                     'act:games': {'name': 'Games', 'icon': 'pad', 'wallpaper': '', 'pins': None, 'order': 2}},
+                    open(os.path.join(H, '.config/nimbus/activities.json'), 'w'))
+          PY
+          say() { echo "::notice title=search plugins::$*"; }
+          say "helper: browser $(python3 $SH/hearth-search-sources browser | cut -c1-200) · pim $(python3 $SH/hearth-search-sources pim | cut -c1-200) · spell $(python3 $SH/hearth-search-sources spell recieve)"
+          # ---- a pretend music player (MPRIS), for "pause"
+          cat > /tmp/player.py <<'PY'
+          from gi.repository import Gio, GLib
+          X = '''<node><interface name="org.mpris.MediaPlayer2"><method name="Raise"/><method name="Quit"/>
+          <property name="Identity" type="s" access="read"/><property name="CanQuit" type="b" access="read"/><property name="CanRaise" type="b" access="read"/>
+          <property name="HasTrackList" type="b" access="read"/><property name="DesktopEntry" type="s" access="read"/>
+          <property name="SupportedUriSchemes" type="as" access="read"/><property name="SupportedMimeTypes" type="as" access="read"/></interface>
+          <interface name="org.mpris.MediaPlayer2.Player"><method name="PlayPause"/><method name="Play"/><method name="Pause"/><method name="Next"/>
+          <method name="Previous"/><method name="Stop"/><property name="PlaybackStatus" type="s" access="read"/><property name="Metadata" type="a{sv}" access="read"/>
+          <property name="CanControl" type="b" access="read"/><property name="CanPlay" type="b" access="read"/><property name="CanPause" type="b" access="read"/>
+          <property name="CanGoNext" type="b" access="read"/><property name="CanGoPrevious" type="b" access="read"/><property name="CanSeek" type="b" access="read"/>
+          <property name="Position" type="x" access="read"/><property name="Volume" type="d" access="read"/><property name="Rate" type="d" access="read"/></interface></node>'''
+          P = {'Identity': GLib.Variant('s', 'Hearth Music'), 'CanQuit': GLib.Variant('b', False), 'CanRaise': GLib.Variant('b', False),
+               'HasTrackList': GLib.Variant('b', False), 'DesktopEntry': GLib.Variant('s', 'hearth-music'), 'SupportedUriSchemes': GLib.Variant('as', []),
+               'SupportedMimeTypes': GLib.Variant('as', []), 'PlaybackStatus': GLib.Variant('s', 'Playing'),
+               'Metadata': GLib.Variant('a{sv}', {'mpris:trackid': GLib.Variant('o', '/hearth/track/1'), 'xesam:title': GLib.Variant('s', 'Embers of Hollow Pines'),
+                                                  'xesam:artist': GLib.Variant('as', ['Hearth trailer music']), 'mpris:length': GLib.Variant('x', 180000000)}),
+               'CanControl': GLib.Variant('b', True), 'CanPlay': GLib.Variant('b', True), 'CanPause': GLib.Variant('b', True), 'CanGoNext': GLib.Variant('b', True),
+               'CanGoPrevious': GLib.Variant('b', True), 'CanSeek': GLib.Variant('b', False), 'Position': GLib.Variant('x', 0), 'Volume': GLib.Variant('d', 1.0), 'Rate': GLib.Variant('d', 1.0)}
+          node = Gio.DBusNodeInfo.new_for_xml(X)
+          def call(conn, sender, path, iface, method, params, inv): print('mpris', method, flush=True); inv.return_value(None)
+          def get(conn, sender, path, iface, prop): return P[prop]
+          def acquired(conn, name):
+              for i in node.interfaces: conn.register_object('/org/mpris/MediaPlayer2', i, call, get, None)
+          Gio.bus_own_name(Gio.BusType.SESSION, 'org.mpris.MediaPlayer2.hearthdemo', 0, acquired, None, None)
+          GLib.MainLoop().run()
+          PY
+          sed -i 's/^          //' /tmp/player.py
+          python3 /tmp/player.py > shots/player.log 2>&1 &
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # ---- the desktop
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          for i in $(seq 1 60); do [ -n "$(q launcher answers '2+2')" ] && break; sleep 2; done
+          sleep 8
+          C="$HOME/.config/hearth"
+          [ ! -e "$C/search.json" ] || FAIL "search.json was written before anything was changed (settings must never change by themselves)"
+          foot --app-id hearth-demo-foot sh -c 'sleep 600' >/dev/null 2>&1 &
+          sleep 2
+          # the menu opened once, so the plugins' data is read (bookmarks, contacts, calendar, notes, time zones)
+          q launcher open; sleep 4; q launcher close; sleep 1
+          shot() { q launcher query "$2"; sleep "${3:-3}"; grim "shots/post/$1.png" || echo "::warning title=pictures::no picture $1"; }
+          chk() { got=$(q launcher answers "$1"); case "$got" in *"$2"*) say "“$1” → ${got:0:300}" ;; *) FAIL "“$1” didn't answer $2: ${got:0:400}" ;; esac; }
+          shot 01-bookmarks "hearth"; chk "hearth" '"plugin":"browser"'; q launcher close
+          shot 02-activities "work"; chk "work" '"type":"activity"'; q launcher close
+          shot 03-kill "kill foot"; chk "kill foot" '"type":"kill"'
+          wtype -k Return; sleep 2; grim shots/post/04-kill-asks-first.png; wtype -k Escape; sleep 1
+          pgrep -f 'sleep 600' >/dev/null && say "Kill asked first and Cancel kept foot running" || FAIL "foot was killed without saying yes"
+          q launcher close
+          shot 05-world-clock "3pm london to tokyo"; chk "3pm london to tokyo" 'in Tokyo'; q launcher close
+          shot 06-spell "spell recieve" 4; chk "spell recieve" 'receive'; q launcher close
+          shot 07-characters "char arrow"; chk "degree" '°'; q launcher close
+          shot 08-colour "#ff8800"; chk "#ff8800" 'rgb(255, 136, 0)'; q launcher close
+          shot 09-restart "restart"; chk "restart" '"confirm"'
+          wtype -k Return; sleep 2; grim shots/post/10-restart-asks-first.png; wtype -k Escape; sleep 1; q launcher close
+          shot 11-media "pause"; chk "pause" '"type":"media"'; q launcher close
+          shot 12-store "install krita" 10; chk "install krita" 'store:app-org_kde_krita'; q launcher close
+          shot 13-contacts "sam"; chk "sam" 'sam@example.org'; q launcher close
+          shot 14-calendar "raid"; chk "raid" 'Raid night'; q launcher close
+          shot 15-notes "coffee"; chk "coffee" 'Shopping list'; q launcher close
+          q settings page search; sleep 5; grim shots/post/16-settings-search.png
+          for i in 1 2 3 4 5 6; do wtype -k Next 2>/dev/null; sleep 0.3; done; sleep 2; grim shots/post/17-settings-search-plugins.png; q settings close
+          [ ! -e "$C/search.json" ] || FAIL "search.json was written by opening the menu or Settings › Search"
+          cp "$LOG" shots/shell.log 2>/dev/null
+          P='(Launcher|SearchSources|MenuSearch|SetSearch|DeskDialog)\.qml|search/[a-z]+\.js'
+          if grep -E "$P" "$LOG" | grep -E "TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read|failed to load|unavailable" >/dev/null 2>&1; then
+            FAIL "$(grep -E "$P" "$LOG" | grep -E 'Error|Cannot|non-existent|not a type|not defined|Unable|Expected|Syntax|unavailable' | sort -u | head -8 | cut -c1-260 | tr '\n' '|')"
+          fi
+          grep -E "$P" "$LOG" | sed 's/^.*file:\/\/[^ ]*shell\///' | sort -u | head -8 | while read -r l; do echo "::warning title=shell log::${l:0:400}"; done
+          ls -la shots/post
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: search-plugins-labwc
+          path: shots
+          retention-days: 14
+
+      - name: Fail if something went wrong
+        if: always()
+        run: test ! -e shots/FAILED
+
+  shots:
+    needs: [labwc]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/shot-notices.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: search-plugins-labwc
+          path: a
+        continue-on-error: true
+      - run: |
+          mkdir -p shots/post; cp a/post/*.png shots/post/ 2>/dev/null || true
+          pip install --quiet pillow >/dev/null 2>&1 || true
+      - name: Pictures 1
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 0
+      - name: Pictures 2
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 1
+      - name: Pictures 3
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
+      - name: Pictures 4
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4

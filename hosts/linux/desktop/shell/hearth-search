@@ -65,7 +65,8 @@ ECB = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
 
 DEFAULTS = {'indexing': True, 'contents': False, 'folders': ['~'], 'exclude': [], 'onBattery': False,
             'pluginsOff': {}, 'currencyOnline': True}
-PLUGINS = ['calc', 'units', 'currency', 'web', 'commands', 'emoji', 'recent', 'windows']
+PLUGINS = ['calc', 'units', 'currency', 'web', 'commands', 'emoji', 'recent', 'windows',
+           'browser', 'desktops', 'kill', 'worldclock', 'spell', 'chars', 'colours', 'power', 'media', 'store', 'contacts', 'events', 'notes']
 # Never read: build output, caches, game libraries and Windows prefixes (huge, and nothing anyone searches for).
 SKIP_DIRS = {'node_modules', '__pycache__', 'target', 'build', 'dist', '.git', 'venv', '.venv', 'site-packages',
              'steamapps', 'compatdata', 'shadercache', 'Prefixes', 'drive_c', 'dosdevices', 'lost+found'}
