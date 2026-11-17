@@ -8,6 +8,9 @@
 //!                               screen's refresh rate changes on the spot (GAMESCOPE_DYNAMIC_REFRESH, as SteamOS
 //!                               does). Scale is Hearth's own interface zoom
 //!   kde       (Plasma)          kscreen-doctor; Plasma remembers the settings itself
+//!   screens   (Mantel: labwc or KWin, 1.14) Desktop Mode's own hearth-screens (docs/SCREENS.md): it changes the
+//!                               screen (wlr-randr / kscreen-doctor) and keeps it in ~/.config/nimbus/screens.json, the
+//!                               one source of truth, with display.sh kept in step; nothing here writes either file
 //!   wlr       (labwc, Sway...)  wlr-randr; saved to ~/.config/nimbus/display.sh, which Desktop Mode runs at start
 //!   xrandr    (X11 desktops)    xrandr; scale is Hearth's interface zoom
 
@@ -31,10 +34,37 @@ pub fn detect() -> Option<&'static str> {
     let env = |k: &str| std::env::var(k).unwrap_or_default();
     let desk = env("XDG_CURRENT_DESKTOP").to_uppercase();
     if !env("GAMESCOPE_WAYLAND_DISPLAY").is_empty() { return Some("gamescope"); }
+    // Mantel (HEARTH_WM=labwc or kwin, set by the session): hearth-screens, so screens.json stays the one source of truth.
+    if screens_backend(&env("HEARTH_WM"), &env("WAYLAND_DISPLAY"), screens_helper().is_file()) { return Some("screens"); }
     if desk.contains("KDE") && crate::system::has("kscreen-doctor") { return Some("kde"); }
     if !env("WAYLAND_DISPLAY").is_empty() && crate::system::has("wlr-randr") && !desk.contains("GNOME") { return Some("wlr"); }
     if !env("DISPLAY").is_empty() && env("WAYLAND_DISPLAY").is_empty() && crate::system::has("xrandr") { return Some("xrandr"); }
     None
+}
+
+/// Desktop Mode's screens helper (hosts/linux/desktop/shell/hearth-screens), where the session's other helpers are.
+pub fn screens_helper() -> std::path::PathBuf { crate::paths::desktop_dir().join("shell/hearth-screens") }
+
+/// Whether Mantel's hearth-screens does the work: in Mantel's session (HEARTH_WM labwc or kwin) on Wayland, when it's there.
+pub fn screens_backend(wm: &str, wayland: &str, helper_there: bool) -> bool {
+    matches!(wm, "labwc" | "kwin") && !wayland.is_empty() && helper_there
+}
+
+/// hearth-screens with these arguments: its JSON line (the last line starting with "{" or "[").
+fn screens(args: &[&str]) -> Result<String, String> {
+    let helper = screens_helper();
+    let h = helper.to_string_lossy().to_string();
+    let mut a: Vec<&str> = vec![&h];
+    a.extend_from_slice(args);
+    let out = crate::system::run_timeout("python3", &a, std::time::Duration::from_secs(30))?;
+    out.lines().rev().find(|l| l.starts_with('{') || l.starts_with('[')).map(str::to_string).ok_or_else(|| "hearth-screens said nothing".to_string())
+}
+
+/// The change hearth-screens `set` takes for one screen ({"outputs": {name: change}}): applied and kept in screens.json.
+pub fn screens_change(output: &str, change: Value) -> String {
+    let mut outs = serde_json::Map::new();
+    outs.insert(output.to_string(), change);
+    json!({"outputs": Value::Object(outs)}).to_string()
 }
 
 pub fn parse_kscreen(text: &str) -> Option<Screen> {
@@ -162,6 +192,8 @@ pub fn read(backend: &str, zoom: u32) -> Option<Screen> {
     match backend {
         "kde" => parse_kscreen(&crate::system::run("kscreen-doctor", &["-j"]).ok()?),
         "wlr" => parse_wlr(&crate::system::run("wlr-randr", &["--json"]).ok()?),
+        // hearth-screens get answers in wlr-randr's shape on labwc and KWin alike.
+        "screens" => parse_wlr(&screens(&["get"]).ok()?),
         "xrandr" => parse_xrandr(&crate::system::run("xrandr", &["--query"]).ok()?),
         "gamescope" => {
             let drm = drm_modes(Path::new("/sys/class/drm"));
@@ -227,6 +259,11 @@ pub fn set_mode(w: u32, h: u32, rate: f64, zoom: u32) -> Result<bool, String> {
         .ok_or(format!("{w} × {h} isn't available on this screen"))?.clone();
     match backend {
         "kde" => { crate::system::run("kscreen-doctor", &[&format!("output.{}.mode.{}", d.output, m.id)])?; }
+        "screens" => {
+            let out = screens(&["set", &screens_change(&d.output, json!({"mode": {"w": m.w, "h": m.h, "r": m.exact}}))])?;
+            let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
+            if let Some(p) = v["problem"].as_str().filter(|p| !p.is_empty()) { return Err(p.to_string()); }
+        }
         "wlr" => {
             let spec = format!("{}x{}@{}Hz", m.w, m.h, m.exact);
             crate::system::run("wlr-randr", &["--output", &d.output, "--mode", &spec])?;
@@ -332,6 +369,11 @@ pub fn set_scale(pct: u32, zoom: u32) -> Result<Option<u32>, String> {
     if !SCALES.contains(&pct) { return Err("Unknown scale".into()); }
     match detect() {
         Some("kde") => { let d = read("kde", zoom).ok_or("No screen")?; crate::system::run("kscreen-doctor", &[&format!("output.{}.scale.{}", d.output, pct as f64 / 100.0)])?; Ok(None) }
+        Some("screens") => {
+            let d = read("screens", zoom).ok_or("No screen")?;
+            screens(&["set", &screens_change(&d.output, json!({"scale": pct as f64 / 100.0}))])?;
+            Ok(None)
+        }
         Some("wlr") => {
             let d = read("wlr", zoom).ok_or("No screen")?;
             let v = (pct as f64 / 100.0).to_string();
@@ -414,6 +456,17 @@ mod tests {
         let m = pickable_external(parse_gamescope_modes("4096x2160@60 3840x2160@60 4096x2160@30 1920x1080@120"));
         assert_eq!(m.iter().map(|m| (m.w, m.h)).collect::<Vec<_>>(), vec![(3840, 2160), (1920, 1080)]);
     }
+    #[test]
+    fn mantel_uses_hearth_screens() {
+        assert!(screens_backend("kwin", "wayland-0", true));
+        assert!(screens_backend("labwc", "wayland-1", true));
+        assert!(!screens_backend("", "wayland-0", true));
+        assert!(!screens_backend("kwin", "", true));
+        assert!(!screens_backend("kwin", "wayland-0", false));
+        let c: Value = serde_json::from_str(&screens_change("DP-1", json!({"scale": 1.25}))).unwrap();
+        assert_eq!(c["outputs"]["DP-1"]["scale"], 1.25);
+    }
+
     #[test]
     fn display_sh_keeps_other_screens() {
         // A line Desktop Mode's Settings › Display wrote for another screen, and one for this screen.

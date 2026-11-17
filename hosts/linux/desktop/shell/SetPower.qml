@@ -10,7 +10,7 @@ SetPage {
     title: "Power"
     readonly property var dev: UPower.displayDevice
     readonly property bool battery: !!(dev && dev.isLaptopBattery)
-    property bool canScreenOff: false    // wlopm is installed (IdlePower.qml)
+    property bool canScreenOff: false    // hearth-screen-power can (wlopm under labwc, KWin's DPMS under KWin; IdlePower.qml)
     property string profile: ""
     property var profiles: []
     property var tdp: null             // {supported, watts, min, max, via}
@@ -87,14 +87,14 @@ SetPage {
     }
     Process {
         running: true
-        command: ["sh", "-c", "command -v wlopm"]
+        command: ["sh", Quickshell.shellDir + "/hearth-screen-power", "check"]
         onExited: code => page.canScreenOff = code === 0
     }
     SetCardGroup {
         title: "When you're away"
         SetChoice {
             icon: "display"; title: "Turn the screen off after"
-            sub: page.canScreenOff ? "Videos and games that are playing keep it on" : "Needs wlopm, which isn't installed"
+            sub: page.canScreenOff ? "Videos and games that are playing keep it on" : (Quickshell.env("HEARTH_WM") === "kwin" ? "Needs kscreen-doctor (libkscreen-bin), which isn't installed" : "Needs wlopm, which isn't installed")
             enabled: page.canScreenOff
             opacity: page.canScreenOff ? 1 : 0.5
             options: [{ value: 0, label: "Never" }, { value: 2, label: "2 min" }, { value: 5, label: "5 min" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }]

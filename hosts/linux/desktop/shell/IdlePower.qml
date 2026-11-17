@@ -1,4 +1,5 @@
-// When Desktop Mode isn't used for a while (Hearth Settings › Power): the screen goes off (wlopm), then the device
+// When Desktop Mode isn't used for a while (Hearth Settings › Power): the screen goes off (hearth-screen-power: wlopm
+// under labwc, KWin's own DPMS under KWin), then the device
 // goes to sleep. Apps that keep the screen on (a video playing, a game: the idle-inhibit protocol) hold both off.
 // So do logind's "block" inhibitors (systemd-inhibit, and Hearth Player while it plays: "idle" keeps the screen on,
 // "sleep" keeps the device awake); they're checked when the timer runs out, and again every minute while idle.
@@ -16,14 +17,14 @@ Scope {
     onScreenIsOffChanged: DeskState.screenOff = screenIsOff
     Process {
         running: true
-        command: ["sh", "-c", "command -v wlopm"]
+        command: ["sh", Quickshell.shellDir + "/hearth-screen-power", "check"]
         onExited: code => root.hasWlopm = code === 0
     }
 
-    function screenOff() { root.screenIsOff = true; Quickshell.execDetached(["wlopm", "--off", "*"]); }
+    function screenOff() { root.screenIsOff = true; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "off"]); }
     function sleepNow() {
         // The screen comes back on first, so it isn't dark after waking.
-        if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); }
+        if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); }
         Buttons.sleep("idle timer (Settings › Power)");
     }
 
@@ -57,7 +58,7 @@ Scope {
         respectInhibitors: true
         onIsIdleChanged: {
             if (isIdle) { root.wantScreenOff = true; root.check(); }
-            else { root.wantScreenOff = false; if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); } }
+            else { root.wantScreenOff = false; if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); } }
         }
     }
     IdleMonitor {
@@ -80,6 +81,6 @@ Scope {
     // A setting changed while the screen was off: make sure it's on.
     Connections {
         target: Settings
-        function onScreenOffMinutesChanged() { if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); } }
+        function onScreenOffMinutesChanged() { if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-screen-power", "on"]); } }
     }
 }

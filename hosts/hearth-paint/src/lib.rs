@@ -109,10 +109,12 @@ pub fn copy_image(png: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// A picture of the whole screen (grim on Wayland), as PNG bytes.
+/// A picture of the whole screen (hearth-screenshot: grim under labwc, KWin's ScreenShot2 under Mantel on KWin; or
+/// grim), as PNG bytes.
 pub fn screenshot() -> Result<Vec<u8>, String> {
-    if wayland() && have("grim") {
-        let out = Command::new("grim").args(["-t", "png", "-"]).output().map_err(|e| e.to_string())?;
+    let tool = if have("hearth-screenshot") { "hearth-screenshot" } else { "grim" };
+    if wayland() && have(tool) {
+        let out = Command::new(tool).args(["-t", "png", "-"]).output().map_err(|e| e.to_string())?;
         if sniff(&out.stdout) == Some("image/png") { return Ok(out.stdout); }
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }

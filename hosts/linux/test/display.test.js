@@ -58,6 +58,11 @@ test('gamescope options are rewritten in session.conf, other settings kept', () 
 test('picks the backend from the environment', () => {
   assert.equal(d.detect({ GAMESCOPE_WAYLAND_DISPLAY: 'gamescope-0', WAYLAND_DISPLAY: 'x' }), 'gamescope');
   assert.equal(d.detect({}), null);
+  // Mantel on labwc or KWin: hearth-screens (screens.json the one source of truth, docs/SCREENS.md).
+  const share = path.join(__dirname, '..');
+  assert.equal(d.detect({ HEARTH_WM: 'kwin', WAYLAND_DISPLAY: 'wayland-0', NIMBUS_SHARE: share }), 'screens');
+  assert.equal(d.detect({ HEARTH_WM: 'labwc', WAYLAND_DISPLAY: 'wayland-0', NIMBUS_SHARE: share }), 'screens');
+  assert.ok(d.screensHelper({ NIMBUS_SHARE: share }).endsWith(path.join('desktop', 'shell', 'hearth-screens')));
 });
 
 test('Desktop Mode keeps wlr-randr changes in display.sh', () => {
