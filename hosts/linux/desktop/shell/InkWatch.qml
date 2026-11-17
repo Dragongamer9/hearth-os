@@ -23,7 +23,7 @@ Scope {
     }
     Timer { interval: 180000; running: true; onTriggered: iw.check() }
     Timer { interval: 3 * 3600000; running: true; repeat: true; onTriggered: iw.check() }
-    function check() { if (Settings.inkNotify && iw.toldRead && !look.running) look.running = true; }
+    function check() { if (Settings.inkNotify && !look.running) look.running = true; }   // told unread yet = nothing told
     Process {
         id: look
         command: ["python3", iw.helper, "levels"]
@@ -40,6 +40,7 @@ Scope {
                     else if (!isLow && iw.told[key] && m.level > (m.low || 15) + 10) ch[key] = false;   // filled again
                 }
                 if (Object.keys(ch).length) { writer.merge(ch); iw.told = Object.assign({}, iw.told, ch); }
+                console.log("InkWatch: " + low.length + " low");
                 if (!low.length) return;
                 const one = low[0];
                 const what = /toner/i.test(one.m.type + one.m.name) ? "toner" : "ink";
