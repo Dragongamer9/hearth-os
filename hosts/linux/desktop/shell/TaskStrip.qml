@@ -46,6 +46,8 @@ Item {
             out.push(byKey[id]);
         }
         for (const t of WinList.toplevels.values) {
+            // Activities (feature/widgets' Activities.qml): only the activity you're on. Without it, every window.
+            try { if (!Activities.shows(t)) continue; } catch (e) {}
             const own = ownWindow(t);
             const entry = own ? null : AppIcons.entryFor(t.appId);
             const key = own ? "own:" + t.title : entry ? entry.id : "app:" + (t.appId || t.title);
@@ -139,6 +141,12 @@ Item {
             for (let i = 0; i < 4; i++) sub.push({ label: "Desktop " + (i + 1), run: () => moveToDesktop(win, i + 1) });
             if (list.length) list.push({ separator: true });
             list.push({ label: "Move to desktop", icon: "desktops", group: "Window", sub: sub });
+            // Move to activity › (only when there are activities: Activities.qml from feature/widgets).
+            try {
+                if (Activities.many) list.push({ label: "Move to activity", icon: "desktops", group: "Window", sub: Activities.list.map(a => ({
+                    label: a.name + (a.id === Activities.actOf(win) ? " (this one)" : ""), enabled: a.id !== Activities.actOf(win),
+                    run: () => Activities.moveWindow(win, a.id) })) });
+            } catch (e) {}
             if (!win.maximized) list.push({ label: "Maximize", icon: "window", group: "Window", run: () => { win.activate(); win.maximized = true; } });
             else list.push({ label: "Restore size", icon: "window", group: "Window", run: () => { win.maximized = false; } });
             list.push({ separator: true });

@@ -5,7 +5,8 @@
   "named \"Hearth <id>\", so a key someone changes in KWin's shortcut settings stays changed). \"run\": the same command",
   "as labwc's (run by the bridge with sh -c). \"win\": done by the script itself (snapping, desktops, closing).",
   "\"kwinOwn\": keys KWin's own actions already do the same way (xdg/kglobalshortcutsrc sets the ones that need it).",
-  "\"skipped\": labwc keys that have no job under KWin."
+  "\"skipped\": labwc keys that have no job under KWin.",
+  "\"kwinOnly\": Hearth keys labwc has none of (Activities, from feature/widgets' Activities.qml)."
  ],
  "shortcuts": [
   {
@@ -609,6 +610,20 @@
   {
    "title": "Task Manager (always on top)",
    "keepAbove": true
+  }
+ ],
+ "kwinOnly": [
+  {
+   "id": "activities-next",
+   "title": "Next activity",
+   "keys": "Meta+Ctrl+Q",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call activities next'"
+  },
+  {
+   "id": "activities-previous",
+   "title": "Previous activity",
+   "keys": "Meta+Ctrl+Shift+Q",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call activities previous'"
   }
  ]
 }
