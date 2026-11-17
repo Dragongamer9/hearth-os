@@ -987,7 +987,8 @@ mod tests {
         assert_eq!(scanout_choice(true, &on, false, true), ScanoutChoice::Normal);
         // Sharpening needs the GPU: composited (as usual), never forced onto the plane.
         assert_eq!(scanout_choice(true, &on, true, false), ScanoutChoice::Normal);
-        assert_eq!(scanout_choice(true, &off, false, true), ScanoutChoice::Normal);
+        // Direct off stays off (composited) whatever is over the game.
+        assert_eq!(scanout_choice(true, &off, false, true), ScanoutChoice::Never);
         assert_eq!(scanout_choice(true, &off, false, false), ScanoutChoice::Never);
         assert_eq!(scanout_choice(false, &off, false, false), ScanoutChoice::Normal);
     }
