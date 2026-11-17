@@ -9,6 +9,8 @@ firmware-update), which only runs fwupdmgr with a checked device id.
   hearth-firmware devices    JSON: {devices: [{id, name, vendor, version, updatable, system, needsReboot,
                              update: {version, summary, urgency, size} | null}]}
   hearth-firmware security   JSON: {hsi: "HSI:1", level, items: [{name, ok, level, result}]} (fwupd's Host Security ID)
+  hearth-firmware history    JSON: {history: [{name, vendor, from, to, when, state, error}]} (fwupd's own record of
+                             every firmware update it put in, newest first)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import glob
@@ -189,6 +191,29 @@ def security():
     return parse_security(fwupd_json(['security']))
 
 
+UPDATE_STATES = {0: 'unknown', 1: 'pending', 2: 'done', 3: 'failed', 4: 'restart', 5: 'failed'}
+
+
+def parse_history(js):
+    out = []
+    for d in js.get('Devices') or []:
+        rel = (d.get('Releases') or [{}])[0]
+        st = d.get('UpdateState', 0)
+        if isinstance(st, str):
+            st = {'pending': 1, 'success': 2, 'failed': 3, 'needs-reboot': 4, 'failed-transient': 5}.get(st, 0)
+        when = d.get('Modified') or d.get('Created') or 0
+        out.append({'name': d.get('Name', ''), 'vendor': d.get('Vendor', ''), 'from': d.get('VersionOld') or d.get('Version', ''),
+                    'to': rel.get('Version', '') or d.get('Version', ''), 'when': int(when) if str(when).isdigit() else 0,
+                    'state': UPDATE_STATES.get(st, 'unknown'), 'error': (d.get('UpdateError') or '')[:300],
+                    'summary': rel.get('Summary', '')})
+    out.sort(key=lambda e: -e['when'])
+    return {'history': out}
+
+
+def history():
+    return parse_history(fwupd_json(['get-history']))
+
+
 def main(argv):
     cmd = argv[0] if argv else ''
     try:
@@ -198,6 +223,8 @@ def main(argv):
             r = devices()
         elif cmd == 'security':
             r = security()
+        elif cmd == 'history':
+            r = history()
         else:
             print(__doc__)
             return 2

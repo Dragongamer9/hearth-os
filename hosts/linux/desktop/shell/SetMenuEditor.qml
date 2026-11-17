@@ -17,7 +17,14 @@ SetPage {
     property bool messageBad: false
     function say(t, bad) { message = t; messageBad = !!bad; }
     function load() { job.run(["list"], r => { page.apps = r.apps || []; page.cats = r.categories || []; }, e => page.say(e, true)); }
-    Component.onCompleted: { pick = SettingsNav.menuEdit || SettingsNav.pageAnchor; load(); SettingsNav.menuEdit = ""; SettingsNav.pageAnchor = ""; }
+    // Settings can make the page twice in a row as it opens (as SetExpander says): the second one must still see the app.
+    // `menu-editor:<app id>` is taken while it's fresh (asked for in the last 4 s, as SetStore does) and left for the
+    // second page (closing Settings clears it); "Edit app…"'s choice is cleared a moment later.
+    Component.onCompleted: {
+        const m = SettingsNav.menuEdit;
+        pick = m || (Date.now() - SettingsNav.anchorAt < 4000 ? SettingsNav.pageAnchor : ""); load();
+        if (m) Qt.callLater(() => { if (SettingsNav.menuEdit === m) SettingsNav.menuEdit = ""; });
+    }
     SetJob { id: job; helper: "hearth-menu" }
     readonly property var cur: apps ? apps.find(a => a.id === pick || a.id === pick + ".desktop") || null : null
     readonly property var shown: {

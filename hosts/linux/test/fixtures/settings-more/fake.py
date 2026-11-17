@@ -62,10 +62,14 @@ if prog == 'flatpak':
             'filesystems=xdg-download;xdg-pictures:ro;\nfeatures=bluetooth;\n' % args[2])
     if args[:3] == ['override', '--user', '--show']:
         out('[Context]\nfilesystems=home;\nsockets=!x11;\n' if args[3] == 'org.mozilla.firefox' else '')
+    if args[:4] == ['config', '--user', '--get', 'extra-languages']:
+        out('de\n')
     if args[:3] == ['info', '--show-ref', 'org.fcitx.Fcitx5']:
         sys.exit(1)
     real()
 if prog == 'bluetoothctl':
+    if 'show' in args:
+        out('Controller 00:1A:7D:DA:71:13 (public)\n\tName: hearth\n\tAlias: Living room PC\n\tPowered: yes\n\tDiscoverable: no\n')
     if 'devices' in args and 'Paired' in args:
         out('Device AA:BB:CC:11:22:33 Pixel 8\nDevice AA:BB:CC:44:55:66 Xbox Wireless Controller\nDevice AA:BB:CC:77:88:99 WH-1000XM5\n')
     if 'info' in args:
@@ -78,6 +82,8 @@ if prog == 'bluetoothctl':
                 % (mac, d[0], d[0], d[1], d[3], d[4], d[2], '\tUUID: OBEX Object Push          (00001105-0000-1000-8000-00805f9b34fb)\n' if d[6] else '', d[5]))
     real()
 if prog == 'lpstat':
+    if args == ['-e']:
+        out('HP_LaserJet_M209\nBrother_DCP_L2550\n')
     if args == ['-p']:
         out('printer HP_LaserJet_M209 now printing HP_LaserJet_M209-41.  enabled since Mon 16 Nov 2026 09:00:00 PM\n'
             'printer Brother_DCP_L2550 is idle.  enabled since Mon 16 Nov 2026 08:00:00 PM\n')
@@ -94,10 +100,36 @@ if prog == 'lpq':
         'active  you     41      Tax return 2026.pdf             482304 bytes\n1st     you     42      Boarding pass.pdf               10240 bytes\n'
         '2nd     sam     43      Recipes.odt                     2048000 bytes\n')
 if prog == 'scanimage':
+    here = os.path.dirname(os.path.abspath(__file__))
+    if '-A' in args:
+        out('Options specific to device `%s\':\n  Scan mode:\n    --mode Lineart|Gray|Color [Color]\n    --resolution 75|150|300|600dpi [150]\n'
+            '    --source Flatbed|ADF [Flatbed]\n' % args[args.index('-d') + 1])
+    if '-o' in args:
+        import shutil
+        n = sum(1 for f in os.listdir(os.path.dirname(args[args.index('-o') + 1])) if f.endswith('.jpg'))
+        shutil.copy(os.path.join(here, 'scan-page-%d.jpg' % (n % 2 + 1)), args[args.index('-o') + 1])
+        sys.exit(0)
     if args == ['-L']:
         out("device `airscan:e0:HP OfficeJet Pro 9010' is a eSCL HP OfficeJet Pro 9010 ip=192.168.1.20\n"
             "device `brother5:bus2;dev1' is a Brother DCP-L2550DW USB scanner\n")
     real()
+if prog == 'fwupdmgr':
+    if args[:1] == ['get-history']:
+        out('{"Devices":[{"Name":"Unifying Receiver","Vendor":"Logitech","Version":"RQR12.10","UpdateState":2,"Modified":1763300000,'
+            '"Releases":[{"Version":"RQR12.11","Summary":"Firmware for the Logitech Unifying receiver"}]},'
+            '{"Name":"Samsung SSD 980 PRO 1TB","Vendor":"Samsung","Version":"5B2QGXA7","UpdateState":3,"Modified":1762800000,'
+            '"UpdateError":"The drive did not answer after the update; it kept its old firmware","Releases":[{"Version":"5B2QGXA8"}]},'
+            '{"Name":"System Firmware","Vendor":"Framework","Version":"3.03","UpdateState":2,"Modified":1755000000,"Releases":[{"Version":"3.05","Summary":"Framework Laptop 13 BIOS"}]}]}\n')
+    sys.exit(2)
+if prog == 'sensors':
+    import json
+    out(json.dumps({'k10temp-pci-00c3': {'Adapter': 'PCI adapter', 'Tctl': {'temp1_input': 61.4}, 'Tccd1': {'temp3_input': 55.1}},
+                    'amdgpu-pci-0300': {'Adapter': 'PCI adapter', 'edge': {'temp1_input': 48.0, 'temp1_crit': 100.0},
+                                        'junction': {'temp2_input': 84.0, 'temp2_crit': 110.0}, 'fan1': {'fan1_input': 1450.0},
+                                        'PPT': {'power1_average': 142.0}},
+                    'nvme-pci-0100': {'Adapter': 'PCI adapter', 'Composite': {'temp1_input': 39.9, 'temp1_max': 81.8, 'temp1_crit': 84.8}},
+                    'nct6775-isa-0290': {'Adapter': 'ISA adapter', 'fan1': {'fan1_input': 980.0}, 'fan2': {'fan2_input': 1220.0},
+                                         'SYSTIN': {'temp1_input': 33.0}}}) + '\n')
 if prog == 'usbguard':
     sys.exit(1)
 real()

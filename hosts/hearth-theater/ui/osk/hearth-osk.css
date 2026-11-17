@@ -53,6 +53,8 @@
   display: flex; align-items: center; justify-content: center; background: var(--hk-key); color: var(--hk-text);
   font-size: var(--hk-font); font-weight: 600; line-height: 1; text-align: center; cursor: pointer;
   box-shadow: inset 0 -2px 0 rgba(0,0,0,.25); transition: background .09s, color .09s, transform .08s; }
+/* a long touch slides onto its accents without the page panning away (and cancelling the touch) */
+.hosk-key{ touch-action: none; }
 .hosk-key .hosk-l{ pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; padding: 0 4px; }
 .hosk-key.k-bksp, .hosk-key.k-enter, .hosk-key.k-shift, .hosk-key.k-sym, .hosk-key.k-abc, .hosk-key.k-sym2, .hosk-key.k-emoji, .hosk-key.k-clip, .hosk-key.k-layout,
 .hosk-key.k-left, .hosk-key.k-right, .hosk-key.k-up, .hosk-key.k-down, .hosk-key.k-hide, .hosk-key.k-tab, .hosk-key.k-esc, .hosk-key.k-ctrl, .hosk-key.k-alt,

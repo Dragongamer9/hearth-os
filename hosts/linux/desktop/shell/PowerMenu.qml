@@ -44,6 +44,8 @@ PanelWindow {
         if (c.length) Quickshell.execDetached(c);
     }
     Connections { target: Buttons; function onPowerMenuRequested() { root.shown ? root.pick(root.sel) : root.open(); } }
+    // 1.14: Settings › Startup › "Default leave option" is what's picked when it opens ("": the first, Lock).
+    onShownChanged: if (shown && Settings.leaveDefault !== "") { const i = items.findIndex(x => x.label === Settings.leaveDefault); if (i >= 0) sel = i; }
 
     visible: shown
     color: "transparent"
