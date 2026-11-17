@@ -34,7 +34,8 @@ def greeter_up():
                 # SDDM's greeter (Bazzite), or Plasma Login Manager's (Hearth OS on Anatase), or cage running
                 # Hearth's own login screen (1.14, greetd; nothing else in Hearth runs cage); /proc's names stop at
                 # 15 characters. Not the login managers themselves: they stay running during the session.
-                if f.read().strip().startswith(('sddm-greeter', 'plasmalogin-gre', 'plasma-login-gr', 'cage')):
+                name = f.read().strip()
+                if name == 'cage' or name.startswith(('sddm-greeter', 'plasmalogin-gre', 'plasma-login-gr')):
                     return True
         except OSError:
             pass
