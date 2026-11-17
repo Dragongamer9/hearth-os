@@ -1,0 +1,427 @@
+#!/usr/bin/env python3
+"""Hearth Desktop Mode on KWin: the window list bridge between KWin and Mantel (the shell).
+
+KWin has no window list protocol for other programs (labwc's wlr-foreign-toplevel, which Quickshell's ToplevelManager
+reads), so Mantel's WinList.qml starts this helper when HEARTH_WM=kwin:
+
+  hearth-kwin-bridge serve --stdio
+
+It serves org.hearth.Windows on the session bus and loads KWin's "hearthwindows" script
+(desktop/kwin/windows/hearth-windows.js, with Mantel's shortcuts and snap zones put in) through KWin's Scripting API.
+The script sends the window list on every change (Update); this prints it to the shell as one JSON line and keeps it in
+$XDG_RUNTIME_DIR/hearth/windows.json for anyone else (the controller helper, checks); what went wrong goes to
+$XDG_RUNTIME_DIR/hearth/kwin-bridge.log. What the shell asks (a line of JSON
+on stdin: activate, close, minimize, maximize, snap, desktop...) goes back as the reply to the script's waiting Next()
+call, so it's done at once without polling. A shortcut the script registered with KWin calls Shortcut(id), and this runs
+its command from shortcuts.json (the same commands as labwc's rc.xml). If the script stops asking (KWin restarted, the
+script was unloaded) it's loaded again.
+
+  hearth-kwin-bridge list                  the window list now (from the bridge that's running)
+  hearth-kwin-bridge do OP [ID] [k=v...]   ask for something, like the shell does (do snap ID zone=left-half)
+                                           (do probe ID: what this KWin offers, into the log)
+  hearth-kwin-bridge render                print the KWin script as it's loaded (for checks)
+
+Lines it prints (serve --stdio): {"t": "windows", "windows": [...], "desktops": [...], "active": id} and
+{"t": "status", "connected": bool, "problem": "..."}. Exit 0 when the shell goes away (stdin closes) or another bridge
+takes over the name.
+"""
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+DESKTOP = os.path.dirname(HERE)
+KWIN_DIR = os.path.join(DESKTOP, 'kwin', 'windows')
+SCRIPT_SRC = os.path.join(KWIN_DIR, 'hearth-windows.js')
+SHORTCUTS = os.path.join(KWIN_DIR, 'shortcuts.json')
+SNAP_JS = os.path.join(HERE, 'snap-layouts.js')
+PLUGIN = 'hearthwindows'
+BUS = 'org.hearth.Windows'
+PATH = '/org/hearth/Windows'
+XML = """<node><interface name="org.hearth.Windows">
+  <method name="Update"><arg type="s" name="json" direction="in"/></method>
+  <method name="Next"><arg type="s" name="commands" direction="out"/></method>
+  <method name="Shortcut"><arg type="s" name="id" direction="in"/></method>
+  <method name="Launcher"/>
+  <method name="Command"><arg type="s" name="json" direction="in"/><arg type="b" name="queued" direction="out"/></method>
+  <method name="List"><arg type="s" name="json" direction="out"/></method>
+  <method name="Log"><arg type="s" name="text" direction="in"/></method>
+  <signal name="Changed"><arg type="s" name="json"/></signal>
+</interface></node>"""
+NEXT_WAIT = 20          # s: Next() answers with nothing after this (KWin's D-Bus calls give up at 25 s)
+SILENT_RELOAD = 35      # s: no Next() from the script for this long: load it again
+# Extra commands the script's own menu entries ask for (not keys of their own).
+EXTRA = {
+    'snap-layouts-open': "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap open'",
+}
+
+
+def runtime_dir():
+    base = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    d = os.path.join(base, 'hearth')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+LOG_MAX = 256 * 1024
+
+
+def log(text):
+    """To stderr and $XDG_RUNTIME_DIR/hearth/kwin-bridge.log (kept small: started again past 256 KB)."""
+    line = time.strftime('%H:%M:%S ') + text
+    print('hearth-kwin-bridge: ' + text, file=sys.stderr, flush=True)
+    try:
+        path = os.path.join(runtime_dir(), 'kwin-bridge.log')
+        mode = 'w' if os.path.exists(path) and os.path.getsize(path) > LOG_MAX else 'a'
+        with open(path, mode, encoding='utf-8') as f:
+            f.write(line + '\n')
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------- the script, filled in
+def load_table(path=SHORTCUTS):
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def snap_zones(path=SNAP_JS):
+    """Every zone of the snap layouts (snap-layouts.js), once each: [{id, label, x, y, w, h}] in percent."""
+    with open(path, encoding='utf-8') as f:
+        src = f.read()
+    out, seen = [], set()
+    for m in re.finditer(r'z\("([a-z-]+)",\s*"([^"]+)",\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)', src):
+        zid = m.group(1)
+        if zid in seen:
+            continue
+        seen.add(zid)
+        out.append({'id': zid, 'label': m.group(2), 'x': int(m.group(3)), 'y': int(m.group(4)),
+                    'w': int(m.group(5)), 'h': int(m.group(6))})
+    return out
+
+
+def render(table=None):
+    table = table or load_table()
+    zones = snap_zones() + [z for z in table.get('extraZones', [])]
+    shortcuts = [{k: s[k] for k in ('id', 'title', 'keys', 'win') if k in s} for s in table['shortcuts']]
+    with open(SCRIPT_SRC, encoding='utf-8') as f:
+        src = f.read()
+    for key, value in (('%%SHORTCUTS%%', shortcuts), ('%%ZONES%%', zones), ('%%GAP%%', int(table.get('gap', 6))),
+                       ('%%RULES%%', table.get('rules', []))):
+        src = src.replace(key, json.dumps(value, ensure_ascii=False))
+    return src
+
+
+def command_for(sid, table):
+    if sid in EXTRA:
+        return EXTRA[sid]
+    for s in table['shortcuts']:
+        if s['id'] == sid:
+            return s.get('run')
+    return None
+
+
+def write_atomic(path, text):
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------- serving
+class Bridge:
+    def __init__(self, stdio):
+        Gio, GLib = gi_modules()
+        self.Gio, self.GLib = Gio, GLib
+        self.stdio = stdio
+        self.table = load_table()
+        self.queue = []
+        self.pending = None           # the script's waiting Next() call
+        self.pending_timer = 0
+        self.last_next = 0.0
+        self.last_list = '{"windows": [], "desktops": [], "active": ""}'
+        self.connected = None
+        self.problem = ''
+        self.loaded_at = 0.0
+        self.loop = GLib.MainLoop()
+        self.out = os.path.join(runtime_dir(), 'windows.json')
+        self.script_path = os.path.join(runtime_dir(), 'hearth-windows.js')
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    # -------- talking to the shell
+    def say(self, obj):
+        if not self.stdio:
+            return
+        try:
+            sys.stdout.write(json.dumps(obj, ensure_ascii=False) + '\n')
+            sys.stdout.flush()
+        except (BrokenPipeError, OSError):
+            self.quit()
+
+    def note(self, text):
+        log(text)
+        self.say({'t': 'log', 'text': text})
+
+    def status(self, connected, problem=''):
+        if connected == self.connected and problem == self.problem:
+            return
+        self.connected, self.problem = connected, problem
+        self.say({'t': 'status', 'connected': connected, 'problem': problem})
+        log(('connected to KWin' if connected else 'not connected') + (': ' + problem if problem else ''))
+
+    def on_stdin(self, channel, cond):
+        if cond & self.GLib.IO_IN:
+            try:
+                line = channel.readline()
+            except Exception:
+                line = ''
+            if line:
+                line = line.strip()
+                if line:
+                    self.command(line)
+                return True
+        self.quit()             # the shell has gone (stdin closed)
+        return False
+
+    # -------- commands to the script
+    def command(self, text):
+        try:
+            c = json.loads(text)
+        except ValueError:
+            log('not JSON: ' + text[:200])
+            return False
+        if not isinstance(c, dict) or not c.get('op'):
+            return False
+        self.queue.append(c)
+        self.flush()
+        return True
+
+    def flush(self):
+        if self.pending is None or not self.queue:
+            return
+        inv, self.pending = self.pending, None
+        if self.pending_timer:
+            self.GLib.source_remove(self.pending_timer)
+            self.pending_timer = 0
+        batch, self.queue = self.queue, []
+        inv.return_value(self.GLib.Variant('(s)', (json.dumps(batch),)))
+
+    def answer_empty(self):
+        self.pending_timer = 0
+        if self.pending is not None:
+            inv, self.pending = self.pending, None
+            inv.return_value(self.GLib.Variant('(s)', ('[]',)))
+        return False
+
+    # -------- D-Bus
+    def on_call(self, conn, sender, path, iface, method, params, inv):
+        GLib = self.GLib
+        if method == 'Update':
+            (text,) = params.unpack()
+            self.update(text)
+            inv.return_value(None)
+        elif method == 'Next':
+            self.last_next = time.monotonic()
+            self.status(True)
+            if self.pending is not None:          # an older one: let it go empty, this one waits now
+                old, self.pending = self.pending, None
+                old.return_value(GLib.Variant('(s)', ('[]',)))
+            if self.pending_timer:
+                GLib.source_remove(self.pending_timer)
+            self.pending = inv
+            self.pending_timer = GLib.timeout_add_seconds(NEXT_WAIT, self.answer_empty)
+            self.flush()
+        elif method == 'Shortcut':
+            (sid,) = params.unpack()
+            inv.return_value(None)
+            self.shortcut(sid)
+        elif method == 'Launcher':
+            inv.return_value(None)
+            self.shortcut('launcher')
+        elif method == 'Command':
+            (text,) = params.unpack()
+            inv.return_value(GLib.Variant('(b)', (self.command(text),)))
+        elif method == 'List':
+            inv.return_value(GLib.Variant('(s)', (self.last_list,)))
+        elif method == 'Log':
+            (text,) = params.unpack()
+            inv.return_value(None)
+            self.note('KWin script: ' + text[:2000])
+        else:
+            inv.return_dbus_error('org.hearth.Windows.Error', 'no method ' + method)
+
+    def update(self, text):
+        try:
+            snap = json.loads(text)
+        except ValueError:
+            log('the script sent something that is not JSON')
+            return
+        snap['kwin'] = True
+        self.last_list = json.dumps(snap, ensure_ascii=False)
+        try:
+            write_atomic(self.out, self.last_list)
+        except OSError as e:
+            log('windows.json: %s' % e)
+        snap['t'] = 'windows'
+        self.say(snap)
+        try:
+            self.bus.emit_signal(None, PATH, BUS, 'Changed', self.GLib.Variant('(s)', (self.last_list,)))
+        except Exception:
+            pass
+
+    def shortcut(self, sid):
+        cmd = command_for(sid, self.table)
+        if not cmd:
+            log('no shortcut ' + sid)
+            return
+        try:
+            subprocess.Popen(['sh', '-c', cmd], stdin=subprocess.DEVNULL, start_new_session=True)
+        except OSError as e:
+            log('shortcut %s: %s' % (sid, e))
+
+    # -------- KWin's Scripting API
+    def kwin(self, path, iface, method, args=None, reply=None):
+        return self.bus.call_sync('org.kde.KWin', path, iface, method, args,
+                                  self.GLib.VariantType.new(reply) if reply else None,
+                                  self.Gio.DBusCallFlags.NONE, 5000, None)
+
+    def load_script(self):
+        GLib = self.GLib
+        try:
+            write_atomic(self.script_path, render(self.table))
+        except Exception as e:
+            self.status(False, 'the script could not be made: %s' % e)
+            return False
+        try:
+            try:
+                if self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'isScriptLoaded', GLib.Variant('(s)', (PLUGIN,)), '(b)').unpack()[0]:
+                    self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', GLib.Variant('(s)', (PLUGIN,)), '(b)')
+            except GLib.Error:
+                pass
+            sid = self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'loadScript',
+                            GLib.Variant('(ss)', (self.script_path, PLUGIN)), '(i)').unpack()[0]
+            if sid < 0:
+                self.status(False, 'KWin would not load the window list script')
+                return False
+            try:
+                self.kwin('/Scripting/Script%d' % sid, 'org.kde.kwin.Script', 'run')
+            except GLib.Error:
+                self.kwin('/%d' % sid, 'org.kde.kwin.Script', 'run')       # older KWin's path
+            self.loaded_at = time.monotonic()
+            log('KWin script loaded (%d)' % sid)
+            return True
+        except GLib.Error as e:
+            self.status(False, 'KWin is not answering: %s' % e.message)
+            return False
+
+    def unload_script(self):
+        try:
+            self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', self.GLib.Variant('(s)', (PLUGIN,)), '(b)')
+        except Exception:
+            pass
+
+    def watchdog(self):
+        now = time.monotonic()
+        waiting = self.pending is not None
+        if not waiting and now - max(self.last_next, self.loaded_at) > SILENT_RELOAD:
+            if self.connected:
+                self.status(False, 'the KWin script stopped answering; loading it again')
+            self.load_script()
+        return True
+
+    # -------- running
+    def quit(self):
+        if self.loop.is_running():
+            self.loop.quit()
+
+    def serve(self):
+        Gio, GLib = self.Gio, self.GLib
+        node = Gio.DBusNodeInfo.new_for_xml(XML)
+        self.bus.register_object(PATH, node.interfaces[0], self.on_call, None, None)
+        flags = 0x1 | 0x2 | 0x4    # allow replacement, replace an older bridge, don't queue
+        got = self.bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName',
+                                 GLib.Variant('(su)', (BUS, flags)), GLib.VariantType.new('(u)'),
+                                 Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+        if got not in (1, 4):
+            self.status(False, 'another bridge has the name')
+            return 1
+        self.bus.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus', 'NameLost', '/org/freedesktop/DBus',
+                                  BUS, Gio.DBusSignalFlags.NONE, lambda *a: (log('another bridge took over'), self.quit()))
+        if self.stdio:
+            ch = GLib.IOChannel.unix_new(sys.stdin.fileno())
+            GLib.io_add_watch(ch, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR, self.on_stdin)
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, lambda *a: (self.quit(), False)[1])
+        self.status(False, 'starting')
+        self.load_script()
+        GLib.timeout_add_seconds(10, self.watchdog)
+        self.loop.run()
+        self.unload_script()
+        try:
+            os.unlink(self.out)
+        except OSError:
+            pass
+        return 0
+
+
+# ---------------------------------------------------------------- the command line
+def gi_modules():
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    return Gio, GLib
+
+
+def call_running(method, args, reply):
+    Gio, GLib = gi_modules()
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    return bus.call_sync(BUS, PATH, BUS, method, args, GLib.VariantType.new(reply) if reply else None,
+                         Gio.DBusCallFlags.NONE, 5000, None)
+
+
+def parse_do(argv):
+    """do OP [ID] [key=value ...] -> the command's JSON (numbers and true/false as such)."""
+    if not argv:
+        raise SystemExit('do: what? (activate, close, minimize, maximize, fullscreen, keepAbove, snap, desktop, goDesktop, key, menu)')
+    c = {'op': argv[0]}
+    rest = argv[1:]
+    if rest and '=' not in rest[0]:
+        c['id'] = rest.pop(0)
+    for kv in rest:
+        k, _, v = kv.partition('=')
+        if v in ('true', 'false'):
+            c[k] = v == 'true'
+        elif re.fullmatch(r'-?\d+', v):
+            c[k] = int(v)
+        else:
+            c[k] = v
+    return c
+
+
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help'):
+        print(__doc__)
+        return 0
+    if argv[0] == 'render':
+        sys.stdout.write(render())
+        return 0
+    if argv[0] == 'serve':
+        return Bridge('--stdio' in argv).serve()
+    if argv[0] == 'list':
+        print(call_running('List', None, '(s)').unpack()[0])
+        return 0
+    if argv[0] == 'do':
+        GLib = gi_modules()[1]
+        c = parse_do(argv[1:])
+        ok = call_running('Command', GLib.Variant('(s)', (json.dumps(c),)), '(b)').unpack()[0]
+        return 0 if ok else 1
+    print(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

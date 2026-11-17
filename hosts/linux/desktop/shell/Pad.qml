@@ -28,7 +28,7 @@ Scope {
     property bool ownerMouse: false
     property string simDir: ""          // checks only (desktop-test.yml): hearth-pad with a simulated controller
 
-    readonly property var active: ToplevelManager.activeToplevel
+    readonly property var active: WinList.activeToplevel
     // The controller types arrow keys / Enter / Esc instead of moving the pointer in Hearth's own menus
     // and in Hearth Settings when it's the window in front. Hearth Files' windows are "<folder> – Files", and every
     // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files". Hearth Files built from Dolphin
@@ -41,7 +41,7 @@ Scope {
         || (active !== null && (active.title === "System Restore" || active.title === "Reliability history"))   // docs/SYSTEM-RESTORE.md
         || SettingsNav.winxShown || (active !== null && (active.title === "Device Manager" || active.title === "Run"))   // WinTools.qml
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
-    // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
+    // The window in front (WinList: labwc's foreign-toplevel list, or KWin's through hearth-kwin-bridge): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
     readonly property string frontApp: active !== null ? (active.appId || "") : ""
     // What has the keys (hearth-pad's pad.log says it, so a controller that "only does D-pad and A" shows why).
@@ -93,8 +93,8 @@ Scope {
             const w = pad.beforeMenu;
             pad.beforeMenu = null;
             if (!w || pad.menuOpen) return;
-            const cur = ToplevelManager.activeToplevel;
-            if ((cur === w || cur === null) && ToplevelManager.toplevels.values.indexOf(w) >= 0) w.activate();
+            const cur = WinList.activeToplevel;
+            if ((cur === w || cur === null) && WinList.toplevels.values.indexOf(w) >= 0) w.activate();
         }
     }
 

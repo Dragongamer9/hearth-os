@@ -13,7 +13,9 @@ Item {
     property bool island: false        // Mantel 2026's islands: round pills, the one you're on long and lit, no box
     property real pillSize: 24
     // The desktops, in order: [{ name, active, set }] (set: the Windowset, for activate()).
+    // On KWin (HEARTH_WM=kwin) the desktops come from WinList (KWin's hearthwindows script), not ext-workspace.
     readonly property var sets: {
+        if (WinList.kwin) return WinList.desktops.map(d => ({ name: d.name || "", active: d.active === true, set: null }));
         const all = Array.from(WindowManager.windowsets || []).filter(w => w && w.shouldDisplay !== false);
         all.sort((a, b) => {
             const ca = a.coordinates || [], cb = b.coordinates || [];
@@ -26,6 +28,7 @@ Item {
     }
     readonly property int activeIndex: sets.findIndex(s => s.active)
     function go(i) {
+        if (WinList.kwin) { WinList.goDesktop(i + 1); return; }
         const s = sets[i];
         if (s && s.set.canActivate !== false) s.set.activate();
     }

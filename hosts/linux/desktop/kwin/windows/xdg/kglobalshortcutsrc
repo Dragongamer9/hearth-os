@@ -1,0 +1,32 @@
+# Hearth Desktop Mode on KWin: KWin's own shortcuts that Mantel's keys need (hosts/linux/desktop/kwin/windows/shortcuts.json).
+# Read through XDG_CONFIG_DIRS, so these are only the starting values: a key changed in your own
+# ~/.config/kglobalshortcutsrc is yours and stays. Entries: current keys, KWin's default, the name KWin shows.
+# Freed (Mantel does these the Windows way: Super+arrows snap and step quarters, Super+D shows the desktop and
+# brings the windows back, Super+G goes to Game Mode); added (Super+Tab switches windows like labwc did, Super+Esc
+# zooms back to normal size).
+[kwin]
+Window Quick Tile Left=none,Meta+Left,Quick Tile Window to the Left
+Window Quick Tile Right=none,Meta+Right,Quick Tile Window to the Right
+Window Quick Tile Top=none,Meta+Up,Quick Tile Window to the Top
+Window Quick Tile Bottom=none,Meta+Down,Quick Tile Window to the Bottom
+Show Desktop=none,Meta+D,Peek at Desktop
+Grid View=none,Meta+G,Toggle Grid View
+Walk Through Windows Alternative=Meta+Tab,none,Walk Through Windows Alternative
+Walk Through Windows Alternative (Reverse)=Meta+Shift+Tab,none,Walk Through Windows Alternative (Reverse)
+view_actual_size=Meta+0\tMeta+Esc,Meta+0,Zoom to Actual Size
+
+# KDE apps that come with Hearth take these keys for themselves in Plasma; in Mantel they're Hearth's
+# (Print / Shift+Print screenshots, Super+Alt+R recording, Ctrl+Alt+T the terminal, Super+E Files, Super+. emoji).
+[services][org.kde.spectacle.desktop]
+_launch=none
+FullScreenScreenShot=none
+RecordScreen=none
+
+[services][org.kde.konsole.desktop]
+_launch=none
+
+[services][org.kde.dolphin.desktop]
+_launch=none
+
+[services][org.kde.plasma.emojier.desktop]
+_launch=none

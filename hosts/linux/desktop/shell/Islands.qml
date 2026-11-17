@@ -184,7 +184,7 @@ PanelWindow {
     }
     Process { id: btSet; onExited: btProc.running = true }
     Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!btProc.running) btProc.running = true }
-    readonly property var front: ToplevelManager.activeToplevel
+    readonly property var front: WinList.activeToplevel
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
     // The newest notification, shown in the pill for a few seconds (not with Do not disturb).
