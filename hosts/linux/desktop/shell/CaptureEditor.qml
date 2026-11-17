@@ -53,7 +53,12 @@ Item {
     }
     Connections { target: ed.cap; function onShotSeqChanged() { ed.start(); } }
     // The picture's pixels for the canvases come from probe (an Image item: drawImage takes one, loaded already).
-    readonly property bool ready: probe.status === Image.Ready
+    readonly property bool ready: probe.status === Image.Ready && pixSrc.status === Image.Ready && blurSrc.status === Image.Ready
+    // Blur's and Pixelate's sources (capture-draw.js): small copies Qt decodes from the file.
+    function src(c) {
+        return { kp: pixSrc.sourceSize.width / Math.max(1, imgW), kb: blurSrc.sourceSize.width / Math.max(1, imgW),
+                 draw: (kind, sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(kind === "pix" ? pixSrc : blurSrc, sx, sy, sw, sh, dx, dy, dw, dh) };
+    }
 
     function stateObj() {
         return { tool: tool, shapes: shapes.length, ready: ready, exportError: exportError, crop: crop, width: imgW, height: imgH, panel: panel, ocr: ocrState,
@@ -169,6 +174,8 @@ Item {
     }
 
     Image { id: probe; visible: false; source: ed.url; cache: false; asynchronous: false }
+    Image { id: pixSrc; visible: false; source: ed.imgW > 0 ? ed.url : ""; cache: false; asynchronous: false; sourceSize.width: Math.max(1, Math.round(ed.imgW * Draw.PIX)) }
+    Image { id: blurSrc; visible: false; source: ed.imgW > 0 ? ed.url : ""; cache: false; asynchronous: false; smooth: true; sourceSize.width: Math.max(1, Math.round(ed.imgW * Draw.BLUR)) }
 
     Keys.onPressed: e => {
         const ctrl = e.modifiers & Qt.ControlModifier, shift = e.modifiers & Qt.ShiftModifier;
@@ -258,7 +265,7 @@ Item {
                     c.clearRect(0, 0, width, height);
                     const list = ed.live ? ed.shapes.concat([ed.live]) : ed.shapes;
                     Draw.paint(c, list, ed.sc, ed.view.x, ed.view.y,
-                               ed.ready ? (sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(probe, sx, sy, sw, sh, dx, dy, dw, dh) : null,
+                               ed.ready ? ed.src(c) : null,
                                width, height);
                 }
             }
@@ -473,7 +480,7 @@ Item {
                 c.reset();
                 const v = e.v;
                 c.drawImage(probe, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
-                Draw.paint(c, ed.shapes, 1, v.x, v.y, (sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(probe, sx, sy, sw, sh, dx, dy, dw, dh), v.w, v.h);
+                Draw.paint(c, ed.shapes, 1, v.x, v.y, ed.src(c), v.w, v.h);
             }
             onPainted: {
                 const e = ed.exporting;
