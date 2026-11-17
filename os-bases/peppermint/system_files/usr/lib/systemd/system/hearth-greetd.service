@@ -1,0 +1,23 @@
+# Hearth's own login screen: greetd (signing in, PAM) with Hearth's greeter (cage + Quickshell). Only on a start where
+# hearth-login-select wrote /run/hearth/login-greetd; SDDM's drop-in keeps SDDM off then. If greetd fails or the
+# greeter crashes (greetd ends when the greeter quits without a session), hearth-login-fallback starts SDDM.
+# Not display-manager.service: that link stays SDDM's.
+[Unit]
+Description=Hearth's login screen (greetd)
+After=hearth-login-select.service systemd-user-sessions.service systemd-logind.service plymouth-quit-wait.service
+ConditionPathExists=/run/hearth/login-greetd
+OnFailure=hearth-login-fallback.service
+Wants=hearth-login-watch.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/plymouth quit --retain-splash
+ExecStart=/usr/libexec/nimbus/hearth-login-screen run-greetd
+Restart=no
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+KeyringMode=shared
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=graphical.target

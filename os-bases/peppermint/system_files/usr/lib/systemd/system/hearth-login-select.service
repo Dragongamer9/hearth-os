@@ -1,0 +1,16 @@
+# Hearth's own login screen (1.14, a test; off unless turned on in Settings): decides at every start whether it or SDDM
+# shows. Only when everything is in place does it write /run/hearth/login-greetd; without that file (this off, failed,
+# timed out or not run at all) SDDM starts exactly as before. See /usr/libexec/nimbus/hearth-login-screen.
+[Unit]
+Description=Hearth: which login screen starts (Hearth's own or SDDM)
+After=local-fs.target nimbus-autologin.service hearth-unlock.service systemd-user-sessions.service
+Before=display-manager.service sddm.service hearth-greetd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=15
+ExecStart=/usr/libexec/nimbus/hearth-login-screen select
+
+[Install]
+WantedBy=graphical.target
