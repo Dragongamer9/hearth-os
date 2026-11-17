@@ -348,6 +348,7 @@ def frames_check(procs):
     check('the frame picture (Hearth look, gold) is more than one colour', many, size)
     desk({'look': 'steam', 'accent': ''})
     shadow_check(theme)
+    pip_check(procs)
 
 
 def luma(im, x, y, r=2):
@@ -394,6 +395,8 @@ def shadow_check(theme):
             darkness[name] = (left_out - left_in, below_out - below_in)
             check('the frame has a shadow on a %s wallpaper (just outside darker than the wallpaper)' % name, ok,
                   'left %.0f vs %.0f, below %.0f vs %.0f (frame %s)' % (left_in, left_out, below_in, below_out, fr))
+            if name == 'light':
+                corners_check(im, x, y, w, h, fr)
         except Exception as ex:
             check('the frame has a shadow on a %s wallpaper (just outside darker than the wallpaper)' % name, False, '%s (frame %s)' % (ex, fr))
     # Behind another window: the lighter shadow (labwc's 40 px at 25 %), on the light wallpaper.
@@ -415,6 +418,60 @@ def shadow_check(theme):
     except Exception as ex:
         check('a window behind has a lighter shadow than the one in front', False, '%s (frame %s)' % (ex, fr))
     desk({'wallpaper': ''})
+
+
+def corners_check(im, x, y, w, h, fr):
+    """1.14: the frame's bottom corners are rounded (the very corner pixel is the wallpaper's shadow, not the frame)
+    and a light outline runs round it (its outer pixel lighter than the title colour just inside), on the light
+    wallpaper with Test A in front."""
+    corner = max(luma(im, x + w - 1, y + h - 1, 0), luma(im, x, y + h - 1, 0))
+    edge = luma(im, x + w // 2, y + h - 1, 0)
+    check('the frame\'s bottom corners are rounded (the corner is the wallpaper, the edge is the frame)', corner - edge >= 20,
+          'corner %.0f, bottom edge %.0f (frame %s)' % (corner, edge, fr))
+    mid = y + h // 2
+    line = max(luma(im, x, mid, 0), luma(im, x + w - 1, mid, 0))
+    inside = min(luma(im, x + 2, mid, 0), luma(im, x + w - 3, mid, 0))
+    check('the frame has a light outline round it (lighter than the frame just inside)', line - inside >= 6,
+          'outline %.0f, inside %.0f (frame %s)' % (line, inside, fr))
+
+
+def pip_check(procs):
+    """Picture-in-picture windows stay on top under KWin (shortcuts.json's "picture-in-picture" rule, run by the
+    script): Firefox's ("Picture-in-Picture") and Chromium's ("Picture in picture"), played here by foot with those
+    app ids and titles; another app's window with the same title is left alone. The picture: the Firefox one in the
+    bottom right corner, still on top while Test A is in front."""
+    for app, title in (('firefox', 'Picture-in-Picture'), ('chromium', 'Picture in picture'), ('hearth.test.p', 'Picture-in-Picture')):
+        procs.append(subprocess.Popen(['foot', '--app-id=' + app, '--title=' + title, 'sleep', '600'],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+
+    def find(app):
+        for w in listed().get('windows', []):
+            if str(w.get('appId', '')).lower() == app:
+                return w
+        return None
+    check('Firefox\'s picture-in-picture window stays on top', wait(lambda: (find('firefox') or {}).get('keepAbove') is True, 15),
+          find('firefox') or [w.get('appId') for w in listed().get('windows', [])])
+    check('Chromium\'s picture-in-picture window stays on top', wait(lambda: (find('chromium') or {}).get('keepAbove') is True, 15),
+          find('chromium'))
+    other = wait(lambda: find('hearth.test.p'), 10) and find('hearth.test.p')
+    time.sleep(1)
+    other = find('hearth.test.p') or other
+    check('another app\'s window with that title is not kept on top', bool(other) and other.get('keepAbove') is False, other)
+    for app in ('chromium', 'hearth.test.p'):
+        if find(app):
+            do({'op': 'close', 'id': find(app)['id']})
+    ff = find('firefox')
+    if ff:
+        do({'op': 'place', 'id': ff['id'], 'x': 1400, 'y': 640, 'w': 480, 'h': 300})
+    ipc('winlist', 'act', 'Test A', 'activate')
+    a_front = wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'), 8)
+    time.sleep(1.5)
+    ff = find('firefox') or {}
+    check('the picture-in-picture window is still on top with another window in front', a_front and ff.get('keepAbove') is True,
+          (ff, 'Test A in front' if a_front else 'Test A never came in front'))
+    shot('pip-on-top')
+    if ff.get('id'):
+        do({'op': 'close', 'id': ff['id']})
 
 
 def differs(a, b):
