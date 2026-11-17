@@ -197,8 +197,8 @@ Hearth's own versions of what KDE's Dolphin has (`hearth_files_extras.py` throug
   right-click the folder › Show git status to turn the badges off (remembered).
 - **Act as administrator**: right-click a system folder (outside your home) › Act as administrator. A red bar says it's
   on; new folders, new files, renames, deleting (for good: system files have no Trash), copying and moving there, and
-  Properties' permissions and owner, go through `hearth-admin files-*` with pkexec, which always asks for an
-  administrator's password (remembered a few minutes, 49-hearth-admin.rules). `hearth-files-admin` checks every path
+  Properties' permissions and owner, go through `pkexec hearth-files-admin`, its own polkit action (fun.hearthos.files-admin), which always asks
+  for an administrator's password (remembered a few minutes for that program only). `hearth-files-admin` checks every path
   again and never changes what starts the PC (/boot, /efi, the system image, /etc/fstab, the kernel's and boot menu's
   settings, sudo, PAM and the account files) or a top-level folder itself. It's for this window only, off when it
   closes, and never saved.
