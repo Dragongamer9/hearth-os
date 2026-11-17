@@ -1,0 +1,260 @@
+# Firehold, Hearth's own desktop compositor (hosts/firehold-comp, docs/FIREHOLD.md; 2.0, a preview until it's proven on devices).
+#   build     cargo build and test, only here (never on anyone's computer), in Fedora as Quickshell's package is; the
+#             compiler's errors come out as annotations (logs can't be downloaded where the owner's sessions run)
+#   session   the session's tests: the preview is opt-in and falls back to KWin, then labwc
+#   nested    the compositor in a window on a virtual screen, started by nimbus-session with Mantel on it
+#             (.github/scripts/firehold-test.sh): its protocols, Mantel's bar and dock (layer shell), a window
+#             on Mantel's taskbar (foreign toplevel), minimizing, snapping, Settings › Your desktop, a clean end
+#   pictures  each picture as notices ("SHOT comp-<n>-<what> <i>", a JPEG in base64 pieces of 3800, at most 8, after
+#             a "SHOT-PARTS" count), one job and one step per picture
+name: Firehold
+
+on:
+  push:
+    branches: ['feature/hearth-compositor', 'feature/firehold', 'feature/firehold-*']
+    paths: ['hosts/firehold-comp/**', 'hosts/linux/session/**', 'hosts/linux/desktop/firehold/**',
+            'hosts/linux/desktop/labwc/autostart', 'hosts/linux/desktop/shell/hearth-your-desktop',
+            'hosts/linux/desktop/shell/SetYourDesktop.qml', 'hosts/linux/desktop/shell/DesktopNotice.qml',
+            'hosts/linux/test/test_firehold_session.py', 'hosts/linux/test/test_kwin_session.py',
+            '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firehold-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Rust and the libraries Smithay uses
+        run: |
+          dnf -y install git tar zstd gcc pkgconf-pkg-config rust cargo clippy systemd-devel libseat-devel libinput-devel \
+            mesa-libgbm-devel libdrm-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel pixman-devel \
+            python3 >/dev/null
+          rustc --version; cargo --version
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/firehold-comp/target
+          key: firehold-${{ hashFiles('hosts/firehold-comp/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: firehold-${{ hashFiles('hosts/firehold-comp/Cargo.toml') }}-
+      - name: Build
+        working-directory: hosts/firehold-comp
+        run: |
+          set +e
+          cargo build --release --message-format=json-diagnostic-rendered-ansi > ../../build.json 2> ../../build.err
+          rc=$?
+          python3 - <<'PY'
+          import json, re
+          errs, warns = [], 0
+          for line in open('../../build.json', errors='replace'):
+              try:
+                  m = json.loads(line)
+              except ValueError:
+                  continue
+              if m.get('reason') != 'compiler-message':
+                  continue
+              msg = m['message']
+              if msg.get('level') == 'warning':
+                  warns += 1
+              if not str(msg.get('level', '')).startswith('error'):
+                  continue
+              text = re.sub(r'\x1b\[[0-9;]*m', '', msg.get('rendered') or msg.get('message') or '')
+              span = next((s for s in msg.get('spans', []) if s.get('is_primary')), None)
+              errs.append((span, text))
+          with open('../../errors.txt', 'w') as out:
+              for span, text in errs:
+                  props = 'title=build'
+                  if span:
+                      props = 'file=hosts/firehold-comp/%s,line=%d,col=%d,title=build' % (span['file_name'], span['line_start'], span['column_start'])
+                  body = text[:1800].replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+                  out.write('::error %s::%s\n' % (props, body))
+          print('::notice title=build::%d errors, %d warnings' % (len(errs), warns))
+          PY
+          sed -n '1,10p' ../../errors.txt
+          [ "$rc" = 0 ] || { [ -s ../../errors.txt ] || echo "::error title=build::cargo failed: $(tail -c 1500 ../../build.err | tr '\n' '|')"; }
+          exit $rc
+      - name: More errors (11-20)
+        if: failure()
+        run: sed -n '11,20p' errors.txt
+      - name: More errors (21-30)
+        if: failure()
+        run: sed -n '21,30p' errors.txt
+      - name: More errors (31-40)
+        if: failure()
+        run: sed -n '31,40p' errors.txt
+      - name: Tests
+        working-directory: hosts/firehold-comp
+        run: |
+          cargo test --release 2>&1 | tee ../../test.log | tail -25
+          grep -E "^test .* FAILED|panicked at" ../../test.log | head -8 | while read -r l; do echo "::error title=cargo test::$l"; done
+          grep -q "test result: FAILED" ../../test.log && exit 1
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firehold
+          path: hosts/firehold-comp/target/release/firehold-comp
+          retention-days: 7
+
+  session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: The session's tests
+        run: |
+          fail=0
+          for t in test_firehold_session.py test_kwin_session.py; do
+            if ! python3 -W ignore -m unittest discover -s hosts/linux/test -p "$t" -v > /tmp/t.log 2>&1; then
+              fail=1
+              grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -12 | while read -r l; do echo "::error title=$t::$l"; done
+            fi
+            tail -n 3 /tmp/t.log
+          done
+          exit $fail
+
+  nested:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install Quickshell, labwc, a virtual screen and friends
+        run: |
+          dnf -y install dnf5-plugins git xorg-x11-server-Xvfb xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL \
+            libinput libseat libxkbcommon libxkbcommon-x11 libX11 libXcursor libXrandr libXi \
+            labwc qt6-qtsvg procps-ng python3 python3-pillow ImageMagick xdotool foot dbus-daemon dbus-tools \
+            google-noto-sans-fonts adwaita-icon-theme fontconfig libnotify wl-clipboard wtype pam shadow-utils grim wf-recorder wlr-randr >/dev/null
+          dnf -y install --skip-unavailable wayland-utils wlrctl rsms-inter-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in Xvfb quickshell foot import xdotool wayland-info wlrctl Xwayland; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold
+          path: .
+      - name: Mantel on Firehold
+        timeout-minutes: 15
+        run: bash .github/scripts/firehold-test.sh
+      - name: Make the JPEGs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, io, os
+          from PIL import Image
+          # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
+          for name in ('firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
+                       'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
+                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice'):
+              p = 'shots/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=pictures::no %s' % name); continue
+              im = Image.open(p).convert('RGB')
+              for w, q in ((960, 45), (900, 38), (800, 34), (720, 30), (640, 26), (560, 22)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 8 * 3800:
+                      break
+              n = -(-len(base64.b64encode(b.getvalue())) // 3800)
+              if n > 8:
+                  print('::error title=pictures::%s needs %d pieces, more than a step can post' % (name, n))
+              open('shots/%s.jpg' % name, 'wb').write(b.getvalue())
+              print('::notice title=pictures::%s is %dx%d, sent at %d px wide in %d pieces' % (name, im.width, im.height, w, n))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-shots
+          path: shots
+          retention-days: 14
+
+  headless:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install Quickshell and friends (no virtual screen)
+        run: |
+          dnf -y install dnf5-plugins git xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL libinput libseat \
+            libxkbcommon labwc qt6-qtsvg procps-ng python3 python3-pillow foot dbus-daemon dbus-tools \
+            google-noto-sans-fonts adwaita-icon-theme fontconfig libnotify grim wlr-randr wf-recorder >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold
+          path: .
+      - name: Mantel on Firehold, headless
+        timeout-minutes: 12
+        run: bash .github/scripts/firehold-headless-test.sh
+      - name: Picture firehold-h-mantel
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, io, os, hashlib
+          from PIL import Image
+          name = 'firehold-h-mantel'
+          p = 'shots/%s.png' % name
+          if not os.path.exists(p):
+              print('::error title=pictures::no %s' % name); raise SystemExit(1)
+          im = Image.open(p).convert('RGB')
+          for w, q in ((960, 45), (900, 38), (800, 34), (720, 30), (640, 26), (560, 22)):
+              b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+              data = base64.b64encode(b.getvalue()).decode()
+              if len(data) <= 8 * 3800:
+                  break
+          parts = [data[i:i + 3800] for i in range(0, len(data), 3800)]
+          print('::notice title=SHOT-PARTS %s %d::%s' % (name, len(parts), hashlib.sha256(b.getvalue()).hexdigest()[:16]))
+          for i, part in enumerate(parts, 1):
+              print('::notice title=SHOT %s %d::%s' % (name, i, part))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-headless-shots
+          path: shots
+          retention-days: 14
+
+  pictures:
+    needs: nested
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ['firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
+               'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
+               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice']
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: firehold-shots
+          path: shots
+      - name: Picture ${{ matrix.name }}
+        run: |
+          f=shots/${{ matrix.name }}.jpg
+          [ -f "$f" ] || { echo "::error title=pictures::${{ matrix.name }}.jpg is missing"; exit 1; }
+          # fold leaves the last piece without a newline: add one so `read` gets it, and count from the size itself.
+          { base64 -w0 "$f" | fold -w 3800; echo; } | grep -v '^$' > /tmp/parts
+          b=$(base64 -w0 "$f" | wc -c); n=$(( (b + 3799) / 3800 ))
+          [ "$(wc -l < /tmp/parts)" -eq "$n" ] || { echo "::error title=pictures::${{ matrix.name }}: $(wc -l < /tmp/parts) pieces cut, $n expected"; exit 1; }
+          if [ "$n" -gt 8 ]; then echo "::error title=pictures::${{ matrix.name }} has $n pieces (8 at most)"; exit 1; fi
+          echo "::notice title=SHOT-PARTS ${{ matrix.name }} $n::$(sha256sum "$f" | cut -c1-16)"
+          i=0
+          while read -r part; do i=$((i + 1)); echo "::notice title=SHOT ${{ matrix.name }} $i::$part"; done < /tmp/parts
+          [ "$i" -eq "$n" ] || { echo "::error title=pictures::${{ matrix.name }}: posted $i of $n pieces"; exit 1; }
