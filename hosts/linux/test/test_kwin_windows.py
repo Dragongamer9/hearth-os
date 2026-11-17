@@ -262,9 +262,39 @@ class Frames(unittest.TestCase):
                 pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
                 pathlib.Path(path).write_text(text)
                 return True
-            self.assertTrue(self.ha.write_theme(d, self.cols, 6, write))
-            self.assertTrue(all(p.startswith(str(pathlib.Path(d) / 'aurorae' / 'themes' / 'hearth')) for p in seen))
+            # An older look's folder of Hearth's (removed) and someone's own folder that only looks like one (kept).
+            old = pathlib.Path(d) / 'aurorae' / 'themes' / 'hearth-0badc0de'
+            old.mkdir(parents=True)
+            (old / 'metadata.desktop').write_text('[Desktop Entry]\nX-Hearth-Frames=1\n')
+            alike = pathlib.Path(d) / 'aurorae' / 'themes' / 'hearth-12345678'
+            alike.mkdir(parents=True)
+            (alike / 'metadata.desktop').write_text('[Desktop Entry]\nName=Mine\n')
+            changed, name = self.ha.write_theme(d, self.cols, 6, write)
+            self.assertTrue(changed)
+            self.assertRegex(name, r'^hearth-[0-9a-f]{8}$')
+            root = str(pathlib.Path(d) / 'aurorae' / 'themes')
+            self.assertTrue(all(p.startswith(root + '/hearth/') or p.startswith(root + '/' + name + '/') for p in seen))
+            self.assertTrue((pathlib.Path(root) / name / (name + 'rc')).is_file())
             self.assertEqual((other / 'decoration.svg').read_text(), 'mine')
+            self.assertFalse(old.exists())
+            self.assertTrue(alike.exists())
+            # Another look: another name.
+            cols2 = dict(self.cols, **{'window.active.title.bg.color': '#123456'})
+            self.assertNotEqual(self.ha.write_theme(d, cols2, 6, write)[1], name)
+
+    def test_kwinrc_pick_keeps_the_persons_choice(self):
+        pick = self.ha.kwinrc_pick
+        self.assertEqual(pick('', 'hearth-aa'), '[org.kde.kdecoration2]\ntheme=__aurorae__svg__hearth-aa\n')
+        t = '[Windows]\nFocusPolicy=ClickToFocus\n\n[org.kde.kdecoration2]\ntheme=__aurorae__svg__hearth-0011\nButtonsOnLeft=X\n\n[Other]\na=1\n'
+        out = pick(t, 'hearth-bb')
+        self.assertIn('theme=__aurorae__svg__hearth-bb\n', out)
+        self.assertNotIn('hearth-0011', out)
+        self.assertIn('ButtonsOnLeft=X', out)
+        self.assertIn('[Other]\na=1', out)
+        self.assertIn('FocusPolicy=ClickToFocus', out)
+        self.assertIsNone(pick('[org.kde.kdecoration2]\nlibrary=org.kde.breeze\ntheme=Breeze\n', 'hearth-bb'))
+        self.assertIsNone(pick('[org.kde.kdecoration2]\ntheme=__aurorae__svg__SomeoneElse\n', 'hearth-bb'))
+        self.assertIn('theme=__aurorae__svg__hearth-bb', pick('[org.kde.kdecoration2]\nlibrary=org.kde.kwin.aurorae.v2\n', 'hearth-bb'))
 
     def test_kwin_picks_it(self):
         rc = (KWIN / 'xdg' / 'kwinrc').read_text()

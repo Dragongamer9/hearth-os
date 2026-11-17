@@ -91,6 +91,8 @@ jobs:
           # checks fail then). Hearth's KWin defaults (four desktops, Super on its own) the way the session gives them;
           # pictures through KWin's screenshot API.
           export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          # Hearth's window frames written before KWin starts, as the session does (theme/apply.sh): KWin loads them then.
+          HEARTH_WM=kwin python3 hosts/linux/desktop/theme/hearth-theme >/dev/null 2>shots/hearth-theme.err || echo "::warning title=frames::hearth-theme: $(head -c 300 shots/hearth-theme.err)"
           # The command at the end runs inside KWin's session: it leaves KWin's X server address (DISPLAY, XAUTHORITY).
           X11ENV="sh -c 'env | grep -E \"^(DISPLAY|XAUTHORITY)=\" > /tmp/kwin-x11.env'"
           modprobe vkms 2>/dev/null || echo "::warning title=keys::no vkms module"
@@ -138,7 +140,11 @@ jobs:
                   break
               data += c
           W, H, S = int(res['width']), int(res['height']), int(res['stride'])
-          Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
+          # QImage's formats: ARGB32 (4, 5, 6: bytes B G R A here) or RGBA8888 (16-19: R G B A). Reading one as the other
+          # swapped red and blue (Steam blue came out orange).
+          raw = 'RGBA' if int(res.get('format', 6)) in (16, 17, 18, 19) else 'BGRA'
+          print('screenshot format %s -> %s' % (res.get('format'), raw))
+          Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
           PY
           sed -i 's/^          //' /tmp/shot.py
           printf '%s\n' '#!/bin/bash' 'timeout 25 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || echo "::warning title=picture::$1 not taken"' \
@@ -199,3 +205,5 @@ jobs:
         run: f=shots/kwin-frame-full-4.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-full $i::$part"; done || true
       - name: Picture (frame-csd)
         run: f=shots/kwin-frame-csd.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-csd $i::$part"; done || true
+      - name: Picture (frame-zoom)
+        run: f=shots/kwin-frame-zoom.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-zoom $i::$part"; done || true
