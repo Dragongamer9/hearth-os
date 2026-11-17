@@ -38,7 +38,9 @@ SetPage {
     function fpLoad() { fpJob.run(["status"], r => page.fp = r, e => page.fpSay(e, true)); }
     function enroll(f) { fpSay(""); fpJob.run(["enroll", f], r => { page.fp = r; page.fpSay((page.fingerNames[f] || f) + " is saved. Touch the reader to unlock where it's turned on below."); }, e => { page.fpSay(e, true); page.fpLoad(); }, "", "enroll"); }
     function places(req, ok) { fpSay(""); fpAdmin.run(["fingerprint-places"], () => { page.fpSay(ok); page.fpLoad(); }, e => { page.fpSay(e, true); page.fpLoad(); }, JSON.stringify(req), "places"); }
-    Component.onCompleted: { load(); fpLoad(); if (SettingsNav.pageAnchor === "enroll") { SettingsNav.pageAnchor = ""; enrollSoon.start(); } }
+    // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
+    Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
+    Component.onCompleted: { load(); fpLoad(); if (SettingsNav.pageAnchor === "enroll") { anchorDone.restart(); enrollSoon.start(); } }
     Timer { id: enrollSoon; interval: 1500; onTriggered: if (page.freeFingers.length) page.enroll(page.freeFingers[0]) }
     SetJob { id: fpJob; helper: "hearth-fingerprint" }
     SetJob { id: fpAdmin; helper: page.helper; admin: true }

@@ -24,7 +24,9 @@ SetPage {
     readonly property var addType: types.find(t => t.id === adding) || null
     readonly property string addPlugin: addType ? addType.plugin : ""
     // Settings opened at "vpn:add-<kind>" (the pictures, a link): that kind's form open.
-    Component.onCompleted: { load(); const m = /^add-(\w+)$/.exec(SettingsNav.pageAnchor); if (m) { adding = m[1]; SettingsNav.pageAnchor = ""; } }
+    // Settings can make a page twice while it opens: the anchor is left a moment for the page that stays, then cleared.
+    Timer { id: anchorDone; interval: 1500; onTriggered: SettingsNav.pageAnchor = "" }
+    Component.onCompleted: { load(); const m = /^add-(\w+)$/.exec(SettingsNav.pageAnchor); if (m) { adding = m[1]; anchorDone.restart(); } }
     function addByHand() {
         say("");
         const req = { type: page.adding, name: vname.text.trim(), gateway: vserver.text.trim(), user: vaddUser.text.trim(),
