@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Install cage, Quickshell and friends
         run: |
-          dnf -y install dnf5-plugins git cage labwc grim wlr-randr python3 procps-ng ImageMagick dbus-daemon qt6-qtsvg \
+          dnf -y install dnf5-plugins git cage labwc xorg-x11-server-Xwayland grim wlr-randr python3 procps-ng ImageMagick dbus-daemon qt6-qtsvg \
             google-noto-sans-fonts systemd >/dev/null
           dnf -y install rsms-inter-fonts >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
