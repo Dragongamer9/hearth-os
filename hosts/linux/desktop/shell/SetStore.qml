@@ -55,23 +55,26 @@ SetPage {
     function stars(n) { const f = Math.round(n || 0); return "★★★★★".slice(0, f) + "☆☆☆☆☆".slice(0, 5 - f); }
     function mb(b) { return !b ? "" : b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB"; }
     // Deep links (Settings' "page:part"): store:updates, store:sources, store:app-org_kde_krita (an app's page; "_" for ".").
-    // Also when Settings is opened at one while this page is already loaded (Settings keeps it).
+    // Also when Settings is opened at one while this page is already loaded. The part asked for stays set for a few
+    // seconds (the frame can load a page twice as it opens: the second one still goes there), not cleared here.
     function openAnchor(first) {
         const a = SettingsNav.pageAnchor || "";
         // Cleared a little later, not at once: Settings can load the page twice when it opens (the controller look and
-        // the mouse look swap as the pointer arrives), and the second copy must still open at the part asked for.
+        // the mouse look swap as the pointer arrives), and the second copy must still open at the part asked for. Only a
+        // part asked for in the last few seconds (SettingsNav.anchorAt) is followed.
+        const fresh = Date.now() - SettingsNav.anchorAt < 4000;
         if (isMine(a)) anchorClear.restart();
-        if (a === "updates") loadUpdates();
-        else if (a === "sources") loadSources();
-        else if (a === "drivers") go("drivers");
-        else if (a.startsWith("review-")) { reviewNext = a.slice(7).replace(/_/g, "."); loadUpdates(); }
-        else if (a.startsWith("app-")) { if (!home) loadHome(); openApp(a.slice(4).replace(/_/g, ".")); }
+        if (fresh && a === "updates") loadUpdates();
+        else if (fresh && a === "sources") loadSources();
+        else if (fresh && a === "drivers") go("drivers");
+        else if (fresh && a.startsWith("review-")) { reviewNext = a.slice(7).replace(/_/g, "."); loadUpdates(); }
+        else if (fresh && a.startsWith("app-")) { if (!home) loadHome(); openApp(a.slice(4).replace(/_/g, ".")); }
         else if (first) loadHome();
     }
     function isMine(a) { return a === "updates" || a === "sources" || a === "drivers" || a.startsWith("app-") || a.startsWith("review-"); }
     Timer { id: anchorClear; interval: 2500; onTriggered: if (page.isMine(SettingsNav.pageAnchor || "")) SettingsNav.pageAnchor = "" }
     Component.onCompleted: openAnchor(true)
-    Connections { target: SettingsNav; function onPageAnchorChanged() { if (SettingsNav.pageAnchor !== "") page.openAnchor(false); } }
+    Connections { target: SettingsNav; function onAnchorAtChanged() { if (SettingsNav.pageAnchor !== "") page.openAnchor(false); } }
     SetJob { id: reader; helper: "hearth-store" }
     SetJob { id: worker; helper: "hearth-store" }
     SetJob { id: prefsJob; helper: "hearth-store" }
