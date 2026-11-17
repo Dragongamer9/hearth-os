@@ -4,7 +4,7 @@
 // (under labwc those rows say they need Mantel on KWin). Night light (on/off, how warm, when: your times, sunset to
 // sunrise where you are, or all the time; its fade) is Settings' own. 1.14's KDE rows (docs/SCREENS.md): the main
 // screen, colour intensity and accuracy, HDR calibration, Extended Dynamic Range, overscan and RGB range, X11 apps'
-// scaling, external screens' brightness (DDC/CI), auto-brightness, the edge barrier and desktops on the main screen
+// scaling, external screens' brightness (DDC/CI), auto-brightness and how bright, the edge barrier and desktops on the main screen
 // only. A row the screen or KWin can't do is hidden (or says why, where KDE shows it greyed).
 // Everything goes through hearth-screens (docs/SCREENS.md: wlr-randr under labwc, kscreen-doctor / KWin's D-Bus under
 // KWin). A change is kept only if you confirm it within 15 seconds, so a mode the screen can't show fixes itself, and
@@ -81,6 +81,7 @@ SetPage {
     function took(r) {
         const first = page.sinfo === null;
         page.sinfo = r;
+        if (!autoOffSave.running) page.autoOffTouched = false;
         if (first) goToAnchor();
         const all = r.outputs || [];
         page.outs = all;
@@ -350,14 +351,36 @@ SetPage {
         icon: "sun"; title: "Brightness"; sub: "Only for screens that let Hearth change it"; value: page.brightness / 100
         onMoved: v => { page.brightness = Math.max(1, Math.round(v * 100)); Quickshell.execDetached(["brightnessctl", "-q", "-c", "backlight", "set", page.brightness + "%"]); }
     }
-    // Auto-brightness: a laptop with a light sensor follows the room (hearth-screens autobright, started by the shell
-    // while it's on). Hidden without a sensor.
+    // Auto-brightness: a laptop with a light sensor (iio-sensor-proxy's) follows the room (hearth-screens autobright,
+    // started by the shell while it's on; off until you turn it on). Hidden without a sensor. "How bright" moves
+    // what it picks up or down; a brightness you set by hand pauses it until the light changes.
+    readonly property var autoB: page.sinfo && page.sinfo.autoBrightness ? page.sinfo.autoBrightness : null
+    readonly property bool autoOn: !!autoB && autoB.capable && autoB.on
+    property int autoOffWant: 0
+    property bool autoOffTouched: false     // moved, not saved and read back yet
     SetSwitch {
-        visible: !!page.sinfo && !!page.sinfo.autoBrightness && page.sinfo.autoBrightness.capable
+        visible: !!page.autoB && page.autoB.capable
         icon: "sun"; title: "Auto-brightness"; sub: "The screen follows the light in the room"
-        checked: !!page.sinfo && !!page.sinfo.autoBrightness && page.sinfo.autoBrightness.on
+        checked: page.autoOn
         onToggled: v => page.option({ autoBrightness: v }, v ? "Auto-brightness on" : "Auto-brightness off")
     }
+    SetSlider {
+        id: autoOffset
+        visible: page.autoOn
+        icon: "sun"; title: "How bright"; sub: "Darker or brighter than Auto-brightness picks for the room"
+        step: 0.0625
+        value: ((page.autoOffTouched ? page.autoOffWant : page.autoB ? page.autoB.offset : 0) + 40) / 80
+        valueText: { const o = Math.round(value * 80 - 40); return o === 0 ? "As picked" : (o > 0 ? "+" : "") + o + "%"; }
+        onMoved: v => { page.autoOffWant = Math.round(v * 80 - 40); page.autoOffTouched = true; autoOffSave.restart(); }
+    }
+    Text {
+        visible: page.autoOn
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: page.autoB && page.autoB.paused ? "Auto-brightness is paused: you set the brightness yourself. It follows the room again when the light changes."
+            : "Setting the brightness yourself pauses Auto-brightness until the light in the room changes."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+    }
+    Timer { id: autoOffSave; interval: 600; onTriggered: page.option({ autoBrightnessOffset: page.autoOffWant }, "") }
     // External screens' brightness: over DDC/CI (ddcutil), or KWin's own control where a newer KWin has it. The screen
     // keeps it itself, so nothing is saved by Hearth. Moved a moment after you stop.
     readonly property var extBright: {
