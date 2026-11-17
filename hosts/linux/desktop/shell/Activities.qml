@@ -39,8 +39,7 @@ Singleton {
     // ------------------------------------------------ the windows (the window bridge's WinList under KWin, else
     // labwc's foreign-toplevel list through Quickshell)
     function wins() {
-        try { if (typeof WinList !== "undefined" && WinList && WinList.toplevels) return Array.from(WinList.toplevels.values || WinList.toplevels); } catch (e) {}
-        return ToplevelManager.toplevels.values;
+        return WinList.toplevels.values;     // KWin's windows through the bridge, labwc's foreign-toplevel list otherwise
     }
     function ownWindow(t) {
         const a = t.appId || "";
@@ -105,7 +104,7 @@ Singleton {
         apps = a;
     }
     Connections {
-        target: ToplevelManager.toplevels
+        target: WinList.toplevels
         function onValuesChanged() { act.track(); }
     }
     Timer { interval: 2000; running: true; repeat: true; onTriggered: act.track() }   // WinList, or a missed change
