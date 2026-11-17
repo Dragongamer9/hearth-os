@@ -57,7 +57,7 @@ jobs:
           set +e -x
           # Logs can't be downloaded here: what went wrong goes on the run page as notices.
           report() {
-            for f in shots/greeter.log shots/greetd.log; do
+            for f in shots/greeter-cage.log shots/greeter.log shots/greetd.log; do
               [ -s "$f" ] && echo "::notice title=LOG $f::$(tail -c 2500 "$f" | tr '\n' '|')"
             done
             echo "::notice title=LOG step::$(grep -v '^+' shots/step.log | tail -c 2500 | tr '\n' '|')"
@@ -87,14 +87,27 @@ jobs:
           for i in $(seq 1 20); do [ -S "$GREETD_SOCK" ] && break; sleep 0.25; done
           # cage on a virtual screen, as hearth-greeter starts it (without the real card and seat).
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
-          export QT_QUICK_BACKEND=software QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 XDG_SESSION_TYPE=wayland
-          cage -s -d -- sh -c 'echo "$WAYLAND_DISPLAY" > /tmp/xdg/wd; exec quickshell -p /tmp/greeter' > shots/greeter.log 2>&1 &
+          export QT_QUICK_BACKEND=software QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 XDG_SESSION_TYPE=wayland LANG=C.UTF-8 LC_ALL=C.UTF-8
+          fail=0
+          # 1. cage, as hearth-greeter starts it: the greeter loads with no QML errors and says it's on screen.
+          cage -s -d -- quickshell -p /tmp/greeter > shots/greeter-cage.log 2>&1 &
+          cpid=$!
+          for i in $(seq 1 60); do [ -f $XDG_RUNTIME_DIR/hearth-greeter-ready ] && break; sleep 0.5; done
+          if [ -f $XDG_RUNTIME_DIR/hearth-greeter-ready ]; then echo "::notice title=Login screen::in cage: on screen (ready mark written)"; else echo "::error title=Login screen::in cage: no ready mark within 30 s"; fail=1; fi
+          kill $cpid 2>/dev/null; sleep 1; kill -9 $cpid 2>/dev/null
+          rm -f $XDG_RUNTIME_DIR/hearth-greeter-ready
+          # 2. The pictures and the sign-in at 1920x1080: cage can't change a virtual screen's size, so labwc (wlroots,
+          #    as cage) shows the greeter full screen there.
+          mkdir -p /tmp/labwc
+          printf '%s\n' '<?xml version="1.0"?>' '<labwc_config>' '<core><decoration>client</decoration></core>' \
+            '<windowRules><windowRule identifier="*" serverDecoration="no"><action name="ToggleFullscreen"/></windowRule></windowRules>' '</labwc_config>' > /tmp/labwc/rc.xml
+          : > /tmp/labwc/autostart
+          labwc -C /tmp/labwc -s 'sh -c "echo \$WAYLAND_DISPLAY > /tmp/xdg/wd; wlr-randr --output HEADLESS-1 --custom-mode 1920x1080; sleep 0.5; exec quickshell -p /tmp/greeter"' > shots/greeter.log 2>&1 &
           echo $! > /tmp/cage.pid
           for i in $(seq 1 40); do [ -s /tmp/xdg/wd ] && break; sleep 0.25; done
           export WAYLAND_DISPLAY=$(cat /tmp/xdg/wd)
+          sleep 5
           wlr-randr || true
-          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || wlr-randr --output HEADLESS-1 --mode 1920x1080 || echo "::warning title=Login screen::couldn't set 1920x1080 in cage"
-          sleep 4
           q() { quickshell ipc -p /tmp/greeter call greeter "$@"; }
           shot() {   # shot NAME: the screen, as a JPEG small enough for the notices
             grim shots/$1.png || return 0
@@ -102,10 +115,9 @@ jobs:
             echo "$1: $(magick identify -format '%wx%h' shots/$1.png) $(stat -c %s shots/$1.jpg) bytes"
           }
           waitfor() {   # waitfor PYTHON-EXPRESSION-ON-d (the greeter's state)
-            for i in $(seq 1 40); do s=$(q state 2>/dev/null); python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if ($1) else 1)" "$s" 2>/dev/null && return 0; sleep 0.25; done
+            for i in $(seq 1 40); do s=$(q state 2>/dev/null | grep '^{' | tail -1); python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if ($1) else 1)" "$s" 2>/dev/null && return 0; sleep 0.25; done
             echo "::error title=Login screen::waited for $1; state: $s"; return 1
           }
-          fail=0
           waitfor "d['users'] == 3 and len(d['sessions']) >= 3" || fail=1
           q state
           shot 1-users
@@ -169,9 +181,9 @@ jobs:
           state=$(cat $F/state.json 2>/dev/null); echo "greeter state: $state"
           echo "$state" | grep -q '"lastUser":"alex"' || echo "$state" | grep -q '"lastUser": "alex"' || { echo "::error title=Login screen::the last account wasn't remembered"; fail=1; }
           sleep 1
-          if kill -0 $(cat /tmp/cage.pid) 2>/dev/null; then echo "::error title=Login screen::the greeter didn't quit after greetd took the session"; fail=1; fi
-          if grep -E "ReferenceError|TypeError|is not a type|is not installed|Cannot assign|Type .* unavailable|Error:" shots/greeter.log | grep -v "Binding loop"; then
-            echo "::error title=Login screen QML::$(grep -E 'ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable|Error:' shots/greeter.log | head -5 | tr '\n' '|')"; fail=1
+          if pgrep -x quickshell >/dev/null; then echo "::error title=Login screen::the greeter didn't quit after greetd took the session"; fail=1; fi
+          if cat shots/greeter-cage.log shots/greeter.log | grep -E "ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable|Cannot override|Failed to load|Error:" | grep -v "Binding loop"; then
+            echo "::error title=Login screen QML::$(cat shots/greeter-cage.log shots/greeter.log | grep -E 'ReferenceError|TypeError|is not a type|is not installed|Cannot assign|unavailable|Cannot override|Failed to load|Error:' | head -6 | tr '\n' '|')"; fail=1
           fi
           ls -la shots
           exit $fail

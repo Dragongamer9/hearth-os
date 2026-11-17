@@ -8,7 +8,7 @@ Rectangle {
     property string text: ""
     property string sub: ""
     property string glyph: ""
-    property string layer: "main"
+    property string navLayer: "main"   // "main", "menu" (an open menu) or "osk" (Item's own `layer` is taken)
     property bool navigable: true
     property bool preferred: false     // where the ring starts on this layer
     property bool primary: false
