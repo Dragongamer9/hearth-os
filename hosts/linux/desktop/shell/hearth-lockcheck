@@ -87,6 +87,13 @@ def kwin_environ():
     return None
 
 
+def qt_wayland():
+    """Qt's Wayland platform plugin, which the greeter (a Wayland client of KWin) needs. The test run is off screen,
+    so it can't show this."""
+    pats = ['/usr/lib/*/qt6/plugins/platforms/libqwayland*.so', '/usr/lib64/qt6/plugins/platforms/libqwayland*.so']
+    return any(glob.glob(p) for p in pats)
+
+
 def data_dirs(env=None):
     env = os.environ if env is None else env
     home = env.get('XDG_DATA_HOME') or os.path.join(env.get('HOME') or os.path.expanduser('~'), '.local', 'share')
@@ -172,6 +179,9 @@ def check(run_probe=True, kenv=None):
         if kenv.get('PLASMA_DEFAULT_SHELL') != PACKAGE:
             return {'ok': False, 'why': 'KWin\'s session doesn\'t name Hearth\'s lock screen (PLASMA_DEFAULT_SHELL=%s in KWin, '
                     'not %s)' % (kenv.get('PLASMA_DEFAULT_SHELL', ''), PACKAGE), 'greeter': g, 'package': ''}
+    if not qt_wayland():
+        return {'ok': False, 'why': 'Qt\'s Wayland support (qt6-wayland) isn\'t installed: KWin\'s greeter couldn\'t start',
+                'greeter': g, 'package': ''}
     pkg = package(kenv)
     if not pkg:
         return {'ok': False, 'why': 'Hearth\'s lock screen isn\'t where KWin\'s screen locker looks', 'greeter': g, 'package': ''}
