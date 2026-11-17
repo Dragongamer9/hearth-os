@@ -2,7 +2,9 @@
 // Connect app (Android or iPhone), through Hearth Connect's own service (hosts/hearth-connect, KDE Connect's protocol).
 // Phone link on or off; pairing (with the key both screens show); your phones with battery and signal; Ring, Ping,
 // clipboard, send files, take a photo, browse the phone's files; the phone's music; its notifications with Reply; calls
-// (Mute ringer); what each phone may do here; Run commands; text messages (SetPhoneMessages.qml). Through hearth-phone,
+// (Mute ringer); what each phone may do here; Run commands; text messages (SetPhoneMessages.qml). Round 2 (1.14): send
+// text or a link, what the phone shared (Copy / Open), this PC's keyboard and mouse on the phone (PhoneRemote.qml),
+// this PC's notifications on the phone and which go, lock from the phone, mute in calls, stay awake. Through hearth-phone,
 // which only asks the service: every choice is the service's, saved safely by it (settings never change by themselves).
 import QtQuick
 import QtQuick.Layouts
@@ -26,6 +28,9 @@ SetPage {
     readonly property var plug: phone && phone.plugins ? phone.plugins : ({})
     readonly property var opts: phone && phone.options ? phone.options : ({})
     readonly property bool linked: !!phone && phone.reachable
+    readonly property var nout: s && s.notifyOut ? s.notifyOut : ({ body: true, persistentOnly: false, urgency: 0, blocked: [] })
+    readonly property var shared: s && phone ? (s.texts || []).filter(t => t.device === phone.id).slice(0, 5) : []
+    function setNout(change) { call("notify_out_set", { prefs: change }, "Saved"); }
 
     function say(t, b) { msg = t; bad = !!b; }
     function refresh() { job.run(["state"], r => page.replaceList("st", r), e => page.replaceList("st", { error: e })); }
@@ -79,13 +84,13 @@ SetPage {
     // (Settings keeps a page loaded, so a second "phone:commands" while it's open is heard too.)
     property string anchor: ""
     function takeAnchor() {
-        if (!["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) return;
+        if (!["notifications", "commands", "pair", "remote", "shared", "sendnotify", "options"].includes(SettingsNav.pageAnchor)) return;
         anchor = SettingsNav.pageAnchor;
         anchorClear.restart();
         goAnchor();
     }
     // Settings may load the page a second time as it opens: the part stays asked for a moment, so that one gets it too.
-    Timer { id: anchorClear; interval: 2500; onTriggered: if (["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) SettingsNav.pageAnchor = "" }
+    Timer { id: anchorClear; interval: 2500; onTriggered: if (["notifications", "commands", "pair", "remote", "shared", "sendnotify", "options"].includes(SettingsNav.pageAnchor)) SettingsNav.pageAnchor = "" }
     // After Settings has put the focus on the page's first card (it does once the page is in), not before.
     function goAnchor() { if (page.anchor !== "") anchorFocus.restart(); }
     Timer {
@@ -93,7 +98,7 @@ SetPage {
         onTriggered: {
             if (page.anchor === "") return;
             if (!page.st || !page.st.running) { anchorFocus.restart(); return; }   // its cards come with the state
-            const to = { notifications: notifHead, commands: cmdName, pair: ipField }[page.anchor];
+            const to = { notifications: notifHead, commands: cmdName, pair: ipField, remote: remoteCard, shared: sendField, sendnotify: page.opts.sendNotifications === true ? noutChoice : noutSwitch, options: optRep.itemAt(Math.min(10, optRep.count - 1)) }[page.anchor];
             page.anchor = "";
             page.anchorTarget = to || null;
             if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
@@ -200,6 +205,26 @@ SetPage {
             }
         }
     }
+    SetField {
+        id: sendField
+        visible: page.on && !!page.phone
+        placeholder: page.phone ? "Send text or a link to " + page.phone.name + " (Enter sends)" : ""
+        onSubmitted: t => { if (t.trim() && page.linked) { page.call("send", { id: page.phone.id, text: t.trim() }, "Sent to " + page.phone.name); sendField.text = ""; } else if (!page.linked) page.say("The phone isn't connected right now", true); }
+    }
+    // What the phone shared: nothing opens by itself; Copy, or Open for a web link.
+    Repeater {
+        model: page.on ? page.shared : []
+        delegate: SetExpander {
+            id: shx
+            required property var modelData
+            icon: modelData.url ? "link" : "clipboard"
+            title: modelData.url || modelData.text
+            sub: (modelData.url ? "A link" : "Text") + " from " + modelData.from + " · " + new Date(modelData.at).toLocaleTimeString(Qt.locale(), "h:mm ap")
+            value: "Shared"
+            SetRow { visible: !!shx.modelData.url; icon: "open"; title: "Open"; sub: "In your browser"; chevron: false; onActivated: page.call("open_shared", { at: shx.modelData.at }, "Opened") }
+            SetRow { icon: "clipboard"; title: "Copy"; chevron: false; onActivated: page.call("copy_shared", { at: shx.modelData.at }, "Copied") }
+        }
+    }
     SetRow {
         visible: page.on && !!page.plug.sftp && (!!page.plug.sftp.mounted || page.plug.sftp.waiting || !!page.plug.sftp.error)
         icon: "folder"
@@ -289,9 +314,51 @@ SetPage {
         }
     }
 
+    // ---- this PC on the phone: its keyboard and mouse, its notifications
+    SetHeader { text: "Use this PC on " + (page.phone ? page.phone.name : "the phone"); visible: page.on && !!page.phone }
+    PhoneRemote { id: remoteCard; visible: page.on && !!page.phone; phone: page.phone }
+    SetSwitch {
+        id: noutSwitch
+        visible: page.on && !!page.phone
+        icon: "bell"; title: "Send this PC's notifications to " + (page.phone ? page.phone.name : "the phone")
+        sub: page.opts.sendNotifications ? "What apps here show in their pop-ups shows on the phone too; dismiss it there and it goes here" : "Off: this PC's notifications stay here"
+        checked: page.opts.sendNotifications === true
+        onToggled: v => page.call("option", { id: page.phone.id, key: "sendNotifications", on: v }, v ? "This PC's notifications go to the phone" : "They stay here")
+    }
+    SetSwitch {
+        visible: page.on && !!page.phone && page.opts.sendNotifications === true
+        icon: "doc"; title: "Include what they say"; sub: "Off: only the app and the title go"
+        checked: page.nout.body !== false
+        onToggled: v => page.setNout({ body: v })
+    }
+    SetSwitch {
+        visible: page.on && !!page.phone && page.opts.sendNotifications === true
+        icon: "pin"; title: "Only ones that stay"; sub: "Leaves out pop-ups that go away by themselves"
+        checked: page.nout.persistentOnly === true
+        onToggled: v => page.setNout({ persistentOnly: v })
+    }
+    SetChoice {
+        id: noutChoice
+        visible: page.on && !!page.phone && page.opts.sendNotifications === true
+        icon: "warn"; title: "Which ones"; sub: "By how urgent the app says it is"
+        options: [{ value: 0, label: "All" }, { value: 1, label: "Normal and urgent" }, { value: 2, label: "Urgent only" }]
+        current: page.nout.urgency || 0
+        onChosen: v => page.setNout({ urgency: v })
+    }
+    Repeater {
+        model: page.on && page.phone && page.opts.sendNotifications === true && page.s ? (page.s.notifyApps || []).concat((page.nout.blocked || []).filter(a => (page.s.notifyApps || []).indexOf(a) < 0)) : []
+        delegate: SetSwitch {
+            required property string modelData
+            icon: "grid"; title: modelData; sub: "Its notifications go to the phone"
+            checked: (page.nout.blocked || []).indexOf(modelData) < 0
+            onToggled: v => page.setNout({ blocked: v ? (page.nout.blocked || []).filter(a => a !== modelData) : (page.nout.blocked || []).concat([modelData]) })
+        }
+    }
+
     // ---- what the phone may do
     SetHeader { text: "What " + (page.phone ? page.phone.name : "") + " can do"; visible: page.on && !!page.phone }
     Repeater {
+        id: optRep
         model: page.on && page.phone ? [
             { key: "notifications", icon: "bell", title: "Show its notifications here", sub: "With Reply for messages" },
             { key: "clipboard", icon: "clipboard", title: "Share the clipboard", sub: "Copy on one, paste on the other" },
@@ -299,6 +366,10 @@ SetPage {
             { key: "pauseOnCall", icon: "pause", title: "Pause media during calls", sub: "Plays again when the call ends" },
             { key: "commands", icon: "bolt", title: "Run commands", sub: "Only the commands below" },
             { key: "volume", icon: "vol", title: "Control this PC's volume", sub: "Its volume slider and mute" },
+            { key: "lock", icon: "lock", title: "Lock this PC", sub: "From the phone's Lock button. Unlocking always needs your password here" },
+            { key: "muteOnCall", icon: "vol-mute", title: "Mute this PC's sound during calls", sub: "On again when the call ends" },
+            { key: "pauseTalkingOnly", icon: "phone", title: "Only once I answer", sub: "Pause and mute when you answer, not while it rings" },
+            { key: "stayAwake", icon: "sun", title: "Keep this PC awake while it's connected", sub: "No screen-off or sleep while " + (page.phone ? page.phone.name : "the phone") + " is linked" },
             { key: "autoAccept", icon: "file", title: "Save its files without asking", sub: "Into " + (page.s ? page.s.folder : "Downloads") }
         ] : []
         delegate: SetSwitch {

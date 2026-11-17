@@ -3,13 +3,17 @@
 // With Hearth Calendar installed (hearth-time), days with events get a dot and the next events show under the month,
 // with a row that opens Calendar.
 // Keyboard / controller: Up/Down move, Enter (A) chooses, Left/Right (or Page Up/Down) change the
-// month on the calendar row, Esc (B) closes.
+// month on the calendar row, Esc (B) closes, Delete removes the notification you're on.
+// 1.14: copies and downloads in progress (KDE's job progress, NotifyHub.qml) with Pause and Cancel; each notification's
+// own buttons kept in the list (DeskState.invoke) and its progress; why it's quiet now (automatic Do Not Disturb);
+// world clocks, another calendar's dates and holidays under the month (Settings › Date & time; BarLayout.qml).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
+import "calendars.js" as Cal
 
 PanelWindow {
     id: root
@@ -94,13 +98,52 @@ PanelWindow {
         stdout: StdioCollector { onStreamFinished: { try { root.weather = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { root.weather = {}; } } }
     }
     // ---- end of Hearth Calendar
+    // ---- 1.14: another calendar, holidays and world clocks (Settings › Date & time; BarLayout.qml keeps them)
+    readonly property string alt: BarLayout.clockAlt
+    readonly property var holMap: Cal.holidayMap(BarLayout.clockHolidays, [month.getFullYear() - 1, month.getFullYear(), month.getFullYear() + 1])
+    readonly property var nextHoliday: {
+        const k = ymd(new Date());
+        const ks = Object.keys(holMap).filter(x => x >= k).sort();
+        return ks.length ? { date: ks[0], name: holMap[ks[0]] } : null;
+    }
+    function altOf(d, f) { const a = alt ? Cal.convert(d, alt) : null; return a ? String(a[f]) : ""; }
+    property var zoneOffsets: ({})
+    Process {
+        id: zoneRead
+        command: ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-widgets").toString().replace(/^file:\/\//, "")), "zones"].concat(BarLayout.clockZones)
+        stdout: StdioCollector { onStreamFinished: { try { const o = JSON.parse(text.trim().split("\n").pop()); const m = {}; for (const z of o.zones || []) if (z.offset !== null) m[z.tz] = z.offset; root.zoneOffsets = m; } catch (e) {} } }
+    }
+    function zoneTime(tz) {
+        const off = zoneOffsets[tz];
+        if (off === undefined) return "…";
+        const d = new Date(clock.date.getTime() + clock.date.getTimezoneOffset() * 60000 + off * 60000);
+        return Qt.formatTime(d, Settings.clock24 ? "HH:mm" : "h:mm AP");
+    }
+    function zoneDay(tz) {
+        const off = zoneOffsets[tz];
+        if (off === undefined) return "";
+        const d = new Date(clock.date.getTime() + clock.date.getTimezoneOffset() * 60000 + off * 60000);
+        const diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(clock.date.getFullYear(), clock.date.getMonth(), clock.date.getDate())) / 86400000);
+        return diff > 0 ? "Tomorrow" : diff < 0 ? "Yesterday" : "Today";
+    }
     function activate(i) {
         if (i === 0) DeskState.setDnd(!DeskState.dnd);
         else if (i === 1) { DeskState.clearHistory(); nav = 0; }
         else if (i === calRow) { const t = new Date(); month = new Date(t.getFullYear(), t.getMonth(), 1); readEvents(); }
         else if (i === calOpenRow && hasCalendar) openCalendar();   // Hearth Calendar
-        else if (i >= 2) { DeskState.forget(history[i - 2].key); nav = Math.min(nav, calRow - 1); }
+        else if (i >= 2) {   // a notification: its main button (or open its app); one without either goes
+            const h = history[i - 2];
+            if (!DeskState.invoke(h.key, "default")) DeskState.forget(h.key);
+            nav = Math.min(nav, calRow - 1);
+        }
     }
+    function bytes(n) {
+        const u = ["B", "KB", "MB", "GB", "TB"];
+        let i = 0, v = Number(n) || 0;
+        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+        return (i ? v.toFixed(v < 10 ? 1 : 0) : Math.round(v)) + " " + u[i];
+    }
+    function left(sec) { const s = Math.round(sec); return s < 60 ? s + " s left" : s < 3600 ? Math.round(s / 60) + " min left" : Math.floor(s / 3600) + " h " + Math.round((s % 3600) / 60) + " min left"; }
     function when(d) {
         const s = Math.floor((Date.now() - d.getTime()) / 1000);
         if (s < 60) return "Just now";
@@ -110,7 +153,7 @@ PanelWindow {
 
     visible: shown || closing.running
     Timer { id: closing; interval: Theme.calm + 60 }
-    onShownChanged: if (!shown) closing.restart()
+    onShownChanged: { if (!shown) closing.restart(); else if (BarLayout.clockZones.length && !zoneRead.running) zoneRead.running = true; }
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-calendar"
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -132,6 +175,7 @@ PanelWindow {
             case Qt.Key_PageUp: root.shiftMonth(-1); break;
             case Qt.Key_PageDown: root.shiftMonth(1); break;
             case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: if (root.nav >= 0) root.activate(root.nav); break;
+            case Qt.Key_Delete: case Qt.Key_Backspace: if (root.nav >= 2 && root.nav < root.calRow) { DeskState.forget(root.history[root.nav - 2].key); root.nav = Math.min(root.nav, root.calRow - 1); } break;
             default: return;
             }
             event.accepted = true;
@@ -191,14 +235,68 @@ PanelWindow {
                     Item { Layout.fillWidth: true }
                     Chip {
                         navIndex: 0
-                        icon: DeskState.dnd ? "bell-off" : "bell"
-                        label: DeskState.dnd ? "Do not disturb: on" : "Do not disturb"
+                        icon: NotifyHub.quiet ? "bell-off" : "bell"
+                        label: DeskState.dnd ? "Do not disturb: on" : NotifyHub.autoReason !== "" ? "Quiet " + (NotifyHub.autoReason === "schedule" ? "until " + NotifyHub.pref("scheduleTo") : NotifyHub.autoReason === "sharing" ? "while sharing" : "in full screen") : "Do not disturb"
                         lit: DeskState.dnd
                     }
                     Chip {
                         navIndex: 1
                         visible: root.history.length > 0
                         label: "Clear all"
+                    }
+                }
+                // ---- copies and downloads in progress (and for a few seconds once done)
+                Repeater {
+                    model: NotifyHub.jobs
+                    delegate: Rectangle {
+                        id: job
+                        required property var modelData
+                        readonly property var j: modelData
+                        Layout.fillWidth: true
+                        implicitHeight: jcol.implicitHeight + 20
+                        radius: Theme.r(12)
+                        color: Theme.panel2
+                        border.width: 1
+                        border.color: j.state === "failed" ? Theme.danger : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.5)
+                        ColumnLayout {
+                            id: jcol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                            spacing: 4
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                AppIcon { size: 28; genericFallback: true; icon: job.j.icon || ""; appId: job.j.entry || "" }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    Text { Layout.fillWidth: true; text: job.j.title; color: Theme.text; font.bold: true; font.pixelSize: 13; font.family: Theme.font; elide: Text.ElideRight }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: job.j.state === "done" ? "Finished" : job.j.state === "failed" ? (job.j.error || "It stopped") : job.j.state === "cancelled" ? "Cancelled"
+                                            : [job.j.suspended ? "Paused" : "", job.j.info, job.j.detail].filter(x => x).join(" · ")
+                                        color: Theme.muted; font.pixelSize: 11; font.family: Theme.font; elide: Text.ElideRight
+                                    }
+                                }
+                                Text { visible: job.j.state === "running" && job.j.percent >= 0; text: job.j.percent + "%"; color: Theme.accent; font.bold: true; font.pixelSize: 13; font.family: Theme.font }
+                                RoundButton { visible: job.j.state === "running" && job.j.suspendable; icon: job.j.suspended ? "play" : "pause"; tip: job.j.suspended ? "Resume" : "Pause"; onPicked: NotifyHub.jobAction(job.j.id, job.j.suspended ? "resume" : "suspend") }
+                                RoundButton { visible: job.j.state === "running" && job.j.killable; icon: "close"; tip: "Cancel"; onPicked: NotifyHub.jobAction(job.j.id, "cancel") }
+                                RoundButton { visible: job.j.state !== "running" && !!job.j.dest; icon: "folder"; tip: "Open the folder"; onPicked: Quickshell.execDetached(["xdg-open", job.j.dest]) }
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                                visible: job.j.state === "running"
+                                implicitHeight: 6
+                                Rectangle { anchors.fill: parent; radius: 3; color: Theme.panel3 }
+                                Rectangle { height: parent.height; radius: 3; width: parent.width * Math.max(0.02, Math.max(0, job.j.percent) / 100); color: job.j.suspended ? Theme.muted : Theme.accent }
+                            }
+                            Text {
+                                visible: job.j.state === "running" && (job.j.speed > 0 || job.j.total > 0)
+                                text: [job.j.unit === "bytes" && job.j.total ? root.bytes(job.j.processed) + " of " + root.bytes(job.j.total) : job.j.total ? job.j.processed + " of " + job.j.total + " files" : "",
+                                       job.j.speed > 0 ? root.bytes(job.j.speed) + "/s" : "",
+                                       job.j.speed > 0 && job.j.unit === "bytes" && job.j.total > job.j.processed ? root.left((job.j.total - job.j.processed) / job.j.speed) : ""].filter(x => x).join(" · ")
+                                color: Theme.muted; font.pixelSize: 11; font.family: Theme.font
+                            }
+                        }
                     }
                 }
                 ListView {
@@ -217,13 +315,16 @@ PanelWindow {
                         required property var modelData
                         required property int index
                         readonly property bool lit: root.nav === index + 2
+                        readonly property var live: { void DeskState.liveRev; return DeskState.liveOf(modelData.key); }
+                        readonly property var acts: live ? Array.from(live.actions) : []
+                        readonly property bool opensApp: !live && !!modelData.entry && DesktopEntries.byId(modelData.entry) !== null
                         width: list.width
                         implicitHeight: crow.implicitHeight + 20
                         radius: Theme.r(12)
                         color: hover.containsMouse ? Theme.panel3 : Theme.panel2
                         border.width: 2
                         border.color: lit ? Theme.accent : "transparent"
-                        MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true }
+                        MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; onClicked: DeskState.invoke(card.modelData.key, "default") }
                         RowLayout {
                             id: crow
                             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
@@ -258,6 +359,44 @@ PanelWindow {
                                     opacity: 0.85
                                     font.pixelSize: 12
                                     font.family: Theme.font
+                                }
+                                // its progress while its app still updates it (a download, a file being sent)
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 3
+                                    readonly property int v: card.live ? DeskState.hintValue(card.live) : -1
+                                    visible: v >= 0
+                                    implicitHeight: 5
+                                    Rectangle { anchors.fill: parent; radius: 3; color: Theme.panel3 }
+                                    Rectangle { height: parent.height; radius: 3; width: parent.width * parent.v / 100; color: Theme.accent }
+                                }
+                                // its own buttons, kept (1.14): while its app can still answer them; after a restart only Open <app>
+                                Flow {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 2
+                                    spacing: 6
+                                    visible: card.acts.length > 0 || card.opensApp
+                                    Repeater {
+                                        model: card.acts.filter(a => a.identifier !== "default")
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            implicitWidth: at.implicitWidth + 18; implicitHeight: 26
+                                            radius: Theme.r(8)
+                                            color: aa.containsMouse ? Theme.panel3 : Theme.panel
+                                            border.color: Theme.line
+                                            Text { id: at; anchors.centerIn: parent; text: parent.modelData.text; color: Theme.text; font.pixelSize: 12; font.family: Theme.font }
+                                            MouseArea { id: aa; anchors.fill: parent; hoverEnabled: true; onClicked: DeskState.invoke(card.modelData.key, parent.modelData.identifier) }
+                                        }
+                                    }
+                                    Rectangle {
+                                        visible: card.opensApp
+                                        implicitWidth: ot.implicitWidth + 18; implicitHeight: 26
+                                        radius: Theme.r(8)
+                                        color: oa.containsMouse ? Theme.panel3 : Theme.panel
+                                        border.color: Theme.line
+                                        Text { id: ot; anchors.centerIn: parent; text: "Open " + (card.modelData.app || "the app"); color: Theme.text; font.pixelSize: 12; font.family: Theme.font }
+                                        MouseArea { id: oa; anchors.fill: parent; hoverEnabled: true; onClicked: DeskState.invoke(card.modelData.key, "default") }
+                                    }
                                 }
                             }
                             Text {
@@ -316,7 +455,7 @@ PanelWindow {
 
                             SystemClock { id: clock; precision: SystemClock.Minutes }
                             Text {
-                                text: Qt.formatDate(clock.date, "dddd, MMMM d")
+                                text: Qt.formatDate(clock.date, "dddd, MMMM d") + (root.altOf(clock.date, "text") ? " · " + root.altOf(clock.date, "text") : "")
                                 color: Theme.accent
                                 font.family: Theme.font
                                 font.pixelSize: 14
@@ -388,14 +527,24 @@ PanelWindow {
                                             color: day.today ? Theme.accentInk : Theme.accent
                                             z: 1
                                         }
+                                        readonly property string hol: root.holMap[root.ymd(day.modelData)] || ""
                                         Text {
                                             anchors.centerIn: parent
+                                            anchors.verticalCenterOffset: root.alt ? -5 : 0
                                             text: day.modelData.getDate()
-                                            color: day.today ? Theme.accentInk : day.inMonth ? Theme.text : Theme.muted
+                                            color: day.today ? Theme.accentInk : day.hol !== "" && day.inMonth ? "#e0a23a" : day.inMonth ? Theme.text : Theme.muted
                                             opacity: day.inMonth || day.today ? 1 : 0.55
                                             font.family: Theme.font
                                             font.pixelSize: 13
-                                            font.bold: day.today
+                                            font.bold: day.today || day.hol !== ""
+                                        }
+                                        Text {   // the other calendar's day (1.14)
+                                            visible: root.alt !== ""
+                                            anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter; verticalCenterOffset: 9 }
+                                            text: root.altOf(day.modelData, "short")
+                                            color: day.today ? Theme.accentInk : Theme.muted
+                                            opacity: day.inMonth ? 0.9 : 0.4
+                                            font.family: Theme.font; font.pixelSize: 8
                                         }
                                     }
                                 }
@@ -403,6 +552,38 @@ PanelWindow {
                         }
                     }
 
+                    // ---- 1.14: the next holiday and your world clocks
+                    ColumnLayout {
+                        Layout.fillWidth: !panel.wide
+                        Layout.preferredWidth: panel.wide ? 230 : -1
+                        Layout.alignment: Qt.AlignTop
+                        visible: root.nextHoliday !== null || BarLayout.clockZones.length > 0
+                        spacing: 6
+                        RowLayout {
+                            visible: root.nextHoliday !== null
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Rectangle { implicitWidth: 4; implicitHeight: 30; radius: 2; color: "#e0a23a" }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text { Layout.fillWidth: true; text: root.nextHoliday ? root.nextHoliday.name : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                Text { text: root.nextHoliday ? Qt.formatDate(new Date(root.nextHoliday.date + "T12:00:00"), "dddd d MMMM") : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
+                            }
+                        }
+                        Repeater {
+                            model: BarLayout.clockZones
+                            delegate: RowLayout {
+                                required property string modelData
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Icon { name: "globe"; size: 14; color: Theme.muted }
+                                Text { Layout.fillWidth: true; text: modelData.split("/").pop().replace(/_/g, " "); color: Theme.text; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight }
+                                Text { text: root.zoneDay(modelData); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
+                                Text { text: root.zoneTime(modelData); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                            }
+                        }
+                    }
                     // ---- Hearth Calendar: the next events (a week ahead) and a row that opens Calendar.
                     ColumnLayout {
                         Layout.fillWidth: !panel.wide

@@ -216,6 +216,22 @@ class Network(Home):
             self.assertEqual(json.load(open(self.n.PROXY_JSON))['http'], 'proxy.lan:3128')   # merge: the rest is kept
             self.assertTrue(os.path.exists(self.n.PROXY_JSON + '.bak'))
 
+    def test_proxy_without_settings_io_still_keeps_a_backup_and_never_saves_over_damage(self):
+        # The fallback for when hearth_settings_io can't be imported (review, Nov 17): atomic, .bak, merged.
+        with mock.patch.object(self.n, 'hsio', None), mock.patch.object(self.n, 'run', FakeNm([])), \
+                mock.patch.object(self.n.shutil, 'which', return_value=None):
+            self.n.proxy_set({'mode': 'manual', 'http': 'proxy.lan:3128'})
+            first = open(self.n.PROXY_JSON).read()
+            self.n.proxy_set({'mode': 'none'})
+            self.assertEqual(open(self.n.PROXY_JSON + '.bak').read(), first)
+            self.assertEqual(json.load(open(self.n.PROXY_JSON))['http'], 'proxy.lan:3128')
+            with open(self.n.PROXY_JSON, 'w') as f:
+                f.write('{"mode": "man')                            # damaged
+            with self.assertRaises(self.n.Fail):
+                self.n.proxy_set({'mode': 'none'})
+            self.assertEqual(open(self.n.PROXY_JSON).read(), '{"mode": "man')
+        self.assertEqual([f for f in os.listdir(os.path.dirname(self.n.PROXY_JSON)) if f.endswith('.tmp')], [])
+
     def test_proxy_env_of_your_own_is_left_alone(self):
         os.makedirs(os.path.dirname(self.n.PROXY_ENV))
         open(self.n.PROXY_ENV, 'w').write('http_proxy=http://mine:8080\n')
@@ -459,6 +475,47 @@ class Lookset(Home):
         with mock.patch.object(self.l.shutil, 'which', return_value=None):
             self.assertEqual(self.l.apply(), [])
         self.assertFalse(os.path.exists(self.c))
+
+    def test_without_settings_io_still_keeps_a_backup_and_never_saves_over_damage(self):
+        with mock.patch.object(self.l, 'hsio', None), mock.patch.object(self.l.shutil, 'which', return_value=None):
+            self.l.set_({'font': 'Inter'})
+            first = open(self.l.SAVED).read()
+            self.l.set_({'fontSize': 12})
+            self.assertEqual(open(self.l.SAVED + '.bak').read(), first)
+            self.assertEqual(json.load(open(self.l.SAVED)), {'font': 'Inter', 'fontSize': 12})
+            with open(self.l.SAVED, 'w') as f:
+                f.write('not json')
+            with self.assertRaises(self.l.Fail):
+                self.l.set_({'fontSize': 11})
+            self.assertEqual(open(self.l.SAVED).read(), 'not json')
+            self.l.write(os.path.join(self.c, 'x.conf'), 'a\n')
+            self.l.write(os.path.join(self.c, 'x.conf'), 'b\n')
+            self.assertEqual(open(os.path.join(self.c, 'x.conf.bak')).read(), 'a\n')
+        self.assertEqual([f for f in os.listdir(os.path.dirname(self.l.SAVED)) if f.endswith('.tmp')], [])
+
+    def test_a_damaged_file_is_not_nothing_chosen(self):
+        # Red flag 9 (start-safety review, Nov 17): apply at sign-in with a file that can't be read (and no good .bak)
+        # must not remove Hearth's fontconfig and cursor files as if you had chosen nothing.
+        for f, text in ((self.l.FONTCONF, self.l.FC_MARK + '\n<fontconfig/>\n'), (self.l.CURSOR_ENV, self.l.ENV_MARK + '\nXCURSOR_SIZE=32\n')):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            with open(f, 'w') as fh:
+                fh.write(text)
+        os.makedirs(os.path.dirname(self.l.SAVED), exist_ok=True)
+        for f in (self.l.SAVED, self.l.SAVED + '.bak'):
+            with open(f, 'w') as fh:
+                fh.write('{"font": "Int')
+        with mock.patch.object(self.l.shutil, 'which', return_value=None):
+            self.l.apply()
+        self.assertTrue(os.path.exists(self.l.FONTCONF), 'kept: the file failed to load')
+        self.assertTrue(os.path.exists(self.l.CURSOR_ENV))
+        # Nothing chosen for real (no file): Hearth's files go.
+        for f in os.listdir(os.path.dirname(self.l.SAVED)):
+            if f.startswith('fonts-cursor-icons.json'):
+                os.remove(os.path.join(os.path.dirname(self.l.SAVED), f))
+        with mock.patch.object(self.l.shutil, 'which', return_value=None):
+            self.l.apply()
+        self.assertFalse(os.path.exists(self.l.FONTCONF))
+        self.assertFalse(os.path.exists(self.l.CURSOR_ENV))
 
     def test_set_saves_merges_and_hands_on_only_to_hearths_files(self):
         qt = os.path.join(self.c, 'qt6ct', 'qt6ct.conf'); os.makedirs(os.path.dirname(qt))
@@ -729,8 +786,10 @@ class NotifyApps(Home):
     def test_the_server_follows_the_rules(self):
         q = (SHELL / 'Notifications.qml').read_text()
         self.assertIn('const rule = NotifyRules.rule(n.appName);', q)
-        self.assertIn('if (!rule.allow) { n.dismiss(); return; }', q)
-        self.assertIn('if (critical && NotifyRules.isHearth(n.appName)) { n.tracked = true; return; }', q)
+        # 1.14 round 2: Hearth's own warnings can't be blocked by anything (test_notify_widgets_114.py has the rest)
+        self.assertIn('if (!rule.allow && !warn) { n.dismiss(); return; }', q)
+        self.assertIn('const warn = NotifyRules.isHearthWarning(n);', q)
+        self.assertIn('if (warn) pop = true;', q)
         self.assertIn('if (isHearth(app)) r.allow = true;', (SHELL / 'NotifyRules.qml').read_text())
         self.assertIn('rule.priority === "high"', q)
         lock = (SHELL / 'Lock.qml').read_text()

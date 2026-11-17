@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
@@ -74,21 +75,80 @@ def write(path, text):
     if hsio:
         hsio.write_text(path, text)
     else:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path + '.tmp', 'w') as f:
-            f.write(text)
-        os.replace(path + '.tmp', path)
+        plain_write(path, text)
     return True
 
 
-def saved():
-    raw = hsio.load_json(SAVED, {}) if hsio else {}
-    if not hsio:
+def _plain_replace(path, data):
+    d = os.path.dirname(os.path.abspath(path))
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(path) + '.', suffix='.tmp', dir=d)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
         try:
-            raw = json.load(open(SAVED))
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def plain_write(path, text):
+    """Only when hearth_settings_io can't be imported: still atomic (a temporary file, fsync, then moved in place) and
+    still keeps FILE.bak (the current file, when it has something in it, goes there first)."""
+    data = text.encode('utf-8', 'surrogateescape')
+    try:
+        with open(path, 'rb') as f:
+            cur = f.read()
+    except OSError:
+        cur = None
+    if cur == data:
+        return
+    if cur is not None and cur.strip():
+        _plain_replace(path + '.bak', cur)
+    _plain_replace(path, data)
+
+
+def plain_load_json(path):
+    """PATH's JSON object ({} when it isn't there). A file that doesn't read as one raises Fail: it's never saved over."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        raise Fail('%s can\'t be read (%s); not saved over' % (path, e))
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        v = None
+    if not isinstance(v, dict):
+        raise Fail('%s is damaged; not saved over (its .bak may have your last good settings)' % path)
+    return v
+
+
+def load_saved():
+    """(your choices, read_ok). read_ok is False when the file is there but couldn't be read (damaged, and no good
+    .bak to put back): that is not "nothing chosen"."""
+    existed = os.path.exists(SAVED)
+    if hsio:
+        raw = hsio.load_json(SAVED, None)
+    else:
+        try:
+            with open(SAVED, encoding='utf-8') as f:
+                raw = json.load(f)
         except (OSError, ValueError):
-            raw = {}
-    return {k: v for k, v in (raw or {}).items() if k in DEFAULTS}
+            raw = None
+    ok = isinstance(raw, dict) or not existed
+    return {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if k in DEFAULTS}, ok
+
+
+def saved():
+    return load_saved()[0]
 
 
 def effective(s=None):
@@ -285,7 +345,9 @@ def own_file(path, mark):
 
 def apply(s=None):
     """Hand the saved choices on. Only files that are Hearth's (their mark) or the few keys named above change."""
-    s = saved() if s is None else s
+    ok = True
+    if s is None:
+        s, ok = load_saved()
     e = effective(s)
     changed = []
     if shutil.which('gsettings'):
@@ -332,7 +394,8 @@ def apply(s=None):
             changed.append(f)
     for path, text, mark in ((FONTCONF, fontconfig_text(e, s), FC_MARK), (CURSOR_ENV, cursor_env_text(e, s), ENV_MARK)):
         if text is None:
-            if read(path) and own_file(path, mark):
+            # Removed only when you really chose nothing: never because your file couldn't be read (red flag 9).
+            if ok and read(path) and own_file(path, mark):
                 os.remove(path); changed.append(path)
         elif own_file(path, mark) and write(path, text):
             changed.append(path)
@@ -344,7 +407,7 @@ def set_(req):
     if hsio:
         hsio.merge_json(SAVED, changes, who='you')
     else:
-        cur = saved()
+        cur = plain_load_json(SAVED)            # merged into what's on disk; a damaged file is never saved over
         for k, v in changes.items():
             if v is None:
                 cur.pop(k, None)

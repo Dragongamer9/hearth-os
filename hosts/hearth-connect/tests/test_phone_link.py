@@ -4,8 +4,10 @@ localhost TLS: finding each other, pairing with the verification key both comput
 feature: ping, battery, notifications with buttons and Reply (through a stand-in notification service on a private
 session bus), clipboard both ways, files/text/links both ways, find my phone, media both ways, remote input, run
 commands, calls (pausing and resuming a stand-in player), text messages, contacts, the presentation remote, this PC's
-volume, browsing the phone's files (a stand-in sshfs), the phone's camera, unpairing, and Phone link on/off keeping
-every other setting. Needs HEARTH_CONNECT_BIN (a built hearth-connect), openssl, dbus-daemon; xclip with DISPLAY for
+volume, browsing the phone's files (a stand-in sshfs), the phone's camera; round 2: locking this PC from the phone
+(a stand-in loginctl), this PC's notifications on the phone (an app's Notify on the private bus), this PC as the phone's
+keyboard and mouse, muting during calls and staying awake while linked (a stand-in systemd-inhibit), text and links
+both ways; unpairing, and Phone link on/off keeping every other setting. Needs HEARTH_CONNECT_BIN (a built hearth-connect), openssl, dbus-daemon; xclip with DISPLAY for
 the clipboard, python3-gi for the notification service (each skips with a notice when missing).
 
   HEARTH_CONNECT_BIN=target/release/hearth-connect python3 -m unittest tests/test_phone_link.py -v
@@ -79,6 +81,24 @@ exit 0
 '''
 
 
+FAKE_LOGINCTL = r'''#!/bin/sh
+# A stand-in loginctl: session c7, locked when asked to lock (never unlocked by a phone).
+echo "$*" >> "$FAKE_LOG/loginctl.log"
+case "$1" in
+  show-user) echo c7 ;;
+  show-session) cat "$FAKE_LOG/locked" 2>/dev/null || echo no ;;
+  lock-session) echo yes > "$FAKE_LOG/locked" ;;
+esac
+exit 0
+'''
+FAKE_INHIBIT = r'''#!/bin/sh
+# A stand-in systemd-inhibit: holds "the inhibitor" while its command (cat on the service's pipe) runs.
+echo "hold $*" >> "$FAKE_LOG/inhibit.log"
+cat >/dev/null
+echo "released" >> "$FAKE_LOG/inhibit.log"
+'''
+
+
 class NotifServer:
     """A stand-in org.freedesktop.Notifications (Gio): records Notify calls, emits the signals Mantel would."""
     XML = '''<node><interface name="org.freedesktop.Notifications">
@@ -98,6 +118,7 @@ class NotifServer:
         self.Gio, self.GLib = Gio, GLib
         self.address = address
         self.calls = []
+        self.closes = []
         self.next = 100
         ready = threading.Event()
         threading.Thread(target=self._run, args=(ready,), daemon=True).start()
@@ -127,6 +148,7 @@ class NotifServer:
             inv.return_value(GLib.Variant('(u)', (nid,)))
         elif method == 'CloseNotification':
             (nid,) = params.unpack()
+            self.closes.append(nid)
             inv.return_value(None)
             self.signal('NotificationClosed', '(uu)', (nid, 3))
         elif method == 'GetCapabilities':
@@ -140,6 +162,16 @@ class NotifServer:
     def find(self, pred):
         return next((c for c in reversed(self.calls) if pred(c)), None)
 
+    def app_notify(self, app, summary, body, hints=None, timeout=-1):
+        """An app on this PC showing a notification (its own connection, as a real app has): the id it got."""
+        Gio, GLib = self.Gio, self.GLib
+        c = Gio.DBusConnection.new_for_address_sync(self.address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+        h = {k: (GLib.Variant('b', v) if isinstance(v, bool) else GLib.Variant('y', v)) for k, v in (hints or {}).items()}
+        r = c.call_sync('org.freedesktop.Notifications', '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'Notify',
+                        GLib.Variant('(susssasa{sv}i)', (app, 0, '', summary, body, [], h, timeout)), None, Gio.DBusCallFlags.NONE, 5000, None)
+        c.close_sync(None)
+        return r.unpack()[0]
+
 
 @unittest.skipUnless(BIN and os.path.exists(BIN), 'HEARTH_CONNECT_BIN (a built hearth-connect) is needed')
 class PhoneLink(unittest.TestCase):
@@ -151,7 +183,7 @@ class PhoneLink(unittest.TestCase):
         c.bin = os.path.join(c.tmp, 'bin')
         for d in (c.home, c.dest, c.fake, c.bin):
             os.makedirs(d)
-        for name, text in (('playerctl', FAKE_PLAYERCTL), ('wpctl', FAKE_WPCTL), ('sshfs', FAKE_SSHFS)):
+        for name, text in (('playerctl', FAKE_PLAYERCTL), ('wpctl', FAKE_WPCTL), ('sshfs', FAKE_SSHFS), ('loginctl', FAKE_LOGINCTL), ('systemd-inhibit', FAKE_INHIBIT)):
             p = os.path.join(c.bin, name)
             with open(p, 'w') as f:
                 f.write(text)
@@ -512,6 +544,136 @@ class PhoneLink(unittest.TestCase):
         # Asked once: the next one waits again.
         self.phone.send('kdeconnect.photo', {'filename': 'second.jpg'}, payload=os.urandom(1024))
         self.assertTrue(wait(lambda: next((x for x in self.call('state')['files'] if x['name'] == 'second.jpg' and x['decided'] is None), None)))
+
+    # ---- round 2
+    def test_20a_lock_this_pc_from_the_phone(self):
+        self.need_pair()
+        self.assertTrue(self.dev()['canLock'])
+        self.phone.send('kdeconnect.lock.request', {'requestLocked': True})
+        self.assertIs(self.got('kdeconnect.lock')['body']['isLocked'], False)
+        self.phone.send('kdeconnect.lock.request', {'setLocked': True})
+        self.assertIs(self.got('kdeconnect.lock', lambda b: b.get('isLocked') is True)['body']['isLocked'], True)
+        self.assertIn('lock-session c7', open(os.path.join(self.fake, 'loginctl.log')).read())
+        # Unlocking needs the person here: the phone is told it's still locked, and nothing unlocks.
+        self.phone.send('kdeconnect.lock.request', {'setLocked': False})
+        self.assertIs(self.got('kdeconnect.lock')['body']['isLocked'], True)
+        self.assertTrue(self.event('warning', lambda d: 'unlock' in d.get('text', '')))
+        self.assertNotIn('unlock', open(os.path.join(self.fake, 'loginctl.log')).read())
+        # The switch off: the phone can't lock it.
+        os.remove(os.path.join(self.fake, 'locked'))
+        open(os.path.join(self.fake, 'loginctl.log'), 'w').close()
+        self.call('option', {'id': self.phone.id, 'key': 'lock', 'on': False})
+        self.phone.send('kdeconnect.lock.request', {'setLocked': True})
+        self.assertIs(self.got('kdeconnect.lock', lambda b: b.get('isLocked') is False)['body']['isLocked'], False)
+        time.sleep(1)
+        self.assertNotIn('lock-session', open(os.path.join(self.fake, 'loginctl.log')).read())
+        self.call('option', {'id': self.phone.id, 'key': 'lock', 'on': True})
+
+    def test_20b_this_pcs_notifications_on_the_phone(self):
+        self.need_pair()
+        if not self.notif:
+            self.skipTest('python3-gi missing: no stand-in notification service')
+        self.assertIs(self.dev()['options']['sendNotifications'], False, 'off until the person turns it on')
+        self.notif.app_notify('Mail', 'Before', 'not sent: the switch is off')
+        self.assertIsNone(self.phone.wait('kdeconnect.notification', lambda b: b.get('title') == 'Before', timeout=2))
+        self.call('option', {'id': self.phone.id, 'key': 'sendNotifications', 'on': True})
+        nid = wait(lambda: self.notif.app_notify('Mail', 'New mail', 'From <b>Ada</b> &amp; Bob'))
+        p = self.got('kdeconnect.notification', lambda b: b.get('title') == 'New mail')['body']
+        self.assertEqual((p['id'], p['appName'], p['text']), (str(nid), 'Mail', 'From Ada & Bob'))
+        # Volume pop-ups (transient) and Hearth Connect's own (the phone's, mirrored) stay here.
+        self.notif.app_notify('Volume', 'Volume 40%', '', hints={'transient': True})
+        self.notif.app_notify('Hearth Connect', 'Pixel 8: echo', 'would loop')
+        self.assertIsNone(self.phone.wait('kdeconnect.notification', lambda b: b.get('appName') in ('Volume', 'Hearth Connect'), timeout=2))
+        # Choices: leave the text out; an app left out.
+        self.call('notify_out_set', {'prefs': {'body': False, 'blocked': ['Steam']}})
+        self.notif.app_notify('Steam', 'Friend online', 'x')
+        self.notif.app_notify('Calendar', 'Standup', 'Room 4')
+        q = self.got('kdeconnect.notification', lambda b: b.get('title') in ('Standup', 'Friend online'))['body']
+        self.assertEqual((q['title'], q['text']), ('Standup', ''))
+        self.assertIn('Steam', self.call('notify_out')['apps'])
+        settings = json.load(open(os.path.join(self.home, 'settings.json')))
+        self.assertIs(settings['enabled'], True, 'the rest of settings.json stays')
+        self.call('notify_out_set', {'prefs': {'body': True, 'blocked': []}})
+        # Dismissed on the phone: closed here, and the phone hears it's gone.
+        self.phone.send('kdeconnect.notification.request', {'cancel': str(nid)})
+        self.assertTrue(wait(lambda: nid in self.notif.closes), 'closed here: %s' % self.notif.closes)
+        self.got('kdeconnect.notification', lambda b: b.get('id') == str(nid) and b.get('isCancel'))
+        self.call('option', {'id': self.phone.id, 'key': 'sendNotifications', 'on': False})
+
+    def test_20c_this_pc_types_and_points_on_the_phone(self):
+        self.need_pair()
+        self.assertTrue(self.dev()['remoteInput'], 'the phone takes mousepad packets')
+        self.phone.send('kdeconnect.mousepad.keyboardstate', {'state': True})
+        self.assertTrue(wait(lambda: self.dev()['keyboard']))
+        self.call('remote_key', {'id': self.phone.id, 'key': 'h'})
+        self.assertEqual(self.got('kdeconnect.mousepad.request', lambda b: b.get('key') == 'h')['body'], {'key': 'h', 'sendAck': True})
+        self.call('remote_key', {'id': self.phone.id, 'special': 'Backspace', 'ctrl': True})
+        self.assertEqual(self.got('kdeconnect.mousepad.request', lambda b: b.get('specialKey') == 1)['body'].get('ctrl'), True)
+        self.assertEqual(self.call('remote_text', {'id': self.phone.id, 'text': 'ok\n'})['sent'], 3)
+        self.got('kdeconnect.mousepad.request', lambda b: b.get('key') == 'o')
+        self.got('kdeconnect.mousepad.request', lambda b: b.get('key') == 'k')
+        self.got('kdeconnect.mousepad.request', lambda b: b.get('specialKey') == 12)
+        self.call('remote_mouse', {'id': self.phone.id, 'dx': 12, 'dy': -5})
+        self.assertEqual(self.got('kdeconnect.mousepad.request', lambda b: 'dx' in b)['body'], {'dx': 12.0, 'dy': -5.0})
+        self.call('remote_mouse', {'id': self.phone.id, 'click': 'single'})
+        self.got('kdeconnect.mousepad.request', lambda b: b.get('singleclick') is True)
+        self.call('remote_mouse', {'id': self.phone.id, 'scroll': -3})
+        self.got('kdeconnect.mousepad.request', lambda b: b.get('scroll') is True)
+        self.phone.send('kdeconnect.mousepad.echo', {'key': 'h', 'isAck': True})
+        self.assertTrue(self.event('remote-echo'))
+
+    def test_20d_calls_mute_and_staying_awake(self):
+        self.need_pair()
+        open(os.path.join(self.fake, 'wpctl.log'), 'w').close()
+        open(os.path.join(self.fake, 'playerctl.log'), 'w').close()
+        open(os.path.join(self.fake, 'player-status'), 'w').write('Playing\n')
+        self.call('option', {'id': self.phone.id, 'key': 'muteOnCall', 'on': True})
+        self.call('option', {'id': self.phone.id, 'key': 'pauseTalkingOnly', 'on': True})
+        # Only once it's answered: ringing changes nothing yet.
+        self.phone.send('kdeconnect.telephony', {'event': 'ringing', 'phoneNumber': '+15550100'})
+        time.sleep(1.5)
+        self.assertNotIn('pause', open(os.path.join(self.fake, 'playerctl.log')).read())
+        self.assertNotIn('set-mute', open(os.path.join(self.fake, 'wpctl.log')).read())
+        self.phone.send('kdeconnect.telephony', {'event': 'talking', 'phoneNumber': '+15550100'})
+        self.assertTrue(wait(lambda: 'set-mute @DEFAULT_AUDIO_SINK@ 1' in open(os.path.join(self.fake, 'wpctl.log')).read()), 'muted for the call')
+        self.assertTrue(wait(lambda: '-p fakeplayer pause' in open(os.path.join(self.fake, 'playerctl.log')).read()), 'paused once answered')
+        self.phone.send('kdeconnect.telephony', {'event': 'talking', 'phoneNumber': '+15550100', 'isCancel': True})
+        self.assertTrue(wait(lambda: 'set-mute @DEFAULT_AUDIO_SINK@ 0' in open(os.path.join(self.fake, 'wpctl.log')).read()), 'unmuted after')
+        self.call('option', {'id': self.phone.id, 'key': 'muteOnCall', 'on': False})
+        self.call('option', {'id': self.phone.id, 'key': 'pauseTalkingOnly', 'on': False})
+        # Staying awake while linked: a logind block inhibitor for idle and sleep, let go when the switch goes off.
+        log = os.path.join(self.fake, 'inhibit.log')
+        self.assertFalse(self.call('state')['awake'])
+        self.call('option', {'id': self.phone.id, 'key': 'stayAwake', 'on': True})
+        self.assertTrue(wait(lambda: self.call('state')['awake']))
+        held = open(log).read()
+        self.assertIn('--what=idle:sleep', held)
+        self.assertIn('--mode=block', held)
+        self.call('option', {'id': self.phone.id, 'key': 'stayAwake', 'on': False})
+        self.assertTrue(wait(lambda: 'released' in open(log).read()), 'let go when the switch went off')
+        self.assertFalse(self.call('state')['awake'])
+        paired = json.load(open(os.path.join(self.home, 'paired.json')))[0]
+        self.assertEqual((paired['stayAwake'], paired['lock'], paired['sendNotifications']), (False, True, False))
+
+    def test_20e_text_and_links_both_ways(self):
+        self.need_pair()
+        self.assertEqual(self.call('send', {'id': self.phone.id, 'text': 'https://hearthos.fun/docs'})['kind'], 'url')
+        self.got('kdeconnect.share.request', lambda b: b.get('url') == 'https://hearthos.fun/docs')
+        self.assertEqual(self.call('send', {'id': self.phone.id, 'text': 'Gate code 4417'})['kind'], 'text')
+        self.got('kdeconnect.share.request', lambda b: b.get('text') == 'Gate code 4417')
+        self.phone.send('kdeconnect.share.request', {'url': 'https://example.org/a'})
+        item = wait(lambda: next((t for t in self.call('state')['texts'] if t.get('url') == 'https://example.org/a'), None))
+        self.assertTrue(item)
+        if self.notif:
+            c = wait(lambda: self.notif.find(lambda c: c['summary'].endswith('shared a link') and c['body'] == 'https://example.org/a'))
+            self.assertTrue(c)
+            self.assertIn('open', c['actions'])
+            self.assertIn('copy', c['actions'])
+        # Nothing opens by itself; "Open" only opens web links.
+        self.phone.send('kdeconnect.share.request', {'text': 'file:///etc/passwd'})
+        t = wait(lambda: next((x for x in self.call('state')['texts'] if x.get('text') == 'file:///etc/passwd'), None))
+        with self.assertRaises(RuntimeError):
+            self.call('open_shared', {'at': t['at']})
 
     def test_21_unpair_from_the_phone(self):
         self.need_pair()
