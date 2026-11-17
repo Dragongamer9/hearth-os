@@ -62,6 +62,9 @@ jobs:
           echo "::notice title=Debian package types::$(ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>&1 | tr '\n' ' ') owners: $(dpkg -S /usr/lib/*/qt6/plugins/kf6/packagestructure/* 2>/dev/null | cut -d: -f1 | sort -u | tr '\n' ' ')"
           out=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen timeout 8 "$g" --testing 2>&1 | grep -v 'no notify signal' | head -30 | tr '\n' '|')
           echo "::notice title=Debian greeter test run::$(printf '%s' "$out" | cut -c1-3000)"
+          dbg=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen QT_LOGGING_RULES='kf.package*=true;kf.coreaddons*=true' QT_DEBUG_PLUGINS=1 timeout 8 "$g" --testing 2>&1 | grep -iE 'packagestructure|plasma_shell|Plasma/Shell|metadata|cannot load|undefined' | head -25 | tr '\n' '|')
+          echo "::notice title=Debian greeter plugins::$(printf '%s' "$dbg" | cut -c1-3500)"
+          echo "::notice title=Debian working type's metadata::$(strings /usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/packagestructure/plasma_generic.so 2>/dev/null | grep -iE 'KPlugin|Plasma/|Id' | head -8 | tr '\n' '|') ours: $(strings /usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/packagestructure/plasma_shell.so | grep -iE 'KPlugin|Plasma|Name' | head -8 | tr '\n' '|')"
           exit $rc
 
   # The lock screen on Debian trixie (as the image has it): KWin's locker with Hearth's lock screen, a user with a
