@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Hearth Files' "Act as administrator" (hosts/linux/desktop/shell/FilesExtras.qml): its own action, so the few minutes
+     an administrator's password is kept apply to this one program only, never to pkexec in general. -->
+<policyconfig>
+  <vendor>Hearth OS</vendor>
+  <vendor_url>https://hearthos.fun</vendor_url>
+  <action id="fun.hearthos.files-admin">
+    <description>Change system files in Hearth Files</description>
+    <message>Hearth Files needs an administrator's password to change system files</message>
+    <icon_name>hearth-files</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/nimbus/hearth-files-admin</annotate>
+  </action>
+</policyconfig>
