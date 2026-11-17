@@ -62,6 +62,10 @@ Singleton {
     // itself: "" is the look's own colours (today's), so nobody's desktop changes until they pick one.
     property string subTheme: ""         // "" (the look's first: Firelight, Steam blue, Cyber…) | a sub theme's id
     property bool restoreApps: false     // reopen the apps that were open when you signed out (SessionRestore.qml; 1.14)
+    // 1.14 (wave 3). Missing = the default, never written by itself.
+    property bool kbdLights: false       // the keyboard's RGB lights follow the accent (KbdLights.qml, hearth-kbd-lights); Settings › Appearance
+    property bool confirmLogout: false   // Log out asks first (LeaveConfirm.qml); Settings › Startup. Off: today's, logs out at once
+    property string leaveDefault: ""     // what the power menu has picked when it opens: "" (Lock, today's) | "Sleep" | "Restart" | "Shut down" | "Log out" | "Game Mode"; Settings › Startup
     property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     // ---- 1.14, more of KDE System Settings (docs/SETTINGS-MORE-1.14.md). Missing = the default, never written by itself.
     property bool dockScrollVolume: true // scrolling on an app's dock icon changes that app's volume (Sound › Apps' sound)
@@ -97,6 +101,7 @@ Singleton {
         .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
         .concat(["nightPlace", "nightLat", "nightLon", "nightFade"])
         .concat(["restoreApps"])
+        .concat(["kbdLights", "confirmLogout", "leaveDefault"])
         .concat(["dockScrollVolume", "pttOn", "pttKey", "screenOffBattery", "sleepBattery", "wallScreens", "wallShow", "frameTint",
                  "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
         .concat(["wallPotd", "wallPair", "appsFollow"])
@@ -140,6 +145,9 @@ Singleton {
     onSubThemeChanged: save("subTheme")
     onWallMatchChanged: save("wallMatch")
     onRestoreAppsChanged: save("restoreApps")
+    onKbdLightsChanged: save("kbdLights")
+    onConfirmLogoutChanged: save("confirmLogout")
+    onLeaveDefaultChanged: save("leaveDefault")
     onDockScrollVolumeChanged: save("dockScrollVolume")
     onPttOnChanged: save("pttOn")
     onPttKeyChanged: save("pttKey")

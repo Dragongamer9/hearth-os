@@ -161,6 +161,30 @@ SetPage {
         checked: Settings.restoreApps
         onToggled: v => Settings.restoreApps = v
     }
+    // 1.14 (KDE's Desktop session): ask before logging out, and what the power menu has picked when it opens.
+    SetHeader { text: "When you leave" }
+    SetSwitch {
+        id: confirmRow
+        // `settings page startup:leave` opens the page at it (once the schedule above has loaded and been laid out)
+        Component.onCompleted: if (SettingsNav.pageAnchor === "leave") { SettingsNav.pageAnchor = ""; toLeave.start(); }
+        Timer {
+            id: toLeave
+            interval: 1200
+            onTriggered: { const y = confirmRow.mapToItem(page.contentItem, 0, 0).y; page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, y - 60)); confirmRow.forceActiveFocus(); }
+        }
+        icon: "logout"; title: "Confirm before logging out"
+        sub: "Log out (in the app menu, Super+X and the desktop's menu) asks first, so a stray click can't close your apps"
+        checked: Settings.confirmLogout
+        onToggled: v => Settings.confirmLogout = v
+    }
+    SetChoice {
+        icon: "power"; title: "Default leave option"
+        sub: "What the power menu has picked when it opens: press the power button twice (or A) to do it"
+        options: [{ value: "", label: "Lock" }, { value: "Sleep", label: "Sleep" }, { value: "Restart", label: "Restart" },
+                  { value: "Shut down", label: "Shut down" }, { value: "Log out", label: "Log out" }, { value: "Game Mode", label: "Game Mode" }]
+        current: Settings.leaveDefault
+        onChosen: v => Settings.leaveDefault = v
+    }
     SetHeader { visible: page.scheduled; text: "When it's time to change" }
     SetRow { visible: page.scheduled; icon: "pad"; chevron: false; interactive: false; title: "If a game is running"; sub: "Server mode never closes your game: the change waits until it ends"; value: "Wait until the game ends" }
     SetRow { visible: page.scheduled; icon: "desktops"; chevron: false; interactive: false; title: "If you're in Desktop Mode"; sub: "Unsaved work stays open: the schedule never switches away from Desktop Mode"; value: "Stay" }

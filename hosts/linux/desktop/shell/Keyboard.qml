@@ -61,6 +61,7 @@ PanelWindow {
         onTapped: (r, c) => { if (root.engine) { root.engine.setHints(false); root.engine.tap(r, c); } }
         onLongPressed: (r, c) => { if (root.engine) root.engine.longPress(r, c); }
         onAltPicked: i => { if (root.engine) root.engine.pickAlt(i); }
+        onAltHovered: i => { if (root.engine && root.engine.hoverAlt) root.engine.hoverAlt(i); }
     }
 
     // ------------------------------------------------ the engine
@@ -129,6 +130,18 @@ PanelWindow {
             }
         }
     }
+    // A long touch as a finger makes it (OskKey.qml's path): held on a key until its accents open, slid onto accent
+    // `alt` by its place on the screen, then lifted there. Returns what was under the finger (-1: nothing).
+    property int touchAt: -1
+    function touchHold(name) {
+        if (!engine || !vm) return;
+        for (let r = 0; r < vm.rows.length; r++) for (let c = 0; c < vm.rows[r].length; c++) {
+            const k = vm.rows[r][c];
+            if (k.t === "ch" && k.v === name) { touchAt = -1; board.longPressed(r, c); return; }
+        }
+    }
+    function touchSlide(alt) { const p = board.altCenter(alt); touchAt = p ? board.altAt(p.x, p.y) : -1; board.slideTo(touchAt); return touchAt; }
+    function touchLift() { board.liftOn(touchAt); const i = touchAt; touchAt = -1; return i; }
     function setSetting(key, value) { Osk.HearthOSK.setSetting(key, value === "true" ? true : value === "false" ? false : key === "layouts" ? value.split(",") : value); }
     function stateJson() {
         return JSON.stringify({ open: open, mode: mode, wtype: hasWtype, typed: secret ? "" : typedLog, panel: vm ? vm.panel : "", sel: vm ? vm.sel : null, layout: vm ? vm.layout : "",
