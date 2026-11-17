@@ -107,19 +107,42 @@ class Flathub(unittest.TestCase):
         self.assertIn("can't be reached", str(e.exception))
 
 
+# A stand-in flatpak that knows which installation has which remote: installing from a remote that installation
+# doesn't have fails the way flatpak does, so a store that asks the wrong installation can't pass.
 FAKE_FLATPAK = textwrap.dedent(r'''
-    #!/bin/sh
-    echo "$*" >> "$FAKE_LOG"
-    case "$1 $2" in
-      "remote-ls --user") printf 'org.kde.krita\tKrita\t5.2\tstable\tflathub\t80 MB\n' ;;
-      "remote-ls --system") printf 'org.freedesktop.Platform\tFreedesktop Platform\t24.08\t24.08\tflathub\t200 MB\n' ;;
-      "remotes --user") printf 'myrepo\tMy repo\thttps://repo.example/\t\n' ;;
-      "remotes --system") printf 'flathub\tFlathub\thttps://dl.flathub.org/repo/\tsystem\nold\tOld\thttps://old/\tsystem,disabled\n' ;;
-      "update -y") echo "Updating 50%"; echo "Done 100%" ;;
-      "install -y") echo "Installing 40%"; echo "Installing 100%" ;;
-      *) : ;;
-    esac
+    #!/usr/bin/python3
+    import json, os, sys
+    a = sys.argv[1:]
+    open(os.environ['FAKE_LOG'], 'a').write(' '.join(a) + '\n')
+    st = json.load(open(os.environ['FAKE_STATE']))
+    inst = next((x[2:] for x in a if x in ('--user', '--system')), 'system')
+    def save(): json.dump(st, open(os.environ['FAKE_STATE'], 'w'))
+    def fail(m): print('error: ' + m, file=sys.stderr); sys.exit(1)
+    if a[0] == 'remotes':
+        for name, title, url, opts in st['remotes'][inst]:
+            if '--columns=name' in a: print(name)
+            else: print('\t'.join([name, title, url, opts]))
+    elif a[0] == 'remote-ls':
+        for row in st['updates'][inst]: print('\t'.join(row))
+    elif a[0] == 'remote-add':
+        rest = [x for x in a[1:] if not x.startswith('--')]
+        if rest[0] not in [r[0] for r in st['remotes'][inst]]:
+            st['remotes'][inst].append([rest[0], rest[0], rest[1], inst]); save()
+    elif a[0] == 'remote-delete':
+        st['remotes'][inst] = [r for r in st['remotes'][inst] if r[0] != a[-1]]; save()
+    elif a[0] in ('install', 'update'):
+        if a[0] == 'install':
+            remote = [x for x in a[1:] if not x.startswith('-')][0]
+            if remote not in [r[0] for r in st['remotes'][inst]]:
+                fail("No remote refs found for '%s'" % remote)
+        print('Working 40%'); print('Working 100%')
+    elif a[0] == 'info':
+        sys.exit(0 if a[-1] in st.get('installed', {}).get(inst, []) else 1)
 ''').lstrip()
+STOCK = {'remotes': {'user': [['myrepo', 'My repo', 'https://repo.example/', '']],
+                     'system': [['flathub', 'Flathub', 'https://dl.flathub.org/repo/', 'system'], ['old', 'Old', 'https://old/', 'system,disabled']]},
+         'updates': {'user': [['org.kde.krita', 'Krita', '5.2', 'stable', 'flathub', '80 MB']],
+                     'system': [['org.freedesktop.Platform', 'Freedesktop Platform', '24.08', '24.08', 'flathub', '200 MB']]}}
 
 
 class Flatpak(unittest.TestCase):
@@ -129,7 +152,10 @@ class Flatpak(unittest.TestCase):
         (t / 'flatpak').write_text(FAKE_FLATPAK)
         (t / 'flatpak').chmod(0o755)
         self.log = t / 'log'
-        self.env = dict(os.environ, HEARTH_FLATPAK=str(t / 'flatpak'), FAKE_LOG=str(self.log), XDG_CACHE_HOME=str(t / 'cache'))
+        self.state = t / 'state.json'
+        self.state.write_text(json.dumps(STOCK))
+        self.env = dict(os.environ, HEARTH_FLATPAK=str(t / 'flatpak'), FAKE_LOG=str(self.log), FAKE_STATE=str(self.state),
+                        XDG_CACHE_HOME=str(t / 'cache'))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -149,14 +175,36 @@ class Flatpak(unittest.TestCase):
     def test_update_streams_progress(self):
         code, r, lines = self.run_h('update', 'org.kde.krita')
         self.assertEqual(code, 0)
-        self.assertIn('progress: 50 Updating org.kde.krita', lines)
+        self.assertIn('progress: 40 Updating org.kde.krita', lines)
         self.assertIn('update -y --noninteractive --user org.kde.krita', self.log.read_text())
+        self.assertIn('update -y --noninteractive --system org.kde.krita', self.log.read_text())
 
-    def test_install_yours_by_default(self):
+    def test_install_on_a_stock_system_uses_the_systems_flathub(self):
+        # Hearth OS keeps Flathub in the system installation only (hearth-flatpak-setup), like Bazaar uses it
         code, r, lines = self.run_h('install', 'org.kde.krita')
-        self.assertEqual((code, r['installed']), (0, 'org.kde.krita'))
-        self.assertIn('install -y --noninteractive --user flathub org.kde.krita', self.log.read_text())
+        self.assertEqual((code, r['installed'], r['where']), (0, 'org.kde.krita', 'system'), lines)
+        self.assertIn('install -y --noninteractive --system flathub org.kde.krita', self.log.read_text())
         self.assertEqual(self.run_h('install', '--help')[0], 1)
+
+    def test_install_just_for_you_adds_your_flathub_first(self):
+        code, r, lines = self.run_h('install', 'org.kde.krita', '--user')
+        self.assertEqual((code, r['where']), (0, 'user'), lines)
+        log = self.log.read_text()
+        self.assertIn('remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo', log)
+        self.assertLess(log.index('remote-add --user'), log.index('install -y --noninteractive --user flathub'))
+
+    def test_the_fake_rejects_an_unknown_remote(self):
+        st = json.loads(self.state.read_text())
+        st['remotes']['system'] = []
+        self.state.write_text(json.dumps(st))
+        code, r, _ = self.run_h('install', 'org.kde.krita')          # no system Flathub: yours, added first
+        self.assertEqual((code, r['where']), (0, 'user'))
+        r = subprocess.run([self.env['HEARTH_FLATPAK'], 'install', '-y', '--system', 'flathub', 'x.y.z'], env=self.env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('No remote refs', r.stderr)
+        code, msg, _ = self.run_h('install', 'org.kde.krita', '--system')
+        self.assertEqual(code, 1)
+        self.assertIn("isn't set up for everyone yet", msg)
 
     def test_sources(self):
         code, s, _ = self.run_h('sources')

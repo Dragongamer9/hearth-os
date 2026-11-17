@@ -75,6 +75,37 @@ class Compare(unittest.TestCase):
         self.assertEqual((r['onlyA'], r['onlyB'], r['differ']), (['only-left.txt'], ['only-right.txt'], ['changed.txt', 'sub/deep.txt']))
 
 
+class SearchWithIndex(unittest.TestCase):
+    """Files' search with the file index: nothing found before goes missing (folders the index skips, files added since)."""
+    def test_skipped_folders_still_searched(self):
+        import json
+        import subprocess
+        old = dict(os.environ)
+        with tempfile.TemporaryDirectory() as t:
+            try:
+                h = pathlib.Path(t)
+                for d in ('Projects/app/node_modules/budget-lib', 'Projects/app/build', 'Documents'):
+                    (h / d).mkdir(parents=True)
+                (h / 'Projects/app/build/budget-out.txt').write_text('x')
+                (h / 'Documents/budget.txt').write_text('x')
+                env = dict(os.environ, HOME=t, XDG_CONFIG_HOME=t + '/.config', XDG_DATA_HOME=t + '/.local/share', XDG_CACHE_HOME=t + '/.cache')
+                subprocess.run([sys.executable, str(SHELL / 'hearth-search'), 'index'], env=env, capture_output=True, timeout=60, check=True)
+                (h / 'Documents/budget-today.txt').write_text('x')              # after the index was made
+                os.environ.update(env)
+                m = load(t)
+                import io
+                import contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    r = m.search(t, 'budget')
+                found = sorted(json.loads(l[7:])['name'] for l in buf.getvalue().splitlines() if l.startswith('found: '))
+                self.assertTrue(r.get('indexed'))
+                self.assertEqual(found, ['budget-lib', 'budget-out.txt', 'budget-today.txt', 'budget.txt'])
+            finally:
+                os.environ.clear()
+                os.environ.update(old)
+
+
 class PdfThumbs(unittest.TestCase):
     def test_pdf_first_page(self):
         old = dict(os.environ)

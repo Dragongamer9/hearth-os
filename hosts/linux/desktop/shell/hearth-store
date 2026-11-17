@@ -8,7 +8,9 @@ Bazaar (hearth-flatpak open-bazaar) stays installed; this is the controller-frie
   hearth-store app APP_ID              JSON: one app: name, developer, summary, description (plain text), screenshots,
                                        license, links, download size, its rating (ODRS: stars, how many) and a few
                                        reviews, and whether it's installed (yours or the system's)
-  hearth-store install APP_ID [--system]   progress lines, then JSON (yours, --user, unless --system)
+  hearth-store install APP_ID [--system|--user]
+                                       progress lines, then JSON: for everyone (the system's Flathub, like Bazaar)
+                                       unless --user (your own Flathub, added first if you have none)
   hearth-store remove APP_ID           (hearth-flatpak remove)
   hearth-store updates                 JSON: Flatpak updates (yours and the system's); the system image and firmware
                                        are Settings › Updates' and Settings › Firmware's (links)
@@ -251,10 +253,28 @@ def check_id(app_id):
     return app_id
 
 
-def install(app_id, system=False):
+FLATHUB_REPO = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
+
+
+def has_flathub(inst):
+    r = run_flatpak(['remotes', inst, '--columns=name'], timeout=30, check=False)
+    return r.returncode == 0 and 'flathub' in r.stdout.split()
+
+
+def install(app_id, where=None):
+    """Installs from Flathub where Hearth OS keeps it: for everyone (the system installation, like Bazaar; Hearth's
+    hearth-flatpak-setup adds Flathub there at start), or, when asked (where='user') or when the system has no Flathub
+    yet, just for you, adding your own Flathub first (from its .flatpakrepo, which carries the key)."""
     check_id(app_id)
-    stream_flatpak(['install', '-y', '--noninteractive', '--system' if system else '--user', 'flathub', app_id], 'Installing ' + app_id)
-    return {'ok': True, 'installed': app_id}
+    if where is None:
+        where = 'system' if has_flathub('--system') else 'user'
+    if where == 'system' and not has_flathub('--system'):
+        raise Fail("Flathub isn't set up for everyone yet (Hearth adds it when the PC starts); try again in a minute")
+    if where == 'user' and not has_flathub('--user'):
+        progress(1, 'Adding Flathub for you')
+        run_flatpak(['remote-add', '--user', '--if-not-exists', 'flathub', FLATHUB_REPO], timeout=120)
+    stream_flatpak(['install', '-y', '--noninteractive', '--' + where, 'flathub', app_id], 'Installing ' + app_id)
+    return {'ok': True, 'installed': app_id, 'where': where}
 
 
 def remove(app_id):
@@ -356,8 +376,8 @@ def main(argv):
             out = search(' '.join(rest))
         elif c == 'app' and len(rest) == 1:
             out = app(rest[0])
-        elif c == 'install' and rest:
-            out = install(rest[0], '--system' in rest)
+        elif c == 'install' and rest and ID_RE.match(rest[0]):
+            out = install(rest[0], 'system' if '--system' in rest else 'user' if '--user' in rest else None)
         elif c == 'remove' and len(rest) == 1:
             out = remove(rest[0])
         elif c == 'updates':

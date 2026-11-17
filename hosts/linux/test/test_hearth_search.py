@@ -118,6 +118,47 @@ class Index(unittest.TestCase):
         self.run_h('status')
         self.assertTrue(cfg.exists())
 
+    def test_new_files_found_before_the_index_catches_up(self):
+        self.run_h('index')
+        (self.home / 'Documents' / 'budget-new.txt').write_text('x')          # Documents' time changes
+        (self.home / 'Fresh' / 'deep').mkdir(parents=True)
+        (self.home / 'Fresh' / 'deep' / 'budget-deep.txt').write_text('x')    # a new folder: everything in it
+        (self.home / 'node_modules' / 'budget2.js').write_text('x')           # still never from the index
+        _, hits = self.run_h('query', 'budget')
+        self.assertEqual(self.names(hits), ['Budget-2026.ods', 'budget-deep.txt', 'budget-new.txt', 'budget-private.txt'])
+
+    def test_update_only_changed_folders(self):
+        self.run_h('index')
+        (self.home / 'Music' / 'budget-song.mp3').write_bytes(b'')
+        (self.home / 'Documents' / 'Taxes' / 'Budget-2026.ods').unlink()
+        code, res = self.run_h('update', str(self.home / 'Music'), str(self.home / 'Documents' / 'Taxes'))
+        self.assertEqual((code, res['added'], res['removed']), (0, 1, 1))
+        db = self.home / '.local/share/hearth/search/index.db'
+        import sqlite3
+        names = [r[0] for r in sqlite3.connect(str(db)).execute("SELECT name FROM files WHERE name LIKE '%budget%'")]
+        self.assertEqual(sorted(names), ['budget-private.txt', 'budget-song.mp3'])
+
+    def test_unindexed_folders_listed_for_files(self):
+        self.run_h('prefs-set', stdin='{"exclude": ["~/Private"]}')
+        self.run_h('index')
+        _, u = self.run_h('unindexed', str(self.home))
+        self.assertEqual(u, sorted([str(self.home / 'node_modules'), str(self.home / 'Games/steamapps'), str(self.home / 'Private')]))
+
+    def test_damaged_index_is_moved_aside_and_made_again(self):
+        self.run_h('index')
+        d = self.home / '.local/share/hearth/search'
+        (d / 'index.db').write_bytes(b'this is not a database' * 100)
+        for f in ('index.db-wal', 'index.db-shm'):
+            (d / f).unlink(missing_ok=True)
+        self.assertEqual(self.run_h('query', 'budget'), (0, None))           # searches fall back, no crash
+        self.assertTrue(any(f.name.startswith('index.db.broken-') for f in d.iterdir()))
+        code, res = self.run_h('index')
+        self.assertEqual((code, res['ok']), (0, True))
+        _, hits = self.run_h('query', 'budget')
+        self.assertEqual(self.names(hits), ['Budget-2026.ods', 'budget-private.txt'])
+        log = self.home / '.local/state/nimbus/settings-events.log'
+        self.assertIn('search index was damaged', log.read_text())
+
     def test_rebuild(self):
         self.run_h('index')
         code, res = self.run_h('rebuild')
@@ -153,6 +194,35 @@ class Battery(unittest.TestCase):
         self.assertTrue(self.mod.on_battery(self.tmp.name))
         (pathlib.Path(self.tmp.name) / 'AC' / 'online').write_text('1')
         self.assertFalse(self.mod.on_battery(self.tmp.name))
+
+    def test_any_charger_online_wins_whatever_the_order(self):
+        # a laptop with an offline USB-C port listed after the online mains (and before it, in the other test)
+        self.supply('BAT0', type='Battery', status='Discharging')
+        self.supply('ucsi-source-psy-1', type='USB', online='0')
+        self.supply('AC0', type='Mains', online='1')
+        self.supply('ucsi-source-psy-2', type='USB', online='0')
+        self.assertFalse(self.mod.on_battery(self.tmp.name))
+
+    def test_offline_charger_then_charging_battery(self):
+        self.supply('AC', type='Mains', online='0')
+        self.supply('BAT1', type='Battery', status='Charging')
+        self.assertFalse(self.mod.on_battery(self.tmp.name))
+
+    def test_inotify_says_which_folder_changed(self):
+        try:
+            ino = self.mod.Inotify()
+        except OSError:
+            self.skipTest('no inotify here')
+        d = pathlib.Path(self.tmp.name) / 'watched'
+        d.mkdir()
+        self.assertTrue(ino.add(str(d)))
+        (d / 'new.txt').write_text('x')
+        got = {}
+        for _ in range(10):
+            got.update(ino.read(0.5))
+            if got:
+                break
+        self.assertIn(str(d), got)
 
     def test_controller_battery_is_not_the_pc(self):
         self.supply('ps-controller-battery', type='Battery', scope='Device', status='Discharging')
@@ -196,7 +266,7 @@ class Wiring(unittest.TestCase):
     def test_menus_and_files_ask_the_index_first(self):
         self.assertIn("'hearth-search'", (SHELL / 'hearth-appmenu').read_text())
         files = (SHELL / 'hearth-files').read_text()
-        self.assertIn('hits = None if hidden or glob else indexed_search(root, query.strip(), limit)', files)
+        self.assertIn('got = None if hidden or glob else indexed_search(root, query.strip(), limit)', files)
 
     def test_appmenu_uses_index_hits(self):
         mod = load('hearth_appmenu_mod', SHELL / 'hearth-appmenu')

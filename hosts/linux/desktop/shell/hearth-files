@@ -2272,7 +2272,8 @@ def extract(archive, dest, here=False):
 
 # ---------------------------------------------------------------------- search
 def indexed_search(root, query, limit):
-    """hearth-search query --under ROOT, or None (no index, it's off, or ROOT isn't in the folders it covers)."""
+    """(hits, folders the index doesn't read under ROOT) from hearth-search, or None (no index, it's off, or ROOT
+    isn't in the folders it covers). The index also looks at folders changed since it last caught up."""
     helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth-search')
     if not os.path.exists(helper):
         return None
@@ -2286,12 +2287,16 @@ def indexed_search(root, query, limit):
             return None
         if any(part.startswith('.') for part in root.split('/')):
             return None
-        r = subprocess.run([sys.executable, helper, 'query', '--limit', str(min(limit, 500)), '--under', root, query],
-                           capture_output=True, text=True, timeout=10)
+        r = subprocess.run([sys.executable, helper, 'query', '--limit', str(min(limit, 5000)), '--under', root, query],
+                           capture_output=True, text=True, timeout=15)
         hits = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else None
+        u = subprocess.run([sys.executable, helper, 'unindexed', root], capture_output=True, text=True, timeout=10)
+        skipped = json.loads(u.stdout.strip().splitlines()[-1]) if u.returncode == 0 and u.stdout.strip() else None
     except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
         return None
-    return hits if isinstance(hits, list) else None
+    if not isinstance(hits, list) or not isinstance(skipped, list):
+        return None
+    return hits, skipped
 
 
 def search(path, query, hidden=False, limit=5000):
@@ -2311,9 +2316,22 @@ def search(path, query, hidden=False, limit=5000):
     signal.signal(signal.SIGTERM, stop)
     n, truncated = 0, False
     # The file index (hearth-search, like Baloo) answers at once when it covers this folder (not for hidden files or
-    # * ? patterns); its hits carry "snippet" when Settings › Search reads documents' text. Else: the walk below.
-    hits = None if hidden or glob else indexed_search(root, query.strip(), limit)
-    if hits is not None:
+    # * ? patterns); its hits carry "snippet" when Settings › Search reads documents' text. The folders it doesn't
+    # read (node_modules, build, target, game libraries, ones you left out) are still walked here, so nothing found
+    # before goes missing. With no index: the walk of everything below.
+    got = None if hidden or glob else indexed_search(root, query.strip(), limit)
+    starts, shown = [root], set()
+    if got is not None:
+        hits, starts = got
+        for sp in starts:                                   # a left-out folder whose own name matches
+            nm = os.path.basename(sp)
+            if q in nm.lower() and not nm.startswith('.'):
+                e = entry(sp, nm)
+                if e:
+                    e['where'] = os.path.relpath(os.path.dirname(sp), root)
+                    print('found: ' + json.dumps(e), flush=True)
+                    shown.add(sp)
+                    n += 1
         for h in hits:
             e = entry(h['path'], h['name'])
             if not e:
@@ -2322,10 +2340,12 @@ def search(path, query, hidden=False, limit=5000):
             if h.get('snippet'):
                 e['snippet'] = h['snippet']
             print('found: ' + json.dumps(e), flush=True)
+            shown.add(h['path'])
             n += 1
-        return {'ok': True, 'count': n, 'truncated': n >= limit, 'indexed': True}
+            if n >= limit:
+                return {'ok': True, 'count': n, 'truncated': True, 'indexed': True}
     try:
-        for d, dirs, files in os.walk(root, followlinks=False):
+        for d, dirs, files in (step for start in starts for step in os.walk(start, followlinks=False)):
             if not hidden:
                 dirs[:] = [x for x in dirs if not x.startswith('.')]
             dirs.sort()
@@ -2334,6 +2354,8 @@ def search(path, query, hidden=False, limit=5000):
                     continue
                 low = name.lower()
                 if not (fnmatch.fnmatch(low, q) if glob else q in low):
+                    continue
+                if os.path.join(d, name) in shown:
                     continue
                 e = entry(os.path.join(d, name), name)
                 if not e:
@@ -2348,7 +2370,7 @@ def search(path, query, hidden=False, limit=5000):
         pass
     except Cancelled:
         return {'cancelled': True, 'count': n}
-    return {'ok': True, 'count': n, 'truncated': truncated}
+    return {'ok': True, 'count': n, 'truncated': truncated, 'indexed': got is not None}
 
 
 # ---------------------------------------------------------------------- drives, bookmarks, settings
