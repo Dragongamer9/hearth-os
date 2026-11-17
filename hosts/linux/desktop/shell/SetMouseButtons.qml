@@ -112,9 +112,11 @@ SetPage {
         return m.concat([k]).join("+");
     }
 
+    // The anchor is cleared a moment later, not at once: Settings may build this page anew after an older copy saw it.
     function openAnchor() {
-        if (SettingsNav.pageAnchor === "press") { SettingsNav.pageAnchor = ""; page.pressing = true; }
+        if (SettingsNav.pageAnchor === "press") { page.pressing = true; anchorDone.restart(); }
     }
+    Timer { id: anchorDone; interval: 1500; onTriggered: if (SettingsNav.pageAnchor === "press") SettingsNav.pageAnchor = "" }
     Component.onCompleted: openAnchor()
     Connections { target: SettingsNav; function onPageAnchorChanged() { page.openAnchor(); } }
 
