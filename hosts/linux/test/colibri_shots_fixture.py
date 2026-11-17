@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -59,12 +60,19 @@ def main(out, dash_in, dash_out):
             'warnings': [], 'doctor': 'ok', 'problems': []}
     json.dump({'status': status, 'catalog': cat, 'plan': plan}, open(out, 'w'))
     sm = load('hearth_server_mode_shots', SHELL / 'hearth-server-mode')
-    d = json.load(open(dash_in))
+    # A neutral sample PC: the shared fixture's own host name and Home stay out of these pictures.
+    raw = open(dash_in).read()
+    raw = re.sub(r'(?i)chris-hearth', 'hearth-pc', raw).replace('/home/chris/', '/home/owner/')
+    d = json.loads(raw)
+    d['host'] = 'hearth-pc'
     tile = sm.colibri_tile({'active': True, 'health': 'ready', 'model': 'qwen36-35b', 'tps': 24.6, 'answers': 12}, 'running', {'colibri': 'stop'})
     i = next((n for n, t in enumerate(d['tiles']) if t['id'] == 'ai'), 0)
     d['tiles'].insert(i + 1, tile)
     d.setdefault('pills', []).append({'name': 'Colibri', 'extra': '', 'state': 'running'})
-    json.dump(d, open(dash_out, 'w'))
+    out_raw = json.dumps(d)
+    if re.search(r'(?i)chris', out_raw):
+        raise SystemExit('a personal name is still in the sample dashboard')
+    open(dash_out, 'w').write(out_raw)
     print('::notice title=Colibri shots::%d models (%d standard, %d uncensored); the tile is number %d' % (
         len(cat['models']), sum(m['group'] == 'standard' for m in cat['models']), sum(m['group'] == 'uncensored' for m in cat['models']), i + 2))
     shutil.rmtree(home, ignore_errors=True)
