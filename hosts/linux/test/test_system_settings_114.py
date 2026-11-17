@@ -437,7 +437,12 @@ class Region(Home):
             if cmd[:2] == ['locale', '-a']:
                 return 0, 'C.utf8\n'
             return 0, ''
-        with mock.patch.object(self.r, 'run', fake):
+        real_preview = self.r.preview
+        def only_c(loc):        # the runner may really have en_US installed; this PC (per locale -a above) doesn't
+            if not loc.upper().startswith('C.'):
+                raise self.r.Fail('not on this system')
+            return real_preview(loc)
+        with mock.patch.object(self.r, 'run', fake), mock.patch.object(self.r, 'preview', only_c):
             st = self.r.status()
         ids = {l['id']: l for l in st['locales']}
         self.assertTrue(ids['en_US.UTF-8']['missing'])
