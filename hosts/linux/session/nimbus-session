@@ -458,7 +458,7 @@ desktop_wm() {
   if [ "$(desk_fails kwin)" -ge 2 ]; then log "desktop: KWin didn't start twice in a row; labwc until it's turned back on in Settings"; echo labwc; return 0; fi
   if ! have "$KWIN_BIN"; then
     log "desktop: KWin (kwin_wayland) isn't installed; labwc instead"
-    [ -e "$RUN/hearth-kwin-missing-told" ] || { : >"$RUN/hearth-kwin-missing-told"; desk_notice kwin missing; }
+    [ -e "$DESK_STATE/kwin-missing-told" ] || { mkdir -p "$DESK_STATE"; : >"$DESK_STATE/kwin-missing-told"; desk_notice kwin missing; }
     echo labwc; return 0
   fi
   echo kwin
@@ -521,7 +521,10 @@ run_kwin() {
   [ -f "$KWIN_LOG" ] && [ "$(wc -c <"$KWIN_LOG")" -gt 1000000 ] && mv -f "$KWIN_LOG" "$KWIN_LOG.old"
   echo "--- $(date '+%F %T') Desktop Mode (KWin)" >>"$KWIN_LOG"
   auto="$SHARE/desktop/kwin/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
-  rm -f "$RUN/hearth-shell-up"
+  rm -f "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed" "$RUN/hearth-kwin-inverted"
+  lock=--no-lockscreen
+  if kwin_lock_ready; then lock=""; log "kwin: Hearth's lock screen is there; KWin's screen locker on"
+  else log "kwin: Hearth's lock screen isn't there; KWin without its screen locker (--no-lockscreen)"; fi
   (
     unset LABWC_PID WLR_NO_HARDWARE_CURSORS
     if [ -f "$CONF/environment" ]; then
@@ -539,17 +542,18 @@ run_kwin() {
       [ -d "$xdg" ] && case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$xdg:"*) ;; *) kx="${kx:+$kx:}$xdg" ;; esac
     done
     [ -n "$kx" ] && XDG_CONFIG_DIRS="$kx:${XDG_CONFIG_DIRS:-/etc/xdg}"
-    export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin \
-      PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock
-    # No --no-lockscreen: KWin's own locker is how Mantel locks under KWin (feature/kwin-input).
+    export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin
+    [ -z "$lock" ] && export PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock
+    # $lock: --no-lockscreen unless Hearth's lock screen is there (kwin_lock_ready).
     # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto"
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland $3 $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto" "$lock"
   ) >>"$KWIN_LOG" 2>&1 &
   kpid=$!
   echo "$kpid" >"$RUN/hearth-kwin.pid"
   started=$(date +%s); up=0
   while kill -0 "$kpid" 2>/dev/null; do
     [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
+    [ -s "$NEXT" ] || [ -e "$RUN/hearth-kwin-shell-failed" ] && break
     [ $(( $(date +%s) - started )) -ge "$KWIN_UP_SECS" ] && break
     sleep 1
   done
@@ -558,8 +562,24 @@ run_kwin() {
     kill -TERM "$kpid" 2>/dev/null; sleep 3; kill -KILL "$kpid" 2>/dev/null
   fi
   [ "$up" = 1 ] && log "kwin: Mantel up after $(( $(date +%s) - started ))s"
+  # While it runs: a switch asked for (the next mode written) gets 8 s for KWin to end by itself, then it's ended
+  # (TERM, then KILL), so a KWin that hangs can never hold the switch up.
+  asked=""
+  while kill -0 "$kpid" 2>/dev/null; do
+    if [ -s "$NEXT" ] || [ -e "$RUN/hearth-kwin-shell-failed" ]; then
+      [ -n "$asked" ] || asked=$(date +%s)
+      if [ $(( $(date +%s) - asked )) -ge 8 ]; then
+        log "kwin: still running 8s after the switch was asked for; ending it"
+        kill -TERM "$kpid" 2>/dev/null; sleep 3; kill -KILL "$kpid" 2>/dev/null; break
+      fi
+    fi
+    sleep 1
+  done
   wait "$kpid"; rc=$?
   rm -f "$RUN/hearth-kwin.pid"
+  wm_env_back
+  # Mantel kept closing under KWin (the autostart's give_up): the safe start, like KWin not coming up.
+  if [ -e "$RUN/hearth-kwin-shell-failed" ]; then log "kwin: $(head -c 200 "$RUN/hearth-kwin-shell-failed")"; return 200; fi
   # A switch you asked for (nimbus-mode wrote the next mode) is never a failure, however quick.
   if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset kwin; log "kwin ended (code $rc)"; return "$rc"; fi
   if [ "$up" = 0 ]; then log "kwin ended before Mantel came up (code $rc)"; return 200; fi
@@ -568,11 +588,32 @@ run_kwin() {
   log "kwin ended (code $rc)"
   return "$rc"
 }
+# KWin's own screen locker is how Mantel locks under KWin (feature/kwin-input), but only when Hearth's lock screen is
+# really there: its Plasma shell package where kscreenlocker_greet looks, and the greeter itself. Otherwise KWin starts
+# with --no-lockscreen, so it can never lock with KDE's (or a broken) lock screen: never a lockout. (kscreenlockerrc in
+# desktop/kwin/xdg turns KWin's own automatic locking off either way: Mantel's settings decide when to lock.)
+kwin_lock_ready() {
+  [ -f "${HEARTH_LOCK_PKG:-/usr/share/plasma/shells/org.hearth.mantel-lock}/contents/lockscreen/LockScreen.qml" ] || return 1
+  if [ -n "${HEARTH_LOCK_GREETER:-}" ]; then [ -x "$HEARTH_LOCK_GREETER" ]; return; fi
+  for g in /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet; do [ -x "$g" ] && return 0; done
+  return 1
+}
+# Leaving KWin: the activation environment (D-Bus and systemd's, which the autostart gave KWin's values) back to this
+# session's own, so what starts in Game Mode next doesn't think it's in KWin.
+wm_env_back() {
+  if have systemctl; then
+    timeout 4 systemctl --user unset-environment HEARTH_WM PLASMA_DEFAULT_SHELL >/dev/null 2>&1
+    if [ -n "${XDG_CONFIG_DIRS:-}" ]; then timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_CONFIG_DIRS >/dev/null 2>&1
+    else timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP >/dev/null 2>&1; timeout 4 systemctl --user unset-environment XDG_CONFIG_DIRS >/dev/null 2>&1; fi
+  fi
+  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP >/dev/null 2>&1
+  return 0
+}
 # What a KWin that didn't come up leaves behind, before labwc starts.
 settle_kwin() {
   pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
-  for p in kwin_wayland kwin_wayland_wrapper; do pkill -KILL -u "$(id -u)" -x "$p" 2>/dev/null; done
-  rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up"
+  pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -f 'kwin_wayland_wrapper' 2>/dev/null
+  rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed"
   sleep 1
   return 0
 }
@@ -683,7 +724,7 @@ settle() {
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
   # 1.14: Mantel on KWin (run_kwin): KWin too, and its marks.
-  pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -x kwin_wayland_wrapper 2>/dev/null
+  pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -f 'kwin_wayland_wrapper' 2>/dev/null
   rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up"
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).

@@ -46,7 +46,9 @@ case "$1" in
       # somewhere that didn't inherit HEARTH_DESKTOP_PID (an SSH login, a systemd user service, an app started over
       # D-Bus) while Desktop Mode is up, it's this user's labwc or KWin that has to end, or the switch never happens.
       pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null \
-        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null || pkill -TERM -u "$(id -u)" -x kwin_wayland 2>/dev/null
+        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null \
+        || { pkill -TERM -u "$(id -u)" -x kwin_wayland 2>/dev/null \
+             && { me=$(id -u); setsid sh -c "sleep 4; pkill -KILL -u $me -x kwin_wayland" >/dev/null 2>&1 </dev/null & }; }
     fi ;;
   *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current" >&2; exit 2 ;;
 esac
