@@ -322,10 +322,26 @@ class Wiring(unittest.TestCase):
             self.assertIn(line, rc)
         meta = json.loads(read('hosts/linux/desktop/kwin-lock/metadata.json'))
         self.assertEqual(meta['KPlugin']['Id'], 'org.hearth.mantel-lock')
+        # KWin's locker loads a Plasma/Shell package's lockscreen/LockScreen.qml, and only with API version 2 or more
+        # (older: "Lockscreen QML outdated", it falls back to Plasma's own).
+        self.assertEqual(meta['KPackageStructure'], 'Plasma/Shell')
+        self.assertGreaterEqual(int(meta['X-Plasma-APIVersion']), 2)
+        self.assertIn('/usr/share/plasma/shells/org.hearth.mantel-lock', read('os-bases/peppermint/build.sh'))
         qml = read('hosts/linux/desktop/kwin-lock/contents/lockscreen/LockScreen.qml')
         self.assertIn('authenticator.respond', qml)
         self.assertIn('Qt.quit()', qml)
         self.assertNotIn('import org.kde', qml)
+
+    def test_discord_quick_window_on_kwin(self):
+        dc = read('hosts/linux/desktop/shell/Discord.qml')
+        self.assertIn('WinList.place(geoProc.win, g)', dc)
+        self.assertIn('"remember-size"', dc)
+        hd = read('hosts/linux/desktop/shell/hearth-discord')
+        self.assertIn("elif cmd == 'remember-size'", hd)
+        self.assertIn("os.environ.get('HEARTH_WM') != 'kwin'", hd)
+        js = read('hosts/linux/desktop/kwin/windows/hearth-windows.js')
+        self.assertIn('case "place":', js)
+        self.assertIn('function place(w, g)', read('hosts/linux/desktop/shell/WinList.qml'))
 
     def test_portal_files(self):
         p = read('os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal')

@@ -108,6 +108,28 @@ def im_state():
         return 'unreachable (%s)' % e
 
 
+def click_middle():
+    """A uinput mouse moves far to the top left, then to the middle of the screen, and clicks there."""
+    try:
+        import evdev
+        e = evdev.ecodes
+        m = evdev.UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT], e.EV_REL: [e.REL_X, e.REL_Y]}, name='Hearth check mouse')
+        time.sleep(1.0)
+        for dx, dy in [(-4000, -4000)] + [(96, 108)] * 10:
+            m.write(e.EV_REL, e.REL_X, dx)
+            m.write(e.EV_REL, e.REL_Y, dy)
+            m.syn()
+            time.sleep(0.02)
+        for v in (1, 0):
+            m.write(e.EV_KEY, e.BTN_LEFT, v)
+            m.syn()
+            time.sleep(0.1)
+        time.sleep(0.5)
+        m.close()
+    except Exception as ex:
+        note('click', repr(ex))
+
+
 def qs_ipc(path, *args):
     r = run(['quickshell', 'ipc', '-p', path, 'call'] + list(args), timeout=10)
     return r.returncode, (r.stdout or '').strip()
@@ -175,7 +197,12 @@ def typing():
           'typed %r, the field has %r (exit %d %s)' % (text, entry_text(), r.returncode, r.stderr.strip()))
     r = run([sys.executable, HT, '-k', 'BackSpace', '-k', 'BackSpace'], timeout=20)
     want = text[:-2]
-    wait_for(lambda: entry_text() == want, 6)
+    if not wait_for(lambda: entry_text() == want, 6):
+        # labwc may not have given KWin's window its keyboard: a click on it (a uinput mouse) does, as a person would.
+        note('keys before a click', 'the field still has %r; clicking KWin\'s window' % entry_text())
+        click_middle()
+        r = run([sys.executable, HT, '-k', 'BackSpace', '-k', 'BackSpace'], timeout=20)
+        wait_for(lambda: entry_text() == want, 6)
     check('hearth-type presses keys on KWin (uinput keyboard: BackSpace twice)', entry_text() == want,
           'the field has %r (exit %d %s)' % (entry_text(), r.returncode, r.stderr.strip()))
     r = run([sys.executable, HT, '-M', 'ctrl', '-k', 'a', '-m', 'ctrl', '-k', 'Delete'], timeout=20)
@@ -339,7 +366,7 @@ def portals():
         check('ScreenCast portal: the app gets a PipeWire stream of the screen it was shown', bool(streams), r)
         if streams:
             note('ScreenCast streams', streams)
-            check('ScreenCast portal: "remember this" restore data for next time', 'restore_data' in r[1], list(r[1].keys()))
+            check('ScreenCast portal: "remember this" (the app gets a restore token for next time)', 'restore_token' in r[1], list(r[1].keys()))
             try:
                 res, fds = bus.call_with_unix_fd_list_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', SC,
                                                            'OpenPipeWireRemote', GLib.Variant('(oa{sv})', (session, {})),
@@ -354,6 +381,12 @@ def portals():
         check('closing the session stops the stream', left == '', left)
 
     SS = 'org.freedesktop.portal.Screenshot'
+    # The person already allowed screenshots for this app (otherwise xdg-desktop-portal first asks through an Access
+    # dialog, which comes from xdg-desktop-portal-gtk on Hearth and isn't installed here).
+    pr = run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.impl.portal.PermissionStore', '--object-path',
+              '/org/freedesktop/impl/portal/PermissionStore', '--method', 'org.freedesktop.impl.portal.PermissionStore.SetPermission',
+              'screenshot', 'true', 'screenshot', '', "['yes']"])
+    note('screenshot permission', 'exit %d %s' % (pr.returncode, (pr.stderr or '').strip()[:200]))
     r = portal(SS, 'Screenshot', '(sa{sv})', ['', {'interactive': GLib.Variant('b', False)}])
     uri = r[1].get('uri', '') if r and r[0] == 0 else ''
     path = uri[7:] if uri.startswith('file://') else ''
@@ -382,7 +415,7 @@ def lock():
     check('KWin\'s screen locker is installed (kscreenlocker)', bool(greeter))
     if greeter:
         glog = os.path.join(SHOTS, 'greeter.log')
-        g = subprocess.Popen([greeter, '--testing', '--theme', '/usr/share/plasma/look-and-feel/org.hearth.mantel-lock'],
+        g = subprocess.Popen([greeter, '--testing', '--theme', '/usr/share/plasma/shells/org.hearth.mantel-lock'],
                              stdout=open(glog, 'w'), stderr=subprocess.STDOUT)
         time.sleep(8)
         grim('lock-greeter')

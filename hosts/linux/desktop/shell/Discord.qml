@@ -129,7 +129,10 @@ Scope {
         switch (what) {
         case "choose": openChooser(); break;
         case "install": openChooser(); if (st && st.client) { pick = Math.max(0, cards.findIndex(c => c.id === st.client)); step = "install"; pendingClient = st.client; } break;
-        case "start": run(["open", "--quick"].concat(edgeArgs(lastAnchor))); break;
+        case "start":
+            run(["open", "--quick"].concat(edgeArgs(lastAnchor)));
+            if (WinList.kwin) { placeTries = 0; placeWhenUp.restart(); }
+            break;
         case "hide": hideWindow(w); break;
         case "show": showWindow(w); break;
         }
@@ -137,11 +140,46 @@ Scope {
     function showWindow(w) {
         w.minimized = false;
         w.activate();
-        if (!w.maximized) run(["place"].concat(edgeArgs(lastAnchor)));
+        if (w.maximized) return;
+        // labwc: hearth-discord moves Discord's X window (xdotool). KWin: the window bridge places it (WinList.place),
+        // at the spot hearth-discord works out (its geometry command), for X and Wayland windows alike.
+        if (WinList.kwin) placeKwin(w);
+        else run(["place"].concat(edgeArgs(lastAnchor)));
+    }
+    function placeKwin(w) {
+        geoProc.win = w;
+        geoProc.command = ["python3", helper, "geometry"].concat(edgeArgs(lastAnchor));
+        geoProc.running = true;
+    }
+    Process {
+        id: geoProc
+        property var win: null
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let g = null;
+                try { g = JSON.parse(text.trim().split("\n").pop()); } catch (e) { }
+                if (g && geoProc.win) WinList.place(geoProc.win, g);
+                geoProc.win = null;
+            }
+        }
+    }
+    // KWin: a Discord that was just started is placed once its window appears (labwc: hearth-discord open does it).
+    property int placeTries: 0
+    Timer {
+        id: placeWhenUp
+        interval: 500; repeat: true
+        onTriggered: {
+            const w = dc.findWindow();
+            if (w) { stop(); if (!w.maximized) dc.placeKwin(w); }
+            else if (++dc.placeTries > 60) stop();
+        }
     }
     // Hidden, never quit: Discord keeps running (and notifying). Its size is kept for next time.
     function hideWindow(w) {
-        if (!w.maximized) run(["remember"]);
+        if (!w.maximized) {
+            if (WinList.kwin) { if (w.frame && w.frame.w > 0) run(["remember-size", String(w.frame.w), String(w.frame.h)]); }
+            else run(["remember"]);
+        }
         w.minimized = true;
     }
     function show(anchor) { refresh(() => { const w = findWindow(); if (w) showWindow(w); else act(decide(st && st.chosen, st && st.opens, false, false), null); }); }
