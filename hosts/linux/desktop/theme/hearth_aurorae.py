@@ -15,7 +15,10 @@ again and asks KWin to reconfigure (only under KWin), so the frames follow the l
 The colours are labwc's (themerc-override keys), so the two window managers' frames match; build() gets them already
 mapped to the chosen look and accent.
 """
+import hashlib
 import os
+import re
+import shutil
 
 NAME = 'hearth'
 TITLE_H = 30            # the title bar, as labwc's (padding.height 6 + a 10 pt font + the border) rounded up
@@ -142,7 +145,8 @@ def rc(c):
 METADATA = """[Desktop Entry]
 Name=Hearth
 Comment=Hearth Desktop Mode's window frames (written by Hearth for the look you chose; changes with it)
-X-KDE-PluginInfo-Name=hearth
+X-KDE-PluginInfo-Name=%(name)s
+X-Hearth-Frames=1
 X-KDE-PluginInfo-Author=Dragongamer9
 X-KDE-PluginInfo-License=GPL-3.0-or-later
 X-KDE-PluginInfo-Website=https://hearthos.fun
@@ -150,8 +154,8 @@ X-Plasma-API=javascript
 """
 
 
-def build(colors, radius):
-    """{file name: text} for the theme folder. colors: the mapped themerc keys plus 'danger'."""
+def build(colors, radius, name=NAME):
+    """{file name: text} for the theme folder NAME. colors: the mapped themerc keys plus 'danger'."""
     c = {
         'active.bg': colors.get('window.active.title.bg.color', '#1c1512'),
         'inactive.bg': colors.get('window.inactive.title.bg.color', '#140f0c'),
@@ -162,20 +166,78 @@ def build(colors, radius):
         'hover': colors.get('window.active.button.hover.bg.color', '#33271f'),
         'danger': colors.get('danger', '#e5484d'),
     }
-    files = {'metadata.desktop': METADATA, NAME + 'rc': rc(c), 'decoration.svg': frame_svg(c, radius)}
+    files = {'metadata.desktop': METADATA % {'name': name}, name + 'rc': rc(c), 'decoration.svg': frame_svg(c, radius)}
     for kind in ('close', 'minimize', 'maximize', 'restore'):
         files[kind + '.svg'] = button_svg(kind, c)
     return files
 
 
-def theme_dir(data):
-    return os.path.join(data, 'aurorae', 'themes', NAME)
+def theme_dir(data, name=NAME):
+    return os.path.join(data, 'aurorae', 'themes', name)
+
+
+def version_name(colors, radius):
+    """KWin keeps a theme it has loaded (Aurorae caches it by name), so each look gets a folder of its own,
+    hearth-<8 hex of its pictures>, and the new name is what KWin is told to use; "hearth" itself is the same frames
+    under the name Hearth's KWin defaults pick before any of that."""
+    blob = ''.join(v for k, v in sorted(build(colors, radius).items()) if k != 'metadata.desktop' and not k.endswith('rc'))
+    blob += build(colors, radius)[NAME + 'rc']
+    return NAME + '-' + hashlib.sha1(blob.encode()).hexdigest()[:8]
+
+
+def ours(folder):
+    try:
+        with open(os.path.join(folder, 'metadata.desktop'), encoding='utf-8') as f:
+            return 'X-Hearth-Frames=1' in f.read()
+    except OSError:
+        return False
 
 
 def write_theme(data, colors, radius, write):
-    """Writes the theme into DATA/aurorae/themes/hearth with WRITE(path, text) -> changed. True if anything changed."""
-    d = theme_dir(data)
+    """Writes the frames as "hearth" and as this look's own hearth-<hex> (see version_name) with WRITE(path, text) ->
+    changed, and removes Hearth's older hearth-<hex> folders (only folders Hearth made: X-Hearth-Frames in their
+    metadata; nobody else's theme is touched). Returns (changed, the look's theme name)."""
     changed = False
-    for name, text in build(colors, radius).items():
-        changed |= bool(write(os.path.join(d, name), text))
-    return changed
+    current = version_name(colors, radius)
+    for name in (NAME, current):
+        d = theme_dir(data, name)
+        for fname, text in build(colors, radius, name).items():
+            changed |= bool(write(os.path.join(d, fname), text))
+    root = os.path.join(data, 'aurorae', 'themes')
+    for old in os.listdir(root) if os.path.isdir(root) else []:
+        if re.fullmatch(NAME + r'-[0-9a-f]{8}', old) and old != current and ours(os.path.join(root, old)):
+            shutil.rmtree(os.path.join(root, old), ignore_errors=True)
+    return changed, current
+
+
+DECO_GROUP = 'org.kde.kdecoration2'
+
+
+def kwinrc_pick(text, theme):
+    """The person's kwinrc with Hearth's frames picked: [org.kde.kdecoration2] theme=__aurorae__svg__THEME, but only
+    when the decoration there is Hearth's or none was chosen (a library or theme someone picked stays). Returns the
+    new text, or None when it's not Hearth's to change."""
+    lines = text.splitlines(True)
+    start = end = None
+    for i, l in enumerate(lines):
+        if l.strip() == '[%s]' % DECO_GROUP:
+            start = i
+        elif start is not None and end is None and l.startswith('['):
+            end = i
+    if start is not None and end is None:
+        end = len(lines)
+    want = 'theme=__aurorae__svg__%s\n' % theme
+    if start is None:
+        sep = '' if not text or text.endswith('\n\n') else ('\n' if text.endswith('\n') else '\n\n')
+        return text + sep + '[%s]\n' % DECO_GROUP + want
+    body = lines[start + 1:end]
+    for l in body:
+        k, _, v = l.partition('=')
+        k, v = k.strip(), v.strip()
+        if k == 'library' and v not in ('org.kde.kwin.aurorae', 'org.kde.kwin.aurorae.v2'):
+            return None
+        if k == 'theme' and not v.startswith('__aurorae__svg__' + NAME):
+            return None
+    out = [l for l in body if l.partition('=')[0].strip() != 'theme']
+    out.insert(0, want)
+    return ''.join(lines[:start + 1] + out + lines[end:])
