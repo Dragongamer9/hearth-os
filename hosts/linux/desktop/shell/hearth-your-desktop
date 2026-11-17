@@ -142,18 +142,27 @@ def overridden(config_home=None):
 
 
 def cmd_kwin_overrides():
+    """Queue the one-time notice for overridden keys not told yet. They're marked as told only after the notice is
+    really in the notice file (read back under its lock); if queueing fails nothing is marked, so the next start
+    tells again (red flag 9: the person is always told)."""
     ids = overridden()
     told = [i for i in (sio.load_json(MINE_TOLD, {}, repair=False).get('told') or []) if isinstance(i, str)] \
         if os.path.exists(MINE_TOLD) else []
     tell = [i for i in ids if i not in told and any(x[0] == i and x[5] for x in LOCKED)]
-    if tell:
-        shown = [i for i in ids if any(x[0] == i and x[5] for x in LOCKED)]
-        line = 'kwin-mine %s %d' % ('+'.join(shown), int(time.time()))
-        rest = [n for n in read_notices(NOTICE) if n['what'] != 'kwin-mine']
-        write_lines(NOTICE, rest + [parse(line)])
-        sio.write_json(MINE_TOLD, {'told': sorted(set(told) | set(tell))})
-        sio.log_event('desktop: your own KDE settings not used under KWin: %s' % ', '.join(shown))
-    return {'overridden': ids, 'told': bool(tell)}
+    if not tell:
+        return {'overridden': ids, 'told': False}
+    shown = [i for i in ids if any(x[0] == i and x[5] for x in LOCKED)]
+    n = parse('kwin-mine %s %d' % ('+'.join(shown), int(time.time())))
+    with sio.locked(NOTICE):
+        rest = [x for x in read_notices(NOTICE) if x['what'] != 'kwin-mine']
+        write_lines(NOTICE, rest + [n])
+        queued = any(x['what'] == 'kwin-mine' and x['kind'] == n['kind'] for x in read_notices(NOTICE))
+    if not queued:
+        sio.log_event('desktop: the notice about your KDE settings couldn\'t be queued; told at the next start')
+        return {'overridden': ids, 'told': False}
+    sio.write_json(MINE_TOLD, {'told': sorted(set(told) | set(tell))})
+    sio.log_event('desktop: your own KDE settings not used under KWin: %s' % ', '.join(shown))
+    return {'overridden': ids, 'told': True}
 
 
 def parse(line):
@@ -255,22 +264,24 @@ def cmd_wm(w):
             os.remove(os.path.join(RUN, 'hearth-kwin-failed'))
         except OSError:
             pass
-        for p in (NOTICE, SHOWN):
-            ns = read_notices(p)
-            if any(n['what'] == 'kwin' for n in ns):
-                write_lines(p, [n for n in ns if n['what'] != 'kwin'])
+        with sio.locked(NOTICE):
+            for p in (NOTICE, SHOWN):
+                ns = read_notices(p)
+                if any(n['what'] == 'kwin' for n in ns):
+                    write_lines(p, [n for n in ns if n['what'] != 'kwin'])
     sio.log_event('desktop: Mantel on %s from the next start of Desktop Mode' % WMS[w])
     return status()
 
 
 def cmd_notice():
-    pending = read_notices(NOTICE)
-    if not pending:
-        return {}
-    n = pending[0]
-    seen = [s for s in read_notices(SHOWN) if s['what'] != n['what']] + [n]
-    write_lines(SHOWN, seen)
-    write_lines(NOTICE, pending[1:])
+    with sio.locked(NOTICE):          # the session's desk_notice takes the same lock
+        pending = read_notices(NOTICE)
+        if not pending:
+            return {}
+        n = pending[0]
+        seen = [s for s in read_notices(SHOWN) if s['what'] != n['what']] + [n]
+        write_lines(SHOWN, seen)
+        write_lines(NOTICE, pending[1:])
     if n['kind'] == 'retired':
         try:
             sio.write_text(RETIRED_TOLD, 'told %d\n' % int(time.time()))
