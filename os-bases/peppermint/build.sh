@@ -1697,6 +1697,14 @@ for u in sunshine.service app-dev.lizardbyte.app.Sunshine.service; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (Sunshine) is on in the image: it stays off until the owner turns it on"; exit 1; fi
 done
 if [ -e /etc/hearth/remote-desktop.nft ]; then echo "::error::a remote desktop firewall rule is in the image"; exit 1; fi
+# Settings › Remote desktop (hearth-vnc, a VNC server through the desktop's screen-sharing portal) and the Recorder
+# panel (hearth-record): GStreamer's PipeWire plugin (above, with the recorder apps), openssl for this PC's own
+# certificate, secret-tool for the password in the keyring, python3-evdev for the virtual keyboard and mouse where the
+# portal can't type (labwc). hearth-vnc.service has no [Install]: off in the image, started only by its switch.
+optional openssl libsecret-tools python3-evdev gstreamer1.0-pipewire
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-vnc /usr/share/nimbus/desktop/shell/hearth-record 2>/dev/null || true
+systemctl --global disable hearth-vnc.service 2>/dev/null || true
+if [ "$(systemctl --global is-enabled hearth-vnc.service 2>/dev/null)" = enabled ]; then echo "::error::hearth-vnc.service (Remote desktop) is on in the image: it stays off until the owner turns it on"; exit 1; fi
 # The streamed players' address as a QR code in Settings (optional), and the udev helper that gives each streamed
 # player their own virtual controllers (copied in with system_files; executable to be sure).
 optional qrencode

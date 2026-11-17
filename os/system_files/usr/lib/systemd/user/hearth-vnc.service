@@ -1,0 +1,15 @@
+# Settings › Remote desktop (hearth-vnc): this PC's desktop in a VNC app on your other devices, through Tailscale (or
+# your home network too, when you choose it), never the internet. Not enabled and not part of the session starting:
+# its switch starts it, and Desktop Mode's autostart starts it again only while that switch is on (hearth-vnc session).
+# A failure here never holds anything up: Game Mode and the desktop don't wait for it.
+[Unit]
+Description=Hearth remote desktop (VNC)
+ConditionPathExists=/usr/share/nimbus/desktop/shell/hearth-vnc
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-vnc serve
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+Nice=5

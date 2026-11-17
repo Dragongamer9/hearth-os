@@ -1,0 +1,389 @@
+#!/usr/bin/python3
+"""hearth-record: record the screen from Desktop Mode's Recorder panel (Recorder.qml) or Super+Alt+R, through the
+desktop's screen-sharing portal (KWin's or labwc's: the person picks a screen or a window there) and GStreamer.
+
+  hearth-record status                 JSON: recording or not (since, file, what, sound, encoder), your choices, the
+                                       last recordings, what this PC can do (portal, GStreamer, encoders)
+  hearth-record start [--what screen|window|any] [--sound none|desktop|mic|both] [--fps 30|60]
+                                       start (the portal asks at the PC what to share); answers once it's recording
+  hearth-record stop                   stop and save; answers with the file
+  hearth-record toggle                 start with your choices, or stop (the keyboard shortcut)
+  hearth-record set KEY VALUE          what, sound, fps, pointer (on|off): your choices, saved only when you change one
+  hearth-record run ...                (internal) the recording itself, started by start in its own session
+
+Your choices: ~/.config/nimbus/record.json through hearth_settings_io (atomic, .bak, merged; defaults filled in when
+read, never saved). Opening the panel only reads. Recordings go to Videos/Recordings (xdg-user-dir VIDEOS). What's
+recording now: $XDG_RUNTIME_DIR/hearth-record/state.json, which the bar's capture dot (CaptureIndicator.qml) watches.
+The video is H.264 in an MP4 written in fragments (playable even after a power cut), encoded on the graphics card when
+GStreamer has an encoder for it (NVENC, VA-API), else x264; a graphics-card encoder that fails in the first seconds
+is replaced by x264 by itself. Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+SELF = os.path.realpath(__file__)
+HOME = os.path.expanduser('~')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'record.json')
+RUNTIME = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-record')
+STATE = os.path.join(RUNTIME, 'state.json')
+LOG = os.path.join(RUNTIME, 'last.log')
+DEFAULTS = {'what': 'any', 'sound': 'desktop', 'fps': 30, 'pointer': True}
+CHOICES = {'what': ('screen', 'window', 'any'), 'sound': ('none', 'desktop', 'mic', 'both'), 'fps': (30, 60)}
+# Encoders in the order they're tried; the hardware ones need their GStreamer plugin and a card that can.
+ENCODERS = [
+    ('nvh264enc', 'nvh264enc preset=low-latency-hq rc-mode=vbr bitrate={kbps}', 'NVENC'),
+    ('vah264enc', 'vah264enc bitrate={kbps}', 'VA-API'),
+    ('vaapih264enc', 'vaapih264enc bitrate={kbps}', 'VA-API'),
+    ('x264enc', 'x264enc speed-preset=superfast tune=zerolatency bitrate={kbps} key-int-max={gop}', 'x264'),
+    ('openh264enc', 'openh264enc bitrate={bps}', 'OpenH264'),
+]
+SOFTWARE = ('x264enc', 'openh264enc')
+
+
+def out(obj):
+    print(json.dumps(obj))
+    return 0
+
+
+def fail(msg):
+    print('error: ' + msg)
+    return 1
+
+
+def load():
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def videos_dir():
+    d = ''
+    if shutil.which('xdg-user-dir'):
+        try:
+            d = subprocess.run(['xdg-user-dir', 'VIDEOS'], capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:
+            d = ''
+    if not d or os.path.realpath(d) == os.path.realpath(HOME):
+        d = os.path.join(HOME, 'Videos')
+    return os.path.join(d, 'Recordings')
+
+
+def read_state():
+    try:
+        with open(STATE, encoding='utf-8') as f:
+            st = json.load(f)
+    except Exception:
+        return {'state': 'idle'}
+    pid = st.get('pid')
+    if st.get('state') in ('starting', 'recording', 'stopping') and not alive(pid):
+        st = {'state': 'idle', 'last': st.get('file', ''), 'error': st.get('error', '')}
+    return st
+
+
+def write_state(st):
+    """Runtime state (not a setting): what's recording now. Replaced atomically, so the bar's watcher never reads half."""
+    os.makedirs(RUNTIME, exist_ok=True)
+    tmp = STATE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(st, f)
+    os.replace(tmp, STATE)
+
+
+def alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except Exception:
+        return False
+
+
+def gst_has(name):
+    if not shutil.which('gst-inspect-1.0'):
+        return False
+    try:
+        return subprocess.run(['gst-inspect-1.0', '--exists', name], capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+def encoders():
+    return [e for e in ENCODERS if gst_has(e[0])]
+
+
+def recent(n=5):
+    d = videos_dir()
+    try:
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith(('.mp4', '.mkv'))]
+    except OSError:
+        return []
+    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    res = []
+    for p in files[:n]:
+        try:
+            s = os.stat(p)
+            res.append({'path': p, 'name': os.path.basename(p), 'size': s.st_size, 'time': int(s.st_mtime)})
+        except OSError:
+            pass
+    return res
+
+
+def cmd_status():
+    import hearth_screencast as hs
+    ok, why, rd = hs.available()
+    st = read_state()
+    encs = encoders()
+    return out({
+        'state': st.get('state', 'idle'), 'recording': st.get('state') == 'recording',
+        'since': st.get('since', 0), 'file': st.get('file', ''), 'what': st.get('what', ''),
+        'sound': st.get('sound', ''), 'encoder': st.get('encoder', ''), 'error': st.get('error', ''),
+        'last': st.get('last', ''),
+        'choices': load(), 'folder': videos_dir(), 'recent': recent(),
+        'can': {'portal': ok, 'portalWhy': why, 'gst': bool(shutil.which('gst-launch-1.0')) and gst_has('pipewiresrc'),
+                'encoders': [e[2] for e in encs], 'mp4': gst_has('mp4mux'), 'aac': gst_has('avenc_aac') or gst_has('fdkaacenc') or gst_has('voaacenc')},
+    })
+
+
+def cmd_set(key, value):
+    if key == 'pointer':
+        if value not in ('on', 'off'):
+            return fail('pointer is on or off')
+        v = value == 'on'
+    elif key == 'fps':
+        try:
+            v = int(value)
+        except ValueError:
+            return fail('fps is 30 or 60')
+        if v not in CHOICES['fps']:
+            return fail('fps is 30 or 60')
+    elif key in CHOICES:
+        if value not in CHOICES[key]:
+            return fail('%s is one of %s' % (key, ', '.join(map(str, CHOICES[key]))))
+        v = value
+    else:
+        return fail('unknown choice ' + key)
+    if load().get(key) == v:
+        return out({'ok': True, 'changed': False})
+    sio.merge_json(SETTINGS, {key: v}, who='Recorder')
+    return out({'ok': True, 'changed': True})
+
+
+def parse_opts(args):
+    c = load()
+    o = {'what': c['what'], 'sound': c['sound'], 'fps': int(c['fps']), 'pointer': bool(c['pointer'])}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ('--what', '--sound', '--fps') and i + 1 < len(args):
+            k = a[2:]
+            v = int(args[i + 1]) if k == 'fps' and args[i + 1].isdigit() else args[i + 1]
+            if v not in CHOICES[k]:
+                raise ValueError('%s is one of %s' % (k, ', '.join(map(str, CHOICES[k]))))
+            o[k] = v
+            i += 2
+        elif a == '--no-pointer':
+            o['pointer'] = False
+            i += 1
+        else:
+            raise ValueError('unknown option ' + a)
+    return o
+
+
+def cmd_start(args):
+    try:
+        o = parse_opts(args)
+    except ValueError as e:
+        return fail(str(e))
+    st = read_state()
+    if st.get('state') in ('starting', 'recording', 'stopping'):
+        return fail('already recording (stop it first)')
+    if not shutil.which('gst-launch-1.0'):
+        return fail("GStreamer (gst-launch-1.0) isn't on this system")
+    os.makedirs(RUNTIME, exist_ok=True)
+    write_state({'state': 'starting', 'pid': 0, 'since': 0, 'what': o['what'], 'sound': o['sound']})
+    argv = [sys.executable, SELF, 'run', '--what', o['what'], '--sound', o['sound'], '--fps', str(o['fps'])]
+    if not o['pointer']:
+        argv.append('--no-pointer')
+    with open(LOG, 'w') as lg:
+        p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=lg, stderr=lg, start_new_session=True, close_fds=True)
+    # The portal may ask at the PC first: wait for the answer (a few minutes at most).
+    deadline = time.time() + 200
+    while time.time() < deadline:
+        time.sleep(0.3)
+        st = read_state()
+        if p.poll() is not None and st.get('state') != 'recording':
+            return fail(st.get('error') or "the recording couldn't start")
+        if st.get('state') == 'recording':
+            return out({'ok': True, 'file': st.get('file', ''), 'encoder': st.get('encoder', '')})
+        if st.get('state') == 'idle' and st.get('error'):
+            return fail(st['error'])
+    os.kill(p.pid, signal.SIGTERM)
+    return fail('nobody answered the screen-sharing question at the PC')
+
+
+def cmd_stop():
+    st = read_state()
+    if st.get('state') not in ('starting', 'recording', 'stopping'):
+        return out({'ok': True, 'file': st.get('last', ''), 'was': False})
+    try:
+        os.kill(int(st['pid']), signal.SIGTERM)
+    except Exception:
+        pass
+    deadline = time.time() + 20
+    while time.time() < deadline and alive(st.get('pid')):
+        time.sleep(0.2)
+    now = read_state()
+    return out({'ok': True, 'file': now.get('last') or st.get('file', ''), 'was': True})
+
+
+def cmd_toggle():
+    st = read_state()
+    if st.get('state') in ('starting', 'recording', 'stopping'):
+        return cmd_stop()
+    return cmd_start([])
+
+
+# ---- the recording itself
+def pipeline(fd, node, o, enc, path, aac):
+    kbps = 40000 if o['fps'] >= 60 else 24000
+    e = enc[1].format(kbps=kbps, bps=kbps * 1000, gop=o['fps'] * 2)
+    v = ('pipewiresrc fd=%d path=%d do-timestamp=true ! queue ! videoconvert ! '
+         'videorate ! video/x-raw,framerate=%d/1 ! queue ! %s ! h264parse ! queue ! mux.' % (fd, node, o['fps'], e))
+    if aac:
+        aenc = 'avenc_aac bitrate=192000' if gst_has('avenc_aac') else 'fdkaacenc' if gst_has('fdkaacenc') else 'voaacenc'
+        mux = 'mp4mux name=mux fragment-duration=1000 ! filesink location="%s"' % path
+    else:
+        aenc = 'opusenc bitrate=160000'
+        mux = 'matroskamux name=mux ! filesink location="%s"' % path
+    a = ''
+    src = {'desktop': ['@DEFAULT_MONITOR@'], 'mic': ['@DEFAULT_SOURCE@'], 'both': ['@DEFAULT_MONITOR@', '@DEFAULT_SOURCE@']}.get(o['sound'], [])
+    if len(src) == 1:
+        a = ' pulsesrc device="%s" do-timestamp=true ! queue ! audioconvert ! audioresample ! %s ! queue ! mux.' % (src[0], aenc)
+    elif len(src) == 2:
+        a = (' audiomixer name=amix ! audioconvert ! audioresample ! %s ! queue ! mux.'
+             ' pulsesrc device="%s" do-timestamp=true ! queue ! audioconvert ! audioresample ! amix.'
+             ' pulsesrc device="%s" do-timestamp=true ! queue ! audioconvert ! audioresample ! amix.') % (aenc, src[0], src[1])
+    return mux + ' ' + v + a
+
+
+def cmd_run(args):
+    import hearth_screencast as hs
+    try:
+        o = parse_opts(args)
+    except ValueError as e:
+        write_state({'state': 'idle', 'error': str(e)})
+        return 1
+    stopping = {'now': False}
+    child = {'p': None}
+
+    def stop(*_a):
+        stopping['now'] = True
+        p = child['p']
+        if p and p.poll() is None:
+            try:
+                p.send_signal(signal.SIGINT)    # gst-launch -e: end of stream, so the file is finished properly
+            except Exception:
+                pass
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    write_state({'state': 'starting', 'pid': os.getpid(), 'since': 0, 'what': o['what'], 'sound': o['sound']})
+    types = {'screen': hs.MONITOR, 'window': hs.WINDOW}.get(o['what'], hs.MONITOR | hs.WINDOW)
+    try:
+        sess = hs.Session().screencast(types, hs.CURSOR_EMBEDDED if o['pointer'] else hs.CURSOR_HIDDEN)
+    except hs.PortalError as e:
+        write_state({'state': 'idle', 'error': str(e)})
+        return 1
+    sess.on_closed = stop            # stopped from the desktop's own "sharing" indicator
+    if stopping['now']:
+        sess.close()
+        write_state({'state': 'idle'})
+        return 0
+    folder = videos_dir()
+    os.makedirs(folder, exist_ok=True)
+    encs = encoders()
+    if not encs:
+        sess.close()
+        write_state({'state': 'idle', 'error': 'GStreamer has no H.264 encoder here (gstreamer1.0-plugins-ugly gives x264)'})
+        return 1
+    aac = gst_has('mp4mux') and (gst_has('avenc_aac') or gst_has('fdkaacenc') or gst_has('voaacenc'))
+    if not aac and not gst_has('opusenc'):
+        o['sound'] = 'none'
+    ext = '.mp4' if gst_has('mp4mux') else '.mkv'
+    if ext == '.mkv':
+        aac = False
+    if '"' in folder or '\\' in folder:
+        folder = os.path.join(HOME, 'Videos', 'Recordings')
+        os.makedirs(folder, exist_ok=True)
+    stamp = time.strftime('%Y-%m-%d %H-%M-%S')
+    path = os.path.join(folder, 'Recording %s%s' % (stamp, ext))
+    n = 2
+    while os.path.exists(path):
+        path = os.path.join(folder, 'Recording %s (%d)%s' % (stamp, n, ext))
+        n += 1
+    rc = 1
+    for i, enc in enumerate(encs):
+        fd = sess.fd()
+        # One argument: gst-launch joins its arguments into one description anyway, and the file name has spaces.
+        cmd = ['gst-launch-1.0', '-e', '-q', pipeline(fd, sess.node(), o, enc, path, aac)]
+        started = time.time()
+        child['p'] = subprocess.Popen(cmd, pass_fds=(fd,), stdin=subprocess.DEVNULL)
+        os.close(fd)
+        write_state({'state': 'recording', 'pid': os.getpid(), 'since': int(started), 'file': path, 'what': o['what'],
+                     'sound': o['sound'], 'encoder': enc[2]})
+        while child['p'].poll() is None:
+            time.sleep(0.2)
+        rc = child['p'].returncode
+        quick = time.time() - started < 4 and not stopping['now']
+        # A graphics-card encoder that fails straight away: the next one (x264 last), into the same file.
+        if rc != 0 and quick and enc[0] not in SOFTWARE and i + 1 < len(encs):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        break
+    sess.close()
+    ok = os.path.exists(path) and os.path.getsize(path) > 0
+    if not ok:
+        write_state({'state': 'idle', 'error': "the recording couldn't be written (GStreamer stopped: see %s)" % LOG})
+        return 1
+    write_state({'state': 'idle', 'last': path})
+    if shutil.which('notify-send'):
+        subprocess.run(['notify-send', '-a', 'Recorder', '-i', 'hearth-recorder', 'Recording saved',
+                        '%s in %s' % (os.path.basename(path), os.path.dirname(path))], timeout=10, check=False)
+    return 0
+
+
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help'):
+        print(__doc__)
+        return 0
+    c = argv[0]
+    try:
+        if c == 'status':
+            return cmd_status()
+        if c == 'start':
+            return cmd_start(argv[1:])
+        if c == 'stop':
+            return cmd_stop()
+        if c == 'toggle':
+            return cmd_toggle()
+        if c == 'set' and len(argv) == 3:
+            return cmd_set(argv[1], argv[2])
+        if c == 'run':
+            return cmd_run(argv[1:])
+    except Exception as e:  # one readable line for the panel, never a traceback
+        return fail(str(e) or e.__class__.__name__)
+    return fail('unknown command (see hearth-record --help)')
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

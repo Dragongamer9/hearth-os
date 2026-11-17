@@ -1,0 +1,140 @@
+# Settings › Remote desktop (hearth-vnc, SetRemoteDesktop.qml), the Recorder panel (hearth-record, Recorder.qml) and the
+# bar's capture dot (CaptureIndicator.qml): their tests (a real VNC conversation over loopback with TLS and the
+# password, pixels checked byte for byte), then Desktop Mode for real on a virtual screen (labwc headless + Quickshell,
+# as desktop-test.yml) with pictures of each in its states. Opening the page and the panel must write no settings file.
+# Pictures go to the branch ci/remote-record-shots-<branch>, said in a notice, and are kept as a download. Failures are
+# annotations.
+name: Remote desktop and recorder
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: ['ci/**']
+    paths: ['hosts/linux/desktop/shell/hearth-vnc', 'hosts/linux/desktop/shell/hearth-record', 'hosts/linux/desktop/shell/hearth_screencast.py',
+            'hosts/linux/desktop/shell/SetRemoteDesktop.qml', 'hosts/linux/desktop/shell/Recorder.qml', 'hosts/linux/desktop/shell/CaptureIndicator.qml',
+            'hosts/linux/test/test_remote_record.py', 'os/system_files/usr/lib/systemd/user/hearth-vnc.service', '.github/workflows/remote-record.yml']
+
+permissions:
+  contents: write    # the pictures branch
+
+concurrency:
+  group: remote-record-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hearth-vnc, hearth-record and the wiring
+        run: |
+          set -o pipefail
+          sudo apt-get install -y python3-gi >/dev/null 2>&1 || true
+          for f in hearth-vnc hearth-record hearth_screencast.py; do python3 -m py_compile "hosts/linux/desktop/shell/$f"; done
+          python3 -m unittest discover -s hosts/linux/test -p 'test_remote_record.py' -v 2>&1 | tee /tmp/t.log || {
+            msg=$(grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -20 | cut -c1-250 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=remote desktop and recorder tests::$msg"; exit 1; }
+          echo "::notice title=remote desktop and recorder::$(grep -E '^Ran [0-9]+ tests' /tmp/t.log)"
+
+  pictures:
+    name: Pictures in Desktop Mode
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-gobject \
+            google-noto-sans-fonts adwaita-icon-theme dbus-daemon libnotify rsms-inter-fonts openssl >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - name: Start Desktop Mode and take the pictures
+        shell: bash
+        run: |
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/Videos/Recordings" /tmp/fakebin && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # Stand-ins: a keyring (secret-tool) that has a password once one is "stored", and Tailscale's own address.
+          printf '%s\n' '#!/bin/sh' 'f="$HOME/.fake-keyring"' 'case "$1" in' '  lookup) [ -f "$f" ] && cat "$f" || exit 1 ;;' \
+            '  store) cat > "$f" ;;' '  clear) rm -f "$f" ;;' 'esac' > /tmp/fakebin/secret-tool
+          printf '%s\n' '#!/bin/sh' '[ "$1" = status ] && echo "{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"gaming-pc.tail1234.ts.net.\",\"TailscaleIPs\":[\"100.71.12.40\"]}}"' > /tmp/fakebin/tailscale
+          chmod +x /tmp/fakebin/*
+          export PATH="/tmp/fakebin:$PATH"
+          # A couple of earlier recordings for the panel's Recent list.
+          head -c 48000000 /dev/zero > "$HOME/Videos/Recordings/Recording 2026-11-15 21-04-12.mp4"
+          head -c 9000000 /dev/zero > "$HOME/Videos/Recordings/Recording 2026-11-16 08-30-55.mp4"
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          snap() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" -maxdepth 2 -type f -name '*.json' 2>/dev/null | sort | xargs -r sha256sum || true; }
+          bad() { echo "::error title=remote desktop pictures::$1"; touch shots/FAILED; }
+
+          # ---- 1. Settings › Remote desktop, off; then the Recorder panel. Opening them writes nothing.
+          snap > shots/files-before.txt
+          ipc settings page remote-desktop; sleep 3; grim shots/1-remote-desktop-off.png || true
+          ipc settings close
+          ipc record open; sleep 3; grim shots/2-recorder-panel.png || true
+          ipc record close
+          snap > shots/files-after.txt
+          diff -q shots/files-before.txt shots/files-after.txt >/dev/null || bad "opening Remote desktop or the Recorder changed a settings file: $(diff shots/files-before.txt shots/files-after.txt | tr '\n' ' ')"
+          [ ! -e "$HOME/.config/nimbus/remote-vnc.json" ] || bad "remote-vnc.json was written by opening the page"
+          [ ! -e "$HOME/.config/nimbus/record.json" ] || bad "record.json was written by opening the panel"
+
+          # ---- 2. On, with a password, home network too, and someone connected (the server's own runtime file, as it
+          # writes it, with a live stand-in process as its owner).
+          printf '%s' 'correct horse battery' > "$HOME/.fake-keyring"
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.config/nimbus/remote-vnc.json" '{"on": true, "reach": "home"}'
+          sleep 100000 & SRV=$!
+          mkdir -p "$XDG_RUNTIME_DIR/hearth-vnc"
+          printf '{"pid": %d, "port": 5900, "input": "uinput", "inputWhy": "", "error": "", "clients": [{"id": 1, "ip": "100.88.3.17", "name": "work-laptop", "via": "tailscale", "since": %d, "viewOnly": false}]}\n' \
+            "$SRV" "$(($(date +%s) - 1500))" > "$XDG_RUNTIME_DIR/hearth-vnc/clients.json"
+          ipc settings page remote-desktop; sleep 4; grim shots/3-remote-desktop-connected.png || true
+          ipc settings close
+
+          # ---- 3. Recording (the recorder's own runtime file): the capture dot shows both, and the panel while recording.
+          sleep 100000 & REC=$!
+          mkdir -p "$XDG_RUNTIME_DIR/hearth-record"
+          printf '{"state": "recording", "pid": %d, "since": %d, "file": "%s/Videos/Recordings/Recording now.mp4", "what": "screen", "sound": "both", "encoder": "VA-API"}\n' \
+            "$REC" "$(($(date +%s) - 83))" "$HOME" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
+          sleep 3; grim shots/4-capture-dot-recording-and-connected.png || true
+          ipc record open; sleep 3; grim shots/5-recorder-recording.png || true
+          ipc record close
+          kill "$SRV" "$REC" 2>/dev/null || true
+          printf '{"state": "idle", "last": "%s/Videos/Recordings/Recording now.mp4"}\n' "$HOME" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
+          rm -f "$XDG_RUNTIME_DIR/hearth-vnc/clients.json"
+          sleep 12; grim shots/6-capture-dot-gone.png || true
+
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          if grep -E "(Recorder|CaptureIndicator|SetRemoteDesktop)\.qml.*(Error|error|is not a type|Cannot assign|ReferenceError|TypeError)" "$LOG" > shots/qml-errors.txt; then
+            bad "QML errors: $(head -5 shots/qml-errors.txt | cut -c1-200 | tr '\n' '|')"
+          fi
+          [ ! -e shots/FAILED ]
+      - name: Pictures to a branch
+        if: always()
+        shell: bash
+        run: |
+          test -d shots || exit 0
+          git config --global --add safe.directory "$PWD"
+          to="ci/remote-record-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p /tmp/pub && cp -a shots /tmp/pub/
+          cd /tmp/pub && git init -q -b "$to" && git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qm "Remote desktop and recorder pictures ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=remote desktop pictures::$(ls /tmp/pub/shots/*.png 2>/dev/null | wc -l) pictures on branch $to"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remote-record-shots
+          path: shots
