@@ -93,8 +93,9 @@ jobs:
           modprobe vkms 2>/dev/null || echo "::warning title=keys::no vkms module"
           udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
           VKMS=""
-          for c in /sys/class/drm/card[0-9]*; do case "$(readlink "$c/device/driver" 2>/dev/null)" in *vkms*) VKMS=/dev/dri/$(basename "$c");; esac; done
-          echo "::notice title=KMS::vkms card: ${VKMS:-none}"
+          # The card with screens (connectors, card1-Virtual-1): vkms. vgem's card has none.
+          for c in /sys/class/drm/card[0-9]*; do case "$c" in *-*) continue;; esac; ls -d "$c"-* >/dev/null 2>&1 && VKMS=/dev/dri/$(basename "$c"); done
+          echo "::notice title=KMS::screen card: ${VKMS:-none} ($(ls /sys/class/drm | tr '\n' ' '))"
           if [ -n "$VKMS" ]; then
             KWIN_DRM_DEVICES=$VKMS /tmp/kwin_wayland --drm --xwayland --no-lockscreen --socket wayland-hearth "$X11ENV" >shots/kwin.log 2>&1 &
             for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
