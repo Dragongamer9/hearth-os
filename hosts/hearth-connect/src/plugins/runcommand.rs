@@ -70,7 +70,7 @@ pub fn run(command: &str) -> bool {
 
 fn change(d: &Daemon, f: impl FnOnce(&mut Vec<Value>)) -> Result<(), String> {
     let _ = std::fs::create_dir_all(&d.home);
-    crate::appfile::update(&file(&d.home), |cur| {
+    crate::appfile::update_private(&file(&d.home), |cur| {
         let mut l = cur.and_then(|v| v.as_array().cloned()).unwrap_or_default();
         f(&mut l);
         (Some(Value::Array(l)), ())

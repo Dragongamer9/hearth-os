@@ -63,6 +63,9 @@ pub struct PairedDev {
     /// The phone may start the commands set up in Settings › Phone (plugins/runcommand.rs).
     #[serde(default = "yes")]
     pub commands: bool,
+    /// The phone may set this PC's volume and mute (plugins/systemvolume.rs).
+    #[serde(default = "yes")]
+    pub volume: bool,
     #[serde(default)]
     pub last_ip: Option<String>,
 }
@@ -165,7 +168,7 @@ impl Daemon {
         let name = lock(&self.name).clone();
         let manual: Vec<String> = lock(&self.manual).iter().map(|i| i.to_string()).collect();
         let _ = std::fs::create_dir_all(&self.home);
-        let _ = crate::appfile::update(&self.home.join("settings.json"), |cur| {
+        let _ = crate::appfile::update_private(&self.home.join("settings.json"), |cur| {
             let mut o = cur.and_then(|v| v.as_object().cloned()).unwrap_or_default();
             o.insert("name".into(), json!(name));
             o.insert("manual".into(), json!(manual));
@@ -328,8 +331,13 @@ impl Daemon {
                 self.changed();
             }
             "kdeconnect.share.request" => self.share_in(id, &from, &p, &pd),
-            // A picture taken with the phone's camera because you asked (Take a photo): kept without asking.
-            "kdeconnect.photo" => { let mut asked = pd.clone(); asked.auto_accept = true; self.share_in(id, &from, &p, &asked) }
+            // A picture taken with the phone's camera because you asked (Take a photo, in the last few minutes): kept
+            // without asking. Any other picture waits for the person like every file.
+            "kdeconnect.photo" => {
+                let mut asked = pd.clone();
+                if crate::plugins::photo_expected(id) { asked.auto_accept = true; }
+                self.share_in(id, &from, &p, &asked)
+            }
             "kdeconnect.notification" => if pd.notifications { self.notification_in(id, &from, &p) },
             "kdeconnect.clipboard" | "kdeconnect.clipboard.connect" => if pd.clipboard {
                 let content = p.str("content").unwrap_or("").to_string();
@@ -428,7 +436,7 @@ impl Daemon {
         let info = lock(&self.devices).get(id).and_then(|d| d.link.as_ref().map(|l| (d.peer.clone(), l.cert.clone(), l.ip)));
         let Some((peer, cert, ip)) = info else { return };
         lock(&self.paired).insert(id.to_string(), PairedDev { id: id.into(), name: peer.name.clone(), kind: peer.kind.clone(), cert: crate::hex(&cert),
-            auto_accept: false, clipboard: true, input: true, notifications: true, pause_on_call: true, commands: true, last_ip: Some(ip.to_string()) });
+            auto_accept: false, clipboard: true, input: true, notifications: true, pause_on_call: true, commands: true, volume: true, last_ip: Some(ip.to_string()) });
         self.save_paired();
         self.emit("paired", json!({"device": id, "from": peer.name}));
         self.on_paired_link(id);
@@ -760,7 +768,7 @@ impl Daemon {
                 "keyboard": d.map(|d| d.keyboard).unwrap_or(false),
                 "players": d.map(|d| d.players.clone()).unwrap_or_default(), "playing": d.map(|d| json!(d.playing)).unwrap_or(json!({})),
                 "notifications": d.map(|d| json!(d.notifications)).unwrap_or(json!([])),
-                "options": pd.map(|p| json!({"autoAccept": p.auto_accept, "clipboard": p.clipboard, "input": p.input, "notifications": p.notifications, "pauseOnCall": p.pause_on_call, "commands": p.commands})),
+                "options": pd.map(|p| json!({"autoAccept": p.auto_accept, "clipboard": p.clipboard, "input": p.input, "notifications": p.notifications, "pauseOnCall": p.pause_on_call, "commands": p.commands, "volume": p.volume})),
                 "plugins": crate::plugins::device_state(id),
             })
         }).collect();
@@ -827,7 +835,7 @@ impl Daemon {
                     let mut g = lock(&self.paired);
                     let p = g.get_mut(&id).ok_or("Pair with it first")?;
                     match key.as_str() { "autoAccept" => p.auto_accept = on, "clipboard" => p.clipboard = on, "input" => p.input = on, "notifications" => p.notifications = on,
-                        "pauseOnCall" => p.pause_on_call = on, "commands" => p.commands = on, _ => return Err("unknown option".into()) }
+                        "pauseOnCall" => p.pause_on_call = on, "commands" => p.commands = on, "volume" => p.volume = on, _ => return Err("unknown option".into()) }
                 }
                 self.save_paired();
                 if key == "commands" { crate::plugins::runcommand::send_list(self, &id); }

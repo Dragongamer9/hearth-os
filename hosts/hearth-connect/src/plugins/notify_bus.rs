@@ -32,6 +32,10 @@ fn callbacks() -> &'static Mutex<HashMap<u32, Callback>> {
 /// The service's runtime, so what a notification's button does can use it (the signals come on a plain thread).
 static RT: OnceLock<tokio::runtime::Handle> = OnceLock::new();
 
+/// The notification service's own name on the bus (who answered Notify): only its signals count, not another
+/// program's that happens to send the same ones.
+static OWNER: Mutex<String> = Mutex::new(String::new());
+
 fn fire(id: u32, ev: Event) {
     let _rt = RT.get().map(|h| h.enter());
     let cb = {
@@ -65,6 +69,8 @@ fn listen(c: zbus::blocking::Connection) {
         let Ok(it) = it else { return };
         for m in it {
             let Ok(m) = m else { continue };
+            let sender = m.header().sender().map(|x| x.as_str().to_string()).unwrap_or_default();
+            if sender.is_empty() || *crate::lock(&OWNER) != sender { continue; }
             let member = m.header().member().map(|x| x.as_str().to_string()).unwrap_or_default();
             match member.as_str() {
                 "ActionInvoked" => if let Ok((id, key)) = m.body().deserialize::<(u32, String)>() { fire(id, Event::Action(key)); },
@@ -99,6 +105,7 @@ pub fn notify(summary: &str, body: &str, icon: &str, replaces: u32, urgent: bool
         let r = c.call_method(Some("org.freedesktop.Notifications"), "/org/freedesktop/Notifications", Some("org.freedesktop.Notifications"), "Notify",
             &("Hearth Connect", replaces, icon, summary, body, acts, hints, -1i32)).ok()?;
         let id = r.body().deserialize::<u32>().ok()?;
+        if let Some(s) = r.header().sender() { *crate::lock(&OWNER) = s.as_str().to_string(); }
         crate::lock(callbacks()).insert(id, on);
         Some(id)
     }

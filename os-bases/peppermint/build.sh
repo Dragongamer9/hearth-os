@@ -697,18 +697,25 @@ Type=Application
 Categories=Network;Utility;
 Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
 DESKTOP
-  # The background service that keeps the phone linked. No [Install]: it starts at sign-in through
-  # `hearth-connect --autostart` (Mantel's autostart), and only once the person has turned Phone link on (Settings ›
-  # Phone, Quick Access, or the Hearth Connect window), so nothing listens on the network before they ask for it.
+  # The background service that keeps the phone linked, at every sign-in in both modes, but only while the person has
+  # turned Phone link on (Settings › Phone, Quick Access, or the Hearth Connect window): ExecCondition checks first
+  # (off: the unit is skipped, not failed), and the service exits at once if it's off anyway. Nothing listens on the
+  # network before they ask for it, and a skipped user unit can't hold up the session.
   cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
 [Unit]
 Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
 
 [Service]
+ExecCondition=/usr/bin/hearth-connect --enabled-check
 ExecStart=/usr/bin/hearth-connect --daemon
 Restart=on-failure
 RestartSec=5
+
+[Install]
+WantedBy=default.target
 UNIT
+  systemctl --global enable hearth-connect.service 2>/dev/null \
+    || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-connect.service /etc/systemd/user/default.target.wants/hearth-connect.service; }
 fi
 # ---- end of Nearby Share and Hearth Connect
 
