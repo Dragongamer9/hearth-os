@@ -745,6 +745,33 @@ def extras_check(procs):
     shot('window-menu-extras')
     key('KEY_ESC'); key('KEY_ESC')
 
+    # ---- More actions (Hearth's, after Snap, Hide from screen sharing and Force close): shade, no title bar and
+    # frame, special window settings. A picture of it open, then "Special window settings…" as the script sends it:
+    # Settings opens on Window rules for that window.
+    do({'op': 'menu'})
+    time.sleep(1.5)
+    for _ in range(2):
+        key('KEY_UP', hold=0.03)
+    key('KEY_RIGHT')
+    time.sleep(0.8)
+    for _ in range(3):
+        key('KEY_DOWN', hold=0.03)
+    key('KEY_RIGHT')
+    time.sleep(1)
+    shot('window-more-actions')
+    key('KEY_ESC'); key('KEY_ESC'); key('KEY_ESC')
+    a = win('Test A') or {}
+    try:
+        bridge('WindowRules', GLib.Variant('(s)', (json.dumps({'id': a.get('id', ''), 'wmclass': a.get('appId', ''), 'title': 'Test A'}),)))
+    except GLib.Error as ex:
+        log('::warning title=KWin extras::WindowRules: %s' % ex.message)
+    st = wait(lambda: json.loads(ipc('settings', 'state') or '{}').get('page') == 'kwin-rules' and json.loads(ipc('settings', 'state')), 8)
+    check('Special window settings opens Window rules for that window', st and (st.get('ruleFor') or {}).get('title') == 'Test A',
+          ipc('settings', 'state'))
+    time.sleep(2)
+    shot('window-special-settings')
+    ipc('settings', 'close')
+
     # ---- force closing a frozen window: KWin's click-a-window first (then Esc), then the prompt for a stopped app
     ipc('forceclose', 'start')
     picking = wait(lambda: json.loads(ipc('forceclose', 'state') or '{}').get('phase') == 'picking', 5)

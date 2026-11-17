@@ -70,8 +70,8 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] Guide tile: Keyboard · On-screen — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Keyboard\", \"On-screen\"]"
 - [x] Guide tile: Volume · 64% — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Volume\", vol >= 0 ? vol + \"%\""
 - [x] Guide tile: Brightness · 80% — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Brightness\", brightness >= 0 ? brightness + \"%\""
-- [ ] Guide row: Frame limit · Steadier, cooler, longer battery · ‹ 60 ›
-- [ ] Guide row: Resolution scaling · Firehold upscales the game itself · ‹ Quality · 1440p ›
+- [x] Guide row: Frame limit · Steadier, cooler, longer battery · ‹ 60 › (live from firehold-comp: firehold.yml pictures firehold-13-guide, firehold-c3-guide show ‹ 60 ›) — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Frame limit\", \"Steadier, cooler, longer battery\", comp ? fh.frameLimit : \"Not yet\""
+- [x] Guide row: Resolution scaling · Firehold upscales the game itself · ‹ Quality · 1440p › (live: ‹ Quality · 720p › on the tests' 1080p screen, 1440p on a 4K one; firehold-13-guide, firehold-c3-guide) — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Resolution scaling\", \"Firehold upscales the game itself\", comp ? scaling : \"Not yet\""
 - [x] Guide row: VRR / FreeSync · Smooth when it dips below 60 · ‹ On › (green) — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"VRR / FreeSync\", \"Smooth when it dips below 60\""
 - [x] Guide row: Allow tearing · Lowest delay for fast games · ‹ Off › — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Allow tearing\", \"Lowest delay for fast games\""
 - [x] Guide row: Power · Handhelds and laptops · ‹ Balanced · 18 W › — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Power\", \"Handhelds and laptops\""

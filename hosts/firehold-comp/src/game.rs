@@ -252,16 +252,49 @@ pub enum ScanoutChoice {
 /// Direct scanout for a screen: the game must be fullscreen on it, Direct on, and nothing that needs drawing by the
 /// GPU in between (the sharpening pass). The planes' own test (DRM's TEST_ONLY commit) still decides; when it says
 /// no, Smithay composites as usual.
-pub fn scanout_choice(game_fullscreen: bool, s: &GameSettings, sharpen_active: bool) -> ScanoutChoice {
+pub fn scanout_choice(game_fullscreen: bool, s: &GameSettings, sharpen_active: bool, covered: bool) -> ScanoutChoice {
     if !game_fullscreen {
         ScanoutChoice::Normal
     } else if !s.direct {
         ScanoutChoice::Never
-    } else if sharpen_active {
+    } else if sharpen_active || covered {
+        // The sharpening pass, or something of Mantel's over the game (the Guide, the Couch): drawn by the GPU.
         ScanoutChoice::Normal
     } else {
         ScanoutChoice::PreferGame
     }
+}
+
+/// Which layer-shell surfaces are drawn over a fullscreen game (and get the pointer there): every Overlay surface
+/// (the Guide, notices, the performance overlay) and Top surfaces that don't reserve room on the screen (the
+/// Couch, Everything open). Panels that do (Mantel's bar and dock) stay under the game, as on labwc and KWin.
+pub fn drawn_over_fullscreen(
+    layer: smithay::wayland::shell::wlr_layer::Layer,
+    zone: smithay::wayland::shell::wlr_layer::ExclusiveZone,
+) -> bool {
+    use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
+    match layer {
+        Layer::Overlay => true,
+        Layer::Top => !matches!(zone, ExclusiveZone::Exclusive(n) if n > 0),
+        _ => false,
+    }
+}
+
+/// Whether a layer surface has something to show (Quickshell unmaps a hidden window by taking its buffer away).
+pub fn layer_mapped(l: &smithay::desktop::LayerSurface) -> bool {
+    smithay::backend::renderer::utils::with_renderer_surface_state(l.wl_surface(), |s| s.buffer().is_some())
+        .unwrap_or(false)
+}
+
+/// The layer surface over a fullscreen game under a point (screen-local), topmost first.
+pub fn layer_over_fullscreen(
+    map: &smithay::desktop::LayerMap,
+    pos: smithay::utils::Point<f64, Logical>,
+) -> Option<smithay::desktop::LayerSurface> {
+    use smithay::wayland::shell::wlr_layer::Layer;
+    map.layer_under(Layer::Overlay, pos)
+        .or_else(|| map.layer_under(Layer::Top, pos).filter(|l| drawn_over_fullscreen(l.layer(), l.cached_state().exclusive_zone)))
+        .cloned()
 }
 
 /// What a screen says about adaptive sync.
@@ -359,6 +392,8 @@ pub struct GameState {
     paced_window: (Instant, u64, f64),
     last_enforce: Instant,
     dirty: bool,
+    /// The Overlay surface given the keyboard over the game (game_overlays).
+    overlay_focus: Option<smithay::desktop::LayerSurface>,
     control_tried: bool,
     listener: Option<UnixListener>,
     pub socket_path: Option<PathBuf>,
@@ -390,6 +425,7 @@ impl GameState {
             last_enforce: Instant::now(),
             dirty: false,
             control_tried: false,
+            overlay_focus: None,
             listener: None,
             socket_path: None,
         };
@@ -439,6 +475,20 @@ impl GameState {
 impl Default for GameState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Still fullscreen (what it was last told, so a window that was just made fullscreen counts).
+fn still_fullscreen(w: &WindowElement) -> bool {
+    if !w.alive() {
+        return false;
+    }
+    match w.0.underlying_surface() {
+        WindowSurface::Wayland(t) => t.with_pending_state(|s| {
+            s.states.contains(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen)
+        }),
+        #[cfg(feature = "xwayland")]
+        WindowSurface::X11(x) => x.is_fullscreen(),
     }
 }
 
@@ -557,6 +607,83 @@ impl<B: Backend + 'static> HearthState<B> {
         } else {
             self.game_enforce_size();
         }
+        self.game_overlays();
+    }
+
+    /// Mantel's surfaces over the game (the Guide, the Couch): direct scanout waits while one is shown, and an
+    /// Overlay surface that takes the keyboard gets it when it opens (the Guide is opened with the pad, not a
+    /// click); the game gets it back when it closes.
+    fn game_overlays(&mut self) {
+        use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
+        if self.game.active.is_none() {
+            self.game.overlay_focus = None;
+            return;
+        }
+        let a = self.game.active.as_ref().unwrap();
+        let (window, output, settings) = (a.window.clone(), a.output.clone(), a.settings);
+        let (covered, wants_keys) = {
+            let map = smithay::desktop::layer_map_for_output(&output);
+            let covered = map
+                .layers()
+                .any(|l| drawn_over_fullscreen(l.layer(), l.cached_state().exclusive_zone) && layer_mapped(l));
+            let wants = map
+                .layers()
+                .rev()
+                .find(|l| {
+                    l.layer() == Layer::Overlay
+                        && l.cached_state().keyboard_interactivity != KeyboardInteractivity::None
+                        && layer_mapped(l)
+                })
+                .cloned();
+            (covered, wants)
+        };
+        let g = output_state(&output);
+        let choice = scanout_choice(true, &settings, g.sharpen.get().is_some(), covered);
+        if g.scanout.get() != choice {
+            g.scanout.set(choice);
+        }
+        if self.lock.locked {
+            return;
+        }
+        let Some(keyboard) = self.seat.get_keyboard() else { return };
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+        match wants_keys {
+            Some(l) if self.game.overlay_focus.as_ref() != Some(&l) => {
+                let on_layer = matches!(keyboard.current_focus(), Some(crate::focus::KeyboardFocusTarget::LayerSurface(_)));
+                if !on_layer {
+                    keyboard.set_focus(self, Some(l.clone().into()), serial);
+                }
+                self.game.overlay_focus = Some(l);
+            }
+            Some(_) => {}
+            None => {
+                if self.game.overlay_focus.take().is_some() {
+                    let gone = match keyboard.current_focus() {
+                        Some(crate::focus::KeyboardFocusTarget::LayerSurface(l)) => !layer_mapped(&l),
+                        None => true,
+                        _ => false,
+                    };
+                    if gone && window.alive() {
+                        keyboard.set_focus(self, Some(window.into()), serial);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A fullscreen window that's gone or no longer fullscreen (a client that left fullscreen without a screen of
+    /// its own, or ended) stops covering the screen: the normal stack (wallpaper, bar, dock, windows) is drawn again.
+    pub fn fullscreen_sweep(&mut self) {
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        for o in outputs {
+            let Some(fs) = o.user_data().get::<FullscreenSurface>() else { continue };
+            let stale = fs.peek().is_some_and(|w| !still_fullscreen(&w));
+            if stale {
+                fs.clear();
+                self.backend_data.reset_buffers(&o);
+                info!(output = %o.name(), "Firehold: the fullscreen window left; the desktop is drawn again");
+            }
+        }
     }
 
     /// The scaled game keeps its smaller size even when something else (its own fullscreen request, a new
@@ -665,7 +792,7 @@ impl<B: Backend + 'static> HearthState<B> {
         let sharpen_active = render_size.is_some() && settings.sharpen;
         let g = output_state(&output);
         g.game.set(true);
-        g.scanout.set(scanout_choice(true, &settings, sharpen_active));
+        g.scanout.set(scanout_choice(true, &settings, sharpen_active, false));
         g.vrr.set(settings.vrr);
         g.sharpen.set(sharpen_active.then_some(0.5));
         g.direct.set(None);
@@ -854,12 +981,32 @@ mod tests {
     fn scanout_decisions() {
         let on = GameSettings::default();
         let off = GameSettings { direct: false, ..on };
-        assert_eq!(scanout_choice(false, &on, false), ScanoutChoice::Normal);
-        assert_eq!(scanout_choice(true, &on, false), ScanoutChoice::PreferGame);
+        assert_eq!(scanout_choice(false, &on, false, false), ScanoutChoice::Normal);
+        assert_eq!(scanout_choice(true, &on, false, false), ScanoutChoice::PreferGame);
+        // The Guide or the Couch over the game: composited while it's there.
+        assert_eq!(scanout_choice(true, &on, false, true), ScanoutChoice::Normal);
         // Sharpening needs the GPU: composited (as usual), never forced onto the plane.
-        assert_eq!(scanout_choice(true, &on, true), ScanoutChoice::Normal);
-        assert_eq!(scanout_choice(true, &off, false), ScanoutChoice::Never);
-        assert_eq!(scanout_choice(false, &off, false), ScanoutChoice::Normal);
+        assert_eq!(scanout_choice(true, &on, true, false), ScanoutChoice::Normal);
+        // Direct off stays off (composited) whatever is over the game.
+        assert_eq!(scanout_choice(true, &off, false, true), ScanoutChoice::Never);
+        assert_eq!(scanout_choice(true, &off, false, false), ScanoutChoice::Never);
+        assert_eq!(scanout_choice(false, &off, false, false), ScanoutChoice::Normal);
+    }
+
+    #[test]
+    fn what_is_drawn_over_a_fullscreen_game() {
+        use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
+        // The Guide, notices, the performance overlay.
+        assert!(drawn_over_fullscreen(Layer::Overlay, ExclusiveZone::Neutral));
+        assert!(drawn_over_fullscreen(Layer::Overlay, ExclusiveZone::Exclusive(40)));
+        // The Couch and Everything open (no room reserved).
+        assert!(drawn_over_fullscreen(Layer::Top, ExclusiveZone::Neutral));
+        assert!(drawn_over_fullscreen(Layer::Top, ExclusiveZone::DontCare));
+        assert!(drawn_over_fullscreen(Layer::Top, ExclusiveZone::Exclusive(0)));
+        // Mantel's bar and dock stay under the game; the wallpaper too.
+        assert!(!drawn_over_fullscreen(Layer::Top, ExclusiveZone::Exclusive(48)));
+        assert!(!drawn_over_fullscreen(Layer::Bottom, ExclusiveZone::Neutral));
+        assert!(!drawn_over_fullscreen(Layer::Background, ExclusiveZone::DontCare));
     }
 
     #[test]

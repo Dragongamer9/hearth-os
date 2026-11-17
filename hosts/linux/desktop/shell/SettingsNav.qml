@@ -43,6 +43,7 @@ Singleton {
     property string pageAnchor: ""    // a part of the page to open at ("appearance:bar": Settings › Appearance › Bar and dock)
     property real anchorAt: 0         // when it was asked for (a page loaded more than once in a moment still sees it)
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
+    property var ruleFor: null        // {wmclass, title}: Window rules opened for a window (its menu's "Special window settings…")
     function openPage(p) { if (settingsApp) settingsApp.open(p); }
     // (pageAnchor above: Settings opened at a part of a page, "keyboard:osk", "appearance:bar"; the page or its SetExpander goes there.)
     property var frame: null          // the frame, for Back (B / Esc): a subpage goes up to its category
@@ -71,6 +72,8 @@ Singleton {
     // Hearth 1.10's volume mixer (Mixer.qml) and snap layouts (SnapLayouts.qml, Super+Z): set while open, so the
     // controller types arrow keys / Enter / Esc there; the objects themselves for the bar and Settings › Sound.
     property var mixer: null
+    property string menuEdit: ""       // the app "Edit app…" opened the menu editor at (Launcher's right-click)
+    property string pttProblem: ""     // push to talk couldn't start (PushToTalk.qml), shown in Settings › Sound › Push to talk
     property bool mixerShown: false
     property var snap: null
     property bool snapShown: false

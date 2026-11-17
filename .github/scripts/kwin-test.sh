@@ -217,7 +217,8 @@ ipc wayland-hearth filemanager close
 # virtual desktops (KWin's own: WinList.desktops) listed by the desktops plugin.
 cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
 ipc wayland-hearth launcher open; sleep 3; ipc wayland-hearth launcher close
-chk() { got=$(qk launcher answers "$1"); case "$got" in *"$2"*) echo "::notice title=search plugins (KWin)::$1 → $(echo "$got" | cut -c1-200)" ;; *) fail "search plugins (KWin)" "\"$1\" didn't answer $2: $(echo "$got" | cut -c1-300)" ;; esac; }
+# Some answers come a moment later (kill looks the program up first: "Looking for …"): asked again for up to 10 s.
+chk() { for _ in $(seq 1 10); do got=$(qk launcher answers "$1"); case "$got" in *"$2"*) break;; esac; sleep 1; done; case "$got" in *"$2"*) echo "::notice title=search plugins (KWin)::$1 → $(echo "$got" | cut -c1-200)" ;; *) fail "search plugins (KWin)" "\"$1\" didn't answer $2: $(echo "$got" | cut -c1-300)" ;; esac; }
 chk "3pm london to tokyo" 'in Tokyo'
 chk "#ff8800" 'rgb(255, 136, 0)'
 chk "kill hearth-demo" '"type":"kill"'
@@ -240,6 +241,31 @@ grep -E "(Launcher|SearchSources|FilesTerminal|FileManager)\.qml.*(TypeError|Ref
   | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 grep -E "(SearchBar|Activit|StoreDrivers|SetStore)[A-Za-z]*\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
   | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
+# The shortcuts Settings names (w3-effects): Super+Shift+D (KWin's Minimize all script) and Super+C (the Desktop Cube),
+# against KWin's real defaults: switched on as the pages do (hearth-kwin-settings), then read back from kglobalaccel
+# (KWin's D-Bus; Qt key codes: Meta+Shift+D 301989956, Meta+C 268435523) or kglobalshortcutsrc.
+printf '%s' '{"Plugins": {"minimizeallEnabled": true, "cubeEnabled": true}}' | python3 "$NIMBUS_SHARE/desktop/shell/hearth-kwin-settings" set kwinrc >/dev/null 2>&1
+gdbus call --session --dest org.kde.KWin --object-path /Scripting --method org.kde.kwin.Scripting.start >/dev/null 2>&1
+gdbus call --session --dest org.kde.KWin --object-path /Effects --method org.kde.kwin.Effects.loadEffect cube >/dev/null 2>&1
+sleep 4
+kshort() {   # $1 action, $2 key as kglobalshortcutsrc writes it, $3 Qt key code, $4 what
+  local infos line
+  infos=$(gdbus call --session --dest org.kde.kglobalaccel --object-path /component/kwin --method org.kde.kglobalaccel.Component.allShortcutInfos 2>&1 | tr -d '\n')
+  line=$(awk -v a="$1" '/^\[/ { g = $0 } g == "[kwin]" && index($0, a "=") == 1' "$HOME/.config/kglobalshortcutsrc" 2>/dev/null | head -1)
+  if echo "$infos" | grep -oE "'$1', '[^']*', [^']*" | head -1 | grep -q "$3" || echo "$line" | grep -q "^$1=$2,"; then
+    echo "$4: $2 is KWin's ($1; kglobalshortcutsrc: ${line:-not written yet}; D-Bus: $(echo "$infos" | grep -oE "'$1'[^)]{0,120}" | head -1))" >> shots/shortcuts.txt
+  else
+    fail "shortcuts (KWin)" "$4: KWin doesn't have $2 for $1: kglobalshortcutsrc '${line:-none}', D-Bus $(echo "$infos" | grep -oE "'$1'[^)]{0,160}" | head -1 | cut -c1-200)"
+  fi
+}
+kshort MinimizeAll Meta+Shift+D 301989956 "Minimize every window"
+if gdbus call --session --dest org.kde.KWin --object-path /Effects --method org.kde.kwin.Effects.isEffectSupported cube 2>/dev/null | grep -q true \
+   || ls /usr/lib*/qt6/plugins/kwin/effects/plugins/*cube* /usr/lib*/*/qt6/plugins/kwin/effects/plugins/*cube* >/dev/null 2>&1; then
+  kshort Cube Meta+C 268435523 "Desktop Cube"
+else
+  echo "::warning title=shortcuts (KWin)::no Desktop Cube effect on this runner (kdeplasma-addons): Super+C not checked"
+  echo "Desktop Cube: no cube effect on this runner, Super+C not checked" >> shots/shortcuts.txt
+fi
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null
 end_session
