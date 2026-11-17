@@ -600,8 +600,9 @@ def kwin_call(method, path='/KWin', iface='org.kde.KWin', args=None, sig=None):
 
 
 def kwinrc_set(group, values):
-    """Change kwinrc's GROUP (KWin's own file; only these keys, the rest kept, atomic with .bak), then tell KWin
-    (KConfigWatcher's ConfigChanged, as kwriteconfig6 --notify does)."""
+    """Change kwinrc's GROUP (KWin's own file; only these keys, the rest kept) through hearth_settings_io first (atomic,
+    with kwinrc.bak, under its lock), then tell KWin over D-Bus: KConfigWatcher's ConfigChanged (as kwriteconfig6
+    --notify does) and org.kde.KWin.reconfigure. Never kwriteconfig6: it writes in place with no .bak."""
     try:
         old = _text(KWINRC, 'surrogateescape')
     except OSError:
@@ -609,11 +610,6 @@ def kwinrc_set(group, values):
     if all(ini_get(old, group, k) == str(v) for k, v in values.items()):
         return False
     os.makedirs(os.path.dirname(KWINRC), exist_ok=True)
-    # KDE's own way first: kwriteconfig6 --notify writes it as KConfig does and tells KWin's KConfigWatcher.
-    if have('kwriteconfig6') and os.path.realpath(KWINRC) == os.path.realpath(os.path.join(CONFIG, 'kwinrc')):
-        ok = all(RUN(['kwriteconfig6', '--file', 'kwinrc', '--group', group, '--key', k, '--notify', str(v)])[0] == 0 for k, v in values.items())
-        if ok:
-            return True
     io.update_text(KWINRC, lambda t: ini_set(t, group, {k: str(v) for k, v in values.items()}))
     Gio, GLib = _gio()
     if Gio:
@@ -623,6 +619,8 @@ def kwinrc_set(group, values):
                             GLib.Variant('(a{saay})', ({group: [k.encode() for k in values]},)))
         except Exception as e:  # noqa: BLE001
             io.log_event('kwinrc notify: %s' % e)
+    if wm() == 'kwin':
+        kwin_call('reconfigure')
     return True
 
 
@@ -668,8 +666,7 @@ def night_status(wmname):
 
 
 def tearing(on):
-    if kwinrc_set('Compositing', {'AllowTearing': 'true' if on else 'false'}):
-        kwin_call('reconfigure')
+    kwinrc_set('Compositing', {'AllowTearing': 'true' if on else 'false'})
 
 
 def icc_profiles():

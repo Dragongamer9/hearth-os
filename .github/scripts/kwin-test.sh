@@ -6,6 +6,9 @@
 #   B  KWin: Mantel's bar up (layer shell), the desktop and Settings › System › Your desktop         kwin-2-desktop, kwin-3-your-desktop
 #   C  KWin ending right away: the safe start opens Mantel on labwc, with its card                  kwin-4-fallback-card
 #   D  the same on the next sign-in: twice in a row, labwc until KWin is turned back on              kwin-5-twice-card, kwin-6-your-desktop-paused
+#   E  KWin with your own kscreenlockerrc / kwinrc from KDE Plasma (Autolock, LockOnResume, an input method): Hearth's
+#      fixed keys win and the card says which (once); Settings › Keyboard's "Bring back KDE's own shortcuts"
+#                                                                                                    kwin-7-kde-settings-card, kwin-8-keyboard-kde-keys
 # Failures are ::error:: annotations and shots/FAILED (logs can't always be read here).
 set -u +e +o pipefail
 mkdir -p shots
@@ -135,6 +138,32 @@ cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null
 end_session
 
+# ---- E: your own KDE files from 1.13: Hearth's fixed keys win, the card says which; the KDE shortcuts button.
+mkdir -p "$HOME/.config" "$HOME/.local/state/nimbus"
+printf '[Daemon]\nAutolock=true\nLockOnResume=true\nTimeout=1\n' > "$HOME/.config/kscreenlockerrc"
+printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop\n\n[NightColor]\nActive=false\n' > "$HOME/.config/kwinrc"
+cp "$HOME/.config/kscreenlockerrc" /tmp/lockrc-before; cp "$HOME/.config/kwinrc" /tmp/kwinrc-before
+# What the bridge changed once (as on a PC that had KDE's default keys): the button puts them back.
+python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/state/nimbus/kwin-keys.json" \
+  '{"done": {"kwin/Window Quick Tile Left": {"was": [[285212690]], "now": [], "title": "", "at": 1}, "kwin/Show Desktop": {"was": [[268435524]], "now": [], "title": "", "at": 1}, "kwin/Grid View": {"was": [[268435527]], "now": [], "title": "", "at": 1}}}' >/dev/null
+start_session E
+wait_up 90 || fail "KWin" "Mantel didn't come up under KWin with your own KDE files"
+sleep 10
+shot kwin-7-kde-settings-card
+grep -q '^kwin-mine autolock+lockonresume+inputmethod' "$STATE/desktop-notice.shown" 2>/dev/null \
+  || fail "your KDE settings" "the card wasn't shown (state: $(cat "$STATE"/desktop-notice* 2>/dev/null | tr '\n' '|'))"
+cmp -s "$HOME/.config/kscreenlockerrc" /tmp/lockrc-before && cmp -s "$HOME/.config/kwinrc" /tmp/kwinrc-before \
+  || fail "your KDE settings" "your own files were changed"
+gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null | grep -q true \
+  && fail "your KDE settings" "KWin is locked by itself"
+pkill -TERM -x quickshell; sleep 12      # the card off the screen (shown once: it doesn't come back)
+ipc wayland-hearth settings page keyboard:kde-keys; sleep 4
+shot kwin-8-keyboard-kde-keys
+ipc wayland-hearth settings close
+python3 hosts/linux/desktop/shell/hearth-kwin-bridge keys changed > shots/kde-keys-E.json
+end_session
+rm -f "$HOME/.config/kscreenlockerrc" "$HOME/.config/kwinrc"
+
 # ---- C: KWin ending right away: Mantel on labwc, with the card.
 : > /tmp/kwin-crash
 start_session C
@@ -173,7 +202,7 @@ cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/kwin.log"
 cp "$HOME/.local/share/nimbus/labwc.log" shots/labwc.log 2>/dev/null
 grep -E 'desktop|kwin|labwc' "$LOG" | tail -30 | cut -c1-200 | while read -r l; do echo "::notice title=session::$l"; done | head -8
 ls -la shots
-for s in kwin-1-retired-card kwin-2-desktop kwin-3-your-desktop kwin-4-fallback-card kwin-5-twice-card kwin-6-your-desktop-paused; do
+for s in kwin-1-retired-card kwin-2-desktop kwin-3-your-desktop kwin-4-fallback-card kwin-5-twice-card kwin-6-your-desktop-paused kwin-7-kde-settings-card kwin-8-keyboard-kde-keys; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'
