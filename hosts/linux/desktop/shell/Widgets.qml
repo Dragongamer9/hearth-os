@@ -125,6 +125,7 @@ Scope {
         target: "activities"
         function switcher(): void { actSwitcher.open(); }
         function close(): void { actSwitcher.close(); }
+        function change(): void { actSwitcher.open(); if (actSwitcher.sel) actSwitcher.editing = true; }   // the Change panel (X) of the one you're on
         function next(): void { Activities.step(1); }
         function previous(): void { Activities.step(-1); }
         function switchTo(id: string): void { Activities.switchTo(id); }
