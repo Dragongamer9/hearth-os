@@ -291,7 +291,8 @@ class Helpers(unittest.TestCase):
 
 
 class Autostart(Base):
-    """The one autostart under KWin: the bridge and the screens hook start, wlr-randr (labwc's) doesn't."""
+    """The one autostart under KWin: the screens hook runs, wlr-randr (labwc's) doesn't, and the bridge is left to
+    Mantel (it starts hearth-kwin-bridge itself: feature/kwin-windows)."""
     def test_under_kwin(self):
         shell = os.path.join(self.share, 'desktop', 'shell')
         os.makedirs(shell)
@@ -309,10 +310,10 @@ class Autostart(Base):
         e = self.env(HEARTH_WM='kwin', HEARTH_DESKTOP_PID=str(p.pid))
         subprocess.run(['sh', str(AUTOSTART)], env=e, timeout=30)
         for _ in range(150):
-            if os.path.exists(os.path.join(self.home, 'bridge-ran')) and self.lines('quickshell-ran'):
+            if os.path.exists(os.path.join(self.home, 'screens-ran')) and self.lines('quickshell-ran'):
                 break
             time.sleep(0.2)
-        self.assertEqual(open(os.path.join(self.home, 'bridge-ran')).read(), 'serve')
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'bridge-ran')))
         self.assertEqual(open(os.path.join(self.home, 'screens-ran')).read().strip(), 'restore')
         self.assertFalse(os.path.exists(os.path.join(self.home, 'wlr-randr-ran')))
         self.assertEqual(self.lines('quickshell-ran'), ['wm=kwin pid=%d' % p.pid])

@@ -526,8 +526,14 @@ run_kwin() {
         export "$line"
       done <"$CONF/environment"
     fi
-    xdg="$SHARE/desktop/kwin/xdg"
-    [ -d "$xdg" ] && case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$xdg:"*) ;; *) XDG_CONFIG_DIRS="$xdg:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
+    # Hearth's KWin defaults, before the system's folders (yours, ~/.config, come before all of them anyway): the
+    # session's (desktop/kwin/xdg) and the windows part's (desktop/kwin/windows/xdg: desktops, Mantel's keys). KWin
+    # reads every folder; the first one wins a key.
+    kx=""
+    for xdg in "$SHARE/desktop/kwin/xdg" "$SHARE/desktop/kwin/windows/xdg"; do
+      [ -d "$xdg" ] && case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$xdg:"*) ;; *) kx="${kx:+$kx:}$xdg" ;; esac
+    done
+    [ -n "$kx" ] && XDG_CONFIG_DIRS="$kx:${XDG_CONFIG_DIRS:-/etc/xdg}"
     export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin
     # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
     exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland --no-lockscreen $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto"

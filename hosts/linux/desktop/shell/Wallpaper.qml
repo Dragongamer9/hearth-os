@@ -36,7 +36,6 @@ PanelWindow {
     readonly property bool covered: !!front && front.minimized !== true && (front.fullscreen === true || front.maximized === true)
     readonly property bool moving: !Settings.reduceMotion && !covered && !onBattery && !DeskState.locked && !DeskState.screenOff
     readonly property bool gpu: gpuProbe.gpu
-    property bool grabbing: false   // (1.14's still for KDE Plasma and GNOME is archived: archive/desktops-kde-gnome)
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu
 
@@ -404,7 +403,6 @@ PanelWindow {
     Loader {
         anchors.fill: parent
         active: root.primary && Theme.deskClock
-        visible: !root.grabbing
         source: "DeskClock.qml"
     }
 }

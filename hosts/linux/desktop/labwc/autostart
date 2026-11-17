@@ -27,11 +27,7 @@ export HEARTH_WM HEARTH_DESKTOP_PID
     systemctl --user try-restart xdg-desktop-portal.service
   fi; } >/dev/null 2>&1 &
 
-# 1.14: Mantel on KWin: the bridge between Mantel and KWin (windows, workspaces, keys: desktop/shell/hearth-kwin-bridge,
-# when it's there), before the shell starts.
-if [ "$HEARTH_WM" = kwin ] && [ -f "$SHARE/desktop/shell/hearth-kwin-bridge" ] && command -v python3 >/dev/null 2>&1; then
-  python3 "$SHARE/desktop/shell/hearth-kwin-bridge" serve >>"$RUN/hearth-kwin-bridge.log" 2>&1 &
-fi
+# (1.14: under KWin Mantel starts its bridge to KWin itself, desktop/shell/hearth-kwin-bridge.)
 
 # Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
 # (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.

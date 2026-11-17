@@ -1,7 +1,7 @@
 #!/bin/bash
 # Mantel on KWin, for real (kwin-test.yml; docs/DESKTOPS.md "Mantel on KWin"): nimbus-session itself starts Desktop Mode
-# four times on a 1920x1080 virtual screen (a headless labwc holds KWin as a window, as in plasma-test.yml, so grim takes
-# the pictures; KWin's own screenshot API is the fallback):
+# four times on a 1920x1080 virtual screen (KWin's own, --virtual, with a vgem render device so it composites; pictures
+# through KWin's screenshot API. labwc's fallback runs headless; grim takes its pictures):
 #   A  KWin, with 1.13's KDE Plasma still picked: the "KDE Plasma and GNOME were retired" card     kwin-1-retired-card
 #   B  KWin: Mantel's bar up (layer shell), the desktop and Settings › System › Your desktop         kwin-2-desktop, kwin-3-your-desktop
 #   C  KWin ending right away: the safe start opens Mantel on labwc, with its card                  kwin-4-fallback-card
@@ -33,17 +33,12 @@ SH
 chmod +x /tmp/fakebin/kwin_wayland
 export PATH="/tmp/fakebin:$PATH"
 
-# The outer screen: a headless labwc, 1920x1080, that holds KWin (and labwc's fallback) as a window.
-printf '<labwc_config><core><decoration>client</decoration></core><keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard><windowRules><windowRule identifier="*"><action name="ToggleMaximize"/></windowRule></windowRules></labwc_config>\n' > /tmp/outer-rc.xml
-mkdir -p /tmp/outer && cp /tmp/outer-rc.xml /tmp/outer/rc.xml && : > /tmp/outer/autostart
-WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
-  labwc -C /tmp/outer >shots/outer.log 2>&1 &
-for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
-OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
-[ -n "$OUTER" ] || { fail outer "the headless labwc didn't start: $(tail -4 shots/outer.log | tr '\n' '|' | cut -c1-400)"; exit 1; }
-WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
-export WAYLAND_DISPLAY=$OUTER WLR_RENDERER=pixman
-export HEARTH_KWIN_ARGS="--wayland-display $OUTER --width 1920 --height 1080 --socket wayland-hearth"
+# A render device for KWin (without one it doesn't composite: no frames, and its screenshots crash it).
+modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
+echo "::notice title=render devices::$(ls -l /dev/dri 2>&1 | tr '\n' '|' | cut -c1-300)"
+# KWin on its own virtual screen; labwc (the fallback) headless, pixman.
+export WAYLAND_DISPLAY= WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+export HEARTH_KWIN_ARGS="--virtual --width 1920 --height 1080 --socket wayland-hearth"
 
 cat > /tmp/shot.py <<'PY'
 import dbus, os, sys
@@ -71,7 +66,15 @@ W, H, S = int(res['width']), int(res['height']), int(res['stride'])
 Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
 PY
 # A picture of the whole 1920x1080 screen.
-shot() { WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/$1.png" 2>>shots/shot-errors.txt || timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt; sleep 1; }
+# (KWin: its screenshot API; labwc: grim on its display.)
+shot() {
+  if [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && pgrep -f /tmp/kwin_wayland >/dev/null; then
+    timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt
+  else
+    d=$(labwc_display); WAYLAND_DISPLAY=$d timeout 20 grim "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1 ($d)" >>shots/shot-errors.txt
+  fi
+  sleep 1
+}
 LOG="$HOME/.local/share/nimbus/session.log"
 CONF="$HOME/.config/nimbus/session.conf"
 STATE="$HOME/.local/state/hearth"
@@ -87,17 +90,14 @@ wait_up() {   # Mantel says it's up, or $1 seconds
 }
 end_session() {
   echo logout > "$XDG_RUNTIME_DIR/nimbus-next"
-  pkill -TERM -f /tmp/kwin_wayland; pkill -TERM -f 'labwc -C /tmp/xdg/hearth-labwc'; pkill -TERM -f "labwc -C $SRC"
+  pkill -TERM -f /tmp/kwin_wayland; pkill -TERM -x labwc
   for i in $(seq 1 15); do kill -0 "$SPID" 2>/dev/null || break; sleep 1; done
   kill -KILL "$SPID" 2>/dev/null; pkill -KILL -f /tmp/kwin_wayland; pkill -TERM quickshell; sleep 2
-  # labwc processes other than the outer one
-  for p in $(pgrep -x labwc); do grep -q /tmp/outer "/proc/$p/cmdline" 2>/dev/null || kill -KILL "$p"; done
-  sleep 1
+  pkill -KILL -x labwc; sleep 1
 }
 ipc() { WAYLAND_DISPLAY="${1}" quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "${@:2}" || echo "ipc ${*:2} failed"; sleep 3; }
-inner_labwc() {   # the fallback labwc's own display, made 1920x1080 (a window in the outer one)
-  for s in "$XDG_RUNTIME_DIR"/wayland-?; do b=$(basename "$s"); [ "$b" = "$OUTER" ] && continue; echo "$b"; return 0; done
-}
+labwc_display() { basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)"; }
+labwc_size() { d=$(labwc_display); [ -n "$d" ] && WAYLAND_DISPLAY=$d wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1; }
 
 # ---- A: KWin, with 1.13's KDE Plasma still picked.
 printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=kde\n' > "$CONF"
@@ -141,7 +141,7 @@ start_session C
 for i in $(seq 1 60); do grep -q 'desktop mode: Mantel on labwc' "$LOG" && break; sleep 1; done
 grep -q "desktop: KWin didn't start; labwc for this sign-in" "$LOG" || fail "safe start" "KWin ending early didn't open labwc: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400)"
 sleep 4
-IN=$(inner_labwc); [ -n "$IN" ] && WAYLAND_DISPLAY=$IN wlr-randr --output WL-1 --custom-mode 1920x1080 >/dev/null 2>&1
+labwc_size; IN=$(labwc_display)
 wait_up 60 || fail "safe start" "Mantel didn't come up on labwc after KWin ended"
 sleep 8
 shot kwin-4-fallback-card
@@ -154,15 +154,15 @@ start_session D
 for i in $(seq 1 60); do grep -q "KWin didn't start twice in a row" "$LOG" && break; sleep 1; done
 grep -q "KWin didn't start twice in a row" "$LOG" || fail "safe start" "the second failure wasn't counted: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400)"
 sleep 4
-IN=$(inner_labwc); [ -n "$IN" ] && WAYLAND_DISPLAY=$IN wlr-randr --output WL-1 --custom-mode 1920x1080 >/dev/null 2>&1
+labwc_size; IN=$(labwc_display)
 wait_up 60
 sleep 8
 shot kwin-5-twice-card
 # The card's own keys: Escape closes it (labwc's virtual keyboard), then the page.
 [ -n "$IN" ] && WAYLAND_DISPLAY=$IN wtype -k Escape 2>/dev/null; sleep 2
-ipc "${IN:-$OUTER}" settings page your-desktop; sleep 3
+ipc "$IN" settings page your-desktop; sleep 3
 shot kwin-6-your-desktop-paused
-ipc "${IN:-$OUTER}" settings close
+ipc "$IN" settings close
 python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status-D.json
 grep -q '"kwinPaused": true' shots/status-D.json || fail "safe start" "Your desktop doesn't say KWin is paused: $(head -c 300 shots/status-D.json)"
 end_session

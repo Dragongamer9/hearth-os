@@ -25,8 +25,9 @@ lacks gets written for Mantel. KWin draws, moves and snaps the windows; Mantel i
 - **For everything Mantel starts:** `HEARTH_WM=kwin|labwc` and `HEARTH_DESKTOP_PID` (the window manager's process id,
   for both). `LABWC_PID` is only ever set under labwc, and labwc's own commands (`labwc --reconfigure`, `labwc --exit`)
   only run there. nimbus-mode ends KWin with a signal to `HEARTH_DESKTOP_PID` (forced after 4 seconds, as before).
-- **Hooks for the other KWin parts:** the autostart starts `desktop/shell/hearth-kwin-bridge serve` (windows,
-  workspaces, keys) and runs `desktop/shell/hearth-screens restore` (screens) under KWin when they're there;
+- **Hooks for the other KWin parts:** KWin also reads `desktop/kwin/windows/xdg` (the windows part's defaults: desktops,
+  Mantel's keys), Mantel starts its bridge to KWin itself (`desktop/shell/hearth-kwin-bridge`), and the autostart runs
+  `desktop/shell/hearth-screens restore` (screens) under KWin when it's there;
   wlr-randr and display.sh stay labwc's. Super+Alt+R records the screen under KWin too
   (`hearth-record-toggle.desktop`).
 - **Not yet under KWin** (their own branches): keyboard layouts and pointer settings applied live, screens, the
