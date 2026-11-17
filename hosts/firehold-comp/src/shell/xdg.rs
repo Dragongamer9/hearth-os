@@ -295,9 +295,11 @@ impl<BackendData: Backend> XdgShellHandler for HearthState<BackendData> {
                     .find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false))
                     .unwrap();
 
+                // A game Firehold upscales (game.rs) keeps its smaller size when it asks for full screen again.
+                let size = self.game_configure_size(wl_surface).unwrap_or(geometry.size);
                 surface.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Fullscreen);
-                    state.size = Some(geometry.size);
+                    state.size = Some(size);
                     state.fullscreen_output = wl_output;
                 });
                 output.user_data().insert_if_missing(FullscreenSurface::default);
