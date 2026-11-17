@@ -46,7 +46,7 @@ Scope {
     // The screen in use when a request comes (the window in front's, else the main one), kept while it's up.
     property var promptScreen: null
     function screenInUse() {
-        const t = ToplevelManager.activeToplevel;
+        const t = WinList.activeToplevel;     // labwc's or KWin's window in front (WinList.qml)
         const s = t && t.screens && t.screens.length ? t.screens[0] : null;
         return s || Quickshell.screens[0];
     }
