@@ -348,6 +348,14 @@ PanelWindow {
         }
         list.push({ label: "Show desktop icons", group: "View", checked: DeskState.desktopIcons, run: () => DeskState.setDesktopIcons(!DeskState.desktopIcons) });
         list.push({ separator: true });
+        // ---- 1.14: desktop widgets and activities (Widgets.qml, Activities.qml)
+        const wg = SettingsNav.widgets;
+        if (wg) {
+            list.push({ label: "Add widgets…", short: "Widgets", icon: "plus", group: "Widgets", run: () => wg.openGallery(screen ? screen.name : "") });
+            list.push({ label: "Arrange widgets", icon: "grid", group: "Widgets", run: () => wg.startArrange(screen ? screen.name : "") });
+            list.push({ label: "Activities…", icon: "desktops", group: "Widgets", run: () => wg.openActivities() });
+        }
+        // ---- end widgets
         list.push({ label: "Change wallpaper", short: "Wallpaper", icon: "palette", quick: true, run: () => { if (settingsApp) settingsApp.open("appearance"); } });
         list.push({ label: "Display settings", icon: "display", group: "Settings", run: () => { if (settingsApp) settingsApp.open("display"); } });
         list.push({ label: "Open in Files", icon: "folder", group: "Open", run: () => { if (filesApp) filesApp.open(dir || home); } });

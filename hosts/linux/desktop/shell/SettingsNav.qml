@@ -34,6 +34,13 @@ Singleton {
     property bool discordShown: false // its "Which Discord?" chooser is open
     property var winTools: null       // Device Manager, Run and the Super+X menu (WinTools.qml): the Start button's right-click
     property bool winxShown: false    // the Super+X menu is open
+    // 1.14: desktop widgets and activities (Widgets.qml sets these; Quick Access and the desktop's menu use them, so
+    // they never depend on Widgets.qml having loaded).
+    property var widgets: null        // Widgets.qml: openGallery(screen), startArrange(screen), openActivities()
+    property string activityName: ""
+    property string activityIcon: ""
+    property bool activitiesMany: false
+    property bool widgetsShown: false // desktop widgets: Add widgets, Arrange, a widget's settings, the activity switcher (Widgets.qml)
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;

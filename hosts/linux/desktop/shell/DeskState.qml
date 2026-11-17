@@ -81,7 +81,8 @@ Singleton {
     }
     function apply(r) {
         if (!r || !Array.isArray(r.pins)) return;
-        pins = r.pins;
+        deskPins = r.pins;
+        if (!Array.isArray(activityPins)) pins = r.pins;
         desktopIcons = r.desktopIcons !== false;
         dnd = r.dnd === true;
         autoArrange = r.autoArrange === true;
@@ -102,18 +103,31 @@ Singleton {
     function isPinned(id) { return !!id && pins.indexOf(id) >= 0; }
     function pin(id) {
         if (!id || isPinned(id)) return;
+        if (Array.isArray(activityPins)) { ownPins(pins.concat([id])); return; }
         pins = pins.concat([id]);
         call(["pin", id], (r, err) => { if (err) SettingsNav.toast(err); else apply(r); });
     }
     function unpin(id) {
+        if (Array.isArray(activityPins)) { ownPins(pins.filter(p => p !== id)); return; }
         pins = pins.filter(p => p !== id);
         call(["unpin", id], (r, err) => failedOr(r, err));
     }
     function togglePin(id) { isPinned(id) ? unpin(id) : pin(id); }
     function reorderPins(order) {
+        if (Array.isArray(activityPins)) { ownPins(order); return; }
         pins = order;
         call(["pins-order"].concat(order), (r, err) => { if (err) SettingsNav.toast(err); else apply(r); });
     }
+
+    // ---- Activities (Activities.qml, 1.14): an activity with its own pinned apps shows those in the taskbar instead
+    // of desk.json's, and pinning there changes only that activity's list (activities.json). Main, and any activity
+    // without its own list, is the taskbar exactly as before.
+    property var deskPins: []              // desk.json's pins (the taskbar's own)
+    property var activityPins: null        // the current activity's own list, or null
+    property var setActivityPins: null     // Activities.qml: saves the current activity's own list
+    onActivityPinsChanged: pins = Array.isArray(activityPins) ? activityPins : deskPins
+    function ownPins(list) { pins = list; if (setActivityPins) setActivityPins(list); }
+    // ---- end Activities
 
     // ------------------------------------------------ switches
     function setDnd(on) {
