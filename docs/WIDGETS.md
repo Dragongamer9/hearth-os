@@ -57,14 +57,16 @@ Files: `Activities.qml` (the model), `ActivitySwitcher.qml`, `ActivityChip.qml` 
   widgets already on screen stay.
 - `~/.config/nimbus/activities.json`: `current`, `"act:<id>": {name, icon, wallpaper, pins, order}`,
   `"app:<app id>": "<id>"`. Main has no key until you change it: Hearth without the file is exactly as before.
-- `$XDG_RUNTIME_DIR/hearth-activities-windows.json`: which open window is on which activity (KWin window ids), so a
-  restart of the shell keeps them. Runtime state, not a setting.
+- `$XDG_RUNTIME_DIR/hearth-activities-windows.json`: which open window is on which activity, and which ones Hearth
+  hid, so a restart of the shell keeps them and still brings the hidden ones back. Runtime state, not a setting.
+- Weather's °C / °F: until you pick, it follows your measurement system (°F for the US's: LC_MEASUREMENT or the
+  locale). Only the default; nothing is written until you pick.
 
 ## Hooks for other parts of Mantel
 
 - **Window lists** (taskbar, dock, TaskStrip, Alt+Tab, the window bridge): show a window only when
-  `Activities.shows(toplevel)` is true (always true with one activity). Load it guarded, e.g.
-  `try { if (!Activities.shows(t)) continue; } catch (e) {}`, or skip when `!SettingsNav.activitiesMany`.
+  `SettingsNav.activityShows(toplevel)` is true. Widgets.qml sets it; without Widgets.qml, or with one activity, it is
+  always true, so the bars never import Activities themselves.
 - **The window bridge (WinList)**: Activities reads `WinList.toplevels` when the singleton exists (else
   `ToplevelManager.toplevels`). For lasting membership give each toplevel `kwinId` (KWin's internal id); minimizing
   uses `setMinimized(bool)` if it exists, else `minimized = …`.

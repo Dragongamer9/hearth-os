@@ -14,14 +14,18 @@ WidgetBase {
     property var info: ({ items: [] })
     implicitWidth: 400; implicitHeight: 320
 
+    // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
+    // once more when it's done.
+    property bool lsAgain: false
+    function lsRefresh() { if (ls.running) lsAgain = true; else ls.running = true; }
     Process {
         id: ls
+        onExited: if (w.lsAgain) { w.lsAgain = false; running = true; }
         command: ["python3", w.helper, "folder", w.folder]
-        running: w.live
         stdout: StdioCollector { onStreamFinished: { try { w.info = JSON.parse(text.trim().split("\n").pop()); } catch (e) {} } }
     }
-    onFolderChanged: ls.running = true
-    Timer { interval: 10000; running: w.live; repeat: true; onTriggered: if (!ls.running) ls.running = true }
+    onFolderChanged: lsRefresh()
+    Timer { interval: 10000; running: w.live; repeat: true; triggeredOnStart: true; onTriggered: if (!ls.running) w.lsRefresh() }
     function iconFor(k) { return k === "folder" ? "folder" : k === "image" ? "image" : k === "video" ? "film" : k === "audio" ? "headphones" : k === "doc" ? "doc" : "file"; }
 
     ColumnLayout {

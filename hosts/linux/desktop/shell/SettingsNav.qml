@@ -40,7 +40,10 @@ Singleton {
     property string activityName: ""
     property string activityIcon: ""
     property bool activitiesMany: false
-    property bool widgetsShown: false // desktop widgets: Add widgets, Arrange, a widget's settings, the activity switcher (Widgets.qml)
+    property bool widgetsShown: false
+    // Is this window on the activity you're on? For the taskbar, the dock, TaskStrip and Alt+Tab, so they never import
+    // Activities themselves: Widgets.qml sets it; without it (or with one activity) every window shows.
+    property var activityShows: t => true // desktop widgets: Add widgets, Arrange, a widget's settings, the activity switcher (Widgets.qml)
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;

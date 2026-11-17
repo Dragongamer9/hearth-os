@@ -19,14 +19,18 @@ WidgetBase {
     implicitHeight: compact ? 24 : 220
 
     Timer { interval: w.secs || w.look === "analog" ? 1000 : 10000; running: w.live; repeat: true; triggeredOnStart: true; onTriggered: w.now = Date.now() }
+    // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
+    // once more when it's done.
+    property bool zpAgain: false
+    function zpRefresh() { if (zp.running) zpAgain = true; else zp.running = true; }
     Process {
         id: zp
+        onExited: if (w.zpAgain) { w.zpAgain = false; running = true; }
         command: ["python3", w.helper, "zones"].concat(w.cities)
-        running: w.cities.length > 0
         stdout: StdioCollector { onStreamFinished: { try { const o = JSON.parse(text.trim().split("\n").pop()); const m = {}; for (const z of o.zones || []) if (z.offset !== null) m[z.tz] = z.offset; w.offsets = m; } catch (e) {} } }
     }
-    onCitiesChanged: zp.running = true
-    Timer { interval: 1800000; running: w.live && w.cities.length > 0; repeat: true; onTriggered: zp.running = true }
+    onCitiesChanged: if (cities.length) zpRefresh()
+    Timer { interval: 1800000; running: w.live && w.cities.length > 0; repeat: true; triggeredOnStart: true; onTriggered: w.zpRefresh() }
     Process {
         id: allp
         command: ["python3", w.helper, "all-zones"]
