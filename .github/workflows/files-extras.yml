@@ -1,0 +1,176 @@
+# Hearth Files' 1.14 extras (Dolphin's features: hearth_files_extras.py, FilesExtras.qml, FileProperties.qml,
+# hearth-files-admin, Settings › Privacy › Recent files):
+#   tests:  hosts/linux/test/test_files_extras.py (tags, git status, disc images, phones and cameras, service menus,
+#           sharing, recent files' privacy, permissions, Act as administrator's checks) and test_hearth_files.py
+#   shots:  Desktop Mode (labwc + Mantel) at 1920x1080 with a sample home: every new part as a picture (the PNGs as a
+#           download); post-1 and post-2 put them up as SHOT notices (five a job: a job keeps 50 notices)
+name: Files extras
+
+on:
+  push:
+    branches: [feature/kwin-phone-files, feature/kwin-1.14]
+    paths: ['hosts/linux/desktop/shell/FileManager.qml', 'hosts/linux/desktop/shell/FileProperties.qml', 'hosts/linux/desktop/shell/Files*.qml',
+            'hosts/linux/desktop/shell/hearth-files', 'hosts/linux/desktop/shell/hearth_files_extras.py', 'hosts/linux/desktop/shell/SetRecentFiles.qml',
+            'os/system_files/usr/libexec/nimbus/hearth-files-admin', 'hosts/linux/test/test_files_extras.py', '.github/workflows/files-extras.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: files-extras-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: The extras and Hearth Files' own tests
+        run: |
+          python3 -m py_compile hosts/linux/desktop/shell/hearth_files_extras.py hosts/linux/desktop/shell/hearth-files os/system_files/usr/libexec/nimbus/hearth-files-admin
+          set +e
+          python3 -W ignore -m unittest -v hosts/linux/test/test_files_extras.py > t.log 2>&1; a=$?
+          python3 -W ignore -m unittest discover -s hosts/linux/test -p 'test_hearth_files*.py' > t2.log 2>&1; b=$?
+          cat t.log; tail -5 t2.log
+          echo "::notice title=Files extras tests::$(grep -E ' \.\.\. (ok|FAIL|ERROR|skipped)' t.log | sed -E 's/^test_([a-z_]+) .* \.\.\. /\1: /' | tr '\n' '|' | cut -c1-3900)"
+          [ $a -eq 0 ] || echo "::error title=Files extras failures::$(sed -n '/^\(FAIL\|ERROR\):/,/^\(Ran \|=====\)/p' t.log | tr '\n' '|' | cut -c1-3900)"
+          [ $b -eq 0 ] || echo "::error title=Hearth Files tests::$(sed -n '/^\(FAIL\|ERROR\):/,/^\(Ran \|=====\)/p' t2.log | tr '\n' '|' | cut -c1-3900)"
+          [ $a -eq 0 ] && [ $b -eq 0 ]
+
+  shots:
+    name: Screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 \
+            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon libnotify wl-clipboard rsms-inter-fonts \
+            ImageMagick glib2 shared-mime-info >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - name: Hearth Files with tags, a git folder, a disc image, a phone and a camera
+        shell: bash
+        run: |
+          mkdir -p shots
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home USER=me
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 hosts/linux/test/files_redesign_sample.py "$HOME" > shots/sample.log 2>&1 || true
+          D="$HOME/Documents"; mkdir -p "$D/Taxes 2026" "$HOME/Downloads"
+          for f in "Budget.ods" "Lease.pdf" "Packing list.txt" "Trip notes.md"; do echo "$f" > "$D/$f"; done
+          echo receipt > "$D/Taxes 2026/Receipt.pdf"
+          # Tags the way Dolphin keeps them (user.xdg.tags), and one service menu like an app adds.
+          python3 - "$D" <<'EOF' || echo "::warning title=tags::this container's drive keeps no extended attributes"
+          import os, sys
+          d = sys.argv[1]
+          for name, tags in (("Budget.ods", "Home,Money"), ("Lease.pdf", "Home"), ("Taxes 2026", "Money"), ("Trip notes.md", "Travel"), ("Packing list.txt", "Travel")):
+              os.setxattr(os.path.join(d, name), "user.xdg.tags", tags.encode())
+          EOF
+          mkdir -p "$HOME/.local/share/kio/servicemenus"
+          printf '[Desktop Entry]\nType=Service\nMimeType=all/allfiles;\nActions=pdf;\nX-KDE-Submenu=Convert\n\n[Desktop Action pdf]\nName=Make a PDF\nIcon=application-pdf\nExec=true %%F\n' > "$HOME/.local/share/kio/servicemenus/make-pdf.desktop"
+          chmod +x "$HOME/.local/share/kio/servicemenus/make-pdf.desktop"
+          # A git folder with changes.
+          R="$D/hearth-site"; mkdir -p "$R/src" "$R/build"
+          git -C "$R" init -q -b main && printf 'build/\n' > "$R/.gitignore"
+          for f in README.md index.html src/app.js src/style.css; do echo one > "$R/$f"; done
+          git -C "$R" add . && git -C "$R" -c user.name=t -c user.email=t@t commit -qm first
+          echo two >> "$R/README.md"; echo new > "$R/CHANGELOG.md"; echo out > "$R/build/site.zip"; echo x >> "$R/src/app.js"
+          git -C "$R" add CHANGELOG.md 2>/dev/null; echo y > "$R/notes.txt"
+          head -c 2097152 /dev/zero > "$HOME/Downloads/debian-13-netinst.iso"
+          # A phone (MTP) and a camera (PTP) plugged in, as gvfs lists them (only that answer is pretend).
+          mkdir -p /tmp/fakebin
+          printf '#!/bin/sh\nif [ "$1 $2" = "mount -li" ]; then cat <<EOF\nVolume(0): Pixel 8\n  activation_root=mtp://Google_Pixel_8_3A2B/\nVolume(1): Canon EOS R10\n  activation_root=gphoto2://Canon_Inc._Canon_Digital_Camera/\nEOF\nexit 0; fi\nexec /usr/bin/gio "$@"\n' > /tmp/fakebin/gio
+          chmod +x /tmp/fakebin/gio
+          export PATH=/tmp/fakebin:$PATH
+          # Recent files (Settings › Privacy › Recent files lists the apps that opened them).
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          ICONS="$HOME/.local/share/icons/hicolor"
+          for d in branding/icons/png/*x*; do mkdir -p "$ICONS/$(basename "$d")/apps" && cp "$d"/*.png "$ICONS/$(basename "$d")/apps/"; done
+          labwc -C hosts/linux/desktop/labwc > shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          ( sleep 45; quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call browserpick close ) >/dev/null 2>&1 &
+          # 1: tags, grouped by tag, with the Tags list and the phone and camera in the left menu
+          ipc files open "$D"; ipc filemanager view details; ipc filemanager group tags; ipc filemanager select Budget.ods; sleep 2
+          grim shots/files-x1-tags-grouped.png || true
+          # 2: the right-click menu with Tags ›, Share on your network… and an app's action; then the Tags menu
+          ipc filemanager select "Trip notes.md"; sleep 2; ipc filemanager menu; grim shots/files-x2-menu.png || true; ipc filemanager close
+          ipc filemanager select Budget.ods; ipc filemanager tagmenu; grim shots/files-x3-tags-menu.png || true; ipc filemanager close
+          ipc filemanager group none
+          # 4: git status badges and the branch
+          ipc files open "$R"; ipc filemanager view grid; ipc filemanager select README.md; sleep 2; grim shots/files-x4-git.png || true
+          # 5: a disc image's menu (Open as a drive)
+          ipc files open "$HOME/Downloads"; ipc filemanager select debian-13-netinst.iso; sleep 1; ipc filemanager fullmenu; grim shots/files-x5-iso-menu.png || true; ipc filemanager close
+          # 6: Act as administrator in a system folder
+          ipc files open /etc; ipc filemanager admin on; sleep 2; grim shots/files-x6-admin.png || true; ipc filemanager admin off
+          ipc files close
+          # 7-9: Properties: Checksums (SHA-512, a pasted one that matches), Permissions (group, the whole folder), Sharing
+          SUM=$(sha256sum "$D/Lease.pdf" | cut -d' ' -f1)
+          ipc fileprops open "$D/Lease.pdf"; ipc fileprops tab checksums; ipc fileprops compare "$SUM"; sleep 4; grim shots/files-x7-checksums.png || true
+          ipc fileprops open "$D/Taxes 2026"; ipc fileprops tab permissions; ipc fileprops groups; sleep 2; grim shots/files-x8-permissions.png || true
+          ipc fileprops tab sharing; sleep 6; grim shots/files-x9-sharing.png || true
+          ipc fileprops close
+          # 10: Settings › Privacy & security › Recent files
+          ipc settings page recent-files; sleep 4; grim shots/files-x10-recent-privacy.png || true; ipc settings close
+          python3 hosts/linux/desktop/shell/hearth-files git-status "$R" > shots/git-status.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-files tag-list > shots/tag-list.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-files portable > shots/portable.json 2>&1 || true
+          grep -E "(FileManager|FileProperties|FilesExtras|FilesMarks|FilesIpc|SetRecentFiles)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          if grep -qE "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read|Expected token|Type .* unavailable)" shots/shell-errors.txt; then
+            echo "::error title=Files extras pages::$(sort -u shots/shell-errors.txt | head -8 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Files extras pages::no QML errors ($(wc -l < shots/shell-errors.txt) lines mention them); git $(cat shots/git-status.json | cut -c1-300)"
+          fi
+          ls -la shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: files-extras-shots
+          path: shots
+      - name: Failed?
+        run: test ! -f shots/FAILED
+
+  post-1:
+    name: Pictures 1-5
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: files-extras-shots, path: shots }
+        continue-on-error: true
+      - run: sudo apt-get install -y -qq imagemagick >/dev/null 2>&1 || true
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x1-tags-grouped shots/files-x1-tags-grouped.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x2-menu shots/files-x2-menu.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x3-tags-menu shots/files-x3-tags-menu.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x4-git shots/files-x4-git.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x5-iso-menu shots/files-x5-iso-menu.png
+
+  post-2:
+    name: Pictures 6-10
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: files-extras-shots, path: shots }
+        continue-on-error: true
+      - run: sudo apt-get install -y -qq imagemagick >/dev/null 2>&1 || true
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x6-admin shots/files-x6-admin.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x7-checksums shots/files-x7-checksums.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x8-permissions shots/files-x8-permissions.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x9-sharing shots/files-x9-sharing.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x10-recent-privacy shots/files-x10-recent-privacy.png
