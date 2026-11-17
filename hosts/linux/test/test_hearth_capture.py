@@ -238,6 +238,16 @@ class SaveAndRecent(Sandbox):
         self.assertEqual(self.helper('history')[1]['items'], [])
         self.assertTrue(os.path.isfile(b['path']))
 
+    def test_put_writes_a_new_file_only_for_a_png(self):
+        import base64
+        src = os.path.join(self.t, 'a.png')
+        self.png(src, 6, 2)
+        code_, j = self.helper('put', input=base64.b64encode(open(src, 'rb').read()).decode())
+        self.assertTrue(j['ok'], j)
+        self.assertEqual((j['width'], j['height']), (6, 2))
+        self.assertTrue(j['path'].startswith(self.env['XDG_RUNTIME_DIR'] + '/hearth-capture/edit-'))
+        self.assertEqual(self.helper('put', input='bm90IGEgcG5n')[0], 1)
+
     def test_save_as_never_over_a_file(self):
         src = os.path.join(self.t, 'edit.png')
         self.png(src)
@@ -393,6 +403,7 @@ class Wiring(unittest.TestCase):
         ed = code((SHELL / 'CaptureEditor.qml').read_text())
         self.assertNotIn('save(ed.src', ed)                   # the picture taken is never written over
         self.assertIn('cap.run(["save", p', ed)
+        self.assertIn('cap.run(["put"]', ed)
 
     def test_every_tool_is_there(self):
         ed = (SHELL / 'CaptureEditor.qml').read_text()

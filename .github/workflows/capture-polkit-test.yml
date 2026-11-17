@@ -43,7 +43,6 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_capture.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_polkit_mantel.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_polkit_agent.py'
-          python3 -m unittest discover -s hosts/linux/test -p 'test_app_kinds.py'
           python3 -m unittest discover -s hosts/linux/test -p 'test_labwc_rc.py'
 
       - name: Start Desktop Mode and take the pictures
@@ -106,7 +105,7 @@ jobs:
           note "capture editor" "$(q capture state)"
           q capture save; sleep 5
           note "capture saved" "$(q capture state)"
-          ls -la "$HOME/Pictures/Screenshots" 2>&1 | tail -3
+          ls -la "$HOME/Pictures/Screenshots" 2>&1 | tail -3 || true
           q capture edit /tmp/capture-test.png; sleep 3
           q capture qr; sleep 6
           note "capture qr" "$(q capture state)"

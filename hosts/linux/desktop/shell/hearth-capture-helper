@@ -9,7 +9,8 @@ picture, keeps the recent ones, copies, reads text and QR codes, and opens the f
                                                     or {ok: false, pick: true} when this compositor can't find the
                                                     window by itself (labwc): the area picker is used instead
   hearth-capture-helper grab-each [--pointer] NAME...  the area picker's still pictures: one per screen, JSON {ok, shots}
-  hearth-capture-helper tmp                         JSON {path}: a new file for the editor to write the finished picture to
+  hearth-capture-helper put                         the editor's finished picture (a PNG in base64 on standard input) to a
+                                                    new file of its own: JSON {ok, path, width, height}
   hearth-capture-helper save SRC [--to PATH] [--replace]
                                                     keep SRC in Pictures/Screenshots ("Screenshot 2026-11-16 21-04-05.png",
                                                     " (2)" for a second one that second) or at PATH (Save as: never over
@@ -381,8 +382,22 @@ def main(argv):
             w, h = png_size(path)
             shots[n] = {'path': path, 'width': w, 'height': h}
         out({'ok': True, 'shots': shots})
-    elif cmd == 'tmp':
-        out({'path': os.path.join(runtime_dir(), 'edit-%d.png' % int(time.time() * 1000))})
+    elif cmd == 'put':
+        import base64
+        import binascii
+        try:
+            data = base64.b64decode(sys.stdin.buffer.read(), validate=False)
+        except (binascii.Error, ValueError):
+            data = b''
+        if data[:8] != b'\x89PNG\r\n\x1a\n':
+            out({'ok': False, 'error': 'that isn\'t a PNG'})
+            return 1
+        path = os.path.join(runtime_dir(), 'edit-%d.png' % int(time.time() * 1000))
+        with open(path + '.part', 'wb') as f:
+            f.write(data)
+        os.replace(path + '.part', path)
+        w, h = png_size(path)
+        out({'ok': True, 'path': path, 'width': w, 'height': h})
     elif cmd == 'save':
         src = args[0] if args else ''
         if not os.path.isfile(src):
