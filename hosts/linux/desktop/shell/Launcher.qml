@@ -816,7 +816,7 @@ PanelWindow {
                     width: parent.width - 40
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
-                    visible: grid.count === 0
+                    visible: grid.count === 0 && root.hearthAnswers.length === 0
                     text: search.text ? "No " + (root.tab === "games" ? "games" : "apps") + " match \"" + search.text + "\""
                         : root.tab === "games" ? (root.gamesLoading ? "Finding your games…" : "No games installed yet. Games you install in Hearth show up here.")
                         : "No apps"
