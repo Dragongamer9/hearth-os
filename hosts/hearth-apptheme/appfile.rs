@@ -176,6 +176,13 @@ pub fn write_json_private(path: &Path, v: &Value) -> std::io::Result<()> {
 /// Reads the latest PATH under the lock (None when there's none yet), lets `change` make the new value, and writes
 /// it (`change` gives None to write nothing). A file that can't be read at all (no permission) is left alone.
 pub fn update<T>(path: &Path, change: impl FnOnce(Option<Value>) -> (Option<Value>, T)) -> std::io::Result<T> {
+    update_as(path, false, change)
+}
+/// `update` for a file only you may read (0600, and its .bak too), whatever its mode was before.
+pub fn update_private<T>(path: &Path, change: impl FnOnce(Option<Value>) -> (Option<Value>, T)) -> std::io::Result<T> {
+    update_as(path, true, change)
+}
+fn update_as<T>(path: &Path, private: bool, change: impl FnOnce(Option<Value>) -> (Option<Value>, T)) -> std::io::Result<T> {
     let _l = lock(path);
     let cur = match std::fs::read(path) {
         Ok(b) => match parse(&b) { Some(v) => Some(v), None => repair_locked(path) },
@@ -183,7 +190,8 @@ pub fn update<T>(path: &Path, change: impl FnOnce(Option<Value>) -> (Option<Valu
         Err(e) => { log_event(&format!("couldn't read {}: {e} (nothing changed)", path.display())); return Err(e); }
     };
     let (new, out) = change(cur);
-    if let Some(new) = new { write_locked(path, format!("{}\n", serde_json::to_string_pretty(&new).unwrap_or_default()).as_bytes())?; }
+    if let Some(new) = new { write_locked_as(path, format!("{}\n", serde_json::to_string_pretty(&new).unwrap_or_default()).as_bytes(), private)?; }
+    if private && path.exists() { let _ = make_private(path); }
     Ok(out)
 }
 
