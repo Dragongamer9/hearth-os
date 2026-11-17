@@ -55,6 +55,8 @@ jobs:
       - name: Looks and apps theme tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+          # Mantel on KWin's Settings pages' helper (hearth-kwin-settings: merge-on-write, rebinds, what it may change).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py' -v
           # Screens on labwc and KWin (hearth-screens, docs/SCREENS.md): parse/build, saved settings never lost.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_screens.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
@@ -382,8 +384,9 @@ jobs:
             '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
             > "$HOME/.config/kwinrulesrc"
           printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
+          printf '%s\n' '[ButtonRebinds][Mouse]' 'ExtraButton1=Key,Alt+Left' 'ExtraButton5=Key,Meta+W' > "$HOME/.config/kcminputrc"
           touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
           kp kwin-desktops 03-virtual-desktops
           kp kwin-tiling 04-tiling
@@ -398,9 +401,13 @@ jobs:
           kp kwin-effects 16-window-effects-second-switcher; kdown 25 16-window-effects-second-switcher
           kp kwin-effects 17-window-effects-pointer-helpers-developers; kdown 54 17-window-effects-pointer-helpers-developers
           kp kwin-desktops 18-virtual-desktops-cube; kdown 12 18-virtual-desktops-cube
+          # Mouse buttons (1.14 wave 3, SetMouseButtons.qml): two saved rebinds (kcminputrc above), then the "press the button" box
+          # (mouse-buttons:press); the middle-click paste switch is in 12, the pen-and-mouse pointer switch in 09.
+          kp mouse-buttons 19-mouse-buttons
+          kp mouse-buttons:press 20-mouse-buttons-press
           ipc settings close; sleep 1
           rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
           [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
           [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
@@ -1439,11 +1446,11 @@ jobs:
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
           set +x
           # Report: problems in the shell log (not the expected "no uinput/evdev here") fail the test.
-          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files. (No
-          # polkit filter: PolkitPrompt.qml loads Quickshell's password agent only with a logind session, so a "No session
-          # for pid" line here is a real problem.)
+          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files, and no
+          # logind session: Quickshell's polkit service still logs "No session for pid" here (quickshell.service.polkit),
+          # although PolkitPrompt.qml doesn't register its agent without a session. One filter, that category only.
           bad=$(grep -iE "ERROR|WARN|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" 2>/dev/null \
-            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -25 || true)
+            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez|quickshell\\.service\\.polkit" | head -25 || true)
           if [ -n "$bad" ] || grep -q "not running" shots/quickshell-running.txt; then
             msg=$( { cat shots/quickshell-running.txt; echo "$bad"; tail -15 "$LOG" 2>/dev/null; } | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g")
             echo "::error title=shell::$msg"
@@ -2860,7 +2867,7 @@ jobs:
           - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
           - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
           - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
-          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube 19-mouse-buttons 20-mouse-buttons-press"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true
