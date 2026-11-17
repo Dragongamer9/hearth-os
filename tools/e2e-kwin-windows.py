@@ -348,6 +348,38 @@ def frames_check(procs):
     many, size = crop('frame-full-4', (0, 30, 1000, 230), 'frame-hearth-gold')
     check('the frame picture (Hearth look, gold) is more than one colour', many, size)
     desk({'look': 'steam', 'accent': ''})
+    frame_probe(theme)
+
+
+def reconfigure():
+    subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'])
+    time.sleep(3)
+
+
+def pixel(name, xy=(300, 66)):
+    from PIL import Image
+    return '#%02x%02x%02x' % Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB').getpixel(xy)
+
+
+def frame_probe(theme):
+    """Diagnostics: a magenta title in the theme, then KWin told to reconfigure; then the same with KSvg's cache gone."""
+    import re as _re
+    path = os.path.join(theme, 'decoration.svg')
+    try:
+        svg = open(path).read()
+        fill = _re.search(r'id="decoration-top"><rect [^>]*fill="(#[0-9a-f]{6})"', svg).group(1)
+        time.sleep(8)
+        open(path, 'w').write(svg.replace(fill, '#ff00ff'))
+        reconfigure()
+        shot('probe-1')
+        cache = os.path.join(os.environ['HOME'], '.cache', 'ksvg-elements')
+        subprocess.run(['rm', '-rf', cache])
+        reconfigure()
+        shot('probe-2')
+        log('::notice title=frame probe::magenta theme + reconfigure: %s; and without the KSvg cache: %s' % (pixel('probe-1'), pixel('probe-2')))
+        crop('probe-2', (0, 0, 640, 140), 'frame-probe')
+    except Exception as ex:
+        log('::warning title=frame probe::%s' % ex)
 
 
 def main():
