@@ -334,10 +334,32 @@ function poll() {
 }
 
 // ------------------------------------------------------------------ keeping track of the windows
+// A rule (shortcuts.json "rules") matches a window by its exact title ("title"), or by one of "titles" (any case),
+// and, when it names "apps", only windows of those apps (desktopFileName or window class, any case): picture-in-
+// picture windows (Firefox's "Picture-in-Picture", Chromium's "Picture in picture") stay on top this way, since an
+// app can't ask for that itself on Wayland.
+function ruleMatches(r, w, cap) {
+    if (r.title !== undefined && r.title !== cap) return false;
+    if (r.titles) {
+        var low = cap.toLowerCase(), hit = false;
+        for (var t = 0; t < r.titles.length; t++) if (String(r.titles[t]).toLowerCase() === low) hit = true;
+        if (!hit) return false;
+    }
+    if (r.apps) {
+        var app = String(w.desktopFileName || "").toLowerCase(), cls = String(w.resourceClass || "").toLowerCase(), ok = false;
+        for (var a = 0; a < r.apps.length; a++) {
+            var want = String(r.apps[a]).toLowerCase();
+            if (want === app || want === cls) ok = true;
+        }
+        if (!ok) return false;
+    }
+    return r.title !== undefined || !!r.titles;
+}
+
 function applyRules(w) {
     var id = idOf(w), cap = String(w.caption || "");
     for (var i = 0; i < RULES.length; i++) {
-        if (RULES[i].title === cap) {
+        if (ruleMatches(RULES[i], w, cap)) {
             if (RULES[i].keepAbove && !w.keepAbove) { w.keepAbove = true; ruled[id] = true; }
             return;
         }

@@ -310,6 +310,20 @@ class Script(unittest.TestCase):
         gap = int(root.find('core').find('gap').text)
         self.assertEqual(kb.load_table()['gap'], gap)
 
+    def test_picture_in_picture_rule(self):
+        """Picture-in-picture windows stay on top under KWin (Wayland apps can't ask for that): a default rule for
+        Firefox's and Chromium's (and their relatives'), matched by title and app (kwin-windows-mock.js runs it)."""
+        rules = kb.load_table()['rules']
+        pip = [r for r in rules if r.get('id') == 'picture-in-picture']
+        self.assertEqual(len(pip), 1)
+        r = pip[0]
+        self.assertTrue(r['keepAbove'])
+        self.assertEqual({t.lower() for t in r['titles']}, {'picture-in-picture', 'picture in picture'})
+        for app in ('firefox', 'firefox-esr', 'org.mozilla.firefox', 'chromium', 'google-chrome', 'brave-browser'):
+            self.assertIn(app, r['apps'])
+        self.assertIn('"titles": ["Picture-in-Picture", "Picture in picture"]', kb.render())
+        self.assertIn('Task Manager (always on top)', [x.get('title') for x in rules])
+
     @unittest.skipUnless(shutil.which('node'), 'node is needed to run the script against a pretend KWin')
     def test_script_against_pretend_kwin(self):
         with tempfile.TemporaryDirectory() as d:
@@ -360,6 +374,46 @@ class Frames(unittest.TestCase):
             out[g.get('id')] = tuple(float(r.get(k)) for k in ('x', 'y', 'width', 'height'))
         return out
 
+    def _group_text(self, svg, gid):
+        m = re.search(r'<g id="%s">(.*?)</g>' % gid, svg)
+        return m.group(1) if m else ''
+
+    def test_rounded_bottom_corners_and_outline(self):
+        """1.14: all four corners rounded (the bottom ones as far as the window's own square corner fits inside the
+        frame), the sides and bottom SIDE px thick, and a light 1 px outline all round, like Plasma's."""
+        ha = self.ha
+        self.assertEqual(ha.SIDE, 4)
+        rc = ha.build(self.cols, 10)['hearthrc']
+        for k in ('BorderLeft', 'BorderRight', 'BorderBottom'):
+            self.assertIn('%s=%d\n' % (k, ha.SIDE), rc)
+        self.assertIn('BorderTop=0\n', rc)
+        # The bottom radius: the look's, but never so big that the window's square corner pokes out of the frame.
+        for radius in (0, 2, 4, 10, 13, 16, 40):
+            rb = ha.bottom_radius(radius)
+            self.assertLessEqual(rb, min(radius, 16))
+            if rb > ha.SIDE:
+                self.assertLessEqual((rb - ha.SIDE) * math.sqrt(2), rb, radius)
+        self.assertEqual(ha.bottom_radius(10), 10)
+        self.assertEqual(ha.bottom_radius(0), 0)                     # a square look stays square
+        # The outline: the border colour lifted towards the title text, more on the window in front; drawn round
+        # every part's outside edge (the top, both sides, the bottom and all four corners).
+        c = {'active.border': '#3b2e26', 'active.text': '#f4ece3', 'inactive.border': '#261d18', 'inactive.text': '#a69484'}
+        lum = lambda h: sum(int(h[i:i + 2], 16) for i in (1, 3, 5))
+        a, i = ha.outline_color(c, 'active'), ha.outline_color(c, 'inactive')
+        self.assertGreater(lum(a), lum(c['active.border']))
+        self.assertGreater(lum(i), lum(c['inactive.border']))
+        self.assertGreater(lum(a) - lum(c['active.border']), lum(i) - lum(c['inactive.border']))
+        files = ha.build(self.cols, 10)
+        svg = files['decoration.svg']
+        full = {'active.border': self.cols['window.active.border.color'], 'active.text': self.cols['window.active.label.text.color'],
+                'inactive.border': self.cols['window.inactive.border.color'], 'inactive.text': self.cols['window.inactive.label.text.color']}
+        for pre, st in (('decoration-', 'active'), ('decoration-inactive-', 'inactive')):
+            want = ha.outline_color(full, st)
+            for part in ('topleft', 'top', 'topright', 'left', 'right', 'bottomleft', 'bottom', 'bottomright'):
+                self.assertIn('fill="%s"' % want, self._group_text(svg, pre + part), (pre, part))
+        # A maximized window keeps no outline (flat, edge to edge).
+        self.assertNotIn(ha.outline_color(full, 'active'), self._group_text(svg, 'decoration-maximized-top'))
+
     def test_shadow_like_labwcs(self):
         """A soft drop shadow round the frame, as labwc's (60 px at 38 % in front, 40 px at 25 % behind, no offset),
         in Aurorae's padding; the rounded corners still fit."""
@@ -380,16 +434,21 @@ class Frames(unittest.TestCase):
             files = ha.build(self.cols, radius)
             parts = self._parts(files['decoration.svg'])
             for pre in ('decoration-', 'decoration-inactive-'):
-                self.assertEqual(parts[pre + 'topleft'][2:], (P + R, P + ha.TITLE_H), (pre, radius))
-                self.assertEqual(parts[pre + 'topright'][2:], (P + R, P + ha.TITLE_H))
+                self.assertEqual(parts[pre + 'topright'][2:], (max(R, ha.SIDE) + P, P + ha.TITLE_H))
                 self.assertEqual(parts[pre + 'top'][3], P + ha.TITLE_H)
-                self.assertEqual(parts[pre + 'left'][2], P + R)
-                self.assertEqual(parts[pre + 'right'][2], P + R)
-                self.assertEqual(parts[pre + 'bottom'][3], P + ha.BORDER)
-                self.assertEqual(parts[pre + 'bottomleft'][2:], (P + R, P + ha.BORDER))
-                self.assertEqual(parts[pre + 'bottomright'][2:], (P + R, P + ha.BORDER))
-            # The rounded corner is still there (an arc of the radius in the title colour).
+                K, RB = max(R, ha.SIDE), min(radius, ha.BOTTOM_R_MAX)
+                KB = max(RB, ha.SIDE)
+                self.assertEqual(parts[pre + 'topleft'][2:], (P + K, P + ha.TITLE_H), (pre, radius))
+                self.assertEqual(parts[pre + 'left'][2], P + K)
+                self.assertEqual(parts[pre + 'right'][2], P + K)
+                self.assertEqual(parts[pre + 'bottom'][3], P + KB)
+                self.assertEqual(parts[pre + 'bottomleft'][2:], (P + K, P + KB))
+                self.assertEqual(parts[pre + 'bottomright'][2:], (P + K, P + KB))
+            # The rounded corners are still there (an arc of the radius in the title colour), the bottom ones too.
             self.assertIn('A %d %d 0 0 1' % (R, R), files['decoration.svg'])
+            if RB:
+                self.assertIn('A %d %d 0 0 1' % (RB, RB), self._group_text(files['decoration.svg'], 'decoration-bottomleft'))
+                self.assertIn('A %d %d 0 0 1' % (RB, RB), self._group_text(files['decoration.svg'], 'decoration-inactive-bottomright'))
             # Nothing reaches past its part (no strokes, every rect inside its part's size): KSvg would shrink the part
             # and leave a light seam where it meets the next one.
             self.assertNotIn('stroke', files['decoration.svg'])
