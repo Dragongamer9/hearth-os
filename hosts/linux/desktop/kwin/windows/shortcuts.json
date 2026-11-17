@@ -327,10 +327,10 @@
   },
   {
    "id": "screenshot-region-2",
-   "title": "Screenshot of an area (Super+Shift+S)",
+   "title": "Hearth Capture: an area (Super+Shift+S)",
    "keys": "Meta+Shift+S",
    "labwc": "W-S-s",
-   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh screenshot-region'"
+   "run": "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh capture-region'"
   },
   {
    "id": "screenshot-clipboard",
