@@ -1,8 +1,7 @@
 # Mantel on KWin: the window list (docs: desktop/kwin/windows/hearth-windows.js and desktop/shell/hearth-kwin-bridge).
 #   1. checks: the bridge's and the script's tests (test_kwin_windows.py: shortcuts the same as labwc's, the script run
 #      against a pretend KWin), the script's JavaScript.
-#   2. end to end (tools/e2e-kwin-windows.py): KWin on a virtual screen (inside a headless labwc, like the Plasma test,
-#      so grim takes the pictures) with Hearth's KWin defaults, Mantel started with HEARTH_WM=kwin, two test windows:
+#   2. end to end (tools/e2e-kwin-windows.py): KWin on a virtual screen with Hearth's KWin defaults, Mantel started with HEARTH_WM=kwin, two test windows:
 #      the list, minimize/activate/maximize, snapping and Super+arrows, desktops, Super+Z, the bridge restarting, KWin's
 #      window menu. Small copies of the pictures are notices (SHOT ...), the full ones in the kwin-windows artifact.
 # Failures are ::error:: annotations (logs can't always be read).
@@ -25,15 +24,15 @@ jobs:
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:44
     steps:
-      - name: Install KWin, labwc, Quickshell and the checking tools
+      - name: Install KWin, Quickshell and the checking tools
         run: |
-          dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin labwc grim wlr-randr \
+          dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
             foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
-            hicolor-icon-theme ImageMagick wl-clipboard libnotify >/dev/null
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-dbus python3-pillow >/dev/null
           dnf -y install rsms-inter-fonts >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
-          for b in kwin_wayland labwc quickshell foot grim; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          for b in kwin_wayland quickshell foot; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
           kwin_wayland --version || true; quickshell --version || true
 
       - uses: actions/checkout@v4
@@ -66,36 +65,42 @@ jobs:
           export NIMBUS_SHARE="$PWD/hosts/linux" QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
           # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
-          # A headless labwc holds KWin as a 1920x1080 window, so grim takes the pictures (as in the Plasma test).
-          mkdir -p "$HOME/.config/labwc"
-          printf '<labwc_config><keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard></labwc_config>\n' > "$HOME/.config/labwc/rc.xml"
-          # GL in the outer labwc too (Mesa's software GL), so it can show KWin's GL buffers: with pixman the nested KWin
-          # came out black in the pictures. pixman if that doesn't start.
-          WLR_BACKENDS=headless WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/outer.log 2>&1 &
-          for i in $(seq 1 15); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
-          if ! ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1; then
-            echo "::warning title=pictures::the outer labwc didn't start with GL: $(tail -3 shots/outer.log | tr '\n' '|' | cut -c1-300)"
-            pkill labwc; sleep 1
-            WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/outer.log 2>&1 &
-            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
-          fi
-          OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
-          WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
-          # Hearth's KWin defaults (four desktops, Super on its own, Mantel's keys freed) the way the session gives them.
-          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg"
-          if [ -n "$OUTER" ]; then
-            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
-          else
-            /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
-          fi
+          # KWin on its own virtual screen (not nested in a labwc: there it never showed a frame, so apps never drew
+          # again after a resize), with Hearth's KWin defaults (four desktops, Super on its own, Mantel's keys freed)
+          # the way the session gives them. Pictures through KWin's screenshot API.
+          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
           for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
           [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
-          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
-          # Pictures with grim from the outer labwc; one that comes out black is said (KWin's own screenshot API isn't
-          # used: it took KWin down here once).
-          printf '%s\n' '#!/bin/bash' "WAYLAND_DISPLAY=$OUTER grim \"shots/\$1.png\" 2>>shots/shot-errors.txt || { echo \"::warning title=picture::\$1 not taken\"; exit 0; }" \
+          cat > /tmp/shot.py <<'PY'
+          import dbus, os, sys
+          from PIL import Image
+          i = dbus.Interface(dbus.SessionBus().get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
+          r, w = os.pipe()
+          res = None
+          for how in ('CaptureActiveScreen', 'CaptureWorkspace'):
+              try:
+                  res = getattr(i, how)({'native-resolution': True}, dbus.types.UnixFd(w), timeout=15)
+                  break
+              except dbus.exceptions.DBusException as e:
+                  print(how, str(e)[:200], file=sys.stderr)
+          os.close(w)
+          if res is None:
+              sys.exit(1)
+          data = b''
+          while True:
+              c = os.read(r, 1 << 20)
+              if not c:
+                  break
+              data += c
+          W, H, S = int(res['width']), int(res['height']), int(res['stride'])
+          Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
+          PY
+          sed -i 's/^          //' /tmp/shot.py
+          printf '%s\n' '#!/bin/bash' 'timeout 25 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || echo "::warning title=picture::$1 not taken"' \
             'm=$(convert "shots/$1.png" -format "%[fx:mean]" info: 2>/dev/null); awk -v m="${m:-1}" "BEGIN{exit !(m < 0.01)}" && echo "::warning title=picture::$1 came out black"' \
             'pgrep -f /tmp/kwin_wayland >/dev/null || echo "::error title=KWin::KWin is not running any more (after the picture $1)"; exit 0' > /tmp/shot.sh
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
           quickshell -p "$NIMBUS_SHARE/desktop/shell" >shots/shell.log 2>&1 &
           sleep 12
           timeout 300 python3 tools/e2e-kwin-windows.py "$NIMBUS_SHARE/desktop/shell" shots 'bash /tmp/shot.sh "$1"' > shots/e2e.log 2>&1
@@ -108,13 +113,10 @@ jobs:
           grep -iE "hearthwindows|script" shots/kwin.log | head -10 | while IFS= read -r l; do echo "::warning title=KWin log::$(echo "$l" | cut -c1-300)"; done
           grep -E "ERROR|TypeError|ReferenceError" shots/shell.log | grep -iE "WinList|DeskSwitcher|SnapLayouts|Bar.qml|Dock.qml|TaskStrip" | head -8 | while IFS= read -r l; do echo "::error title=shell::$(echo "$l" | cut -c1-300)"; done
           pgrep -f /tmp/kwin_wayland >/dev/null || tail -12 shots/kwin.log | while IFS= read -r l; do echo "::warning title=KWin log (it stopped)::$(echo "$l" | cut -c1-300)"; done
-          pkill -f quickshell; pkill -f /tmp/kwin_wayland; pkill labwc; pkill dbus-daemon
+          pkill -f quickshell; pkill -f /tmp/kwin_wayland; pkill dbus-daemon
           exit $rc
 
       # Small copies of the pictures as notices (artifacts can't be read from here), one step each.
-      - name: Picture (taskbar)
-        if: always()
-        run: f=shots/kwin-taskbar.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-taskbar $i::$part"; done || true
       - name: Picture (halves)
         if: always()
         run: f=shots/kwin-halves.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-halves $i::$part"; done || true
