@@ -15,8 +15,8 @@ Scope {
     readonly property string mark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-apps-restored"
     readonly property var skip: /^(steam|steam_app_.*|steamwebhelper|nimbus|hearth|org\.hearthos\..*|gamescope.*|quickshell)$/i
 
-    // The open windows: WinList's (KWin or labwc, feature/kwin-windows) when this shell has it, else ToplevelManager's.
-    readonly property var wins: (typeof WinList !== "undefined" && WinList && WinList.toplevels) ? WinList.toplevels.values : ToplevelManager.toplevels.values
+    // The open windows: WinList's (KWin's through the bridge, labwc's otherwise).
+    readonly property var wins: WinList.toplevels.values
     // The .desktop ids of the apps open now (Hearth's own windows and games left out).
     readonly property var openIds: {
         const out = [];
