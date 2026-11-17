@@ -328,7 +328,8 @@ jobs:
           grep -iE "notif|NotificationServer|Notifications.qml" shots/shell.log | head -8 | while IFS= read -r l; do echo "::warning title=shell log (KWin)::$(echo "$l" | cut -c1-300)"; done
           notify-send -a "Hearth Photos" -A open=Open "Your holiday album is ready" "214 photos from Lisbon" 2>shots/notify-send.err &
           sleep 2; [ -s shots/notify-send.err ] && echo "::warning title=notify-send::$(head -c 300 shots/notify-send.err)"
-          timeout 10 notify-send -a "Steam" "Friend online" "Alex is now playing Hollow Pines"; echo "::notice title=notify-send on KWin::exit $? · $(q notify state | head -c 160)"
+          timeout 10 notify-send -a "Steam" "Friend online" "Alex is now playing Hollow Pines" 2>/tmp/ns.err; echo "::notice title=notify-send on KWin::exit $? $(head -c 300 /tmp/ns.err | tr '\n' ' ') · $(q notify state | head -c 160)"
+          echo "::notice title=Notify on KWin::$(gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify Steam 0 '' 'Friend online' 'Alex is playing' '[]' '{}' 5000 2>&1 | head -c 300)"
           grep -nE "Notifications.qml|DeskState.qml|NotifyHub.qml|NotifyRules.qml|Sounds.qml" shots/shell.log | grep -vE "Read of .* failed" | tail -6 | while IFS= read -r l; do echo "::warning title=shell log after notify-send (KWin)::$(echo "$l" | cut -c1-300)"; done
           python3 "$SH/hearth-notifyd" test-job "Copying holiday photos" 60 &
           sleep 3
