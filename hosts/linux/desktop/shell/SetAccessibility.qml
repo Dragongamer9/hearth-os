@@ -149,8 +149,9 @@ SetPage {
     SetSlider {
         visible: page.onKwin && ["protanopia", "deuteranopia", "tritanopia", "grayscale"].indexOf(page.s.filter) >= 0
         icon: "palette"; title: "How strong"
-        value: kw.n("kwinrc", "Effect-colorblindnesscorrection", "Intensity", 1)
-        onMoved: v => kw.set("kwinrc", "Effect-colorblindnesscorrection", "Intensity", Math.max(0.1, Math.round(v * 20) / 20))
+        value: page.s.filterStrength === undefined ? 1 : page.s.filterStrength
+        valueText: Math.round(value * 100) + "%"
+        onMoved: v => page.change({ filterStrength: Math.max(0.1, Math.round(v * 20) / 20) })
     }
     Text {
         Layout.fillWidth: true; Layout.leftMargin: 4

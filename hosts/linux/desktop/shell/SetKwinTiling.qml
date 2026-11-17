@@ -60,7 +60,8 @@ SetPage {
             icon: "display"; title: "Screen"
             options: page.outs.map((o, i) => ({ value: i, label: o.name || o.model }))
             current: page.pick
-            onChosen: v => page.pick = v
+            // A change still waiting goes to the screen it was made for before another is shown.
+            onChosen: v => { if (save.running) { save.stop(); save.triggered(); } if (gap.running) { gap.stop(); gap.triggered(); } page.pick = v; }
         }
         Text {
             visible: page.outs.length === 0 && kw.ready
@@ -166,11 +167,11 @@ SetPage {
         }
         SetSlider {
             icon: "grid"; title: "Gap between tiles"
-            value: page.padding / 32
-            step: 1 / 32
+            value: page.padding / 64
+            step: 1 / 64
             valueText: Math.round(page.padding) + " px"
             onMoved: v => {
-                page.padding = Math.round(v * 32);
+                page.padding = Math.round(v * 64);
                 gap.restart();
             }
             Timer { id: gap; interval: 600; onTriggered: if (page.out) kw.job.run(["tiles-set", page.out.uuid, page.out.name || "-"], () => {}, e => kw.say(e, true), JSON.stringify({ padding: page.padding }), "save") }

@@ -49,7 +49,7 @@ ALLOWED = {
     'kwinrc': {'Plugins', 'Windows', 'ElectricBorders', 'TouchEdges', 'EdgeBarrier', 'ScreenEdges', 'Compositing',
                'TabBox', 'Desktops', 'Tiling', 'Xwayland', 'Wayland'} | {'Effect-' + e for e in (
                    'blur', 'translucency', 'wobblywindows', 'diminactive', 'slide', 'shakecursor', 'mouseclick',
-                   'trackmouse', 'zoom', 'magnifier', 'colorblindnesscorrection', 'overview', 'windowview', 'glide',
+                   'trackmouse', 'zoom', 'magnifier', 'overview', 'windowview', 'glide',
                    'magiclamp', 'hidecursor', 'fallapart', 'sheet', 'mousemark', 'thumbnailaside')} | {
                    'Script-desktopchangeosd'},
     'kdeglobals': {'KDE', 'KScreen'},
@@ -279,6 +279,11 @@ def get_all_files():
     return {'files': files, 'mine': mine, 'locked': locked, 'bad': bad}
 
 
+# Settings whose one home is Settings › Accessibility (accessibility.json, applied by hearth-access): the generic `set`
+# refuses them, so they're changed from one place only.
+OWNED = {'kwinrc': {'Plugins': {'colorblindnesscorrectionEnabled', 'invertEnabled', 'zoomEnabled', 'magnifierEnabled'},
+                    'Effect-zoom': {'ZoomFactor'}, 'Effect-magnifier': {'InitialZoom', 'Width', 'Height'}}}
+
 NESTED = {'Tiling', 'ButtonRebinds'}     # groups whose subgroups the pages change ([Tiling][<screen>])
 
 
@@ -300,10 +305,13 @@ def set_file(name, raw):
     for g in changes:
         if not allowed(name, g):
             raise Fail('[%s] in %s is not a setting Hearth changes' % (g, name))
+        own = set(changes[g]) & OWNED.get(name, {}).get(g, set())
+        if own:
+            raise Fail('%s: changed in Settings › Accessibility' % ', '.join(sorted(own)))
     _, _, locked = kc.effective(name)
     for g, kv in changes.items():
         for k in kv:
-            if k in locked.get(g, []):
+            if k in locked.get(g, []) or '*' in locked.get(g, []):
                 raise Fail('%s is locked by the system (%s [%s])' % (k, name, g))
     write_changes(name, changes)
     out = get_all_files()
@@ -311,9 +319,20 @@ def set_file(name, raw):
     return out
 
 
+KDE_MARK = '# Written by Hearth (Settings > Appearance); delete this line to keep your own settings.'
+
+
 def write_changes(name, changes, remove_groups=()):
+    path = kc.user_path(name)
+    if name == 'kdeglobals' and not os.path.exists(path):
+        # A kdeglobals Hearth starts carries hearth-theme's mark, so the look's colours still go in (merged, as here).
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        hsio.write_text(path, KDE_MARK + '\n')
     try:
         changed = kc.update(kc.user_path(name), changes, remove_groups)
+    except kc.Locked as e:
+        hsio.notice('kwin-locked:%s' % name, "%s: %s, so Hearth didn't change it. Whoever set this PC up locked it." % (name, e))
+        raise Fail('%s: %s, so it wasn\'t changed' % (name, e))
     except kc.BadFile as e:
         hsio.notice('kwin-bad:%s' % name, "Your %s couldn't be read, so Hearth didn't change it (%s). Nothing was "
                     'lost: the file is as it was.' % (name, e))

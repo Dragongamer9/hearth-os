@@ -34,6 +34,10 @@ class BadFile(Exception):
     """The file couldn't be read as an INI file: it is left exactly as it is."""
 
 
+class Locked(Exception):
+    """A group the change is for is marked [$i] (immutable) in the file: KDE wouldn't use a change, so none is made."""
+
+
 def config_home():
     return os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
 
@@ -111,6 +115,13 @@ def to_text(value):
     if isinstance(value, (list, tuple)):
         return ','.join(to_text(x).replace(',', '\\,') for x in value)
     return str(value)
+
+
+def line_value(value):
+    """The text after KEY= for a JSON value: escaped (escape()) once; a list's items each escaped, then their commas."""
+    if isinstance(value, (list, tuple)):
+        return ','.join(escape(to_text(x)).replace(',', '\\,') for x in value)
+    return escape(to_text(value))
 
 
 def parse(text):
@@ -204,7 +215,12 @@ def merge_text(text, changes, remove_groups=()):
         for k in kv:
             if not isinstance(k, str) or not KEY_RE.match(k):
                 raise ValueError('bad key name %r' % (k,))
+    nl = '\r\n' if '\r\n' in text else '\n'     # a file written with CRLF keeps them
     lines = text.splitlines()
+    for line in lines:
+        h = _HEADER.match(line)
+        if h and h.group(1).endswith('][$i') and h.group(1)[:-4] in changes:
+            raise Locked('[%s] is locked ([$i]) in this file' % h.group(1)[:-4])
     # Where each group's blocks and keys are.
     group = DEFAULT_GROUP
     blocks = {}          # group -> [(start, end)] of its line ranges (start = header line or 0)
@@ -237,9 +253,11 @@ def merge_text(text, changes, remove_groups=()):
             if k in found:
                 i = found[k][-1]
                 e = _split(lines[i])
-                replace[i] = '%s%s=%s' % (k, e[1], escape(to_text(v)))
+                if '[$i]' in e[1]:
+                    raise Locked('%s in [%s] is locked ([$i]) in this file' % (k, g))
+                replace[i] = '%s%s=%s' % (k, e[1], line_value(v))
             else:
-                new_keys.append('%s=%s' % (k, escape(to_text(v))))
+                new_keys.append('%s=%s' % (k, line_value(v)))
         if not new_keys:
             continue
         if g in blocks and not (g == DEFAULT_GROUP and blocks[g] == [(0, 0)]):
@@ -271,7 +289,7 @@ def merge_text(text, changes, remove_groups=()):
         out.extend(keys)
     while out and not out[-1].strip() and lines and lines[-1].strip():
         out.pop()
-    return '\n'.join(out) + ('\n' if out else '')
+    return nl.join(out) + (nl if out else '')
 
 
 @contextlib.contextmanager
@@ -327,13 +345,21 @@ def update(path, changes, remove_groups=()):
     Returns True when the file changed. A file that can't be read is left as it is (BadFile)."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     changed = []
+    # hearth_settings_io reads text with universal newlines: a file written with CRLF is written back with CRLF.
+    try:
+        with open(path, 'rb') as f:
+            crlf = b'\r\n' in f.read()
+    except OSError:
+        crlf = False
 
     def change(text):
         if text and any('\udc80' <= ch <= '\udcff' for ch in text):
             raise BadFile('%s is not UTF-8 text' % os.path.basename(path))
         new = merge_text(text, changes, remove_groups)
         changed.append(new != text)
-        return new
+        if not changed[-1]:
+            return text
+        return new.replace('\n', '\r\n') if crlf else new
 
     with kde_lock(path):
         hsio.update_text(path, change)
