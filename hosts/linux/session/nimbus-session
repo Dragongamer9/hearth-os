@@ -415,7 +415,15 @@ desk_fails_add() { desk_fails_set "$1" $(( $(desk_fails "$1") + 1 )); }
 desk_fails_reset() { [ "$(desk_fails "$1")" -gt 0 ] && desk_fails_set "$1" 0; return 0; }
 # One line per <what> (a new one replaces that one's line and keeps the others: "KDE was retired" and "KWin didn't
 # start" can both be waiting).
-desk_notice() { mkdir -p "$DESK_STATE"; { grep -v "^$1 " "$DESK_STATE/desktop-notice" 2>/dev/null; printf '%s %s %s\n' "$1" "$2" "$(date +%s)"; } >"$DESK_STATE/desktop-notice.tmp" && mv -f "$DESK_STATE/desktop-notice.tmp" "$DESK_STATE/desktop-notice"; }
+# Read, change and write under the notice file's lock (.desktop-notice.lock, the same one hearth-your-desktop takes
+# through hearth_settings_io.locked), so a notice written here and one Mantel is marking as shown can't lose each
+# other. Without flock (or if it can't get the lock in 5 s) it writes anyway: a notice is never dropped for that.
+desk_notice_write() { { grep -v "^$1 " "$DESK_STATE/desktop-notice" 2>/dev/null; printf '%s %s %s\n' "$1" "$2" "$(date +%s)"; } >"$DESK_STATE/desktop-notice.tmp.$$" && mv -f "$DESK_STATE/desktop-notice.tmp.$$" "$DESK_STATE/desktop-notice"; }
+desk_notice() {
+  mkdir -p "$DESK_STATE"
+  if have flock; then { flock -w 5 9 2>/dev/null; desk_notice_write "$1" "$2"; } 9>>"$DESK_STATE/.desktop-notice.lock"
+  else desk_notice_write "$1" "$2"; fi
+}
 # A process of this user by that name that's really running (not a zombie left by one that ended).
 alive() {
   for p in $(pgrep -u "$(id -u)" -x "$1" 2>/dev/null); do
