@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       shots:
-        description: 'Up to 4 screenshots to put on the run as notices (small copies), e.g. ring,clock,calendar,notes or acct-conflict,acct-month,acct-editor,acct-week'
+        description: 'Up to 4 screenshots to put on the run as notices (small copies), e.g. ring,clock,calendar,notes or acct-conflict,acct-month,acct-agenda,acct-editor'
         type: string
         default: ''
 
@@ -206,7 +206,8 @@ jobs:
           xdotool windowmove "$w" 0 0 windowsize "$w" 1920 1080 2>/dev/null || true
           xdotool windowactivate --sync "$w" 2>/dev/null || true
           sleep 3; shot acct-conflict
-          xdotool key Escape; sleep 2; shot acct-month
+          xdotool key Escape; sleep 1; xdotool key m; sleep 2; shot acct-month
+          xdotool key a; sleep 2; shot acct-agenda
           xdotool key w; sleep 2; shot acct-week
           xdotool key n; sleep 2; shot acct-editor
           pkill -f 'hearth-time --app calendar' || true

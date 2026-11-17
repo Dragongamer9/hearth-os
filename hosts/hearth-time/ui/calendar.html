@@ -69,7 +69,8 @@ main.full { grid-template-columns:1fr; }
 .sub .dot { width:.9em; height:.9em; border-radius:50%; background:var(--c); grid-row:span 2; }
 .sub .e { color:var(--danger); font-size:.8em; grid-column:2 / 4; }
 .files { display:flex; flex-direction:column; gap:.4em; max-height:40vh; overflow:auto; padding:3px; }
-.ev .st { color:var(--muted); font-size:.75em; font-weight:500; }
+.ev .st { grid-column:2; color:var(--muted); font-size:.75em; font-weight:500; }
+.ev:has(.st) .bar { grid-row:span 4; }
 .ev.conflict { border-color:var(--danger); }
 .ev.conflict .st { color:var(--danger); }
 .pill.conflict { outline:2px solid var(--danger); outline-offset:-2px; }
@@ -660,7 +661,7 @@ window.DEMO = (() => {
       }
       for (const s of starts) {
         const a = s.getTime(), b = a + len;
-        if (a < to && b > from) out.push({ id: e.id, sync: e.sync || '', calendar: e.calendar, title: e.title, location: e.location, notes: e.notes, allDay: e.allDay, start: a, end: b, date: ymd(s), lastDate: ymd(new Date(b - (e.allDay ? 86400000 : 1))), occ: iso(s, e.allDay), recurring: !!e.rrule, readOnly: e.calendar !== 'local', color: e.color || '', reminders: e.reminders });
+        if (a < to && b > from) out.push({ id: e.id, sync: e.sync || '', calendar: e.calendar, title: e.title, location: e.location, notes: e.notes, allDay: e.allDay, start: a, end: b, date: ymd(s), lastDate: ymd(new Date(b - (e.allDay ? 86400000 : 1))), occ: iso(s, e.allDay), recurring: !!e.rrule, readOnly: e.calendar !== 'local' && !e.calendar.startsWith('acct-'), color: e.color || '', reminders: e.reminders });
       }
     }
     return out.sort((x, y) => x.start - y.start);
