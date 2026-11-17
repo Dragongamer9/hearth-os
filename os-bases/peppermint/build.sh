@@ -249,7 +249,7 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 #                        KDE's portal (optional; not picked for ScreenCast or RemoteDesktop: hearth-portals.conf
 #                        names Hearth's own. In 1.14 Remote desktop (hearth-vnc) types and clicks under KWin through its
 #                        uinput fallback; a RemoteDesktop in Hearth's portal backend comes later)
-#   libkf6screen-bin / kscreen
+#   libkscreen-bin / kscreen
 #                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
@@ -266,15 +266,17 @@ if ! command -v kwin_wayland >/dev/null; then
 fi
 # Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
 # falls back to Breeze's frames (still works, just not Hearth's look).
-optional aurorae
+# Debian packages it as kwin-style-aurorae (the source is aurorae).
+if have_pkg kwin-style-aurorae; then optional kwin-style-aurorae; else optional aurorae; fi
 [ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
   || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
 # KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
 # (org.kde.milou): without it they don't open (Present windows still does).
 optional milou
-if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
-command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
+# kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
+if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
+command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkscreen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
 # Capture says so when they're missing
 optional tesseract-ocr tesseract-ocr-eng zbar-tools
