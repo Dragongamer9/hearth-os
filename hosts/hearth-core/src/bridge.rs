@@ -421,7 +421,10 @@ impl Bridge {
                 "deviceId": counter_device_id(),
                 "live": std::path::Path::new("/etc/hearth-live").exists(),
                 "installer": std::path::Path::new("/etc/hearth-installer").exists(),
-                "features": features(), "setupDone": self.setup_done(),
+                // A pre-installed PC's stand-in account (hearth-oem-account): setup asks for your name, password and time
+                // zone, and comes back (even after Skip) until that's done.
+                "features": features(), "setupDone": self.setup_done() && !crate::admin::oem_pending(),
+                "oemSetup": crate::admin::oem_pending(),
                 "openInstaller": std::path::Path::new("/etc/hearth-live").exists() && crate::osinstall::handoff(false),
             })),
             "library.get" => {
@@ -1498,6 +1501,8 @@ impl Bridge {
             "bt.autoPads" => { system::bt_scan::auto_pads(a["on"].as_bool().unwrap_or(false), self.emit.clone()); Ok(Value::Null) }
             "buttons.get" => Ok(self.button_prefs()),
             "buttons.set" => self.set_button_prefs(a),
+            // First-time setup on a pre-installed PC: your name, password and time zone (hearth-admin oem-finish).
+            "setup.oemFinish" => crate::admin::run(&["oem-finish"], Some(&format!("{}\n", json!({"full": a["full"], "password": a["password"], "nopassword": a["nopassword"] == true, "timezone": a["timezone"]}))), &mut |_| {}),
             "setup.done" => io(self.library.store.update(|d| { d.insert("setupDone".into(), json!(now_ms())); })).map(|_| json!({"ok": true})),
             // Hearth Input: controller layouts for games without controller support (input_map.rs)
             m if m.starts_with("input.") => crate::input_map::call(m, a, self.library.running_id()),

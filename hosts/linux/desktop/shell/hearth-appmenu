@@ -69,8 +69,11 @@ def recent(limit=40, path=None):
         sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
         import hearth_files_extras as hx
         rprefs = hx.recent_prefs()
+        aconf = hx.activities_conf()                    # Activities: each one's own recent files (1.14)
+        spans = hx.activity_spans() if aconf['many'] else []
     except ImportError:
-        hx = rprefs = None
+        hx = rprefs = aconf = None
+        spans = []
     for b in root.findall('bookmark'):
         href = b.get('href') or ''
         if not href.startswith('file://'):
@@ -89,7 +92,7 @@ def recent(limit=40, path=None):
                 if prog and prog not in execs:
                     execs.append(prog)
         t = max(when(b.get('visited')), when(b.get('modified')), when(b.get('added')))
-        if rprefs is not None and not hx.recent_allowed(rprefs, p, apps, t / 1000 if t else 0):
+        if rprefs is not None and not hx.recent_visible(rprefs, p, apps, t / 1000 if t else 0, aconf, spans):
             continue
         out.append({'path': p, 'name': os.path.basename(p) or p, 'folder': folder_label(os.path.dirname(p)),
                     'when': t, 'apps': apps, 'execs': execs, 'dir': os.path.isdir(p)})

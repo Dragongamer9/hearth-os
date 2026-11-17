@@ -542,7 +542,7 @@ class Mantel(unittest.TestCase):
         for bad in ('/etc/passwd', os.path.join(self.home, 'Media', '.hidden'), os.path.join(self.home, 'Games'), self.home):
             with self.assertRaises(hs.Fail, msg=bad):
                 hs.link_add({'path': bad})
-        r = hs.link_add({'path': f, 'for': 'Mom', 'days': 7, 'password': 'secret1'})
+        r = hs.link_add({'path': f, 'for': 'Sam', 'days': 7, 'password': 'secret1'})
         text = open(hs.SETTINGS).read()
         self.assertNotIn(r['token'], text)
         self.assertNotIn('secret1', text)
@@ -551,7 +551,7 @@ class Mantel(unittest.TestCase):
         self.assertEqual(sec[r['id']]['token'], r['token'])
         self.assertTrue(hs.pw_check('secret1', sec[r['id']]['hash']))
         self.assertEqual(stat.S_IMODE(os.stat(hs.LINKS_STATE).st_mode), 0o600)
-        self.assertEqual(json.load(open(hs.SETTINGS))['links'][0]['for'], 'Mom')
+        self.assertEqual(json.load(open(hs.SETTINGS))['links'][0]['for'], 'Sam')
         with self.assertRaises(hs.Fail):
             hs.link_add({'path': f, 'days': 3})
         hs.link_remove(r['id'])
