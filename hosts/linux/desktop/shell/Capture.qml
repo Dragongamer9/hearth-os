@@ -6,7 +6,7 @@
 //   text (tesseract) or a QR code (zbarimg). Recent: the pictures saved lately. Record: the screen recorder
 //   (hearth-record, else Hearth Recorder), when one is installed.
 // The picture itself is taken by hearth-capture-helper's grab() (hearth-screens when installed, KWin's ScreenShot2
-// under KWin, grim on labwc). Opened from the app menu (hearth-screenshot.desktop, "Capture"), `hearth-capture`,
+// under KWin, grim on labwc). Opened from the app menu (hearth-capture.desktop, "Capture"), `hearth-capture`,
 // open.sh capture / capture-region, or:
 //   quickshell ipc -p <shell folder> call capture open | close | toggle | take <all|screen|window|area> | recent
 // Opening it writes nothing. Your choices (mode, delay, pointer) are kept in ~/.config/nimbus/capture.json through
@@ -109,8 +109,15 @@ Scope {
         shown = true;
         loadTools();
         loadRecent();
+        run(["clean"]);        // the editor's own temporary pictures (in RAM, $XDG_RUNTIME_DIR) older than a day
     }
-    function close() { if (phase === "") shown = false; }
+    function close() { if (phase === "") { shown = false; run(["clean"]); } }
+    // The helper never answered (it didn't start, or hung): Capture can be opened again rather than stay hidden.
+    Timer {
+        interval: 45000
+        running: cap.phase === "grab"
+        onTriggered: cap.failed("Taking the picture didn't finish. Try again.")
+    }
 
     // ------------------------------------------------ taking a picture
     function take(m) {

@@ -89,24 +89,26 @@ Item {
     // ------------------------------------------------ saving: the picture drawn 1:1 on outC, as a PNG
     property var exporting: null
     property string exportError: ""
-    function exportTo(cb) {
+    function exportTo(cb, mime) {
         if (!ready || imgW <= 0) { cb(""); return; }
         const v = crop || full;
-        exporting = { cb: cb, v: v };
+        exporting = { cb: cb, v: v, mime: mime || "image/png" };
         outC.width = v.w; outC.height = v.h;
         outC.canvasSize = Qt.size(v.w, v.h);
         if (outC.isImageLoaded(url)) outC.requestPaint(); else outC.loadImage(url);
     }
-    function finished(cb) {
-        // The picture as it is now (a PNG from the canvas), written by the helper to a new file of its own (its
-        // temporary folder): the picture taken is never changed.
+    function finished(cb, mime) {
+        // The picture as it is now (a PNG, or a JPEG / WEBP for Save as, from the canvas), written by the helper to a new
+        // file of its own (its temporary folder): the picture taken is never changed.
         busy = true;
         exportTo(d => {
             const b64 = d.indexOf("base64,") >= 0 ? d.slice(d.indexOf("base64,") + 7) : "";
             if (b64.length < 64) { busy = false; exportError = "the canvas gave no picture (" + d.length + ")"; cb(""); return; }
             cap.run(["put"], j => { busy = false; if (!j.ok) exportError = j.error || "put failed"; cb(j.ok ? j.path : ""); }, b64);
-        });
+        }, mime);
     }
+    // The kind of picture a Save as name asks for, by its ending (no ending: PNG, added by the helper).
+    function mimeFor(path) { const e = (/\.([a-z]+)$/i.exec(path) || ["", "png"])[1].toLowerCase(); return e === "jpg" || e === "jpeg" ? "image/jpeg" : e === "webp" ? "image/webp" : "image/png"; }
     function saveAndCopy() {
         finished(p => {
             if (!p) { say("Couldn't make the picture"); return; }
@@ -127,14 +129,16 @@ Item {
     function saveAs(replace) {
         const to = saveAsPath.trim();
         if (to === "") return;
+        const mime = mimeFor(to);
         finished(p => {
-            if (!p) return;
+            if (!p) { say(mime === "image/png" ? "Couldn't make the picture" : "This PC can't save " + mime.slice(6).toUpperCase() + " pictures here: try .png or .jpg"); return; }
             cap.run(["save", p, "--to", to].concat(replace ? ["--replace"] : []), j => {
                 if (j.exists) { saveAsExists = true; say(j.error); return; }
+                if (j.kind && !j.ok) { say("This PC can't save " + j.kind.toUpperCase() + " pictures here: try .png or .jpg"); return; }
                 if (!j.ok) { say(j.error || "Couldn't save it"); return; }
                 lastSaved = j.path; cap.saved(j.path); panel = ""; say("Saved as " + j.name);
             });
-        });
+        }, mime);
     }
     function showFolder() {
         if (lastSaved !== "") { cap.run(["folder", lastSaved]); return; }
@@ -512,7 +516,7 @@ Item {
                 if (!e || !drawn) return;
                 ed.exporting = null;
                 drawn = false;
-                e.cb(toDataURL("image/png"));
+                e.cb(toDataURL(e.mime));
             }
         }
     }

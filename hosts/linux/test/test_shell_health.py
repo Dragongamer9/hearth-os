@@ -40,7 +40,8 @@ class Qml(unittest.TestCase):
     def test_refreshes_only_while_nobody_is_looking(self):
         q = open(os.path.join(SHELL, 'ShellHealth.qml')).read()
         self.assertIn('DeskState.screenOff || DeskState.locked', q)
-        self.assertRegex(q, r'if \(inUse \|\| DeskState.overlayShown\) return;')
+        # 1.14: nor while Hearth Capture is open or a password prompt is up (a refresh would cancel the request).
+        self.assertIn('if (inUse || DeskState.overlayShown || SettingsNav.captureOpen || SettingsNav.polkitShown) return;', q)
         shell = open(os.path.join(SHELL, 'shell.qml')).read()
         self.assertIn('item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown)', shell)
 

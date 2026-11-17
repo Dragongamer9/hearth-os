@@ -25,7 +25,11 @@ PanelWindow {
     property bool hasWtype: false
     property bool useWtype: true         // Hearth Plasma (osk-plasma.qml): KWin has no wtype, hearth-pad types
     property bool settingsLoaded: false
-    property string typedLog: ""         // the last things typed (for the Desktop Mode test)
+    property string typedLog: ""         // the last things typed (for the Desktop Mode test; never in password mode)
+    // "text", or "password" (1.14, Hearth's password prompt, PolkitPrompt.qml): the engine's password mode learns no words
+    // and suggests none, and nothing typed is kept here or shown over the "keyboard" IPC.
+    property string mode: "text"
+    readonly property bool secret: mode === "password"
     signal closeRequested()
 
     readonly property string home: Quickshell.env("HOME") || "/"
@@ -88,10 +92,11 @@ PanelWindow {
             }
         }
     }
-    function openKb() {
+    function openKb(m) {
+        mode = m === "password" ? "password" : "text";
         if (!clipList.running) clipList.running = true;
         if (!engine) makeEngine();
-        engine.reset("text", "");
+        engine.reset(mode, "");
         engine.setHints(true);
         open = true;
         typedLog = "";
@@ -120,8 +125,8 @@ PanelWindow {
     }
     function setSetting(key, value) { Osk.HearthOSK.setSetting(key, value === "true" ? true : value === "false" ? false : key === "layouts" ? value.split(",") : value); }
     function stateJson() {
-        return JSON.stringify({ open: open, wtype: hasWtype, typed: typedLog, panel: vm ? vm.panel : "", sel: vm ? vm.sel : null, layout: vm ? vm.layout : "",
-            suggestions: vm ? vm.suggestions : [], shift: vm ? vm.shift : false, popup: vm ? vm.popup : null, wheel: vm && vm.wheel ? vm.wheel.petal : -1,
+        return JSON.stringify({ open: open, mode: mode, wtype: hasWtype, typed: secret ? "" : typedLog, panel: vm ? vm.panel : "", sel: vm ? vm.sel : null, layout: vm ? vm.layout : "",
+            suggestions: vm && !secret ? vm.suggestions : [], shift: vm ? vm.shift : false, popup: vm ? vm.popup : null, wheel: vm && vm.wheel ? vm.wheel.petal : -1,
             words: Object.keys(wordsLoaded), height: implicitHeight });
     }
 
@@ -135,14 +140,14 @@ PanelWindow {
         return out;
     }
     function typeText(text, mods) {
-        typedLog = (typedLog + text).slice(-200);
+        if (!secret) typedLog = (typedLog + text).slice(-200);
         if (!hasWtype) { if (pad) pad.send({ cmd: "emit", text: text, mods: mods ? Object.keys(mods).filter(k => mods[k]) : [] }); return; }
         const args = modArgs(mods, true);
         if (args.length && text.length === 1 && /[a-z0-9]/i.test(text)) push(["wtype"].concat(args, [text.toLowerCase()], modArgs(mods, false)));
         else push(["wtype", "--", text]);
     }
     function typeKey(name, n, mods) {
-        if (name === "bksp") typedLog = typedLog.slice(0, Math.max(0, typedLog.length - (n || 1)));
+        if (name === "bksp" && !secret) typedLog = typedLog.slice(0, Math.max(0, typedLog.length - (n || 1)));
         if (!hasWtype) { if (pad) pad.send({ cmd: "key", key: name, n: n || 1, mods: mods ? Object.keys(mods).filter(k => mods[k]) : [] }); return; }
         if (name === "paste") return push(["wtype", "-M", "ctrl", "v", "-m", "ctrl"]);
         const k = wkeys[name]; if (!k) return;
