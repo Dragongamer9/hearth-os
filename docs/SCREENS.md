@@ -59,5 +59,12 @@ controller's screenshot), Hearth Paint, the Hearth app and hearth-core all use i
   wlr-randr.
 - `hearth-screen-power off|on|check` instead of wlopm.
 - `hearth-screenshot` instead of grim.
+- Capture: `$NIMBUS_SHARE/desktop/shell/hearth-screens grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE`.
+  MODE is `screen` (`--screen`: a name, or 1 for the first screen that's on; without it the active screen), `all`,
+  `window` (KWin's active window; under labwc only with `--geometry`, since labwc can't say which window is active) or
+  `area` (`--geometry`). Exit 3: no window to take. Under KWin it runs itself again through `hearth-shot-python`.
+- The Hearth app's Settings › Display (hearth-core `display.rs`, `hosts/linux/src/display.js`) goes through
+  `hearth-screens get` / `set` in Mantel's session (`HEARTH_WM` labwc or kwin), so it never writes `display.sh` or
+  `screens.json` itself there.
 - Tests: `hosts/linux/test/test_hearth_screens.py`. CI: Desktop Mode test (labwc) and its `kwin-screens` job (KWin
   with the real kscreen-doctor, Night Light, DPMS, and a screenshot with KWin's permission check on).

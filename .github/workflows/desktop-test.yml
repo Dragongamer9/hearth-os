@@ -2200,14 +2200,22 @@ jobs:
               from PIL import Image
           except ImportError:
               raise SystemExit(0)
+          from PIL import ImageStat
+          flat = []
           for p in sorted(glob.glob('shots/screens/*.png')):
               im = Image.open(p).convert('RGB')
-              print(p, im.size)
+              spread = max(ImageStat.Stat(im).stddev)
+              print(p, im.size, 'spread', round(spread, 1))
+              if spread < 6:      # (nearly) one colour: a black or empty picture never passes
+                  flat.append('%s (spread %.1f)' % (p, spread))
               for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
                   b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
                   if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
                       break
               open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+          if flat:
+              print('::error title=Screens: pictures::(nearly) one colour: ' + '; '.join(flat))
+              open('shots/screens/FLAT', 'w').write('flat pictures')
           PY
       - name: Picture (labwc-1-display-top)
         run: f=shots/screens/labwc-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-1-display-top $i::$part"; done || true
@@ -2217,6 +2225,8 @@ jobs:
         run: f=shots/screens/labwc-3-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-3-games-and-smoothness $i::$part"; done || true
       - name: Picture (labwc-4-scale-rotation-mirror)
         run: f=shots/screens/labwc-4-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT labwc-4-scale-rotation-mirror $i::$part"; done || true
+      - name: Fail if a picture is (nearly) one colour
+        run: test ! -e shots/screens/FLAT
 
   # Screens under KWin (Mantel on KWin, 1.14, docs/SCREENS.md): KWin (Fedora's) on a 1920×1080 screen inside a headless
   # labwc, with HEARTH_WM=kwin as the session gives it. Checks hearth-screens against the real kscreen-doctor (get, set
@@ -2333,6 +2343,15 @@ jobs:
             fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
           fi
           echo "::notice title=KWin screens: shell log::$(grep -v -i locale shots/kwin/shell.log | grep -i -E 'error|warn|qml' | sort -u | tail -12 | tr '\n' '|' | cut -c1-1000)"
+          # Capture's grab (hearth-screens grab MODE ... --out FILE): every mode through KWin, each a real picture.
+          gr=""
+          for g in "all" "screen" "screen --screen 2" "window" "area --geometry 100,100,640,360" "all --pointer"; do
+            f="shots/kwin/grab-$(echo "$g" | tr -c 'a-z0-9' '-').png"
+            timeout 40 python3 $SH grab $g --out "$f" > "$f.txt" 2>&1; rc=$?
+            gr="$gr $g: exit $rc $(python3 -c 'import sys; from PIL import Image, ImageStat; im=Image.open(sys.argv[1]).convert("RGB"); print(im.size, "spread", round(max(ImageStat.Stat(im).stddev), 1))' "$f" 2>/dev/null || head -c 120 "$f.txt" | tr '\n' ' ') |"
+            [ $rc = 0 ] || fail "grab $g: exit $rc $(head -c 300 "$f.txt" | tr '\n' '|')"
+          done
+          echo "::notice title=KWin screens: grab::$(echo "$gr" | cut -c1-900)"
           [ -s shots/kwin/shot-errors.txt ] && echo "::warning title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt | tr '\n' '|' | cut -c1-500)"
           # Screen off and on (Settings › Power's idle screen-off under KWin), near the end: this nested KWin on software GL
           # may quit when its screen comes back.
@@ -2373,14 +2392,24 @@ jobs:
               from PIL import Image
           except ImportError:
               raise SystemExit(0)
+          from PIL import ImageStat
+          flat = []
           for p in sorted(glob.glob('shots/kwin/kwin-*.png')):
               im = Image.open(p).convert('RGB')
-              print(p, im.size)
+              spread = max(ImageStat.Stat(im).stddev)
+              print(p, im.size, 'spread', round(spread, 1))
+              if spread < 6:      # (nearly) one colour: a black or empty picture never passes
+                  flat.append('%s (spread %.1f)' % (p, spread))
               for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
                   b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
                   if len(base64.b64encode(b.getvalue())) <= 6 * 3800:
                       break
               open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
+          if len(glob.glob('shots/kwin/kwin-*.png')) < 5:
+              flat.append('only %d of the 5 pictures were taken' % len(glob.glob('shots/kwin/kwin-*.png')))
+          if flat:
+              print('::error title=KWin screens: pictures::(nearly) one colour or missing: ' + '; '.join(flat))
+              open('shots/kwin/FAILED', 'w').write('flat pictures')
           PY
       - name: Picture (kwin-1-display-top)
         if: always()
