@@ -170,7 +170,10 @@ class Prompt(unittest.TestCase):
     def test_password_only_to_polkit(self):
         q = code((SHELL / 'PolkitPrompt.qml').read_text())
         self.assertIn('import Quickshell.Services.Polkit', q)
-        self.assertIn('PolkitAgent { id: agent }', q)
+        # Polkit's agent, only for a logind session (without one, as in CI, registering only fails: the classic agent asks)
+        self.assertIn('Loader { id: agentLoader; active: pk.sessionKnown; sourceComponent: Component { PolkitAgent {} } }', q)
+        self.assertIn('readonly property var agent: agentLoader.item || noAgent', q)
+        self.assertIn('loginctl session-status', q)
         submit = q.split('function submit(v)')[1].split('function cancel()')[0]
         self.assertIn('clearField();', submit)               # the field is emptied as it's sent
         self.assertIn('flow.submit(v)', submit)
