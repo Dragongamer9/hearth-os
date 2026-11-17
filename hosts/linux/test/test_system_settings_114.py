@@ -493,6 +493,30 @@ class Lookset(Home):
             self.assertEqual(open(os.path.join(self.c, 'x.conf.bak')).read(), 'a\n')
         self.assertEqual([f for f in os.listdir(os.path.dirname(self.l.SAVED)) if f.endswith('.tmp')], [])
 
+    def test_a_damaged_file_is_not_nothing_chosen(self):
+        # Red flag 9 (start-safety review, Nov 17): apply at sign-in with a file that can't be read (and no good .bak)
+        # must not remove Hearth's fontconfig and cursor files as if you had chosen nothing.
+        for f, text in ((self.l.FONTCONF, self.l.FC_MARK + '\n<fontconfig/>\n'), (self.l.CURSOR_ENV, self.l.ENV_MARK + '\nXCURSOR_SIZE=32\n')):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            with open(f, 'w') as fh:
+                fh.write(text)
+        os.makedirs(os.path.dirname(self.l.SAVED), exist_ok=True)
+        for f in (self.l.SAVED, self.l.SAVED + '.bak'):
+            with open(f, 'w') as fh:
+                fh.write('{"font": "Int')
+        with mock.patch.object(self.l.shutil, 'which', return_value=None):
+            self.l.apply()
+        self.assertTrue(os.path.exists(self.l.FONTCONF), 'kept: the file failed to load')
+        self.assertTrue(os.path.exists(self.l.CURSOR_ENV))
+        # Nothing chosen for real (no file): Hearth's files go.
+        for f in os.listdir(os.path.dirname(self.l.SAVED)):
+            if f.startswith('fonts-cursor-icons.json'):
+                os.remove(os.path.join(os.path.dirname(self.l.SAVED), f))
+        with mock.patch.object(self.l.shutil, 'which', return_value=None):
+            self.l.apply()
+        self.assertFalse(os.path.exists(self.l.FONTCONF))
+        self.assertFalse(os.path.exists(self.l.CURSOR_ENV))
+
     def test_set_saves_merges_and_hands_on_only_to_hearths_files(self):
         qt = os.path.join(self.c, 'qt6ct', 'qt6ct.conf'); os.makedirs(os.path.dirname(qt))
         open(qt, 'w').write(self.l.QT_MARK + '\n[Appearance]\nicon_theme=breeze-dark\nstyle=Breeze\n')
