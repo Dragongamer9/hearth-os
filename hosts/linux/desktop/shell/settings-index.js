@@ -3560,7 +3560,7 @@ var ENTRIES = [
 "i": "globe"
 },
 {
-"t": "This PC's certificate",
+"t": "This PC's certificate (SHA-256)",
 "p": "remote-desktop",
 "i": "shield"
 },
