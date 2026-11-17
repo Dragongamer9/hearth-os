@@ -50,11 +50,13 @@ Item {
     readonly property var typed: ({ q: "" })
     function lookup(raw) {
         const q = String(raw || "");
+        if (!refreshSoon.running) refreshSoon.start();     // the search bar (Alt+Space) searches with the menu closed
         if (!/^\s*(kill|spell|define|meaning of|dict|install|store|get app)\s+\S/i.test(q)) return;
         if (q === typed.q) return;
         typed.q = q;
         lookupTimer.restart();
     }
+    Timer { id: refreshSoon; interval: 50; onTriggered: root.refresh() }
     Connections { target: root.launcher; function onShownChanged() { if (root.launcher.shown) root.refresh(); } }
     Timer {
         id: lookupTimer

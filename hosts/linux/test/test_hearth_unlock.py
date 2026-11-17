@@ -447,6 +447,67 @@ class Switch(Base):
             self.assertEqual(self.u.main(['hearth-unlock', '--install-deb', '/tmp/x.deb']), 1)
         self.assertIn('locked', out.getvalue())
 
+    def test_install_package_refused_when_locked_and_checks_the_name(self):
+        """Settings › App store › Drivers (1.14): --install-package, the same rules as a .deb."""
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(self.u.os, 'geteuid', return_value=0), \
+                mock.patch.object(self.u, 'mounted', return_value=False):
+            self.assertEqual(self.u.main(['hearth-unlock', '--install-package', 'firmware-realtek']), 1)
+        self.assertIn('locked', out.getvalue())
+        with mock.patch.object(self.u.os, 'geteuid', return_value=0), mock.patch.object(self.u, 'need_writable'):
+            with self.assertRaises(self.u.Fail):
+                self.u.cmd_install_package('bad name; rm')
+
+    def pins(self, same=True):
+        img = os.path.join(self.tmp, 'boot-chain.pref')
+        pin = os.path.join(self.tmp, 'hearth-boot-chain')
+        with open(img, 'w') as f:
+            f.write('Package: linux-image-*\nPin: release *\nPin-Priority: -1\n')
+        if same is not None:
+            with open(pin, 'w') as f:
+                f.write(open(img).read() if same else 'Package: nothing\n')
+        elif os.path.exists(pin):
+            os.remove(pin)
+        return mock.patch.multiple(self.u, BOOT_PIN=pin, BOOT_PIN_IMAGE=img)
+
+    def test_install_refused_without_the_boot_chain_pin_or_when_it_touches_booting(self):
+        def go(name, plan='Inst firmware-realtek (1 Debian)\n', same=True):
+            seen = []
+            with self.pins(same), mock.patch.object(self.u.os, 'geteuid', return_value=0), \
+                    mock.patch.object(self.u, 'need_writable'), \
+                    mock.patch.object(self.u, 'run', side_effect=lambda cmd, **k: (0, plan if '-s' in cmd else '')), \
+                    mock.patch.object(self.u, 'apt_stream', side_effect=lambda cmd, lo, hi, timeout=0: seen.append(cmd) or (0, ['ok'])), \
+                    mock.patch.object(self.u, 'cmd_record'), contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    self.u.cmd_install_package(name)
+                    return 'ok', seen
+                except self.u.Fail as e:
+                    return str(e), seen
+        self.assertEqual(go('firmware-realtek')[0], 'ok')
+        for same in (None, False):                                   # missing, or not the image's
+            why, seen = go('firmware-realtek', same=same)
+            self.assertIn("boot-chain pin", why)
+            self.assertEqual(seen, [])
+        for plan in ('Inst linux-image-6.12.38+deb13-amd64 (6.12)\n', 'Inst dracut-core (1)\n', 'Inst intel-microcode (3)\n',
+                     'Inst nvidia-kernel-dkms (5)\n', 'Inst grub-efi-amd64-signed (1)\n', 'Remv shim-signed (1)\n',
+                     'Inst initramfs-tools-core (1)\n', 'Inst dkms (3)\n'):
+            why, seen = go('firmware-realtek', plan='Inst firmware-realtek (1)\n' + plan)
+            self.assertIn('would change how this PC starts', why, plan)
+            self.assertEqual(seen, [], plan)
+
+    def test_install_package_runs_apt_and_records(self):
+        seen = []
+        with self.pins(), mock.patch.object(self.u.os, 'geteuid', return_value=0), mock.patch.object(self.u, 'need_writable'), \
+                mock.patch.object(self.u, 'run', side_effect=lambda *a, **k: (0, '')), \
+                mock.patch.object(self.u, 'apt_stream', side_effect=lambda cmd, lo, hi, timeout=0: seen.append(cmd) or (0, ['ok'])), \
+                mock.patch.object(self.u, 'cmd_record', side_effect=lambda wait=0: seen.append('record')), \
+                contextlib.redirect_stdout(io.StringIO()):
+            r = self.u.cmd_install_package('firmware-realtek')
+        self.assertEqual(r['package'], 'firmware-realtek')
+        self.assertEqual(seen[0][:3], ['apt-get', 'install', '-y'])
+        self.assertEqual(seen[0][-1], 'firmware-realtek')
+        self.assertEqual(seen[1], 'record')        # kept for after the next update, like any apt install
+
 
 
 class BootSafety(Base):
@@ -699,6 +760,15 @@ class Admin(unittest.TestCase):
         self.assertEqual(ex, [[self.ha.UNLOCK, '--install-deb', '/home/me/a.deb']])
         _, _, ex = self.main(['hearth-admin', 'deb-remove', 'a'])
         self.assertEqual(ex, [[self.ha.UNLOCK, '--remove-package', 'a']])
+
+    def test_driver_install_only_takes_drivers(self):
+        _, _, ex = self.main(['hearth-admin', 'driver-install', 'firmware-iwlwifi'])
+        self.assertEqual(ex, [[self.ha.UNLOCK, '--install-package', 'firmware-iwlwifi']])
+        for bad in ('bash', 'grub-efi-amd64', 'linux-image-amd64', 'firmware-x;rm', 'steam', 'nvidia-open', 'nvidia-driver',
+                    'intel-microcode', 'amd64-microcode', 'firmware-anything', 'firmware-realtek\n'):
+            code, out, ex = self.main(['hearth-admin', 'driver-install', bad])
+            self.assertEqual(ex, [], bad)
+            self.assertNotEqual(code, 0, bad)
 
     def test_anatase_is_always_locked(self):
         code, out, ex = self.main(['hearth-admin', 'unlock', 'on'], have=False)

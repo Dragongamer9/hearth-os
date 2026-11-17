@@ -12,6 +12,7 @@ on:
   push:
     branches: [feature/w3-search-plugins]
     paths: ['hosts/linux/desktop/shell/search/**', 'hosts/linux/desktop/shell/SearchSources.qml', 'hosts/linux/desktop/shell/hearth-search-sources',
+            'hosts/linux/desktop/shell/search-bar.js',
             'hosts/linux/test/test_search_plugins_114.py', '.github/workflows/search-plugins.yml']
 
 concurrency:
@@ -37,7 +38,7 @@ jobs:
       - name: Unit tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_search_plugins_114.py' -v 2>&1 | tail -40
-          for t in test_search_plugins_114 test_search_plugins test_hearth_search test_settings_persistence; do
+          for t in test_search_plugins_114 test_search_plugins test_hearth_search test_search_bar test_settings_persistence; do
             python3 -m unittest discover -s hosts/linux/test -p "$t.py" >/tmp/$t.out 2>&1 || echo "::error title=$t::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/$t.out | head -6 | tr '\n' '|' | cut -c1-900)"
           done
           ! grep -lE '^(FAIL|ERROR):' /tmp/test_*.out
@@ -159,6 +160,12 @@ jobs:
           shot 13-contacts "sam"; chk "sam" 'sam@example.org'; q launcher close
           shot 14-calendar "raid"; chk "raid" 'Raid night'; q launcher close
           shot 15-notes "coffee"; chk "coffee" 'Shopping list'; q launcher close
+          # the same plugins in the search bar (Alt+Space): its "?" list and an answer
+          q searchbar type "?"; sleep 3; grim shots/post/15b-searchbar-help.png
+          st=$(q searchbar state); case "$st" in *'"plugin":"worldclock"'*) say "the search bar's ? lists the new plugins" ;; *) FAIL "the search bar's ? doesn't list the new plugins: ${st:0:300}" ;; esac
+          q searchbar type "3pm london to tokyo"; sleep 3; grim shots/post/15c-searchbar-world-clock.png
+          st=$(q searchbar state); case "$st" in *'in Tokyo'*) say "the search bar answers 3pm london to tokyo" ;; *) FAIL "the search bar didn't answer 3pm london to tokyo: ${st:0:300}" ;; esac
+          q searchbar close
           q settings page search; sleep 5; grim shots/post/16-settings-search.png; q settings close
           # down the page to the plugins' switches with the keyboard (into the page, then down; the page follows the focus)
           q settings page search; sleep 5; wtype -k Right; sleep 0.5

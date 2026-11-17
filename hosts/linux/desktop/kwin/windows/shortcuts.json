@@ -81,6 +81,20 @@
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call run toggle'"
   },
   {
+   "id": "searchbar",
+   "title": "Search bar (like KRunner)",
+   "keys": "Alt+Space",
+   "labwc": "A-space",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar key'"
+  },
+  {
+   "id": "searchbar-2",
+   "title": "Search bar (like KRunner)",
+   "keys": "Alt+F2",
+   "labwc": "A-F2",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar toggle'"
+  },
+  {
    "id": "winx",
    "title": "Quick links menu",
    "keys": "Meta+X",
@@ -562,6 +576,11 @@
    "labwc": "W-Escape",
    "kwin": "view_actual_size (KWin zoom; Meta+Esc here)",
    "keys": "Meta+Esc"
+  },
+  {
+   "labwc": "A-F3",
+   "kwin": "Window Operations Menu",
+   "keys": "Alt+F3"
   }
  ],
  "skipped": [
