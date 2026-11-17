@@ -41,6 +41,7 @@
 struct client {
     int fd;
     int watch;
+    int dead;
     size_t len;
     char buf[MAX_LINE];
 };
@@ -52,12 +53,16 @@ static uint32_t ctx_serial, ctx_purpose, ctx_hint;
 static struct client *clients[MAX_CLIENTS];
 static char sock_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 
+/* Never blocks: a client that doesn't read its answers (a full socket) is dropped, so the input method never stalls
+ * while KWin waits on it. */
 static void say(struct client *c, const char *line) {
     size_t n = strlen(line);
+    if (c->dead) return;
     while (n) {
-        ssize_t w = send(c->fd, line, n, MSG_NOSIGNAL);
+        ssize_t w = send(c->fd, line, n, MSG_NOSIGNAL | MSG_DONTWAIT);
         if (w < 0) {
             if (errno == EINTR) continue;
+            c->dead = 1;
             return;
         }
         line += w;
@@ -246,8 +251,10 @@ int main(void) {
         int n = 0;
         p[n].fd = wl_display_get_fd(display); p[n].events = POLLIN; map[n++] = -1;
         p[n].fd = lfd; p[n].events = POLLIN; map[n++] = -2;
-        for (int i = 0; i < MAX_CLIENTS; i++)
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (clients[i] && clients[i]->dead) { close(clients[i]->fd); free(clients[i]); clients[i] = NULL; }
             if (clients[i]) { p[n].fd = clients[i]->fd; p[n].events = POLLIN; map[n++] = i; }
+        }
         while (wl_display_prepare_read(display) != 0) wl_display_dispatch_pending(display);
         wl_display_flush(display);
         if (poll(p, n, -1) < 0) {
@@ -276,7 +283,9 @@ int main(void) {
                 continue;
             }
             struct client *c = clients[map[k]];
-            ssize_t r = recv(c->fd, c->buf + c->len, sizeof c->buf - 1 - c->len, 0);
+            if (!c) continue;
+            ssize_t r = recv(c->fd, c->buf + c->len, sizeof c->buf - 1 - c->len, MSG_DONTWAIT);
+            if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
             if (r <= 0) {
                 if (r < 0 && errno == EINTR) continue;
                 close(c->fd);
@@ -295,7 +304,7 @@ int main(void) {
                 c->len -= used;
                 c->buf[c->len] = 0;
             }
-            if (c->len >= sizeof c->buf - 1) {   /* a line too long: drop the client */
+            if (c->dead || c->len >= sizeof c->buf - 1) {   /* a line too long, or it doesn't read: drop it */
                 close(c->fd);
                 free(c);
                 clients[map[k]] = NULL;

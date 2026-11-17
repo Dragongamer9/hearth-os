@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.join(os.path.dirname(HERE), 'desktop', 'shell')
 INSTALLED = '/usr/share/nimbus/desktop/shell'
 HT = os.path.join(INSTALLED, 'hearth-type')
-CAST_PICKER = os.path.join(SHELL, 'cast-picker.qml')
+CAST_PICKER = os.path.join(INSTALLED, 'cast-picker.qml')
 SHOTS = sys.argv[1]
 PHASE = sys.argv[2] if len(sys.argv) > 2 else 'nested'
 PASSED, FOUND = [], []
@@ -36,6 +36,19 @@ ENTRY = '/tmp/hearth-entry.txt'
 FAILED = []
 sys.path.insert(0, SHELL)
 import hearth_screencast as hs  # noqa: E402
+
+
+PORTAL = os.path.join(INSTALLED, 'hearth-portal')
+
+
+def kshot(path):
+    """KWin's own screenshot, through hearth-portal (hearth-kwin-cast works only for it): (ok, error)."""
+    r = subprocess.run([sys.executable, PORTAL, 'cast', 'shot', path, 'workspace'], capture_output=True, text=True, timeout=40)
+    try:
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+        return bool(d.get('ok')), d.get('error', '')
+    except (ValueError, IndexError):
+        return False, (r.stderr or '')[-200:]
 
 
 def esc(s):
@@ -74,10 +87,10 @@ def grim(name):
             except Exception as e:
                 print('picture check %s: %r' % (name, e), flush=True)
         if dark:
-            ok = hs.shot(('workspace',), p)
+            ok, err = kshot(p)
             note('picture ' + name, 'labwc gave %s; KWin\'s own screenshot %s' % (
-                'nothing (%s)' % r.stderr.strip()[:120] if r.returncode else 'a dark picture', 'used' if ok else 'failed too: ' + hs.LAST_ERROR[0][:160]))
-    elif not hs.shot(('workspace',), p):
+                'nothing (%s)' % r.stderr.strip()[:120] if r.returncode else 'a dark picture', 'used' if ok else 'failed too: ' + err[:160]))
+    elif not kshot(p)[0]:
         print('no picture %s (KWin\'s screenshot)' % name, flush=True)
 
 
@@ -302,27 +315,6 @@ def typing():
 
 # ------------------------------------------------------------------ 3. KWin's screen sharing through hearth-kwin-cast
 def cast_helper():
-    outs, version = hs.list_outputs()
-    check('KWin gives hearth-kwin-cast its screen-sharing protocol (its .desktop file)', version > 0,
-          'zkde_screencast_unstable_v1 version %d; screens %s' % (version, [o['name'] for o in outs]))
-    if outs and version:
-        st = hs.Stream(('output', outs[0]['name']), hs.CURSOR_EMBEDDED)
-        node = st.wait_node()
-        check('KWin makes a PipeWire stream of a screen', node is not None, 'node %s %s' % (node, st.error))
-        if node is not None:
-            frame = os.path.join(SHOTS, 'cast-frame.png')
-            for prop in ('target-object', 'path'):
-                r = run(['gst-launch-1.0', '-q', 'pipewiresrc', '%s=%d' % (prop, node), 'num-buffers=4', 'always-copy=true', '!',
-                         'videoconvert', '!', 'pngenc', 'snapshot=true', '!', 'filesink', 'location=' + frame], timeout=30)
-                if os.path.exists(frame) and os.path.getsize(frame) > 1000:
-                    break
-            check('frames of the shared screen arrive over PipeWire', os.path.exists(frame) and os.path.getsize(frame) > 1000,
-                  '%s bytes (%s)' % (os.path.getsize(frame) if os.path.exists(frame) else 0, (r.stderr or '')[-300:]))
-        st.stop()
-    ws = '/tmp/hearth-workspace.png'
-    check('KWin gives hearth-kwin-cast screenshots (ScreenShot2, its .desktop file)', hs.shot(('workspace',), ws),
-          '%s bytes %s' % (os.path.getsize(ws) if os.path.exists(ws) else 0, hs.LAST_ERROR[0]))
-
     # Two windows, so the picker's Windows tab has something to show.
     for title, text in (('Notes – Hearth', 'Shopping: bread, milk, ember logs\\nCall Dad about Trains 2010'),
                         ('Trains 2010 timetable', 'Express 08:15  Platform 2\\nLocal 08:40  Platform 1')):
@@ -334,6 +326,62 @@ def cast_helper():
             w.add(t); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
             '''), title, text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     time.sleep(4)
+    # hearth-kwin-cast works only for hearth-portal: run straight, it refuses.
+    direct = run(['/usr/libexec/hearth/hearth-kwin-cast', 'outputs'])
+    check('hearth-kwin-cast refuses anyone but hearth-portal (KWin trusts it by its path)', direct.returncode == 3,
+          'exit %d %s' % (direct.returncode, (direct.stderr or '').strip()[:160]))
+    r = run([sys.executable, PORTAL, 'cast', 'outputs'], timeout=20)
+    try:
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        d = {}
+    outs, version = d.get('screens') or [], d.get('screencast') or 0
+    check('KWin gives hearth-kwin-cast its screen-sharing protocol (its .desktop file)', version > 0,
+          'zkde_screencast_unstable_v1 version %d; screens %s' % (version, [o['name'] for o in outs]))
+    if outs and version:
+        sp = subprocess.Popen([sys.executable, PORTAL, 'cast', 'stream', 'output', outs[0]['name'], '25'],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        line = sp.stdout.readline()
+        try:
+            st = json.loads(line)
+        except ValueError:
+            st = {'node': None, 'error': line[:200]}
+        node = st.get('node')
+        check('KWin makes a PipeWire stream of a screen', node is not None, 'node %s %s' % (node, st.get('error', '')))
+        if node is not None:
+            # Something changing on screen, so KWin has frames to send (it sends one when the picture changes).
+            ticker = subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
+                import gi; gi.require_version("Gtk", "3.0")
+                from gi.repository import Gtk, GLib
+                import time
+                w = Gtk.Window(title="Clock"); w.set_default_size(500, 200); l = Gtk.Label(); w.add(l)
+                def tick():
+                    l.set_markup("<span size=\\"40000\\">%s</span>" % time.strftime("%H:%M:%S")); return True
+                tick(); GLib.timeout_add(200, tick); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
+                ''')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+            frame = os.path.join(SHOTS, 'cast-frame.png')
+            for prop in ('target-object', 'path'):
+                r = run(['gst-launch-1.0', '-q', 'pipewiresrc', '%s=%d' % (prop, node), 'num-buffers=4', 'always-copy=true', '!',
+                         'videoconvert', '!', 'pngenc', 'snapshot=true', '!', 'filesink', 'location=' + frame], timeout=30)
+                if os.path.exists(frame) and os.path.getsize(frame) > 1000:
+                    break
+            check('frames of the shared screen arrive over PipeWire', os.path.exists(frame) and os.path.getsize(frame) > 1000,
+                  '%s bytes (%s)' % (os.path.getsize(frame) if os.path.exists(frame) else 0, (r.stderr or '')[-300:]))
+        sp.terminate()
+        if node is not None:
+            ticker.terminate()
+    ws = '/tmp/hearth-workspace.png'
+    ok, err = kshot(ws)
+    check('KWin gives hearth-kwin-cast screenshots (ScreenShot2, its .desktop file)', ok,
+          '%s bytes %s' % (os.path.getsize(ws) if os.path.exists(ws) else 0, err))
+    # The portal backend answers only xdg-desktop-portal: an app calling it straight is refused.
+    r = run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.impl.portal.desktop.hearth', '--object-path',
+             '/org/freedesktop/portal/desktop', '--method', 'org.freedesktop.impl.portal.Screenshot.Screenshot',
+             '/org/freedesktop/portal/desktop/request/1_1/x', 'evil', '', '{}'])
+    check('Hearth\'s portal backend refuses calls that don\'t come from xdg-desktop-portal', r.returncode != 0 and 'AccessDenied' in (r.stderr or ''),
+          (r.stderr or r.stdout or '').strip()[:200])
+
 
 
 # ------------------------------------------------------------------ 4. the portals, as an app uses them
@@ -437,7 +485,7 @@ def portals():
     SS = 'org.freedesktop.portal.Screenshot'
     # The first screenshot asks "Allow?" (xdg-desktop-portal's Access, Hearth's access-prompt.qml): it's answered
     # Allow the way a person would, then the screenshot is taken.
-    access_qml = os.path.join(SHELL, 'access-prompt.qml')
+    access_qml = os.path.join(INSTALLED, 'access-prompt.qml')
     asked = {}
 
     def drive_access():
@@ -525,19 +573,24 @@ def lock():
 
     lcheck = run([sys.executable, os.path.join(INSTALLED, 'hearth-lockcheck')], timeout=30)
     check('hearth-lockcheck: KWin\'s locker will show Hearth\'s lock screen here', lcheck.returncode == 0, lcheck.stdout.strip())
-    # Where the lock screen isn't found, Lock.qml must not lock (no lockout) and must say so.
-    bad = subprocess.Popen(['quickshell', '-p', lock_qml], env=dict(os.environ, PLASMA_DEFAULT_SHELL='org.kde.plasma.desktop'),
-                           stdout=open(os.path.join(SHOTS, 'lock-refused.log'), 'w'), stderr=subprocess.STDOUT)
-    time.sleep(5)
-    qs_ipc(lock_qml, 'lock', 'lock')
-    time.sleep(6)
-    st_bad = qs_ipc(lock_qml, 'lock', 'state')[1]
+    # Where Hearth's lock screen isn't there, Lock.qml must not lock (no lockout) and must say so.
+    pkg = '/usr/share/plasma/shells/org.hearth.mantel-lock'
+    os.rename(pkg, pkg + '.away')
+    try:
+        bad = subprocess.Popen(['quickshell', '-p', lock_qml], stdout=open(os.path.join(SHOTS, 'lock-refused.log'), 'w'),
+                               stderr=subprocess.STDOUT)
+        time.sleep(5)
+        qs_ipc(lock_qml, 'lock', 'lock')
+        time.sleep(8)
+        st_bad = qs_ipc(lock_qml, 'lock', 'state')[1]
+        bad.terminate()
+        time.sleep(1)
+    finally:
+        os.rename(pkg + '.away', pkg)
     with open(os.path.join(SHOTS, 'lock-refused.log'), errors='replace') as f:
         refused_log = f.read()
     check('without Hearth\'s lock screen, Lock.qml doesn\'t lock and says why', not active() and '"locked":false' in st_bad.replace(' ', '')
           and 'not locked' in refused_log, 'ScreenSaver active %s; Lock.qml %s; %s' % (active(), st_bad, refused_log[-300:]))
-    bad.terminate()
-    time.sleep(1)
     lk = subprocess.Popen(['quickshell', '-p', lock_qml], stdout=open(os.path.join(SHOTS, 'lock.log'), 'w'), stderr=subprocess.STDOUT)
     time.sleep(5)
     qs_ipc(lock_qml, 'lock', 'lock')
@@ -547,6 +600,13 @@ def lock():
     time.sleep(4)
     st = qs_ipc(lock_qml, 'lock', 'state')[1]
     grim('lock-real')
+    try:
+        klog = open(os.path.join(SHOTS, 'kwin-nested.log'), errors='replace').read()
+        tail = klog[klog.rfind('Locked at'):] if 'Locked at' in klog else klog[-3000:]
+        note('KWin log while locked (before the check ends KWin)', ' | '.join(l for l in tail.splitlines()
+             if 'notify signal' not in l and ('greet' in l.lower() or 'lock' in l.lower()))[:900])
+    except OSError:
+        pass
     check('Lock.qml on KWin locks with KWin\'s locker (and knows it)', ok and '"locked":true' in st.replace(' ', ''),
           'ScreenSaver active %s; Lock.qml %s' % (ok, st))
     lk.terminate()
