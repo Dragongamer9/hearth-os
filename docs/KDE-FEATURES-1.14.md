@@ -246,10 +246,10 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Contacts from the phone into Hearth Contacts — plugins/contacts.rs; test_phone_link.py (needs testing on a device)
 - [x] Browse the phone's files (SFTP) — plugins/sftp.rs (sshfs); test_phone_link.py (needs testing on a device)
 - [x] Run commands — plugins/runcommand.rs, SetPhone.qml; test_phone_link.py (needs testing on a device)
-- [ ] Phone controls PC volume, lock, presentation remote — partly: volume (plugins/systemvolume.rs) and the presentation remote (plugins/presenter.rs), tested in test_phone_link.py. Left: `kdeconnect.lock` (lock this PC from the phone) (S)
-- [ ] PC sends its notifications to the phone; PC as a remote keyboard for the phone (`kdeconnect.notification` and `.mousepad` outgoing) (M)
-- [ ] Signal report, stop the screensaver while connected, share text and URLs — partly: signal (`kdeconnect.connectivity_report`) and the phone's camera (`kdeconnect.photo`). Left: inhibit while connected, text/URL shares checked (S)
-- [ ] Phone as a second screen, Bluetooth link (L)
+- [x] Phone controls PC volume, lock, presentation remote — hosts/hearth-connect/src/plugins/lock.rs (never unlocks), systemvolume.rs, presenter.rs; test_phone_link.py: "test_20a_lock_this_pc_from_the_phone"; phone-link.yml round2 pictures (needs testing on a device)
+- [x] PC sends its notifications to the phone; PC as a remote keyboard for the phone — plugins/sendnotify.rs (session bus watch, choices in settings.json "notifyOut"), plugins/remote.rs, PhoneRemote.qml; test_phone_link.py: "test_20b_this_pcs_notifications_on_the_phone", "test_20c_this_pc_types_and_points_on_the_phone" (needs testing on a device)
+- [x] Signal report, stop the screensaver while connected, share text and URLs — daemon.rs set_awake (logind idle:sleep inhibitor), plugins/mod.rs share_notice (Copy / Open), "send"; test_phone_link.py: "test_20d_calls_mute_and_staying_awake", "test_20e_text_and_links_both_ways" (needs testing on a device)
+- [ ] Phone as a second screen, Bluetooth link (L) — later (the owner's round 2 list leaves them out)
 - [x] Phone tray item and Settings page — PhoneStatus.qml, SetPhone.qml, Quick Access tile; phone-link.yml pictures (needs testing on a device)
 
 ### Remote desktop and screen recording
@@ -265,18 +265,18 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Views, tabs, places, Trash, previews, filter, search, hidden files, archives, batch rename, Open in Terminal, network shares, undo, details, properties — `FileManager.qml`, `hearth-files`, `FileProperties.qml`
 - [ ] Split view (F3) — on unmerged feature/search-store (M)
 - [ ] Terminal panel (F4) — on unmerged feature/search-store (M)
-- [ ] Tags, ratings and comments (M)
-- [ ] Group by (S)
-- [ ] Git status badges (S)
-- [ ] Act as administrator (M)
-- [ ] Checksums, permissions and owner tabs in Properties (S)
-- [ ] Mount an ISO, MTP phones, PTP cameras (M)
-- [ ] Service menus (M)
+- [ ] Tags, ratings and comments (M) — partly: tags (user.xdg.tags, Tags › menu, a Tags list in the left menu, find by tag; hearth_files_extras.py, FilesExtras.qml; test_files_extras.py: "test_tags_set_list_find_and_in_listings"; files-extras.yml pictures). Left: ratings and comments (S)
+- [x] Group by — FileManager.qml (type, date, size, tag); files-extras.yml "files-x1-tags-grouped" (needs testing on a device)
+- [x] Git status badges — hearth_files_extras.py git_status, FilesMarks.qml; test_files_extras.py: "test_git_status_badges"; files-extras.yml "files-x4-git" (needs testing on a device)
+- [x] Act as administrator — FilesExtras.qml, os/system_files/usr/libexec/nimbus/hearth-files-admin (never /boot, /efi, the image, fstab, kernel/boot settings), 49-hearth-admin.rules AUTH_ADMIN_KEEP; test_files_extras.py: "test_never_what_starts_the_pc"; files-extras.yml "files-x6-admin" (needs testing on a device)
+- [x] Checksums, permissions and owner tabs in Properties — FileProperties.qml (SHA-512, compare a pasted one, group, whole folder, owner as administrator); test_files_extras.py: "test_chmod_tree_and_groups"; files-extras.yml "files-x7-checksums", "files-x8-permissions" (needs testing on a device)
+- [x] Mount an ISO, MTP phones, PTP cameras — hearth_files_extras.py iso_mount (udisks, read only), portable (gvfs); test_files_extras.py: "test_iso_mount_and_close_through_udisks", "test_phones_and_cameras_from_gio"; files-extras.yml "files-x5-iso-menu", "files-x1-tags-grouped" (needs testing on a device)
+- [x] Service menus — hearth_files_extras.py service_menus / service_run (kio/servicemenus, kservices5/ServiceMenus); test_files_extras.py: "test_service_menus_kde_style"; files-extras.yml "files-x2-menu" (needs testing on a device)
 
 ### File search and indexing
 
 - [ ] File indexing (names and contents) with folders to skip and battery limits — on unmerged feature/search-store (XL)
-- [ ] Recent files tracking and "forget recent files" (S)
+- [x] Recent files tracking and "forget recent files" — SetRecentFiles.qml, hearth_files_extras.py recent_*; test_files_extras.py: "test_recent_files_privacy"; files-extras.yml "files-x10-recent-privacy" (needs testing on a device)
 
 ### Passwords, wallet, vaults
 
@@ -310,7 +310,7 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Proxy settings (none, automatic, by hand) — SetProxy.qml, hearth-network; test_system_settings_114.py "test_proxy_saved_with_settings_io_and_handed_on" (needs testing on a device)
 - [ ] Firewall page (M)
 - [ ] Duplicate a connection, network speed in the tray (S)
-- [ ] "Share this folder" (SMB) in Files' Properties (S)
+- [x] "Share this folder" (SMB) in Files' Properties — FileProperties.qml Sharing tab through hearth-home-server; test_files_extras.py: "test_share_this_folder_through_home_server"; files-extras.yml "files-x9-sharing" (needs testing on a device)
 
 ### Online accounts
 
