@@ -155,6 +155,27 @@ def click_middle():
         note('click', repr(ex))
 
 
+def write_entry_app():
+    app = '''
+    import gi, sys
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk, Gdk
+    css = Gtk.CssProvider(); css.load_from_data(b"entry { font-size: 34px; min-height: 70px; } label { font-size: 20px; }")
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, 800)
+    w = Gtk.Window(title="Hearth typing test"); w.set_default_size(1400, 500)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20); box.set_border_width(40)
+    box.pack_start(Gtk.Label(label="A GTK text field on KWin: typed by hearth-type (Hearth's input method and uinput keyboard)"), False, False, 0)
+    e = Gtk.Entry(); box.pack_start(e, False, False, 0)
+    def changed(x):
+        open(sys.argv[1], "w").write(x.get_text())
+    e.connect("changed", changed)
+    w.add(box); w.connect("destroy", Gtk.main_quit); w.show_all(); w.maximize(); e.grab_focus()
+    Gtk.main()
+    '''
+    with open('/tmp/hearth-entry-app.py', 'w') as f:
+        f.write(textwrap.dedent(app))
+
+
 def keys_diagnosis():
     """Why uinput keys didn't reach the field: does the device send them, and do they arrive without the input method?"""
     seen = []
@@ -218,24 +239,7 @@ def typing():
     check('KWin started Hearth\'s input method (hearth-kwin-im)', bool(wait_for(lambda: os.path.exists(sock), 15)),
           sock if os.path.exists(sock) else 'no %s' % sock)
 
-    app = '''
-    import gi, sys
-    gi.require_version("Gtk", "3.0")
-    from gi.repository import Gtk, Gdk
-    css = Gtk.CssProvider(); css.load_from_data(b"entry { font-size: 34px; min-height: 70px; } label { font-size: 20px; }")
-    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, 800)
-    w = Gtk.Window(title="Hearth typing test"); w.set_default_size(1400, 500)
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20); box.set_border_width(40)
-    box.pack_start(Gtk.Label(label="A GTK text field on KWin: typed by hearth-type (Hearth's input method and uinput keyboard)"), False, False, 0)
-    e = Gtk.Entry(); box.pack_start(e, False, False, 0)
-    def changed(x):
-        open(sys.argv[1], "w").write(x.get_text())
-    e.connect("changed", changed)
-    w.add(box); w.connect("destroy", Gtk.main_quit); w.show_all(); w.maximize(); e.grab_focus()
-    Gtk.main()
-    '''
-    with open('/tmp/hearth-entry-app.py', 'w') as f:
-        f.write(textwrap.dedent(app))
+    write_entry_app()
     with open(ENTRY, 'w') as f:
         f.write('')
     gtk = subprocess.Popen([sys.executable, '/tmp/hearth-entry-app.py', ENTRY], env=dict(os.environ, GTK_IM_MODULE='wayland'),
@@ -524,6 +528,88 @@ def portals():
           bool(shot_seen.get('st')) and bool(r) and r[0] == 0, {'picker': shot_seen.get('st'), 'answer': r})
 
 
+# ------------------------------------------------------------------ 4b. remote control (RemoteDesktop), as VNC uses it
+def remote():
+    write_entry_app()
+    rd_entry = '/tmp/hearth-entry-rd.txt'
+    open(rd_entry, 'w').close()
+    app = subprocess.Popen([sys.executable, '/tmp/hearth-entry-app.py', rd_entry], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    PROCS.append(app)
+    time.sleep(5)
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    sender = bus.get_unique_name()[1:].replace('.', '_')
+    RD = 'org.freedesktop.portal.RemoteDesktop'
+
+    def call(method, fmt, args, token, drive=None, timeout=60):
+        handle = '/org/freedesktop/portal/desktop/request/%s/%s' % (sender, token)
+        got, loop = {}, GLib.MainLoop()
+
+        def on_response(conn, snd, path, i, sig, params, *a):
+            got['r'] = params.unpack()
+            loop.quit()
+        sub = bus.signal_subscribe('org.freedesktop.portal.Desktop', 'org.freedesktop.portal.Request', 'Response', handle,
+                                   None, Gio.DBusSignalFlags.NO_MATCH_RULE, on_response)
+        args = list(args)
+        args[-1] = dict(args[-1], handle_token=GLib.Variant('s', token))
+        try:
+            bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, method,
+                          GLib.Variant(fmt, tuple(args)), GLib.VariantType('(o)'), Gio.DBusCallFlags.NONE, timeout * 1000, None)
+        except GLib.Error as e:
+            bus.signal_unsubscribe(sub)
+            return ('error', str(e))
+        if drive:
+            threading.Thread(target=drive, daemon=True).start()
+        GLib.timeout_add_seconds(timeout, loop.quit)
+        loop.run()
+        bus.signal_unsubscribe(sub)
+        return got.get('r')
+
+    r = call('CreateSession', '(a{sv})', [{'session_handle_token': GLib.Variant('s', 'hearthrd')}], 'rd1')
+    session = r[1].get('session_handle') if r and r[0] == 0 else None
+    check('RemoteDesktop portal: a session (Hearth\'s backend)', bool(session), r)
+    if not session:
+        return
+    r = call('SelectDevices', '(oa{sv})', [session, {'types': GLib.Variant('u', 3)}], 'rd2')
+    check('RemoteDesktop portal: keyboard and pointer', bool(r) and r[0] == 0, r)
+    access_qml = os.path.join(INSTALLED, 'access-prompt.qml')
+    asked = {}
+
+    def drive():
+        end = time.time() + 30
+        while time.time() < end:
+            code, out = qs_ipc(access_qml, 'access', 'state')
+            if code == 0 and out.startswith('{'):
+                asked['st'] = out
+                time.sleep(2)
+                grim('remote-control-prompt')
+                qs_ipc(access_qml, 'access', 'grant')
+                return
+            time.sleep(0.5)
+    r = call('Start', '(osa{sv})', [session, '', {}], 'rd3', drive)
+    check('RemoteDesktop portal: Hearth asks "Allow control?" first (Hearth-drawn)', 'control' in asked.get('st', ''), asked)
+    check('RemoteDesktop portal: allowed, the app gets the keyboard and the pointer', bool(r) and r[0] == 0 and r[1].get('devices') == 3, r)
+    if not (r and r[0] == 0):
+        return
+    time.sleep(1)
+    for code in (35, 18, 38, 38, 24):          # h e l l o (kernel key codes, as VNC sends them)
+        for state in (1, 0):
+            bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, 'NotifyKeyboardKeycode',
+                          GLib.Variant('(oa{sv}iu)', (session, {}, code, state)), None, Gio.DBusCallFlags.NONE, 5000, None)
+    for sym, state in ((0x21, 1), (0x21, 0)):   # ! as a keysym (Shift + 1)
+        bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, 'NotifyKeyboardKeysym',
+                      GLib.Variant('(oa{sv}iu)', (session, {}, sym, state)), None, Gio.DBusCallFlags.NONE, 5000, None)
+    bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop', RD, 'NotifyPointerMotion',
+                  GLib.Variant('(oa{sv}dd)', (session, {}, 5.0, 5.0)), None, Gio.DBusCallFlags.NONE, 5000, None)
+    got = wait_for(lambda: open(rd_entry).read() == 'hello!', 8) and open(rd_entry).read()
+    check('RemoteDesktop portal: keys from the app reach the window in front (KWin\'s fake input)', open(rd_entry).read() == 'hello!',
+          'the field has %r' % open(rd_entry).read())
+    grim('remote-control-typed')
+    bus.call_sync('org.freedesktop.portal.Desktop', session, 'org.freedesktop.portal.Session', 'Close', None, None,
+                  Gio.DBusCallFlags.NONE, 10000, None)
+    time.sleep(2)
+    check('closing the session ends remote control', run(['pgrep', '-f', 'hearth-kwin-cast input']).stdout.strip() == '')
+
+
 # ------------------------------------------------------------------ 5. the lock screen
 def lock():
     greeter = next((g for g in ('/usr/libexec/kscreenlocker_greet', '/usr/lib64/libexec/kscreenlocker_greet',
@@ -622,7 +708,7 @@ def summary():
         print('::notice title=KWin (%s): findings::%s' % (PHASE, esc(' · '.join(FOUND))), flush=True)
 
 
-STEPS = {'nested': ['protocols', 'typing', 'lock'], 'virtual': ['protocols', 'cast_helper', 'portals']}
+STEPS = {'nested': ['protocols', 'typing', 'lock'], 'virtual': ['protocols', 'cast_helper', 'portals', 'remote']}
 for step in STEPS[PHASE]:
     try:
         globals()[step]()

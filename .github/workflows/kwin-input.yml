@@ -19,7 +19,7 @@ on:
             'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
             'hosts/linux/desktop/kwin-helpers/**', 'hosts/linux/desktop/kwin-lock/**', 'hosts/linux/desktop/kwin/**',
             'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml', '.github/scripts/kwin-debian-lock.sh', 'hosts/linux/desktop/shell/hearth-pad',
-            '.github/scripts/kwin-ci.sh']
+            '.github/scripts/kwin-ci.sh', 'hosts/linux/desktop/shell/hearth-lockcheck', 'hosts/linux/desktop/shell/hearth_screencast.py']
   workflow_dispatch:
 
 concurrency:
@@ -246,6 +246,8 @@ jobs:
         run: f=shots/debian-wrong-password.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-wrong-password $i::$part"; done || true
       - name: Picture (debian-unlocked)
         run: f=shots/debian-unlocked.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-unlocked $i::$part"; done || true
+      - name: Picture (remote-control-prompt)
+        run: f=shots/remote-control-prompt.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT remote-control-prompt $i::$part"; done || true
       - name: Picture (lock-greeter)
         run: f=shots/lock-greeter.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-greeter $i::$part"; done || true
       - name: Picture (lock-wrong-password)
