@@ -184,6 +184,10 @@ optional avahi-utils
 # documents) and pdftoppm draws PDFs' first page as their preview in Files (poppler-utils, about 1 MB). Optional:
 # without it PDFs are found by name and shown with their icon.
 optional poppler-utils
+# Auto-brightness (Settings › Display, 1.14): iio-sensor-proxy reads a laptop's or handheld's light sensor for
+# hearth-screens (net.hadess.SensorProxy, as KDE and GNOME use it). udev starts it only on a PC with a sensor; off in
+# Settings until you turn it on. Optional: without it the kernel's sensor files are read instead.
+optional iio-sensor-proxy
 command -v gio secret-tool
 # Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
 # (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.

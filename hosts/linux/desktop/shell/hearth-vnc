@@ -203,7 +203,7 @@ def password_get():
 
 
 def cmd_password():
-    pw = os.environ.get('HEARTH_INPUT') or ''
+    pw = os.environ.pop('HEARTH_INPUT', None) or ''   # popped: secret-tool and anything else started never inherit it
     if not pw:
         pw = sys.stdin.read() if not sys.stdin.isatty() else ''
     pw = pw.rstrip('\n')
