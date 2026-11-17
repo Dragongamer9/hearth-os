@@ -5,6 +5,11 @@
 #   nested    the compositor in a window on a virtual screen, started by nimbus-session with Mantel on it
 #             (.github/scripts/firehold-test.sh): its protocols, Mantel's bar and dock (layer shell), a window
 #             on Mantel's taskbar (foreign toplevel), minimizing, snapping, Settings › Your desktop, a clean end
+#   game      the Guide's game rows (frame limit, resolution scaling, direct scanout's choice), nested and headless,
+#             with a stand-in game and the Guide's helper (.github/scripts/firehold-game-test.sh)
+#   shell     the Firehold shell (Couch Home, the Library, the Guide over a fullscreen stand-in game with its rows live,
+#             Everything open, the Desk) on firehold-comp headless, and what falls back there
+#             (.github/scripts/firehold-comp-shell-test.sh)
 #   pictures  each picture as notices ("SHOT comp-<n>-<what> <i>", a JPEG in base64 pieces of 3800, at most 8, after
 #             a "SHOT-PARTS" count), one job and one step per picture
 name: Firehold
@@ -16,7 +21,11 @@ on:
             'hosts/linux/desktop/labwc/autostart', 'hosts/linux/desktop/shell/hearth-your-desktop',
             'hosts/linux/desktop/shell/SetYourDesktop.qml', 'hosts/linux/desktop/shell/DesktopNotice.qml',
             'hosts/linux/test/test_firehold_session.py', 'hosts/linux/test/test_kwin_session.py',
-            '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh']
+            'hosts/linux/desktop/shell/hearth-firehold-game', 'hosts/linux/test/test_firehold_game.py',
+            '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh',
+            '.github/scripts/firehold-game-test.sh', '.github/scripts/firehold-game-client.py', '.github/scripts/firehold-shot.py',
+            '.github/scripts/firehold-comp-shell-test.sh', '.github/scripts/firehold-fixtures.py', 'hosts/linux/desktop/shell/Firehold*.qml',
+            'hosts/linux/desktop/shell/firehold.js']
   workflow_dispatch:
 
 permissions:
@@ -116,7 +125,7 @@ jobs:
       - name: The session's tests
         run: |
           fail=0
-          for t in test_firehold_session.py test_kwin_session.py; do
+          for t in test_firehold_session.py test_kwin_session.py test_firehold_game.py; do
             if ! python3 -W ignore -m unittest discover -s hosts/linux/test -p "$t" -v > /tmp/t.log 2>&1; then
               fail=1
               grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -12 | while read -r l; do echo "::error title=$t::$l"; done
@@ -158,7 +167,7 @@ jobs:
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
           for name in ('firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                        'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice'):
+                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=pictures::no %s' % name); continue
@@ -229,6 +238,94 @@ jobs:
           path: shots
           retention-days: 14
 
+  game:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: A virtual screen, grim and Pillow
+        run: |
+          dnf -y install --skip-unavailable git xorg-x11-server-Xvfb xdpyinfo mesa-dri-drivers mesa-libEGL mesa-libgbm \
+            libwayland-server libwayland-client libwayland-cursor libwayland-egl libinput libseat libxkbcommon \
+            libxkbcommon-x11 libX11 libXcursor libXrandr libXi procps-ng python3 python3-pillow grim \
+            google-noto-sans-fonts dejavu-sans-fonts fontconfig >/dev/null
+          for b in Xvfb grim; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold
+          path: .
+      - name: Game rows, nested
+        timeout-minutes: 8
+        run: bash .github/scripts/firehold-game-test.sh nested
+      - name: Game rows, headless
+        if: always()
+        timeout-minutes: 8
+        run: bash .github/scripts/firehold-game-test.sh headless
+      - name: Picture firehold-gn-1-native
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-gn-1-native
+      - name: Picture firehold-gn-2-quality
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-gn-2-quality
+      - name: Picture firehold-gn-3-performance
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-gn-3-performance
+      - name: Picture firehold-gh-2-quality
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-gh-2-quality
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-game-shots
+          path: shots
+          retention-days: 14
+
+  shell:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install Quickshell and friends (no virtual screen)
+        run: |
+          dnf -y install dnf5-plugins git xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL libinput libseat \
+            libxkbcommon labwc qt6-qtsvg procps-ng python3 python3-pillow foot dbus-daemon dbus-tools grim \
+            google-noto-sans-fonts dejavu-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme fontconfig libnotify >/dev/null
+          dnf -y install --skip-unavailable rsms-inter-fonts wl-clipboard wtype >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold
+          path: .
+      - name: The Firehold shell on firehold-comp, headless
+        timeout-minutes: 15
+        run: bash .github/scripts/firehold-comp-shell-test.sh
+      - name: Picture firehold-c1-couch-home
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c1-couch-home
+      - name: Picture firehold-c2-library
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c2-library
+      - name: Picture firehold-c3-guide
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c3-guide
+      - name: Picture firehold-c4-everything-open
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c4-everything-open
+      - name: Picture firehold-c5-desk
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c5-desk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-comp-shell-shots
+          path: shots
+          retention-days: 14
+
   pictures:
     needs: nested
     if: always()
@@ -238,7 +335,7 @@ jobs:
       matrix:
         name: ['firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice']
+               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide']
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

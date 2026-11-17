@@ -206,18 +206,18 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Search apps, Settings pages and single settings, games — `Launcher.qml`, `menu-search.js`, `settings-index.js`
 - [x] Run box (Super+R) — `WinTools.qml`, `RunView.qml`, `run-map.js`
-- [ ] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help (L)
+- [x] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help — SearchBar.qml "target: \"searchbar\"", search-bar.js "function arrange" / "function helpRows", SetSearch.qml "Search bar (Alt+Space)" (pluginOrder in hearth-search), Pad.qml "deskY" (Y on the desktop, D-pad / A / B); Alt+Space vs the layout switch: hearth-system "rc_with_search_key" (labwc gets a None binding, Alt+F2 still opens it), SearchBar.qml "altSpaceIsLayout", SetKeyboard.qml note; test_search_bar.py; searchbar.yml pictures "sb-01-empty" … "sb-12-keyboard-layout-switch" (needs testing on a device)
 - [x] Plugin: calculator, unit conversion, currency — search/calc.js, search/units.js, search/currency.js (needs testing on a device)
 - [x] Plugin: files and folders by name and content — hearth-search (SQLite FTS5 index) (needs testing on a device)
-- [ ] Plugin: recent files and places, bookmarks, browser history (M)
-- [ ] Plugin: open windows, virtual desktops, activities by name (S)
-- [ ] Plugin: run a command, terminal command, kill an app (S)
+- [x] Plugin: recent files and places, bookmarks, browser history — search/recent.js, search/browser.js (Firefox and Chromium-based, read from a copy: hearth-search-sources "read_copy"); test_search_plugins_114.py "test_browser_reads_a_copy_even_while_the_browser_holds_its_lock"; search-plugins.yml picture "01-bookmarks" (needs testing on a device)
+- [x] Plugin: open windows, virtual desktops, activities by name — search/windows.js, search/desktops.js (KWin desktops, Activities.qml); test_search_plugins_114.py "test_desktops_and_activities"; search-plugins.yml picture "02-activities" (needs testing on a device)
+- [x] Plugin: run a command, terminal command, kill an app — search/commands.js, search/kill.js ("kill <name>", asks first: SearchSources.qml "dialog.confirm"; never Hearth's own programs); test_search_plugins_114.py "test_kill_asks_first_and_never_hearths_own", "test_procs_and_kill"; search-plugins.yml pictures "03-kill", "04-kill-asks-first" (needs testing on a device)
 - [x] Plugin: web search keywords — search/web.js (needs testing on a device)
-- [ ] Plugin: time in other cities, time-zone conversion (S)
-- [ ] Plugin: spell check, dictionary, special characters, emoji, colours (S each)
-- [ ] Plugin: power and session, media control, store results (S)
-- [ ] Plugin: Hearth contacts, calendar events, notes (M)
-- [ ] Type on the desktop to search (S)
+- [x] Plugin: time in other cities, time-zone conversion — search/worldclock.js ("time in tokyo", "3pm london to tokyo"; summer time from hearth-search-sources zones); test_search_plugins_114.py "test_world_clock", "test_zones_follow_summer_time"; search-plugins.yml picture "05-world-clock" (needs testing on a device)
+- [x] Plugin: spell check, dictionary, special characters, emoji, colours — search/spell.js (hunspell; "define" opens Wiktionary), search/chars.js, search/emoji.js, search/colours.js (swatch in Launcher.qml / MenuSearch.qml); test_search_plugins_114.py "test_spell_and_dictionary", "test_special_characters", "test_colours"; search-plugins.yml pictures "06-spell", "07-characters", "08-colour" (needs testing on a device)
+- [x] Plugin: power and session, media control, store results — search/power.js (Restart, Shut down, Log out ask first), search/media.js (MPRIS), search/store.js ("install krita"); test_search_plugins_114.py "test_power_asks_first_where_it_closes_apps", "test_media", "test_store"; search-plugins.yml pictures "09-restart", "10-restart-asks-first", "11-media", "12-store" (needs testing on a device)
+- [x] Plugin: Hearth contacts, calendar events, notes — search/contacts.js, search/events.js, search/notes.js (hearth-search-sources pim: Hearth Contacts' .vcf, hearth-time --events, ~/Documents/Notes); test_search_plugins_114.py "test_contacts_events_notes", "test_pim"; search-plugins.yml pictures "13-contacts", "14-calendar", "15-notes" (needs testing on a device)
+- [x] Type on the desktop to search — Desktop.qml "SettingsNav.searchBar.openWith(event.text)", Settings › Search "Type on the desktop to search" (typeToSearch); test_search_bar.py "test_type_on_the_desktop"; searchbar.yml picture "sb-10-typed-on-desktop" (needs testing on a device)
 
 ### Notifications
 
@@ -234,8 +234,8 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 ### Clipboard
 
 - [x] Clipboard history, pictures, pinned, Clear all keeping pinned, secrets skipped — `Clipboard.qml`, `hearth-clipboard`, `SetClipboard.qml`
-- [ ] Clipboard actions (open a URL in…, QR code, edit an item) (S)
-- [ ] Selection (middle-click) history and sync with the clipboard (S)
+- [x] Clipboard actions (open a URL in…, QR code, edit an item) — Clipboard.qml "function more(i)" (⋯ on a text item: Open in <each browser>, Show as a QR code, Edit the text), hearth-clipboard "browsers", "open ID APP", "qr ID" (qrencode), "get", "edit ID", hearth_desktop_apps.py; test_clip_capture_114.py "ClipboardActions"; clip-capture.yml pictures "clip-more", "clip-qr", "clip-edit" (the link opened, the QR code read back with zbarimg, the edit saved) (needs testing on a device)
+- [x] Selection (middle-click) history and sync with the clipboard — Clipboard.qml "selWatcher" (wl-paste --primary --watch, only while history is on and you asked), hearth-clipboard "store --primary [--keep] [--sync]" (a selection still being dragged is one item; secrets and pictures never), "def sync" (no bounce); SetClipboard.qml "Selection history", "Keep the clipboard and selection in step" (~/.config/nimbus/clipboard.json through SettingsWriter, off by default); test_clip_capture_114.py "test_sync_puts_text_on_the_other_and_never_bounces"; clip-capture.yml pictures "clip-selection", "clip-settings" (checked with wl-copy --primary / wl-paste) (needs testing on a device)
 
 ### Phone link (KDE Connect)
 
@@ -256,8 +256,8 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Use this PC from anywhere (Moonlight through Tailscale, Sunshine) — `hearth-remote-desktop`, `SetRemote.qml`
 - [x] Remote desktop server (the owner dropped RDP for VNC) — hearth-vnc (VeNCrypt TLS only, Tailscale/home network, password in the keyring, lock-out after five tries, view only, Disconnect), SetRemoteDesktop.qml, KWin control through Hearth's RemoteDesktop portal ("Allow control?", hearth-kwin-cast input) with keyboard, pointer and touch (hearth_screencast.py "KEYBOARD | POINTER | TOUCHSCREEN", hearth-kwin-cast "td" / "tm" / "tu" / "tf"); test_remote_record.py, test_kwin_input.py "test_touch_lines", remote-record.yml pictures; docs/ROADMAP.md's "Remote desktop and recording" line ticked (needs testing on a device)
 - [x] Screen recording, instant replay, sound recorder — `hosts/hearth-recorder`
-- [ ] Record a window, system sound and the microphone together, choose format and quality — partly: hearth-record and Recorder.qml (a screen or a window through the portal, this PC's sound and the microphone, 30/60 fps, GPU encoder with x264 fallback); test_remote_record.py. Left: a format choice (MP4 only) and recording popups (S)
-- [ ] Screenshot tool like Spectacle — partly: Hearth Capture (Capture.qml, CaptureEditor.qml, hearth-capture-helper: all / screen / window / area, delay, pointer, arrows, boxes, pen, text, blur, pixelate, numbers, crop, copy/save, OCR with tesseract, QR codes); test_hearth_capture.py, capture-polkit-test.yml pictures. Left: scrolling capture, share (S)
+- [x] Record a window, system sound and the microphone together, choose format and quality — hearth-record and Recorder.qml (a screen or a window through the portal, this PC's sound and the microphone, 30/60 fps, GPU encoder with x264 fallback); 1.14: "format" MP4 / WebM (VP9 on the GPU or VP8, Opus) / MKV / GIF (ffmpeg's palette GIF when you stop, state "converting"), "quality" Best / Good / Smaller file (record.json, only when changed), Recorder.qml "hearth-recording-popup" (Recording · time · Stop · hide; "Show the Recording pop-up"); test_remote_record.py, test_clip_capture_114.py "Recorder"; clip-capture.yml pictures "rec-panel", "rec-popup" (needs testing on a device)
+- [x] Screenshot tool like Spectacle — Hearth Capture (Capture.qml, CaptureEditor.qml, hearth-capture-helper: all / screen / window / area, delay, pointer, arrows, boxes, pen, text, blur, pixelate, numbers, crop, copy/save, OCR with tesseract, QR codes); test_hearth_capture.py, capture-polkit-test.yml pictures. 1.14: scrolling capture (feasible on KWin: hearth-capture-helper "scroll" takes the area again and again through hearth-screenshot / KWin's CaptureArea, or grim -t ppm on labwc, turns the mouse wheel through a virtual mouse or lets you scroll, and stitches by matching rows, a toolbar and footer kept once; Capture.qml "Scrolling", "hearth-capture-scroll" pill with Done / Cancel) and Share (CaptureEditor.qml "function share(": Copy, Save, Open with <apps for pictures>, Send to <phone> through Phone link); test_clip_capture_114.py "Scrolling", "Share"; clip-capture.yml pictures "cap-take-scroll", "cap-scroll-pill", "cap-scroll-result", "cap-share" (a real terminal scrolled and joined in CI) (needs testing on a device)
 
 ### Files (Dolphin's features)
 
@@ -286,13 +286,13 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 ### Activities
 
-- [ ] Activities — partly: Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Left: recent files and privacy per activity; Super+Q is still Close, not the switcher (shortcuts.json "close" Meta+Q); the ROADMAP line is unticked (M)
+- [x] Activities — Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Recent files and privacy per activity (1.14 wave 3): each activity its own list, shared, or "Don't remember" — activities.js RECENT, Activities.setRecent, ActivitySwitcher.qml "Recent files" row, SetRecentFiles.qml "Activities", hearth_files_extras.py activity_mark / activity_tidy / recent_visible; test_store_extras.py "RecentPerActivity", activities-store.yml "Recent on Work" notice, "as-5-recent-activities", "as-6-activity-recent", "as-9-private-dont-remember" (needs testing on a device). Super+Q stays Close (the owner's decision; shortcuts.json "close" Meta+Q) (M)
 
 ### App store and updates
 
 - [x] App store (Flathub, Debian packages) — Bazaar + `SetApps.qml`, `DebInstaller.qml`
 - [x] System updates with the previous version kept — `SetUpdates.qml`, bootc
-- [ ] Discover's extras (update notifications, reviews, permission changes, verified label, links, fonts, drivers) — Hearth's own App store is on feature/search-store (merged) (L)
+- [ ] Discover's extras — partly: reviews and ratings, the verified label and links (SetStore.qml, on feature/search-store, merged); update notifications with Update all, off-able — StoreWatch.qml, hearth_store_extras.py check / prefs-set: "as-1-update-notice", "as-2-store-updates"; permission changes shown and asked before updating (Update all leaves them out) — hearth_store_extras.py new_perms / update_apps, SetStore.qml "Update and allow": "as-3-new-permissions"; drivers (Nvidia, firmware-*, microcode: read-only list, install with a password through hearth-admin driver-install → hearth-unlock --install-package) — StoreDrivers.qml, hearth_store_extras.py drivers: "as-4-drivers"; test_store_extras.py, test_hearth_unlock.py "test_driver_install_only_takes_drivers", polkit-rules.test.js, activities-store.yml (needs testing on a device). Left: fonts (L)
 - [ ] App permissions page (Flatpak overrides) (M)
 - [ ] Firmware updates (fwupd) with a notification — partly: SetFirmware.qml, hearth-firmware, hearth-sysset-admin (parts install after a password; system firmware shown, never installed: red flag 2, docs/SYSTEM-SETTINGS.md); test_system_settings_114.py "test_one_rule_for_system_firmware". Left: a notification when an update is there, the history (S)
 - [x] Firmware security (Secure Boot, TPM, HSI level) — SetFirmware.qml, hearth-firmware; test_system_settings_114.py "test_security_level", "test_secure_boot_words" (needs testing on a device)

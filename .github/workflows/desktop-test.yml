@@ -2100,6 +2100,7 @@ jobs:
           # Flathub for the App store (yours, no system helper needed), and the file index made once.
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
           say "store: $(python3 $SH/hearth-store home 2>&1 | tail -1 | cut -c1-200)"
+          say "store app page: $(python3 $SH/hearth-store app org.kde.krita 2>&1 | tail -4 | tr '\n' ' ' | cut -c1-500)"
           mkdir -p "$HOME/Documents/Taxes" "$HOME/Projects"
           printf 'the quarterly budget numbers\n' > "$HOME/Documents/report.txt"; printf 'the quarterly budget numbers\nand more\n' > "$HOME/Documents/report-v2.txt"
           : > "$HOME/Documents/Taxes/Budget-2026.ods"
