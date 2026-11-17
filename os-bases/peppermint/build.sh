@@ -235,7 +235,9 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 #   kwin-wayland         KWin, Mantel's window manager (required: the build stops without kwin_wayland)
 #   kglobalacceld        KWin's keyboard shortcuts service (optional)
 #   xdg-desktop-portal-kde
-#                        KDE's portal (optional; VNC's remote input under KWin when hearth-portals.conf names it)
+#                        KDE's portal (optional; not picked for ScreenCast or RemoteDesktop: hearth-portals.conf
+#                        names Hearth's own. In 1.14 Remote desktop (hearth-vnc) types and clicks under KWin through its
+#                        uinput fallback; a RemoteDesktop in Hearth's portal backend comes later)
 #   libkf6screen-bin / kscreen
 #                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
