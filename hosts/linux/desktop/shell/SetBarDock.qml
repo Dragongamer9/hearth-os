@@ -24,6 +24,12 @@ SetPage {
         current: Settings.barStyle
         onChosen: v => Settings.barStyle = v
     }
+    // 1.14: the bar's own items in your order, and more panels (BarArrange.qml; or right-click the bar)
+    SetRow {
+        icon: "grid"; title: "Arrange the bar"; chevron: true
+        sub: "Move the bar's items, hide the ones you don't use, and add more panels (" + (BarLayout.panels.length === 1 ? "1 panel" : BarLayout.panels.length + " panels") + " now)"
+        onActivated: { BarLayout.arrangeTab = "items"; BarLayout.arranging = true; }
+    }
     SetHeader { text: "App menu" }
     Loader { Layout.fillWidth: true; source: "AppMenuPicker.qml" }
     SetHeader { text: "Menus" }

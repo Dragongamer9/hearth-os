@@ -330,6 +330,11 @@ var ENTRIES = [
 "i": "window"
 },
 {
+"t": "Arrange the bar",
+"p": "bar-dock",
+"i": "grid"
+},
+{
 "t": "Right-click menu",
 "p": "bar-dock",
 "d": "How the menu looks on files, the desktop, the bar, the dock and the app menus",
@@ -567,6 +572,18 @@ var ENTRIES = [
 "t": "All regions",
 "p": "datetime",
 "i": "back"
+},
+{
+"t": "Another calendar",
+"p": "datetime",
+"d": "Its date under each day of the month",
+"i": "calendar"
+},
+{
+"t": "Holidays",
+"p": "datetime",
+"d": "Marked on the month, the next one under it",
+"i": "sparkle"
 },
 {
 "t": "Reset to Hearth's default",
@@ -3117,9 +3134,60 @@ var ENTRIES = [
 "i": "bell-off"
 },
 {
+"t": "Quiet right now",
+"p": "notifications",
+"i": "moon"
+},
+{
 "t": "Clear the notification list",
 "p": "notifications",
 "i": "bell"
+},
+{
+"t": "While a full-screen app is in front",
+"p": "notifications",
+"d": "Games and videos: pop-ups wait in the list, and you're told how many came in when you leave full screen",
+"i": "pad"
+},
+{
+"t": "While you share or record your screen",
+"p": "notifications",
+"d": "Screen sharing in a call, Hearth's recorder, Remote desktop: nobody else sees your notifications",
+"i": "share"
+},
+{
+"t": "On a schedule",
+"p": "notifications",
+"d": "Every day between the times below. Press Super+Alt+N any time for Do not disturb",
+"i": "clock"
+},
+{
+"t": "From",
+"p": "notifications",
+"i": "moon"
+},
+{
+"t": "Until",
+"p": "notifications",
+"i": "sun"
+},
+{
+"t": "Hearth's own warnings always show",
+"p": "notifications",
+"d": "Low space, a low battery, a settings file put back: they pop up even when it's quiet, and can't be muted",
+"i": "warn"
+},
+{
+"t": "Keep the list after a restart",
+"p": "notifications",
+"d": "The last 100, with their buttons while their app can still answer. Off: the list starts empty each time (what's kept now is cleared)",
+"i": "list"
+},
+{
+"t": "Sounds",
+"p": "notifications",
+"d": "Hearth's own short sounds, the freedesktop set, or none, and which events play one",
+"i": "vol"
 },
 {
 "t": "Notifications",
@@ -3739,6 +3807,16 @@ var ENTRIES = [
 "t": "Play it back",
 "p": "sound",
 "i": "play"
+},
+{
+"t": "System sounds",
+"p": "sounds",
+"i": "vol"
+},
+{
+"t": "Where they come from",
+"p": "sounds",
+"i": "info"
 },
 {
 "t": "When this PC turns on",

@@ -1,7 +1,9 @@
 // Hearth Settings › Notifications: Do Not Disturb, clearing the list, and each app (muting from a pop-up's bell button
 // still works and shows here as Pop-ups off; muted apps' notifications still go to the list in the clock's panel). 1.14: each app's own settings
 // (allowed, pop-ups, a sound, on the lock screen, priority): hearth-notify writes them (notify-apps.json) only when you
-// change one; pop-ups stay desk.json's muted list as before.
+// change one; pop-ups stay desk.json's muted list as before. 1.14 (round 2): quiet by itself (a full-screen app, sharing
+// the screen, a schedule; NotifyHub.qml, notify.json, written only when you change one), the history kept across
+// restarts, and Hearth's own warnings, which nothing here can block.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -19,10 +21,68 @@ SetPage {
             onToggled: v => DeskState.setDnd(v)
         }
         SetRow {
+            visible: NotifyHub.autoReason !== "" && !DeskState.dnd
+            icon: "moon"; title: "Quiet right now"; chevron: false; interactive: false
+            sub: "Pop-ups are quiet " + NotifyHub.autoLabel + (NotifyHub.missed ? ". " + NotifyHub.missed + " waiting in the list" : "") + ". Your Do not disturb switch isn't changed"
+        }
+        SetRow {
             icon: "bell"; title: "Clear the notification list"
             sub: DeskState.history.length === 1 ? "1 notification" : DeskState.history.length + " notifications"
             chevron: false
             onActivated: DeskState.clearHistory()
+        }
+    }
+    // ------------------------------------------------ quiet by itself, the history (1.14)
+    readonly property var times: { const o = []; for (let h = 0; h < 24; h++) for (const m of ["00", "30"]) { const v = (h < 10 ? "0" : "") + h + ":" + m; o.push({ value: v, label: v }); } return o; }
+    SetCardGroup {
+        title: "Quiet by itself"
+        SetSwitch {
+            icon: "pad"; title: "While a full-screen app is in front"
+            sub: "Games and videos: pop-ups wait in the list, and you're told how many came in when you leave full screen"
+            checked: NotifyHub.pref("autoFullscreen")
+            onToggled: v => NotifyHub.setPref("autoFullscreen", v)
+        }
+        SetSwitch {
+            icon: "share"; title: "While you share or record your screen"
+            sub: "Screen sharing in a call, Hearth's recorder, Remote desktop: nobody else sees your notifications"
+            checked: NotifyHub.pref("autoSharing")
+            onToggled: v => NotifyHub.setPref("autoSharing", v)
+        }
+        SetSwitch {
+            icon: "clock"; title: "On a schedule"
+            sub: "Every day between the times below. Press Super+Alt+N any time for Do not disturb"
+            checked: NotifyHub.pref("schedule")
+            onToggled: v => NotifyHub.setPref("schedule", v)
+        }
+        SetDropdown {
+            visible: NotifyHub.pref("schedule")
+            icon: "moon"; title: "From"; boxWidth: 140
+            options: page.times; current: NotifyHub.pref("scheduleFrom")
+            onChosen: v => NotifyHub.setPref("scheduleFrom", v)
+        }
+        SetDropdown {
+            visible: NotifyHub.pref("schedule")
+            icon: "sun"; title: "Until"; boxWidth: 140
+            options: page.times; current: NotifyHub.pref("scheduleTo")
+            onChosen: v => NotifyHub.setPref("scheduleTo", v)
+        }
+        SetRow {
+            icon: "warn"; title: "Hearth's own warnings always show"; chevron: false; interactive: false
+            sub: "Low space, a low battery, a settings file put back: they pop up even when it's quiet, and can't be muted"
+        }
+    }
+    SetCardGroup {
+        title: "History"
+        SetSwitch {
+            icon: "list"; title: "Keep the list after a restart"
+            sub: "The last 100, with their buttons while their app can still answer. Off: the list starts empty each time (what's kept now is cleared)"
+            checked: NotifyHub.pref("keepHistory")
+            onToggled: v => NotifyHub.setPref("keepHistory", v)
+        }
+        SetRow {
+            icon: "vol"; title: "Sounds"; sub: "Hearth's own short sounds, the freedesktop set, or none, and which events play one"
+            chevron: true
+            onActivated: SettingsNav.openPage("sounds")
         }
     }
     // ------------------------------------------------ each app (1.14)
