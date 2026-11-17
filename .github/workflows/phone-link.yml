@@ -200,7 +200,6 @@ jobs:
           hearth-connect --call state > shots/state.json 2>&1 || true
           grep -E "(SetPhone|SetPhoneMessages|PhoneStatus|NotifReply|Notifications|QuickAccess)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
           cp "$LOG" shots/shell.log 2>/dev/null || true
-          echo "::notice title=Phone link log::$(grep -a 'Phone link:' "$LOG" | tail -12 | cut -c1-200 | tr '\n' '|')"
           if grep -qE "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read|Expected token)" shots/shell-errors.txt; then
             echo "::error title=Phone link pages::$(sort -u shots/shell-errors.txt | head -8 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
           else
