@@ -117,7 +117,7 @@ PanelWindow {
     // [title, sub, value, colour, works today]
     readonly property var rows: [
         ["Frame limit", "Steadier, cooler, longer battery", "Not yet", pal.muted, false],
-        ["Resolution scaling", "Hearth upscales the game itself", "Not yet", pal.muted, false],
+        ["Resolution scaling", "Firehold upscales the game itself", "Not yet", pal.muted, false],
         ["VRR / FreeSync", "Smooth when it dips below 60", !kwin || !vrr.capable ? "Not on this screen" : vrr.policy === "never" ? "Off" : "On", kwin && vrr.capable && vrr.policy !== "never" ? pal.green : pal.muted, kwin && vrr.capable],
         ["Allow tearing", "Lowest delay for fast games", !tearCapable ? "Needs KWin" : tearOn ? "On" : "Off", tearCapable && tearOn ? pal.green : pal.muted, tearCapable],
         ["Power", "Handhelds and laptops", powerMode ? (modeNames[powerMode] || powerMode) + (tdp.watts ? " · " + Math.round(tdp.watts) + " W" : "") : "Set by this PC", pal.text, powerMode !== ""],

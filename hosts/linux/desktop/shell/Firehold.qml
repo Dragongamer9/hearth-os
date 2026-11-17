@@ -130,6 +130,7 @@ Scope {
 
     // ------------------------------------------------------------------ what's on screen
     // view: "home" (Firehold's own screens are up on Couch screens) or "app" (a game or window you went to is in front).
+    property int redraws: 0
     property string view: "home"
     property string tab: "home"          // home | library | apps | store
     property string page: "tabs"         // tabs | switcher (Everything open)
@@ -347,5 +348,8 @@ Scope {
         function search(text: string): void { fhs.libQuery = text; }
         function library(): void { fhs.loadLibrary(false); }
         function close(): void { fhs.closeAll(); }
+        // Checks: every Couch screen drawn again whole (CI's software renderer under labwc headless can leave a partial
+        // repaint shifted in a screenshot; a real screen draws whole frames).
+        function redraw(): void { fhs.redraws++; }
     }
 }
