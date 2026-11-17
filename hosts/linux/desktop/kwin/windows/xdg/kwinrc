@@ -1,0 +1,13 @@
+# Hearth Desktop Mode on KWin: Super pressed and let go on its own opens Mantel's app menu (like labwc's Super_L),
+# through hearth-kwin-bridge (org.hearth.Windows). Read through XDG_CONFIG_DIRS: your own kwinrc wins.
+[ModifierOnlyShortcuts]
+Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher
+
+# Four virtual desktops named like labwc's (rc.xml <desktops>), for the taskbar's desktop buttons and "Move to desktop".
+[Desktops]
+Number=4
+Rows=1
+Name_1=Desktop 1
+Name_2=Desktop 2
+Name_3=Desktop 3
+Name_4=Desktop 4

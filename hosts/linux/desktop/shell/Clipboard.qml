@@ -48,7 +48,7 @@ Scope {
     }
     Timer { id: retry; interval: 3000; onTriggered: if (cb.wanted && !watcher.running) watcher.running = true }
     // The app in front, for "Firefox · 2 min ago": its name in a small file in your runtime folder, only while history is on.
-    readonly property var activeWin: ToplevelManager.activeToplevel
+    readonly property var activeWin: WinList.activeToplevel
     readonly property string activeName: {
         const t = activeWin;
         if (!t) return "";
