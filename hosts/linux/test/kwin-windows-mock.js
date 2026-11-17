@@ -179,6 +179,23 @@ assert.strictEqual(tm.keepAbove, true);
 tm.caption = "Task Manager"; tm.captionChanged();
 assert.strictEqual(tm.keepAbove, false);
 
+// ---- picture-in-picture windows stay on top (shortcuts.json's "picture-in-picture" rule): Firefox's and Chromium's,
+// also when the title comes after the window opens; another app's window with that title doesn't
+const ffPip = makeWindow({ caption: "Picture-in-Picture", app: "firefox-esr" });
+ws.windowAdded(ffPip);
+assert.strictEqual(ffPip.keepAbove, true);
+const crPip = makeWindow({ caption: "", cls: "Chromium" });
+ws.windowAdded(crPip);
+assert.strictEqual(crPip.keepAbove, false);
+crPip.caption = "Picture in picture"; crPip.captionChanged();
+assert.strictEqual(crPip.keepAbove, true);
+const notPip = makeWindow({ caption: "Picture-in-Picture", app: "org.hearth.text" });
+ws.windowAdded(notPip);
+assert.strictEqual(notPip.keepAbove, false);
+const ffMain = makeWindow({ caption: "Picture-in-Picture — Mozilla Firefox", app: "firefox" });
+ws.windowAdded(ffMain);
+assert.strictEqual(ffMain.keepAbove, false);
+
 // ---- the title bar menu: Hearth's Snap with Snap layouts at the top; nothing for Mantel's own surfaces
 const m = menuFn(files);
 assert.strictEqual(m.text, "Snap");

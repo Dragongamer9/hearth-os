@@ -1,0 +1,26 @@
+Output: 1 DP-1
+	enabled
+	connected
+	priority 1
+	DisplayPort
+	HDR: enabled
+		SDR brightness: 250 nits
+		SDR gamut wideness: 30%
+		Peak brightness: 603 nits
+		Max average brightness: 400 nits
+		Min brightness: 0.05 nits
+	Wide Color Gamut: enabled
+	ICC profile: none
+	Color profile source: sRGB
+	Color power preference: prefer efficiency and performance
+	Brightness control: unsupported
+Output: 2 HDMI-A-1
+	enabled
+	connected
+	priority 2
+	HDMI
+	HDR: incapable
+	Wide Color Gamut: incapable
+	ICC profile: incapable
+	Color profile source: incapable
+	Brightness control: unsupported
