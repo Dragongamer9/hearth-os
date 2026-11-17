@@ -199,6 +199,90 @@ def keys_check():
     kbd.close()
 
 
+def crop(name, box, out):
+    """OUT_DIR/kwin-OUT.png: part of the picture NAME (the frames close up), and whether it's more than one colour."""
+    try:
+        from PIL import Image, ImageStat
+        im = Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB')
+        W, H = im.size
+        b = (max(0, box[0]), max(0, box[1]), min(W, box[2]), min(H, box[3]))
+        c = im.crop(b)
+        c.save(os.path.join(OUT, 'kwin-%s.png' % out))
+        return max(ImageStat.Stat(c).stddev) > 6, (W, H)
+    except Exception as ex:
+        return False, str(ex)
+
+
+def desk(changes):
+    """Settings › Appearance, as the shell sees it: desktop.json changed while it runs (Theme.qml runs apply.sh)."""
+    path = os.path.join(os.environ['HOME'], '.local', 'share', 'nimbus', 'desktop.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        d = {}
+    d.update(changes)
+    with open(path + '.tmp', 'w', encoding='utf-8') as f:
+        json.dump(d, f)
+    os.replace(path + '.tmp', path)
+
+
+def frames_check(procs):
+    """Hearth's window frames on KWin (theme/hearth_aurorae.py): written for the look, picked by Hearth's kwinrc,
+    following a look change live; apps that draw their own title bar get no second frame."""
+    theme = os.path.join(os.environ['HOME'], '.local', 'share', 'aurorae', 'themes', 'hearth')
+    ok = wait(lambda: os.path.isfile(os.path.join(theme, 'decoration.svg')) and os.path.isfile(os.path.join(theme, 'close.svg')), 20)
+    check('Hearth\'s window frames are written for the look', ok, sorted(os.listdir(theme)) if os.path.isdir(theme) else 'no ' + theme)
+    a, b = win('Test A') or {}, win('Test B') or {}
+    check('KWin frames app windows that ask for it (foot)', a.get('framed') is True, a)
+    # An app with its own title bar (GTK's header bar, like Hearth's own apps): no second frame from KWin.
+    procs.append(subprocess.Popen(['python3', '-c',
+        "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; w = Gtk.Window(title='Test CSD'); "
+        "h = Gtk.HeaderBar(title='Test CSD', show_close_button=True); w.set_titlebar(h); w.set_default_size(500, 300); "
+        "w.connect('destroy', Gtk.main_quit); w.show_all(); Gtk.main()"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        env=dict(os.environ, GDK_BACKEND='wayland')))
+    c = wait(lambda: win('Test CSD'), 15)
+    check('an app that draws its own title bar has no second frame', c and c.get('framed') is False, c or [w.get('title') for w in listed().get('windows', [])])
+    if c:
+        ipc('winlist', 'act', 'Test CSD', 'close')
+    # The pictures: Test A in the top left quarter (in front, then behind Test B), then maximized; then another look.
+    for t in ('Test A', 'Test B'):
+        ipc('winlist', 'act', t, 'activate')
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'top-left'}))
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'bottom-right'}))
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: (win('Test A') or {}).get('zone') == 'top-left' and listed().get('active') == (win('Test A') or {}).get('id'))
+    time.sleep(1.5)
+    shot('frame-full')
+    many, size = crop('frame-full', (0, 30, 1000, 230), 'frame-active')
+    check('the frame picture (active) is more than one colour', many, size)
+    ipc('winlist', 'act', 'Test B', 'activate')
+    wait(lambda: listed().get('active') == (win('Test B') or {}).get('id'))
+    time.sleep(1.5)
+    shot('frame-full-2')
+    many, size = crop('frame-full-2', (0, 30, 1000, 230), 'frame-inactive')
+    check('the frame picture (inactive) is more than one colour', many, size)
+    ipc('winlist', 'act', 'Test A', 'maximize')
+    wait(lambda: (win('Test A') or {}).get('maximized') is True)
+    time.sleep(1.5)
+    shot('frame-full-3')
+    many, size = crop('frame-full-3', (0, 30, 1920, 160), 'frame-maximized')
+    check('the frame picture (maximized) is more than one colour', many, size)
+    ipc('winlist', 'act', 'Test A', 'restore')
+    wait(lambda: (win('Test A') or {}).get('maximized') is False)
+    ipc('winlist', 'act', 'Test A', 'activate')
+    # Another look and accent (Hearth, gold): the frames follow without a restart.
+    before = open(os.path.join(theme, 'decoration.svg')).read() if ok else ''
+    desk({'look': 'hearth', 'accent': '#ffd166'})
+    changed = wait(lambda: open(os.path.join(theme, 'decoration.svg')).read() != before, 20)
+    check('a look change writes new frames', changed, 'decoration.svg unchanged')
+    time.sleep(3)
+    shot('frame-full-4')
+    many, size = crop('frame-full-4', (0, 30, 1000, 230), 'frame-hearth-gold')
+    check('the frame picture (Hearth look, gold) is more than one colour', many, size)
+    desk({'look': 'steam', 'accent': ''})
+
+
 def main():
     s = wait(lambda: state().get('connected') and state(), 40)
     check('Mantel started the bridge and KWin\'s script is talking', s, json.dumps(s or state())[:400])
@@ -333,6 +417,8 @@ def main():
     want = ['Apps', 'Return to Game Mode', 'Reconfigure', 'Log out']     # Terminal, Files: Mantel's own entries
     check('the desktop menu has menu.xml\'s entries', [i for i in items if i != '-'] == want, items)
     ipc('desktop', 'close')
+
+    frames_check(procs)
 
     for p in procs:
         p.kill()

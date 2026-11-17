@@ -245,6 +245,22 @@ def write(path, text):
     return True
 
 
+def write_setting(path, text):
+    """Like write(), through hearth_settings_io's atomic write (a .bak kept) when it's there."""
+    if read(path) == text:
+        return False
+    if hsio is None:
+        return write(path, text)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    hsio.write_text(path, text)
+    return True
+
+
+def title_font(lk):
+    f = lk.get('font')
+    return f if f not in (None, '', 'sans-serif') and ',' not in str(f) else 'Noto Sans'
+
+
 def read(path):
     try:
         with open(path) as f:
@@ -329,6 +345,17 @@ def main():
     labwc_changed |= write(os.path.join(OUT, 'themerc-override'), themerc)
     labwc_changed |= write(os.path.join(OUT, 'labwc.json'), json.dumps({'cornerRadius': int(lk.get('windowCorner') or 10),
                                                                          'font': lk.get('font') if lk.get('font') not in (None, 'sans-serif') else 'sans'}) + '\n')
+    # KWin (Mantel on KWin): Hearth's own Aurorae window frames, the same colours, corners and buttons as labwc's
+    # (theme/hearth_aurorae.py), in ~/.local/share/aurorae/themes/hearth only.
+    kwin_changed = False
+    try:
+        import hearth_aurorae
+        cols = {k: m.color(v) for k, v in hearth_aurorae.themerc_colors(read(os.path.join(DESKTOP, 'labwc', 'themerc-override'))).items()}
+        cols['danger'] = hexc(m.tgt['danger']) if 'danger' in m.tgt else '#e5484d'
+        radius = min(int(lk.get('windowCorner') or 10), cap) if cap else int(lk.get('windowCorner') or 10)
+        kwin_changed = hearth_aurorae.write_theme(DATA, cols, radius, write_setting)
+    except Exception as e:
+        print('hearth-theme: KWin window frames: %s' % e, file=sys.stderr)
     # Hearth's own apps (hosts/hearth-apptheme): theme.css and theme.json in ~/.config/hearth.
     write_apps(pal, look, mode, accent)
     # Qt / KDE apps through qt6ct / qt5ct.
@@ -358,9 +385,15 @@ def main():
     # the KDE platform theme (Plasma's) when it's used instead of qt6ct.
     # "Hearth" (not HearthLive): KDE matches the scheme by its Name= in older releases and by its file name in newer
     # ones, and color-schemes/Hearth.colors (the live copy written above) has both.
+    # The window title font for KWin's frames (labwc's ActiveWindow font: the look's font, 10 pt, bold), in [WM].
+    kde_wm = re.sub(r'(?m)^\[WM\]\n', '[WM]\nactiveFont=%s,10,-1,5,700,0,0,0,0,0\n' % title_font(lk), kde, count=1)
     if not cur or cur.startswith(KDE_MARK):
-        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde).rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n'
+        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde_wm).rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n'
               '\n[Icons]\nTheme=%s\n' % ('breeze' if mode == 'light' else 'breeze-dark'))
+    if kwin_changed and os.environ.get('HEARTH_WM') == 'kwin':
+        # KWin reads the frames again (no restart); the person's own decoration choice in ~/.config/kwinrc still wins.
+        subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if labwc_changed:
         rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
         system = os.path.join(DESKTOP, 'shell', 'hearth-system')

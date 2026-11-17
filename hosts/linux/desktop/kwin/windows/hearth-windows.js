@@ -17,8 +17,8 @@ var BUS = "org.hearth.Windows", OBJ = "/org/hearth/Windows", IFACE = "org.hearth
 var order = [];       // the windows in the order they opened (the taskbar's order, as labwc gives it)
 var hooked = {};      // id -> true once its signals are connected
 var maxMode = {};     // id -> KWin's maximize mode from maximizedAboutToChange (0 none, 1 vertical, 2 horizontal, 3 both)
-var ruled = {};
-var placeSeen = {};    // id -> the zone and screen last sent (frameGeometryChanged)       // id -> the rule that set keep-above, so it can be taken off again
+var ruled = {};       // id -> the rule that set keep-above, so it can be taken off again
+var placeSeen = {};   // id -> the zone and screen last sent (frameGeometryChanged)
 var lastSent = "";
 
 function idOf(w) { return String(w.internalId); }
@@ -76,7 +76,8 @@ function info(w) {
         pid: w.pid || 0,
         dialog: w.dialog === true,
         parent: parent,
-        zone: zoneOf(w)
+        zone: zoneOf(w),
+        framed: w.noBorder !== true        // KWin draws a frame for it (false: the app draws its own title bar)
     };
 }
 
