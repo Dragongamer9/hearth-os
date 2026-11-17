@@ -10,12 +10,18 @@ on:
   pull_request:
     paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**']
   workflow_dispatch:
+    inputs:
+      kwin_only:
+        description: "Only the KWin screens job (kwin-screens)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write    # the screenshots branch
 
 jobs:
   desktop:
+    if: ${{ !inputs.kwin_only }}
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:44
     steps:
@@ -2137,7 +2143,7 @@ jobs:
   # title "SHOT <which> <n>"), one step each: the desktop job's own notices are many, and a job keeps 50.
   game-mode-shots:
     needs: desktop
-    if: always()
+    if: always() && !inputs.kwin_only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -2177,7 +2183,7 @@ jobs:
   # notices, a JPEG in base64 pieces titled "SHOT <name> <n>", one picture a step (a job keeps 50 notices).
   screens-shots:
     needs: desktop
-    if: always()
+    if: always() && !inputs.kwin_only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -2278,12 +2284,14 @@ jobs:
           # ---- hearth-screens against the real kscreen-doctor
           kscreen-doctor -o > shots/kwin/kscreen-o.txt 2>&1; kscreen-doctor -j > shots/kwin/kscreen-j.json 2>&1
           python3 $SH get > shots/kwin/get.json 2>&1
+          echo "::notice title=KWin screens: kscreen-doctor::$(sed 's/\x1b\[[0-9;]*m//g' shots/kwin/kscreen-o.txt | grep -v -i locale | tr '\n\t' '| ' | cut -c1-900)"
+          echo "::notice title=KWin screens: kscreen-doctor json::$(python3 -c 'import json,sys; t=open(sys.argv[1]).read(); d=json.loads(t[t.index("{"):]); print([{k: o.get(k) for k in ("name","enabled","connected","currentModeId","scale","rotation","priority")} | {"modes": [m.get("id") for m in o.get("modes", [])][:6]} for o in d["outputs"]])' shots/kwin/kscreen-j.json 2>&1 | cut -c1-900)"
           N=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["name"])' shots/kwin/get.json 2>/dev/null)
           [ -n "$N" ] || fail "hearth-screens get found no screen: $(head -c 300 shots/kwin/get.json) | kscreen-doctor: $(head -c 300 shots/kwin/kscreen-o.txt | tr '\n' '|')"
           echo "::notice title=KWin screens: get::$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))[0]; print(o["name"], o["description"], o["scale"], o["rotation"], [(m["width"], m["height"], round(m["refresh"])) for m in o["modes"] if m["current"]], "hdr", o["hdr"], "vrr", o["vrr"], "icc", o["icc"])' shots/kwin/get.json 2>&1 | cut -c1-600)"
           python3 $SH set "{\"outputs\": {\"$N\": {\"scale\": 1.25}}}" > shots/kwin/set.json 2>&1
           got=$(python3 -c 'import json,sys; print([o["scale"] for o in json.load(open(sys.argv[1]))["outputs"] if o["name"] == sys.argv[2]][0])' shots/kwin/set.json "$N" 2>&1)
-          [ "$got" = 1.25 ] || fail "set scale 1.25: KWin says $got ($(head -c 300 shots/kwin/set.json))"
+          [ "$got" = 1.25 ] || fail "set scale 1.25: KWin says $(echo "$got" | tail -2 | tr '\n' '|') (set: $(tail -c 400 shots/kwin/set.json | tr '\n' '|'))"
           grep -q '"scale": 1.25' "$HOME/.config/nimbus/screens.json" || fail "set didn't keep the scale in screens.json: $(head -c 300 "$HOME/.config/nimbus/screens.json")"
           grep -q "wlr-randr --output '$N' --on .*--scale 1.25" "$HOME/.config/nimbus/display.sh" || fail "display.sh (labwc's) doesn't have it: $(cat "$HOME/.config/nimbus/display.sh" | tr '\n' '|')"
           # restore with the scale back at 1 (as after a restart): it puts 1.25 back; a saved mode the screen doesn't list is left out.
@@ -2316,6 +2324,8 @@ jobs:
           else
             fail "hearth-screenshot under KWin: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
           fi
+          pgrep -f /tmp/kwin_wayland >/dev/null || fail "KWin isn't running after the screenshot: $(grep -v -i locale shots/kwin/kwin.log | tail -12 | tr '\n' '|' | cut -c1-900)"
+          echo "::notice title=KWin screens: KWin's log::$(grep -v -i locale shots/kwin/kwin.log | grep -i -E 'screenshot|error|warn|crash|abort|output|kscreen|nightlight|night' | tail -15 | tr '\n' '|' | cut -c1-1000)"
           # ---- Mantel's Settings › Display in the real shell
           quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
           sleep 25
@@ -2327,6 +2337,8 @@ jobs:
           if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell.log >/dev/null; then
             fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
           fi
+          echo "::notice title=KWin screens: shell log::$(grep -v -i locale shots/kwin/shell.log | grep -i -E 'error|warn|qml' | sort -u | tail -12 | tr '\n' '|' | cut -c1-1000)"
+          echo "::notice title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt 2>/dev/null | tr '\n' '|' | cut -c1-500)"
           ls -la shots/kwin
           pkill quickshell; pkill -f /tmp/kwin_wayland; pkill labwc; pkill dbus-daemon
           true
@@ -2345,25 +2357,25 @@ jobs:
               print(p, im.size)
               for w, q in ((720, 50), (640, 40), (560, 32), (480, 25)):
                   b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
-                  if len(base64.b64encode(b.getvalue())) <= 7 * 3800:
+                  if len(base64.b64encode(b.getvalue())) <= 6 * 3800:
                       break
               open(p[:-4] + '.jpg', 'wb').write(b.getvalue())
           PY
       - name: Picture (kwin-1-display-top)
         if: always()
-        run: f=shots/kwin/kwin-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-1-display-top $i::$part"; done || true
+        run: f=shots/kwin/kwin-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-1-display-top $i::$part"; done || true
       - name: Picture (kwin-2-night-light)
         if: always()
-        run: f=shots/kwin/kwin-2-night-light.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-2-night-light $i::$part"; done || true
+        run: f=shots/kwin/kwin-2-night-light.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-2-night-light $i::$part"; done || true
       - name: Picture (kwin-3-hdr-and-colour)
         if: always()
-        run: f=shots/kwin/kwin-3-hdr-and-colour.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-3-hdr-and-colour $i::$part"; done || true
+        run: f=shots/kwin/kwin-3-hdr-and-colour.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-3-hdr-and-colour $i::$part"; done || true
       - name: Picture (kwin-4-games-and-smoothness)
         if: always()
-        run: f=shots/kwin/kwin-4-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-4-games-and-smoothness $i::$part"; done || true
+        run: f=shots/kwin/kwin-4-games-and-smoothness.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-4-games-and-smoothness $i::$part"; done || true
       - name: Picture (kwin-5-scale-rotation-mirror)
         if: always()
-        run: f=shots/kwin/kwin-5-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT kwin-5-scale-rotation-mirror $i::$part"; done || true
+        run: f=shots/kwin/kwin-5-scale-rotation-mirror.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-5-scale-rotation-mirror $i::$part"; done || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
