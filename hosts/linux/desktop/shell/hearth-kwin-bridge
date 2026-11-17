@@ -9,7 +9,8 @@ reads), so Mantel's WinList.qml starts this helper when HEARTH_WM=kwin:
 It serves org.hearth.Windows on the session bus and loads KWin's "hearthwindows" script
 (desktop/kwin/windows/hearth-windows.js, with Mantel's shortcuts and snap zones put in) through KWin's Scripting API.
 The script sends the window list on every change (Update); this prints it to the shell as one JSON line and keeps it in
-$XDG_RUNTIME_DIR/hearth/windows.json for anyone else (the controller helper, checks). What the shell asks (a line of JSON
+$XDG_RUNTIME_DIR/hearth/windows.json for anyone else (the controller helper, checks); what went wrong goes to
+$XDG_RUNTIME_DIR/hearth/kwin-bridge.log. What the shell asks (a line of JSON
 on stdin: activate, close, minimize, maximize, snap, desktop...) goes back as the reply to the script's waiting Next()
 call, so it's done at once without polling. A shortcut the script registered with KWin calls Shortcut(id), and this runs
 its command from shortcuts.json (the same commands as labwc's rc.xml). If the script stops asking (KWin restarted, the
@@ -17,6 +18,7 @@ script was unloaded) it's loaded again.
 
   hearth-kwin-bridge list                  the window list now (from the bridge that's running)
   hearth-kwin-bridge do OP [ID] [k=v...]   ask for something, like the shell does (do snap ID zone=left-half)
+                                           (do probe ID: what this KWin offers, into the log)
   hearth-kwin-bridge render                print the KWin script as it's loaded (for checks)
 
 Lines it prints (serve --stdio): {"t": "windows", "windows": [...], "desktops": [...], "active": id} and
@@ -47,6 +49,7 @@ XML = """<node><interface name="org.hearth.Windows">
   <method name="Launcher"/>
   <method name="Command"><arg type="s" name="json" direction="in"/><arg type="b" name="queued" direction="out"/></method>
   <method name="List"><arg type="s" name="json" direction="out"/></method>
+  <method name="Log"><arg type="s" name="text" direction="in"/></method>
   <signal name="Changed"><arg type="s" name="json"/></signal>
 </interface></node>"""
 NEXT_WAIT = 20          # s: Next() answers with nothing after this (KWin's D-Bus calls give up at 25 s)
@@ -64,8 +67,20 @@ def runtime_dir():
     return d
 
 
+LOG_MAX = 256 * 1024
+
+
 def log(text):
+    """To stderr and $XDG_RUNTIME_DIR/hearth/kwin-bridge.log (kept small: started again past 256 KB)."""
+    line = time.strftime('%H:%M:%S ') + text
     print('hearth-kwin-bridge: ' + text, file=sys.stderr, flush=True)
+    try:
+        path = os.path.join(runtime_dir(), 'kwin-bridge.log')
+        mode = 'w' if os.path.exists(path) and os.path.getsize(path) > LOG_MAX else 'a'
+        with open(path, mode, encoding='utf-8') as f:
+            f.write(line + '\n')
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------- the script, filled in
@@ -146,6 +161,10 @@ class Bridge:
             sys.stdout.flush()
         except (BrokenPipeError, OSError):
             self.quit()
+
+    def note(self, text):
+        log(text)
+        self.say({'t': 'log', 'text': text})
 
     def status(self, connected, problem=''):
         if connected == self.connected and problem == self.problem:
@@ -228,6 +247,10 @@ class Bridge:
             inv.return_value(GLib.Variant('(b)', (self.command(text),)))
         elif method == 'List':
             inv.return_value(GLib.Variant('(s)', (self.last_list,)))
+        elif method == 'Log':
+            (text,) = params.unpack()
+            inv.return_value(None)
+            self.note('KWin script: ' + text[:2000])
         else:
             inv.return_dbus_error('org.hearth.Windows.Error', 'no method ' + method)
 
