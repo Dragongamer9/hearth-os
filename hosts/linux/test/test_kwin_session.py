@@ -207,7 +207,7 @@ class KWinStart(Base):
         self.session()
         self.assertEqual(open(mine).read(), '[Windows]\nFocusPolicy=FocusFollowsMouse\n')
         self.assertFalse(os.path.exists(mine + '.bak'))
-        for f in ('kwinrc', 'kglobalshortcutsrc'):
+        for f in ('kwinrc', 'xdg-desktop-portal/nimbus-portals.conf'):
             self.assertTrue((ROOT / 'hosts/linux/desktop/kwin/xdg' / f).is_file())
 
 

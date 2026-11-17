@@ -507,7 +507,7 @@ run_labwc() {
 # Mantel on KWin: KWin's environment is labwc's environment file (the same folder, with your accessibility lines),
 # with XDG_CURRENT_DESKTOP=Nimbus:KDE (Nimbus first: Hearth's default apps, its file chooser and app kinds go by it;
 # KDE: xdg-desktop-portal-kde for screen sharing) and Hearth's KWin defaults ($SHARE/desktop/kwin/xdg: kwinrc,
-# kglobalshortcutsrc, nimbus-portals.conf) first in XDG_CONFIG_DIRS: system defaults under yours, so your own
+# nimbus-portals.conf) first in XDG_CONFIG_DIRS: system defaults under yours, so your own
 # ~/.config/kwinrc is read on top and never written over by Hearth. KWin starts the same autostart as labwc.
 # 200 = didn't come up (or ended right after starting); anything else is KWin's own exit code.
 run_kwin() {
