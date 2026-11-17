@@ -689,6 +689,36 @@ def briefcase_mod():
     return _BC or None
 
 
+def accounts_mod():
+    try:
+        import hearth_accounts
+        return hearth_accounts
+    except ImportError:
+        return None
+
+
+def account_places():
+    """Your online accounts with Files on (Settings › Accounts › Online accounts, hearth_accounts.py): Nextcloud's and
+    WebDAV's files, mounted with gvfs (davs://) when you open them."""
+    m = accounts_mod()
+    if not m:
+        return []
+    try:
+        return m.file_places()
+    except Exception:                     # noqa: BLE001 (a damaged accounts file never breaks the left menu)
+        return []
+
+
+def account_open(aid):
+    m = accounts_mod()
+    if not m:
+        raise Fail("Online accounts aren't on this device")
+    try:
+        return m.mount(aid)
+    except m.Fail as e:
+        raise Fail(str(e))
+
+
 def briefcase_places():
     """The Briefcases you made or opened that are reachable now, unless one's "Show in navigation pane" is off.
     ~/Briefcase is never pinned here by Hearth (a Briefcase is a folder you make): an existing one stays a normal
@@ -761,6 +791,7 @@ def places():
         out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
                     'kind': 'games', 'section': 'games'})
     out += bookmark_places()
+    out += account_places()
     out += briefcase_places()
     out += storage_places()
     out += device_places()
@@ -4156,6 +4187,8 @@ def cmd(argv):
         out = cdrive()
     elif c == 'app-sizes':
         out = app_sizes(rest)
+    elif c == 'account-open' and len(rest) == 1:
+        out = account_open(rest[0])
     elif c == 'net-open' and rest:
         out = net_open(rest[0], rest[1:])
     elif c == 'net-auto' and len(rest) == 2 and rest[1] in ('on', 'off'):

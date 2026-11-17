@@ -98,6 +98,7 @@ var PAGES = [
     { id: "accounts", file: "SetCategory.qml", cat: "accounts", label: "Accounts", icon: "user", landing: true },
     { id: "users", file: "SetUsers.qml", cat: "accounts", label: "Your account and other people", icon: "users", desc: "Your picture and name, other people on this PC", words: "accounts users people family", old: "Users" },
     { id: "signin", file: "SetSignin.qml", cat: "accounts", label: "Sign-in options", icon: "lock", desc: "Sign in automatically, password, lock after sleep", words: "password login autologin lock", old: "Sign-in" },
+    { id: "online-accounts", file: "SetAccounts.qml", cat: "accounts", label: "Online accounts", icon: "cloud", desc: "Nextcloud, Google, Microsoft, CalDAV, CardDAV, WebDAV and IMAP: sign in once for calendar, contacts, files and mail", words: "online accounts nextcloud google microsoft outlook gmail caldav carddav webdav imap mail calendar contacts cloud sync sign in kaccounts" },
 
     // ---- Home server (always its own category; Overview is the landing)
     { id: "hs-overview", file: "SetHomeServer.qml", cat: "hs", label: "Home server", icon: "server", words: "nas home server light mode overview", old: "Home server › Overview", landing: true, ownList: true },
