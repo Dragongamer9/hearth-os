@@ -69,7 +69,8 @@ DEFAULTS = {'indexing': True, 'contents': False, 'folders': ['~'], 'exclude': []
 # The search bar (SearchBar.qml, Alt+Space): the order of its groups ([] = Hearth's, search-bar.js DEFAULT_ORDER) and
 # whether typing on the desktop opens it.
 DEFAULTS.update({'pluginOrder': [], 'typeToSearch': True})
-PLUGINS = ['calc', 'units', 'currency', 'web', 'commands', 'emoji', 'recent', 'windows']
+PLUGINS = ['calc', 'units', 'currency', 'web', 'commands', 'emoji', 'recent', 'windows',
+           'browser', 'desktops', 'kill', 'worldclock', 'spell', 'chars', 'colours', 'power', 'media', 'store', 'contacts', 'events', 'notes']
 # Never read: build output, caches, game libraries and Windows prefixes (huge, and nothing anyone searches for).
 SKIP_DIRS = {'node_modules', '__pycache__', 'target', 'build', 'dist', '.git', 'venv', '.venv', 'site-packages',
              'steamapps', 'compatdata', 'shadercache', 'Prefixes', 'drive_c', 'dosdevices', 'lost+found'}

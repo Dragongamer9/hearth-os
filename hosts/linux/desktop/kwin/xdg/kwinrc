@@ -38,5 +38,12 @@ VirtualKeyboardEnabled=true
 [NightColor]
 Active=false
 
+# Game controllers as a mouse and keyboard: KWin's own (its "gamecontroller" plugin, KWin 6.6 and newer) stays off.
+# Hearth's controller pointer (hearth-pad, Settings › Controller) already does this in Desktop Mode, and with both on a
+# stick would move the pointer twice and A would click twice. Debian's KWin 6.3 has no such plugin, so this line does
+# nothing there; it's here for a newer KWin. Not fixed: your own kwinrc wins.
+[Plugins]
+gamecontrollerEnabled=false
+
 [Xwayland]
 XwaylandEavesdrops=None

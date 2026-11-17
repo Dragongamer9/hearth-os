@@ -35,6 +35,7 @@ Singleton {
     signal picked(var info)             // pickWindow()'s answer: {id, title, appId, pid} or {cancel: true}
     signal killed(var info)             // forceClose()'s: {id, ok, how|why}
     signal forceCloseAsked(var info)    // the title bar menu's "Force close…": {id, title, appId, pid}
+    signal windowRulesAsked(var info)   // its More actions › "Special window settings…": {id, wmclass, title}
 
     QtObject { id: kList; property var values: [] }
     property var kActive: null
@@ -172,6 +173,7 @@ Singleton {
                 else if (m.t === "picked") wl.picked(m);
                 else if (m.t === "killed") wl.killed(m);
                 else if (m.t === "forceClose") wl.forceCloseAsked(m);
+                else if (m.t === "windowRules") wl.windowRulesAsked(m);
             }
         }
         onExited: code => {

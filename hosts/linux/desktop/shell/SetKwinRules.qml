@@ -39,6 +39,19 @@ SetPage {
         { key: "acceptfocus", label: "Can take keyboard focus", icon: "kbd" },
         { key: "closeable", label: "Can be closed", icon: "close" }
     ]
+    // Opened from a window's More actions › "Special window settings…" (SettingsNav.ruleFor): that app's rules open, or
+    // a rule for it made when you ask (nothing is written before).
+    readonly property var forWin: SettingsNav.ruleFor
+    readonly property var forRules: forWin && forWin.wmclass ? rules.filter(r => String(r.values.wmclass || "").toLowerCase() === forWin.wmclass.toLowerCase()) : []
+    onForRulesChanged: if (forRules.length && !forRules.some(r => r.id === openId)) openId = forRules[0].id
+    function makeFor() {
+        const w = forWin;
+        if (!w) return;
+        const set = { Description: (w.title || w.wmclass) + " windows" };
+        if (w.wmclass) Object.assign(set, { wmclass: w.wmclass, wmclassmatch: 1, wmclasscomplete: false });
+        else Object.assign(set, { title: w.title, titlematch: 1 });
+        change("", set, id => page.openId = id);
+    }
     function summary(r) {
         const v = r.values;
         const app = v.wmclass ? v.wmclass : "any app";
@@ -50,6 +63,16 @@ SetPage {
         kw: kw
         what: "Window rules"
 
+        SetBanner {
+            visible: !!page.forWin
+            kind: "info"; icon: "window"
+            title: "Special settings for “" + (page.forWin ? page.forWin.title || page.forWin.wmclass : "") + "”"
+            sub: !page.forWin ? "" : page.forRules.length
+                 ? (page.forRules.length === 1 ? "Its app's rule is open below." : "Its app has " + page.forRules.length + " rules: the first is open below.")
+                 : "No rule for " + (page.forWin.wmclass || "this window") + " yet. A rule sets where its windows open, their size, keep above, no frame and more."
+            action: page.forWin && !page.forRules.length ? "Make a rule for it" : ""
+            onActivated: page.makeFor()
+        }
         SetHeader { text: "Your rules" + (kw.job.what === "save" ? " · saving…" : "") }
         Text {
             visible: page.rules.length === 0 && kw.ready
