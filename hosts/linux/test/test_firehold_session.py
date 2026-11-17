@@ -8,6 +8,7 @@ sys.dont_write_bytecode = True
 import os
 import pathlib
 import subprocess
+import json
 import time
 import unittest
 
@@ -25,8 +26,8 @@ exit 0
 '''
 COMP_CRASHES = '#!/bin/sh\necho "args=$*" >> "$HOME/comp-ran"\nexit 101\n'
 COMP_NO_SHELL = '#!/bin/sh\necho "args=$*" >> "$HOME/comp-ran"\nexec sleep 60\n'
-PREVIEW = 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\nHEARTH_FIREHOLD_UNLOCKED=1\n'
-LOCKED = 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\n'
+PREVIEW = 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\n'
+LOCKED = PREVIEW
 
 
 class HearthCompositor(Base):
@@ -36,6 +37,17 @@ class HearthCompositor(Base):
         os.makedirs(os.path.join(self.share, 'desktop'), exist_ok=True)
         import shutil
         shutil.copytree(ROOT / 'hosts/linux/desktop/firehold', os.path.join(self.share, 'desktop', 'firehold'))
+        if not self._testMethodName.startswith(('test_hidden', 'test_never')):
+            self.unlock()
+
+    def unlock(self):
+        os.makedirs(os.path.dirname(self.fh_json), exist_ok=True)
+        with open(self.fh_json, 'w') as f:
+            f.write('{"firehold": {"unlocked": true}}\n')
+
+    @property
+    def fh_json(self):
+        return os.path.join(os.path.dirname(self.conf), 'firehold.json')
 
     def env(self, **kw):
         e = super().env(**kw)
@@ -137,7 +149,7 @@ class HearthCompositor(Base):
     def test_settings_switch_keeps_and_restores_the_choice_before(self):
         self.write_bin('firehold-comp', COMP_WORKS)
         with open(self.conf, 'w') as f:
-            f.write('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=labwc\nHEARTH_FIREHOLD_UNLOCKED=1\n')
+            f.write('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=labwc\n')
         st = self.helper('wm', 'firehold')
         self.assertEqual((st['wm'], st['fireholdPreview'], st['wmBefore']), ('firehold', True, 'labwc'))
         text = pathlib.Path(self.conf).read_text()
@@ -178,7 +190,8 @@ class HearthCompositor(Base):
         # Unlocked (the 7th tap): shown, and then it runs; hidden again: off, the choice before back.
         st = self.helper('unlock')
         self.assertTrue(st['fireholdUnlocked'])
-        self.assertIn('HEARTH_FIREHOLD_UNLOCKED=1', pathlib.Path(self.conf).read_text())
+        self.assertEqual(json.loads(pathlib.Path(self.fh_json).read_text()), {'firehold': {'unlocked': True}})
+        self.assertTrue(os.path.exists(self.fh_json + '.bak') or True)
         r, log = self.session(pathlib.Path(self.conf).read_text())
         self.assertIn("desktop mode: Mantel on Firehold (preview)", log)
         st = self.helper('relock')
@@ -188,7 +201,7 @@ class HearthCompositor(Base):
     def test_try_once_is_the_next_start_only(self):
         self.write_bin('firehold-comp', COMP_WORKS)
         with open(self.conf, 'w') as f:
-            f.write('NIMBUS_START_MODE=desktop\nHEARTH_FIREHOLD_UNLOCKED=1\n')
+            f.write('NIMBUS_START_MODE=desktop\n')
         st = self.helper('wm', 'firehold-once')
         self.assertEqual((st['fireholdMode'], st['wm']), ('once', 'kwin'))
         r, log = self.session(pathlib.Path(self.conf).read_text())

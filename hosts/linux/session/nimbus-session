@@ -450,8 +450,13 @@ companion_stop() {
 KWIN_BIN="${HEARTH_KWIN_BIN:-kwin_wayland}"   # (tests: one that isn't there)
 KWIN_UP_SECS="${HEARTH_KWIN_UP_SECS:-45}"
 KWIN_EARLY_SECS="${HEARTH_KWIN_EARLY_SECS:-15}"
-firehold_unlocked() {
-  [ "$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_FIREHOLD_UNLOCKED=["'"'"']*\([0-9]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)" = 1 ]
+firehold_unlocked() {   # ~/.config/nimbus/firehold.json's firehold.unlocked (only Settings' helper writes it)
+  f="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/firehold.json"
+  [ -f "$f" ] && have python3 || return 1
+  python3 -c 'import json, sys
+d = json.load(open(sys.argv[1]))
+f = d.get("firehold") if isinstance(d.get("firehold"), dict) else {}
+sys.exit(0 if f.get("unlocked") is True or d.get("firehold.unlocked") is True else 1)' "$f" 2>/dev/null
 }
 desktop_wm_choice() {
   w=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
@@ -460,7 +465,7 @@ desktop_wm_choice() {
   if [ "$w" = albireo ] && [ -f "$SHARE/desktop/shell/hearth-your-desktop" ]; then
     timeout 5 python3 "$SHARE/desktop/shell/hearth-your-desktop" status >/dev/null 2>&1 || true
   fi
-  # Firehold stays as if it weren't there until it's unlocked on this device (HEARTH_FIREHOLD_UNLOCKED=1): then
+  # Firehold stays as if it weren't there until it's unlocked on this device (firehold.json): then
   # what was picked before it (or KWin).
   case "$w" in
     labwc) echo labwc ;;

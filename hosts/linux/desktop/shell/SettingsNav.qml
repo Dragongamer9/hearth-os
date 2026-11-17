@@ -11,7 +11,7 @@ Singleton {
     // ---- The Firehold preview's hidden switch (the owner's alone on 1.14; not in docs, release notes or the site).
     // How to unlock and test: Settings › System › About, tap or click the "Hearth OS <version>" line (or the Version
     // row, controller A) 7 times within 4 seconds. The 7th tap runs `hearth-your-desktop unlock`
-    // (HEARTH_FIREHOLD_UNLOCKED=1 in ~/.config/nimbus/session.conf, atomic with .bak), "Firehold unlocked" shows on
+    // ({"firehold": {"unlocked": true}} in ~/.config/nimbus/firehold.json, atomic with .bak), "Firehold unlocked" shows on
     // the page, and Settings › System › Your desktop shows "Firehold (preview)" (Off / Try once / Always) with "Hide
     // Firehold again" next to it (`relock`: Firehold off, the window manager from before back, hidden again). Until
     // then nimbus-session ignores any Firehold setting. Inside Firehold, Ctrl+Alt+Backspace goes back to KWin. Tests:
