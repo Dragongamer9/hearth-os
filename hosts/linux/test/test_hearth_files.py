@@ -804,7 +804,7 @@ class UndoAndRecent(Base):
 
 class Redesign(unittest.TestCase):
     """The Win 11-style window keeps what a file manager needs (the QML can't run here; CI takes screenshots)."""
-    qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/FileManager.qml').read_text() + (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/shell.qml').read_text()  # (1.14: its "filemanager" IPC is in shell.qml, which makes Files when first used)
+    qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/FileManager.qml').read_text() + (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/FilesIpc.qml').read_text()  # (1.14: its "filemanager" IPC is in FilesIpc.qml, shared with the file chooser)
 
     def test_has_it_all(self):
         for needle in ('homePage: "hearth:home"', 'function undo()', 'function redo()', 'case Qt.Key_Z:',

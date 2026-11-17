@@ -418,7 +418,7 @@ class Helper(unittest.TestCase):
 class Qml(unittest.TestCase):
     """The window and Settings: new pages behind Loaders, and the switches written only when changed."""
     def setUp(self):
-        self.q = (SHELL / 'FileManager.qml').read_text() + (SHELL / 'shell.qml').read_text()  # (1.14: its "filemanager" IPC is in shell.qml, which makes Files when first used)
+        self.q = (SHELL / 'FileManager.qml').read_text() + (SHELL / 'FilesIpc.qml').read_text()  # (1.14: its "filemanager" IPC is in FilesIpc.qml, shared with the file chooser)
 
     def fn(self, name):
         i = self.q.index('function ' + name + '(')
