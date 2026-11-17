@@ -23,7 +23,7 @@ Scope {
     onNobodyLookingChanged: maybe()
     function maybe() {
         if (!want || !nobodyLooking) return;
-        if (inUse || DeskState.overlayShown) return;
+        if (inUse || DeskState.overlayShown || SettingsNav.captureOpen || SettingsNav.polkitShown) return;
         want = false;
         Quickshell.execDetached(["sh", "-c", "sleep 8; notify-send -a Hearth -i view-refresh 'Desktop refreshed' 'The desktop shell had grown slow, so it refreshed itself while the screen was off. Nothing was closed.'"]);
         Quickshell.reload(true);
