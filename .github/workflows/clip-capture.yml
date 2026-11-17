@@ -1,0 +1,280 @@
+# Hearth 1.14's clipboard, recorder and capture extras (docs/KDE-FEATURES-1.14.md): clipboard actions (Open in…, QR
+# code, Edit), selection (middle-click) history and keeping it in step with the clipboard, the recorder's format and
+# quality and its Recording pop-up, Hearth Capture's scrolling capture and Share. Their unit tests, then Desktop Mode
+# for real on a 1920×1080 virtual screen (labwc headless + Quickshell on Fedora, as capture-polkit-test.yml): the
+# selection and sync checked with wl-clipboard, a real scrolling capture of a terminal scrolled with keys, and a
+# picture of each new view as SHOT notices ("SHOT <name> <n>", a JPEG in base64 pieces, two per job).
+name: Clipboard, recorder and capture extras
+
+on:
+  workflow_dispatch:
+  # A new workflow can only be dispatched once it's on main: until then, a push to this branch runs it.
+  push:
+    branches: [feature/w3-clip-capture]
+  pull_request:
+    paths: ['hosts/linux/desktop/shell/Clipboard.qml', 'hosts/linux/desktop/shell/SetClipboard.qml', 'hosts/linux/desktop/shell/hearth-clipboard',
+            'hosts/linux/desktop/shell/Recorder.qml', 'hosts/linux/desktop/shell/hearth-record', 'hosts/linux/desktop/shell/Capture*.qml',
+            'hosts/linux/desktop/shell/hearth-capture-helper', 'hosts/linux/desktop/shell/hearth_desktop_apps.py',
+            'hosts/linux/test/test_clip_capture_114.py', '.github/workflows/clip-capture.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  views:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell, wl-clipboard, foot and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-gobject \
+            google-noto-sans-fonts google-noto-sans-mono-fonts rsms-inter-fonts adwaita-icon-theme hicolor-icon-theme dbus-daemon \
+            dbus-tools libnotify wl-clipboard wtype foot less qrencode zbar ffmpeg-free nodejs python3-pillow openssl >/dev/null
+          # GStreamer for the Recorder panel's formats (WebM: vp8enc and webmmux; Fedora has no H.264 encoder by default).
+          dnf -y install gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-base-tools pipewire-gstreamer >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          for f in hearth-clipboard hearth-record hearth-capture-helper hearth_desktop_apps.py; do python3 -m py_compile "hosts/linux/desktop/shell/$f"; done
+          for t in test_clip_capture_114 test_shell_extras test_remote_record test_hearth_capture; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" -v 2>&1 | tee /tmp/t.log || {
+              msg=$(grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -20 | cut -c1-250 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+              echo "::error title=$t::$msg"; exit 1; }
+            echo "::notice title=$t::$(grep -E '^Ran [0-9]+ tests' /tmp/t.log) $(grep -cE '\.\.\. skipped' /tmp/t.log) skipped"
+          done
+          python3 tools/build-settings-index.py --check
+
+      - name: Start Desktop Mode, check and take the pictures
+        shell: bash
+        run: |
+          mkdir -p shots
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/Pictures" "$HOME/Videos/Recordings" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" "$HOME/.local/share/applications" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{"clipboardHistory": true}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh hosts/linux/desktop/shell/hearth-capture-helper hosts/linux/desktop/shell/hearth-clipboard hosts/linux/desktop/shell/hearth-record
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # Stand-ins: two browsers and two picture apps (they only write down what they were asked to open), and
+          # Phone link's service with one phone connected (hearth-phone talks to its socket).
+          app() { printf '[Desktop Entry]\nType=Application\nName=%s\nIcon=%s\nExec=sh -c '"'"'echo "%s $1" >> /tmp/opened.txt'"'"' sh %%u\nMimeType=%s\n' "$2" "$3" "$2" "$4" > "$HOME/.local/share/applications/$1"; }
+          app hearth-browser.desktop "Hearth Browser" firefox "x-scheme-handler/http;x-scheme-handler/https;text/html;"
+          app google-chrome.desktop "Google Chrome" google-chrome "x-scheme-handler/http;x-scheme-handler/https;"
+          app org.gnome.Loupe.desktop "Image Viewer" org.gnome.Loupe "image/png;image/jpeg;"
+          app gimp.desktop "GIMP" gimp "image/*;"
+          export HEARTH_CONNECT_SOCKET="$XDG_RUNTIME_DIR/fake-connect.sock"
+          printf '#!/bin/sh\necho %s\n' "'{\"enabled\": true}'" > /tmp/hearth-connect && chmod +x /tmp/hearth-connect
+          export HEARTH_CONNECT_BIN=/tmp/hearth-connect
+          python3 - "$HEARTH_CONNECT_SOCKET" <<'PY' &
+          import json, os, socket, sys
+          s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.listen(5)
+          while True:
+              c, _ = s.accept()
+              b = b''
+              while b'\n' not in b:
+                  x = c.recv(65536)
+                  if not x: break
+                  b += x
+              try: r = json.loads(b.split(b'\n')[0])
+              except ValueError: c.close(); continue
+              d = {'devices': [{'id': 'p1', 'name': 'Pixel 8', 'paired': True, 'reachable': True, 'battery': {'charge': 81}}]} if r['cmd'] == 'state' else {}
+              if r['cmd'] == 'share': open('/tmp/shared.txt', 'a').write(json.dumps(r['args']) + '\n')
+              c.sendall((json.dumps({'id': r['id'], 'ok': True, 'data': d}) + '\n').encode()); c.close()
+          PY
+          # A picture with text and a QR code for the editor's Share.
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          im = Image.new('RGB', (1600, 900), '#f4ece3'); d = ImageDraw.Draw(im)
+          try: f = ImageFont.truetype('/usr/share/fonts/google-noto/NotoSans-Regular.ttf', 64)
+          except OSError: f = ImageFont.load_default()
+          d.text((80, 120), 'Share me with your phone', fill='#111111', font=f)
+          d.rectangle((80, 360, 700, 760), outline='#ff8a3d', width=8)
+          im.save('/tmp/share-test.png')
+          PY
+          # A long page for the scrolling capture: a numbered list of made-up lines, each different.
+          python3 -c "
+          import random; r = random.Random(4); w = 'hearth ember mantel capture scroll stitch window page picture desktop kwin labwc steam phone sound'.split()
+          print('\n'.join('%03d  %s' % (i, ' '.join(r.choice(w) for _ in range(r.randint(3, 11)))) for i in range(1, 260)))" > /tmp/long.txt
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          q() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" 2>&1 | tail -n1; }
+          shot() { grim "shots/$1.png" && echo "took $1"; }
+          note() { echo "::notice title=$1::$(echo "$2" | cut -c1-3000)"; }
+          bad() { echo "::error title=$1::$(echo "$2" | cut -c1-1500)"; touch shots/FAILED; }
+          snap() { find "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" -maxdepth 2 -type f -name '*.json' 2>/dev/null | sort | xargs -r sha256sum || true; }
+          q browserpick close; sleep 2
+          CLIPJ="$HOME/.config/nimbus/clipboard.json"
+
+          # ---- Clipboard: opening the popup writes nothing (clipboard.json isn't made by opening it).
+          snap > /tmp/before.txt
+          wl-copy 'sudo apt install hearth-capture'; sleep 1
+          wl-copy 'https://hearthos.fun/download'; sleep 2
+          q clipboard open; sleep 2; q clipboard close; sleep 1
+          snap > /tmp/after.txt
+          diff -q /tmp/before.txt /tmp/after.txt >/dev/null || bad "clipboard" "opening the popup changed a settings file: $(diff /tmp/before.txt /tmp/after.txt | tr '\n' ' ')"
+          [ ! -e "$CLIPJ" ] || bad "clipboard" "clipboard.json was written by opening the popup"
+          note "clipboard" "$(q clipboard state)"
+
+          # ---- More on the link (the browsers), Open in, QR code, Edit.
+          q clipboard open; sleep 2
+          q clipboard more 0; sleep 3; shot clip-more
+          note "clipboard more" "$(q clipboard state)"
+          wtype -k Return; sleep 3
+          grep -q 'https://hearthos.fun/download' /tmp/opened.txt 2>/dev/null && note "open in" "$(cat /tmp/opened.txt)" || bad "open in" "the browser wasn't asked to open the link: $(cat /tmp/opened.txt 2>&1)"
+          q clipboard open; sleep 2
+          q clipboard qr 0; sleep 3; shot clip-qr
+          note "clipboard qr" "$(q clipboard state)"
+          qrp=$(q clipboard state | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("qr",""))' 2>/dev/null || true)
+          [ -n "$qrp" ] && [ "$(zbarimg -q --raw "$qrp" 2>/dev/null)" = "https://hearthos.fun/download" ] && note "qr" "the QR code reads back as the link" || bad "qr" "the QR code didn't read back: $qrp"
+          q clipboard back; sleep 1
+          q clipboard edit 1; sleep 3
+          wtype -k End; wtype ' --yes'; sleep 1; shot clip-edit
+          wtype -M ctrl -k Return -m ctrl; sleep 3
+          python3 hosts/linux/desktop/shell/hearth-clipboard list | grep -q 'hearth-capture --yes' && note "edit" "the item was edited" || bad "edit" "the edit wasn't saved: $(python3 hosts/linux/desktop/shell/hearth-clipboard list | cut -c1-600)"
+          q clipboard close; sleep 1
+
+          # ---- Selection history and sync (your choices in clipboard.json, as Settings › Clipboard's switches save them).
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$CLIPJ" '{"selection": true, "sync": true}'
+          sleep 6
+          note "selection watcher" "$(q clipboard state)"
+          wl-copy --primary 'Highlighted in a text editor'; sleep 3
+          python3 hosts/linux/desktop/shell/hearth-clipboard list > /tmp/list.json
+          python3 -c 'import json,sys; it=[i for i in json.load(open("/tmp/list.json"))["items"] if i["text"]=="Highlighted in a text editor"]; sys.exit(0 if it and it[0]["sel"] else 1)' \
+            && note "selection" "what was highlighted is kept, marked Selection" || bad "selection" "the selection wasn't kept: $(cut -c1-600 /tmp/list.json)"
+          [ "$(wl-paste --no-newline 2>/dev/null)" = "Highlighted in a text editor" ] && note "sync" "highlighted text went on the clipboard" || bad "sync" "the clipboard has: $(wl-paste 2>&1 | head -2)"
+          wl-copy 'Copied with Ctrl+C'; sleep 3
+          [ "$(wl-paste --primary --no-newline 2>/dev/null)" = "Copied with Ctrl+C" ] && note "sync" "copied text went on the selection" || bad "sync" "the selection has: $(wl-paste --primary 2>&1 | head -2)"
+          sleep 2
+          [ "$(wl-paste --no-newline 2>/dev/null)" = "Copied with Ctrl+C" ] || bad "sync" "the clipboard and selection bounced: $(wl-paste 2>&1 | head -2)"
+          q clipboard open; sleep 2; shot clip-selection
+          q clipboard close
+          q settings page clipboard; sleep 4; shot clip-settings
+          q settings close; sleep 1
+
+          # ---- Recorder: the panel with the format and quality; opening writes nothing; then recording with the pop-up.
+          snap > /tmp/before.txt
+          q record open; sleep 3; q record close; sleep 1
+          snap > /tmp/after.txt
+          diff -q /tmp/before.txt /tmp/after.txt >/dev/null || bad "recorder" "opening the Recorder changed a settings file"
+          python3 hosts/linux/desktop/shell/hearth-record set format webm >/dev/null
+          python3 hosts/linux/desktop/shell/hearth-record set quality medium >/dev/null
+          q record open; sleep 3; shot rec-panel
+          note "recorder" "$(q record state)"
+          q record close
+          sleep 100000 & REC=$!
+          mkdir -p "$XDG_RUNTIME_DIR/hearth-record"
+          printf '{"state": "recording", "pid": %d, "since": %d, "file": "%s/Videos/Recordings/Recording now.webm", "what": "screen", "sound": "both", "encoder": "VP8", "format": "webm"}\n' \
+            "$REC" "$(($(date +%s) - 83))" "$HOME" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
+          sleep 4; shot rec-popup
+          note "recorder popup" "$(q record state)"
+          q record state | grep -q '"popup":true' || bad "recorder" "the Recording pop-up isn't shown while recording"
+          kill "$REC" 2>/dev/null || true
+          printf '{"state": "idle", "last": "%s/Videos/Recordings/Recording now.webm"}\n' "$HOME" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
+          sleep 3
+
+          # ---- Capture: Scrolling on the Take page; a real scrolling capture of a terminal scrolled with keys.
+          python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.config/nimbus/capture.json" '{"mode": "scroll"}'
+          q capture open; sleep 4; shot cap-take-scroll
+          q capture close; sleep 2
+          foot --maximized --title scrolltest less -S /tmp/long.txt >/tmp/foot.log 2>&1 &
+          sleep 4
+          q capture take scroll; sleep 6
+          note "capture picker" "$(q capture state | cut -c1-400)"
+          q capture pick 300,200,1200,560; sleep 1
+          q capture pickTake; sleep 3
+          for i in $(seq 1 14); do
+            wtype -k Down -k Down -k Down -k Down -k Down -k Down; sleep 0.9
+            [ "$i" = 7 ] && shot cap-scroll-pill
+          done
+          note "capture scrolling" "$(q capture state | cut -c1-600)"
+          q capture scrollStop; sleep 8
+          st=$(q capture state)
+          note "capture scrolled" "$(echo "$st" | cut -c1-900)"
+          h=$(echo "$st" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("editor",{}).get("height",0))' 2>/dev/null || echo 0)
+          [ "${h:-0}" -gt 900 ] && note "scrolling capture" "joined into one picture $h pixels tall" || bad "scrolling capture" "the picture is only ${h} pixels tall: $(echo "$st" | cut -c1-600)"
+          shot cap-scroll-result
+          cp "$(echo "$st" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("shot",""))')" shots/cap-scroll-long.png 2>/dev/null || true
+          pkill foot || true
+
+          # ---- Share in the editor: Copy, Save, Open with (picture apps), Send to the phone (Phone link on).
+          q capture edit /tmp/share-test.png; sleep 3
+          q capture share; sleep 5; shot cap-share
+          note "capture share" "$(q capture state | cut -c1-900)"
+          q capture state | grep -q '"shareApps":2' || bad "share" "Open with doesn't list the two picture apps"
+          q capture state | grep -q 'Pixel 8' || bad "share" "Send to the phone doesn't show the connected phone"
+          q capture close; sleep 2
+
+          # Problems the shell said about the changed files.
+          if grep -E "(Clipboard|SetClipboard|Recorder|Capture|CaptureEditor|CaptureGlyph)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)" "$LOG" > shots/qml-errors.txt 2>/dev/null; then
+            bad "QML errors" "$(head -6 shots/qml-errors.txt | cut -c1-240 | tr '\n' '|')"
+          fi
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          ls -la shots
+          [ ! -e shots/FAILED ]
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clip-capture-shots
+          path: shots
+          retention-days: 7
+
+  # The pictures as notices: two per job (each up to 18 pieces of 3800 characters, nine per step).
+  shots:
+    needs: views
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pair: ["clip-more clip-qr", "clip-edit clip-selection", "clip-settings rec-panel", "rec-popup cap-take-scroll", "cap-scroll-pill cap-scroll-result", "cap-share cap-scroll-long"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: clip-capture-shots
+          path: shots
+      - name: Make the JPEGs
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - ${{ matrix.pair }} <<'PY'
+          import base64, io, os, sys
+          from PIL import Image
+          for i, name in enumerate(sys.argv[1:]):
+              p = 'shots/%s.png' % name
+              if not os.path.exists(p):
+                  continue
+              im = Image.open(p).convert('RGB')
+              if im.height > im.width * 2:          # the long picture: its top part, readable
+                  im = im.crop((0, 0, im.width, min(im.height, im.width * 3)))
+              for w, q in ((1280, 55), (1152, 50), (1024, 45), (960, 40), (880, 34), (800, 30), (720, 26), (600, 24)):
+                  w = min(w, im.width)
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width)), Image.LANCZOS).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 18 * 3800:
+                      break
+              s = base64.b64encode(b.getvalue()).decode()
+              parts = [s[j:j + 3800] for j in range(0, len(s), 3800)][:18]
+              open('part-%d-name' % i, 'w').write(name)
+              open('part-%d-a' % i, 'w').write('\n'.join('%d %s' % (k + 1, x) for k, x in enumerate(parts[:9])) + '\n')
+              open('part-%d-b' % i, 'w').write('\n'.join('%d %s' % (k + 10, x) for k, x in enumerate(parts[9:])) + ('\n' if parts[9:] else ''))
+          PY
+      - name: Picture 1 (part 1)
+        run: '[ -f part-0-a ] && while read -r i part; do echo "::notice title=SHOT $(cat part-0-name) $i::$part"; done < part-0-a || true'
+      - name: Picture 1 (part 2)
+        run: '[ -s part-0-b ] && while read -r i part; do echo "::notice title=SHOT $(cat part-0-name) $i::$part"; done < part-0-b || true'
+      - name: Picture 2 (part 1)
+        run: '[ -f part-1-a ] && while read -r i part; do echo "::notice title=SHOT $(cat part-1-name) $i::$part"; done < part-1-a || true'
+      - name: Picture 2 (part 2)
+        run: '[ -s part-1-b ] && while read -r i part; do echo "::notice title=SHOT $(cat part-1-name) $i::$part"; done < part-1-b || true'
