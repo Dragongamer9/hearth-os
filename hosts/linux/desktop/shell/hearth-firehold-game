@@ -1,0 +1,183 @@
+#!/usr/bin/python3
+"""hearth-firehold-game: the Guide's game rows on Firehold's own compositor (docs/FIREHOLD.md, "Games: the Guide's
+rows"). The Guide (FireholdGuide.qml) runs it; it talks to firehold-comp over its control socket and keeps each
+game's choices in ~/.config/hearth/firehold-games.json (per app id), through hearth_settings_io only (atomic, .bak,
+merge under the lock). The compositor only reads that file.
+
+  hearth-firehold-game status                  one JSON line: the fullscreen game, its choices, what's happening
+                                               (render size, direct scanout, VRR). Writes nothing.
+  hearth-firehold-game set KEY VALUE [APP]     choose for the fullscreen game (or APP): then one JSON status line
+  hearth-firehold-game step KEY up|down [APP]  the next or previous value (the Guide's ‹ ›): then one JSON status line
+
+KEY / VALUE:
+  frameLimit   off 30 40 60 90 120 screen
+  scaling      off quality balanced performance
+  direct       on off        (Direct to the display)
+  vrr          on off        (VRR / FreeSync while it's fullscreen)
+  sharpen      on off        (sharpening after upscaling)
+
+Errors are one line, "error: ...", and exit 1. Without Firehold running, status prints {"ok": false, "running": false}.
+"""
+import json
+import os
+import socket
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hearth_settings_io as io  # noqa: E402
+
+FRAME_LIMITS = ['off', 30, 40, 60, 90, 120, 'screen']
+SCALINGS = ['off', 'quality', 'balanced', 'performance']
+SWITCHES = ('direct', 'vrr', 'sharpen')
+DEFAULTS = {'frameLimit': 'off', 'scaling': 'off', 'direct': True, 'vrr': True, 'sharpen': True}
+
+
+def settings_path():
+    p = os.environ.get('FIREHOLD_GAMES')
+    if p:
+        return p
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+    return os.path.join(base, 'hearth', 'firehold-games.json')
+
+
+def socket_path():
+    run = os.environ.get('XDG_RUNTIME_DIR', '/run/user/%d' % os.getuid())
+    name = os.environ.get('WAYLAND_DISPLAY', 'wayland-0')
+    return os.path.join(run, 'firehold-game-%s.sock' % os.path.basename(name))
+
+
+def ask(cmd, timeout=1.0):
+    """One line to the compositor, its JSON line back; None when Firehold isn't there."""
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect(socket_path())
+        s.sendall((cmd + '\n').encode())
+        data = b''
+        while not data.endswith(b'\n'):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        return json.loads(data.decode() or 'null')
+    except (OSError, ValueError):
+        return None
+    finally:
+        s.close()
+
+
+def status():
+    st = ask('status')
+    if not isinstance(st, dict):
+        return {'ok': False, 'running': False, 'game': None}
+    st['running'] = True
+    g = st.get('game')
+    if isinstance(g, dict):
+        rs = g.get('renderSize') or [0, 0]
+        # The Guide's labels: "‹ 60 ›", "‹ Quality · 1440p ›".
+        fl = g.get('frameLimit')
+        g['frameLimitLabel'] = 'Off' if fl in ('off', None) else 'Screen' if fl == 'screen' else str(fl)
+        sc = g.get('scaling') or 'off'
+        g['scalingLabel'] = 'Off' if sc == 'off' else '%s · %dp' % (sc.capitalize(), rs[1] if len(rs) > 1 else 0)
+    return st
+
+
+def norm(key, value):
+    v = str(value).strip().lower()
+    if key == 'frameLimit':
+        if v in ('off', '0', 'none'):
+            return 'off'
+        if v == 'screen':
+            return 'screen'
+        if v.isdigit() and int(v) in FRAME_LIMITS:
+            return int(v)
+        raise ValueError('frameLimit is one of off, 30, 40, 60, 90, 120, screen')
+    if key == 'scaling':
+        if v in SCALINGS:
+            return v
+        raise ValueError('scaling is one of off, quality, balanced, performance')
+    if key in SWITCHES:
+        if v in ('on', 'true', '1', 'yes'):
+            return True
+        if v in ('off', 'false', '0', 'no'):
+            return False
+        raise ValueError('%s is on or off' % key)
+    raise ValueError('unknown setting %r (frameLimit, scaling, direct, vrr, sharpen)' % key)
+
+
+def game_id(app):
+    if app:
+        return app
+    st = ask('status')
+    g = st.get('game') if isinstance(st, dict) else None
+    if not isinstance(g, dict) or not g.get('appId'):
+        raise ValueError('no fullscreen game on Firehold right now')
+    return g['appId']
+
+
+def current(app, key):
+    data = io.load_json(settings_path(), {})
+    games = data.get('games') if isinstance(data.get('games'), dict) else {}
+    g = games.get(app) if isinstance(games.get(app), dict) else {}
+    v = g.get(key, DEFAULTS[key])
+    try:
+        return norm(key, 'on' if v is True else 'off' if v is False else v)
+    except ValueError:
+        return DEFAULTS[key]
+
+
+def save(app, key, value):
+    def change(d):
+        games = d.get('games')
+        if not isinstance(games, dict):
+            games = d['games'] = {}
+        g = games.get(app)
+        if not isinstance(g, dict):
+            g = games[app] = {}
+        g[key] = value
+    io.update_json(settings_path(), change)
+    ask('reload')
+
+
+def step(key, direction, app):
+    if key in SWITCHES:
+        return not current(app, key)
+    seq = FRAME_LIMITS if key == 'frameLimit' else SCALINGS if key == 'scaling' else None
+    if seq is None:
+        raise ValueError('unknown setting %r' % key)
+    cur = current(app, key)
+    i = seq.index(cur) if cur in seq else 0
+    return seq[(i + (1 if direction in ('up', 'next', '+1', 'right') else -1)) % len(seq)]
+
+
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help', 'help'):
+        print(__doc__)
+        return 0
+    try:
+        if argv[0] == 'status':
+            print(json.dumps(status()))
+            return 0
+        if argv[0] == 'set' and len(argv) >= 3:
+            key = argv[1]
+            value = norm(key, argv[2])
+            app = game_id(argv[3] if len(argv) > 3 else None)
+            save(app, key, value)
+            print(json.dumps(status()))
+            return 0
+        if argv[0] == 'step' and len(argv) >= 3:
+            key = argv[1]
+            norm(key, DEFAULTS.get(key, 'x') if key not in SWITCHES else 'on')
+            app = game_id(argv[3] if len(argv) > 3 else None)
+            save(app, key, step(key, argv[2], app))
+            print(json.dumps(status()))
+            return 0
+    except ValueError as e:
+        print('error: %s' % e)
+        return 1
+    print('error: usage: status | set KEY VALUE [APP] | step KEY up|down [APP]')
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

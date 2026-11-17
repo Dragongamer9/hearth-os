@@ -249,7 +249,7 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 #                        KDE's portal (optional; not picked for ScreenCast or RemoteDesktop: hearth-portals.conf
 #                        names Hearth's own. In 1.14 Remote desktop (hearth-vnc) types and clicks under KWin through its
 #                        uinput fallback; a RemoteDesktop in Hearth's portal backend comes later)
-#   libkf6screen-bin / kscreen
+#   libkscreen-bin / kscreen
 #                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
@@ -266,15 +266,31 @@ if ! command -v kwin_wayland >/dev/null; then
 fi
 # Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
 # falls back to Breeze's frames (still works, just not Hearth's look).
-optional aurorae
+# Debian packages it as kwin-style-aurorae (the source is aurorae).
+if have_pkg kwin-style-aurorae; then optional kwin-style-aurorae; else optional aurorae; fi
 [ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
   || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
 # KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
 # (org.kde.milou): without it they don't open (Present windows still does).
 optional milou
-if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
-command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
+# The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
+# cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
+# The image check says what it brings with it (packages, size) and warns if that is a Plasma session or a login manager.
+if have_pkg kwin-addons; then
+  ka_new=$(apt-get install -s "${APT[@]:3}" kwin-addons 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ' || true)
+  ka_kb=0
+  for p in $ka_new; do s=$(apt-cache show "$p" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}'); ka_kb=$((ka_kb + ${s:-0})); done
+  echo "::notice title=kwin-addons::$(echo $ka_new | wc -w) new package(s), $((ka_kb / 1024)) MB installed: $(echo "$ka_new" | cut -c1-3000)" || true
+  case " $ka_new " in
+    *" plasma-workspace "*|*" plasma-desktop "*|*" plasma-session"*|*" sddm "*|*" kde-plasma-desktop "*|*" plasma-workspace-wayland "*)
+      echo "::warning title=kwin-addons::it brings a Plasma session or a login manager: $(echo "$ka_new" | tr ' ' '\n' | grep -E '^(plasma|sddm|kde-plasma)' | tr '\n' ' ')";;
+  esac
+fi
+optional kwin-addons
+# kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
+if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
+command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkscreen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
 # Capture says so when they're missing
 optional tesseract-ocr tesseract-ocr-eng zbar-tools
@@ -1260,7 +1276,12 @@ DESKTOP
 if [ -x /ctx/nimbus-app/hearth-text ]; then
   install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
   # An editor that can't start is worse than none: then text files open in whatever else is installed.
-  if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
+  if ldd /usr/bin/hearth-text | grep 'not found'; then
+    echo "::warning title=Hearth Text::it needs libraries this image doesn't have, so it's left out: $(ldd /usr/bin/hearth-text | grep 'not found' | tr -s ' \t' ' ' | tr '\n' '|' | cut -c1-400)"
+    rm -f /usr/bin/hearth-text
+  fi
+else
+  echo "::warning title=Hearth Text::the Hearth app's build didn't carry hearth-text (os/nimbus-app), so the image has no Hearth Text"
 fi
 if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true

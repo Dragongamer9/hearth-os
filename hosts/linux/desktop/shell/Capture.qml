@@ -3,12 +3,14 @@
 //   Take: all screens, this screen, the window in front, or an area (Mantel's own picker over a still picture of each
 //   screen), after a delay or not, with the pointer or not; then the markup editor (CaptureEditor.qml): arrows,
 //   boxes, pen, highlighter, text, blur, pixelate, numbered steps, crop; copy, save, save as, show in folder, read the
-//   text (tesseract) or a QR code (zbarimg). Recent: the pictures saved lately. Record: the screen recorder
-//   (hearth-record, else Hearth Recorder), when one is installed.
+//   text (tesseract) or a QR code (zbarimg), and Share (copy, save, open with, send to your phone). Recent: the pictures
+//   saved lately. Record: the screen recorder (hearth-record, else Hearth Recorder), when one is installed.
+//   Scrolling (1.14): pick the part of a window that scrolls; Hearth turns its mouse wheel (or you scroll it) and joins
+//   the pictures into one long one (hearth-capture-helper scroll); a small pill says how far it is, with Done / Cancel.
 // The picture itself is taken by hearth-capture-helper's grab() (hearth-screens when installed, KWin's ScreenShot2
 // under KWin, grim on labwc). Opened from the app menu (hearth-capture.desktop, "Capture"), `hearth-capture`,
 // open.sh capture / capture-region, or:
-//   quickshell ipc -p <shell folder> call capture open | close | toggle | take <all|screen|window|area> | recent
+//   quickshell ipc -p <shell folder> call capture open | close | toggle | take <all|screen|window|area|scroll> | recent | scrollStop
 // Opening it writes nothing. Your choices (mode, delay, pointer) are kept in ~/.config/nimbus/capture.json through
 // SettingsWriter, only when you change one; the recent list is state (~/.local/state/nimbus/capture-history.json).
 import QtQuick
@@ -22,7 +24,10 @@ Scope {
     id: cap
     property bool shown: false
     property string page: "take"          // take | edit | recent
-    property string phase: ""             // "" | wait (hidden, counting down) | grab | pick (the area picker)
+    property string phase: ""             // "" | wait (hidden, counting down) | grab | pick (the area picker) | scroll
+    property var scrollGeo: null          // the scrolling capture's area (global), for where its pill goes
+    property var scrollInfo: ({})         // hearth-capture-helper's scroll.json: frames, height
+    property string scrollNote: ""        // how the last scrolling capture ended
     property bool hiding: phase !== ""
     property int countdown: 0
     property string pendingMode: ""
@@ -56,7 +61,8 @@ Scope {
         const p = Object.assign({}, prefs); p[k] = v; prefs = p;
         const c = {}; c[k] = v; writer.merge(c);
     }
-    readonly property string mode: ["all", "screen", "window", "area"].indexOf(pref("mode", "area")) >= 0 ? pref("mode", "area") : "area"
+    readonly property string mode: ["all", "screen", "window", "area", "scroll"].indexOf(pref("mode", "area")) >= 0 ? pref("mode", "area") : "area"
+    readonly property bool scrollAuto: pref("scrollAuto", true) !== false
     readonly property int delay: [0, 3, 5, 10].indexOf(pref("delay", 0)) >= 0 ? pref("delay", 0) : 0
     readonly property bool pointer: pref("pointer", false) === true
     SettingsWriter { id: writer; path: cap.prefsPath }
@@ -123,7 +129,7 @@ Scope {
     function take(m) {
         if (phase !== "") return;
         error = "";
-        pendingMode = ["all", "screen", "window", "area"].indexOf(m) >= 0 ? m : mode;
+        pendingMode = ["all", "screen", "window", "area", "scroll"].indexOf(m) >= 0 ? m : mode;
         if (Object.keys(tools).length === 0) loadTools();
         phase = "wait";                       // the window goes away first
         countdown = delay;
@@ -147,6 +153,7 @@ Scope {
         const ptr = pointer ? ["--pointer"] : [];
         const m = pendingMode;
         if (m === "area") { pickArea(""); return; }
+        if (m === "scroll") { pickArea("Drag around the part that scrolls, then Take"); return; }
         const args = ["grab", m].concat(ptr);
         if (m === "screen" && (screenName || screenList()[0])) args.push("--screen", screenName || screenList()[0]);
         run(args, j => {
@@ -172,10 +179,39 @@ Scope {
     function pickDone() {
         const s = screenByName(selScreen), f = freeze[selScreen];
         if (!s || !f || !sel || sel.w < 4 || sel.h < 4) return;
+        if (pendingMode === "scroll") { startScroll({ x: Math.round(s.x + sel.x), y: Math.round(s.y + sel.y), w: Math.round(sel.w), h: Math.round(sel.h) }); return; }
         const c = Draw.pickerToCrop(sel, s.width, s.height, f.width || s.width, f.height || s.height);
         phase = "";
         edit(f.path, c);
     }
+    // ------------------------------------------------ scrolling capture
+    function startScroll(g) {
+        scrollGeo = g; scrollInfo = ({}); scrollNote = ""; sel = null;
+        phase = "scroll";
+        const args = ["scroll", "--geometry", g.x + "," + g.y + "," + g.w + "," + g.h].concat(scrollAuto ? ["--auto"] : []).concat(pointer ? ["--pointer"] : []);
+        // The picker's windows go first (they'd be in the pictures), then the pictures start.
+        scrollGo.args = args;
+        scrollGo.restart();
+    }
+    Timer {
+        id: scrollGo
+        property var args: []
+        interval: 500
+        onTriggered: cap.run(args, j => {
+            if (j.cancelled) { cap.phase = ""; cap.page = "take"; cap.shown = true; return; }
+            if (!j.ok) { cap.failed(j.error || "The scrolling capture didn't work"); return; }
+            cap.scrollNote = (j.frames > 1 ? j.frames + " pictures joined, " + j.width + " × " + j.height + ". " : "It didn't scroll, so this is one picture. ") + (j.why || "");
+            cap.edit(j.path, null);
+        })
+    }
+    function scrollStop(cancel) { run(["scroll-stop"].concat(cancel ? ["--cancel"] : [])); }
+    FileView {
+        id: scrollFile
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-capture/scroll.json"
+        printErrors: false
+        onLoaded: { try { cap.scrollInfo = JSON.parse(text()); } catch (e) {} }
+    }
+    Timer { interval: 700; repeat: true; running: cap.phase === "scroll"; onTriggered: scrollFile.reload() }
     function pickCancel() { phase = ""; sel = null; page = "take"; shown = true; }
     function edit(path, c) {
         shot = path; crop = c; shotSeq++;
@@ -199,13 +235,15 @@ Scope {
             cap.sel = { x: g[0], y: g[1], w: g[2], h: g[3] };
         }
         function pickTake(): void { cap.pickDone(); }
+        function scrollStop(): void { cap.scrollStop(false); }
+        function share(): void { if (cap.editor) cap.editor.share(); }
         function edit(path: string): void { cap.edit(path, null); }
         function sample(): void { if (cap.editor) cap.editor.sample(); }
         function save(): void { if (cap.editor) cap.editor.saveAndCopy(); }
         function ocr(): void { if (cap.editor) cap.editor.readText(); }
         function qr(): void { if (cap.editor) cap.editor.readQr(); }
         function state(): string {
-            return JSON.stringify({ shown: cap.shown, page: cap.page, phase: cap.phase, shot: cap.shot, crop: cap.crop, sel: cap.sel,
+            return JSON.stringify({ shown: cap.shown, page: cap.page, phase: cap.phase, shot: cap.shot, crop: cap.crop, sel: cap.sel, scroll: cap.scrollInfo, scrollNote: cap.scrollNote,
                 error: cap.error, saved: cap.lastSaved, recent: cap.recent.length, tools: cap.tools,
                 editor: cap.editor ? cap.editor.stateObj() : null });
         }
@@ -232,6 +270,49 @@ Scope {
                     Text { anchors.verticalCenter: parent.verticalCenter; text: "Taking it in " + cap.countdown; color: Theme.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.DemiBold }
                 }
                 MouseArea { anchors.fill: parent; onClicked: cap.cancelTake() }
+            }
+        }
+    }
+
+    // ------------------------------------------------ the scrolling capture's pill (outside the area when it fits)
+    LazyLoader {
+        active: cap.phase === "scroll"
+        PanelWindow {
+            id: sp
+            readonly property var scr: cap.screenByName(cap.selScreen) || Quickshell.screens[0]
+            readonly property bool below: !!cap.scrollGeo && !!scr && cap.scrollGeo.y - scr.y < 110 && cap.scrollGeo.y - scr.y + cap.scrollGeo.h < scr.height - 110
+            screen: scr
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.namespace: "hearth-capture-scroll"
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            anchors.top: !below
+            anchors.bottom: below
+            margins.top: 24
+            margins.bottom: 24
+            implicitWidth: pillRow.implicitWidth + 36; implicitHeight: 56
+            color: "transparent"
+            Rectangle {
+                anchors.fill: parent; radius: 28
+                color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.96); border.color: Theme.line
+                Row {
+                    id: pillRow
+                    anchors.centerIn: parent; spacing: 12
+                    CaptureGlyph { anchors.verticalCenter: parent.verticalCenter; name: "scroll"; size: 22; color: Theme.accent }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter; spacing: 1
+                        Text {
+                            text: cap.scrollAuto ? "Scrolling and joining the pictures…" : "Scroll it slowly: Hearth joins the pictures"
+                            color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold
+                        }
+                        Text {
+                            text: (cap.scrollInfo.frames || 1) + (cap.scrollInfo.frames === 1 || !cap.scrollInfo.frames ? " picture" : " pictures") + "  ·  " + (cap.scrollInfo.height || (cap.scrollGeo ? cap.scrollGeo.h : 0)) + " pixels tall"
+                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                        }
+                    }
+                    CaptureBtn { anchors.verticalCenter: parent.verticalCenter; text: "Cancel"; arrowsMove: false; onActivated: cap.scrollStop(true) }
+                    CaptureBtn { anchors.verticalCenter: parent.verticalCenter; text: "Done"; primary: true; glyph: "scroll"; arrowsMove: false; onActivated: cap.scrollStop(false) }
+                }
             }
         }
     }
@@ -434,21 +515,22 @@ Scope {
                             spacing: 14
                             Text { text: "What to capture"; color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
                             GridLayout {
-                                columns: 2; columnSpacing: 12; rowSpacing: 12
+                                columns: 2; columnSpacing: 12; rowSpacing: 10
                                 Layout.fillWidth: true
                                 Repeater {
                                     model: [
                                         { id: "area", g: "area", t: "An area", d: "Drag a box on a still picture" },
                                         { id: "window", g: "window", t: "A window", d: "The window in front" },
                                         { id: "screen", g: "screen", t: "This screen", d: "The screen Capture is on" },
-                                        { id: "all", g: "all", t: "All screens", d: "Everything, side by side" }
+                                        { id: "all", g: "all", t: "All screens", d: "Everything, side by side" },
+                                        { id: "scroll", g: "scroll", t: "Scrolling", d: "A long picture of a page that scrolls" }
                                     ]
                                     delegate: Rectangle {
                                         id: tile
                                         required property var modelData
                                         readonly property bool chosen: cap.mode === modelData.id
                                         Layout.fillWidth: true
-                                        implicitHeight: 92
+                                        implicitHeight: 78
                                         radius: Math.max(8, Theme.r(14))
                                         activeFocusOnTab: true
                                         color: chosen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : tm.containsMouse ? Theme.panel3 : Theme.panel2
@@ -488,6 +570,13 @@ Scope {
                                         onActivated: cap.setPref("delay", modelData)
                                     }
                                 }
+                            }
+                            CaptureBtn {
+                                visible: cap.mode === "scroll"
+                                glyph: "scroll"
+                                text: cap.scrollAuto ? "Hearth scrolls it for me" : "I'll scroll it myself"
+                                selected: cap.scrollAuto
+                                onActivated: cap.setPref("scrollAuto", !cap.scrollAuto)
                             }
                             CaptureBtn {
                                 Layout.topMargin: 4

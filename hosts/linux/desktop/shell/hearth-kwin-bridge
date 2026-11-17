@@ -65,6 +65,7 @@ XML = """<node><interface name="org.hearth.Windows">
   <method name="NextPreview"><arg type="s" name="commands" direction="out"/></method>
   <method name="HoverMax"><arg type="s" name="json" direction="in"/></method>
   <method name="ForceClose"><arg type="s" name="id" direction="in"/></method>
+  <method name="WindowRules"><arg type="s" name="json" direction="in"/></method>
   <signal name="Changed"><arg type="s" name="json"/></signal>
 </interface></node>"""
 NEXT_WAIT = 20          # s: Next() answers with nothing after this (KWin's D-Bus calls give up at 25 s)
@@ -182,6 +183,18 @@ def command_for(sid, table):
         if s['id'] == sid:
             return s.get('run')
     return None
+
+
+def window_rules_ask(text):
+    """The script's {id, wmclass, title} as what WinList.qml's windowRulesAsked gets: short strings on one line."""
+    try:
+        w = json.loads(text)
+    except ValueError:
+        w = {}
+    if not isinstance(w, dict):
+        w = {}
+    one = lambda k: ' '.join(str(w.get(k) or '').split())[:200]
+    return {'t': 'windowRules', 'id': one('id'), 'wmclass': one('wmclass'), 'title': one('title')}
 
 
 def write_atomic(path, text):
@@ -668,6 +681,11 @@ class Bridge:
             inv.return_value(None)
             w = next((x for x in json.loads(self.last_list).get('windows', []) if x.get('id') == wid), None)
             self.say({'t': 'forceClose', 'id': wid, 'title': (w or {}).get('title', ''), 'appId': (w or {}).get('appId', ''), 'pid': (w or {}).get('pid', 0)})
+        elif method == 'WindowRules':
+            # The window menu's More actions › "Special window settings…": Settings › Window rules for this window.
+            (text,) = params.unpack()
+            inv.return_value(None)
+            self.say(window_rules_ask(text))
         else:
             inv.return_dbus_error('org.hearth.Windows.Error', 'no method ' + method)
 

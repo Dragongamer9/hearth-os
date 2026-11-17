@@ -1,0 +1,345 @@
+#!/usr/bin/python3
+"""hearth-firehold: what Firehold's Couch (Firehold.qml, a hidden preview) shows: every game you have, from every store,
+in one list, and starting one.
+
+  hearth-firehold library      every game: Hearth's whole library (`nimbus --list-games --all`: Steam, Epic, GOG,
+                               Amazon, emulators, Beacon, Battle.net, Xbox, your own games; installed or not), your
+                               Windows apps (hearth-winapps list) and which games' saves are backed up (hearth-saves
+                               status). One JSON line: {"games": [...], "counts": {...}, "from": "hearth" | "cache"}.
+                               A copy is kept in $XDG_CACHE_HOME/hearth/firehold-library.json (a cache, not a setting).
+  hearth-firehold cached       the copy from last time, at once
+  hearth-firehold play ID      play it: a Windows app through hearth-winapps, a game through Hearth (hearth-games play)
+  hearth-firehold page ID      Hearth's page for a game (to install it): `nimbus --windowed --game-page ID`
+  hearth-firehold pictures DIR ID...
+                               a picture of each window (KWin's ids, as WinList has them) for Everything open, taken
+                               by KWin (hearth-screens shot --window) into DIR/<id>.png; prints {id: file} (a window
+                               that can't be taken, a minimized one, is left out). Only under KWin: labwc has no way
+                               to take one window's picture, so there it prints {}.
+
+Each game: {id, title, source, store (the badge: "Steam", "GOG", "Epic", "Emulator", "Windows app", "Your game"...),
+kind (its filter chip: steam, gog, epic, winapp, emu, yours, other), installed, update, savesBackedUp, cloudSaves (a
+Steam game whose saves Steam Cloud keeps: Steam's own userdata/<account>/<appid>/remote folder has files), devBuild,
+cover, wide, hero, icon, lastPlayed (ms), minutes, system, chapter (when Hearth's entry has one)}. Only reads; nothing is saved but the cache. Failures
+print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+LIST_TIMEOUT = 60
+SAVES_TIMEOUT = 25
+
+STORES = {'steam': 'Steam', 'gog': 'GOG', 'epic': 'Epic', 'amazon': 'Amazon', 'emu': 'Emulator', 'manual': 'Your game',
+          'beacon': 'Beacon', 'xbox': 'Xbox', 'xodus': 'Xbox', 'battlenet': 'Battle.net', 'recomps': 'Recomp',
+          'winapp': 'Windows app', 'modlist': 'Modlist'}
+KINDS = {'steam': 'steam', 'gog': 'gog', 'epic': 'epic', 'emu': 'emu', 'manual': 'yours', 'winapp': 'winapp'}
+# A game of your own that's a build you made (a Godot / Unity export, a dev folder): "Dev build" on its tile.
+DEV_RE = re.compile(r'(/dev/|/devel/|/builds?/|/export(s)?/|/projects?/|godot|\.x86_64$|\.pck$)', re.I)
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def cache_path():
+    base = os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache')
+    return os.path.join(base, 'hearth', 'firehold-library.json')
+
+
+def helper(name):
+    """A Hearth helper: on PATH first (stand-ins in checks), then next to this file."""
+    p = shutil.which(name)
+    if p:
+        return [p]
+    p = os.path.join(HERE, name)
+    return ['python3', p] if os.path.isfile(p) else None
+
+
+def app():
+    for c in (os.environ.get('NIMBUS_APP'), '/usr/bin/nimbus', shutil.which('nimbus')):
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def ms(v):
+    """When last played, in milliseconds (stores say seconds, Hearth milliseconds)."""
+    try:
+        v = int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+    return v * 1000 if 0 < v < 100000000000 else max(v, 0)
+
+
+def valid_id(i):
+    return (isinstance(i, str) and 0 < len(i) <= 200 and ':' in i
+            and not any(c in i for c in '"\\') and all(ord(c) >= 32 and ord(c) != 127 for c in i))
+
+
+def picture(v):
+    if not isinstance(v, str) or not v:
+        return ''
+    if v.startswith(('http://', 'https://', 'file://')):
+        return v
+    if v.startswith('/'):
+        from urllib.parse import quote
+        return 'file://' + quote(v)
+    return ''
+
+
+def norm(t):
+    return re.sub(r'[^a-z0-9]+', '', (t or '').lower())
+
+
+def steam_userdata():
+    """Steam's userdata folders (one per account that signed in on this PC); read only, nothing about the account."""
+    home = os.path.expanduser('~')
+    seen, out = set(), []
+    for root in (os.path.join(home, '.local/share/Steam'), os.path.join(home, '.steam/steam'),
+                 os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam')):
+        ud = os.path.join(root, 'userdata')
+        try:
+            real = os.path.realpath(ud)
+            if real in seen or not os.path.isdir(ud):
+                continue
+            seen.add(real)
+            out += [os.path.join(ud, d) for d in os.listdir(ud) if d.isdigit()]
+        except OSError:
+            continue
+    return out
+
+
+def cloud_saves(game_id, userdata):
+    """True when Steam Cloud keeps this Steam game's saves (its remote folder has something in it)."""
+    if not isinstance(game_id, str) or not game_id.startswith('steam:'):
+        return False
+    appid = game_id.split(':', 1)[1]
+    if not appid.isdigit():
+        return False
+    for ud in userdata:
+        try:
+            if any(os.scandir(os.path.join(ud, appid, 'remote'))):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def game_entry(g, saves=(), userdata=()):
+    """One game from Hearth's list, as Firehold's tiles read it."""
+    if not isinstance(g, dict) or not valid_id(g.get('id')):
+        return None
+    src = g.get('source') if isinstance(g.get('source'), str) else ''
+    title = g.get('title') if isinstance(g.get('title'), str) and g.get('title').strip() else g['id']
+    installed = g.get('installed', True) is not False and g.get('state', 'installed') in ('installed', None, '')
+    exe = g.get('exe') if isinstance(g.get('exe'), str) else ''
+    return {'id': g['id'], 'title': title, 'source': src, 'store': STORES.get(src, src.capitalize() or 'Game'),
+            'kind': KINDS.get(src, 'other'), 'installed': installed, 'update': g.get('update') is True,
+            'savesBackedUp': norm(title) in saves, 'cloudSaves': cloud_saves(g['id'], userdata), 'devBuild': src == 'manual' and bool(DEV_RE.search(exe)),
+            'cover': picture(g.get('cover')), 'wide': picture(g.get('wide')), 'hero': picture(g.get('hero')),
+            'icon': picture(g.get('icon')), 'lastPlayed': ms(g.get('lastPlayed')),
+            'minutes': g.get('minutes') if isinstance(g.get('minutes'), int) else 0,
+            'system': g.get('system') if isinstance(g.get('system'), str) else '',
+            'chapter': g.get('chapter')[:80] if isinstance(g.get('chapter'), str) else ''}
+
+
+def winapp_entry(a):
+    if not isinstance(a, dict) or not isinstance(a.get('id'), str) or not a['id']:
+        return None
+    last = a.get('last') if isinstance(a.get('last'), dict) else {}
+    return {'id': 'winapp:' + a['id'], 'title': a.get('name') or a['id'], 'source': 'winapp', 'store': 'Windows app',
+            'kind': 'winapp', 'installed': True, 'update': False, 'savesBackedUp': False, 'cloudSaves': False, 'devBuild': False,
+            'cover': '', 'wide': '', 'hero': '', 'icon': picture(a.get('icon')),
+            'lastPlayed': ms(last.get('at') or last.get('time') or 0), 'minutes': 0, 'system': ''}
+
+
+def counts(games):
+    c = {'all': len(games), 'installed': sum(1 for g in games if g['installed'])}
+    for k in ('steam', 'gog', 'epic', 'winapp', 'emu', 'yours'):
+        c[k] = sum(1 for g in games if g['kind'] == k)
+    return c
+
+
+def run_json(cmd, timeout):
+    r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                       timeout=timeout, check=False)
+    lines = [l for l in r.stdout.decode('utf-8', 'replace').splitlines() if l.strip()]
+    if r.returncode != 0 or not lines:
+        raise RuntimeError('%s answered nothing' % os.path.basename(cmd[-2] if len(cmd) > 1 else cmd[0]))
+    return json.loads(lines[-1])
+
+
+def hearth_games():
+    """Hearth's whole library; an older Hearth without --all gives its installed games (the launcher's list)."""
+    exe = app()
+    if not exe:
+        raise RuntimeError("Hearth isn't installed")
+    try:
+        out = run_json([exe, '--list-games', '--all'], LIST_TIMEOUT)
+        if isinstance(out, list):
+            return out
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        pass
+    out = run_json([exe, '--list-games'], LIST_TIMEOUT)
+    return out if isinstance(out, list) else []
+
+
+def backed_up():
+    """The games whose saves Hearth's Saved Games has backed up (names, normalized)."""
+    h = helper('hearth-saves')
+    if not h:
+        return set()
+    try:
+        out = run_json(h + ['status'], SAVES_TIMEOUT)
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        return set()
+    return {norm(g.get('name')) for g in (out.get('games') or []) if isinstance(g, dict) and g.get('backedUp')}
+
+
+def winapps():
+    h = helper('hearth-winapps')
+    if not h:
+        return []
+    try:
+        out = run_json(h + ['list'], LIST_TIMEOUT)
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        return []
+    return [e for e in (winapp_entry(a) for a in (out.get('apps') or [])) if e]
+
+
+def build(raw, apps, saves):
+    ud = steam_userdata()
+    games = [e for e in (game_entry(g, saves, ud) for g in (raw or [])) if e]
+    seen = {g['id'] for g in games}
+    games += [a for a in apps if a['id'] not in seen]
+    games.sort(key=lambda g: g['title'].lower())
+    return {'games': games, 'counts': counts(games)}
+
+
+def read_cache():
+    try:
+        with open(cache_path(), encoding='utf-8') as f:
+            d = json.load(f)
+        if isinstance(d, dict) and isinstance(d.get('games'), list):
+            d['from'] = 'cache'
+            return d
+    except (OSError, ValueError):
+        pass
+    return {'games': [], 'counts': counts([]), 'from': 'cache'}
+
+
+def write_cache(d):
+    path = cache_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.firehold-library-')
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(d, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def library():
+    try:
+        raw = hearth_games()
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        return read_cache()
+    d = build(raw, winapps(), backed_up())
+    write_cache(d)
+    d['from'] = 'hearth'
+    return d
+
+
+def play(i):
+    if i.startswith('winapp:'):
+        h = helper('hearth-winapps')
+        if not h:
+            raise ValueError("Windows apps aren't on this Hearth")
+        subprocess.Popen(h + ['run', i[7:]], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return {'ok': True, 'how': 'winapp'}
+    if not valid_id(i):
+        raise ValueError("That isn't a game Hearth knows")
+    h = helper('hearth-games')
+    if not h:
+        raise ValueError("Hearth's games helper is missing")
+    r = subprocess.run(h + ['play', i], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                       timeout=30, check=False)
+    line = (r.stdout.decode('utf-8', 'replace').strip().splitlines() or [''])[-1]
+    if line.startswith('error: '):
+        raise ValueError(line[7:])
+    return {'ok': True, 'how': 'hearth'}
+
+
+def page(i):
+    if not valid_id(i) or i.startswith('winapp:'):
+        raise ValueError("That isn't a game Hearth knows")
+    exe = app()
+    if not exe:
+        raise ValueError("Hearth isn't installed")
+    subprocess.Popen([exe, '--windowed', '--game-page', i], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    return {'ok': True}
+
+
+WIN_ID = re.compile(r'^\{?[0-9A-Fa-f-]{36}\}?$')
+
+
+def pictures(d, ids):
+    """Each window's picture from KWin; at most 12, a few seconds each at most."""
+    if os.environ.get('HEARTH_WM') != 'kwin':
+        return {}
+    h = helper('hearth-screens')
+    if not h:
+        return {}
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    out = {}
+    for i in ids[:12]:
+        if not WIN_ID.match(i):
+            continue
+        f = os.path.join(d, re.sub(r'[^0-9A-Za-z-]', '', i) + '.png')
+        tmp = f + '.part'
+        try:
+            r = subprocess.run(h + ['shot', '--window', i, tmp], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=8, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            os.replace(tmp, f)
+            out[i] = f
+        elif os.path.exists(tmp):
+            os.unlink(tmp)
+    return out
+
+
+def main(argv):
+    what = argv[1] if len(argv) > 1 else ''
+    try:
+        if what == 'library':
+            out = library()
+        elif what == 'cached':
+            out = read_cache()
+        elif what == 'play' and len(argv) > 2:
+            out = play(argv[2])
+        elif what == 'page' and len(argv) > 2:
+            out = page(argv[2])
+        elif what == 'pictures' and len(argv) > 2:
+            out = pictures(argv[2], argv[3:])
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -66,6 +66,7 @@ var PAGES = [
     { id: "bluetooth", file: "SetBluetooth.qml", cat: "bt", label: "Bluetooth", icon: "bt", desc: "Headphones, controllers and other wireless devices", words: "headphones headset speaker pair devices", old: "Bluetooth", status: "bt" },
     { id: "keyboard", file: "SetKeyboard.qml", cat: "bt", label: "Keyboard", icon: "kbd", desc: "Layouts, typing, the on-screen keyboard, shortcuts", words: "layout on-screen osk typing shortcuts", old: "Keyboard" },
     { id: "mouse", file: "SetMouse.qml", cat: "bt", label: "Mouse & touchpad", icon: "mouse", desc: "Pointer speed, scrolling, tapping", words: "touchpad pointer cursor speed", old: "Mouse & touchpad" },
+    { id: "mouse-buttons", file: "SetMouseButtons.qml", cat: "bt", parent: "mouse", label: "Mouse buttons", icon: "mouse", desc: "What your mouse's side and extra buttons do: press one to change it", words: "mouse buttons extra side back forward thumb remap rebind map key shortcut middle button gaming mouse" },
     // ---- Phone link (Hearth Connect, KDE Connect's protocol: docs/PHONE-LINK.md)
     { id: "phone", file: "SetPhone.qml", cat: "bt", label: "Phone", icon: "phone", desc: "Your phone linked with the KDE Connect app: notifications, messages, files, calls", words: "kde connect kdeconnect android iphone mobile sms text messages notifications reply clipboard share send files ring find my phone touchpad remote input presentation remote calls mute ringer run commands battery browse phone files sftp contacts photo" },
     { id: "phone-messages", file: "SetPhoneMessages.qml", cat: "bt", parent: "phone", label: "Messages", icon: "chat", desc: "Your phone's text messages: read and send", words: "sms text messages conversations send a text", hidden: true },
@@ -87,6 +88,7 @@ var PAGES = [
     { id: "kwin-desktops", file: "SetKwinDesktops.qml", cat: "pers", label: "Virtual desktops", icon: "desktops", desc: "How many desktops, their names, rows, switching animation", words: "kwin virtual desktops workspaces rows names wrap slide switch" },
     { id: "kwin-tiling", file: "SetKwinTiling.qml", cat: "pers", label: "Tiling", icon: "grid", desc: "Each screen's tile layout, dragging windows to edges, snapping", words: "kwin tiling tiles layout columns quick tile snap edges corners maximize" },
     { id: "kwin-edges", file: "SetKwinEdges.qml", cat: "pers", label: "Screen edges", icon: "display", desc: "Hot corners, edges, touchscreen swipes, sticky edges between screens", words: "kwin hot corners screen edges electric borders touch swipe edge barrier" },
+    { id: "kwin-behaviour", file: "SetKwinWindows.qml", cat: "pers", label: "Window behaviour", icon: "window", desc: "Which window gets the keyboard, raise on hover, title bar clicks, Super+drag, where new windows open", words: "kwin window behaviour behavior focus policy follows mouse under mouse click to focus raise hover auto raise click raises focus stealing prevention title bar double click middle click wheel super alt drag move resize placement new windows centered smart" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },

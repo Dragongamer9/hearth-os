@@ -2,7 +2,8 @@
 // tablet's screen and the part of it the tablet covers, which part of the tablet is used, left-handed, the pressure
 // curve and range, and what the pen's buttons do; a touchscreen's screen, rotation and calibration. Each device's
 // settings go to KWin over D-Bus (org.kde.KWin.InputDevice), which keeps them in kcminputrc; the pen buttons are KWin's
-// button rebinds (kcminputrc [ButtonRebinds][TabletTool]).
+// button rebinds (kcminputrc [ButtonRebinds][TabletTool]). "One pointer for the pen and the mouse" is kcminputrc
+// [Tablet] SyncWithMouse, which KWin 6.7 and newer read (KWin watches the file); with an older KWin it's shown greyed.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -39,15 +40,22 @@ SetPage {
     readonly property var curves: [
         { value: "0,0;1,1;", label: "Even" }, { value: "0,0.35;0.4,1;", label: "Soft (light strokes count more)" },
         { value: "0.35,0;1,0.6;", label: "Firm (press harder)" }]
+    // MouseButton,N is the Linux button code (linux/input-event-codes.h: BTN_RIGHT 273, BTN_MIDDLE 274, BTN_SIDE 275),
+    // as KWin's button rebinds send it.
     readonly property var buttonActions: [
-        { value: "", label: "As it is" }, { value: "MouseButton,2", label: "Right-click" }, { value: "MouseButton,4", label: "Middle-click" },
-        { value: "MouseButton,8", label: "Back" }, { value: "Key,Ctrl+Z", label: "Undo (Ctrl+Z)" }, { value: "Key,Ctrl+Shift+Z", label: "Redo" },
+        { value: "", label: "As it is" }, { value: "MouseButton,273", label: "Right-click" }, { value: "MouseButton,274", label: "Middle-click" },
+        { value: "MouseButton,275", label: "Back" }, { value: "Key,Ctrl+Z", label: "Undo (Ctrl+Z)" }, { value: "Key,Ctrl+Shift+Z", label: "Redo" },
         { value: "Key,E", label: "Eraser key (E)" }, { value: "Disabled", label: "Nothing" }]
     function rebind(pen, button) {
         const g = (kw.files.kcminputrc || {})["ButtonRebinds][TabletTool][" + pen.name] || {};
         return g[button] || "";
     }
     property var calibrating: null
+    // KWin's version as "6.3.6"; SyncWithMouse is read from KWin 6.7 on.
+    readonly property bool canSync: {
+        const m = /^(\d+)\.(\d+)/.exec((kw.st && kw.st.version) || "");
+        return !!m && (parseInt(m[1]) > 6 || (parseInt(m[1]) === 6 && parseInt(m[2]) >= 7));
+    }
 
     KwinGate {
         kw: kw
@@ -60,6 +68,14 @@ SetPage {
             Layout.fillWidth: true; Layout.leftMargin: 4
             text: kw.running || kw.preview ? "No drawing tablet is connected. Its settings show here when one is." : "Connect a drawing tablet to set it up."
             color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+        SetSwitch {
+            enabled: page.canSync; opacity: page.canSync ? 1 : 0.45
+            icon: "mouse"; title: "One pointer for the pen and the mouse"
+            sub: page.canSync ? "The pen moves the mouse's pointer, so the pointer is where the pen left it when you pick up the mouse"
+                              : "Needs KWin 6.7 or newer" + (kw.st && kw.st.version ? " (this PC has KWin " + kw.st.version + ")" : "") + ". Until then the pen and the mouse each have their own pointer"
+            checked: kw.b("kcminputrc", "Tablet", "SyncWithMouse", false)
+            onToggled: v => kw.set("kcminputrc", "Tablet", "SyncWithMouse", v)
         }
         Repeater {
             model: page.pens
@@ -121,7 +137,8 @@ SetPage {
                     delegate: SetDropdown {
                         required property var modelData
                         icon: "edit"; title: modelData.label
-                        options: page.buttonActions
+                        // A setting saved before 1.14's button codes is shown as it is, never changed by itself.
+                        options: page.buttonActions.concat(page.buttonActions.find(a => a.value === current) ? [] : [{ value: current, label: current }])
                         current: page.rebind(pen.d, modelData.code)
                         onChosen: v => kw.job.run(["rebind", pen.d.name, modelData.code], () => kw.refresh(), e => kw.say(e, true), v || " ", "save")
                     }

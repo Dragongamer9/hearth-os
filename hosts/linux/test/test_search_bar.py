@@ -55,9 +55,9 @@ class Logic(unittest.TestCase):
         'games': [], 'pages': [{'name': 'Wi-Fi', 'page': 'wifi'}], 'files': [{'name': 'fire.txt', 'path': '/x/fire.txt'}]}
 
     def test_order_keeps_yours_then_hearths_then_new(self):
-        got = js(['search-bar.js', 'order', ['files', 'calc', 'files', 'Bad Name', 'apps'], ['calc', 'contacts']])[0]
+        got = js(['search-bar.js', 'order', ['files', 'calc', 'files', 'Bad Name', 'apps'], ['calc', 'newone']])[0]
         self.assertEqual(got[:3], ['files', 'calc', 'apps'])
-        self.assertEqual(got[-1], 'contacts')
+        self.assertEqual(got[-1], 'newone')          # a plugin Hearth doesn't know yet comes last
         self.assertEqual(len(got), len(set(got)))
         self.assertNotIn('Bad Name', got)
         self.assertEqual(js(['search-bar.js', 'order', None, None])[0][0], 'apps')

@@ -1,7 +1,8 @@
 // Hearth Settings › Personalization › Virtual desktops (Mantel on KWin, docs/KWIN-SETTINGS.md): how many desktops and
 // their names (KWin's VirtualDesktopManager over D-Bus, which keeps them in kwinrc [Desktops]; straight into kwinrc when
 // KWin isn't running), how many rows, going round from the last to the first ([Windows] RollOverDesktops), the
-// switching animation (slide / fade effects) and the desktop's name shown on switching (desktopchangeosd).
+// switching animation (slide / fade effects), the desktop's name shown on switching (desktopchangeosd) and the Desktop
+// Cube (kwin-addons' cube effect, Debian's kdeplasma-addons: os-bases/peppermint/build.sh "optional kwin-addons").
 import QtQuick
 import QtQuick.Layouts
 
@@ -94,5 +95,23 @@ SetPage {
             onToggled: v => kw.setEffect("desktopchangeosd", v)
         }
         SetLinkCard { target: "kwin-edges"; title: "Switch by pushing against the screen's edge"; sub: "In Screen edges" }
+
+        // The Desktop Cube (KWin 6: kwin-addons, [Plugins] cubeEnabled; its shortcut "Cube", Super+C).
+        SetHeader { text: "Desktop cube" }
+        SetSwitch {
+            icon: "box"; title: "Desktop cube"
+            sub: kw.hasEffect("cube") ? "Super+C puts your desktops on the sides of a cube: drag to spin it, click a side to go there"
+                                      : "Not in this KWin: the cube comes with the kwin-addons package, which isn't installed"
+            checked: kw.effectOn("cube"); enabled: kw.hasEffect("cube")
+            onToggled: v => kw.setEffect("cube", v)
+        }
+        SetRow {
+            visible: kw.effectOn("cube") && kw.hasEffect("cube")
+            icon: "box"; title: "Open the cube now"
+            sub: page.count < 3 ? "It needs three desktops or more to make a cube" : "Esc or Super+C closes it"
+            chevron: false
+            enabled: page.count >= 3        // without KWin running it says so (hearth-kwin-settings shortcut)
+            onActivated: kw.shortcut("cube")
+        }
     }
 }

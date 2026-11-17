@@ -75,10 +75,31 @@ pub fn read_library() -> Library {
     lib
 }
 
+/// `--list-games --all` (the Couch library, desktop/shell/hearth-firehold): every game in the library that isn't hidden,
+/// installed or not, with what its tile says (installed, state, the emulated system, minutes and when you last played
+/// it: the store's or Hearth's own, whichever is later, as dto does). Nothing is started or saved.
+pub fn list_all(lib: &Library) -> Value {
+    let mut games: Vec<&Game> = lib.games.values().filter(|g| !lib.store.list_has("hidden", &g.id)).collect();
+    games.sort_by_key(|g| g.title.to_lowercase());
+    Value::Array(games.into_iter().map(|g| {
+        let stats = &lib.store.data["stats"][&g.id];
+        let mut e = entry(g);
+        e["installed"] = json!(g.installed);
+        e["state"] = json!(g.state);
+        e["system"] = json!(g.system);
+        e["exe"] = json!(g.exe);
+        e["minutes"] = json!(g.store_minutes.max(stats["minutes"].as_u64().unwrap_or(0)));
+        e["lastPlayed"] = json!(g.store_last_played.max(stats["lastPlayed"].as_u64().unwrap_or(0)));
+        e
+    }).collect())
+}
+
 /// `hearth --list-games`: the library read the way Hearth reads it, as JSON.
 pub fn list_now() -> Value { list(&read_library()) }
 /// `hearth --list-games --with-cloud`.
 pub fn list_with_cloud_now() -> Value { list_with_cloud(&read_library()) }
+/// `hearth --list-games --all`.
+pub fn list_all_now() -> Value { list_all(&read_library()) }
 
 // ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (archive/hosts/decky-hearth) adds Hearth's
 // games to Steam as non-Steam shortcuts that run `hearth --play-now <id>`. No window opens: the game starts the way the

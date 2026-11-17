@@ -143,6 +143,7 @@ ShellRoot {
     Launcher {
         id: launcher
         popMenu: popMenu
+        dialog: deskDialog
         onSettingsRequested: settings.open("")
         onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {
@@ -195,6 +196,11 @@ ShellRoot {
     Keyboard { id: keyboard }
     Help { id: help }
     SettingsApp { id: settings }
+    // Mantel on KWin: a window menu's More actions › "Special window settings…" opens Window rules for that window.
+    Connections {
+        target: WinList
+        function onWindowRulesAsked(info) { settings.openWindowRules(info); }
+    }
     // ---- Bazaar (Hearth OS's app store; Hearth's own store, AppStore.qml, is archived: docs/ARCHIVED.md) and
     // clipboard history (Super+V). The IPC target "apps" (older Apps links, keybinds) opens Bazaar; "clipboard" is inside.
     Scope {
@@ -294,6 +300,13 @@ ShellRoot {
     // Desktop widgets and Activities (1.14, docs/WIDGETS.md): loaded by file name, so a problem in them only loses
     // widgets and activities, never the shell. IPC targets "widgets" and "activities".
     Loader { source: "Widgets.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: desktop widgets (Widgets.qml) couldn't load") }
+    // Firehold (a hidden preview of the 2.0 desktop: Couch and Desk, Firehold.qml): nothing of it shows or runs until it's
+    // unlocked. Loaded by file name, so a problem in it only loses Firehold, never Desktop Mode or Game Mode.
+    Loader {
+        source: "Firehold.qml"
+        onLoaded: item.wire({ pad: pad, quick: quick, settingsApp: settings, keyboard: keyboard })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Firehold (Firehold.qml) couldn't load")
+    }
     FileManager { id: files }
     FilesIpc { get: () => files; peek: () => files }
     VolumeOsd { id: osd }
@@ -428,6 +441,9 @@ ShellRoot {
         target: "settings"
         function open(): void { settings.open(""); }
         function page(name: string): void { settings.open(name); }
+        // Window rules for a window's app, as its menu's "Special window settings…" opens them (checks).
+        function windowRules(wmclass: string, title: string): void { settings.openWindowRules({ wmclass: wmclass, title: title }); }
+        function state(): string { return JSON.stringify({ shown: settings.shown, page: settings.page, ruleFor: SettingsNav.ruleFor }); }
         function close(): void { settings.close(); }
         function toggle(): void { settings.toggle(); }
         // 1.14: which look Settings shows, as if the controller (pad) or the mouse (mouse) was used last (checks).
