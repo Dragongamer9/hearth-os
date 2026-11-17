@@ -334,7 +334,7 @@ Item {
         }
         Chip {
             name: "Keyboard layout"
-            text: "⌨ " + (osk.item && osk.item.layoutShort ? osk.item.layoutShort : (root.layouts[0] || "us").toUpperCase())
+            text: "Layout " + (osk.item && osk.item.layoutShort ? osk.item.layoutShort : (root.layouts[0] || "us").toUpperCase())
             onActivated: root.openMenu("layout")
         }
         Chip { name: "Accessibility"; text: "Accessibility"; onActivated: root.openMenu("access") }
@@ -496,7 +496,7 @@ Item {
                     id: msg
                     anchors.centerIn: parent
                     width: Math.min(Theme.px(580), implicitWidth)
-                    text: (root.messageKind === "locked" ? "🔒 " : "") + root.message
+                    text: root.message
                     color: root.messageKind === "info" ? Theme.text : Theme.danger
                     font.family: Theme.font; font.pixelSize: Theme.px(16); wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
                 }
@@ -675,7 +675,7 @@ Item {
         return JSON.stringify({
             view: view, user: user ? user.name : "", users: users.length, sessions: sessions.map(s => s.id), session: sessionId,
             menu: menu, osk: oskOpen, oskReady: osk.status === Loader.Ready, message: message, kind: messageKind, busy: busy,
-            typed: password.length, focus: Nav.current ? Nav.current.name : "", layer: Nav.layer, preview: preview,
+            pictures: users.filter(u => u.picture).length, typed: password.length, focus: Nav.current ? Nav.current.name : "", layer: Nav.layer, preview: preview,
             greetd: Greetd.available, power: lastPower, caps: caps
         });
     }
