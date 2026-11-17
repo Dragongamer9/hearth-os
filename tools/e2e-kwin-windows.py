@@ -89,7 +89,11 @@ def bridge(method, args=None, reply=None):
 
 
 def do(cmd):
-    return bridge('Command', GLib.Variant('(s)', (json.dumps(cmd),)), '(b)').unpack()[0]
+    try:
+        return bridge('Command', GLib.Variant('(s)', (json.dumps(cmd),)), '(b)').unpack()[0]
+    except GLib.Error as e:
+        log('::warning title=KWin windows::the bridge did not take %s: %s' % (cmd.get('op'), e.message))
+        return False
 
 
 def main():
@@ -142,7 +146,10 @@ def main():
     check('a snap layouts zone (left third)', wait(lambda: (win('Test A') or {}).get('zone') == 'left-third'), win('Test A'))
 
     # Snap layouts' flyout from the shortcut (the bridge runs its command), then a zone picked the way the flyout does.
-    bridge('Shortcut', GLib.Variant('(s)', ('snap-layouts',)))
+    try:
+        bridge('Shortcut', GLib.Variant('(s)', ('snap-layouts',)))
+    except GLib.Error as e:
+        log('::warning title=KWin windows::Shortcut: %s' % e.message)
     fly = wait(lambda: json.loads(ipc('snap', 'state') or '{}').get('shown'), 8)
     check('Super+Z (Shortcut) opens snap layouts', fly, ipc('snap', 'state'))
     time.sleep(1)
