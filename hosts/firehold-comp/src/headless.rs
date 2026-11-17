@@ -44,6 +44,7 @@ pub struct HeadlessData {
 
 impl Backend for HeadlessData {
     const KIND: &'static str = "headless";
+    const SCREEN_PACES: bool = false;
     fn seat_name(&self) -> String {
         String::from("headless")
     }

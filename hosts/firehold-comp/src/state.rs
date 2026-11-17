@@ -1265,6 +1265,8 @@ pub trait Backend {
     const NESTED: bool = false;
     /// What the game status calls this backend ("screens", "nested", "headless").
     const KIND: &'static str = "screens";
+    /// Whether the screen's own refresh paces our frames (real screens); nested and headless draw when clients do.
+    const SCREEN_PACES: bool = true;
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
