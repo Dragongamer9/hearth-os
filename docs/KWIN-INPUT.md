@@ -116,7 +116,7 @@ bare `loginctl unlock-session` would unlock that console's own session, not the 
 - Remote control (`org.freedesktop.impl.portal.RemoteDesktop`, e.g. VNC): Hearth asks "Allow … to control this
   computer?" (access-prompt.qml), optionally with the screen picker when the app also shares the screen, then the
   app's keys and pointer go to KWin through its fake input (`hearth-kwin-cast input`; keycodes, keysyms on a US layout,
-  relative and absolute pointer, buttons, scrolling; no touch yet). It ends when the app closes the session.
+  relative and absolute pointer, buttons, scrolling; and touch since 1.14: a finger down, moving, up, each with a frame). It ends when the app closes the session.
 - "Allow?" questions (xdg-desktop-portal's Access, e.g. before an app's first screenshot) are Hearth's too:
   `access-prompt.qml` (Allow / Don't allow, keyboard and D-pad, nothing allowed unless you pick Allow). On labwc
   they stay GTK's.
