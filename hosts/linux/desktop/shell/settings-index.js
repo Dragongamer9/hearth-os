@@ -3,6 +3,28 @@
 // {t: title, d: description, i: icon, p: the page it's on}. Don't edit by hand: run the tool again.
 var ENTRIES = [
 {
+"t": "Server mode runs",
+"p": "hs-aiengine",
+"i": "chat"
+},
+{
+"t": "Hearth's own AI uses",
+"p": "hs-aiengine",
+"d": "What Hearth's AI pieces ask first (the AI team, Ithil when she asks Hearth). Ollama unless you change it",
+"i": "desktops"
+},
+{
+"t": "Stop Colibri while you play",
+"p": "hs-aiengine",
+"d": "It holds the graphics card's memory. Stopped when Game Mode or a game starts, started again after",
+"i": "pad"
+},
+{
+"t": "Models folder",
+"p": "hs-aiengine",
+"i": "drive"
+},
+{
 "t": "Resource Monitor",
 "p": "about",
 "d": "See inside this PC: its board, every part and port, and what each program uses, live",
@@ -2420,6 +2442,12 @@ var ENTRIES = [
 "t": "Startup and schedule",
 "p": "hs-server",
 "i": "power"
+},
+{
+"t": "AI engine",
+"p": "hs-server",
+"d": "Ollama, Colibri or both. Colibri runs much bigger models: the busiest parts on the graphics card, the rest in memory and on your drive",
+"i": "chat"
 },
 {
 "t": "Lower power limits when idle",

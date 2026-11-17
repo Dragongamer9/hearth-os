@@ -199,8 +199,16 @@ def _ollama_loaded(model):
         with urllib.request.urlopen('http://127.0.0.1:11434/api/ps', timeout=1.5) as r:
             ps = json.loads(r.read() or b'{}')
         names = [m.get('name') or m.get('model') or '' for m in ps.get('models') or []]
-        return any(n == model or n.split(':')[0] == str(model).split(':')[0] for n in names)
-    except (OSError, ValueError):
+        if any(n == model or n.split(':')[0] == str(model).split(':')[0] for n in names):
+            return True
+    except (OSError, ValueError, AttributeError):
+        pass
+    # 1.14: her brain may run on Colibri (hearth-colibri, 127.0.0.1:11440): its model is loaded while it's served.
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:11440/v1/models', timeout=1.5) as r:
+            ids = [m.get('id') for m in (json.loads(r.read() or b'{}').get('data') or []) if isinstance(m, dict)]
+        return model in ids
+    except (OSError, ValueError, AttributeError):
         return False
 
 

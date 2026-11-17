@@ -123,7 +123,7 @@ CHOICE = {'gpuWatts': (80, 100, 120, 150, 200), 'idleMinutes': (5, 10, 20, 30), 
           'off': (0, 5, 10, 20, 30, 60)}
 MODES = ('game', 'desktop', 'server')
 GO_MODES = MODES + ('logout',)
-SERVICES = ('ai', 'pictures', 'voices', 'media', 'aishare', 'remote', 'team')     # team: the AI team (1.12), AI chat + Pictures + Voices
+SERVICES = ('ai', 'pictures', 'voices', 'media', 'aishare', 'remote', 'team', 'colibri')   # colibri: 1.14's second AI engine     # team: the AI team (1.12), AI chat + Pictures + Voices
 SERVICE_ACTIONS = ('restart', 'pause', 'resume')
 TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 PIN_RE = re.compile(r'^[0-9]{4,12}$')   # ASCII digits only (Python's \d also takes other scripts' digits)
@@ -546,7 +546,8 @@ def gpu_info():
 def owner_of(pid):
     """Which of the home server's services a process belongs to (its systemd unit)."""
     cg = read('/proc/%s/cgroup' % pid if str(pid).isdigit() else '/nonexistent')
-    for unit, who in (('hearth-ollama', 'ai'), ('hearth-comfyui', 'pictures'), ('hearth-kokoro', 'voices'), ('hearth-jellyfin', 'media')):
+    for unit, who in (('hearth-ollama', 'ai'), ('hearth-colibri', 'ai'), ('hearth-comfyui', 'pictures'), ('hearth-kokoro', 'voices'),
+                      ('hearth-jellyfin', 'media')):
         if unit in cg:
             return who
     return 'other'
@@ -568,7 +569,7 @@ def ts_ip4(st=None):
     return next((x for x in (st.get('Self') or {}).get('TailscaleIPs') or [] if re.fullmatch(r'100\.\d+\.\d+\.\d+', x)), '')
 
 
-PORT_NAMES = {445: 'Shared folders', 139: 'Shared folders', 8096: 'Media', 11434: 'AI chat', 8188: 'Pictures', 8880: 'Voices',
+PORT_NAMES = {445: 'Shared folders', 139: 'Shared folders', 8096: 'Media', 11434: 'AI chat', 11440: 'AI chat', 8188: 'Pictures', 8880: 'Voices',
               8189: 'AI sharing', 8097: 'Files on the web', 8460: 'Web page', 47984: 'Remote desktop', 47989: 'Remote desktop',
               47990: 'Remote desktop', 48010: 'Remote desktop', 8384: 'Folder sync', 22000: 'Folder sync'}
 
@@ -650,6 +651,8 @@ def pauses_view(hsd=None, srv=None):
             'voices': 'pause' if voi.get('pause') is True else 'keep', 'voicesOn': voi.get('on') is True,
             'media': 'pause' if med.get('pause') is True else 'keep', 'mediaOn': med.get('on') is True,
             'backups': 'wait' if hsd.get('lightMode', True) is not False else 'run',
+            'colibri': 'stop' if (hsd.get('colibri') or {}).get('pause', True) is not False else 'keep',
+            'colibriOn': (hsd.get('colibri') or {}).get('on') is True,
             'small': ai.get('smallModel') if ai.get('smallModel') in SMALL_MODELS else SMALL_MODEL, 'big': BIG_MODEL}
 
 
@@ -860,6 +863,47 @@ def rules_act(args):
         raise Fail(line or 'the change didn\'t go through')
 
 
+def colibri_view():
+    """Colibri while it's on (Settings › Home server's switch): its service, and what it answers on 127.0.0.1. None when
+    it's off, so the dashboard looks as it did before 1.14."""
+    hsd = hs_settings()
+    c = hsd.get('colibri') if isinstance(hsd.get('colibri'), dict) else {}
+    if c.get('on') is not True:
+        return None
+    active = unit_active('hearth-colibri.service', True)
+    out = {'active': active, 'health': 'down', 'model': '', 'tps': None, 'answers': 0}
+    try:
+        cfg = rjson(os.path.join(CONFIG_HOME, 'nimbus', 'ai-engines.json'), {})
+        out['model'] = str(((cfg.get('colibri') or {}) if isinstance(cfg, dict) else {}).get('model') or '')[:64]
+    except Exception:  # noqa: BLE001
+        pass
+    if active:
+        h = http_json('http://127.0.0.1:11440/health')
+        out['health'] = 'ready' if isinstance(h, dict) and h.get('status') == 'ok' else 'loading'
+        if out['health'] == 'ready':
+            p = http_json('http://127.0.0.1:11440/profile') or {}
+            turns = p.get('turns') if isinstance(p, dict) else None
+            if turns and isinstance(turns[-1], dict) and (turns[-1].get('wall_s') or 0) > 0:
+                out['tps'] = round((turns[-1].get('completion_tokens') or 0) / turns[-1]['wall_s'], 1)
+                out['answers'] = len(turns)
+    return out
+
+
+def colibri_tile(co, st, pauses):
+    ready = st == 'running' and co['health'] == 'ready'
+    chip = {'stopped': 'Stopped', 'off': 'Off', 'paused': 'Stopped for your game', 'paused-you': 'Paused'}.get(st) \
+        or ('Ready' if ready else 'Loading the model' if co['model'] else 'No model picked')
+    tps = co.get('tps')
+    return {'id': 'colibri', 'title': 'Big AI', 'engine': 'Colibri' + (' · ' + co['model'] if co['model'] else ''), 'icon': 'chat',
+            'state': st, 'chip': chip,
+            'big': ('%g' % tps) if tps else '—', 'unit': 'tokens/s on the last answer' if tps else 'tokens/s after the first answer',
+            'sub': ('Model: ' + co['model']) if co['model'] else 'Pick a model in Settings › Home server › AI engine',
+            'rows': [['Model', co['model'] or 'none picked'], ['Speed', ('%g tokens/s' % tps) if tps else 'not measured yet'],
+                     ['Address', '127.0.0.1:11440/v1 and Tailscale'],
+                     ['While you play', 'Stops, starts again after' if pauses.get('colibri', 'stop') == 'stop' else 'Keeps running']],
+            'model': co['model'], 'tokensPerSecond': tps, 'actions': ['restart', 'pause']}
+
+
 def dash():
     if FIXTURE:
         d = rjson(FIXTURE, {})
@@ -869,7 +913,7 @@ def dash():
     results = {}
     jobs = {'gpu': gpu_info, 'ts': ts_status, 'quick': hs_quick, 'hsd': hs_settings, 'conns': connections,
             'ps': lambda: http_json('http://127.0.0.1:11434/api/ps'), 'tags': lambda: http_json('http://127.0.0.1:11434/api/tags'),
-            'comfy': lambda: http_json('http://127.0.0.1:8188/queue')}
+            'comfy': lambda: http_json('http://127.0.0.1:8188/queue'), 'colibri': colibri_view}
 
     def runjob(k):
         try:
@@ -933,6 +977,12 @@ def dash():
                   'sub': ('Model loaded: ' + ', '.join(loaded)) if loaded else ('Ready · loads a model on the first question' if ai_active else 'Turn it on in Settings › Home server › Services'),
                   'rows': [['Models', ', '.join(models[:3]) or 'none downloaded']], 'models': models, 'loaded': loaded,
                   'vramGb': round(loaded_vram / 1e9, 1), 'actions': ['restart', 'pause'] if ai_on else []})
+    # ---- Colibri (1.14): the second AI engine, a tile of its own right after AI chat while it's on
+    co = results.get('colibri')
+    if co:
+        co_state = state_of('colibri', True, co['active'], 'colibri' in sys_paused)
+        co_tile = colibri_tile(co, co_state, pauses)
+        tiles.append(co_tile)
     # ---- Pictures (ComfyUI)
     pic_on = (hsd.get('pictures') or {}).get('on') is True
     cq = results.get('comfy') or {}
@@ -1079,7 +1129,7 @@ def dash():
     # ---- the pills: every service in a word
     smb = bool(shares)
     for name, extra, st in (('Shared folders', ', '.join(shares[:2]), 'running' if smb else 'off'),
-                            ('Media', '', med_state), ('AI chat', '', ai_state),
+                            ('Media', '', med_state), ('AI chat', '', ai_state), ('Colibri', '', co_tile['state'] if co else 'off'),
                             ('Ithil', '', ('running' if ithil['running'] else 'stopped') if ithil else 'off'), ('Pictures', '', pic_state),
                             ('Voices', 'Kokoro', state_of('voices', (hsd.get('voices') or {}).get('on') is True,
                                                           unit_active('hearth-kokoro.service', True) if (hsd.get('voices') or {}).get('on') else False,
@@ -1586,7 +1636,8 @@ def service(action, name):
             pass
         return {'ok': True, 'service': 'team', 'action': action, 'done': done}
     sysd = {'ai': 'ollama', 'media': 'jellyfin'}
-    user = {'pictures': 'hearth-comfyui.service', 'voices': 'hearth-kokoro.service', 'aishare': 'hearth-ai-share.service'}
+    user = {'pictures': 'hearth-comfyui.service', 'voices': 'hearth-kokoro.service', 'aishare': 'hearth-ai-share.service',
+            'colibri': 'hearth-colibri.service'}
     verb = {'restart': 'restart', 'pause': 'stop', 'resume': 'start'}[action]
     if name in sysd:
         if not shutil.which('pkexec'):

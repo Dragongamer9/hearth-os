@@ -1,0 +1,129 @@
+# Colibri in Server mode (docs/SERVER-MODE.md, "Colibri"): its tests (a stand-in `coli` and OpenAI server: nothing is
+# downloaded), then the dashboard's Big AI tile and Settings › Home server › Server mode › AI engine drawn for real at
+# 1920x1080 (labwc headless + Quickshell on Fedora, as desktop-test.yml does), with the data made by hearth-colibri's own
+# code for the owner's PC (32 GB, RTX 5070 12 GB). The pictures go out as notices ("SHOT colibri-<which> <n>", JPEG in
+# base64 pieces of 3800), since logs can't be downloaded where the owner's sessions run.
+name: Colibri
+
+on:
+  push:
+    branches: ['feature/colibri']
+    paths: ['hosts/linux/desktop/shell/hearth-colibri', 'hosts/linux/desktop/shell/hearth_ai_engines.py', 'hosts/linux/desktop/shell/SetAIEngine.qml',
+            'hosts/linux/test/test_hearth_colibri.py', 'hosts/linux/test/colibri_shots_fixture.py', 'hosts/linux/test/fixtures/fake-coli.py',
+            'os/system_files/usr/share/hearth/ai-models.json', '.github/workflows/colibri.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: |
+          fail=0
+          for t in test_hearth_colibri.py test_hearth_home_server.py test_hearth_voice_studio.py test_hearth_ai_share.py test_hearth_server_mode.py test_settings_persistence.py test_settings_redesign.py; do
+            if ! python3 -W ignore -m unittest discover -s hosts/linux/test -p "$t" -v > /tmp/t.log 2>&1; then
+              fail=1
+              grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -20 | while read -r l; do echo "::error title=$t::$l"; done
+            fi
+            grep -h '::notice' /tmp/t.log || true
+            tail -n 3 /tmp/t.log
+          done
+          exit $fail
+
+  shots:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 25
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 \
+            google-noto-sans-fonts adwaita-icon-theme dbus-daemon wtype rsms-inter-fonts python3-pillow >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - name: Draw the Big AI tile and the AI engine page
+        shell: bash
+        run: |
+          mkdir -p shots/colibri
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config/nimbus"; chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus" || true
+          python3 hosts/linux/test/colibri_shots_fixture.py /tmp/colibri.json hosts/linux/test/fixtures/server-dash.json /tmp/server-dash.json /tmp/tile-n
+          export HEARTH_SERVER_DASH_FIXTURE=/tmp/server-dash.json HEARTH_COLIBRI_FIXTURE=/tmp/colibri.json HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
+          printf '%s\n' '{"on": true}' > "$HOME/.config/nimbus/server-mode.json"
+          QML="$PWD/hosts/linux/desktop/shell/server-mode.qml"
+          HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$QML" labwc -C hosts/linux/desktop/server/labwc > shots/colibri/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          for i in $(seq 1 60); do [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ] && break; sleep 1; done
+          [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ] || echo "::error title=Colibri shots::the dashboard never said it's up: $(tail -c 600 "$HOME/.local/share/nimbus/server-dash.log" 2>/dev/null | tr '\n' '|')"
+          sleep 6
+          ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Colibri shots::ipc $* failed"; sleep 2; }
+          down() { for i in $(seq 1 "$1"); do timeout 10 wtype -k Down; done; sleep 1; }
+          timeout 15 grim shots/colibri/01-dashboard.png || true
+          ipc server pick "$(cat /tmp/tile-n)"; sleep 1; ipc server detail "$(cat /tmp/tile-n)"; sleep 2
+          timeout 15 grim shots/colibri/02-big-ai-opened.png || true
+          ipc server close
+          ipc settings page hs-aiengine; sleep 6
+          timeout 15 grim shots/colibri/03-ai-engine.png || true
+          timeout 10 wtype -k Right; sleep 1; down 9; timeout 15 grim shots/colibri/04-standard-models.png || true
+          down 12; timeout 15 grim shots/colibri/05-uncensored.png || true
+          timeout 10 wtype -k Return; sleep 2; down 3; timeout 15 grim shots/colibri/06-uncensored-sizes.png || true
+          cp "$HOME/.local/share/nimbus/server-dash.log" shots/colibri/dashboard.log 2>/dev/null || true
+          bad=$(grep -E "SetAIEngine|ServerDash|ServerTile|ServerDetail" shots/colibri/dashboard.log 2>/dev/null | grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Unable to assign" | head -6 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$bad" ] || echo "::error title=Colibri shots::$bad"
+          ls -la shots/colibri
+          pkill -x labwc || true
+      - name: Make the JPEGs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, io, os
+          from PIL import Image
+          for name in ('01-dashboard', '02-big-ai-opened', '03-ai-engine', '04-standard-models', '05-uncensored', '06-uncensored-sizes'):
+              p = 'shots/colibri/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=Colibri shots::no %s' % name); continue
+              im = Image.open(p).convert('RGB')
+              print('::notice title=Colibri shots::%s is %dx%d' % (name, im.width, im.height))
+              for w, q in ((960, 45), (800, 40), (720, 34), (640, 28)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 7 * 3800:
+                      break
+              open('shots/colibri/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: colibri-shots
+          path: shots
+          retention-days: 14
+
+  # One job of notices per picture pair: a job keeps 50 annotations.
+  pictures:
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pair: [['01-dashboard', '02-big-ai-opened'], ['03-ai-engine', '04-standard-models'], ['05-uncensored', '06-uncensored-sizes']]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: colibri-shots
+          path: shots
+      - name: Pictures
+        run: |
+          for n in ${{ matrix.pair[0] }} ${{ matrix.pair[1] }}; do
+            f=shots/colibri/$n.jpg; [ -f "$f" ] || continue
+            base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -7 | while read -r i part; do echo "::notice title=SHOT colibri-$n $i::$part"; done
+          done
