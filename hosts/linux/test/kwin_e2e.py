@@ -362,8 +362,11 @@ def cast_helper():
             time.sleep(1)
             frame = os.path.join(SHOTS, 'cast-frame.png')
             for prop in ('target-object', 'path'):
-                r = run(['gst-launch-1.0', '-q', 'pipewiresrc', '%s=%d' % (prop, node), 'num-buffers=4', 'always-copy=true', '!',
-                         'videoconvert', '!', 'pngenc', 'snapshot=true', '!', 'filesink', 'location=' + frame], timeout=30)
+                r = run(['timeout', '-s', 'INT', '20', 'gst-launch-1.0', '-v', 'pipewiresrc', '%s=%d' % (prop, node), 'num-buffers=4',
+                         'always-copy=true', '!', 'videoconvert', '!', 'pngenc', 'snapshot=true', '!', 'filesink', 'location=' + frame],
+                        timeout=40)
+                note('gst (%s)' % prop, 'exit %d %s' % (r.returncode, ' | '.join(l for l in ((r.stdout or '') + (r.stderr or '')).splitlines()
+                                                                                if 'caps' in l or 'rror' in l or 'WARN' in l)[-400:]))
                 if os.path.exists(frame) and os.path.getsize(frame) > 1000:
                     break
             check('frames of the shared screen arrive over PipeWire', os.path.exists(frame) and os.path.getsize(frame) > 1000,
