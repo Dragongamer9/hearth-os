@@ -14,7 +14,7 @@ Scope {
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-bt-receive").toString().replace(/^file:\/\//, ""))
     readonly property string statePath: Quickshell.env("HOME") + "/.local/state/nimbus/bt-received.json"
     readonly property string folder: Settings.btReceiveFolder || (Quickshell.env("HOME") + "/Downloads")
-    readonly property bool on: Settings.loaded && Settings.btReceive
+    readonly property bool wanted: Settings.loaded && Settings.btReceive
     property var items: []
     property var asks: []
     property bool stopping: false
@@ -23,10 +23,10 @@ Scope {
         path: br.statePath
         onLoaded: { try { const o = JSON.parse(text()); br.items = o && Array.isArray(o.items) ? o.items : []; } catch (e) { br.items = []; } }
     }
-    onOnChanged: { if (on) agent.running = true; else { br.stopping = true; agent.running = false; } }
+    onWantedChanged: { if (wanted) agent.running = true; else { br.stopping = true; agent.running = false; } }
     onFolderChanged: if (agent.running) { agent.running = false; again.start(); }
-    Component.onCompleted: if (on) agent.running = true
-    Timer { id: again; interval: 30000; onTriggered: if (br.on && !agent.running) agent.running = true }
+    Component.onCompleted: if (wanted) agent.running = true
+    Timer { id: again; interval: 30000; onTriggered: if (br.wanted && !agent.running) agent.running = true }
     Process {
         id: agent
         command: ["python3", br.helper, "agent", br.folder]
@@ -40,7 +40,7 @@ Scope {
                 else if (o.failed) br.tell("Couldn't receive " + o.failed, "From " + (o.from || "a Bluetooth device") + ". It stopped before the end", "");
             }
         }
-        onExited: code => { if (br.stopping) { br.stopping = false; return; } if (br.on) again.start(); }
+        onExited: code => { if (br.stopping) { br.stopping = false; return; } if (br.wanted) again.start(); }
     }
     function answer(id, yes) { if (agent.running) agent.write((yes ? "yes " : "no ") + id + "\n"); }
     function size(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
