@@ -28,7 +28,7 @@ Singleton {
         { id: "logout", label: "Log out", icon: "logout", danger: true, group: "Hearth", command: "nimbus-mode logout" }
     ]
 
-    function run(cmd) { Quickshell.execDetached(["sh", "-c", cmd]); }
+    function run(cmd) { if (cmd === "nimbus-mode logout") Leave.logout(); else Quickshell.execDetached(["sh", "-c", cmd]); }
 
     // The entries as PopMenu items, after a separator.
     function items() {

@@ -3,3 +3,6 @@
 # directly, so the signed-in user needs write access. hearth-groups puts every account in video at start-up.
 ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"
 ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*kbd_backlight*", RUN+="/bin/chgrp video /sys/class/leds/%k/brightness", RUN+="/bin/chmod g+w /sys/class/leds/%k/brightness"
+# 1.14: the colour of a keyboard's coloured light (the kernel's multicolour LED class), for Settings › Appearance ›
+# "Keyboard lights follow the accent" (hearth-kbd-lights; off unless you turn it on). Only on lights that have one.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*kbd_backlight*", TEST=="multi_intensity", RUN+="/bin/chgrp video /sys/class/leds/%k/multi_intensity", RUN+="/bin/chmod g+w /sys/class/leds/%k/multi_intensity"

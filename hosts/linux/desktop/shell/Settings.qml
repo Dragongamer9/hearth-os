@@ -57,6 +57,10 @@ Singleton {
     // itself: "" is the look's own colours (today's), so nobody's desktop changes until they pick one.
     property string subTheme: ""         // "" (the look's first: Firelight, Steam blue, Cyber…) | a sub theme's id
     property bool restoreApps: false     // reopen the apps that were open when you signed out (SessionRestore.qml; 1.14)
+    // 1.14 (wave 3). Missing = the default, never written by itself.
+    property bool kbdLights: false       // the keyboard's RGB lights follow the accent (KbdLights.qml, hearth-kbd-lights); Settings › Appearance
+    property bool confirmLogout: false   // Log out asks first (LeaveConfirm.qml); Settings › Startup. Off: today's, logs out at once
+    property string leaveDefault: ""     // what the power menu has picked when it opens: "" (Lock, today's) | "Sleep" | "Restart" | "Shut down" | "Log out" | "Game Mode"; Settings › Startup
     property bool wallMatch: true        // Match sub theme: "" wallpaper shows the sub theme's. A wallpaper you chose always wins         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
@@ -73,6 +77,7 @@ Singleton {
         .concat(["subTheme", "wallMatch"])
         .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
         .concat(["restoreApps"])
+        .concat(["kbdLights", "confirmLogout", "leaveDefault"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
@@ -109,6 +114,9 @@ Singleton {
     onSubThemeChanged: save("subTheme")
     onWallMatchChanged: save("wallMatch")
     onRestoreAppsChanged: save("restoreApps")
+    onKbdLightsChanged: save("kbdLights")
+    onConfirmLogoutChanged: save("confirmLogout")
+    onLeaveDefaultChanged: save("leaveDefault")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until
