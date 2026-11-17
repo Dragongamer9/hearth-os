@@ -8,7 +8,8 @@ lock.
 
   hearth-lockcheck [--no-probe | --as-kwin]   one JSON line {ok, why, greeter, package}; exit 0 if locking is safe, 1 if not
 
-It goes by the running KWin's own environment (/proc/<KWin>/environ: what KWin's locker will see), never this
+It goes by the running KWin's own environment (/proc/<KWin>/environ: what KWin's locker will see; when KWin's file
+capability hides it, the environment the KWin session wrote for it, $XDG_RUNTIME_DIR/hearth/kwin.env), never this
 program's: KWin must have PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock (the KWin session sets it). Then: KWin's
 greeter (kscreenlocker_greet) is installed; Hearth's lock screen is a complete Plasma shell package where it looks
 (X-Plasma-APIVersion 2 or more, lockscreen/LockScreen.qml); and the greeter's own test run, off screen and with
@@ -38,28 +39,51 @@ def greeter():
     return ''
 
 
+def env_file():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid(), 'hearth', 'kwin.env')
+
+
+def parse_env(raw):
+    env = {}
+    for item in raw.replace(b'\n', b'\0').split(b'\0'):
+        k, sep, v = item.partition(b'=')
+        if sep and k and not k.startswith(b'#'):
+            env[k.decode('utf-8', 'replace')] = v.decode('utf-8', 'replace')
+    return env
+
+
 def kwin_environ():
-    """The environment of this user's running KWin (kwin_wayland), or None when there's none."""
+    """The environment of this user's running KWin (kwin_wayland), or None when there's none.
+    KWin carries a file capability (CAP_SYS_NICE), which makes its /proc/<pid>/environ readable only by root: then
+    the environment the KWin session wrote when it started KWin ($XDG_RUNTIME_DIR/hearth/kwin.env, NUL- or
+    line-separated KEY=VALUE, yours and not writable by others; the session branch's job) stands in."""
     uid = os.getuid()
     for pid in os.listdir('/proc'):
         if not pid.isdigit():
             continue
         try:
-            if os.stat('/proc/' + pid).st_uid != uid:
-                continue
             with open('/proc/%s/comm' % pid) as f:
                 if f.read().strip() != 'kwin_wayland':
                     continue
-            with open('/proc/%s/environ' % pid, 'rb') as f:
-                raw = f.read()
-        except OSError:
+            with open('/proc/%s/status' % pid) as f:
+                uids = next((l.split()[1:] for l in f if l.startswith('Uid:')), [])
+            if not uids or int(uids[0]) != uid:
+                continue
+        except (OSError, ValueError):
             continue
-        env = {}
-        for item in raw.split(b'\0'):
-            k, sep, v = item.partition(b'=')
-            if sep:
-                env[k.decode('utf-8', 'replace')] = v.decode('utf-8', 'replace')
-        return env
+        try:
+            with open('/proc/%s/environ' % pid, 'rb') as f:
+                return parse_env(f.read())
+        except OSError:
+            pass
+        try:
+            st = os.stat(env_file())
+            if st.st_uid == uid and not (st.st_mode & 0o022):
+                with open(env_file(), 'rb') as f:
+                    return parse_env(f.read())
+        except OSError:
+            pass
+        return {}
     return None
 
 
