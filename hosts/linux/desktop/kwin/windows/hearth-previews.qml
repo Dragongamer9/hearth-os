@@ -39,7 +39,7 @@ Item {
     function show(c) {
         const list = [];
         for (const id of (c.ids || [])) { const w = findWin(id); if (w && !w.deleted) list.push(w); }
-        if (!list.length) { console.warn("hearthpreviews: none of these windows is here: " + JSON.stringify(c.ids)); hideNow(); return; }
+        if (!list.length) { say("none of these windows is here: " + JSON.stringify(c.ids)); hideNow(); return; }
         if (c.cols) cols = Object.assign({}, cols, c.cols);
         wins = list.slice(0, 6);
         forApp = String(c.key || "");
@@ -47,6 +47,14 @@ Item {
         placeLater.cmd = c;
         placeLater.restart();             // once the card has its size
         pop.visible = true;
+        pop.show();
+        pop.raise();
+    }
+    // Into the bridge's log ($XDG_RUNTIME_DIR/hearth/kwin-bridge.log), where KWin's own console isn't shown.
+    function say(text) { logCall.arguments = ["previews: " + String(text)]; logCall.call(); }
+    DBusCall {
+        id: logCall
+        service: "org.hearth.Windows"; path: "/org/hearth/Windows"; dbusInterface: "org.hearth.Windows"; method: "Log"
     }
     // Where: over (or beside) the button the pointer rests on. Mantel says which edge its bar is on, how far the
     // pointer is from the button's inner side (near) and from its middle (along); at: a fixed place (checks).
@@ -61,6 +69,7 @@ Item {
         else { x = p.x + (c.along || 0) - W / 2; y = p.y - (c.near || 0) - gap - H; }
         pop.x = Math.round(Math.max(s.x + 8, Math.min(x, s.x + s.width - W - 8)));
         pop.y = Math.round(Math.max(s.y + 8, Math.min(y, s.y + s.height - H - 8)));
+        if (c.at) say("shown: " + wins.length + " at " + pop.x + "," + pop.y + " " + W + "x" + H + " visible " + pop.visible);
     }
     function hideNow() { pop.visible = false; wins = []; forApp = ""; }
     function run(c) {
@@ -82,9 +91,9 @@ Item {
             try {
                 const v = Array.isArray(returnValue) ? returnValue[0] : returnValue;
                 list = JSON.parse(String(Array.isArray(v) ? v[0] : v));
-            } catch (e) { console.warn("hearthpreviews: the bridge's answer: " + e); }
+            } catch (e) { root.say("the bridge's answer: " + e); }
             for (const c of list) {
-                try { root.run(c); } catch (e) { console.warn("hearthpreviews: " + c.op + ": " + e); }
+                try { root.run(c); } catch (e) { root.say(c.op + ": " + e); }
             }
             again.restart();
         }
@@ -165,7 +174,7 @@ Item {
                                     const t = Qt.createQmlObject('import QtQuick; import org.kde.kwin; WindowThumbnail { anchors.fill: parent }', holder, "thumb");
                                     try { t.client = cell.modelData; } catch (e) {}
                                     try { if (!t.client) t.wId = cell.modelData.internalId; } catch (e) {}
-                                } catch (e) { console.warn("hearthpreviews: no thumbnail: " + e); }
+                                } catch (e) { root.say("no thumbnail: " + e); }
                             }
                         }
                         MouseArea {
