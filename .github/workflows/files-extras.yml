@@ -102,6 +102,7 @@ jobs:
           ( sleep 45; quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call browserpick close ) >/dev/null 2>&1 &
           # 1: tags, grouped by tag, with the Tags list and the phone and camera in the left menu
           ipc files open "$D"; ipc filemanager view details; ipc filemanager group tags; ipc filemanager select Budget.ods; sleep 2
+          ipc filemanager place "portable:mtp://Google_Pixel_8_3A2B"; sleep 1
           grim shots/files-x1-tags-grouped.png || true
           # 2: the right-click menu with Tags ›, Share on your network… and an app's action; then the Tags menu
           ipc filemanager select "Trip notes.md"; sleep 2; ipc filemanager menu; grim shots/files-x2-menu.png || true; ipc filemanager close

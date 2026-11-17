@@ -98,7 +98,7 @@ SetPage {
         onTriggered: {
             if (page.anchor === "") return;
             if (!page.st || !page.st.running) { anchorFocus.restart(); return; }   // its cards come with the state
-            const to = { notifications: notifHead, commands: cmdName, pair: ipField, remote: remoteCard, shared: sendField, sendnotify: noutSwitch, options: optRep.itemAt(Math.min(10, optRep.count - 1)) }[page.anchor];
+            const to = { notifications: notifHead, commands: cmdName, pair: ipField, remote: remoteCard, shared: sendField, sendnotify: page.opts.sendNotifications === true ? noutChoice : noutSwitch, options: optRep.itemAt(Math.min(10, optRep.count - 1)) }[page.anchor];
             page.anchor = "";
             page.anchorTarget = to || null;
             if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
@@ -338,6 +338,7 @@ SetPage {
         onToggled: v => page.setNout({ persistentOnly: v })
     }
     SetChoice {
+        id: noutChoice
         visible: page.on && !!page.phone && page.opts.sendNotifications === true
         icon: "warn"; title: "Which ones"; sub: "By how urgent the app says it is"
         options: [{ value: 0, label: "All" }, { value: 1, label: "Normal and urgent" }, { value: 2, label: "Urgent only" }]

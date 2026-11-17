@@ -853,7 +853,7 @@ Scope {
                                 visible: pr.single && pr.admin
                                 Layout.leftMargin: 150
                                 spacing: 8
-                                SmallButton { label: "Give to the system (root)"; dim: (pr.newOwner || pr.info.owner) === "root"; onPressed: { keys.forceActiveFocus(); pr.newOwner = "root"; if (!pr.newGroup) pr.newGroup = "root"; } }
+                                SmallButton { label: "Give to the system (root)"; dim: pr.single && (pr.newOwner || pr.info.owner) === "root"; onPressed: { keys.forceActiveFocus(); pr.newOwner = "root"; if (!pr.newGroup) pr.newGroup = "root"; } }
                                 SmallButton { label: "Give to me"; dim: pr.single && (pr.newOwner || pr.info.owner) === (Quickshell.env("USER") || ""); onPressed: { keys.forceActiveFocus(); pr.newOwner = Quickshell.env("USER") || ""; } }
                             }
                             PropRow {
@@ -1023,6 +1023,49 @@ Scope {
                                 font.family: Theme.font
                                 font.pixelSize: 13
                             }
+                            // Paste the checksum the website lists: which kind it is goes by its length, and it says if they match.
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: cmpCol.implicitHeight + 24
+                                radius: Theme.r(12)
+                                color: Theme.panel2
+                                border.width: 2
+                                border.color: pr.compareVerdict === "match" ? "#4fbf7f" : pr.compareVerdict === "differ" ? Theme.danger : "transparent"
+                                ColumnLayout {
+                                    id: cmpCol
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                    spacing: 8
+                                    Text { text: "Compare with a checksum"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 38
+                                        radius: Theme.r(8)
+                                        color: Theme.panel3
+                                        TextInput {
+                                            id: cmpInput
+                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                            verticalAlignment: TextInput.AlignVCenter
+                                            text: pr.compare
+                                            onTextEdited: pr.compare = text
+                                            color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.accentInk
+                                            font.family: "monospace"; font.pixelSize: 13
+                                            clip: true
+                                            Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !cmpInput.text; text: "Paste it here (MD5, SHA-1, SHA-256 or SHA-512)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: pr.compareVerdict !== ""
+                                        wrapMode: Text.WordWrap
+                                        text: ({ match: "✓ It matches (" + pr.compareAlgo.toUpperCase().replace("SHA", "SHA-") + "): the file is the one the website has.",
+                                                 differ: "✗ It doesn't match: the file is different or didn't download whole. Download it again.",
+                                                 working: "Working out the " + pr.compareAlgo.toUpperCase().replace("SHA", "SHA-") + " checksum…",
+                                                 bad: "That isn't a checksum (an MD5, SHA-1, SHA-256 or SHA-512 is 32, 40, 64 or 128 letters and digits)." })[pr.compareVerdict] || ""
+                                        color: pr.compareVerdict === "match" ? "#4fbf7f" : pr.compareVerdict === "differ" ? Theme.danger : Theme.muted
+                                        font.family: Theme.font; font.pixelSize: 13
+                                    }
+                                }
+                            }
                             Repeater {
                                 model: [{ id: "md5", label: "MD5" }, { id: "sha1", label: "SHA-1" }, { id: "sha256", label: "SHA-256" }, { id: "sha512", label: "SHA-512" }]
                                 delegate: Rectangle {
@@ -1091,49 +1134,6 @@ Scope {
                                     }
                                 }
                             }
-                            // Paste the checksum the website lists: which kind it is goes by its length, and it says if they match.
-                            Rectangle {
-                                Layout.fillWidth: true
-                                implicitHeight: cmpCol.implicitHeight + 24
-                                radius: Theme.r(12)
-                                color: Theme.panel2
-                                border.width: 2
-                                border.color: pr.compareVerdict === "match" ? "#4fbf7f" : pr.compareVerdict === "differ" ? Theme.danger : "transparent"
-                                ColumnLayout {
-                                    id: cmpCol
-                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-                                    spacing: 8
-                                    Text { text: "Compare with a checksum"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 38
-                                        radius: Theme.r(8)
-                                        color: Theme.panel3
-                                        TextInput {
-                                            id: cmpInput
-                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                            verticalAlignment: TextInput.AlignVCenter
-                                            text: pr.compare
-                                            onTextEdited: pr.compare = text
-                                            color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.accentInk
-                                            font.family: "monospace"; font.pixelSize: 13
-                                            clip: true
-                                            Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !cmpInput.text; text: "Paste it here (MD5, SHA-1, SHA-256 or SHA-512)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
-                                        }
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        visible: pr.compareVerdict !== ""
-                                        wrapMode: Text.WordWrap
-                                        text: ({ match: "✓ It matches (" + pr.compareAlgo.toUpperCase().replace("SHA", "SHA-") + "): the file is the one the website has.",
-                                                 differ: "✗ It doesn't match: the file is different or didn't download whole. Download it again.",
-                                                 working: "Working out the " + pr.compareAlgo.toUpperCase().replace("SHA", "SHA-") + " checksum…",
-                                                 bad: "That isn't a checksum (an MD5, SHA-1, SHA-256 or SHA-512 is 32, 40, 64 or 128 letters and digits)." })[pr.compareVerdict] || ""
-                                        color: pr.compareVerdict === "match" ? "#4fbf7f" : pr.compareVerdict === "differ" ? Theme.danger : Theme.muted
-                                        font.family: Theme.font; font.pixelSize: 13
-                                    }
-                                }
-                            }
                         }
 
                         // Sharing ------------------------------------------------
@@ -1150,7 +1150,7 @@ Scope {
                             Text {
                                 Layout.fillWidth: true
                                 visible: pr.share === null || !!(pr.share && pr.share.error)
-                                text: pr.share === null ? "Looking…" : pr.share.error
+                                text: pr.share === null ? "Looking…" : (pr.share.error || "")
                                 color: pr.share && pr.share.error ? Theme.danger : Theme.muted; wrapMode: Text.WordWrap; font.family: Theme.font; font.pixelSize: 13
                             }
                             PropRow {
