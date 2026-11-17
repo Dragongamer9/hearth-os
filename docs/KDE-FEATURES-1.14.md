@@ -205,7 +205,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Search apps, Settings pages and single settings, games — `Launcher.qml`, `menu-search.js`, `settings-index.js`
 - [x] Run box (Super+R) — `WinTools.qml`, `RunView.qml`, `run-map.js`
-- [ ] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help (L)
+- [x] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help — SearchBar.qml "target: \"searchbar\"", search-bar.js "function arrange" / "function helpRows", SetSearch.qml "Search bar (Alt+Space)" (pluginOrder in hearth-search), Pad.qml "deskY" (Y on the desktop, D-pad / A / B); Alt+Space vs the layout switch: hearth-system "rc_with_search_key" (labwc gets a None binding, Alt+F2 still opens it), SearchBar.qml "altSpaceIsLayout", SetKeyboard.qml note; test_search_bar.py; searchbar.yml pictures "sb-01-empty" … "sb-12-keyboard-layout-switch" (needs testing on a device)
 - [x] Plugin: calculator, unit conversion, currency — search/calc.js, search/units.js, search/currency.js (needs testing on a device)
 - [x] Plugin: files and folders by name and content — hearth-search (SQLite FTS5 index) (needs testing on a device)
 - [ ] Plugin: recent files and places, bookmarks, browser history (M)
@@ -216,7 +216,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [ ] Plugin: spell check, dictionary, special characters, emoji, colours (S each)
 - [ ] Plugin: power and session, media control, store results (S)
 - [ ] Plugin: Hearth contacts, calendar events, notes (M)
-- [ ] Type on the desktop to search (S)
+- [x] Type on the desktop to search — Desktop.qml "SettingsNav.searchBar.openWith(event.text)", Settings › Search "Type on the desktop to search" (typeToSearch); test_search_bar.py "test_type_on_the_desktop"; searchbar.yml picture "sb-10-typed-on-desktop" (needs testing on a device)
 
 ### Notifications
 
