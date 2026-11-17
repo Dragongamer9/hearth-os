@@ -20,13 +20,17 @@ jobs:
   kwin:
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    container: registry.fedoraproject.org/fedora:44
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # KWin composites only with a render device: the kernel's vgem module gives one (the host's /dev and modules),
+      # as in kwin-windows.yml.
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
     steps:
       - name: Install KWin, labwc, Quickshell and friends
         run: |
           dnf -y install dnf5-plugins git kwin labwc xorg-x11-server-Xwayland mesa-dri-drivers qt6-qtsvg procps-ng grim wlr-randr \
             python3 python3-dbus python3-pillow qt6ct google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon dbus-tools \
-            libnotify wl-clipboard wtype >/dev/null
+            libnotify wl-clipboard wtype kmod >/dev/null
           dnf -y install --skip-unavailable wayland-utils rsms-inter-fonts plasma-breeze >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
