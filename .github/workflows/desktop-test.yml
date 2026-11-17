@@ -394,7 +394,7 @@ jobs:
           kp kwin-rules 07-window-rules; wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim shots/kwin-pages/08-window-rule-open.png || true
           kp kwin-tablet 09-tablet-and-touchscreen; kdown 12 10-touchscreen
           kp kwin-games 11-games-and-x11-apps
-          kp mouse 12-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
+          kp mouse 21-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
           kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
           # The 1.14 extras: the second switcher (Super+Tab), the pointer, window helpers and For developers at the bottom,
           # and the Desktop Cube.
@@ -402,7 +402,7 @@ jobs:
           kp kwin-effects 17-window-effects-pointer-helpers-developers; kdown 54 17-window-effects-pointer-helpers-developers
           kp kwin-desktops 18-virtual-desktops-cube; kdown 12 18-virtual-desktops-cube
           # Mouse buttons (1.14 wave 3, SetMouseButtons.qml): two saved rebinds (kcminputrc above), then the "press the button" box
-          # (mouse-buttons:press); the middle-click paste switch is in 12, the pen-and-mouse pointer switch in 09.
+          # (mouse-buttons:press); the middle-click paste switch is in 21, the pen-and-mouse pointer switch in 09.
           kp mouse-buttons 19-mouse-buttons
           kp mouse-buttons:press 20-mouse-buttons-press
           ipc settings close; sleep 1
@@ -2866,7 +2866,7 @@ jobs:
         part:
           - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
           - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
-          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
+          - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 21-mouse-on-kwin 13-touchpad-on-kwin"
           - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube 19-mouse-buttons 20-mouse-buttons-press"
     steps:
       - uses: actions/download-artifact@v4
