@@ -104,6 +104,10 @@ ipc() { WAYLAND_DISPLAY="${1}" quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" c
 labwc_display() { basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)"; }
 labwc_size() { d=$(labwc_display); [ -n "$d" ] && WAYLAND_DISPLAY=$d wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1; }
 
+# Pictures without the two one-time cards that aren't what's checked here: "Pick your browser" (1.12) and the lock
+# guard's "The lock screen is off" (this runner has no lock screen package; test_kwin_session.py checks that card).
+python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+mkdir -p "$STATE" && : >"$STATE/kwin-lock-off-told"
 # ---- A: KWin, with 1.13's KDE Plasma still picked.
 printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=kde\n' > "$CONF"
 cp "$CONF" /tmp/conf-before
