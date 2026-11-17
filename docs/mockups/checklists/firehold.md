@@ -43,7 +43,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/shell/FireholdDesk.qml: "text: \"Desk\""
 - [x] Top bar: Wi-Fi · battery (Wi-Fi · 78%) — hosts/linux/desktop/shell/FireholdDesk.qml: ".filter(Boolean).join(\" · \")"
 - [x] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour — hosts/linux/desktop/shell/FireholdFrames.qml: "color: modelData === \"close\" ? F.C.accent : F.C.card2"
-- [ ] Hearth Files' picture grid inside it (two rows of five)
+- [x] Hearth Files' picture grid inside it (two rows of five): Hearth Files itself, a window like any other on the Desk with Firehold's title bar — hosts/linux/desktop/shell/firehold.js: "if (mf) return { name: \"Hearth Files\", sub: mf[1] };"
 - [x] The game in a window with the accent border (the same game resumed on the Couch) — hosts/linux/desktop/shell/FireholdFrames.qml: "color: \"transparent\"; border.width: 2; border.color: F.C.accent"
 - [x] The game window's title line: name · paused · 60 fps limit · VRR — hosts/linux/desktop/shell/FireholdFrames.qml: "\" · \" + F.gameLine(\"\", one.win.minimized, fr.fh.frameLimit, fr.vrr)"
 - [x] The game window's hint chip "Full screen: F11 or ≡" — hosts/linux/desktop/shell/FireholdFrames.qml: "\"Full screen: F11 or ≡\""
@@ -125,7 +125,6 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 ## Still open on feature/firehold-shell, and why
 
 - Hero line, chapter: no store or game data Hearth reads says which chapter you're on; the line shows it when a game's entry has `chapter`, and otherwise starts with where it's saved.
-- Hearth Files' picture grid: that's Hearth Files itself (its Pictures view), not Firehold's screens.
 - The game full screen drawn straight to the display, Frame limit, Resolution scaling: need Firehold's compositor (feature/firehold-game, not on this branch yet). The Guide's rows already read `hearth-firehold-game status` and change them with `hearth-firehold-game step frameLimit|scaling up|down` (shown as its frameLimitLabel / scalingLabel, "60", "Quality · 1440p"); until the helper and the compositor are there they say "Not yet".
 - Record "Last 30 s too": hearth-record has no replay buffer; firehold-comp's (feature/firehold-game) is coming.
 - Friends "2 online": needs Steam's friends data (Discord gives Mantel no online count).
