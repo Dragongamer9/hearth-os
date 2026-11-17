@@ -18,6 +18,7 @@
 #   firehold-9-unlocked  the right password in that prompt: the desktop back
 #   firehold-10-grim   grim's own picture of the screen (screencopy), checked against the screen's
 #   firehold-11-display  Settings › Display, its screen list from wlr-randr (wlr-output-management)
+#   firehold-13-guide  the Guide over a stand-in game: Frame limit ‹ 60 ›, Resolution scaling ‹ Quality · 720p ›
 set -u +e +o pipefail
 mkdir -p shots
 SRC=$PWD
@@ -52,6 +53,10 @@ wait_for() {   # $1 seconds, $2 a Python expression on the status file (d)
   for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1
 }
 W() { WAYLAND_DISPLAY=wayland-hearth DISPLAY= "$@"; }
+orient() {   # $1 a picture taken through screencopy: the right way up? (firehold-orientation.py)
+  o=$(python3 .github/scripts/firehold-orientation.py "$1" "$STATUS" "$HOME/.config/hearth/theme.json" 2>&1); rc=$?
+  case $rc in 0) note "screencopy" "upright: $o";; 2) note "screencopy" "orientation not checked: $o";; *) fail "screencopy" "upside down or wrong: $o";; esac
+}
 # How alike two pictures are (0 = the same; the virtual screen's own picture against an app's through screencopy).
 alike() { python3 -c '
 import sys
@@ -319,6 +324,7 @@ if command -v grim >/dev/null; then
   d=$(alike shots/firehold-10-grim.png shots/shots-tmp-screen.png)
   note "screencopy" "grim's picture vs the screen: difference $d (0 is the same); captures before $before, now $(status '"%d %d" % (d["captures"]["wlr"], d["captures"]["ext"])')"
   awk -v d="$d" 'BEGIN { exit !(d + 0 < 20 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture doesn't match the screen (difference $d)"
+  orient shots/firehold-10-grim.png
   W timeout 15 grim -g "100,200 640x360" shots/grim-region.png 2>>shots/grim.err
   python3 -c 'from PIL import Image; import sys; im = Image.open(sys.argv[1]); print(im.size); sys.exit(im.size != (640, 360))' shots/grim-region.png >>shots/grim.err 2>&1 \
     && note "screencopy" "a region (grim -g) is 640x360" || fail "screencopy" "grim -g didn't give 640x360: $(tail -c 300 shots/grim.err | tr '\n' ' ')"
@@ -351,6 +357,32 @@ fi
 qs call settings page display || fail "settings" "Mantel's ipc didn't open Settings › Display"
 sleep 6
 shot firehold-11-display
+qs call settings close
+
+# ---- 13: the Guide over a game with its game rows showing real values (docs/mockups/checklists/firehold.md: "Frame
+# limit ‹ 60 ›", "Resolution scaling ‹ Quality · …p ›"): the stand-in game fullscreen on Mantel's Firehold, the two
+# chosen through the Guide's helper exactly as the Guide's arrows do, then the Guide opened.
+GH() { WAYLAND_DISPLAY=wayland-hearth python3 hosts/linux/desktop/shell/hearth-firehold-game "$@"; }
+gst() { GH status | python3 -c 'import json,sys; d=json.load(sys.stdin); g=d.get("game") or {}; print(eval(sys.argv[1], {"d": d, "g": g}))' "$1" 2>/dev/null; }
+W python3 .github/scripts/firehold-game-client.py "$XDG_RUNTIME_DIR/guide-game.json" --app-id firehold-test-game --seconds 120 >shots/guide-game.log 2>&1 &
+GAMEPID=$!
+for i in $(seq 1 40); do [ "$(gst 'g.get("appId") == "firehold-test-game"')" = True ] && break; sleep 0.5; done
+[ "$(gst 'g.get("appId") == "firehold-test-game"')" = True ] || fail "guide" "the stand-in game isn't Firehold's game: $(GH status | head -c 400) $(tail -c 300 shots/guide-game.log | tr '\n' '|')"
+GH set frameLimit 60 >/dev/null; GH set scaling quality >/dev/null
+for i in $(seq 1 30); do [ "$(gst 'g.get("frameLimit") == 60 and g.get("scaling") == "quality"')" = True ] && break; sleep 0.5; done
+fl=$(gst 'g.get("frameLimitLabel")'); sc=$(gst 'g.get("scalingLabel")')
+qs call firehold couch; sleep 3
+qs call firehold open guide; sleep 6
+shot firehold-13-guide
+gstate=$(WAYLAND_DISPLAY=wayland-hearth timeout 10 quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call firehold state 2>/dev/null)
+case "$fl|$sc" in
+  "60|Quality · "[0-9]*p) note "guide" "the Guide's rows: Frame limit ‹ $fl ›, Resolution scaling ‹ $sc › (state: $(echo "$gstate" | head -c 300))";;
+  *) fail "guide" "the helper's labels aren't real values: frame limit '$fl', scaling '$sc': $(GH status | head -c 400)";;
+esac
+echo "$gstate" | grep -q '"guide":true' || note "guide" "the Guide isn't in Firehold's state: $(echo "$gstate" | head -c 400)"
+qs call firehold close; qs call firehold desk
+GH set frameLimit off >/dev/null; GH set scaling off >/dev/null
+kill "$GAMEPID" 2>/dev/null; sleep 1
 
 # ---- 12: the card when Firehold couldn't start twice in a row (what nimbus-session leaves: test_firehold_session.py
 # proves the fallback itself), shown by Mantel when it starts: why, and one button to turn it back on.
@@ -382,7 +414,7 @@ grep -E 'desktop|firehold' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do 
 ls -la shots
 for s in firehold-1-empty firehold-2-mantel firehold-3-window firehold-4-minimized firehold-5-snapped firehold-5b-resized firehold-6-your-desktop \
          firehold-7-locked firehold-8-lock-prompt firehold-9-unlocked firehold-10-grim firehold-11-display \
-         firehold-6c-hidden firehold-6d-unlocked firehold-6e-switch firehold-12-notice; do
+         firehold-6c-hidden firehold-6d-unlocked firehold-6e-switch firehold-12-notice firehold-13-guide; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'
