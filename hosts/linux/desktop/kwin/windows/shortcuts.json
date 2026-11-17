@@ -4,9 +4,10 @@
   "hearth-kwin-bridge puts them in KWin's hearthwindows script, which registers each with KWin (registerShortcut,",
   "named \"Hearth <id>\", so a key someone changes in KWin's shortcut settings stays changed). \"run\": the same command",
   "as labwc's (run by the bridge with sh -c). \"win\": done by the script itself (snapping, desktops, closing).",
-  "\"kwinOwn\": keys KWin's own actions already do the same way (xdg/kglobalshortcutsrc sets the ones that need it).",
   "\"skipped\": labwc keys that have no job under KWin.",
-  "\"kwinOnly\": Hearth keys labwc has none of (Activities, from feature/widgets' Activities.qml)."
+  "\"kwinOnly\": Hearth keys labwc has none of (Activities, from feature/widgets' Activities.qml).",
+  "\"kwinOwn\": keys KWin's own actions already do the same way.",
+  "\"kdeKeys\": KDE's own keys that would take Mantel's (hearth-kwin-bridge keys): \"keys\": [] frees the action, else the keys Hearth gives it. Done once, only while the action is still on KDE's default; never over a key the person set (see hearth-kwin-bridge)."
  ],
  "shortcuts": [
   {
@@ -475,7 +476,7 @@
  "kwinOwn": [
   {
    "labwc": "Super_L",
-   "kwin": "Meta on its own: kwinrc [ModifierOnlyShortcuts] calls org.hearth.Windows Launcher (xdg/kwinrc)",
+   "kwin": "Meta on its own: kwin/windows/xdg/kwinrc [ModifierOnlyShortcuts] calls org.hearth.Windows Launcher",
    "keys": ""
   },
   {
@@ -624,6 +625,112 @@
    "title": "Previous activity",
    "keys": "Meta+Ctrl+Shift+Q",
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call activities previous'"
+  }
+ ],
+ "kdeKeys": [
+  {
+   "component": "kwin",
+   "action": "Window Quick Tile Left",
+   "keys": [],
+   "why": "Super+Left snaps (Hearth snap-left)"
+  },
+  {
+   "component": "kwin",
+   "action": "Window Quick Tile Right",
+   "keys": [],
+   "why": "Super+Right snaps (Hearth snap-right)"
+  },
+  {
+   "component": "kwin",
+   "action": "Window Quick Tile Top",
+   "keys": [],
+   "why": "Super+Up maximizes or makes a quarter"
+  },
+  {
+   "component": "kwin",
+   "action": "Window Quick Tile Bottom",
+   "keys": [],
+   "why": "Super+Down restores, minimizes or makes a quarter"
+  },
+  {
+   "component": "kwin",
+   "action": "Show Desktop",
+   "keys": [],
+   "why": "Super+D shows the desktop and brings the windows back"
+  },
+  {
+   "component": "kwin",
+   "action": "Grid View",
+   "keys": [],
+   "why": "Super+G goes to Game Mode"
+  },
+  {
+   "component": "kwin",
+   "action": "Walk Through Windows Alternative",
+   "keys": [
+    "Meta+Tab"
+   ],
+   "why": "Super+Tab switches windows, as on labwc"
+  },
+  {
+   "component": "kwin",
+   "action": "Walk Through Windows Alternative (Reverse)",
+   "keys": [
+    "Meta+Shift+Tab",
+    "Meta+Shift+Backtab"
+   ],
+   "why": "Super+Shift+Tab, back the other way"
+  },
+  {
+   "component": "kwin",
+   "action": "view_actual_size",
+   "keys": [
+    "Meta+0",
+    "Meta+Esc"
+   ],
+   "why": "Super+Esc zooms back to normal, as on labwc"
+  },
+  {
+   "component": "org.kde.spectacle.desktop",
+   "action": "_launch",
+   "keys": [],
+   "why": "Print is Hearth's screenshot"
+  },
+  {
+   "component": "org.kde.spectacle.desktop",
+   "action": "FullScreenScreenShot",
+   "keys": [],
+   "why": "Shift+Print is Hearth's area screenshot"
+  },
+  {
+   "component": "org.kde.spectacle.desktop",
+   "action": "RectangularRegionScreenShot",
+   "keys": [],
+   "why": "Super+Shift+S is Hearth's area screenshot"
+  },
+  {
+   "component": "org.kde.spectacle.desktop",
+   "action": "RecordScreen",
+   "keys": [],
+   "why": "Super+Alt+R is Hearth Recorder"
+  },
+  {
+   "component": "org.kde.konsole.desktop",
+   "action": "_launch",
+   "keys": [],
+   "why": "Ctrl+Alt+T opens Hearth's terminal"
+  },
+  {
+   "component": "org.kde.dolphin.desktop",
+   "action": "_launch",
+   "keys": [],
+   "why": "Super+E opens Hearth Files"
+  },
+  {
+   "component": "org.kde.plasma.emojier.desktop",
+   "action": "_launch",
+   "keys": [],
+   "why": "Super+. opens Hearth's emoji picker"
   }
  ]
 }

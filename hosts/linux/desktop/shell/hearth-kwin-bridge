@@ -20,6 +20,7 @@ script was unloaded) it's loaded again.
   hearth-kwin-bridge do OP [ID] [k=v...]   ask for something, like the shell does (do snap ID zone=left-half)
                                            (do probe ID: what this KWin offers, into the log)
   hearth-kwin-bridge render                print the KWin script as it's loaded (for checks)
+  hearth-kwin-bridge keys [restore]        the shortcuts as KWin has them; restore: KDE's keys Hearth changed, back
 
 Lines it prints (serve --stdio): {"t": "windows", "windows": [...], "desktops": [...], "active": id} and
 {"t": "status", "connected": bool, "problem": "..."}. Exit 0 when the shell goes away (stdin closes) or another bridge
@@ -34,6 +35,9 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.realpath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)            # hearth_settings_io sits next to this file
+import threading
 DESKTOP = os.path.dirname(HERE)
 KWIN_DIR = os.path.join(DESKTOP, 'kwin', 'windows')
 SCRIPT_SRC = os.path.join(KWIN_DIR, 'hearth-windows.js')
@@ -132,13 +136,165 @@ def write_atomic(path, text):
     os.replace(tmp, path)
 
 
+# ---------------------------------------------------------------- KDE's own keys (kglobalaccel)
+# KWin keeps its global shortcuts in kglobalaccel (inside KWin on Wayland), which reads only the person's own
+# ~/.config/kglobalshortcutsrc: a default file in XDG_CONFIG_DIRS is never read. So KWin's Quick Tile, Peek at Desktop,
+# Grid View, Spectacle's and Konsole's keys would keep Super+arrows, Super+D, Super+G, Print, Ctrl+Alt+T... and the
+# Hearth shortcuts the script registers on the same keys would get none. At start (before the script is loaded) the
+# bridge changes each action in shortcuts.json "kdeKeys", but only:
+#   * while it is still on KDE's own default (kglobalaccel's current keys == its default keys): a key the person set
+#     is theirs and is never touched;
+#   * once: what Hearth did is written to ~/.local/state/nimbus/kwin-keys.json, and an action listed there is never
+#     changed again, so a later change of the person's stays.
+# Then each Hearth shortcut that has no key yet because KDE's had it (registered earlier, while the KDE key was still
+# there) gets its own default once, the same way. The person is told once (hearth_settings_io.notice);
+# `hearth-kwin-bridge keys restore` puts back every key Hearth changed.
+QT_MODS = {'Meta': 0x10000000, 'Ctrl': 0x04000000, 'Alt': 0x08000000, 'Shift': 0x02000000}
+QT_KEYS = {'Esc': 0x01000000, 'Tab': 0x01000001, 'Backtab': 0x01000002, 'Return': 0x01000004, 'Del': 0x01000007,
+           'Print': 0x01000009, 'Left': 0x01000012, 'Up': 0x01000013, 'Right': 0x01000014, 'Down': 0x01000015,
+           'Space': 0x20, '.': 0x2e, '=': 0x3d, '-': 0x2d, '+': 0x2b}
+QT_KEYS.update({'F%d' % n: 0x01000030 + n - 1 for n in range(1, 13)})
+FRIENDLY = {'kwin': 'KWin'}
+
+
+def qt_key(seq):
+    """"Meta+Shift+Tab" -> Qt's key code (one key, as kglobalaccel stores it)."""
+    parts = seq.split('+')
+    if seq.endswith('++'):
+        parts = seq[:-2].split('+') + ['+']
+    code = 0
+    for m in parts[:-1]:
+        code |= QT_MODS[m]
+    k = parts[-1]
+    if k in QT_KEYS:
+        return code | QT_KEYS[k]
+    if len(k) == 1 and k.isalnum():
+        return code | ord(k.upper())
+    raise ValueError('no Qt code for %r' % seq)
+
+
+def keys_state_path():
+    import hearth_settings_io as hs
+    return os.path.join(hs.state_dir(), 'kwin-keys.json')
+
+
+class KdeKeys:
+    """Talks to kglobalaccel over D-Bus (KF6's a(ai) key lists, KF5's ai as the fallback)."""
+
+    def __init__(self, bus, Gio, GLib):
+        self.bus, self.Gio, self.GLib = bus, Gio, GLib
+
+    def call(self, method, args, reply):
+        return self.bus.call_sync('org.kde.kglobalaccel', '/kglobalaccel', 'org.kde.KGlobalAccel', method, args,
+                                  self.GLib.VariantType.new(reply) if reply else None, self.Gio.DBusCallFlags.NONE, 5000, None)
+
+    @staticmethod
+    def action_id(comp, action, title=''):
+        return [comp, action, FRIENDLY.get(comp, comp), title or action]
+
+    def get(self, aid, default=False):
+        """[[k1, k2, k3, k4], ...] (one list per key sequence, zeros dropped)."""
+        V = self.GLib.Variant
+        try:
+            got = self.call('defaultShortcutKeys' if default else 'shortcutKeys', V('(as)', (aid,)), '(a(ai))').unpack()[0]
+            return [[k for k in seq[0] if k] for seq in got if any(seq[0])]
+        except self.GLib.Error:
+            got = self.call('defaultShortcut' if default else 'shortcut', V('(as)', (aid,)), '(ai)').unpack()[0]
+            return [[k] for k in got if k]
+
+    def set(self, aid, keys):
+        V = self.GLib.Variant
+        try:
+            self.call('setForeignShortcutKeys', V('(asa(ai))', (aid, [(list(k) + [0, 0, 0, 0])[:4] for k in keys])), None)
+        except self.GLib.Error:
+            self.call('setForeignShortcut', V('(asai)', (aid, [k[0] for k in keys])), None)
+
+
+def fix_kde_keys(kk, table, hearth_ids, say=log):
+    """See above. Returns what it changed (a list of words). Never raises for one action that can't be changed."""
+    import hearth_settings_io as hs
+    path = keys_state_path()
+    state = hs.load_json(path, {})
+    done = dict(state.get('done') or {})
+    changed, words = {}, []
+    want_all = []
+    for e in table.get('kdeKeys', []):
+        want_all.append((e['component'], e['action'], '', [[qt_key(s)] for s in e.get('keys', [])], e.get('why', '')))
+    for sid, title in hearth_ids:
+        want_all.append(('kwin', 'Hearth ' + sid, 'Hearth: ' + title, None, 'its own key, freed above'))
+    # Keys Hearth took from KDE's actions (now or before): a Hearth shortcut gets its key back only if it's one of these.
+    freed = {k[0] for d in done.values() if not d.get('restored') for k in d.get('was', []) if k}
+    for comp, action, title, want, why in want_all:
+        key = comp + '/' + action
+        if key in done:
+            continue                      # Hearth changed it once already: whatever it is now is the person's
+        aid = kk.action_id(comp, action, title)
+        try:
+            cur, dflt = kk.get(aid), kk.get(aid, default=True)
+        except Exception as e:
+            say('keys: %s: %s' % (key, getattr(e, 'message', e)))
+            continue
+        if want is None:                  # a Hearth shortcut: only when it lost its key to one of KDE's that Hearth freed
+            if cur or not dflt or not any(k and k[0] in freed for k in dflt):
+                continue
+            want = dflt
+        elif sorted(cur) != sorted(dflt):
+            continue                      # not on KDE's default any more: the person's choice
+        if sorted(cur) == sorted(want):
+            continue
+        try:
+            kk.set(aid, want)
+        except Exception as e:
+            say('keys: %s could not be changed: %s' % (key, getattr(e, 'message', e)))
+            continue
+        changed[key] = {'was': cur, 'now': want, 'title': title, 'at': int(time.time())}
+        if not key.startswith('kwin/Hearth '):
+            freed.update(k[0] for k in cur if k)
+        words.append('%s (%s)' % (action if not action.startswith('Hearth ') else action[7:], why))
+    if changed:
+        done.update(changed)
+        hs.merge_json(path, {'done': done})
+        say('keys: ' + '; '.join(words))
+        hs.notice('kwin-keys', 'Hearth gave its own keys back to Mantel in KWin (Super+arrows, Super+D, Super+G, Print...): '
+                  'the KDE shortcuts that had them were changed once. Your own key choices are kept. '
+                  'To put KDE\'s back: hearth-kwin-bridge keys restore', 'Desktop Mode keys')
+    return words
+
+
+def restore_kde_keys(kk):
+    import hearth_settings_io as hs
+    path = keys_state_path()
+    done = dict(hs.load_json(path, {}).get('done') or {})
+    back = []
+    for key, d in list(done.items()):
+        comp, action = key.split('/', 1)
+        try:
+            kk.set(kk.action_id(comp, action, d.get('title', '')), d.get('was', []))
+            back.append(key)
+        except Exception as e:
+            print('%s: %s' % (key, getattr(e, 'message', e)))
+        d['restored'] = int(time.time())          # kept in 'done': Hearth never changes it again
+    hs.merge_json(path, {'done': done})
+    return back
+
+
 # ---------------------------------------------------------------- serving
+EMPTY_TABLE = {'shortcuts': [], 'kwinOnly': [], 'kdeKeys': [], 'extraZones': [], 'gap': 6, 'rules': []}
+
+
 class Bridge:
     def __init__(self, stdio):
         Gio, GLib = gi_modules()
         self.Gio, self.GLib = Gio, GLib
         self.stdio = stdio
-        self.table = load_table()
+        # A missing or damaged shortcuts.json costs the shortcuts, never the window list (it's said in the status).
+        self.table_problem = ''
+        try:
+            self.table = load_table()
+        except Exception as e:
+            self.table, self.table_problem = dict(EMPTY_TABLE), 'Mantel\'s keyboard shortcuts are off: shortcuts.json: %s' % e
+            log(self.table_problem)
+        self.busy = False               # loading the script (in a worker thread: nothing here waits on KWin)
         self.queue = []
         self.pending = None           # the script's waiting Next() call
         self.pending_timer = 0
@@ -167,6 +323,8 @@ class Bridge:
         self.say({'t': 'log', 'text': text})
 
     def status(self, connected, problem=''):
+        if connected and not problem:
+            problem = self.table_problem
         if connected == self.connected and problem == self.problem:
             return
         self.connected, self.problem = connected, problem
@@ -241,7 +399,7 @@ class Bridge:
             self.shortcut(sid)
         elif method == 'Launcher':
             inv.return_value(None)
-            self.shortcut('launcher')
+            self.shortcut('launcher', 'Super on its own')
         elif method == 'Command':
             (text,) = params.unpack()
             inv.return_value(GLib.Variant('(b)', (self.command(text),)))
@@ -273,11 +431,12 @@ class Bridge:
         except Exception:
             pass
 
-    def shortcut(self, sid):
+    def shortcut(self, sid, how='key'):
         cmd = command_for(sid, self.table)
         if not cmd:
             log('no shortcut ' + sid)
             return
+        log('shortcut: %s (%s)' % (sid, how))
         try:
             subprocess.Popen(['sh', '-c', cmd], stdin=subprocess.DEVNULL, start_new_session=True)
         except OSError as e:
@@ -290,12 +449,45 @@ class Bridge:
                                   self.Gio.DBusCallFlags.NONE, 5000, None)
 
     def load_script(self):
+        """Starts loading in a worker thread (KWin's D-Bus calls can take seconds): KDE's keys first, then the script."""
+        if self.busy:
+            return
+        self.busy = True
+        threading.Thread(target=self._load, daemon=True).start()
+
+    def _load(self):
+        try:
+            self._load_script()
+        finally:
+            self.busy = False
+
+    def later(self, fn, *args):
+        self.GLib.idle_add(lambda: (fn(*args), False)[1])
+
+    def keys(self):
+        ids = [(x['id'], x['title']) for x in self.table['shortcuts'] + self.table.get('kwinOnly', [])]
+        try:
+            fix_kde_keys(KdeKeys(self.bus, self.Gio, self.GLib), self.table, ids, say=lambda t: self.later(self.note, t))
+        except Exception as e:
+            self.later(self.note, 'keys: %s' % e)
+
+    def _load_script(self):
         GLib = self.GLib
         try:
-            write_atomic(self.script_path, render(self.table))
+            text = render(self.table)
         except Exception as e:
-            self.status(False, 'the script could not be made: %s' % e)
+            try:
+                text = render(dict(EMPTY_TABLE))
+                self.table_problem = 'Mantel\'s keyboard shortcuts are off: %s' % e
+            except Exception as e2:
+                self.later(self.status, False, 'the script could not be made: %s' % e2)
+                return False
+        try:
+            write_atomic(self.script_path, text)
+        except OSError as e:
+            self.later(self.status, False, 'the script could not be written: %s' % e)
             return False
+        self.keys()
         try:
             try:
                 if self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'isScriptLoaded', GLib.Variant('(s)', (PLUGIN,)), '(b)').unpack()[0]:
@@ -305,18 +497,19 @@ class Bridge:
             sid = self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'loadScript',
                             GLib.Variant('(ss)', (self.script_path, PLUGIN)), '(i)').unpack()[0]
             if sid < 0:
-                self.status(False, 'KWin would not load the window list script')
+                self.later(self.status, False, 'KWin would not load the window list script')
                 return False
             try:
                 self.kwin('/Scripting/Script%d' % sid, 'org.kde.kwin.Script', 'run')
             except GLib.Error:
                 self.kwin('/%d' % sid, 'org.kde.kwin.Script', 'run')       # older KWin's path
             self.loaded_at = time.monotonic()
-            log('KWin script loaded (%d)' % sid)
-            return True
+            self.later(log, 'KWin script loaded (%d)' % sid)
         except GLib.Error as e:
-            self.status(False, 'KWin is not answering: %s' % e.message)
+            self.later(self.status, False, 'KWin is not answering: %s' % e.message)
             return False
+        self.keys()                     # Hearth's own shortcuts exist now: any that lost their key to KDE's
+        return True
 
     def unload_script(self):
         try:
@@ -327,7 +520,7 @@ class Bridge:
     def watchdog(self):
         now = time.monotonic()
         waiting = self.pending is not None
-        if not waiting and now - max(self.last_next, self.loaded_at) > SILENT_RELOAD:
+        if not waiting and not self.busy and now - max(self.last_next, self.loaded_at) > SILENT_RELOAD:
             if self.connected:
                 self.status(False, 'the KWin script stopped answering; loading it again')
             self.load_script()
@@ -411,6 +604,22 @@ def main(argv):
         return 0
     if argv[0] == 'serve':
         return Bridge('--stdio' in argv).serve()
+    if argv[0] == 'keys':
+        # keys: KDE's and Hearth's shortcuts as kglobalaccel has them now; keys restore: KDE's back as Hearth found them.
+        Gio, GLib = gi_modules()
+        kk = KdeKeys(Gio.bus_get_sync(Gio.BusType.SESSION, None), Gio, GLib)
+        if argv[1:2] == ['restore']:
+            print('\n'.join(restore_kde_keys(kk)) or 'nothing to put back')
+            return 0
+        table = load_table()
+        out = {}
+        for e in table.get('kdeKeys', []):
+            aid = kk.action_id(e['component'], e['action'])
+            out[e['component'] + '/' + e['action']] = kk.get(aid)
+        for x in table['shortcuts'] + table.get('kwinOnly', []):
+            out['kwin/Hearth ' + x['id']] = kk.get(kk.action_id('kwin', 'Hearth ' + x['id'], 'Hearth: ' + x['title']))
+        print(json.dumps(out))
+        return 0
     if argv[0] == 'list':
         print(call_running('List', None, '(s)').unpack()[0])
         return 0

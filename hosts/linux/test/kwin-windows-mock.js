@@ -185,12 +185,20 @@ m.items[0].triggered();
 assert.strictEqual(shortcutsCalled[shortcutsCalled.length - 1], "snap-layouts-open");
 m.items.find(i => i.text === "Left half").triggered();
 assert.strictEqual(last().windows.find(w => w.title === "Files").zone, "left-half");
-same(menuFn(bar), []);
+assert.strictEqual(menuFn(bar), undefined);
 
 // ---- closing, and windows that go
 send([{ op: "close", id: files.internalId }]);
 assert(files.closed);
 assert(!last().windows.some(w => w.title === "Files"));
 send([{ op: "refresh" }, { op: "nonsense" }]);
+
+// ---- moving a window about: no list for every step, one when its zone changes
+const before = sent.length;
+term.frameGeometryChanged(); term.frameGeometryChanged();
+assert(sent.length <= before + 1, "a list for every geometry step");
+const n0 = sent.length;
+term.frameGeometryChanged();
+assert.strictEqual(sent.length, n0, "the same place sent again");
 
 console.log("kwin-windows-mock: all passed (" + sent.length + " lists sent)");
