@@ -72,7 +72,10 @@ pub fn packet(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet) {
         let port_s = port.to_string();
         c.arg(&host).arg(&dir).args(["-p", port_s.as_str(), "-o", "password_stdin", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
             "-o", "reconnect", "-o", "ServerAliveInterval=15", "-o", "HostKeyAlgorithms=+ssh-rsa", "-o", "PubkeyAcceptedKeyTypes=+ssh-rsa"])
-            .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
+            .stdin(Stdio::piped()).stdout(Stdio::null());
+        // sshfs keeps running after it has mounted, and keeps writing to stderr: a file, not a pipe that closes.
+        let log = dir.with_extension("log");
+        match std::fs::File::create(&log) { Ok(f) => { c.stderr(f); } Err(_) => { c.stderr(Stdio::null()); } }
         let mut ch = match c.spawn() { Ok(ch) => ch, Err(e) => return fail(&d, &id, format!("Couldn't start sshfs: {e}")) };
         if let Some(mut i) = ch.stdin.take() { let _ = i.write_all(format!("{pass}\n").as_bytes()); }
         // sshfs stays in the background once it has mounted; the first one ends then.
@@ -85,8 +88,7 @@ pub fn packet(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet) {
             }
         };
         if code != Some(0) {
-            let mut err = String::new();
-            if let Some(mut e) = ch.stderr.take() { use std::io::Read; let _ = e.read_to_string(&mut err); }
+            let err = std::fs::read_to_string(&log).unwrap_or_default();
             return fail(&d, &id, format!("Couldn't open the phone's files{}", err.lines().last().map(|l| format!(": {l}")).unwrap_or_default()));
         }
         let shown = dir.to_string_lossy().to_string();

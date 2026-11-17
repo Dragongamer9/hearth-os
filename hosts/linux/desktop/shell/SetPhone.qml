@@ -298,6 +298,7 @@ SetPage {
             { key: "input", icon: "mouse", title: "Touchpad, keyboard and presentation remote", sub: "The phone moves the pointer and types here" },
             { key: "pauseOnCall", icon: "pause", title: "Pause media during calls", sub: "Plays again when the call ends" },
             { key: "commands", icon: "bolt", title: "Run commands", sub: "Only the commands below" },
+            { key: "volume", icon: "vol", title: "Control this PC's volume", sub: "Its volume slider and mute" },
             { key: "autoAccept", icon: "file", title: "Save its files without asking", sub: "Into " + (page.s ? page.s.folder : "Downloads") }
         ] : []
         delegate: SetSwitch {

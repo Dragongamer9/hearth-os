@@ -41,6 +41,13 @@ pub struct DevState {
     pub signal: Option<serde_json::Value>,
     /// The "wants to pair" notification.
     pub pair_notif: u32,
+    /// When this PC asked the phone to take a photo (Take a photo): that photo is kept without asking.
+    pub photo_asked: Option<std::time::Instant>,
+}
+
+/// Did this PC ask for a photo in the last 5 minutes? (Once: the next photo needs asking again.)
+pub fn photo_expected(id: &str) -> bool {
+    with(id, |s| s.photo_asked.take().map(|t| t.elapsed() < std::time::Duration::from_secs(300)).unwrap_or(false))
 }
 
 fn all() -> &'static Mutex<HashMap<String, DevState>> {
@@ -61,7 +68,7 @@ pub fn handle(d: &Arc<Daemon>, id: &str, from: &str, p: &Packet, pd: &PairedDev)
         "kdeconnect.telephony" => telephony::packet(d, id, from, p, pd),
         "kdeconnect.sms.messages" => sms::packet(d, id, p),
         "kdeconnect.presenter" => presenter::packet(d, id, p, pd),
-        "kdeconnect.systemvolume.request" => systemvolume::packet(d, id, p),
+        "kdeconnect.systemvolume.request" => if pd.volume { systemvolume::packet(d, id, p) },
         "kdeconnect.sftp" => sftp::packet(d, id, from, p),
         "kdeconnect.contacts.response_uids_timestamps" | "kdeconnect.contacts.response_vcards" => contacts::packet(d, id, p),
         "kdeconnect.connectivity_report" => {
@@ -138,7 +145,13 @@ pub async fn command(d: &Arc<Daemon>, cmd: &str, a: &Value) -> Result<Value, Str
         "command_add" => runcommand::add(d, &s("name")?, &s("command")?),
         "command_remove" => runcommand::remove(d, &s("key")?),
         "contacts" => { let id = s("id")?; paired(&id)?; if a.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false) { contacts::request(d, &id); } Ok(json!(contacts::list(&id))) }
-        "photo" => { let id = s("id")?; paired(&id)?; d.send_body(&id, "kdeconnect.photo.request", json!({})).map(|_| json!({})) }
+        "photo" => {
+            let id = s("id")?;
+            paired(&id)?;
+            d.send_body(&id, "kdeconnect.photo.request", json!({}))?;
+            with(&id, |st| st.photo_asked = Some(std::time::Instant::now()));
+            Ok(json!({}))
+        }
         "sms_threads" => { let id = s("id")?; paired(&id)?; Ok(json!(sms::threads(&id))) }
         "sms_thread" => {
             let id = s("id")?;
